@@ -1,0 +1,72 @@
+name: Windows CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    name: Windows x64 / ${{ matrix.configuration }}
+    runs-on: windows-2022
+
+    strategy:
+      fail-fast: false
+      matrix:
+        configuration:
+          - Debug
+          - Release
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v6
+
+      - name: Guard against proprietary game content
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $knownRomSize = 393216
+          $knownRomSha256 = '9AD122903EC34CB8E62BA1AAE1CFDDBFCB06657D0FBA55D6D0B1D280F88E30F9'
+          $tracked = @(git ls-files)
+          $forbidden = @()
+
+          foreach ($file in $tracked) {
+            $normalized = $file.Replace('\', '/').ToLowerInvariant()
+            if (
+              $normalized -match '(^|/)(roms?|captures|traces|disassembly)/' -or
+              $normalized -match '(^|/)assets/generated/' -or
+              $normalized -match '\.(pce|sgx|rom|cue|iso|chd|dcpack|state|sav)$'
+            ) {
+              $forbidden += $file
+              continue
+            }
+
+            if (Test-Path -LiteralPath $file -PathType Leaf) {
+              $item = Get-Item -LiteralPath $file
+              if ($item.Length -eq $knownRomSize) {
+                $hash = (Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash
+                if ($hash -eq $knownRomSha256) {
+                  $forbidden += $file
+                }
+              }
+            }
+          }
+
+          if ($forbidden.Count -ne 0) {
+            Write-Error (
+              "Tracked proprietary or generated game content:`n" +
+              (($forbidden | Sort-Object -Unique) -join "`n")
+            )
+          }
+
+      - name: Configure
+        run: cmake --preset windows-vs2022
+
+      - name: Build
+        run: cmake --build out/build/windows-vs2022 --config ${{ matrix.configuration }} --parallel
+
+      - name: Test
+        run: ctest --test-dir out/build/windows-vs2022 -C ${{ matrix.configuration }} --output-on-failure

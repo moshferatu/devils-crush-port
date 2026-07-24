@@ -1,0 +1,33 @@
+# Proprietary game content
+*.pce
+/roms/
+
+# Locally derived game data and reverse-engineering output
+/assets/generated/
+/captures/
+/traces/
+*.dcpack
+*.state
+
+# CMake and compiler output
+/out/
+/build/
+/cmake-build-*/
+CMakeUserPresets.json
+
+# Visual Studio
+/.vs/
+*.user
+*.suo
+*.VC.db
+*.VC.VC.opendb
+
+# Editors and operating systems
+/.idea/
+.DS_Store
+Thumbs.db
+
+# Runtime-local files
+/logs/
+/portable-data/
+

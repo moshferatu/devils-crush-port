@@ -1,0 +1,233 @@
+{
+  "schemaVersion": 1,
+  "dependencies": [
+    {
+      "name": "SDL",
+      "version": "3.4.12",
+      "status": "active",
+      "source": {
+        "repository": "https://github.com/libsdl-org/SDL",
+        "tag": "release-3.4.12",
+        "revision": "f87239e71e42da91ca317a12eefb82cfbf3393eb",
+        "archive": {
+          "url": "https://github.com/libsdl-org/SDL/releases/download/release-3.4.12/SDL3-3.4.12.tar.gz",
+          "sha256": "f07b958a9ac5020fb7a44cadb957f658b2149c3c8abb4f63145fac9303249db7"
+        }
+      },
+      "license": {
+        "spdx": "Zlib",
+        "notice": "THIRD_PARTY_NOTICES.md"
+      },
+      "modified": false
+    },
+    {
+      "name": "Beetle PC Engine",
+      "version": "1.29.0",
+      "status": "active",
+      "source": {
+        "repository": "https://github.com/libretro/beetle-pce-libretro",
+        "fork": null,
+        "tag": null,
+        "revision": "ae99235c2139c176c1a8d0fde2957bf701d3cab0",
+        "archive": null
+      },
+      "license": {
+        "spdx": null,
+        "knownFileLicenses": [
+          "GPL-2.0-or-later",
+          "GPL-3.0-or-later",
+          "LGPL-2.1-or-later",
+          "BSD-3-Clause",
+          "MIT",
+          "MIT-0",
+          "Zlib",
+          "GPL-2.0-only",
+          "LicenseRef-Public-Domain",
+          "LicenseRef-LZMA-SDK-Public-Domain"
+        ],
+        "effectiveCombinedWork": "GPL-3.0-or-later",
+        "auditStatus": "windows-build-component-inventory",
+        "notice": "THIRD_PARTY_NOTICES.md"
+      },
+      "bundledComponents": [
+        {
+          "name": "Mednafen-derived PCE and support code",
+          "version": "1.29.0",
+          "license": {
+            "spdx": "GPL-2.0-or-later",
+            "textPaths": [
+              "COPYING"
+            ],
+            "perFileNotices": true
+          },
+          "copyrightNotices": [
+            "Copyright (C) 1998 Andreas Mueller <mueller@daneb.ping.de>",
+            "Copyright (C) 1998-2002 Andreas Mueller <andreas@daneb.de>",
+            "Copyright (C) 1998-2002 Andreas Mueller <mueller@daneb.ping.de>",
+            "Copyright (C) 2001 Charles MacDonald",
+            "Copyright (C) 2004 Ki",
+            "Copyright (C) 2004-2007 Carsten Gnoerlich",
+            "Copyright (C) 2006-2016 Mednafen Team",
+            "Copyright (C) 2007-2011 Mednafen Team",
+            "Copyright (C) 2010-2016 Mednafen Team",
+            "Copyright (C) 2013-2016 Mednafen Team",
+            "Copyright (C) 2015-2016 Mednafen Team",
+            "Copyright (C) 2017 Romain Tisserand"
+          ],
+          "sourcePaths": [
+            "libretro.cpp",
+            "mednafen/"
+          ]
+        },
+        {
+          "name": "Mednafen MSVC compatibility layer",
+          "license": {
+            "spdx": "GPL-3.0-or-later",
+            "textPaths": [
+              "mednafen/msvc_compat.h"
+            ]
+          },
+          "copyrightNotices": [
+            "Copyright (C) 2010-2012 - Hans-Kristian Arntzen"
+          ],
+          "sourcePaths": [
+            "mednafen/msvc_compat.h"
+          ]
+        },
+        {
+          "name": "Blip Buffer",
+          "version": "0.4.1",
+          "license": {
+            "spdx": "LGPL-2.1-or-later",
+            "textPaths": [
+              "mednafen/sound/Blip_Buffer.c"
+            ]
+          },
+          "copyrightNotices": [
+            "Copyright (C) 2003-2006 Shay Green"
+          ],
+          "sourcePaths": [
+            "mednafen/sound/Blip_Buffer.c"
+          ]
+        },
+        {
+          "name": "libretro-common",
+          "license": {
+            "spdx": "MIT",
+            "textPaths": [
+              "libretro-common/streams/file_stream.c"
+            ],
+            "perFileNotices": true
+          },
+          "copyrightNotices": [
+            "Copyright  (C) 2010-2020 The RetroArch team"
+          ],
+          "sourcePaths": [
+            "libretro-common/"
+          ]
+        },
+        {
+          "name": "libchdr",
+          "license": {
+            "spdx": "BSD-3-Clause",
+            "textPaths": [
+              "deps/libchdr/LICENSE.txt",
+              "deps/libchdr/src/libchdr_chd.c"
+            ]
+          },
+          "copyrightNotices": [
+            "Copyright Romain Tisserand",
+            "Copyright Aaron Giles"
+          ],
+          "sourcePaths": [
+            "deps/libchdr/"
+          ]
+        },
+        {
+          "name": "dr_flac",
+          "license": {
+            "spdx": "LicenseRef-Public-Domain OR MIT-0",
+            "selected": "MIT-0",
+            "textPaths": [
+              "deps/libchdr/include/dr_libs/dr_flac.h"
+            ]
+          },
+          "copyrightNotices": [
+            "Copyright 2023 David Reid"
+          ],
+          "sourcePaths": [
+            "deps/libchdr/include/dr_libs/dr_flac.h",
+            "deps/libchdr/src/libchdr_flac.c"
+          ]
+        },
+        {
+          "name": "Zstandard",
+          "version": "1.5.5",
+          "license": {
+            "spdx": "BSD-3-Clause OR GPL-2.0-only",
+            "selected": "BSD-3-Clause",
+            "textPaths": [
+              "deps/zstd/LICENSE",
+              "deps/zstd/COPYING"
+            ]
+          },
+          "copyrightNotices": [
+            "Copyright (c) Meta Platforms, Inc. and affiliates. All rights reserved."
+          ],
+          "sourcePaths": [
+            "deps/zstd/"
+          ]
+        },
+        {
+          "name": "zlib",
+          "version": "1.2.11",
+          "license": {
+            "spdx": "Zlib",
+            "textPaths": [
+              "deps/zlib-1.2.11/README"
+            ]
+          },
+          "copyrightNotices": [
+            "(C) 1995-2017 Jean-loup Gailly and Mark Adler"
+          ],
+          "sourcePaths": [
+            "deps/zlib-1.2.11/"
+          ]
+        },
+        {
+          "name": "LZMA SDK",
+          "version": "19.00",
+          "license": {
+            "spdx": "LicenseRef-LZMA-SDK-Public-Domain",
+            "textPaths": [
+              "deps/lzma-19.00/LICENSE"
+            ]
+          },
+          "copyrightNotices": [
+            "Igor Pavlov : Public domain"
+          ],
+          "sourcePaths": [
+            "deps/lzma-19.00/"
+          ]
+        },
+        {
+          "name": "Tremor",
+          "version": "1.0.0",
+          "license": {
+            "spdx": "BSD-3-Clause",
+            "textPaths": [
+              "mednafen/tremor/COPYING"
+            ]
+          },
+          "copyrightNotices": [
+            "Copyright (c) 2002, Xiph.org Foundation"
+          ],
+          "sourcePaths": [
+            "mednafen/tremor/"
+          ]
+        }
+      ],
+      "modified": false
+    }
+  ]
+}
