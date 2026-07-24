@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+#include "devils_crush/core/backup_ram.hpp"
 #include "devils_crush/core/rom_image.hpp"
 #include "devils_crush/core/save_state.hpp"
 #include "devils_crush/emulation/pce_runtime.hpp"
@@ -8,6 +9,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdlib>
+#include <filesystem>
 #include <iostream>
 #include <limits>
 #include <stdexcept>
@@ -269,6 +271,58 @@ void test_save_state_container()
     check(invalid_rejected, "invalid save-state metadata is rejected");
 }
 
+void test_backup_ram_storage()
+{
+    const auto path =
+        std::filesystem::current_path() / "dc-core-tests-backup.sav";
+    auto temporary_path = path;
+    temporary_path += ".tmp";
+    std::error_code error;
+    (void)std::filesystem::remove(path, error);
+    error.clear();
+    (void)std::filesystem::remove(temporary_path, error);
+
+    const auto missing = devils_crush::backup::load_exact(path, 32U);
+    check(
+        missing.status == devils_crush::backup::LoadStatus::not_found,
+        "missing backup RAM is reported distinctly");
+
+    std::vector<std::byte> expected(32U);
+    for (std::size_t index = 0; index < expected.size(); ++index) {
+        expected[index] =
+            static_cast<std::byte>((index * 13U + 7U) & 0xFFU);
+    }
+    check(
+        devils_crush::backup::save_atomic(path, expected).saved,
+        "backup RAM is atomically saved");
+
+    const auto loaded =
+        devils_crush::backup::load_exact(path, expected.size());
+    check(loaded.loaded(), "backup RAM is loaded");
+    check(loaded.bytes == expected, "backup RAM bytes round trip");
+    check(
+        devils_crush::backup::load_exact(path, expected.size() - 1U).status
+            == devils_crush::backup::LoadStatus::invalid_size,
+        "backup RAM with the wrong exact size is rejected");
+
+    expected.front() ^= std::byte{0xFF};
+    check(
+        devils_crush::backup::save_atomic(path, expected).saved,
+        "an existing backup RAM file is atomically replaced");
+    check(
+        devils_crush::backup::load_exact(path, expected.size()).bytes
+            == expected,
+        "replacement backup RAM bytes round trip");
+    check(
+        !std::filesystem::exists(temporary_path),
+        "successful backup save leaves no temporary file");
+
+    error.clear();
+    check(
+        std::filesystem::remove(path, error) && !error,
+        "backup RAM test file is removed");
+}
+
 void test_runtime_boundary()
 {
     const auto runtime = devils_crush::emulation::create_pce_runtime();
@@ -323,6 +377,7 @@ int main()
     test_scaler_examples();
     test_scaler_edges();
     test_save_state_container();
+    test_backup_ram_storage();
     test_runtime_boundary();
 
     if (failures == 0) {

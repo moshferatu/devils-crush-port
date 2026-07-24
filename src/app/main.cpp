@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+#include "devils_crush/core/backup_ram.hpp"
 #include "devils_crush/core/rom_image.hpp"
 #include "devils_crush/core/save_state.hpp"
 #include "devils_crush/emulation/pce_runtime.hpp"
@@ -44,6 +45,8 @@ const std::filesystem::path kGamepadMappingsPath =
     std::filesystem::path("portable-data") / "gamecontrollerdb.txt";
 const std::filesystem::path kCanonicalRecordingPath =
     std::filesystem::path("portable-data") / "canonical-v1.csv";
+const std::filesystem::path kBackupRamTestPath =
+    std::filesystem::path("portable-data") / "backup-ram-test.sav";
 constexpr std::uintmax_t kMaximumSaveStateFileSize =
     64U * 1024U * 1024U + 4096U;
 
@@ -60,6 +63,8 @@ struct CommandLine {
     bool smoke_test = false;
     bool record_canonical = false;
     std::filesystem::path canonical_path = kCanonicalRecordingPath;
+    bool backup_ram_test = false;
+    std::filesystem::path backup_ram_test_path = kBackupRamTestPath;
     bool show_help = false;
     std::string error;
 };
@@ -96,15 +101,27 @@ struct CommandLine {
             if (!next.empty() && next.front() != '-') {
                 options.canonical_path = argv[++index];
             }
+        } else if (argument == "--backup-ram-test") {
+            options.backup_ram_test = true;
+            const std::string_view next =
+                index + 1 < argc ? std::string_view(argv[index + 1])
+                                 : std::string_view{};
+            if (!next.empty() && next.front() != '-') {
+                options.backup_ram_test_path = argv[++index];
+            }
         } else {
             options.error = "Unknown option: " + std::string(argument);
             return options;
         }
     }
 
-    if (options.smoke_test && options.record_canonical) {
+    const int operation_count =
+        static_cast<int>(options.smoke_test)
+        + static_cast<int>(options.record_canonical)
+        + static_cast<int>(options.backup_ram_test);
+    if (operation_count > 1) {
         options.error =
-            "--smoke-test and --record-canonical cannot be combined.";
+            "Only one test or recording operation may be selected.";
     }
     return options;
 }
@@ -118,6 +135,7 @@ void print_usage()
         << "  devils-crush --validate-rom [path]\n"
         << "  devils-crush --smoke-test [--rom <path>]\n"
         << "  devils-crush --record-canonical [output.csv] [--rom <path>]\n"
+        << "  devils-crush --backup-ram-test [output.sav] [--rom <path>]\n"
         << "  devils-crush --help\n\n"
         << "Controls:\n"
         << "  Z / Left Shift    PCE button I\n"
@@ -168,35 +186,17 @@ void print_validation(const devils_crush::rom::ValidationResult& result)
         return false;
     }
 
-    std::error_code error;
-    if (!std::filesystem::exists(path, error)) {
-        if (error) {
-            std::cerr << "Could not inspect backup RAM file: "
-                      << error.message() << '\n';
-            return false;
-        }
+    auto result =
+        devils_crush::backup::load_exact(path, expected_size);
+    if (result.status == devils_crush::backup::LoadStatus::not_found) {
         return true;
     }
-
-    const auto file_size = std::filesystem::file_size(path, error);
-    if (error || file_size != expected_size) {
-        std::cerr << "Ignoring backup RAM file with unexpected size: "
-                  << path.string() << '\n';
+    if (!result.loaded()) {
+        std::cerr << "Could not load backup RAM: " << result.message
+                  << " (" << path.string() << ")\n";
         return false;
     }
-
-    std::vector<std::byte> bytes(expected_size);
-    std::ifstream input(path, std::ios::binary);
-    input.read(
-        reinterpret_cast<char*>(bytes.data()),
-        static_cast<std::streamsize>(bytes.size()));
-    if (!input
-        || input.gcount() != static_cast<std::streamsize>(bytes.size())) {
-        std::cerr << "Could not read backup RAM file: " << path.string()
-                  << '\n';
-        return false;
-    }
-    if (!runtime.import_backup_ram(bytes)) {
+    if (!runtime.import_backup_ram(result.bytes)) {
         std::cerr << "The emulator rejected the backup RAM data.\n";
         return false;
     }
@@ -215,37 +215,10 @@ void print_validation(const devils_crush::rom::ValidationResult& result)
         return false;
     }
 
-    std::error_code error;
-    std::filesystem::create_directories(path.parent_path(), error);
-    if (error) {
-        std::cerr << "Could not create save directory: " << error.message()
-                  << '\n';
-        return false;
-    }
-
-    auto temporary_path = path;
-    temporary_path += ".tmp";
-    {
-        std::ofstream output(
-            temporary_path,
-            std::ios::binary | std::ios::trunc);
-        output.write(
-            reinterpret_cast<const char*>(bytes.data()),
-            static_cast<std::streamsize>(bytes.size()));
-        output.flush();
-        if (!output) {
-            std::cerr << "Could not write backup RAM file: "
-                      << temporary_path.string() << '\n';
-            return false;
-        }
-    }
-
-    if (!MoveFileExW(
-            temporary_path.c_str(),
-            path.c_str(),
-            MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
-        std::cerr << "Could not commit backup RAM file; Windows error "
-                  << GetLastError() << ".\n";
+    const auto result = devils_crush::backup::save_atomic(path, bytes);
+    if (!result.saved) {
+        std::cerr << "Could not save backup RAM: " << result.message
+                  << " (" << path.string() << ")\n";
         return false;
     }
 
@@ -1040,6 +1013,50 @@ int run_canonical_recording(
     return EXIT_SUCCESS;
 }
 
+int run_backup_ram_reload_test(
+    PceRuntime& runtime,
+    const std::filesystem::path& rom_path,
+    const std::filesystem::path& backup_path)
+{
+    const auto backup_size = runtime.backup_ram_size();
+    if (backup_size == 0U) {
+        std::cerr << "The emulator did not expose backup RAM for testing.\n";
+        return EXIT_FAILURE;
+    }
+
+    std::vector<std::byte> expected(backup_size);
+    for (std::size_t index = 0; index < expected.size(); ++index) {
+        expected[index] = static_cast<std::byte>(
+            (index * 37U + index / 7U + 0x5AU) & 0xFFU);
+    }
+    if (!runtime.import_backup_ram(expected)
+        || !save_backup_ram(runtime, backup_path)) {
+        return EXIT_FAILURE;
+    }
+
+    const auto reload_result = runtime.load_rom(rom_path);
+    if (!reload_result.loaded) {
+        std::cerr << "Could not reload the ROM during backup-RAM test: "
+                  << reload_result.message << '\n';
+        return EXIT_FAILURE;
+    }
+    if (!load_backup_ram(runtime, backup_path)) {
+        return EXIT_FAILURE;
+    }
+
+    const auto actual = runtime.export_backup_ram();
+    if (actual != expected) {
+        std::cerr << "Backup RAM changed across the full reload cycle.\n";
+        return EXIT_FAILURE;
+    }
+
+    std::cout << "Backup-RAM reload test passed:\n"
+              << "Bytes:  " << actual.size() << '\n'
+              << "File:   " << backup_path.string() << '\n'
+              << "SHA-256: " << sha256(actual) << '\n';
+    return EXIT_SUCCESS;
+}
+
 int run_smoke_test(PceRuntime& runtime)
 {
     EmulatedFrame frame;
@@ -1313,6 +1330,12 @@ int main(const int argc, char* argv[])
                 *runtime,
                 options.canonical_path,
                 runtime_info.upstream_revision);
+        }
+        if (options.backup_ram_test) {
+            return run_backup_ram_reload_test(
+                *runtime,
+                options.rom_path,
+                options.backup_ram_test_path);
         }
         if (options.smoke_test) {
             return run_smoke_test(*runtime);

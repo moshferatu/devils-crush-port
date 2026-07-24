@@ -58,5 +58,19 @@ if(TARGET devils_crush)
                 "${CMAKE_CURRENT_SOURCE_DIR}/verify_canonical.cmake"
         )
         set_tests_properties(dc_rom_canonical PROPERTIES LABELS rom_required)
+
+        add_test(
+            NAME dc_rom_backup_reload
+            COMMAND
+                devils_crush
+                --backup-ram-test
+                "${CMAKE_CURRENT_BINARY_DIR}/backup-ram-test.sav"
+                --rom
+                "${DC_ROM_PATH}"
+        )
+        set_tests_properties(
+            dc_rom_backup_reload
+            PROPERTIES LABELS rom_required
+        )
     endif()
 endif()

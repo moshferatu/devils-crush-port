@@ -70,3 +70,17 @@ jobs:
 
       - name: Test
         run: ctest --test-dir out/build/windows-vs2022 -C ${{ matrix.configuration }} --output-on-failure
+
+      - name: Stage release layout
+        if: matrix.configuration == 'Release'
+        run: >-
+          cmake --install out/build/windows-vs2022
+          --config Release
+          --prefix out/distribution/devils-crush
+
+      - name: Verify release layout
+        if: matrix.configuration == 'Release'
+        run: >-
+          cmake
+          -DDISTRIBUTION_DIR=${{ github.workspace }}/out/distribution/devils-crush
+          -P cmake/VerifyDistribution.cmake

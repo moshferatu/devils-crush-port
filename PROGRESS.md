@@ -6,7 +6,7 @@ Last updated: 2026-07-24
 
 **Phase:** Milestone 1 implementation and hardening
 
-**Implementation progress:** 18% overall; approximately 92% of Milestone 1
+**Implementation progress:** 19% overall; approximately 96% of Milestone 1
 
 **Current milestone:** 1. Emulated Windows baseline
 
@@ -79,6 +79,14 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
   `67a55bed2d4f4e8dc5019c2b9b845df2f29514bbb564e2e44cde406d159575fe`).
 - [x] Added Debug and Release opt-in ROM tests that fail if the complete
   canonical recording differs from that golden SHA-256.
+- [x] Extracted exact-size backup-RAM file loading and atomic replacement into
+  a tested core persistence boundary.
+- [x] Added a ROM-backed 2 KiB backup test that writes a deterministic pattern,
+  unloads/reloads the Beetle game, imports the file, and compares every byte.
+- [x] Added a deterministic Release staging layout containing the executable,
+  GPL license, README, and third-party notices.
+- [x] Added local and CI distribution verification with an exact file
+  allowlist and an independent supported-ROM hash scan.
 
 ## Next Actions
 
@@ -98,13 +106,15 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
 
 ## Active Work
 
-Milestone 1 hardening: Mesen2 comparison, visible backup-RAM reload validation,
-and release-oriented packaging checks.
+Milestone 1 hardening: Mesen2 comparison and visible in-game backup-RAM reload
+validation.
 
 ## Blockers
 
-No external blocker. The independent Mesen2 parity recording and remaining
-host resilience work are the primary Milestone 1 engineering gaps.
+No code blocker. Mesen2 is not installed locally, so independent parity
+recording requires acquiring that external debugger. The automated backup-RAM
+reload passes, but the game's visible Data Load behavior still needs a manual
+in-game validation pass.
 
 ## Decisions Locked for V1
 

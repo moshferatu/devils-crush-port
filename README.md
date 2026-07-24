@@ -76,6 +76,20 @@ for the first 8 KiB of PCE work RAM, the compact framebuffer, and the
 float-stereo audio batch, together with framebuffer geometry and audio timing.
 Recordings and other traces remain local and are excluded from Git.
 
+Exercise backup-RAM persistence across a complete Beetle game reload without
+touching the normal `devils-crush.sav`:
+
+```powershell
+.\out\build\windows-vs2022\Debug\devils-crush.exe `
+  --backup-ram-test portable-data\backup-ram-test.sav `
+  --rom "D:\path\to\Devil's Crush.pce"
+```
+
+This writes a deterministic 2 KiB test pattern atomically, unloads and reloads
+the ROM, imports the file, and verifies every byte. The opt-in `rom_required`
+CTest label runs the smoke test, canonical golden recording, and this reload
+test in both Debug and Release configurations.
+
 The current host boots the verified ROM through the pinned Beetle PCE core,
 plays its float-stereo audio, accepts keyboard or the first available SDL
 gamepad, and presents the emulated framebuffer through the fixed sharp scaler.
@@ -97,6 +111,24 @@ Audio remains synchronized to emulation rather than monitor refresh. The host
 limits stale queued audio to 150 ms, drops an overrun after a long stall, and
 reopens the default playback stream after device loss or format changes
 without stopping emulation.
+
+## Release staging check
+
+Create and verify the current ROM-free Release layout:
+
+```powershell
+cmake --install out/build/windows-vs2022 `
+  --config Release `
+  --prefix out/distribution/devils-crush
+cmake `
+  -DDISTRIBUTION_DIR="$PWD/out/distribution/devils-crush" `
+  -P cmake/VerifyDistribution.cmake
+```
+
+The verifier requires exactly `devils-crush.exe`, `LICENSE`, `README.md`, and
+`THIRD_PARTY_NOTICES.md`, and independently rejects the supported ROM hash.
+CI performs this check for every Release build. This staging layout is not yet
+the final source-complete public package.
 
 ROM-required CTest coverage is local-only and disabled by default:
 

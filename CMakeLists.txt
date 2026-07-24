@@ -38,6 +38,7 @@ include(CompilerWarnings)
 add_library(
     dc_core
     STATIC
+    src/core/backup_ram.cpp
     src/core/rom_image.cpp
     src/core/save_state.cpp
     src/render/sharp_pixel_scaler.cpp
@@ -119,6 +120,20 @@ if(DC_BUILD_APP)
         PROPERTIES
             OUTPUT_NAME "devils-crush"
             VS_DEBUGGER_WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+    )
+
+    install(
+        TARGETS devils_crush
+        RUNTIME DESTINATION .
+        COMPONENT Runtime
+    )
+    install(
+        FILES
+            LICENSE
+            README.md
+            THIRD_PARTY_NOTICES.md
+        DESTINATION .
+        COMPONENT Runtime
     )
 endif()
 
