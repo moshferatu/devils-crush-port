@@ -53,6 +53,16 @@ public:
         return false;
     }
 
+    [[nodiscard]] std::size_t work_ram_size() const noexcept override
+    {
+        return 0;
+    }
+
+    [[nodiscard]] std::vector<std::byte> export_work_ram() const override
+    {
+        return {};
+    }
+
     [[nodiscard]] SaveState serialize() const override
     {
         return {};

@@ -46,5 +46,17 @@ if(TARGET devils_crush)
             COMMAND devils_crush --smoke-test --rom "${DC_ROM_PATH}"
         )
         set_tests_properties(dc_rom_smoke PROPERTIES LABELS rom_required)
+
+        add_test(
+            NAME dc_rom_canonical
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/canonical-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_canonical.cmake"
+        )
+        set_tests_properties(dc_rom_canonical PROPERTIES LABELS rom_required)
     endif()
 endif()

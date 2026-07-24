@@ -6,7 +6,7 @@ Last updated: 2026-07-24
 
 **Phase:** Milestone 1 implementation and hardening
 
-**Implementation progress:** 16% overall; approximately 82% of Milestone 1
+**Implementation progress:** 18% overall; approximately 92% of Milestone 1
 
 **Current milestone:** 1. Emulated Windows baseline
 
@@ -66,6 +66,19 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
   audio reset and rejection of corrupt or incompatible files.
 - [x] Verified a real-core savestate round trip with exact restored framebuffer
   output and matching audio sample rate/batch timing.
+- [x] Added first-gamepad hot-plug, disconnect failover, and live SDL mapping
+  reload from `portable-data/gamecontrollerdb.txt`.
+- [x] Bounded queued audio latency to 150 ms and added non-fatal playback
+  stream recovery after queue errors, device loss, or format changes.
+- [x] Exposed a copy of the non-SuperGrafx 8 KiB PCE work-RAM region for
+  deterministic recording and future typed game-state views.
+- [x] Added a fixed 600-frame canonical boot/input recorder with per-frame
+  work-RAM, framebuffer, audio payload, geometry, and audio-timing hashes.
+- [x] Verified repeated Debug recordings and an optimized Release recording
+  were byte-identical (SHA-256
+  `67a55bed2d4f4e8dc5019c2b9b845df2f29514bbb564e2e44cde406d159575fe`).
+- [x] Added Debug and Release opt-in ROM tests that fail if the complete
+  canonical recording differs from that golden SHA-256.
 
 ## Next Actions
 
@@ -78,15 +91,15 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
 - [x] Display the emulated framebuffer in a resizable Windows window using the fixed sharp scaler.
 - [x] Connect SDL keyboard/controller input and emulated audio.
 - [x] Add versioned savestate serialization and recovery.
-- [ ] Add controller hot-plug/remapping and robust audio latency handling.
-- [ ] Add a canonical boot/input recording with RAM, framebuffer, and audio timing hashes.
+- [x] Add controller hot-plug/remapping and robust audio latency handling.
+- [x] Add a canonical boot/input recording with RAM, framebuffer, and audio timing hashes.
 - [ ] Compare the canonical recording against Mesen2 and document any differences.
 - [ ] Exercise and document full backup-RAM reload behavior through the visible host.
 
 ## Active Work
 
-Milestone 1 hardening: canonical deterministic replay, controller/audio
-resilience, Mesen2 comparison, and release-oriented packaging checks.
+Milestone 1 hardening: Mesen2 comparison, visible backup-RAM reload validation,
+and release-oriented packaging checks.
 
 ## Blockers
 

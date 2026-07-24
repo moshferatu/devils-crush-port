@@ -30,6 +30,7 @@ namespace {
 constexpr std::size_t kMaximumFramebufferPixels = 2048U * 264U;
 constexpr std::size_t kMaximumAudioSamples = 0x10000U * 2U;
 constexpr std::size_t kDevilsCrushBackupRamSize = 2048U;
+constexpr std::size_t kPceWorkRamSize = 8192U;
 
 struct CoreOption {
     std::string_view key;
@@ -331,6 +332,25 @@ public:
         return true;
     }
 
+    [[nodiscard]] std::size_t work_ram_size() const noexcept override
+    {
+        assert_owner_thread();
+        return work_ram_data() != nullptr ? kPceWorkRamSize : 0U;
+    }
+
+    [[nodiscard]] std::vector<std::byte> export_work_ram() const override
+    {
+        assert_owner_thread();
+        const auto* data = work_ram_data();
+        if (data == nullptr) {
+            return {};
+        }
+
+        std::vector<std::byte> copy(kPceWorkRamSize);
+        std::memcpy(copy.data(), data, copy.size());
+        return copy;
+    }
+
     [[nodiscard]] SaveState serialize() const override
     {
         assert_owner_thread();
@@ -424,6 +444,18 @@ private:
         }
         return static_cast<std::byte*>(
             retro_get_memory_data(RETRO_MEMORY_SAVE_RAM));
+    }
+
+    [[nodiscard]] const std::byte* work_ram_data() const noexcept
+    {
+        if (!loaded_
+            || retro_get_memory_data(RETRO_MEMORY_SYSTEM_RAM) == nullptr
+            || retro_get_memory_size(RETRO_MEMORY_SYSTEM_RAM)
+                < kPceWorkRamSize) {
+            return nullptr;
+        }
+        return static_cast<const std::byte*>(
+            retro_get_memory_data(RETRO_MEMORY_SYSTEM_RAM));
     }
 
     [[nodiscard]] static const char* option_value(

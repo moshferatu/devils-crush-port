@@ -19,8 +19,10 @@
 #include <exception>
 #include <filesystem>
 #include <fstream>
+#include <iomanip>
 #include <iostream>
 #include <limits>
+#include <span>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -32,10 +34,16 @@ constexpr std::uint32_t kDisplayAspectNumerator = 4U;
 constexpr std::uint32_t kDisplayAspectDenominator = 3U;
 constexpr double kEmulationFramesPerSecond = 59.8261;
 constexpr int kSmokeTestFrames = 10;
+constexpr int kCanonicalRecordingFrames = 600;
+constexpr int kMaximumAudioLatencyMilliseconds = 150;
 const std::filesystem::path kBackupRamPath =
     std::filesystem::path("portable-data") / "devils-crush.sav";
 const std::filesystem::path kQuickStatePath =
     std::filesystem::path("portable-data") / "devils-crush.state";
+const std::filesystem::path kGamepadMappingsPath =
+    std::filesystem::path("portable-data") / "gamecontrollerdb.txt";
+const std::filesystem::path kCanonicalRecordingPath =
+    std::filesystem::path("portable-data") / "canonical-v1.csv";
 constexpr std::uintmax_t kMaximumSaveStateFileSize =
     64U * 1024U * 1024U + 4096U;
 
@@ -50,6 +58,8 @@ struct CommandLine {
     std::filesystem::path rom_path = "Devil's Crush.pce";
     bool validate_only = false;
     bool smoke_test = false;
+    bool record_canonical = false;
+    std::filesystem::path canonical_path = kCanonicalRecordingPath;
     bool show_help = false;
     std::string error;
 };
@@ -78,12 +88,24 @@ struct CommandLine {
             }
         } else if (argument == "--smoke-test") {
             options.smoke_test = true;
+        } else if (argument == "--record-canonical") {
+            options.record_canonical = true;
+            const std::string_view next =
+                index + 1 < argc ? std::string_view(argv[index + 1])
+                                 : std::string_view{};
+            if (!next.empty() && next.front() != '-') {
+                options.canonical_path = argv[++index];
+            }
         } else {
             options.error = "Unknown option: " + std::string(argument);
             return options;
         }
     }
 
+    if (options.smoke_test && options.record_canonical) {
+        options.error =
+            "--smoke-test and --record-canonical cannot be combined.";
+    }
     return options;
 }
 
@@ -95,6 +117,7 @@ void print_usage()
         << "  devils-crush [--rom <path>]\n"
         << "  devils-crush --validate-rom [path]\n"
         << "  devils-crush --smoke-test [--rom <path>]\n"
+        << "  devils-crush --record-canonical [output.csv] [--rom <path>]\n"
         << "  devils-crush --help\n\n"
         << "Controls:\n"
         << "  Z / Left Shift    PCE button I\n"
@@ -102,8 +125,10 @@ void print_usage()
         << "  Backspace         Select\n"
         << "  Enter             Run\n"
         << "  Arrow keys        Direction pad\n"
+        << "  Gamepad           First connected SDL gamepad\n"
         << "  F5                Save quick state\n"
         << "  F9                Restore quick state\n"
+        << "  F10               Reload custom gamepad mappings\n"
         << "  F11               Toggle borderless fullscreen\n"
         << "  Escape            Exit\n";
 }
@@ -121,6 +146,16 @@ void print_validation(const devils_crush::rom::ValidationResult& result)
     if (!result.digests.sha256.empty()) {
         output << "SHA-256: " << result.digests.sha256 << '\n';
     }
+}
+
+[[nodiscard]] std::string path_to_utf8(
+    const std::filesystem::path& path)
+{
+    const auto encoded = path.u8string();
+    return {
+        reinterpret_cast<const char*>(encoded.data()),
+        encoded.size(),
+    };
 }
 
 [[nodiscard]] bool load_backup_ram(
@@ -551,14 +586,60 @@ struct AudioOutput {
     int sample_rate = 0;
     bool resumed = false;
     bool available = false;
+    bool open_failure_reported = false;
+    std::uint64_t latency_resets = 0;
 };
 
-void destroy_audio(AudioOutput& output)
+void reset_audio_stream(AudioOutput& output)
 {
     if (output.stream != nullptr) {
         SDL_DestroyAudioStream(output.stream);
     }
+    output.stream = nullptr;
+    output.sample_rate = 0;
+    output.resumed = false;
+}
+
+void destroy_audio(AudioOutput& output)
+{
+    reset_audio_stream(output);
     output = {};
+}
+
+[[nodiscard]] bool open_audio_stream(
+    const int sample_rate,
+    AudioOutput& output)
+{
+    SDL_AudioSpec specification{};
+    specification.format = SDL_AUDIO_F32;
+    specification.channels = 2;
+    specification.freq = sample_rate;
+    output.stream = SDL_OpenAudioDeviceStream(
+        SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK,
+        &specification,
+        nullptr,
+        nullptr);
+    if (output.stream == nullptr) {
+        if (!output.open_failure_reported) {
+            std::cerr << "Audio output unavailable; retrying: "
+                      << SDL_GetError() << '\n';
+            output.open_failure_reported = true;
+        }
+        return false;
+    }
+
+    output.sample_rate = sample_rate;
+    output.open_failure_reported = false;
+    return true;
+}
+
+void recover_audio_stream(
+    AudioOutput& output,
+    const std::string_view operation)
+{
+    std::cerr << operation << "; audio output will reconnect: "
+              << SDL_GetError() << '\n';
+    reset_audio_stream(output);
 }
 
 [[nodiscard]] bool queue_audio(
@@ -577,23 +658,38 @@ void destroy_audio(AudioOutput& output)
         return false;
     }
 
-    if (output.stream == nullptr) {
-        SDL_AudioSpec specification{};
-        specification.format = SDL_AUDIO_F32;
-        specification.channels = 2;
-        specification.freq = audio.sample_rate;
-        output.stream = SDL_OpenAudioDeviceStream(
-            SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK,
-            &specification,
-            nullptr,
-            nullptr);
-        if (output.stream == nullptr) {
-            return report_sdl_error("SDL_OpenAudioDeviceStream failed");
+    if (output.stream != nullptr
+        && output.sample_rate != audio.sample_rate) {
+        reset_audio_stream(output);
+    }
+    if (output.stream == nullptr
+        && !open_audio_stream(audio.sample_rate, output)) {
+        return true;
+    }
+
+    const auto queued_bytes = SDL_GetAudioStreamQueued(output.stream);
+    if (queued_bytes < 0) {
+        recover_audio_stream(
+            output,
+            "SDL_GetAudioStreamQueued failed");
+        return true;
+    }
+    const auto maximum_queued_bytes =
+        static_cast<std::int64_t>(audio.sample_rate) * 2
+        * static_cast<std::int64_t>(sizeof(float))
+        * kMaximumAudioLatencyMilliseconds / 1000;
+    if (static_cast<std::int64_t>(queued_bytes) > maximum_queued_bytes) {
+        if (!SDL_ClearAudioStream(output.stream)) {
+            recover_audio_stream(
+                output,
+                "SDL_ClearAudioStream failed");
+            return true;
         }
-        output.sample_rate = audio.sample_rate;
-    } else if (output.sample_rate != audio.sample_rate) {
-        std::cerr << "The emulator changed audio sample rate unexpectedly.\n";
-        return false;
+        ++output.latency_resets;
+        std::cerr << "Audio queue exceeded "
+                  << kMaximumAudioLatencyMilliseconds
+                  << " ms; dropped stale audio (recovery "
+                  << output.latency_resets << ").\n";
     }
 
     const auto byte_count = static_cast<int>(
@@ -602,15 +698,40 @@ void destroy_audio(AudioOutput& output)
             output.stream,
             audio.interleaved_stereo.data(),
             byte_count)) {
-        return report_sdl_error("SDL_PutAudioStreamData failed");
+        recover_audio_stream(output, "SDL_PutAudioStreamData failed");
+        return true;
     }
     if (!output.resumed) {
         if (!SDL_ResumeAudioStreamDevice(output.stream)) {
-            return report_sdl_error("SDL_ResumeAudioStreamDevice failed");
+            recover_audio_stream(
+                output,
+                "SDL_ResumeAudioStreamDevice failed");
+            return true;
         }
         output.resumed = true;
     }
     return true;
+}
+
+void handle_audio_device_event(
+    const SDL_AudioDeviceEvent& event,
+    AudioOutput& output)
+{
+    if (event.recording || output.stream == nullptr) {
+        return;
+    }
+    const auto stream_device = SDL_GetAudioStreamDevice(output.stream);
+    if (stream_device != event.which) {
+        return;
+    }
+
+    if (event.type == SDL_EVENT_AUDIO_DEVICE_REMOVED) {
+        std::cerr << "Active audio device was removed; reconnecting.\n";
+        reset_audio_stream(output);
+    } else if (event.type == SDL_EVENT_AUDIO_DEVICE_FORMAT_CHANGED) {
+        std::cerr << "Active audio device format changed; reconnecting.\n";
+        reset_audio_stream(output);
+    }
 }
 
 void set_button(
@@ -691,6 +812,26 @@ void set_button(
     return input;
 }
 
+void log_opened_gamepad(SDL_Gamepad* gamepad)
+{
+    const char* name = SDL_GetGamepadName(gamepad);
+    std::cout << "Using gamepad: "
+              << (name != nullptr ? name : "unnamed SDL gamepad")
+              << '\n';
+}
+
+[[nodiscard]] SDL_Gamepad* open_gamepad(
+    const SDL_JoystickID gamepad_id)
+{
+    SDL_Gamepad* gamepad = SDL_OpenGamepad(gamepad_id);
+    if (gamepad == nullptr) {
+        report_sdl_error("SDL_OpenGamepad failed");
+        return nullptr;
+    }
+    log_opened_gamepad(gamepad);
+    return gamepad;
+}
+
 [[nodiscard]] SDL_Gamepad* open_first_gamepad()
 {
     int count = 0;
@@ -700,12 +841,59 @@ void set_button(
         return nullptr;
     }
 
-    SDL_Gamepad* gamepad = SDL_OpenGamepad(gamepads[0]);
+    const auto gamepad_id = gamepads[0];
     SDL_free(gamepads);
-    if (gamepad == nullptr) {
-        report_sdl_error("SDL_OpenGamepad failed");
+    return open_gamepad(gamepad_id);
+}
+
+[[nodiscard]] bool load_gamepad_mappings(
+    const std::filesystem::path& path)
+{
+    std::error_code error;
+    if (!std::filesystem::exists(path, error)) {
+        if (error) {
+            std::cerr << "Could not inspect gamepad mapping file: "
+                      << error.message() << '\n';
+        }
+        return false;
     }
-    return gamepad;
+
+    const auto path_utf8 = path_to_utf8(path);
+    const auto mapping_count =
+        SDL_AddGamepadMappingsFromFile(path_utf8.c_str());
+    if (mapping_count < 0) {
+        report_sdl_error("SDL_AddGamepadMappingsFromFile failed");
+        return false;
+    }
+    std::cout << "Loaded " << mapping_count << " custom gamepad mapping(s): "
+              << path.string() << '\n';
+    return true;
+}
+
+void handle_gamepad_device_event(
+    const SDL_GamepadDeviceEvent& event,
+    SDL_Gamepad*& gamepad)
+{
+    if (event.type == SDL_EVENT_GAMEPAD_ADDED) {
+        if (gamepad == nullptr) {
+            gamepad = open_gamepad(event.which);
+        }
+        return;
+    }
+    if (gamepad == nullptr || SDL_GetGamepadID(gamepad) != event.which) {
+        return;
+    }
+
+    if (event.type == SDL_EVENT_GAMEPAD_REMOVED) {
+        std::cerr << "Active gamepad disconnected.\n";
+        SDL_CloseGamepad(gamepad);
+        gamepad = open_first_gamepad();
+    } else if (event.type == SDL_EVENT_GAMEPAD_REMAPPED) {
+        const char* name = SDL_GetGamepadName(gamepad);
+        std::cout << "Gamepad mapping updated: "
+                  << (name != nullptr ? name : "unnamed SDL gamepad")
+                  << '\n';
+    }
 }
 
 [[nodiscard]] bool consume_emulated_frame(
@@ -720,6 +908,136 @@ void set_button(
     }
     return upload_framebuffer(renderer, frame.framebuffer, source)
         && queue_audio(frame.audio, audio);
+}
+
+[[nodiscard]] InputFrame canonical_input_for_frame(const int frame_number)
+{
+    InputFrame input;
+    const auto press = [&input](const Button button) {
+        input.player_one |= static_cast<std::uint16_t>(button);
+    };
+
+    if (frame_number == 180 || frame_number == 181
+        || frame_number == 300 || frame_number == 301) {
+        press(Button::run);
+    } else if (frame_number == 420 || frame_number == 421) {
+        press(Button::one);
+    } else if (frame_number == 480 || frame_number == 481) {
+        press(Button::two);
+    } else if (frame_number == 540 || frame_number == 541) {
+        press(Button::left);
+        press(Button::one);
+    }
+    return input;
+}
+
+[[nodiscard]] std::string sha256(
+    const std::span<const std::byte> bytes)
+{
+    return devils_crush::rom::compute_digests(bytes).sha256;
+}
+
+template <typename Value>
+[[nodiscard]] std::string sha256_values(
+    const std::span<const Value> values)
+{
+    return sha256(std::as_bytes(values));
+}
+
+int run_canonical_recording(
+    PceRuntime& runtime,
+    const std::filesystem::path& path,
+    const std::string_view core_revision)
+{
+    if (runtime.work_ram_size() == 0U) {
+        std::cerr << "The emulator did not expose work RAM for recording.\n";
+        return EXIT_FAILURE;
+    }
+
+    std::error_code error;
+    std::filesystem::create_directories(path.parent_path(), error);
+    if (error) {
+        std::cerr << "Could not create recording directory: "
+                  << error.message() << '\n';
+        return EXIT_FAILURE;
+    }
+
+    auto temporary_path = path;
+    temporary_path += ".tmp";
+    std::ofstream output(
+        temporary_path,
+        std::ios::binary | std::ios::trunc);
+    if (!output) {
+        std::cerr << "Could not create canonical recording: "
+                  << temporary_path.string() << '\n';
+        return EXIT_FAILURE;
+    }
+
+    output
+        << "# format=devils-crush-canonical-v1\n"
+        << "# rom_sha256=" << devils_crush::rom::kSupportedSha256 << '\n'
+        << "# core_revision=" << core_revision << '\n'
+        << "# frame_count=" << kCanonicalRecordingFrames << '\n'
+        << "# input_script=run:180-181,300-301;"
+           "one:420-421;two:480-481;left+one:540-541\n"
+        << "frame,input_p1,input_p2,work_ram_sha256,"
+           "framebuffer_width,framebuffer_height,framebuffer_sha256,"
+           "audio_sample_rate,audio_stereo_samples,audio_sha256\n";
+
+    runtime.reset();
+    for (int index = 1; index <= kCanonicalRecordingFrames; ++index) {
+        const auto input = canonical_input_for_frame(index);
+        const auto frame = runtime.run_frame(input);
+        const auto work_ram = runtime.export_work_ram();
+        if (frame.frame_number != static_cast<std::uint64_t>(index)
+            || frame.framebuffer.pixels.empty()
+            || frame.framebuffer.width <= 0
+            || frame.framebuffer.height <= 0
+            || work_ram.size() != runtime.work_ram_size()) {
+            std::cerr << "Canonical recording failed on frame " << index
+                      << ".\n";
+            return EXIT_FAILURE;
+        }
+
+        output << frame.frame_number << ',' << std::hex
+               << std::setfill('0') << std::setw(4) << input.player_one
+               << ',' << std::setw(4) << input.player_two << std::dec
+               << ',' << sha256(work_ram)
+               << ',' << frame.framebuffer.width
+               << ',' << frame.framebuffer.height
+               << ',' << sha256_values<std::uint32_t>(
+                   frame.framebuffer.pixels)
+               << ',' << frame.audio.sample_rate
+               << ',' << frame.audio.interleaved_stereo.size()
+               << ',' << sha256_values<float>(
+                   frame.audio.interleaved_stereo)
+               << '\n';
+        if (!output) {
+            std::cerr << "Could not write canonical frame " << index
+                      << ".\n";
+            return EXIT_FAILURE;
+        }
+    }
+
+    output.flush();
+    output.close();
+    if (!output) {
+        std::cerr << "Could not finalize canonical recording.\n";
+        return EXIT_FAILURE;
+    }
+    if (!MoveFileExW(
+            temporary_path.c_str(),
+            path.c_str(),
+            MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
+        std::cerr << "Could not commit canonical recording; Windows error "
+                  << GetLastError() << ".\n";
+        return EXIT_FAILURE;
+    }
+
+    std::cout << "Canonical recording complete: "
+              << kCanonicalRecordingFrames << " frames\n"
+              << "Output: " << path.string() << '\n';
+    return EXIT_SUCCESS;
 }
 
 int run_smoke_test(PceRuntime& runtime)
@@ -810,6 +1128,7 @@ int run_windows_host(PceRuntime& runtime)
     if (!audio.available) {
         std::cerr << "Audio disabled: " << SDL_GetError() << '\n';
     }
+    (void)load_gamepad_mappings(kGamepadMappingsPath);
 
     SDL_Window* window = SDL_CreateWindow(
         "Devil's Crush - emulated baseline",
@@ -881,12 +1200,30 @@ int run_windows_host(PceRuntime& runtime)
                 }
             } else if (
                 event.type == SDL_EVENT_KEY_DOWN && !event.key.repeat
+                && event.key.key == SDLK_F10) {
+                if (load_gamepad_mappings(kGamepadMappingsPath)) {
+                    if (gamepad != nullptr) {
+                        SDL_CloseGamepad(gamepad);
+                    }
+                    gamepad = open_first_gamepad();
+                }
+            } else if (
+                event.type == SDL_EVENT_KEY_DOWN && !event.key.repeat
                 && event.key.key == SDLK_F11) {
                 const bool fullscreen =
                     (SDL_GetWindowFlags(window) & SDL_WINDOW_FULLSCREEN) != 0;
                 if (!SDL_SetWindowFullscreen(window, !fullscreen)) {
                     report_sdl_error("SDL_SetWindowFullscreen failed");
                 }
+            } else if (
+                event.type == SDL_EVENT_GAMEPAD_ADDED
+                || event.type == SDL_EVENT_GAMEPAD_REMOVED
+                || event.type == SDL_EVENT_GAMEPAD_REMAPPED) {
+                handle_gamepad_device_event(event.gdevice, gamepad);
+            } else if (
+                event.type == SDL_EVENT_AUDIO_DEVICE_REMOVED
+                || event.type == SDL_EVENT_AUDIO_DEVICE_FORMAT_CHANGED) {
+                handle_audio_device_event(event.adevice, audio);
             } else if (event.type == SDL_EVENT_RENDER_TARGETS_RESET) {
                 destroy_stage(stage);
             } else if (event.type == SDL_EVENT_RENDER_DEVICE_RESET) {
@@ -971,6 +1308,12 @@ int main(const int argc, char* argv[])
         }
         std::cout << load_result.message << '\n';
 
+        if (options.record_canonical) {
+            return run_canonical_recording(
+                *runtime,
+                options.canonical_path,
+                runtime_info.upstream_revision);
+        }
         if (options.smoke_test) {
             return run_smoke_test(*runtime);
         }

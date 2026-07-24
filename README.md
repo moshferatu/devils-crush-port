@@ -62,19 +62,41 @@ Run a headless ten-frame emulator check:
 .\out\build\windows-vs2022\Debug\devils-crush.exe --smoke-test --rom "D:\path\to\Devil's Crush.pce"
 ```
 
+Generate the deterministic 600-frame Beetle reference used for independent
+Mesen2 comparison:
+
+```powershell
+.\out\build\windows-vs2022\Debug\devils-crush.exe `
+  --record-canonical portable-data\canonical-v1.csv `
+  --rom "D:\path\to\Devil's Crush.pce"
+```
+
+The ROM-free CSV records the fixed input script and per-frame SHA-256 values
+for the first 8 KiB of PCE work RAM, the compact framebuffer, and the
+float-stereo audio batch, together with framebuffer geometry and audio timing.
+Recordings and other traces remain local and are excluded from Git.
+
 The current host boots the verified ROM through the pinned Beetle PCE core,
-plays its float-stereo audio, accepts keyboard or the first SDL gamepad, and
-presents the emulated framebuffer through the fixed sharp scaler. F11 toggles
-borderless fullscreen; Escape exits. F5 atomically writes a versioned quick
-state to `portable-data/devils-crush.state`, and F9 restores it after checking
-the file signature, checksum, ROM identity, and pinned core revision. The
-game's 2 KiB battery-backed RAM is loaded from and atomically saved to
+plays its float-stereo audio, accepts keyboard or the first available SDL
+gamepad, and presents the emulated framebuffer through the fixed sharp scaler.
+Gamepads can be connected, disconnected, or replaced while the host is
+running. Optional SDL-format mappings are loaded from
+`portable-data/gamecontrollerdb.txt`; F10 reloads the file after edits. F11
+toggles borderless fullscreen; Escape exits. F5 atomically writes a versioned
+quick state to `portable-data/devils-crush.state`, and F9 restores it after
+checking the file signature, checksum, ROM identity, and pinned core revision.
+The game's 2 KiB battery-backed RAM is loaded from and atomically saved to
 `portable-data/devils-crush.sav`.
 
 Quick states intentionally bind to this exact ROM and Beetle revision rather
 than attempting unsafe cross-version migration. Beetle restores emulated PSG
 state and audio timing but not its frontend resampler history, so the host
 clears already queued audio when loading a state.
+
+Audio remains synchronized to emulation rather than monitor refresh. The host
+limits stale queued audio to 150 ms, drops an overrun after a long stall, and
+reopens the default playback stream after device loss or format changes
+without stopping emulation.
 
 ROM-required CTest coverage is local-only and disabled by default:
 

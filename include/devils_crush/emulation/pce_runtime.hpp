@@ -87,6 +87,11 @@ public:
     [[nodiscard]] virtual bool import_backup_ram(
         std::span<const std::byte> bytes) = 0;
 
+    // Work RAM is exposed as a copy for deterministic recordings and later
+    // typed game-state views. It is unavailable until a ROM is loaded.
+    [[nodiscard]] virtual std::size_t work_ram_size() const noexcept = 0;
+    [[nodiscard]] virtual std::vector<std::byte> export_work_ram() const = 0;
+
     // Savestates are opaque Beetle payloads plus the host frame counter.
     // Persistent storage must additionally bind them to the ROM and core
     // revision before calling deserialize().

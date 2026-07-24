@@ -288,6 +288,12 @@ void test_runtime_boundary()
         !runtime->import_backup_ram(invalid_backup),
         "backup RAM import is rejected before ROM load");
     check(
+        runtime->work_ram_size() == 0U,
+        "work RAM is unavailable before ROM load");
+    check(
+        runtime->export_work_ram().empty(),
+        "work RAM export is empty before ROM load");
+    check(
         runtime->serialize().core_state.empty(),
         "savestate serialization is empty before ROM load");
     check(
