@@ -60,6 +60,11 @@ struct RuntimeInfo {
     bool core_available = false;
 };
 
+struct SaveState {
+    std::vector<std::byte> core_state;
+    std::uint64_t frame_number = 0;
+};
+
 class PceRuntime {
 public:
     virtual ~PceRuntime() = default;
@@ -81,6 +86,12 @@ public:
         const = 0;
     [[nodiscard]] virtual bool import_backup_ram(
         std::span<const std::byte> bytes) = 0;
+
+    // Savestates are opaque Beetle payloads plus the host frame counter.
+    // Persistent storage must additionally bind them to the ROM and core
+    // revision before calling deserialize().
+    [[nodiscard]] virtual SaveState serialize() const = 0;
+    [[nodiscard]] virtual bool deserialize(const SaveState& state) = 0;
 };
 
 // Beetle PCE and libretro are single-instance APIs. A real runtime throws

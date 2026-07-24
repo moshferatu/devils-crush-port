@@ -4,8 +4,10 @@ Last updated: 2026-07-24
 
 ## Current Status
 
-**Phase:** Milestone 1 implementation and hardening  
-**Implementation progress:** 15% overall; approximately 75% of Milestone 1  
+**Phase:** Milestone 1 implementation and hardening
+
+**Implementation progress:** 16% overall; approximately 82% of Milestone 1
+
 **Current milestone:** 1. Emulated Windows baseline
 
 The first native Windows host is implemented. It validates the exact USA ROM,
@@ -57,6 +59,13 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
 - [x] Implemented atomic backup-RAM persistence in `portable-data/devils-crush.sav`.
 - [x] Added ROM-free unit/CLI tests and an opt-in `rom_required` smoke test.
 - [x] Verified Debug and Release builds, all four public CTests, the dependency-free stub test, and the local ROM-required smoke test.
+- [x] Added raw Beetle savestate capture/restore with the host frame counter.
+- [x] Added a checksummed version-1 quick-state container bound to the exact
+  ROM SHA-256 and pinned Beetle revision.
+- [x] Added atomic F5 quick-save and validated F9 recovery, including queued
+  audio reset and rejection of corrupt or incompatible files.
+- [x] Verified a real-core savestate round trip with exact restored framebuffer
+  output and matching audio sample rate/batch timing.
 
 ## Next Actions
 
@@ -68,7 +77,7 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
 - [x] Create the SDL3 application shell and emulator-facing `PceRuntime` boundary.
 - [x] Display the emulated framebuffer in a resizable Windows window using the fixed sharp scaler.
 - [x] Connect SDL keyboard/controller input and emulated audio.
-- [ ] Add versioned savestate serialization and recovery.
+- [x] Add versioned savestate serialization and recovery.
 - [ ] Add controller hot-plug/remapping and robust audio latency handling.
 - [ ] Add a canonical boot/input recording with RAM, framebuffer, and audio timing hashes.
 - [ ] Compare the canonical recording against Mesen2 and document any differences.
@@ -76,13 +85,13 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
 
 ## Active Work
 
-Milestone 1 hardening: savestates, canonical deterministic replay, Mesen2
-comparison, and release-oriented packaging checks.
+Milestone 1 hardening: canonical deterministic replay, controller/audio
+resilience, Mesen2 comparison, and release-oriented packaging checks.
 
 ## Blockers
 
-No external blocker. Savestates and the independent Mesen2 parity recording
-are the remaining Milestone 1 engineering gaps.
+No external blocker. The independent Mesen2 parity recording and remaining
+host resilience work are the primary Milestone 1 engineering gaps.
 
 ## Decisions Locked for V1
 

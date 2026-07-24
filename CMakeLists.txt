@@ -39,6 +39,7 @@ add_library(
     dc_core
     STATIC
     src/core/rom_image.cpp
+    src/core/save_state.cpp
     src/render/sharp_pixel_scaler.cpp
 )
 

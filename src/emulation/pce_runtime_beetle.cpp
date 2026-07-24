@@ -331,6 +331,49 @@ public:
         return true;
     }
 
+    [[nodiscard]] SaveState serialize() const override
+    {
+        assert_owner_thread();
+        if (!loaded_) {
+            return {};
+        }
+
+        const auto size = retro_serialize_size();
+        if (size == 0U || size > 64U * 1024U * 1024U) {
+            return {};
+        }
+
+        SaveState state{
+            .core_state = std::vector<std::byte>(size),
+            .frame_number = frame_number_,
+        };
+        if (!retro_serialize(state.core_state.data(), state.core_state.size())) {
+            return {};
+        }
+        return state;
+    }
+
+    [[nodiscard]] bool deserialize(const SaveState& state) override
+    {
+        assert_owner_thread();
+        if (!loaded_ || state.core_state.empty()
+            || state.core_state.size() != retro_serialize_size()
+            || !retro_unserialize(
+                state.core_state.data(),
+                state.core_state.size())) {
+            return false;
+        }
+
+        frame_number_ = state.frame_number;
+        framebuffer_pixels_.clear();
+        audio_samples_.clear();
+        framebuffer_width_ = 0;
+        framebuffer_height_ = 0;
+        current_input_ = {};
+        callback_failed_ = false;
+        return true;
+    }
+
 private:
     void assert_owner_thread() const noexcept
     {

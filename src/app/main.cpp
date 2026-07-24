@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "devils_crush/core/rom_image.hpp"
+#include "devils_crush/core/save_state.hpp"
 #include "devils_crush/emulation/pce_runtime.hpp"
 #include "devils_crush/render/sharp_pixel_scaler.hpp"
 
@@ -11,6 +12,7 @@
 #define NOMINMAX
 #include <Windows.h>
 
+#include <algorithm>
 #include <chrono>
 #include <cstdint>
 #include <cstdlib>
@@ -21,6 +23,7 @@
 #include <limits>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -31,6 +34,10 @@ constexpr double kEmulationFramesPerSecond = 59.8261;
 constexpr int kSmokeTestFrames = 10;
 const std::filesystem::path kBackupRamPath =
     std::filesystem::path("portable-data") / "devils-crush.sav";
+const std::filesystem::path kQuickStatePath =
+    std::filesystem::path("portable-data") / "devils-crush.state";
+constexpr std::uintmax_t kMaximumSaveStateFileSize =
+    64U * 1024U * 1024U + 4096U;
 
 using devils_crush::emulation::AudioView;
 using devils_crush::emulation::Button;
@@ -95,6 +102,8 @@ void print_usage()
         << "  Backspace         Select\n"
         << "  Enter             Run\n"
         << "  Arrow keys        Direction pad\n"
+        << "  F5                Save quick state\n"
+        << "  F9                Restore quick state\n"
         << "  F11               Toggle borderless fullscreen\n"
         << "  Escape            Exit\n";
 }
@@ -206,6 +215,136 @@ void print_validation(const devils_crush::rom::ValidationResult& result)
     }
 
     std::cout << "Saved backup RAM: " << path.string() << '\n';
+    return true;
+}
+
+[[nodiscard]] bool save_quick_state(
+    const PceRuntime& runtime,
+    const std::filesystem::path& path)
+{
+    const auto state = runtime.serialize();
+    const auto runtime_info = runtime.info();
+    if (state.core_state.empty() || runtime_info.upstream_revision.empty()) {
+        std::cerr << "The emulator did not return a savestate.\n";
+        return false;
+    }
+
+    std::vector<std::byte> bytes;
+    try {
+        bytes = devils_crush::state::encode({
+            .format_version =
+                devils_crush::state::kSaveStateFormatVersion,
+            .frame_number = state.frame_number,
+            .rom_sha256 =
+                std::string(devils_crush::rom::kSupportedSha256),
+            .core_revision = runtime_info.upstream_revision,
+            .core_state = state.core_state,
+        });
+    } catch (const std::exception& exception) {
+        std::cerr << "Could not encode quick state: " << exception.what()
+                  << '\n';
+        return false;
+    }
+
+    std::error_code error;
+    std::filesystem::create_directories(path.parent_path(), error);
+    if (error) {
+        std::cerr << "Could not create save directory: " << error.message()
+                  << '\n';
+        return false;
+    }
+
+    auto temporary_path = path;
+    temporary_path += ".tmp";
+    {
+        std::ofstream output(
+            temporary_path,
+            std::ios::binary | std::ios::trunc);
+        output.write(
+            reinterpret_cast<const char*>(bytes.data()),
+            static_cast<std::streamsize>(bytes.size()));
+        output.flush();
+        if (!output) {
+            std::cerr << "Could not write quick-state file: "
+                      << temporary_path.string() << '\n';
+            return false;
+        }
+    }
+
+    if (!MoveFileExW(
+            temporary_path.c_str(),
+            path.c_str(),
+            MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
+        std::cerr << "Could not commit quick-state file; Windows error "
+                  << GetLastError() << ".\n";
+        return false;
+    }
+
+    std::cout << "Saved quick state at frame " << state.frame_number << ": "
+              << path.string() << '\n';
+    return true;
+}
+
+[[nodiscard]] bool load_quick_state(
+    PceRuntime& runtime,
+    const std::filesystem::path& path)
+{
+    std::error_code error;
+    if (!std::filesystem::exists(path, error)) {
+        std::cerr << (error ? "Could not inspect quick-state file: "
+                            + error.message()
+                           : "No quick-state file exists.")
+                  << '\n';
+        return false;
+    }
+    const auto file_size = std::filesystem::file_size(path, error);
+    if (error || file_size == 0U
+        || file_size > kMaximumSaveStateFileSize) {
+        std::cerr << "The quick-state file size is invalid.\n";
+        return false;
+    }
+
+    std::vector<std::byte> bytes(static_cast<std::size_t>(file_size));
+    std::ifstream input(path, std::ios::binary);
+    input.read(
+        reinterpret_cast<char*>(bytes.data()),
+        static_cast<std::streamsize>(bytes.size()));
+    if (!input
+        || input.gcount() != static_cast<std::streamsize>(bytes.size())) {
+        std::cerr << "Could not read quick-state file: " << path.string()
+                  << '\n';
+        return false;
+    }
+
+    auto decoded = devils_crush::state::decode(bytes);
+    if (!decoded.decoded) {
+        std::cerr << "Could not restore quick state: " << decoded.message
+                  << '\n';
+        return false;
+    }
+    const auto runtime_info = runtime.info();
+    if (decoded.container.rom_sha256
+        != devils_crush::rom::kSupportedSha256) {
+        std::cerr << "The quick state belongs to a different ROM.\n";
+        return false;
+    }
+    if (decoded.container.core_revision
+        != runtime_info.upstream_revision) {
+        std::cerr << "The quick state belongs to a different core revision.\n";
+        return false;
+    }
+
+    const auto frame_number = decoded.container.frame_number;
+    if (!runtime.deserialize({
+            .core_state = std::move(decoded.container.core_state),
+            .frame_number = frame_number,
+        })) {
+        std::cerr << "The emulator rejected the quick-state payload.\n";
+        return false;
+    }
+
+    std::cout << "Restored quick state at frame " << frame_number << ": "
+              << path.string() << '\n';
     return true;
 }
 
@@ -595,14 +734,67 @@ int run_smoke_test(PceRuntime& runtime)
         }
     }
 
+    const auto state = runtime.serialize();
+    if (state.core_state.empty()) {
+        std::cerr << "Savestate smoke test could not capture frame "
+                  << frame.frame_number << ".\n";
+        return EXIT_FAILURE;
+    }
+
+    const auto expected = runtime.run_frame({});
+    const std::vector expected_pixels(
+        expected.framebuffer.pixels.begin(),
+        expected.framebuffer.pixels.end());
+    const auto expected_audio_samples =
+        expected.audio.interleaved_stereo.size();
+    const auto expected_audio_rate = expected.audio.sample_rate;
+    if (!runtime.deserialize(state)) {
+        std::cerr << "Savestate smoke test could not restore the capture.\n";
+        return EXIT_FAILURE;
+    }
+    const auto replayed = runtime.run_frame({});
+    const bool pixels_match = std::ranges::equal(
+        replayed.framebuffer.pixels,
+        expected_pixels);
+    // Beetle's raw savestate omits frontend audio-resampler history. The
+    // emulated PSG state and batch timing restore, but the first batch's
+    // sample values are not required to equal an uninterrupted run.
+    const bool audio_timing_matches =
+        replayed.audio.sample_rate == expected_audio_rate
+        && replayed.audio.interleaved_stereo.size()
+            == expected_audio_samples;
+    if (replayed.frame_number != expected.frame_number
+        || replayed.framebuffer.width != expected.framebuffer.width
+        || replayed.framebuffer.height != expected.framebuffer.height
+        || !pixels_match
+        || !audio_timing_matches) {
+        std::cerr
+            << "Savestate replay diverged on the first restored frame:\n"
+            << "  frame numbers: " << expected.frame_number << " / "
+            << replayed.frame_number << '\n'
+            << "  framebuffer geometry: " << expected.framebuffer.width
+            << 'x' << expected.framebuffer.height << " / "
+            << replayed.framebuffer.width << 'x'
+            << replayed.framebuffer.height << '\n'
+            << "  framebuffer pixels match: "
+            << (pixels_match ? "yes" : "no") << '\n'
+            << "  audio samples: " << expected_audio_samples << " / "
+            << replayed.audio.interleaved_stereo.size() << '\n'
+            << "  audio timing matches: "
+            << (audio_timing_matches ? "yes" : "no")
+            << '\n';
+        return EXIT_FAILURE;
+    }
+
     std::cout << "Emulation smoke test passed:\n"
-              << "Frames:      " << frame.frame_number << '\n'
+              << "Frames:      " << replayed.frame_number << '\n'
               << "Framebuffer: " << frame.framebuffer.width << 'x'
               << frame.framebuffer.height << " ("
               << frame.framebuffer.pixels.size() << " ARGB pixels)\n"
               << "Audio:       " << frame.audio.sample_rate << " Hz, "
-              << frame.audio.interleaved_stereo.size()
-              << " samples in final batch\n";
+              << replayed.audio.interleaved_stereo.size()
+              << " samples in final batch\n"
+              << "Savestate:   deterministic video/audio-timing round trip\n";
     return EXIT_SUCCESS;
 }
 
@@ -673,6 +865,20 @@ int run_windows_host(PceRuntime& runtime)
                 event.type == SDL_EVENT_KEY_DOWN && !event.key.repeat
                 && event.key.key == SDLK_ESCAPE) {
                 running = false;
+            } else if (
+                event.type == SDL_EVENT_KEY_DOWN && !event.key.repeat
+                && event.key.key == SDLK_F5) {
+                (void)save_quick_state(runtime, kQuickStatePath);
+            } else if (
+                event.type == SDL_EVENT_KEY_DOWN && !event.key.repeat
+                && event.key.key == SDLK_F9) {
+                if (load_quick_state(runtime, kQuickStatePath)) {
+                    if (audio.stream != nullptr
+                        && !SDL_ClearAudioStream(audio.stream)) {
+                        report_sdl_error("SDL_ClearAudioStream failed");
+                    }
+                    next_frame_time = Clock::now();
+                }
             } else if (
                 event.type == SDL_EVENT_KEY_DOWN && !event.key.repeat
                 && event.key.key == SDLK_F11) {

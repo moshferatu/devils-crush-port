@@ -52,6 +52,16 @@ public:
     {
         return false;
     }
+
+    [[nodiscard]] SaveState serialize() const override
+    {
+        return {};
+    }
+
+    [[nodiscard]] bool deserialize(const SaveState&) override
+    {
+        return false;
+    }
 };
 
 } // namespace

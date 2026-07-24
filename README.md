@@ -65,8 +65,16 @@ Run a headless ten-frame emulator check:
 The current host boots the verified ROM through the pinned Beetle PCE core,
 plays its float-stereo audio, accepts keyboard or the first SDL gamepad, and
 presents the emulated framebuffer through the fixed sharp scaler. F11 toggles
-borderless fullscreen; Escape exits. The game's 2 KiB battery-backed RAM is
-loaded from and atomically saved to `portable-data/devils-crush.sav`.
+borderless fullscreen; Escape exits. F5 atomically writes a versioned quick
+state to `portable-data/devils-crush.state`, and F9 restores it after checking
+the file signature, checksum, ROM identity, and pinned core revision. The
+game's 2 KiB battery-backed RAM is loaded from and atomically saved to
+`portable-data/devils-crush.sav`.
+
+Quick states intentionally bind to this exact ROM and Beetle revision rather
+than attempting unsafe cross-version migration. Beetle restores emulated PSG
+state and audio timing but not its frontend resampler history, so the host
+clears already queued audio when loading a state.
 
 ROM-required CTest coverage is local-only and disabled by default:
 

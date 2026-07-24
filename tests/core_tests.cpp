@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "devils_crush/core/rom_image.hpp"
+#include "devils_crush/core/save_state.hpp"
 #include "devils_crush/emulation/pce_runtime.hpp"
 #include "devils_crush/render/sharp_pixel_scaler.hpp"
 
@@ -12,6 +13,7 @@
 #include <stdexcept>
 #include <string_view>
 #include <utility>
+#include <vector>
 
 namespace {
 
@@ -210,6 +212,63 @@ void test_scaler_edges()
     check(maximum.valid(), "maximum integer inputs remain valid");
 }
 
+void test_save_state_container()
+{
+    const devils_crush::state::SaveStateContainer source{
+        .format_version =
+            devils_crush::state::kSaveStateFormatVersion,
+        .frame_number = 0x1020304050607080ULL,
+        .rom_sha256 =
+            "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        .core_revision = "ae99235c2139c176c1a8d0fde2957bf701d3cab0",
+        .core_state = {
+            std::byte{0x00},
+            std::byte{0x7F},
+            std::byte{0x80},
+            std::byte{0xFF},
+        },
+    };
+
+    const auto encoded = devils_crush::state::encode(source);
+    const auto decoded = devils_crush::state::decode(encoded);
+    check(decoded.decoded, "save-state container round trip decodes");
+    check(
+        decoded.container.format_version == source.format_version
+            && decoded.container.frame_number == source.frame_number
+            && decoded.container.rom_sha256 == source.rom_sha256
+            && decoded.container.core_revision == source.core_revision
+            && decoded.container.core_state == source.core_state,
+        "save-state container round trip preserves fields");
+
+    auto corrupted = encoded;
+    corrupted.back() ^= std::byte{0x01};
+    check(
+        !devils_crush::state::decode(corrupted).decoded,
+        "save-state payload corruption is rejected");
+
+    auto unknown_version = encoded;
+    unknown_version[8] = std::byte{0x02};
+    check(
+        !devils_crush::state::decode(unknown_version).decoded,
+        "unknown save-state version is rejected");
+
+    check(
+        !devils_crush::state::decode(
+             std::span<const std::byte>(encoded).first(32U))
+             .decoded,
+        "truncated save-state container is rejected");
+
+    auto invalid_metadata = source;
+    invalid_metadata.rom_sha256.front() = 'G';
+    bool invalid_rejected = false;
+    try {
+        (void)devils_crush::state::encode(invalid_metadata);
+    } catch (const std::invalid_argument&) {
+        invalid_rejected = true;
+    }
+    check(invalid_rejected, "invalid save-state metadata is rejected");
+}
+
 void test_runtime_boundary()
 {
     const auto runtime = devils_crush::emulation::create_pce_runtime();
@@ -228,6 +287,12 @@ void test_runtime_boundary()
     check(
         !runtime->import_backup_ram(invalid_backup),
         "backup RAM import is rejected before ROM load");
+    check(
+        runtime->serialize().core_state.empty(),
+        "savestate serialization is empty before ROM load");
+    check(
+        !runtime->deserialize({}),
+        "savestate restore is rejected before ROM load");
 
     bool second_runtime_rejected = false;
     try {
@@ -251,6 +316,7 @@ int main()
     test_supported_rom_metadata();
     test_scaler_examples();
     test_scaler_edges();
+    test_save_state_container();
     test_runtime_boundary();
 
     if (failures == 0) {
