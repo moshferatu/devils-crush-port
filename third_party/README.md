@@ -14,9 +14,10 @@ and attribution information is maintained in
 - SDL 3.4.12 is fetched from its official release archive. CMake verifies the
   archive SHA-256 before extraction.
 - Beetle PC Engine 1.29.0 is fetched from the exact commit recorded in the
-  lock file and built through the project-owned CMake wrapper. Upstream source
-  is currently unmodified; move this pin into the project fork before adding
-  HuC6280 execution hooks.
+  lock file, reproducibly patched by the project-owned downstream fork layer
+  in `beetle-pce-fork/`, and built through the project-owned CMake wrapper.
+  The fork manifest records the base revision, local sources, and ordered
+  patch series.
 
 ## Updating a dependency
 

@@ -26,7 +26,11 @@
       "status": "active",
       "source": {
         "repository": "https://github.com/libretro/beetle-pce-libretro",
-        "fork": null,
+        "fork": {
+          "kind": "in-tree-patch-series",
+          "path": "third_party/beetle-pce-fork",
+          "manifest": "third_party/beetle-pce-fork/MANIFEST.md"
+        },
         "tag": null,
         "revision": "ae99235c2139c176c1a8d0fde2957bf701d3cab0",
         "archive": null
@@ -227,7 +231,7 @@
           ]
         }
       ],
-      "modified": false
+      "modified": true
     }
   ]
 }

@@ -44,13 +44,15 @@ freely, subject to the following restrictions:
 - Version reported by core: 1.29.0
 - Upstream: <https://github.com/libretro/beetle-pce-libretro>
 - Revision: `ae99235c2139c176c1a8d0fde2957bf701d3cab0`
-- Integration status: Fetched as source and linked statically
+- Integration status: Fetched, patched by the in-tree downstream fork layer,
+  and linked statically
 - Effective Windows-build license: GPL-3.0-or-later
 
-The pinned upstream source is not modified. This project supplies a CMake
-target and a narrow libretro frontend adapter around it. A project-owned fork
-will replace the upstream fetch when execution hooks are introduced; that
-fork must preserve this baseline revision and document every patch.
+The project-owned downstream fork layer is recorded in
+`third_party/beetle-pce-fork/MANIFEST.md`. It adds a narrow HuC6280
+pre-instruction callback while preserving the pinned upstream baseline.
+Upstream files modified by the ordered patch series retain their original
+notices; the local bridge and patches are GPL-3.0-or-later.
 
 The pinned upstream tree includes Mednafen files offered under
 GPL-2.0-or-later and `mednafen/msvc_compat.h` under GPL-3.0-or-later. That

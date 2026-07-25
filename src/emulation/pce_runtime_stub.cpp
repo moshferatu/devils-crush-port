@@ -63,6 +63,18 @@ public:
         return {};
     }
 
+    [[nodiscard]] bool install_execution_hook(ExecutionHook) override
+    {
+        return false;
+    }
+
+    void clear_execution_hook() noexcept override {}
+
+    [[nodiscard]] bool has_execution_hook() const noexcept override
+    {
+        return false;
+    }
+
     [[nodiscard]] SaveState serialize() const override
     {
         return {};

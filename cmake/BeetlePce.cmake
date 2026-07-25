@@ -30,9 +30,62 @@ function(dc_provide_beetle_pce)
     FetchContent_MakeAvailable(dc_beetle_pce_upstream)
 
     set(beetle_root "${dc_beetle_pce_upstream_SOURCE_DIR}")
+    set(
+        beetle_fork_root
+        "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/../third_party/beetle-pce-fork"
+    )
+    set(
+        beetle_patch
+        "${beetle_fork_root}/patches/0001-huc6280-execution-hook.patch"
+    )
+
+    find_package(Git REQUIRED)
+    execute_process(
+        COMMAND
+            "${GIT_EXECUTABLE}" -C "${beetle_root}"
+            apply --check "${beetle_patch}"
+        RESULT_VARIABLE beetle_patch_check
+        OUTPUT_VARIABLE beetle_patch_check_output
+        ERROR_VARIABLE beetle_patch_check_error
+    )
+    if(beetle_patch_check EQUAL 0)
+        execute_process(
+            COMMAND
+                "${GIT_EXECUTABLE}" -C "${beetle_root}"
+                apply "${beetle_patch}"
+            RESULT_VARIABLE beetle_patch_result
+            OUTPUT_VARIABLE beetle_patch_output
+            ERROR_VARIABLE beetle_patch_error
+        )
+        if(NOT beetle_patch_result EQUAL 0)
+            message(
+                FATAL_ERROR
+                "Could not apply the Beetle PCE downstream patch.\n"
+                "${beetle_patch_output}${beetle_patch_error}"
+            )
+        endif()
+    else()
+        execute_process(
+            COMMAND
+                "${GIT_EXECUTABLE}" -C "${beetle_root}"
+                apply --reverse --check "${beetle_patch}"
+            RESULT_VARIABLE beetle_patch_reverse_check
+            OUTPUT_QUIET
+            ERROR_QUIET
+        )
+        if(NOT beetle_patch_reverse_check EQUAL 0)
+            message(
+                FATAL_ERROR
+                "The Beetle PCE source is neither patchable nor already "
+                "patched.\n"
+                "${beetle_patch_check_output}${beetle_patch_check_error}"
+            )
+        endif()
+    endif()
 
     set(
         beetle_cxx_sources
+        "${beetle_fork_root}/src/dc_beetle_execution_hook.cpp"
         "${beetle_root}/libretro.cpp"
         "${beetle_root}/mednafen/pce/huc6280.cpp"
         "${beetle_root}/mednafen/pce/huc.cpp"
@@ -155,6 +208,7 @@ function(dc_provide_beetle_pce)
         SYSTEM
         PUBLIC
             "${beetle_root}/libretro-common/include"
+            "${beetle_fork_root}/include"
         PRIVATE
             "${beetle_root}"
             "${beetle_root}/mednafen"

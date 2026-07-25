@@ -2,9 +2,11 @@
 
 #pragma once
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
+#include <functional>
 #include <memory>
 #include <span>
 #include <string>
@@ -65,6 +67,44 @@ struct SaveState {
     std::uint64_t frame_number = 0;
 };
 
+struct RoutineKey {
+    std::uint8_t physical_bank = 0;
+    std::uint16_t logical_pc = 0;
+
+    [[nodiscard]] bool operator==(const RoutineKey&) const = default;
+};
+
+enum class HookMode {
+    pass_through,
+    observe,
+    replace,
+};
+
+struct CpuRegisters {
+    std::uint16_t program_counter = 0;
+    std::uint8_t accumulator = 0;
+    std::uint8_t x = 0;
+    std::uint8_t y = 0;
+    std::uint8_t stack_pointer = 0;
+    std::uint8_t status = 0;
+    std::array<std::uint8_t, 8> mpr{};
+};
+
+struct RoutineEntry {
+    RoutineKey routine;
+    CpuRegisters registers;
+    std::uint64_t frame_number = 0;
+    std::uint32_t master_cycle = 0;
+};
+
+using ExecutionHookCallback = std::function<void(const RoutineEntry&)>;
+
+struct ExecutionHook {
+    RoutineKey routine;
+    HookMode mode = HookMode::pass_through;
+    ExecutionHookCallback callback;
+};
+
 class PceRuntime {
 public:
     virtual ~PceRuntime() = default;
@@ -91,6 +131,14 @@ public:
     // typed game-state views. It is unavailable until a ROM is loaded.
     [[nodiscard]] virtual std::size_t work_ram_size() const noexcept = 0;
     [[nodiscard]] virtual std::vector<std::byte> export_work_ram() const = 0;
+
+    // The first fork boundary supports one exact physical-bank/logical-PC
+    // hook in pass-through or observe mode. It executes before opcode fetch
+    // and cannot modify core state. Observe mode requires a callback. Replace
+    // mode is reserved for a later bridge stage and is rejected for now.
+    [[nodiscard]] virtual bool install_execution_hook(ExecutionHook hook) = 0;
+    virtual void clear_execution_hook() noexcept = 0;
+    [[nodiscard]] virtual bool has_execution_hook() const noexcept = 0;
 
     // Savestates are opaque Beetle payloads plus the host frame counter.
     // Persistent storage must additionally bind them to the ROM and core

@@ -54,6 +54,33 @@ if(TARGET devils_crush)
         PROPERTIES WILL_FAIL TRUE
     )
 
+    add_test(
+        NAME dc_cli_orphan_pass_through_hook
+        COMMAND devils_crush --pass-through-hook 00:E462
+    )
+    set_tests_properties(
+        dc_cli_orphan_pass_through_hook
+        PROPERTIES WILL_FAIL TRUE
+    )
+
+    add_test(
+        NAME dc_cli_orphan_observe_hook
+        COMMAND devils_crush --observe-hook 00:E462
+    )
+    set_tests_properties(
+        dc_cli_orphan_observe_hook
+        PROPERTIES WILL_FAIL TRUE
+    )
+
+    add_test(
+        NAME dc_cli_orphan_routine_trace
+        COMMAND devils_crush --routine-trace unused.csv
+    )
+    set_tests_properties(
+        dc_cli_orphan_routine_trace
+        PROPERTIES WILL_FAIL TRUE
+    )
+
     if(DC_ENABLE_ROM_TESTS)
         if(NOT DC_ROM_PATH OR NOT IS_ABSOLUTE "${DC_ROM_PATH}")
             message(

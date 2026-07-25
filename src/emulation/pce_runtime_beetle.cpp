@@ -2,6 +2,7 @@
 
 #include "devils_crush/emulation/pce_runtime.hpp"
 
+#include <dc_beetle_execution_hook.h>
 #include <libretro.h>
 
 #include <atomic>
@@ -351,6 +352,37 @@ public:
         return copy;
     }
 
+    [[nodiscard]] bool install_execution_hook(
+        ExecutionHook hook) override
+    {
+        assert_owner_thread();
+        if (!loaded_ || hook.mode == HookMode::replace
+            || (hook.mode == HookMode::observe && !hook.callback)) {
+            return false;
+        }
+
+        execution_hook_ = std::move(hook);
+        execution_hook_installed_ = true;
+        dc_beetle_set_instruction_hook(
+            &instruction_hook_callback,
+            this);
+        return true;
+    }
+
+    void clear_execution_hook() noexcept override
+    {
+        assert_owner_thread();
+        dc_beetle_clear_instruction_hook();
+        execution_hook_ = {};
+        execution_hook_installed_ = false;
+    }
+
+    [[nodiscard]] bool has_execution_hook() const noexcept override
+    {
+        assert_owner_thread();
+        return execution_hook_installed_;
+    }
+
     [[nodiscard]] SaveState serialize() const override
     {
         assert_owner_thread();
@@ -412,6 +444,7 @@ private:
 
     void shutdown_core() noexcept
     {
+        clear_execution_hook();
         if (loaded_) {
             retro_unload_game();
             loaded_ = false;
@@ -433,6 +466,61 @@ private:
     [[nodiscard]] static BeetlePceRuntime* active() noexcept
     {
         return active_runtime.load(std::memory_order_acquire);
+    }
+
+    static void instruction_hook_callback(
+        const dc_beetle_cpu_state* const state,
+        void* const user_data) noexcept
+    {
+        auto* const runtime =
+            static_cast<BeetlePceRuntime*>(user_data);
+        if (runtime == nullptr || state == nullptr
+            || !runtime->execution_hook_installed_) {
+            return;
+        }
+
+        const RoutineKey routine{
+            .physical_bank = state->physical_bank,
+            .logical_pc = state->logical_pc,
+        };
+        if (!(routine == runtime->execution_hook_.routine)) {
+            return;
+        }
+
+        const auto& callback = runtime->execution_hook_.callback;
+        if (!callback) {
+            return;
+        }
+
+        try {
+            callback({
+                .routine = routine,
+                .registers = {
+                    .program_counter = state->logical_pc,
+                    .accumulator = state->accumulator,
+                    .x = state->x,
+                    .y = state->y,
+                    .stack_pointer = state->stack_pointer,
+                    .status = state->status,
+                    .mpr = {
+                        state->mpr[0],
+                        state->mpr[1],
+                        state->mpr[2],
+                        state->mpr[3],
+                        state->mpr[4],
+                        state->mpr[5],
+                        state->mpr[6],
+                        state->mpr[7],
+                    },
+                },
+                .frame_number = runtime->frame_number_ + 1U,
+                .master_cycle = state->master_cycle,
+            });
+        } catch (...) {
+            runtime->callback_failed_ = true;
+            dc_beetle_clear_instruction_hook();
+            runtime->execution_hook_installed_ = false;
+        }
     }
 
     [[nodiscard]] std::byte* backup_ram_data() const noexcept
@@ -728,6 +816,8 @@ private:
     retro_system_av_info av_info_{};
     std::vector<std::uint32_t> framebuffer_pixels_;
     std::vector<float> audio_samples_;
+    ExecutionHook execution_hook_;
+    bool execution_hook_installed_ = false;
     int framebuffer_width_ = 0;
     int framebuffer_height_ = 0;
     std::uint64_t frame_number_ = 0;

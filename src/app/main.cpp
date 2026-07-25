@@ -14,6 +14,7 @@
 #include <Windows.h>
 
 #include <algorithm>
+#include <charconv>
 #include <chrono>
 #include <cstdint>
 #include <cstdlib>
@@ -23,9 +24,11 @@
 #include <iomanip>
 #include <iostream>
 #include <limits>
+#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
+#include <system_error>
 #include <utility>
 #include <vector>
 
@@ -54,8 +57,11 @@ using devils_crush::emulation::AudioView;
 using devils_crush::emulation::Button;
 using devils_crush::emulation::EmulatedFrame;
 using devils_crush::emulation::FramebufferView;
+using devils_crush::emulation::HookMode;
 using devils_crush::emulation::InputFrame;
 using devils_crush::emulation::PceRuntime;
+using devils_crush::emulation::RoutineEntry;
+using devils_crush::emulation::RoutineKey;
 
 struct CommandLine {
     std::filesystem::path rom_path = "Devil's Crush.pce";
@@ -66,11 +72,60 @@ struct CommandLine {
     std::filesystem::path canonical_work_ram_path;
     std::filesystem::path canonical_framebuffer_path;
     std::filesystem::path canonical_audio_path;
+    std::optional<RoutineKey> pass_through_hook;
+    std::optional<RoutineKey> observe_hook;
+    std::filesystem::path routine_trace_path;
     bool backup_ram_test = false;
     std::filesystem::path backup_ram_test_path = kBackupRamTestPath;
     bool show_help = false;
     std::string error;
 };
+
+[[nodiscard]] std::optional<RoutineKey> parse_routine_key(
+    const std::string_view text)
+{
+    const auto separator = text.find(':');
+    if (separator == std::string_view::npos
+        || text.find(':', separator + 1U) != std::string_view::npos) {
+        return std::nullopt;
+    }
+
+    const auto parse_hex = [](std::string_view component)
+        -> std::optional<std::uint32_t> {
+        if (component.starts_with("0x")
+            || component.starts_with("0X")) {
+            component.remove_prefix(2U);
+        }
+        if (component.empty()) {
+            return std::nullopt;
+        }
+
+        std::uint32_t value = 0;
+        const auto result = std::from_chars(
+            component.data(),
+            component.data() + component.size(),
+            value,
+            16);
+        if (result.ec != std::errc{}
+            || result.ptr != component.data() + component.size()) {
+            return std::nullopt;
+        }
+        return value;
+    };
+
+    const auto bank = parse_hex(text.substr(0, separator));
+    const auto pc = parse_hex(text.substr(separator + 1U));
+    if (!bank || !pc
+        || *bank > std::numeric_limits<std::uint8_t>::max()
+        || *pc > std::numeric_limits<std::uint16_t>::max()) {
+        return std::nullopt;
+    }
+
+    return RoutineKey{
+        .physical_bank = static_cast<std::uint8_t>(*bank),
+        .logical_pc = static_cast<std::uint16_t>(*pc),
+    };
+}
 
 [[nodiscard]] CommandLine parse_command_line(const int argc, char* argv[])
 {
@@ -122,6 +177,36 @@ struct CommandLine {
                 return options;
             }
             options.canonical_audio_path = argv[++index];
+        } else if (argument == "--pass-through-hook") {
+            if (index + 1 >= argc) {
+                options.error =
+                    "--pass-through-hook requires BANK:PC.";
+                return options;
+            }
+            options.pass_through_hook =
+                parse_routine_key(argv[++index]);
+            if (!options.pass_through_hook) {
+                options.error =
+                    "--pass-through-hook requires hexadecimal BANK:PC.";
+                return options;
+            }
+        } else if (argument == "--observe-hook") {
+            if (index + 1 >= argc) {
+                options.error = "--observe-hook requires BANK:PC.";
+                return options;
+            }
+            options.observe_hook = parse_routine_key(argv[++index]);
+            if (!options.observe_hook) {
+                options.error =
+                    "--observe-hook requires hexadecimal BANK:PC.";
+                return options;
+            }
+        } else if (argument == "--routine-trace") {
+            if (index + 1 >= argc) {
+                options.error = "--routine-trace requires a path.";
+                return options;
+            }
+            options.routine_trace_path = argv[++index];
         } else if (argument == "--backup-ram-test") {
             options.backup_ram_test = true;
             const std::string_view next =
@@ -150,6 +235,19 @@ struct CommandLine {
         options.error =
             "--canonical-work-ram, --canonical-framebuffer, and "
             "--canonical-audio require --record-canonical.";
+    } else if (options.pass_through_hook && options.observe_hook) {
+        options.error =
+            "Only one execution hook mode may be selected.";
+    } else if ((options.pass_through_hook || options.observe_hook)
+               && !options.record_canonical) {
+        options.error =
+            "Execution hooks currently require "
+            "--record-canonical.";
+    } else if (
+        options.observe_hook.has_value()
+        != !options.routine_trace_path.empty()) {
+        options.error =
+            "--observe-hook and --routine-trace must be used together.";
     }
     return options;
 }
@@ -165,7 +263,10 @@ void print_usage()
         << "  devils-crush --record-canonical [output.csv]\n"
            "      [--canonical-work-ram <output.bin>]\n"
            "      [--canonical-framebuffer <output.rgb>]\n"
-           "      [--canonical-audio <output.wav>] [--rom <path>]\n"
+           "      [--canonical-audio <output.wav>]\n"
+           "      [--pass-through-hook <bank:pc>]\n"
+           "      [--observe-hook <bank:pc> --routine-trace <output.csv>]\n"
+           "      [--rom <path>]\n"
         << "  devils-crush --backup-ram-test [output.sav] [--rom <path>]\n"
         << "  devils-crush --help\n\n"
         << "Controls:\n"
@@ -1001,6 +1102,90 @@ bool write_pcm16_wave_header(
     return static_cast<bool>(output);
 }
 
+[[nodiscard]] bool write_routine_trace(
+    const std::filesystem::path& path,
+    const RoutineKey routine,
+    const std::span<const RoutineEntry> entries,
+    const std::string_view core_revision)
+{
+    std::error_code error;
+    const auto directory = path.parent_path();
+    if (!directory.empty()) {
+        std::filesystem::create_directories(directory, error);
+    }
+    if (error) {
+        std::cerr << "Could not create routine-trace directory: "
+                  << error.message() << '\n';
+        return false;
+    }
+
+    auto temporary_path = path;
+    temporary_path += ".tmp";
+    std::ofstream output(
+        temporary_path,
+        std::ios::binary | std::ios::trunc);
+    if (!output) {
+        std::cerr << "Could not create routine trace: "
+                  << temporary_path.string() << '\n';
+        return false;
+    }
+
+    output
+        << "# format=devils-crush-routine-entry-v1\n"
+        << "# rom_sha256=" << devils_crush::rom::kSupportedSha256 << '\n'
+        << "# core_revision=" << core_revision << '\n'
+        << "# physical_bank=" << std::uppercase << std::hex
+        << std::setfill('0') << std::setw(2)
+        << static_cast<unsigned>(routine.physical_bank) << '\n'
+        << "# logical_pc=" << std::setw(4) << routine.logical_pc << '\n'
+        << std::dec
+        << "sequence,frame,master_cycle,physical_bank,logical_pc,"
+           "a,x,y,sp,status,mpr0,mpr1,mpr2,mpr3,mpr4,mpr5,mpr6,mpr7\n";
+
+    std::uint64_t sequence = 0;
+    for (const auto& entry : entries) {
+        const auto& registers = entry.registers;
+        output << ++sequence << ',' << entry.frame_number << ','
+               << entry.master_cycle << ',' << std::uppercase << std::hex
+               << std::setfill('0') << std::setw(2)
+               << static_cast<unsigned>(entry.routine.physical_bank)
+               << ',' << std::setw(4) << entry.routine.logical_pc
+               << ',' << std::setw(2)
+               << static_cast<unsigned>(registers.accumulator)
+               << ',' << std::setw(2)
+               << static_cast<unsigned>(registers.x)
+               << ',' << std::setw(2)
+               << static_cast<unsigned>(registers.y)
+               << ',' << std::setw(2)
+               << static_cast<unsigned>(registers.stack_pointer)
+               << ',' << std::setw(2)
+               << static_cast<unsigned>(registers.status);
+        for (const auto mpr : registers.mpr) {
+            output << ',' << std::setw(2)
+                   << static_cast<unsigned>(mpr);
+        }
+        output << std::dec << '\n';
+    }
+
+    output.close();
+    if (!output) {
+        std::cerr << "Could not finalize routine trace.\n";
+        return false;
+    }
+    if (!MoveFileExW(
+            temporary_path.c_str(),
+            path.c_str(),
+            MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
+        std::cerr << "Could not commit routine trace; Windows error "
+                  << GetLastError() << ".\n";
+        return false;
+    }
+
+    std::cout << "Routine trace complete: " << entries.size()
+              << " entries\nOutput: " << path.string() << '\n';
+    return true;
+}
+
 int run_canonical_recording(
     PceRuntime& runtime,
     const std::filesystem::path& path,
@@ -1655,13 +1840,65 @@ int main(const int argc, char* argv[])
         std::cout << load_result.message << '\n';
 
         if (options.record_canonical) {
-            return run_canonical_recording(
+            std::uint64_t hook_hits = 0;
+            std::vector<RoutineEntry> observed_entries;
+            if (options.pass_through_hook
+                && !runtime->install_execution_hook({
+                    .routine = *options.pass_through_hook,
+                    .mode = HookMode::pass_through,
+                    .callback = [&hook_hits](const RoutineEntry&) {
+                        ++hook_hits;
+                    },
+                })) {
+                std::cerr << "Could not install the pass-through hook.\n";
+                return EXIT_FAILURE;
+            }
+            if (options.observe_hook
+                && !runtime->install_execution_hook({
+                    .routine = *options.observe_hook,
+                    .mode = HookMode::observe,
+                    .callback = [&observed_entries](
+                                    const RoutineEntry& entry) {
+                        observed_entries.push_back(entry);
+                    },
+                })) {
+                std::cerr << "Could not install the observe hook.\n";
+                return EXIT_FAILURE;
+            }
+
+            const int result = run_canonical_recording(
                 *runtime,
                 options.canonical_path,
                 options.canonical_work_ram_path,
                 options.canonical_framebuffer_path,
                 options.canonical_audio_path,
                 runtime_info.upstream_revision);
+            if (result != EXIT_SUCCESS) {
+                return result;
+            }
+            if (options.pass_through_hook && hook_hits == 0U) {
+                std::cerr
+                    << "The pass-through hook address was never entered.\n";
+                return EXIT_FAILURE;
+            }
+            if (options.pass_through_hook) {
+                std::cout << "Pass-through hook entries: "
+                          << hook_hits << '\n';
+            }
+            if (options.observe_hook
+                && (observed_entries.empty()
+                    || !write_routine_trace(
+                        options.routine_trace_path,
+                        *options.observe_hook,
+                        observed_entries,
+                        runtime_info.upstream_revision))) {
+                if (observed_entries.empty()) {
+                    std::cerr
+                        << "The observe hook address was never entered.\n";
+                }
+                return EXIT_FAILURE;
+            }
+            return EXIT_SUCCESS;
         }
         if (options.backup_ram_test) {
             return run_backup_ram_reload_test(

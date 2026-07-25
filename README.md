@@ -76,6 +76,38 @@ for the first 8 KiB of PCE work RAM, the compact framebuffer, and the
 float-stereo audio batch, together with framebuffer geometry and audio timing.
 Recordings and other traces remain local and are excluded from Git.
 
+Milestone 2 adds a read-only HuC6280 routine-entry boundary keyed by physical
+8 KiB bank and logical PC. Pass-through mode verifies that a known canonical
+entry is reached while generating the same golden recording:
+
+```powershell
+.\out\build\windows-vs2022\Debug\devils-crush.exe `
+  --record-canonical portable-data\canonical-hooked.csv `
+  --pass-through-hook 00:E462 `
+  --rom "D:\path\to\Devil's Crush.pce"
+```
+
+Observe mode atomically writes a deterministic routine-entry CSV containing
+the frame, core master-cycle timestamp, A/X/Y/SP/status, and all eight MPRs:
+
+```powershell
+.\out\build\windows-vs2022\Debug\devils-crush.exe `
+  --record-canonical portable-data\canonical-observed.csv `
+  --observe-hook 00:E462 `
+  --routine-trace out\traces\routine-00-E462.csv `
+  --rom "D:\path\to\Devil's Crush.pce"
+```
+
+The selected startup probe produces 11,403 entries in frames 1–7. Debug and
+Release reproduce trace SHA-256
+`585b2221987701f24b9f6a271d48a7bedec3ce01fb08f3889d196cfe1a3191a4`
+while retaining the canonical RAM/video/audio hash. Replace mode remains
+disabled until mutation and cycle-accounting semantics are shadow-tested.
+
+The pinned upstream Beetle source is reproducibly modified by the ordered
+project-owned patch series documented in
+[`third_party/beetle-pce-fork/MANIFEST.md`](third_party/beetle-pce-fork/MANIFEST.md).
+
 For byte-level oracle comparison, add
 `--canonical-work-ram out\traces\beetle-wram.bin`. The optional binary is
 exactly 600 consecutive 8 KiB work-RAM snapshots in frame order. The

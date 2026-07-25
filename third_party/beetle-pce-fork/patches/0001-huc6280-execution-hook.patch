@@ -1,0 +1,41 @@
+diff --git a/mednafen/pce/huc6280.cpp b/mednafen/pce/huc6280.cpp
+--- a/mednafen/pce/huc6280.cpp
++++ b/mednafen/pce/huc6280.cpp
+@@ -29,6 +29,7 @@
+ */
+ 
+ #include <mednafen/mednafen.h>
++#include <dc_beetle_execution_hook.h>
+ #include "huc6280.h"
+ 
+ #include <string.h>
+@@ -623,6 +624,29 @@ NO_INLINE void HuC6280::RunSub(void)
+ 			}
+ 		}
+ 		PC &= 0xFFFF;     // Our cpu core can only handle PC going about 8192 bytes over, so make sure it never gets that far...
++
++		if(MDFN_UNLIKELY(dc_beetle_active_instruction_hook != NULL))
++		{
++			dc_beetle_cpu_state hook_state =
++			{
++				(uint16)PC,
++				MPR[(PC >> 13) & 0x7],
++				A,
++				X,
++				Y,
++				S,
++				P,
++				{
++					MPR[0], MPR[1], MPR[2], MPR[3],
++					MPR[4], MPR[5], MPR[6], MPR[7]
++				},
++				timestamp
++			};
++
++			dc_beetle_active_instruction_hook(
++				&hook_state,
++				dc_beetle_active_instruction_hook_user_data);
++		}
+ 
+ 		lastop = RdOp(PC);
+ 

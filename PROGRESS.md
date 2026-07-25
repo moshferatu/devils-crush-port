@@ -6,14 +6,16 @@ Last updated: 2026-07-24
 
 **Phase:** Milestone 2 instrumentation and hook bridge
 
-**Implementation progress:** 20% overall; Milestone 1 complete
+**Implementation progress:** 27% overall; Milestone 1 complete
 
 **Current milestone:** 2. Instrumentation and hook bridge
 
-The first native Windows host is implemented. It validates the exact USA ROM,
-boots it through the pinned Beetle PCE core, produces video and audio, accepts
-keyboard/gamepad input, persists backup RAM, and presents the framebuffer
-through the fixed sharp monitor-resolution scaler.
+The first native Windows host is implemented. Milestone 2 now has a
+project-owned Beetle downstream patch layer and a read-only HuC6280
+instruction-entry boundary keyed by physical 8 KiB bank plus logical PC.
+Pass-through and selective observe modes preserve the complete Milestone 1
+canonical recording in Debug and Release, and observe mode emits an atomic,
+deterministic register/MPR trace.
 
 ## Milestones
 
@@ -128,6 +130,23 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
     0.981922894 correlation across 10 ms RMS envelopes.
   - Work RAM, framebuffer, audio timing, and scene progression now have no
     unexplained semantic difference in the Milestone 1 canonical window.
+- [x] Established the first Milestone 2 execution-hook boundary:
+  - Added an in-tree downstream fork manifest, local bridge sources, and an
+    ordered patch applied reproducibly to the exact pinned Beetle revision.
+  - Added a pre-opcode HuC6280 callback exposing logical PC, physical 8 KiB
+    bank, A/X/Y/SP/status, all eight MPRs, and the master-cycle timestamp.
+  - Added a typed runtime API for one exact hook in pass-through or read-only
+    observe mode; replace remains explicitly rejected.
+  - Verified bank `0x00` / PC `0xE462` is entered 11,403 times during the
+    canonical run and that hooked Debug and Release recordings retain SHA-256
+    `67a55bed2d4f4e8dc5019c2b9b845df2f29514bbb564e2e44cde406d159575fe`.
+  - Added a versioned, atomic routine-entry CSV containing frame, master
+    cycle, A/X/Y/SP/status, and all eight MPR values.
+  - Verified 11,403 observed entries across canonical frames 1–7 reproduce
+    byte-for-byte in repeated Debug and Release runs (SHA-256
+    `585b2221987701f24b9f6a271d48a7bedec3ce01fb08f3889d196cfe1a3191a4`).
+  - Verified all 13 full-host tests in Debug and Release plus the
+    dependency-free stub test.
 
 ## Next Actions
 
@@ -145,19 +164,21 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
 - [x] Compare the canonical recording against Mesen2 and document any differences.
 - [x] Exercise and document full backup-RAM reload behavior through the visible host.
 - [x] Establish the best available independent canonical audio oracle.
-- [ ] Add the fork-owned execution-hook boundary and pass-through mode.
+- [x] Add the fork-owned execution-hook boundary and pass-through mode.
+- [x] Add selective observe mode and deterministic routine-entry trace export.
+- [ ] Add a multi-hook registry and begin mapping canonical gameplay entries.
 
 ## Active Work
 
-Milestone 2: define and implement the fork-owned physical-ROM execution-hook
-boundary with a no-op pass-through mode that preserves the Milestone 1
-canonical recording.
+Milestone 2: extend the proven single-hook boundary into a multi-hook registry
+and begin mapping scene, controller-poll, and gameplay routine entries without
+changing emulated state.
 
 ## Blockers
 
-No known Milestone 1 blocker remains. Milestone 2 execution-hook work must
-preserve the completed canonical RAM, video, and audio behavior before any
-gameplay routine is observed or replaced.
+No known blocker. Mapping must preserve the completed canonical RAM, video,
+audio, and routine-entry trace behavior; replace mode stays disabled until
+register/write/cycle comparison semantics are defined.
 
 ## Decisions Locked for V1
 

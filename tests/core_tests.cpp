@@ -348,6 +348,20 @@ void test_runtime_boundary()
         runtime->export_work_ram().empty(),
         "work RAM export is empty before ROM load");
     check(
+        !runtime->install_execution_hook({
+            .routine = {
+                .physical_bank = 0,
+                .logical_pc = 0xE462,
+            },
+            .mode =
+                devils_crush::emulation::HookMode::pass_through,
+        }),
+        "execution hook installation is rejected before ROM load");
+    check(
+        !runtime->has_execution_hook(),
+        "execution hook is absent before ROM load");
+    runtime->clear_execution_hook();
+    check(
         runtime->serialize().core_state.empty(),
         "savestate serialization is empty before ROM load");
     check(
