@@ -76,6 +76,43 @@ for the first 8 KiB of PCE work RAM, the compact framebuffer, and the
 float-stereo audio batch, together with framebuffer geometry and audio timing.
 Recordings and other traces remain local and are excluded from Git.
 
+For byte-level oracle comparison, add
+`--canonical-work-ram out\traces\beetle-wram.bin`. The optional binary is
+exactly 600 consecutive 8 KiB work-RAM snapshots in frame order. The
+optional
+`--canonical-framebuffer out\traces\beetle-framebuffer.rgb` records a
+16-byte `DCF1` geometry header followed by 600 RGB888 frames.
+`--canonical-audio out\traces\beetle-audio.wav` records the same run as
+44.1 kHz PCM16 stereo. The checked-in
+Mesen2 comparison launcher performs two isolated Mesen captures, strictly
+normalizes its backup-RAM header to Beetle's initialization policy, disables
+frame skipping, and records work RAM, memory-write events, CPU frame
+boundaries, and RGB888 output. It classifies remaining RAM observations,
+normalizes Mesen's uncropped framebuffer to the host output, checks oracle
+repeatability, and produces a JSON difference report:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass `
+  -File tools\mesen2\Compare-Mesen2.ps1 `
+  -MesenPath "D:\tools\Mesen-2.1.1\Mesen.exe" `
+  -AppPath out\build\windows-vs2022\Debug\devils-crush.exe `
+  -RomPath "D:\path\to\Devil's Crush.pce"
+```
+
+The launcher copies Mesen into the ignored output directory before creating
+its isolated settings and save-data home. Generated trace artifacts remain
+ignored. See
+[docs/MESEN2_PARITY.md](docs/MESEN2_PARITY.md) for the pinned oracle,
+latest comparison results, and normalization rationale.
+
+Mesen's native core has a WAV recorder that its headless command line does
+not expose. `tools\mesen2\Build-AudioRunner.ps1` applies a managed-runner-only
+patch to the official 2.1.1 source and verifies that `MesenCore.dll` remains
+unchanged. `tools\mesen2\Compare-MesenAudio.ps1` then records two independent
+Mesen WAVs and reports duration, alignment, envelope correlation, and oracle
+repeatability against the host's canonical WAV. Exact commands and current
+results are in [docs/MESEN2_PARITY.md](docs/MESEN2_PARITY.md).
+
 Exercise backup-RAM persistence across a complete Beetle game reload without
 touching the normal `devils-crush.sav`:
 
@@ -89,6 +126,11 @@ This writes a deterministic 2 KiB test pattern atomically, unloads and reloads
 the ROM, imports the file, and verifies every byte. The opt-in `rom_required`
 CTest label runs the smoke test, canonical golden recording, and this reload
 test in both Debug and Release configurations.
+
+The original game's save and Data Load screens have also been validated
+visibly across two complete Release-host processes. See
+[docs/BACKUP_RAM_VALIDATION.md](docs/BACKUP_RAM_VALIDATION.md) for the
+procedure and result.
 
 The current host boots the verified ROM through the pinned Beetle PCE core,
 plays its float-stereo audio, accepts keyboard or the first available SDL

@@ -27,6 +27,33 @@ if(TARGET devils_crush)
     add_test(NAME dc_cli_unknown_option COMMAND devils_crush --not-an-option)
     set_tests_properties(dc_cli_unknown_option PROPERTIES WILL_FAIL TRUE)
 
+    add_test(
+        NAME dc_cli_orphan_canonical_work_ram
+        COMMAND devils_crush --canonical-work-ram unused.bin
+    )
+    set_tests_properties(
+        dc_cli_orphan_canonical_work_ram
+        PROPERTIES WILL_FAIL TRUE
+    )
+
+    add_test(
+        NAME dc_cli_orphan_canonical_framebuffer
+        COMMAND devils_crush --canonical-framebuffer unused.rgb
+    )
+    set_tests_properties(
+        dc_cli_orphan_canonical_framebuffer
+        PROPERTIES WILL_FAIL TRUE
+    )
+
+    add_test(
+        NAME dc_cli_orphan_canonical_audio
+        COMMAND devils_crush --canonical-audio unused.wav
+    )
+    set_tests_properties(
+        dc_cli_orphan_canonical_audio
+        PROPERTIES WILL_FAIL TRUE
+    )
+
     if(DC_ENABLE_ROM_TESTS)
         if(NOT DC_ROM_PATH OR NOT IS_ABSOLUTE "${DC_ROM_PATH}")
             message(

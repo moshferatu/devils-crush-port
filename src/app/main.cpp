@@ -63,6 +63,9 @@ struct CommandLine {
     bool smoke_test = false;
     bool record_canonical = false;
     std::filesystem::path canonical_path = kCanonicalRecordingPath;
+    std::filesystem::path canonical_work_ram_path;
+    std::filesystem::path canonical_framebuffer_path;
+    std::filesystem::path canonical_audio_path;
     bool backup_ram_test = false;
     std::filesystem::path backup_ram_test_path = kBackupRamTestPath;
     bool show_help = false;
@@ -101,6 +104,24 @@ struct CommandLine {
             if (!next.empty() && next.front() != '-') {
                 options.canonical_path = argv[++index];
             }
+        } else if (argument == "--canonical-work-ram") {
+            if (index + 1 >= argc) {
+                options.error = "--canonical-work-ram requires a path.";
+                return options;
+            }
+            options.canonical_work_ram_path = argv[++index];
+        } else if (argument == "--canonical-framebuffer") {
+            if (index + 1 >= argc) {
+                options.error = "--canonical-framebuffer requires a path.";
+                return options;
+            }
+            options.canonical_framebuffer_path = argv[++index];
+        } else if (argument == "--canonical-audio") {
+            if (index + 1 >= argc) {
+                options.error = "--canonical-audio requires a path.";
+                return options;
+            }
+            options.canonical_audio_path = argv[++index];
         } else if (argument == "--backup-ram-test") {
             options.backup_ram_test = true;
             const std::string_view next =
@@ -122,6 +143,13 @@ struct CommandLine {
     if (operation_count > 1) {
         options.error =
             "Only one test or recording operation may be selected.";
+    } else if ((!options.canonical_work_ram_path.empty()
+                || !options.canonical_framebuffer_path.empty()
+                || !options.canonical_audio_path.empty())
+               && !options.record_canonical) {
+        options.error =
+            "--canonical-work-ram, --canonical-framebuffer, and "
+            "--canonical-audio require --record-canonical.";
     }
     return options;
 }
@@ -134,7 +162,10 @@ void print_usage()
         << "  devils-crush [--rom <path>]\n"
         << "  devils-crush --validate-rom [path]\n"
         << "  devils-crush --smoke-test [--rom <path>]\n"
-        << "  devils-crush --record-canonical [output.csv] [--rom <path>]\n"
+        << "  devils-crush --record-canonical [output.csv]\n"
+           "      [--canonical-work-ram <output.bin>]\n"
+           "      [--canonical-framebuffer <output.rgb>]\n"
+           "      [--canonical-audio <output.wav>] [--rom <path>]\n"
         << "  devils-crush --backup-ram-test [output.sav] [--rom <path>]\n"
         << "  devils-crush --help\n\n"
         << "Controls:\n"
@@ -917,9 +948,65 @@ template <typename Value>
     return sha256(std::as_bytes(values));
 }
 
+bool write_pcm16_wave_header(
+    std::ostream& output,
+    const std::uint32_t sample_rate,
+    const std::uint32_t data_bytes)
+{
+    constexpr char riff[] = {'R', 'I', 'F', 'F'};
+    constexpr char wave[] = {'W', 'A', 'V', 'E'};
+    constexpr char format[] = {'f', 'm', 't', ' '};
+    constexpr char data[] = {'d', 'a', 't', 'a'};
+    constexpr std::uint32_t format_size = 16U;
+    constexpr std::uint16_t pcm_format = 1U;
+    constexpr std::uint16_t channels = 2U;
+    constexpr std::uint16_t bits_per_sample = 16U;
+    constexpr std::uint16_t block_alignment =
+        channels * bits_per_sample / 8U;
+    const std::uint32_t riff_size = 36U + data_bytes;
+    const std::uint32_t bytes_per_second =
+        sample_rate * block_alignment;
+
+    output.write(riff, sizeof(riff));
+    output.write(
+        reinterpret_cast<const char*>(&riff_size),
+        sizeof(riff_size));
+    output.write(wave, sizeof(wave));
+    output.write(format, sizeof(format));
+    output.write(
+        reinterpret_cast<const char*>(&format_size),
+        sizeof(format_size));
+    output.write(
+        reinterpret_cast<const char*>(&pcm_format),
+        sizeof(pcm_format));
+    output.write(
+        reinterpret_cast<const char*>(&channels),
+        sizeof(channels));
+    output.write(
+        reinterpret_cast<const char*>(&sample_rate),
+        sizeof(sample_rate));
+    output.write(
+        reinterpret_cast<const char*>(&bytes_per_second),
+        sizeof(bytes_per_second));
+    output.write(
+        reinterpret_cast<const char*>(&block_alignment),
+        sizeof(block_alignment));
+    output.write(
+        reinterpret_cast<const char*>(&bits_per_sample),
+        sizeof(bits_per_sample));
+    output.write(data, sizeof(data));
+    output.write(
+        reinterpret_cast<const char*>(&data_bytes),
+        sizeof(data_bytes));
+    return static_cast<bool>(output);
+}
+
 int run_canonical_recording(
     PceRuntime& runtime,
     const std::filesystem::path& path,
+    const std::filesystem::path& work_ram_path,
+    const std::filesystem::path& framebuffer_path,
+    const std::filesystem::path& audio_path,
     const std::string_view core_revision)
 {
     if (runtime.work_ram_size() == 0U) {
@@ -928,7 +1015,10 @@ int run_canonical_recording(
     }
 
     std::error_code error;
-    std::filesystem::create_directories(path.parent_path(), error);
+    const auto recording_directory = path.parent_path();
+    if (!recording_directory.empty()) {
+        std::filesystem::create_directories(recording_directory, error);
+    }
     if (error) {
         std::cerr << "Could not create recording directory: "
                   << error.message() << '\n';
@@ -946,6 +1036,83 @@ int run_canonical_recording(
         return EXIT_FAILURE;
     }
 
+    auto work_ram_temporary_path = work_ram_path;
+    std::ofstream work_ram_output;
+    if (!work_ram_path.empty()) {
+        const auto work_ram_directory = work_ram_path.parent_path();
+        if (!work_ram_directory.empty()) {
+            std::filesystem::create_directories(
+                work_ram_directory,
+                error);
+        }
+        if (error) {
+            std::cerr << "Could not create work-RAM recording directory: "
+                      << error.message() << '\n';
+            return EXIT_FAILURE;
+        }
+        work_ram_temporary_path += ".tmp";
+        work_ram_output.open(
+            work_ram_temporary_path,
+            std::ios::binary | std::ios::trunc);
+        if (!work_ram_output) {
+            std::cerr << "Could not create work-RAM recording: "
+                      << work_ram_temporary_path.string() << '\n';
+            return EXIT_FAILURE;
+        }
+    }
+
+    auto framebuffer_temporary_path = framebuffer_path;
+    std::ofstream framebuffer_output;
+    if (!framebuffer_path.empty()) {
+        const auto framebuffer_directory = framebuffer_path.parent_path();
+        if (!framebuffer_directory.empty()) {
+            std::filesystem::create_directories(
+                framebuffer_directory,
+                error);
+        }
+        if (error) {
+            std::cerr << "Could not create framebuffer recording directory: "
+                      << error.message() << '\n';
+            return EXIT_FAILURE;
+        }
+        framebuffer_temporary_path += ".tmp";
+        framebuffer_output.open(
+            framebuffer_temporary_path,
+            std::ios::binary | std::ios::trunc);
+        if (!framebuffer_output) {
+            std::cerr << "Could not create framebuffer recording: "
+                      << framebuffer_temporary_path.string() << '\n';
+            return EXIT_FAILURE;
+        }
+    }
+
+    auto audio_temporary_path = audio_path;
+    std::ofstream audio_output;
+    if (!audio_path.empty()) {
+        const auto audio_directory = audio_path.parent_path();
+        if (!audio_directory.empty()) {
+            std::filesystem::create_directories(audio_directory, error);
+        }
+        if (error) {
+            std::cerr << "Could not create audio recording directory: "
+                      << error.message() << '\n';
+            return EXIT_FAILURE;
+        }
+        audio_temporary_path += ".tmp";
+        audio_output.open(
+            audio_temporary_path,
+            std::ios::binary | std::ios::trunc);
+        if (!audio_output) {
+            std::cerr << "Could not create audio recording: "
+                      << audio_temporary_path.string() << '\n';
+            return EXIT_FAILURE;
+        }
+        if (!write_pcm16_wave_header(audio_output, 0U, 0U)) {
+            std::cerr << "Could not initialize audio recording.\n";
+            return EXIT_FAILURE;
+        }
+    }
+
     output
         << "# format=devils-crush-canonical-v1\n"
         << "# rom_sha256=" << devils_crush::rom::kSupportedSha256 << '\n'
@@ -958,6 +1125,11 @@ int run_canonical_recording(
            "audio_sample_rate,audio_stereo_samples,audio_sha256\n";
 
     runtime.reset();
+    int framebuffer_width = 0;
+    int framebuffer_height = 0;
+    int audio_sample_rate = 0;
+    std::uint32_t audio_data_bytes = 0U;
+    std::vector<std::byte> framebuffer_rgb;
     for (int index = 1; index <= kCanonicalRecordingFrames; ++index) {
         const auto input = canonical_input_for_frame(index);
         const auto frame = runtime.run_frame(input);
@@ -985,9 +1157,98 @@ int run_canonical_recording(
                << ',' << sha256_values<float>(
                    frame.audio.interleaved_stereo)
                << '\n';
+        if (work_ram_output) {
+            work_ram_output.write(
+                reinterpret_cast<const char*>(work_ram.data()),
+                static_cast<std::streamsize>(work_ram.size()));
+        }
+        if (framebuffer_output) {
+            if (index == 1) {
+                framebuffer_width = frame.framebuffer.width;
+                framebuffer_height = frame.framebuffer.height;
+                constexpr char signature[] = {'D', 'C', 'F', '1'};
+                const auto width = static_cast<std::uint32_t>(
+                    framebuffer_width);
+                const auto height = static_cast<std::uint32_t>(
+                    framebuffer_height);
+                const auto frame_count = static_cast<std::uint32_t>(
+                    kCanonicalRecordingFrames);
+                framebuffer_output.write(signature, sizeof(signature));
+                framebuffer_output.write(
+                    reinterpret_cast<const char*>(&width),
+                    sizeof(width));
+                framebuffer_output.write(
+                    reinterpret_cast<const char*>(&height),
+                    sizeof(height));
+                framebuffer_output.write(
+                    reinterpret_cast<const char*>(&frame_count),
+                    sizeof(frame_count));
+                framebuffer_rgb.resize(
+                    frame.framebuffer.pixels.size() * 3U);
+            } else if (frame.framebuffer.width != framebuffer_width
+                       || frame.framebuffer.height != framebuffer_height) {
+                std::cerr
+                    << "Canonical framebuffer geometry changed on frame "
+                    << index << ".\n";
+                return EXIT_FAILURE;
+            }
+
+            for (std::size_t pixel_index = 0;
+                 pixel_index < frame.framebuffer.pixels.size();
+                 ++pixel_index) {
+                const auto pixel = frame.framebuffer.pixels[pixel_index];
+                const auto byte_index = pixel_index * 3U;
+                framebuffer_rgb[byte_index] = static_cast<std::byte>(
+                    (pixel >> 16U) & 0xFFU);
+                framebuffer_rgb[byte_index + 1U] = static_cast<std::byte>(
+                    (pixel >> 8U) & 0xFFU);
+                framebuffer_rgb[byte_index + 2U] = static_cast<std::byte>(
+                    pixel & 0xFFU);
+            }
+            framebuffer_output.write(
+                reinterpret_cast<const char*>(framebuffer_rgb.data()),
+                static_cast<std::streamsize>(framebuffer_rgb.size()));
+        }
+        if (audio_output) {
+            if (index == 1) {
+                audio_sample_rate = frame.audio.sample_rate;
+            } else if (frame.audio.sample_rate != audio_sample_rate) {
+                std::cerr << "Canonical audio sample rate changed on frame "
+                          << index << ".\n";
+                return EXIT_FAILURE;
+            }
+            if ((frame.audio.interleaved_stereo.size() % 2U) != 0U) {
+                std::cerr << "Canonical audio is not stereo on frame "
+                          << index << ".\n";
+                return EXIT_FAILURE;
+            }
+            for (const float sample : frame.audio.interleaved_stereo) {
+                const auto pcm_sample = static_cast<std::int16_t>(
+                    sample * 32768.0F);
+                audio_output.write(
+                    reinterpret_cast<const char*>(&pcm_sample),
+                    sizeof(pcm_sample));
+                audio_data_bytes += sizeof(pcm_sample);
+            }
+        }
         if (!output) {
             std::cerr << "Could not write canonical frame " << index
                       << ".\n";
+            return EXIT_FAILURE;
+        }
+        if (!work_ram_path.empty() && !work_ram_output) {
+            std::cerr << "Could not write canonical work RAM on frame "
+                      << index << ".\n";
+            return EXIT_FAILURE;
+        }
+        if (!framebuffer_path.empty() && !framebuffer_output) {
+            std::cerr << "Could not write canonical framebuffer on frame "
+                      << index << ".\n";
+            return EXIT_FAILURE;
+        }
+        if (!audio_path.empty() && !audio_output) {
+            std::cerr << "Could not write canonical audio on frame "
+                      << index << ".\n";
             return EXIT_FAILURE;
         }
     }
@@ -998,6 +1259,38 @@ int run_canonical_recording(
         std::cerr << "Could not finalize canonical recording.\n";
         return EXIT_FAILURE;
     }
+    if (!work_ram_path.empty()) {
+        work_ram_output.flush();
+        work_ram_output.close();
+        if (!work_ram_output) {
+            std::cerr << "Could not finalize work-RAM recording.\n";
+            return EXIT_FAILURE;
+        }
+    }
+    if (!framebuffer_path.empty()) {
+        framebuffer_output.flush();
+        framebuffer_output.close();
+        if (!framebuffer_output) {
+            std::cerr << "Could not finalize framebuffer recording.\n";
+            return EXIT_FAILURE;
+        }
+    }
+    if (!audio_path.empty()) {
+        audio_output.seekp(0);
+        if (!write_pcm16_wave_header(
+                audio_output,
+                static_cast<std::uint32_t>(audio_sample_rate),
+                audio_data_bytes)) {
+            std::cerr << "Could not finalize canonical audio header.\n";
+            return EXIT_FAILURE;
+        }
+        audio_output.flush();
+        audio_output.close();
+        if (!audio_output) {
+            std::cerr << "Could not finalize canonical audio recording.\n";
+            return EXIT_FAILURE;
+        }
+    }
     if (!MoveFileExW(
             temporary_path.c_str(),
             path.c_str(),
@@ -1006,10 +1299,46 @@ int run_canonical_recording(
                   << GetLastError() << ".\n";
         return EXIT_FAILURE;
     }
+    if (!work_ram_path.empty()
+        && !MoveFileExW(
+            work_ram_temporary_path.c_str(),
+            work_ram_path.c_str(),
+            MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
+        std::cerr << "Could not commit work-RAM recording; Windows error "
+                  << GetLastError() << ".\n";
+        return EXIT_FAILURE;
+    }
+    if (!framebuffer_path.empty()
+        && !MoveFileExW(
+            framebuffer_temporary_path.c_str(),
+            framebuffer_path.c_str(),
+            MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
+        std::cerr << "Could not commit framebuffer recording; Windows error "
+                  << GetLastError() << ".\n";
+        return EXIT_FAILURE;
+    }
+    if (!audio_path.empty()
+        && !MoveFileExW(
+            audio_temporary_path.c_str(),
+            audio_path.c_str(),
+            MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
+        std::cerr << "Could not commit canonical audio; Windows error "
+                  << GetLastError() << ".\n";
+        return EXIT_FAILURE;
+    }
 
     std::cout << "Canonical recording complete: "
               << kCanonicalRecordingFrames << " frames\n"
               << "Output: " << path.string() << '\n';
+    if (!work_ram_path.empty()) {
+        std::cout << "Work RAM: " << work_ram_path.string() << '\n';
+    }
+    if (!framebuffer_path.empty()) {
+        std::cout << "Framebuffer: " << framebuffer_path.string() << '\n';
+    }
+    if (!audio_path.empty()) {
+        std::cout << "Audio: " << audio_path.string() << '\n';
+    }
     return EXIT_SUCCESS;
 }
 
@@ -1329,6 +1658,9 @@ int main(const int argc, char* argv[])
             return run_canonical_recording(
                 *runtime,
                 options.canonical_path,
+                options.canonical_work_ram_path,
+                options.canonical_framebuffer_path,
+                options.canonical_audio_path,
                 runtime_info.upstream_revision);
         }
         if (options.backup_ram_test) {

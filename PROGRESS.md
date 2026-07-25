@@ -4,11 +4,11 @@ Last updated: 2026-07-24
 
 ## Current Status
 
-**Phase:** Milestone 1 implementation and hardening
+**Phase:** Milestone 2 instrumentation and hook bridge
 
-**Implementation progress:** 19% overall; approximately 96% of Milestone 1
+**Implementation progress:** 20% overall; Milestone 1 complete
 
-**Current milestone:** 1. Emulated Windows baseline
+**Current milestone:** 2. Instrumentation and hook bridge
 
 The first native Windows host is implemented. It validates the exact USA ROM,
 boots it through the pinned Beetle PCE core, produces video and audio, accepts
@@ -19,8 +19,8 @@ through the fixed sharp monitor-resolution scaler.
 
 | Milestone | Status | Completion gate |
 | --- | --- | --- |
-| 1. Emulated Windows baseline | In progress | Verified ROM runs through the pinned Beetle PCE fork with SDL3 video, audio, input, saves, and sharp monitor-resolution scaling |
-| 2. Instrumentation and hook bridge | Not started | Required game state is mapped and original routines can be observed, shadow-tested, and replaced |
+| 1. Emulated Windows baseline | Complete | Verified ROM runs through the pinned Beetle PCE fork with SDL3 video, audio, input, saves, and sharp monitor-resolution scaling |
+| 2. Instrumentation and hook bridge | In progress | Required game state is mapped and original routines can be observed, shadow-tested, and replaced |
 | 3. Cabinet preview | Not started | Three-window cabinet mode shows the stitched playfield, score DMD, user backglass, and playfield-hosted bonus stages |
 | 4. Native gameplay port | Not started | Physics, collisions, RNG, scoring, table rules, bonus stages, and session transitions execute natively |
 | 5. Final cabinet world model | Not started | Desktop and cabinet profiles share the same native gameplay state without divergence |
@@ -58,7 +58,8 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
 - [x] Implemented high-DPI SDL presentation with the fixed two-pass sharp scaler.
 - [x] Implemented atomic backup-RAM persistence in `portable-data/devils-crush.sav`.
 - [x] Added ROM-free unit/CLI tests and an opt-in `rom_required` smoke test.
-- [x] Verified Debug and Release builds, all four public CTests, the dependency-free stub test, and the local ROM-required smoke test.
+- [x] Verified Debug and Release builds, all public CTests, the
+  dependency-free stub test, and the local ROM-required smoke test.
 - [x] Added raw Beetle savestate capture/restore with the host frame counter.
 - [x] Added a checksummed version-1 quick-state container bound to the exact
   ROM SHA-256 and pinned Beetle revision.
@@ -87,6 +88,46 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
   GPL license, README, and third-party notices.
 - [x] Added local and CI distribution verification with an exact file
   allowlist and an independent supported-ROM hash scan.
+- [x] Acquired and pinned the official Mesen 2.1.1 Windows oracle, added a
+  reproducible headless 600-frame work-RAM comparison, write trace, and CPU
+  frame-boundary stream:
+  - Traced the persistent pair to Mesen's `0xA0` versus Beetle's `0x88`
+    backup-RAM header policy and added strict pre-frame normalization.
+  - After normalization, 341 of 4,915,200 byte observations differ
+    (0.006938%) across 15 offsets, with 304 byte-exact frames.
+  - All remaining observations are explained startup storage: 328 inactive
+    stack bytes and 13 zero-page decompressor scratch bytes ending at frame
+    6; no active stack or other work-RAM bytes differ.
+  - Independent Mesen runs reproduce work RAM, normalized write events, and
+    CPU frame boundaries exactly.
+- [x] Added raw RGB888 framebuffer capture to both canonical branches and a
+  reproducible cross-core normalization/comparison:
+  - Mesen's 292x242 output normalizes from `(18,3)` into Beetle's 256x240
+    output with one black bottom row.
+  - Debug and Release Beetle framebuffer streams are byte-identical
+    (SHA-256
+    `699b6f3438868ec726cdcdde5114c9ed1d3df818c335ddfe189c08b324593bea`).
+  - Pinned Mesen frame skipping off, resolving the earlier variable
+    presentation phase.
+  - Both Mesen framebuffer captures are byte-identical, and all 600
+    normalized frames match Beetle pixel for pixel at zero temporal shift.
+- [x] Exercised the original game's complete visible backup-RAM workflow in
+  an isolated Release-host directory:
+  - Saved a new game into slot 1 after confirming all five slots were unused.
+  - Cleanly exited with an exact 2,048-byte atomic backup file.
+  - Restarted the host, observed slot 1 as `00000000 03` in Data Load, and
+    loaded it back into the expected zero-score, three-ball playfield.
+  - Documented the procedure and evidence in
+    `docs/BACKUP_RAM_VALIDATION.md`; the normal user save was untouched.
+- [x] Closed the independent canonical audio timing gate:
+  - Added optional atomic 44.1 kHz PCM16 WAV export to the Beetle recorder.
+  - Added a reproducible managed Mesen runner patch that exposes its existing
+    WAV recorder while verifying the official `MesenCore.dll` is unchanged.
+  - Two Mesen WAVs are byte-exact; Beetle and Mesen differ by only two stereo
+    samples over 600 frames, align within 9 samples (0.204082 ms), and have
+    0.981922894 correlation across 10 ms RMS envelopes.
+  - Work RAM, framebuffer, audio timing, and scene progression now have no
+    unexplained semantic difference in the Milestone 1 canonical window.
 
 ## Next Actions
 
@@ -101,20 +142,22 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
 - [x] Add versioned savestate serialization and recovery.
 - [x] Add controller hot-plug/remapping and robust audio latency handling.
 - [x] Add a canonical boot/input recording with RAM, framebuffer, and audio timing hashes.
-- [ ] Compare the canonical recording against Mesen2 and document any differences.
-- [ ] Exercise and document full backup-RAM reload behavior through the visible host.
+- [x] Compare the canonical recording against Mesen2 and document any differences.
+- [x] Exercise and document full backup-RAM reload behavior through the visible host.
+- [x] Establish the best available independent canonical audio oracle.
+- [ ] Add the fork-owned execution-hook boundary and pass-through mode.
 
 ## Active Work
 
-Milestone 1 hardening: Mesen2 comparison and visible in-game backup-RAM reload
-validation.
+Milestone 2: define and implement the fork-owned physical-ROM execution-hook
+boundary with a no-op pass-through mode that preserves the Milestone 1
+canonical recording.
 
 ## Blockers
 
-No code blocker. Mesen2 is not installed locally, so independent parity
-recording requires acquiring that external debugger. The automated backup-RAM
-reload passes, but the game's visible Data Load behavior still needs a manual
-in-game validation pass.
+No known Milestone 1 blocker remains. Milestone 2 execution-hook work must
+preserve the completed canonical RAM, video, and audio behavior before any
+gameplay routine is observed or replaced.
 
 ## Decisions Locked for V1
 
