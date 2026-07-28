@@ -35,53 +35,126 @@ function(dc_provide_beetle_pce)
         "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/../third_party/beetle-pce-fork"
     )
     set(
-        beetle_patch
+        beetle_patches
         "${beetle_fork_root}/patches/0001-huc6280-execution-hook.patch"
+        "${beetle_fork_root}/patches/0002-huc6280-call-observation.patch"
+        "${beetle_fork_root}/patches/0003-huc6280-native-replacement.patch"
+        "${beetle_fork_root}/patches/0004-vdc-video-snapshot.patch"
     )
 
     find_package(Git REQUIRED)
-    execute_process(
-        COMMAND
-            "${GIT_EXECUTABLE}" -C "${beetle_root}"
-            apply --check "${beetle_patch}"
-        RESULT_VARIABLE beetle_patch_check
-        OUTPUT_VARIABLE beetle_patch_check_output
-        ERROR_VARIABLE beetle_patch_check_error
-    )
-    if(beetle_patch_check EQUAL 0)
+    foreach(beetle_patch IN LISTS beetle_patches)
         execute_process(
             COMMAND
                 "${GIT_EXECUTABLE}" -C "${beetle_root}"
-                apply "${beetle_patch}"
-            RESULT_VARIABLE beetle_patch_result
-            OUTPUT_VARIABLE beetle_patch_output
-            ERROR_VARIABLE beetle_patch_error
+                apply --check "${beetle_patch}"
+            RESULT_VARIABLE beetle_patch_check
+            OUTPUT_VARIABLE beetle_patch_check_output
+            ERROR_VARIABLE beetle_patch_check_error
         )
-        if(NOT beetle_patch_result EQUAL 0)
-            message(
-                FATAL_ERROR
-                "Could not apply the Beetle PCE downstream patch.\n"
-                "${beetle_patch_output}${beetle_patch_error}"
+        if(beetle_patch_check EQUAL 0)
+            execute_process(
+                COMMAND
+                    "${GIT_EXECUTABLE}" -C "${beetle_root}"
+                    apply "${beetle_patch}"
+                RESULT_VARIABLE beetle_patch_result
+                OUTPUT_VARIABLE beetle_patch_output
+                ERROR_VARIABLE beetle_patch_error
             )
-        endif()
-    else()
-        execute_process(
-            COMMAND
-                "${GIT_EXECUTABLE}" -C "${beetle_root}"
-                apply --reverse --check "${beetle_patch}"
-            RESULT_VARIABLE beetle_patch_reverse_check
-            OUTPUT_QUIET
-            ERROR_QUIET
-        )
-        if(NOT beetle_patch_reverse_check EQUAL 0)
-            message(
-                FATAL_ERROR
-                "The Beetle PCE source is neither patchable nor already "
-                "patched.\n"
-                "${beetle_patch_check_output}${beetle_patch_check_error}"
+            if(NOT beetle_patch_result EQUAL 0)
+                message(
+                    FATAL_ERROR
+                    "Could not apply Beetle PCE downstream patch "
+                    "${beetle_patch}.\n"
+                    "${beetle_patch_output}${beetle_patch_error}"
+                )
+            endif()
+        else()
+            file(
+                READ
+                "${beetle_root}/mednafen/pce/huc6280.cpp"
+                beetle_cpu_source
             )
+            file(
+                READ
+                "${beetle_root}/mednafen/pce/huc6280.h"
+                beetle_cpu_header
+            )
+            file(
+                READ
+                "${beetle_root}/mednafen/pce/vce.h"
+                beetle_video_header
+            )
+            get_filename_component(
+                beetle_patch_name
+                "${beetle_patch}"
+                NAME
+            )
+            if(beetle_patch_name MATCHES "^0001-")
+                string(
+                    FIND
+                    "${beetle_cpu_source}"
+                    "dc_beetle_cpu_state hook_state"
+                    beetle_patch_marker_one
+                )
+                string(
+                    FIND
+                    "${beetle_cpu_source}"
+                    "dc_beetle_active_instruction_hook_user_data"
+                    beetle_patch_marker_two
+                )
+            elseif(beetle_patch_name MATCHES "^0002-")
+                string(
+                    FIND
+                    "${beetle_cpu_source}"
+                    "HookInstructionPC = (uint16)PC"
+                    beetle_patch_marker_one
+                )
+                string(
+                    FIND
+                    "${beetle_cpu_header}"
+                    "dc_beetle_active_memory_write_hook_user_data"
+                    beetle_patch_marker_two
+                )
+            elseif(beetle_patch_name MATCHES "^0003-")
+                string(
+                    FIND
+                    "${beetle_cpu_source}"
+                    "dc_beetle_replacement_result replacement"
+                    beetle_patch_marker_one
+                )
+                string(
+                    FIND
+                    "${beetle_cpu_source}"
+                    "dc_beetle_active_replacement_hook_user_data"
+                    beetle_patch_marker_two
+                )
+            else()
+                string(
+                    FIND
+                    "${beetle_video_header}"
+                    "DebugPeekVRAM"
+                    beetle_patch_marker_one
+                )
+                string(
+                    FIND
+                    "${beetle_video_header}"
+                    "DebugGetVDCRegister"
+                    beetle_patch_marker_two
+                )
+            endif()
+            if(beetle_patch_marker_one EQUAL -1
+               OR beetle_patch_marker_two EQUAL -1)
+                message(
+                    FATAL_ERROR
+                    "The Beetle PCE source is neither patchable nor already "
+                    "patched by ${beetle_patch}.\n"
+                    "${beetle_patch_check_output}"
+                    "${beetle_patch_check_error}"
+                )
+            endif()
         endif()
-    endif()
+    endforeach()
 
     set(
         beetle_cxx_sources

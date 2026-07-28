@@ -41,6 +41,7 @@ add_library(
     src/core/backup_ram.cpp
     src/core/rom_image.cpp
     src/core/save_state.cpp
+    src/render/pce_background.cpp
     src/render/sharp_pixel_scaler.cpp
 )
 
@@ -54,6 +55,22 @@ target_include_directories(
 
 target_compile_features(dc_core PUBLIC cxx_std_20)
 dc_enable_strict_warnings(dc_core)
+
+add_library(
+    dc_game_logic
+    STATIC
+    src/game_logic/physics.c
+)
+
+add_library(DevilsCrush::GameLogic ALIAS dc_game_logic)
+
+target_include_directories(
+    dc_game_logic
+    PUBLIC
+        "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
+)
+
+dc_enable_strict_warnings(dc_game_logic)
 
 if(WIN32)
     target_link_libraries(dc_core PRIVATE bcrypt)
@@ -109,6 +126,7 @@ if(DC_BUILD_APP)
         PRIVATE
             DevilsCrush::Core
             DevilsCrush::Emulation
+            DevilsCrush::GameLogic
             SDL3::SDL3
     )
 

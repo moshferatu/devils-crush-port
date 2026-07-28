@@ -63,14 +63,81 @@ public:
         return {};
     }
 
+    [[nodiscard]] bool import_work_ram(
+        const std::span<const std::byte>) override
+    {
+        return false;
+    }
+
+    [[nodiscard]] std::optional<VideoMemorySnapshot>
+    export_video_memory() const override
+    {
+        return std::nullopt;
+    }
+
     [[nodiscard]] bool install_execution_hook(ExecutionHook) override
     {
         return false;
     }
 
-    void clear_execution_hook() noexcept override {}
+    [[nodiscard]] bool remove_execution_hook(
+        const RoutineKey) noexcept override
+    {
+        return false;
+    }
 
-    [[nodiscard]] bool has_execution_hook() const noexcept override
+    void clear_execution_hooks() noexcept override {}
+
+    [[nodiscard]] std::size_t execution_hook_count()
+        const noexcept override
+    {
+        return 0U;
+    }
+
+    [[nodiscard]] bool install_routine_call_observer(
+        RoutineCallObserver) override
+    {
+        return false;
+    }
+
+    [[nodiscard]] bool remove_routine_call_observer(
+        const RoutineKey) noexcept override
+    {
+        return false;
+    }
+
+    void clear_routine_call_observers() noexcept override {}
+
+    [[nodiscard]] std::size_t routine_call_observer_count()
+        const noexcept override
+    {
+        return 0U;
+    }
+
+    [[nodiscard]] bool set_work_ram_write_observer(
+        WorkRamWriteCallback) override
+    {
+        return false;
+    }
+
+    void clear_work_ram_write_observer() noexcept override {}
+
+    [[nodiscard]] bool has_work_ram_write_observer()
+        const noexcept override
+    {
+        return false;
+    }
+
+    [[nodiscard]] bool set_bus_write_observer(
+        BusWriteCallback) override
+    {
+        return false;
+    }
+
+    void clear_bus_write_observer() noexcept override {}
+
+    [[nodiscard]] bool has_bus_write_observer()
+        const noexcept override
     {
         return false;
     }

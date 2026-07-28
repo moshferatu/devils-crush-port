@@ -26,6 +26,26 @@ this repository.
    - Reports the logical PC, its mapped physical 8 KiB bank, registers, MPRs,
      and the current master-cycle timestamp.
    - Does not modify registers, memory, timing, or opcode dispatch.
+2. `patches/0002-huc6280-call-observation.patch`
+   - Adds the current opcode to instruction-entry state.
+   - Adds a post-write callback reporting logical/physical addresses, value,
+     originating instruction, frame-local master cycle, and the core's
+     serialized absolute master-cycle timestamp.
+   - Enables bounded read-only routine-call observation without changing
+     registers, memory values, timing, or opcode dispatch.
+3. `patches/0003-huc6280-native-replacement.patch`
+   - Adds an optional transactional routine-replacement callback after
+     instruction observation and before opcode dispatch.
+   - Validates ordered entry-relative write times, commits writes through the
+     HuC6280 memory path, advances hardware master time, applies final
+     registers/MPRs, and resumes at the declared outer RTS.
+   - Leaves normal opcode execution unchanged when no replacement is
+     returned. The host currently enables replacement only for mapped
+     no-interrupt scopes.
+4. `patches/0004-vdc-video-snapshot.patch`
+   - Adds read-only VDC VRAM, VCE palette, and background-register accessors.
+   - The project-owned C boundary copies their values between frames and never
+     exposes emulator-owned pointers.
 
 All local files and patches are GPL-3.0-or-later. Upstream per-file notices
 and licenses remain authoritative for upstream sources.

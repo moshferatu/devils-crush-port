@@ -10,7 +10,9 @@
   GPL-3.0-or-later after auditing the MSVC compatibility sources compiled
   from Beetle.
 - Use [Mesen2](https://github.com/SourMesen/Mesen2) as an independent debugger and behavioral oracle.
-- Initially run the game completely through emulation, then replace gameplay routines incrementally with native C++ while retaining emulated hardware, original graphics/audio drivers, menus, and compatibility glue.
+- Initially run the game completely through emulation, then replace gameplay
+  routines incrementally with native C/C++ while retaining emulated hardware,
+  original graphics/audio drivers, menus, and compatibility glue.
 - V1 supports only the existing USA ROM: MD5 `92fbe89d4c87bf283dbfbeac69a64e6e`. The user supplies this ROM and it remains required at launch.
 - Preserve original gameplay by default. Native gameplay modules provide extension points for later physics, rules, scoring, and cabinet enhancements.
 - Render every window at its monitor's current pixel resolution using one fixed sharp pixel-art scaling pipeline. No alternative filtering modes are included in v1.
@@ -41,6 +43,9 @@ The fork adds:
 - Bank-qualified HuC6280 execution hooks.
 - Read/write access to work RAM, VRAM, palettes, CPU registers, MPR state, and PSG commands.
 - Frame, interrupt, controller-poll, and routine-entry callbacks.
+- Bounded routine-call observers that capture callers, outer returns,
+  input/output CPU state, absolute cycle budgets, and ordered work-RAM writes
+  from the routine, nested callees, and interrupts.
 - Deterministic savestates for native-vs-original differential tests.
 - A manifest recording the upstream commit and local patches.
 
@@ -201,19 +206,89 @@ Provide an interactive monitor-assignment screen and persist display identity, g
 
 - Add execution hooks, memory inspection, cycle accounting, trace export, and pass-through/observe/replace modes.
 - Map ball, velocity, camera, score, RNG, actors, scenes, and audio queues.
+- Continue the active bonus-stage mapping through BS-3's first
+  event-specific rule family and its completion and timeout outcomes, then
+  preserve that work as a deterministic checkpoint. **Completed
+  2026-07-27.**
+- After that checkpoint, pause expansion into the remaining bonus-stage
+  mappings and implement the transactional native-invocation boundary,
+  explicit interrupt policy, and native-vs-original shadow path.
+  **Completed for bounded no-interrupt routines 2026-07-27; interrupt-bearing
+  replacement remains a later bridge extension.**
+- Prove the bridge with one already mapped, bounded routine: run the native
+  and original implementations from the same pre-call state, compare their
+  complete observable results, and then execute the native implementation in
+  replacement mode while unported assembly continues normally. **Completed
+  with `00:F241@1` 2026-07-27.**
+- Resume the remaining normal-table and bonus-stage mappings after the first
+  end-to-end replacement proof. **BS-4's first event family and its
+  completion/timeout outcomes and BS-5's primary objective field and result
+  paths were completed 2026-07-27. BS-6's objective pair and result paths
+  are also complete, so every bonus stage now has a first bounded family.
+  BS-4's two linked-target RNG consumers are now dynamically bounded, leaving
+  four bonus-bank RNG consumers. BS-6's paired hazard RNG consumers are also
+  dynamically bounded, leaving two bonus-bank consumers. Remaining bonus
+  outcome variants and the final two maximum-score-ending RNG consumers were
+  the active mapping checkpoint. The ending pair is now dynamically bounded,
+  so all nine bonus/ending-bank RNG consumers have deterministic coverage.
+  The ordinary scored-but-incomplete result is now dynamically bounded for
+  all six stages. Normal-table consumer `02:597D` is now dynamically bounded
+  through the upper Wall-Pocket hand's live timer setup, leaving nine
+  normal-table RNG consumers. The upper Wall-Pocket hand's post-close
+  response now dynamically bounds `02:59F5`, and the naturally activated
+  Gray-Blob row bounds `03:68B1`, and the Three-Blobs equal-color reset
+  bounds `03:6620`. The Little-Skull gray-release route now bounds
+  `02:45C9`, and the Sorcerer zero-live controller bounds `02:57C2`, leaving
+  four normal-table RNG consumers. The Undead-Head post-trigger selector now
+  bounds `03:625D`, leaving three. A single combined route now bounds the
+  final Devil-Shooter, Undead-Head launch, and Giant-Face mouth-release
+  consumers at `02:5148`, `03:6177`, and `03:7834`, so all 12 normal-table
+  RNG consumers have deterministic dynamic coverage. BS-2 now has a
+  full-contact perfect route through its collision scan, post-collision
+  continuation, and all 28 board cells, while BS-1 and BS-3 through BS-6
+  have natural perfect routes.
+  These routes drive the original objective resolution, controllers,
+  completion animation, gameplay-owned `$2DBA` latch, result presentation,
+  and both earned and special score transfers without seeding objective or
+  result state. The deterministic state-census route now connects Button-I
+  Devil-Shooter charge/release, both flipper inputs, and all three Button-II
+  nudges to the mapped slot-0 motion and integration state; `$2CC7` remains
+  clear throughout, closing the controls-and-physics gate. Two natural
+  Small-Soldier contacts now connect the confirmed-contact dispatcher and
+  ball response to collision-table processing, actor state, score, audio,
+  group state, and complete actor release, closing the collision-boundary
+  gate. The ordinary drain route now connects the live-ball threshold,
+  session decrement, remaining-ball decision, selective table reload, stored
+  score, and native score-panel digits. It proves the visible score is the
+  binary stored score times 100 and closes the session-and-scoring gate. The
+  finite dynamic/static/deferred coverage manifest classifies all 105
+  behavior units, including every software behavior in the USA manual, and
+  closes Milestone 2.**
 - Script all behaviors documented in the [USA manual](https://www.tg-16.com/contributors/bernie/Devil%27s_Crush/Devil%27s_Crush.pdf).
-- Exit when every required state is reproducible and routines can be shadow-tested.
+  **Milestone 2 inventory and classification completed 2026-07-28; deferred
+  variants remain assigned to Milestones 4 and 6.**
+- Exit when every required state is reproducible, routines can be
+  shadow-tested, and at least one faithful routine has run successfully in
+  replacement mode. **Completed 2026-07-28.**
 
 ### 3. Cabinet preview
 
 - Decode and stitch the three table backgrounds.
+  - The copied frame-boundary VDC/VCE snapshot boundary, HuC6270 BAT/planar
+    tile/VCE-color decoder, world-coordinate compositor, crop helper, and
+    first live table goldens were completed 2026-07-28.
+  - `00:F400` is now identified and guarded as the 32-cell streamed-row
+    writer. Next decode its four caller paths into world-band direction,
+    collect the three regions, and compare native camera crops against the
+    emulator.
 - Add playfield, score DMD, backglass, display assignment, and bonus-stage switching.
 - Initially use emulated logic and render active actors from observed RAM.
 - Exit when the entire table is visible and equivalent camera crops match the emulator.
 
 ### 4. Native gameplay port
 
-- Port a simple scoring/table routine first to prove replacement.
+- Begin from the replacement-mode routine proven during Milestone 2 and use
+  it as the reference vertical slice for later ports.
 - Port RNG, physics, collision, table actors/rules, bonus stages, and session transitions.
 - For each routine: observe, document, shadow-test, then replace.
 - Maintain a manifest showing which active-game ROM ranges remain emulated.
@@ -243,7 +318,7 @@ Provide an interactive monitor-assignment screen and persist display identity, g
   - Cycle budget.
   - Audio and scene events.
 - Require zero unexplained semantic differences between all-emulated and native-replacement faithful modes.
-- Cover both speeds, both player counts, all table regions and mechanisms, all six bonus stages and outcomes, tilt, password/data load, five saves, drains, extra balls, last chance, known stuck-ball behavior, and the `999,999,990` ending.
+- Cover both speeds, both player counts, all table regions and mechanisms, all six bonus stages and outcomes, tilt, password/data load, five saves, drains, extra balls, last chance, known stuck-ball behavior, and the `999,999,900` ending.
 - Confirm identical simulation at 60, 120, and 144 Hz output refresh rates.
 - Validate sharp scaling at common desktop and cabinet resolutions:
   - Backbuffer equals actual monitor pixels.

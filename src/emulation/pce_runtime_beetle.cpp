@@ -5,6 +5,7 @@
 #include <dc_beetle_execution_hook.h>
 #include <libretro.h>
 
+#include <algorithm>
 #include <atomic>
 #include <cassert>
 #include <cstddef>
@@ -32,6 +33,9 @@ constexpr std::size_t kMaximumFramebufferPixels = 2048U * 264U;
 constexpr std::size_t kMaximumAudioSamples = 0x10000U * 2U;
 constexpr std::size_t kDevilsCrushBackupRamSize = 2048U;
 constexpr std::size_t kPceWorkRamSize = 8192U;
+constexpr std::size_t kPceVramWordCount = DC_BEETLE_VRAM_WORD_COUNT;
+constexpr std::size_t kPcePaletteEntryCount =
+    DC_BEETLE_PALETTE_ENTRY_COUNT;
 
 struct CoreOption {
     std::string_view key;
@@ -118,7 +122,26 @@ std::atomic<BeetlePceRuntime*> active_runtime = nullptr;
     return (buttons & static_cast<std::uint16_t>(button)) != 0U;
 }
 
+[[nodiscard]] constexpr bool routine_key_less(
+    const RoutineKey left,
+    const RoutineKey right) noexcept
+{
+    return left.physical_bank != right.physical_bank
+        ? left.physical_bank < right.physical_bank
+        : left.logical_pc < right.logical_pc;
+}
+
 class BeetlePceRuntime final : public PceRuntime {
+    struct ActiveRoutineCall {
+        RoutineCall call;
+        std::uint8_t entry_stack_pointer = 0;
+    };
+
+    struct RoutineCallRegistration {
+        RoutineCallObserver observer;
+        std::vector<ActiveRoutineCall> active_calls;
+    };
+
 public:
     BeetlePceRuntime()
     {
@@ -257,6 +280,7 @@ public:
         if (loaded_) {
             retro_reset();
             frame_number_ = 0;
+            clear_active_routine_calls();
         }
     }
 
@@ -276,6 +300,9 @@ public:
         ++frame_number_;
 
         if (callback_failed_) {
+            clear_execution_hooks();
+            clear_routine_call_observers();
+            clear_work_ram_write_observer();
             return {
                 .frame_number = frame_number_,
             };
@@ -352,35 +379,231 @@ public:
         return copy;
     }
 
+    [[nodiscard]] bool import_work_ram(
+        const std::span<const std::byte> bytes) override
+    {
+        assert_owner_thread();
+        auto* const data = work_ram_data();
+        if (data == nullptr || bytes.size() != kPceWorkRamSize) {
+            return false;
+        }
+
+        std::memcpy(data, bytes.data(), bytes.size());
+        return true;
+    }
+
+    [[nodiscard]] std::optional<VideoMemorySnapshot>
+    export_video_memory() const override
+    {
+        assert_owner_thread();
+        if (!loaded_) {
+            return std::nullopt;
+        }
+
+        VideoMemorySnapshot result{
+            .vram_words =
+                std::vector<std::uint16_t>(kPceVramWordCount),
+            .palette_entries =
+                std::vector<std::uint16_t>(kPcePaletteEntryCount),
+        };
+        dc_beetle_video_snapshot snapshot{
+            .vram_words = result.vram_words.data(),
+            .vram_word_capacity = result.vram_words.size(),
+            .palette_entries = result.palette_entries.data(),
+            .palette_entry_capacity = result.palette_entries.size(),
+        };
+        if (dc_beetle_copy_video_snapshot(&snapshot) == 0) {
+            return std::nullopt;
+        }
+        result.memory_width_register =
+            snapshot.memory_width_register;
+        result.background_x_scroll = snapshot.background_x_scroll;
+        result.background_y_scroll = snapshot.background_y_scroll;
+        return result;
+    }
+
     [[nodiscard]] bool install_execution_hook(
         ExecutionHook hook) override
     {
         assert_owner_thread();
-        if (!loaded_ || hook.mode == HookMode::replace
-            || (hook.mode == HookMode::observe && !hook.callback)) {
+        if (!loaded_
+            || (hook.mode == HookMode::observe && !hook.callback)
+            || (hook.mode == HookMode::replace
+                && !hook.replacement_callback)
+            || (hook.mode != HookMode::replace
+                && hook.replacement_callback)) {
             return false;
         }
 
-        execution_hook_ = std::move(hook);
-        execution_hook_installed_ = true;
-        dc_beetle_set_instruction_hook(
-            &instruction_hook_callback,
-            this);
+        const auto position = std::lower_bound(
+            execution_hooks_.begin(),
+            execution_hooks_.end(),
+            hook.routine,
+            [](const ExecutionHook& existing, const RoutineKey routine) {
+                if (existing.routine.physical_bank
+                    != routine.physical_bank) {
+                    return existing.routine.physical_bank
+                        < routine.physical_bank;
+                }
+                return existing.routine.logical_pc < routine.logical_pc;
+            });
+        if (position != execution_hooks_.end()
+            && position->routine == hook.routine) {
+            return false;
+        }
+
+        try {
+            execution_hooks_.insert(position, std::move(hook));
+        } catch (...) {
+            return false;
+        }
+        refresh_core_observation_hooks();
         return true;
     }
 
-    void clear_execution_hook() noexcept override
+    [[nodiscard]] bool remove_execution_hook(
+        const RoutineKey routine) noexcept override
     {
         assert_owner_thread();
-        dc_beetle_clear_instruction_hook();
-        execution_hook_ = {};
-        execution_hook_installed_ = false;
+        const auto position = find_execution_hook(routine);
+        if (position == execution_hooks_.end()) {
+            return false;
+        }
+
+        execution_hooks_.erase(position);
+        refresh_core_observation_hooks();
+        return true;
     }
 
-    [[nodiscard]] bool has_execution_hook() const noexcept override
+    void clear_execution_hooks() noexcept override
     {
         assert_owner_thread();
-        return execution_hook_installed_;
+        execution_hooks_.clear();
+        refresh_core_observation_hooks();
+    }
+
+    [[nodiscard]] std::size_t execution_hook_count()
+        const noexcept override
+    {
+        assert_owner_thread();
+        return execution_hooks_.size();
+    }
+
+    [[nodiscard]] bool install_routine_call_observer(
+        RoutineCallObserver observer) override
+    {
+        assert_owner_thread();
+        if (!loaded_ || !observer.callback) {
+            return false;
+        }
+
+        const auto position = std::lower_bound(
+            routine_call_observers_.begin(),
+            routine_call_observers_.end(),
+            observer.routine,
+            [](const RoutineCallRegistration& existing,
+               const RoutineKey routine) {
+                return routine_key_less(
+                    existing.observer.routine,
+                    routine);
+            });
+        if (position != routine_call_observers_.end()
+            && position->observer.routine == observer.routine) {
+            return false;
+        }
+
+        try {
+            routine_call_observers_.insert(
+                position,
+                RoutineCallRegistration{
+                    .observer = std::move(observer),
+                });
+        } catch (...) {
+            return false;
+        }
+        refresh_core_observation_hooks();
+        return true;
+    }
+
+    [[nodiscard]] bool remove_routine_call_observer(
+        const RoutineKey routine) noexcept override
+    {
+        assert_owner_thread();
+        const auto position = find_routine_call_observer(routine);
+        if (position == routine_call_observers_.end()) {
+            return false;
+        }
+
+        routine_call_observers_.erase(position);
+        refresh_core_observation_hooks();
+        return true;
+    }
+
+    void clear_routine_call_observers() noexcept override
+    {
+        assert_owner_thread();
+        routine_call_observers_.clear();
+        refresh_core_observation_hooks();
+    }
+
+    [[nodiscard]] std::size_t routine_call_observer_count()
+        const noexcept override
+    {
+        assert_owner_thread();
+        return routine_call_observers_.size();
+    }
+
+    [[nodiscard]] bool set_work_ram_write_observer(
+        WorkRamWriteCallback callback) override
+    {
+        assert_owner_thread();
+        if (!loaded_ || !callback || work_ram_write_observer_) {
+            return false;
+        }
+
+        work_ram_write_observer_ = std::move(callback);
+        refresh_core_observation_hooks();
+        return true;
+    }
+
+    void clear_work_ram_write_observer() noexcept override
+    {
+        assert_owner_thread();
+        work_ram_write_observer_ = {};
+        refresh_core_observation_hooks();
+    }
+
+    [[nodiscard]] bool has_work_ram_write_observer()
+        const noexcept override
+    {
+        assert_owner_thread();
+        return static_cast<bool>(work_ram_write_observer_);
+    }
+
+    [[nodiscard]] bool set_bus_write_observer(
+        BusWriteCallback callback) override
+    {
+        assert_owner_thread();
+        if (!loaded_ || !callback || bus_write_observer_) {
+            return false;
+        }
+        bus_write_observer_ = std::move(callback);
+        refresh_core_observation_hooks();
+        return true;
+    }
+
+    void clear_bus_write_observer() noexcept override
+    {
+        assert_owner_thread();
+        bus_write_observer_ = {};
+        refresh_core_observation_hooks();
+    }
+
+    [[nodiscard]] bool has_bus_write_observer()
+        const noexcept override
+    {
+        assert_owner_thread();
+        return static_cast<bool>(bus_write_observer_);
     }
 
     [[nodiscard]] SaveState serialize() const override
@@ -423,6 +646,7 @@ public:
         framebuffer_height_ = 0;
         current_input_ = {};
         callback_failed_ = false;
+        clear_active_routine_calls();
         return true;
     }
 
@@ -444,7 +668,9 @@ private:
 
     void shutdown_core() noexcept
     {
-        clear_execution_hook();
+        clear_execution_hooks();
+        clear_routine_call_observers();
+        clear_work_ram_write_observer();
         if (loaded_) {
             retro_unload_game();
             loaded_ = false;
@@ -468,6 +694,128 @@ private:
         return active_runtime.load(std::memory_order_acquire);
     }
 
+    [[nodiscard]] std::vector<ExecutionHook>::iterator find_execution_hook(
+        const RoutineKey routine) noexcept
+    {
+        const auto position = std::lower_bound(
+            execution_hooks_.begin(),
+            execution_hooks_.end(),
+            routine,
+            [](const ExecutionHook& existing, const RoutineKey key) {
+                if (existing.routine.physical_bank != key.physical_bank) {
+                    return existing.routine.physical_bank
+                        < key.physical_bank;
+                }
+                return existing.routine.logical_pc < key.logical_pc;
+            });
+        if (position == execution_hooks_.end()
+            || !(position->routine == routine)) {
+            return execution_hooks_.end();
+        }
+        return position;
+    }
+
+    [[nodiscard]] std::vector<RoutineCallRegistration>::iterator
+    find_routine_call_observer(const RoutineKey routine) noexcept
+    {
+        const auto position = std::lower_bound(
+            routine_call_observers_.begin(),
+            routine_call_observers_.end(),
+            routine,
+            [](const RoutineCallRegistration& existing,
+               const RoutineKey key) {
+                return routine_key_less(
+                    existing.observer.routine,
+                    key);
+            });
+        if (position == routine_call_observers_.end()
+            || !(position->observer.routine == routine)) {
+            return routine_call_observers_.end();
+        }
+        return position;
+    }
+
+    void clear_active_routine_calls() noexcept
+    {
+        for (auto& registration : routine_call_observers_) {
+            registration.active_calls.clear();
+        }
+    }
+
+    void refresh_core_observation_hooks() noexcept
+    {
+        if (execution_hooks_.empty()
+            && routine_call_observers_.empty()) {
+            dc_beetle_clear_instruction_hook();
+        } else {
+            dc_beetle_set_instruction_hook(
+                &instruction_hook_callback,
+                this);
+        }
+
+        const bool has_replacement = std::any_of(
+            execution_hooks_.begin(),
+            execution_hooks_.end(),
+            [](const ExecutionHook& hook) {
+                return hook.mode == HookMode::replace;
+            });
+        if (has_replacement) {
+            dc_beetle_set_replacement_hook(
+                &replacement_hook_callback,
+                this);
+        } else {
+            dc_beetle_clear_replacement_hook();
+        }
+
+        if (routine_call_observers_.empty()
+            && !work_ram_write_observer_
+            && !bus_write_observer_) {
+            dc_beetle_clear_memory_write_hook();
+        } else {
+            dc_beetle_set_memory_write_hook(
+                &memory_write_hook_callback,
+                this);
+        }
+    }
+
+    [[nodiscard]] static CpuRegisters cpu_registers(
+        const dc_beetle_cpu_state& state) noexcept
+    {
+        return {
+            .program_counter = state.logical_pc,
+            .accumulator = state.accumulator,
+            .x = state.x,
+            .y = state.y,
+            .stack_pointer = state.stack_pointer,
+            .status = state.status,
+            .mpr = {
+                state.mpr[0],
+                state.mpr[1],
+                state.mpr[2],
+                state.mpr[3],
+                state.mpr[4],
+                state.mpr[5],
+                state.mpr[6],
+                state.mpr[7],
+            },
+        };
+    }
+
+    [[nodiscard]] RoutineEntry routine_entry(
+        const dc_beetle_cpu_state& state) const noexcept
+    {
+        return {
+            .routine = {
+                .physical_bank = state.physical_bank,
+                .logical_pc = state.logical_pc,
+            },
+            .registers = cpu_registers(state),
+            .frame_number = frame_number_ + 1U,
+            .master_cycle = state.master_cycle,
+            .absolute_master_cycle = state.absolute_master_cycle,
+        };
+    }
+
     static void instruction_hook_callback(
         const dc_beetle_cpu_state* const state,
         void* const user_data) noexcept
@@ -475,7 +823,8 @@ private:
         auto* const runtime =
             static_cast<BeetlePceRuntime*>(user_data);
         if (runtime == nullptr || state == nullptr
-            || !runtime->execution_hook_installed_) {
+            || (runtime->execution_hooks_.empty()
+                && runtime->routine_call_observers_.empty())) {
             return;
         }
 
@@ -483,43 +832,276 @@ private:
             .physical_bank = state->physical_bank,
             .logical_pc = state->logical_pc,
         };
-        if (!(routine == runtime->execution_hook_.routine)) {
+
+        try {
+            std::vector<std::pair<RoutineCallCallback, RoutineCall>>
+                completed_calls;
+
+            if (state->opcode == 0x60U) {
+                const auto* const work_ram = runtime->work_ram_data();
+                for (auto& registration
+                     : runtime->routine_call_observers_) {
+                    auto& active_calls = registration.active_calls;
+                    for (auto active = active_calls.begin();
+                         active != active_calls.end();) {
+                        if (active->entry_stack_pointer
+                            != state->stack_pointer) {
+                            ++active;
+                            continue;
+                        }
+
+                        auto& call = active->call;
+                        call.return_instruction = routine;
+                        call.output_registers = cpu_registers(*state);
+                        call.return_master_cycle = state->master_cycle;
+                        call.return_absolute_master_cycle =
+                            state->absolute_master_cycle;
+                        call.body_master_cycles =
+                            state->absolute_master_cycle
+                            - call.entry.absolute_master_cycle;
+
+                        if (work_ram != nullptr
+                            && state->mpr[1] == 0xF8U) {
+                            const auto low_offset =
+                                static_cast<std::uint16_t>(
+                                    0x100U
+                                    | static_cast<std::uint8_t>(
+                                        state->stack_pointer + 1U));
+                            const auto high_offset =
+                                static_cast<std::uint16_t>(
+                                    0x100U
+                                    | static_cast<std::uint8_t>(
+                                        state->stack_pointer + 2U));
+                            const auto stacked_return =
+                                static_cast<std::uint16_t>(
+                                    std::to_integer<std::uint8_t>(
+                                        work_ram[low_offset])
+                                    | (static_cast<std::uint16_t>(
+                                           std::to_integer<std::uint8_t>(
+                                               work_ram[high_offset]))
+                                       << 8U));
+                            call.return_pc =
+                                static_cast<std::uint16_t>(
+                                    stacked_return + 1U);
+                            call.caller_pc =
+                                static_cast<std::uint16_t>(
+                                    call.return_pc - 3U);
+                        }
+
+                        completed_calls.emplace_back(
+                            registration.observer.callback,
+                            std::move(call));
+                        active = active_calls.erase(active);
+                    }
+                }
+            }
+
+            const auto observer =
+                runtime->find_routine_call_observer(routine);
+            if (observer
+                != runtime->routine_call_observers_.end()) {
+                observer->active_calls.push_back({
+                    .call = {
+                        .entry = runtime->routine_entry(*state),
+                    },
+                    .entry_stack_pointer = state->stack_pointer,
+                });
+            }
+
+            const auto hook = runtime->find_execution_hook(routine);
+            ExecutionHookCallback execution_callback;
+            RoutineEntry entry;
+            if (hook != runtime->execution_hooks_.end()) {
+                execution_callback = hook->callback;
+                entry = runtime->routine_entry(*state);
+            }
+            if (execution_callback) {
+                execution_callback(entry);
+            }
+
+            for (const auto& [callback, call] : completed_calls) {
+                if (callback) {
+                    callback(call);
+                }
+            }
+        } catch (...) {
+            runtime->callback_failed_ = true;
+            dc_beetle_clear_instruction_hook();
+            dc_beetle_clear_memory_write_hook();
+        }
+    }
+
+    static void replacement_hook_callback(
+        const dc_beetle_cpu_state* const state,
+        dc_beetle_replacement_result* const core_result,
+        void* const user_data) noexcept
+    {
+        auto* const runtime =
+            static_cast<BeetlePceRuntime*>(user_data);
+        if (runtime == nullptr || state == nullptr
+            || core_result == nullptr) {
             return;
         }
 
-        const auto& callback = runtime->execution_hook_.callback;
-        if (!callback) {
+        const RoutineKey routine{
+            .physical_bank = state->physical_bank,
+            .logical_pc = state->logical_pc,
+        };
+        const auto hook = runtime->find_execution_hook(routine);
+        if (hook == runtime->execution_hooks_.end()
+            || hook->mode != HookMode::replace
+            || !hook->replacement_callback) {
             return;
         }
 
         try {
-            callback({
-                .routine = routine,
-                .registers = {
-                    .program_counter = state->logical_pc,
-                    .accumulator = state->accumulator,
-                    .x = state->x,
-                    .y = state->y,
-                    .stack_pointer = state->stack_pointer,
-                    .status = state->status,
-                    .mpr = {
-                        state->mpr[0],
-                        state->mpr[1],
-                        state->mpr[2],
-                        state->mpr[3],
-                        state->mpr[4],
-                        state->mpr[5],
-                        state->mpr[6],
-                        state->mpr[7],
-                    },
-                },
-                .frame_number = runtime->frame_number_ + 1U,
-                .master_cycle = state->master_cycle,
-            });
+            const auto* const work_ram = runtime->work_ram_data();
+            if (work_ram == nullptr) {
+                throw std::runtime_error(
+                    "Replacement hook could not snapshot work RAM.");
+            }
+            std::vector<std::byte> snapshot(kPceWorkRamSize);
+            std::memcpy(
+                snapshot.data(),
+                work_ram,
+                snapshot.size());
+
+            const auto replacement = hook->replacement_callback(
+                runtime->routine_entry(*state),
+                snapshot);
+            if (!replacement) {
+                return;
+            }
+
+            const auto& result = *replacement;
+            const auto write_count = result.work_ram_writes.size();
+            const auto resume_segment =
+                result.return_instruction.logical_pc >> 13U;
+            if (write_count > DC_BEETLE_MAX_REPLACEMENT_WRITES
+                || result.output_registers.program_counter
+                    != result.return_instruction.logical_pc
+                || result.output_registers.mpr[resume_segment]
+                    != result.return_instruction.physical_bank) {
+                throw std::runtime_error(
+                    "Replacement hook returned an invalid transaction.");
+            }
+
+            std::uint32_t previous_cycle = 0;
+            for (const auto& write : result.work_ram_writes) {
+                const auto segment = write.logical_address >> 13U;
+                if (write.master_cycle_offset < previous_cycle
+                    || write.master_cycle_offset
+                        > result.body_master_cycles
+                    || state->mpr[segment] != 0xF8U) {
+                    throw std::runtime_error(
+                        "Replacement hook returned an invalid write.");
+                }
+                previous_cycle = write.master_cycle_offset;
+            }
+
+            core_result->resume_logical_pc =
+                result.return_instruction.logical_pc;
+            core_result->accumulator =
+                result.output_registers.accumulator;
+            core_result->x = result.output_registers.x;
+            core_result->y = result.output_registers.y;
+            core_result->stack_pointer =
+                result.output_registers.stack_pointer;
+            core_result->status = result.output_registers.status;
+            std::copy(
+                result.output_registers.mpr.begin(),
+                result.output_registers.mpr.end(),
+                core_result->mpr);
+            core_result->body_master_cycles =
+                result.body_master_cycles;
+            core_result->write_count =
+                static_cast<std::uint32_t>(write_count);
+            for (std::size_t index = 0; index < write_count; ++index) {
+                const auto& write = result.work_ram_writes[index];
+                runtime->replacement_writes_[index] = {
+                    .logical_address = write.logical_address,
+                    .value = write.value,
+                    .instruction_logical_pc =
+                        write.instruction.logical_pc,
+                    .instruction_physical_bank =
+                        write.instruction.physical_bank,
+                    .master_cycle_offset =
+                        write.master_cycle_offset,
+                };
+            }
+            core_result->writes =
+                runtime->replacement_writes_.data();
+            core_result->handled = 1U;
         } catch (...) {
             runtime->callback_failed_ = true;
             dc_beetle_clear_instruction_hook();
-            runtime->execution_hook_installed_ = false;
+            dc_beetle_clear_memory_write_hook();
+            dc_beetle_clear_replacement_hook();
+        }
+    }
+
+    static void memory_write_hook_callback(
+        const dc_beetle_memory_write* const write,
+        void* const user_data) noexcept
+    {
+        auto* const runtime =
+            static_cast<BeetlePceRuntime*>(user_data);
+        if (runtime == nullptr || write == nullptr
+            || (runtime->routine_call_observers_.empty()
+                && !runtime->work_ram_write_observer_
+                && !runtime->bus_write_observer_)) {
+            return;
+        }
+
+        try {
+            if (runtime->bus_write_observer_) {
+                runtime->bus_write_observer_({
+                    .instruction = {
+                        .physical_bank =
+                            write->instruction_physical_bank,
+                        .logical_pc =
+                            write->instruction_logical_pc,
+                    },
+                    .logical_address = write->logical_address,
+                    .physical_bank = write->physical_bank,
+                    .value = write->value,
+                    .frame_number = runtime->frame_number_ + 1U,
+                    .master_cycle = write->master_cycle,
+                    .absolute_master_cycle =
+                        write->absolute_master_cycle,
+                });
+            }
+            if (write->physical_bank != 0xF8U) {
+                return;
+            }
+            const ObservedMemoryWrite observed{
+                .instruction = {
+                    .physical_bank =
+                        write->instruction_physical_bank,
+                    .logical_pc = write->instruction_logical_pc,
+                },
+                .logical_address = write->logical_address,
+                .work_ram_offset = static_cast<std::uint16_t>(
+                    write->logical_address & 0x1FFFU),
+                .value = write->value,
+                .frame_number = runtime->frame_number_ + 1U,
+                .master_cycle = write->master_cycle,
+                .absolute_master_cycle =
+                    write->absolute_master_cycle,
+            };
+            for (auto& registration
+                 : runtime->routine_call_observers_) {
+                for (auto& active : registration.active_calls) {
+                    active.call.work_ram_writes.push_back(observed);
+                }
+            }
+            if (runtime->work_ram_write_observer_) {
+                runtime->work_ram_write_observer_(observed);
+            }
+        } catch (...) {
+            runtime->callback_failed_ = true;
+            dc_beetle_clear_instruction_hook();
+            dc_beetle_clear_memory_write_hook();
         }
     }
 
@@ -534,7 +1116,7 @@ private:
             retro_get_memory_data(RETRO_MEMORY_SAVE_RAM));
     }
 
-    [[nodiscard]] const std::byte* work_ram_data() const noexcept
+    [[nodiscard]] std::byte* work_ram_data() const noexcept
     {
         if (!loaded_
             || retro_get_memory_data(RETRO_MEMORY_SYSTEM_RAM) == nullptr
@@ -542,7 +1124,7 @@ private:
                 < kPceWorkRamSize) {
             return nullptr;
         }
-        return static_cast<const std::byte*>(
+        return static_cast<std::byte*>(
             retro_get_memory_data(RETRO_MEMORY_SYSTEM_RAM));
     }
 
@@ -816,8 +1398,14 @@ private:
     retro_system_av_info av_info_{};
     std::vector<std::uint32_t> framebuffer_pixels_;
     std::vector<float> audio_samples_;
-    ExecutionHook execution_hook_;
-    bool execution_hook_installed_ = false;
+    std::vector<ExecutionHook> execution_hooks_;
+    std::vector<RoutineCallRegistration> routine_call_observers_;
+    WorkRamWriteCallback work_ram_write_observer_;
+    BusWriteCallback bus_write_observer_;
+    std::array<
+        dc_beetle_replacement_write,
+        DC_BEETLE_MAX_REPLACEMENT_WRITES>
+        replacement_writes_{};
     int framebuffer_width_ = 0;
     int framebuffer_height_ = 0;
     std::uint64_t frame_number_ = 0;

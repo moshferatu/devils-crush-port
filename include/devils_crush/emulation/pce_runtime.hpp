@@ -8,6 +8,7 @@
 #include <filesystem>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <span>
 #include <string>
 #include <vector>
@@ -67,6 +68,25 @@ struct SaveState {
     std::uint64_t frame_number = 0;
 };
 
+struct VideoMemorySnapshot {
+    std::vector<std::uint16_t> vram_words;
+    std::vector<std::uint16_t> palette_entries;
+    std::uint16_t memory_width_register = 0;
+    std::uint16_t background_x_scroll = 0;
+    std::uint16_t background_y_scroll = 0;
+
+    [[nodiscard]] int bat_width_tiles() const noexcept
+    {
+        constexpr std::array widths{32, 64, 128, 128};
+        return widths[(memory_width_register >> 4U) & 0x03U];
+    }
+
+    [[nodiscard]] int bat_height_tiles() const noexcept
+    {
+        return (memory_width_register & 0x40U) != 0U ? 64 : 32;
+    }
+};
+
 struct RoutineKey {
     std::uint8_t physical_bank = 0;
     std::uint16_t logical_pc = 0;
@@ -88,6 +108,8 @@ struct CpuRegisters {
     std::uint8_t stack_pointer = 0;
     std::uint8_t status = 0;
     std::array<std::uint8_t, 8> mpr{};
+
+    [[nodiscard]] bool operator==(const CpuRegisters&) const = default;
 };
 
 struct RoutineEntry {
@@ -95,14 +117,93 @@ struct RoutineEntry {
     CpuRegisters registers;
     std::uint64_t frame_number = 0;
     std::uint32_t master_cycle = 0;
+    std::uint64_t absolute_master_cycle = 0;
+
+    [[nodiscard]] bool operator==(const RoutineEntry&) const = default;
 };
 
 using ExecutionHookCallback = std::function<void(const RoutineEntry&)>;
+
+struct ReplacementMemoryWrite {
+    RoutineKey instruction;
+    std::uint16_t logical_address = 0;
+    std::uint8_t value = 0;
+    std::uint32_t master_cycle_offset = 0;
+
+    [[nodiscard]] bool operator==(
+        const ReplacementMemoryWrite&) const = default;
+};
+
+struct RoutineReplacement {
+    // The core advances to this routine's outer RTS after applying the
+    // transaction. The RTS itself remains emulated, preserving stack and
+    // caller-return behavior.
+    RoutineKey return_instruction;
+    CpuRegisters output_registers;
+    std::uint32_t body_master_cycles = 0;
+    std::vector<ReplacementMemoryWrite> work_ram_writes;
+};
+
+using ReplacementHookCallback = std::function<
+    std::optional<RoutineReplacement>(
+        const RoutineEntry&,
+        std::span<const std::byte> work_ram)>;
 
 struct ExecutionHook {
     RoutineKey routine;
     HookMode mode = HookMode::pass_through;
     ExecutionHookCallback callback;
+    ReplacementHookCallback replacement_callback;
+};
+
+struct ObservedMemoryWrite {
+    RoutineKey instruction;
+    std::uint16_t logical_address = 0;
+    std::uint16_t work_ram_offset = 0;
+    std::uint8_t value = 0;
+    std::uint64_t frame_number = 0;
+    std::uint32_t master_cycle = 0;
+    std::uint64_t absolute_master_cycle = 0;
+
+    [[nodiscard]] bool operator==(
+        const ObservedMemoryWrite&) const = default;
+};
+
+struct ObservedBusWrite {
+    RoutineKey instruction;
+    std::uint16_t logical_address = 0;
+    std::uint8_t physical_bank = 0;
+    std::uint8_t value = 0;
+    std::uint64_t frame_number = 0;
+    std::uint32_t master_cycle = 0;
+    std::uint64_t absolute_master_cycle = 0;
+
+    [[nodiscard]] bool operator==(const ObservedBusWrite&) const = default;
+};
+
+using WorkRamWriteCallback =
+    std::function<void(const ObservedMemoryWrite&)>;
+using BusWriteCallback = std::function<void(const ObservedBusWrite&)>;
+
+struct RoutineCall {
+    RoutineEntry entry;
+    RoutineKey return_instruction;
+    CpuRegisters output_registers;
+    std::uint16_t caller_pc = 0;
+    std::uint16_t return_pc = 0;
+    std::uint32_t return_master_cycle = 0;
+    std::uint64_t return_absolute_master_cycle = 0;
+    std::uint64_t body_master_cycles = 0;
+    std::vector<ObservedMemoryWrite> work_ram_writes;
+
+    [[nodiscard]] bool operator==(const RoutineCall&) const = default;
+};
+
+using RoutineCallCallback = std::function<void(const RoutineCall&)>;
+
+struct RoutineCallObserver {
+    RoutineKey routine;
+    RoutineCallCallback callback;
 };
 
 class PceRuntime {
@@ -127,18 +228,72 @@ public:
     [[nodiscard]] virtual bool import_backup_ram(
         std::span<const std::byte> bytes) = 0;
 
-    // Work RAM is exposed as a copy for deterministic recordings and later
-    // typed game-state views. It is unavailable until a ROM is loaded.
+    // Work RAM crosses this boundary as an exact-size copy. Import is
+    // intentionally explicit so deterministic diagnostic recordings and
+    // later typed game-state views cannot retain mutable emulator pointers.
+    // Both operations are unavailable until a ROM is loaded.
     [[nodiscard]] virtual std::size_t work_ram_size() const noexcept = 0;
     [[nodiscard]] virtual std::vector<std::byte> export_work_ram() const = 0;
+    [[nodiscard]] virtual bool import_work_ram(
+        std::span<const std::byte> bytes) = 0;
 
-    // The first fork boundary supports one exact physical-bank/logical-PC
-    // hook in pass-through or observe mode. It executes before opcode fetch
-    // and cannot modify core state. Observe mode requires a callback. Replace
-    // mode is reserved for a later bridge stage and is rejected for now.
+    // A copied, frame-boundary view of the base PC Engine VDC and VCE state.
+    // VRAM is represented in the HuC6270's 16-bit word-addressed form.
+    [[nodiscard]] virtual std::optional<VideoMemorySnapshot>
+    export_video_memory() const = 0;
+
+    // Hooks are keyed by exact physical-bank/logical-PC pairs and execute
+    // after opcode fetch but before instruction execution. Each key may be
+    // registered once. Pass-through and observe hooks cannot modify core
+    // state; observe mode requires a callback. Replace mode requires a
+    // transactional callback. Returning no replacement continues in the
+    // original assembly. A replacement supplies final registers, ordered
+    // writes with entry-relative timing, the body-cycle budget, and the
+    // outer RTS at which emulation resumes.
+    //
+    // Replacement callbacks receive an isolated work-RAM snapshot. The
+    // current contract is for bounded routines proven not to take an
+    // interrupt internally: hardware events advance at declared write and
+    // body-cycle boundaries, while a newly asserted interrupt is delivered
+    // before the resumed RTS rather than inside the native body.
     [[nodiscard]] virtual bool install_execution_hook(ExecutionHook hook) = 0;
-    virtual void clear_execution_hook() noexcept = 0;
-    [[nodiscard]] virtual bool has_execution_hook() const noexcept = 0;
+    [[nodiscard]] virtual bool remove_execution_hook(
+        RoutineKey routine) noexcept = 0;
+    virtual void clear_execution_hooks() noexcept = 0;
+    [[nodiscard]] virtual std::size_t execution_hook_count()
+        const noexcept = 0;
+
+    // A call observer begins at one exact routine entry and completes before
+    // its outer RTS executes. It captures pre-return registers, the return
+    // target, body master cycles (excluding RTS), and ordered writes to the
+    // 8 KiB PCE work-RAM region, including writes made by nested callees.
+    // Observation is read-only and callbacks run synchronously on the owner
+    // thread.
+    [[nodiscard]] virtual bool install_routine_call_observer(
+        RoutineCallObserver observer) = 0;
+    [[nodiscard]] virtual bool remove_routine_call_observer(
+        RoutineKey routine) noexcept = 0;
+    virtual void clear_routine_call_observers() noexcept = 0;
+    [[nodiscard]] virtual std::size_t routine_call_observer_count()
+        const noexcept = 0;
+
+    // One optional global observer receives every write to the physical
+    // 8 KiB PCE work-RAM bank. It is intended for selective state-writer
+    // censuses; callers should filter logical addresses in the callback.
+    [[nodiscard]] virtual bool set_work_ram_write_observer(
+        WorkRamWriteCallback callback) = 0;
+    virtual void clear_work_ram_write_observer() noexcept = 0;
+    [[nodiscard]] virtual bool has_work_ram_write_observer()
+        const noexcept = 0;
+
+    // One optional read-only observer receives every CPU bus write. It is
+    // intended for bounded hardware-port mapping; callbacks must filter
+    // aggressively and cannot modify the emulated bus.
+    [[nodiscard]] virtual bool set_bus_write_observer(
+        BusWriteCallback callback) = 0;
+    virtual void clear_bus_write_observer() noexcept = 0;
+    [[nodiscard]] virtual bool has_bus_write_observer()
+        const noexcept = 0;
 
     // Savestates are opaque Beetle payloads plus the host frame counter.
     // Persistent storage must additionally bind them to the ROM and core

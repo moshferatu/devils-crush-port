@@ -4,6 +4,7 @@
 #include "devils_crush/core/rom_image.hpp"
 #include "devils_crush/core/save_state.hpp"
 #include "devils_crush/emulation/pce_runtime.hpp"
+#include "devils_crush/game_logic/physics.h"
 #include "devils_crush/render/sharp_pixel_scaler.hpp"
 
 #include <SDL3/SDL.h>
@@ -14,6 +15,7 @@
 #include <Windows.h>
 
 #include <algorithm>
+#include <array>
 #include <charconv>
 #include <chrono>
 #include <cstdint>
@@ -26,6 +28,8 @@
 #include <limits>
 #include <optional>
 #include <span>
+#include <sstream>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <system_error>
@@ -39,6 +43,8 @@ constexpr std::uint32_t kDisplayAspectDenominator = 3U;
 constexpr double kEmulationFramesPerSecond = 59.8261;
 constexpr int kSmokeTestFrames = 10;
 constexpr int kCanonicalRecordingFrames = 600;
+constexpr int kGameplayRecordingFrames = 1800;
+constexpr int kStateCensusRecordingFrames = 3600;
 constexpr int kMaximumAudioLatencyMilliseconds = 150;
 const std::filesystem::path kBackupRamPath =
     std::filesystem::path("portable-data") / "devils-crush.sav";
@@ -48,6 +54,10 @@ const std::filesystem::path kGamepadMappingsPath =
     std::filesystem::path("portable-data") / "gamecontrollerdb.txt";
 const std::filesystem::path kCanonicalRecordingPath =
     std::filesystem::path("portable-data") / "canonical-v1.csv";
+const std::filesystem::path kGameplayRecordingPath =
+    std::filesystem::path("portable-data") / "gameplay-v1.csv";
+const std::filesystem::path kStateCensusRecordingPath =
+    std::filesystem::path("portable-data") / "state-census-v1.csv";
 const std::filesystem::path kBackupRamTestPath =
     std::filesystem::path("portable-data") / "backup-ram-test.sav";
 constexpr std::uintmax_t kMaximumSaveStateFileSize =
@@ -59,9 +69,30 @@ using devils_crush::emulation::EmulatedFrame;
 using devils_crush::emulation::FramebufferView;
 using devils_crush::emulation::HookMode;
 using devils_crush::emulation::InputFrame;
+using devils_crush::emulation::ObservedMemoryWrite;
 using devils_crush::emulation::PceRuntime;
+using devils_crush::emulation::RoutineCall;
 using devils_crush::emulation::RoutineEntry;
 using devils_crush::emulation::RoutineKey;
+using devils_crush::emulation::RoutineReplacement;
+
+struct LogicalAddressRange {
+    std::uint16_t first = 0;
+    std::uint16_t last = 0;
+};
+
+struct RoutineReplayRequest {
+    RoutineKey routine;
+    std::uint64_t ordinal = 0;
+};
+
+struct WorkRamPatch {
+    int frame = 0;
+    std::uint16_t logical_address = 0;
+    std::uint8_t value = 0;
+
+    [[nodiscard]] bool operator==(const WorkRamPatch&) const = default;
+};
 
 struct CommandLine {
     std::filesystem::path rom_path = "Devil's Crush.pce";
@@ -69,12 +100,22 @@ struct CommandLine {
     bool smoke_test = false;
     bool record_canonical = false;
     std::filesystem::path canonical_path = kCanonicalRecordingPath;
+    bool record_gameplay = false;
+    std::filesystem::path gameplay_path = kGameplayRecordingPath;
+    bool record_state_census = false;
+    std::filesystem::path state_census_path = kStateCensusRecordingPath;
     std::filesystem::path canonical_work_ram_path;
     std::filesystem::path canonical_framebuffer_path;
     std::filesystem::path canonical_audio_path;
-    std::optional<RoutineKey> pass_through_hook;
-    std::optional<RoutineKey> observe_hook;
+    std::vector<RoutineKey> pass_through_hooks;
+    std::vector<RoutineKey> observe_hooks;
+    std::vector<RoutineReplayRequest> replace_hooks;
     std::filesystem::path routine_trace_path;
+    std::filesystem::path routine_call_trace_path;
+    std::vector<RoutineReplayRequest> routine_replays;
+    std::vector<WorkRamPatch> work_ram_patches;
+    std::vector<LogicalAddressRange> work_ram_write_ranges;
+    std::filesystem::path work_ram_write_trace_path;
     bool backup_ram_test = false;
     std::filesystem::path backup_ram_test_path = kBackupRamTestPath;
     bool show_help = false;
@@ -127,6 +168,142 @@ struct CommandLine {
     };
 }
 
+[[nodiscard]] std::optional<RoutineReplayRequest>
+parse_routine_replay_request(const std::string_view text)
+{
+    const auto separator = text.find('@');
+    if (separator == std::string_view::npos
+        || text.find('@', separator + 1U) != std::string_view::npos) {
+        return std::nullopt;
+    }
+
+    const auto routine = parse_routine_key(text.substr(0, separator));
+    const auto ordinal_text = text.substr(separator + 1U);
+    std::uint64_t ordinal = 0;
+    const auto result = std::from_chars(
+        ordinal_text.data(),
+        ordinal_text.data() + ordinal_text.size(),
+        ordinal,
+        10);
+    if (!routine || ordinal_text.empty() || result.ec != std::errc{}
+        || result.ptr != ordinal_text.data() + ordinal_text.size()
+        || ordinal == 0U) {
+        return std::nullopt;
+    }
+
+    return RoutineReplayRequest{
+        .routine = *routine,
+        .ordinal = ordinal,
+    };
+}
+
+[[nodiscard]] std::optional<WorkRamPatch>
+parse_work_ram_patch(const std::string_view text)
+{
+    const auto first_separator = text.find(':');
+    const auto second_separator =
+        first_separator == std::string_view::npos
+        ? std::string_view::npos
+        : text.find(':', first_separator + 1U);
+    if (first_separator == std::string_view::npos
+        || second_separator == std::string_view::npos
+        || text.find(':', second_separator + 1U) != std::string_view::npos) {
+        return std::nullopt;
+    }
+
+    const auto parse_number = [](
+                                  std::string_view component,
+                                  const int base)
+        -> std::optional<std::uint32_t> {
+        if (base == 16
+            && (component.starts_with("0x")
+                || component.starts_with("0X"))) {
+            component.remove_prefix(2U);
+        }
+        if (component.empty()) {
+            return std::nullopt;
+        }
+        std::uint32_t value = 0U;
+        const auto result = std::from_chars(
+            component.data(),
+            component.data() + component.size(),
+            value,
+            base);
+        if (result.ec != std::errc{}
+            || result.ptr != component.data() + component.size()) {
+            return std::nullopt;
+        }
+        return value;
+    };
+
+    const auto frame = parse_number(text.substr(0, first_separator), 10);
+    const auto address = parse_number(
+        text.substr(
+            first_separator + 1U,
+            second_separator - first_separator - 1U),
+        16);
+    const auto value =
+        parse_number(text.substr(second_separator + 1U), 16);
+    if (!frame || !address || !value || *frame == 0U
+        || *frame > static_cast<std::uint32_t>(
+                        std::numeric_limits<int>::max())
+        || *address < 0x2000U || *address > 0x3FFFU
+        || *value > std::numeric_limits<std::uint8_t>::max()) {
+        return std::nullopt;
+    }
+
+    return WorkRamPatch{
+        .frame = static_cast<int>(*frame),
+        .logical_address = static_cast<std::uint16_t>(*address),
+        .value = static_cast<std::uint8_t>(*value),
+    };
+}
+
+[[nodiscard]] std::optional<LogicalAddressRange>
+parse_logical_address_range(const std::string_view text)
+{
+    const auto separator = text.find('-');
+    if (separator == std::string_view::npos
+        || text.find('-', separator + 1U) != std::string_view::npos) {
+        return std::nullopt;
+    }
+
+    const auto parse_hex = [](std::string_view component)
+        -> std::optional<std::uint32_t> {
+        if (component.starts_with("0x")
+            || component.starts_with("0X")) {
+            component.remove_prefix(2U);
+        }
+        if (component.empty()) {
+            return std::nullopt;
+        }
+
+        std::uint32_t value = 0;
+        const auto result = std::from_chars(
+            component.data(),
+            component.data() + component.size(),
+            value,
+            16);
+        if (result.ec != std::errc{}
+            || result.ptr != component.data() + component.size()) {
+            return std::nullopt;
+        }
+        return value;
+    };
+
+    const auto first = parse_hex(text.substr(0, separator));
+    const auto last = parse_hex(text.substr(separator + 1U));
+    if (!first || !last || *first > *last
+        || *last > std::numeric_limits<std::uint16_t>::max()) {
+        return std::nullopt;
+    }
+
+    return LogicalAddressRange{
+        .first = static_cast<std::uint16_t>(*first),
+        .last = static_cast<std::uint16_t>(*last),
+    };
+}
+
 [[nodiscard]] CommandLine parse_command_line(const int argc, char* argv[])
 {
     CommandLine options;
@@ -159,6 +336,22 @@ struct CommandLine {
             if (!next.empty() && next.front() != '-') {
                 options.canonical_path = argv[++index];
             }
+        } else if (argument == "--record-gameplay") {
+            options.record_gameplay = true;
+            const std::string_view next =
+                index + 1 < argc ? std::string_view(argv[index + 1])
+                                 : std::string_view{};
+            if (!next.empty() && next.front() != '-') {
+                options.gameplay_path = argv[++index];
+            }
+        } else if (argument == "--record-state-census") {
+            options.record_state_census = true;
+            const std::string_view next =
+                index + 1 < argc ? std::string_view(argv[index + 1])
+                                 : std::string_view{};
+            if (!next.empty() && next.front() != '-') {
+                options.state_census_path = argv[++index];
+            }
         } else if (argument == "--canonical-work-ram") {
             if (index + 1 >= argc) {
                 options.error = "--canonical-work-ram requires a path.";
@@ -183,30 +376,183 @@ struct CommandLine {
                     "--pass-through-hook requires BANK:PC.";
                 return options;
             }
-            options.pass_through_hook =
-                parse_routine_key(argv[++index]);
-            if (!options.pass_through_hook) {
+            const auto routine = parse_routine_key(argv[++index]);
+            if (!routine) {
                 options.error =
                     "--pass-through-hook requires hexadecimal BANK:PC.";
                 return options;
             }
+            if (std::find(
+                    options.pass_through_hooks.begin(),
+                    options.pass_through_hooks.end(),
+                    *routine)
+                    != options.pass_through_hooks.end()
+                || std::find(
+                       options.observe_hooks.begin(),
+                       options.observe_hooks.end(),
+                       *routine)
+                    != options.observe_hooks.end()
+                || std::find_if(
+                       options.replace_hooks.begin(),
+                       options.replace_hooks.end(),
+                       [routine](
+                           const RoutineReplayRequest& replacement) {
+                           return replacement.routine == *routine;
+                       })
+                    != options.replace_hooks.end()) {
+                options.error =
+                    "Each execution-hook BANK:PC may be registered once.";
+                return options;
+            }
+            options.pass_through_hooks.push_back(*routine);
         } else if (argument == "--observe-hook") {
             if (index + 1 >= argc) {
                 options.error = "--observe-hook requires BANK:PC.";
                 return options;
             }
-            options.observe_hook = parse_routine_key(argv[++index]);
-            if (!options.observe_hook) {
+            const auto routine = parse_routine_key(argv[++index]);
+            if (!routine) {
                 options.error =
                     "--observe-hook requires hexadecimal BANK:PC.";
                 return options;
             }
+            if (std::find(
+                    options.pass_through_hooks.begin(),
+                    options.pass_through_hooks.end(),
+                    *routine)
+                    != options.pass_through_hooks.end()
+                || std::find(
+                       options.observe_hooks.begin(),
+                       options.observe_hooks.end(),
+                       *routine)
+                    != options.observe_hooks.end()) {
+                options.error =
+                    "Each execution-hook BANK:PC may be registered once.";
+                return options;
+            }
+            options.observe_hooks.push_back(*routine);
+        } else if (argument == "--replace-hook") {
+            if (index + 1 >= argc) {
+                options.error =
+                    "--replace-hook requires BANK:PC@ORDINAL.";
+                return options;
+            }
+            const auto request =
+                parse_routine_replay_request(argv[++index]);
+            if (!request) {
+                options.error =
+                    "--replace-hook requires hexadecimal BANK:PC and "
+                    "a positive decimal ORDINAL.";
+                return options;
+            }
+            if (std::find(
+                    options.pass_through_hooks.begin(),
+                    options.pass_through_hooks.end(),
+                    request->routine)
+                    != options.pass_through_hooks.end()
+                || std::find_if(
+                       options.replace_hooks.begin(),
+                       options.replace_hooks.end(),
+                       [request](
+                           const RoutineReplayRequest& existing) {
+                           return existing.routine == request->routine;
+                       })
+                    != options.replace_hooks.end()) {
+                options.error =
+                    "Each replacement BANK:PC may be registered once "
+                    "and cannot also be pass-through.";
+                return options;
+            }
+            options.replace_hooks.push_back(*request);
         } else if (argument == "--routine-trace") {
             if (index + 1 >= argc) {
                 options.error = "--routine-trace requires a path.";
                 return options;
             }
             options.routine_trace_path = argv[++index];
+        } else if (argument == "--routine-call-trace") {
+            if (index + 1 >= argc) {
+                options.error = "--routine-call-trace requires a path.";
+                return options;
+            }
+            options.routine_call_trace_path = argv[++index];
+        } else if (argument == "--routine-replay") {
+            if (index + 1 >= argc) {
+                options.error =
+                    "--routine-replay requires BANK:PC@ORDINAL.";
+                return options;
+            }
+            const auto request =
+                parse_routine_replay_request(argv[++index]);
+            if (!request) {
+                options.error =
+                    "--routine-replay requires hexadecimal BANK:PC and "
+                    "a positive decimal ORDINAL.";
+                return options;
+            }
+            const auto duplicate = std::find_if(
+                options.routine_replays.begin(),
+                options.routine_replays.end(),
+                [request](const RoutineReplayRequest& existing) {
+                    return existing.routine == request->routine;
+                });
+            if (duplicate != options.routine_replays.end()) {
+                options.error =
+                    "Each routine may have only one replay ordinal.";
+                return options;
+            }
+            options.routine_replays.push_back(*request);
+        } else if (argument == "--work-ram-patch") {
+            if (index + 1 >= argc) {
+                options.error =
+                    "--work-ram-patch requires FRAME:ADDRESS:VALUE.";
+                return options;
+            }
+            const auto patch = parse_work_ram_patch(argv[++index]);
+            if (!patch) {
+                options.error =
+                    "--work-ram-patch requires a positive decimal FRAME, "
+                    "a hexadecimal address from 2000 through 3FFF, and "
+                    "a hexadecimal byte VALUE.";
+                return options;
+            }
+            if (std::find_if(
+                    options.work_ram_patches.begin(),
+                    options.work_ram_patches.end(),
+                    [patch](const WorkRamPatch& existing) {
+                        return existing.frame == patch->frame
+                            && existing.logical_address
+                                == patch->logical_address;
+                    })
+                != options.work_ram_patches.end()) {
+                options.error =
+                    "Each work-RAM FRAME:ADDRESS location may be patched "
+                    "once.";
+                return options;
+            }
+            options.work_ram_patches.push_back(*patch);
+        } else if (argument == "--work-ram-write-range") {
+            if (index + 1 >= argc) {
+                options.error =
+                    "--work-ram-write-range requires START-END.";
+                return options;
+            }
+            const auto range =
+                parse_logical_address_range(argv[++index]);
+            if (!range) {
+                options.error =
+                    "--work-ram-write-range requires a hexadecimal "
+                    "logical START-END range.";
+                return options;
+            }
+            options.work_ram_write_ranges.push_back(*range);
+        } else if (argument == "--work-ram-write-trace") {
+            if (index + 1 >= argc) {
+                options.error =
+                    "--work-ram-write-trace requires a path.";
+                return options;
+            }
+            options.work_ram_write_trace_path = argv[++index];
         } else if (argument == "--backup-ram-test") {
             options.backup_ram_test = true;
             const std::string_view next =
@@ -224,30 +570,98 @@ struct CommandLine {
     const int operation_count =
         static_cast<int>(options.smoke_test)
         + static_cast<int>(options.record_canonical)
+        + static_cast<int>(options.record_gameplay)
+        + static_cast<int>(options.record_state_census)
         + static_cast<int>(options.backup_ram_test);
+    const bool recording_selected =
+        options.record_canonical || options.record_gameplay
+        || options.record_state_census;
+    const int recording_frame_count = options.record_state_census
+        ? kStateCensusRecordingFrames
+        : options.record_gameplay
+            ? kGameplayRecordingFrames
+            : options.record_canonical
+                ? kCanonicalRecordingFrames
+                : 0;
     if (operation_count > 1) {
         options.error =
             "Only one test or recording operation may be selected.";
     } else if ((!options.canonical_work_ram_path.empty()
                 || !options.canonical_framebuffer_path.empty()
                 || !options.canonical_audio_path.empty())
-               && !options.record_canonical) {
+               && !recording_selected) {
         options.error =
             "--canonical-work-ram, --canonical-framebuffer, and "
-            "--canonical-audio require --record-canonical.";
-    } else if (options.pass_through_hook && options.observe_hook) {
+            "--canonical-audio require a recording operation.";
+    } else if ((!options.pass_through_hooks.empty()
+                || !options.observe_hooks.empty()
+                || !options.replace_hooks.empty())
+               && !recording_selected) {
         options.error =
-            "Only one execution hook mode may be selected.";
-    } else if ((options.pass_through_hook || options.observe_hook)
-               && !options.record_canonical) {
+            "Execution hooks currently require a recording operation.";
+    } else if (std::any_of(
+                   options.replace_hooks.begin(),
+                   options.replace_hooks.end(),
+                   [](const RoutineReplayRequest& request) {
+                       return request.routine
+                           != RoutineKey{
+                               .physical_bank = 0x00U,
+                               .logical_pc = 0xF241U,
+                           };
+                   })) {
         options.error =
-            "Execution hooks currently require "
-            "--record-canonical.";
-    } else if (
-        options.observe_hook.has_value()
-        != !options.routine_trace_path.empty()) {
+            "Native replacement currently supports only 00:F241.";
+    } else if (!options.work_ram_patches.empty() && !recording_selected) {
         options.error =
-            "--observe-hook and --routine-trace must be used together.";
+            "--work-ram-patch requires a recording operation.";
+    } else if (std::any_of(
+                   options.work_ram_patches.begin(),
+                   options.work_ram_patches.end(),
+                   [recording_frame_count](const WorkRamPatch& patch) {
+                       return patch.frame > recording_frame_count;
+                   })) {
+        options.error =
+            "Each work-RAM patch frame must be within the selected "
+            "recording.";
+    } else if (options.observe_hooks.empty()
+               && (!options.routine_trace_path.empty()
+                   || !options.routine_call_trace_path.empty())) {
+        options.error =
+            "Routine traces require at least one --observe-hook.";
+    } else if (!options.observe_hooks.empty()
+               && options.routine_trace_path.empty()
+               && options.routine_call_trace_path.empty()) {
+        options.error =
+            "--observe-hook requires --routine-trace or "
+            "--routine-call-trace.";
+    } else if (!options.routine_replays.empty()
+               && (!recording_selected
+                   || options.routine_call_trace_path.empty())) {
+        options.error =
+            "--routine-replay requires a recording operation and "
+            "--routine-call-trace.";
+    } else if (std::any_of(
+                   options.routine_replays.begin(),
+                   options.routine_replays.end(),
+                   [&options](const RoutineReplayRequest& request) {
+                       return std::find(
+                                  options.observe_hooks.begin(),
+                                  options.observe_hooks.end(),
+                                  request.routine)
+                           == options.observe_hooks.end();
+                   })) {
+        options.error =
+            "Each --routine-replay target must also be an --observe-hook.";
+    } else if ((!options.work_ram_write_ranges.empty()
+                || !options.work_ram_write_trace_path.empty())
+               && !recording_selected) {
+        options.error =
+            "Work-RAM write census options require a recording operation.";
+    } else if (options.work_ram_write_ranges.empty()
+               != options.work_ram_write_trace_path.empty()) {
+        options.error =
+            "--work-ram-write-range and --work-ram-write-trace "
+            "must be used together.";
     }
     return options;
 }
@@ -255,7 +669,7 @@ struct CommandLine {
 void print_usage()
 {
     std::cout
-        << "Devil's Crush PC port - Milestone 1\n\n"
+        << "Devil's Crush PC port - Milestone 2\n\n"
         << "Usage:\n"
         << "  devils-crush [--rom <path>]\n"
         << "  devils-crush --validate-rom [path]\n"
@@ -264,8 +678,43 @@ void print_usage()
            "      [--canonical-work-ram <output.bin>]\n"
            "      [--canonical-framebuffer <output.rgb>]\n"
            "      [--canonical-audio <output.wav>]\n"
-           "      [--pass-through-hook <bank:pc>]\n"
-           "      [--observe-hook <bank:pc> --routine-trace <output.csv>]\n"
+           "      [--pass-through-hook <bank:pc>]...\n"
+           "      [--observe-hook <bank:pc>]...\n"
+           "      [--replace-hook <bank:pc@ordinal>]...\n"
+           "      [--routine-trace <entries.csv>]\n"
+           "      [--routine-call-trace <calls.csv>]\n"
+           "      [--routine-replay <bank:pc@ordinal>]...\n"
+           "      [--work-ram-patch <frame:address:value>]...\n"
+           "      [--work-ram-write-range <start-end>]...\n"
+           "      [--work-ram-write-trace <writes.csv>]\n"
+           "      [--rom <path>]\n"
+        << "  devils-crush --record-gameplay [output.csv]\n"
+           "      [--canonical-work-ram <output.bin>]\n"
+           "      [--canonical-framebuffer <output.rgb>]\n"
+           "      [--canonical-audio <output.wav>]\n"
+           "      [--pass-through-hook <bank:pc>]...\n"
+           "      [--observe-hook <bank:pc>]...\n"
+           "      [--replace-hook <bank:pc@ordinal>]...\n"
+           "      [--routine-trace <entries.csv>]\n"
+           "      [--routine-call-trace <calls.csv>]\n"
+           "      [--routine-replay <bank:pc@ordinal>]...\n"
+           "      [--work-ram-patch <frame:address:value>]...\n"
+           "      [--work-ram-write-range <start-end>]...\n"
+           "      [--work-ram-write-trace <writes.csv>]\n"
+           "      [--rom <path>]\n"
+        << "  devils-crush --record-state-census [output.csv]\n"
+           "      [--canonical-work-ram <output.bin>]\n"
+           "      [--canonical-framebuffer <output.rgb>]\n"
+           "      [--canonical-audio <output.wav>]\n"
+           "      [--pass-through-hook <bank:pc>]...\n"
+           "      [--observe-hook <bank:pc>]...\n"
+           "      [--replace-hook <bank:pc@ordinal>]...\n"
+           "      [--routine-trace <entries.csv>]\n"
+           "      [--routine-call-trace <calls.csv>]\n"
+           "      [--routine-replay <bank:pc@ordinal>]...\n"
+           "      [--work-ram-patch <frame:address:value>]...\n"
+           "      [--work-ram-write-range <start-end>]...\n"
+           "      [--work-ram-write-trace <writes.csv>]\n"
            "      [--rom <path>]\n"
         << "  devils-crush --backup-ram-test [output.sav] [--rom <path>]\n"
         << "  devils-crush --help\n\n"
@@ -1036,6 +1485,214 @@ void handle_gamepad_device_event(
     return input;
 }
 
+[[nodiscard]] InputFrame gameplay_input_for_frame(const int frame_number)
+{
+    InputFrame input;
+    const auto press = [&input](const Button button) {
+        input.player_one |= static_cast<std::uint16_t>(button);
+    };
+    const auto is_pair = [frame_number](const int first_frame) {
+        return frame_number == first_frame
+            || frame_number == first_frame + 1;
+    };
+
+    if (is_pair(180) || is_pair(300)) {
+        press(Button::run);
+    }
+    if (is_pair(420) || is_pair(700)
+        || (frame_number >= 850 && frame_number <= 880)
+        || is_pair(1000) || is_pair(1100) || is_pair(1200)
+        || is_pair(1300) || is_pair(1400) || is_pair(1500)
+        || is_pair(1600) || is_pair(1700)) {
+        press(Button::one);
+    }
+    if (is_pair(1000) || is_pair(1100) || is_pair(1200)
+        || is_pair(1300) || is_pair(1400) || is_pair(1500)
+        || is_pair(1600) || is_pair(1700)) {
+        press(Button::left);
+    }
+    if (is_pair(1050) || is_pair(1250)
+        || is_pair(1450) || is_pair(1650)) {
+        press(Button::two);
+    }
+    return input;
+}
+
+[[nodiscard]] InputFrame state_census_input_for_frame(const int frame_number)
+{
+    InputFrame input;
+    const auto press = [&input](const Button button) {
+        input.player_one |= static_cast<std::uint16_t>(button);
+    };
+    const auto is_pair = [frame_number](const int first_frame) {
+        return frame_number == first_frame
+            || frame_number == first_frame + 1;
+    };
+
+    if (is_pair(180) || is_pair(300)) {
+        press(Button::run);
+    }
+    if (is_pair(420) || is_pair(700)
+        || (frame_number >= 850 && frame_number <= 880)) {
+        press(Button::one);
+    }
+
+    const bool launch_hold =
+        frame_number >= 1000 && frame_number <= 1180;
+    if (launch_hold) {
+        press(Button::one);
+    }
+
+    if (frame_number >= 1250) {
+        const int flipper_phase = (frame_number - 1250) % 30;
+        if (flipper_phase <= 1) {
+            press(Button::left);
+        }
+        if (flipper_phase == 15 || flipper_phase == 16) {
+            press(Button::one);
+        }
+    }
+    if (is_pair(1450) || is_pair(2250) || is_pair(3050)) {
+        press(Button::two);
+    }
+    return input;
+}
+
+using RecordingInputFunction = InputFrame (*)(int);
+
+struct RecordingPlan {
+    std::string_view format;
+    std::string_view label;
+    std::string_view input_script;
+    int frame_count = 0;
+    RecordingInputFunction input_for_frame = nullptr;
+};
+
+struct RoutineReplayCapture {
+    RoutineReplayRequest request;
+    std::uint64_t natural_entry_count = 0;
+    RoutineEntry checkpoint_entry;
+    devils_crush::emulation::SaveState checkpoint;
+    std::vector<std::byte> pre_call_work_ram;
+    std::optional<RoutineCall> original_call;
+    std::vector<std::byte> original_post_call_work_ram;
+    std::optional<RoutineCall> replayed_call;
+    std::vector<std::byte> replayed_post_call_work_ram;
+};
+
+[[nodiscard]] std::optional<RoutineReplacement>
+replace_cached_position_restore(
+    const RoutineEntry& entry,
+    const std::span<const std::byte> work_ram)
+{
+    constexpr RoutineKey kRoutine{
+        .physical_bank = 0x00U,
+        .logical_pc = 0xF241U,
+    };
+    constexpr std::array<std::uint16_t, DC_CACHED_POSITION_BYTE_COUNT>
+        kStoreInstructionPcs{
+            0xF243U,
+            0xF248U,
+            0xF24DU,
+            0xF252U,
+            0xF257U,
+            0xF25CU,
+        };
+    if (entry.routine != kRoutine) {
+        return std::nullopt;
+    }
+
+    dc_cached_position_restore restored{};
+    if (!dc_restore_cached_position(
+            reinterpret_cast<const std::uint8_t*>(work_ram.data()),
+            work_ram.size(),
+            entry.registers.x,
+            &restored)) {
+        throw std::runtime_error(
+            "Native F241 replacement rejected the work-RAM snapshot.");
+    }
+
+    auto output = entry.registers;
+    output.program_counter = 0xF25FU;
+    output.accumulator =
+        restored.values[DC_CACHED_POSITION_BYTE_COUNT - 1U];
+    output.status = static_cast<std::uint8_t>(
+        output.status & static_cast<std::uint8_t>(~(0x80U | 0x02U)));
+    if (output.accumulator == 0U) {
+        output.status = static_cast<std::uint8_t>(
+            output.status | 0x02U);
+    }
+    if ((output.accumulator & 0x80U) != 0U) {
+        output.status = static_cast<std::uint8_t>(
+            output.status | 0x80U);
+    }
+
+    RoutineReplacement replacement{
+        .return_instruction = {
+            .physical_bank = 0x00U,
+            .logical_pc = 0xF25FU,
+        },
+        .output_registers = output,
+        .body_master_cycles = 162U,
+    };
+    replacement.work_ram_writes.reserve(
+        DC_CACHED_POSITION_BYTE_COUNT);
+    for (std::size_t index = 0;
+         index < DC_CACHED_POSITION_BYTE_COUNT;
+         ++index) {
+        replacement.work_ram_writes.push_back({
+            .instruction = {
+                .physical_bank = 0x00U,
+                .logical_pc = kStoreInstructionPcs[index],
+            },
+            .logical_address = static_cast<std::uint16_t>(
+                0x2000U + restored.work_ram_offsets[index]),
+            .value = restored.values[index],
+            .master_cycle_offset =
+                static_cast<std::uint32_t>(27U * (index + 1U)),
+        });
+    }
+    return replacement;
+}
+
+constexpr RecordingPlan kCanonicalRecordingPlan{
+    .format = "devils-crush-canonical-v1",
+    .label = "Canonical",
+    .input_script =
+        "run:180-181,300-301;"
+        "one:420-421;two:480-481;left+one:540-541",
+    .frame_count = kCanonicalRecordingFrames,
+    .input_for_frame = &canonical_input_for_frame,
+};
+
+constexpr RecordingPlan kGameplayRecordingPlan{
+    .format = "devils-crush-gameplay-v1",
+    .label = "Gameplay",
+    .input_script =
+        "run:180-181,300-301;"
+        "one:420-421,700-701,850-880,"
+        "1000-1001,1100-1101,1200-1201,1300-1301,"
+        "1400-1401,1500-1501,1600-1601,1700-1701;"
+        "left:1000-1001,1100-1101,1200-1201,1300-1301,"
+        "1400-1401,1500-1501,1600-1601,1700-1701;"
+        "two:1050-1051,1250-1251,1450-1451,1650-1651",
+    .frame_count = kGameplayRecordingFrames,
+    .input_for_frame = &gameplay_input_for_frame,
+};
+
+constexpr RecordingPlan kStateCensusRecordingPlan{
+    .format = "devils-crush-state-census-v1",
+    .label = "State census",
+    .input_script =
+        "run:180-181,300-301;"
+        "one:420-421,700-701,850-880,"
+        "1000-1180,1265-1266+30n;"
+        "left:1250-1251+30n;"
+        "two:1450-1451,2250-2251,3050-3051",
+    .frame_count = kStateCensusRecordingFrames,
+    .input_for_frame = &state_census_input_for_frame,
+};
+
 [[nodiscard]] std::string sha256(
     const std::span<const std::byte> bytes)
 {
@@ -1104,10 +1761,14 @@ bool write_pcm16_wave_header(
 
 [[nodiscard]] bool write_routine_trace(
     const std::filesystem::path& path,
-    const RoutineKey routine,
+    const std::span<const RoutineKey> routines,
     const std::span<const RoutineEntry> entries,
     const std::string_view core_revision)
 {
+    if (routines.empty()) {
+        return false;
+    }
+
     std::error_code error;
     const auto directory = path.parent_path();
     if (!directory.empty()) {
@@ -1131,13 +1792,28 @@ bool write_pcm16_wave_header(
     }
 
     output
-        << "# format=devils-crush-routine-entry-v1\n"
+        << "# format=devils-crush-routine-entry-v"
+        << (routines.size() == 1U ? 1 : 2) << '\n'
         << "# rom_sha256=" << devils_crush::rom::kSupportedSha256 << '\n'
-        << "# core_revision=" << core_revision << '\n'
-        << "# physical_bank=" << std::uppercase << std::hex
-        << std::setfill('0') << std::setw(2)
-        << static_cast<unsigned>(routine.physical_bank) << '\n'
-        << "# logical_pc=" << std::setw(4) << routine.logical_pc << '\n'
+        << "# core_revision=" << core_revision << '\n';
+    if (routines.size() == 1U) {
+        output << "# physical_bank=" << std::uppercase << std::hex
+               << std::setfill('0') << std::setw(2)
+               << static_cast<unsigned>(routines.front().physical_bank)
+               << '\n'
+               << "# logical_pc=" << std::setw(4)
+               << routines.front().logical_pc << '\n';
+    } else {
+        output << "# routine_count=" << std::dec << routines.size() << '\n';
+        std::size_t index = 0U;
+        for (const auto routine : routines) {
+            output << "# routine_" << ++index << '=' << std::uppercase
+                   << std::hex << std::setfill('0') << std::setw(2)
+                   << static_cast<unsigned>(routine.physical_bank) << ':'
+                   << std::setw(4) << routine.logical_pc << '\n';
+        }
+    }
+    output
         << std::dec
         << "sequence,frame,master_cycle,physical_bank,logical_pc,"
            "a,x,y,sp,status,mpr0,mpr1,mpr2,mpr3,mpr4,mpr5,mpr6,mpr7\n";
@@ -1186,15 +1862,290 @@ bool write_pcm16_wave_header(
     return true;
 }
 
-int run_canonical_recording(
+[[nodiscard]] bool write_routine_call_trace(
+    const std::filesystem::path& path,
+    const std::span<const RoutineKey> routines,
+    const std::span<const RoutineCall> calls,
+    const std::string_view core_revision)
+{
+    if (routines.empty()) {
+        return false;
+    }
+
+    auto writes_path = path;
+    writes_path += ".writes.csv";
+    std::error_code error;
+    const auto directory = path.parent_path();
+    if (!directory.empty()) {
+        std::filesystem::create_directories(directory, error);
+    }
+    if (error) {
+        std::cerr << "Could not create routine-call trace directory: "
+                  << error.message() << '\n';
+        return false;
+    }
+
+    auto temporary_path = path;
+    temporary_path += ".tmp";
+    auto writes_temporary_path = writes_path;
+    writes_temporary_path += ".tmp";
+    std::ofstream output(
+        temporary_path,
+        std::ios::binary | std::ios::trunc);
+    std::ofstream writes_output(
+        writes_temporary_path,
+        std::ios::binary | std::ios::trunc);
+    if (!output || !writes_output) {
+        std::cerr << "Could not create routine-call trace outputs.\n";
+        return false;
+    }
+
+    const auto write_metadata =
+        [&](std::ofstream& stream, const std::string_view format) {
+            stream << "# format=" << format << '\n'
+                   << "# rom_sha256="
+                   << devils_crush::rom::kSupportedSha256 << '\n'
+                   << "# core_revision=" << core_revision << '\n'
+                   << "# routine_count=" << routines.size() << '\n';
+            std::size_t index = 0U;
+            for (const auto routine : routines) {
+                stream << "# routine_" << ++index << '='
+                       << std::uppercase << std::hex << std::setfill('0')
+                       << std::setw(2)
+                       << static_cast<unsigned>(routine.physical_bank)
+                       << ':' << std::setw(4) << routine.logical_pc
+                       << '\n';
+            }
+            stream << std::dec;
+        };
+
+    write_metadata(output, "devils-crush-routine-call-v1");
+    output << "# writes_suffix=.writes.csv\n"
+           << "sequence,frame,entry_master_cycle,"
+              "entry_absolute_master_cycle,physical_bank,logical_pc,"
+              "caller_pc,return_pc,return_physical_bank,"
+              "return_instruction_pc,return_master_cycle,"
+              "return_absolute_master_cycle,"
+              "body_master_cycles,input_a,input_x,input_y,input_sp,"
+              "input_status,input_mpr0,input_mpr1,input_mpr2,input_mpr3,"
+              "input_mpr4,input_mpr5,input_mpr6,input_mpr7,"
+              "output_a,output_x,output_y,output_sp,output_status,"
+              "output_mpr0,output_mpr1,output_mpr2,output_mpr3,"
+              "output_mpr4,output_mpr5,output_mpr6,output_mpr7,"
+              "write_count\n";
+
+    write_metadata(writes_output, "devils-crush-routine-write-v1");
+    writes_output
+        << "call_sequence,write_sequence,master_cycle,"
+           "absolute_master_cycle,"
+           "instruction_physical_bank,instruction_logical_pc,"
+           "work_ram_offset,value\n";
+
+    std::uint64_t call_sequence = 0U;
+    std::uint64_t write_count = 0U;
+    for (const auto& call : calls) {
+        const auto sequence = ++call_sequence;
+        const auto& input = call.entry.registers;
+        const auto& output_registers = call.output_registers;
+        output << sequence << ',' << call.entry.frame_number << ','
+               << call.entry.master_cycle << ','
+               << call.entry.absolute_master_cycle << ','
+               << std::uppercase
+               << std::hex << std::setfill('0') << std::setw(2)
+               << static_cast<unsigned>(
+                      call.entry.routine.physical_bank)
+               << ',' << std::setw(4) << call.entry.routine.logical_pc
+               << ',' << std::setw(4) << call.caller_pc
+               << ',' << std::setw(4) << call.return_pc
+               << ',' << std::setw(2)
+               << static_cast<unsigned>(
+                      call.return_instruction.physical_bank)
+               << ',' << std::setw(4)
+               << call.return_instruction.logical_pc
+               << std::dec << ',' << call.return_master_cycle
+               << ',' << call.return_absolute_master_cycle
+               << ',' << call.body_master_cycles << std::hex
+               << ',' << std::setw(2)
+               << static_cast<unsigned>(input.accumulator)
+               << ',' << std::setw(2) << static_cast<unsigned>(input.x)
+               << ',' << std::setw(2) << static_cast<unsigned>(input.y)
+               << ',' << std::setw(2)
+               << static_cast<unsigned>(input.stack_pointer)
+               << ',' << std::setw(2)
+               << static_cast<unsigned>(input.status);
+        for (const auto mpr : input.mpr) {
+            output << ',' << std::setw(2)
+                   << static_cast<unsigned>(mpr);
+        }
+        output << ',' << std::setw(2)
+               << static_cast<unsigned>(output_registers.accumulator)
+               << ',' << std::setw(2)
+               << static_cast<unsigned>(output_registers.x)
+               << ',' << std::setw(2)
+               << static_cast<unsigned>(output_registers.y)
+               << ',' << std::setw(2)
+               << static_cast<unsigned>(
+                      output_registers.stack_pointer)
+               << ',' << std::setw(2)
+               << static_cast<unsigned>(output_registers.status);
+        for (const auto mpr : output_registers.mpr) {
+            output << ',' << std::setw(2)
+                   << static_cast<unsigned>(mpr);
+        }
+        output << std::dec << ',' << call.work_ram_writes.size()
+               << '\n';
+
+        std::uint64_t write_sequence = 0U;
+        for (const auto& write : call.work_ram_writes) {
+            writes_output
+                << sequence << ',' << ++write_sequence << ','
+                << write.master_cycle << ','
+                << write.absolute_master_cycle << ','
+                << std::uppercase
+                << std::hex << std::setfill('0') << std::setw(2)
+                << static_cast<unsigned>(
+                       write.instruction.physical_bank)
+                << ',' << std::setw(4)
+                << write.instruction.logical_pc
+                << ',' << std::setw(4) << write.work_ram_offset
+                << ',' << std::setw(2)
+                << static_cast<unsigned>(write.value)
+                << std::dec << '\n';
+            ++write_count;
+        }
+    }
+
+    output.close();
+    writes_output.close();
+    if (!output || !writes_output) {
+        std::cerr << "Could not finalize routine-call trace outputs.\n";
+        return false;
+    }
+    if (!MoveFileExW(
+            writes_temporary_path.c_str(),
+            writes_path.c_str(),
+            MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
+        std::cerr
+            << "Could not commit routine-write trace; Windows error "
+            << GetLastError() << ".\n";
+        return false;
+    }
+    if (!MoveFileExW(
+            temporary_path.c_str(),
+            path.c_str(),
+            MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
+        std::cerr << "Could not commit routine-call trace; Windows error "
+                  << GetLastError() << ".\n";
+        return false;
+    }
+
+    std::cout << "Routine call trace complete: " << calls.size()
+              << " calls, " << write_count << " writes\nCalls: "
+              << path.string() << "\nWrites: " << writes_path.string()
+              << '\n';
+    return true;
+}
+
+[[nodiscard]] bool write_work_ram_write_trace(
+    const std::filesystem::path& path,
+    const std::span<const LogicalAddressRange> ranges,
+    const std::span<const ObservedMemoryWrite> writes,
+    const std::string_view core_revision)
+{
+    if (ranges.empty()) {
+        return false;
+    }
+
+    std::error_code error;
+    const auto directory = path.parent_path();
+    if (!directory.empty()) {
+        std::filesystem::create_directories(directory, error);
+    }
+    if (error) {
+        std::cerr << "Could not create work-RAM write trace directory: "
+                  << error.message() << '\n';
+        return false;
+    }
+
+    auto temporary_path = path;
+    temporary_path += ".tmp";
+    std::ofstream output(
+        temporary_path,
+        std::ios::binary | std::ios::trunc);
+    if (!output) {
+        std::cerr << "Could not create work-RAM write trace: "
+                  << temporary_path.string() << '\n';
+        return false;
+    }
+
+    output << "# format=devils-crush-work-ram-write-v1\n"
+           << "# rom_sha256=" << devils_crush::rom::kSupportedSha256
+           << '\n'
+           << "# core_revision=" << core_revision << '\n'
+           << "# range_count=" << ranges.size() << '\n';
+    std::size_t range_index = 0U;
+    for (const auto range : ranges) {
+        output << "# range_" << ++range_index << '='
+               << std::uppercase << std::hex << std::setfill('0')
+               << std::setw(4) << range.first << '-' << std::setw(4)
+               << range.last << '\n';
+    }
+    output
+        << std::dec
+        << "sequence,frame,master_cycle,absolute_master_cycle,"
+           "instruction_physical_bank,instruction_logical_pc,"
+           "logical_address,work_ram_offset,value\n";
+
+    std::uint64_t sequence = 0U;
+    for (const auto& write : writes) {
+        output << ++sequence << ',' << write.frame_number << ','
+               << write.master_cycle << ','
+               << write.absolute_master_cycle << ','
+               << std::uppercase << std::hex << std::setfill('0')
+               << std::setw(2)
+               << static_cast<unsigned>(
+                      write.instruction.physical_bank)
+               << ',' << std::setw(4)
+               << write.instruction.logical_pc << ',' << std::setw(4)
+               << write.logical_address << ',' << std::setw(4)
+               << write.work_ram_offset << ',' << std::setw(2)
+               << static_cast<unsigned>(write.value)
+               << std::dec << '\n';
+    }
+
+    output.close();
+    if (!output) {
+        std::cerr << "Could not finalize work-RAM write trace.\n";
+        return false;
+    }
+    if (!MoveFileExW(
+            temporary_path.c_str(),
+            path.c_str(),
+            MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
+        std::cerr
+            << "Could not commit work-RAM write trace; Windows error "
+            << GetLastError() << ".\n";
+        return false;
+    }
+
+    std::cout << "Work-RAM write trace complete: " << writes.size()
+              << " selected writes\nOutput: " << path.string() << '\n';
+    return true;
+}
+
+int run_deterministic_recording(
     PceRuntime& runtime,
     const std::filesystem::path& path,
     const std::filesystem::path& work_ram_path,
     const std::filesystem::path& framebuffer_path,
     const std::filesystem::path& audio_path,
-    const std::string_view core_revision)
+    const std::string_view core_revision,
+    const RecordingPlan& plan,
+    const std::span<const WorkRamPatch> work_ram_patches)
 {
-    if (runtime.work_ram_size() == 0U) {
+    if (runtime.work_ram_size() == 0U || plan.frame_count <= 0
+        || plan.input_for_frame == nullptr || plan.format.empty()
+        || plan.label.empty()) {
         std::cerr << "The emulator did not expose work RAM for recording.\n";
         return EXIT_FAILURE;
     }
@@ -1216,7 +2167,7 @@ int run_canonical_recording(
         temporary_path,
         std::ios::binary | std::ios::trunc);
     if (!output) {
-        std::cerr << "Could not create canonical recording: "
+        std::cerr << "Could not create " << plan.label << " recording: "
                   << temporary_path.string() << '\n';
         return EXIT_FAILURE;
     }
@@ -1299,13 +2250,27 @@ int run_canonical_recording(
     }
 
     output
-        << "# format=devils-crush-canonical-v1\n"
+        << "# format=" << plan.format << '\n'
         << "# rom_sha256=" << devils_crush::rom::kSupportedSha256 << '\n'
         << "# core_revision=" << core_revision << '\n'
-        << "# frame_count=" << kCanonicalRecordingFrames << '\n'
-        << "# input_script=run:180-181,300-301;"
-           "one:420-421;two:480-481;left+one:540-541\n"
-        << "frame,input_p1,input_p2,work_ram_sha256,"
+        << "# frame_count=" << plan.frame_count << '\n'
+        << "# input_script=" << plan.input_script << '\n';
+    if (!work_ram_patches.empty()) {
+        output << "# work_ram_patch_count=" << work_ram_patches.size()
+               << '\n';
+        for (std::size_t index = 0U;
+             index < work_ram_patches.size();
+             ++index) {
+            const auto& patch = work_ram_patches[index];
+            output << "# work_ram_patch_" << index + 1U << '='
+                   << patch.frame << ':' << std::uppercase << std::hex
+                   << std::setfill('0') << std::setw(4)
+                   << patch.logical_address << ':' << std::setw(2)
+                   << static_cast<unsigned int>(patch.value)
+                   << std::nouppercase << std::dec << '\n';
+        }
+    }
+    output << "frame,input_p1,input_p2,work_ram_sha256,"
            "framebuffer_width,framebuffer_height,framebuffer_sha256,"
            "audio_sample_rate,audio_stereo_samples,audio_sha256\n";
 
@@ -1315,8 +2280,38 @@ int run_canonical_recording(
     int audio_sample_rate = 0;
     std::uint32_t audio_data_bytes = 0U;
     std::vector<std::byte> framebuffer_rgb;
-    for (int index = 1; index <= kCanonicalRecordingFrames; ++index) {
-        const auto input = canonical_input_for_frame(index);
+    for (int index = 1; index <= plan.frame_count; ++index) {
+        const auto first_patch = std::find_if(
+            work_ram_patches.begin(),
+            work_ram_patches.end(),
+            [index](const WorkRamPatch& patch) {
+                return patch.frame == index;
+            });
+        if (first_patch != work_ram_patches.end()) {
+            auto patched_work_ram = runtime.export_work_ram();
+            if (patched_work_ram.size() != runtime.work_ram_size()) {
+                std::cerr << "Could not export work RAM for frame "
+                          << index << " patches.\n";
+                return EXIT_FAILURE;
+            }
+            for (auto patch = first_patch;
+                 patch != work_ram_patches.end();
+                 ++patch) {
+                if (patch->frame != index) {
+                    continue;
+                }
+                const auto offset = static_cast<std::size_t>(
+                    patch->logical_address - 0x2000U);
+                patched_work_ram[offset] =
+                    static_cast<std::byte>(patch->value);
+            }
+            if (!runtime.import_work_ram(patched_work_ram)) {
+                std::cerr << "Could not import work RAM for frame "
+                          << index << " patches.\n";
+                return EXIT_FAILURE;
+            }
+        }
+        const auto input = plan.input_for_frame(index);
         const auto frame = runtime.run_frame(input);
         const auto work_ram = runtime.export_work_ram();
         if (frame.frame_number != static_cast<std::uint64_t>(index)
@@ -1324,7 +2319,7 @@ int run_canonical_recording(
             || frame.framebuffer.width <= 0
             || frame.framebuffer.height <= 0
             || work_ram.size() != runtime.work_ram_size()) {
-            std::cerr << "Canonical recording failed on frame " << index
+            std::cerr << plan.label << " recording failed on frame " << index
                       << ".\n";
             return EXIT_FAILURE;
         }
@@ -1357,7 +2352,7 @@ int run_canonical_recording(
                 const auto height = static_cast<std::uint32_t>(
                     framebuffer_height);
                 const auto frame_count = static_cast<std::uint32_t>(
-                    kCanonicalRecordingFrames);
+                    plan.frame_count);
                 framebuffer_output.write(signature, sizeof(signature));
                 framebuffer_output.write(
                     reinterpret_cast<const char*>(&width),
@@ -1373,7 +2368,8 @@ int run_canonical_recording(
             } else if (frame.framebuffer.width != framebuffer_width
                        || frame.framebuffer.height != framebuffer_height) {
                 std::cerr
-                    << "Canonical framebuffer geometry changed on frame "
+                    << plan.label
+                    << " framebuffer geometry changed on frame "
                     << index << ".\n";
                 return EXIT_FAILURE;
             }
@@ -1398,12 +2394,14 @@ int run_canonical_recording(
             if (index == 1) {
                 audio_sample_rate = frame.audio.sample_rate;
             } else if (frame.audio.sample_rate != audio_sample_rate) {
-                std::cerr << "Canonical audio sample rate changed on frame "
+                std::cerr << plan.label
+                          << " audio sample rate changed on frame "
                           << index << ".\n";
                 return EXIT_FAILURE;
             }
             if ((frame.audio.interleaved_stereo.size() % 2U) != 0U) {
-                std::cerr << "Canonical audio is not stereo on frame "
+                std::cerr << plan.label
+                          << " audio is not stereo on frame "
                           << index << ".\n";
                 return EXIT_FAILURE;
             }
@@ -1417,22 +2415,26 @@ int run_canonical_recording(
             }
         }
         if (!output) {
-            std::cerr << "Could not write canonical frame " << index
+            std::cerr << "Could not write " << plan.label << " frame "
+                      << index
                       << ".\n";
             return EXIT_FAILURE;
         }
         if (!work_ram_path.empty() && !work_ram_output) {
-            std::cerr << "Could not write canonical work RAM on frame "
+            std::cerr << "Could not write " << plan.label
+                      << " work RAM on frame "
                       << index << ".\n";
             return EXIT_FAILURE;
         }
         if (!framebuffer_path.empty() && !framebuffer_output) {
-            std::cerr << "Could not write canonical framebuffer on frame "
+            std::cerr << "Could not write " << plan.label
+                      << " framebuffer on frame "
                       << index << ".\n";
             return EXIT_FAILURE;
         }
         if (!audio_path.empty() && !audio_output) {
-            std::cerr << "Could not write canonical audio on frame "
+            std::cerr << "Could not write " << plan.label
+                      << " audio on frame "
                       << index << ".\n";
             return EXIT_FAILURE;
         }
@@ -1441,7 +2443,7 @@ int run_canonical_recording(
     output.flush();
     output.close();
     if (!output) {
-        std::cerr << "Could not finalize canonical recording.\n";
+        std::cerr << "Could not finalize " << plan.label << " recording.\n";
         return EXIT_FAILURE;
     }
     if (!work_ram_path.empty()) {
@@ -1466,13 +2468,15 @@ int run_canonical_recording(
                 audio_output,
                 static_cast<std::uint32_t>(audio_sample_rate),
                 audio_data_bytes)) {
-            std::cerr << "Could not finalize canonical audio header.\n";
+            std::cerr << "Could not finalize " << plan.label
+                      << " audio header.\n";
             return EXIT_FAILURE;
         }
         audio_output.flush();
         audio_output.close();
         if (!audio_output) {
-            std::cerr << "Could not finalize canonical audio recording.\n";
+            std::cerr << "Could not finalize " << plan.label
+                      << " audio recording.\n";
             return EXIT_FAILURE;
         }
     }
@@ -1480,7 +2484,8 @@ int run_canonical_recording(
             temporary_path.c_str(),
             path.c_str(),
             MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
-        std::cerr << "Could not commit canonical recording; Windows error "
+        std::cerr << "Could not commit " << plan.label
+                  << " recording; Windows error "
                   << GetLastError() << ".\n";
         return EXIT_FAILURE;
     }
@@ -1507,14 +2512,19 @@ int run_canonical_recording(
             audio_temporary_path.c_str(),
             audio_path.c_str(),
             MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
-        std::cerr << "Could not commit canonical audio; Windows error "
+        std::cerr << "Could not commit " << plan.label
+                  << " audio; Windows error "
                   << GetLastError() << ".\n";
         return EXIT_FAILURE;
     }
 
-    std::cout << "Canonical recording complete: "
-              << kCanonicalRecordingFrames << " frames\n"
+    std::cout << plan.label << " recording complete: "
+              << plan.frame_count << " frames\n"
               << "Output: " << path.string() << '\n';
+    if (!work_ram_patches.empty()) {
+        std::cout << "Work-RAM patches applied: "
+                  << work_ram_patches.size() << '\n';
+    }
     if (!work_ram_path.empty()) {
         std::cout << "Work RAM: " << work_ram_path.string() << '\n';
     }
@@ -1568,6 +2578,243 @@ int run_backup_ram_reload_test(
               << "Bytes:  " << actual.size() << '\n'
               << "File:   " << backup_path.string() << '\n'
               << "SHA-256: " << sha256(actual) << '\n';
+    return EXIT_SUCCESS;
+}
+
+[[nodiscard]] std::string routine_replay_name(
+    const RoutineReplayRequest& request)
+{
+    std::ostringstream output;
+    output << std::uppercase << std::hex << std::setfill('0')
+           << std::setw(2)
+           << static_cast<unsigned>(request.routine.physical_bank)
+           << ':' << std::setw(4) << request.routine.logical_pc
+           << std::dec << '@' << request.ordinal;
+    return output.str();
+}
+
+void report_routine_call_difference(
+    const RoutineCall& original,
+    const RoutineCall& replayed)
+{
+    std::cerr
+        << "  entry frame/cycle/absolute: "
+        << original.entry.frame_number << '/'
+        << original.entry.master_cycle << '/'
+        << original.entry.absolute_master_cycle << " vs "
+        << replayed.entry.frame_number << '/'
+        << replayed.entry.master_cycle << '/'
+        << replayed.entry.absolute_master_cycle << '\n'
+        << "  input registers match: "
+        << (original.entry.registers == replayed.entry.registers
+                ? "yes" : "no") << '\n'
+        << "  caller/return: " << std::uppercase << std::hex
+        << original.caller_pc << '/' << original.return_pc << '/'
+        << static_cast<unsigned>(
+               original.return_instruction.physical_bank)
+        << ':' << original.return_instruction.logical_pc << " vs "
+        << replayed.caller_pc << '/' << replayed.return_pc << '/'
+        << static_cast<unsigned>(
+               replayed.return_instruction.physical_bank)
+        << ':' << replayed.return_instruction.logical_pc << std::dec << '\n'
+        << "  return cycle/absolute/body: "
+        << original.return_master_cycle << '/'
+        << original.return_absolute_master_cycle << '/'
+        << original.body_master_cycles << " vs "
+        << replayed.return_master_cycle << '/'
+        << replayed.return_absolute_master_cycle << '/'
+        << replayed.body_master_cycles << '\n'
+        << "  output registers match: "
+        << (original.output_registers == replayed.output_registers
+                ? "yes" : "no") << '\n'
+        << "  ordered writes: " << original.work_ram_writes.size()
+        << " vs " << replayed.work_ram_writes.size() << '\n';
+    const auto common_count = std::min(
+        original.work_ram_writes.size(),
+        replayed.work_ram_writes.size());
+    for (std::size_t index = 0; index < common_count; ++index) {
+        if (original.work_ram_writes[index]
+            != replayed.work_ram_writes[index]) {
+            const auto& left = original.work_ram_writes[index];
+            const auto& right = replayed.work_ram_writes[index];
+            std::cerr << "  first write difference at " << index + 1U
+                      << ": offset/value/cycle "
+                      << std::uppercase << std::hex
+                      << left.work_ram_offset << '/'
+                      << static_cast<unsigned>(left.value) << std::dec
+                      << '/' << left.absolute_master_cycle << " vs "
+                      << std::uppercase << std::hex
+                      << right.work_ram_offset << '/'
+                      << static_cast<unsigned>(right.value) << std::dec
+                      << '/' << right.absolute_master_cycle << '\n';
+            break;
+        }
+    }
+    for (std::size_t index = 0; index < common_count; ++index) {
+        const auto& left = original.work_ram_writes[index];
+        const auto& right = replayed.work_ram_writes[index];
+        const auto left_offset = left.absolute_master_cycle
+            - original.entry.absolute_master_cycle;
+        const auto right_offset = right.absolute_master_cycle
+            - replayed.entry.absolute_master_cycle;
+        if (left.instruction != right.instruction
+            || left.logical_address != right.logical_address
+            || left.work_ram_offset != right.work_ram_offset
+            || left.value != right.value
+            || left.frame_number != right.frame_number
+            || left_offset != right_offset) {
+            std::cerr << "  first normalized write difference at "
+                      << index + 1U << ": instruction/address/offset/value/"
+                         "frame/relative-cycle "
+                      << std::uppercase << std::hex
+                      << static_cast<unsigned>(
+                             left.instruction.physical_bank)
+                      << ':' << left.instruction.logical_pc << '/'
+                      << left.logical_address << '/'
+                      << left.work_ram_offset << '/'
+                      << static_cast<unsigned>(left.value) << std::dec
+                      << '/' << left.frame_number << '/' << left_offset
+                      << " vs " << std::uppercase << std::hex
+                      << static_cast<unsigned>(
+                             right.instruction.physical_bank)
+                      << ':' << right.instruction.logical_pc << '/'
+                      << right.logical_address << '/'
+                      << right.work_ram_offset << '/'
+                      << static_cast<unsigned>(right.value) << std::dec
+                      << '/' << right.frame_number << '/' << right_offset
+                      << '\n';
+            break;
+        }
+    }
+}
+
+[[nodiscard]] bool routine_calls_match_after_clock_normalization(
+    const RoutineCall& original,
+    const RoutineCall& replayed)
+{
+    if (original.entry.routine != replayed.entry.routine
+        || original.entry.registers != replayed.entry.registers
+        || original.entry.frame_number != replayed.entry.frame_number
+        || original.return_instruction != replayed.return_instruction
+        || original.output_registers != replayed.output_registers
+        || original.caller_pc != replayed.caller_pc
+        || original.return_pc != replayed.return_pc
+        || original.body_master_cycles != replayed.body_master_cycles
+        || original.work_ram_writes.size()
+            != replayed.work_ram_writes.size()) {
+        return false;
+    }
+
+    const auto original_return_offset =
+        original.return_absolute_master_cycle
+        - original.entry.absolute_master_cycle;
+    const auto replayed_return_offset =
+        replayed.return_absolute_master_cycle
+        - replayed.entry.absolute_master_cycle;
+    if (original_return_offset != replayed_return_offset) {
+        return false;
+    }
+
+    for (std::size_t index = 0;
+         index < original.work_ram_writes.size();
+         ++index) {
+        const auto& left = original.work_ram_writes[index];
+        const auto& right = replayed.work_ram_writes[index];
+        if (left.instruction != right.instruction
+            || left.logical_address != right.logical_address
+            || left.work_ram_offset != right.work_ram_offset
+            || left.value != right.value
+            || left.frame_number != right.frame_number
+            || left.absolute_master_cycle
+                    - original.entry.absolute_master_cycle
+                != right.absolute_master_cycle
+                    - replayed.entry.absolute_master_cycle) {
+            return false;
+        }
+    }
+    return true;
+}
+
+int verify_routine_replays(
+    PceRuntime& runtime,
+    const RecordingPlan& plan,
+    std::span<RoutineReplayCapture> captures,
+    RoutineReplayCapture*& active_replay,
+    bool& suppress_recording_observers)
+{
+    for (auto& capture : captures) {
+        const auto name = routine_replay_name(capture.request);
+        if (capture.checkpoint.core_state.empty()
+            || capture.pre_call_work_ram.empty()
+            || !capture.original_call
+            || capture.original_post_call_work_ram.empty()) {
+            std::cerr << "Routine replay " << name
+                      << " did not capture a complete original call.\n";
+            return EXIT_FAILURE;
+        }
+        if (capture.checkpoint_entry.frame_number == 0U
+            || capture.checkpoint_entry.frame_number
+                > static_cast<std::uint64_t>(plan.frame_count)) {
+            std::cerr << "Routine replay " << name
+                      << " captured an invalid frame number.\n";
+            return EXIT_FAILURE;
+        }
+
+        active_replay = &capture;
+        suppress_recording_observers = true;
+        if (!runtime.deserialize(capture.checkpoint)) {
+            std::cerr << "Routine replay " << name
+                      << " could not restore its pre-call savestate.\n";
+            return EXIT_FAILURE;
+        }
+        if (runtime.export_work_ram() != capture.pre_call_work_ram) {
+            std::cerr << "Routine replay " << name
+                      << " restored different pre-call work RAM.\n";
+            return EXIT_FAILURE;
+        }
+
+        const auto frame_number =
+            static_cast<int>(capture.checkpoint_entry.frame_number);
+        const auto frame = runtime.run_frame(
+            plan.input_for_frame(frame_number));
+        if (frame.frame_number
+                != capture.checkpoint_entry.frame_number
+            || !capture.replayed_call
+            || capture.replayed_post_call_work_ram.empty()) {
+            std::cerr << "Routine replay " << name
+                      << " did not complete in its restored frame.\n";
+            return EXIT_FAILURE;
+        }
+        if (!routine_calls_match_after_clock_normalization(
+                *capture.original_call,
+                *capture.replayed_call)) {
+            std::cerr << "Routine replay " << name
+                      << " changed registers, return state, relative "
+                         "cycles, or ordered work-RAM writes.\n";
+            report_routine_call_difference(
+                *capture.original_call,
+                *capture.replayed_call);
+            return EXIT_FAILURE;
+        }
+        if (capture.replayed_post_call_work_ram
+            != capture.original_post_call_work_ram) {
+            std::cerr << "Routine replay " << name
+                      << " changed post-call work RAM.\n";
+            return EXIT_FAILURE;
+        }
+
+        std::cout << "Routine replay " << name << " verified: frame "
+                  << capture.checkpoint_entry.frame_number << ", "
+                  << capture.original_call->body_master_cycles
+                  << " body cycles, "
+                  << capture.original_call->work_ram_writes.size()
+                  << " ordered writes\n";
+        active_replay = nullptr;
+        suppress_recording_observers = false;
+    }
+
+    std::cout << "Routine replay complete: " << captures.size()
+              << " state-normalized calls\n";
     return EXIT_SUCCESS;
 }
 
@@ -1839,64 +3086,358 @@ int main(const int argc, char* argv[])
         }
         std::cout << load_result.message << '\n';
 
-        if (options.record_canonical) {
-            std::uint64_t hook_hits = 0;
+        if (options.record_canonical || options.record_gameplay
+            || options.record_state_census) {
+            const auto& recording_plan = options.record_state_census
+                ? kStateCensusRecordingPlan
+                : options.record_gameplay
+                    ? kGameplayRecordingPlan
+                    : kCanonicalRecordingPlan;
+            const auto& recording_path = options.record_state_census
+                ? options.state_census_path
+                : options.record_gameplay
+                    ? options.gameplay_path
+                    : options.canonical_path;
+            std::vector<std::uint64_t> pass_through_hits(
+                options.pass_through_hooks.size());
+            std::vector<std::uint64_t> replacement_hits(
+                options.replace_hooks.size());
+            std::vector<std::uint64_t> replacement_entries(
+                options.replace_hooks.size());
             std::vector<RoutineEntry> observed_entries;
-            if (options.pass_through_hook
-                && !runtime->install_execution_hook({
-                    .routine = *options.pass_through_hook,
+            std::vector<RoutineCall> observed_calls;
+            std::vector<ObservedMemoryWrite> observed_work_ram_writes;
+            std::vector<RoutineReplayCapture> routine_replays;
+            routine_replays.reserve(options.routine_replays.size());
+            for (const auto request : options.routine_replays) {
+                routine_replays.push_back({
+                    .request = request,
+                });
+            }
+            RoutineReplayCapture* active_replay = nullptr;
+            bool suppress_recording_observers = false;
+            for (std::size_t index = 0U;
+                 index < options.pass_through_hooks.size();
+                 ++index) {
+                if (runtime->install_execution_hook({
+                    .routine = options.pass_through_hooks[index],
                     .mode = HookMode::pass_through,
-                    .callback = [&hook_hits](const RoutineEntry&) {
-                        ++hook_hits;
+                    .callback = [&pass_through_hits,
+                                 index](const RoutineEntry&) {
+                        ++pass_through_hits[index];
                     },
                 })) {
-                std::cerr << "Could not install the pass-through hook.\n";
+                    continue;
+                }
+                std::cerr << "Could not install pass-through hook "
+                          << index + 1U << ".\n";
                 return EXIT_FAILURE;
             }
-            if (options.observe_hook
-                && !runtime->install_execution_hook({
-                    .routine = *options.observe_hook,
-                    .mode = HookMode::observe,
-                    .callback = [&observed_entries](
+            for (std::size_t index = 0U;
+                 index < options.observe_hooks.size();
+                 ++index) {
+                const auto replacement = std::find_if(
+                    options.replace_hooks.begin(),
+                    options.replace_hooks.end(),
+                    [&options, index](
+                        const RoutineReplayRequest& request) {
+                        return request.routine
+                            == options.observe_hooks[index];
+                    });
+                const bool replaces =
+                    replacement != options.replace_hooks.end();
+                const auto replacement_index = static_cast<std::size_t>(
+                    std::distance(
+                        options.replace_hooks.begin(),
+                        replacement));
+                devils_crush::emulation::ExecutionHook hook{
+                    .routine = options.observe_hooks[index],
+                    .mode = replaces
+                        ? HookMode::replace
+                        : HookMode::observe,
+                    .callback = [&runtime,
+                                 &observed_entries,
+                                 &routine_replays,
+                                 &active_replay,
+                                 &suppress_recording_observers](
                                     const RoutineEntry& entry) {
+                        if (active_replay != nullptr
+                            || suppress_recording_observers) {
+                            return;
+                        }
+                        const auto replay = std::find_if(
+                            routine_replays.begin(),
+                            routine_replays.end(),
+                            [&entry](const RoutineReplayCapture& capture) {
+                                return capture.request.routine
+                                    == entry.routine;
+                            });
+                        if (replay != routine_replays.end()
+                            && ++replay->natural_entry_count
+                                == replay->request.ordinal) {
+                            replay->checkpoint_entry = entry;
+                            replay->checkpoint = runtime->serialize();
+                            replay->pre_call_work_ram =
+                                runtime->export_work_ram();
+                        }
                         observed_entries.push_back(entry);
                     },
-                })) {
-                std::cerr << "Could not install the observe hook.\n";
+                };
+                if (replaces) {
+                    hook.replacement_callback =
+                        [&replacement_hits,
+                         &replacement_entries,
+                         &options,
+                         replacement_index](
+                            const RoutineEntry& entry,
+                            const std::span<const std::byte> work_ram) {
+                            const auto entry_number =
+                                ++replacement_entries[
+                                    replacement_index];
+                            if (entry_number
+                                != options.replace_hooks[
+                                       replacement_index]
+                                       .ordinal) {
+                                return std::optional<
+                                    RoutineReplacement>{};
+                            }
+                            auto result = replace_cached_position_restore(
+                                entry,
+                                work_ram);
+                            if (result) {
+                                ++replacement_hits[replacement_index];
+                            }
+                            return result;
+                        };
+                }
+                if (runtime->install_execution_hook(std::move(hook))) {
+                    continue;
+                }
+                std::cerr << "Could not install observe hook "
+                          << index + 1U << ".\n";
+                return EXIT_FAILURE;
+            }
+            for (std::size_t index = 0U;
+                 index < options.replace_hooks.size();
+                 ++index) {
+                if (std::find(
+                        options.observe_hooks.begin(),
+                        options.observe_hooks.end(),
+                        options.replace_hooks[index].routine)
+                    != options.observe_hooks.end()) {
+                    continue;
+                }
+                if (runtime->install_execution_hook({
+                        .routine = options.replace_hooks[index].routine,
+                        .mode = HookMode::replace,
+                        .replacement_callback =
+                            [&replacement_hits,
+                             &replacement_entries,
+                             &options,
+                             index](
+                                const RoutineEntry& entry,
+                                const std::span<const std::byte> work_ram) {
+                                const auto entry_number =
+                                    ++replacement_entries[index];
+                                if (entry_number
+                                    != options.replace_hooks[index]
+                                           .ordinal) {
+                                    return std::optional<
+                                        RoutineReplacement>{};
+                                }
+                                auto result =
+                                    replace_cached_position_restore(
+                                        entry,
+                                        work_ram);
+                                if (result) {
+                                    ++replacement_hits[index];
+                                }
+                                return result;
+                            },
+                    })) {
+                    continue;
+                }
+                std::cerr << "Could not install replacement hook "
+                          << index + 1U << ".\n";
+                return EXIT_FAILURE;
+            }
+            if (!options.routine_call_trace_path.empty()) {
+                for (std::size_t index = 0U;
+                     index < options.observe_hooks.size();
+                     ++index) {
+                    if (runtime->install_routine_call_observer({
+                        .routine = options.observe_hooks[index],
+                        .callback = [&runtime,
+                                     &observed_calls,
+                                     &routine_replays,
+                                     &active_replay,
+                                     &suppress_recording_observers](
+                                        const RoutineCall& call) {
+                            if (active_replay != nullptr) {
+                                if (call.entry.routine
+                                        == active_replay->request.routine
+                                    && !active_replay->replayed_call) {
+                                    active_replay->replayed_call = call;
+                                    active_replay
+                                        ->replayed_post_call_work_ram =
+                                        runtime->export_work_ram();
+                                }
+                                return;
+                            }
+                            if (!suppress_recording_observers) {
+                                observed_calls.push_back(call);
+                            }
+                            const auto replay = std::find_if(
+                                routine_replays.begin(),
+                                routine_replays.end(),
+                                [&call](
+                                    const RoutineReplayCapture& capture) {
+                                    return !capture.checkpoint.core_state.empty()
+                                        && !capture.original_call
+                                        && capture.checkpoint_entry
+                                                .absolute_master_cycle
+                                            == call.entry
+                                                .absolute_master_cycle
+                                        && capture.request.routine
+                                            == call.entry.routine;
+                                });
+                            if (replay != routine_replays.end()) {
+                                replay->original_call = call;
+                                replay->original_post_call_work_ram =
+                                    runtime->export_work_ram();
+                            }
+                        },
+                    })) {
+                        continue;
+                    }
+                    std::cerr
+                        << "Could not install routine-call observer "
+                        << index + 1U << ".\n";
+                    return EXIT_FAILURE;
+                }
+            }
+            if (!options.work_ram_write_ranges.empty()
+                && !runtime->set_work_ram_write_observer(
+                    [&observed_work_ram_writes,
+                      &ranges = options.work_ram_write_ranges,
+                      &suppress_recording_observers](
+                        const ObservedMemoryWrite& write) {
+                        if (suppress_recording_observers) {
+                            return;
+                        }
+                        const bool selected = std::any_of(
+                            ranges.begin(),
+                            ranges.end(),
+                            [&write](const LogicalAddressRange range) {
+                                return write.logical_address >= range.first
+                                    && write.logical_address <= range.last;
+                            });
+                        if (selected) {
+                            observed_work_ram_writes.push_back(write);
+                        }
+                    })) {
+                std::cerr
+                    << "Could not install work-RAM write observer.\n";
                 return EXIT_FAILURE;
             }
 
-            const int result = run_canonical_recording(
+            const int result = run_deterministic_recording(
                 *runtime,
-                options.canonical_path,
+                recording_path,
                 options.canonical_work_ram_path,
                 options.canonical_framebuffer_path,
                 options.canonical_audio_path,
-                runtime_info.upstream_revision);
+                runtime_info.upstream_revision,
+                recording_plan,
+                options.work_ram_patches);
             if (result != EXIT_SUCCESS) {
                 return result;
             }
-            if (options.pass_through_hook && hook_hits == 0U) {
-                std::cerr
-                    << "The pass-through hook address was never entered.\n";
-                return EXIT_FAILURE;
-            }
-            if (options.pass_through_hook) {
-                std::cout << "Pass-through hook entries: "
-                          << hook_hits << '\n';
-            }
-            if (options.observe_hook
-                && (observed_entries.empty()
-                    || !write_routine_trace(
-                        options.routine_trace_path,
-                        *options.observe_hook,
-                        observed_entries,
-                        runtime_info.upstream_revision))) {
-                if (observed_entries.empty()) {
-                    std::cerr
-                        << "The observe hook address was never entered.\n";
+            for (std::size_t index = 0U;
+                 index < pass_through_hits.size();
+                 ++index) {
+                if (pass_through_hits[index] == 0U) {
+                    std::cerr << "Pass-through hook " << index + 1U
+                              << " was never entered.\n";
+                    return EXIT_FAILURE;
                 }
+                std::cout << "Pass-through hook " << index + 1U
+                          << " entries: " << pass_through_hits[index]
+                          << '\n';
+            }
+            for (std::size_t index = 0U;
+                 index < replacement_hits.size();
+                 ++index) {
+                if (replacement_hits[index] == 0U) {
+                    std::cerr << "Native replacement "
+                              << index + 1U
+                              << " was never entered.\n";
+                    return EXIT_FAILURE;
+                }
+                const auto request = options.replace_hooks[index];
+                std::cout << "Native replacement "
+                          << std::uppercase << std::hex
+                          << std::setw(2) << std::setfill('0')
+                          << static_cast<unsigned>(
+                                 request.routine.physical_bank)
+                          << ':' << std::setw(4)
+                          << request.routine.logical_pc << std::dec
+                          << '@' << request.ordinal
+                          << std::setfill(' ') << " entries: "
+                          << replacement_hits[index] << '\n';
+            }
+            for (std::size_t index = 0U;
+                 index < options.observe_hooks.size();
+                 ++index) {
+                const auto routine = options.observe_hooks[index];
+                const auto hit_count = static_cast<std::size_t>(std::count_if(
+                    observed_entries.begin(),
+                    observed_entries.end(),
+                    [routine](const RoutineEntry& entry) {
+                        return entry.routine == routine;
+                    }));
+                if (hit_count == 0U) {
+                    std::cerr << "Observe hook " << index + 1U
+                              << " was never entered.\n";
+                    return EXIT_FAILURE;
+                }
+                std::cout << "Observe hook " << index + 1U
+                          << " entries: " << hit_count << '\n';
+            }
+            if (!options.routine_trace_path.empty()
+                && !write_routine_trace(
+                    options.routine_trace_path,
+                    options.observe_hooks,
+                    observed_entries,
+                    runtime_info.upstream_revision)) {
                 return EXIT_FAILURE;
+            }
+            if (!options.routine_call_trace_path.empty()
+                && !write_routine_call_trace(
+                    options.routine_call_trace_path,
+                    options.observe_hooks,
+                    observed_calls,
+                    runtime_info.upstream_revision)) {
+                return EXIT_FAILURE;
+            }
+            if (!options.work_ram_write_trace_path.empty()
+                && !write_work_ram_write_trace(
+                    options.work_ram_write_trace_path,
+                    options.work_ram_write_ranges,
+                    observed_work_ram_writes,
+                    runtime_info.upstream_revision)) {
+                return EXIT_FAILURE;
+            }
+            if (!routine_replays.empty()) {
+                const int replay_result = verify_routine_replays(
+                    *runtime,
+                    recording_plan,
+                    routine_replays,
+                    active_replay,
+                    suppress_recording_observers);
+                if (replay_result != EXIT_SUCCESS) {
+                    return replay_result;
+                }
             }
             return EXIT_SUCCESS;
         }

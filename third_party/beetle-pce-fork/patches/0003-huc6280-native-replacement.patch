@@ -1,0 +1,79 @@
+diff --git a/mednafen/pce/huc6280.cpp b/mednafen/pce/huc6280.cpp
+--- a/mednafen/pce/huc6280.cpp
++++ b/mednafen/pce/huc6280.cpp
+@@ -654,6 +654,75 @@ NO_INLINE void HuC6280::RunSub(void)
+ 				dc_beetle_active_instruction_hook_user_data);
+ 		}
+ 
++		if(MDFN_UNLIKELY(dc_beetle_active_replacement_hook != NULL))
++		{
++			dc_beetle_cpu_state replacement_state =
++			{
++				(uint16)PC,
++				MPR[(PC >> 13) & 0x7],
++				lastop,
++				A,
++				X,
++				Y,
++				S,
++				P,
++				{
++					MPR[0], MPR[1], MPR[2], MPR[3],
++					MPR[4], MPR[5], MPR[6], MPR[7]
++				},
++				timestamp,
++				PCE_TimestampBase + timestamp
++			};
++			dc_beetle_replacement_result replacement = {};
++
++			dc_beetle_active_replacement_hook(
++				&replacement_state,
++				&replacement,
++				dc_beetle_active_replacement_hook_user_data);
++
++			bool valid = replacement.handled != 0
++				&& replacement.write_count
++					<= DC_BEETLE_MAX_REPLACEMENT_WRITES
++				&& (replacement.write_count == 0
++					|| replacement.writes != NULL);
++			uint32 elapsed = 0;
++			for(uint32 i = 0; valid && i < replacement.write_count; i++)
++			{
++				const dc_beetle_replacement_write& write =
++					replacement.writes[i];
++				valid = write.master_cycle_offset >= elapsed
++					&& write.master_cycle_offset
++						<= replacement.body_master_cycles;
++				elapsed = write.master_cycle_offset;
++			}
++			if(valid)
++			{
++				elapsed = 0;
++				for(uint32 i = 0; i < replacement.write_count; i++)
++				{
++					const dc_beetle_replacement_write& write =
++						replacement.writes[i];
++					ADDCYC_MASTER(write.master_cycle_offset - elapsed);
++					elapsed = write.master_cycle_offset;
++					HookInstructionPC = write.instruction_logical_pc;
++					HookInstructionPhysicalBank =
++						write.instruction_physical_bank;
++					WrMem(write.logical_address, write.value);
++				}
++				ADDCYC_MASTER(replacement.body_master_cycles - elapsed);
++				A = replacement.accumulator;
++				X = replacement.x;
++				Y = replacement.y;
++				S = replacement.stack_pointer;
++				P = replacement.status;
++				REDOPIMCACHE();
++				for(unsigned i = 0; i < 8; i++)
++					SetMPR(i, replacement.mpr[i]);
++				PC = replacement.resume_logical_pc;
++				continue;
++			}
++		}
++
+ 		PC++;
+ 
+ 		switch(lastop)

@@ -1,0 +1,90 @@
+diff --git a/mednafen/pce/huc6280.h b/mednafen/pce/huc6280.h
+--- a/mednafen/pce/huc6280.h
++++ b/mednafen/pce/huc6280.h
+@@ -1,6 +1,9 @@
+ #ifndef __MDFN_PCE_HUC6280_H
+ #define __MDFN_PCE_HUC6280_H
+ 
++#include <dc_beetle_execution_hook.h>
++extern uint64 PCE_TimestampBase;
++
+ class MDFN_ALIGN(128) HuC6280
+ {
+ public:
+@@ -184,6 +187,23 @@ private:
+ 		LastLogicalWriteAddr = address;
+ 
+ 		WriteMap[wmpr]((wmpr << 13) | (address & 0x1FFF), V);
++
++		if(MDFN_UNLIKELY(dc_beetle_active_memory_write_hook != NULL))
++		{
++			dc_beetle_memory_write write =
++			{
++				(uint16)address,
++				wmpr,
++				V,
++				HookInstructionPC,
++				HookInstructionPhysicalBank,
++				timestamp,
++				PCE_TimestampBase + timestamp
++			};
++			dc_beetle_active_memory_write_hook(
++				&write,
++				dc_beetle_active_memory_write_hook_user_data);
++		}
+ 	}
+ 
+ 	// Used for ST0, ST1, ST2
+@@ -282,6 +302,8 @@ private:
+ 	uint8 Y;		// Y Indes register
+ 	uint8 S;		// Stack Pointer
+ 	uint8 P;		// Processor Flags/Status Register
++	uint16 HookInstructionPC;
++	uint8 HookInstructionPhysicalBank;
+ 	uint8 IRQMask;
+ 	uint32 PIMaskCache;	// Will be = 0 if (P & I_FLAG) is set, ~0 if (P & I_FLAG) is clear.
+ 	uint32 IRQlow;          /* Simulated IRQ pin held low(or is it high?).
+diff --git a/mednafen/pce/huc6280.cpp b/mednafen/pce/huc6280.cpp
+--- a/mednafen/pce/huc6280.cpp
++++ b/mednafen/pce/huc6280.cpp
+@@ -623,33 +623,37 @@ NO_INLINE void HuC6280::RunSub(void)
+ 			}
+ 		}
+ 		PC &= 0xFFFF;     // Our cpu core can only handle PC going about 8192 bytes over, so make sure it never gets that far...
++		HookInstructionPC = (uint16)PC;
++		HookInstructionPhysicalBank = MPR[(PC >> 13) & 0x7];
++
++		lastop = RdOp(PC);
+ 
+ 		if(MDFN_UNLIKELY(dc_beetle_active_instruction_hook != NULL))
+ 		{
+ 			dc_beetle_cpu_state hook_state =
+ 			{
+ 				(uint16)PC,
+ 				MPR[(PC >> 13) & 0x7],
++				lastop,
+ 				A,
+ 				X,
+ 				Y,
+ 				S,
+ 				P,
+ 				{
+ 					MPR[0], MPR[1], MPR[2], MPR[3],
+ 					MPR[4], MPR[5], MPR[6], MPR[7]
+ 				},
+-				timestamp
++				timestamp,
++				PCE_TimestampBase + timestamp
+ 			};
+ 
+ 			dc_beetle_active_instruction_hook(
+ 				&hook_state,
+ 				dc_beetle_active_instruction_hook_user_data);
+ 		}
+ 
+-		lastop = RdOp(PC);
+-
+ 		PC++;
+ 
+ 		switch(lastop)
+ 		{

@@ -1,0 +1,26 @@
+diff --git a/mednafen/pce/vce.h b/mednafen/pce/vce.h
+--- a/mednafen/pce/vce.h
++++ b/mednafen/pce/vce.h
+@@ -80,6 +80,22 @@ public:
+ 
+ 	void SetCDEvent(const int32 cycles);
+ 
++	// Devil's Crush downstream read-only video snapshot boundary. These
++	// accessors do not synchronize, mutate, or expose emulator-owned pointers;
++	// the caller copies state on the emulation thread between frames.
++	uint16 DebugPeekVRAM(const uint16 address)
++	{
++		return vdc[0].PeekVRAM(address);
++	}
++	uint16 DebugPeekPalette(const uint16 address)
++	{
++		return color_table[address & 0x1FF];
++	}
++	uint32 DebugGetVDCRegister(const unsigned id)
++	{
++		return vdc[0].GetRegister(id);
++	}
++
+ 	int32 SyncReal(const int32 timestamp);
+ 	
+ 	//

@@ -4,14 +4,18 @@
 #include "devils_crush/core/rom_image.hpp"
 #include "devils_crush/core/save_state.hpp"
 #include "devils_crush/emulation/pce_runtime.hpp"
+#include "devils_crush/game_logic/physics.h"
+#include "devils_crush/render/pce_background.hpp"
 #include "devils_crush/render/sharp_pixel_scaler.hpp"
 
+#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdlib>
 #include <filesystem>
 #include <iostream>
 #include <limits>
+#include <ranges>
 #include <stdexcept>
 #include <string_view>
 #include <utility>
@@ -69,6 +73,52 @@ void test_hash_vectors()
             == "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61"
                "f20015ad",
         "SHA-256 known vector");
+}
+
+void test_native_cached_position_restore()
+{
+    std::array<std::uint8_t, 0x2000> work_ram{};
+    constexpr std::array<std::uint8_t, DC_CACHED_POSITION_BYTE_COUNT>
+        cached{0x12U, 0x34U, 0x56U, 0x78U, 0x9AU, 0xBCU};
+    std::copy(
+        cached.begin(),
+        cached.end(),
+        work_ram.begin() + 0x85);
+
+    dc_cached_position_restore restore{};
+    check(
+        dc_restore_cached_position(
+            work_ram.data(),
+            work_ram.size(),
+            3U,
+            &restore)
+            != 0,
+        "native F241 accepts a complete work-RAM snapshot");
+    constexpr std::array<std::uint16_t, DC_CACHED_POSITION_BYTE_COUNT>
+        expected_offsets{
+            0x1103U,
+            0x1183U,
+            0x1203U,
+            0x1283U,
+            0x1303U,
+            0x1383U,
+        };
+    check(
+        std::ranges::equal(
+            restore.work_ram_offsets,
+            expected_offsets),
+        "native F241 indexes all six position arrays");
+    check(
+        std::ranges::equal(restore.values, cached),
+        "native F241 returns all six cached bytes in store order");
+    check(
+        dc_restore_cached_position(
+            work_ram.data(),
+            work_ram.size() - 1U,
+            0U,
+            &restore)
+            == 0,
+        "native F241 rejects a truncated work-RAM snapshot");
 }
 
 void test_supported_rom_metadata()
@@ -212,6 +262,145 @@ void test_scaler_edges()
         std::numeric_limits<std::uint32_t>::max(),
         1U);
     check(maximum.valid(), "maximum integer inputs remain valid");
+}
+
+void test_pce_background_decode()
+{
+    std::array<std::uint16_t, 48> vram{};
+    std::array<std::uint16_t, 256> palette{};
+
+    // Two BAT cells select tiles 1 and 2. Tile 1 uses subpalette 3.
+    vram[0] = 0x3001U;
+    vram[1] = 0x0002U;
+
+    // Tile 1, row 0: color 3 at the left edge and color 1 at the right.
+    vram[16] = 0x8081U;
+    // Tile 1, row 1: color 4 at the left edge.
+    vram[25] = 0x0080U;
+    palette[0] = 0x0007U;
+    palette[0x31] = 0x0038U;
+    palette[0x33] = 0x01C0U;
+    palette[0x34] = 0x01FFU;
+
+    const auto decoded =
+        devils_crush::render::decode_pce_background({
+            .vram_words = vram,
+            .palette_entries = palette,
+            .bat_width_tiles = 2,
+            .bat_height_tiles = 1,
+        });
+    check(decoded.has_value(), "PCE background snapshot decodes");
+    if (!decoded) {
+        return;
+    }
+
+    check(
+        decoded->width == 16 && decoded->height == 8
+            && decoded->pixels.size() == 128U,
+        "PCE BAT dimensions expand to 8x8 tiles");
+    check(
+        decoded->pixels[0] == 0xFF00FC00U,
+        "PCE planar bit order and subpalette selection");
+    check(
+        decoded->pixels[7] == 0xFFFC0000U,
+        "PCE tile right-edge bit order");
+    check(
+        decoded->pixels[16] == 0xFFFCFCFCU,
+        "PCE upper bitplanes decode");
+    check(
+        decoded->pixels[1] == 0xFF0000FCU,
+        "PCE background color zero uses shared palette entry zero");
+
+    auto invalid_vram = vram;
+    invalid_vram[1] = 0x0FFFU;
+    const auto dormant_tile =
+        devils_crush::render::decode_pce_background({
+            .vram_words = invalid_vram,
+            .palette_entries = palette,
+            .bat_width_tiles = 2,
+            .bat_height_tiles = 1,
+        });
+    check(
+        dormant_tile && dormant_tile->pixels[8] == 0xFF0000FCU,
+        "PCE decoder blanks a dormant out-of-cache tile");
+    check(
+        !devils_crush::render::decode_pce_background({
+            .vram_words =
+                std::span<const std::uint16_t>(invalid_vram).first(1),
+            .palette_entries = palette,
+            .bat_width_tiles = 2,
+            .bat_height_tiles = 1,
+        }),
+        "PCE decoder rejects a truncated BAT");
+}
+
+void test_background_stitch_and_crop()
+{
+    using devils_crush::render::ArgbImage;
+    using devils_crush::render::PlacedImage;
+
+    const ArgbImage upper{
+        .width = 2,
+        .height = 2,
+        .pixels = {
+            0xFF100000U,
+            0xFF200000U,
+            0xFF300000U,
+            0xFF400000U,
+        },
+    };
+    const ArgbImage lower{
+        .width = 2,
+        .height = 2,
+        .pixels = {
+            0xFF001000U,
+            0xFF002000U,
+            0xFF003000U,
+            0xFF004000U,
+        },
+    };
+    const std::array regions{
+        PlacedImage{.image = &upper, .world_x = -1, .world_y = -2},
+        PlacedImage{.image = &lower, .world_x = -1, .world_y = 0},
+    };
+    const auto stitched = devils_crush::render::stitch_images(regions);
+    check(stitched.has_value(), "table regions stitch");
+    if (!stitched) {
+        return;
+    }
+    check(
+        stitched->world_x == -1 && stitched->world_y == -2
+            && stitched->image.width == 2
+            && stitched->image.height == 4,
+        "stitched table retains its world origin and extent");
+    check(
+        stitched->image.pixels[3] == 0xFF400000U
+            && stitched->image.pixels[4] == 0xFF001000U,
+        "stitched table preserves the region seam");
+
+    const auto crop = devils_crush::render::crop_image(
+        stitched->image,
+        0,
+        1,
+        2,
+        2);
+    check(
+        crop && crop->pixels
+                == std::vector<std::uint32_t>{
+                    0xFF300000U,
+                    0xFF400000U,
+                    0xFF001000U,
+                    0xFF002000U,
+                },
+        "camera-sized crop crosses a stitched seam exactly");
+    check(
+        !devils_crush::render::crop_image(
+            stitched->image,
+            1,
+            3,
+            2,
+            2),
+        "crop rejects out-of-range camera rectangles");
 }
 
 void test_save_state_container()
@@ -358,9 +547,53 @@ void test_runtime_boundary()
         }),
         "execution hook installation is rejected before ROM load");
     check(
-        !runtime->has_execution_hook(),
-        "execution hook is absent before ROM load");
-    runtime->clear_execution_hook();
+        runtime->execution_hook_count() == 0U,
+        "execution-hook registry is empty before ROM load");
+    check(
+        !runtime->remove_execution_hook({
+            .physical_bank = 0,
+            .logical_pc = 0xE462,
+        }),
+        "execution-hook removal is rejected before ROM load");
+    runtime->clear_execution_hooks();
+    check(
+        !runtime->install_routine_call_observer({
+            .routine = {
+                .physical_bank = 0,
+                .logical_pc = 0xE462,
+            },
+            .callback = [](const devils_crush::emulation::RoutineCall&) {},
+        }),
+        "routine-call observer installation is rejected before ROM load");
+    check(
+        runtime->routine_call_observer_count() == 0U,
+        "routine-call observer registry is empty before ROM load");
+    check(
+        !runtime->remove_routine_call_observer({
+            .physical_bank = 0,
+            .logical_pc = 0xE462,
+        }),
+        "routine-call observer removal is rejected before ROM load");
+    runtime->clear_routine_call_observers();
+    check(
+        !runtime->set_work_ram_write_observer(
+            [](const devils_crush::emulation::ObservedMemoryWrite&) {}),
+        "work-RAM write observer installation is rejected before ROM load");
+    check(
+        !runtime->has_work_ram_write_observer(),
+        "work-RAM write observer is empty before ROM load");
+    runtime->clear_work_ram_write_observer();
+    check(
+        !runtime->set_bus_write_observer(
+            [](const devils_crush::emulation::ObservedBusWrite&) {}),
+        "bus-write observer installation is rejected before ROM load");
+    check(
+        !runtime->has_bus_write_observer(),
+        "bus-write observer is empty before ROM load");
+    runtime->clear_bus_write_observer();
+    check(
+        !runtime->export_video_memory(),
+        "video-memory export is empty before ROM load");
     check(
         runtime->serialize().core_state.empty(),
         "savestate serialization is empty before ROM load");
@@ -387,9 +620,12 @@ void test_runtime_boundary()
 int main()
 {
     test_hash_vectors();
+    test_native_cached_position_restore();
     test_supported_rom_metadata();
     test_scaler_examples();
     test_scaler_edges();
+    test_pce_background_decode();
+    test_background_stitch_and_crop();
     test_save_state_container();
     test_backup_ram_storage();
     test_runtime_boundary();

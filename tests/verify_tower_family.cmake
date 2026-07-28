@@ -1,0 +1,178 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+foreach(required_variable IN ITEMS APP CONFIG ROM OUTPUT)
+    if(NOT DEFINED ${required_variable} OR "${${required_variable}}" STREQUAL "")
+        message(FATAL_ERROR "${required_variable} is required.")
+    endif()
+endforeach()
+
+if(CONFIG STREQUAL "Debug")
+    set(
+        expected_census_sha256
+        "a95d0c343108b107d7ec1aa3c20915540d91bb08817704776531e5696ea9b5e2"
+    )
+elseif(CONFIG STREQUAL "Release")
+    set(
+        expected_census_sha256
+        "9036a9de0c3c9917f47bff8c04c136a4824ec12601fb457d260aa2dfe4443490"
+    )
+else()
+    message(FATAL_ERROR "Unsupported Tower-family-test configuration: ${CONFIG}")
+endif()
+
+set(
+    expected_trace_sha256
+    "9771eca6e3a0c8f297eb9311ebc18af9b498362770a3b157e91553af6f4f0c79"
+)
+set(
+    expected_call_sha256
+    "1b6440a384b815ba8ee97473dc389a56f9455ec0a82ee307c5baa499bbf3712f"
+)
+set(
+    expected_write_sha256
+    "26696c169ae2296a752ea3916c9151134febbb89ef1a9eea54826645c64815c3"
+)
+set(
+    expected_actor_write_sha256
+    "b311b7704f05b9bca07da08e71026f9415d4752d044361d026e816c9cafdc338"
+)
+
+set(trace_output "${OUTPUT}.trace.csv")
+set(call_output "${OUTPUT}.calls.csv")
+set(write_output "${call_output}.writes.csv")
+set(actor_write_output "${OUTPUT}.actors.csv")
+
+execute_process(
+    COMMAND
+        "${APP}"
+        --record-state-census
+        "${OUTPUT}"
+        --observe-hook
+        "03:60C3"
+        --routine-trace
+        "${trace_output}"
+        --routine-call-trace
+        "${call_output}"
+        --routine-replay
+        "03:60C3@1"
+        --work-ram-write-range
+        "3000-307F"
+        --work-ram-write-range
+        "3F00-3FFF"
+        --work-ram-write-trace
+        "${actor_write_output}"
+        --rom
+        "${ROM}"
+    RESULT_VARIABLE recorder_result
+    OUTPUT_VARIABLE recorder_output
+    ERROR_VARIABLE recorder_error
+)
+if(NOT recorder_result EQUAL 0)
+    message(
+        FATAL_ERROR
+        "Tower family recorder failed (${recorder_result}).\n"
+        "${recorder_output}${recorder_error}"
+    )
+endif()
+
+foreach(expected_line IN ITEMS
+    "State census recording complete: 3600 frames"
+    "Observe hook 1 entries: 2646"
+    "Routine trace complete: 2646 entries"
+    "Routine call trace complete: 2646 calls, 538 writes"
+    "Routine replay 03:60C3@1 verified: frame 873"
+    "Routine replay complete: 1 state-normalized calls"
+    "Work-RAM write trace complete: 3872 selected writes"
+)
+    string(FIND "${recorder_output}" "${expected_line}" line_offset)
+    if(line_offset EQUAL -1)
+        message(
+            FATAL_ERROR
+            "Tower family output omitted '${expected_line}'.\n"
+            "${recorder_output}${recorder_error}"
+        )
+    endif()
+endforeach()
+
+foreach(artifact IN ITEMS census trace call write)
+    if(artifact STREQUAL "census")
+        set(artifact_path "${OUTPUT}")
+    elseif(artifact STREQUAL "trace")
+        set(artifact_path "${trace_output}")
+    elseif(artifact STREQUAL "call")
+        set(artifact_path "${call_output}")
+    else()
+        set(artifact_path "${write_output}")
+    endif()
+
+    file(SHA256 "${artifact_path}" actual_sha256)
+    set(expected_sha256 "${expected_${artifact}_sha256}")
+    if(NOT actual_sha256 STREQUAL expected_sha256)
+        message(
+            FATAL_ERROR
+            "Tower family ${artifact} artifact changed.\n"
+            "Expected: ${expected_sha256}\n"
+            "Actual:   ${actual_sha256}\n"
+        )
+    endif()
+    message(STATUS "Tower family ${artifact} verified: ${actual_sha256}")
+endforeach()
+
+file(SHA256 "${actor_write_output}" actual_actor_write_sha256)
+if(NOT actual_actor_write_sha256 STREQUAL expected_actor_write_sha256)
+    message(
+        FATAL_ERROR
+        "Tower family actor-identity artifact changed.\n"
+        "Expected: ${expected_actor_write_sha256}\n"
+        "Actual:   ${actual_actor_write_sha256}\n"
+    )
+endif()
+message(
+    STATUS
+    "Tower family actor identity verified: ${actual_actor_write_sha256}"
+)
+
+execute_process(
+    COMMAND
+        powershell
+        -NoProfile
+        -ExecutionPolicy
+        Bypass
+        -File
+        "${CMAKE_CURRENT_LIST_DIR}/../tools/Analyze-TowerFamilySemantics.ps1"
+        -RomPath
+        "${ROM}"
+        -CallPath
+        "${call_output}"
+        -WritePath
+        "${write_output}"
+        -ActorWritePath
+        "${actor_write_output}"
+    RESULT_VARIABLE semantics_result
+    OUTPUT_VARIABLE semantics_output
+    ERROR_VARIABLE semantics_error
+)
+if(NOT semantics_result EQUAL 0)
+    message(
+        FATAL_ERROR
+        "Tower family semantics analysis failed (${semantics_result}).\n"
+        "${semantics_output}${semantics_error}"
+    )
+endif()
+foreach(expected_line IN ITEMS
+    "Tower family semantics verified."
+    "Fixed Tower: slot 2D at (144,538), initializer 03:60B3"
+    "Routed Tower hit: frame 3353 awards 50, emits command 33"
+    "Tower insects: slot 2C at (140,526) spawns four 03:6016 children"
+    "First normalized no-hit sample: 03:60C3@1, frame 873"
+)
+    string(FIND "${semantics_output}" "${expected_line}" line_offset)
+    if(line_offset EQUAL -1)
+        message(
+            FATAL_ERROR
+            "Tower family semantics omitted '${expected_line}'.\n"
+            "${semantics_output}${semantics_error}"
+        )
+    endif()
+endforeach()
+message(STATUS "${semantics_output}")

@@ -14,6 +14,10 @@ set(
     expected_observe_trace_sha256
     "585b2221987701f24b9f6a271d48a7bedec3ce01fb08f3889d196cfe1a3191a4"
 )
+set(
+    expected_multi_observe_trace_sha256
+    "38ffd96714732c1f1f4073888c44f1b94b325dee8429e36d4712290bd1d5bddc"
+)
 
 execute_process(
     COMMAND
@@ -146,4 +150,63 @@ endforeach()
 message(
     STATUS
     "Observe execution hook verified: ${first_observe_trace_sha256}"
+)
+
+set(multi_observe_output "${OUTPUT}.observe-multi")
+set(multi_observe_trace "${OUTPUT}.observe-multi.csv")
+execute_process(
+    COMMAND
+        "${APP}"
+        --record-canonical
+        "${multi_observe_output}"
+        --observe-hook
+        "00:E195"
+        --observe-hook
+        "08:5977"
+        --observe-hook
+        "08:59B5"
+        --observe-hook
+        "08:59CE"
+        --observe-hook
+        "08:59E7"
+        --routine-trace
+        "${multi_observe_trace}"
+        --rom
+        "${ROM}"
+    RESULT_VARIABLE multi_observe_result
+    OUTPUT_VARIABLE multi_observe_output_text
+    ERROR_VARIABLE multi_observe_error
+)
+if(NOT multi_observe_result EQUAL 0)
+    message(
+        FATAL_ERROR
+        "Multi-observe recorder failed (${multi_observe_result}).\n"
+        "${multi_observe_output_text}${multi_observe_error}"
+    )
+endif()
+
+file(SHA256 "${multi_observe_output}" multi_observe_canonical_sha256)
+if(NOT multi_observe_canonical_sha256 STREQUAL expected_sha256)
+    message(
+        FATAL_ERROR
+        "Multi-hook registry changed the canonical recording.\n"
+        "Expected: ${expected_sha256}\n"
+        "Actual:   ${multi_observe_canonical_sha256}\n"
+        "${multi_observe_output_text}${multi_observe_error}"
+    )
+endif()
+file(SHA256 "${multi_observe_trace}" multi_observe_trace_sha256)
+if(NOT multi_observe_trace_sha256
+   STREQUAL expected_multi_observe_trace_sha256)
+    message(
+        FATAL_ERROR
+        "Multi-hook routine-entry trace changed.\n"
+        "Expected: ${expected_multi_observe_trace_sha256}\n"
+        "Actual:   ${multi_observe_trace_sha256}\n"
+    )
+endif()
+
+message(
+    STATUS
+    "Multi-hook registry verified: ${multi_observe_trace_sha256}"
 )
