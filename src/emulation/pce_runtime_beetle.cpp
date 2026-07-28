@@ -403,12 +403,16 @@ public:
         VideoMemorySnapshot result{
             .vram_words =
                 std::vector<std::uint16_t>(kPceVramWordCount),
+            .sat_words =
+                std::vector<std::uint16_t>(DC_BEETLE_SAT_WORD_COUNT),
             .palette_entries =
                 std::vector<std::uint16_t>(kPcePaletteEntryCount),
         };
         dc_beetle_video_snapshot snapshot{
             .vram_words = result.vram_words.data(),
             .vram_word_capacity = result.vram_words.size(),
+            .sat_words = result.sat_words.data(),
+            .sat_word_capacity = result.sat_words.size(),
             .palette_entries = result.palette_entries.data(),
             .palette_entry_capacity = result.palette_entries.size(),
         };

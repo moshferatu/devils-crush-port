@@ -56,10 +56,42 @@ Run the current host:
 .\out\build\windows-vs2022\Debug\devils-crush.exe --rom "D:\path\to\Devil's Crush.pce"
 ```
 
+Run the cabinet preview:
+
+```powershell
+.\out\build\windows-vs2022\Debug\devils-crush.exe --cabinet --rom "D:\path\to\Devil's Crush.pce"
+```
+
+Supply and persist a backglass image from the command line:
+
+```powershell
+.\out\build\windows-vs2022\Debug\devils-crush.exe --cabinet --backglass "D:\cabinet\backglass.webp" --rom "D:\path\to\Devil's Crush.pce"
+```
+
+Cabinet mode opens a portrait playfield, a non-focusable score DMD, and a
+non-focusable backglass. Menus and bonus stages use the sharply scaled
+emulator framebuffer. A live normal session switches the playfield to the
+accepted 256-by-668 table background, while the DMD reads the active score
+directly from emulated work RAM. PNG, JPEG, and WebP backglasses are
+aspect-contained against black with the fixed sharp scaler; invalid or
+missing images retain the black fallback. Press F12 to pause into display
+assignment: 1/2/3 selects the playfield, DMD, or backglass; Left/Right cycles
+its monitor; F toggles that role's fullscreen state; B opens the backglass
+picker; Delete clears the image; and Enter, Escape, or F12 saves and returns.
+Closing an auxiliary window does not end play; closing the playfield does. See
+[`docs/CABINET_PREVIEW.md`](docs/CABINET_PREVIEW.md) for the switching and
+state contracts.
+
 Run a headless ten-frame emulator check:
 
 ```powershell
 .\out\build\windows-vs2022\Debug\devils-crush.exe --smoke-test --rom "D:\path\to\Devil's Crush.pce"
+```
+
+Exercise the three-window cabinet host for ten frames with automatic exit:
+
+```powershell
+.\out\build\windows-vs2022\Debug\devils-crush.exe --cabinet-smoke-test --rom "D:\path\to\Devil's Crush.pce"
 ```
 
 Generate the deterministic 600-frame Beetle reference used for independent
@@ -1128,13 +1160,85 @@ The current format findings and stream-boundary work are tracked in
 [`docs/TABLE_BACKGROUND.md`](docs/TABLE_BACKGROUND.md).
 
 `dc_rom_video_snapshot` drives the established 3,600-frame table route through
-ten live decode checkpoints. Its first table checkpoint guards separate VRAM,
+eleven live decode checkpoints. Its first table checkpoint guards separate VRAM,
 palette, and decoded-background SHA-256 goldens, while the ordinary core test
 locks planar bit order, subpalette behavior, dormant BAT cells, region seams,
 negative world origins, and crop bounds. Release-only
 `dc_rom_video_row_writer` identifies `00:F400` as the streamed 32-cell
 BAT-row writer and guards all 539 calls, their four callers, exact VDC
 setup/data-port counts, return site, and frame range.
+The four callers are now classified as upward/downward one- or two-row
+stream pairs. Their dynamic coordinate contract resolves physical ROM bank
+`$14` tile-map words and packed work-RAM palette nibbles across a
+32-by-96-cell source envelope. The first full-source export used the
+frame-900 fade-in palette and incorrectly treated all 96 rows as visible
+table data. It remains a deterministic decoder diagnostic, not a completed
+playfield. Stable post-fade captures now establish the accepted 256-by-668
+background at source rows 20-687: rows 0-19 are a top guard, 688-720 are
+streamed lower prefetch, and 721-767 are unused tail data. Representative
+upper, middle, and lower crops are independently checked against Beetle's
+final RGB565 framebuffer; exact background pixels match while the remaining
+pixels retain sprite and presentation overlays. The copied video boundary now
+also includes the active internal HuC6270 SAT. Cabinet mode decodes its
+patterns, palettes, sizes, flips, and sprite-to-sprite priority into table
+world coordinates for the live camera viewport. The packed background decoder
+retains raw pixel opacity so behind-background sprite priority is exact, and
+the renderer enforces the 16-sprite-half scanline limit while moving
+score/status presentation to the DMD. Typed work-RAM views now decode all 127
+actor slots. Fixed mechanisms now resolve exact bank-8 ROM descriptor groups
+instead of proximity-associating nearby SAT entries and continue rendering
+from live work-RAM positions after the camera moves away without advancing a
+second simulation. Retained visuals own resolved pixels, so later
+camera-region VRAM or palette streaming cannot corrupt them. The retained
+layer is drawn first, camera-observed actors are omitted from it, and the
+copied live SAT is drawn last. This keeps inactive mechanisms inside the
+camera band visible while preserving the SAT as the live oracle. Animated
+actors retain bounded exact phase variants: an off-camera enemy either
+resolves its current ROM-owned phase or restores the learned visual for that
+same phase. It never moves a frozen fallback image, and another region's
+VRAM is never sampled as a replacement. Static mechanisms may retain a prior
+aligned visual only when their phase has no independent artwork. Bank `$08`'s
+original actor renderer and descriptor tables provide exact world geometry
+for unseen fixed mechanisms, with all 23
+eligible frame-1,200 groups matching the copied SAT. Deterministic first-visit
+seeding now has a native `00:E41F` compressed-stream decoder that reproduces
+the complete frame-1,200-to-1,600 pattern transition. Observed selector
+`00:F606` now has a complete local appearance/phase atlas: its 42 entries
+share eight upload descriptors containing 35 phase assets plus one
+resident-pattern sentinel for appearances `$24-$29`. The decoder also covers
+the selector's bounded raw-word branch. Stream-backed first-visit seeding is
+now active in cabinet mode. It keeps loader destination `$4F:$50` separate
+from SAT pattern base `$51:$52`, requires the selected upload to own every
+pattern block used by the bank-8 descriptor, and keys retained visuals by
+animation phase as well as actor identity. At settled lower frame 1,200,
+eight fixed groups use selected streams and 53 are proven disjoint from
+every known upload. The 23 live-camera groups plus 38 pre-seeded groups
+therefore cover all 61 non-hidden fixed actors and render 10,980 retained
+priority-filtered pixels. Lower, upper-middle, and middle full-table
+composites have deterministic animation goldens. All five `$F768` choices decode into 1,008-word
+scene packs at `$7C00`; the normal-table initializer selects
+`A=0`, `$1222->$7C00`, and the decoded words equal live VRAM. An
+independent classifier shows that pack owns none of the 24 resident or
+out-of-selector fixed groups, and that every such group is disjoint from all
+known upload ranges. Their static live-VRAM blocks are therefore safely
+pre-seeded as well. `$F768` selectors 1-4 remain scene-unmapped but do not
+block normal-table fixed-actor composition.
+
+Cabinet work now prioritizes a fully populated, animated stitched playfield.
+The ball remains exact and trail-free through the live SAT, while all six
+flippers are retained at their absolute table-world positions with live
+phase changes. Dynamic slots `$62-$7E` now retain the ten Small Soldiers and
+four Tower insects across camera movement with live animation metadata.
+Only those persistent type-`$82` families are eligible: empty slots or reuse
+by an impact/effect family clear the cached visual immediately. Lower,
+upper-middle, and middle full-table goldens guard the resulting population
+and animation. The separately mapped type-`$8F` impact burst persists for its
+original table-world lifetime without admitting other transient families.
+Camera-transition regressions keep all six flippers resolved and prove the
+eight upper Sorcerers continue moving after their region leaves the camera
+while presenting all 16 exact walking phases.
+Two-player/current-player mapping and P1/P2 DMD presentation are currently
+deferred at the user's request.
 
 The pinned upstream Beetle source is reproducibly modified by the ordered
 project-owned patch series documented in
@@ -1198,11 +1302,12 @@ procedure and result.
 
 The current host boots the verified ROM through the pinned Beetle PCE core,
 plays its float-stereo audio, accepts keyboard or the first available SDL
-gamepad, and presents the emulated framebuffer through the fixed sharp scaler.
+gamepad, and presents desktop or cabinet output through the fixed sharp scaler.
 Gamepads can be connected, disconnected, or replaced while the host is
 running. Optional SDL-format mappings are loaded from
 `portable-data/gamecontrollerdb.txt`; F10 reloads the file after edits. F11
-toggles borderless fullscreen; Escape exits. F5 atomically writes a versioned
+toggles playfield borderless fullscreen; F12 opens cabinet display assignment;
+Escape exits outside that assignment screen. F5 atomically writes a versioned
 quick state to `portable-data/devils-crush.state`, and F9 restores it after
 checking the file signature, checksum, ROM identity, and pinned core revision.
 The game's 2 KiB battery-backed RAM is loaded from and atomically saved to

@@ -70,6 +70,9 @@ struct SaveState {
 
 struct VideoMemorySnapshot {
     std::vector<std::uint16_t> vram_words;
+    // The base HuC6270's internal post-DMA sprite attribute table. Four
+    // words describe each of 64 hardware sprites.
+    std::vector<std::uint16_t> sat_words;
     std::vector<std::uint16_t> palette_entries;
     std::uint16_t memory_width_register = 0;
     std::uint16_t background_x_scroll = 0;

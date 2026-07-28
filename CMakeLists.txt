@@ -38,10 +38,13 @@ include(CompilerWarnings)
 add_library(
     dc_core
     STATIC
+    src/cabinet/cabinet_state.cpp
+    src/cabinet/display_config.cpp
     src/core/backup_ram.cpp
     src/core/rom_image.cpp
     src/core/save_state.cpp
     src/render/pce_background.cpp
+    src/render/pce_sprite_overlay.cpp
     src/render/sharp_pixel_scaler.cpp
 )
 
@@ -115,6 +118,28 @@ endif()
 if(DC_BUILD_APP)
     include(Dependencies)
     dc_provide_sdl3()
+    dc_provide_sdl3_image()
+
+    add_library(
+        dc_image
+        STATIC
+        src/render/backglass_image.cpp
+    )
+    add_library(DevilsCrush::Image ALIAS dc_image)
+    target_include_directories(
+        dc_image
+        PUBLIC
+            "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
+    )
+    target_link_libraries(
+        dc_image
+        PUBLIC
+            SDL3::SDL3
+        PRIVATE
+            SDL3_image::SDL3_image
+    )
+    target_compile_features(dc_image PUBLIC cxx_std_20)
+    dc_enable_strict_warnings(dc_image)
 
     add_executable(
         devils_crush
@@ -127,7 +152,9 @@ if(DC_BUILD_APP)
             DevilsCrush::Core
             DevilsCrush::Emulation
             DevilsCrush::GameLogic
+            DevilsCrush::Image
             SDL3::SDL3
+            SDL3_image::SDL3_image
     )
 
     target_compile_features(devils_crush PRIVATE cxx_std_20)

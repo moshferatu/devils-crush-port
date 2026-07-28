@@ -343,6 +343,202 @@ identities for all fixed actors. Subsequent rule mapping has assigned all 59
 initializer identities a bounded gameplay-facing or conservative
 compatibility role.
 
+## Fixed-actor SAT presentation
+
+Physical bank `$08` owns the normal-table actor-to-SAT presentation path.
+`08:4036` selects VDC register 0, begins at the existing sprite count in
+zero-page `$58`, and points the VDC memory-write address into the 256-word
+staging table at VRAM `$7800-$78FF`. It submits queued slots around one
+ascending sweep of all 127 actor records. The main sweep calls `08:40DF`
+only when `$3080,X` has camera bit 7 set and hidden bit 5 clear, then clears
+the unused SAT tail.
+
+`08:40DF` is the descriptor renderer:
+
+- `$3900,X` selects one of 69 parallel low/high pointer entries at
+  `$41AC/$41F1`.
+- `$3980,X * 2` selects a descriptor pointer from that appearance table.
+- The descriptor begins with a sprite count, followed by six bytes per
+  sprite: signed Y offset, signed X offset, pattern low/high, and attribute
+  low/high.
+- Signed offsets are added to `$3300:$3380,X` and
+  `$3180:$3200,X`. Y is translated through camera anchor `$A9:$AA` plus the
+  HuC6270 `$40` bias; X descriptors already include the `$20` hardware bias.
+- Pattern words add the global `$52:$51` base with carry.
+- `$3800,X` bits 4/5 optionally merge `$3D00,X` and `$3E00,X` into the low
+  and high attribute bytes.
+
+The copied post-DMA SAT is an exact copy of VRAM `$7800-$78FF` at stable
+frame 1,200. All 256 high-byte staging writes occur at these sites:
+
+| Site | Writes |
+| --- | ---: |
+| `08:40C6/40CC/40D2/40D8` | 12 each |
+| `08:4141` | 52 |
+| `08:4154` | 43 |
+| `08:4165` | 9 |
+| `08:4176/419E` | 52 each |
+
+The bounded native metadata decoder resolves 100 sprites across occupied,
+non-hidden fixed slots `$0A-$61` at frame 1,200. Every one of the 23
+camera-eligible fixed actor groups appears as an exact contiguous word
+sequence in the copied SAT. A ROM-free fixture independently guards signed
+offsets, pattern-base addition, attribute merging, and invalid appearance
+rejection.
+
+Descriptor metadata is not a complete unseen-actor asset source. Excluding
+the SAT table, VRAM words `$4000-$77FF` change from SHA-256
+`f84447542add674e39a660d57bde50277ef414c6ee860ab0e8c5d707e889edd3`
+at lower frame 1,200 to
+`c5f344d3130e20d40a37e5d055a557022290be8c87d97df397068850fbf7155d`
+at upper-middle frame 1,600. The cabinet cache therefore stores resolved
+pixels for observed mechanisms. Pre-seeding unvisited mechanisms requires
+mapping the camera-region/state stream selectors rather than reusing whatever
+patterns currently occupy those VRAM indices.
+
+### Sprite-pattern VRAM streams
+
+Physical bank `$00`, logical `$E41F`, is the generic VRAM word-stream
+decoder. Its first instruction is `PHY`; `$E420` is therefore an interior
+instruction, not a valid call-observation boundary. Zero-page `$2D:$2E`
+supplies the destination word and `$2F:$30`
+supplies an MPR-mapped source pointer. Its command format is:
+
+- `$00`: terminate.
+- `$01-$7F`: copy that many literal little-endian words.
+- `$81-$FF`: repeat the following word `(command & $7F)` times.
+- `$80`: repeat the following word 256 times.
+
+Literal high bytes are written at `00:E449`; repeated high bytes are written
+at `00:E467`. Across frames 1,201-1,600 these are the only writers into
+sprite-pattern VRAM `$4000-$77FF`, contributing 1,036 literal and 2,548
+repeated words. Fourteen calls select physical-bank `$12` sources:
+
+| Frame(s) | Destination | Source(s) | Actor selector |
+| --- | --- | --- | --- |
+| 1,220 | `$7000` | `12:8030` | slot `$5B`, appearance `$03`, phase 0, descriptor `$F6FA` |
+| 1,227 | `$5400` | `12:8AFD` | slot `$0F`, appearance `$11`, phase 0, descriptor `$F73B` |
+| 1,245-1,263 | `$5400` | `12:8B80`, `12:8C5C`, `12:8D52`, `12:8C5C`, `12:8B80`, `12:8AFD` | slot `$0F`, phases 1/2/3/2/1/0 |
+| 1,298-1,316 | `$5400` | `12:8B80`, `12:8C5C`, `12:8D52`, `12:8C5C`, `12:8B80`, `12:8AFD` | slot `$0F`, phases 1/2/3/2/1/0 |
+
+All 14 calls enter from `00:F661`. The containing selector at `00:F606`
+indexes 42 parallel descriptor-pointer bytes at `$F6A6/$F6D0` with actor
+appearance `$3900,X`. It combines descriptor destination offsets with
+pattern base `$4F:$50`; non-mode-2 descriptors select an asset reference
+with phase `$3980,X`. Resolver `$E1FD` maps the asset reference's high byte
+into MPR4/MPR5, then uses its low byte as an index into the two-byte directory
+at logical `$8000`. This turns IDs `$1200/$1212/$1214/$1216/$1218` into the
+observed physical-bank `$12` stream addresses.
+
+The bounded native decoder replays every stream over the frame-1,200 VRAM
+snapshot. The resulting `$4000-$77FF` words equal the frame-1,600 snapshot
+exactly and reproduce SHA-256
+`c5f344d3130e20d40a37e5d055a557022290be8c87d97df397068850fbf7155d`.
+A ROM-free fixture independently guards literal, repeated, and bounded-output
+behavior.
+
+The complete `$F6A6/$F6D0` selector family is now decoded. Its 42 appearance
+entries collapse to these nine unique pointers:
+
+| Pointer | Appearances | Destination with base `$3800` | Phase assets |
+| --- | --- | --- | --- |
+| `$F6FA` | `$00-$03` | `$7000` | `$1200/$1202/$1204/$1206/$1208` |
+| `$F709` | `$04-$07` | `$5500` | `$121A/$121C/$121E/$1220` |
+| `$F716` | `$08` | `$4F00` | `$1012/$1014/$1016` |
+| `$F721` | `$09-$0E` | `$7200` | `$1028/$102A/$102C/$102E` |
+| `$F72E` | `$0F` | `$7380` | `$1028/$102A/$102C/$102E` |
+| `$F73B` | `$10-$11` | `$5400` | `$1212/$1214/$1216/$1218` |
+| `$F748` | `$12-$19` | `$6D00` | `$120A/$120C/$120E` |
+| `$F753` | `$1A-$23` | `$7500` | `$1018/$101A/$101C/$101E`, repeated |
+| `$F768` | `$24-$29` | no-per-phase sentinel; scene loader writes `$7C00` | no per-phase descriptor |
+
+The first eight pointers provide 35 compressed phase uploads containing
+12,544 decoded words. `$F768` is executable special-loader code, not
+descriptor data, so the atlas records those six selectors as one explicit
+no-per-phase sentinel. Separately, the atlas decodes all five assets selected
+by `$F768`:
+
+| Selector | Asset | Physical source | Destination | Words |
+| --- | --- | --- | --- | --- |
+| 0 | `$1222` | `12:91EB` | `$7C00` | 1,008 |
+| 1 | `$1224` | `12:9919` | `$7C00` | 1,008 |
+| 2 | `$1226` | `12:A04F` | `$7C00` | 1,008 |
+| 3 | `$1228` | `12:A79D` | `$7C00` | 1,008 |
+| 4 | `$122A` | `12:AECC` | `$7C00` | 1,008 |
+
+Selector 0 equals the live `$7C00-$7FEF` words after normal-table
+initialization. The native descriptor decoder also implements
+`00:F666-00:F6A5`'s mode-zero path through raw uploader `00:E365`: it resolves
+the base asset, applies the phase-relative source offset, copies the declared
+word count, and enforces the same output bound. None of the 42 static
+selectors uses mode zero, so that branch is guarded with a ROM-free synthetic
+descriptor rather than falsely classifying `$F768` as raw data.
+
+The stream-backed entries are now applied downstream of selection. The cache
+uses `$4F:$50` only for loader destinations and `$51:$52` only for bank-8 SAT
+pattern fields, selects the actor's live `$3980,X` phase, and accepts a seed
+only when the upload owns every 64-word pattern block referenced by that
+phase's SAT metadata. Resolved pixels retain the live sprite palette and
+participate in the existing background-priority and 16-half scanline rules.
+Type, appearance, phase, or dispatch changes invalidate the seed.
+
+At settled lower frame 1,200, 16 of 17 camera-active stream-backed actor
+groups have their complete selected upload byte-for-byte in live VRAM, while
+all 23 eligible bank-8 metadata groups still match the copied SAT. The 24
+fixed groups using resident or out-of-selector appearances
+`$24/$25/$29/$2A/$2B/$2C/$37/$41/$43` use no `$7C00` pattern blocks.
+Every referenced 64-word block is disjoint from the exact half-open ranges
+of all 35 `$F606` uploads and all five `$F768` uploads, so these groups can
+use static live-VRAM pixels without a camera visit. Generalizing the same
+proof across all appearances classifies all 61 non-hidden frame-1,200 fixed
+groups: eight are owned by their selected stream, 53 are upload-disjoint,
+and zero are unresolved. The 23 live-camera groups plus 38 pre-seeded groups
+cover the complete fixed population, write 10,980 surviving pixels, and
+produce accepted-table SHA-256
+`63d4e780207d47cd24cbde762073b3bec42627b8a1d945ec7446a1269cfed752`.
+The corresponding upper-middle and middle persistent goldens are
+`6658664596ec120762f233416a244902cfdee4315c6fe05b4eba9f8f31d6593b`
+and
+`d229dd586d9b465260b9fcbbff3aa614b2418116d45b3d51107098f8033059eb`.
+
+The same bank-8 descriptor path also closes ball/flipper presentation.
+Slot `$00` plus slots `$04-$09` decode 13 primitives: one ball sprite and
+two sprites per flipper. Their actor coordinates are absolute table-world
+coordinates, not viewport-relative values. At frame 1,200 all five active
+groups match contiguous copied-SAT words, and all seven actor groups use
+pattern blocks disjoint from every decoded upload. The ball remains
+live-SAT-only; flipper slots join the phase-aware persistent cache. This
+replaces the three fixed-only persistent goldens above with
+`0b52e88e49d740a264395d4a73c545635f799e841cc5eedb8b5c0a0acaecfc2b`,
+`22e28684b9f0ec5ef2e453b1fec33bac5408b9c5edb24b0696d4706007861e7c`,
+and
+`c103b179edbd5c851cff2137b37ee776e8165829867329c34c9e5a7abbcb588b`
+for lower, upper-middle, and middle checkpoints respectively.
+
+Dynamic slots `$62-$7E` also use absolute table-world coordinates through
+this descriptor path. At settled frame 1,200 the decoder resolves 14
+one-sprite persistent enemies: ten Small Soldiers with type `$82`,
+appearance `$1A`, and four Tower insects with type `$82`, appearance `$39`.
+All four camera-active groups match contiguous copied-SAT words. Every one of
+the 14 pattern blocks is disjoint from all decoded uploads, so unseen phases
+can use the proven static VRAM source. The cache retains only those two
+families and invalidates immediately on occupancy, type, appearance, phase,
+or dispatch changes; reused type-`$8F` impact slots therefore cannot trail.
+The dynamic-enemy-inclusive lower, upper-middle, and middle goldens are
+`eb2e1147b9b65304deed11e8df26e681cfa1162c8b89ac60363ebc910e55dcfd`,
+`2aeb44b0911f1a75aed9ef239c3ffbe3b460c39ed6a6b933256c287693470835`,
+and
+`bbba7ee929c4029843611daa08943a79a89ff6a98ae676b457c83d8e98f8db34`.
+
+Frame 874 enters `$F768` with `A=0`, resolving asset `$1222` through the
+bank-12 directory and loading it at `$7C00`. `X=0` and the slot-0
+appearance/phase are both zero, confirming scene-level initialization rather
+than an actor-local `00:F606` call. Each of the six deterministic bonus-stage
+routes observes only that earlier selector-0 call, so selectors 1-4 are not
+bonus-stage packs. Their scene association remains unmapped, but the exact
+pattern-range classification closes the normal-table fixed-actor
+first-visit gap independently.
+
 ## Normal-table scene layout
 
 The three exported entries at the beginning of physical bank `$02` select
@@ -1907,6 +2103,18 @@ the source mechanism.
 The combined trace contains 14 calls and 1,231 ordered writes: five default
 spawns, two alternate spawns, and seven activations. The first normalized
 sample is `02:4290@1` at frame 1,852 with 4,362 cycles and 114 writes.
+
+The cabinet presentation route now closes the same effect at the copied SAT
+boundary. At frame 2,100, the Tower-insect result in dynamic slot `$71` is
+type `$8F`, appearance `$10`, phase 5, camera-active, and dispatched through
+`02:42B0`. Bank `$08` metadata decodes two contiguous sprite primitives that
+match the copied SAT exactly. Their pattern blocks are disjoint from every
+known upload, so resolved live VRAM is a stable source. A cloned-cache probe
+moves the viewport away without advancing emulation and reproduces the
+effect in table-world space (`2355ce88...0dce14`); frames 2,400 and 2,700
+contain no retained instance after the original slot clear. The renderer
+treats `$4290->$42B0` as one visual identity and keeps all other transient
+signatures live-camera-only.
 
 `tools/Analyze-ImpactBurstSemantics.ps1` guards the allocator, activation,
 animation/free path, known source signatures, all source/destination pairs,

@@ -40,6 +40,7 @@ function(dc_provide_beetle_pce)
         "${beetle_fork_root}/patches/0002-huc6280-call-observation.patch"
         "${beetle_fork_root}/patches/0003-huc6280-native-replacement.patch"
         "${beetle_fork_root}/patches/0004-vdc-video-snapshot.patch"
+        "${beetle_fork_root}/patches/0005-vdc-sprite-snapshot.patch"
     )
 
     find_package(Git REQUIRED)
@@ -129,7 +130,7 @@ function(dc_provide_beetle_pce)
                     "dc_beetle_active_replacement_hook_user_data"
                     beetle_patch_marker_two
                 )
-            else()
+            elseif(beetle_patch_name MATCHES "^0004-")
                 string(
                     FIND
                     "${beetle_video_header}"
@@ -140,6 +141,19 @@ function(dc_provide_beetle_pce)
                     FIND
                     "${beetle_video_header}"
                     "DebugGetVDCRegister"
+                    beetle_patch_marker_two
+                )
+            else()
+                string(
+                    FIND
+                    "${beetle_video_header}"
+                    "DebugPeekSAT"
+                    beetle_patch_marker_one
+                )
+                string(
+                    FIND
+                    "${beetle_video_header}"
+                    "return vdc[0].PeekSAT"
                     beetle_patch_marker_two
                 )
             endif()

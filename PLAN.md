@@ -277,11 +277,99 @@ Provide an interactive monitor-assignment screen and persist display identity, g
   - The copied frame-boundary VDC/VCE snapshot boundary, HuC6270 BAT/planar
     tile/VCE-color decoder, world-coordinate compositor, crop helper, and
     first live table goldens were completed 2026-07-28.
-  - `00:F400` is now identified and guarded as the 32-cell streamed-row
-    writer. Next decode its four caller paths into world-band direction,
-    collect the three regions, and compare native camera crops against the
-    emulator.
-- Add playfield, score DMD, backglass, display assignment, and bonus-stage switching.
+  - `00:F400` and its four directional caller paths are now dynamically
+    guarded, and their ROM/work-RAM source-address and circular-BAT mapping
+    is established.
+  - The first 256-by-768 export used frame 900 while the table palette was
+    still fading in and treated the entire 96-row source envelope as visible
+    world data. It is a deterministic diagnostic, not a completed
+    playfield.
+  - Stable upper, middle, and lower captures, both camera clamps, and
+    independent Beetle-composite comparisons now establish the accepted
+    256-by-668 world at source rows 20-687. Rows 0-19 are the top guard,
+    688-720 are streamed lower prefetch, and 721-767 are unused tail data.
+    The background task and its sprite/actor overlay-input definition were
+    completed 2026-07-28; sprites and gameplay-owned mechanisms remain a
+    separate cabinet-renderer layer.
+- Add playfield, score DMD, backglass, display assignment, and bonus-stage
+  switching.
+  - The first `--cabinet` vertical slice now creates non-focusable DMD and
+    backglass auxiliaries, renders the accepted full-table background during
+    normal sessions, restores the emulated framebuffer for menus and bonus
+    stages, displays the live score, and degrades to playfield-only operation
+    when an auxiliary closes or fails.
+  - Display identities, window geometry fallbacks, current monitor rotation,
+    and fullscreen state are now persisted atomically. The F12 assignment
+    screen pauses emulation, color-identifies the three roles, cycles each
+    role across live displays, and saves the result. Exact identity,
+    saved-geometry overlap, and primary-display fallback make monitor reorder
+    or loss deterministic.
+  - PNG, JPEG, and WebP backglass loading is now complete through the pinned
+    static SDL_image 3.4.4 stack. `--backglass` supplies a scripted choice;
+    B in the F12 assignment screen opens the native picker; Delete restores
+    the black fallback. Images are content-validated, bounded, persisted,
+    and aspect-contained through the fixed sharp scaler.
+  - The copied post-DMA HuC6270 SAT now supplies the live camera's sprite
+    overlay in table-world coordinates with hardware background priority and
+    the 16-sprite-half scanline limit.
+  - Typed views now decode all 127 mapped work-RAM actor slots. Fixed
+    mechanisms resolve exact bank-8 ROM descriptor groups rather than
+    proximity-associating nearby SAT entries. Work-RAM coordinates and
+    phases remain live off-camera, while the copied SAT is composited last
+    and stays authoritative for camera-observed actors. Retained primitives
+    own resolved pixels, so unrelated camera-region VRAM or palette changes
+    cannot corrupt them.
+  - Bank `$08`'s actor renderer, 69 appearance tables, phase-selected
+    descriptors, and `$7800-$78FF` SAT staging boundary are mapped. The
+    native metadata decoder matches every eligible fixed-actor group in the
+    stable lower-table SAT. Generic stream decoder `00:E41F` and the 14
+    physical-bank `$12` streams used by the lower-to-upper-middle transition
+    reproduce VRAM `$4000-$77FF` exactly. Selector `00:F606` ties that
+    transition to actor slot, appearance, phase, descriptor, and asset
+    directory state. All 42 selector entries now decode into a local atlas:
+    eight upload descriptors provide 35 compressed phase assets, while
+    appearances `$24-$29` share the `$F768` no-per-phase sentinel. All five
+    scene-resident `$F768` packs are decoded; selector 0
+    (`$1222->$7C00`) exactly matches live normal-table VRAM, but none of its
+    `$7C00` blocks owns those fixed actors' descriptor patterns. The separate
+    raw-upload code path is also bounded and ROM-free tested.
+    Stream-backed entries and upload-disjoint static VRAM blocks are now
+    applied lazily to bank-8 actor metadata. At settled lower frame 1,200,
+    all 61 non-hidden fixed actors have an exact source: 23 are represented
+    by the live camera and 38 are pre-seeded across the rest of the table.
+    Appearance/phase changes re-decode those actors each frame, and accepted
+    lower, upper-middle, and middle persistent composites have deterministic
+    goldens. Scene association for `$F768` selectors 1-4 is no longer a
+    fixed-actor composition gate.
+  - Shared type-`$8F` impact bursts are now the first classified table-world
+    transient. Their `$4290->$42B0` activation/animation pair, appearance
+    `$10`, original phase/lifetime, two exact bank-8 primitives, and
+    upload-disjoint pattern source are guarded at frame 2,100. All other
+    dynamic effects remain live-camera-only by default, and cleared or reused
+    slots invalidate retained pixels immediately.
+  - Prioritize a populated, animated, playable stitched table before cabinet
+    UI refinements:
+    - [complete] Keep the live ball trail-free and all six flipper/control
+      slots visible and animated at their absolute table-world positions.
+    - [complete] Track persistent dynamic enemies in slots `$62-$7E` across
+      camera movement and retain their animation phases without duplicating
+      or trailing reused slots.
+    - [complete] Classify transient SAT effects separately from persistent
+      enemies and mechanisms; retain only the mapped table-world impact
+      family and keep every other effect live-camera-only.
+    - [complete] Validate fixed mechanisms, all six flippers, ten Small
+      Soldiers, and four Tower insects in upper, middle, and lower table
+      bands on a deterministic playable route.
+    - [complete] Remove the live-camera cache hole and nearest-actor
+      association so Sorcerers, star/pentagram mechanisms, and flippers stay
+      aligned and visible as the camera changes regions.
+    - [complete] Preserve a bounded set of exact per-phase visuals for
+      animated actors. Off-camera enemies select the ROM-owned or learned
+      visual matching their live phase; only static mechanisms may retain a
+      prior aligned visual when a phase has no independent artwork. Never
+      rebuild an actor from another region's live VRAM.
+    - [deferred at user request] Map the two-player/current-player RAM
+      contract, then add the P1/P2 DMD discriminator.
 - Initially use emulated logic and render active actors from observed RAM.
 - Exit when the entire table is visible and equivalent camera crops match the emulator.
 

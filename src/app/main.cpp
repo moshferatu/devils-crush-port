@@ -1,10 +1,15 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "devils_crush/core/backup_ram.hpp"
+#include "devils_crush/cabinet/cabinet_state.hpp"
+#include "devils_crush/cabinet/display_config.hpp"
 #include "devils_crush/core/rom_image.hpp"
 #include "devils_crush/core/save_state.hpp"
 #include "devils_crush/emulation/pce_runtime.hpp"
 #include "devils_crush/game_logic/physics.h"
+#include "devils_crush/render/backglass_image.hpp"
+#include "devils_crush/render/pce_background.hpp"
+#include "devils_crush/render/pce_sprite_overlay.hpp"
 #include "devils_crush/render/sharp_pixel_scaler.hpp"
 
 #include <SDL3/SDL.h>
@@ -52,6 +57,8 @@ const std::filesystem::path kQuickStatePath =
     std::filesystem::path("portable-data") / "devils-crush.state";
 const std::filesystem::path kGamepadMappingsPath =
     std::filesystem::path("portable-data") / "gamecontrollerdb.txt";
+const std::filesystem::path kCabinetConfigPath =
+    std::filesystem::path("portable-data") / "cabinet.ini";
 const std::filesystem::path kCanonicalRecordingPath =
     std::filesystem::path("portable-data") / "canonical-v1.csv";
 const std::filesystem::path kGameplayRecordingPath =
@@ -98,6 +105,10 @@ struct CommandLine {
     std::filesystem::path rom_path = "Devil's Crush.pce";
     bool validate_only = false;
     bool smoke_test = false;
+    bool cabinet_smoke_test = false;
+    bool cabinet = false;
+    bool backglass_path_set = false;
+    std::filesystem::path backglass_path;
     bool record_canonical = false;
     std::filesystem::path canonical_path = kCanonicalRecordingPath;
     bool record_gameplay = false;
@@ -328,6 +339,17 @@ parse_logical_address_range(const std::string_view text)
             }
         } else if (argument == "--smoke-test") {
             options.smoke_test = true;
+        } else if (argument == "--cabinet-smoke-test") {
+            options.cabinet_smoke_test = true;
+        } else if (argument == "--cabinet") {
+            options.cabinet = true;
+        } else if (argument == "--backglass") {
+            if (index + 1 >= argc) {
+                options.error = "--backglass requires a path.";
+                return options;
+            }
+            options.backglass_path_set = true;
+            options.backglass_path = argv[++index];
         } else if (argument == "--record-canonical") {
             options.record_canonical = true;
             const std::string_view next =
@@ -569,6 +591,7 @@ parse_logical_address_range(const std::string_view text)
 
     const int operation_count =
         static_cast<int>(options.smoke_test)
+        + static_cast<int>(options.cabinet_smoke_test)
         + static_cast<int>(options.record_canonical)
         + static_cast<int>(options.record_gameplay)
         + static_cast<int>(options.record_state_census)
@@ -586,6 +609,12 @@ parse_logical_address_range(const std::string_view text)
     if (operation_count > 1) {
         options.error =
             "Only one test or recording operation may be selected.";
+    } else if (
+        options.cabinet && (operation_count != 0 || options.validate_only)) {
+        options.error =
+            "--cabinet is available only for the interactive host.";
+    } else if (options.backglass_path_set && !options.cabinet) {
+        options.error = "--backglass requires --cabinet.";
     } else if ((!options.canonical_work_ram_path.empty()
                 || !options.canonical_framebuffer_path.empty()
                 || !options.canonical_audio_path.empty())
@@ -669,11 +698,13 @@ parse_logical_address_range(const std::string_view text)
 void print_usage()
 {
     std::cout
-        << "Devil's Crush PC port - Milestone 2\n\n"
+        << "Devil's Crush PC port - Milestone 3\n\n"
         << "Usage:\n"
         << "  devils-crush [--rom <path>]\n"
+        << "  devils-crush --cabinet [--backglass <image>] [--rom <path>]\n"
         << "  devils-crush --validate-rom [path]\n"
         << "  devils-crush --smoke-test [--rom <path>]\n"
+        << "  devils-crush --cabinet-smoke-test [--rom <path>]\n"
         << "  devils-crush --record-canonical [output.csv]\n"
            "      [--canonical-work-ram <output.bin>]\n"
            "      [--canonical-framebuffer <output.rgb>]\n"
@@ -729,6 +760,7 @@ void print_usage()
         << "  F9                Restore quick state\n"
         << "  F10               Reload custom gamepad mappings\n"
         << "  F11               Toggle borderless fullscreen\n"
+        << "  F12               Cabinet display assignment\n"
         << "  Escape            Exit\n";
 }
 
@@ -755,6 +787,29 @@ void print_validation(const devils_crush::rom::ValidationResult& result)
         reinterpret_cast<const char*>(encoded.data()),
         encoded.size(),
     };
+}
+
+[[nodiscard]] std::optional<std::vector<std::byte>> read_rom_bytes(
+    const std::filesystem::path& path)
+{
+    std::vector<std::byte> bytes(
+        static_cast<std::size_t>(
+            devils_crush::rom::kSupportedRomSize));
+    std::ifstream input(path, std::ios::binary);
+    if (input) {
+        input.read(
+            reinterpret_cast<char*>(bytes.data()),
+            static_cast<std::streamsize>(bytes.size()));
+    }
+    if (!input
+        || input.gcount()
+            != static_cast<std::streamsize>(bytes.size())) {
+        std::cerr << "Could not read the supported ROM for cabinet "
+                     "background decoding: "
+                  << path.string() << '\n';
+        return std::nullopt;
+    }
+    return bytes;
 }
 
 [[nodiscard]] bool load_backup_ram(
@@ -1026,6 +1081,75 @@ void destroy_source(SourceTexture& source)
     return true;
 }
 
+[[nodiscard]] bool upload_image(
+    SDL_Renderer* renderer,
+    const devils_crush::render::ArgbImage& image,
+    SourceTexture& source)
+{
+    if (!image.valid()) {
+        std::cerr << "The cabinet renderer produced an invalid image.\n";
+        return false;
+    }
+    return upload_framebuffer(
+        renderer,
+        {
+            .pixels = image.pixels,
+            .width = image.width,
+            .height = image.height,
+            .pitch_pixels = image.width,
+        },
+        source);
+}
+
+[[nodiscard]] std::filesystem::path path_from_utf8(
+    const std::string_view text)
+{
+    std::u8string encoded;
+    encoded.reserve(text.size());
+    for (const unsigned char byte : text) {
+        encoded.push_back(static_cast<char8_t>(byte));
+    }
+    return std::filesystem::path(encoded);
+}
+
+[[nodiscard]] bool load_backglass_texture(
+    SDL_Renderer* const renderer,
+    const std::filesystem::path& path,
+    SourceTexture& source)
+{
+    const auto image =
+        devils_crush::render::load_backglass_image(path);
+    if (!image.loaded()) {
+        std::cerr << "Could not load backglass image: "
+                  << image.message << " (" << path.string() << ")\n";
+        return false;
+    }
+
+    SDL_Texture* const texture =
+        SDL_CreateTextureFromSurface(renderer, image.surface);
+    const auto width = image.surface->w;
+    const auto height = image.surface->h;
+    if (texture == nullptr) {
+        report_sdl_error(
+            "Creating the backglass texture failed");
+        return false;
+    }
+    if (!configure_texture(texture, SDL_SCALEMODE_NEAREST)) {
+        SDL_DestroyTexture(texture);
+        return false;
+    }
+
+    destroy_source(source);
+    source = {
+        .texture = texture,
+        .width = width,
+        .height = height,
+    };
+    std::cout << "Loaded backglass image: " << path.string() << " ("
+              << width << 'x' << height << ")\n";
+    return true;
+}
+
 struct StageTexture {
     SDL_Texture* texture = nullptr;
     int width = 0;
@@ -1073,7 +1197,10 @@ void destroy_stage(StageTexture& stage)
 [[nodiscard]] bool present_frame(
     SDL_Renderer* renderer,
     const SourceTexture& source,
-    StageTexture& stage)
+    StageTexture& stage,
+    const std::uint32_t aspect_numerator,
+    const std::uint32_t aspect_denominator,
+    const std::array<std::uint8_t, 3> clear_color = {8U, 8U, 12U})
 {
     int output_width = 0;
     int output_height = 0;
@@ -1085,7 +1212,12 @@ void destroy_stage(StageTexture& stage)
         return true;
     }
 
-    if (!SDL_SetRenderDrawColor(renderer, 8, 8, 12, 255)
+    if (!SDL_SetRenderDrawColor(
+            renderer,
+            clear_color[0],
+            clear_color[1],
+            clear_color[2],
+            255U)
         || !SDL_RenderClear(renderer)) {
         return report_sdl_error("SDL_RenderClear failed");
     }
@@ -1099,8 +1231,8 @@ void destroy_stage(StageTexture& stage)
         output_height,
         source.width,
         source.height,
-        kDisplayAspectNumerator,
-        kDisplayAspectDenominator);
+        aspect_numerator,
+        aspect_denominator);
     if (!layout.valid() || !ensure_stage(renderer, layout, stage)) {
         return false;
     }
@@ -1115,7 +1247,12 @@ void destroy_stage(StageTexture& stage)
         return report_sdl_error("SDL_SetRenderTarget (window) failed");
     }
 
-    if (!SDL_SetRenderDrawColor(renderer, 8, 8, 12, 255)
+    if (!SDL_SetRenderDrawColor(
+            renderer,
+            clear_color[0],
+            clear_color[1],
+            clear_color[2],
+            255U)
         || !SDL_RenderClear(renderer)) {
         return report_sdl_error("SDL_RenderClear failed");
     }
@@ -1133,6 +1270,746 @@ void destroy_stage(StageTexture& stage)
         return report_sdl_error("SDL_RenderPresent failed");
     }
     return true;
+}
+
+struct AuxiliaryWindow {
+    SDL_Window* window = nullptr;
+    SDL_Renderer* renderer = nullptr;
+};
+
+struct HostDisplays {
+    std::vector<SDL_DisplayID> ids;
+    std::vector<devils_crush::cabinet::DisplayDescriptor> descriptors;
+};
+
+[[nodiscard]] devils_crush::cabinet::DisplayRotation display_rotation(
+    const SDL_DisplayOrientation orientation) noexcept
+{
+    using devils_crush::cabinet::DisplayRotation;
+    switch (orientation) {
+    case SDL_ORIENTATION_LANDSCAPE:
+        return DisplayRotation::landscape;
+    case SDL_ORIENTATION_LANDSCAPE_FLIPPED:
+        return DisplayRotation::landscape_flipped;
+    case SDL_ORIENTATION_PORTRAIT:
+        return DisplayRotation::portrait;
+    case SDL_ORIENTATION_PORTRAIT_FLIPPED:
+        return DisplayRotation::portrait_flipped;
+    case SDL_ORIENTATION_UNKNOWN:
+    default:
+        return DisplayRotation::unknown;
+    }
+}
+
+[[nodiscard]] HostDisplays enumerate_host_displays()
+{
+    HostDisplays result;
+    int count = 0;
+    SDL_DisplayID* const ids = SDL_GetDisplays(&count);
+    if (ids == nullptr || count <= 0) {
+        report_sdl_error("SDL_GetDisplays failed");
+        SDL_free(ids);
+        return result;
+    }
+    result.ids.reserve(static_cast<std::size_t>(count));
+    result.descriptors.reserve(static_cast<std::size_t>(count));
+    const auto primary = SDL_GetPrimaryDisplay();
+    for (int index = 0; index < count; ++index) {
+        SDL_Rect bounds{};
+        if (!SDL_GetDisplayBounds(ids[index], &bounds)
+            || bounds.w <= 0 || bounds.h <= 0) {
+            report_sdl_error("SDL_GetDisplayBounds failed");
+            continue;
+        }
+        const char* const name = SDL_GetDisplayName(ids[index]);
+        result.ids.push_back(ids[index]);
+        result.descriptors.push_back({
+            .identity =
+                name != nullptr && name[0] != '\0'
+                ? name
+                : "Unnamed display",
+            .bounds = {
+                .x = bounds.x,
+                .y = bounds.y,
+                .width = bounds.w,
+                .height = bounds.h,
+            },
+            .rotation =
+                display_rotation(
+                    SDL_GetCurrentDisplayOrientation(ids[index])),
+            .primary = ids[index] == primary,
+        });
+    }
+    SDL_free(ids);
+    return result;
+}
+
+[[nodiscard]] bool apply_window_placement(
+    SDL_Window* const window,
+    const devils_crush::cabinet::WindowPlacement& placement,
+    const HostDisplays& displays,
+    const int default_width,
+    const int default_height)
+{
+    if (window == nullptr || displays.ids.size() != displays.descriptors.size()) {
+        return false;
+    }
+    const auto resolved = devils_crush::cabinet::resolve_display(
+        placement,
+        displays.descriptors);
+    if (!resolved) {
+        return true;
+    }
+    const auto geometry = devils_crush::cabinet::fit_window_geometry(
+        placement,
+        displays.descriptors[*resolved],
+        default_width,
+        default_height);
+    const bool was_fullscreen =
+        (SDL_GetWindowFlags(window) & SDL_WINDOW_FULLSCREEN) != 0U;
+    if (was_fullscreen && !SDL_SetWindowFullscreen(window, false)) {
+        return report_sdl_error(
+            "Leaving cabinet window fullscreen state failed");
+    }
+    if (!geometry.valid()
+        || !SDL_SetWindowSize(window, geometry.width, geometry.height)
+        || !SDL_SetWindowPosition(window, geometry.x, geometry.y)) {
+        return report_sdl_error("Applying cabinet window geometry failed");
+    }
+    if (placement.fullscreen
+        && !SDL_SetWindowFullscreen(window, true)) {
+        return report_sdl_error(
+            "Applying cabinet window fullscreen state failed");
+    }
+    return true;
+}
+
+[[nodiscard]] devils_crush::cabinet::WindowPlacement
+capture_window_placement(
+    SDL_Window* const window,
+    const HostDisplays& displays,
+    devils_crush::cabinet::WindowPlacement fallback)
+{
+    if (window == nullptr) {
+        return fallback;
+    }
+    int x = 0;
+    int y = 0;
+    int width = 0;
+    int height = 0;
+    if (SDL_GetWindowPosition(window, &x, &y)
+        && SDL_GetWindowSize(window, &width, &height)
+        && width > 0 && height > 0) {
+        fallback.geometry = {
+            .x = x,
+            .y = y,
+            .width = width,
+            .height = height,
+        };
+    }
+    fallback.fullscreen =
+        (SDL_GetWindowFlags(window) & SDL_WINDOW_FULLSCREEN) != 0U;
+    const auto display_id = SDL_GetDisplayForWindow(window);
+    if (display_id != 0U) {
+        const char* const name = SDL_GetDisplayName(display_id);
+        if (name != nullptr && name[0] != '\0') {
+            fallback.display_identity = name;
+        }
+        fallback.rotation = display_rotation(
+            SDL_GetCurrentDisplayOrientation(display_id));
+    }
+    for (std::size_t index = 0; index < displays.ids.size(); ++index) {
+        if (displays.ids[index] == display_id) {
+            if (fallback.display_identity.empty()) {
+                fallback.display_identity =
+                    displays.descriptors[index].identity;
+            }
+            break;
+        }
+    }
+    return fallback;
+}
+
+void destroy_auxiliary_window(AuxiliaryWindow& output)
+{
+    if (output.renderer != nullptr) {
+        SDL_DestroyRenderer(output.renderer);
+    }
+    if (output.window != nullptr) {
+        SDL_DestroyWindow(output.window);
+    }
+    output = {};
+}
+
+[[nodiscard]] bool create_auxiliary_window(
+    const char* const title,
+    const int width,
+    const int height,
+    const devils_crush::cabinet::WindowPlacement& placement,
+    const HostDisplays& displays,
+    AuxiliaryWindow& output)
+{
+    output.window = SDL_CreateWindow(
+        title,
+        width,
+        height,
+        SDL_WINDOW_HIDDEN | SDL_WINDOW_RESIZABLE
+            | SDL_WINDOW_HIGH_PIXEL_DENSITY
+            | SDL_WINDOW_NOT_FOCUSABLE
+            | SDL_WINDOW_ALWAYS_ON_TOP);
+    if (output.window == nullptr) {
+        report_sdl_error("SDL_CreateWindow (cabinet auxiliary) failed");
+        return false;
+    }
+    if (!apply_window_placement(
+            output.window,
+            placement,
+            displays,
+            width,
+            height)) {
+        destroy_auxiliary_window(output);
+        return false;
+    }
+    output.renderer = SDL_CreateRenderer(output.window, nullptr);
+    if (output.renderer == nullptr) {
+        report_sdl_error("SDL_CreateRenderer (cabinet auxiliary) failed");
+        destroy_auxiliary_window(output);
+        return false;
+    }
+    (void)SDL_SetRenderVSync(output.renderer, 0);
+    if (!SDL_ShowWindow(output.window)) {
+        report_sdl_error("SDL_ShowWindow (cabinet auxiliary) failed");
+        destroy_auxiliary_window(output);
+        return false;
+    }
+    return true;
+}
+
+enum class AssignmentRole {
+    playfield,
+    dmd,
+    backglass,
+};
+
+constexpr std::int32_t kBackglassDialogSelected = 1;
+constexpr std::int32_t kBackglassDialogCancelled = 2;
+constexpr std::int32_t kBackglassDialogFailed = 3;
+constexpr std::array kBackglassDialogFilters{
+    SDL_DialogFileFilter{
+        "Backglass images",
+        "png;jpg;jpeg;webp",
+    },
+};
+
+void SDLCALL backglass_dialog_callback(
+    void*,
+    const char* const* file_list,
+    int)
+{
+    SDL_Event event{};
+    event.type = SDL_EVENT_USER;
+    if (file_list == nullptr) {
+        event.user.code = kBackglassDialogFailed;
+        event.user.data1 = SDL_strdup(SDL_GetError());
+    } else if (file_list[0] == nullptr) {
+        event.user.code = kBackglassDialogCancelled;
+    } else {
+        event.user.code = kBackglassDialogSelected;
+        event.user.data1 = SDL_strdup(file_list[0]);
+    }
+    if (!SDL_PushEvent(&event) && event.user.data1 != nullptr) {
+        SDL_free(event.user.data1);
+    }
+}
+
+[[nodiscard]] SDL_Window* assignment_window(
+    const AssignmentRole role,
+    SDL_Window* const playfield,
+    AuxiliaryWindow& dmd,
+    AuxiliaryWindow& backglass) noexcept
+{
+    switch (role) {
+    case AssignmentRole::playfield:
+        return playfield;
+    case AssignmentRole::dmd:
+        return dmd.window;
+    case AssignmentRole::backglass:
+        return backglass.window;
+    }
+    return nullptr;
+}
+
+[[nodiscard]] devils_crush::cabinet::WindowPlacement&
+assignment_placement(
+    const AssignmentRole role,
+    devils_crush::cabinet::DisplayConfig& config) noexcept
+{
+    switch (role) {
+    case AssignmentRole::playfield:
+        return config.playfield;
+    case AssignmentRole::dmd:
+        return config.dmd;
+    case AssignmentRole::backglass:
+        return config.backglass;
+    }
+    return config.playfield;
+}
+
+[[nodiscard]] std::pair<int, int> assignment_default_size(
+    const AssignmentRole role) noexcept
+{
+    switch (role) {
+    case AssignmentRole::playfield:
+        return {720, 1280};
+    case AssignmentRole::dmd:
+        return {960, 240};
+    case AssignmentRole::backglass:
+        return {960, 540};
+    }
+    return {640, 480};
+}
+
+void set_assignment_titles(
+    SDL_Window* const playfield,
+    AuxiliaryWindow& dmd,
+    AuxiliaryWindow& backglass,
+    const bool active,
+    const AssignmentRole selected)
+{
+    if (!active) {
+        (void)SDL_SetWindowTitle(
+            playfield,
+            "Devil's Crush - Cabinet Playfield Preview");
+        if (dmd.window != nullptr) {
+            (void)SDL_SetWindowTitle(
+                dmd.window,
+                "Devil's Crush - Cabinet DMD");
+        }
+        if (backglass.window != nullptr) {
+            (void)SDL_SetWindowTitle(
+                backglass.window,
+                "Devil's Crush - Cabinet Backglass");
+        }
+        return;
+    }
+    const auto title = [selected](
+                           const AssignmentRole role,
+                           const char* const name) {
+        std::string value = role == selected ? "[SELECTED] " : "";
+        value += name;
+        value +=
+            " - 1/2/3 select, arrows display, F fullscreen, "
+            "B image, Delete clears, Enter done";
+        return value;
+    };
+    const auto playfield_title =
+        title(AssignmentRole::playfield, "Cabinet setup: Playfield");
+    (void)SDL_SetWindowTitle(playfield, playfield_title.c_str());
+    if (dmd.window != nullptr) {
+        const auto dmd_title =
+            title(AssignmentRole::dmd, "Cabinet setup: DMD");
+        (void)SDL_SetWindowTitle(dmd.window, dmd_title.c_str());
+    }
+    if (backglass.window != nullptr) {
+        const auto backglass_title =
+            title(AssignmentRole::backglass, "Cabinet setup: Backglass");
+        (void)SDL_SetWindowTitle(
+            backglass.window,
+            backglass_title.c_str());
+    }
+}
+
+[[nodiscard]] bool cycle_assignment_display(
+    const AssignmentRole role,
+    const int direction,
+    SDL_Window* const playfield,
+    AuxiliaryWindow& dmd,
+    AuxiliaryWindow& backglass,
+    devils_crush::cabinet::DisplayConfig& config,
+    const HostDisplays& displays)
+{
+    SDL_Window* const window =
+        assignment_window(role, playfield, dmd, backglass);
+    if (window == nullptr || displays.ids.empty()
+        || displays.ids.size() != displays.descriptors.size()) {
+        return true;
+    }
+    const auto current_id = SDL_GetDisplayForWindow(window);
+    std::size_t current = 0U;
+    for (std::size_t index = 0; index < displays.ids.size(); ++index) {
+        if (displays.ids[index] == current_id) {
+            current = index;
+            break;
+        }
+    }
+    const auto count = static_cast<std::int64_t>(displays.ids.size());
+    auto next =
+        (static_cast<std::int64_t>(current) + direction) % count;
+    if (next < 0) {
+        next += count;
+    }
+    const auto target = static_cast<std::size_t>(next);
+    auto& placement = assignment_placement(role, config);
+    placement.display_identity = displays.descriptors[target].identity;
+    placement.rotation = displays.descriptors[target].rotation;
+    const auto [default_width, default_height] =
+        assignment_default_size(role);
+    const auto& bounds = displays.descriptors[target].bounds;
+    const auto width = std::min(default_width, bounds.width);
+    const auto height = std::min(default_height, bounds.height);
+    placement.geometry = {
+        .x = bounds.x + (bounds.width - width) / 2,
+        .y = bounds.y + (bounds.height - height) / 2,
+        .width = width,
+        .height = height,
+    };
+    return apply_window_placement(
+        window,
+        placement,
+        displays,
+        default_width,
+        default_height);
+}
+
+[[nodiscard]] bool present_assignment(
+    SDL_Renderer* const renderer,
+    const AssignmentRole role,
+    const bool selected)
+{
+    if (renderer == nullptr) {
+        return true;
+    }
+    std::array<std::uint8_t, 3> color{};
+    switch (role) {
+    case AssignmentRole::playfield:
+        color = {24U, 72U, 160U};
+        break;
+    case AssignmentRole::dmd:
+        color = {184U, 56U, 8U};
+        break;
+    case AssignmentRole::backglass:
+        color = {96U, 32U, 128U};
+        break;
+    }
+    if (!SDL_SetRenderDrawColor(
+            renderer,
+            color[0],
+            color[1],
+            color[2],
+            255U)
+        || !SDL_RenderClear(renderer)) {
+        return report_sdl_error("Clearing a cabinet assignment window failed");
+    }
+    int width = 0;
+    int height = 0;
+    if (!SDL_GetRenderOutputSize(renderer, &width, &height)) {
+        return report_sdl_error(
+            "Reading a cabinet assignment window size failed");
+    }
+    if (selected && width > 0 && height > 0) {
+        const auto border =
+            std::max(4.0F, std::min(width, height) / 32.0F);
+        const auto inside_width =
+            std::max(0.0F, static_cast<float>(width) - 2.0F * border);
+        const auto inside_height =
+            std::max(0.0F, static_cast<float>(height) - 2.0F * border);
+        const std::array marker{
+            SDL_FRect{border, border, inside_width, border},
+            SDL_FRect{
+                border,
+                static_cast<float>(height) - 2.0F * border,
+                inside_width,
+                border,
+            },
+            SDL_FRect{border, border, border, inside_height},
+            SDL_FRect{
+                static_cast<float>(width) - 2.0F * border,
+                border,
+                border,
+                inside_height,
+            },
+        };
+        if (!SDL_SetRenderDrawColor(renderer, 255U, 240U, 96U, 255U)
+            || !SDL_RenderFillRects(
+                renderer,
+                marker.data(),
+                static_cast<int>(marker.size()))) {
+            return report_sdl_error(
+                "Drawing a cabinet assignment marker failed");
+        }
+    }
+    return SDL_RenderPresent(renderer)
+        || report_sdl_error(
+            "Presenting a cabinet assignment window failed");
+}
+
+[[nodiscard]] bool present_black(AuxiliaryWindow& output)
+{
+    if (output.renderer == nullptr) {
+        return true;
+    }
+    return (
+               SDL_SetRenderDrawColor(
+                   output.renderer,
+                   0,
+                   0,
+                   0,
+                   255)
+               && SDL_RenderClear(output.renderer)
+               && SDL_RenderPresent(output.renderer))
+        || report_sdl_error("Rendering the black backglass failed");
+}
+
+[[nodiscard]] bool draw_dmd_segment(
+    SDL_Renderer* renderer,
+    const SDL_FRect& rectangle,
+    const bool active)
+{
+    if (!SDL_SetRenderDrawColor(
+            renderer,
+            active ? 255U : 40U,
+            active ? 48U : 4U,
+            0U,
+            255U)
+        || !SDL_RenderFillRect(renderer, &rectangle)) {
+        return report_sdl_error("Rendering a DMD segment failed");
+    }
+    return true;
+}
+
+[[nodiscard]] bool draw_dmd_digit(
+    SDL_Renderer* renderer,
+    const int digit,
+    const float x,
+    const float y,
+    const float width,
+    const float height)
+{
+    constexpr std::array<std::uint8_t, 10> masks{
+        0x3FU,
+        0x06U,
+        0x5BU,
+        0x4FU,
+        0x66U,
+        0x6DU,
+        0x7DU,
+        0x07U,
+        0x7FU,
+        0x6FU,
+    };
+    if (digit < 0 || digit >= static_cast<int>(masks.size())) {
+        return false;
+    }
+    const auto thickness = std::max(2.0F, height / 10.0F);
+    const auto half = height / 2.0F;
+    const std::array segments{
+        SDL_FRect{
+            x + thickness,
+            y,
+            width - 2.0F * thickness,
+            thickness,
+        },
+        SDL_FRect{
+            x + width - thickness,
+            y + thickness,
+            thickness,
+            half - 1.5F * thickness,
+        },
+        SDL_FRect{
+            x + width - thickness,
+            y + half + 0.5F * thickness,
+            thickness,
+            half - 1.5F * thickness,
+        },
+        SDL_FRect{
+            x + thickness,
+            y + height - thickness,
+            width - 2.0F * thickness,
+            thickness,
+        },
+        SDL_FRect{
+            x,
+            y + half + 0.5F * thickness,
+            thickness,
+            half - 1.5F * thickness,
+        },
+        SDL_FRect{
+            x,
+            y + thickness,
+            thickness,
+            half - 1.5F * thickness,
+        },
+        SDL_FRect{
+            x + thickness,
+            y + half - thickness / 2.0F,
+            width - 2.0F * thickness,
+            thickness,
+        },
+    };
+    for (std::size_t segment = 0; segment < segments.size(); ++segment) {
+        if (!draw_dmd_segment(
+                renderer,
+                segments[segment],
+                (masks[static_cast<std::size_t>(digit)]
+                 & (1U << segment))
+                    != 0U)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+[[nodiscard]] bool present_dmd(
+    AuxiliaryWindow& output,
+    const std::uint64_t displayed_score)
+{
+    if (output.renderer == nullptr) {
+        return true;
+    }
+    int output_width = 0;
+    int output_height = 0;
+    if (!SDL_GetRenderOutputSize(
+            output.renderer,
+            &output_width,
+            &output_height)) {
+        return report_sdl_error("SDL_GetRenderOutputSize (DMD) failed");
+    }
+    if (output_width <= 0 || output_height <= 0) {
+        return true;
+    }
+    if (!SDL_SetRenderDrawColor(output.renderer, 0, 0, 0, 255)
+        || !SDL_RenderClear(output.renderer)) {
+        return report_sdl_error("Clearing the DMD failed");
+    }
+
+    const auto digits = std::to_string(displayed_score);
+    const auto digit_count = static_cast<float>(digits.size());
+    const auto available_width = static_cast<float>(output_width) * 0.9F;
+    const auto maximum_height = static_cast<float>(output_height) * 0.75F;
+    auto digit_height = std::min(
+        maximum_height,
+        available_width
+            / (digit_count * 0.72F - 0.12F)
+            * (5.0F / 3.0F));
+    auto digit_width = digit_height * 0.6F;
+    auto gap = digit_width * 0.2F;
+    const auto total_width =
+        digit_count * digit_width + (digit_count - 1.0F) * gap;
+    const auto origin_x =
+        (static_cast<float>(output_width) - total_width) / 2.0F;
+    const auto origin_y =
+        (static_cast<float>(output_height) - digit_height) / 2.0F;
+
+    for (std::size_t index = 0; index < digits.size(); ++index) {
+        if (!draw_dmd_digit(
+                output.renderer,
+                digits[index] - '0',
+                origin_x
+                    + static_cast<float>(index) * (digit_width + gap),
+                origin_y,
+                digit_width,
+                digit_height)) {
+            return false;
+        }
+    }
+    if (!SDL_RenderPresent(output.renderer)) {
+        return report_sdl_error("SDL_RenderPresent (DMD) failed");
+    }
+    return true;
+}
+
+[[nodiscard]] std::optional<devils_crush::render::PceBackgroundLayer>
+decode_cabinet_table(
+    const std::span<const std::byte> rom_bytes,
+    const std::span<const std::byte> work_ram,
+    const devils_crush::emulation::VideoMemorySnapshot& video,
+    devils_crush::render::PersistentActorSpriteCache&
+        persistent_actor_sprites)
+{
+    constexpr std::size_t table_width_tiles = 32U;
+    constexpr std::size_t table_height_tiles = 96U;
+    constexpr std::size_t table_bat_entries =
+        table_width_tiles * table_height_tiles;
+    constexpr std::size_t table_rom_offset =
+        0x14U * 0x2000U + 0x000AU;
+    constexpr std::size_t table_tile_bytes =
+        table_bat_entries * 2U;
+    constexpr std::size_t table_attribute_offset = 0x0259U;
+    constexpr std::size_t table_attribute_bytes =
+        table_bat_entries / 2U;
+    if (rom_bytes.size() < table_rom_offset
+        || rom_bytes.size() - table_rom_offset < table_tile_bytes
+        || work_ram.size() < table_attribute_offset
+        || work_ram.size() - table_attribute_offset
+            < table_attribute_bytes) {
+        return std::nullopt;
+    }
+
+    const auto source =
+        devils_crush::render::decode_packed_pce_background_layer({
+            .tile_words =
+                rom_bytes.subspan(table_rom_offset, table_tile_bytes),
+            .packed_palette_nibbles =
+                work_ram.subspan(
+                    table_attribute_offset,
+                    table_attribute_bytes),
+            .vram_words = video.vram_words,
+            .palette_entries = video.palette_entries,
+            .width_tiles = static_cast<int>(table_width_tiles),
+            .height_tiles = static_cast<int>(table_height_tiles),
+        });
+    if (!source) {
+        return std::nullopt;
+    }
+    auto table = devils_crush::render::crop_background_layer(
+        *source,
+        0,
+        devils_crush::cabinet::kTableWorldTop,
+        devils_crush::cabinet::kTableWorldWidth,
+        devils_crush::cabinet::kTableWorldHeight);
+    if (!table || work_ram.size() <= 0x0CU) {
+        return table;
+    }
+
+    const auto camera_y = static_cast<std::int16_t>(
+        static_cast<std::uint16_t>(
+            std::to_integer<std::uint8_t>(work_ram[0x0BU]))
+        | (static_cast<std::uint16_t>(
+               std::to_integer<std::uint8_t>(work_ram[0x0CU]))
+           << 8U));
+    static_cast<void>(
+        persistent_actor_sprites.update_and_composite(
+            table->image,
+            {
+                .vram_words = video.vram_words,
+                .sat_words = video.sat_words,
+                .palette_entries = video.palette_entries,
+                .memory_width_register =
+                    video.memory_width_register,
+            },
+            work_ram,
+            480 + static_cast<int>(camera_y),
+            devils_crush::cabinet::kTableWorldTop,
+            30,
+            208,
+            table->opaque_pixels,
+            rom_bytes));
+    static_cast<void>(
+        devils_crush::render::composite_pce_sprites(
+            table->image,
+            {
+                .vram_words = video.vram_words,
+                .sat_words = video.sat_words,
+                .palette_entries = video.palette_entries,
+                .memory_width_register =
+                    video.memory_width_register,
+            },
+            480 + static_cast<int>(camera_y),
+            devils_crush::cabinet::kTableWorldTop,
+            30,
+            208,
+            table->opaque_pixels));
+    return table;
 }
 
 struct AudioOutput {
@@ -2894,7 +3771,13 @@ int run_smoke_test(PceRuntime& runtime)
     return EXIT_SUCCESS;
 }
 
-int run_windows_host(PceRuntime& runtime)
+int run_windows_host(
+    PceRuntime& runtime,
+    const std::filesystem::path& rom_path,
+    const bool cabinet_mode,
+    const std::optional<std::filesystem::path> backglass_override =
+        std::nullopt,
+    const int frame_limit = 0)
 {
     if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMEPAD)) {
         report_sdl_error("SDL_Init failed");
@@ -2908,14 +3791,69 @@ int run_windows_host(PceRuntime& runtime)
     }
     (void)load_gamepad_mappings(kGamepadMappingsPath);
 
+    const auto cabinet_rom =
+        cabinet_mode ? read_rom_bytes(rom_path) : std::nullopt;
+    if (cabinet_mode && !cabinet_rom) {
+        destroy_audio(audio);
+        SDL_Quit();
+        return EXIT_FAILURE;
+    }
+
+    devils_crush::cabinet::DisplayConfig cabinet_config;
+    const bool persist_cabinet_config =
+        cabinet_mode && frame_limit <= 0;
+    if (persist_cabinet_config) {
+        const auto loaded =
+            devils_crush::cabinet::load_display_config(
+                kCabinetConfigPath);
+        if (loaded.loaded()) {
+            cabinet_config = loaded.config;
+            std::cout << "Loaded cabinet configuration: "
+                      << kCabinetConfigPath.string() << '\n';
+        } else if (
+            loaded.status
+            != devils_crush::cabinet::ConfigLoadStatus::not_found) {
+            std::cerr << loaded.message
+                      << " Using safe window defaults.\n";
+        }
+    }
+    std::optional<std::filesystem::path> effective_backglass_path;
+    if (cabinet_mode && backglass_override) {
+        if (backglass_override->empty()) {
+            cabinet_config.backglass_path.clear();
+        } else {
+            effective_backglass_path = *backglass_override;
+        }
+    } else if (!cabinet_config.backglass_path.empty()) {
+        effective_backglass_path =
+            path_from_utf8(cabinet_config.backglass_path);
+    }
+    auto host_displays =
+        cabinet_mode ? enumerate_host_displays() : HostDisplays{};
+
     SDL_Window* window = SDL_CreateWindow(
-        "Devil's Crush - emulated baseline",
-        1280,
-        720,
+        cabinet_mode
+            ? "Devil's Crush - Cabinet Playfield Preview"
+            : "Devil's Crush - emulated baseline",
+        cabinet_mode ? 720 : 1280,
+        cabinet_mode ? 1280 : 720,
         SDL_WINDOW_HIDDEN | SDL_WINDOW_RESIZABLE
             | SDL_WINDOW_HIGH_PIXEL_DENSITY);
     if (window == nullptr) {
         report_sdl_error("SDL_CreateWindow failed");
+        destroy_audio(audio);
+        SDL_Quit();
+        return EXIT_FAILURE;
+    }
+    if (cabinet_mode
+        && !apply_window_placement(
+            window,
+            cabinet_config.playfield,
+            host_displays,
+            720,
+            1280)) {
+        SDL_DestroyWindow(window);
+        destroy_audio(audio);
         SDL_Quit();
         return EXIT_FAILURE;
     }
@@ -2924,8 +3862,34 @@ int run_windows_host(PceRuntime& runtime)
     if (renderer == nullptr) {
         report_sdl_error("SDL_CreateRenderer failed");
         SDL_DestroyWindow(window);
+        destroy_audio(audio);
         SDL_Quit();
         return EXIT_FAILURE;
+    }
+
+    AuxiliaryWindow dmd;
+    AuxiliaryWindow backglass;
+    if (cabinet_mode) {
+        if (!create_auxiliary_window(
+                "Devil's Crush - Cabinet DMD",
+                960,
+                240,
+                cabinet_config.dmd,
+                host_displays,
+                dmd)) {
+            std::cerr
+                << "Cabinet DMD unavailable; continuing with playfield.\n";
+        }
+        if (!create_auxiliary_window(
+                "Devil's Crush - Cabinet Backglass",
+                960,
+                540,
+                cabinet_config.backglass,
+                host_displays,
+                backglass)) {
+            std::cerr
+                << "Cabinet backglass unavailable; continuing without it.\n";
+        }
     }
 
     const bool vsync_enabled = SDL_SetRenderVSync(renderer, 1);
@@ -2935,8 +3899,11 @@ int run_windows_host(PceRuntime& runtime)
     }
     if (!SDL_ShowWindow(window)) {
         report_sdl_error("SDL_ShowWindow failed");
+        destroy_auxiliary_window(dmd);
+        destroy_auxiliary_window(backglass);
         SDL_DestroyRenderer(renderer);
         SDL_DestroyWindow(window);
+        destroy_audio(audio);
         SDL_Quit();
         return EXIT_FAILURE;
     }
@@ -2944,6 +3911,54 @@ int run_windows_host(PceRuntime& runtime)
     SDL_Gamepad* gamepad = open_first_gamepad();
     SourceTexture source;
     StageTexture stage;
+    SourceTexture backglass_source;
+    StageTexture backglass_stage;
+    if (effective_backglass_path) {
+        const bool loaded =
+            backglass.renderer != nullptr
+            ? load_backglass_texture(
+                backglass.renderer,
+                *effective_backglass_path,
+                backglass_source)
+            : devils_crush::render::
+                  load_backglass_image(*effective_backglass_path)
+                      .loaded();
+        if (loaded && backglass_override) {
+            cabinet_config.backglass_path =
+                path_to_utf8(*effective_backglass_path);
+        }
+    }
+    bool table_view = false;
+    devils_crush::render::PersistentActorSpriteCache
+        persistent_actor_sprites;
+    std::uint64_t dmd_score = 0U;
+    bool assignment_active = false;
+    bool backglass_dialog_open = false;
+    auto assignment_role = AssignmentRole::playfield;
+    const auto save_current_cabinet_config = [&]() {
+        if (!persist_cabinet_config) {
+            return;
+        }
+        cabinet_config.playfield = capture_window_placement(
+            window,
+            host_displays,
+            cabinet_config.playfield);
+        cabinet_config.dmd = capture_window_placement(
+            dmd.window,
+            host_displays,
+            cabinet_config.dmd);
+        cabinet_config.backglass = capture_window_placement(
+            backglass.window,
+            host_displays,
+            cabinet_config.backglass);
+        const auto saved =
+            devils_crush::cabinet::save_display_config_atomic(
+                kCabinetConfigPath,
+                cabinet_config);
+        if (!saved.saved) {
+            std::cerr << saved.message << '\n';
+        }
+    };
 
     using Clock = std::chrono::steady_clock;
     const auto frame_period = std::chrono::duration_cast<Clock::duration>(
@@ -2952,12 +3967,188 @@ int run_windows_host(PceRuntime& runtime)
 
     bool running = true;
     bool host_ok = true;
+    int emulated_frames = 0;
     while (running && host_ok) {
         SDL_Event event;
         while (SDL_PollEvent(&event)) {
-            if (event.type == SDL_EVENT_QUIT
-                || event.type == SDL_EVENT_WINDOW_CLOSE_REQUESTED) {
+            if (event.type == SDL_EVENT_USER
+                && (event.user.code == kBackglassDialogSelected
+                    || event.user.code == kBackglassDialogCancelled
+                    || event.user.code == kBackglassDialogFailed)) {
+                backglass_dialog_open = false;
+                char* const dialog_text =
+                    static_cast<char*>(event.user.data1);
+                if (event.user.code == kBackglassDialogSelected
+                    && dialog_text != nullptr) {
+                    const auto selected_path =
+                        path_from_utf8(dialog_text);
+                    bool selected = false;
+                    if (backglass.renderer != nullptr) {
+                        selected = load_backglass_texture(
+                            backglass.renderer,
+                            selected_path,
+                            backglass_source);
+                        if (selected) {
+                            destroy_stage(backglass_stage);
+                        }
+                    } else {
+                        selected =
+                            devils_crush::render::
+                                load_backglass_image(selected_path)
+                                    .loaded();
+                    }
+                    if (selected) {
+                        cabinet_config.backglass_path =
+                            path_to_utf8(selected_path);
+                        save_current_cabinet_config();
+                    }
+                } else if (
+                    event.user.code == kBackglassDialogFailed) {
+                    std::cerr << "Backglass file dialog failed: "
+                              << (dialog_text != nullptr
+                                      ? dialog_text
+                                      : "unknown error")
+                              << '\n';
+                }
+                SDL_free(dialog_text);
+            } else if (event.type == SDL_EVENT_QUIT) {
                 running = false;
+            } else if (event.type == SDL_EVENT_WINDOW_CLOSE_REQUESTED) {
+                const auto main_window_id = SDL_GetWindowID(window);
+                if (event.window.windowID == main_window_id) {
+                    running = false;
+                } else if (
+                    dmd.window != nullptr
+                    && event.window.windowID
+                        == SDL_GetWindowID(dmd.window)) {
+                    cabinet_config.dmd = capture_window_placement(
+                        dmd.window,
+                        host_displays,
+                        cabinet_config.dmd);
+                    destroy_auxiliary_window(dmd);
+                } else if (
+                    backglass.window != nullptr
+                    && event.window.windowID
+                        == SDL_GetWindowID(backglass.window)) {
+                    cabinet_config.backglass = capture_window_placement(
+                        backglass.window,
+                        host_displays,
+                        cabinet_config.backglass);
+                    destroy_stage(backglass_stage);
+                    destroy_source(backglass_source);
+                    destroy_auxiliary_window(backglass);
+                }
+            } else if (
+                cabinet_mode && event.type == SDL_EVENT_KEY_DOWN
+                && !event.key.repeat && event.key.key == SDLK_F12) {
+                assignment_active = !assignment_active;
+                if (assignment_active) {
+                    host_displays = enumerate_host_displays();
+                    cabinet_config.playfield =
+                        capture_window_placement(
+                            window,
+                            host_displays,
+                            cabinet_config.playfield);
+                    cabinet_config.dmd = capture_window_placement(
+                        dmd.window,
+                        host_displays,
+                        cabinet_config.dmd);
+                    cabinet_config.backglass =
+                        capture_window_placement(
+                            backglass.window,
+                            host_displays,
+                            cabinet_config.backglass);
+                }
+                set_assignment_titles(
+                    window,
+                    dmd,
+                    backglass,
+                    assignment_active,
+                    assignment_role);
+                if (!assignment_active) {
+                    save_current_cabinet_config();
+                }
+                next_frame_time = Clock::now();
+            } else if (
+                assignment_active
+                && event.type == SDL_EVENT_KEY_DOWN
+                && !event.key.repeat) {
+                if (event.key.key == SDLK_RETURN
+                    || event.key.key == SDLK_ESCAPE) {
+                    assignment_active = false;
+                    save_current_cabinet_config();
+                } else if (event.key.key == SDLK_1) {
+                    assignment_role = AssignmentRole::playfield;
+                } else if (event.key.key == SDLK_2) {
+                    assignment_role = AssignmentRole::dmd;
+                } else if (event.key.key == SDLK_3) {
+                    assignment_role = AssignmentRole::backglass;
+                } else if (
+                    event.key.key == SDLK_LEFT
+                    || event.key.key == SDLK_RIGHT) {
+                    host_ok = cycle_assignment_display(
+                        assignment_role,
+                        event.key.key == SDLK_RIGHT ? 1 : -1,
+                        window,
+                        dmd,
+                        backglass,
+                        cabinet_config,
+                        host_displays);
+                } else if (event.key.key == SDLK_F) {
+                    SDL_Window* const selected_window =
+                        assignment_window(
+                            assignment_role,
+                            window,
+                            dmd,
+                            backglass);
+                    if (selected_window != nullptr) {
+                        auto& placement = assignment_placement(
+                            assignment_role,
+                            cabinet_config);
+                        placement.fullscreen =
+                            (SDL_GetWindowFlags(selected_window)
+                             & SDL_WINDOW_FULLSCREEN)
+                            == 0U;
+                        if (!SDL_SetWindowFullscreen(
+                                selected_window,
+                                placement.fullscreen)) {
+                            host_ok = report_sdl_error(
+                                "Changing an assigned window's "
+                                "fullscreen state failed");
+                        }
+                    }
+                } else if (
+                    event.key.key == SDLK_B
+                    && !backglass_dialog_open) {
+                    const char* const default_location =
+                        cabinet_config.backglass_path.empty()
+                        ? nullptr
+                        : cabinet_config.backglass_path.c_str();
+                    backglass_dialog_open = true;
+                    SDL_ShowOpenFileDialog(
+                        backglass_dialog_callback,
+                        nullptr,
+                        window,
+                        kBackglassDialogFilters.data(),
+                        static_cast<int>(
+                            kBackglassDialogFilters.size()),
+                        default_location,
+                        false);
+                } else if (
+                    event.key.key == SDLK_DELETE
+                    && assignment_role == AssignmentRole::backglass) {
+                    destroy_stage(backglass_stage);
+                    destroy_source(backglass_source);
+                    cabinet_config.backglass_path.clear();
+                    save_current_cabinet_config();
+                }
+                set_assignment_titles(
+                    window,
+                    dmd,
+                    backglass,
+                    assignment_active,
+                    assignment_role);
+                next_frame_time = Clock::now();
             } else if (
                 event.type == SDL_EVENT_KEY_DOWN && !event.key.repeat
                 && event.key.key == SDLK_ESCAPE) {
@@ -3003,22 +4194,99 @@ int run_windows_host(PceRuntime& runtime)
                 || event.type == SDL_EVENT_AUDIO_DEVICE_FORMAT_CHANGED) {
                 handle_audio_device_event(event.adevice, audio);
             } else if (event.type == SDL_EVENT_RENDER_TARGETS_RESET) {
-                destroy_stage(stage);
+                if (event.render.windowID == SDL_GetWindowID(window)) {
+                    destroy_stage(stage);
+                } else if (
+                    backglass.window != nullptr
+                    && event.render.windowID
+                        == SDL_GetWindowID(backglass.window)) {
+                    destroy_stage(backglass_stage);
+                }
             } else if (event.type == SDL_EVENT_RENDER_DEVICE_RESET) {
-                destroy_stage(stage);
-                destroy_source(source);
-                next_frame_time = Clock::now();
+                if (event.render.windowID == SDL_GetWindowID(window)) {
+                    destroy_stage(stage);
+                    destroy_source(source);
+                    next_frame_time = Clock::now();
+                } else if (
+                    backglass.window != nullptr
+                    && event.render.windowID
+                        == SDL_GetWindowID(backglass.window)) {
+                    destroy_stage(backglass_stage);
+                    destroy_source(backglass_source);
+                    if (!cabinet_config.backglass_path.empty()) {
+                        (void)load_backglass_texture(
+                            backglass.renderer,
+                            path_from_utf8(
+                                cabinet_config.backglass_path),
+                            backglass_source);
+                    }
+                }
             }
         }
 
         auto now = Clock::now();
         int catch_up_frames = 0;
         constexpr int kMaximumCatchUpFrames = 4;
-        while (running && host_ok && now >= next_frame_time
-               && catch_up_frames < kMaximumCatchUpFrames) {
+        while (running && host_ok && !assignment_active
+               && now >= next_frame_time
+               && catch_up_frames < kMaximumCatchUpFrames
+               && (frame_limit <= 0 || emulated_frames < frame_limit)) {
             const auto frame = runtime.run_frame(read_input(gamepad));
-            host_ok =
-                consume_emulated_frame(renderer, frame, source, audio);
+            ++emulated_frames;
+            if (!cabinet_mode) {
+                host_ok =
+                    consume_emulated_frame(renderer, frame, source, audio);
+            } else if (
+                frame.frame_number == 0U
+                || frame.framebuffer.pixels.empty()) {
+                std::cerr
+                    << "Beetle PCE did not produce a framebuffer.\n";
+                host_ok = false;
+            } else {
+                const auto work_ram = runtime.export_work_ram();
+                const auto cabinet_state =
+                    devils_crush::cabinet::decode_cabinet_state(
+                        work_ram);
+                if (cabinet_state) {
+                    dmd_score = cabinet_state->displayed_score;
+                }
+
+                table_view = false;
+                bool source_uploaded = false;
+                if (cabinet_state
+                    && cabinet_state->playfield
+                        == devils_crush::cabinet::PlayfieldView::
+                            table_background) {
+                    const auto video = runtime.export_video_memory();
+                    const auto table =
+                        video
+                        ? decode_cabinet_table(
+                              *cabinet_rom,
+                              work_ram,
+                              *video,
+                              persistent_actor_sprites)
+                        : std::nullopt;
+                    if (table) {
+                        host_ok =
+                            upload_image(
+                                renderer,
+                                table->image,
+                                source);
+                        source_uploaded = host_ok;
+                        table_view = host_ok;
+                    }
+                }
+                if (host_ok && !source_uploaded) {
+                    persistent_actor_sprites.reset();
+                    host_ok = upload_framebuffer(
+                        renderer,
+                        frame.framebuffer,
+                        source);
+                }
+                if (host_ok) {
+                    host_ok = queue_audio(frame.audio, audio);
+                }
+            }
             next_frame_time += frame_period;
             ++catch_up_frames;
             now = Clock::now();
@@ -3027,9 +4295,69 @@ int run_windows_host(PceRuntime& runtime)
             && now >= next_frame_time) {
             next_frame_time = now + frame_period;
         }
+        if (assignment_active) {
+            next_frame_time = now + frame_period;
+        }
 
         if (running && host_ok) {
-            host_ok = present_frame(renderer, source, stage);
+            if (assignment_active) {
+                host_ok = present_assignment(
+                    renderer,
+                    AssignmentRole::playfield,
+                    assignment_role == AssignmentRole::playfield);
+            } else {
+                const auto aspect_numerator =
+                    table_view
+                    ? devils_crush::cabinet::kTableAspectNumerator
+                    : kDisplayAspectNumerator;
+                const auto aspect_denominator =
+                    table_view
+                    ? devils_crush::cabinet::kTableAspectDenominator
+                    : kDisplayAspectDenominator;
+                host_ok = present_frame(
+                    renderer,
+                    source,
+                    stage,
+                    aspect_numerator,
+                    aspect_denominator);
+            }
+        }
+        if (running && dmd.renderer != nullptr
+            && !(assignment_active
+                    ? present_assignment(
+                        dmd.renderer,
+                        AssignmentRole::dmd,
+                        assignment_role == AssignmentRole::dmd)
+                    : present_dmd(dmd, dmd_score))) {
+            std::cerr << "Cabinet DMD renderer lost; disabling DMD.\n";
+            destroy_auxiliary_window(dmd);
+        }
+        if (running && backglass.renderer != nullptr
+            && !(assignment_active
+                    ? present_assignment(
+                        backglass.renderer,
+                        AssignmentRole::backglass,
+                        assignment_role == AssignmentRole::backglass)
+                    : backglass_source.texture != nullptr
+                        ? present_frame(
+                            backglass.renderer,
+                            backglass_source,
+                            backglass_stage,
+                            static_cast<std::uint32_t>(
+                                backglass_source.width),
+                            static_cast<std::uint32_t>(
+                                backglass_source.height),
+                            {0U, 0U, 0U})
+                        : present_black(backglass))) {
+            std::cerr
+                << "Cabinet backglass renderer lost; disabling "
+                   "backglass.\n";
+            destroy_stage(backglass_stage);
+            destroy_source(backglass_source);
+            destroy_auxiliary_window(backglass);
+        }
+        if (frame_limit > 0 && emulated_frames >= frame_limit) {
+            running = false;
         }
         if (!vsync_enabled) {
             SDL_Delay(1);
@@ -3039,12 +4367,21 @@ int run_windows_host(PceRuntime& runtime)
     destroy_audio(audio);
     destroy_stage(stage);
     destroy_source(source);
+    destroy_stage(backglass_stage);
+    destroy_source(backglass_source);
     if (gamepad != nullptr) {
         SDL_CloseGamepad(gamepad);
     }
+    save_current_cabinet_config();
+    destroy_auxiliary_window(dmd);
+    destroy_auxiliary_window(backglass);
     SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);
     SDL_Quit();
+    if (host_ok && frame_limit > 0) {
+        std::cout << "Cabinet host smoke test passed: "
+                  << emulated_frames << " frames.\n";
+    }
     return host_ok ? EXIT_SUCCESS : EXIT_FAILURE;
 }
 
@@ -3450,9 +4787,24 @@ int main(const int argc, char* argv[])
         if (options.smoke_test) {
             return run_smoke_test(*runtime);
         }
+        if (options.cabinet_smoke_test) {
+            return run_windows_host(
+                *runtime,
+                options.rom_path,
+                true,
+                std::nullopt,
+                kSmokeTestFrames);
+        }
 
         (void)load_backup_ram(*runtime, kBackupRamPath);
-        const int host_result = run_windows_host(*runtime);
+        const int host_result = run_windows_host(
+            *runtime,
+            options.rom_path,
+            options.cabinet,
+            options.backglass_path_set
+                ? std::optional<std::filesystem::path>{
+                    options.backglass_path}
+                : std::nullopt);
         const bool save_succeeded =
             save_backup_ram(*runtime, kBackupRamPath);
         return host_result == EXIT_SUCCESS && save_succeeded

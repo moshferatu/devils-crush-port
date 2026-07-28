@@ -69,11 +69,14 @@ typedef void (*dc_beetle_replacement_hook)(
     void* user_data);
 
 #define DC_BEETLE_VRAM_WORD_COUNT 32768
+#define DC_BEETLE_SAT_WORD_COUNT 256
 #define DC_BEETLE_PALETTE_ENTRY_COUNT 512
 
 typedef struct dc_beetle_video_snapshot {
     uint16_t* vram_words;
     size_t vram_word_capacity;
+    uint16_t* sat_words;
+    size_t sat_word_capacity;
     uint16_t* palette_entries;
     size_t palette_entry_capacity;
     uint16_t memory_width_register;

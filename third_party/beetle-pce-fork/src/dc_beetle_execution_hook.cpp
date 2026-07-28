@@ -61,8 +61,10 @@ int dc_beetle_copy_video_snapshot(
 {
     if (vce == nullptr || snapshot == nullptr
         || snapshot->vram_words == nullptr
+        || snapshot->sat_words == nullptr
         || snapshot->palette_entries == nullptr
         || snapshot->vram_word_capacity < DC_BEETLE_VRAM_WORD_COUNT
+        || snapshot->sat_word_capacity < DC_BEETLE_SAT_WORD_COUNT
         || snapshot->palette_entry_capacity
             < DC_BEETLE_PALETTE_ENTRY_COUNT) {
         return 0;
@@ -71,6 +73,10 @@ int dc_beetle_copy_video_snapshot(
     for (size_t index = 0; index < DC_BEETLE_VRAM_WORD_COUNT; ++index) {
         snapshot->vram_words[index] =
             vce->DebugPeekVRAM(static_cast<uint16_t>(index));
+    }
+    for (size_t index = 0; index < DC_BEETLE_SAT_WORD_COUNT; ++index) {
+        snapshot->sat_words[index] =
+            vce->DebugPeekSAT(static_cast<uint8_t>(index));
     }
     for (size_t index = 0;
          index < DC_BEETLE_PALETTE_ENTRY_COUNT;

@@ -1,0 +1,14 @@
+diff --git a/mednafen/pce/vce.h b/mednafen/pce/vce.h
+--- a/mednafen/pce/vce.h
++++ b/mednafen/pce/vce.h
+@@ -90,6 +90,10 @@ public:
+ 	{
+ 		return vdc[0].PeekVRAM(address);
+ 	}
++	uint16 DebugPeekSAT(const uint8 address)
++	{
++		return vdc[0].PeekSAT(address);
++	}
+ 	uint16 DebugPeekPalette(const uint16 address)
+ 	{
+ 		return color_table[address & 0x1FF];

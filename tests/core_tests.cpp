@@ -1,11 +1,14 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "devils_crush/core/backup_ram.hpp"
+#include "devils_crush/cabinet/cabinet_state.hpp"
+#include "devils_crush/cabinet/display_config.hpp"
 #include "devils_crush/core/rom_image.hpp"
 #include "devils_crush/core/save_state.hpp"
 #include "devils_crush/emulation/pce_runtime.hpp"
 #include "devils_crush/game_logic/physics.h"
 #include "devils_crush/render/pce_background.hpp"
+#include "devils_crush/render/pce_sprite_overlay.hpp"
 #include "devils_crush/render/sharp_pixel_scaler.hpp"
 
 #include <algorithm>
@@ -264,6 +267,255 @@ void test_scaler_edges()
     check(maximum.valid(), "maximum integer inputs remain valid");
 }
 
+void test_cabinet_state()
+{
+    using devils_crush::cabinet::PlayfieldView;
+    using devils_crush::cabinet::decode_cabinet_state;
+    using devils_crush::cabinet::decode_table_actor_state;
+
+    std::vector<std::byte> work_ram(8192U);
+    const auto frontend = decode_cabinet_state(work_ram);
+    check(frontend.has_value(), "zeroed cabinet state decodes");
+    check(
+        frontend
+            && frontend->playfield
+                == PlayfieldView::emulated_framebuffer
+            && frontend->displayed_score == 0U
+            && frontend->balls_in_session == 0U
+            && !frontend->bonus_stage,
+        "frontend state keeps the emulated playfield");
+
+    work_ram[0x0251U] = std::byte{1};
+    work_ram[0x0206U] = std::byte{0xFC};
+    work_ram[0x020DU] = std::byte{0x03};
+    work_ram[0x0214U] = std::byte{0};
+    work_ram[0x0858U] = std::byte{1};
+    work_ram[0x0D52U] = std::byte{3};
+    const auto normal_table = decode_cabinet_state(work_ram);
+    check(
+        normal_table
+            && normal_table->playfield
+                == PlayfieldView::table_background
+            && normal_table->stored_score == 1020U
+            && normal_table->displayed_score == 102000U
+            && normal_table->score_slot == 1U
+            && normal_table->balls_in_session == 3U,
+        "normal session selects the table and active-player score");
+
+    work_ram[0x0053U] = std::byte{0x10};
+    const auto bonus = decode_cabinet_state(work_ram);
+    check(
+        bonus
+            && bonus->playfield
+                == PlayfieldView::emulated_framebuffer
+            && bonus->bonus_stage,
+        "bonus session restores the emulated playfield");
+
+    work_ram[0x0053U] = std::byte{0};
+    work_ram[0x0D52U] = std::byte{0};
+    const auto no_balls = decode_cabinet_state(work_ram);
+    check(
+        no_balls
+            && no_balls->playfield
+                == PlayfieldView::emulated_framebuffer,
+        "session end restores the emulated playfield");
+
+    work_ram[0x0251U] = std::byte{7};
+    check(
+        !decode_cabinet_state(work_ram),
+        "invalid score slot is rejected");
+    check(
+        !decode_cabinet_state(
+            std::span<const std::byte>(work_ram).first(8191U)),
+        "incomplete cabinet work RAM is rejected");
+
+    work_ram[0x100AU] = std::byte{0x82};
+    work_ram[0x108AU] = std::byte{0x8B};
+    work_ram[0x118AU] = std::byte{0x08};
+    work_ram[0x120AU] = std::byte{0x01};
+    work_ram[0x130AU] = std::byte{0x9E};
+    work_ram[0x138AU] = std::byte{0x02};
+    work_ram[0x190AU] = std::byte{0x43};
+    work_ram[0x1F0AU] = std::byte{0x16};
+    work_ram[0x1F8AU] = std::byte{0x51};
+    const auto actors = decode_table_actor_state(work_ram);
+    check(
+        actors && (*actors)[0x0AU].slot == 0x0AU
+            && (*actors)[0x0AU].type == 0x82U
+            && (*actors)[0x0AU].flags == 0x8BU
+            && (*actors)[0x0AU].appearance == 0x43U
+            && (*actors)[0x0AU].world_x == 264
+            && (*actors)[0x0AU].world_y == 670
+            && (*actors)[0x0AU].dispatch == 0x5116U
+            && (*actors)[0x0AU].occupied()
+            && (*actors)[0x0AU].camera_active()
+            && (*actors)[0x0AU].fixed_mechanism(),
+        "mapped parallel actor arrays decode into typed table state");
+    check(
+        !decode_table_actor_state(
+            std::span<const std::byte>(work_ram).first(8191U)),
+        "actor-state decode rejects incomplete work RAM");
+}
+
+void test_cabinet_display_config()
+{
+    using devils_crush::cabinet::ConfigLoadStatus;
+    using devils_crush::cabinet::DisplayConfig;
+    using devils_crush::cabinet::DisplayDescriptor;
+    using devils_crush::cabinet::DisplayRect;
+    using devils_crush::cabinet::DisplayRotation;
+    using devils_crush::cabinet::WindowPlacement;
+    using devils_crush::cabinet::decode_display_config;
+    using devils_crush::cabinet::encode_display_config;
+    using devils_crush::cabinet::fit_window_geometry;
+    using devils_crush::cabinet::resolve_display;
+
+    const DisplayConfig source{
+        .format_version =
+            devils_crush::cabinet::kDisplayConfigVersion,
+        .playfield = {
+            .display_identity = "Portrait % Display",
+            .geometry = {-1080, 0, 1080, 1920},
+            .rotation = DisplayRotation::portrait,
+            .fullscreen = true,
+        },
+        .dmd = {
+            .display_identity = "DMD=Panel",
+            .geometry = {0, 0, 1920, 480},
+            .rotation = DisplayRotation::landscape,
+            .fullscreen = false,
+        },
+        .backglass = {
+            .display_identity = "Backglass\nPanel",
+            .geometry = {0, 480, 1920, 1080},
+            .rotation = DisplayRotation::landscape_flipped,
+            .fullscreen = true,
+        },
+        .backglass_path = "cabinet art/backglass=final%2.png",
+    };
+    const auto encoded = encode_display_config(source);
+    const auto decoded = decode_display_config(encoded);
+    check(
+        decoded && *decoded == source,
+        "cabinet display configuration round trips escaped fields");
+
+    auto invalid_version = encoded;
+    const auto version_digit = std::find(
+        invalid_version.begin(),
+        invalid_version.end(),
+        std::byte{'1'});
+    if (version_digit != invalid_version.end()) {
+        *version_digit = std::byte{'2'};
+    }
+    check(
+        !decode_display_config(invalid_version),
+        "unknown cabinet display configuration version is rejected");
+    check(
+        !decode_display_config(
+            std::span<const std::byte>(encoded).first(8U)),
+        "truncated cabinet display configuration is rejected");
+
+    const std::array displays{
+        DisplayDescriptor{
+            .identity = "Primary",
+            .bounds = {0, 0, 1920, 1080},
+            .rotation = DisplayRotation::landscape,
+            .primary = true,
+        },
+        DisplayDescriptor{
+            .identity = "Portrait % Display",
+            .bounds = {-1080, 0, 1080, 1920},
+            .rotation = DisplayRotation::portrait,
+            .primary = false,
+        },
+        DisplayDescriptor{
+            .identity = "DMD",
+            .bounds = {1920, 0, 1280, 720},
+            .rotation = DisplayRotation::landscape,
+            .primary = false,
+        },
+    };
+    check(
+        resolve_display(source.playfield, displays)
+            == std::optional<std::size_t>{1U},
+        "cabinet display identity survives enumeration reorder");
+
+    const std::array duplicate_names{
+        DisplayDescriptor{
+            .identity = "Identical panel",
+            .bounds = {0, 0, 1920, 1080},
+            .rotation = DisplayRotation::landscape,
+            .primary = true,
+        },
+        DisplayDescriptor{
+            .identity = "Identical panel",
+            .bounds = {1920, 0, 1920, 1080},
+            .rotation = DisplayRotation::landscape,
+            .primary = false,
+        },
+    };
+    const WindowPlacement duplicate_assignment{
+        .display_identity = "Identical panel",
+        .geometry = {2200, 100, 960, 540},
+    };
+    check(
+        resolve_display(duplicate_assignment, duplicate_names)
+            == std::optional<std::size_t>{1U},
+        "saved geometry disambiguates identical display names");
+
+    auto missing_identity = source.playfield;
+    missing_identity.display_identity = "Disconnected display";
+    missing_identity.geometry = {2100, 20, 900, 600};
+    check(
+        resolve_display(missing_identity, displays)
+            == std::optional<std::size_t>{2U},
+        "missing cabinet display falls back by saved geometry");
+
+    missing_identity.geometry = {10000, 10000, 900, 600};
+    check(
+        resolve_display(missing_identity, displays)
+            == std::optional<std::size_t>{0U},
+        "off-desktop cabinet geometry falls back to the primary display");
+    check(
+        !resolve_display(missing_identity, {}).has_value(),
+        "empty cabinet display inventory is rejected");
+
+    const auto fitted = fit_window_geometry(
+        WindowPlacement{
+            .display_identity = "DMD",
+            .geometry = {3100, 700, 2000, 900},
+        },
+        displays[2],
+        960,
+        240);
+    check(
+        fitted == DisplayRect{1920, 0, 1280, 720},
+        "cabinet fallback geometry is sized and clamped to its display");
+
+    const auto path =
+        std::filesystem::current_path() / "dc-cabinet-config-test.ini";
+    auto temporary_path = path;
+    temporary_path += ".tmp";
+    std::error_code error;
+    (void)std::filesystem::remove(path, error);
+    error.clear();
+    (void)std::filesystem::remove(temporary_path, error);
+    check(
+        devils_crush::cabinet::save_display_config_atomic(path, source)
+            .saved,
+        "cabinet display configuration is atomically saved");
+    const auto loaded =
+        devils_crush::cabinet::load_display_config(path);
+    check(
+        loaded.status == ConfigLoadStatus::loaded
+            && loaded.config == source,
+        "cabinet display configuration file round trips");
+    error.clear();
+    check(
+        std::filesystem::remove(path, error) && !error,
+        "cabinet display configuration test file is removed");
+}
+
 void test_pce_background_decode()
 {
     std::array<std::uint16_t, 48> vram{};
@@ -332,6 +584,68 @@ void test_pce_background_decode()
             .bat_height_tiles = 1,
         }),
         "PCE decoder rejects a truncated BAT");
+
+    const std::array<std::byte, 4> packed_tiles{
+        std::byte{0x01},
+        std::byte{0x00},
+        std::byte{0x02},
+        std::byte{0x00},
+    };
+    const std::array<std::byte, 1> packed_palettes{
+        std::byte{0x30},
+    };
+    const auto packed =
+        devils_crush::render::decode_packed_pce_background({
+            .tile_words = packed_tiles,
+            .packed_palette_nibbles = packed_palettes,
+            .vram_words = vram,
+            .palette_entries = palette,
+            .width_tiles = 2,
+            .height_tiles = 1,
+        });
+    check(
+        packed && packed->pixels == decoded->pixels,
+        "packed streamed BAT format decodes to the live BAT image");
+    const auto packed_layer =
+        devils_crush::render::decode_packed_pce_background_layer({
+            .tile_words = packed_tiles,
+            .packed_palette_nibbles = packed_palettes,
+            .vram_words = vram,
+            .palette_entries = palette,
+            .width_tiles = 2,
+            .height_tiles = 1,
+        });
+    check(
+        packed_layer && packed_layer->valid()
+            && packed_layer->image.pixels == decoded->pixels
+            && packed_layer->opaque_pixels[0] == 1U
+            && packed_layer->opaque_pixels[1] == 0U
+            && packed_layer->opaque_pixels[7] == 1U,
+        "packed background layer preserves raw pixel opacity");
+    const auto layer_crop = packed_layer
+        ? devils_crush::render::crop_background_layer(
+              *packed_layer,
+              0,
+              0,
+              8,
+              1)
+        : std::nullopt;
+    check(
+        layer_crop && layer_crop->valid()
+            && layer_crop->opaque_pixels.size() == 8U
+            && layer_crop->opaque_pixels[0] == 1U
+            && layer_crop->opaque_pixels[1] == 0U,
+        "background-layer crop preserves the opacity plane");
+    check(
+        !devils_crush::render::decode_packed_pce_background({
+            .tile_words = packed_tiles,
+            .packed_palette_nibbles = {},
+            .vram_words = vram,
+            .palette_entries = palette,
+            .width_tiles = 2,
+            .height_tiles = 1,
+        }),
+        "packed decoder rejects truncated palette nibbles");
 }
 
 void test_background_stitch_and_crop()
@@ -401,6 +715,658 @@ void test_background_stitch_and_crop()
             2,
             2),
         "crop rejects out-of-range camera rectangles");
+}
+
+void test_pce_sprite_overlay()
+{
+    using devils_crush::render::ArgbImage;
+    using devils_crush::render::PceSpriteSnapshot;
+
+    std::vector<std::uint16_t> vram(32768U, 0U);
+    std::vector<std::uint16_t> sat(256U, 0U);
+    std::vector<std::uint16_t> palette(512U, 0U);
+    ArgbImage image{
+        .width = 64,
+        .height = 64,
+        .pixels = std::vector<std::uint32_t>(64U * 64U, 0xFF101010U),
+    };
+
+    const auto set_sprite = [&sat](
+                                const std::size_t index,
+                                const int x,
+                                const int y,
+                                const std::uint16_t pattern,
+                                const std::uint16_t flags) {
+        const auto offset = index * 4U;
+        sat[offset] = static_cast<std::uint16_t>(y + 0x40);
+        sat[offset + 1U] = static_cast<std::uint16_t>(x + 0x20);
+        sat[offset + 2U] =
+            static_cast<std::uint16_t>(pattern << 1U);
+        sat[offset + 3U] = flags;
+    };
+
+    // Sprite 1 is painted first, then higher-priority sprite 0 wins.
+    set_sprite(1U, 4, 5, 1U, 0x0001U);
+    vram[64U] = 0x8000U;
+    palette[256U + 16U + 1U] = 0x0007U;
+    set_sprite(0U, 4, 5, 2U, 0x0002U);
+    vram[128U + 16U] = 0x8000U;
+    palette[256U + 32U + 2U] = 0x0038U;
+
+    // Horizontal and vertical flips move a source top-left pixel to the
+    // opposite edge of the 16-by-16 hardware sprite.
+    set_sprite(2U, 10, 10, 3U, 0x0803U);
+    vram[192U] = 0x8000U;
+    palette[256U + 48U + 1U] = 0x01C0U;
+    set_sprite(3U, 30, 10, 4U, 0x8004U);
+    vram[256U] = 0x8000U;
+    palette[256U + 64U + 1U] = 0x01FFU;
+
+    const auto stats =
+        devils_crush::render::composite_pce_sprites(
+            image,
+            PceSpriteSnapshot{
+                .vram_words = vram,
+                .sat_words = sat,
+                .palette_entries = palette,
+            },
+            0,
+            0,
+            0,
+            64);
+    check(
+        stats && stats->visible_sprites == 4U
+            && stats->opaque_pixel_writes == 4U,
+        "sprite overlay reports visible sprites and opaque writes");
+    check(
+        image.pixels[5U * 64U + 4U]
+            == devils_crush::render::decode_pce_color(0x0038U),
+        "lower SAT index wins sprite-to-sprite priority");
+    check(
+        image.pixels[10U * 64U + 25U]
+            == devils_crush::render::decode_pce_color(0x01C0U),
+        "sprite horizontal flip mirrors the pattern");
+    check(
+        image.pixels[25U * 64U + 30U]
+            == devils_crush::render::decode_pce_color(0x01FFU),
+        "sprite vertical flip mirrors the pattern");
+    check(
+        image.pixels[10U * 64U + 10U] == 0xFF101010U,
+        "sprite color zero remains transparent");
+
+    std::fill(sat.begin(), sat.end(), std::uint16_t{0});
+    set_sprite(0U, 4, 5, 1U, 0x0001U);
+    std::vector<std::uint8_t> background_opaque(64U * 64U, 0U);
+    background_opaque[5U * 64U + 4U] = 1U;
+    auto priority_image = ArgbImage{
+        .width = 64,
+        .height = 64,
+        .pixels = std::vector<std::uint32_t>(
+            64U * 64U,
+            0xFF101010U),
+    };
+    const auto behind_stats =
+        devils_crush::render::composite_pce_sprites(
+            priority_image,
+            PceSpriteSnapshot{
+                .vram_words = vram,
+                .sat_words = sat,
+                .palette_entries = palette,
+            },
+            0,
+            0,
+            0,
+            64,
+            background_opaque);
+    check(
+        behind_stats && behind_stats->visible_sprites == 0U
+            && behind_stats->opaque_pixel_writes == 0U
+            && priority_image.pixels[5U * 64U + 4U]
+                == 0xFF101010U,
+        "behind-background sprite pixel respects background opacity");
+
+    sat[3U] = 0x0081U;
+    const auto foreground_stats =
+        devils_crush::render::composite_pce_sprites(
+            priority_image,
+            PceSpriteSnapshot{
+                .vram_words = vram,
+                .sat_words = sat,
+                .palette_entries = palette,
+            },
+            0,
+            0,
+            0,
+            64,
+            background_opaque);
+    check(
+        foreground_stats && foreground_stats->visible_sprites == 1U
+            && foreground_stats->opaque_pixel_writes == 1U
+            && priority_image.pixels[5U * 64U + 4U]
+                == devils_crush::render::decode_pce_color(0x0007U),
+        "foreground-priority sprite pixel crosses opaque background");
+
+    std::fill(sat.begin(), sat.end(), std::uint16_t{0});
+    for (std::size_t index = 0; index < 17U; ++index) {
+        set_sprite(
+            index,
+            static_cast<int>(index),
+            5,
+            1U,
+            0x0081U);
+    }
+    auto limited_image = ArgbImage{
+        .width = 64,
+        .height = 64,
+        .pixels = std::vector<std::uint32_t>(
+            64U * 64U,
+            0xFF101010U),
+    };
+    const auto limited_stats =
+        devils_crush::render::composite_pce_sprites(
+            limited_image,
+            PceSpriteSnapshot{
+                .vram_words = vram,
+                .sat_words = sat,
+                .palette_entries = palette,
+            },
+            0,
+            0,
+            0,
+            64);
+    check(
+        limited_stats && limited_stats->visible_sprites == 16U
+            && limited_stats->opaque_pixel_writes == 16U
+            && limited_image.pixels[5U * 64U + 15U]
+                == devils_crush::render::decode_pce_color(0x0007U)
+            && limited_image.pixels[5U * 64U + 16U]
+                == 0xFF101010U,
+        "sprite overlay enforces the 16-half scanline limit");
+
+    std::fill(sat.begin(), sat.end(), std::uint16_t{0});
+    set_sprite(0U, 20, 20, 1U, 0x0081U);
+    vram[64U] = 0x8000U;
+    std::vector<std::byte> work_ram(8192U);
+    constexpr std::size_t actor_slot = 0x17U;
+    work_ram[0x1000U + actor_slot] = std::byte{0x82};
+    work_ram[0x1080U + actor_slot] = std::byte{0x80};
+    work_ram[0x1180U + actor_slot] = std::byte{20};
+    work_ram[0x1300U + actor_slot] = std::byte{20};
+    work_ram[0x1900U + actor_slot] = std::byte{3};
+    work_ram[0x1F00U + actor_slot] = std::byte{0x34};
+    work_ram[0x1F80U + actor_slot] = std::byte{0x12};
+    auto persistent_image = ArgbImage{
+        .width = 64,
+        .height = 128,
+        .pixels = std::vector<std::uint32_t>(
+            64U * 128U,
+            0xFF101010U),
+    };
+    devils_crush::render::PersistentActorSpriteCache actor_cache;
+    const auto observed_stats =
+        actor_cache.update_and_composite(
+            persistent_image,
+            PceSpriteSnapshot{
+                .vram_words = vram,
+                .sat_words = sat,
+                .palette_entries = palette,
+            },
+            work_ram,
+            0,
+            0,
+            0,
+            64);
+    check(
+        observed_stats
+            && observed_stats->observed_fixed_actors == 1U
+            && observed_stats->cached_fixed_actors == 1U
+            && observed_stats->rendered_fixed_actors == 0U,
+        "persistent actor cache learns from the live camera");
+
+    work_ram[0x1980U + actor_slot] = std::byte{1};
+    vram[64U] = 0x4000U;
+    auto second_phase_observation = ArgbImage{
+        .width = 64,
+        .height = 128,
+        .pixels = std::vector<std::uint32_t>(
+            64U * 128U,
+            0xFF101010U),
+    };
+    const auto second_phase_stats =
+        actor_cache.update_and_composite(
+            second_phase_observation,
+            PceSpriteSnapshot{
+                .vram_words = vram,
+                .sat_words = sat,
+                .palette_entries = palette,
+            },
+            work_ram,
+            0,
+            0,
+            0,
+            64);
+    check(
+        second_phase_stats
+            && second_phase_stats->observed_fixed_actors == 1U
+            && second_phase_stats->cached_fixed_actors == 1U
+            && second_phase_stats->rendered_fixed_actors == 0U,
+        "persistent actor cache learns a second live animation phase");
+
+    work_ram[0x1080U + actor_slot] = std::byte{0};
+    work_ram[0x1980U + actor_slot] = std::byte{0};
+    vram[64U] = 0U;
+    palette[256U + 16U + 1U] = 0x01C0U;
+    const auto persistent_stats =
+        actor_cache.update_and_composite(
+            persistent_image,
+            PceSpriteSnapshot{
+                .vram_words = vram,
+                .sat_words = sat,
+                .palette_entries = palette,
+            },
+            work_ram,
+            64,
+            0,
+            0,
+            64);
+    check(
+        persistent_stats
+            && persistent_stats->observed_fixed_actors == 0U
+            && persistent_stats->cached_fixed_actors == 1U
+            && persistent_stats->rendered_fixed_actors == 1U
+            && persistent_stats->rendered_retained_fixed_actors == 1U
+            && persistent_stats->opaque_pixel_writes == 1U
+            && persistent_image.pixels[20U * 64U + 20U]
+                == devils_crush::render::decode_pce_color(0x0007U),
+        "cached fixed mechanism remains visible outside the live camera");
+
+    auto inactive_in_view_image = ArgbImage{
+        .width = 64,
+        .height = 128,
+        .pixels = std::vector<std::uint32_t>(
+            64U * 128U,
+            0xFF101010U),
+    };
+    const auto inactive_in_view_stats =
+        actor_cache.update_and_composite(
+            inactive_in_view_image,
+            PceSpriteSnapshot{
+                .vram_words = vram,
+                .sat_words = sat,
+                .palette_entries = palette,
+            },
+            work_ram,
+            0,
+            0,
+            0,
+            64);
+    check(
+        inactive_in_view_stats
+            && inactive_in_view_stats->observed_fixed_actors == 0U
+            && inactive_in_view_stats->rendered_retained_fixed_actors
+                == 1U
+            && inactive_in_view_image.pixels[20U * 64U + 20U]
+                == devils_crush::render::decode_pce_color(0x0007U),
+        "inactive retained actor remains visible inside the camera band");
+
+    work_ram[0x1980U + actor_slot] = std::byte{1};
+    auto phase_changed_image = ArgbImage{
+        .width = 64,
+        .height = 128,
+        .pixels = std::vector<std::uint32_t>(
+            64U * 128U,
+            0xFF101010U),
+    };
+    const auto phase_changed_stats =
+        actor_cache.update_and_composite(
+            phase_changed_image,
+            PceSpriteSnapshot{
+                .vram_words = vram,
+                .sat_words = sat,
+                .palette_entries = palette,
+            },
+            work_ram,
+            64,
+            0,
+            0,
+            64);
+    check(
+        phase_changed_stats
+            && phase_changed_stats->cached_fixed_actors == 1U
+            && phase_changed_stats->rendered_fixed_actors == 1U
+            && phase_changed_stats->restored_phase_variants == 1U
+            && phase_changed_stats->
+                   restored_sorcerer_phase_variants
+                == 1U
+            && phase_changed_image.pixels[20U * 64U + 21U]
+                == devils_crush::render::decode_pce_color(0x0007U),
+        "off-camera Sorcerer restores its exact learned walking phase");
+
+    std::fill(sat.begin(), sat.end(), std::uint16_t{0});
+    set_sprite(0U, 20, 20, 1U, 0x0081U);
+    vram[64U] = 0x8000U;
+    std::vector<std::byte> effect_ram(8192U);
+    constexpr std::size_t effect_slot = 0x62U;
+    effect_ram[0x1000U + effect_slot] = std::byte{0x8F};
+    effect_ram[0x1080U + effect_slot] = std::byte{0x80};
+    effect_ram[0x1180U + effect_slot] = std::byte{20};
+    effect_ram[0x1300U + effect_slot] = std::byte{20};
+    effect_ram[0x1900U + effect_slot] = std::byte{0x10};
+    effect_ram[0x1F00U + effect_slot] = std::byte{0x90};
+    effect_ram[0x1F80U + effect_slot] = std::byte{0x42};
+    auto effect_image = ArgbImage{
+        .width = 64,
+        .height = 128,
+        .pixels = std::vector<std::uint32_t>(
+            64U * 128U,
+            0xFF101010U),
+    };
+    devils_crush::render::PersistentActorSpriteCache effect_cache;
+    const auto observed_effect_stats =
+        effect_cache.update_and_composite(
+            effect_image,
+            PceSpriteSnapshot{
+                .vram_words = vram,
+                .sat_words = sat,
+                .palette_entries = palette,
+            },
+            effect_ram,
+            0,
+            0,
+            0,
+            64);
+    check(
+        observed_effect_stats
+            && observed_effect_stats->observed_table_world_effects == 1U
+            && observed_effect_stats->cached_table_world_effects == 1U
+            && observed_effect_stats->rendered_table_world_effects == 0U,
+        "impact burst learns its exact visual from the live camera");
+
+    effect_ram[0x1080U + effect_slot] = std::byte{0};
+    effect_ram[0x1F00U + effect_slot] = std::byte{0xB0};
+    const auto retained_effect_stats =
+        effect_cache.update_and_composite(
+            effect_image,
+            PceSpriteSnapshot{
+                .vram_words = vram,
+                .sat_words = sat,
+                .palette_entries = palette,
+            },
+            effect_ram,
+            64,
+            0,
+            0,
+            64);
+    check(
+        retained_effect_stats
+            && retained_effect_stats->cached_table_world_effects == 1U
+            && retained_effect_stats->rendered_table_world_effects == 1U
+            && retained_effect_stats->
+                   rendered_retained_table_world_effects
+                == 1U,
+        "live impact actor remains visible outside the copied camera");
+
+    effect_ram[0x1F00U + effect_slot] = std::byte{0x34};
+    effect_ram[0x1F80U + effect_slot] = std::byte{0x12};
+    const auto reused_effect_stats =
+        effect_cache.update_and_composite(
+            effect_image,
+            PceSpriteSnapshot{
+                .vram_words = vram,
+                .sat_words = sat,
+                .palette_entries = palette,
+            },
+            effect_ram,
+            64,
+            0,
+            0,
+            64);
+    check(
+        reused_effect_stats
+            && reused_effect_stats->cached_table_world_effects == 0U
+            && reused_effect_stats->rendered_table_world_effects == 0U,
+        "dynamic slot reuse clears retained impact art immediately");
+
+    std::vector<std::byte> descriptor_rom(0x12000U);
+    std::vector<std::byte> descriptor_ram(8192U);
+    constexpr std::size_t descriptor_bank = 8U * 0x2000U;
+    descriptor_rom[descriptor_bank + 0x01ACU] = std::byte{0x00};
+    descriptor_rom[descriptor_bank + 0x01F1U] = std::byte{0x42};
+    descriptor_rom[descriptor_bank + 0x0200U] = std::byte{0x10};
+    descriptor_rom[descriptor_bank + 0x0201U] = std::byte{0x42};
+    descriptor_rom[descriptor_bank + 0x0210U] = std::byte{1};
+    descriptor_rom[descriptor_bank + 0x0211U] = std::byte{0xFC};
+    descriptor_rom[descriptor_bank + 0x0212U] = std::byte{0x24};
+    descriptor_rom[descriptor_bank + 0x0213U] = std::byte{2};
+    descriptor_rom[descriptor_bank + 0x0214U] = std::byte{0};
+    descriptor_rom[descriptor_bank + 0x0215U] = std::byte{0x81};
+    descriptor_rom[descriptor_bank + 0x0216U] = std::byte{0};
+    descriptor_ram[0x0051U] = std::byte{0x10};
+    descriptor_ram[0x1000U + actor_slot] = std::byte{0x82};
+    descriptor_ram[0x1080U + actor_slot] = std::byte{0x80};
+    descriptor_ram[0x1180U + actor_slot] = std::byte{100};
+    descriptor_ram[0x1300U + actor_slot] = std::byte{200};
+    descriptor_ram[0x1800U + actor_slot] = std::byte{0x30};
+    descriptor_ram[0x1D00U + actor_slot] = std::byte{0x02};
+    descriptor_ram[0x1E00U + actor_slot] = std::byte{0x08};
+    const auto decoded_actor_sprites =
+        devils_crush::render::decode_fixed_actor_sprites(
+            descriptor_rom,
+            descriptor_ram);
+    check(
+        decoded_actor_sprites
+            && *decoded_actor_sprites
+                == std::vector{
+                    devils_crush::render::FixedActorSprite{
+                        .actor_slot =
+                            static_cast<std::uint8_t>(actor_slot),
+                        .world_x = 104,
+                        .world_y = 196,
+                        .pattern = 0x0012U,
+                        .flags = 0x0883U,
+                    }},
+        "fixed actor decoder follows the original descriptor tables");
+    descriptor_ram[0x1900U + actor_slot] = std::byte{0x45};
+    check(
+        !devils_crush::render::decode_fixed_actor_sprites(
+            descriptor_rom,
+            descriptor_ram),
+        "fixed actor decoder rejects an invalid appearance selector");
+
+    std::vector<std::byte> stream_rom(2U * 0x2000U);
+    const std::array<std::uint8_t, 8> stream_mpr{
+        0U,
+        0U,
+        0U,
+        0U,
+        1U,
+        0U,
+        0U,
+        0U,
+    };
+    const std::array stream_bytes{
+        std::byte{2},
+        std::byte{0x34},
+        std::byte{0x12},
+        std::byte{0x78},
+        std::byte{0x56},
+        std::byte{0x83},
+        std::byte{0xBC},
+        std::byte{0x9A},
+        std::byte{0},
+    };
+    std::ranges::copy(
+        stream_bytes,
+        stream_rom.begin()
+            + static_cast<std::ptrdiff_t>(0x2000U));
+    const auto decoded_stream =
+        devils_crush::render::decode_pce_vram_stream(
+            stream_rom,
+            stream_mpr,
+            0x8000U);
+    check(
+        decoded_stream
+            && *decoded_stream
+                == std::vector<std::uint16_t>{
+                    0x1234U,
+                    0x5678U,
+                    0x9ABCU,
+                    0x9ABCU,
+                    0x9ABCU,
+                },
+        "native VRAM stream decoder reproduces raw and repeated words");
+    check(
+        !devils_crush::render::decode_pce_vram_stream(
+            stream_rom,
+            stream_mpr,
+            0x8000U,
+            4U),
+        "VRAM stream decoder enforces its output bound");
+
+    std::vector<std::byte> loader_rom(3U * 0x2000U);
+    constexpr std::size_t loader_descriptor_offset = 0x1000U;
+    const std::array compressed_descriptor{
+        std::byte{1},
+        std::byte{0x20},
+        std::byte{0x01},
+        std::byte{0},
+        std::byte{0},
+        std::byte{0},
+        std::byte{1},
+        std::byte{2},
+        std::byte{1},
+    };
+    std::ranges::copy(
+        compressed_descriptor,
+        loader_rom.begin()
+            + static_cast<std::ptrdiff_t>(
+                loader_descriptor_offset));
+    loader_rom[0x2000U] = std::byte{0x00};
+    loader_rom[0x2001U] = std::byte{0x81};
+    loader_rom[0x2002U] = std::byte{0x10};
+    loader_rom[0x2003U] = std::byte{0x81};
+    const std::array first_loader_stream{
+        std::byte{1},
+        std::byte{0x34},
+        std::byte{0x12},
+        std::byte{0},
+    };
+    const std::array second_loader_stream{
+        std::byte{0x82},
+        std::byte{0x78},
+        std::byte{0x56},
+        std::byte{0},
+    };
+    std::ranges::copy(
+        first_loader_stream,
+        loader_rom.begin()
+            + static_cast<std::ptrdiff_t>(0x2100U));
+    std::ranges::copy(
+        second_loader_stream,
+        loader_rom.begin()
+            + static_cast<std::ptrdiff_t>(0x2110U));
+    const auto compressed_uploads =
+        devils_crush::render::
+            decode_pce_pattern_loader_descriptor(
+                loader_rom,
+                0xF000U,
+                compressed_descriptor.size(),
+                0x0200U);
+    check(
+        compressed_uploads
+            && compressed_uploads->uploads.size() == 2U
+            && compressed_uploads->uploads[0].phase == 0U
+            && compressed_uploads->uploads[0].destination_word
+                == 0x0320U
+            && compressed_uploads->uploads[0].source_bank == 1U
+            && compressed_uploads->uploads[0].source_address
+                == 0x8100U
+            && compressed_uploads->uploads[0].encoding
+                == devils_crush::render::
+                       PceVramUploadEncoding::compressed_stream
+            && compressed_uploads->uploads[0].words
+                == std::vector<std::uint16_t>{0x1234U}
+            && compressed_uploads->uploads[1].phase == 1U
+            && compressed_uploads->uploads[1].source_address
+                == 0x8110U
+            && compressed_uploads->uploads[1].words
+                == std::vector<std::uint16_t>{
+                    0x5678U,
+                    0x5678U,
+                },
+        "pattern atlas decodes phase-selected compressed uploads");
+
+    constexpr std::size_t raw_descriptor_offset = 0x1020U;
+    const std::array raw_descriptor{
+        std::byte{0},
+        std::byte{4},
+        std::byte{1},
+        std::byte{0x40},
+        std::byte{0},
+        std::byte{2},
+        std::byte{0},
+        std::byte{2},
+        std::byte{0},
+    };
+    std::ranges::copy(
+        raw_descriptor,
+        loader_rom.begin()
+            + static_cast<std::ptrdiff_t>(raw_descriptor_offset));
+    loader_rom[0x2004U] = std::byte{0x20};
+    loader_rom[0x2005U] = std::byte{0x81};
+    loader_rom[0x2122U] = std::byte{0xCD};
+    loader_rom[0x2123U] = std::byte{0xAB};
+    loader_rom[0x2124U] = std::byte{0x57};
+    loader_rom[0x2125U] = std::byte{0x13};
+    const auto raw_uploads =
+        devils_crush::render::
+            decode_pce_pattern_loader_descriptor(
+                loader_rom,
+                0xF020U,
+                raw_descriptor.size(),
+                0x0200U);
+    check(
+        raw_uploads && raw_uploads->uploads.size() == 1U
+            && raw_uploads->uploads[0].destination_word
+                == 0x0240U
+            && raw_uploads->uploads[0].asset_reference
+                == 0x0104U
+            && raw_uploads->uploads[0].source_bank == 1U
+            && raw_uploads->uploads[0].source_address
+                == 0x8122U
+            && raw_uploads->uploads[0].encoding
+                == devils_crush::render::
+                       PceVramUploadEncoding::raw_words
+            && raw_uploads->uploads[0].words
+                == std::vector<std::uint16_t>{
+                    0xABCDU,
+                    0x1357U,
+                },
+        "pattern atlas reproduces the F606 raw-word upload mode");
+    check(
+        !devils_crush::render::
+            decode_pce_pattern_loader_descriptor(
+                loader_rom,
+                0xF020U,
+                raw_descriptor.size(),
+                0x0200U,
+                1U),
+        "raw pattern upload enforces its output bound");
+
+    sat.resize(255U);
+    check(
+        !devils_crush::render::composite_pce_sprites(
+            image,
+            PceSpriteSnapshot{
+                .vram_words = vram,
+                .sat_words = sat,
+                .palette_entries = palette,
+            },
+            0,
+            0,
+            0,
+            64),
+        "sprite overlay rejects a truncated SAT snapshot");
 }
 
 void test_save_state_container()
@@ -624,8 +1590,11 @@ int main()
     test_supported_rom_metadata();
     test_scaler_examples();
     test_scaler_edges();
+    test_cabinet_state();
+    test_cabinet_display_config();
     test_pce_background_decode();
     test_background_stitch_and_crop();
+    test_pce_sprite_overlay();
     test_save_state_container();
     test_backup_ram_storage();
     test_runtime_boundary();

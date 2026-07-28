@@ -2,6 +2,7 @@
 
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <span>
@@ -17,6 +18,15 @@ struct ArgbImage {
     [[nodiscard]] bool valid() const noexcept;
 };
 
+struct PceBackgroundLayer {
+    ArgbImage image;
+    // One byte per pixel. Nonzero means the decoded four-bit background
+    // pattern index was nonzero, independently of the resolved RGB color.
+    std::vector<std::uint8_t> opaque_pixels;
+
+    [[nodiscard]] bool valid() const noexcept;
+};
+
 struct PceBackgroundSnapshot {
     // HuC6270 VRAM uses 16-bit word addressing. The BAT begins at word zero;
     // each BAT entry selects one 8x8, 4-bit background tile and one of the
@@ -26,6 +36,19 @@ struct PceBackgroundSnapshot {
     std::span<const std::uint16_t> palette_entries;
     int bat_width_tiles = 0;
     int bat_height_tiles = 0;
+};
+
+struct PackedPceBackgroundSnapshot {
+    // Two little-endian bytes per BAT cell. Bits 0-11 select the tile;
+    // bits 12-15 are supplied separately by packed_palette_nibbles.
+    std::span<const std::byte> tile_words;
+    // One byte per pair of BAT cells: the high nibble belongs to the first
+    // cell and the low nibble belongs to the second.
+    std::span<const std::byte> packed_palette_nibbles;
+    std::span<const std::uint16_t> vram_words;
+    std::span<const std::uint16_t> palette_entries;
+    int width_tiles = 0;
+    int height_tiles = 0;
 };
 
 struct PlacedImage {
@@ -51,6 +74,13 @@ struct StitchedImage {
 [[nodiscard]] std::optional<ArgbImage> decode_pce_background(
     const PceBackgroundSnapshot& snapshot);
 
+[[nodiscard]] std::optional<ArgbImage> decode_packed_pce_background(
+    const PackedPceBackgroundSnapshot& snapshot);
+
+[[nodiscard]] std::optional<PceBackgroundLayer>
+decode_packed_pce_background_layer(
+    const PackedPceBackgroundSnapshot& snapshot);
+
 // Images are composited in input order, so later regions own overlap pixels.
 // The returned origin records the minimum world coordinate represented by
 // image pixel (0, 0).
@@ -60,6 +90,13 @@ struct StitchedImage {
 
 [[nodiscard]] std::optional<ArgbImage> crop_image(
     const ArgbImage& image,
+    int x,
+    int y,
+    int width,
+    int height);
+
+[[nodiscard]] std::optional<PceBackgroundLayer> crop_background_layer(
+    const PceBackgroundLayer& layer,
     int x,
     int y,
     int width,

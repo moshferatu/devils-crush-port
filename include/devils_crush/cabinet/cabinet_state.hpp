@@ -1,0 +1,78 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+#pragma once
+
+#include <array>
+#include <cstddef>
+#include <cstdint>
+#include <optional>
+#include <span>
+
+namespace devils_crush::cabinet {
+
+inline constexpr int kTableSourceWidth = 256;
+inline constexpr int kTableSourceHeight = 768;
+inline constexpr int kTableWorldTop = 20;
+inline constexpr int kTableWorldWidth = 256;
+inline constexpr int kTableWorldHeight = 668;
+inline constexpr std::uint32_t kTableAspectNumerator = 80U;
+inline constexpr std::uint32_t kTableAspectDenominator = 167U;
+inline constexpr std::size_t kActorSlotCount = 0x7FU;
+inline constexpr std::size_t kBallActorSlot = 0x00U;
+inline constexpr std::size_t kFirstFlipperControlSlot = 0x04U;
+inline constexpr std::size_t kLastFlipperControlSlot = 0x09U;
+inline constexpr std::size_t kFirstFixedActorSlot = 0x0AU;
+inline constexpr std::size_t kLastFixedActorSlot = 0x61U;
+inline constexpr std::size_t kFirstDynamicActorSlot = 0x62U;
+inline constexpr std::size_t kLastDynamicActorSlot = 0x7EU;
+
+enum class PlayfieldView {
+    emulated_framebuffer,
+    table_background,
+};
+
+struct CabinetState {
+    PlayfieldView playfield = PlayfieldView::emulated_framebuffer;
+    std::uint32_t stored_score = 0;
+    std::uint64_t displayed_score = 0;
+    std::uint8_t score_slot = 0;
+    std::uint8_t balls_in_session = 0;
+    bool bonus_stage = false;
+};
+
+struct TableActorState {
+    std::uint8_t slot = 0;
+    std::uint8_t type = 0;
+    std::uint8_t flags = 0;
+    std::uint8_t appearance = 0;
+    std::int16_t world_x = 0;
+    std::int16_t world_y = 0;
+    std::uint16_t dispatch = 0;
+
+    [[nodiscard]] bool occupied() const noexcept
+    {
+        return type != 0U;
+    }
+
+    [[nodiscard]] bool camera_active() const noexcept
+    {
+        return (flags & 0x80U) != 0U;
+    }
+
+    [[nodiscard]] bool fixed_mechanism() const noexcept
+    {
+        return slot >= kFirstFixedActorSlot
+            && slot <= kLastFixedActorSlot;
+    }
+};
+
+[[nodiscard]] std::optional<CabinetState> decode_cabinet_state(
+    std::span<const std::byte> work_ram) noexcept;
+
+// Decodes the mapped parallel actor arrays at logical $3000-$3FFF. This is
+// observation only: the original assembly remains the sole owner of actor
+// scheduling and state transitions.
+[[nodiscard]] std::optional<std::array<TableActorState, kActorSlotCount>>
+decode_table_actor_state(std::span<const std::byte> work_ram) noexcept;
+
+} // namespace devils_crush::cabinet

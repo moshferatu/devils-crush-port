@@ -46,6 +46,11 @@ this repository.
    - Adds read-only VDC VRAM, VCE palette, and background-register accessors.
    - The project-owned C boundary copies their values between frames and never
      exposes emulator-owned pointers.
+5. `patches/0005-vdc-sprite-snapshot.patch`
+   - Adds read-only access to the base VDC's 256-word internal post-DMA sprite
+     attribute table.
+   - Extends the same frame-boundary copy so the native renderer observes the
+     table actually consumed by Beetle rather than only its VRAM DMA source.
 
 All local files and patches are GPL-3.0-or-later. Upstream per-file notices
 and licenses remain authoritative for upstream sources.

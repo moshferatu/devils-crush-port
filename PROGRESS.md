@@ -8,6 +8,17 @@ Last updated: 2026-07-28
 
 **Current milestone:** 3. Cabinet preview
 
+**Milestone 3 current gate:** all non-hidden fixed actors, all three flipper
+pairs, ten Small Soldiers, four Tower insects, and the mapped type-`$8F`
+impact-burst family now populate and animate across the stitched table while
+the ball remains exact and trail-free through the live SAT. Exact ROM groups
+now replace proximity association, all six flippers survive every camera
+region, and off-camera Sorcerer movement and all 16 walking phases are
+guarded. Moving enemies now resolve or restore the visual matching their
+live phase instead of sliding a frozen fallback image; unrelated
+camera-region VRAM is never sampled. Two-player/DMD work is deferred again
+at the user's request; cabinet playfield work remains active.
+
 **Milestone 2 progress:** complete; all four closure gates are closed
 
 No whole-project percentage is reported yet. The remaining milestones have
@@ -412,7 +423,7 @@ progression, and group regeneration remain ROM-bounded.
 | --- | --- | --- |
 | 1. Emulated Windows baseline | Complete | Verified ROM runs through the pinned Beetle PCE fork with SDL3 video, audio, input, saves, and sharp monitor-resolution scaling |
 | 2. Instrumentation and hook bridge | Complete | Required game state is mapped and original routines can be observed, shadow-tested, and replaced |
-| 3. Cabinet preview | In progress | Three-window cabinet mode shows the stitched playfield, score DMD, user backglass, and playfield-hosted bonus stages |
+| 3. Cabinet preview | In progress | Three-window cabinet mode shows the stitched playfield, score DMD, black backglass fallback, assigned displays, and playfield-hosted bonus stages |
 | 4. Native gameplay port | Not started | Physics, collisions, RNG, scoring, table rules, bonus stages, and session transitions execute natively |
 | 5. Final cabinet world model | Not started | Desktop and cabinet profiles share the same native gameplay state without divergence |
 | 6. Release hardening | Not started | Tested, documented, ROM-free Windows x64 package is ready for release |
@@ -2433,6 +2444,378 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
     subset and the core/smoke/canonical/video Debug subset. The canonical
     visual regression remains unchanged by the read-only bridge.
 
+- [x] Mapped the streamed normal-table source geometry:
+  - Classified `00:F2FE/F32D` as the downward first/second row pair and
+    `00:F3B2/F3E1` as the upward first/second pair.
+  - Proved all 539 commits preserve `anchor_y - camera_y = 480` and map a
+    world row to circular BAT word
+    `(((world_y - 480) & $FF) / 8) * 64`.
+  - Bounded the tile-map source to physical bank `$14` at
+    `$800A + world_y * 8` and packed palette nibbles to work RAM at
+    `$2259 + world_y * 2`; the dynamic route covers every row from world Y
+    168 through 720.
+  - Added packed-BAT decoding across the finite 32-by-96-cell source
+    envelope.
+  - The initial frame-900 256-by-768 diagnostic is reproducible at SHA-256
+    `f0df872362bcc231674151eecdd402752d1bc18dd9e333e5a95fb872dad54cee`.
+    It was captured during the table fade-in and is not a visually valid
+    full-playfield golden.
+  - The frame-900 `(0,480,256,208)` packed-source crop matches the same
+    decoder applied to the live BAT, with SHA-256
+    `da841334896409730877e48a19d89cfa4bacfde153b3157e31c2b126c03bbb2d`.
+    This is a decoder self-consistency check, not an independent emulator
+    rendering comparison.
+  - Post-fade frame-1200 diagnostics show the expected brickwork and colors.
+    The background-only crop omits flippers, enemies, lights, and other
+    sprite/gameplay-owned mechanisms that appear in the emulator composite.
+  - Rows 0-687 of the post-fade reconstruction form a coherent provisional
+    256-by-688 visible world. Rows 688-767 contain invalid or non-visible
+    source/prefetch data, disproving the earlier assumption that all 96
+    source rows were three complete 256-pixel visible bands.
+  - Passed the core and video-snapshot regressions in Debug and Release and
+    the Release-only 539-call row-writer regression.
+  - Passed the complete 107-test Release suite with two isolated test
+    processes.
+
+- [x] Closed the Milestone 3 table-background reconstruction gate:
+  - Added independent comparison against Beetle's final RGB565 framebuffer,
+    including the core's quantization and the playfield's framebuffer-Y-30
+    alignment.
+  - Added the natural frame-1,600 checkpoint and a sequential isolated
+    upper-table route. The latter holds only slot-0 ball Y through frame
+    3,000, then lets the original camera converge to its -460 clamp and
+    stream the upper region naturally.
+  - Proved the accepted 256-by-668 world occupies source rows 20-687. Rows
+    0-19 are the top guard, 688-720 are streamed lower prefetch, and
+    721-767 are unused tail data.
+  - Guarded stable lower, upper-middle, middle, and upper captures with
+    source/crop SHA-256 values
+    `e11ec46a715e311d584c19c4ddb78750b9e18e6a607f22db7d70de8dddf74a6f`,
+    `750ba5022e7604636f97107a374df21262ede4a5aa2ac1e7cc64cb9b9decf25d`,
+    `910a3372d4c516f6076bff49556dfd289915014c1cf652a8c8df921fa538bb44`,
+    and
+    `f2f8fda9090a1f98f1cf07ece0e775122c43257d38caef7f33f2d63c3ff81aec`.
+    The accepted frame-1,200 256-by-668 crop is
+    `3d5afa6f1f633e23b837c1f3ec3e0a19c8f00ca87abf2a7ff841f600dadc7e1e`.
+  - Independently matched 44,901, 47,768, 49,432, and 44,247 background
+    pixels out of each 53,248-pixel viewport. The complementary pixels are
+    original sprite/presentation overlays.
+  - Defined the exact overlay-oracle input boundary: active internal
+    HuC6270 SAT words plus the already copied VRAM sprite patterns, VCE
+    sprite palettes, and camera transform. Cabinet gameplay actors remain
+    sourced from mapped work RAM rather than a second simulation.
+  - Passed the focused video-snapshot regression in Debug and Release.
+
+- [x] Added the first cabinet-window vertical slice:
+  - Added explicit `--cabinet` and bounded `--cabinet-smoke-test` host modes
+    without changing the desktop default.
+  - Created a required portrait playfield plus independently recoverable,
+    non-focusable DMD and backglass windows. Closing or losing an auxiliary
+    no longer stops the playfield.
+  - Decode and crop the accepted 256-by-668 table against live VRAM, VCE,
+    and work RAM during normal sessions. Menus, zero-ball presentation, and
+    `$53.4` bonus stages use the original emulated framebuffer.
+  - Added a monitor-resolution seven-segment DMD driven by the `$2251`
+    active score slot and `$2205/$220C/$2213` binary score arrays, preserving
+    the verified times-100 display rule.
+  - Added the black backglass fallback. User-selected PNG/JPEG/WebP loading
+    was completed in the later backglass slice.
+  - Added `cabinet::decode_cabinet_state()`, ROM-free state/switching unit
+    coverage, `docs/CABINET_PREVIEW.md`, and the SDL dummy-driver
+    `dc_rom_cabinet_smoke` regression.
+
+- [x] Added persistent interactive cabinet display assignment:
+  - Added the versioned `portable-data/cabinet.ini` boundary with strict
+    parsing, escaped strings, bounded file size, and atomic replacement.
+  - Persisted each role's display name, fallback window rectangle, current
+    SDL display orientation, and borderless-fullscreen state.
+  - Resolve an assignment by exact display identity first, greatest saved
+    geometry overlap second, and the primary display last. Invalid and
+    missing configuration falls back safely.
+  - Added an F12 assignment screen that pauses emulation, color-identifies
+    playfield/DMD/backglass, selects roles with 1/2/3, cycles live displays
+    with Left/Right, toggles role fullscreen with F, and saves with Enter,
+    Escape, or F12.
+  - Added ROM-free configuration round-trip, rejection, atomic-file,
+    monitor-reorder/loss, and geometry-clamping coverage. The dummy-driver
+    cabinet smoke test remains configuration-write-free.
+  - Passed the focused Debug core/CLI/cabinet-smoke regression and the
+    focused Release core/CLI/emulation-smoke/cabinet-smoke/video-snapshot
+    regression.
+
+- [x] Added persisted PNG/JPEG/WebP backglass images:
+  - Pinned SDL_image 3.4.4 at
+    `bec9134a26c7d0f31b36d6083c25296e04cabff5` with only stb PNG/JPEG and
+    libwebp 1.3.2 decoding enabled. All image encoders and unrelated format
+    backends are disabled, and the dependency and bundled-component licenses
+    are recorded.
+  - Added the shared `render::load_backglass_image()` boundary. It accepts
+    formats by file content rather than extension, rejects missing, empty,
+    unsupported, larger-than-64-MiB, greater-than-16384-per-side, and
+    greater-than-64-megapixel inputs, and owns the decoded SDL surface
+    transactionally.
+  - Added `--backglass <image>` for scripted selection and B in the F12
+    assignment screen for the native file picker. A successful choice is
+    loaded immediately and persisted as UTF-8; Delete clears it.
+  - Backglass images use black aspect-preserving containment and the same
+    integer-nearest plus controlled-linear sharp pipeline as other cabinet
+    images. Decode, texture, and renderer-reset failures retain or restore
+    the black fallback without stopping play.
+  - Added real embedded PNG, JPEG, and WebP fixture coverage plus
+    unsupported/missing-content rejection and orphan-CLI validation. Passed
+    the focused Debug core/image/CLI/cabinet-smoke regression and the focused
+    Release core/image/CLI/emulation-smoke/cabinet-smoke/video-snapshot
+    regression.
+  - Reinstalled and passed the distribution allowlist: SDL_image and libwebp
+    remain statically linked, with only the executable, license, README, and
+    third-party notices in the ROM-free package.
+
+- [x] Added the copied live-camera SAT actor overlay:
+  - Added downstream patch `0005-vdc-sprite-snapshot.patch` and extended the
+    copied video boundary with all 256 internal post-DMA HuC6270 SAT words.
+  - Added `render::composite_pce_sprites()` with 16/32-pixel widths,
+    16/32/64-pixel heights, pattern alignment, both flips, transparent color
+    zero, sprite palettes, two-bit sprite mode, clipping, and exact SAT-order
+    sprite priority.
+  - Preserved one raw opacity byte per packed background pixel and now applies
+    the SAT foreground bit against it. The decoder also enforces the hardware
+    maximum of 16 sprite halves per scanline, including the two-slot cost of a
+    32-pixel-wide sprite.
+  - Translated the live 208-line viewport through signed camera
+    `$200B:$200C` into accepted table-world coordinates. The cabinet playfield
+    now displays the copied active sprites without advancing a second actor
+    simulation; score-panel sprites remain clipped for the DMD.
+  - Added ROM-free pattern/flip/priority/rejection coverage. At settled frame
+    1,200, the copied SAT hash is
+    `26ad08bcac982e81b34e02f899e16d790f148562daaa17e5651b92e5f6248276`;
+    46 visible sprites make 9,175 post-priority opaque writes and raise exact
+    Beetle composite agreement from 44,901 to 51,778 of 53,248 pixels.
+  - Passed the focused Debug and Release core/video-snapshot/cabinet-smoke
+    regressions and reverified the four-file ROM-free distribution.
+
+- [x] Added progressive persistent fixed-mechanism composition:
+  - Added typed decoding for all 127 mapped actor slots across occupancy/type,
+    flags, signed integer position, appearance, and live dispatch arrays.
+  - Fixed slots `$0A-$61` learn exact post-limit SAT primitives only while
+    their work-RAM anchor is in the live camera. Cached primitives remain
+    tied to the actor's position and state signature and are rendered only
+    outside the current 208-line SAT viewport.
+  - Each learned primitive owns its resolved pixel colors. Later VRAM
+    pattern streaming or VCE palette changes cannot corrupt a retained
+    off-camera mechanism.
+  - Empty slots clear immediately. An unseen type, appearance, or dispatch
+    change suppresses stale art until the original camera observes that
+    mechanism again. The cache never advances actor state or gameplay.
+  - Preserved background priority, sprite-pattern/palette decoding, global
+    16-half scanline selection, and reset the cache across non-table scenes.
+  - Added ROM-free typed-state and learn/persist coverage plus a natural
+    3,600-frame ROM route proving that at least one fixed mechanism is
+    learned and subsequently rendered off-camera. Focused Debug and Release
+    core/video-snapshot/cabinet-smoke regressions pass.
+  - This closes progressive persistence for visited mechanisms.
+
+- [x] Mapped the original fixed-actor presentation metadata:
+  - Located the complete post-DMA SAT source at VRAM words
+    `$7800-$78FF`. Frame 1,200 records all 256 high-byte staging writes at
+    physical bank `$08` sites `$40C6-$419E`.
+  - Mapped `08:4036` as the actor/SAT scheduler and `08:40DF` as the
+    descriptor renderer. Appearance `$3900,X` selects one of 69 pointer
+    tables, phase `$3980,X` selects the descriptor, and each descriptor
+    supplies signed offsets, pattern, palette, priority, flip, and size
+    attributes with `$3800/$3D00/$3E00` modifiers.
+  - Added a bounded native metadata decoder. At stable frame 1,200 it
+    resolves 100 sprites for the fixed table and matches all 23 eligible
+    live actor groups word-for-word against the copied SAT.
+  - Added ROM-free descriptor, signed-offset, pattern-base, attribute-merge,
+    and malformed-appearance coverage.
+  - Proved that metadata alone cannot safely pre-seed unseen art: the
+    non-SAT upper VRAM region `$4000-$77FF` changes from SHA-256
+    `f84447542add674e39a660d57bde50277ef414c6ee860ab0e8c5d707e889edd3`
+    at lower frame 1,200 to
+    `c5f344d3130e20d40a37e5d055a557022290be8c87d97df397068850fbf7155d`
+    at upper-middle frame 1,600.
+  - Visual QA rejected a provisional metadata-only full-table seed before it
+    reached the cabinet host. That result established the requirement for
+    the sprite-pattern loader and region-correct local atlas completed in
+    the next two slices.
+
+- [x] Decoded and reproduced the camera-transition sprite-pattern streams:
+  - Mapped `00:E41F` as the generic word-stream decoder. Commands `$01-$7F`
+    copy that many little-endian words, commands `$81-$FF` repeat one word
+    `(command & $7F)` times, `$80` repeats 256 times, and `$00` terminates.
+  - Between frames 1,201 and 1,600, all writes into VRAM `$4000-$77FF`
+    originate at `00:E449` (1,036 raw words) or `00:E467` (2,548 repeated
+    words). Fourteen calls load physical-bank `$12` streams into `$5400` or
+    `$7000`.
+  - Added a bounded native decoder with ROM-free raw, repeat, and output-limit
+    coverage. Replaying the 14 routed streams over frame-1,200 VRAM reproduces
+    every frame-1,600 word in `$4000-$77FF` and exact SHA-256
+    `c5f344d3130e20d40a37e5d055a557022290be8c87d97df397068850fbf7155d`.
+  - Corrected the observation boundary from post-`PHY` `$E420` to true entry
+    `$E41F`, so its stack/caller contract is valid. All 14 calls originate at
+    `00:F661` inside selector `00:F606`.
+  - `00:F606` selects one of 42 loader descriptors through appearance
+    `$3900,X`, phase `$3980,X`, and pattern base `$4F:$50`. The observed
+    transition ties slot `$5B`, appearance `$03`, descriptor `$F6FA` to
+    `12:8030->$7000`, and slot `$0F`, appearance `$11`, descriptor `$F73B`
+    phases 0/1/2/3 to `12:8AFD/8B80/8C5C/8D52->$5400`.
+  - This closes the compressed stream format and observed selector path, but
+    not unseen-state seeding.
+
+- [x] Decoded all 42 `00:F606` selector entries into a local pattern atlas:
+  - The pointer family collapses to eight upload descriptors plus executable
+    special loader `$F768`, shared by appearances `$24-$29` as an explicit
+    resident-pattern sentinel.
+  - The eight descriptors resolve 35 phase assets through the bank `$10/$12`
+    directories and decode 12,544 bounded words at their exact
+    pattern-base-relative VRAM destinations.
+  - Added a generic descriptor decoder for both `00:E41F` compressed streams
+    and `00:F666-00:F6A5`'s mode-zero raw-word path through `00:E365`.
+    None of the 42 static selectors uses mode zero; a ROM-free fixture guards
+    its base resolution, phase offset, word count, and output limit.
+  - The ROM-backed video snapshot guards all 42 appearance mappings, nine
+    unique pointers, 35 uploads, 12,544 decoded words, destinations,
+    encodings, and the six resident selectors.
+  - Focused Debug core and ROM-backed video snapshot regressions pass. The
+    final Release core and ROM-backed video snapshot regressions also pass.
+
+- [x] Applied stream-backed atlas assets before first camera visits:
+  - Separated `00:F606`'s loader destination base `$4F:$50` from bank-8's
+    SAT pattern base `$51:$52`; the first no-visit diagnostic caught this
+    distinction before the cache path was accepted.
+  - The cache selects actor appearance and `$3980,X` phase, requires the
+    upload to own every referenced 64-word sprite-pattern block, resolves
+    pixels with the live sprite palette, and includes phase in its
+    type/appearance/dispatch invalidation signature.
+  - At settled lower frame 1,200, 16 of 17 eligible camera-active upload
+    groups equal live VRAM byte-for-byte and all 23 eligible bank-8 metadata
+    groups still equal the copied SAT. Three off-camera mechanisms are
+    pre-seeded and contribute 1,266 priority-filtered pixels.
+  - Golden-guarded accepted persistent composites now cover lower frame
+    1,200 (`26e4dd2c...8061d16`), upper-middle frame 1,600
+    (`bcffd95b...2a96efa`), and middle frame 1,800
+    (`da770e96...850ff93`).
+  - Debug and Release core, ROM-backed video snapshot, and cabinet-smoke
+    regressions pass.
+  - The same route now dynamically bounds resident loader `$F768` at frame
+    874 with selector `A=0`, loading asset `$1222` at `$7C00`. `X=0` and
+    slot-0 appearance/phase zero establish a scene-level initializer rather
+    than an actor-local selector. Resident selectors 1-4 remain unmapped.
+
+- [x] Classified and pre-seeded the remaining fixed-actor pattern families:
+  - Decoded all five `$F768` choices
+    `$1222/$1224/$1226/$1228/$122A` into five 1,008-word `$7C00` packs
+    (5,040 words total). Selector 0 equals live frame-900 `$7C00` VRAM.
+  - All six deterministic bonus-stage routes see only the earlier
+    normal-table selector-0 call, so selectors 1-4 are not bonus-stage packs.
+    Their scene association remains unmapped but is not a fixed-actor gate.
+  - Independently classified all 24 frame-1,200 fixed groups using
+    appearances `$24/$25/$29/$2A/$2B/$2C/$37/$41/$43`. None is owned by
+    `$F768`, and every referenced 64-word block is disjoint from the exact
+    half-open ranges of all known `$F606` and `$F768` uploads.
+  - Generalized the exact range proof to every non-hidden fixed actor. At
+    frame 1,200, eight groups are owned by their selected stream and 53 are
+    disjoint from every known upload; zero groups remain unresolved.
+  - The persistent cache now safely sources those static blocks from live
+    VRAM before first camera visits. The 23 live-camera groups plus 38
+    pre-seeded groups cover all 61 non-hidden fixed actors and write 10,980
+    priority-filtered retained pixels.
+  - Refreshed accepted persistent goldens for lower frame 1,200
+    (`63d4e780...cfed752`), upper-middle frame 1,600
+    (`66586645...1d6593b`), and middle frame 1,800
+    (`d229dd58...33059eb`). Their differing coherent mechanism frames guard
+    ongoing appearance/phase animation across table bands.
+  - Focused core, ROM-backed video snapshot, and cabinet-smoke regressions
+    pass in Debug and Release.
+
+- [x] Added exact ball and full-table flipper presentation:
+  - Proved slot `$00` and flipper/control slots `$04-$09` use absolute
+    table-world coordinates. Their bank-8 descriptors decode one ball sprite
+    plus two sprites for each of six flippers.
+  - At frame 1,200, all five camera-active ball/flipper groups match
+    contiguous copied-SAT words exactly. All seven actor groups use pattern
+    blocks disjoint from every known upload, with zero unresolved sources.
+  - Kept the moving ball live-SAT-only to prevent trails. Added slots
+    `$04-$09` to the phase-aware persistent cache, making the upper, middle,
+    and lower flipper pairs visible simultaneously while retaining live
+    input-driven phase changes.
+  - Golden-guarded lower frame 1,200 now caches 60 persistent actors, seeds
+    42, and writes 12,836 retained pixels (`0b52e88e...aecfc2b`).
+    Upper-middle frame 1,600 is `22e28684...7861e7c`; middle frame 1,800 is
+    `c103b179...bcb588b`.
+  - Focused core, ROM-backed video snapshot, and cabinet-smoke regressions
+    pass in Debug and Release.
+
+- [x] Retained the persistent normal-table dynamic enemies:
+  - Generalized the bank-8 descriptor decoder to dynamic slots `$62-$7E`.
+    At frame 1,200 its 14 sprites cover ten type-`$82`, appearance-`$1A`
+    Small Soldiers and four type-`$82`, appearance-`$39` Tower insects.
+  - All four camera-active dynamic groups match contiguous copied-SAT words
+    exactly. All 14 groups use upload-disjoint pattern blocks, with zero
+    unresolved sources.
+  - Whitelisted only those two persistent enemy families in this slice.
+    Empty slots and any reuse by another type, appearance, phase, or dispatch
+    clear the cached visual immediately; the later transient-effect slice
+    adds only the independently bounded impact family.
+  - Golden-guarded lower frame 1,200 now caches 71 persistent actors, seeds
+    52, and writes 14,696 retained pixels
+    (`eb2e1147...10e55dcfd`). Upper-middle frame 1,600 is
+    `2aeb44b0...693470835`; middle frame 1,800 is
+    `bbba7ee9...8f8db34`.
+  - The deterministic route guards exact dynamic family counts, active SAT
+    equality at every captured frame, and changing metadata across the
+    lower, upper-middle, and middle captures for all 14 enemies.
+  - Focused core, ROM-backed video snapshot, and cabinet-smoke regressions
+    pass in Debug and Release.
+
+- [x] Classified and retained the shared table-world impact burst:
+  - Restricted transient retention to type `$8F`, appearance `$10`, and the
+    mapped activation/animation dispatch pair `02:4290/02:42B0`. The two
+    dispatches are presentation-compatible; every other dynamic signature
+    remains live-camera-only and invalidates reused-slot pixels.
+  - At deterministic frame 2,100, slot `$71` is camera-active at phase 5.
+    Its two bank-8 primitives match the copied SAT exactly, and its one actor
+    group is upload-disjoint with zero unresolved pattern sources.
+  - A cloned-cache probe moves the copied-camera boundary away without
+    advancing gameplay and proves the live original actor remains visible in
+    table-world space. Its accepted composite is
+    `ee11c879...5c35693` after the camera-band and off-camera-phase fixes.
+  - Frames 2,400 and 2,700 prove the original 35-36-frame slot release leaves
+    zero cached or rendered impact effects. ROM-free coverage also guards
+    `$4290->$42B0` compatibility and arbitrary-dispatch slot reuse.
+  - Focused core, ROM-backed video snapshot, and cabinet-smoke regressions
+    pass in Debug and Release; the later alignment slice records the accepted
+    frame-1,200/1,600/1,800 cabinet goldens.
+
+- [x] Corrected camera-dependent actor alignment and flipper visibility:
+  - Replaced nearest-anchor SAT association in production cabinet rendering
+    with exact bank-8 ROM descriptor groups, eliminating cross-association
+    among clustered Sorcerers and star/pentagram mechanisms.
+  - Removed the blanket cache hole across the live camera band. Inactive
+    retained actors may now occupy that band, while camera-observed actors
+    are excluded from the cache layer and the copied live SAT is composited
+    last as the authoritative presentation.
+  - Work-RAM actor coordinates remain live during retained composition, so
+    enemies continue moving after their region leaves the camera. Resolved
+    pixels survive unrelated VRAM streaming when the descriptor signature is
+    unchanged.
+  - Animated actors now keep bounded exact phase variants. Off-camera
+    Sorcerers and dynamic enemies must resolve a ROM-owned current-phase
+    visual or restore the matching learned phase; they never slide a frozen
+    fallback image. Static mechanisms alone may keep their last aligned
+    visual when a phase has no independent artwork.
+  - The playable route now guards all six flippers at every post-fade
+    checkpoint and verifies that the eight Sorcerer positions change between
+    the frame-1,600 observed region and frame-1,800 retained region. The same
+    route proves that all 16 Sorcerer walking phases are presented, and a
+    ROM-free regression restores two distinct learned Sorcerer phase images
+    outside the live camera band.
+  - Refreshed the accepted lower/upper-middle/middle compositor goldens to
+    `9e725dbd...57b509d`, `a713a177...ea4a6f27`, and
+    `7186f4f1...79056b7d`.
+  - Debug and Release core, ROM-backed video snapshot, and cabinet-smoke
+    regressions pass.
+
 ## Next Actions
 
 - [x] Add repository hygiene for ROMs, generated assets, traces, build products, and local configuration.
@@ -2503,9 +2886,54 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
 - [x] Add a copied VDC/VCE frame-boundary snapshot boundary.
 - [x] Implement and test generic PCE BAT/tile/palette decoding,
   world-coordinate stitching, and camera cropping.
-- [ ] Decode and stitch the three normal-table backgrounds.
-- [ ] Add the cabinet playfield, DMD, and backglass windows.
-- [ ] Add display assignment and bonus-stage playfield switching.
+- [x] Decode and stitch the three normal-table backgrounds:
+  - [x] Capture stable post-fade pattern and palette state for the upper,
+    middle, and lower regions.
+  - [x] Prove the exact visible world extent and separate visible,
+    prefetch, panel, and unrelated source rows.
+  - [x] Compare native background crops against independent emulator
+    rendering evidence rather than a second invocation of the same decoder.
+  - [x] Define the actor/sprite overlay inputs required for the final
+    cabinet playfield composite.
+- [x] Add the cabinet playfield, DMD, and backglass windows.
+- [ ] Add display assignment and finish playfield composition:
+  - [x] Switch bonus stages and non-gameplay presentation back to the
+    emulated framebuffer.
+  - [x] Persist display identities, geometry fallbacks, rotation, and
+    fullscreen state.
+  - [x] Add the interactive display-assignment screen.
+  - [x] Load the user-selected PNG/JPEG/WebP backglass.
+  - [x] Render the copied live-camera SAT actor layer in table-world
+    coordinates.
+  - [x] Preserve packed-background opacity and apply exact HuC6270
+    background-vs-sprite priority and the scanline sprite limit.
+  - [x] Decode mapped actor slots and retain exact fixed-mechanism visuals
+    after they leave the live camera.
+  - [x] Map the original fixed-actor descriptor renderer and validate native
+    metadata against copied SAT groups.
+  - [x] Decode the generic camera-region sprite-pattern stream and reproduce
+    the lower-to-upper-middle pattern transition exactly.
+  - [x] Decode all 42 `00:F606` selector entries, including the generic raw
+    upload branch, into a bounded local pattern atlas.
+  - [x] Apply stream-backed atlas entries before first camera visits and
+    validate lower/upper-middle/middle persistent composites.
+  - [x] Decode `$F768`'s resident `$7C00` assets, classify bank-8
+    appearances outside `00:F606`, and pre-seed the remaining fixed
+    mechanisms.
+  - [x] Render every non-hidden fixed actor over the accepted table
+    background with live appearance/phase changes.
+  - [x] Keep the ball trail-free and map all six flipper/control slots into
+    stable, animated table-world presentation.
+  - [x] Retain and animate dynamic enemy slots `$62-$7E` across camera
+    movement, with explicit slot-reuse invalidation.
+  - [x] Classify transient SAT effects and retain only table-world effects.
+  - [x] Validate upper/middle/lower actor activity on a deterministic
+    playable route.
+  - [x] Keep inactive retained actors visible inside the current camera band,
+    resolve clustered actor geometry from exact ROM groups, and composite
+    the live SAT last.
+  - [ ] **Deferred at user request:** map the two-player/current-player RAM
+    contract and add the P1/P2 discriminator to the DMD.
 - [ ] **Milestone 4 deferred:** reproduce additional normal-table and
   bonus-stage rule-family variants as their routines are ported.
 - [ ] **Milestone 4 deferred:** extend replacement scheduling with faithful
@@ -2514,11 +2942,44 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
 
 ## Active Work
 
-Milestone 2 is complete. The Milestone 3 decoder, live copied-video boundary,
-and `00:F400` streamed-row writer map are now in place. The active task is to
-decode `F400`'s four callers into world-band direction, collect the three
-normal-table regions, assign their full-table world origins, stitch them, and
-compare camera-sized native crops with the emulator. The finite
+Milestone 2 is complete. Milestone 3 now has the copied-video boundary,
+directional `00:F400` stream map, packed-source decoder, accepted
+256-by-668 background world, independently verified upper/middle/lower
+crops, a copied post-DMA SAT boundary, a live-camera sprite decoder, and a
+working three-window cabinet vertical slice. The previous 256-by-768
+frame-900 artifact remains only a dark fade-state diagnostic. Display
+identity, geometry fallback, orientation, fullscreen state, the F12
+assignment screen, persisted PNG/JPEG/WebP backglass images, the
+camera-visible SAT actor layer, background/sprite priority, typed actor-slot
+views, resolved-pixel persistence for camera-visited fixed mechanisms, and
+the exact bank-8 descriptor metadata decoder, generic `00:E41F` compressed
+VRAM stream decoder, observed `00:F606` appearance/phase selector path,
+exact frame-1,200-to-1,600 pattern reconstruction, and complete 42-entry
+local pattern atlas are now complete. Stream-backed entries are applied to
+bank-8 actor metadata before first camera visits. All five `$F768` scene
+packs are decoded, and the 24 resident/non-selector fixed groups are proven
+disjoint from every known upload. The proof now covers every fixed actor:
+all 61 non-hidden groups have an exact pattern source, with 23 supplied by
+the live camera and 38 pre-seeded at the lower checkpoint. Lower,
+upper-middle, and middle persistent composites have refreshed deterministic
+goldens and preserve live appearance/phase changes. `$F768` selectors 1-4
+remain scene-unmapped but do not block fixed-actor composition. The ball is
+now proven table-world and remains live-only, while all three
+flipper pairs are retained with live phase metadata. Ten Small Soldiers and
+four Tower insects use the same phase-aware table-world presentation, with
+explicit family admission and slot-reuse invalidation. Type-`$8F`,
+appearance-`$10` impact bursts now form the separately classified
+table-world transient family: frame 2,100 guards their exact SAT metadata,
+off-camera persistence, and upload-disjoint source, while later checkpoints
+guard complete release without trails. All other dynamic effects remain
+live-camera-only. The actor compositor now uses exact ROM descriptor groups
+instead of nearest-anchor SAT association, retains inactive actors even when
+their pixels overlap the live camera band, and draws the live SAT last. The
+deterministic route guards all six flippers at every post-fade checkpoint and
+proves the eight Sorcerers continue changing position after leaving their
+region. Two-player/DMD work is explicitly deferred again at the user's
+request; the next work remains cabinet-playfield-first and user-directed.
+`$2251` remains proven only as the active score-array selector. The finite
 dynamic/static/deferred scope remains frozen in
 `docs/COVERAGE_MANIFEST.md`.
 
@@ -2530,9 +2991,23 @@ slice.
 
 ## Blockers
 
-No known blocker prevents continuing Milestone 3 background decode and
-stitch work.
-The longer state route exposes a
+No external blocker prevents continuing Milestone 3 cabinet composition.
+The accepted background source is rows 20-687 of the
+packed 256-by-768 envelope; cabinet code must not display the guard, prefetch,
+or tail rows. Camera-visited fixed mechanisms now retain resolved pixels
+independently of later VRAM/palette changes. The bank-8 actor renderer also
+supplies exact geometry and descriptor metadata for unseen mechanisms. Its
+generic compressed loader reproduces one complete camera transition
+exactly, its selector family resolves to a bounded local atlas, and all
+remaining fixed pattern blocks are proven upload-disjoint before static
+VRAM seeding. No unresolved sprite-pattern source blocks normal-table
+fixed-actor composition. `$F768` selectors 1-4 remain a future scene-mapping
+question. Ball/flipper coordinate ownership and the two persistent dynamic
+enemy families are closed, as is the first bounded table-world transient
+family. The DMD discriminator is intentionally deferred at the user's
+request; when resumed, it still requires a two-player route that
+distinguishes the actual player-count/current-player fields from `$2251`'s
+already proven score-array selection role. The longer state route exposes a
 configuration-specific Beetle framebuffer variance beginning at frame 2,147;
 work RAM, audio, camera scopes, and ordered writes remain identical. That
 visual difference must be explained or normalized before this route becomes a
