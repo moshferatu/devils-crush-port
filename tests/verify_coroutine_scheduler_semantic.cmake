@@ -1,0 +1,98 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+foreach(required_variable IN ITEMS APP CONFIG ROM OUTPUT)
+    if(NOT DEFINED ${required_variable} OR "${${required_variable}}" STREQUAL "")
+        message(FATAL_ERROR "${required_variable} is required.")
+    endif()
+endforeach()
+
+if(CONFIG STREQUAL "Debug")
+    set(
+        expected_census_sha256
+        "a95d0c343108b107d7ec1aa3c20915540d91bb08817704776531e5696ea9b5e2"
+    )
+elseif(CONFIG STREQUAL "Release")
+    set(
+        expected_census_sha256
+        "9036a9de0c3c9917f47bff8c04c136a4824ec12601fb457d260aa2dfe4443490"
+    )
+else()
+    message(FATAL_ERROR "Unsupported coroutine-scheduler configuration: ${CONFIG}")
+endif()
+
+set(
+    expected_call_sha256
+    "924221bbff7b244e91850fa206ad8ce70c2e86d3cf894824dd5e6b7b09da3bd9"
+)
+set(
+    expected_write_sha256
+    "1ef7a9e9aa5007f01a0138660f948ab77d5bc67292d9e5a076a8284d1eebc1aa"
+)
+
+set(call_output "${OUTPUT}.calls.csv")
+set(write_output "${call_output}.writes.csv")
+
+execute_process(
+    COMMAND
+        "${APP}"
+        --record-state-census
+        "${OUTPUT}"
+        --observe-hook
+        "01:C5C9"
+        --replace-hook
+        "01:C5C9@all"
+        --routine-call-trace
+        "${call_output}"
+        --rom
+        "${ROM}"
+    RESULT_VARIABLE recorder_result
+    OUTPUT_VARIABLE recorder_output
+    ERROR_VARIABLE recorder_error
+)
+if(NOT recorder_result EQUAL 0)
+    message(
+        FATAL_ERROR
+        "Semantic coroutine-scheduler recorder failed (${recorder_result}).\n"
+        "${recorder_output}${recorder_error}"
+    )
+endif()
+
+foreach(expected_line IN ITEMS
+    "State census recording complete: 3600 frames"
+    "Native replacement 01:C5C9@all entries: 1537 of 2462"
+    "Routine call trace complete: 2462 calls, 863105 writes"
+)
+    string(FIND "${recorder_output}" "${expected_line}" line_offset)
+    if(line_offset EQUAL -1)
+        message(
+            FATAL_ERROR
+            "Semantic coroutine-scheduler output omitted '${expected_line}'.\n"
+            "${recorder_output}${recorder_error}"
+        )
+    endif()
+endforeach()
+
+foreach(artifact IN ITEMS census call write)
+    if(artifact STREQUAL "census")
+        set(artifact_path "${OUTPUT}")
+    elseif(artifact STREQUAL "call")
+        set(artifact_path "${call_output}")
+    else()
+        set(artifact_path "${write_output}")
+    endif()
+    file(SHA256 "${artifact_path}" actual_sha256)
+    set(expected_sha256 "${expected_${artifact}_sha256}")
+    if(NOT actual_sha256 STREQUAL expected_sha256)
+        message(
+            FATAL_ERROR
+            "Semantic coroutine-scheduler ${artifact} artifact changed.\n"
+            "Expected: ${expected_sha256}\n"
+            "Actual:   ${actual_sha256}\n"
+        )
+    endif()
+endforeach()
+
+message(
+    STATUS
+    "Semantic C5C9 scheduling covers 1,537 calls with automatic event/IRQ fallback."
+)

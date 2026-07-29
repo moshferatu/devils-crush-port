@@ -49,6 +49,8 @@ execute_process(
         "${OUTPUT}"
         --observe-hook
         "00:E8B3"
+        --replace-hook
+        "00:E8B3@all"
         --routine-trace
         "${trace_output}"
         --routine-call-trace
@@ -75,6 +77,7 @@ endif()
 
 foreach(expected_line IN ITEMS
     "State census recording complete: 3600 frames"
+    "Native replacement 00:E8B3@all entries: 38 of 78"
     "Observe hook 1 entries: 78"
     "Routine trace complete: 78 entries"
     "Routine call trace complete: 78 calls, 703 writes"
@@ -162,3 +165,7 @@ foreach(expected_line IN ITEMS
     endif()
 endforeach()
 message(STATUS "${semantics_output}")
+message(
+    STATUS
+    "Semantic E8B3 replacement covers 38 calls with automatic event/IRQ fallback."
+)

@@ -7,7 +7,10 @@
 #include "devils_crush/core/save_state.hpp"
 #include "devils_crush/emulation/pce_runtime.hpp"
 #include "devils_crush/game_logic/collision.h"
+#include "devils_crush/game_logic/controls.h"
 #include "devils_crush/game_logic/physics.h"
+#include "devils_crush/game_logic/rng.h"
+#include "devils_crush/game_logic/score.h"
 #include "devils_crush/render/pce_background.hpp"
 #include "devils_crush/render/pce_sprite_overlay.hpp"
 #include "devils_crush/render/sharp_pixel_scaler.hpp"
@@ -484,6 +487,431 @@ void test_native_collision_response()
             &response)
             == 0,
         "native 7FB1 rejects a truncated work-RAM snapshot");
+}
+
+void test_native_score_accumulator()
+{
+    std::array<std::uint8_t, 0x2000> work_ram{};
+    constexpr std::uint8_t slot = 0U;
+    work_ram[0x0251U] = slot;
+    work_ram[0x002FU] = 0x34U;
+    work_ram[0x0030U] = 0x12U;
+    work_ram[0x0205U + slot] = 0xF0U;
+    work_ram[0x020CU + slot] = 0x00U;
+    work_ram[0x0213U + slot] = 0x01U;
+    work_ram[0x0200U] = 0xFFU;
+    work_ram[0x0207U] = 0xFFU;
+    work_ram[0x020EU] = 0x01U;
+
+    dc_score_update update{};
+    check(
+        dc_accumulate_score_ordinary(
+            work_ram.data(),
+            work_ram.size(),
+            &update)
+            != 0,
+        "native F55C accepts an ordinary score update");
+    check(
+        update.slot == slot && update.award == 0x1234U
+            && update.score == 0x011324U
+            && update.score_low == 0x24U
+            && update.score_middle == 0x13U
+            && update.score_high == 0x01U
+            && update.dirty_flags == 0x01U
+            && update.comparison_score == 0x01FFFFU,
+        "native F55C adds a 16-bit award to the selected 24-bit score");
+
+    work_ram[0x0CC7U] = 1U;
+    check(
+        dc_accumulate_score_ordinary(
+            work_ram.data(),
+            work_ram.size(),
+            &update)
+            == 0,
+        "native F55C defers the gated score path");
+    work_ram[0x0CC7U] = 0U;
+    work_ram[0x0205U + slot] = 0x70U;
+    work_ram[0x020CU + slot] = 0x96U;
+    work_ram[0x0213U + slot] = 0x98U;
+    check(
+        dc_accumulate_score_ordinary(
+            work_ram.data(),
+            work_ram.size(),
+            &update)
+            == 0,
+        "native F55C defers score saturation");
+    check(
+        dc_accumulate_score_ordinary(
+            work_ram.data(),
+            work_ram.size() - 1U,
+            &update)
+            == 0,
+        "native F55C rejects a truncated work-RAM snapshot");
+}
+
+void test_native_rng_update()
+{
+    std::array<std::uint8_t, 0x2000> work_ram{};
+    work_ram[0x0000U] = 0xCBU;
+    work_ram[0x022AU] = 0xCBU;
+    work_ram[0x022BU] = 0x04U;
+
+    dc_rng_update update{};
+    check(
+        dc_advance_rng(work_ram.data(), work_ram.size(), &update) != 0,
+        "native E8B3 accepts a complete work-RAM snapshot");
+    check(
+        update.constant_sum_low == 0x0AU
+            && update.constant_sum_high == 0x55U
+            && update.doubled_low == 0x14U
+            && update.doubled_high == 0xAAU
+            && update.frame_sum_low == 0x96U
+            && update.mixed_high == 0xAFU
+            && update.seed_low == 0x96U
+            && update.seed_high == 0x7AU
+            && update.final_carry == 1U
+            && update.final_overflow == 1U,
+        "native E8B3 matches the first routed RNG recurrence");
+    check(
+        work_ram[0x022AU] == 0xCBU && work_ram[0x022BU] == 0x04U,
+        "native E8B3 leaves source work RAM unchanged");
+    check(
+        dc_advance_rng(
+            work_ram.data(),
+            work_ram.size() - 1U,
+            &update)
+            == 0,
+        "native E8B3 rejects a truncated work-RAM snapshot");
+}
+
+void test_native_flipper_input_gate()
+{
+    std::array<std::uint8_t, 0x2000> work_ram{};
+    constexpr std::uint8_t slot = 0x09U;
+    work_ram[0x0CEEU] = 0x81U;
+    work_ram[0x1B80U + slot] = 0x01U;
+
+    dc_flipper_input_gate gate{};
+    check(
+        dc_evaluate_flipper_input_gate(
+            work_ram.data(),
+            work_ram.size(),
+            slot,
+            &gate)
+            != 0,
+        "native D466 accepts a complete work-RAM snapshot");
+    check(
+        gate.global_input == 0x81U
+            && gate.piece_mask == 0x01U
+            && gate.matched_input == 0x01U,
+        "native D466 intersects global input with the piece mask");
+
+    work_ram[0x0CEEU] = 0x02U;
+    check(
+        dc_evaluate_flipper_input_gate(
+            work_ram.data(),
+            work_ram.size(),
+            slot,
+            &gate)
+            != 0
+            && gate.matched_input == 0U,
+        "native D466 identifies the no-input early return");
+
+    work_ram[0x0CEEU] = 0x01U;
+    work_ram[0x00BDU] = 0U;
+    work_ram[0x1D80U + slot] = 0U;
+    check(
+        dc_evaluate_flipper_input_gate(
+            work_ram.data(),
+            work_ram.size(),
+            slot,
+            &gate)
+            != 0,
+        "native D466 refreshes activation input");
+    dc_flipper_activation activation{};
+    check(
+        dc_prepare_flipper_activation(
+            work_ram.data(),
+            work_ram.size(),
+            slot,
+            &gate,
+            &activation)
+            != 0
+            && activation.supported != 0U
+            && activation.dispatch_low == 0x8EU
+            && activation.dispatch_high == 0xD4U
+            && activation.compare_carry != 0U,
+        "native D466 identifies the common coroutine activation");
+    work_ram[0x1D80U + slot] = 1U;
+    check(
+        dc_prepare_flipper_activation(
+            work_ram.data(),
+            work_ram.size(),
+            slot,
+            &gate,
+            &activation)
+            != 0
+            && activation.supported == 0U,
+        "native D466 defers a nonzero coroutine countdown");
+    check(
+        dc_evaluate_flipper_input_gate(
+            work_ram.data(),
+            work_ram.size() - 1U,
+            slot,
+            &gate)
+            == 0,
+        "native D466 rejects a truncated work-RAM snapshot");
+}
+
+void test_native_nudge_input_gate()
+{
+    std::array<std::uint8_t, 0x2000> work_ram{};
+    work_ram[0x0053U] = 0x08U;
+
+    dc_nudge_input_gate gate{};
+    check(
+        dc_evaluate_nudge_input_gate(
+            work_ram.data(),
+            work_ram.size(),
+            &gate)
+            != 0
+            && gate.branch == DC_NUDGE_GATE_SESSION_RETURN
+            && gate.session_mask == 0x08U,
+        "native C3CB identifies the session-state return");
+
+    work_ram[0x0053U] = 0U;
+    work_ram[0x0CC6U] = 0x78U;
+    work_ram[0x0CC4U] = 0U;
+    work_ram[0x0251U] = 1U;
+    work_ram[0x0019U] = 0U;
+    check(
+        dc_evaluate_nudge_input_gate(
+            work_ram.data(),
+            work_ram.size(),
+            &gate)
+            != 0
+            && gate.branch == DC_NUDGE_GATE_IDLE_RETURN
+            && gate.timer_after == 0x77U
+            && gate.active_player == 1U
+            && gate.matched_input == 0U,
+        "native C3CB identifies the timer-decrement idle return");
+
+    work_ram[0x0019U] = 0x02U;
+    check(
+        dc_evaluate_nudge_input_gate(
+            work_ram.data(),
+            work_ram.size(),
+            &gate)
+            != 0
+            && gate.branch == DC_NUDGE_GATE_DEFER,
+        "native C3CB defers an active Button-II path");
+    check(
+        dc_evaluate_nudge_input_gate(
+            work_ram.data(),
+            work_ram.size() - 1U,
+            &gate)
+            == 0,
+        "native C3CB rejects a truncated work-RAM snapshot");
+}
+
+void test_native_session_input_gate()
+{
+    std::array<std::uint8_t, 0x2000> work_ram{};
+    work_ram[0x0251U] = 1U;
+    work_ram[0x0019U] = 0x04U;
+
+    dc_session_input_gate gate{};
+    check(
+        dc_evaluate_session_input_gate(
+            work_ram.data(),
+            work_ram.size(),
+            &gate)
+            != 0
+            && gate.returns_idle != 0U
+            && gate.active_player == 1U
+            && gate.run_input == 0U,
+        "native C49E identifies the ordinary no-Run-input return");
+
+    work_ram[0x0019U] = 0x08U;
+    check(
+        dc_evaluate_session_input_gate(
+            work_ram.data(),
+            work_ram.size(),
+            &gate)
+            != 0
+            && gate.returns_idle == 0U,
+        "native C49E defers a Run-input path");
+    work_ram[0x0019U] = 0U;
+    work_ram[0x0053U] = 0x02U;
+    check(
+        dc_evaluate_session_input_gate(
+            work_ram.data(),
+            work_ram.size(),
+            &gate)
+            != 0
+            && gate.returns_idle == 0U,
+        "native C49E defers the alternate session-state return");
+    check(
+        dc_evaluate_session_input_gate(
+            work_ram.data(),
+            work_ram.size() - 1U,
+            &gate)
+            == 0,
+        "native C49E rejects a truncated work-RAM snapshot");
+}
+
+void test_native_flipper_phase_step()
+{
+    std::array<std::uint8_t, 0x2000> work_ram{};
+    constexpr std::uint8_t slot = 0x05U;
+    work_ram[0x1A00U + slot] = 1U;
+    work_ram[0x1E00U + slot] = 1U;
+    work_ram[0x1C80U + slot] = 0U;
+    work_ram[0x1980U + slot] = 0U;
+
+    dc_flipper_phase_step step{};
+    check(
+        dc_advance_flipper_phase(
+            work_ram.data(),
+            work_ram.size(),
+            slot,
+            &step)
+            != 0
+            && step.supported != 0U
+            && step.decrements_phase == 0U
+            && step.phase_next == 1U,
+        "native D500 advances a forward flipper phase");
+
+    work_ram[0x1C80U + slot] = 0x80U;
+    work_ram[0x1980U + slot] = 1U;
+    check(
+        dc_advance_flipper_phase(
+            work_ram.data(),
+            work_ram.size(),
+            slot,
+            &step)
+            != 0
+            && step.supported != 0U
+            && step.decrements_phase != 0U
+            && step.phase_next == 0U,
+        "native D500 advances a reverse flipper phase");
+    work_ram[0x1A00U + slot] = 2U;
+    check(
+        dc_advance_flipper_phase(
+            work_ram.data(),
+            work_ram.size(),
+            slot,
+            &step)
+            != 0
+            && step.supported == 0U,
+        "native D500 defers a non-expiring timer");
+    check(
+        dc_advance_flipper_phase(
+            work_ram.data(),
+            work_ram.size() - 1U,
+            slot,
+            &step)
+            == 0,
+        "native D500 rejects a truncated work-RAM snapshot");
+}
+
+void test_native_flipper_geometry()
+{
+    std::array<std::uint8_t, 0x80> geometry_table{};
+    geometry_table[0x3EU] = 0x34U;
+    geometry_table[0x3FU] = 0x12U;
+    geometry_table[0x7EU] = 0x78U;
+    geometry_table[0x7FU] = 0x56U;
+
+    dc_flipper_geometry geometry{};
+    check(
+        dc_lookup_flipper_geometry(
+            0xFFU,
+            geometry_table.data(),
+            geometry_table.size(),
+            &geometry)
+            != 0
+            && geometry.state == 0xFFU
+            && geometry.table_index == 0x3EU
+            && geometry.first_low == 0x34U
+            && geometry.first_high == 0x12U
+            && geometry.second_low == 0x78U
+            && geometry.second_high == 0x56U,
+        "native D081 resolves both phase-indexed geometry vectors");
+    check(
+        dc_lookup_flipper_geometry(
+            0x1FU,
+            geometry_table.data(),
+            geometry_table.size() - 1U,
+            &geometry)
+            == 0,
+        "native D081 rejects a truncated geometry table");
+}
+
+void test_native_coroutine_schedule()
+{
+    std::array<std::uint8_t, 0x2000> work_ram{};
+    constexpr std::uint8_t slot = 0x09U;
+    constexpr std::uint8_t stack_pointer = 0xF5U;
+    work_ram[0x01F6U] = 0x8DU;
+    work_ram[0x01F7U] = 0xD4U;
+
+    dc_coroutine_schedule schedule{};
+    check(
+        dc_schedule_coroutine(
+            work_ram.data(),
+            work_ram.size(),
+            slot,
+            stack_pointer,
+            &schedule)
+            != 0
+            && schedule.decrements_countdown == 0U
+            && schedule.installs_dispatch != 0U
+            && schedule.dispatch_low == 0x8EU
+            && schedule.dispatch_high == 0xD4U
+            && schedule.dispatch_low_wrapped == 0U,
+        "native C5C9 installs an immediate coroutine dispatch");
+
+    work_ram[0x1D80U + slot] = 1U;
+    work_ram[0x01F6U] = 0xFFU;
+    work_ram[0x01F7U] = 0x12U;
+    check(
+        dc_schedule_coroutine(
+            work_ram.data(),
+            work_ram.size(),
+            slot,
+            stack_pointer,
+            &schedule)
+            != 0
+            && schedule.decrements_countdown != 0U
+            && schedule.countdown_after == 0U
+            && schedule.installs_dispatch != 0U
+            && schedule.dispatch_low == 0U
+            && schedule.dispatch_high == 0x13U
+            && schedule.dispatch_low_wrapped != 0U,
+        "native C5C9 carries a delayed dispatch across a page");
+
+    work_ram[0x1D80U + slot] = 2U;
+    check(
+        dc_schedule_coroutine(
+            work_ram.data(),
+            work_ram.size(),
+            slot,
+            stack_pointer,
+            &schedule)
+            != 0
+            && schedule.countdown_after == 1U
+            && schedule.installs_dispatch == 0U,
+        "native C5C9 yields while its coroutine delay remains active");
+    check(
+        dc_schedule_coroutine(
+            work_ram.data(),
+            work_ram.size() - 1U,
+            slot,
+            stack_pointer,
+            &schedule)
+            == 0,
+        "native C5C9 rejects a truncated work-RAM snapshot");
 }
 
 void test_native_collision_table_pass()
@@ -2506,6 +2934,14 @@ int main()
     test_native_motion_rotation();
     test_native_collision_table_pass();
     test_native_collision_response();
+    test_native_score_accumulator();
+    test_native_rng_update();
+    test_native_flipper_input_gate();
+    test_native_nudge_input_gate();
+    test_native_session_input_gate();
+    test_native_flipper_phase_step();
+    test_native_flipper_geometry();
+    test_native_coroutine_schedule();
     test_native_cached_position_restore();
     test_supported_rom_metadata();
     test_scaler_examples();

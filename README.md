@@ -848,6 +848,7 @@ The same route reaches a compact score-accumulation boundary:
 .\out\build\windows-vs2022\Release\devils-crush.exe `
   --record-state-census portable-data\state-census-score.csv `
   --observe-hook 00:F55C `
+  --replace-hook 00:F55C@all `
   --routine-trace out\traces\state-census-score-entries.csv `
   --routine-call-trace out\traces\state-census-score-calls.csv `
   --routine-replay 00:F55C@1 `
@@ -857,7 +858,12 @@ The same route reaches a compact score-accumulation boundary:
 The 40 calls add unsigned 16-bit awards to a selected little-endian 24-bit
 score and produce a final stored value of 1,280. The regression verifies the
 direct write order, award set, 9,999,999 stored-unit saturation constant, and
-the first call's normalized replay. See
+the first call's normalized replay. It also enables semantic
+`00:F55C@all`: ordinary unsaturated additions below the current high score
+reproduce all eight writes, result flags, and the 558-cycle body. The
+conservative event/IRQ horizon admits 12 calls (30%); the remaining calls
+stay in assembly automatically while the complete 40-call/446-write
+artifacts remain exact in Debug and Release. See
 [`docs/ROUTINE_MAP.md`](docs/ROUTINE_MAP.md) for the field layout and exact
 trace hashes.
 
@@ -868,6 +874,7 @@ seed:
 .\out\build\windows-vs2022\Release\devils-crush.exe `
   --record-state-census portable-data\state-census-rng.csv `
   --observe-hook 00:E8B3 `
+  --replace-hook 00:E8B3@all `
   --routine-trace out\traces\state-census-rng-entries.csv `
   --routine-call-trace out\traces\state-census-rng-calls.csv `
   --routine-replay 00:E8B3@1 `
@@ -875,6 +882,13 @@ seed:
   --work-ram-write-trace out\traces\state-census-rng-state.csv `
   --rom "D:\path\to\Devil's Crush.pce"
 ```
+
+Semantic `00:E8B3@all` derives the complete fixed RNG transaction from the
+live seed and frame counter: six scratch writes, two seed writes, the
+returned high byte, final arithmetic flags, and 282 body master cycles.
+Conservative event/IRQ scheduling admits 38 of 78 calls (48.7%); Debug and
+Release preserve the exact census, 78-call/703-write routine artifacts, and
+3,771 selected seed writes.
 
 The regression verifies the once-per-frame seed tick, all 78 exact RNG
 updates, both active actor-initialization consumers, and the first normalized
@@ -929,7 +943,13 @@ alternate-pass selection `03:6966@5` through `03:6966@8` and
 `03:6966@14` through `03:6966@18`, plus semantic `03:6966@all`
 alternate-pass replacement across all selectors and actor slots, semantic
 actor collision-response scheduling `03:7FB1@all`, and its focused
-`03:7FB1@1`, `03:7FB1@3`, and `03:7FB1@7` decrement/reload fixtures. This command
+`03:7FB1@1`, `03:7FB1@3`, and `03:7FB1@7` decrement/reload fixtures, plus
+semantic Small-Soldier no-hit consumption `03:7F57@all`, ordinary score
+accumulation `00:F55C@all`, RNG advancement `00:E8B3@all`, and flipper
+input gating `01:D466@all`, flipper phase stepping `01:D500@all`,
+phase-indexed flipper geometry `01:D081@all`, shared actor-coroutine
+scheduling `01:C5C9@all`, session/nudge gating `01:C3CB@all`, and idle
+session-input gating `01:C49E@all`. This command
 replaces the four simultaneous physics
 calls, observes the full physics set, and restores each pre-call savestate
 to compare the native result with assembly:
@@ -1212,6 +1232,18 @@ serviceable-timer-IRQ horizons admit 13,460 of the 21,987 calls (61.2%);
 the rest execute in assembly automatically. Debug and Release retain the
 exact state-census, call-trace, and write-trace hashes.
 
+The outer `03:7F57@all` aggregate reuses those state-based primitives rather
+than adding occurrence-specific handlers. Its admitted no-hit branch accepts
+any semantic `03:6966` transaction, stages its writes into a private snapshot,
+then derives either `03:7FB1` response branch from that resulting state.
+Both nested JSR stack pairs, the caller's final collision-byte test, write
+offsets, and total timing are composed around the child transactions.
+Conservative event/IRQ fallback admits 4,786 of 20,867 calls (22.9%).
+Debug and Release preserve the complete 20,867-call SHA-256
+`3ab64128aab89d056216f79d0d3f041e186eb109048aefe82785e2875f41ec4f`
+and 362,060-write SHA-256
+`3b2eb1b5dbd54c1b08cf6a509820e47c2320faf544b4d15824f5426f414c6544`.
+
 Repeat either hook option to register multiple distinct addresses. A
 multi-address observe run writes the v2 trace format, preserving global
 instruction order across all selected routines:
@@ -1394,6 +1426,71 @@ right/left flipper state transitions, follows three Button-II nudges into
 slot-0 motion and later integration, and confirms that tilt lock `$2CC7`
 remains clear for all 3,600 frames. The exact route is documented in
 [`docs/ROUTINE_MAP.md`](docs/ROUTINE_MAP.md).
+
+Semantic `01:D466@all` derives behavior from live `$2CEE & $3B80,X` state.
+The zero result returns in 36 cycles with no writes. The common non-current
+slot activation marks the piece active, reproduces the nested stack/scratch
+writes, and installs coroutine dispatch `01:D48E` in nine writes over 282
+cycles. Current-slot, countdown, later held/release, and event/IRQ-adjacent
+variants stay in assembly. Debug and Release admit 6,029 of 7,470 calls
+(80.7%) while preserving call
+SHA-256
+`5230b181b1cb23394d0a540346418e98244f25e0ea2a50fce136b0b007fe2947`
+and write SHA-256
+`b5cec75fa9f5d055fd5ed869df3ef6dabe578d9b7cd9b8481b6d701a81a209b8`.
+
+Semantic `01:D500@all` handles the shared flipper phase step after its
+indexed countdown reaches one. It clears and reloads `$3A00,X`, then
+increments or decrements `$3980,X` according to `$3C80,X` orientation.
+Forward and reverse paths reproduce their three writes and direction-specific
+flags over 138 or 126 cycles. Event/IRQ fallback admits 600 of 980 calls
+(61.2%); endpoint and non-expiring timer states remain in assembly. Debug
+and Release preserve call SHA-256
+`8d3708e4fe36ddd9745d77af68c3a6d575acef3ce29e23c70e72dc30eca9056f`
+and write SHA-256
+`29274f5c8a62a9fc9d41f7796f343ac55167fcafdf71448dc6e9f76bcfd31965`.
+
+Semantic `01:D081@all` handles the flipper/ball interaction's shared
+geometry lookup. It masks `$78` to five phase bits and loads two 16-bit
+vectors from the verified user-ROM tables at `01:D2AE` and `01:D2EE`,
+preserving Y through the original stack write. Its five-write transaction
+returns after 159 cycles with exact accumulator and flag state. Event/IRQ
+fallback admits 305 of 540 calls (56.5%). Debug and Release preserve call
+SHA-256
+`32d52a16cff5b2f20d1b3e8174e75a4ca097648253ce0726970fb92707a96d08`
+and write SHA-256
+`b13407d580d6428cf3f7fc0460040953d4cb7136faa9305c2339ed99a8336934`.
+
+Semantic `01:C5C9@all` handles the shared actor-coroutine scheduler used by
+many table controllers. It consumes the current JSR return from the stack,
+optionally decrements `$3D80,X`, and either yields or installs the following
+instruction in `$3F00,X/$3F80,X`. Immediate, delayed, and return-page-carry
+branches are derived from live state rather than callers or call ordinals.
+Event/IRQ fallback admits 1,537 of 2,462 calls (62.4%) across exact
+102-192-cycle transactions. Debug and Release preserve call SHA-256
+`924221bbff7b244e91850fa206ad8ce70c2e86d3cf894824dd5e6b7b09da3bd9`
+and write SHA-256
+`1ef7a9e9aa5007f01a0138660f948ab77d5bc67292d9e5a076a8284d1eebc1aa`.
+
+Semantic `01:C3CB@all` covers the neighboring gate's session-state and
+ordinary idle branches. The former returns in 69 cycles without writes; the
+latter decrements `$2CC6` at cycle 96 and returns after 177 cycles when no
+Button-II nudge is active. Event/IRQ fallback admits 1,338 of 2,649 calls
+(50.5%). Active nudge, tilt, and timer-reload paths remain in assembly.
+Debug and Release preserve call SHA-256
+`eb17f2e9bc2e4fac07823be555379dfb75c21e5c0f4ef4161084ed7588198905`
+and write SHA-256
+`9e7bf6564ef1c61afac2ad63cdcbf2f8742318711b051744ffab24f552c6c40d`.
+
+Semantic `01:C49E@all` covers the immediately following no-Run-input return.
+It resolves the active player, tests `$2018,Y & $08`, and returns exact
+`A/Y/N/Z` state after 72 cycles without writes. Event/IRQ fallback admits
+1,716 of 2,649 calls (64.8%); pause, high-score, alternate-session, and
+initialization paths remain in assembly. Debug and Release preserve call
+SHA-256
+`1e5052965bd3252e116ee6cd4b72ea5213cab371e9e0c6faad083af9915e381e`
+and write SHA-256
+`09e04a8271fd92ad23977712ed8511a70fccac3457b3101cbda6671d5a0ec402`.
 
 The Milestone 2 collision closure regression follows two natural contacts
 with Small-Soldier slot `$62`. It connects confirmed-contact dispatcher

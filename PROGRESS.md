@@ -40,6 +40,88 @@ admits 13,460 of 21,987 census calls (61.2%); the state census and complete
 21,987-call/91,295-write artifacts remain byte-identical in Debug and
 Release.
 
+Semantic `03:7F57@all` now composes those collision primitives at the
+Small-Soldier consumer boundary. For a live no-hit state it invokes any
+admitted semantic `03:6966` transaction, stages those writes into a private
+snapshot, invokes either semantic `03:7FB1` branch from the resulting state,
+and finally reproduces the caller's collision-byte test. Write offsets and
+body timing are derived from the two child transactions without an ordinal
+table. Conservative event/IRQ fallback admits 4,786 of 20,867 calls (22.9%);
+the complete 20,867-call/362,060-write artifacts remain byte-identical in
+Debug and Release.
+
+Semantic `00:F55C@all` now covers the central ordinary score-addition path:
+it selects the live score slot, adds the 16-bit award to the 24-bit stored
+score, proves the unsaturated/below-high-score exits, reproduces both nested
+JSR stack writes and the presentation-dirty write, and returns with exact
+flags after 558 master cycles. The conservative event/IRQ horizon admits 12
+of 40 census calls (30%); the complete 40-call/446-write score artifacts
+remain byte-identical in Debug and Release.
+
+Semantic `00:E8B3@all` now covers the shared RNG update. It derives all six
+scratch writes, both final seed writes, returned high byte, arithmetic
+flags, and the fixed 282-cycle budget from the live seed and frame counter.
+The conservative event/IRQ horizon admits 38 of 78 census calls (48.7%);
+the state census, complete 78-call/703-write routine artifacts, and 3,771
+selected seed writes remain byte-identical in Debug and Release.
+
+Semantic `01:D466@all` now covers the high-frequency flipper/control-piece
+input gate. It intersects scheduler input `$2CEE` with the indexed piece mask
+at `$3B80,X` and reproduces both the 36-cycle, zero-write no-input return and
+the common 282-cycle activation/coroutine handoff. The latter marks the piece
+active, reproduces the nested JSR stack/scratch transcript, and installs
+dispatch `01:D48E` with nine exact writes. Conservative event/IRQ fallback
+admits 6,029 of 7,470 calls (80.7%); the complete 7,470-call/5,684-write
+artifacts remain byte-identical in Debug and Release. Current-slot,
+nonzero-countdown, held/release continuation, and other response variants
+remain in assembly.
+
+Semantic `01:D500@all` now covers the flipper controller's shared phase
+step. From indexed countdown, reload, orientation, and phase state it
+reproduces the timer-zero write, timer reload, and forward or reverse phase
+write. The reverse branch returns after 126 cycles and the forward branch
+after 138, with exact direction-specific accumulator and flag behavior.
+Conservative event/IRQ fallback admits 600 of 980 calls (61.2%); all 980
+calls and 3,613 writes remain byte-identical in Debug and Release. Endpoint
+and non-expiring timer states remain in assembly.
+
+Semantic `01:D081@all` now covers the flipper/ball interaction's shared
+geometry lookup. It masks live state `$78` to five phase bits, indexes the
+two verified vector tables at `01:D2AE` and `01:D2EE`, preserves Y through
+the emulated stack, and writes both 16-bit vectors to `$7F/$80` and
+`$7D/$7E`. Conservative event/IRQ fallback admits 305 of 540 calls (56.5%);
+the complete 540-call/3,214-write artifacts remain byte-identical in Debug
+and Release. The downstream `D09E` projection and larger `D525`
+flipper/ball controller remain in assembly.
+
+Semantic `01:C5C9@all` now covers the shared actor-coroutine scheduler used
+by flippers, collision consumers, and table actors. It consumes the stacked
+JSR return, derives the next dispatch address, decrements indexed delay
+`$3D80,X` when active, and either yields or installs `$3F00,X/$3F80,X`.
+All immediate, delayed-yield, delayed-install, and return-page-carry shapes
+are state-derived rather than caller- or ordinal-specific. Conservative
+event/IRQ fallback admits 1,537 of 2,462 calls (62.4%); all 2,462 calls and
+863,105 writes remain byte-identical in Debug and Release.
+
+Semantic `01:C3CB@all` now covers the adjacent session/nudge input gate's
+two dominant bounded branches. It derives the session-state return from
+`$53/$2CC7`, and the ordinary idle return from the nudge timer, phase,
+active-player index, and Button-II state. The idle branch reproduces the
+single `$2CC6` decrement at cycle 96 and exits after 177 cycles; the session
+branch exits without writes after 69 cycles. Conservative event/IRQ fallback
+admits 1,338 of 2,649 calls (50.5%), preserving all 2,649 calls and 5,635
+writes in Debug and Release. Active nudge, tilt, and reload paths remain in
+assembly.
+
+Semantic `01:C49E@all` now covers the following pause/high-score session
+gate's ordinary idle return. It verifies session eligibility, resolves the
+active player through `$2251`, tests that player's Run edge at `$2018,Y`,
+and reproduces the returned `A/Y/N/Z` state after 72 cycles and no writes.
+Conservative event/IRQ fallback admits 1,716 of 2,649 calls (64.8%), while
+the complete 2,649-call/1,077-write artifacts remain byte-identical in
+Debug and Release. Pause, high-score, alternate-session, and initialization
+paths remain in assembly.
+
 Twenty-one previously admitted `03:6966` ordinals remain as focused
 restored-assembly fixtures for full records, continuations, and early
 returns; they are no longer the scheduler's unit of progress. Alongside
@@ -3391,6 +3473,29 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
   - [x] Replace `03:7FB1` ordinal admission with semantic response,
     countdown, phase, flag, write, and timing derivation; cover 13,460 of
     21,987 census calls with automatic event/IRQ fallback.
+  - [x] Compose semantic `03:7F57@all` no-hit collision consumption from
+    the existing `03:6966` and `03:7FB1` adapters; cover 4,786 of 20,867
+    calls with exact 362,060-write aggregate parity.
+  - [x] Add semantic `00:F55C@all` ordinary score accumulation; cover 12 of
+    40 census calls while retaining exact state, call, and write hashes.
+  - [x] Add semantic `00:E8B3@all` RNG advancement; cover 38 of 78 census
+    calls with exact scratch, seed, flag, and cycle parity.
+  - [x] Add semantic `01:D466@all` flipper input gating and common
+    activation/coroutine handoff; cover 6,029 of 7,470 calls.
+  - [x] Add semantic `01:D500@all` bidirectional flipper phase stepping;
+    cover 600 of 980 calls with exact three-write timing and flags.
+  - [x] Add semantic `01:D081@all` phase-indexed flipper geometry lookup;
+    cover 305 of 540 calls with exact ROM-table, stack, flag, and 159-cycle
+    parity.
+  - [x] Add semantic `01:C5C9@all` shared actor-coroutine scheduling; cover
+    1,537 of 2,462 calls with exact stack, delay, dispatch, flag, and
+    102-192-cycle parity.
+  - [x] Add semantic `01:C3CB@all` session/nudge gating; cover 1,338 of
+    2,649 calls through the 69-cycle session and 177-cycle idle returns.
+  - [x] Add semantic `01:C49E@all` session-input gating; cover 1,716 of
+    2,649 calls through the active-player 72-cycle no-Run-input return.
+  - [x] Profile aggregate `01:DD09` viability; defer its variable divider
+    transcript after finding 669 of 753 route calls contain interrupts.
   - [x] Replace and shadow-test interrupt-free `03:6966@5`
     collision-table alternate-pass early return.
   - [x] Replace and shadow-test interrupt-free `03:6966@1`
@@ -3461,6 +3566,37 @@ while smaller routines are ported. Semantic `00:F1B4@all` integration and
 position pipeline. Semantic `03:7FB1@all` replaces 13,460 of 21,987
 collision-response calls across all live slots; its `@1`, `@3`, and `@7`
 coordinates remain focused decrement/reload fixtures.
+Semantic `03:7F57@all` composes every admitted collision-table transaction
+and both response branches for 4,786 of 20,867 Small-Soldier no-hit calls.
+Its single state-based adapter stages child state and derives the caller's
+write/timing transaction while preserving all 362,060 aggregate writes in
+Debug and Release.
+Semantic `00:F55C@all` replaces 12 of 40 ordinary score-addition calls with
+exact 24-bit arithmetic and display-dirty state. Aggregate `01:DD09`
+expansion is deferred as low-yield: only 84 of 753 calls are interrupt-free,
+and 83 of those traverse the long variable divider.
+Semantic `00:E8B3@all` replaces 38 of 78 shared RNG updates from live
+seed/frame state with exact eight-write and 282-cycle parity.
+Semantic `01:D466@all` replaces 6,029 of 7,470 flipper/control-piece input
+checks through one indexed mask test, the exact 36-cycle no-input return,
+and the common nine-write/282-cycle activation handoff; later held/release
+response variants remain emulated.
+Semantic `01:D500@all` replaces 600 of 980 forward/reverse flipper phase
+steps through exact three-write, 126/138-cycle transactions; endpoint and
+non-expiring timer paths remain emulated.
+Semantic `01:D081@all` replaces 305 of 540 phase-indexed flipper geometry
+lookups through an exact five-write, 159-cycle ROM-table transaction; the
+downstream projection and branch-heavy parent controller remain emulated.
+Semantic `01:C5C9@all` replaces 1,537 of 2,462 shared actor-coroutine
+scheduler calls. It derives immediate installation, delayed yield, delayed
+installation, and return-page carry from live stack/slot state through exact
+102-192-cycle transactions; event/IRQ-adjacent calls fall back automatically.
+Semantic `01:C3CB@all` replaces 1,338 of 2,649 session/nudge checks through
+the exact 69-cycle session and 177-cycle timer-decrement idle returns;
+active Button-II nudge behavior remains emulated.
+Semantic `01:C49E@all` replaces 1,716 of 2,649 pause/high-score session
+checks through the exact 72-cycle no-Run-input return; pause, high-score,
+and transition behavior remains emulated.
 `01:D1A2@23` signed rotation,
 `01:DD09@1` zero-component acceleration, `01:DD09@2` positive-divider
 damping, `01:DD09@181` negative-divider damping, `00:F1B4@1` nonnegative

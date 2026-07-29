@@ -7,7 +7,10 @@
 #include "devils_crush/core/save_state.hpp"
 #include "devils_crush/emulation/pce_runtime.hpp"
 #include "devils_crush/game_logic/collision.h"
+#include "devils_crush/game_logic/controls.h"
 #include "devils_crush/game_logic/physics.h"
+#include "devils_crush/game_logic/rng.h"
+#include "devils_crush/game_logic/score.h"
 #include "devils_crush/render/backglass_image.hpp"
 #include "devils_crush/render/pce_background.hpp"
 #include "devils_crush/render/pce_sprite_overlay.hpp"
@@ -699,6 +702,69 @@ parse_logical_address_range(const std::string_view text)
                                || request.ordinal == 1U
                                || request.ordinal == 3U
                                || request.ordinal == 7U);
+                       const bool proven_collision_consumer =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x03U,
+                                       .logical_pc = 0x7F57U,
+                                   }
+                           && request.all_calls;
+                       const bool proven_score_accumulator =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x00U,
+                                       .logical_pc = 0xF55CU,
+                                   }
+                           && (request.all_calls || request.ordinal == 1U);
+                       const bool proven_rng_update =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x00U,
+                                       .logical_pc = 0xE8B3U,
+                                   }
+                           && (request.all_calls || request.ordinal == 1U);
+                       const bool proven_flipper_input_gate =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x01U,
+                                       .logical_pc = 0xD466U,
+                                   }
+                           && request.all_calls;
+                       const bool proven_flipper_phase_step =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x01U,
+                                       .logical_pc = 0xD500U,
+                                   }
+                           && request.all_calls;
+                       const bool proven_flipper_geometry =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x01U,
+                                       .logical_pc = 0xD081U,
+                                   }
+                           && request.all_calls;
+                       const bool proven_coroutine_scheduler =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x01U,
+                                       .logical_pc = 0xC5C9U,
+                                   }
+                           && request.all_calls;
+                       const bool proven_nudge_input_gate =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x01U,
+                                       .logical_pc = 0xC3CBU,
+                                   }
+                           && request.all_calls;
+                       const bool proven_session_input_gate =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x01U,
+                                       .logical_pc = 0xC49EU,
+                                   }
+                           && request.all_calls;
                        const bool proven_collision_table_pass =
                            request.routine
                                    == RoutineKey{
@@ -732,6 +798,15 @@ parse_logical_address_range(const std::string_view text)
                            && !proven_motion_damping
                            && !proven_motion_rotation
                            && !proven_collision_response
+                           && !proven_collision_consumer
+                           && !proven_score_accumulator
+                           && !proven_rng_update
+                           && !proven_flipper_input_gate
+                           && !proven_flipper_phase_step
+                           && !proven_flipper_geometry
+                           && !proven_coroutine_scheduler
+                           && !proven_nudge_input_gate
+                           && !proven_session_input_gate
                            && !proven_collision_table_pass;
                    })) {
         options.error =
@@ -744,8 +819,12 @@ parse_logical_address_range(const std::string_view text)
             "03:6966@14, 03:6966@15, 03:6966@16, 03:6966@17, "
             "03:6966@18, 03:6966@19, 03:6966@20, 03:6966@21, "
             "03:6966@22, 03:6966@23, semantic 03:6966@all, semantic "
-            "03:7FB1@all, and the proven 03:7FB1@1, 03:7FB1@3, and "
-            "03:7FB1@7 calls.";
+            "03:7FB1@all, semantic 03:7F57@all, semantic 00:F55C@all, "
+            "semantic 00:E8B3@all, semantic 01:D466@all, semantic "
+            "01:D500@all, semantic 01:D081@all, semantic 01:C5C9@all, "
+            "semantic 01:C3CB@all, semantic 01:C49E@all, and "
+            "the proven 03:7FB1@1, 03:7FB1@3, 03:7FB1@7, 00:F55C@1, "
+            "and 00:E8B3@1 calls.";
     } else if (!options.work_ram_patches.empty() && !recording_selected) {
         options.error =
             "--work-ram-patch requires a recording operation.";
@@ -3001,6 +3080,252 @@ replace_motion_damping(
 }
 
 [[nodiscard]] std::optional<RoutineReplacement>
+replace_rng_update(
+    const RoutineEntry& entry,
+    const std::span<const std::byte> work_ram)
+{
+    constexpr RoutineKey kRoutine{
+        .physical_bank = 0x00U,
+        .logical_pc = 0xE8B3U,
+    };
+    if (entry.routine != kRoutine) {
+        return std::nullopt;
+    }
+    if ((entry.registers.status & 0x28U) != 0U) {
+        return std::nullopt;
+    }
+
+    dc_rng_update update{};
+    if (!dc_advance_rng(
+            reinterpret_cast<const std::uint8_t*>(work_ram.data()),
+            work_ram.size(),
+            &update)) {
+        return std::nullopt;
+    }
+
+    auto output = entry.registers;
+    output.program_counter = 0xE8E6U;
+    output.accumulator = update.seed_high;
+    output.status =
+        static_cast<std::uint8_t>(entry.registers.status & 0x3CU);
+    if (update.final_carry != 0U) {
+        output.status = static_cast<std::uint8_t>(output.status | 0x01U);
+    }
+    if (update.final_overflow != 0U) {
+        output.status = static_cast<std::uint8_t>(output.status | 0x40U);
+    }
+    if (output.accumulator == 0U) {
+        output.status = static_cast<std::uint8_t>(output.status | 0x02U);
+    } else if ((output.accumulator & 0x80U) != 0U) {
+        output.status = static_cast<std::uint8_t>(output.status | 0x80U);
+    }
+
+    RoutineReplacement replacement{
+        .return_instruction = {
+            .physical_bank = 0x00U,
+            .logical_pc = 0xE8E6U,
+        },
+        .output_registers = output,
+        .body_master_cycles = 282U,
+    };
+    replacement.work_ram_writes = {
+        {
+            .instruction = {0x00U, 0xE8B9U},
+            .logical_address = 0x2042U,
+            .value = update.constant_sum_low,
+            .master_cycle_offset = 39U,
+        },
+        {
+            .instruction = {0x00U, 0xE8C0U},
+            .logical_address = 0x2043U,
+            .value = update.constant_sum_high,
+            .master_cycle_offset = 72U,
+        },
+        {
+            .instruction = {0x00U, 0xE8C2U},
+            .logical_address = 0x2042U,
+            .value = update.doubled_low,
+            .master_cycle_offset = 90U,
+        },
+        {
+            .instruction = {0x00U, 0xE8C4U},
+            .logical_address = 0x2043U,
+            .value = update.doubled_high,
+            .master_cycle_offset = 108U,
+        },
+        {
+            .instruction = {0x00U, 0xE8CCU},
+            .logical_address = 0x2042U,
+            .value = update.frame_sum_low,
+            .master_cycle_offset = 153U,
+        },
+        {
+            .instruction = {0x00U, 0xE8D3U},
+            .logical_address = 0x2043U,
+            .value = update.mixed_high,
+            .master_cycle_offset = 192U,
+        },
+        {
+            .instruction = {0x00U, 0xE8DBU},
+            .logical_address = 0x222BU,
+            .value = update.seed_high,
+            .master_cycle_offset = 240U,
+        },
+        {
+            .instruction = {0x00U, 0xE8E0U},
+            .logical_address = 0x222AU,
+            .value = update.seed_low,
+            .master_cycle_offset = 267U,
+        },
+    };
+    return replacement;
+}
+
+[[nodiscard]] std::optional<RoutineReplacement>
+replace_score_accumulator(
+    const RoutineEntry& entry,
+    const std::span<const std::byte> work_ram)
+{
+    constexpr RoutineKey kRoutine{
+        .physical_bank = 0x00U,
+        .logical_pc = 0xF55CU,
+    };
+    if (entry.routine != kRoutine) {
+        return std::nullopt;
+    }
+    // Decimal and transfer modes alter the arithmetic instruction contract
+    // and are not used by the observed gameplay callers.
+    if ((entry.registers.status & 0x28U) != 0U) {
+        return std::nullopt;
+    }
+
+    dc_score_update update{};
+    if (!dc_accumulate_score_ordinary(
+            reinterpret_cast<const std::uint8_t*>(work_ram.data()),
+            work_ram.size(),
+            &update)) {
+        return std::nullopt;
+    }
+
+    bool carry = true;
+    const auto subtract_byte =
+        [&carry](const std::uint8_t accumulator,
+                 const std::uint8_t operand) {
+            const auto subtrahend = static_cast<std::uint16_t>(
+                operand + (carry ? 0U : 1U));
+            const auto result = static_cast<std::uint8_t>(
+                static_cast<std::uint16_t>(accumulator) - subtrahend);
+            const bool overflow =
+                ((accumulator ^ result) & (accumulator ^ operand) & 0x80U)
+                != 0U;
+            carry = static_cast<std::uint16_t>(accumulator) >= subtrahend;
+            return std::pair{result, overflow};
+        };
+    (void)subtract_byte(
+        update.score_low,
+        static_cast<std::uint8_t>(update.comparison_score & 0xFFU));
+    (void)subtract_byte(
+        update.score_middle,
+        static_cast<std::uint8_t>(
+            (update.comparison_score >> 8U) & 0xFFU));
+    const auto [unused_comparison, overflow] =
+        subtract_byte(
+            update.score_high,
+            static_cast<std::uint8_t>(
+                (update.comparison_score >> 16U) & 0xFFU));
+    (void)unused_comparison;
+
+    auto output = entry.registers;
+    output.program_counter = 0xF5A8U;
+    output.accumulator = update.dirty_flags;
+    output.y = update.slot;
+    output.status =
+        static_cast<std::uint8_t>(entry.registers.status & 0x3CU);
+    if (carry) {
+        output.status = static_cast<std::uint8_t>(output.status | 0x01U);
+    }
+    if (overflow) {
+        output.status = static_cast<std::uint8_t>(output.status | 0x40U);
+    }
+    if (output.accumulator == 0U) {
+        output.status = static_cast<std::uint8_t>(output.status | 0x02U);
+    } else if ((output.accumulator & 0x80U) != 0U) {
+        output.status = static_cast<std::uint8_t>(output.status | 0x80U);
+    }
+
+    RoutineReplacement replacement{
+        .return_instruction = {
+            .physical_bank = 0x00U,
+            .logical_pc = 0xF5A8U,
+        },
+        .output_registers = output,
+        .body_master_cycles = 558U,
+    };
+    replacement.work_ram_writes = {
+        {
+            .instruction = {0x00U, 0xF587U},
+            .logical_address =
+                static_cast<std::uint16_t>(0x2205U + update.slot),
+            .value = update.score_low,
+            .master_cycle_offset = 108U,
+        },
+        {
+            .instruction = {0x00U, 0xF58FU},
+            .logical_address =
+                static_cast<std::uint16_t>(0x220CU + update.slot),
+            .value = update.score_middle,
+            .master_cycle_offset = 150U,
+        },
+        {
+            .instruction = {0x00U, 0xF597U},
+            .logical_address =
+                static_cast<std::uint16_t>(0x2213U + update.slot),
+            .value = update.score_high,
+            .master_cycle_offset = 186U,
+        },
+        {
+            .instruction = {0x00U, 0xF59AU},
+            .logical_address = static_cast<std::uint16_t>(
+                0x2100U + entry.registers.stack_pointer),
+            .value = 0xF5U,
+            .master_cycle_offset = 186U,
+        },
+        {
+            .instruction = {0x00U, 0xF59AU},
+            .logical_address = static_cast<std::uint16_t>(
+                0x2100U
+                + static_cast<std::uint8_t>(
+                    entry.registers.stack_pointer - 1U)),
+            .value = 0x9CU,
+            .master_cycle_offset = 186U,
+        },
+        {
+            .instruction = {0x00U, 0xF59DU},
+            .logical_address = static_cast<std::uint16_t>(
+                0x2100U + entry.registers.stack_pointer),
+            .value = 0xF5U,
+            .master_cycle_offset = 324U,
+        },
+        {
+            .instruction = {0x00U, 0xF59DU},
+            .logical_address = static_cast<std::uint16_t>(
+                0x2100U
+                + static_cast<std::uint8_t>(
+                    entry.registers.stack_pointer - 1U)),
+            .value = 0x9FU,
+            .master_cycle_offset = 324U,
+        },
+        {
+            .instruction = {0x00U, 0xF5A5U},
+            .logical_address = 0x2CC0U,
+            .value = update.dirty_flags,
+            .master_cycle_offset = 558U,
+        },
+    };
+    return replacement;
+}
+
+[[nodiscard]] std::optional<RoutineReplacement>
 replace_collision_table_interpreter(
     const RoutineEntry& entry,
     const std::span<const std::byte> work_ram,
@@ -4764,6 +5089,723 @@ replace_collision_response(
 }
 
 [[nodiscard]] std::optional<RoutineReplacement>
+replace_collision_consumer_no_hit(
+    const RoutineEntry& entry,
+    const std::span<const std::byte> work_ram,
+    const std::span<const std::byte> rom)
+{
+    constexpr RoutineKey kRoutine{
+        .physical_bank = 0x03U,
+        .logical_pc = 0x7F57U,
+    };
+    if (entry.routine != kRoutine || work_ram.size() < 0x2000U) {
+        return std::nullopt;
+    }
+
+    const auto slot = entry.registers.x;
+    const auto collision = std::to_integer<std::uint8_t>(
+        work_ram[0x1800U + slot]);
+    if ((collision & 0x80U) != 0U) {
+        return std::nullopt;
+    }
+
+    auto table_entry = entry;
+    table_entry.routine = {
+        .physical_bank = 0x03U,
+        .logical_pc = 0x6966U,
+    };
+    table_entry.registers.program_counter = 0x6966U;
+    table_entry.registers.accumulator =
+        std::to_integer<std::uint8_t>(work_ram[0x1780U + slot]);
+    table_entry.registers.stack_pointer = static_cast<std::uint8_t>(
+        entry.registers.stack_pointer - 2U);
+    table_entry.registers.status = static_cast<std::uint8_t>(
+        entry.registers.status & static_cast<std::uint8_t>(~0x82U));
+    if (table_entry.registers.accumulator == 0U) {
+        table_entry.registers.status = static_cast<std::uint8_t>(
+            table_entry.registers.status | 0x02U);
+    } else if ((table_entry.registers.accumulator & 0x80U) != 0U) {
+        table_entry.registers.status = static_cast<std::uint8_t>(
+            table_entry.registers.status | 0x80U);
+    }
+
+    auto table = replace_collision_table_interpreter(
+        table_entry,
+        work_ram,
+        rom);
+    if (!table
+        || table->return_instruction.physical_bank != 0x03U
+        || (table->return_instruction.logical_pc != 0x6988U
+            && table->return_instruction.logical_pc != 0x6A37U)) {
+        return std::nullopt;
+    }
+
+    // The response helper observes the collision-table helper's committed
+    // state. Compose against a private snapshot so full-record transactions
+    // can feed their new event byte into 7FB1 without mutating live RAM.
+    std::vector<std::byte> response_work_ram(
+        work_ram.begin(),
+        work_ram.end());
+    for (const auto& write : table->work_ram_writes) {
+        if (write.logical_address < 0x2000U) {
+            return std::nullopt;
+        }
+        const auto offset = static_cast<std::size_t>(
+            write.logical_address - 0x2000U);
+        if (offset >= response_work_ram.size()) {
+            return std::nullopt;
+        }
+        response_work_ram[offset] =
+            static_cast<std::byte>(write.value);
+    }
+
+    auto response_entry = entry;
+    response_entry.routine = {
+        .physical_bank = 0x03U,
+        .logical_pc = 0x7FB1U,
+    };
+    response_entry.registers = table->output_registers;
+    response_entry.registers.program_counter = 0x7FB1U;
+    response_entry.registers.stack_pointer = static_cast<std::uint8_t>(
+        entry.registers.stack_pointer - 2U);
+    auto response = replace_collision_response(
+        response_entry,
+        response_work_ram);
+    if (!response
+        || response->return_instruction.physical_bank != 0x03U
+        || response->return_instruction.logical_pc != 0x7FD1U) {
+        return std::nullopt;
+    }
+
+    auto output = entry.registers;
+    output.program_counter = 0x7F80U;
+    output.accumulator = collision;
+    output.y = response->output_registers.y;
+    output.status = static_cast<std::uint8_t>(
+        response->output_registers.status
+        & static_cast<std::uint8_t>(~0x82U));
+    if (collision == 0U) {
+        output.status = static_cast<std::uint8_t>(output.status | 0x02U);
+    } else if ((collision & 0x80U) != 0U) {
+        output.status = static_cast<std::uint8_t>(output.status | 0x80U);
+    }
+
+    constexpr std::uint32_t kFirstChildOffset = 36U;
+    const auto second_jsr_offset = static_cast<std::uint32_t>(
+        kFirstChildOffset + table->body_master_cycles + 21U);
+    const auto response_child_offset = static_cast<std::uint32_t>(
+        second_jsr_offset + 21U);
+    RoutineReplacement replacement{
+        .return_instruction = {
+            .physical_bank = 0x03U,
+            .logical_pc = 0x7F80U,
+        },
+        .output_registers = output,
+        .body_master_cycles = static_cast<std::uint32_t>(
+            response_child_offset
+            + response->body_master_cycles
+            + 48U),
+    };
+    replacement.work_ram_writes.reserve(
+        4U
+        + table->work_ram_writes.size()
+        + response->work_ram_writes.size());
+    const auto outer_stack_high = entry.registers.stack_pointer;
+    const auto outer_stack_low = static_cast<std::uint8_t>(
+        entry.registers.stack_pointer - 1U);
+    replacement.work_ram_writes.push_back({
+        .instruction = {0x03U, 0x7F5AU},
+        .logical_address =
+            static_cast<std::uint16_t>(0x2100U + outer_stack_high),
+        .value = 0x7FU,
+        .master_cycle_offset = 15U,
+    });
+    replacement.work_ram_writes.push_back({
+        .instruction = {0x03U, 0x7F5AU},
+        .logical_address =
+            static_cast<std::uint16_t>(0x2100U + outer_stack_low),
+        .value = 0x5CU,
+        .master_cycle_offset = 15U,
+    });
+    for (auto write : table->work_ram_writes) {
+        write.master_cycle_offset += kFirstChildOffset;
+        replacement.work_ram_writes.push_back(write);
+    }
+    replacement.work_ram_writes.push_back({
+        .instruction = {0x03U, 0x7F5DU},
+        .logical_address =
+            static_cast<std::uint16_t>(0x2100U + outer_stack_high),
+        .value = 0x7FU,
+        .master_cycle_offset = second_jsr_offset,
+    });
+    replacement.work_ram_writes.push_back({
+        .instruction = {0x03U, 0x7F5DU},
+        .logical_address =
+            static_cast<std::uint16_t>(0x2100U + outer_stack_low),
+        .value = 0x5FU,
+        .master_cycle_offset = second_jsr_offset,
+    });
+    for (auto write : response->work_ram_writes) {
+        write.master_cycle_offset += response_child_offset;
+        replacement.work_ram_writes.push_back(write);
+    }
+    return replacement;
+}
+
+[[nodiscard]] std::optional<RoutineReplacement>
+replace_flipper_input_gate(
+    const RoutineEntry& entry,
+    const std::span<const std::byte> work_ram)
+{
+    constexpr RoutineKey kRoutine{
+        .physical_bank = 0x01U,
+        .logical_pc = 0xD466U,
+    };
+    if (entry.routine != kRoutine) {
+        return std::nullopt;
+    }
+
+    dc_flipper_input_gate gate{};
+    if (!dc_evaluate_flipper_input_gate(
+            reinterpret_cast<const std::uint8_t*>(work_ram.data()),
+            work_ram.size(),
+            entry.registers.x,
+            &gate)) {
+        throw std::runtime_error(
+            "Native D466 replacement rejected the work-RAM snapshot.");
+    }
+    auto output = entry.registers;
+    if (gate.matched_input == 0U) {
+        output.program_counter = 0xD46EU;
+        output.accumulator = gate.matched_input;
+        output.status = static_cast<std::uint8_t>(
+            output.status & static_cast<std::uint8_t>(~0x82U));
+        output.status = static_cast<std::uint8_t>(output.status | 0x02U);
+
+        return RoutineReplacement{
+            .return_instruction = {
+                .physical_bank = 0x01U,
+                .logical_pc = 0xD46EU,
+            },
+            .output_registers = output,
+            .body_master_cycles = 36U,
+        };
+    }
+
+    dc_flipper_activation activation{};
+    if (!dc_prepare_flipper_activation(
+            reinterpret_cast<const std::uint8_t*>(work_ram.data()),
+            work_ram.size(),
+            entry.registers.x,
+            &gate,
+            &activation)) {
+        throw std::runtime_error(
+            "Native D466 activation rejected the work-RAM snapshot.");
+    }
+    if (activation.supported == 0U) {
+        return std::nullopt;
+    }
+
+    output.program_counter = 0xC5E9U;
+    output.accumulator = activation.dispatch_high;
+    output.status = static_cast<std::uint8_t>(
+        output.status & static_cast<std::uint8_t>(~0x83U));
+    output.status = static_cast<std::uint8_t>(output.status | 0x80U);
+    if (activation.compare_carry != 0U) {
+        output.status = static_cast<std::uint8_t>(
+            output.status | 0x01U);
+    }
+
+    const auto stack_high = entry.registers.stack_pointer;
+    const auto stack_low = static_cast<std::uint8_t>(stack_high - 1U);
+    RoutineReplacement replacement{
+        .return_instruction = {
+            .physical_bank = 0x01U,
+            .logical_pc = 0xC5E9U,
+        },
+        .output_registers = output,
+        .body_master_cycles = 282U,
+    };
+    replacement.work_ram_writes = {
+        {
+            .instruction = {0x01U, 0xD471U},
+            .logical_address = static_cast<std::uint16_t>(
+                0x3E00U + entry.registers.x),
+            .value = 0x01U,
+            .master_cycle_offset = 63U,
+        },
+        {
+            .instruction = {0x01U, 0xD474U},
+            .logical_address = static_cast<std::uint16_t>(
+                0x3A00U + entry.registers.x),
+            .value = 0x01U,
+            .master_cycle_offset = 78U,
+        },
+        {
+            .instruction = {0x01U, 0xD48BU},
+            .logical_address = static_cast<std::uint16_t>(
+                0x2100U + stack_high),
+            .value = 0xD4U,
+            .master_cycle_offset = 102U,
+        },
+        {
+            .instruction = {0x01U, 0xD48BU},
+            .logical_address = static_cast<std::uint16_t>(
+                0x2100U + stack_low),
+            .value = 0x8DU,
+            .master_cycle_offset = 102U,
+        },
+        {
+            .instruction = {0x01U, 0xC5CAU},
+            .logical_address = 0x2026U,
+            .value = 0x8DU,
+            .master_cycle_offset = 147U,
+        },
+        {
+            .instruction = {0x01U, 0xC5CDU},
+            .logical_address = 0x2027U,
+            .value = 0xD4U,
+            .master_cycle_offset = 171U,
+        },
+        {
+            .instruction = {0x01U, 0xC5D9U},
+            .logical_address = 0x2026U,
+            .value = activation.dispatch_low,
+            .master_cycle_offset = 216U,
+        },
+        {
+            .instruction = {0x01U, 0xC5E1U},
+            .logical_address = static_cast<std::uint16_t>(
+                0x3F00U + entry.registers.x),
+            .value = activation.dispatch_low,
+            .master_cycle_offset = 255U,
+        },
+        {
+            .instruction = {0x01U, 0xC5E6U},
+            .logical_address = static_cast<std::uint16_t>(
+                0x3F80U + entry.registers.x),
+            .value = activation.dispatch_high,
+            .master_cycle_offset = 282U,
+        },
+    };
+    return replacement;
+}
+
+[[nodiscard]] std::optional<RoutineReplacement>
+replace_flipper_phase_step(
+    const RoutineEntry& entry,
+    const std::span<const std::byte> work_ram)
+{
+    constexpr RoutineKey kRoutine{
+        .physical_bank = 0x01U,
+        .logical_pc = 0xD500U,
+    };
+    if (entry.routine != kRoutine) {
+        return std::nullopt;
+    }
+
+    dc_flipper_phase_step step{};
+    if (!dc_advance_flipper_phase(
+            reinterpret_cast<const std::uint8_t*>(work_ram.data()),
+            work_ram.size(),
+            entry.registers.x,
+            &step)) {
+        throw std::runtime_error(
+            "Native D500 replacement rejected the work-RAM snapshot.");
+    }
+    if (step.supported == 0U) {
+        return std::nullopt;
+    }
+
+    auto output = entry.registers;
+    output.program_counter = 0xD524U;
+    output.accumulator = step.phase;
+    output.status = static_cast<std::uint8_t>(
+        output.status & static_cast<std::uint8_t>(~0x82U));
+    if (step.decrements_phase == 0U) {
+        output.status = static_cast<std::uint8_t>(
+            output.status & static_cast<std::uint8_t>(~0x01U));
+        if (step.compare_carry != 0U) {
+            output.status = static_cast<std::uint8_t>(
+                output.status | 0x01U);
+        }
+    }
+    if (step.phase_next == 0U) {
+        output.status = static_cast<std::uint8_t>(
+            output.status | 0x02U);
+    } else if ((step.phase_next & 0x80U) != 0U) {
+        output.status = static_cast<std::uint8_t>(
+            output.status | 0x80U);
+    }
+
+    RoutineReplacement replacement{
+        .return_instruction = {
+            .physical_bank = 0x01U,
+            .logical_pc = 0xD524U,
+        },
+        .output_registers = output,
+        .body_master_cycles =
+            step.decrements_phase != 0U ? 126U : 138U,
+    };
+    replacement.work_ram_writes = {
+        {
+            .instruction = {0x01U, 0xD500U},
+            .logical_address = static_cast<std::uint16_t>(
+                0x3A00U + entry.registers.x),
+            .value = 0U,
+            .master_cycle_offset = 21U,
+        },
+        {
+            .instruction = {0x01U, 0xD508U},
+            .logical_address = static_cast<std::uint16_t>(
+                0x3A00U + entry.registers.x),
+            .value = step.reload,
+            .master_cycle_offset = 57U,
+        },
+        {
+            .instruction = {
+                0x01U,
+                static_cast<std::uint16_t>(
+                    step.decrements_phase != 0U
+                        ? 0xD521U
+                        : 0xD517U),
+            },
+            .logical_address = static_cast<std::uint16_t>(
+                0x3980U + entry.registers.x),
+            .value = step.phase_next,
+            .master_cycle_offset = 126U,
+        },
+    };
+    return replacement;
+}
+
+[[nodiscard]] std::optional<RoutineReplacement>
+replace_flipper_geometry_lookup(
+    const RoutineEntry& entry,
+    const std::span<const std::byte> work_ram,
+    const std::span<const std::byte> rom)
+{
+    constexpr RoutineKey kRoutine{
+        .physical_bank = 0x01U,
+        .logical_pc = 0xD081U,
+    };
+    constexpr std::size_t kGeometryTableOffset =
+        0x01U * 0x2000U + (0xD2AEU & 0x1FFFU);
+    constexpr std::size_t kGeometryTableSize = 0x80U;
+    if (entry.routine != kRoutine) {
+        return std::nullopt;
+    }
+    if (work_ram.size() < 0x2000U
+        || kGeometryTableOffset + kGeometryTableSize > rom.size()) {
+        throw std::runtime_error(
+            "Native D081 replacement rejected its memory snapshots.");
+    }
+
+    dc_flipper_geometry geometry{};
+    if (!dc_lookup_flipper_geometry(
+            std::to_integer<std::uint8_t>(work_ram[0x0078U]),
+            reinterpret_cast<const std::uint8_t*>(
+                rom.data() + kGeometryTableOffset),
+            kGeometryTableSize,
+            &geometry)) {
+        throw std::runtime_error(
+            "Native D081 replacement rejected the geometry table.");
+    }
+
+    auto output = entry.registers;
+    output.program_counter = 0xD09DU;
+    output.accumulator = geometry.second_high;
+    output.status = static_cast<std::uint8_t>(
+        output.status & static_cast<std::uint8_t>(~0xA3U));
+    if (entry.registers.y == 0U) {
+        output.status = static_cast<std::uint8_t>(
+            output.status | 0x02U);
+    } else if ((entry.registers.y & 0x80U) != 0U) {
+        output.status = static_cast<std::uint8_t>(
+            output.status | 0x80U);
+    }
+
+    RoutineReplacement replacement{
+        .return_instruction = {
+            .physical_bank = 0x01U,
+            .logical_pc = 0xD09DU,
+        },
+        .output_registers = output,
+        .body_master_cycles = 159U,
+    };
+    replacement.work_ram_writes = {
+        {
+            .instruction = {0x01U, 0xD085U},
+            .logical_address = static_cast<std::uint16_t>(
+                0x2100U + entry.registers.stack_pointer),
+            .value = entry.registers.y,
+            .master_cycle_offset = 27U,
+        },
+        {
+            .instruction = {0x01U, 0xD08BU},
+            .logical_address = 0x207FU,
+            .value = geometry.first_low,
+            .master_cycle_offset = 66U,
+        },
+        {
+            .instruction = {0x01U, 0xD090U},
+            .logical_address = 0x2080U,
+            .value = geometry.first_high,
+            .master_cycle_offset = 93U,
+        },
+        {
+            .instruction = {0x01U, 0xD095U},
+            .logical_address = 0x207DU,
+            .value = geometry.second_low,
+            .master_cycle_offset = 120U,
+        },
+        {
+            .instruction = {0x01U, 0xD09AU},
+            .logical_address = 0x207EU,
+            .value = geometry.second_high,
+            .master_cycle_offset = 147U,
+        },
+    };
+    return replacement;
+}
+
+[[nodiscard]] std::optional<RoutineReplacement>
+replace_coroutine_scheduler(
+    const RoutineEntry& entry,
+    const std::span<const std::byte> work_ram)
+{
+    constexpr RoutineKey kRoutine{
+        .physical_bank = 0x01U,
+        .logical_pc = 0xC5C9U,
+    };
+    if (entry.routine != kRoutine) {
+        return std::nullopt;
+    }
+
+    dc_coroutine_schedule schedule{};
+    if (!dc_schedule_coroutine(
+            reinterpret_cast<const std::uint8_t*>(work_ram.data()),
+            work_ram.size(),
+            entry.registers.x,
+            entry.registers.stack_pointer,
+            &schedule)) {
+        throw std::runtime_error(
+            "Native C5C9 replacement rejected the work-RAM snapshot.");
+    }
+
+    const auto countdown_offset = static_cast<std::uint16_t>(
+        0x3D80U + entry.registers.x);
+    const auto countdown_path_offset =
+        schedule.decrements_countdown != 0U ? 21U : 0U;
+    const auto carry_path_offset =
+        schedule.dispatch_low_wrapped != 0U ? 12U : 0U;
+
+    auto output = entry.registers;
+    output.program_counter = 0xC5E9U;
+    output.stack_pointer =
+        static_cast<std::uint8_t>(output.stack_pointer + 2U);
+    output.accumulator = schedule.installs_dispatch != 0U
+        ? schedule.dispatch_high
+        : schedule.countdown;
+    output.status = static_cast<std::uint8_t>(
+        output.status & static_cast<std::uint8_t>(~0xA2U));
+    const auto flag_value = schedule.installs_dispatch != 0U
+        ? schedule.dispatch_high
+        : schedule.countdown_after;
+    if (flag_value == 0U) {
+        output.status = static_cast<std::uint8_t>(
+            output.status | 0x02U);
+    } else if ((flag_value & 0x80U) != 0U) {
+        output.status = static_cast<std::uint8_t>(
+            output.status | 0x80U);
+    }
+
+    RoutineReplacement replacement{
+        .return_instruction = {
+            .physical_bank = 0x01U,
+            .logical_pc = 0xC5E9U,
+        },
+        .output_registers = output,
+        .body_master_cycles = 102U,
+    };
+    replacement.work_ram_writes = {
+        {
+            .instruction = {0x01U, 0xC5CAU},
+            .logical_address = 0x2026U,
+            .value = schedule.stacked_return_low,
+            .master_cycle_offset = 24U,
+        },
+        {
+            .instruction = {0x01U, 0xC5CDU},
+            .logical_address = 0x2027U,
+            .value = schedule.stacked_return_high,
+            .master_cycle_offset = 48U,
+        },
+    };
+    if (schedule.decrements_countdown != 0U) {
+        replacement.work_ram_writes.push_back({
+            .instruction = {0x01U, 0xC5D4U},
+            .logical_address = countdown_offset,
+            .value = schedule.countdown_after,
+            .master_cycle_offset = 90U,
+        });
+    }
+    if (schedule.installs_dispatch == 0U) {
+        return replacement;
+    }
+
+    const auto increment_low_cycle =
+        static_cast<std::uint32_t>(93U + countdown_path_offset);
+    replacement.work_ram_writes.push_back({
+        .instruction = {0x01U, 0xC5D9U},
+        .logical_address = 0x2026U,
+        .value = schedule.dispatch_low,
+        .master_cycle_offset = increment_low_cycle,
+    });
+    if (schedule.dispatch_low_wrapped != 0U) {
+        replacement.work_ram_writes.push_back({
+            .instruction = {0x01U, 0xC5DDU},
+            .logical_address = 0x2027U,
+            .value = schedule.dispatch_high,
+            .master_cycle_offset =
+                static_cast<std::uint32_t>(
+                    117U + countdown_path_offset),
+        });
+    }
+    replacement.work_ram_writes.push_back({
+        .instruction = {0x01U, 0xC5E1U},
+        .logical_address = static_cast<std::uint16_t>(
+            0x3F00U + entry.registers.x),
+        .value = schedule.dispatch_low,
+        .master_cycle_offset =
+            static_cast<std::uint32_t>(
+                132U + countdown_path_offset + carry_path_offset),
+    });
+    replacement.work_ram_writes.push_back({
+        .instruction = {0x01U, 0xC5E6U},
+        .logical_address = static_cast<std::uint16_t>(
+            0x3F80U + entry.registers.x),
+        .value = schedule.dispatch_high,
+        .master_cycle_offset =
+            static_cast<std::uint32_t>(
+                159U + countdown_path_offset + carry_path_offset),
+    });
+    replacement.body_master_cycles =
+        replacement.work_ram_writes.back().master_cycle_offset;
+    return replacement;
+}
+
+[[nodiscard]] std::optional<RoutineReplacement>
+replace_nudge_input_gate(
+    const RoutineEntry& entry,
+    const std::span<const std::byte> work_ram)
+{
+    constexpr RoutineKey kRoutine{
+        .physical_bank = 0x01U,
+        .logical_pc = 0xC3CBU,
+    };
+    if (entry.routine != kRoutine) {
+        return std::nullopt;
+    }
+
+    dc_nudge_input_gate gate{};
+    if (!dc_evaluate_nudge_input_gate(
+            reinterpret_cast<const std::uint8_t*>(work_ram.data()),
+            work_ram.size(),
+            &gate)) {
+        throw std::runtime_error(
+            "Native C3CB replacement rejected the work-RAM snapshot.");
+    }
+    if (gate.branch == DC_NUDGE_GATE_DEFER) {
+        return std::nullopt;
+    }
+
+    auto output = entry.registers;
+    output.status = static_cast<std::uint8_t>(
+        output.status & static_cast<std::uint8_t>(~0x82U));
+    if (gate.branch == DC_NUDGE_GATE_SESSION_RETURN) {
+        output.program_counter = 0xC3DCU;
+        output.accumulator = gate.session_mask;
+        if ((output.accumulator & 0x80U) != 0U) {
+            output.status = static_cast<std::uint8_t>(
+                output.status | 0x80U);
+        }
+        return RoutineReplacement{
+            .return_instruction = {
+                .physical_bank = 0x01U,
+                .logical_pc = 0xC3DCU,
+            },
+            .output_registers = output,
+            .body_master_cycles = 69U,
+        };
+    }
+
+    output.program_counter = 0xC3FAU;
+    output.accumulator = gate.matched_input;
+    output.y = gate.active_player;
+    output.status = static_cast<std::uint8_t>(
+        output.status | 0x02U);
+    RoutineReplacement replacement{
+        .return_instruction = {
+            .physical_bank = 0x01U,
+            .logical_pc = 0xC3FAU,
+        },
+        .output_registers = output,
+        .body_master_cycles = 177U,
+    };
+    replacement.work_ram_writes.push_back({
+        .instruction = {0x01U, 0xC3DDU},
+        .logical_address = 0x2CC6U,
+        .value = gate.timer_after,
+        .master_cycle_offset = 96U,
+    });
+    return replacement;
+}
+
+[[nodiscard]] std::optional<RoutineReplacement>
+replace_session_input_gate(
+    const RoutineEntry& entry,
+    const std::span<const std::byte> work_ram)
+{
+    constexpr RoutineKey kRoutine{
+        .physical_bank = 0x01U,
+        .logical_pc = 0xC49EU,
+    };
+    if (entry.routine != kRoutine) {
+        return std::nullopt;
+    }
+
+    dc_session_input_gate gate{};
+    if (!dc_evaluate_session_input_gate(
+            reinterpret_cast<const std::uint8_t*>(work_ram.data()),
+            work_ram.size(),
+            &gate)) {
+        throw std::runtime_error(
+            "Native C49E replacement rejected the work-RAM snapshot.");
+    }
+    if (gate.returns_idle == 0U) {
+        return std::nullopt;
+    }
+
+    auto output = entry.registers;
+    output.program_counter = 0xC4C8U;
+    output.accumulator = gate.run_input;
+    output.y = gate.active_player;
+    output.status = static_cast<std::uint8_t>(
+        output.status & static_cast<std::uint8_t>(~0x82U));
+    output.status = static_cast<std::uint8_t>(output.status | 0x02U);
+
+    return RoutineReplacement{
+        .return_instruction = {
+            .physical_bank = 0x01U,
+            .logical_pc = 0xC4C8U,
+        },
+        .output_registers = output,
+        .body_master_cycles = 72U,
+    };
+}
+
+[[nodiscard]] std::optional<RoutineReplacement>
 replace_cached_position_restore(
     const RoutineEntry& entry,
     const std::span<const std::byte> work_ram)
@@ -4854,6 +5896,43 @@ replace_native_gameplay_routine(
     } else if (entry.routine
         == RoutineKey{
             .physical_bank = 0x01U,
+            .logical_pc = 0xD081U,
+        }) {
+        replacement =
+            replace_flipper_geometry_lookup(entry, work_ram, rom);
+    } else if (entry.routine
+        == RoutineKey{
+            .physical_bank = 0x01U,
+            .logical_pc = 0xC5C9U,
+        }) {
+        replacement = replace_coroutine_scheduler(entry, work_ram);
+    } else if (entry.routine
+        == RoutineKey{
+            .physical_bank = 0x01U,
+            .logical_pc = 0xC3CBU,
+        }) {
+        replacement = replace_nudge_input_gate(entry, work_ram);
+    } else if (entry.routine
+        == RoutineKey{
+            .physical_bank = 0x01U,
+            .logical_pc = 0xC49EU,
+        }) {
+        replacement = replace_session_input_gate(entry, work_ram);
+    } else if (entry.routine
+        == RoutineKey{
+            .physical_bank = 0x01U,
+            .logical_pc = 0xD466U,
+        }) {
+        replacement = replace_flipper_input_gate(entry, work_ram);
+    } else if (entry.routine
+        == RoutineKey{
+            .physical_bank = 0x01U,
+            .logical_pc = 0xD500U,
+        }) {
+        replacement = replace_flipper_phase_step(entry, work_ram);
+    } else if (entry.routine
+        == RoutineKey{
+            .physical_bank = 0x01U,
             .logical_pc = 0xD1A2U,
         }) {
         replacement = replace_motion_rotation(entry, work_ram);
@@ -4863,6 +5942,18 @@ replace_native_gameplay_routine(
             .logical_pc = 0xDD09U,
         }) {
         replacement = replace_motion_damping(entry, work_ram);
+    } else if (entry.routine
+        == RoutineKey{
+            .physical_bank = 0x00U,
+            .logical_pc = 0xF55CU,
+        }) {
+        replacement = replace_score_accumulator(entry, work_ram);
+    } else if (entry.routine
+        == RoutineKey{
+            .physical_bank = 0x00U,
+            .logical_pc = 0xE8B3U,
+        }) {
+        replacement = replace_rng_update(entry, work_ram);
     } else if (entry.routine
         == RoutineKey{
             .physical_bank = 0x03U,
@@ -4876,6 +5967,13 @@ replace_native_gameplay_routine(
             .logical_pc = 0x7FB1U,
         }) {
         replacement = replace_collision_response(entry, work_ram);
+    } else if (entry.routine
+        == RoutineKey{
+            .physical_bank = 0x03U,
+            .logical_pc = 0x7F57U,
+        }) {
+        replacement =
+            replace_collision_consumer_no_hit(entry, work_ram, rom);
     } else {
         replacement = replace_cached_position_restore(entry, work_ram);
     }

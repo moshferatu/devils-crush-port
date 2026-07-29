@@ -63,7 +63,10 @@ add_library(
     dc_game_logic
     STATIC
     src/game_logic/collision.c
+    src/game_logic/controls.c
     src/game_logic/physics.c
+    src/game_logic/rng.c
+    src/game_logic/score.c
 )
 
 add_library(DevilsCrush::GameLogic ALIAS dc_game_logic)

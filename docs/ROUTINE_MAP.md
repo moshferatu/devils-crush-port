@@ -3375,6 +3375,17 @@ body cycles and eight ordered writes. Debug and Release reproduce:
 bounded path, direct write order, observed award set, reconstructed final
 value, and saturation constant.
 
+`dc_accumulate_score_ordinary` and `00:F55C@all` now implement the ordinary
+unsaturated path when the new score remains below the current high score.
+The adapter derives the selected three-byte score, status flags, three
+direct score writes, both nested JSR stack pairs, the `$2CC0` dirty write,
+and the fixed 558-master-cycle budget from state. The conservative
+user/video-event and serviceable-timer-IRQ horizons admit 12 of the 40
+census calls (30%); the other calls remain emulated automatically. The
+upgraded `dc_rom_score` regression preserves its configuration-specific
+census hash and exact 40-call/446-write hashes in Debug and Release while
+retaining ordinal 1 only as a restored-assembly reference coordinate.
+
 ## Session-and-scoring closure route
 
 The Milestone 2 closure route reuses the 3,600-frame state-census input and
@@ -3450,6 +3461,17 @@ It stores `(H',L')` at `$222B:$222A` and returns `H'`. Each call has eight
 direct writes: six intermediate writes through `$42/$43`, followed by the new
 high and low seed bytes. `tools/Analyze-RngSemantics.ps1` reconstructs the old
 seed from those intermediates and verifies every step of all 78 updates.
+
+`dc_advance_rng` and semantic `00:E8B3@all` implement that recurrence for
+arbitrary live seed/frame state. The adapter emits the exact six scratch
+writes and two seed writes, returns the new high byte with carry,
+overflow, negative, and zero flags derived from the final instructions, and
+uses the fixed 282-master-cycle budget. The conservative user/video-event
+and serviceable-timer-IRQ horizons admit 38 of 78 calls (48.7%); all other
+calls stay in assembly automatically. The upgraded `dc_rom_rng` regression
+retains ordinal 1 only as a restored-assembly coordinate and preserves the
+configuration-specific census plus exact entry, call, write, and selected
+seed-write hashes in Debug and Release.
 
 The two active consumers use consecutive results while initializing actor
 arrays. `03:6678` masks the result with `$3F`, adds `$80`, and writes
@@ -4484,6 +4506,196 @@ assembly because its natural scope enters a mid-routine interrupt at
 also
 interrupt-bearing: its 1,299-cycle/24-write replay shifts interrupt-owned
 stores beginning near `03:69B7`.
+
+### Seventh native replacement: semantic `03:7F57@all`
+
+The Small-Soldier collision consumer is a caller-level composition rather
+than another leaf routine. Its common no-hit branch calls `03:6966`, calls
+`03:7FB1`, loads `$3800,X`, and returns when the collision high bit is clear.
+The native adapter therefore reuses the two existing semantic replacements.
+It accepts any transaction admitted by `03:6966`, stages its ordered writes
+into a private work-RAM snapshot, and derives either `03:7FB1` response
+branch from that resulting state before deriving the final accumulator and
+N/Z flags from the collision byte.
+
+The composed body emits the outer JSR stack pair at cycle 15 and begins the
+collision-table child at cycle 36. The second JSR, response-child offset,
+write count, and total body cycles are derived from the selected child
+transactions. The original alternate-pass/non-reload shape remains the
+11-write, 417-cycle case. This construction keeps the inner routines as the
+single source of their state, flag, write, and timing semantics; there is no
+per-ordinal or per-actor allowlist.
+
+Across the 3,600-frame collision-boundary census, conservative event/IRQ
+fallback admits 4,786 of 20,867 calls (22.9%). The Debug and Release
+`dc_rom_collision_consumer_semantic` regression preserves the
+configuration-specific state-census hash and the complete routine artifacts:
+
+- Call SHA-256:
+  `3ab64128aab89d056216f79d0d3f041e186eb109048aefe82785e2875f41ec4f`
+- Write SHA-256:
+  `3b2eb1b5dbd54c1b08cf6a509820e47c2320faf544b4d15824f5426f414c6544`
+
+### Eighth native replacement: semantic `01:D466@all`
+
+The per-piece flipper input helper begins with one state-defined gate:
+`LDA $2CEE; AND $3B80,X`. A zero intersection returns immediately at
+`01:D46E`; a nonzero result marks the piece active and enters the longer
+response path. `dc_evaluate_flipper_input_gate` models that indexed
+intersection independently of actor slot or dynamic call number.
+
+The zero-result transaction returns `A=$00`, derives N/Z while preserving
+the other status bits, performs no writes, and resumes at `01:D46E` after
+36 master cycles.
+
+`dc_prepare_flipper_activation` also models the common nonzero-input shape
+when X is not the current `$BD` slot and `$3D80,X` is zero. It writes active
+state 1 to `$3E00,X/$3A00,X`, reproduces the `D48B` nested-JSR stack pair,
+uses `C5C9`'s popped return bytes in `$26/$27`, increments `$26`, and
+installs coroutine dispatch `01:D48E` in `$3F00,X/$3F80,X`. The complete
+nine-write transaction returns `A=$D4` at `01:C5E9` after 282 cycles with
+carry derived from `CPX $BD`. Current-slot, countdown, and later
+held/release variants remain in assembly.
+
+The 3,600-frame controls/physics route contains 7,470 calls. Conservative
+user/video-event and serviceable-timer-IRQ fallback admits 6,029 (80.7%).
+`dc_rom_flipper_input_gate_semantic` preserves the configuration-specific
+census and the complete routine artifacts in Debug and Release:
+
+- Call SHA-256:
+  `5230b181b1cb23394d0a540346418e98244f25e0ea2a50fce136b0b007fe2947`
+- Write SHA-256:
+  `b5cec75fa9f5d055fd5ed869df3ef6dabe578d9b7cd9b8481b6d701a81a209b8`
+
+### Ninth native replacement: semantic `01:C3CB@all`
+
+The session/nudge gate first tests session flags `$53`, tilt lock `$2CC7`,
+and the `$28` session-state mask. Once ordinary table input is eligible, it
+decrements timer `$2CC6`, checks the nudge phase at `$2CC4`, resolves the
+active player through `$2251`, and tests Button II at `$2018,Y`.
+`dc_evaluate_nudge_input_gate` classifies the two dominant bounded exits
+from those live fields.
+
+The session-state shape returns `A=$08` at `01:C3DC` after 69 cycles and no
+writes. The ordinary idle shape writes the decremented timer at instruction
+`01:C3DD`, cycle 96, then returns `A=$00` at `01:C3FA` after 177 cycles.
+Both derive their final N/Z flags while preserving unrelated status bits.
+Timer reload, active Button-II nudge, tilt, and later motion branches remain
+in assembly.
+
+The 3,600-frame controls/physics route contains 2,649 calls. Conservative
+event/IRQ fallback admits 1,338 (50.5%).
+`dc_rom_nudge_input_gate_semantic` preserves the configuration-specific
+census and the complete routine artifacts in Debug and Release:
+
+- Call SHA-256:
+  `eb17f2e9bc2e4fac07823be555379dfb75c21e5c0f4ef4161084ed7588198905`
+- Write SHA-256:
+  `9e7bf6564ef1c61afac2ad63cdcbf2f8742318711b051744ffab24f552c6c40d`
+
+### Tenth native replacement: semantic `01:C49E@all`
+
+The pause/high-score session gate follows `C3CB` in the main session
+controller. Its ordinary path first requires `($53 & $02) == 0`, loads the
+active-player index from `$2251`, then tests the Run edge with
+`$2018,Y & $08`. A zero result returns immediately at `01:C4C8`.
+`dc_evaluate_session_input_gate` derives that decision from live state.
+
+The native adapter admits only this ordinary no-Run-input result. It returns
+`A=$00`, preserves X and SP, returns the selected player in Y, derives N/Z
+while preserving unrelated status bits, performs no writes, and completes
+after 72 master cycles. Run-input pause/high-score work, the alternate
+session return, and the longer initialization path remain in assembly.
+
+The 3,600-frame route contains 2,649 calls. Conservative event/IRQ fallback
+admits 1,716 (64.8%). `dc_rom_session_input_gate_semantic` preserves the
+configuration-specific census and the complete routine artifacts in Debug
+and Release:
+
+- Call SHA-256:
+  `1e5052965bd3252e116ee6cd4b72ea5213cab371e9e0c6faad083af9915e381e`
+- Write SHA-256:
+  `09e04a8271fd92ad23977712ed8511a70fccac3457b3101cbda6671d5a0ec402`
+
+### Eleventh native replacement: semantic `01:D500@all`
+
+The shared flipper phase helper decrements `$3A00,X`. When that countdown
+expires, it reloads from `$3E00,X` and uses orientation bit 7 at `$3C80,X`
+to move phase `$3980,X` toward the active or resting endpoint.
+`dc_advance_flipper_phase` derives this transition for any indexed slot.
+
+The supported forward branch writes countdown zero at cycle 21, reloads it
+at cycle 57, increments phase at `01:D517` on cycle 126, and returns at
+`01:D524` after 138 cycles. The reverse branch shares the first two writes,
+decrements phase at `01:D521` on cycle 126, and returns on that same cycle.
+Both preserve the loaded old phase in A and derive the exact final N/Z and
+direction-specific carry state. Non-expiring countdowns and phase endpoints
+remain in assembly.
+
+The 3,600-frame route contains 980 calls. Conservative event/IRQ fallback
+admits 600 (61.2%). `dc_rom_flipper_phase_step_semantic` preserves the
+configuration-specific census and the complete routine artifacts in Debug
+and Release:
+
+- Call SHA-256:
+  `8d3708e4fe36ddd9745d77af68c3a6d575acef3ce29e23c70e72dc30eca9056f`
+- Write SHA-256:
+  `29274f5c8a62a9fc9d41f7796f343ac55167fcafdf71448dc6e9f76bcfd31965`
+
+### Twelfth native replacement: semantic `01:C5C9@all`
+
+The shared actor-coroutine scheduler removes its own JSR return from the
+stack and stores that return in scratch `$26/$27`. If indexed delay
+`$3D80,X` is zero, or becomes zero after one decrement, it increments the
+stacked return into the following instruction and installs that address in
+`$3F00,X/$3F80,X`. Otherwise it yields with the decremented delay. This one
+state rule is shared by flippers, collision consumers, and many table-actor
+controllers; it is not specialized by caller or call ordinal.
+
+`dc_schedule_coroutine` derives all three branches plus low-byte wrap into
+the dispatch high byte. The native adapter advances SP by two for the two
+`PLA`s and resumes at the original `01:C5E9` RTS so the outer return remains
+emulated. The decrement-and-yield branch takes 102 master cycles and three
+writes. Immediate installation takes 159 or 171 cycles, while
+decrement-to-install takes 180 or 192 cycles depending on return-page carry.
+All scratch, delay, dispatch, accumulator, N/Z/T, and write-timing effects
+are reproduced exactly.
+
+The 3,600-frame route contains 2,462 calls. Conservative event/IRQ fallback
+admits 1,537 (62.4%). `dc_rom_coroutine_scheduler_semantic` preserves the
+configuration-specific census and the complete 2,462-call/863,105-write
+artifacts in Debug and Release:
+
+- Call SHA-256:
+  `924221bbff7b244e91850fa206ad8ce70c2e86d3cf894824dd5e6b7b09da3bd9`
+- Write SHA-256:
+  `1ef7a9e9aa5007f01a0138660f948ab77d5bc67292d9e5a076a8284d1eebc1aa`
+
+### Thirteenth native replacement: semantic `01:D081@all`
+
+The flipper/ball interaction calls `D081` to turn live state `$78` into two
+16-bit geometry vectors. The routine masks to five phase bits, doubles that
+index, and reads low/high pairs from user-ROM tables `01:D2AE` and
+`01:D2EE`. It writes the first pair to `$7F/$80`, the second to `$7D/$7E`,
+and preserves the caller's Y register through `PHY`/`PLY`.
+`dc_lookup_flipper_geometry` receives the 128-byte table explicitly from
+the verified ROM boundary, so no ROM-derived table data is compiled into
+the native module.
+
+The native transaction reproduces the Y stack write at cycle 27 and the
+four vector writes at cycles 66, 93, 120, and 147. It returns at `01:D09D`
+after 159 master cycles with A equal to the second vector's high byte,
+carry cleared by the doubled bounded index, and N/Z derived from restored Y.
+
+The 3,600-frame route contains 540 calls. Conservative event/IRQ fallback
+admits 305 (56.5%). `dc_rom_flipper_geometry_semantic` preserves the
+configuration-specific census and complete 540-call/3,214-write artifacts
+in Debug and Release:
+
+- Call SHA-256:
+  `32d52a16cff5b2f20d1b3e8174e75a4ca097648253ce0726970fb92707a96d08`
+- Write SHA-256:
+  `b13407d580d6428cf3f7fc0460040953d4cb7136faa9305c2339ed99a8336934`
 
 ## Controls-to-physics closure route
 

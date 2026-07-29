@@ -421,8 +421,41 @@ Provide an interactive monitor-assignment screen and persist display identity, g
   branches replace 13,460 of 21,987 census calls (61.2%); the existing
   `@1`, `@3`, and `@7` coordinates remain focused restored-assembly
   fixtures. Calls near an interrupt—including focused `03:7FB1@2`—fall
-  back automatically. `01:DD09@52` and unimplemented `03:6966` semantic
-  paths remain emulated.**
+  back automatically. Semantic `03:7F57@all` composes any admitted
+  `03:6966` transaction and either `03:7FB1` response branch with the
+  caller's local no-hit exit. Full-record writes are staged into a private
+  snapshot before response derivation. It replaces 4,786 of 20,867
+  Small-Soldier consumer calls (22.9%) from live state, while preserving
+  the exact complete 20,867-call/362,060-write artifacts. Semantic
+  `00:F55C@all` also handles ordinary
+  unsaturated score additions below the current high score, replacing 12
+  of 40 census calls (30%) with exact 24-bit result, flag, write, and timing
+  parity. Semantic `00:E8B3@all` advances the free-running RNG seed from
+  live seed/frame state and replaces 38 of 78 census calls (48.7%) with its
+  exact eight-write, 282-cycle transaction. Semantic `01:D466@all`
+  evaluates the global input and indexed flipper-piece mask, then handles
+  both the 36-cycle no-input exit and common 282-cycle activation/coroutine
+  handoff. It replaces 6,029 of 7,470 calls (80.7%) with exact register,
+  flag, call, and write parity. Semantic `01:D500@all` advances forward and
+  reverse flipper phases when their indexed timer expires, replacing 600 of
+  980 calls (61.2%) through exact three-write, 126/138-cycle transactions.
+  Semantic `01:D081@all` resolves the flipper/ball interaction's two
+  phase-indexed geometry vectors from the verified user ROM, replacing 305
+  of 540 calls (56.5%) through an exact five-write, 159-cycle transaction.
+  Semantic `01:C5C9@all` replaces the shared actor-coroutine scheduler from
+  live stack, slot, and delay state. Its immediate-install,
+  decrement-and-yield, and decrement-to-install branches replace 1,537 of
+  2,462 calls (62.4%) through exact 102-192-cycle transactions.
+  Semantic `01:C3CB@all` covers the
+  session-state and ordinary timer-decrement/no-Button-II returns, replacing
+  1,338 of 2,649 calls (50.5%) while active nudge, tilt, and timer-reload
+  paths remain emulated. Semantic `01:C49E@all` handles the adjacent
+  active-player no-Run-input return, replacing 1,716 of 2,649 calls (64.8%)
+  with its exact zero-write, 72-cycle transaction while pause, high-score,
+  and session-transition paths remain emulated. The variable signed-divider
+  paths in `01:DD09` remain deferred
+  after profiling found interrupts in 669 of 753 route calls. `01:DD09@52`
+  and unimplemented `03:6966` semantic paths remain emulated.**
 - Port RNG, physics, collision, table actors/rules, bonus stages, and session transitions.
 - For each routine: observe, document, shadow-test, then replace.
 - Maintain a manifest showing which active-game ROM ranges remain emulated.
