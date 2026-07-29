@@ -62,9 +62,12 @@ slots `$0A-$61`, flippers in `$04-$09`, and persistent enemies in the reused
 dynamic pool `$62-$7E` resolve their exact bank-8 ROM descriptor groups with
 signed position, type, appearance, phase, and live dispatch. Production
 composition does not proximity-associate nearby SAT entries. When the camera
-moves away, work-RAM coordinates continue moving their resolved sprite
-pixels on the full table without depending on mutable live VRAM or palette
-state. Empty slots clear immediately. Dynamic retention is restricted
+moves away, work-RAM coordinates continue moving their decoded sprite
+patterns on the full table without depending on mutable regional VRAM.
+Their VCE palette indices remain live, allowing colors captured during
+fade-in to reach the settled palette. Actor Y is converted from the VDC's
+240-line presentation space into table space by removing the 30-line
+score/status band. Empty slots clear immediately. Dynamic retention is restricted
 to the ten type-`$82`/appearance-`$1A` Small Soldiers and four
 type-`$82`/appearance-`$39` Tower insects; any slot reuse by an impact or
 other effect family invalidates the old visual. This remains
@@ -179,6 +182,9 @@ from work RAM.
 - Camera-transition alignment is complete. Every post-fade route checkpoint
   resolves all six flippers, and the Sorcerer positions continue advancing
   between the observed frame-1,600 region and retained frame-1,800 region.
+  The same route proves a zero-pixel background vertical offset through
+  launch, and retained palette indices prevent pre-fade flippers from
+  remaining as dark silhouettes.
 - Two-player/current-player mapping and the P1/P2 DMD discriminator are
   deferred again at the user's request. When resumed, do not infer player
   identity from `$2251`; it is currently proven only as the score-array

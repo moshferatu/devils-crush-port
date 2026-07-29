@@ -1686,6 +1686,24 @@ int main(const int argc, char** const argv)
                   480 + static_cast<int>(camera_y),
                   frame.framebuffer)
             : std::nullopt;
+        int best_background_y_delta = 0;
+        std::size_t best_background_matches = 0;
+        if (settled_table) {
+            for (int delta = -32; delta <= 32; ++delta) {
+                const auto comparison =
+                    compare_table_to_composite(
+                        *settled_table,
+                        480 + static_cast<int>(camera_y) + delta,
+                        frame.framebuffer);
+                if (comparison
+                    && comparison->matching_pixels
+                        > best_background_matches) {
+                    best_background_matches =
+                        comparison->matching_pixels;
+                    best_background_y_delta = delta;
+                }
+            }
+        }
         auto sprite_table = settled_table;
         const auto sprite_stats = sprite_table
             ? devils_crush::render::composite_pce_sprites(
@@ -2062,10 +2080,10 @@ int main(const int argc, char** const argv)
                            rendered_retained_table_world_effects
                         == 1U
                     && off_camera_effect_stats->opaque_pixel_writes
-                        == 24566U
+                        == 25165U
                     && off_camera_effect_digest.sha256
-                        == "5f9022b127685f727dc98551761f10ad4108f4e28250f11"
-                           "c316232d0ba98b748",
+                        == "f075afa29ad327d70535fcbc53123e7f"
+                           "e7aae1b6be0322cda0ccf536d78c7c60",
                 "impact burst remains visible when probed outside the copied camera");
         } else if (frame_number == 2400
                    || frame_number == 2700) {
@@ -2109,33 +2127,23 @@ int main(const int argc, char** const argv)
                             prefix + "-composite"),
                         *live_composite),
                 "captured composite BMP writes");
-            if (frame_number == 1200) {
-                check(
-                    settled_table
-                        && write_bmp(
-                            diagnostic_path(
-                                *table_output,
-                                "-frame1200-table"),
-                            *settled_table),
-                    "settled stitched table BMP writes");
-                check(
-                    accepted_persistent_table
-                        && write_bmp(
-                            diagnostic_path(
-                                *table_output,
-                                "-frame1200-persistent"),
-                            *accepted_persistent_table),
-                    "persistent full-table BMP writes");
-            } else if (accepted_persistent_table) {
+            if (settled_table) {
                 check(
                     write_bmp(
                         diagnostic_path(
                             *table_output,
-                            "-frame"
-                                + std::to_string(frame_number)
-                                + "-persistent"),
+                            prefix + "-table"),
+                        *settled_table),
+                    "captured stitched table BMP writes");
+            }
+            if (accepted_persistent_table) {
+                check(
+                    write_bmp(
+                        diagnostic_path(
+                            *table_output,
+                            prefix + "-persistent"),
                         *accepted_persistent_table),
-                    "later persistent full-table BMP writes");
+                    "persistent full-table BMP writes");
             }
         }
         if (frame_number == 900) {
@@ -2361,7 +2369,13 @@ int main(const int argc, char** const argv)
                       << persistent_stats->seeded_fixed_actors
                       << " persistent_rendered_seeded="
                       << persistent_stats->
-                             rendered_seeded_fixed_actors;
+                             rendered_seeded_fixed_actors
+                      << " persistent_rendered_flippers="
+                      << persistent_stats->
+                             rendered_flipper_actors
+                      << " persistent_flipper_writes="
+                      << persistent_stats->
+                             flipper_opaque_pixel_writes;
         }
         if (frame_number == 2100
             && table_world_effect_census
@@ -2402,6 +2416,14 @@ int main(const int argc, char** const argv)
                         + table_comparison->sprite_or_overlay_pixels
                     == 256U * 208U,
                 "composite comparison covers the full playfield viewport");
+            if (frame_number == 1200 || frame_number == 1600
+                || frame_number == 1800) {
+                check(
+                    best_background_y_delta == 0
+                        && best_background_matches
+                            == table_comparison->matching_pixels,
+                    "stitched background retains its exact vertical origin across launch and camera transitions");
+            }
             if (frame_number == 1200) {
                 const auto accepted_table =
                     devils_crush::render::crop_image(
@@ -2444,18 +2466,22 @@ int main(const int argc, char** const argv)
                         && fixed_actor_atlas_comparison->eligible_groups
                             == 17U
                         && persistent_digest.sha256
-                            == "9e725dbd0bbe1ba204e4f20c2570ed76f5463633a7d243"
-                               "0d49823f22257b509d"
+                            == "45901880df0caad856496f1a4d1a0063132f144a424587"
+                               "cb2fc3936f17501785"
                         && persistent_stats
                         && persistent_stats->cached_fixed_actors
                             == 81U
                         && persistent_stats->seeded_fixed_actors
-                            == 0U
+                            == 52U
                         && persistent_stats->
                                rendered_seeded_fixed_actors
                             == 52U
                         && persistent_stats->opaque_pixel_writes
-                            == 14688U,
+                            == 14918U
+                        && persistent_stats->rendered_flipper_actors
+                            == 4U
+                        && persistent_stats->flipper_opaque_pixel_writes
+                            != 0U,
                     "lower full-table composite includes fixed actors, all flipper pairs, and persistent enemies");
                 if (resident_fixed_actor_classification) {
                     constexpr std::array<std::uint8_t, 9>
@@ -2557,14 +2583,18 @@ int main(const int argc, char** const argv)
                     "settled upper-middle source matches emulator output");
                 check(
                     persistent_digest.sha256
-                            == "a713a1773c6252fb8e21ba33632fcbb2e086dae076a125"
-                               "3883f8eca9ea4a6f27"
+                            == "de214ff8a7195a1e1d8a099a00889dcef3a2ed5df4d068"
+                               "85fb3da0d2e68447e8"
                         && persistent_stats
                         && persistent_stats->cached_fixed_actors
-                            == 79U
+                            == 81U
                         && persistent_stats->
                                rendered_seeded_fixed_actors
-                            == 27U,
+                            == 31U
+                        && persistent_stats->rendered_flipper_actors
+                            == 4U
+                        && persistent_stats->flipper_opaque_pixel_writes
+                            != 0U,
                     "upper-middle persistent composite matches its golden");
             } else if (frame_number == 1800) {
                 check(
@@ -2578,14 +2608,18 @@ int main(const int argc, char** const argv)
                     "settled middle-region source matches emulator output");
                 check(
                     persistent_digest.sha256
-                            == "7186f4f1bdbb10fd441ec565c5779ed3d723fa5e9e76b"
-                               "68eb8df457379056b7d"
+                            == "b8680ea899a0ea273118d9349d9d2b51006d497f47f5e"
+                               "1fb630b04159a4fe890"
                         && persistent_stats
                         && persistent_stats->cached_fixed_actors
-                            == 76U
+                            == 78U
                         && persistent_stats->
                                rendered_seeded_fixed_actors
-                            == 27U,
+                            == 31U
+                        && persistent_stats->rendered_flipper_actors
+                            == 4U
+                        && persistent_stats->flipper_opaque_pixel_writes
+                            != 0U,
                     "middle persistent composite matches its golden");
             }
             if (frame_number == 1200) {
@@ -2747,15 +2781,23 @@ int main(const int argc, char** const argv)
                               << persistent_stats->
                                      rendered_retained_fixed_actors
                               << " rendered_seeded_actors="
-                              << persistent_stats->
-                                     rendered_seeded_fixed_actors
-                              << " retained_opaque_writes="
-                              << persistent_stats->opaque_pixel_writes;
+                      << persistent_stats->
+                             rendered_seeded_fixed_actors
+                      << " retained_opaque_writes="
+                      << persistent_stats->opaque_pixel_writes
+                      << " rendered_flippers="
+                      << persistent_stats->rendered_flipper_actors
+                      << " flipper_writes="
+                      << persistent_stats->flipper_opaque_pixel_writes;
                 }
             }
             std::cout
                 << " table_world_y="
                 << 480 + static_cast<int>(camera_y)
+                << " best_background_y_delta="
+                << best_background_y_delta
+                << " best_background_matches="
+                << best_background_matches
                 << " table_sha256=" << table_digest.sha256
                 << " composite_background_matches="
                 << table_comparison->matching_pixels

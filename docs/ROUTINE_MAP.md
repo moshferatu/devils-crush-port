@@ -478,9 +478,11 @@ The stream-backed entries are now applied downstream of selection. The cache
 uses `$4F:$50` only for loader destinations and `$51:$52` only for bank-8 SAT
 pattern fields, selects the actor's live `$3980,X` phase, and accepts a seed
 only when the upload owns every 64-word pattern block referenced by that
-phase's SAT metadata. Resolved pixels retain the live sprite palette and
-participate in the existing background-priority and 16-half scanline rules.
-Type, appearance, phase, or dispatch changes invalidate the seed.
+phase's SAT metadata. Decoded pixels retain VCE palette indices whose colors
+are resolved at composition time. They participate in background priority;
+the live SAT retains the hardware 16-half scanline rule, while retained
+sprites from separate camera visits do not suppress one another. Type,
+appearance, phase, or dispatch changes invalidate the seed.
 
 At settled lower frame 1,200, 16 of 17 camera-active stream-backed actor
 groups have their complete selected upload byte-for-byte in live VRAM, while

@@ -16,8 +16,11 @@ now replace proximity association, all six flippers survive every camera
 region, and off-camera Sorcerer movement and all 16 walking phases are
 guarded. Moving enemies now resolve or restore the visual matching their
 live phase instead of sliding a frozen fallback image; unrelated
-camera-region VRAM is never sampled. Two-player/DMD work is deferred again
-at the user's request; cabinet playfield work remains active.
+camera-region VRAM is never sampled. Retained actor Y is now normalized past
+the 30-line score band and retained colors follow the live VCE palette, so
+launching the ball no longer makes mechanisms jump or exposes dark
+pre-fade flipper silhouettes. Two-player/DMD work is deferred again at the
+user's request; cabinet playfield work remains active.
 
 **Milestone 2 progress:** complete; all four closure gates are closed
 
@@ -2600,14 +2603,15 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
     their work-RAM anchor is in the live camera. Cached primitives remain
     tied to the actor's position and state signature and are rendered only
     outside the current 208-line SAT viewport.
-  - Each learned primitive owns its resolved pixel colors. Later VRAM
-    pattern streaming or VCE palette changes cannot corrupt a retained
-    off-camera mechanism.
+  - Each learned primitive owns decoded pattern pixels and VCE palette
+    indices. Later regional VRAM streaming cannot corrupt a retained
+    off-camera mechanism, while palette colors remain live through fade-in.
   - Empty slots clear immediately. An unseen type, appearance, or dispatch
     change suppresses stale art until the original camera observes that
     mechanism again. The cache never advances actor state or gameplay.
-  - Preserved background priority, sprite-pattern/palette decoding, global
-    16-half scanline selection, and reset the cache across non-table scenes.
+  - Preserved background priority and sprite-pattern/palette decoding. The
+    copied live SAT keeps the hardware 16-half scanline selection; retained
+    actors learned on different camera visits do not suppress one another.
   - Added ROM-free typed-state and learn/persist coverage plus a natural
     3,600-frame ROM route proving that at least one fixed mechanism is
     learned and subsequently rendered off-camera. Focused Debug and Release
@@ -2779,7 +2783,8 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
   - A cloned-cache probe moves the copied-camera boundary away without
     advancing gameplay and proves the live original actor remains visible in
     table-world space. Its accepted composite is
-    `ee11c879...5c35693` after the camera-band and off-camera-phase fixes.
+    `f075afa2...8c7c60` after the camera-band, coordinate-origin, palette,
+    and off-camera-phase fixes.
   - Frames 2,400 and 2,700 prove the original 35-36-frame slot release leaves
     zero cached or rendered impact effects. ROM-free coverage also guards
     `$4290->$42B0` compatibility and arbitrary-dispatch slot reuse.
@@ -2796,9 +2801,9 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
     are excluded from the cache layer and the copied live SAT is composited
     last as the authoritative presentation.
   - Work-RAM actor coordinates remain live during retained composition, so
-    enemies continue moving after their region leaves the camera. Resolved
-    pixels survive unrelated VRAM streaming when the descriptor signature is
-    unchanged.
+    enemies continue moving after their region leaves the camera. Decoded
+    pattern pixels survive unrelated VRAM streaming when the descriptor
+    signature is unchanged.
   - Animated actors now keep bounded exact phase variants. Off-camera
     Sorcerers and dynamic enemies must resolve a ROM-owned current-phase
     visual or restore the matching learned phase; they never slide a frozen
@@ -2810,9 +2815,21 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
     route proves that all 16 Sorcerer walking phases are presented, and a
     ROM-free regression restores two distinct learned Sorcerer phase images
     outside the live camera band.
+  - Normalized bank-8 actor Y from the VDC's 240-line presentation space
+    into the stitched playfield by removing the 30-line score/status band.
+    The route now proves that the background's best emulator match stays at
+    exactly zero vertical offset through launch and camera transitions.
+  - Cached sprites now retain decoded VCE palette indices rather than
+    fade-time ARGB colors. Initial lower-view seeds may refresh until the
+    camera first leaves that region, and composition resolves the current
+    palette so upper/middle flippers do not remain black silhouettes.
+  - The retained layer no longer applies one hardware scanline budget across
+    sprites captured on different camera visits. The copied live SAT still
+    enforces the original 16-half limit.
   - Refreshed the accepted lower/upper-middle/middle compositor goldens to
-    `9e725dbd...57b509d`, `a713a177...ea4a6f27`, and
-    `7186f4f1...79056b7d`.
+    `45901880...501785`, `de214ff8...68447e8`, and
+    `b8680ea8...a4fe890`. They retain four off-camera flipper actors at every
+    checkpoint while the current pair comes from the live SAT.
   - Debug and Release core, ROM-backed video snapshot, and cabinet-smoke
     regressions pass.
 
@@ -2951,7 +2968,7 @@ frame-900 artifact remains only a dark fade-state diagnostic. Display
 identity, geometry fallback, orientation, fullscreen state, the F12
 assignment screen, persisted PNG/JPEG/WebP backglass images, the
 camera-visible SAT actor layer, background/sprite priority, typed actor-slot
-views, resolved-pixel persistence for camera-visited fixed mechanisms, and
+views, decoded-pattern persistence for camera-visited fixed mechanisms, and
 the exact bank-8 descriptor metadata decoder, generic `00:E41F` compressed
 VRAM stream decoder, observed `00:F606` appearance/phase selector path,
 exact frame-1,200-to-1,600 pattern reconstruction, and complete 42-entry
@@ -2977,7 +2994,10 @@ instead of nearest-anchor SAT association, retains inactive actors even when
 their pixels overlap the live camera band, and draws the live SAT last. The
 deterministic route guards all six flippers at every post-fade checkpoint and
 proves the eight Sorcerers continue changing position after leaving their
-region. Two-player/DMD work is explicitly deferred again at the user's
+region. Actor presentation Y is normalized past the 30-line status band,
+the stitched background retains a zero-pixel vertical offset across launch,
+and retained palette indices follow the settled VCE palette instead of
+freezing fade-time colors. Two-player/DMD work is explicitly deferred again at the user's
 request; the next work remains cabinet-playfield-first and user-directed.
 `$2251` remains proven only as the active score-array selector. The finite
 dynamic/static/deferred scope remains frozen in
@@ -2994,8 +3014,9 @@ slice.
 No external blocker prevents continuing Milestone 3 cabinet composition.
 The accepted background source is rows 20-687 of the
 packed 256-by-768 envelope; cabinet code must not display the guard, prefetch,
-or tail rows. Camera-visited fixed mechanisms now retain resolved pixels
-independently of later VRAM/palette changes. The bank-8 actor renderer also
+or tail rows. Camera-visited fixed mechanisms now retain decoded pattern
+pixels independently of later regional VRAM changes while resolving colors
+from the current VCE palette. The bank-8 actor renderer also
 supplies exact geometry and descriptor metadata for unseen mechanisms. Its
 generic compressed loader reproduces one complete camera transition
 exactly, its selector family resolves to a bounded local atlas, and all

@@ -1188,8 +1188,11 @@ score/status presentation to the DMD. Typed work-RAM views now decode all 127
 actor slots. Fixed mechanisms now resolve exact bank-8 ROM descriptor groups
 instead of proximity-associating nearby SAT entries and continue rendering
 from live work-RAM positions after the camera moves away without advancing a
-second simulation. Retained visuals own resolved pixels, so later
-camera-region VRAM or palette streaming cannot corrupt them. The retained
+second simulation. Retained visuals own decoded pattern pixels, so later
+camera-region VRAM streaming cannot corrupt their geometry; stored VCE
+palette indices resolve against the current palette so fade-in colors settle
+normally. Actor Y is normalized past the 30-line score/status band before
+entering table space. The retained
 layer is drawn first, camera-observed actors are omitted from it, and the
 copied live SAT is drawn last. This keeps inactive mechanisms inside the
 camera band visible while preserving the SAT as the live oracle. Animated
@@ -1236,7 +1239,9 @@ and animation. The separately mapped type-`$8F` impact burst persists for its
 original table-world lifetime without admitting other transient families.
 Camera-transition regressions keep all six flippers resolved and prove the
 eight upper Sorcerers continue moving after their region leaves the camera
-while presenting all 16 exact walking phases.
+while presenting all 16 exact walking phases. They also prove the stitched
+background's best emulator match remains at a zero-pixel vertical offset
+through launch and camera movement.
 Two-player/current-player mapping and P1/P2 DMD presentation are currently
 deferred at the user's request.
 

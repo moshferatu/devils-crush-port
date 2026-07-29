@@ -990,6 +990,7 @@ void PersistentActorSpriteCache::reset() noexcept
 {
     actor_visuals_ = {};
     actor_visual_variants_ = {};
+    left_initial_lower_viewport_ = false;
 }
 
 std::optional<PersistentActorOverlayStats>
@@ -1047,6 +1048,10 @@ PersistentActorSpriteCache::update_and_composite(
         devils_crush::cabinet::kFirstFlipperControlSlot;
     constexpr std::size_t last_persistent =
         devils_crush::cabinet::kLastDynamicActorSlot;
+    constexpr int initial_lower_viewport_world_y = 480;
+    if (viewport_world_y < initial_lower_viewport_world_y) {
+        left_initial_lower_viewport_ = true;
+    }
     const int viewport_end =
         viewport_world_y + framebuffer_playfield_height;
 
@@ -1160,12 +1165,23 @@ PersistentActorSpriteCache::update_and_composite(
                        kFirstDynamicActorSlot;
         bool restored_phase_variant = false;
         std::optional<ActorVisual> static_phase_fallback;
+        // Actor Y values are expressed in the VDC's 240-line presentation
+        // space. The stitched table begins at the game's 208-line
+        // playfield, below the 30-line score/status band.
+        const int actor_table_y =
+            static_cast<int>(actor.world_y)
+            - framebuffer_playfield_y;
         const bool anchor_in_viewport =
             actor.camera_active()
-            && actor.world_y >= viewport_world_y
-            && actor.world_y < viewport_end
+            && actor_table_y >= viewport_world_y
+            && actor_table_y < viewport_end
             && actor.world_x >= -64
             && actor.world_x < destination.width + 64;
+        const bool refresh_initial_seed =
+            !left_initial_lower_viewport_
+            && viewport_world_y == initial_lower_viewport_world_y
+            && visual.seeded
+            && !anchor_in_viewport;
         if (anchor_in_viewport) {
             observed[slot] = true;
             if (!metadata_sprites) {
@@ -1222,7 +1238,8 @@ PersistentActorSpriteCache::update_and_composite(
             continue;
         }
         if (!anchor_in_viewport && visual.learned
-            && (signature_matches || restored_phase_variant)) {
+            && (signature_matches || restored_phase_variant)
+            && !refresh_initial_seed) {
             // Position is applied from live actor RAM during composition.
             // Exact learned phase variants can therefore animate while
             // moving without sampling VRAM owned by another camera region.
@@ -1363,7 +1380,9 @@ PersistentActorSpriteCache::update_and_composite(
             const auto offset_x =
                 metadata.world_x - static_cast<int>(actor.world_x);
             const auto offset_y =
-                metadata.world_y - static_cast<int>(actor.world_y);
+                metadata.world_y
+                - static_cast<int>(actor.world_y)
+                - framebuffer_playfield_y;
             if (offset_x
                     < std::numeric_limits<std::int16_t>::min()
                 || offset_x
@@ -1389,8 +1408,8 @@ PersistentActorSpriteCache::update_and_composite(
                     static_cast<std::uint8_t>(sprite_index),
                 .width = width,
                 .height = height,
-                .resolved_pixels =
-                    std::vector<std::uint32_t>(
+                .palette_indices =
+                    std::vector<std::uint16_t>(
                         static_cast<std::size_t>(width)
                             * static_cast<std::size_t>(height)),
             });
@@ -1414,12 +1433,11 @@ PersistentActorSpriteCache::update_and_composite(
                               metadata.flags & 0x000FU)
                             * 16U
                         + static_cast<std::size_t>(pixel);
-                    cached.resolved_pixels[
+                    cached.palette_indices[
                         static_cast<std::size_t>(y)
                             * static_cast<std::size_t>(width)
                         + static_cast<std::size_t>(x)] =
-                        decode_pce_color(
-                            snapshot.palette_entries[palette_index]);
+                        static_cast<std::uint16_t>(palette_index);
                 }
             }
         }
@@ -1560,7 +1578,7 @@ PersistentActorSpriteCache::update_and_composite(
             .sat_index = static_cast<std::uint8_t>(sprite_index),
             .width = width,
             .height = height,
-            .resolved_pixels = std::vector<std::uint32_t>(
+            .palette_indices = std::vector<std::uint16_t>(
                 static_cast<std::size_t>(width)
                     * static_cast<std::size_t>(height)),
         });
@@ -1583,12 +1601,11 @@ PersistentActorSpriteCache::update_and_composite(
                     + static_cast<std::size_t>(flags & 0x000FU)
                         * 16U
                     + static_cast<std::size_t>(pixel);
-                cached.resolved_pixels[
+                cached.palette_indices[
                     static_cast<std::size_t>(y)
                         * static_cast<std::size_t>(width)
                     + static_cast<std::size_t>(x)] =
-                    decode_pce_color(
-                        snapshot.palette_entries[palette_index]);
+                    static_cast<std::uint16_t>(palette_index);
             }
         }
     }
@@ -1612,7 +1629,7 @@ PersistentActorSpriteCache::update_and_composite(
         std::uint16_t flags = 0;
         int width = 0;
         int height = 0;
-        const std::vector<std::uint32_t>* resolved_pixels = nullptr;
+        const std::vector<std::uint16_t>* palette_indices = nullptr;
     };
     std::vector<WorldSprite> world_sprites;
     std::array<bool, devils_crush::cabinet::kActorSlotCount>
@@ -1671,7 +1688,7 @@ PersistentActorSpriteCache::update_and_composite(
                 .flags = sprite.flags,
                 .width = sprite.width,
                 .height = sprite.height,
-                .resolved_pixels = &sprite.resolved_pixels,
+                .palette_indices = &sprite.palette_indices,
             });
         }
     }
@@ -1690,16 +1707,13 @@ PersistentActorSpriteCache::update_and_composite(
         int horizontal_half = 0;
     };
     std::vector<WorldSlice> scanline_sprites;
-    scanline_sprites.reserve(kMaximumSpriteHalvesPerLine);
     for (int output_y = 0;
          output_y < destination.height;
          ++output_y) {
         const int world_y = destination_world_y + output_y;
         scanline_sprites.clear();
         for (std::size_t sprite_index = 0;
-             sprite_index < world_sprites.size()
-             && scanline_sprites.size()
-                 < kMaximumSpriteHalvesPerLine;
+             sprite_index < world_sprites.size();
              ++sprite_index) {
             const auto& sprite = world_sprites[sprite_index];
             const int height = sprite.height;
@@ -1708,11 +1722,7 @@ PersistentActorSpriteCache::update_and_composite(
                 continue;
             }
             const int halves = sprite.width / 16;
-            for (int half = 0;
-                 half < halves
-                 && scanline_sprites.size()
-                     < kMaximumSpriteHalvesPerLine;
-                 ++half) {
+            for (int half = 0; half < halves; ++half) {
                 scanline_sprites.push_back({
                     .sprite_index = sprite_index,
                     .horizontal_half = half,
@@ -1720,6 +1730,11 @@ PersistentActorSpriteCache::update_and_composite(
             }
         }
 
+        // The persistent layer expands actors retained from different
+        // camera visits onto one table. They did not coexist in one copied
+        // SAT, so applying a single 16-half hardware budget here makes
+        // off-camera regions suppress one another. The live SAT composed
+        // afterward still enforces the real per-camera scanline limit.
         for (auto slice = scanline_sprites.rbegin();
              slice != scanline_sprites.rend();
              ++slice) {
@@ -1736,20 +1751,24 @@ PersistentActorSpriteCache::update_and_composite(
                     || output_x >= destination.width) {
                     continue;
                 }
-                if (sprite.resolved_pixels == nullptr
-                    || sprite.resolved_pixels->size()
+                if (sprite.palette_indices == nullptr
+                    || sprite.palette_indices->size()
                         != static_cast<std::size_t>(width)
                             * static_cast<std::size_t>(height)) {
                     continue;
                 }
-                const auto resolved_pixel =
-                    (*sprite.resolved_pixels)[
+                const auto palette_index =
+                    (*sprite.palette_indices)[
                         static_cast<std::size_t>(sprite_y)
                             * static_cast<std::size_t>(width)
                         + static_cast<std::size_t>(sprite_x)];
-                if (resolved_pixel == 0U) {
+                if (palette_index == 0U
+                    || palette_index
+                        >= snapshot.palette_entries.size()) {
                     continue;
                 }
+                const auto resolved_pixel = decode_pce_color(
+                    snapshot.palette_entries[palette_index]);
                 const auto output_offset =
                     static_cast<std::size_t>(output_y)
                         * static_cast<std::size_t>(destination.width)
@@ -1763,6 +1782,14 @@ PersistentActorSpriteCache::update_and_composite(
                 }
                 destination.pixels[output_offset] = resolved_pixel;
                 actor_rendered[sprite.actor_slot] = true;
+                if (sprite.actor_slot
+                        >= devils_crush::cabinet::
+                               kFirstFlipperControlSlot
+                    && sprite.actor_slot
+                        <= devils_crush::cabinet::
+                               kLastFlipperControlSlot) {
+                    ++stats.flipper_opaque_pixel_writes;
+                }
                 ++stats.opaque_pixel_writes;
             }
         }
@@ -1772,6 +1799,14 @@ PersistentActorSpriteCache::update_and_composite(
          ++slot) {
         if (actor_rendered[slot]) {
             ++stats.rendered_fixed_actors;
+            if (slot
+                    >= devils_crush::cabinet::
+                           kFirstFlipperControlSlot
+                && slot
+                    <= devils_crush::cabinet::
+                           kLastFlipperControlSlot) {
+                ++stats.rendered_flipper_actors;
+            }
             const bool table_world_effect =
                 dynamic_presentation((*actors)[slot])
                 == DynamicPresentation::table_world_effect;

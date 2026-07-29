@@ -317,8 +317,9 @@ Provide an interactive monitor-assignment screen and persist display identity, g
     proximity-associating nearby SAT entries. Work-RAM coordinates and
     phases remain live off-camera, while the copied SAT is composited last
     and stays authoritative for camera-observed actors. Retained primitives
-    own resolved pixels, so unrelated camera-region VRAM or palette changes
-    cannot corrupt them.
+    own decoded pattern pixels and palette indices, so unrelated
+    camera-region VRAM cannot corrupt them while the current VCE palette
+    still completes the table fade correctly.
   - Bank `$08`'s actor renderer, 69 appearance tables, phase-selected
     descriptors, and `$7800-$78FF` SAT staging boundary are mapped. The
     native metadata decoder matches every eligible fixed-actor group in the
@@ -363,6 +364,10 @@ Provide an interactive monitor-assignment screen and persist display identity, g
     - [complete] Remove the live-camera cache hole and nearest-actor
       association so Sorcerers, star/pentagram mechanisms, and flippers stay
       aligned and visible as the camera changes regions.
+    - [complete] Normalize actor presentation Y past the 30-line score band,
+      keep the stitched background at one zero-offset world origin across
+      launch/camera transitions, and resolve retained palette indices against
+      the current VCE palette instead of freezing fade-in silhouettes.
     - [complete] Preserve a bounded set of exact per-phase visuals for
       animated actors. Off-camera enemies select the ROM-owned or learned
       visual matching their live phase; only static mechanisms may retain a

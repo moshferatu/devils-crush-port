@@ -35,6 +35,7 @@ struct PersistentActorOverlayStats {
     std::size_t cached_fixed_actors = 0;
     std::size_t cached_flipper_actors = 0;
     std::size_t rendered_fixed_actors = 0;
+    std::size_t rendered_flipper_actors = 0;
     std::size_t rendered_retained_fixed_actors = 0;
     std::size_t rendered_seeded_fixed_actors = 0;
     std::size_t restored_phase_variants = 0;
@@ -48,6 +49,7 @@ struct PersistentActorOverlayStats {
     std::size_t cached_table_world_effects = 0;
     std::size_t rendered_table_world_effects = 0;
     std::size_t rendered_retained_table_world_effects = 0;
+    std::size_t flipper_opaque_pixel_writes = 0;
     std::size_t opaque_pixel_writes = 0;
 };
 
@@ -191,9 +193,11 @@ private:
         std::uint8_t sat_index = 0;
         int width = 0;
         int height = 0;
-        // Resolved at observation time so later camera-region pattern or
-        // palette streaming cannot mutate a retained mechanism.
-        std::vector<std::uint32_t> resolved_pixels;
+        // Pattern pixels are resolved at observation time so later
+        // camera-region VRAM cannot mutate a retained mechanism. Palette
+        // indices remain live so actors learned during fade-in acquire the
+        // settled VCE colors instead of freezing dark silhouettes.
+        std::vector<std::uint16_t> palette_indices;
     };
 
     struct ActorVisual {
@@ -216,6 +220,7 @@ private:
         actor_visual_variants_{};
     std::optional<PcePatternAtlas> pattern_atlas_;
     std::uint16_t pattern_atlas_base_ = 0;
+    bool left_initial_lower_viewport_ = false;
 };
 
 // Composites the copied post-DMA SAT in hardware priority order. SAT

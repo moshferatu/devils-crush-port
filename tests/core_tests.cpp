@@ -977,8 +977,8 @@ void test_pce_sprite_overlay()
             && persistent_stats->rendered_retained_fixed_actors == 1U
             && persistent_stats->opaque_pixel_writes == 1U
             && persistent_image.pixels[20U * 64U + 20U]
-                == devils_crush::render::decode_pce_color(0x0007U),
-        "cached fixed mechanism remains visible outside the live camera");
+                == devils_crush::render::decode_pce_color(0x01C0U),
+        "cached fixed mechanism uses the live settled palette outside the camera");
 
     auto inactive_in_view_image = ArgbImage{
         .width = 64,
@@ -1006,8 +1006,8 @@ void test_pce_sprite_overlay()
             && inactive_in_view_stats->rendered_retained_fixed_actors
                 == 1U
             && inactive_in_view_image.pixels[20U * 64U + 20U]
-                == devils_crush::render::decode_pce_color(0x0007U),
-        "inactive retained actor remains visible inside the camera band");
+                == devils_crush::render::decode_pce_color(0x01C0U),
+        "inactive retained actor uses the live palette inside the camera band");
 
     work_ram[0x1980U + actor_slot] = std::byte{1};
     auto phase_changed_image = ArgbImage{
@@ -1039,7 +1039,7 @@ void test_pce_sprite_overlay()
                    restored_sorcerer_phase_variants
                 == 1U
             && phase_changed_image.pixels[20U * 64U + 21U]
-                == devils_crush::render::decode_pce_color(0x0007U),
+                == devils_crush::render::decode_pce_color(0x01C0U),
         "off-camera Sorcerer restores its exact learned walking phase");
 
     std::fill(sat.begin(), sat.end(), std::uint16_t{0});

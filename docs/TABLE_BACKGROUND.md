@@ -226,7 +226,10 @@ dynamic actors. It no longer proximity-associates nearby selected SAT
 entries. Descriptor primitives remain tied to the actor's
 type/appearance/phase/dispatch signature, while their signed work-RAM world
 position remains live after the camera moves away. The cache stores resolved
-pixels, not references to mutable VRAM patterns or VCE colors. Empty or
+pattern pixels and VCE palette indices, not references to mutable regional
+VRAM. Colors resolve from the current VCE palette so initial fade-in seeds do
+not remain dark. Actor presentation Y includes the score/status band and is
+normalized by 30 lines before entering stitched-table space. Empty or
 unseen-changed actors suppress stale art.
 
 The retained layer is composed first. Camera-observed actors are omitted from
@@ -257,8 +260,8 @@ path is also bounded and tested. The copied SAT remains the exact
 live-camera visual oracle and covers transient effects that do not warrant
 native gameplay objects. Stream-backed fixed mechanisms now select their
 appearance/phase upload, require complete ownership of every referenced
-pattern block, combine it with bank-8 geometry and the live sprite palette,
-and store resolved pixels before their first camera visit. The cache keeps
+pattern block, combine it with bank-8 geometry, and store decoded pixels plus
+palette indices before their first camera visit. The cache keeps
 loader destination base `$4F:$50` distinct from SAT pattern base `$51:$52`
 and invalidates on phase changes. Accepted lower, upper-middle, and middle
 persistent composites are golden-guarded. All five `$F768` scene packs are
@@ -283,11 +286,11 @@ pattern blocks. The ball remains live-SAT-only so motion cannot leave a
 trail. Slots `$04-$09` participate in phase-aware persistence, keeping all
 three flipper pairs visible across the stitched table. The resulting
 dynamic-enemy-inclusive lower persistent golden is
-`eb2e1147b9b65304deed11e8df26e681cfa1162c8b89ac60363ebc910e55dcfd`;
+`45901880df0caad856496f1a4d1a0063132f144a424587cb2fc3936f17501785`;
 upper-middle and middle are
-`246a7818b3023c7c62c57812503492f604dc5d35fe0b49cf26f04cc48ed6e8d6`
+`de214ff8a7195a1e1d8a099a00889dcef3a2ed5df4d06885fb3da0d2e68447e8`
 and
-`d7bdf666a2778bd86f7466417aefe6b1ae8110169d76b246ac202627df23a2d3`.
+`b8680ea899a0ea273118d9349d9d2b51006d497f47f5e1fb630b04159a4fe890`.
 All six flippers are cache-resolved at every post-fade checkpoint, and the
 eight Sorcerer positions differ between frames 1,600 and 1,800 after their
 region leaves the live camera.
@@ -308,7 +311,7 @@ phase, position, and 35-36-frame lifetime. At frame 2,100, slot `$71` is in
 phase 5 with two exact bank-8 primitives. The group matches the live SAT,
 uses upload-disjoint pattern blocks, and renders from a cloned cache when the
 camera boundary is moved away. The accepted probe SHA-256 is
-`ee11c87949c42166d4bb3c5bd98ae17c8307120b486ce117a15d5c2ea5c35693`.
+`f075afa29ad327d70535fcbc53123e7fe7aae1b6be0322cda0ccf536d78c7c60`.
 Frames 2,400 and 2,700 contain no cached or rendered impact, proving that the
 original slot clear ends presentation without a trail. Every other dynamic
 effect remains live-SAT-only until it receives equivalent coordinate,
