@@ -817,6 +817,10 @@ private:
             .frame_number = frame_number_ + 1U,
             .master_cycle = state.master_cycle,
             .absolute_master_cycle = state.absolute_master_cycle,
+            .master_cycles_until_user_event =
+                state.master_cycles_until_user_event,
+            .master_cycles_until_timer_interrupt =
+                state.master_cycles_until_timer_interrupt,
         };
     }
 

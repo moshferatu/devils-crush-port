@@ -913,11 +913,26 @@ Release reproduce trace SHA-256
 `585b2221987701f24b9f6a271d48a7bedec3ce01fb08f3889d196cfe1a3191a4`
 while retaining the canonical RAM/video/audio hash.
 
-Replacement mode is now available for explicitly mapped, ordinal-gated
-no-interrupt calls. The first native game-logic routine is the C
-implementation of collision rollback `00:F241`. This command replaces its
-first gameplay call, observes the full physics set, and restores that same
-pre-call savestate to compare the native result with assembly:
+Replacement mode is available for mapped semantic routines and focused
+no-interrupt regression calls. Native game logic includes semantic position
+integration `00:F1B4@all`, semantic collision rollback `00:F241@all`, and
+their focused `@1`, `@10`, and `@17` integration/rollback fixtures, plus the
+zero-component acceleration path `01:DD09@1` plus nonzero-divider path
+`01:DD09@2` and negative-divider path `01:DD09@181`, signed rotation
+`01:D1A2@23`, full collision-table record advancement `03:6966@1`,
+`03:6966@2`, `03:6966@3`, `03:6966@4`, and `03:6966@9`,
+headerless collision-table continuations `03:6966@10` and `03:6966@12`,
+plus alternate-selector reverse-vertical continuation `03:6966@19` and
+horizontal continuations `03:6966@20` and `03:6966@21`,
+later vertical continuations `03:6966@22` and `03:6966@23`,
+alternate-pass selection `03:6966@5` through `03:6966@8` and
+`03:6966@14` through `03:6966@18`, plus semantic `03:6966@all`
+alternate-pass replacement across all selectors and actor slots, semantic
+actor collision-response scheduling `03:7FB1@all`, and its focused
+`03:7FB1@1`, `03:7FB1@3`, and `03:7FB1@7` decrement/reload fixtures. This command
+replaces the four simultaneous physics
+calls, observes the full physics set, and restores each pre-call savestate
+to compare the native result with assembly:
 
 ```powershell
 .\out\build\windows-vs2022\Release\devils-crush.exe `
@@ -926,18 +941,276 @@ pre-call savestate to compare the native result with assembly:
   --observe-hook 00:F241 `
   --observe-hook 01:D1A2 `
   --observe-hook 01:DD09 `
+  --replace-hook 00:F1B4@17 `
   --replace-hook 00:F241@1 `
+  --replace-hook 01:D1A2@23 `
+  --replace-hook 01:DD09@1 `
   --routine-trace out\traces\native-replacement-entries.csv `
   --routine-call-trace out\traces\native-replacement-calls.csv `
+  --routine-replay 00:F1B4@17 `
   --routine-replay 00:F241@1 `
+  --routine-replay 01:D1A2@23 `
+  --routine-replay 01:DD09@1 `
   --rom "D:\path\to\Devil's Crush.pce"
 ```
 
-The native transaction declares final registers, six ordered writes and
-their entry-relative timing, 162 body master cycles, and the outer RTS.
-Gameplay, entry, call, and write artifacts remain byte-identical to the
-assembly baseline. Interrupt-bearing call variants remain in assembly until
-the bridge gains faithful mid-routine interrupt delivery.
+The four native transactions declare final registers, 215 ordered writes
+and their entry-relative timing, 6,120 combined body master cycles, and their
+outer RTS boundaries. Gameplay, entry, call, and write artifacts remain
+byte-identical to the assembly baseline. Other ordinals and interrupt-bearing
+call variants remain in assembly until their paths are independently proven
+or the bridge gains faithful mid-routine interrupt delivery.
+
+A focused 1,800-frame collision-table regression replaces `03:6966@5`,
+restores its frame-941 pre-call state, and compares the alternate-pass early
+return with assembly. Selector `$2A` resolves to table pointer `$6C2A`;
+Front-Spider slot `$26` changes pass state `$81->$80`. The transaction
+matches four ordered writes at body cycles 39/66/114/135, output
+`A=$80`, `Y=$81`, `P=$12`, and outer RTS `03:6988` after 165 body master
+cycles. Debug and Release preserve the gameplay and complete
+19,648-call/180,389-write interpreter hashes.
+
+A companion collision-table regression replaces `03:6966@1` and restores
+its frame-873 pre-call state. Selector `$2A` and record `$03` resolve table
+pointer `$6C2A` to motion record `$6D56`; Front-Spider slot `$26` changes
+pass `$80->$81`, event to `$02`, orientation `$0C->$8C`, cursor `0->1->2`,
+and horizontal low `$40->$41`. The native transaction matches all 12 writes,
+663 body master cycles, output registers, and outer RTS `03:6A37`. Debug and
+Release preserve the same complete interpreter artifacts.
+
+A second full-record regression replaces `03:6966@2` from the adjacent
+frame-873 state. Selector `$2B` and record `$07` resolve table pointer
+`$6C2D` to motion record `$6D9E`; Front-Spider slot `$27` changes pass
+`$80->$81`, event to `$06`, orientation `$0C->$8C`, cursor `0->1->2`, and
+horizontal low `$D8->$D7`. The reverse-motion branch matches all 12 writes,
+672 body master cycles, output registers, and outer RTS `03:6A37`. Debug and
+Release preserve the same complete interpreter artifacts.
+
+A third full-record regression replaces `03:6966@3` from the next
+frame-873 state. Selector `$2C` and record `$05` resolve table pointer
+`$6C30` to motion record `$6D7A`; fixed slot `$28` changes pass `$80->$81`,
+event to `$04`, orientation `$0C->$8C`, cursor `0->1->2`, and vertical low
+`$82->$83`. The vertical-motion branch matches all 12 writes, 663 body
+master cycles, final `A=$08`, and outer RTS `03:6A37`. Debug and Release
+preserve the same complete interpreter artifacts.
+
+A fourth full-record regression replaces `03:6966@4` from the remaining
+adjacent frame-873 state. Selector `$2D` and record `$05` resolve table
+pointer `$6C35` to the shared motion record `$6D7A`; fixed slot `$29`
+changes pass `$80->$81`, event to `$04`, orientation `$0C->$8C`, cursor
+`0->1->2`, and vertical low `$82->$83`. The transaction matches all 12
+writes, 663 body master cycles, final `A=$08`, and outer RTS `03:6A37`.
+Debug and Release preserve the same complete interpreter artifacts.
+
+A second alternate-pass regression replaces `03:6966@6` and restores its
+adjacent frame-941 pre-call state. Selector `$2B` resolves table pointer
+`$6C2D`; Front-Spider slot `$27` changes pass `$81->$80`. The transaction
+matches four ordered writes at body cycles 39/66/114/135, output `A=$80`,
+`Y=$81`, `P=$12`, and outer RTS `03:6988` after 165 body master cycles.
+Debug and Release preserve the same complete interpreter artifacts.
+
+A third alternate-pass regression replaces `03:6966@7` and restores the
+next frame-941 pre-call state. Selector `$2C` resolves table pointer `$6C30`;
+fixed slot `$28` changes pass `$81->$80`. The transaction matches four
+ordered writes at body cycles 39/66/114/135, output `A=$80`, `Y=$81`,
+`P=$12`, and outer RTS `03:6988` after 165 body master cycles. Debug and
+Release preserve the same complete interpreter artifacts.
+
+A fourth alternate-pass regression replaces `03:6966@8` and completes the
+frame-941 quartet. Selector `$2D` resolves table pointer `$6C35`; fixed slot
+`$29` changes pass `$81->$80`. The transaction matches four ordered writes
+at body cycles 39/66/114/135, output `A=$80`, `Y=$81`, `P=$12`, and outer
+RTS `03:6988` after 165 body master cycles. Debug and Release preserve the
+same complete interpreter artifacts.
+
+An alternate-selector full-record regression replaces `03:6966@9` at frame
+942. Caller `03:5890` supplies selector `$06`, which resolves table entry
+`$0B` at `$6B0A` to motion record `$6DE6`; slot `$17` changes pass
+`$80->$81`, event to `$0A`, orientation `$0D->$8D`, cursor `0->1->2`, and
+horizontal low `$F6->$F5`. The reverse-motion transaction matches all 12
+writes, including the stack-relative `$21F9` saved-status store, 672 body
+master cycles, and outer RTS `03:6A37`. Debug and Release preserve the same
+complete interpreter artifacts.
+
+A headerless-continuation regression replaces `03:6966@10` at frame 942.
+Selector `$2A` resolves `$6C2A->$6D56`; Front-Spider slot `$26` resumes at
+cursor 2, consumes the `$08` vertical step without rewriting event or
+orientation, changes vertical low `$7C->$7D`, and advances the cursor once
+to 3. The native transaction matches nine writes, 540 body master cycles,
+final `A=$08` / `Y=$02`, and outer RTS `03:6A37`. Debug and Release preserve
+the same complete interpreter artifacts.
+
+A second continuation regression replaces `03:6966@12` from the same frame.
+Selector `$2C` resolves `$6C30->$6D7A`; fixed slot `$28` resumes at cursor
+2, consumes headerless `$08`, changes vertical low `$83->$84`, and advances
+the cursor once to 3. It matches the same nine-write/540-cycle transaction
+shape with selector- and slot-specific addresses. Debug and Release preserve
+the complete interpreter artifacts.
+
+An alternate-selector pass regression replaces `03:6966@14` at frame 943.
+Caller `03:5890` supplies selector `$06`, which resolves to table pointer
+`$6B0A`; slot `$17` changes pass state `$81->$80`. The early-return
+transaction matches four ordered writes at body cycles 39/66/114/135,
+output `A=$80`, `Y=$81`, `P=$12`, and outer RTS `03:6988` after 165 body
+master cycles. Debug and Release preserve the complete interpreter
+artifacts.
+
+A repeated fixed-selector pass regression replaces `03:6966@15` later in
+frame 943. Selector `$2A` again resolves to table pointer `$6C2A`;
+Front-Spider slot `$26` changes pass state `$81->$80`. The independently
+restored call matches the existing four-write/165-cycle transaction shape,
+output registers, and outer RTS `03:6988`. Debug and Release preserve the
+complete interpreter artifacts.
+
+A second repeated fixed-selector pass regression replaces `03:6966@16`
+later in frame 943. Selector `$2B` resolves to table pointer `$6C2D`; the
+other Front-Spider slot `$27` changes pass state `$81->$80`. It matches the
+same four-write/165-cycle transaction shape, output registers, and outer RTS
+`03:6988` against independently restored assembly. Debug and Release
+preserve the complete interpreter artifacts.
+
+A third repeated fixed-selector pass regression replaces `03:6966@17`
+later in frame 943. Selector `$2C` resolves to table pointer `$6C30`; fixed
+slot `$28` changes pass state `$81->$80`. This call enters with status `$12`
+rather than the earlier matching selector call's `$02`, and the native guard
+admits both independently proven variants. Its four writes, 165 cycles,
+output registers, and outer RTS `03:6988` match restored assembly in Debug
+and Release.
+
+A fourth repeated fixed-selector pass regression replaces `03:6966@18`
+later in frame 943. Selector `$2D` resolves to table pointer `$6C35`; fixed
+slot `$29` changes pass state `$81->$80`. This call enters with status `$00`
+rather than the earlier matching selector call's `$10`, and the native guard
+admits both independently proven variants. Its four writes, 165 cycles,
+output registers, and outer RTS `03:6988` match restored assembly in Debug
+and Release.
+
+An alternate-selector continuation regression replaces `03:6966@19` at
+frame 944. Selector `$06` resolves `$6B0A->$6DE6`; slot `$17` resumes at
+cursor 2, consumes headerless reverse-vertical motion byte `$10`, changes
+vertical low `$C4->$C3`, and advances the cursor to 3. The native transaction
+matches nine writes, 549 body master cycles, final `A=$C4` / `Y=$02`, and
+outer RTS `03:6A37`. Debug and Release preserve the complete interpreter
+artifacts.
+
+A horizontal-continuation regression replaces `03:6966@20` at frame 944.
+Selector `$2A` resolves `$6C2A->$6D56`; Front-Spider slot `$26` resumes at
+cursor 3, consumes headerless motion byte `$20`, changes horizontal low
+`$41->$42`, and advances the cursor to 4. The native transaction matches
+nine writes, 540 body master cycles, final `A=$00` / `Y=$03`, and outer RTS
+`03:6A37`. Debug and Release preserve the complete interpreter artifacts.
+
+A reverse-horizontal continuation regression replaces `03:6966@21` later
+in frame 944. Selector `$2B` resolves `$6C2D->$6D9E`; Front-Spider slot
+`$27` resumes at cursor 3, consumes headerless motion byte `$40`, changes
+horizontal low `$D7->$D6`, and advances the cursor to 4. The native
+transaction matches nine writes, 549 body master cycles, final `A=$00` /
+`Y=$03`, and outer RTS `03:6A37`. Debug and Release preserve the complete
+interpreter artifacts.
+
+A later vertical-continuation regression replaces `03:6966@22` later in
+frame 944. Selector `$2C` resolves `$6C30->$6D7A`; fixed slot `$28` resumes
+at cursor 3, consumes headerless motion byte `$08`, changes vertical low
+`$84->$85`, and advances the cursor to 4. This call enters with status
+`$12`; its nine writes, 540 body master cycles, final `A=$08` / `Y=$03`,
+and outer RTS `03:6A37` match restored assembly in Debug and Release.
+
+A second later vertical-continuation regression replaces `03:6966@23` at
+the end of frame 944. Selector `$2D` resolves `$6C35->$6D7A`; fixed slot
+`$29` resumes at cursor 3, consumes the same headerless motion byte `$08`,
+changes vertical low `$84->$85`, and advances the cursor to 4. This call
+enters with status `$00`; its nine writes, 540 body master cycles, final
+`A=$08` / `Y=$03`, and outer RTS `03:6A37` match restored assembly in Debug
+and Release.
+
+The collision-table scheduler is no longer limited to those individual
+ordinal fixtures. `--replace-hook 03:6966@all` reads the selector-pointer
+table from the verified user ROM and natively handles both the four-write
+alternate-pass early return and ordinary headerless record steps. The latter
+resolve the collision-list and motion cursors generically, then apply either
+or both signed axes with exact high-byte carry/borrow timing. Before
+committing, each transaction must finish before Beetle's next user/video
+event or serviceable timer interrupt; otherwise original assembly runs
+normally. Harmless timer-divider ticks do not force fallback. The bounded
+walker also
+follows `$C0` motion terminators, applies `$FE`
+collision-list wraps, recognizes `$FF` table termination, and executes
+headered records with their accumulated cursor-write timing. Across the
+1,800-frame route this replaces 7,609 of 19,648 calls (38.7%) while
+preserving the exact gameplay, complete call trace, and all 180,389 ordered
+writes. Ordinals remain useful regression coordinates, but are no longer the
+admission mechanism for these semantic paths; the former compiled
+selector/slot/ordinal proof matrix has been retired. Further expansion of
+this interpreter is frozen while smaller gameplay routines are ported.
+
+A focused 1,800-frame integration regression separately replaces
+`00:F1B4@1`, restores its frame-1,049 pre-call state, and compares its
+nonnegative path with assembly. It integrates `$028F00 + $0010`, leaves the
+other axis unchanged, and declares 16 ordered writes over 702 body master
+cycles. Debug and Release preserve the gameplay and complete
+1,156-call/21,738-write integration trace hashes.
+
+A second focused integration regression replaces `00:F1B4@10` and restores
+its frame-1,058 pre-call state. Its nonnegative increment crosses the second
+position from `$0291D1` to `$029273`, so assembly exits before setting the
+fractional-only `$3C80` marker. The native transaction matches the early
+return's `A=$91`, `P=$80`, 15 ordered writes, and 639 body master cycles.
+Debug and Release preserve the same gameplay and complete integration-trace
+hashes.
+
+The semantic integration regression derives sign-extension stores,
+position-store timing, comparison exits, flags, and cycle budgets from the
+live slot-zero state rather than an ordinal. Automatic event/IRQ fallback
+executes 214 of 1,156 calls natively (18.5%). The adjacent six-store
+`00:F241@all` rollback executes 242 of 404 calls natively (59.9%). Both
+preserve the byte-identical gameplay and their complete call/write traces;
+the original ordinal fixtures remain focused restored-assembly checks.
+
+A focused 1,800-frame damping regression separately replaces `01:DD09@2`,
+restores its frame-1,049 pre-call state, and compares the native nonzero
+divider path with assembly. Axis two `$0010` divided by signed `$80`
+produces truncating quotient zero before `$10` acceleration yields `$0020`.
+The transaction declares 68 ordered writes and 2,409 body master cycles;
+Debug and Release preserve the established gameplay and complete
+753-call/61,291-write damping trace hashes.
+
+A second damping regression replaces `01:DD09@181` and restores its
+frame-1,228 pre-call state. Axis two `$FF0D` runs through signed divisor
+`$80`, restores its negative result at `$FF0C`, and adds `$10` acceleration
+to produce `$FF1C`. The transaction returns `A=$FF`, `P=$80` after 69
+ordered writes and 2,427 body master cycles. Debug and Release preserve the
+same complete damping artifacts. `01:DD09@52` remains emulated because its
+normalized replay exposes an interrupt through `00:E058/E169`.
+
+The separate 3,600-frame collision-boundary regression replaces
+`03:7FB1@1`, restores its frame-957 pre-call state, and compares the native
+result with assembly. That transaction declares three writes, 126 body
+master cycles, and outer RTS `03:7FD1`; every established collision census,
+work-RAM, entry, call, scoped-write, and selected-state hash remains
+unchanged.
+
+A focused 3,600-frame collision-response regression separately replaces
+`03:7FB1@3`, restores its frame-958 pre-call state, and compares the next
+non-reload decrement with assembly. It declares three writes at body cycles
+39/93/114, moves the slot-`$62` countdown from 3 to 2, returns `A=$1C`, and
+completes in 126 body master cycles. Debug and Release preserve their
+established census hashes plus the complete 21,987-call/91,295-write
+`7FB1` artifacts. Ordinal 2 is not admitted: its independently replayed
+transcript includes a periodic interrupt.
+
+A focused 3,600-frame collision-response regression separately replaces
+`03:7FB1@7`, restores its frame-960 pre-call state, and compares the native
+reload branch with assembly. It declares five writes at body cycles
+39/93/114/141/162, returns `A=$04`, advances phase 0 to 1, and completes in
+162 body master cycles. Debug and Release preserve their established census
+hashes plus the complete 21,987-call/91,295-write `7FB1` artifacts.
+
+The aggregate `03:7FB1@all` regression uses that same routine for every live
+slot and derives the result flags as well as the 126-cycle decrement or
+162-cycle reload transaction from state. Conservative user/video-event and
+serviceable-timer-IRQ horizons admit 13,460 of the 21,987 calls (61.2%);
+the rest execute in assembly automatically. Debug and Release retain the
+exact state-census, call-trace, and write-trace hashes.
 
 Repeat either hook option to register multiple distinct addresses. A
 multi-address observe run writes the v2 trace format, preserving global

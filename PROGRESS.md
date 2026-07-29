@@ -1,14 +1,71 @@
 # Project Progress
 
-Last updated: 2026-07-28
+Last updated: 2026-07-29
 
 ## Current Status
 
-**Phase:** Milestone 3 cabinet preview
+**Phase:** Milestone 4 native gameplay port
 
-**Current milestone:** 3. Cabinet preview
+**Current milestone:** 4. Native gameplay port
 
-**Milestone 3 current gate:** all non-hidden fixed actors, all three flipper
+**Milestone 4 current gate:** native collision-table work is now measured by
+semantic and dynamic-call coverage rather than an ordinal count.
+`--replace-hook 03:6966@all` reads every selector pointer from the verified
+user ROM and handles both the four-write alternate-pass early return and
+ordinary headerless record steps for any selector and actor slot. The record
+walker resolves the collision-list cursor, motion pointer, and motion cursor
+from ROM, then emits one- or two-axis signed movement with exact carry/borrow
+timing. Core-provided master-cycle horizons decline any transaction that
+could reach a user/video event or a serviceable timer interrupt, so
+interrupt-bearing and conservatively ambiguous calls remain in assembly
+without an ordinal blacklist while harmless timer-divider ticks may be
+crossed. The deterministic 1,800-frame route now executes 7,609 of 19,648
+`03:6966` calls natively (38.7%) while
+preserving the byte-identical gameplay artifact, complete 19,648-call trace,
+and all 180,389 ordered writes.
+
+Work has moved off the unusually large collision-table interpreter.
+Semantic `00:F1B4@all` now derives position-integration sign branches,
+comparison exits, flags, writes, and timing from live slot-zero state,
+executing 214 of 1,156 calls natively (18.5%). The adjacent state-generic
+`00:F241@all` rollback executes 242 of 404 calls (59.9%). Both retain exact
+gameplay and complete call/write artifacts through automatic event/IRQ
+fallback.
+
+Semantic `03:7FB1@all` now replaces the actor collision-response helper by
+live slot state rather than ordinal. It derives response, countdown,
+reload/phase advancement, result flags, three-or-five-write transcript, and
+126/162-cycle timing for any slot. The conservative event/IRQ horizon
+admits 13,460 of 21,987 census calls (61.2%); the state census and complete
+21,987-call/91,295-write artifacts remain byte-identical in Debug and
+Release.
+
+Twenty-one previously admitted `03:6966` ordinals remain as focused
+restored-assembly fixtures for full records, continuations, and early
+returns; they are no longer the scheduler's unit of progress. Alongside
+them, `03:7FB1@1`, `@3`, and `@7` remain focused fixtures for the semantic
+replacement's decrement and reload branches. `01:D1A2@23`
+performs signed two-dimensional rotation in 5,076 master cycles with 190
+ordered writes, `01:DD09@1` takes its zero-component acceleration path in
+168 cycles with two writes, `01:DD09@2` takes its positive nonzero
+second-component divider path in 2,409 cycles with 68 writes, and
+`01:DD09@181` takes the negative divider/sign-restoration path in 2,427
+cycles with 69 writes. `00:F1B4@1`
+performs nonnegative fractional-only position integration in 702 cycles
+with 16 writes, `00:F1B4@10` takes the integer-step early return in 639
+cycles with 15 writes,
+`00:F1B4@17` takes its negative-second-increment path in 714 cycles with 17
+writes, and `00:F241@1` performs collision rollback in 162 cycles with six
+writes. The 32 focused fixtures still shadow restored assembly from
+identical pre-call states with 553 exact writes and 21,327 combined body
+master cycles. Unimplemented semantic branches stay emulated while the
+shared interpreter is generalized. In particular, replayed `03:7FB1@2`
+contains a periodic interrupt and remains explicitly rejected. `01:DD09@52` also
+remains emulated after replay exposed an interrupt entering through
+`00:E058/E169`, expanding the recognized interrupt-owned instruction set
+beyond the earlier `FCxx/FDxx` examples.
+
+**Deferred Milestone 3 gate:** all non-hidden fixed actors, all three flipper
 pairs, ten Small Soldiers, four Tower insects, and the mapped type-`$8F`
 impact-burst family now populate and animate across the stitched table while
 the ball remains exact and trail-free through the live SAT. Exact ROM groups
@@ -427,7 +484,7 @@ progression, and group regeneration remain ROM-bounded.
 | 1. Emulated Windows baseline | Complete | Verified ROM runs through the pinned Beetle PCE fork with SDL3 video, audio, input, saves, and sharp monitor-resolution scaling |
 | 2. Instrumentation and hook bridge | Complete | Required game state is mapped and original routines can be observed, shadow-tested, and replaced |
 | 3. Cabinet preview | In progress | Three-window cabinet mode shows the stitched playfield, score DMD, black backglass fallback, assigned displays, and playfield-hosted bonus stages |
-| 4. Native gameplay port | Not started | Physics, collisions, RNG, scoring, table rules, bonus stages, and session transitions execute natively |
+| 4. Native gameplay port | In progress | Physics, collisions, RNG, scoring, table rules, bonus stages, and session transitions execute natively |
 | 5. Final cabinet world model | Not started | Desktop and cabinet profiles share the same native gameplay state without divergence |
 | 6. Release hardening | Not started | Tested, documented, ROM-free Windows x64 package is ready for release |
 
@@ -691,6 +748,8 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
     and complete post-call work RAM.
   - Verified `00:F1B4@17`, `00:F241@1`, `01:D1A2@1`, and `01:DD09@1` with
     respective body budgets of 714, 162, 8,736, and 168 master cycles.
+    Milestone 4 later added independently replayed, interrupt-free
+    `01:DD09@2` at 2,409 cycles and 68 ordered writes.
   - Documented Beetle's expected mid-frame clock-origin rebase and kept
     interrupt-bearing `DD09` paths outside the deterministic replay gate until
     the replacement interrupt-delivery contract is defined.
@@ -2833,6 +2892,358 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
   - Debug and Release core, ROM-backed video snapshot, and cabinet-smoke
     regressions pass.
 
+- [x] Began Milestone 4 with the second native physics routine:
+  - Added pure C `dc_integrate_position`, matching `00:F1B4`'s two signed
+    16.8 positions, signed 8.8 increments, six-byte pre-integration cache,
+    and fractional-only movement marker.
+  - Admitted the already bounded no-interrupt `00:F1B4@17` path. It
+    declares the exact outer RTS, final registers/MPRs, 714 body master
+    cycles, and 17 ordered writes with their original PCs and timings.
+  - Independently replayed and admitted `00:F1B4@1` at frame 1,049. It
+    integrates second position `$028F00` by nonnegative `$0010`, leaves the
+    first position `$010E00` unchanged, performs 16 writes, and returns after
+    702 cycles. Omitting the negative-sign scratch store makes it 12 cycles
+    shorter than ordinal 17.
+  - Independently replayed and admitted `00:F1B4@10` at frame 1,058. Its
+    nonnegative `$00A2` increment moves the second position from `$0291D1`
+    to `$029273`, crossing an integer boundary. The original comparison
+    therefore exits with `A=$91`, `P=$80` before setting the fractional-only
+    marker; the native transaction matches all 15 writes and 639 cycles.
+  - Strengthened both host guards with exact entry registers, cached and
+    integrated values, sign branches, and movement flags. The focused
+    ordinal-1 shadow preserves the complete 1,156-call/21,738-write trace.
+  - Native `F1B4@17` now runs immediately before native `F241@1`. Both
+    checkpoints are restored and replayed through assembly; all 23 writes,
+    876 combined body master cycles, and complete post-call work RAM match.
+  - The established gameplay, routine-entry, bounded-call, and ordered-write
+    SHA-256 values remain unchanged. ROM-free tests cover positive and
+    negative integration, integer-step marking, indexed slots, and truncated
+    snapshots.
+  - Core, coverage-manifest, unsupported-ordinal CLI, and
+    `dc_rom_native_replacement` regressions pass in Debug and Release.
+
+- [x] Added the third bounded native physics routine:
+  - Added pure C `dc_damp_and_accelerate_motion`, matching `01:DD09`'s
+    signed truncating component damping and unsigned low-byte acceleration.
+  - Admitted independently replayed `01:DD09@1`. Both signed-divider
+    branches are skipped because its two motion components are zero; it adds
+    `$8B=$10`, writes `$3500=$10` at body cycle 132 and `$3580=$00` at cycle
+    168, and resumes assembly at outer RTS `01:DD6D`.
+  - Independently replayed and admitted interrupt-free `01:DD09@2` at frame
+    1,049. Axis one remains zero; axis two `$0010` runs through signed
+    divisor `$80`, produces truncating quotient zero, then adds `$8B=$10`
+    for output `$0020`. It returns after 2,409 cycles and 68 ordered writes.
+  - The ordinal-2 transcript contains the complete signed-divider
+    scratch/stack sequence but no `FCxx`/`FDxx` interrupt-handler passage.
+    The focused shadow restores the same pre-call state and proves exact
+    registers/MPRs, return path, timings, write order, and complete RAM.
+  - Independently replayed and admitted interrupt-free `01:DD09@181` at
+    frame 1,228. Axis two `$FF0D` divides through signed `$80`, restores its
+    negative sign at `$FF0C`, then adds `$10` acceleration for `$FF1C`.
+    Its exact 69-write transcript completes in 2,427 cycles and returns
+    `A=$FF`, `P=$80`.
+  - Rejected `01:DD09@52` after normalized replay exposed interrupt-owned
+    stack/controller work through `00:E058/E169`. Its final registers and
+    cycle count agree, but its ordered scratch writes do not, so it cannot
+    cross the transactional no-interrupt boundary.
+  - Restored the same pre-call state and proved exact final registers/MPRs,
+    two ordered writes and timings, 168 body master cycles, and complete
+    post-call work RAM. The established gameplay, entry, bounded-call, and
+    ordered-write hashes remain unchanged.
+  - ROM-free tests cover positive and negative signed damping, signed
+    divisors, acceleration, zero-component branch skips, invalid divisors,
+    indexed slots, the bounded nonzero-divider input, and truncated
+    snapshots. Unsupported DD09 ordinals are rejected by the CLI.
+  - Core, coverage-manifest, physics-oracle, unsupported-ordinal CLI, and
+    `dc_rom_native_replacement` regressions pass in Release; the focused
+    native replacement also passes in Debug.
+
+- [x] Added the fourth bounded native physics routine:
+  - Added pure C `dc_rotate_motion`, matching `01:D1A2`'s signed 8.8
+    sign-magnitude multiplies, fractional truncation, and
+    `u*c-v*s` / `u*s+v*c` output combination.
+  - Audited the initially selected `D1A2@1` transcript and found three
+    timer-interrupt handler passages (`FCxx`/`FDxx` writes). It remains
+    emulated because a work-RAM-only transaction cannot acknowledge and
+    deliver those interrupts faithfully.
+  - Admitted the first independently replayed interrupt-free call,
+    `01:D1A2@23`: identity coefficients `$0100/$0000`, inputs and outputs
+    `$0000/$FFFF`, 5,076 body master cycles, 190 ordered writes, and outer
+    RTS `01:D227`.
+  - Fixed the core bridge so coincident writes and a write exactly at the
+    body boundary do not invoke a spurious zero-cycle hardware sync. The
+    canonical downstream patch reapplies cleanly to the pinned upstream
+    revision.
+  - Restored the same pre-call state and proved exact registers/MPRs, return
+    path, write order/timing, cycle budget, complete post-call RAM, and
+    unchanged gameplay, entry, call, and write hashes in Debug and Release.
+
+- [x] Added the first bounded native collision routine:
+  - Added pure C `dc_advance_collision_response`, matching `03:7FB1`'s
+    event/phase response calculation, indexed countdown decrement, and
+    countdown-reload phase advancement.
+  - Independently replayed and admitted interrupt-free `03:7FB1@1` at
+    frame 957. It maps event `$0F` and phase 0 to response `$1C`, decrements
+    slot `$62`'s countdown from 4 to 3, performs three writes at body cycles
+    39/93/114, and resumes at outer RTS `03:7FD1` after 126 cycles.
+  - Independently replayed and admitted interrupt-free `03:7FB1@3` at
+    frame 958. With the same slot, event, and phase, it decrements the
+    countdown from 3 to 2 and returns response `$1C` after the same three
+    writes and 126-cycle budget.
+  - Independently replayed and admitted `03:7FB1@7` at frame 960. It takes
+    the same slot/event response calculation from countdown 1 and phase 0,
+    writes the transient zero countdown, reloads it to 4, advances phase to
+    1, and returns `A=$04` after five writes at body cycles
+    39/93/114/141/162.
+  - The first shadow attempt exposed and fixed a branch-specific adapter
+    error that returned response `$1C` instead of reload value `$04`.
+  - The full 3,600-frame collision-boundary test now runs the native call,
+    restores its pre-call state, and executes original assembly for shadow
+    comparison. All census, work-RAM, entry, call, scoped-write, and
+    selected-state hashes remain unchanged in Release; a focused 21,987-call
+    Debug route also passes native-versus-assembly replay.
+  - ROM-free tests cover indexed response calculation, the non-reload path,
+    countdown reload, phase wrapping, and truncated snapshots. Unsupported
+    7FB1 ordinals are rejected by the CLI. A direct replay of ordinal 2
+    exposed 13 interrupt-owned writes and remains emulated. Separate
+    3,600-frame follow-up and reload regressions preserve the Debug/Release
+    census hashes and the complete 21,987-call, 91,295-write `7FB1` trace.
+
+- [x] Added the second bounded native collision routine:
+  - Added pure C `dc_select_collision_table_pass`, matching `03:6966`'s
+    negative-state alternate-pass selection and early-return decision while
+    keeping the ROM table pointer at the adapter boundary.
+  - Independently replayed and admitted interrupt-free `03:6966@5` at frame
+    941. Selector `$2A` resolves to table pointer `$6C2A`; fixed Front-Spider
+    slot `$26` changes pass state `$81->$80` and returns at `03:6988`.
+  - The native transaction matches output `A=$80`, `X=$26`, `Y=$81`,
+    `P=$12`, four writes at body cycles 39/66/114/135, and the 165-cycle
+    body budget before restored assembly replay.
+  - The focused Debug and Release regression preserves the gameplay hash and
+    complete 19,648-call/180,389-write `6966` hashes. ROM-free tests cover
+    the early return, alternate pass, direct positive-state path, and
+    truncated snapshots.
+  - Extended the pure C boundary with
+    `dc_advance_collision_table_record`, covering event/orientation updates,
+    signed horizontal and vertical unit motion with carry/borrow, and the
+    two-byte record-cursor advance.
+  - Independently replayed and admitted interrupt-free `03:6966@1` at frame
+    873. Selector `$2A` and record `$03` resolve `$6C2A->$6D56`; fixed
+    Front-Spider slot `$26` changes pass `$80->$81`, event to `$02`,
+    orientation `$0C->$8C`, cursor `0->1->2`, and horizontal low `$40->$41`.
+  - The full-record transaction returns through `03:6A37` with
+    `A=$00`, `X=$26`, `Y=$01`, `P=$10`, and `SP=$F5` after 663 cycles and
+    12 exact writes. Its focused Debug and Release regression preserves the
+    same complete interpreter artifacts.
+  - Independently replayed and admitted interrupt-free `03:6966@2` from the
+    adjacent frame-873 state. Selector `$2B` and record `$07` resolve
+    `$6C2D->$6D9E`; fixed Front-Spider slot `$27` changes pass `$80->$81`,
+    event to `$06`, orientation `$0C->$8C`, cursor `0->1->2`, and horizontal
+    low `$D8->$D7`.
+  - The reverse full-record transaction returns through `03:6A37` with
+    `A=$00`, `X=$27`, `Y=$01`, `P=$10`, and `SP=$F5` after 672 cycles and
+    12 exact writes. Focused Debug and Release regressions preserve the same
+    complete interpreter artifacts, while ROM-free coverage now includes
+    this exact selector/record pair.
+  - Independently replayed and admitted interrupt-free `03:6966@3` from the
+    next frame-873 state. Selector `$2C` and record `$05` resolve
+    `$6C30->$6D7A`; fixed slot `$28` changes pass `$80->$81`, event to `$04`,
+    orientation `$0C->$8C`, cursor `0->1->2`, and vertical low `$82->$83`.
+  - The vertical full-record transaction returns through `03:6A37` with
+    `A=$08`, `X=$28`, `Y=$01`, `P=$10`, and `SP=$F5` after 663 cycles and
+    12 exact writes. Focused Debug and Release regressions preserve the same
+    complete interpreter artifacts, while ROM-free coverage includes this
+    exact selector/record pair.
+  - Independently replayed and admitted interrupt-free `03:6966@4` from the
+    remaining adjacent frame-873 state. Selector `$2D` and record `$05`
+    resolve `$6C35->$6D7A`; fixed slot `$29` changes pass `$80->$81`, event
+    to `$04`, orientation `$0C->$8C`, cursor `0->1->2`, and vertical low
+    `$82->$83`.
+  - The second vertical full-record transaction returns through `03:6A37`
+    with `A=$08`, `X=$29`, `Y=$01`, `P=$10`, and `SP=$F5` after 663 cycles
+    and 12 exact writes. Focused Debug and Release regressions preserve the
+    same complete interpreter artifacts, while ROM-free coverage includes
+    this exact selector/record pair.
+  - Independently replayed and admitted interrupt-free `03:6966@6` at frame
+    941. Selector `$2B` resolves to table pointer `$6C2D`; fixed Front-Spider
+    slot `$27` changes pass state `$81->$80` and returns at `03:6988`.
+  - The second alternate-pass transaction matches output `A=$80`, `X=$27`,
+    `Y=$81`, `P=$12`, four writes at body cycles 39/66/114/135, and the
+    165-cycle body budget. Its focused Debug and Release regression
+    preserves the gameplay hash and complete `6966` traces, while ROM-free
+    coverage includes the exact selector/slot pair.
+  - Independently replayed and admitted interrupt-free `03:6966@7` at frame
+    941. Selector `$2C` resolves to table pointer `$6C30`; fixed slot `$28`
+    changes pass state `$81->$80` and returns at `03:6988`.
+  - The third alternate-pass transaction matches output `A=$80`, `X=$28`,
+    `Y=$81`, `P=$12`, four writes at body cycles 39/66/114/135, and the
+    165-cycle body budget. Its focused Debug and Release regression
+    preserves the gameplay hash and complete `6966` traces, while ROM-free
+    coverage includes the exact selector/slot pair.
+  - Independently replayed and admitted interrupt-free `03:6966@8` at frame
+    941. Selector `$2D` resolves to table pointer `$6C35`; fixed slot `$29`
+    changes pass state `$81->$80` and returns at `03:6988`.
+  - The fourth alternate-pass transaction matches output `A=$80`, `X=$29`,
+    `Y=$81`, `P=$12`, four writes at body cycles 39/66/114/135, and the
+    165-cycle body budget. Its focused Debug and Release regression
+    preserves the gameplay hash and complete `6966` traces, while ROM-free
+    coverage includes the exact selector/slot pair.
+  - Independently replayed and admitted interrupt-free `03:6966@9` at frame
+    942. Caller `03:5890` supplies selector `$06`; table entry `$0B` resolves
+    `$6B0A->$6DE6`, and slot `$17` changes pass `$80->$81`, event to `$0A`,
+    orientation `$0D->$8D`, cursor `0->1->2`, and horizontal low `$F6->$F5`.
+  - The alternate reverse full-record transaction returns through
+    `03:6A37` with `A=$00`, `X=$17`, `Y=$01`, `P=$10`, and `SP=$F9` after
+    672 cycles and 12 writes. Shadowing exposed and closed the full-record
+    adapter's previously fixed `$21F5` saved-status address: it is now
+    stack-relative and correctly writes `$21F9` for this caller.
+  - Extended `dc_advance_collision_table_record` to distinguish an
+    event-bearing high-bit header from a headerless continuation byte.
+    Continuations preserve event/orientation, consume the current byte as
+    motion, and advance the record cursor once rather than twice.
+  - Independently replayed and admitted interrupt-free `03:6966@10` at frame
+    942. Selector `$2A` resolves `$6C2A->$6D56`; slot `$26` resumes at cursor
+    2, applies headerless `$08`, changes vertical low `$7C->$7D`, and advances
+    the cursor once to 3.
+  - The continuation returns through `03:6A37` with `A=$08`, `X=$26`,
+    `Y=$02`, `P=$10`, and `SP=$F9` after 540 cycles and nine exact writes.
+    Focused Debug and Release regressions preserve the complete interpreter
+    artifacts.
+  - Generalized the continuation transcript over validated table, motion,
+    actor-field, and cursor addresses, then independently replayed and
+    admitted interrupt-free `03:6966@12` at frame 942. Selector `$2C`
+    resolves `$6C30->$6D7A`; slot `$28` resumes at cursor 2, applies
+    headerless `$08`, changes vertical low `$83->$84`, and advances the
+    cursor once to 3.
+  - The second continuation returns through `03:6A37` with `A=$08`, `X=$28`,
+    `Y=$02`, `P=$10`, and `SP=$F9` after 540 cycles and nine exact writes.
+    Focused Debug and Release regressions preserve the complete interpreter
+    artifacts.
+  - Independently replayed and admitted interrupt-free `03:6966@14` at frame
+    943. Caller `03:5890` supplies selector `$06`, which resolves to table
+    pointer `$6B0A`; slot `$17` changes pass state `$81->$80` and returns at
+    `03:6988`.
+  - The alternate-selector early-return transaction matches output `A=$80`,
+    `X=$17`, `Y=$81`, `P=$12`, and `SP=$F9`, four writes at body cycles
+    39/66/114/135, and the 165-cycle body budget. Focused Debug and Release
+    regressions preserve the gameplay hash and complete `6966` traces, while
+    ROM-free coverage includes the exact selector/slot pair.
+  - Independently replayed and admitted interrupt-free `03:6966@15` later
+    in frame 943. Selector `$2A` resolves to table pointer `$6C2A`; fixed
+    Front-Spider slot `$26` changes pass state `$81->$80` and returns at
+    `03:6988`.
+  - The repeated fixed-selector return exactly reuses the proven
+    four-write/165-cycle contract. Its focused Debug and Release regression
+    preserves the gameplay hash, complete `6966` traces, output registers,
+    and complete post-call RAM against restored assembly.
+  - Independently replayed and admitted interrupt-free `03:6966@16` later
+    in frame 943. Selector `$2B` resolves to table pointer `$6C2D`; fixed
+    Front-Spider slot `$27` changes pass state `$81->$80` and returns at
+    `03:6988`.
+  - The second repeated fixed-selector return exactly reuses the proven
+    four-write/165-cycle contract. Its focused Debug and Release regression
+    preserves the gameplay hash, complete `6966` traces, output registers,
+    and complete post-call RAM against restored assembly.
+  - Independently replayed and admitted interrupt-free `03:6966@17` later
+    in frame 943. Selector `$2C` resolves to table pointer `$6C30`; fixed
+    slot `$28` changes pass state `$81->$80` and returns at `03:6988`.
+  - This third repeated return enters with status `$12`, while the earlier
+    matching selector call enters with `$02`. The native guard now admits
+    both exact variants, and its focused Debug and Release regression
+    preserves all output, RAM, timing, write-order, and trace evidence.
+  - Independently replayed and admitted interrupt-free `03:6966@18` later
+    in frame 943. Selector `$2D` resolves to table pointer `$6C35`; fixed
+    slot `$29` changes pass state `$81->$80` and returns at `03:6988`.
+  - This fourth repeated return enters with status `$00`, while the earlier
+    matching selector call enters with `$10`. The native guard now admits
+    both exact variants, and its focused Debug and Release regression
+    preserves all output, RAM, timing, write-order, and trace evidence.
+  - Extended the continuation adapter through independently replayed,
+    interrupt-free `03:6966@19` at frame 944. Selector `$06` resolves
+    `$6B0A->$6DE6`; slot `$17` resumes at cursor 2, consumes headerless
+    reverse-vertical byte `$10`, changes vertical low `$C4->$C3`, and
+    advances the cursor to 3.
+  - The alternate continuation returns through `03:6A37` with `A=$C4`,
+    `X=$17`, `Y=$02`, `P=$10`, and `SP=$F9` after 549 cycles and nine exact
+    writes. Focused Debug and Release regressions preserve the complete
+    interpreter artifacts, while ROM-free coverage exercises the exact
+    reverse-vertical continuation.
+  - Extended the same helper through independently replayed, interrupt-free
+    `03:6966@20` at frame 944. Selector `$2A` resolves `$6C2A->$6D56`;
+    Front-Spider slot `$26` resumes at cursor 3, consumes headerless
+    horizontal byte `$20`, changes horizontal low `$41->$42`, and advances
+    the cursor to 4.
+  - The horizontal continuation returns through `03:6A37` with `A=$00`,
+    `X=$26`, `Y=$03`, `P=$10`, and `SP=$F9` after 540 cycles and nine exact
+    writes. Focused Debug and Release regressions preserve the complete
+    interpreter artifacts, while ROM-free coverage exercises the exact
+    horizontal continuation.
+  - Added independently replayed, interrupt-free `03:6966@21` later in frame
+    944. Selector `$2B` resolves `$6C2D->$6D9E`; Front-Spider slot `$27`
+    resumes at cursor 3, consumes headerless reverse-horizontal byte `$40`,
+    changes horizontal low `$D7->$D6`, and advances the cursor to 4.
+  - The reverse-horizontal continuation returns through `03:6A37` with
+    `A=$00`, `X=$27`, `Y=$03`, `P=$10`, and `SP=$F9` after 549 cycles and
+    nine exact writes. Focused Debug and Release regressions preserve the
+    complete interpreter artifacts, while ROM-free coverage exercises the
+    exact decrement path.
+  - Added independently replayed, interrupt-free `03:6966@22` later in frame
+    944. Selector `$2C` resolves `$6C30->$6D7A`; fixed slot `$28` resumes at
+    cursor 3, consumes headerless vertical byte `$08`, changes vertical low
+    `$84->$85`, and advances the cursor to 4.
+  - The later vertical continuation enters with status `$12` and returns
+    through `03:6A37` with `A=$08`, `X=$28`, `Y=$03`, `P=$10`, and
+    `SP=$F9` after 540 cycles and nine exact writes. Focused Debug and Release
+    regressions preserve the complete interpreter artifacts and ROM-free
+    coverage exercises the exact cursor-3 path.
+  - Added independently replayed, interrupt-free `03:6966@23` at the end of
+    frame 944. Selector `$2D` resolves `$6C35->$6D7A`; fixed slot `$29`
+    resumes at cursor 3, consumes headerless vertical byte `$08`, changes
+    vertical low `$84->$85`, and advances the cursor to 4.
+  - This second later vertical continuation enters with status `$00` and
+    returns through `03:6A37` with `A=$08`, `X=$29`, `Y=$03`, `P=$10`, and
+    `SP=$F9` after 540 cycles and nine exact writes. Focused Debug and
+    Release regressions preserve the complete interpreter artifacts and
+    ROM-free coverage exercises the exact slot-`$29` path.
+  - Replaced ordinal admission as the primary `03:6966` scheduler with
+    semantic `03:6966@all` admission. The adapter reads the selector pointer
+    from the verified user ROM and accepts the `$81->$80` early-return
+    contract for any selector and actor slot.
+  - Extended Beetle's hook entry with conservative master-cycle distances to
+    the next user/video event and next serviceable timer interrupt. Semantic
+    calls reaching either horizon fall back to original assembly, covering
+    interrupt-bearing calls without a maintained ordinal exception list while
+    allowing harmless timer-divider ticks.
+  - Generalized the ROM-driven headerless record step. Collision-list and
+    motion cursors now select the table entry, motion stream, and effective
+    delta without selector, actor-slot, caller, or ordinal conditions. The
+    transaction covers both axes and exact low-byte carry/borrow timing.
+  - Extended the bounded walker through `$C0` motion terminators, `$FE`
+    collision-list wraps, `$FF` table termination, and headered records.
+    Each traversed marker contributes its original cursor writes and exact
+    accumulated cycle delay to the final transaction.
+  - Retired the compiled selector/slot/ordinal proof matrix. The 21 focused
+    ordinal tests remain restored-assembly regression coordinates, but all
+    admitted `6966` execution now comes from the semantic early-return,
+    headerless-step, or bounded-walker paths.
+  - The aggregate Debug and Release regression executes 7,609 of 19,648
+    calls natively (38.7%) and preserves the established gameplay SHA-256,
+    complete call SHA-256, and complete 180,389-write SHA-256. Ordinals 11
+    and 13 retain their interrupt-owned transcripts under automatic fallback.
+- [x] Shifted Milestone 4 from the collision interpreter to bounded physics
+  routines:
+  - Replaced `F1B4`'s three state-specific admissions with one slot-zero
+    semantic transaction covering both sign branches, all four integer
+    comparisons, flags, exact writes, and variable cycle budgets.
+  - Verified its state/timing formula against all 906 interrupt-free calls;
+    automatic event/IRQ fallback safely admits 214 of 1,156 route calls.
+  - Enabled the already state-generic six-store `F241` rollback across all
+    safe calls, admitting 242 of 404.
+  - Both semantic aggregate regressions preserve exact gameplay and complete
+    call/write SHA-256 artifacts; the focused ordinal replays still pass.
+  - Release core, both semantic aggregates, and the native-replacement shadow
+    suite pass; Debug core and semantic `F1B4@all` also pass.
+
 ## Next Actions
 
 - [x] Add repository hygiene for ROMs, generated assets, traces, build products, and local configuration.
@@ -2951,6 +3362,87 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
     the live SAT last.
   - [ ] **Deferred at user request:** map the two-player/current-player RAM
     contract and add the P1/P2 discriminator to the DMD.
+- [ ] Port gameplay routines behind the transactional replacement boundary:
+  - [x] Replace and shadow-test bounded `00:F1B4@17` position integration.
+  - [x] Replace and shadow-test interrupt-free `00:F1B4@1` nonnegative
+    position integration.
+  - [x] Replace and shadow-test interrupt-free `00:F1B4@10` integer-step
+    early return.
+  - [x] Replace ordinal admission for `00:F1B4` with semantic slot-zero
+    integration; cover 214 of 1,156 route calls natively.
+  - [x] Retain bounded `00:F241@1` collision rollback as the reference slice.
+  - [x] Schedule state-generic `00:F241@all` rollback with automatic
+    event/IRQ fallback; cover 242 of 404 route calls natively.
+  - [x] Replace and shadow-test bounded `01:DD09@1` zero-component
+    acceleration.
+  - [x] Replace and shadow-test interrupt-free `01:DD09@2` nonzero
+    second-component damping and acceleration.
+  - [x] Replace and shadow-test interrupt-free `01:DD09@181` negative
+    divider and sign restoration; keep interrupt-bearing `01:DD09@52`
+    emulated.
+  - [x] Replace and shadow-test interrupt-free `01:D1A2@23` signed
+    two-dimensional rotation; keep interrupt-bearing `D1A2@1` emulated.
+  - [x] Replace and shadow-test interrupt-free `03:7FB1@1` actor
+    collision-response advancement.
+  - [x] Replace and shadow-test interrupt-free `03:7FB1@3` follow-up
+    countdown advancement; keep interrupt-bearing `03:7FB1@2` emulated.
+  - [x] Replace and shadow-test interrupt-free `03:7FB1@7`
+    countdown-reload and phase advancement.
+  - [x] Replace `03:7FB1` ordinal admission with semantic response,
+    countdown, phase, flag, write, and timing derivation; cover 13,460 of
+    21,987 census calls with automatic event/IRQ fallback.
+  - [x] Replace and shadow-test interrupt-free `03:6966@5`
+    collision-table alternate-pass early return.
+  - [x] Replace and shadow-test interrupt-free `03:6966@1`
+    full collision-table record advancement.
+  - [x] Replace and shadow-test interrupt-free `03:6966@2`
+    reverse full collision-table record advancement.
+  - [x] Replace and shadow-test interrupt-free `03:6966@3`
+    vertical full collision-table record advancement.
+  - [x] Replace and shadow-test interrupt-free `03:6966@4`
+    second vertical full collision-table record advancement.
+  - [x] Replace and shadow-test interrupt-free `03:6966@6`
+    second collision-table alternate-pass early return.
+  - [x] Replace and shadow-test interrupt-free `03:6966@7`
+    third collision-table alternate-pass early return.
+  - [x] Replace and shadow-test interrupt-free `03:6966@8`
+    fourth collision-table alternate-pass early return.
+  - [x] Replace and shadow-test interrupt-free `03:6966@9`
+    alternate-selector reverse full-record advancement.
+  - [x] Replace and shadow-test interrupt-free `03:6966@10`
+    headerless vertical continuation.
+  - [x] Replace and shadow-test interrupt-free `03:6966@12`
+    second headerless vertical continuation.
+  - [x] Replace and shadow-test interrupt-free `03:6966@14`
+    alternate-selector early return.
+  - [x] Replace and shadow-test interrupt-free `03:6966@15`
+    repeated fixed-selector early return.
+  - [x] Replace and shadow-test interrupt-free `03:6966@16`
+    second repeated fixed-selector early return.
+  - [x] Replace and shadow-test interrupt-free `03:6966@17`
+    third repeated fixed-selector early return with status `$12`.
+  - [x] Replace and shadow-test interrupt-free `03:6966@18`
+    fourth repeated fixed-selector early return with status `$00`.
+  - [x] Replace and shadow-test interrupt-free `03:6966@19`
+    alternate-selector reverse-vertical continuation.
+  - [x] Replace and shadow-test interrupt-free `03:6966@20`
+    headerless horizontal continuation.
+  - [x] Replace and shadow-test interrupt-free `03:6966@21`
+    headerless reverse-horizontal continuation.
+  - [x] Replace and shadow-test interrupt-free `03:6966@22`
+    later headerless vertical continuation with status `$12`.
+  - [x] Replace and shadow-test interrupt-free `03:6966@23`
+    second later headerless vertical continuation with status `$00`.
+  - [x] Replace ordinal-by-ordinal `03:6966` scheduling with semantic
+    alternate-pass admission and conservative hardware-event fallback;
+    cover 4,868 of 19,648 route calls natively.
+  - [x] Resolve ordinary headerless `03:6966` record steps from the ROM
+    tables and per-slot cursors, including two-axis movement and high-byte
+    carry/borrow; cover 7,437 of 19,648 route calls natively.
+  - [x] Extend the bounded `03:6966` walker through `$C0`, `$FE`, `$FF`,
+    and headered records; cover 7,476 of 19,648 route calls natively.
+  - [x] Separate harmless timer-divider ticks from serviceable timer IRQs in
+    the core scheduling horizon; cover 7,609 of 19,648 route calls natively.
 - [ ] **Milestone 4 deferred:** reproduce additional normal-table and
   bonus-stage rule-family variants as their routines are ported.
 - [ ] **Milestone 4 deferred:** extend replacement scheduling with faithful
@@ -2958,6 +3450,32 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
   interrupt-bearing call.
 
 ## Active Work
+
+Milestone 4 is now active. Semantic `03:6966@all` scheduling replaces 7,609
+of 19,648 deterministic-route calls by selector/slot state, while the
+previous `03:6966@1` through `@23` admissions remain focused regression
+coordinates for implemented full-record, continuation, and early-return
+branches. Further expansion of this unusually large interpreter is frozen
+while smaller routines are ported. Semantic `00:F1B4@all` integration and
+`00:F241@all` rollback now replace 456 calls across their 1,560-call
+position pipeline. Semantic `03:7FB1@all` replaces 13,460 of 21,987
+collision-response calls across all live slots; its `@1`, `@3`, and `@7`
+coordinates remain focused decrement/reload fixtures.
+`01:D1A2@23` signed rotation,
+`01:DD09@1` zero-component acceleration, `01:DD09@2` positive-divider
+damping, `01:DD09@181` negative-divider damping, `00:F1B4@1` nonnegative
+integration, `00:F1B4@10` integer-step
+integration, `00:F1B4@17` negative-second integration, and `00:F241@1`
+collision rollback execute through the
+transactional copied-RAM boundary across the physics and collision routes,
+then shadow against restored assembly with exact register, MPR, cycle,
+write-order, and complete-RAM parity. Positive-state repeated passes and the
+reverse-oriented `SMB0 $35` record class remain frozen with the collision
+interpreter. Calls reaching the conservative user/video-event or
+serviceable-timer-IRQ horizon—including ordinals 11 and 13—fall back
+automatically. Unimplemented semantic paths and interrupt-bearing
+`DD09@52` and `D1A2@1` remain emulated; direct `7FB1@2` stays rejected as
+an interrupt-bearing fixture while `7FB1@all` falls back dynamically.
 
 Milestone 2 is complete. Milestone 3 now has the copied-video boundary,
 directional `00:F400` stream map, packed-source decoder, accepted
@@ -2998,7 +3516,7 @@ region. Actor presentation Y is normalized past the 30-line status band,
 the stitched background retains a zero-pixel vertical offset across launch,
 and retained palette indices follow the settled VCE palette instead of
 freezing fade-time colors. Two-player/DMD work is explicitly deferred again at the user's
-request; the next work remains cabinet-playfield-first and user-directed.
+request; Milestone 4 proceeds without that discriminator.
 `$2251` remains proven only as the active score-array selector. The finite
 dynamic/static/deferred scope remains frozen in
 `docs/COVERAGE_MANIFEST.md`.
@@ -3006,8 +3524,14 @@ dynamic/static/deferred scope remains frozen in
 All six bonus stages have a bounded event family plus deterministic timeout,
 completion, ordinary scored-result, and perfect regressions. All nine
 bonus/ending-bank RNG consumers and all 12 normal-table consumers are
-dynamically bounded. Retain `00:F241@1` as the reference replacement vertical
-slice.
+dynamically bounded. Retain frozen semantic `03:6966@all` scheduling and its
+ordinal regression fixtures,
+`01:DD09@1`,
+`01:DD09@2`,
+`01:DD09@181`,
+semantic `00:F1B4@all` and `00:F241@all`, their focused ordinal fixtures,
+and `00:F241@1` as the current
+replacement vertical slice.
 
 ## Blockers
 
@@ -3038,7 +3562,17 @@ comparison. Broad replacement of interrupt-bearing calls remains blocked on
 faithful mid-routine interrupt delivery; the bridge deliberately declines
 those calls today. This is a Milestone 4 replacement constraint and does not
 block Milestone 2 closure or replacement of separately proven no-interrupt
-scopes.
+scopes. `03:6966@11` enters through `03:69A2` / `00:FC26`, while
+`03:6966@13` shifts interrupt-owned stores beginning near `03:69B7`; both
+remain emulated until that delivery boundary exists. Semantic
+`00:F1B4@all` and `00:F241@all` use the core-provided event/IRQ horizons;
+calls that could cross an internal delivery boundary remain in assembly
+automatically.
+`01:DD09@52` is also interrupt-bearing: normalized replay identifies
+interrupt-owned stack and controller writes through `00:E058/E169`, even
+though its natural trace does not enter the previously catalogued
+`FCxx/FDxx` handler range. Keep it emulated until faithful mid-routine
+delivery exists.
 Undead-Head launch consumer `03:6177` is dynamically bounded through fixed
 slot `$4D`, but its 5,778-cycle combined-route scope contains a periodic
 interrupt. Its RNG-owned writes are deterministic, while normalized replay

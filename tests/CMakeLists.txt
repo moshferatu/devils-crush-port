@@ -173,6 +173,76 @@ if(TARGET devils_crush)
     )
 
     add_test(
+        NAME dc_cli_unproven_native_replacement
+        COMMAND
+            devils_crush
+            --record-gameplay
+            unused.csv
+            --replace-hook
+            00:F1B4@2
+    )
+    set_tests_properties(
+        dc_cli_unproven_native_replacement
+        PROPERTIES WILL_FAIL TRUE
+    )
+
+    add_test(
+        NAME dc_cli_unproven_native_damping_replacement
+        COMMAND
+            devils_crush
+            --record-gameplay
+            unused.csv
+            --replace-hook
+            01:DD09@3
+    )
+    set_tests_properties(
+        dc_cli_unproven_native_damping_replacement
+        PROPERTIES WILL_FAIL TRUE
+    )
+
+    add_test(
+        NAME dc_cli_unproven_native_rotation_replacement
+        COMMAND
+            devils_crush
+            --record-gameplay
+            unused.csv
+            --replace-hook
+            01:D1A2@1
+    )
+    set_tests_properties(
+        dc_cli_unproven_native_rotation_replacement
+        PROPERTIES WILL_FAIL TRUE
+    )
+
+    add_test(
+        NAME dc_cli_unproven_native_collision_response_replacement
+        COMMAND
+            devils_crush
+            --record-state-census
+            unused.csv
+            --replace-hook
+            03:7FB1@2
+    )
+    set_tests_properties(
+        dc_cli_unproven_native_collision_response_replacement
+        PROPERTIES WILL_FAIL TRUE
+    )
+
+    add_test(
+        NAME dc_cli_unproven_native_collision_table_replacement
+        COMMAND
+            devils_crush
+            --record-gameplay
+            unused.csv
+            --replace-hook
+            03:6966@11
+    )
+    set_tests_properties(
+        dc_cli_unproven_native_collision_table_replacement
+        PROPERTIES WILL_FAIL TRUE
+    )
+
+    add_test(
         NAME dc_cli_unobserved_routine_replay
         COMMAND
             devils_crush
@@ -482,6 +552,474 @@ if(TARGET devils_crush)
         )
         set_tests_properties(
             dc_rom_collision_boundary
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_collision_table_pass
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/collision-table-pass-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_collision_table_pass.cmake"
+        )
+        set_tests_properties(
+            dc_rom_collision_table_pass
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_collision_table_pass_second
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/collision-table-pass-second-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_collision_table_pass_second.cmake"
+        )
+        set_tests_properties(
+            dc_rom_collision_table_pass_second
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_collision_table_pass_third
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/collision-table-pass-third-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_collision_table_pass_third.cmake"
+        )
+        set_tests_properties(
+            dc_rom_collision_table_pass_third
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_collision_table_pass_fourth
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/collision-table-pass-fourth-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_collision_table_pass_fourth.cmake"
+        )
+        set_tests_properties(
+            dc_rom_collision_table_pass_fourth
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_collision_table_pass_alternate
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/collision-table-pass-alternate-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_collision_table_pass_alternate.cmake"
+        )
+        set_tests_properties(
+            dc_rom_collision_table_pass_alternate
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_collision_table_pass_repeat
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/collision-table-pass-repeat-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_collision_table_pass_repeat.cmake"
+        )
+        set_tests_properties(
+            dc_rom_collision_table_pass_repeat
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_collision_table_pass_repeat_second
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/collision-table-pass-repeat-second-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_collision_table_pass_repeat_second.cmake"
+        )
+        set_tests_properties(
+            dc_rom_collision_table_pass_repeat_second
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_collision_table_pass_repeat_third
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/collision-table-pass-repeat-third-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_collision_table_pass_repeat_third.cmake"
+        )
+        set_tests_properties(
+            dc_rom_collision_table_pass_repeat_third
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_collision_table_pass_repeat_fourth
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/collision-table-pass-repeat-fourth-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_collision_table_pass_repeat_fourth.cmake"
+        )
+        set_tests_properties(
+            dc_rom_collision_table_pass_repeat_fourth
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_collision_table_record
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/collision-table-record-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_collision_table_record.cmake"
+        )
+        set_tests_properties(
+            dc_rom_collision_table_record
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_collision_table_record_continuation
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/collision-table-record-continuation-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_collision_table_record_continuation.cmake"
+        )
+        set_tests_properties(
+            dc_rom_collision_table_record_continuation
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_collision_table_record_continuation_second
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/collision-table-record-continuation-second-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_collision_table_record_continuation_second.cmake"
+        )
+        set_tests_properties(
+            dc_rom_collision_table_record_continuation_second
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_collision_table_record_continuation_alternate
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/collision-table-record-continuation-alternate-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_collision_table_record_continuation_alternate.cmake"
+        )
+        set_tests_properties(
+            dc_rom_collision_table_record_continuation_alternate
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_collision_table_record_continuation_horizontal
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/collision-table-record-continuation-horizontal-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_collision_table_record_continuation_horizontal.cmake"
+        )
+        set_tests_properties(
+            dc_rom_collision_table_record_continuation_horizontal
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_collision_table_record_continuation_reverse
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/collision-table-record-continuation-reverse-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_collision_table_record_continuation_reverse.cmake"
+        )
+        set_tests_properties(
+            dc_rom_collision_table_record_continuation_reverse
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_collision_table_record_continuation_vertical
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/collision-table-record-continuation-vertical-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_collision_table_record_continuation_vertical.cmake"
+        )
+        set_tests_properties(
+            dc_rom_collision_table_record_continuation_vertical
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_collision_table_record_continuation_vertical_second
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/collision-table-record-continuation-vertical-second-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_collision_table_record_continuation_vertical_second.cmake"
+        )
+        set_tests_properties(
+            dc_rom_collision_table_record_continuation_vertical_second
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_collision_table_semantic
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/collision-table-semantic-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_collision_table_semantic.cmake"
+        )
+        set_tests_properties(
+            dc_rom_collision_table_semantic
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_collision_table_record_reverse
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/collision-table-record-reverse-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_collision_table_record_reverse.cmake"
+        )
+        set_tests_properties(
+            dc_rom_collision_table_record_reverse
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_collision_table_record_alternate_reverse
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/collision-table-record-alternate-reverse-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_collision_table_record_alternate_reverse.cmake"
+        )
+        set_tests_properties(
+            dc_rom_collision_table_record_alternate_reverse
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_collision_table_record_vertical
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/collision-table-record-vertical-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_collision_table_record_vertical.cmake"
+        )
+        set_tests_properties(
+            dc_rom_collision_table_record_vertical
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_collision_table_record_vertical_second
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/collision-table-record-vertical-second-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_collision_table_record_vertical_second.cmake"
+        )
+        set_tests_properties(
+            dc_rom_collision_table_record_vertical_second
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_collision_response_reload
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/collision-response-reload-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_collision_response_reload.cmake"
+        )
+        set_tests_properties(
+            dc_rom_collision_response_reload
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_collision_response_followup
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/collision-response-followup-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_collision_response_followup.cmake"
+        )
+        set_tests_properties(
+            dc_rom_collision_response_followup
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_collision_response_semantic
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/collision-response-semantic-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_collision_response_semantic.cmake"
+        )
+        set_tests_properties(
+            dc_rom_collision_response_semantic
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_motion_damping_nonzero
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/motion-damping-nonzero-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_motion_damping_nonzero.cmake"
+        )
+        set_tests_properties(
+            dc_rom_motion_damping_nonzero
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_motion_damping_negative
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/motion-damping-negative-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_motion_damping_negative.cmake"
+        )
+        set_tests_properties(
+            dc_rom_motion_damping_negative
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_position_integration_positive
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/position-integration-positive-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_position_integration_positive.cmake"
+        )
+        set_tests_properties(
+            dc_rom_position_integration_positive
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_position_integration_integer_step
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/position-integration-integer-step-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_position_integration_integer_step.cmake"
+        )
+        set_tests_properties(
+            dc_rom_position_integration_integer_step
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_position_integration_semantic
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/position-integration-semantic-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_position_integration_semantic.cmake"
+        )
+        set_tests_properties(
+            dc_rom_position_integration_semantic
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_cached_position_restore_semantic
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/cached-position-restore-semantic-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_cached_position_restore_semantic.cmake"
+        )
+        set_tests_properties(
+            dc_rom_cached_position_restore_semantic
             PROPERTIES LABELS rom_required
         )
 

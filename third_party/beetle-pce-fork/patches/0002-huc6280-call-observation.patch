@@ -35,10 +35,11 @@ diff --git a/mednafen/pce/huc6280.h b/mednafen/pce/huc6280.h
  	}
  
  	// Used for ST0, ST1, ST2
-@@ -282,6 +302,8 @@ private:
+@@ -282,6 +302,9 @@ private:
  	uint8 Y;		// Y Indes register
  	uint8 S;		// Stack Pointer
  	uint8 P;		// Processor Flags/Status Register
++	uint32 GetMasterCyclesUntilTimerInterrupt(void) const;
 +	uint16 HookInstructionPC;
 +	uint8 HookInstructionPhysicalBank;
  	uint8 IRQMask;
@@ -47,7 +48,37 @@ diff --git a/mednafen/pce/huc6280.h b/mednafen/pce/huc6280.h
 diff --git a/mednafen/pce/huc6280.cpp b/mednafen/pce/huc6280.cpp
 --- a/mednafen/pce/huc6280.cpp
 +++ b/mednafen/pce/huc6280.cpp
-@@ -623,33 +623,37 @@ NO_INLINE void HuC6280::RunSub(void)
+@@ -531,1 +531,29 @@ void HuC6280::TimerSync(void)
+ }
++
++uint32 HuC6280::GetMasterCyclesUntilTimerInterrupt(void) const
++{
++	const uint32 no_interrupt = 0xFFFFFFFFU;
++	int64 remaining;
++	int64 horizon;
++
++	if((P & I_FLAG) || !(IRQMask & IQTIMER))
++		return no_interrupt;
++	if(IRQlow & IQTIMER)
++		return 0;
++	if(!timer_status)
++		return no_interrupt;
++
++	remaining = (int64)timer_div - ((int64)timestamp - timer_lastts);
++	if(remaining < 0)
++		remaining = 0;
++	if(timer_inreload)
++		horizon = remaining + 3071 + (int64)timer_load * 3072;
++	else
++		horizon = remaining + (int64)timer_value * 3072;
++
++	if(horizon < 0)
++		return 0;
++	if(horizon > no_interrupt)
++		return no_interrupt;
++	return (uint32)horizon;
++}
+@@ -623,33 +651,39 @@ NO_INLINE void HuC6280::RunSub(void)
  			}
  		}
  		PC &= 0xFFFF;     // Our cpu core can only handle PC going about 8192 bytes over, so make sure it never gets that far...
@@ -74,7 +105,9 @@ diff --git a/mednafen/pce/huc6280.cpp b/mednafen/pce/huc6280.cpp
  				},
 -				timestamp
 +				timestamp,
-+				PCE_TimestampBase + timestamp
++				PCE_TimestampBase + timestamp,
++				(uint32)next_user_event,
++				GetMasterCyclesUntilTimerInterrupt()
  			};
  
  			dc_beetle_active_instruction_hook(

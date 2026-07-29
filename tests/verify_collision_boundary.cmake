@@ -66,6 +66,8 @@ execute_process(
         "00:F55C"
         --observe-hook
         "00:ED18"
+        --replace-hook
+        "03:7FB1@1"
         --routine-trace
         "${trace_output}"
         --routine-call-trace
@@ -84,6 +86,8 @@ execute_process(
         "2205-221A"
         --work-ram-write-trace
         "${state_write_output}"
+        --routine-replay
+        "03:7FB1@1"
         --rom
         "${ROM}"
     RESULT_VARIABLE recorder_result
@@ -106,9 +110,12 @@ foreach(expected_line IN ITEMS
     "Observe hook 4 entries: 21987"
     "Observe hook 5 entries: 40"
     "Observe hook 6 entries: 66"
+    "Native replacement 03:7FB1@1 entries: 1"
     "Routine trace complete: 97379 entries"
     "Routine call trace complete: 97379 calls, 1163259 writes"
     "Work-RAM write trace complete: 8893 selected writes"
+    "Routine replay 03:7FB1@1 verified: frame 957, 126 body cycles, 3 ordered writes"
+    "Routine replay complete: 1 state-normalized calls"
 )
     string(FIND "${recorder_output}" "${expected_line}" line_offset)
     if(line_offset EQUAL -1)

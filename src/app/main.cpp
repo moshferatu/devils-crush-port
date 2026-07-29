@@ -6,11 +6,15 @@
 #include "devils_crush/core/rom_image.hpp"
 #include "devils_crush/core/save_state.hpp"
 #include "devils_crush/emulation/pce_runtime.hpp"
+#include "devils_crush/game_logic/collision.h"
 #include "devils_crush/game_logic/physics.h"
 #include "devils_crush/render/backglass_image.hpp"
 #include "devils_crush/render/pce_background.hpp"
 #include "devils_crush/render/pce_sprite_overlay.hpp"
 #include "devils_crush/render/sharp_pixel_scaler.hpp"
+#include "native_d1a2_ordinal23.hpp"
+#include "native_dd09_ordinal2.hpp"
+#include "native_dd09_ordinal181.hpp"
 
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
@@ -78,6 +82,7 @@ using devils_crush::emulation::HookMode;
 using devils_crush::emulation::InputFrame;
 using devils_crush::emulation::ObservedMemoryWrite;
 using devils_crush::emulation::PceRuntime;
+using devils_crush::emulation::ReplacementMemoryWrite;
 using devils_crush::emulation::RoutineCall;
 using devils_crush::emulation::RoutineEntry;
 using devils_crush::emulation::RoutineKey;
@@ -91,6 +96,7 @@ struct LogicalAddressRange {
 struct RoutineReplayRequest {
     RoutineKey routine;
     std::uint64_t ordinal = 0;
+    bool all_calls = false;
 };
 
 struct WorkRamPatch {
@@ -205,6 +211,24 @@ parse_routine_replay_request(const std::string_view text)
     return RoutineReplayRequest{
         .routine = *routine,
         .ordinal = ordinal,
+    };
+}
+
+[[nodiscard]] std::optional<RoutineReplayRequest>
+parse_replacement_request(const std::string_view text)
+{
+    constexpr std::string_view kAllSuffix = "@all";
+    if (!text.ends_with(kAllSuffix)) {
+        return parse_routine_replay_request(text);
+    }
+    const auto routine =
+        parse_routine_key(text.substr(0U, text.size() - kAllSuffix.size()));
+    if (!routine) {
+        return std::nullopt;
+    }
+    return RoutineReplayRequest{
+        .routine = *routine,
+        .all_calls = true,
     };
 }
 
@@ -456,15 +480,16 @@ parse_logical_address_range(const std::string_view text)
         } else if (argument == "--replace-hook") {
             if (index + 1 >= argc) {
                 options.error =
-                    "--replace-hook requires BANK:PC@ORDINAL.";
+                    "--replace-hook requires BANK:PC@ORDINAL or "
+                    "BANK:PC@all.";
                 return options;
             }
             const auto request =
-                parse_routine_replay_request(argv[++index]);
+                parse_replacement_request(argv[++index]);
             if (!request) {
                 options.error =
                     "--replace-hook requires hexadecimal BANK:PC and "
-                    "a positive decimal ORDINAL.";
+                    "a positive decimal ORDINAL or the suffix @all.";
                 return options;
             }
             if (std::find(
@@ -632,14 +657,95 @@ parse_logical_address_range(const std::string_view text)
                    options.replace_hooks.begin(),
                    options.replace_hooks.end(),
                    [](const RoutineReplayRequest& request) {
-                       return request.routine
-                           != RoutineKey{
+                       const bool cached_position_restore =
+                           request.routine
+                           == RoutineKey{
                                .physical_bank = 0x00U,
                                .logical_pc = 0xF241U,
                            };
+                       const bool proven_position_integration =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x00U,
+                                       .logical_pc = 0xF1B4U,
+                                   }
+                           && (request.all_calls
+                               || request.ordinal == 1U
+                               || request.ordinal == 10U
+                               || request.ordinal == 17U);
+                       const bool proven_motion_damping =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x01U,
+                                       .logical_pc = 0xDD09U,
+                                   }
+                           && (request.ordinal == 1U
+                               || request.ordinal == 2U
+                               || request.ordinal == 181U);
+                       const bool proven_motion_rotation =
+                           request.routine
+                               == RoutineKey{
+                                   .physical_bank = 0x01U,
+                                   .logical_pc = 0xD1A2U,
+                               }
+                           && request.ordinal == 23U;
+                       const bool proven_collision_response =
+                           request.routine
+                               == RoutineKey{
+                                   .physical_bank = 0x03U,
+                                   .logical_pc = 0x7FB1U,
+                               }
+                           && (request.all_calls
+                               || request.ordinal == 1U
+                               || request.ordinal == 3U
+                               || request.ordinal == 7U);
+                       const bool proven_collision_table_pass =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x03U,
+                                       .logical_pc = 0x6966U,
+                                   }
+                           && (request.all_calls
+                               || request.ordinal == 1U
+                               || request.ordinal == 2U
+                               || request.ordinal == 3U
+                               || request.ordinal == 4U
+                               || request.ordinal == 5U
+                               || request.ordinal == 6U
+                               || request.ordinal == 7U
+                               || request.ordinal == 8U
+                               || request.ordinal == 9U
+                               || request.ordinal == 10U
+                               || request.ordinal == 12U
+                               || request.ordinal == 14U
+                               || request.ordinal == 15U
+                               || request.ordinal == 16U
+                               || request.ordinal == 17U
+                               || request.ordinal == 18U
+                               || request.ordinal == 19U
+                               || request.ordinal == 20U
+                               || request.ordinal == 21U
+                               || request.ordinal == 22U
+                               || request.ordinal == 23U);
+                       return !cached_position_restore
+                           && !proven_position_integration
+                           && !proven_motion_damping
+                           && !proven_motion_rotation
+                           && !proven_collision_response
+                           && !proven_collision_table_pass;
                    })) {
         options.error =
-            "Native replacement currently supports only 00:F241.";
+            "Native replacement currently supports 00:F241, semantic "
+            "00:F1B4@all, and the proven no-interrupt 00:F1B4@1, 00:F1B4@10, "
+            "00:F1B4@17, 01:D1A2@23, 01:DD09@1, 01:DD09@2, "
+            "01:DD09@181, 03:6966@1, 03:6966@2, 03:6966@3, "
+            "03:6966@4, 03:6966@5, 03:6966@6, 03:6966@7, "
+            "03:6966@8, 03:6966@9, 03:6966@10, 03:6966@12, "
+            "03:6966@14, 03:6966@15, 03:6966@16, 03:6966@17, "
+            "03:6966@18, 03:6966@19, 03:6966@20, 03:6966@21, "
+            "03:6966@22, 03:6966@23, semantic 03:6966@all, semantic "
+            "03:7FB1@all, and the proven 03:7FB1@1, 03:7FB1@3, and "
+            "03:7FB1@7 calls.";
     } else if (!options.work_ram_patches.empty() && !recording_selected) {
         options.error =
             "--work-ram-patch requires a recording operation.";
@@ -698,7 +804,7 @@ parse_logical_address_range(const std::string_view text)
 void print_usage()
 {
     std::cout
-        << "Devil's Crush PC port - Milestone 3\n\n"
+        << "Devil's Crush PC port - Milestone 4\n\n"
         << "Usage:\n"
         << "  devils-crush [--rom <path>]\n"
         << "  devils-crush --cabinet [--backglass <image>] [--rom <path>]\n"
@@ -711,7 +817,7 @@ void print_usage()
            "      [--canonical-audio <output.wav>]\n"
            "      [--pass-through-hook <bank:pc>]...\n"
            "      [--observe-hook <bank:pc>]...\n"
-           "      [--replace-hook <bank:pc@ordinal>]...\n"
+           "      [--replace-hook <bank:pc@ordinal|bank:pc@all>]...\n"
            "      [--routine-trace <entries.csv>]\n"
            "      [--routine-call-trace <calls.csv>]\n"
            "      [--routine-replay <bank:pc@ordinal>]...\n"
@@ -725,7 +831,7 @@ void print_usage()
            "      [--canonical-audio <output.wav>]\n"
            "      [--pass-through-hook <bank:pc>]...\n"
            "      [--observe-hook <bank:pc>]...\n"
-           "      [--replace-hook <bank:pc@ordinal>]...\n"
+           "      [--replace-hook <bank:pc@ordinal|bank:pc@all>]...\n"
            "      [--routine-trace <entries.csv>]\n"
            "      [--routine-call-trace <calls.csv>]\n"
            "      [--routine-replay <bank:pc@ordinal>]...\n"
@@ -739,7 +845,7 @@ void print_usage()
            "      [--canonical-audio <output.wav>]\n"
            "      [--pass-through-hook <bank:pc>]...\n"
            "      [--observe-hook <bank:pc>]...\n"
-           "      [--replace-hook <bank:pc@ordinal>]...\n"
+           "      [--replace-hook <bank:pc@ordinal|bank:pc@all>]...\n"
            "      [--routine-trace <entries.csv>]\n"
            "      [--routine-call-trace <calls.csv>]\n"
            "      [--routine-replay <bank:pc@ordinal>]...\n"
@@ -804,8 +910,7 @@ void print_validation(const devils_crush::rom::ValidationResult& result)
     if (!input
         || input.gcount()
             != static_cast<std::streamsize>(bytes.size())) {
-        std::cerr << "Could not read the supported ROM for cabinet "
-                     "background decoding: "
+        std::cerr << "Could not read the supported ROM bytes: "
                   << path.string() << '\n';
         return std::nullopt;
     }
@@ -2458,6 +2563,2207 @@ struct RoutineReplayCapture {
 };
 
 [[nodiscard]] std::optional<RoutineReplacement>
+replace_position_integration(
+    const RoutineEntry& entry,
+    const std::span<const std::byte> work_ram)
+{
+    constexpr RoutineKey kRoutine{
+        .physical_bank = 0x00U,
+        .logical_pc = 0xF1B4U,
+    };
+    if (entry.routine != kRoutine) {
+        return std::nullopt;
+    }
+
+    const auto* const bytes =
+        reinterpret_cast<const std::uint8_t*>(work_ram.data());
+    dc_position_integration integration{};
+    if (!dc_integrate_position(
+            bytes,
+            work_ram.size(),
+            entry.registers.x,
+            &integration)) {
+        throw std::runtime_error(
+            "Native F1B4 replacement rejected the work-RAM snapshot.");
+    }
+    // The traced game route uses slot zero. Decimal or T-mode arithmetic
+    // would have different HuC6280 semantics, so those inputs stay emulated.
+    if (entry.registers.x != 0U
+        || (entry.registers.status & 0x28U) != 0U) {
+        return std::nullopt;
+    }
+
+    constexpr std::array<std::size_t, 4> kComparedCacheIndexes{
+        4U,
+        5U,
+        1U,
+        2U,
+    };
+    std::optional<std::size_t> changed_integer_index;
+    for (std::size_t index = 0U;
+         index < kComparedCacheIndexes.size();
+         ++index) {
+        const auto byte_index = kComparedCacheIndexes[index];
+        if (integration.cached_values[byte_index]
+            != integration.position_values[byte_index]) {
+            changed_integer_index = index;
+            break;
+        }
+    }
+
+    const auto sign_branch_count = static_cast<std::uint32_t>(
+        integration.first_increment_negative
+        + integration.second_increment_negative);
+    const auto sign_branch_cycles = 12U * sign_branch_count;
+    const std::uint8_t first_high_addend =
+        integration.first_increment_negative != 0U ? 0xFFU : 0U;
+    const std::uint8_t original_first_high =
+        integration.cached_values[5];
+    const std::uint8_t integrated_first_high =
+        integration.position_values[5];
+    const bool overflow =
+        ((~(original_first_high ^ first_high_addend)
+             & (original_first_high ^ integrated_first_high)
+             & 0x80U)
+            != 0U);
+
+    auto output = entry.registers;
+    output.program_counter = 0xF240U;
+    output.status = static_cast<std::uint8_t>(
+        entry.registers.status & 0x14U);
+    if (overflow) {
+        output.status |= 0x40U;
+    }
+
+    std::uint32_t body_master_cycles = 702U + sign_branch_cycles;
+    if (changed_integer_index) {
+        const auto byte_index =
+            kComparedCacheIndexes[*changed_integer_index];
+        const std::uint8_t left = integration.cached_values[byte_index];
+        const std::uint8_t right = integration.position_values[byte_index];
+        const std::uint8_t difference =
+            static_cast<std::uint8_t>(left - right);
+        output.accumulator = left;
+        if (left >= right) {
+            output.status |= 0x01U;
+        }
+        if (difference == 0U) {
+            output.status |= 0x02U;
+        }
+        if ((difference & 0x80U) != 0U) {
+            output.status |= 0x80U;
+        }
+        body_master_cycles =
+            573U
+            + 33U * static_cast<std::uint32_t>(*changed_integer_index)
+            + sign_branch_cycles;
+    } else {
+        output.accumulator = integration.final_motion_flags;
+        output.status |= 0x01U;
+        if (integration.final_motion_flags == 0U) {
+            output.status |= 0x02U;
+        }
+        if ((integration.final_motion_flags & 0x80U) != 0U) {
+            output.status |= 0x80U;
+        }
+    }
+
+    RoutineReplacement replacement{
+        .return_instruction = {
+            .physical_bank = 0x00U,
+            .logical_pc = 0xF240U,
+        },
+        .output_registers = output,
+        .body_master_cycles = body_master_cycles,
+    };
+    replacement.work_ram_writes.reserve(
+        15U + sign_branch_count
+        + static_cast<std::size_t>(!changed_integer_index.has_value()));
+    constexpr std::array<std::uint16_t, 6> kCacheStorePcs{
+        0xF1B7U,
+        0xF1BCU,
+        0xF1C1U,
+        0xF1C6U,
+        0xF1CBU,
+        0xF1D0U,
+    };
+    for (std::size_t index = 0U;
+         index < kCacheStorePcs.size();
+         ++index) {
+        replacement.work_ram_writes.push_back({
+            .instruction = {
+                .physical_bank = 0x00U,
+                .logical_pc = kCacheStorePcs[index],
+            },
+            .logical_address = static_cast<std::uint16_t>(
+                0x2000U
+                + integration.cache_work_ram_offsets[index]),
+            .value = integration.cached_values[index],
+            .master_cycle_offset =
+                static_cast<std::uint32_t>(27U * (index + 1U)),
+        });
+    }
+    replacement.work_ram_writes.push_back({
+        .instruction = {0x00U, 0xF1D7U},
+        .logical_address = 0x3C80U,
+        .value = integration.cleared_motion_flags,
+        .master_cycle_offset = 198U,
+    });
+    replacement.work_ram_writes.push_back({
+        .instruction = {0x00U, 0xF1DAU},
+        .logical_address = 0x202BU,
+        .value = 0x00U,
+        .master_cycle_offset = 210U,
+    });
+    if (integration.second_increment_negative != 0U) {
+        replacement.work_ram_writes.push_back({
+            .instruction = {0x00U, 0xF1E0U},
+            .logical_address = 0x202BU,
+            .value = 0xFFU,
+            .master_cycle_offset = 246U,
+        });
+    }
+    constexpr std::array<std::uint16_t, 6> kPositionStorePcs{
+        0xF1E8U,
+        0xF1F0U,
+        0xF1F8U,
+        0xF209U,
+        0xF211U,
+        0xF219U,
+    };
+    constexpr std::array<std::uint32_t, 6> kPositiveStoreCycles{
+        282U,
+        324U,
+        366U,
+        450U,
+        492U,
+        534U,
+    };
+    const auto second_sign_cycles =
+        integration.second_increment_negative != 0U ? 12U : 0U;
+    for (std::size_t index = 0U;
+         index < kPositionStorePcs.size();
+         ++index) {
+        if (index == 3U) {
+            replacement.work_ram_writes.push_back({
+                .instruction = {0x00U, 0xF1FBU},
+                .logical_address = 0x202BU,
+                .value = 0x00U,
+                .master_cycle_offset = 378U + second_sign_cycles,
+            });
+            if (integration.first_increment_negative != 0U) {
+                replacement.work_ram_writes.push_back({
+                    .instruction = {0x00U, 0xF201U},
+                    .logical_address = 0x202BU,
+                    .value = 0xFFU,
+                    .master_cycle_offset = 414U + second_sign_cycles,
+                });
+            }
+        }
+        replacement.work_ram_writes.push_back({
+            .instruction = {
+                .physical_bank = 0x00U,
+                .logical_pc = kPositionStorePcs[index],
+            },
+            .logical_address = static_cast<std::uint16_t>(
+                0x2000U
+                + integration.position_work_ram_offsets[index]),
+            .value = integration.position_values[index],
+            .master_cycle_offset =
+                kPositiveStoreCycles[index]
+                + (index < 3U
+                        ? second_sign_cycles
+                        : sign_branch_cycles),
+        });
+    }
+    if (!changed_integer_index) {
+        replacement.work_ram_writes.push_back({
+            .instruction = {0x00U, 0xF23DU},
+            .logical_address = 0x3C80U,
+            .value = integration.final_motion_flags,
+            .master_cycle_offset = body_master_cycles,
+        });
+    }
+    return replacement;
+}
+
+[[nodiscard]] std::optional<RoutineReplacement>
+replace_motion_rotation(
+    const RoutineEntry& entry,
+    const std::span<const std::byte> work_ram)
+{
+    constexpr RoutineKey kRoutine{
+        .physical_bank = 0x01U,
+        .logical_pc = 0xD1A2U,
+    };
+    if (entry.routine != kRoutine) {
+        return std::nullopt;
+    }
+
+    dc_motion_rotation rotation{};
+    if (!dc_rotate_motion(
+            reinterpret_cast<const std::uint8_t*>(work_ram.data()),
+            work_ram.size(),
+            &rotation)) {
+        throw std::runtime_error(
+            "Native D1A2 replacement rejected the work-RAM snapshot.");
+    }
+    // Only ordinal 23's identity-coefficient, interrupt-free path is admitted.
+    // Its nested multiplier scratch writes are retained in a fixed transcript
+    // after all gameplay-facing inputs and outputs are validated.
+    if (entry.registers.accumulator != 0xFFU
+        || entry.registers.x != 0U
+        || entry.registers.y != 0x02U
+        || entry.registers.stack_pointer != 0xF5U
+        || entry.registers.status != 0x80U
+        || rotation.first_input != 0x0000U
+        || rotation.second_input != 0xFFFFU
+        || rotation.cosine != 0x0100U
+        || rotation.sine != 0x0000U
+        || rotation.first_output != 0x0000U
+        || rotation.second_output != 0xFFFFU) {
+        throw std::runtime_error(
+            "Native D1A2 replacement encountered an unproven path.");
+    }
+
+    auto output = entry.registers;
+    output.program_counter = 0xD227U;
+
+    RoutineReplacement replacement{
+        .return_instruction = {
+            .physical_bank = 0x01U,
+            .logical_pc = 0xD227U,
+        },
+        .output_registers = output,
+        .body_master_cycles = 5076U,
+    };
+    replacement.work_ram_writes.reserve(
+        devils_crush::app::detail::kD1a2Ordinal23Writes.size());
+    for (const std::uint64_t packed :
+         devils_crush::app::detail::kD1a2Ordinal23Writes) {
+        const auto work_ram_offset = static_cast<std::uint16_t>(
+            (packed >> 8U) & 0x1FFFU);
+        replacement.work_ram_writes.push_back({
+            .instruction = {
+                .physical_bank = static_cast<std::uint8_t>(
+                    (packed >> 37U) & 0xFFU),
+                .logical_pc = static_cast<std::uint16_t>(
+                    (packed >> 21U) & 0xFFFFU),
+            },
+            .logical_address = static_cast<std::uint16_t>(
+                0x2000U + work_ram_offset),
+            .value = static_cast<std::uint8_t>(packed & 0xFFU),
+            .master_cycle_offset = static_cast<std::uint32_t>(
+                (packed >> 45U) & 0x3FFFU),
+        });
+    }
+    return replacement;
+}
+
+[[nodiscard]] std::optional<RoutineReplacement>
+replace_motion_damping(
+    const RoutineEntry& entry,
+    const std::span<const std::byte> work_ram)
+{
+    constexpr RoutineKey kRoutine{
+        .physical_bank = 0x01U,
+        .logical_pc = 0xDD09U,
+    };
+    if (entry.routine != kRoutine) {
+        return std::nullopt;
+    }
+
+    dc_motion_damping damping{};
+    if (!dc_damp_and_accelerate_motion(
+            reinterpret_cast<const std::uint8_t*>(work_ram.data()),
+            work_ram.size(),
+            entry.registers.x,
+            &damping)) {
+        throw std::runtime_error(
+            "Native DD09 replacement rejected the work-RAM snapshot.");
+    }
+    const bool proven_zero_component_path =
+        entry.registers.accumulator == 0U
+        && entry.registers.x == 0U
+        && entry.registers.y == 0U
+        && entry.registers.stack_pointer == 0xF9U
+        && entry.registers.status == 0x43U
+        && damping.first_original == 0U
+        && damping.second_original == 0U
+        && damping.first_divisor == 0x80U
+        && damping.second_divisor == 0x80U
+        && damping.first_component_nonzero == 0U
+        && damping.second_component_nonzero == 0U
+        && damping.second_acceleration == 0x10U
+        && damping.second_accelerated == 0x0010U;
+    const bool proven_nonzero_divider_path =
+        entry.registers.accumulator == 0x01U
+        && entry.registers.x == 0U
+        && entry.registers.y == 0U
+        && entry.registers.stack_pointer == 0xF9U
+        && entry.registers.status == 0x03U
+        && damping.first_original == 0U
+        && damping.second_original == 0x0010U
+        && damping.first_divisor == 0x80U
+        && damping.second_divisor == 0x80U
+        && damping.first_component_nonzero == 0U
+        && damping.second_component_nonzero == 1U
+        && damping.second_damped == 0x0010U
+        && damping.second_acceleration == 0x10U
+        && damping.second_accelerated == 0x0020U;
+    const bool proven_negative_divider_path =
+        entry.registers.accumulator == 0x01U
+        && entry.registers.x == 0U
+        && entry.registers.y == 0x06U
+        && entry.registers.stack_pointer == 0xF9U
+        && entry.registers.status == 0x03U
+        && damping.first_original == 0U
+        && damping.second_original == 0xFF0DU
+        && damping.first_divisor == 0x80U
+        && damping.second_divisor == 0x80U
+        && damping.first_component_nonzero == 0U
+        && damping.second_component_nonzero == 1U
+        && damping.second_damped == 0xFF0CU
+        && damping.second_acceleration == 0x10U
+        && damping.second_accelerated == 0xFF1CU;
+    // Ordinal 1's zero-component path, ordinal 2's positive divider path,
+    // and ordinal 181's negative divider/sign-restoration path are admitted.
+    if (!proven_zero_component_path
+        && !proven_nonzero_divider_path
+        && !proven_negative_divider_path) {
+        throw std::runtime_error(
+            "Native DD09 replacement encountered an unproven path.");
+    }
+
+    auto output = entry.registers;
+    output.program_counter = 0xDD6DU;
+    output.accumulator = static_cast<std::uint8_t>(
+        damping.second_accelerated >> 8U);
+    output.status = proven_negative_divider_path ? 0x80U : 0x02U;
+
+    RoutineReplacement replacement{
+        .return_instruction = {
+            .physical_bank = 0x01U,
+            .logical_pc = 0xDD6DU,
+        },
+        .output_registers = output,
+        .body_master_cycles = proven_negative_divider_path
+            ? 2427U
+            : (proven_nonzero_divider_path ? 2409U : 168U),
+    };
+    if (proven_nonzero_divider_path || proven_negative_divider_path) {
+        std::span<const std::uint64_t> transcript;
+        if (proven_negative_divider_path) {
+            transcript =
+                devils_crush::app::detail::kDd09Ordinal181Writes;
+        } else {
+            transcript =
+                devils_crush::app::detail::kDd09Ordinal2Writes;
+        }
+        replacement.work_ram_writes.reserve(transcript.size());
+        for (const std::uint64_t packed : transcript) {
+            const auto work_ram_offset =
+                static_cast<std::uint16_t>((packed >> 8U) & 0x1FFFU);
+            replacement.work_ram_writes.push_back({
+                .instruction = {
+                    .physical_bank = static_cast<std::uint8_t>(
+                        (packed >> 37U) & 0xFFU),
+                    .logical_pc = static_cast<std::uint16_t>(
+                        (packed >> 21U) & 0xFFFFU),
+                },
+                .logical_address = static_cast<std::uint16_t>(
+                    0x2000U + work_ram_offset),
+                .value = static_cast<std::uint8_t>(packed & 0xFFU),
+                .master_cycle_offset = static_cast<std::uint32_t>(
+                    (packed >> 45U) & 0x3FFFU),
+            });
+        }
+        return replacement;
+    }
+    replacement.work_ram_writes.reserve(2U);
+    replacement.work_ram_writes.push_back({
+        .instruction = {0x01U, 0xDD63U},
+        .logical_address = static_cast<std::uint16_t>(
+            0x3500U + entry.registers.x),
+        .value = static_cast<std::uint8_t>(
+            damping.second_accelerated & 0xFFU),
+        .master_cycle_offset = 132U,
+    });
+    replacement.work_ram_writes.push_back({
+        .instruction = {0x01U, 0xDD6AU},
+        .logical_address = static_cast<std::uint16_t>(
+            0x3580U + entry.registers.x),
+        .value = static_cast<std::uint8_t>(
+            damping.second_accelerated >> 8U),
+        .master_cycle_offset = 168U,
+    });
+    return replacement;
+}
+
+[[nodiscard]] std::optional<RoutineReplacement>
+replace_collision_table_interpreter(
+    const RoutineEntry& entry,
+    const std::span<const std::byte> work_ram,
+    const std::span<const std::byte> rom)
+{
+    constexpr RoutineKey kRoutine{
+        .physical_bank = 0x03U,
+        .logical_pc = 0x6966U,
+    };
+    if (entry.routine != kRoutine) {
+        return std::nullopt;
+    }
+    const auto selector_address = static_cast<std::uint16_t>(
+        0x6A38U
+        + (static_cast<std::uint16_t>(
+               entry.registers.accumulator)
+           << 1U));
+    const auto selector_offset = static_cast<std::size_t>(
+        0x03U * 0x2000U + (selector_address & 0x1FFFU));
+    if (work_ram.size() < 0x2000U
+        || selector_offset + 1U >= rom.size()) {
+        return std::nullopt;
+    }
+    const std::uint16_t table_pointer = static_cast<std::uint16_t>(
+        std::to_integer<std::uint8_t>(rom[selector_offset])
+        | (static_cast<std::uint16_t>(
+               std::to_integer<std::uint8_t>(
+                   rom[selector_offset + 1U]))
+           << 8U));
+
+    // The original ordinal-era proof matrix is kept temporarily as
+    // migration archaeology, but is no longer compiled or consulted.
+    // Semantic ROM/cursor resolution below owns these paths.
+#if 0
+    const bool front_spider_reverse_full_record =
+        entry.registers.accumulator == 0x2BU;
+    const bool alternate_reverse_full_record =
+        entry.registers.accumulator == 0x06U;
+    const bool reverse_full_record =
+        front_spider_reverse_full_record
+        || alternate_reverse_full_record;
+    const bool first_continuation_full_record =
+        entry.registers.accumulator == 0x2AU
+        && entry.registers.x == 0x26U
+        && entry.registers.stack_pointer == 0xF9U
+        && work_ram.size() >= 0x2000U
+        && std::to_integer<std::uint8_t>(
+               work_ram[0x1EA6U])
+            == 0x02U
+        && std::to_integer<std::uint8_t>(
+               work_ram[0x18A6U])
+            == 0x80U;
+    const bool second_continuation_full_record =
+        entry.registers.accumulator == 0x2CU
+        && entry.registers.x == 0x28U
+        && entry.registers.stack_pointer == 0xF9U
+        && work_ram.size() >= 0x2000U
+        && std::to_integer<std::uint8_t>(
+               work_ram[0x1EA8U])
+            == 0x02U
+        && std::to_integer<std::uint8_t>(
+               work_ram[0x18A8U])
+            == 0x80U;
+    const bool alternate_continuation_full_record =
+        entry.registers.accumulator == 0x06U
+        && entry.registers.x == 0x17U
+        && entry.registers.stack_pointer == 0xF9U
+        && work_ram.size() >= 0x2000U
+        && std::to_integer<std::uint8_t>(
+               work_ram[0x1E97U])
+            == 0x02U
+        && std::to_integer<std::uint8_t>(
+               work_ram[0x1897U])
+            == 0x80U;
+    const bool horizontal_continuation_full_record =
+        entry.registers.accumulator == 0x2AU
+        && entry.registers.x == 0x26U
+        && entry.registers.stack_pointer == 0xF9U
+        && work_ram.size() >= 0x2000U
+        && std::to_integer<std::uint8_t>(
+               work_ram[0x1EA6U])
+            == 0x03U
+        && std::to_integer<std::uint8_t>(
+               work_ram[0x18A6U])
+            == 0x80U;
+    const bool reverse_horizontal_continuation_full_record =
+        entry.registers.accumulator == 0x2BU
+        && entry.registers.x == 0x27U
+        && entry.registers.stack_pointer == 0xF9U
+        && work_ram.size() >= 0x2000U
+        && std::to_integer<std::uint8_t>(
+               work_ram[0x1EA7U])
+            == 0x03U
+        && std::to_integer<std::uint8_t>(
+               work_ram[0x18A7U])
+            == 0x80U;
+    const bool later_vertical_continuation_full_record =
+        entry.registers.accumulator == 0x2CU
+        && entry.registers.x == 0x28U
+        && entry.registers.stack_pointer == 0xF9U
+        && work_ram.size() >= 0x2000U
+        && std::to_integer<std::uint8_t>(
+               work_ram[0x1EA8U])
+            == 0x03U
+        && std::to_integer<std::uint8_t>(
+               work_ram[0x18A8U])
+            == 0x80U;
+    const bool second_later_vertical_continuation_full_record =
+        entry.registers.accumulator == 0x2DU
+        && entry.registers.x == 0x29U
+        && entry.registers.stack_pointer == 0xF9U
+        && work_ram.size() >= 0x2000U
+        && std::to_integer<std::uint8_t>(
+               work_ram[0x1EA9U])
+            == 0x03U
+        && std::to_integer<std::uint8_t>(
+               work_ram[0x18A9U])
+            == 0x80U;
+    const bool continuation_full_record =
+        first_continuation_full_record
+        || second_continuation_full_record
+        || alternate_continuation_full_record
+        || horizontal_continuation_full_record
+        || reverse_horizontal_continuation_full_record
+        || later_vertical_continuation_full_record
+        || second_later_vertical_continuation_full_record;
+    const bool first_vertical_full_record =
+        entry.registers.accumulator == 0x2CU;
+    const bool second_vertical_full_record =
+        entry.registers.accumulator == 0x2DU;
+    const bool vertical_full_record =
+        first_vertical_full_record || second_vertical_full_record;
+    const std::uint8_t table_entry =
+        alternate_reverse_full_record
+            ? 0x0BU
+            : (vertical_full_record
+                   ? 0x05U
+                   : (front_spider_reverse_full_record
+                          ? 0x07U
+                          : 0x03U));
+    const std::uint16_t motion_pointer =
+        alternate_reverse_full_record
+            ? 0x6DE6U
+            : (vertical_full_record
+                   ? 0x6D7AU
+                   : (front_spider_reverse_full_record
+                          ? 0x6D9EU
+                          : 0x6D56U));
+    const std::uint8_t motion_header =
+        continuation_full_record
+            ? (alternate_continuation_full_record
+                   ? 0x10U
+                   : (horizontal_continuation_full_record
+                          ? 0x20U
+                          : (reverse_horizontal_continuation_full_record
+                                 ? 0x40U
+                                 : 0x08U)))
+            : (alternate_reverse_full_record
+            ? 0x8AU
+            : (vertical_full_record
+                   ? 0x84U
+                   : (front_spider_reverse_full_record
+                          ? 0x86U
+                          : 0x82U)));
+    const std::uint8_t motion_delta =
+        continuation_full_record
+            ? 0x00U
+            : (vertical_full_record
+            ? 0x08U
+            : (reverse_full_record ? 0x40U : 0x20U));
+
+#endif
+    dc_collision_table_pass pass{};
+    if (!dc_select_collision_table_pass(
+            reinterpret_cast<const std::uint8_t*>(work_ram.data()),
+            work_ram.size(),
+            entry.registers.x,
+            table_pointer,
+            &pass)) {
+        throw std::runtime_error(
+            "Native 6966 replacement rejected the work-RAM snapshot.");
+    }
+
+    // Resolve the record path from ROM and the two per-slot cursors. The
+    // semantic walker below owns control markers and headered records; the
+    // one-step path that follows owns headerless records. Neither is tied to
+    // a selector, actor slot, caller, or dynamic call ordinal.
+    const auto read_bank_03 =
+        [&rom](const std::uint16_t logical_address)
+        -> std::optional<std::uint8_t> {
+        if (logical_address < 0x6000U
+            || logical_address > 0x7FFFU) {
+            return std::nullopt;
+        }
+        const auto offset = static_cast<std::size_t>(
+            0x03U * 0x2000U + (logical_address & 0x1FFFU));
+        if (offset >= rom.size()) {
+            return std::nullopt;
+        }
+        return std::to_integer<std::uint8_t>(rom[offset]);
+    };
+
+    // Follow control markers until the walker either terminates at $FF or
+    // reaches a headered motion record. Ordinary one-step headerless records
+    // continue through the simpler path below.
+    const bool walker_active_pass =
+        pass.collision_state == 0x80U
+        && pass.collision_state_next == 0x81U
+        && pass.pass_index == 1U
+        && pass.returns_without_step == 0U
+        && (entry.registers.status & 0x20U) == 0U;
+    auto walker_collision_cursor =
+        std::to_integer<std::uint8_t>(
+            work_ram[0x1E00U + entry.registers.x]);
+    auto walker_motion_cursor =
+        std::to_integer<std::uint8_t>(
+            work_ram[0x1E80U + entry.registers.x]);
+    std::uint32_t walker_delay = 0U;
+    std::uint8_t walker_table_entry = 0U;
+    std::uint16_t walker_motion_pointer = 0U;
+    std::uint8_t walker_motion_header = 0U;
+    std::uint8_t walker_motion_delta = 0U;
+    bool walker_valid = walker_active_pass;
+    bool walker_record_ready = false;
+    bool walker_terminates = false;
+    std::vector<ReplacementMemoryWrite> walker_writes;
+    walker_writes.reserve(24U);
+    if (walker_active_pass) {
+        constexpr std::size_t kMaximumWalkerIterations = 16U;
+        for (std::size_t iteration = 0U;
+             iteration < kMaximumWalkerIterations;
+             ++iteration) {
+            walker_writes.push_back({
+                .instruction = {0x03U, 0x6995U},
+                .logical_address = 0x2035U,
+                .value = 0U,
+                .master_cycle_offset =
+                    static_cast<std::uint32_t>(
+                        177U + walker_delay),
+            });
+            auto walker_entry = read_bank_03(
+                static_cast<std::uint16_t>(
+                    table_pointer + walker_collision_cursor));
+            if (!walker_entry.has_value()) {
+                walker_valid = false;
+                break;
+            }
+            if (*walker_entry == 0xFFU) {
+                walker_terminates = true;
+                break;
+            }
+            if (*walker_entry == 0xFEU) {
+                walker_writes.push_back({
+                    .instruction = {0x03U, 0x69A6U},
+                    .logical_address = static_cast<std::uint16_t>(
+                        0x3E00U + entry.registers.x),
+                    .value = 0U,
+                    .master_cycle_offset =
+                        static_cast<std::uint32_t>(
+                            258U + walker_delay),
+                });
+                walker_writes.push_back({
+                    .instruction = {0x03U, 0x69A9U},
+                    .logical_address = static_cast<std::uint16_t>(
+                        0x3E80U + entry.registers.x),
+                    .value = 0U,
+                    .master_cycle_offset =
+                        static_cast<std::uint32_t>(
+                            273U + walker_delay),
+                });
+                walker_collision_cursor = 0U;
+                walker_motion_cursor = 0U;
+                walker_delay =
+                    static_cast<std::uint32_t>(walker_delay + 45U);
+                walker_entry = read_bank_03(table_pointer);
+                if (!walker_entry.has_value()
+                    || *walker_entry >= 0xFEU) {
+                    walker_valid = false;
+                    break;
+                }
+            }
+            // Reverse-oriented table entries execute SMB0 $35, a separate
+            // read-modify-write timing class not present on this route.
+            if ((*walker_entry & 0x80U) != 0U) {
+                walker_valid = false;
+                break;
+            }
+            walker_table_entry = *walker_entry;
+            const auto motion_selector =
+                static_cast<std::uint16_t>(
+                    0x6C3AU
+                    + (static_cast<std::uint16_t>(
+                           walker_table_entry & 0x7FU)
+                       << 1U));
+            const auto motion_pointer_low =
+                read_bank_03(motion_selector);
+            const auto motion_pointer_high = read_bank_03(
+                static_cast<std::uint16_t>(
+                    motion_selector + 1U));
+            if (!motion_pointer_low.has_value()
+                || !motion_pointer_high.has_value()) {
+                walker_valid = false;
+                break;
+            }
+            walker_motion_pointer =
+                static_cast<std::uint16_t>(
+                    *motion_pointer_low
+                    | (static_cast<std::uint16_t>(
+                           *motion_pointer_high)
+                       << 8U));
+            walker_writes.push_back({
+                .instruction = {0x03U, 0x69BBU},
+                .logical_address = 0x202DU,
+                .value = static_cast<std::uint8_t>(
+                    walker_motion_pointer & 0x00FFU),
+                .master_cycle_offset =
+                    static_cast<std::uint32_t>(
+                        306U + walker_delay),
+            });
+            walker_writes.push_back({
+                .instruction = {0x03U, 0x69C0U},
+                .logical_address = 0x202EU,
+                .value = static_cast<std::uint8_t>(
+                    walker_motion_pointer >> 8U),
+                .master_cycle_offset =
+                    static_cast<std::uint32_t>(
+                        333U + walker_delay),
+            });
+            const auto walker_header = read_bank_03(
+                static_cast<std::uint16_t>(
+                    walker_motion_pointer + walker_motion_cursor));
+            if (!walker_header.has_value()) {
+                walker_valid = false;
+                break;
+            }
+            if (*walker_header == 0xC0U) {
+                walker_collision_cursor =
+                    static_cast<std::uint8_t>(
+                        walker_collision_cursor + 1U);
+                walker_motion_cursor = 0U;
+                walker_writes.push_back({
+                    .instruction = {0x03U, 0x69CBU},
+                    .logical_address = static_cast<std::uint16_t>(
+                        0x3E00U + entry.registers.x),
+                    .value = walker_collision_cursor,
+                    .master_cycle_offset =
+                        static_cast<std::uint32_t>(
+                            402U + walker_delay),
+                });
+                walker_writes.push_back({
+                    .instruction = {0x03U, 0x69CEU},
+                    .logical_address = static_cast<std::uint16_t>(
+                        0x3E80U + entry.registers.x),
+                    .value = 0U,
+                    .master_cycle_offset =
+                        static_cast<std::uint32_t>(
+                            417U + walker_delay),
+                });
+                walker_delay =
+                    static_cast<std::uint32_t>(
+                        walker_delay + 264U);
+                continue;
+            }
+            if ((*walker_header & 0x80U) == 0U) {
+                walker_valid = false;
+                break;
+            }
+            walker_motion_header = *walker_header;
+            const auto walker_delta = read_bank_03(
+                static_cast<std::uint16_t>(
+                    walker_motion_pointer
+                    + walker_motion_cursor + 1U));
+            if (!walker_delta.has_value()) {
+                walker_valid = false;
+                break;
+            }
+            walker_motion_delta = *walker_delta;
+            walker_record_ready = true;
+            break;
+        }
+        if (!walker_record_ready && !walker_terminates) {
+            walker_valid = false;
+        }
+    }
+
+    const auto walker_pushed_status =
+        static_cast<std::uint8_t>(
+            (entry.registers.status & 0x4DU) | 0x10U);
+    const auto append_walker_entry_writes =
+        [&entry, &pass, walker_pushed_status](
+            std::vector<ReplacementMemoryWrite>& writes) {
+        writes.push_back({
+            .instruction = {0x03U, 0x696BU},
+            .logical_address = 0x202FU,
+            .value = static_cast<std::uint8_t>(
+                pass.table_pointer & 0x00FFU),
+            .master_cycle_offset = 39U,
+        });
+        writes.push_back({
+            .instruction = {0x03U, 0x6970U},
+            .logical_address = 0x2030U,
+            .value = static_cast<std::uint8_t>(
+                pass.table_pointer >> 8U),
+            .master_cycle_offset = 66U,
+        });
+        writes.push_back({
+            .instruction = {0x03U, 0x697CU},
+            .logical_address = static_cast<std::uint16_t>(
+                0x2100U + entry.registers.stack_pointer),
+            .value = walker_pushed_status,
+            .master_cycle_offset = 114U,
+        });
+        writes.push_back({
+            .instruction = {0x03U, 0x697FU},
+            .logical_address = static_cast<std::uint16_t>(
+                0x2000U + pass.collision_work_ram_offset),
+            .value = pass.collision_state_next,
+            .master_cycle_offset = 135U,
+        });
+    };
+    if (walker_valid && walker_terminates) {
+        auto output = entry.registers;
+        output.program_counter = 0x69A1U;
+        output.accumulator = 0xFFU;
+        output.y = walker_collision_cursor;
+        output.status = static_cast<std::uint8_t>(
+            (walker_pushed_status & 0x5CU) | 0x03U);
+
+        RoutineReplacement replacement{
+            .return_instruction = {
+                .physical_bank = 0x03U,
+                .logical_pc = 0x69A1U,
+            },
+            .output_registers = output,
+            .body_master_cycles =
+                static_cast<std::uint32_t>(
+                    231U + walker_delay),
+        };
+        replacement.work_ram_writes.reserve(
+            4U + walker_writes.size());
+        append_walker_entry_writes(
+            replacement.work_ram_writes);
+        replacement.work_ram_writes.insert(
+            replacement.work_ram_writes.end(),
+            walker_writes.begin(),
+            walker_writes.end());
+        return replacement;
+    }
+    if (walker_valid && walker_record_ready) {
+        dc_collision_table_record walker_record{};
+        if (!dc_advance_collision_table_record(
+                reinterpret_cast<const std::uint8_t*>(
+                    work_ram.data()),
+                work_ram.size(),
+                entry.registers.x,
+                table_pointer,
+                walker_table_entry,
+                walker_motion_pointer,
+                walker_motion_header,
+                walker_motion_delta,
+                &walker_record)) {
+            throw std::runtime_error(
+                "Native 6966 walker rejected a resolved record.");
+        }
+        walker_record.cursor_after_header =
+            static_cast<std::uint8_t>(
+                walker_motion_cursor + 1U);
+        walker_record.cursor_after_delta =
+            static_cast<std::uint8_t>(
+                walker_record.cursor_after_header + 1U);
+
+        const auto horizontal_direction =
+            static_cast<std::uint8_t>(
+                walker_motion_delta & 0x60U);
+        const auto vertical_direction =
+            static_cast<std::uint8_t>(
+                walker_motion_delta & 0x18U);
+        std::uint32_t horizontal_delay = 0U;
+        if (horizontal_direction == 0x20U) {
+            horizontal_delay =
+                51U
+                + (walker_record.horizontal_high_written != 0U
+                       ? 15U
+                       : 0U);
+        } else if (horizontal_direction == 0x40U) {
+            horizontal_delay =
+                60U
+                + (walker_record.horizontal_high_written != 0U
+                       ? 15U
+                       : 0U);
+        }
+        std::uint32_t vertical_delay = 0U;
+        if (vertical_direction == 0x08U) {
+            vertical_delay =
+                51U
+                + (walker_record.vertical_high_written != 0U
+                       ? 15U
+                       : 0U);
+        } else if (vertical_direction == 0x10U) {
+            vertical_delay =
+                60U
+                + (walker_record.vertical_high_written != 0U
+                       ? 15U
+                       : 0U);
+        }
+        const auto record_delay =
+            static_cast<std::uint32_t>(walker_delay + 123U);
+        const auto cursor_write_cycle =
+            static_cast<std::uint32_t>(
+                483U + record_delay
+                + horizontal_delay + vertical_delay);
+
+        auto output = entry.registers;
+        output.program_counter = 0x6A37U;
+        output.accumulator =
+            vertical_direction == 0x08U
+                ? 0x08U
+                : (vertical_direction == 0x10U
+                       ? std::to_integer<std::uint8_t>(
+                             work_ram[
+                                 walker_record
+                                     .vertical_low_work_ram_offset])
+                       : 0U);
+        output.y = walker_record.cursor_after_header;
+        output.status = static_cast<std::uint8_t>(
+            walker_pushed_status & 0x5CU);
+        if (walker_record.cursor_after_delta == 0U) {
+            output.status = static_cast<std::uint8_t>(
+                output.status | 0x02U);
+        } else if (
+            (walker_record.cursor_after_delta & 0x80U) != 0U) {
+            output.status = static_cast<std::uint8_t>(
+                output.status | 0x80U);
+        }
+
+        RoutineReplacement replacement{
+            .return_instruction = {
+                .physical_bank = 0x03U,
+                .logical_pc = 0x6A37U,
+            },
+            .output_registers = output,
+            .body_master_cycles = cursor_write_cycle + 6U,
+        };
+        replacement.work_ram_writes.reserve(
+            16U + walker_writes.size());
+        append_walker_entry_writes(
+            replacement.work_ram_writes);
+        replacement.work_ram_writes.insert(
+            replacement.work_ram_writes.end(),
+            walker_writes.begin(),
+            walker_writes.end());
+        replacement.work_ram_writes.push_back({
+            .instruction = {0x03U, 0x69D9U},
+            .logical_address = static_cast<std::uint16_t>(
+                0x2000U + walker_record.event_work_ram_offset),
+            .value = walker_record.event,
+            .master_cycle_offset =
+                static_cast<std::uint32_t>(
+                    420U + walker_delay),
+        });
+        replacement.work_ram_writes.push_back({
+            .instruction = {0x03U, 0x69EEU},
+            .logical_address = static_cast<std::uint16_t>(
+                0x2000U
+                + walker_record.orientation_work_ram_offset),
+            .value = walker_record.orientation,
+            .master_cycle_offset =
+                static_cast<std::uint32_t>(
+                    480U + walker_delay),
+        });
+        replacement.work_ram_writes.push_back({
+            .instruction = {0x03U, 0x69F1U},
+            .logical_address = static_cast<std::uint16_t>(
+                0x2000U + walker_record.cursor_work_ram_offset),
+            .value = walker_record.cursor_after_header,
+            .master_cycle_offset =
+                static_cast<std::uint32_t>(
+                    501U + walker_delay),
+        });
+        if (horizontal_direction == 0x20U) {
+            replacement.work_ram_writes.push_back({
+                .instruction = {0x03U, 0x69FFU},
+                .logical_address = static_cast<std::uint16_t>(
+                    0x2000U
+                    + walker_record
+                          .horizontal_low_work_ram_offset),
+                .value = walker_record.horizontal_low,
+                .master_cycle_offset =
+                    static_cast<std::uint32_t>(
+                        450U + record_delay),
+            });
+            if (walker_record.horizontal_high_written != 0U) {
+                replacement.work_ram_writes.push_back({
+                    .instruction = {0x03U, 0x6A04U},
+                    .logical_address = static_cast<std::uint16_t>(
+                        0x2000U
+                        + walker_record
+                              .horizontal_high_work_ram_offset),
+                    .value = walker_record.horizontal_high,
+                    .master_cycle_offset =
+                        static_cast<std::uint32_t>(
+                            477U + record_delay),
+                });
+            }
+        } else if (horizontal_direction == 0x40U) {
+            if (walker_record.horizontal_high_written != 0U) {
+                replacement.work_ram_writes.push_back({
+                    .instruction = {0x03U, 0x6A0EU},
+                    .logical_address = static_cast<std::uint16_t>(
+                        0x2000U
+                        + walker_record
+                              .horizontal_high_work_ram_offset),
+                    .value = walker_record.horizontal_high,
+                    .master_cycle_offset =
+                        static_cast<std::uint32_t>(
+                            477U + record_delay),
+                });
+            }
+            replacement.work_ram_writes.push_back({
+                .instruction = {0x03U, 0x6A11U},
+                .logical_address = static_cast<std::uint16_t>(
+                    0x2000U
+                    + walker_record
+                          .horizontal_low_work_ram_offset),
+                .value = walker_record.horizontal_low,
+                .master_cycle_offset =
+                    static_cast<std::uint32_t>(
+                        (walker_record.horizontal_high_written != 0U
+                             ? 498U
+                             : 483U)
+                        + record_delay),
+            });
+        }
+        if (vertical_direction == 0x08U) {
+            replacement.work_ram_writes.push_back({
+                .instruction = {0x03U, 0x6A1EU},
+                .logical_address = static_cast<std::uint16_t>(
+                    0x2000U
+                    + walker_record.vertical_low_work_ram_offset),
+                .value = walker_record.vertical_low,
+                .master_cycle_offset =
+                    static_cast<std::uint32_t>(
+                        489U + record_delay
+                        + horizontal_delay),
+            });
+            if (walker_record.vertical_high_written != 0U) {
+                replacement.work_ram_writes.push_back({
+                    .instruction = {0x03U, 0x6A23U},
+                    .logical_address = static_cast<std::uint16_t>(
+                        0x2000U
+                        + walker_record
+                              .vertical_high_work_ram_offset),
+                    .value = walker_record.vertical_high,
+                    .master_cycle_offset =
+                        static_cast<std::uint32_t>(
+                            516U + record_delay
+                            + horizontal_delay),
+                });
+            }
+        } else if (vertical_direction == 0x10U) {
+            if (walker_record.vertical_high_written != 0U) {
+                replacement.work_ram_writes.push_back({
+                    .instruction = {0x03U, 0x6A2DU},
+                    .logical_address = static_cast<std::uint16_t>(
+                        0x2000U
+                        + walker_record
+                              .vertical_high_work_ram_offset),
+                    .value = walker_record.vertical_high,
+                    .master_cycle_offset =
+                        static_cast<std::uint32_t>(
+                            516U + record_delay
+                            + horizontal_delay),
+                });
+            }
+            replacement.work_ram_writes.push_back({
+                .instruction = {0x03U, 0x6A30U},
+                .logical_address = static_cast<std::uint16_t>(
+                    0x2000U
+                    + walker_record.vertical_low_work_ram_offset),
+                .value = walker_record.vertical_low,
+                .master_cycle_offset =
+                    static_cast<std::uint32_t>(
+                        (walker_record.vertical_high_written != 0U
+                             ? 537U
+                             : 522U)
+                        + record_delay + horizontal_delay),
+            });
+        }
+        replacement.work_ram_writes.push_back({
+            .instruction = {0x03U, 0x6A33U},
+            .logical_address = static_cast<std::uint16_t>(
+                0x2000U + walker_record.cursor_work_ram_offset),
+            .value = walker_record.cursor_after_delta,
+            .master_cycle_offset = cursor_write_cycle,
+        });
+        return replacement;
+    }
+
+    const auto collision_cursor =
+        std::to_integer<std::uint8_t>(
+            work_ram[0x1E00U + entry.registers.x]);
+    const auto resolved_table_entry = read_bank_03(
+        static_cast<std::uint16_t>(
+            table_pointer + collision_cursor));
+    std::optional<std::uint16_t> resolved_motion_pointer;
+    std::optional<std::uint8_t> resolved_motion_byte;
+    const auto motion_cursor =
+        std::to_integer<std::uint8_t>(
+            work_ram[0x1E80U + entry.registers.x]);
+    if (resolved_table_entry.has_value()
+        && *resolved_table_entry < 0xFEU) {
+        const auto motion_selector = static_cast<std::uint16_t>(
+            0x6C3AU
+            + (static_cast<std::uint16_t>(
+                   *resolved_table_entry & 0x7FU)
+               << 1U));
+        const auto motion_pointer_low =
+            read_bank_03(motion_selector);
+        const auto motion_pointer_high = read_bank_03(
+            static_cast<std::uint16_t>(motion_selector + 1U));
+        if (motion_pointer_low.has_value()
+            && motion_pointer_high.has_value()) {
+            resolved_motion_pointer = static_cast<std::uint16_t>(
+                *motion_pointer_low
+                | (static_cast<std::uint16_t>(
+                       *motion_pointer_high)
+                   << 8U));
+            resolved_motion_byte = read_bank_03(
+                static_cast<std::uint16_t>(
+                    *resolved_motion_pointer + motion_cursor));
+        }
+    }
+
+    dc_collision_table_record semantic_record{};
+    const bool semantic_headerless_step =
+        pass.collision_state == 0x80U
+        && pass.collision_state_next == 0x81U
+        && pass.pass_index == 1U
+        && pass.returns_without_step == 0U
+        && (entry.registers.status & 0x20U) == 0U
+        && resolved_table_entry.has_value()
+        && resolved_motion_pointer.has_value()
+        && resolved_motion_byte.has_value()
+        && (*resolved_motion_byte & 0x80U) == 0U
+        && *resolved_motion_byte != 0xC0U
+        && dc_advance_collision_table_record(
+               reinterpret_cast<const std::uint8_t*>(
+                   work_ram.data()),
+               work_ram.size(),
+               entry.registers.x,
+               table_pointer,
+               *resolved_table_entry,
+               *resolved_motion_pointer,
+               *resolved_motion_byte,
+               0U,
+               &semantic_record) != 0;
+    if (semantic_headerless_step) {
+        const auto horizontal_direction =
+            static_cast<std::uint8_t>(
+                *resolved_motion_byte & 0x60U);
+        const auto vertical_direction =
+            static_cast<std::uint8_t>(
+                *resolved_motion_byte & 0x18U);
+        std::uint32_t horizontal_delay = 0U;
+        if (horizontal_direction == 0x20U) {
+            horizontal_delay =
+                51U
+                + (semantic_record.horizontal_high_written != 0U
+                       ? 15U
+                       : 0U);
+        } else if (horizontal_direction == 0x40U) {
+            horizontal_delay =
+                60U
+                + (semantic_record.horizontal_high_written != 0U
+                       ? 15U
+                       : 0U);
+        }
+        std::uint32_t vertical_delay = 0U;
+        if (vertical_direction == 0x08U) {
+            vertical_delay =
+                51U
+                + (semantic_record.vertical_high_written != 0U
+                       ? 15U
+                       : 0U);
+        } else if (vertical_direction == 0x10U) {
+            vertical_delay =
+                60U
+                + (semantic_record.vertical_high_written != 0U
+                       ? 15U
+                       : 0U);
+        }
+        const auto cursor_write_cycle = static_cast<std::uint32_t>(
+            483U + horizontal_delay + vertical_delay);
+        const auto pushed_status = static_cast<std::uint8_t>(
+            (entry.registers.status & 0x4DU) | 0x10U);
+
+        auto output = entry.registers;
+        output.program_counter = 0x6A37U;
+        output.accumulator =
+            vertical_direction == 0x08U
+                ? 0x08U
+                : (vertical_direction == 0x10U
+                       ? std::to_integer<std::uint8_t>(
+                             work_ram[
+                                 semantic_record
+                                     .vertical_low_work_ram_offset])
+                       : 0U);
+        output.y = motion_cursor;
+        output.status = static_cast<std::uint8_t>(
+            pushed_status & 0x5CU);
+        if (semantic_record.cursor_after_delta == 0U) {
+            output.status = static_cast<std::uint8_t>(
+                output.status | 0x02U);
+        } else if (
+            (semantic_record.cursor_after_delta & 0x80U) != 0U) {
+            output.status = static_cast<std::uint8_t>(
+                output.status | 0x80U);
+        }
+
+        RoutineReplacement replacement{
+            .return_instruction = {
+                .physical_bank = 0x03U,
+                .logical_pc = 0x6A37U,
+            },
+            .output_registers = output,
+            .body_master_cycles = cursor_write_cycle + 6U,
+        };
+        replacement.work_ram_writes.reserve(12U);
+        replacement.work_ram_writes = {
+            {
+                .instruction = {0x03U, 0x696BU},
+                .logical_address = 0x202FU,
+                .value = static_cast<std::uint8_t>(
+                    pass.table_pointer & 0x00FFU),
+                .master_cycle_offset = 39U,
+            },
+            {
+                .instruction = {0x03U, 0x6970U},
+                .logical_address = 0x2030U,
+                .value = static_cast<std::uint8_t>(
+                    pass.table_pointer >> 8U),
+                .master_cycle_offset = 66U,
+            },
+            {
+                .instruction = {0x03U, 0x697CU},
+                .logical_address = static_cast<std::uint16_t>(
+                    0x2100U + entry.registers.stack_pointer),
+                .value = pushed_status,
+                .master_cycle_offset = 114U,
+            },
+            {
+                .instruction = {0x03U, 0x697FU},
+                .logical_address = static_cast<std::uint16_t>(
+                    0x2000U + pass.collision_work_ram_offset),
+                .value = pass.collision_state_next,
+                .master_cycle_offset = 135U,
+            },
+            {
+                .instruction = {0x03U, 0x6995U},
+                .logical_address = 0x2035U,
+                .value = 0U,
+                .master_cycle_offset = 177U,
+            },
+            {
+                .instruction = {0x03U, 0x69BBU},
+                .logical_address = 0x202DU,
+                .value = static_cast<std::uint8_t>(
+                    semantic_record.motion_pointer & 0x00FFU),
+                .master_cycle_offset = 306U,
+            },
+            {
+                .instruction = {0x03U, 0x69C0U},
+                .logical_address = 0x202EU,
+                .value = static_cast<std::uint8_t>(
+                    semantic_record.motion_pointer >> 8U),
+                .master_cycle_offset = 333U,
+            },
+        };
+        if (horizontal_direction == 0x20U) {
+            replacement.work_ram_writes.push_back({
+                .instruction = {0x03U, 0x69FFU},
+                .logical_address = static_cast<std::uint16_t>(
+                    0x2000U
+                    + semantic_record
+                          .horizontal_low_work_ram_offset),
+                .value = semantic_record.horizontal_low,
+                .master_cycle_offset = 450U,
+            });
+            if (semantic_record.horizontal_high_written != 0U) {
+                replacement.work_ram_writes.push_back({
+                    .instruction = {0x03U, 0x6A04U},
+                    .logical_address = static_cast<std::uint16_t>(
+                        0x2000U
+                        + semantic_record
+                              .horizontal_high_work_ram_offset),
+                    .value = semantic_record.horizontal_high,
+                    .master_cycle_offset = 477U,
+                });
+            }
+        } else if (horizontal_direction == 0x40U) {
+            if (semantic_record.horizontal_high_written != 0U) {
+                replacement.work_ram_writes.push_back({
+                    .instruction = {0x03U, 0x6A0EU},
+                    .logical_address = static_cast<std::uint16_t>(
+                        0x2000U
+                        + semantic_record
+                              .horizontal_high_work_ram_offset),
+                    .value = semantic_record.horizontal_high,
+                    .master_cycle_offset = 477U,
+                });
+            }
+            replacement.work_ram_writes.push_back({
+                .instruction = {0x03U, 0x6A11U},
+                .logical_address = static_cast<std::uint16_t>(
+                    0x2000U
+                    + semantic_record
+                          .horizontal_low_work_ram_offset),
+                .value = semantic_record.horizontal_low,
+                .master_cycle_offset =
+                    semantic_record.horizontal_high_written != 0U
+                        ? 498U
+                        : 483U,
+            });
+        }
+        if (vertical_direction == 0x08U) {
+            replacement.work_ram_writes.push_back({
+                .instruction = {0x03U, 0x6A1EU},
+                .logical_address = static_cast<std::uint16_t>(
+                    0x2000U
+                    + semantic_record.vertical_low_work_ram_offset),
+                .value = semantic_record.vertical_low,
+                .master_cycle_offset =
+                    static_cast<std::uint32_t>(
+                        489U + horizontal_delay),
+            });
+            if (semantic_record.vertical_high_written != 0U) {
+                replacement.work_ram_writes.push_back({
+                    .instruction = {0x03U, 0x6A23U},
+                    .logical_address = static_cast<std::uint16_t>(
+                        0x2000U
+                        + semantic_record
+                              .vertical_high_work_ram_offset),
+                    .value = semantic_record.vertical_high,
+                    .master_cycle_offset =
+                        static_cast<std::uint32_t>(
+                            516U + horizontal_delay),
+                });
+            }
+        } else if (vertical_direction == 0x10U) {
+            if (semantic_record.vertical_high_written != 0U) {
+                replacement.work_ram_writes.push_back({
+                    .instruction = {0x03U, 0x6A2DU},
+                    .logical_address = static_cast<std::uint16_t>(
+                        0x2000U
+                        + semantic_record
+                              .vertical_high_work_ram_offset),
+                    .value = semantic_record.vertical_high,
+                    .master_cycle_offset =
+                        static_cast<std::uint32_t>(
+                            516U + horizontal_delay),
+                });
+            }
+            replacement.work_ram_writes.push_back({
+                .instruction = {0x03U, 0x6A30U},
+                .logical_address = static_cast<std::uint16_t>(
+                    0x2000U
+                    + semantic_record.vertical_low_work_ram_offset),
+                .value = semantic_record.vertical_low,
+                .master_cycle_offset =
+                    static_cast<std::uint32_t>(
+                        (semantic_record.vertical_high_written != 0U
+                             ? 537U
+                             : 522U)
+                        + horizontal_delay),
+            });
+        }
+        replacement.work_ram_writes.push_back({
+            .instruction = {0x03U, 0x6A33U},
+            .logical_address = static_cast<std::uint16_t>(
+                0x2000U + semantic_record.cursor_work_ram_offset),
+            .value = semantic_record.cursor_after_delta,
+            .master_cycle_offset = cursor_write_cycle,
+        });
+        return replacement;
+    }
+
+#if 0
+    dc_collision_table_record record{};
+    const bool has_full_record = dc_advance_collision_table_record(
+        reinterpret_cast<const std::uint8_t*>(work_ram.data()),
+        work_ram.size(),
+        entry.registers.x,
+        table_pointer,
+        table_entry,
+        motion_pointer,
+        motion_header,
+        motion_delta,
+        &record) != 0;
+    const bool proven_forward_full_record_path =
+        entry.registers.accumulator == 0x2AU
+        && entry.registers.x == 0x26U
+        && entry.registers.y == 0U
+        && entry.registers.stack_pointer == 0xF5U
+        && entry.registers.status == 0x02U
+        && has_full_record
+        && work_ram.size() >= 0x2000U
+        && std::to_integer<std::uint8_t>(work_ram[0x1E26U]) == 0U
+        && record.pass.collision_work_ram_offset == 0x18A6U
+        && record.pass.collision_state == 0x80U
+        && record.pass.collision_state_next == 0x81U
+        && record.pass.pass_index == 1U
+        && record.pass.returns_without_step == 0U
+        && record.pass.table_pointer == 0x6C2AU
+        && record.motion_pointer == 0x6D56U
+        && record.event_work_ram_offset == 0x1AA6U
+        && record.orientation_work_ram_offset == 0x1D26U
+        && record.cursor_work_ram_offset == 0x1EA6U
+        && record.horizontal_low_work_ram_offset == 0x11A6U
+        && record.table_entry == 0x03U
+        && record.motion_header == 0x82U
+        && record.motion_delta == 0x20U
+        && record.event == 0x02U
+        && record.orientation == 0x8CU
+        && record.cursor_after_header == 1U
+        && record.cursor_after_delta == 2U
+        && record.horizontal_low == 0x41U
+        && record.horizontal_high == 0U
+        && record.event_written != 0U
+        && record.horizontal_written != 0U
+        && record.horizontal_high_written == 0U
+        && record.vertical_written == 0U;
+    const bool proven_reverse_full_record_path =
+        entry.registers.accumulator == 0x2BU
+        && entry.registers.x == 0x27U
+        && entry.registers.y == 0x01U
+        && entry.registers.stack_pointer == 0xF5U
+        && entry.registers.status == 0x10U
+        && has_full_record
+        && record.pass.collision_work_ram_offset == 0x18A7U
+        && record.pass.collision_state == 0x80U
+        && record.pass.collision_state_next == 0x81U
+        && record.pass.pass_index == 1U
+        && record.pass.returns_without_step == 0U
+        && record.pass.table_pointer == 0x6C2DU
+        && record.motion_pointer == 0x6D9EU
+        && record.event_work_ram_offset == 0x1AA7U
+        && record.orientation_work_ram_offset == 0x1D27U
+        && record.cursor_work_ram_offset == 0x1EA7U
+        && record.horizontal_low_work_ram_offset == 0x11A7U
+        && record.table_entry == 0x07U
+        && record.motion_header == 0x86U
+        && record.motion_delta == 0x40U
+        && record.event == 0x06U
+        && record.orientation == 0x8CU
+        && record.cursor_after_header == 1U
+        && record.cursor_after_delta == 2U
+        && record.horizontal_low == 0xD7U
+        && record.event_written != 0U
+        && record.horizontal_written != 0U
+        && record.horizontal_high_written == 0U
+        && record.vertical_written == 0U;
+    const bool proven_vertical_full_record_path =
+        entry.registers.accumulator == 0x2CU
+        && entry.registers.x == 0x28U
+        && entry.registers.y == 0U
+        && entry.registers.stack_pointer == 0xF5U
+        && entry.registers.status == 0x12U
+        && has_full_record
+        && record.pass.collision_work_ram_offset == 0x18A8U
+        && record.pass.collision_state == 0x80U
+        && record.pass.collision_state_next == 0x81U
+        && record.pass.pass_index == 1U
+        && record.pass.returns_without_step == 0U
+        && record.pass.table_pointer == 0x6C30U
+        && record.motion_pointer == 0x6D7AU
+        && record.event_work_ram_offset == 0x1AA8U
+        && record.orientation_work_ram_offset == 0x1D28U
+        && record.cursor_work_ram_offset == 0x1EA8U
+        && record.vertical_low_work_ram_offset == 0x1328U
+        && record.table_entry == 0x05U
+        && record.motion_header == 0x84U
+        && record.motion_delta == 0x08U
+        && record.event == 0x04U
+        && record.orientation == 0x8CU
+        && record.cursor_after_header == 1U
+        && record.cursor_after_delta == 2U
+        && record.vertical_low == 0x83U
+        && record.event_written != 0U
+        && record.horizontal_written == 0U
+        && record.vertical_written != 0U
+        && record.vertical_high_written == 0U;
+    const bool proven_second_vertical_full_record_path =
+        entry.registers.accumulator == 0x2DU
+        && entry.registers.x == 0x29U
+        && entry.registers.y == 0x01U
+        && entry.registers.stack_pointer == 0xF5U
+        && entry.registers.status == 0x10U
+        && has_full_record
+        && record.pass.collision_work_ram_offset == 0x18A9U
+        && record.pass.collision_state == 0x80U
+        && record.pass.collision_state_next == 0x81U
+        && record.pass.pass_index == 1U
+        && record.pass.returns_without_step == 0U
+        && record.pass.table_pointer == 0x6C35U
+        && record.motion_pointer == 0x6D7AU
+        && record.event_work_ram_offset == 0x1AA9U
+        && record.orientation_work_ram_offset == 0x1D29U
+        && record.cursor_work_ram_offset == 0x1EA9U
+        && record.vertical_low_work_ram_offset == 0x1329U
+        && record.table_entry == 0x05U
+        && record.motion_header == 0x84U
+        && record.motion_delta == 0x08U
+        && record.event == 0x04U
+        && record.orientation == 0x8CU
+        && record.cursor_after_header == 1U
+        && record.cursor_after_delta == 2U
+        && record.vertical_low == 0x83U
+        && record.event_written != 0U
+        && record.horizontal_written == 0U
+        && record.vertical_written != 0U
+        && record.vertical_high_written == 0U;
+    const bool proven_alternate_reverse_full_record_path =
+        entry.registers.accumulator == 0x06U
+        && entry.registers.x == 0x17U
+        && entry.registers.y == 0x75U
+        && entry.registers.stack_pointer == 0xF9U
+        && entry.registers.status == 0x00U
+        && has_full_record
+        && record.pass.collision_work_ram_offset == 0x1897U
+        && record.pass.collision_state == 0x80U
+        && record.pass.collision_state_next == 0x81U
+        && record.pass.pass_index == 1U
+        && record.pass.returns_without_step == 0U
+        && record.pass.table_pointer == 0x6B0AU
+        && record.motion_pointer == 0x6DE6U
+        && record.event_work_ram_offset == 0x1A97U
+        && record.orientation_work_ram_offset == 0x1D17U
+        && record.cursor_work_ram_offset == 0x1E97U
+        && record.horizontal_low_work_ram_offset == 0x1197U
+        && record.table_entry == 0x0BU
+        && record.motion_header == 0x8AU
+        && record.motion_delta == 0x40U
+        && record.event == 0x0AU
+        && record.orientation == 0x8DU
+        && record.cursor_after_header == 1U
+        && record.cursor_after_delta == 2U
+        && record.horizontal_low == 0xF5U
+        && record.event_written != 0U
+        && record.horizontal_written != 0U
+        && record.horizontal_high_written == 0U
+        && record.vertical_written == 0U;
+    const bool proven_continuation_full_record_path =
+        entry.registers.accumulator == 0x2AU
+        && entry.registers.x == 0x26U
+        && entry.registers.y == 0x00U
+        && entry.registers.stack_pointer == 0xF9U
+        && entry.registers.status == 0x02U
+        && continuation_full_record
+        && has_full_record
+        && record.pass.collision_work_ram_offset == 0x18A6U
+        && record.pass.collision_state == 0x80U
+        && record.pass.collision_state_next == 0x81U
+        && record.pass.pass_index == 1U
+        && record.pass.returns_without_step == 0U
+        && record.pass.table_pointer == 0x6C2AU
+        && record.motion_pointer == 0x6D56U
+        && record.cursor_work_ram_offset == 0x1EA6U
+        && record.vertical_low_work_ram_offset == 0x1326U
+        && record.table_entry == 0x03U
+        && record.motion_header == 0x08U
+        && record.motion_delta == 0x08U
+        && record.event_written == 0U
+        && record.cursor_after_header == 2U
+        && record.cursor_after_delta == 3U
+        && record.vertical_low == 0x7DU
+        && record.horizontal_written == 0U
+        && record.vertical_written != 0U
+        && record.vertical_high_written == 0U;
+    const bool proven_second_continuation_full_record_path =
+        entry.registers.accumulator == 0x2CU
+        && entry.registers.x == 0x28U
+        && entry.registers.y == 0x00U
+        && entry.registers.stack_pointer == 0xF9U
+        && entry.registers.status == 0x02U
+        && second_continuation_full_record
+        && has_full_record
+        && record.pass.collision_work_ram_offset == 0x18A8U
+        && record.pass.collision_state == 0x80U
+        && record.pass.collision_state_next == 0x81U
+        && record.pass.pass_index == 1U
+        && record.pass.returns_without_step == 0U
+        && record.pass.table_pointer == 0x6C30U
+        && record.motion_pointer == 0x6D7AU
+        && record.cursor_work_ram_offset == 0x1EA8U
+        && record.vertical_low_work_ram_offset == 0x1328U
+        && record.table_entry == 0x05U
+        && record.motion_header == 0x08U
+        && record.motion_delta == 0x08U
+        && record.event_written == 0U
+        && record.cursor_after_header == 2U
+        && record.cursor_after_delta == 3U
+        && record.vertical_low == 0x84U
+        && record.horizontal_written == 0U
+        && record.vertical_written != 0U
+        && record.vertical_high_written == 0U;
+    const bool proven_alternate_continuation_full_record_path =
+        entry.registers.accumulator == 0x06U
+        && entry.registers.x == 0x17U
+        && entry.registers.y == 0x75U
+        && entry.registers.stack_pointer == 0xF9U
+        && entry.registers.status == 0x00U
+        && alternate_continuation_full_record
+        && has_full_record
+        && record.pass.collision_work_ram_offset == 0x1897U
+        && record.pass.collision_state == 0x80U
+        && record.pass.collision_state_next == 0x81U
+        && record.pass.pass_index == 1U
+        && record.pass.returns_without_step == 0U
+        && record.pass.table_pointer == 0x6B0AU
+        && record.motion_pointer == 0x6DE6U
+        && record.cursor_work_ram_offset == 0x1E97U
+        && record.vertical_low_work_ram_offset == 0x1317U
+        && record.table_entry == 0x0BU
+        && record.motion_header == 0x10U
+        && record.motion_delta == 0x10U
+        && record.event_written == 0U
+        && record.cursor_after_header == 2U
+        && record.cursor_after_delta == 3U
+        && record.vertical_low == 0xC3U
+        && record.horizontal_written == 0U
+        && record.vertical_written != 0U
+        && record.vertical_high_written == 0U;
+    const bool proven_horizontal_continuation_full_record_path =
+        entry.registers.accumulator == 0x2AU
+        && entry.registers.x == 0x26U
+        && entry.registers.y == 0x00U
+        && entry.registers.stack_pointer == 0xF9U
+        && entry.registers.status == 0x02U
+        && horizontal_continuation_full_record
+        && has_full_record
+        && record.pass.collision_work_ram_offset == 0x18A6U
+        && record.pass.collision_state == 0x80U
+        && record.pass.collision_state_next == 0x81U
+        && record.pass.pass_index == 1U
+        && record.pass.returns_without_step == 0U
+        && record.pass.table_pointer == 0x6C2AU
+        && record.motion_pointer == 0x6D56U
+        && record.cursor_work_ram_offset == 0x1EA6U
+        && record.horizontal_low_work_ram_offset == 0x11A6U
+        && record.table_entry == 0x03U
+        && record.motion_header == 0x20U
+        && record.motion_delta == 0x20U
+        && record.event_written == 0U
+        && record.cursor_after_header == 3U
+        && record.cursor_after_delta == 4U
+        && record.horizontal_low == 0x42U
+        && record.horizontal_written != 0U
+        && record.horizontal_high_written == 0U
+        && record.vertical_written == 0U;
+    const bool proven_reverse_horizontal_continuation_full_record_path =
+        entry.registers.accumulator == 0x2BU
+        && entry.registers.x == 0x27U
+        && entry.registers.y == 0x01U
+        && entry.registers.stack_pointer == 0xF9U
+        && entry.registers.status == 0x00U
+        && reverse_horizontal_continuation_full_record
+        && has_full_record
+        && record.pass.collision_work_ram_offset == 0x18A7U
+        && record.pass.collision_state == 0x80U
+        && record.pass.collision_state_next == 0x81U
+        && record.pass.pass_index == 1U
+        && record.pass.returns_without_step == 0U
+        && record.pass.table_pointer == 0x6C2DU
+        && record.motion_pointer == 0x6D9EU
+        && record.cursor_work_ram_offset == 0x1EA7U
+        && record.horizontal_low_work_ram_offset == 0x11A7U
+        && record.table_entry == 0x07U
+        && record.motion_header == 0x40U
+        && record.motion_delta == 0x40U
+        && record.event_written == 0U
+        && record.cursor_after_header == 3U
+        && record.cursor_after_delta == 4U
+        && record.horizontal_low == 0xD6U
+        && record.horizontal_written != 0U
+        && record.horizontal_high_written == 0U
+        && record.vertical_written == 0U;
+    const bool proven_later_vertical_continuation_full_record_path =
+        entry.registers.accumulator == 0x2CU
+        && entry.registers.x == 0x28U
+        && entry.registers.y == 0x00U
+        && entry.registers.stack_pointer == 0xF9U
+        && entry.registers.status == 0x12U
+        && later_vertical_continuation_full_record
+        && has_full_record
+        && record.pass.collision_work_ram_offset == 0x18A8U
+        && record.pass.collision_state == 0x80U
+        && record.pass.collision_state_next == 0x81U
+        && record.pass.pass_index == 1U
+        && record.pass.returns_without_step == 0U
+        && record.pass.table_pointer == 0x6C30U
+        && record.motion_pointer == 0x6D7AU
+        && record.cursor_work_ram_offset == 0x1EA8U
+        && record.vertical_low_work_ram_offset == 0x1328U
+        && record.table_entry == 0x05U
+        && record.motion_header == 0x08U
+        && record.motion_delta == 0x08U
+        && record.event_written == 0U
+        && record.cursor_after_header == 3U
+        && record.cursor_after_delta == 4U
+        && record.vertical_low == 0x85U
+        && record.horizontal_written == 0U
+        && record.vertical_written != 0U
+        && record.vertical_high_written == 0U;
+    const bool proven_second_later_vertical_continuation_full_record_path =
+        entry.registers.accumulator == 0x2DU
+        && entry.registers.x == 0x29U
+        && entry.registers.y == 0x01U
+        && entry.registers.stack_pointer == 0xF9U
+        && entry.registers.status == 0x00U
+        && second_later_vertical_continuation_full_record
+        && has_full_record
+        && record.pass.collision_work_ram_offset == 0x18A9U
+        && record.pass.collision_state == 0x80U
+        && record.pass.collision_state_next == 0x81U
+        && record.pass.pass_index == 1U
+        && record.pass.returns_without_step == 0U
+        && record.pass.table_pointer == 0x6C35U
+        && record.motion_pointer == 0x6D7AU
+        && record.cursor_work_ram_offset == 0x1EA9U
+        && record.vertical_low_work_ram_offset == 0x1329U
+        && record.table_entry == 0x05U
+        && record.motion_header == 0x08U
+        && record.motion_delta == 0x08U
+        && record.event_written == 0U
+        && record.cursor_after_header == 3U
+        && record.cursor_after_delta == 4U
+        && record.vertical_low == 0x85U
+        && record.horizontal_written == 0U
+        && record.vertical_written != 0U
+        && record.vertical_high_written == 0U;
+    const bool proven_any_later_vertical_continuation_full_record_path =
+        proven_later_vertical_continuation_full_record_path
+        || proven_second_later_vertical_continuation_full_record_path;
+    const bool proven_any_horizontal_continuation_full_record_path =
+        proven_horizontal_continuation_full_record_path
+        || proven_reverse_horizontal_continuation_full_record_path;
+    const bool proven_any_continuation_full_record_path =
+        proven_continuation_full_record_path
+        || proven_second_continuation_full_record_path
+        || proven_alternate_continuation_full_record_path
+        || proven_any_horizontal_continuation_full_record_path
+        || proven_any_later_vertical_continuation_full_record_path;
+    const bool proven_any_reverse_full_record_path =
+        proven_reverse_full_record_path
+        || proven_alternate_reverse_full_record_path;
+    const bool proven_any_vertical_full_record_path =
+        proven_vertical_full_record_path
+        || proven_second_vertical_full_record_path;
+    const bool proven_full_record_path =
+        proven_forward_full_record_path
+        || proven_any_reverse_full_record_path
+        || proven_any_vertical_full_record_path
+        || proven_any_continuation_full_record_path;
+    if (proven_full_record_path) {
+        auto output = entry.registers;
+        output.program_counter = 0x6A37U;
+        output.accumulator =
+            proven_alternate_continuation_full_record_path
+                ? 0xC4U
+                : ((proven_any_vertical_full_record_path
+                    || proven_continuation_full_record_path
+                    || proven_second_continuation_full_record_path
+                    || proven_any_later_vertical_continuation_full_record_path)
+                       ? 0x08U
+                       : 0U);
+        output.y =
+            (proven_any_horizontal_continuation_full_record_path
+             || proven_any_later_vertical_continuation_full_record_path)
+                ? 0x03U
+                : (proven_any_continuation_full_record_path
+                       ? 0x02U
+                       : 0x01U);
+        output.status = 0x10U;
+
+        if (proven_any_continuation_full_record_path) {
+            RoutineReplacement replacement{
+                .return_instruction = {
+                    .physical_bank = 0x03U,
+                    .logical_pc = 0x6A37U,
+                },
+                .output_registers = output,
+                .body_master_cycles =
+                    (proven_alternate_continuation_full_record_path
+                     || proven_reverse_horizontal_continuation_full_record_path)
+                        ? 549U
+                        : 540U,
+            };
+            replacement.work_ram_writes = {
+                {
+                    .instruction = {0x03U, 0x696BU},
+                    .logical_address = 0x202FU,
+                    .value = static_cast<std::uint8_t>(
+                        record.pass.table_pointer & 0x00FFU),
+                    .master_cycle_offset = 39U,
+                },
+                {
+                    .instruction = {0x03U, 0x6970U},
+                    .logical_address = 0x2030U,
+                    .value = static_cast<std::uint8_t>(
+                        record.pass.table_pointer >> 8U),
+                    .master_cycle_offset = 66U,
+                },
+                {
+                    .instruction = {0x03U, 0x697CU},
+                    .logical_address = static_cast<std::uint16_t>(
+                        0x2100U + entry.registers.stack_pointer),
+                    .value = 0x10U,
+                    .master_cycle_offset = 114U,
+                },
+                {
+                    .instruction = {0x03U, 0x697FU},
+                    .logical_address = static_cast<std::uint16_t>(
+                        0x2000U
+                        + record.pass.collision_work_ram_offset),
+                    .value = record.pass.collision_state_next,
+                    .master_cycle_offset = 135U,
+                },
+                {
+                    .instruction = {0x03U, 0x6995U},
+                    .logical_address = 0x2035U,
+                    .value = 0U,
+                    .master_cycle_offset = 177U,
+                },
+                {
+                    .instruction = {0x03U, 0x69BBU},
+                    .logical_address = 0x202DU,
+                    .value = static_cast<std::uint8_t>(
+                        record.motion_pointer & 0x00FFU),
+                    .master_cycle_offset = 306U,
+                },
+                {
+                    .instruction = {0x03U, 0x69C0U},
+                    .logical_address = 0x202EU,
+                    .value = static_cast<std::uint8_t>(
+                        record.motion_pointer >> 8U),
+                    .master_cycle_offset = 333U,
+                },
+                {
+                    .instruction = {
+                        0x03U,
+                        proven_alternate_continuation_full_record_path
+                            ? 0x6A30U
+                            : (proven_reverse_horizontal_continuation_full_record_path
+                                   ? 0x6A11U
+                                   : (proven_horizontal_continuation_full_record_path
+                                          ? 0x69FFU
+                                          : 0x6A1EU)),
+                    },
+                    .logical_address = static_cast<std::uint16_t>(
+                        0x2000U
+                        + (proven_any_horizontal_continuation_full_record_path
+                               ? record.horizontal_low_work_ram_offset
+                               : record.vertical_low_work_ram_offset)),
+                    .value =
+                        proven_any_horizontal_continuation_full_record_path
+                            ? record.horizontal_low
+                            : record.vertical_low,
+                    .master_cycle_offset =
+                        proven_alternate_continuation_full_record_path
+                            ? 522U
+                            : (proven_reverse_horizontal_continuation_full_record_path
+                                   ? 483U
+                                   : (proven_horizontal_continuation_full_record_path
+                                          ? 450U
+                                          : 489U)),
+                },
+                {
+                    .instruction = {0x03U, 0x6A33U},
+                    .logical_address = static_cast<std::uint16_t>(
+                        0x2000U + record.cursor_work_ram_offset),
+                    .value = record.cursor_after_delta,
+                    .master_cycle_offset =
+                        (proven_alternate_continuation_full_record_path
+                         || proven_reverse_horizontal_continuation_full_record_path)
+                            ? 543U
+                            : 534U,
+                },
+            };
+            return replacement;
+        }
+
+        RoutineReplacement replacement{
+            .return_instruction = {
+                .physical_bank = 0x03U,
+                .logical_pc = 0x6A37U,
+            },
+            .output_registers = output,
+            .body_master_cycles =
+                proven_any_reverse_full_record_path ? 672U : 663U,
+        };
+        replacement.work_ram_writes = {
+            {
+                .instruction = {0x03U, 0x696BU},
+                .logical_address = 0x202FU,
+                .value = static_cast<std::uint8_t>(
+                    record.pass.table_pointer & 0x00FFU),
+                .master_cycle_offset = 39U,
+            },
+            {
+                .instruction = {0x03U, 0x6970U},
+                .logical_address = 0x2030U,
+                .value = static_cast<std::uint8_t>(
+                    record.pass.table_pointer >> 8U),
+                .master_cycle_offset = 66U,
+            },
+            {
+                .instruction = {0x03U, 0x697CU},
+                .logical_address = static_cast<std::uint16_t>(
+                    0x2100U + entry.registers.stack_pointer),
+                .value = 0x10U,
+                .master_cycle_offset = 114U,
+            },
+            {
+                .instruction = {0x03U, 0x697FU},
+                .logical_address = static_cast<std::uint16_t>(
+                    0x2000U
+                    + record.pass.collision_work_ram_offset),
+                .value = record.pass.collision_state_next,
+                .master_cycle_offset = 135U,
+            },
+            {
+                .instruction = {0x03U, 0x6995U},
+                .logical_address = 0x2035U,
+                .value = 0U,
+                .master_cycle_offset = 177U,
+            },
+            {
+                .instruction = {0x03U, 0x69BBU},
+                .logical_address = 0x202DU,
+                .value = static_cast<std::uint8_t>(
+                    record.motion_pointer & 0x00FFU),
+                .master_cycle_offset = 306U,
+            },
+            {
+                .instruction = {0x03U, 0x69C0U},
+                .logical_address = 0x202EU,
+                .value = static_cast<std::uint8_t>(
+                    record.motion_pointer >> 8U),
+                .master_cycle_offset = 333U,
+            },
+            {
+                .instruction = {0x03U, 0x69D9U},
+                .logical_address = static_cast<std::uint16_t>(
+                    0x2000U + record.event_work_ram_offset),
+                .value = record.event,
+                .master_cycle_offset = 420U,
+            },
+            {
+                .instruction = {0x03U, 0x69EEU},
+                .logical_address = static_cast<std::uint16_t>(
+                    0x2000U + record.orientation_work_ram_offset),
+                .value = record.orientation,
+                .master_cycle_offset = 480U,
+            },
+            {
+                .instruction = {0x03U, 0x69F1U},
+                .logical_address = static_cast<std::uint16_t>(
+                    0x2000U + record.cursor_work_ram_offset),
+                .value = record.cursor_after_header,
+                .master_cycle_offset = 501U,
+            },
+            {
+                .instruction = {
+                    0x03U,
+                    static_cast<std::uint16_t>(
+                        proven_any_reverse_full_record_path
+                            ? 0x6A11U
+                            : (proven_any_vertical_full_record_path
+                                   ? 0x6A1EU
+                                   : 0x69FFU)),
+                },
+                .logical_address = static_cast<std::uint16_t>(
+                    0x2000U
+                    + (proven_any_vertical_full_record_path
+                           ? record.vertical_low_work_ram_offset
+                           : record.horizontal_low_work_ram_offset)),
+                .value = proven_any_vertical_full_record_path
+                    ? record.vertical_low
+                    : record.horizontal_low,
+                .master_cycle_offset =
+                    proven_any_reverse_full_record_path
+                        ? 606U
+                        : (proven_any_vertical_full_record_path
+                               ? 612U
+                               : 573U),
+            },
+            {
+                .instruction = {0x03U, 0x6A33U},
+                .logical_address = static_cast<std::uint16_t>(
+                    0x2000U + record.cursor_work_ram_offset),
+                .value = record.cursor_after_delta,
+                .master_cycle_offset =
+                    proven_any_reverse_full_record_path ? 666U : 657U,
+            },
+        };
+        return replacement;
+    }
+
+#endif
+    // This branch depends only on the ROM selector and the indexed pass
+    // state. It is therefore admitted semantically for every selector/slot,
+    // rather than enumerating individual dynamic call ordinals.
+    if (pass.collision_state != 0x81U
+        || pass.collision_state_next != 0x80U
+        || pass.pass_index != 0U
+        || pass.returns_without_step == 0U) {
+        return std::nullopt;
+    }
+
+    auto output = entry.registers;
+    output.program_counter = 0x6988U;
+    output.accumulator = pass.collision_state_next;
+    output.y = pass.collision_state;
+    output.status = 0x12U;
+
+    RoutineReplacement replacement{
+        .return_instruction = {
+            .physical_bank = 0x03U,
+            .logical_pc = 0x6988U,
+        },
+        .output_registers = output,
+        .body_master_cycles = 165U,
+    };
+    replacement.work_ram_writes = {
+        {
+            .instruction = {0x03U, 0x696BU},
+            .logical_address = 0x202FU,
+            .value = static_cast<std::uint8_t>(
+                pass.table_pointer & 0x00FFU),
+            .master_cycle_offset = 39U,
+        },
+        {
+            .instruction = {0x03U, 0x6970U},
+            .logical_address = 0x2030U,
+            .value = static_cast<std::uint8_t>(
+                pass.table_pointer >> 8U),
+            .master_cycle_offset = 66U,
+        },
+        {
+            .instruction = {0x03U, 0x697CU},
+            .logical_address = static_cast<std::uint16_t>(
+                0x2100U + entry.registers.stack_pointer),
+            .value = 0x12U,
+            .master_cycle_offset = 114U,
+        },
+        {
+            .instruction = {0x03U, 0x697FU},
+            .logical_address = static_cast<std::uint16_t>(
+                0x2000U + pass.collision_work_ram_offset),
+            .value = pass.collision_state_next,
+            .master_cycle_offset = 135U,
+        },
+    };
+    return replacement;
+}
+
+[[nodiscard]] std::optional<RoutineReplacement>
+replace_collision_response(
+    const RoutineEntry& entry,
+    const std::span<const std::byte> work_ram)
+{
+    constexpr RoutineKey kRoutine{
+        .physical_bank = 0x03U,
+        .logical_pc = 0x7FB1U,
+    };
+    if (entry.routine != kRoutine) {
+        return std::nullopt;
+    }
+
+    dc_collision_response response{};
+    if (!dc_advance_collision_response(
+            reinterpret_cast<const std::uint8_t*>(work_ram.data()),
+            work_ram.size(),
+            entry.registers.x,
+            &response)) {
+        throw std::runtime_error(
+            "Native 7FB1 replacement rejected the work-RAM snapshot.");
+    }
+    auto output = entry.registers;
+    output.program_counter = 0x7FD1U;
+    output.accumulator = response.countdown_reloaded != 0U
+        ? response.countdown
+        : response.response;
+    // The response ADC cannot carry or overflow: response_base is a
+    // multiple of four and phase contributes only its low two bits. DEC
+    // supplies the final N/Z flags on the ordinary path; INC does so on
+    // the reload path. All other status bits survive the routine.
+    output.status =
+        static_cast<std::uint8_t>(entry.registers.status & 0x3CU);
+    const auto final_flag_value = response.countdown_reloaded != 0U
+        ? response.phase
+        : response.countdown;
+    if (final_flag_value == 0U) {
+        output.status =
+            static_cast<std::uint8_t>(output.status | 0x02U);
+    } else if ((final_flag_value & 0x80U) != 0U) {
+        output.status =
+            static_cast<std::uint8_t>(output.status | 0x80U);
+    }
+
+    RoutineReplacement replacement{
+        .return_instruction = {
+            .physical_bank = 0x03U,
+            .logical_pc = 0x7FD1U,
+        },
+        .output_registers = output,
+        .body_master_cycles =
+            response.countdown_reloaded != 0U ? 162U : 126U,
+    };
+    replacement.work_ram_writes = {
+        {
+            .instruction = {0x03U, 0x7FB7U},
+            .logical_address = 0x2026U,
+            .value = response.response_base,
+            .master_cycle_offset = 39U,
+        },
+        {
+            .instruction = {0x03U, 0x7FC1U},
+            .logical_address = static_cast<std::uint16_t>(
+                0x2000U + response.response_work_ram_offset),
+            .value = response.response,
+            .master_cycle_offset = 93U,
+        },
+        {
+            .instruction = {0x03U, 0x7FC4U},
+            .logical_address = static_cast<std::uint16_t>(
+                0x2000U + response.countdown_work_ram_offset),
+            .value = response.countdown_reloaded != 0U
+                ? 0U
+                : response.countdown,
+            .master_cycle_offset = 114U,
+        },
+    };
+    if (response.countdown_reloaded != 0U) {
+        replacement.work_ram_writes.push_back({
+            .instruction = {0x03U, 0x7FCBU},
+            .logical_address = static_cast<std::uint16_t>(
+                0x2000U + response.countdown_work_ram_offset),
+            .value = response.countdown,
+            .master_cycle_offset = 141U,
+        });
+        replacement.work_ram_writes.push_back({
+            .instruction = {0x03U, 0x7FCEU},
+            .logical_address = static_cast<std::uint16_t>(
+                0x2000U + response.phase_work_ram_offset),
+            .value = response.phase,
+            .master_cycle_offset = 162U,
+        });
+    }
+    return replacement;
+}
+
+[[nodiscard]] std::optional<RoutineReplacement>
 replace_cached_position_restore(
     const RoutineEntry& entry,
     const std::span<const std::byte> work_ram)
@@ -2528,6 +4834,50 @@ replace_cached_position_restore(
             .master_cycle_offset =
                 static_cast<std::uint32_t>(27U * (index + 1U)),
         });
+    }
+    return replacement;
+}
+
+[[nodiscard]] std::optional<RoutineReplacement>
+replace_native_gameplay_routine(
+    const RoutineEntry& entry,
+    const std::span<const std::byte> work_ram,
+    const std::span<const std::byte> rom)
+{
+    std::optional<RoutineReplacement> replacement;
+    if (entry.routine
+        == RoutineKey{
+            .physical_bank = 0x00U,
+            .logical_pc = 0xF1B4U,
+        }) {
+        replacement = replace_position_integration(entry, work_ram);
+    } else if (entry.routine
+        == RoutineKey{
+            .physical_bank = 0x01U,
+            .logical_pc = 0xD1A2U,
+        }) {
+        replacement = replace_motion_rotation(entry, work_ram);
+    } else if (entry.routine
+        == RoutineKey{
+            .physical_bank = 0x01U,
+            .logical_pc = 0xDD09U,
+        }) {
+        replacement = replace_motion_damping(entry, work_ram);
+    } else if (entry.routine
+        == RoutineKey{
+            .physical_bank = 0x03U,
+            .logical_pc = 0x6966U,
+        }) {
+        replacement =
+            replace_collision_table_interpreter(entry, work_ram, rom);
+    } else if (entry.routine
+        == RoutineKey{
+            .physical_bank = 0x03U,
+            .logical_pc = 0x7FB1U,
+        }) {
+        replacement = replace_collision_response(entry, work_ram);
+    } else {
+        replacement = replace_cached_position_restore(entry, work_ram);
     }
     return replacement;
 }
@@ -4423,6 +6773,14 @@ int main(const int argc, char* argv[])
         }
         std::cout << load_result.message << '\n';
 
+        const auto replacement_rom = options.replace_hooks.empty()
+            ? std::optional<std::vector<std::byte>>{
+                  std::vector<std::byte>{}}
+            : read_rom_bytes(options.rom_path);
+        if (!replacement_rom) {
+            return EXIT_FAILURE;
+        }
+
         if (options.record_canonical || options.record_gameplay
             || options.record_state_census) {
             const auto& recording_plan = options.record_state_census
@@ -4524,6 +6882,7 @@ int main(const int argc, char* argv[])
                     hook.replacement_callback =
                         [&replacement_hits,
                          &replacement_entries,
+                         &replacement_rom,
                          &options,
                          replacement_index](
                             const RoutineEntry& entry,
@@ -4531,16 +6890,31 @@ int main(const int argc, char* argv[])
                             const auto entry_number =
                                 ++replacement_entries[
                                     replacement_index];
-                            if (entry_number
+                            if (!options.replace_hooks[
+                                     replacement_index]
+                                     .all_calls
+                                && entry_number
                                 != options.replace_hooks[
                                        replacement_index]
                                        .ordinal) {
                                 return std::optional<
                                     RoutineReplacement>{};
                             }
-                            auto result = replace_cached_position_restore(
+                            auto result = replace_native_gameplay_routine(
                                 entry,
-                                work_ram);
+                                work_ram,
+                                *replacement_rom);
+                            if (result
+                                && options.replace_hooks[
+                                       replacement_index]
+                                       .all_calls
+                                && result->body_master_cycles
+                                    >= std::min(
+                                        entry.master_cycles_until_user_event,
+                                        entry
+                                            .master_cycles_until_timer_interrupt)) {
+                                result.reset();
+                            }
                             if (result) {
                                 ++replacement_hits[replacement_index];
                             }
@@ -4570,22 +6944,35 @@ int main(const int argc, char* argv[])
                         .replacement_callback =
                             [&replacement_hits,
                              &replacement_entries,
+                             &replacement_rom,
                              &options,
                              index](
                                 const RoutineEntry& entry,
                                 const std::span<const std::byte> work_ram) {
                                 const auto entry_number =
                                     ++replacement_entries[index];
-                                if (entry_number
+                                if (!options.replace_hooks[index].all_calls
+                                    && entry_number
                                     != options.replace_hooks[index]
                                            .ordinal) {
                                     return std::optional<
                                         RoutineReplacement>{};
                                 }
                                 auto result =
-                                    replace_cached_position_restore(
+                                    replace_native_gameplay_routine(
                                         entry,
-                                        work_ram);
+                                        work_ram,
+                                        *replacement_rom);
+                                if (result
+                                    && options.replace_hooks[index].all_calls
+                                    && result->body_master_cycles
+                                        >= std::min(
+                                            entry
+                                                .master_cycles_until_user_event,
+                                            entry
+                                                .master_cycles_until_timer_interrupt)) {
+                                    result.reset();
+                                }
                                 if (result) {
                                     ++replacement_hits[index];
                                 }
@@ -4718,10 +7105,18 @@ int main(const int argc, char* argv[])
                           << static_cast<unsigned>(
                                  request.routine.physical_bank)
                           << ':' << std::setw(4)
-                          << request.routine.logical_pc << std::dec
-                          << '@' << request.ordinal
-                          << std::setfill(' ') << " entries: "
-                          << replacement_hits[index] << '\n';
+                          << request.routine.logical_pc << std::dec << '@';
+                if (request.all_calls) {
+                    std::cout << "all";
+                } else {
+                    std::cout << request.ordinal;
+                }
+                std::cout << std::setfill(' ') << " entries: "
+                          << replacement_hits[index];
+                if (request.all_calls) {
+                    std::cout << " of " << replacement_entries[index];
+                }
+                std::cout << '\n';
             }
             for (std::size_t index = 0U;
                  index < options.observe_hooks.size();

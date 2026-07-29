@@ -1,7 +1,7 @@
 diff --git a/mednafen/pce/huc6280.cpp b/mednafen/pce/huc6280.cpp
 --- a/mednafen/pce/huc6280.cpp
 +++ b/mednafen/pce/huc6280.cpp
-@@ -654,6 +654,75 @@ NO_INLINE void HuC6280::RunSub(void)
+@@ -683,6 +683,82 @@ NO_INLINE void HuC6280::RunSub(void)
  				dc_beetle_active_instruction_hook_user_data);
  		}
  
@@ -22,7 +22,9 @@ diff --git a/mednafen/pce/huc6280.cpp b/mednafen/pce/huc6280.cpp
 +					MPR[4], MPR[5], MPR[6], MPR[7]
 +				},
 +				timestamp,
-+				PCE_TimestampBase + timestamp
++				PCE_TimestampBase + timestamp,
++				(uint32)next_user_event,
++				GetMasterCyclesUntilTimerInterrupt()
 +			};
 +			dc_beetle_replacement_result replacement = {};
 +
@@ -53,14 +55,19 @@ diff --git a/mednafen/pce/huc6280.cpp b/mednafen/pce/huc6280.cpp
 +				{
 +					const dc_beetle_replacement_write& write =
 +						replacement.writes[i];
-+					ADDCYC_MASTER(write.master_cycle_offset - elapsed);
++					if(write.master_cycle_offset > elapsed)
++						ADDCYC_MASTER(
++							write.master_cycle_offset - elapsed);
 +					elapsed = write.master_cycle_offset;
-+					HookInstructionPC = write.instruction_logical_pc;
++					HookInstructionPC =
++						write.instruction_logical_pc;
 +					HookInstructionPhysicalBank =
 +						write.instruction_physical_bank;
 +					WrMem(write.logical_address, write.value);
 +				}
-+				ADDCYC_MASTER(replacement.body_master_cycles - elapsed);
++				if(replacement.body_master_cycles > elapsed)
++					ADDCYC_MASTER(
++						replacement.body_master_cycles - elapsed);
 +				A = replacement.accumulator;
 +				X = replacement.x;
 +				Y = replacement.y;

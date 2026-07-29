@@ -3665,6 +3665,13 @@ timestamp value. The replay therefore has a new absolute clock origin, while
 the serialized CPU/RAM/device state, body-cycle budget, and entry-relative
 write timing remain reproducible. The comparator normalizes only that origin.
 
+The exact `D1A2@1` write transcript includes three timer-interrupt handler
+passages, identifiable through their bank-0 `FCxx`/`FDxx` instruction PCs
+and stack/scratch writes. It is a valid deterministic replay sample, but not
+a valid work-RAM-only replacement target: copying its writes without
+delivering and acknowledging those interrupts leaves the timer IRQ pending
+at the outer RTS. It therefore remains emulated.
+
 Longer actor-6 `DD09` samples can contain a periodic interrupt. Their final
 registers, work RAM, call-cycle budget, and write count reproduce, but the
 rebased frontend clock can move the interrupt within the scope and therefore
@@ -3714,6 +3721,769 @@ boundary moved interrupt-owned writes and later framebuffer state. This is
 now an enforced design boundary, not an unexplained mismatch. Replacement is
 limited to separately mapped no-interrupt ordinals until the core bridge can
 deliver interrupts at their original internal cycle boundary.
+
+### Second native replacement: `00:F1B4@1`, `00:F1B4@10`, and `00:F1B4@17`
+
+Milestone 4 begins with the frame-1,064 position integration immediately
+before the existing native rollback. `dc_integrate_position` in
+`src/game_logic/physics.c` caches both original signed 16.8 positions,
+sign-extends and adds the two signed 8.8 increments, and applies the
+fractional-only movement marker at `$3C80,X`.
+
+Independently replayed ordinal 17 has a negative second increment, a
+nonnegative first increment, no integer-position change, 714 body master
+cycles, and 17 ordered writes. The transaction
+preserves the observed `A=$02`, `X=$00`, `Y=$06`, `P=$01`, `SP=$F9`, all MPRs,
+and outer RTS at `00:F240`.
+
+Independently replayed ordinal 1 admits the nonnegative counterpart at frame
+1,049. Second position `$028F00` receives increment `$0010`; first position
+`$010E00` receives zero. Neither integer portion changes, so the final motion
+flag is again 2. Both sign branches are nonnegative, omitting ordinal 17's
+`F1E0` `$2B=$FF` scratch store and shifting the remaining stores 12 cycles
+earlier. The exact path performs 16 writes and resumes at `00:F240` after 702
+body master cycles with `A=$02`, `X=$00`, `Y=$00`, `P=$01`, and `SP=$F9`.
+Every MPR and complete post-call RAM match restored assembly.
+
+Ordinal 10 at frame 1,058 admits the first integer-position-change branch.
+Its nonnegative `$00A2` second increment advances `$0291D1` to `$029273`.
+Because the integer low byte changes from `$91` to `$92`, the ROM comparison
+exits before the final `$3C80` fractional-only marker store. The transaction
+has 15 writes, returns `A=$91`, `P=$80`, and reaches outer RTS `00:F240`
+after 639 body master cycles. Complete post-call RAM and all MPRs match
+restored assembly.
+
+The focused ordinals remain restored-assembly fixtures, but admission is no
+longer ordinal-gated. Semantic `00:F1B4@all` derives both sign-extension
+scratch stores, all six position-store offsets, the first changed integer
+comparison, final flags, and one of the observed 639/651/702/714-cycle
+budgets from the live slot-zero state. Calls that reach a user/video event or
+serviceable timer IRQ remain in assembly. The 1,800-frame aggregate executes
+214 of 1,156 calls natively (18.5%) while preserving the established
+gameplay, complete-call, and 21,738-write SHA-256 values.
+
+The adjacent `00:F241` rollback was already a state-generic six-store
+transaction. Semantic `00:F241@all` now applies the same event/IRQ fallback
+and executes 242 of 404 calls natively (59.9%), preserving byte-identical
+gameplay plus the complete 404-call/2,634-write artifacts.
+
+`dc_rom_native_replacement` now executes native `F1B4@17` followed by native
+`F241@1`, then restores both pre-call savestates and runs the original
+assembly for shadow comparison. The 23 writes and 876 combined body master
+cycles match exactly, complete post-call work RAM is identical, and the
+established gameplay, entry, call, and write SHA-256 values above remain
+unchanged.
+
+The focused `dc_rom_position_integration_positive` regression replaces
+ordinal 1 and restores its exact pre-call state for assembly replay. Debug
+and Release preserve the gameplay hash and complete
+1,156-call/21,738-write F1B4 trace hashes.
+
+The companion `dc_rom_position_integration_integer_step` regression replaces
+ordinal 10 and restores its frame-1,058 state. Debug and Release preserve
+the same gameplay, complete call-trace, and ordered-write hashes while
+covering the distinct early-return register contract.
+
+### Third native replacement: `01:DD09@1`, `01:DD09@2`, and `01:DD09@181`
+
+The next bounded slice is the short frame-1,048 damping/acceleration call.
+`dc_damp_and_accelerate_motion` in `src/game_logic/physics.c` implements the
+complete pure calculation: each nonzero signed 8.8 component subtracts its
+signed quotient truncated toward zero using `$8C` or `$8D`, then the unsigned
+low-byte term `$8B` is added to the second component.
+
+The first independently replayed call is ordinal 1. Both components are zero
+on this call, so the branches through signed divider `00:E905` are skipped.
+With `$8B=$10`, the exact HuC6280-visible contract is:
+
+- `01:DD63` writes `$10` to `$3500,X` at body cycle 132.
+- `01:DD6A` writes `$00` to `$3580,X` at body cycle 168.
+- Input `A=$00`, `X=$00`, `Y=$00`, `P=$43`, and `SP=$F9` becomes
+  `A=$00`, `X=$00`, `Y=$00`, `P=$02`, and `SP=$F9`; all MPRs are preserved.
+- Assembly resumes at outer RTS `01:DD6D` after 168 body master cycles.
+
+Independently replayed ordinal 2 admits the first nonzero divider path. At
+frame 1,049, axis one is `$0000`, axis two is `$0010`, both divisors are
+`$80` (-128 signed), and acceleration is `$10`. Axis one skips division.
+Axis two runs the complete `00:E905` signed-divider sequence; truncating
+`16 / -128` toward zero yields zero, so damping leaves `$0010` before
+acceleration produces `$0020`.
+
+The exact path contains 68 ordered writes over 2,409 body master cycles,
+including the divider's zero-page and stack scratch transcript but no
+`FCxx`/`FDxx` interrupt-owned writes. Input `A=$01`, `X=$00`, `Y=$00`,
+`P=$03`, and `SP=$F9` becomes `A=$00`, `P=$02`; X, Y, SP, every MPR, outer
+RTS `01:DD6D`, and complete post-call RAM match restored assembly.
+
+Independently replayed ordinal 181 admits the negative signed-divider branch
+at frame 1,228. Axis one remains zero. Axis two begins at `$FF0D` (-243);
+division by signed `$80` (-128) produces truncating quotient 1, damping
+restores the negative result `$FF0C`, and `$10` acceleration yields `$FF1C`.
+The exact path contains 69 ordered writes over 2,427 body master cycles,
+including the divider's sign-restoration store at `00:E8FA`. Input
+`A=$01`, `X=$00`, `Y=$06`, `P=$03`, and `SP=$F9` becomes `A=$FF`, `P=$80`;
+X, Y, SP, every MPR, outer RTS `01:DD6D`, and complete RAM match.
+
+Ordinal 52 was initially classified as clean because its natural trace did
+not visit the known `FCxx/FDxx` handler range. Normalized replay revealed a
+different interrupt path: interrupt-owned stack and controller writes enter
+through `00:E058/E169`, shifting the signed-divider scratch transcript even
+though final registers, cycle count, and write count agree. It remains
+emulated. Other DD09 ordinals are rejected rather than borrowing an admitted
+path's timing.
+
+`dc_rom_native_replacement` now runs native `DD09@1`, `F1B4@17`, and
+`F241@1`, then restores all three checkpoints for assembly replay. All 25
+ordered writes and 1,044 combined body master cycles match, complete
+post-call work RAM is identical for every checkpoint, and the established
+gameplay, entry, call, and write SHA-256 values above remain unchanged.
+
+The focused `dc_rom_motion_damping_nonzero` regression replaces ordinal 2,
+restores the same pre-call state, and executes original assembly for shadow
+comparison. Debug and Release preserve the established gameplay hash and
+the complete 753-call/61,291-write DD09 trace hashes.
+
+The companion `dc_rom_motion_damping_negative` regression replaces ordinal
+181 and restores its frame-1,228 state. Debug and Release preserve the same
+gameplay, complete call-trace, and ordered-write hashes while covering the
+negative-result register and scratch-write contract.
+
+### Fourth native replacement: `01:D1A2@23`
+
+`dc_rotate_motion` completes the pure C reconstruction of `01:D1A2`'s
+signed 8.8 rotation. The ROM multiplier converts each operand to magnitude,
+multiplies, truncates the fractional product, reapplies the sign, and the
+caller combines those products as `u*c-v*s` and `u*s+v*c`.
+
+The first replacement-safe call is independently replayed ordinal 23 at
+frame 1,099. It has identity coefficients `$0100/$0000`, maps
+`$0000/$FFFF` to the same two outputs, executes in 5,076 body master cycles,
+and performs 190 ordered work-RAM writes. Its transcript contains no
+`FCxx`/`FDxx` interrupt-handler passage. The adapter preserves input/output
+`A=$FF`, `X=$00`, `Y=$02`, `P=$80`, `SP=$F5`, every MPR, and resumes at
+outer RTS `01:D227`.
+
+The downstream core patch also avoids calling the hardware synchronizer for
+a zero-cycle delta when writes share a timestamp or the final write lands
+exactly on the body boundary. That prevents an already-pending event from
+being sampled at an artificial boundary. The patch was reapplied from a
+clean archive of the pinned upstream revision and matches the generated
+source exactly.
+
+`dc_rom_native_replacement` now runs four native calls and restores all four
+pre-call checkpoints for assembly replay. Their 215 ordered writes and 6,120
+combined body master cycles match exactly; complete post-call work RAM is
+identical, and the established gameplay, entry, call, and write SHA-256
+values above remain unchanged.
+
+### Fifth native replacement: semantic `03:7FB1@all`
+
+The first native collision slice is the Small-Soldier response-state helper.
+`dc_advance_collision_response` implements the complete leaf calculation:
+it clears event bit 0 and doubles the result, adds the low two actor-phase
+bits, writes the response, decrements the actor countdown, and reloads the
+countdown to 4 while advancing the phase when it reaches zero.
+
+The first independently replayed call is ordinal 1. At frame 957, slot `$62`
+has event `$0F`, phase 0, and countdown 4. The exact transaction is:
+
+| Body cycle | Store PC | Logical address | Value |
+| ---: | --- | --- | --- |
+| 39 | `03:7FB7` | `$2026` | `$1C` response base |
+| 93 | `03:7FC1` | `$39E2` | `$1C` actor response |
+| 114 | `03:7FC4` | `$3A62` | `$03` countdown |
+
+Input `A=$00`, `X=$62`, `Y=$01`, `P=$10`, and `SP=$F9` becomes
+`A=$1C` with the other registers, status, and all MPRs preserved. Beetle
+resumes at outer RTS `03:7FD1` after 126 body master cycles.
+
+Ordinal 2 at the same frame is not replacement-safe. Its 819-cycle
+transcript includes 13 interrupt-owned stack, timer, and controller writes
+before the same three leaf stores. Normalized replay detects that shifted
+interrupt passage, so the CLI continues rejecting `03:7FB1@2`.
+
+Independently replayed ordinal 3 admits the next interrupt-free non-reload
+call. At frame 958, slot `$62` again has event `$0F` and phase 0, while its
+countdown is now 3. Input `A=$80`, `X=$62`, `Y=$81`, `P=$12`, and `SP=$F9`
+produces the same response `$1C`, decrements the countdown to 2, and exits
+with `P=$10`. Its three stores remain at body cycles 39/93/114 and it
+resumes at `03:7FD1` after 126 cycles.
+
+Independently replayed ordinal 7 admits the other bounded leaf branch. At
+frame 960 the same slot and event enter with phase 0 and countdown 1:
+
+| Body cycle | Store PC | Logical address | Value |
+| ---: | --- | --- | --- |
+| 39 | `03:7FB7` | `$2026` | `$1C` response base |
+| 93 | `03:7FC1` | `$39E2` | `$1C` actor response |
+| 114 | `03:7FC4` | `$3A62` | `$00` decremented countdown |
+| 141 | `03:7FCB` | `$3A62` | `$04` reloaded countdown |
+| 162 | `03:7FCE` | `$3CE2` | `$01` advanced phase |
+
+Input `A=$80`, `X=$62`, `Y=$81`, `P=$12`, and `SP=$F9` becomes `A=$04`,
+`P=$10`; X, Y, SP, and every MPR are preserved. Beetle resumes at the same
+outer RTS after 162 body master cycles. The initial shadow run caught a
+branch-specific adapter error that returned response `$1C` rather than the
+reload value `$04`; the corrected result now matches restored assembly.
+
+The 3,600-frame `dc_rom_collision_boundary` regression now executes this
+native transaction before restoring the same pre-call state for assembly
+replay. The complete census, work-RAM timeline, 97,379-entry/call trace,
+1,163,259 scoped writes, and selected collision-state artifacts retain their
+established SHA-256 values in Release. A focused Debug route independently
+passes the same frame-957 replacement and restored-assembly comparison
+across all 21,987 observed `7FB1` calls.
+
+The separate `dc_rom_collision_response_reload` regression replaces ordinal
+7 and restores the same pre-call state for assembly replay. Debug and Release
+retain their established configuration-specific state-census hashes and the
+complete 21,987-call/91,295-write `7FB1` trace hashes.
+
+The companion `dc_rom_collision_response_followup` regression applies the
+same proof to ordinal 3. Release completes the route with the same census,
+call, and write hashes; Debug retains its expected configuration-specific
+census hash while matching the complete semantic traces.
+
+The focused ordinals now serve as branch fixtures rather than admission
+rules. `03:7FB1@all` accepts any slot and derives the response, countdown,
+optional reload and phase increment, output accumulator/status, ordered
+writes, and 126/162-cycle budget from the copied work-RAM state. Across the
+3,600-frame census, the conservative user/video-event and
+serviceable-timer-IRQ horizons admit 13,460 of 21,987 calls (61.2%).
+Remaining calls—including the interrupt-bearing ordinal-2 fixture—stay in
+assembly automatically. `dc_rom_collision_response_semantic` preserves the
+configuration-specific census hash and the exact 21,987-call/91,295-write
+hashes in Debug and Release.
+
+### Sixth native replacement: semantic `03:6966@all`
+
+The next native collision slice enters the shared actor collision-table
+interpreter itself. `dc_select_collision_table_pass` implements `03:6966`'s
+negative-state pass selection: it preserves the high active bit, alternates
+the low seven-bit pass index, and reports the early return when that index
+wraps to zero. The project-owned adapter supplies the selector's ROM table
+pointer, keeping ROM metadata out of the pure work-RAM function.
+
+`dc_advance_collision_table_record` extends that boundary through one
+nonterminal record. It applies the record's event/orientation update, signed
+horizontal and vertical unit-motion flags with carry or borrow, and the two
+record-cursor increments while still leaving the caller to commit writes.
+
+The original ordinal gates below are retained as exact restored-assembly
+fixtures, not as the broad scheduler. Semantic `03:6966@all` now reads the
+selector pointer from the supported user ROM and accepts both the `$81->$80`
+alternate-pass early return and ordinary `$80->$81` headerless record steps
+for every observed selector and actor slot. The latter resolve the
+collision-list cursor, table entry, motion pointer, and motion cursor from
+ROM, then emit either or both signed axes with exact high-byte carry/borrow
+timing. The hook entry exposes conservative master-cycle distances to
+Beetle's next user/video event and next serviceable timer interrupt; if the
+native body reaches either horizon, the callback returns no transaction and
+assembly executes normally. Harmless timer-divider ticks can be crossed.
+This avoids both a per-occurrence allowlist and a hand-maintained interrupt
+ordinal blacklist.
+
+The bounded walker also follows `$C0` motion terminators, applies `$FE`
+collision-list wraps, recognizes `$FF` table termination, and resumes into
+headered records with exact accumulated cursor-write timing. The former
+compiled selector/slot/ordinal proof matrix is retired; its ordinal cases
+remain only as restored-assembly regression coordinates.
+
+Across the 1,800-frame route, semantic scheduling executes 7,609 of 19,648
+calls natively (38.7%). The aggregate Debug and Release regression preserves
+the established gameplay SHA-256, the complete 19,648-call trace SHA-256,
+and all 180,389 ordered writes. Interrupt-bearing ordinals 11 and 13 retain
+their original transcripts through automatic fallback.
+
+The independently replayed first call occurs at frame 873. Selector `$2A`
+and table entry `$03` resolve `$6C2A->$6D56`; X selects fixed Front-Spider
+slot `$26`. Its collision state is `$80`, event orientation is `$0C`, record
+cursor is zero, and horizontal low motion is `$40`. The exact full-record
+transaction is:
+
+| Body cycle | Store PC | Logical address | Value |
+| ---: | --- | --- | --- |
+| 39 | `03:696B` | `$202F` | `$2A` table-pointer low |
+| 66 | `03:6970` | `$2030` | `$6C` table-pointer high |
+| 114 | `03:697C` | `$21F5` | `$10` saved status |
+| 135 | `03:697F` | `$38A6` | `$81` alternate-pass state |
+| 177 | `03:6995` | `$2035` | `$00` orientation scratch |
+| 306 | `03:69BB` | `$202D` | `$56` motion-pointer low |
+| 333 | `03:69C0` | `$202E` | `$6D` motion-pointer high |
+| 420 | `03:69D9` | `$3AA6` | `$02` event |
+| 480 | `03:69EE` | `$3D26` | `$8C` orientation |
+| 501 | `03:69F1` | `$3EA6` | `$01` cursor after header |
+| 573 | `03:69FF` | `$31A6` | `$41` horizontal low |
+| 657 | `03:6A33` | `$3EA6` | `$02` cursor after delta |
+
+Input `A=$2A`, `X=$26`, `Y=$00`, `P=$02`, and `SP=$F5` becomes
+`A=$00`, `X=$26`, `Y=$01`, `P=$10`, and `SP=$F5`; every MPR is preserved.
+Beetle resumes at `03:6A37` after 663 body master cycles. Neither the natural
+scope nor restored replay includes an interrupt-owned write.
+
+Ordinal 12 is the second headerless continuation. Selector `$2C` and table
+entry `$05` resolve `$6C30->$6D7A`; slot `$28` enters with cursor 2 and
+consumes the current `$08` stream byte:
+
+| Body cycle | Store PC | Logical address | Value |
+| ---: | --- | --- | --- |
+| 39 | `03:696B` | `$202F` | `$30` table-pointer low |
+| 66 | `03:6970` | `$2030` | `$6C` table-pointer high |
+| 114 | `03:697C` | `$21F9` | `$10` saved status |
+| 135 | `03:697F` | `$38A8` | `$81` alternate-pass state |
+| 177 | `03:6995` | `$2035` | `$00` orientation scratch |
+| 306 | `03:69BB` | `$202D` | `$7A` motion-pointer low |
+| 333 | `03:69C0` | `$202E` | `$6D` motion-pointer high |
+| 489 | `03:6A1E` | `$3328` | `$84` vertical low |
+| 534 | `03:6A33` | `$3EA8` | `$03` cursor |
+
+Input `A=$2C`, `X=$28`, `Y=$00`, `P=$02`, and `SP=$F9` becomes
+`A=$08`, `X=$28`, `Y=$02`, `P=$10`, and `SP=$F9`; every MPR is preserved.
+Beetle resumes at `03:6A37` after 540 body master cycles. Neither the natural
+scope nor restored replay includes an interrupt-owned write.
+
+Ordinal 14 is the alternate-selector early return at frame 943. Caller
+`03:5890` supplies `A=$06`, which resolves to table pointer `$6B0A`; X
+selects slot `$17`, whose collision pass state is `$81`. Its exact
+transaction is:
+
+| Body cycle | Store PC | Logical address | Value |
+| ---: | --- | --- | --- |
+| 39 | `03:696B` | `$202F` | `$0A` table-pointer low |
+| 66 | `03:6970` | `$2030` | `$6B` table-pointer high |
+| 114 | `03:697C` | `$21F9` | `$12` saved status |
+| 135 | `03:697F` | `$3897` | `$80` alternate-pass state |
+
+Input `A=$06`, `X=$17`, `Y=$75`, `P=$00`, and `SP=$F9` becomes
+`A=$80`, `X=$17`, `Y=$81`, `P=$12`, and `SP=$F9`; every MPR is preserved.
+The zero alternate-pass index returns at `03:6988` after 165 body master
+cycles. No interrupt-owned write appears in either the natural scope or its
+restored replay.
+
+Ordinal 15 returns to the fixed-selector family later in frame 943. Input
+`A=$2A` resolves to table pointer `$6C2A`; X selects Front-Spider slot
+`$26`, whose collision pass state is again `$81`. Its exact transaction is:
+
+| Body cycle | Store PC | Logical address | Value |
+| ---: | --- | --- | --- |
+| 39 | `03:696B` | `$202F` | `$2A` table-pointer low |
+| 66 | `03:6970` | `$2030` | `$6C` table-pointer high |
+| 114 | `03:697C` | `$21F9` | `$12` saved status |
+| 135 | `03:697F` | `$38A6` | `$80` alternate-pass state |
+
+Input `A=$2A`, `X=$26`, `Y=$00`, `P=$02`, and `SP=$F9` becomes
+`A=$80`, `X=$26`, `Y=$81`, `P=$12`, and `SP=$F9`; every MPR is preserved.
+The zero alternate-pass index returns at `03:6988` after 165 body master
+cycles. No interrupt-owned write appears in either the natural scope or its
+restored replay.
+
+Ordinal 16 is the next repeated fixed-selector return in frame 943. Input
+`A=$2B` resolves to table pointer `$6C2D`; X selects Front-Spider slot
+`$27`, whose collision pass state is `$81`. Its exact transaction is:
+
+| Body cycle | Store PC | Logical address | Value |
+| ---: | --- | --- | --- |
+| 39 | `03:696B` | `$202F` | `$2D` table-pointer low |
+| 66 | `03:6970` | `$2030` | `$6C` table-pointer high |
+| 114 | `03:697C` | `$21F9` | `$12` saved status |
+| 135 | `03:697F` | `$38A7` | `$80` alternate-pass state |
+
+Input `A=$2B`, `X=$27`, `Y=$01`, `P=$10`, and `SP=$F9` becomes
+`A=$80`, `X=$27`, `Y=$81`, `P=$12`, and `SP=$F9`; every MPR is preserved.
+The zero alternate-pass index returns at `03:6988` after 165 body master
+cycles. No interrupt-owned write appears in either the natural scope or its
+restored replay.
+
+Ordinal 17 is the third repeated fixed-selector return in frame 943. Input
+`A=$2C` resolves to table pointer `$6C30`; X selects fixed slot `$28`, whose
+collision pass state is `$81`. Its exact transaction is:
+
+| Body cycle | Store PC | Logical address | Value |
+| ---: | --- | --- | --- |
+| 39 | `03:696B` | `$202F` | `$30` table-pointer low |
+| 66 | `03:6970` | `$2030` | `$6C` table-pointer high |
+| 114 | `03:697C` | `$21F9` | `$12` saved status |
+| 135 | `03:697F` | `$38A8` | `$80` alternate-pass state |
+
+Input `A=$2C`, `X=$28`, `Y=$00`, `P=$12`, and `SP=$F9` becomes
+`A=$80`, `X=$28`, `Y=$81`, `P=$12`, and `SP=$F9`; every MPR is preserved.
+The earlier matching selector return enters with `P=$02`, so the native
+guard explicitly admits both independently replayed status variants. The
+zero alternate-pass index returns at `03:6988` after 165 body master cycles.
+No interrupt-owned write appears in either the natural scope or its restored
+replay.
+
+Ordinal 18 is the fourth repeated fixed-selector return in frame 943. Input
+`A=$2D` resolves to table pointer `$6C35`; X selects fixed slot `$29`, whose
+collision pass state is `$81`. Its exact transaction is:
+
+| Body cycle | Store PC | Logical address | Value |
+| ---: | --- | --- | --- |
+| 39 | `03:696B` | `$202F` | `$35` table-pointer low |
+| 66 | `03:6970` | `$2030` | `$6C` table-pointer high |
+| 114 | `03:697C` | `$21F9` | `$12` saved status |
+| 135 | `03:697F` | `$38A9` | `$80` alternate-pass state |
+
+Input `A=$2D`, `X=$29`, `Y=$01`, `P=$00`, and `SP=$F9` becomes
+`A=$80`, `X=$29`, `Y=$81`, `P=$12`, and `SP=$F9`; every MPR is preserved.
+The earlier matching selector return enters with `P=$10`, so the native
+guard explicitly admits both independently replayed status variants. The
+zero alternate-pass index returns at `03:6988` after 165 body master cycles.
+No interrupt-owned write appears in either the natural scope or its restored
+replay.
+
+Ordinal 19 is the alternate-selector reverse-vertical continuation at frame
+944. Selector `$06` and table entry `$0B` resolve `$6B0A->$6DE6`; slot
+`$17` enters with cursor 2 and consumes headerless motion byte `$10`. Its
+exact transaction is:
+
+| Body cycle | Store PC | Logical address | Value |
+| ---: | --- | --- | --- |
+| 39 | `03:696B` | `$202F` | `$0A` table-pointer low |
+| 66 | `03:6970` | `$2030` | `$6B` table-pointer high |
+| 114 | `03:697C` | `$21F9` | `$10` saved status |
+| 135 | `03:697F` | `$3897` | `$81` alternate-pass state |
+| 177 | `03:6995` | `$2035` | `$00` orientation scratch |
+| 306 | `03:69BB` | `$202D` | `$E6` motion-pointer low |
+| 333 | `03:69C0` | `$202E` | `$6D` motion-pointer high |
+| 522 | `03:6A30` | `$3317` | `$C3` vertical low |
+| 543 | `03:6A33` | `$3E97` | `$03` cursor |
+
+Input `A=$06`, `X=$17`, `Y=$75`, `P=$00`, and `SP=$F9` becomes
+`A=$C4`, `X=$17`, `Y=$02`, `P=$10`, and `SP=$F9`; every MPR is preserved.
+Event and orientation remain unchanged, vertical low changes `$C4->$C3`,
+and the cursor advances once from 2 to 3. Beetle resumes at `03:6A37` after
+549 body master cycles. Neither the natural scope nor restored replay
+includes an interrupt-owned write.
+
+Ordinal 20 is the headerless horizontal continuation later in frame 944.
+Selector `$2A` and table entry `$03` resolve `$6C2A->$6D56`; Front-Spider
+slot `$26` enters with cursor 3 and consumes motion byte `$20`. Its exact
+transaction is:
+
+| Body cycle | Store PC | Logical address | Value |
+| ---: | --- | --- | --- |
+| 39 | `03:696B` | `$202F` | `$2A` table-pointer low |
+| 66 | `03:6970` | `$2030` | `$6C` table-pointer high |
+| 114 | `03:697C` | `$21F9` | `$10` saved status |
+| 135 | `03:697F` | `$38A6` | `$81` alternate-pass state |
+| 177 | `03:6995` | `$2035` | `$00` orientation scratch |
+| 306 | `03:69BB` | `$202D` | `$56` motion-pointer low |
+| 333 | `03:69C0` | `$202E` | `$6D` motion-pointer high |
+| 450 | `03:69FF` | `$31A6` | `$42` horizontal low |
+| 534 | `03:6A33` | `$3EA6` | `$04` cursor |
+
+Input `A=$2A`, `X=$26`, `Y=$00`, `P=$02`, and `SP=$F9` becomes
+`A=$00`, `X=$26`, `Y=$03`, `P=$10`, and `SP=$F9`; every MPR is preserved.
+Event and orientation remain unchanged, horizontal low changes `$41->$42`,
+and the cursor advances once from 3 to 4. Beetle resumes at `03:6A37` after
+540 body master cycles. Neither the natural scope nor restored replay
+includes an interrupt-owned write.
+
+Ordinal 21 is the reverse-horizontal continuation later in frame 944.
+Selector `$2B` and table entry `$07` resolve `$6C2D->$6D9E`; Front-Spider
+slot `$27` enters with cursor 3 and consumes motion byte `$40`. Its exact
+transaction is:
+
+| Body cycle | Store PC | Logical address | Value |
+| ---: | --- | --- | --- |
+| 39 | `03:696B` | `$202F` | `$2D` table-pointer low |
+| 66 | `03:6970` | `$2030` | `$6C` table-pointer high |
+| 114 | `03:697C` | `$21F9` | `$10` saved status |
+| 135 | `03:697F` | `$38A7` | `$81` alternate-pass state |
+| 177 | `03:6995` | `$2035` | `$00` orientation scratch |
+| 306 | `03:69BB` | `$202D` | `$9E` motion-pointer low |
+| 333 | `03:69C0` | `$202E` | `$6D` motion-pointer high |
+| 483 | `03:6A11` | `$31A7` | `$D6` horizontal low |
+| 543 | `03:6A33` | `$3EA7` | `$04` cursor |
+
+Input `A=$2B`, `X=$27`, `Y=$01`, `P=$00`, and `SP=$F9` becomes
+`A=$00`, `X=$27`, `Y=$03`, `P=$10`, and `SP=$F9`; every MPR is preserved.
+Event and orientation remain unchanged, horizontal low changes `$D7->$D6`,
+and the cursor advances once from 3 to 4. Beetle resumes at `03:6A37` after
+549 body master cycles. Neither the natural scope nor restored replay
+includes an interrupt-owned write.
+
+Ordinal 22 is the later vertical continuation in frame 944. Selector `$2C`
+and table entry `$05` resolve `$6C30->$6D7A`; fixed slot `$28` enters with
+cursor 3 and consumes motion byte `$08`. Its exact transaction is:
+
+| Body cycle | Store PC | Logical address | Value |
+| ---: | --- | --- | --- |
+| 39 | `03:696B` | `$202F` | `$30` table-pointer low |
+| 66 | `03:6970` | `$2030` | `$6C` table-pointer high |
+| 114 | `03:697C` | `$21F9` | `$10` saved status |
+| 135 | `03:697F` | `$38A8` | `$81` alternate-pass state |
+| 177 | `03:6995` | `$2035` | `$00` orientation scratch |
+| 306 | `03:69BB` | `$202D` | `$7A` motion-pointer low |
+| 333 | `03:69C0` | `$202E` | `$6D` motion-pointer high |
+| 489 | `03:6A1E` | `$3328` | `$85` vertical low |
+| 534 | `03:6A33` | `$3EA8` | `$04` cursor |
+
+Input `A=$2C`, `X=$28`, `Y=$00`, `P=$12`, and `SP=$F9` becomes
+`A=$08`, `X=$28`, `Y=$03`, `P=$10`, and `SP=$F9`; every MPR is preserved.
+Event and orientation remain unchanged, vertical low changes `$84->$85`,
+and the cursor advances once from 3 to 4. Beetle resumes at `03:6A37` after
+540 body master cycles. Neither the natural scope nor restored replay
+includes an interrupt-owned write.
+
+Ordinal 23 is the matching second later vertical continuation at the end of
+frame 944. Selector `$2D` and table entry `$05` resolve `$6C35->$6D7A`;
+fixed slot `$29` enters with cursor 3 and consumes motion byte `$08`. Its
+exact transaction is:
+
+| Body cycle | Store PC | Logical address | Value |
+| ---: | --- | --- | --- |
+| 39 | `03:696B` | `$202F` | `$35` table-pointer low |
+| 66 | `03:6970` | `$2030` | `$6C` table-pointer high |
+| 114 | `03:697C` | `$21F9` | `$10` saved status |
+| 135 | `03:697F` | `$38A9` | `$81` alternate-pass state |
+| 177 | `03:6995` | `$2035` | `$00` orientation scratch |
+| 306 | `03:69BB` | `$202D` | `$7A` motion-pointer low |
+| 333 | `03:69C0` | `$202E` | `$6D` motion-pointer high |
+| 489 | `03:6A1E` | `$3329` | `$85` vertical low |
+| 534 | `03:6A33` | `$3EA9` | `$04` cursor |
+
+Input `A=$2D`, `X=$29`, `Y=$01`, `P=$00`, and `SP=$F9` becomes
+`A=$08`, `X=$29`, `Y=$03`, `P=$10`, and `SP=$F9`; every MPR is preserved.
+Event and orientation remain unchanged, vertical low changes `$84->$85`,
+and the cursor advances once from 3 to 4. Beetle resumes at `03:6A37` after
+540 body master cycles. Neither the natural scope nor restored replay
+includes an interrupt-owned write.
+
+The adjacent independently replayed second call shares frame 873. Selector
+`$2B` and table entry `$07` resolve `$6C2D->$6D9E`; X selects the other
+fixed Front-Spider slot `$27`. Its collision state is `$80`, event
+orientation is `$0C`, record cursor is zero, and horizontal low motion is
+`$D8`. Its reverse-motion transaction is:
+
+| Body cycle | Store PC | Logical address | Value |
+| ---: | --- | --- | --- |
+| 39 | `03:696B` | `$202F` | `$2D` table-pointer low |
+| 66 | `03:6970` | `$2030` | `$6C` table-pointer high |
+| 114 | `03:697C` | `$21F5` | `$10` saved status |
+| 135 | `03:697F` | `$38A7` | `$81` alternate-pass state |
+| 177 | `03:6995` | `$2035` | `$00` orientation scratch |
+| 306 | `03:69BB` | `$202D` | `$9E` motion-pointer low |
+| 333 | `03:69C0` | `$202E` | `$6D` motion-pointer high |
+| 420 | `03:69D9` | `$3AA7` | `$06` event |
+| 480 | `03:69EE` | `$3D27` | `$8C` orientation |
+| 501 | `03:69F1` | `$3EA7` | `$01` cursor after header |
+| 606 | `03:6A11` | `$31A7` | `$D7` horizontal low |
+| 666 | `03:6A33` | `$3EA7` | `$02` cursor after delta |
+
+Input `A=$2B`, `X=$27`, `Y=$01`, `P=$10`, and `SP=$F5` becomes
+`A=$00`, `X=$27`, `Y=$01`, `P=$10`, and `SP=$F5`; every MPR is preserved.
+Beetle resumes at `03:6A37` after 672 body master cycles. The reverse
+horizontal branch accounts for the nine-cycle difference from ordinal 1,
+and neither the natural scope nor restored replay includes an
+interrupt-owned write.
+
+The third independently replayed call is the next frame-873 transaction.
+Selector `$2C` and table entry `$05` resolve `$6C30->$6D7A`; X selects fixed
+slot `$28`. Its collision state is `$80`, event orientation is `$0C`,
+record cursor is zero, and vertical low motion is `$82`. Its transaction is:
+
+| Body cycle | Store PC | Logical address | Value |
+| ---: | --- | --- | --- |
+| 39 | `03:696B` | `$202F` | `$30` table-pointer low |
+| 66 | `03:6970` | `$2030` | `$6C` table-pointer high |
+| 114 | `03:697C` | `$21F5` | `$10` saved status |
+| 135 | `03:697F` | `$38A8` | `$81` alternate-pass state |
+| 177 | `03:6995` | `$2035` | `$00` orientation scratch |
+| 306 | `03:69BB` | `$202D` | `$7A` motion-pointer low |
+| 333 | `03:69C0` | `$202E` | `$6D` motion-pointer high |
+| 420 | `03:69D9` | `$3AA8` | `$04` event |
+| 480 | `03:69EE` | `$3D28` | `$8C` orientation |
+| 501 | `03:69F1` | `$3EA8` | `$01` cursor after header |
+| 612 | `03:6A1E` | `$3328` | `$83` vertical low |
+| 657 | `03:6A33` | `$3EA8` | `$02` cursor after delta |
+
+Input `A=$2C`, `X=$28`, `Y=$00`, `P=$12`, and `SP=$F5` becomes
+`A=$08`, `X=$28`, `Y=$01`, `P=$10`, and `SP=$F5`; every MPR is preserved.
+Beetle resumes at `03:6A37` after 663 body master cycles. Neither the natural
+scope nor restored replay includes an interrupt-owned write.
+
+The fourth independently replayed call completes the adjacent frame-873
+quartet. Selector `$2D` and table entry `$05` resolve `$6C35->$6D7A`; X
+selects fixed slot `$29`. Its collision state is `$80`, event orientation is
+`$0C`, record cursor is zero, and vertical low motion is `$82`. Its
+transaction is:
+
+| Body cycle | Store PC | Logical address | Value |
+| ---: | --- | --- | --- |
+| 39 | `03:696B` | `$202F` | `$35` table-pointer low |
+| 66 | `03:6970` | `$2030` | `$6C` table-pointer high |
+| 114 | `03:697C` | `$21F5` | `$10` saved status |
+| 135 | `03:697F` | `$38A9` | `$81` alternate-pass state |
+| 177 | `03:6995` | `$2035` | `$00` orientation scratch |
+| 306 | `03:69BB` | `$202D` | `$7A` motion-pointer low |
+| 333 | `03:69C0` | `$202E` | `$6D` motion-pointer high |
+| 420 | `03:69D9` | `$3AA9` | `$04` event |
+| 480 | `03:69EE` | `$3D29` | `$8C` orientation |
+| 501 | `03:69F1` | `$3EA9` | `$01` cursor after header |
+| 612 | `03:6A1E` | `$3329` | `$83` vertical low |
+| 657 | `03:6A33` | `$3EA9` | `$02` cursor after delta |
+
+Input `A=$2D`, `X=$29`, `Y=$01`, `P=$10`, and `SP=$F5` becomes
+`A=$08`, `X=$29`, `Y=$01`, `P=$10`, and `SP=$F5`; every MPR is preserved.
+Beetle resumes at `03:6A37` after 663 body master cycles. Neither the natural
+scope nor restored replay includes an interrupt-owned write.
+
+The independently replayed fifth call occurs at frame 941. Input `A=$2A`
+selects table pointer `$6C2A`, X selects fixed Front-Spider slot `$26`, and
+the slot's collision pass state is `$81`. The exact transaction is:
+
+| Body cycle | Store PC | Logical address | Value |
+| ---: | --- | --- | --- |
+| 39 | `03:696B` | `$202F` | `$2A` table-pointer low |
+| 66 | `03:6970` | `$2030` | `$6C` table-pointer high |
+| 114 | `03:697C` | `$21F9` | `$12` saved status |
+| 135 | `03:697F` | `$38A6` | `$80` alternate-pass state |
+
+Input `A=$2A`, `X=$26`, `Y=$00`, `P=$02`, and `SP=$F9` becomes
+`A=$80`, `X=$26`, `Y=$81`, `P=$12`, and `SP=$F9`; every MPR is preserved.
+The zero alternate-pass index takes the early return at `03:6988` after 165
+body master cycles. No interrupt-owned write appears in either the natural
+scope or its restored replay.
+
+The independently replayed sixth call is the adjacent frame-941 return.
+Input `A=$2B` selects table pointer `$6C2D`, X selects fixed Front-Spider
+slot `$27`, and the slot's collision pass state is `$81`. Its exact
+transaction is:
+
+| Body cycle | Store PC | Logical address | Value |
+| ---: | --- | --- | --- |
+| 39 | `03:696B` | `$202F` | `$2D` table-pointer low |
+| 66 | `03:6970` | `$2030` | `$6C` table-pointer high |
+| 114 | `03:697C` | `$21F9` | `$12` saved status |
+| 135 | `03:697F` | `$38A7` | `$80` alternate-pass state |
+
+Input `A=$2B`, `X=$27`, `Y=$01`, `P=$10`, and `SP=$F9` becomes
+`A=$80`, `X=$27`, `Y=$81`, `P=$12`, and `SP=$F9`; every MPR is preserved.
+The zero alternate-pass index returns at `03:6988` after 165 body master
+cycles. No interrupt-owned write appears in either the natural scope or its
+restored replay.
+
+Ordinal 9 leaves the fixed-slot selector family at frame 942. Caller
+`03:5890` supplies `A=$06`, which resolves table entry `$0B` at `$6B0A` to
+motion record `$6DE6`; X selects slot `$17`. Its collision state is `$80`,
+event orientation is `$0D`, record cursor is zero, and horizontal low motion
+is `$F6`. Its reverse full-record transaction is:
+
+| Body cycle | Store PC | Logical address | Value |
+| ---: | --- | --- | --- |
+| 39 | `03:696B` | `$202F` | `$0A` table-pointer low |
+| 66 | `03:6970` | `$2030` | `$6B` table-pointer high |
+| 114 | `03:697C` | `$21F9` | `$10` saved status |
+| 135 | `03:697F` | `$3897` | `$81` alternate-pass state |
+| 177 | `03:6995` | `$2035` | `$00` orientation scratch |
+| 306 | `03:69BB` | `$202D` | `$E6` motion-pointer low |
+| 333 | `03:69C0` | `$202E` | `$6D` motion-pointer high |
+| 420 | `03:69D9` | `$3A97` | `$0A` event |
+| 480 | `03:69EE` | `$3D17` | `$8D` orientation |
+| 501 | `03:69F1` | `$3E97` | `$01` cursor after header |
+| 606 | `03:6A11` | `$3197` | `$F5` horizontal low |
+| 666 | `03:6A33` | `$3E97` | `$02` cursor after delta |
+
+Input `A=$06`, `X=$17`, `Y=$75`, `P=$00`, and `SP=$F9` becomes
+`A=$00`, `X=$17`, `Y=$01`, `P=$10`, and `SP=$F9`; every MPR is preserved.
+Beetle resumes at `03:6A37` after 672 body master cycles. Neither the natural
+scope nor restored replay includes an interrupt-owned write. This path also
+proves that the saved-status write is stack-relative (`$2100+SP`) rather
+than fixed at `$21F5`.
+
+Ordinal 10 is the first headerless continuation. Selector `$2A` and table
+entry `$03` still resolve `$6C2A->$6D56`, but slot `$26` enters with record
+cursor 2. The current stream byte is `$08`, so no event/orientation header
+is applied and the cursor advances only once:
+
+| Body cycle | Store PC | Logical address | Value |
+| ---: | --- | --- | --- |
+| 39 | `03:696B` | `$202F` | `$2A` table-pointer low |
+| 66 | `03:6970` | `$2030` | `$6C` table-pointer high |
+| 114 | `03:697C` | `$21F9` | `$10` saved status |
+| 135 | `03:697F` | `$38A6` | `$81` alternate-pass state |
+| 177 | `03:6995` | `$2035` | `$00` orientation scratch |
+| 306 | `03:69BB` | `$202D` | `$56` motion-pointer low |
+| 333 | `03:69C0` | `$202E` | `$6D` motion-pointer high |
+| 489 | `03:6A1E` | `$3326` | `$7D` vertical low |
+| 534 | `03:6A33` | `$3EA6` | `$03` cursor |
+
+Input `A=$2A`, `X=$26`, `Y=$00`, `P=$02`, and `SP=$F9` becomes
+`A=$08`, `X=$26`, `Y=$02`, `P=$10`, and `SP=$F9`; every MPR is preserved.
+Beetle resumes at `03:6A37` after 540 body master cycles. Neither the natural
+scope nor restored replay includes an interrupt-owned write.
+
+The independently replayed eighth call completes the frame-941 quartet.
+Input `A=$2D` selects table pointer `$6C35`, X selects fixed slot `$29`, and
+the slot's collision pass state is `$81`. Its exact transaction is:
+
+| Body cycle | Store PC | Logical address | Value |
+| ---: | --- | --- | --- |
+| 39 | `03:696B` | `$202F` | `$35` table-pointer low |
+| 66 | `03:6970` | `$2030` | `$6C` table-pointer high |
+| 114 | `03:697C` | `$21F9` | `$12` saved status |
+| 135 | `03:697F` | `$38A9` | `$80` alternate-pass state |
+
+Input `A=$2D`, `X=$29`, `Y=$01`, `P=$10`, and `SP=$F9` becomes
+`A=$80`, `X=$29`, `Y=$81`, `P=$12`, and `SP=$F9`; every MPR is preserved.
+The zero alternate-pass index returns at `03:6988` after 165 body master
+cycles. No interrupt-owned write appears in either the natural scope or its
+restored replay.
+
+The independently replayed seventh call is the next frame-941 return. Input
+`A=$2C` selects table pointer `$6C30`, X selects fixed slot `$28`, and the
+slot's collision pass state is `$81`. Its exact transaction is:
+
+| Body cycle | Store PC | Logical address | Value |
+| ---: | --- | --- | --- |
+| 39 | `03:696B` | `$202F` | `$30` table-pointer low |
+| 66 | `03:6970` | `$2030` | `$6C` table-pointer high |
+| 114 | `03:697C` | `$21F9` | `$12` saved status |
+| 135 | `03:697F` | `$38A8` | `$80` alternate-pass state |
+
+Input `A=$2C`, `X=$28`, `Y=$00`, `P=$02`, and `SP=$F9` becomes
+`A=$80`, `X=$28`, `Y=$81`, `P=$12`, and `SP=$F9`; every MPR is preserved.
+The zero alternate-pass index returns at `03:6988` after 165 body master
+cycles. No interrupt-owned write appears in either the natural scope or its
+restored replay.
+
+`dc_rom_collision_table_record`,
+`dc_rom_collision_table_record_reverse`, and
+the two vertical-record regressions cover ordinals 1 through 4, while
+the four adjacent collision-table-pass regressions cover ordinals 5 through
+8, and the alternate-reverse and continuation regressions cover ordinals 9
+and 10. The second continuation regression covers ordinal 12, and the
+alternate-selector and repeated-pass regressions cover ordinals 14 and 15.
+The second through fourth repeated-pass regressions cover ordinals 16
+through 18, and the alternate continuation regression covers ordinal 19.
+The horizontal-continuation regression covers ordinal 20. All restore the
+same pre-call states and execute original assembly for each shadow
+comparison. The reverse-horizontal continuation regression covers ordinal
+21, and the two later vertical-continuation regressions cover ordinals 22
+and 23 with the same complete artifact hashes.
+Debug and Release
+preserve the established gameplay SHA-256
+`1f6d46ac99798bbac1ecab97702d9e10076b9766796cc64d22d9662efce0b353`,
+the complete 19,648-call trace SHA-256
+`52662c6a1367b40d062cef954c52aec7e01a92ecd9fbcf4709e8dc1d2cf28a11`,
+and its 180,389-write SHA-256
+`e1314a534e10b0df2e6e3c101ce420b4bcd62e6cc8522c4e5c311556f7aa9a1c`.
+The remaining `6966` branches stay in assembly. The next interpreter slice
+models positive-state repeated passes and the reverse-oriented `SMB0 $35`
+record class, validated through the aggregate route rather than new ordinal
+promotion.
+The independently replayed frame-945
+call is already covered by the state-based analysis: selector `$06` resolves
+to `$6B0A`, slot `$17` changes pass state `$81->$80`, and the routine
+returns at `03:6988` after 165 cycles and four writes. It is not a new semantic
+branch. Ordinal 11 remains
+assembly because its natural scope enters a mid-routine interrupt at
+`03:69A2` / `00:FC26`, producing 1,233 cycles and 22 writes. Ordinal 13 is
+also
+interrupt-bearing: its 1,299-cycle/24-write replay shifts interrupt-owned
+stores beginning near `03:69B7`.
 
 ## Controls-to-physics closure route
 

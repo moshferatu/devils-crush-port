@@ -381,7 +381,48 @@ Provide an interactive monitor-assignment screen and persist display identity, g
 ### 4. Native gameplay port
 
 - Begin from the replacement-mode routine proven during Milestone 2 and use
-  it as the reference vertical slice for later ports.
+  it as the reference vertical slice for later ports. **Milestone 4 began
+  2026-07-28 with faithful `00:F1B4@17` position integration beside the
+  existing `00:F241@1` rollback replacement. Those focused fixtures now
+  support semantic `00:F1B4@all` integration across positive/negative and
+  fractional/integer-step states plus semantic `00:F241@all` rollback.
+  Automatic event/IRQ fallback admits 214 of 1,156 integration calls and 242
+  of 404 rollback calls. The current slice also includes the
+  bounded `01:DD09@1` zero-component acceleration path, its interrupt-free
+  `01:DD09@2` positive nonzero-divider path, the interrupt-free negative
+  divider at `01:DD09@181`, and interrupt-free `01:D1A2@23` signed rotation,
+  plus `03:6966@1` forward, `03:6966@2` reverse-horizontal, and
+  `03:6966@3` and `03:6966@4` vertical full collision-table record
+  advancement, plus `03:6966@9`'s alternate-selector reverse-horizontal
+  full record and `03:6966@10` and `03:6966@12` headerless vertical
+  continuations plus `03:6966@19`'s alternate-selector reverse-vertical
+  continuation, `03:6966@20`'s horizontal continuation, and
+  `03:6966@21`'s reverse-horizontal continuation plus `03:6966@22`'s
+  later vertical continuation and `03:6966@23`'s matching second
+  later vertical continuation as restored-assembly fixtures,
+  `03:6966@5` through `03:6966@8` collision-table alternate-pass selection
+  plus `03:6966@14`'s alternate-selector and `03:6966@15` through
+  `03:6966@18`'s repeated fixed-selector early returns. The ordinal fixtures
+  now support semantic `03:6966@all` scheduling: selector pointers come from
+  the verified user ROM, any slot whose pass state is `$81` takes the native
+  four-write early return, and ordinary `$80->$81` headerless record steps
+  resolve their collision-list and motion cursors from ROM. The generic
+  transaction handles either or both signed axes, including low-byte
+  carry/borrow into the high byte. Core-provided user/video-event and
+  serviceable-timer-IRQ horizons conservatively fall back to assembly while
+  allowing harmless timer-divider ticks. The bounded walker also follows
+  `$C0` motion terminators, applies `$FE` table wraps, recognizes `$FF`
+  termination, and handles headered records. This replaces 7,609 of the
+  route's 19,648 calls (38.7%) without an ordinal allowlist; further work on
+  this unusually large interpreter is frozen while smaller routines are
+  ported,
+  semantic `03:7FB1@all` actor collision-response scheduling across any
+  slot, response, countdown, and phase. Its ordinary decrement and reload
+  branches replace 13,460 of 21,987 census calls (61.2%); the existing
+  `@1`, `@3`, and `@7` coordinates remain focused restored-assembly
+  fixtures. Calls near an interrupt—including focused `03:7FB1@2`—fall
+  back automatically. `01:DD09@52` and unimplemented `03:6966` semantic
+  paths remain emulated.**
 - Port RNG, physics, collision, table actors/rules, bonus stages, and session transitions.
 - For each routine: observe, document, shadow-test, then replace.
 - Maintain a manifest showing which active-game ROM ranges remain emulated.

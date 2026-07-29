@@ -6,6 +6,7 @@
 #include "devils_crush/core/rom_image.hpp"
 #include "devils_crush/core/save_state.hpp"
 #include "devils_crush/emulation/pce_runtime.hpp"
+#include "devils_crush/game_logic/collision.h"
 #include "devils_crush/game_logic/physics.h"
 #include "devils_crush/render/pce_background.hpp"
 #include "devils_crush/render/pce_sprite_overlay.hpp"
@@ -122,6 +123,920 @@ void test_native_cached_position_restore()
             &restore)
             == 0,
         "native F241 rejects a truncated work-RAM snapshot");
+}
+
+void test_native_position_integrator()
+{
+    std::array<std::uint8_t, 0x2000> work_ram{};
+    constexpr std::uint8_t slot = 3U;
+    work_ram[0x1280U + slot] = 0x9CU;
+    work_ram[0x1300U + slot] = 0x96U;
+    work_ram[0x1380U + slot] = 0x02U;
+    work_ram[0x1100U + slot] = 0x00U;
+    work_ram[0x1180U + slot] = 0x0EU;
+    work_ram[0x1200U + slot] = 0x01U;
+    work_ram[0x00BBU + slot] = 0xCFU;
+    work_ram[0x00BCU + slot] = 0xFFU;
+    work_ram[0x1C80U + slot] = 0xA7U;
+
+    dc_position_integration integration{};
+    check(
+        dc_integrate_position(
+            work_ram.data(),
+            work_ram.size(),
+            slot,
+            &integration)
+            != 0,
+        "native F1B4 accepts a complete work-RAM snapshot");
+    constexpr std::array<std::uint16_t, DC_CACHED_POSITION_BYTE_COUNT>
+        expected_cache_offsets{
+            0x0088U,
+            0x0089U,
+            0x008AU,
+            0x0085U,
+            0x0086U,
+            0x0087U,
+        };
+    constexpr std::array<std::uint8_t, DC_CACHED_POSITION_BYTE_COUNT>
+        expected_cached_values{
+            0x9CU,
+            0x96U,
+            0x02U,
+            0x00U,
+            0x0EU,
+            0x01U,
+        };
+    constexpr std::array<
+        std::uint16_t,
+        DC_INTEGRATED_POSITION_BYTE_COUNT>
+        expected_position_offsets{
+            0x1283U,
+            0x1303U,
+            0x1383U,
+            0x1103U,
+            0x1183U,
+            0x1203U,
+        };
+    constexpr std::array<
+        std::uint8_t,
+        DC_INTEGRATED_POSITION_BYTE_COUNT>
+        expected_position_values{
+            0x6BU,
+            0x96U,
+            0x02U,
+            0x00U,
+            0x0EU,
+            0x01U,
+        };
+    check(
+        std::ranges::equal(
+            integration.cache_work_ram_offsets,
+            expected_cache_offsets)
+            && std::ranges::equal(
+                integration.cached_values,
+                expected_cached_values),
+        "native F1B4 caches both original signed 16.8 positions");
+    check(
+        std::ranges::equal(
+            integration.position_work_ram_offsets,
+            expected_position_offsets)
+            && std::ranges::equal(
+                integration.position_values,
+                expected_position_values),
+        "native F1B4 sign-extends and integrates both signed 8.8 increments");
+    check(
+        integration.cleared_motion_flags == 0xA5U
+            && integration.final_motion_flags == 0xA7U
+            && integration.first_increment_negative == 0U
+            && integration.second_increment_negative == 1U
+            && integration.integer_position_unchanged == 1U,
+        "native F1B4 marks a fractional-only update without losing other flags");
+
+    work_ram[0x1280U + slot] = 0x00U;
+    work_ram[0x1300U + slot] = 0x8FU;
+    work_ram[0x1380U + slot] = 0x02U;
+    work_ram[0x1100U + slot] = 0x00U;
+    work_ram[0x1180U + slot] = 0x0EU;
+    work_ram[0x1200U + slot] = 0x01U;
+    work_ram[0x00B9U + slot] = 0U;
+    work_ram[0x00BAU + slot] = 0U;
+    work_ram[0x00BBU + slot] = 0x10U;
+    work_ram[0x00BCU + slot] = 0U;
+    work_ram[0x1C80U + slot] = 0U;
+    check(
+        dc_integrate_position(
+            work_ram.data(),
+            work_ram.size(),
+            slot,
+            &integration)
+                != 0
+            && integration.position_values[0] == 0x10U
+            && integration.position_values[1] == 0x8FU
+            && integration.position_values[2] == 0x02U
+            && integration.position_values[3] == 0x00U
+            && integration.position_values[4] == 0x0EU
+            && integration.position_values[5] == 0x01U
+            && integration.first_increment_negative == 0U
+            && integration.second_increment_negative == 0U
+            && integration.integer_position_unchanged == 1U
+            && integration.final_motion_flags == 2U,
+        "native F1B4 matches the bounded nonnegative integration call");
+
+    work_ram[0x1C80U + slot] = 0xA7U;
+    work_ram[0x00BAU + slot] = 0x01U;
+    check(
+        dc_integrate_position(
+            work_ram.data(),
+            work_ram.size(),
+            slot,
+            &integration)
+                != 0
+            && integration.integer_position_unchanged == 0U
+            && integration.final_motion_flags == 0xA5U,
+        "native F1B4 leaves the motion marker clear after an integer step");
+    check(
+        dc_integrate_position(
+            work_ram.data(),
+            work_ram.size() - 1U,
+            slot,
+            &integration)
+            == 0,
+        "native F1B4 rejects a truncated work-RAM snapshot");
+}
+
+void test_native_motion_damping()
+{
+    std::array<std::uint8_t, 0x2000> work_ram{};
+    constexpr std::uint8_t slot = 5U;
+    work_ram[0x1400U + slot] = 0x80U;
+    work_ram[0x1480U + slot] = 0x01U;
+    work_ram[0x1500U + slot] = 0x80U;
+    work_ram[0x1580U + slot] = 0xFEU;
+    work_ram[0x008BU] = 0x20U;
+    work_ram[0x008CU] = 0xFCU;
+    work_ram[0x008DU] = 0x04U;
+
+    dc_motion_damping damping{};
+    check(
+        dc_damp_and_accelerate_motion(
+            work_ram.data(),
+            work_ram.size(),
+            slot,
+            &damping)
+            != 0,
+        "native DD09 accepts a complete work-RAM snapshot");
+    check(
+        damping.first_original == 0x0180U
+            && damping.second_original == 0xFE80U
+            && damping.first_damped == 0x01E0U
+            && damping.second_damped == 0xFEE0U
+            && damping.second_accelerated == 0xFF00U,
+        "native DD09 truncates signed quotients and accelerates axis two");
+    check(
+        damping.first_component_nonzero == 1U
+            && damping.second_component_nonzero == 1U
+            && damping.first_divisor == 0xFCU
+            && damping.second_divisor == 0x04U
+            && damping.second_acceleration == 0x20U,
+        "native DD09 reports its branch and coefficient inputs");
+
+    work_ram[0x1400U + slot] = 0U;
+    work_ram[0x1480U + slot] = 0U;
+    work_ram[0x1500U + slot] = 0x10U;
+    work_ram[0x1580U + slot] = 0U;
+    work_ram[0x008BU] = 0x10U;
+    work_ram[0x008CU] = 0x80U;
+    work_ram[0x008DU] = 0x80U;
+    check(
+        dc_damp_and_accelerate_motion(
+            work_ram.data(),
+            work_ram.size(),
+            slot,
+            &damping)
+                != 0
+            && damping.first_component_nonzero == 0U
+            && damping.second_component_nonzero == 1U
+            && damping.second_original == 0x0010U
+            && damping.second_damped == 0x0010U
+            && damping.second_accelerated == 0x0020U,
+        "native DD09 matches the bounded nonzero-divider call");
+
+    work_ram[0x1400U + slot] = 0U;
+    work_ram[0x1480U + slot] = 0U;
+    work_ram[0x1500U + slot] = 0U;
+    work_ram[0x1580U + slot] = 0U;
+    work_ram[0x008BU] = 0x10U;
+    work_ram[0x008CU] = 0U;
+    work_ram[0x008DU] = 0U;
+    check(
+        dc_damp_and_accelerate_motion(
+            work_ram.data(),
+            work_ram.size(),
+            slot,
+            &damping)
+                != 0
+            && damping.first_component_nonzero == 0U
+            && damping.second_component_nonzero == 0U
+            && damping.first_damped == 0U
+            && damping.second_damped == 0U
+            && damping.second_accelerated == 0x0010U,
+        "native DD09 skips unused divisors on its zero-component path");
+
+    work_ram[0x1400U + slot] = 1U;
+    check(
+        dc_damp_and_accelerate_motion(
+            work_ram.data(),
+            work_ram.size(),
+            slot,
+            &damping)
+            == 0,
+        "native DD09 rejects a zero divisor for a live component");
+    check(
+        dc_damp_and_accelerate_motion(
+            work_ram.data(),
+            work_ram.size() - 1U,
+            slot,
+            &damping)
+            == 0,
+        "native DD09 rejects a truncated work-RAM snapshot");
+}
+
+void test_native_motion_rotation()
+{
+    std::array<std::uint8_t, 0x2000> work_ram{};
+    work_ram[0x00C0U] = 0x80U;
+    work_ram[0x00C1U] = 0x01U;
+    work_ram[0x00BEU] = 0x80U;
+    work_ram[0x00BFU] = 0xFFU;
+    work_ram[0x007DU] = 0x00U;
+    work_ram[0x007EU] = 0x00U;
+    work_ram[0x007FU] = 0x00U;
+    work_ram[0x0080U] = 0x01U;
+
+    dc_motion_rotation rotation{};
+    check(
+        dc_rotate_motion(
+            work_ram.data(),
+            work_ram.size(),
+            &rotation)
+            != 0,
+        "native D1A2 accepts a complete work-RAM snapshot");
+    check(
+        rotation.first_input == 0x0180U
+            && rotation.second_input == 0xFF80U
+            && rotation.cosine == 0x0000U
+            && rotation.sine == 0x0100U
+            && rotation.first_output == 0x0080U
+            && rotation.second_output == 0x0180U,
+        "native D1A2 rotates signed 8.8 components by a quarter turn");
+
+    work_ram[0x007DU] = 0x80U;
+    work_ram[0x007EU] = 0x00U;
+    work_ram[0x007FU] = 0x00U;
+    work_ram[0x0080U] = 0x00U;
+    check(
+        dc_rotate_motion(
+            work_ram.data(),
+            work_ram.size(),
+            &rotation)
+                != 0
+            && rotation.first_output == 0x00C0U
+            && rotation.second_output == 0xFFC0U,
+        "native D1A2 truncates signed fractional products toward zero");
+    check(
+        dc_rotate_motion(
+            work_ram.data(),
+            work_ram.size() - 1U,
+            &rotation)
+            == 0,
+        "native D1A2 rejects a truncated work-RAM snapshot");
+}
+
+void test_native_collision_response()
+{
+    std::array<std::uint8_t, 0x2000> work_ram{};
+    constexpr std::uint8_t slot = 0x62U;
+    work_ram[0x1A80U + slot] = 0x0FU;
+    work_ram[0x1A00U + slot] = 4U;
+    work_ram[0x1C80U + slot] = 0U;
+
+    dc_collision_response response{};
+    check(
+        dc_advance_collision_response(
+            work_ram.data(),
+            work_ram.size(),
+            slot,
+            &response)
+            != 0,
+        "native 7FB1 accepts a complete work-RAM snapshot");
+    check(
+        response.event == 0x0FU
+            && response.response_base == 0x1CU
+            && response.response == 0x1CU
+            && response.countdown == 3U
+            && response.phase == 0U
+            && response.countdown_reloaded == 0U,
+        "native 7FB1 advances the bounded collision response");
+    check(
+        response.response_work_ram_offset == 0x19E2U
+            && response.countdown_work_ram_offset == 0x1A62U
+            && response.phase_work_ram_offset == 0x1CE2U,
+        "native 7FB1 indexes the actor response fields");
+
+    work_ram[0x1A80U + slot] = 0x81U;
+    work_ram[0x1A00U + slot] = 1U;
+    work_ram[0x1C80U + slot] = 0xFFU;
+    check(
+        dc_advance_collision_response(
+            work_ram.data(),
+            work_ram.size(),
+            slot,
+            &response)
+                != 0
+            && response.response_base == 0U
+            && response.response == 3U
+            && response.countdown == 4U
+            && response.phase == 0U
+            && response.countdown_reloaded == 1U,
+        "native 7FB1 reloads the countdown and wraps the phase");
+
+    work_ram[0x1A80U + slot] = 0x0FU;
+    work_ram[0x1A00U + slot] = 1U;
+    work_ram[0x1C80U + slot] = 0U;
+    check(
+        dc_advance_collision_response(
+            work_ram.data(),
+            work_ram.size(),
+            slot,
+            &response)
+                != 0
+            && response.response_base == 0x1CU
+            && response.response == 0x1CU
+            && response.countdown == 4U
+            && response.phase == 1U
+            && response.countdown_reloaded == 1U,
+        "native 7FB1 matches the bounded countdown-reload call");
+    check(
+        dc_advance_collision_response(
+            work_ram.data(),
+            work_ram.size() - 1U,
+            slot,
+            &response)
+            == 0,
+        "native 7FB1 rejects a truncated work-RAM snapshot");
+}
+
+void test_native_collision_table_pass()
+{
+    std::array<std::uint8_t, 0x2000> work_ram{};
+    constexpr std::uint8_t slot = 0x26U;
+    work_ram[0x1880U + slot] = 0x81U;
+
+    dc_collision_table_pass pass{};
+    check(
+        dc_select_collision_table_pass(
+            work_ram.data(),
+            work_ram.size(),
+            slot,
+            0x6C2AU,
+            &pass)
+            != 0,
+        "native 6966 accepts a complete work-RAM snapshot");
+    check(
+        pass.table_pointer == 0x6C2AU
+            && pass.collision_work_ram_offset == 0x18A6U
+            && pass.collision_state == 0x81U
+            && pass.collision_state_next == 0x80U
+            && pass.pass_index == 0U
+            && pass.returns_without_step == 1U,
+        "native 6966 matches the bounded alternate-pass return");
+
+    constexpr std::uint8_t second_pass_slot = 0x27U;
+    work_ram[0x1880U + second_pass_slot] = 0x81U;
+    check(
+        dc_select_collision_table_pass(
+            work_ram.data(),
+            work_ram.size(),
+            second_pass_slot,
+            0x6C2DU,
+            &pass)
+                != 0
+            && pass.table_pointer == 0x6C2DU
+            && pass.collision_work_ram_offset == 0x18A7U
+            && pass.collision_state == 0x81U
+            && pass.collision_state_next == 0x80U
+            && pass.pass_index == 0U
+            && pass.returns_without_step == 1U,
+        "native 6966 matches the second bounded alternate-pass return");
+
+    constexpr std::uint8_t third_pass_slot = 0x28U;
+    work_ram[0x1880U + third_pass_slot] = 0x81U;
+    check(
+        dc_select_collision_table_pass(
+            work_ram.data(),
+            work_ram.size(),
+            third_pass_slot,
+            0x6C30U,
+            &pass)
+                != 0
+            && pass.table_pointer == 0x6C30U
+            && pass.collision_work_ram_offset == 0x18A8U
+            && pass.collision_state == 0x81U
+            && pass.collision_state_next == 0x80U
+            && pass.pass_index == 0U
+            && pass.returns_without_step == 1U,
+        "native 6966 matches the third bounded alternate-pass return");
+
+    constexpr std::uint8_t fourth_pass_slot = 0x29U;
+    work_ram[0x1880U + fourth_pass_slot] = 0x81U;
+    check(
+        dc_select_collision_table_pass(
+            work_ram.data(),
+            work_ram.size(),
+            fourth_pass_slot,
+            0x6C35U,
+            &pass)
+                != 0
+            && pass.table_pointer == 0x6C35U
+            && pass.collision_work_ram_offset == 0x18A9U
+            && pass.collision_state == 0x81U
+            && pass.collision_state_next == 0x80U
+            && pass.pass_index == 0U
+            && pass.returns_without_step == 1U,
+        "native 6966 matches the fourth bounded alternate-pass return");
+
+    constexpr std::uint8_t alternate_pass_slot = 0x17U;
+    work_ram[0x1880U + alternate_pass_slot] = 0x81U;
+    check(
+        dc_select_collision_table_pass(
+            work_ram.data(),
+            work_ram.size(),
+            alternate_pass_slot,
+            0x6B0AU,
+            &pass)
+                != 0
+            && pass.table_pointer == 0x6B0AU
+            && pass.collision_work_ram_offset == 0x1897U
+            && pass.collision_state == 0x81U
+            && pass.collision_state_next == 0x80U
+            && pass.pass_index == 0U
+            && pass.returns_without_step == 1U,
+        "native 6966 matches the alternate-selector pass return");
+
+    work_ram[0x1880U + slot] = 0x80U;
+    check(
+        dc_select_collision_table_pass(
+            work_ram.data(),
+            work_ram.size(),
+            slot,
+            0x6C2AU,
+            &pass)
+                != 0
+            && pass.collision_state_next == 0x81U
+            && pass.pass_index == 1U
+            && pass.returns_without_step == 0U,
+        "native 6966 selects the other collision-table pass");
+
+    work_ram[0x1880U + slot] = 0x01U;
+    check(
+        dc_select_collision_table_pass(
+            work_ram.data(),
+            work_ram.size(),
+            slot,
+            0x6C2AU,
+            &pass)
+                != 0
+            && pass.collision_state_next == 0x01U
+            && pass.pass_index == 1U
+            && pass.returns_without_step == 0U,
+        "native 6966 preserves a direct collision-table pass");
+    check(
+        dc_select_collision_table_pass(
+            work_ram.data(),
+            work_ram.size() - 1U,
+            slot,
+            0x6C2AU,
+            &pass)
+            == 0,
+        "native 6966 rejects a truncated work-RAM snapshot");
+
+    work_ram[0x1880U + slot] = 0x80U;
+    work_ram[0x1D00U + slot] = 0x0CU;
+    work_ram[0x1E80U + slot] = 0U;
+    work_ram[0x1180U + slot] = 0x40U;
+    dc_collision_table_record record{};
+    check(
+        dc_advance_collision_table_record(
+            work_ram.data(),
+            work_ram.size(),
+            slot,
+            0x6C2AU,
+            0x03U,
+            0x6D56U,
+            0x82U,
+            0x20U,
+            &record)
+            != 0,
+        "native 6966 accepts the bounded full collision record");
+    check(
+        record.pass.collision_state_next == 0x81U
+            && record.pass.returns_without_step == 0U
+            && record.motion_pointer == 0x6D56U
+            && record.event == 0x02U
+            && record.orientation == 0x8CU
+            && record.cursor_after_header == 1U
+            && record.cursor_after_delta == 2U
+            && record.horizontal_low == 0x41U
+            && record.horizontal_high == 0U
+            && record.event_written == 1U
+            && record.horizontal_written == 1U
+            && record.horizontal_high_written == 0U
+            && record.vertical_written == 0U,
+        "native 6966 advances the bounded full collision record");
+
+    work_ram[0x1880U + slot] = 0x80U;
+    work_ram[0x1A80U + slot] = 0x02U;
+    work_ram[0x1E80U + slot] = 0x02U;
+    work_ram[0x1300U + slot] = 0x7CU;
+    work_ram[0x1380U + slot] = 0U;
+    check(
+        dc_advance_collision_table_record(
+            work_ram.data(),
+            work_ram.size(),
+            slot,
+            0x6C2AU,
+            0x03U,
+            0x6D56U,
+            0x08U,
+            0x00U,
+            &record)
+                != 0
+            && record.pass.collision_state_next == 0x81U
+            && record.motion_header == 0x08U
+            && record.motion_delta == 0x08U
+            && record.event == 0x02U
+            && record.event_written == 0U
+            && record.cursor_after_header == 2U
+            && record.cursor_after_delta == 3U
+            && record.vertical_low == 0x7DU
+            && record.vertical_high == 0U
+            && record.horizontal_written == 0U
+            && record.vertical_written == 1U
+            && record.vertical_high_written == 0U,
+        "native 6966 advances a headerless continuation record");
+
+    constexpr std::uint8_t alternate_continuation_slot = 0x17U;
+    work_ram[0x1880U + alternate_continuation_slot] = 0x80U;
+    work_ram[0x1A80U + alternate_continuation_slot] = 0x0AU;
+    work_ram[0x1E80U + alternate_continuation_slot] = 0x02U;
+    work_ram[0x1300U + alternate_continuation_slot] = 0xC4U;
+    work_ram[0x1380U + alternate_continuation_slot] = 0U;
+    check(
+        dc_advance_collision_table_record(
+            work_ram.data(),
+            work_ram.size(),
+            alternate_continuation_slot,
+            0x6B0AU,
+            0x0BU,
+            0x6DE6U,
+            0x10U,
+            0x00U,
+            &record)
+                != 0
+            && record.pass.collision_state_next == 0x81U
+            && record.motion_header == 0x10U
+            && record.motion_delta == 0x10U
+            && record.event == 0x0AU
+            && record.event_written == 0U
+            && record.cursor_after_header == 2U
+            && record.cursor_after_delta == 3U
+            && record.vertical_low == 0xC3U
+            && record.vertical_high == 0U
+            && record.horizontal_written == 0U
+            && record.vertical_written == 1U
+            && record.vertical_high_written == 0U,
+        "native 6966 advances the alternate reverse-vertical continuation");
+
+    work_ram[0x1880U + slot] = 0x80U;
+    work_ram[0x1A80U + slot] = 0x02U;
+    work_ram[0x1E80U + slot] = 0x03U;
+    work_ram[0x1180U + slot] = 0x41U;
+    work_ram[0x1200U + slot] = 0U;
+    check(
+        dc_advance_collision_table_record(
+            work_ram.data(),
+            work_ram.size(),
+            slot,
+            0x6C2AU,
+            0x03U,
+            0x6D56U,
+            0x20U,
+            0x00U,
+            &record)
+                != 0
+            && record.pass.collision_state_next == 0x81U
+            && record.motion_header == 0x20U
+            && record.motion_delta == 0x20U
+            && record.event == 0x02U
+            && record.event_written == 0U
+            && record.cursor_after_header == 3U
+            && record.cursor_after_delta == 4U
+            && record.horizontal_low == 0x42U
+            && record.horizontal_high == 0U
+            && record.horizontal_written == 1U
+            && record.horizontal_high_written == 0U
+            && record.vertical_written == 0U,
+        "native 6966 advances a headerless horizontal continuation");
+
+    constexpr std::uint8_t reverse_continuation_slot = 0x27U;
+    work_ram[0x1880U + reverse_continuation_slot] = 0x80U;
+    work_ram[0x1A80U + reverse_continuation_slot] = 0x06U;
+    work_ram[0x1E80U + reverse_continuation_slot] = 0x03U;
+    work_ram[0x1180U + reverse_continuation_slot] = 0xD7U;
+    work_ram[0x1200U + reverse_continuation_slot] = 0U;
+    check(
+        dc_advance_collision_table_record(
+            work_ram.data(),
+            work_ram.size(),
+            reverse_continuation_slot,
+            0x6C2DU,
+            0x07U,
+            0x6D9EU,
+            0x40U,
+            0x00U,
+            &record)
+                != 0
+            && record.pass.collision_state_next == 0x81U
+            && record.motion_header == 0x40U
+            && record.motion_delta == 0x40U
+            && record.event == 0x06U
+            && record.event_written == 0U
+            && record.cursor_after_header == 3U
+            && record.cursor_after_delta == 4U
+            && record.horizontal_low == 0xD6U
+            && record.horizontal_high == 0U
+            && record.horizontal_written == 1U
+            && record.horizontal_high_written == 0U
+            && record.vertical_written == 0U,
+        "native 6966 advances a reverse-horizontal continuation");
+
+    constexpr std::uint8_t vertical_slot = 0x28U;
+    work_ram[0x1880U + vertical_slot] = 0x80U;
+    work_ram[0x1A80U + vertical_slot] = 0x04U;
+    work_ram[0x1E80U + vertical_slot] = 0x03U;
+    work_ram[0x1300U + vertical_slot] = 0x84U;
+    work_ram[0x1380U + vertical_slot] = 0U;
+    check(
+        dc_advance_collision_table_record(
+            work_ram.data(),
+            work_ram.size(),
+            vertical_slot,
+            0x6C30U,
+            0x05U,
+            0x6D7AU,
+            0x08U,
+            0x00U,
+            &record)
+                != 0
+            && record.pass.collision_state_next == 0x81U
+            && record.motion_header == 0x08U
+            && record.motion_delta == 0x08U
+            && record.event == 0x04U
+            && record.event_written == 0U
+            && record.cursor_after_header == 3U
+            && record.cursor_after_delta == 4U
+            && record.vertical_low == 0x85U
+            && record.vertical_high == 0U
+            && record.horizontal_written == 0U
+            && record.vertical_written == 1U
+            && record.vertical_high_written == 0U,
+        "native 6966 advances the later vertical continuation");
+
+    constexpr std::uint8_t second_vertical_slot = 0x29U;
+    work_ram[0x1880U + second_vertical_slot] = 0x80U;
+    work_ram[0x1A80U + second_vertical_slot] = 0x04U;
+    work_ram[0x1E80U + second_vertical_slot] = 0x03U;
+    work_ram[0x1300U + second_vertical_slot] = 0x84U;
+    work_ram[0x1380U + second_vertical_slot] = 0U;
+    check(
+        dc_advance_collision_table_record(
+            work_ram.data(),
+            work_ram.size(),
+            second_vertical_slot,
+            0x6C35U,
+            0x05U,
+            0x6D7AU,
+            0x08U,
+            0x00U,
+            &record)
+                != 0
+            && record.pass.collision_state_next == 0x81U
+            && record.motion_header == 0x08U
+            && record.motion_delta == 0x08U
+            && record.event == 0x04U
+            && record.event_written == 0U
+            && record.cursor_after_header == 3U
+            && record.cursor_after_delta == 4U
+            && record.vertical_low == 0x85U
+            && record.vertical_high == 0U
+            && record.horizontal_written == 0U
+            && record.vertical_written == 1U
+            && record.vertical_high_written == 0U,
+        "native 6966 advances the second later vertical continuation");
+
+    work_ram[0x1880U + vertical_slot] = 0x80U;
+    work_ram[0x1A80U + vertical_slot] = 0x04U;
+    work_ram[0x1E80U + vertical_slot] = 0x02U;
+    work_ram[0x1300U + vertical_slot] = 0x83U;
+    work_ram[0x1380U + vertical_slot] = 0U;
+    check(
+        dc_advance_collision_table_record(
+            work_ram.data(),
+            work_ram.size(),
+            vertical_slot,
+            0x6C30U,
+            0x05U,
+            0x6D7AU,
+            0x08U,
+            0x00U,
+            &record)
+                != 0
+            && record.pass.collision_state_next == 0x81U
+            && record.motion_header == 0x08U
+            && record.motion_delta == 0x08U
+            && record.event == 0x04U
+            && record.event_written == 0U
+            && record.cursor_after_header == 2U
+            && record.cursor_after_delta == 3U
+            && record.vertical_low == 0x84U
+            && record.vertical_high == 0U
+            && record.horizontal_written == 0U
+            && record.vertical_written == 1U
+            && record.vertical_high_written == 0U,
+        "native 6966 advances the second headerless continuation");
+
+    constexpr std::uint8_t reverse_slot = 0x27U;
+    work_ram[0x1880U + reverse_slot] = 0x80U;
+    work_ram[0x1D00U + reverse_slot] = 0x0CU;
+    work_ram[0x1E80U + reverse_slot] = 0U;
+    work_ram[0x1180U + reverse_slot] = 0xD8U;
+    work_ram[0x1200U + reverse_slot] = 0U;
+    check(
+        dc_advance_collision_table_record(
+            work_ram.data(),
+            work_ram.size(),
+            reverse_slot,
+            0x6C2DU,
+            0x07U,
+            0x6D9EU,
+            0x86U,
+            0x40U,
+            &record)
+                != 0
+            && record.pass.collision_state_next == 0x81U
+            && record.motion_pointer == 0x6D9EU
+            && record.event == 0x06U
+            && record.orientation == 0x8CU
+            && record.cursor_after_header == 1U
+            && record.cursor_after_delta == 2U
+            && record.horizontal_low == 0xD7U
+            && record.horizontal_high == 0U
+            && record.horizontal_written == 1U
+            && record.horizontal_high_written == 0U
+            && record.vertical_written == 0U,
+        "native 6966 matches the bounded reverse full collision record");
+
+    constexpr std::uint8_t alternate_reverse_slot = 0x17U;
+    work_ram[0x1880U + alternate_reverse_slot] = 0x80U;
+    work_ram[0x1D00U + alternate_reverse_slot] = 0x0DU;
+    work_ram[0x1E80U + alternate_reverse_slot] = 0U;
+    work_ram[0x1180U + alternate_reverse_slot] = 0xF6U;
+    work_ram[0x1200U + alternate_reverse_slot] = 0U;
+    check(
+        dc_advance_collision_table_record(
+            work_ram.data(),
+            work_ram.size(),
+            alternate_reverse_slot,
+            0x6B0AU,
+            0x0BU,
+            0x6DE6U,
+            0x8AU,
+            0x40U,
+            &record)
+                != 0
+            && record.pass.collision_state_next == 0x81U
+            && record.motion_pointer == 0x6DE6U
+            && record.event == 0x0AU
+            && record.orientation == 0x8DU
+            && record.cursor_after_header == 1U
+            && record.cursor_after_delta == 2U
+            && record.horizontal_low == 0xF5U
+            && record.horizontal_high == 0U
+            && record.horizontal_written == 1U
+            && record.horizontal_high_written == 0U
+            && record.vertical_written == 0U,
+        "native 6966 matches the alternate bounded reverse collision record");
+
+    work_ram[0x1880U + vertical_slot] = 0x80U;
+    work_ram[0x1D00U + vertical_slot] = 0x0CU;
+    work_ram[0x1E80U + vertical_slot] = 0U;
+    work_ram[0x1300U + vertical_slot] = 0x82U;
+    work_ram[0x1380U + vertical_slot] = 0U;
+    check(
+        dc_advance_collision_table_record(
+            work_ram.data(),
+            work_ram.size(),
+            vertical_slot,
+            0x6C30U,
+            0x05U,
+            0x6D7AU,
+            0x84U,
+            0x08U,
+            &record)
+                != 0
+            && record.pass.collision_state_next == 0x81U
+            && record.motion_pointer == 0x6D7AU
+            && record.event == 0x04U
+            && record.orientation == 0x8CU
+            && record.cursor_after_header == 1U
+            && record.cursor_after_delta == 2U
+            && record.vertical_low == 0x83U
+            && record.vertical_high == 0U
+            && record.horizontal_written == 0U
+            && record.vertical_written == 1U
+            && record.vertical_high_written == 0U,
+        "native 6966 matches the bounded vertical full collision record");
+
+    work_ram[0x1880U + second_vertical_slot] = 0x80U;
+    work_ram[0x1D00U + second_vertical_slot] = 0x0CU;
+    work_ram[0x1E80U + second_vertical_slot] = 0U;
+    work_ram[0x1300U + second_vertical_slot] = 0x82U;
+    work_ram[0x1380U + second_vertical_slot] = 0U;
+    check(
+        dc_advance_collision_table_record(
+            work_ram.data(),
+            work_ram.size(),
+            second_vertical_slot,
+            0x6C35U,
+            0x05U,
+            0x6D7AU,
+            0x84U,
+            0x08U,
+            &record)
+                != 0
+            && record.pass.collision_state_next == 0x81U
+            && record.motion_pointer == 0x6D7AU
+            && record.event == 0x04U
+            && record.orientation == 0x8CU
+            && record.cursor_after_header == 1U
+            && record.cursor_after_delta == 2U
+            && record.vertical_low == 0x83U
+            && record.vertical_high == 0U
+            && record.horizontal_written == 0U
+            && record.vertical_written == 1U
+            && record.vertical_high_written == 0U,
+        "native 6966 matches the second bounded vertical collision record");
+
+    work_ram[0x1880U + slot] = 0U;
+    work_ram[0x1D00U + slot] = 0x8CU;
+    work_ram[0x1180U + slot] = 0U;
+    work_ram[0x1200U + slot] = 1U;
+    work_ram[0x1300U + slot] = 0xFFU;
+    work_ram[0x1380U + slot] = 0U;
+    check(
+        dc_advance_collision_table_record(
+            work_ram.data(),
+            work_ram.size(),
+            slot,
+            0x6C2AU,
+            0x83U,
+            0x6D56U,
+            0x82U,
+            0x48U,
+            &record)
+                != 0
+            && record.pass.collision_state_next == 0U
+            && record.orientation == 0x0CU
+            && record.horizontal_low == 0xFFU
+            && record.horizontal_high == 0U
+            && record.horizontal_high_written == 1U
+            && record.vertical_low == 0U
+            && record.vertical_high == 1U
+            && record.vertical_high_written == 1U,
+        "native 6966 applies reverse orientation and signed motion carries");
+    check(
+        dc_advance_collision_table_record(
+            work_ram.data(),
+            work_ram.size() - 1U,
+            slot,
+            0x6C2AU,
+            0x03U,
+            0x6D56U,
+            0x82U,
+            0x20U,
+            &record)
+            == 0,
+        "native 6966 full record rejects a truncated snapshot");
 }
 
 void test_supported_rom_metadata()
@@ -1586,6 +2501,11 @@ void test_runtime_boundary()
 int main()
 {
     test_hash_vectors();
+    test_native_position_integrator();
+    test_native_motion_damping();
+    test_native_motion_rotation();
+    test_native_collision_table_pass();
+    test_native_collision_response();
     test_native_cached_position_restore();
     test_supported_rom_metadata();
     test_scaler_examples();

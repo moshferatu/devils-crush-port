@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <functional>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <span>
@@ -121,6 +122,13 @@ struct RoutineEntry {
     std::uint64_t frame_number = 0;
     std::uint32_t master_cycle = 0;
     std::uint64_t absolute_master_cycle = 0;
+    // A broad native body must finish strictly before the user/video event
+    // or serviceable timer-IRQ boundary. Separating these clocks allows
+    // semantic replacements to cross harmless timer-divider ticks.
+    std::uint32_t master_cycles_until_user_event =
+        std::numeric_limits<std::uint32_t>::max();
+    std::uint32_t master_cycles_until_timer_interrupt =
+        std::numeric_limits<std::uint32_t>::max();
 
     [[nodiscard]] bool operator==(const RoutineEntry&) const = default;
 };
@@ -254,11 +262,12 @@ public:
     // writes with entry-relative timing, the body-cycle budget, and the
     // outer RTS at which emulation resumes.
     //
-    // Replacement callbacks receive an isolated work-RAM snapshot. The
-    // current contract is for bounded routines proven not to take an
-    // interrupt internally: hardware events advance at declared write and
-    // body-cycle boundaries, while a newly asserted interrupt is delivered
-    // before the resumed RTS rather than inside the native body.
+    // Replacement callbacks receive an isolated work-RAM snapshot plus the
+    // entry's conservative master-cycle horizons to the next user/video
+    // event and serviceable timer interrupt. Broad semantic schedulers
+    // decline transactions that reach either horizon; exact restored-
+    // assembly fixtures may separately admit a proven no-interrupt call.
+    // Hardware events advance at declared write and body-cycle boundaries.
     [[nodiscard]] virtual bool install_execution_hook(ExecutionHook hook) = 0;
     [[nodiscard]] virtual bool remove_execution_hook(
         RoutineKey routine) noexcept = 0;

@@ -40,13 +40,25 @@ execute_process(
         --observe-hook
         "01:DD09"
         --replace-hook
+        "00:F1B4@17"
+        --replace-hook
         "00:F241@1"
+        --replace-hook
+        "01:D1A2@23"
+        --replace-hook
+        "01:DD09@1"
         --routine-trace
         "${trace_output}"
         --routine-call-trace
         "${call_output}"
         --routine-replay
+        "00:F1B4@17"
+        --routine-replay
         "00:F241@1"
+        --routine-replay
+        "01:D1A2@23"
+        --routine-replay
+        "01:DD09@1"
         --rom
         "${ROM}"
     RESULT_VARIABLE recorder_result
@@ -62,11 +74,17 @@ if(NOT recorder_result EQUAL 0)
 endif()
 
 foreach(expected_line IN ITEMS
+    "Native replacement 00:F1B4@17 entries: 1"
     "Native replacement 00:F241@1 entries: 1"
+    "Native replacement 01:D1A2@23 entries: 1"
+    "Native replacement 01:DD09@1 entries: 1"
     "Observe hook 2 entries: 404"
     "Routine call trace complete: 2717 calls, 171993 writes"
+    "Routine replay 00:F1B4@17 verified: frame 1064, 714 body cycles, 17 ordered writes"
     "Routine replay 00:F241@1 verified: frame 1064, 162 body cycles, 6 ordered writes"
-    "Routine replay complete: 1 state-normalized calls"
+    "Routine replay 01:D1A2@23 verified: frame 1099, 5076 body cycles, 190 ordered writes"
+    "Routine replay 01:DD09@1 verified: frame 1048, 168 body cycles, 2 ordered writes"
+    "Routine replay complete: 4 state-normalized calls"
 )
     string(FIND "${recorder_output}" "${expected_line}" line_offset)
     if(line_offset EQUAL -1)
@@ -107,5 +125,5 @@ endforeach()
 
 message(
     STATUS
-    "Native F241 and restored assembly F241 match from one pre-call state."
+    "Native F1B4/F241/D1A2/DD09 and restored assembly match from their pre-call states."
 )

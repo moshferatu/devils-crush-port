@@ -42,6 +42,10 @@ this repository.
    - Leaves normal opcode execution unchanged when no replacement is
      returned. The host currently enables replacement only for mapped
      no-interrupt scopes.
+  - Exposes conservative master-cycle distances to the next user/video event
+    and next serviceable timer interrupt. Broad semantic replacements can
+    cross harmless timer-divider ticks while still falling back before an
+    interrupt could be asserted inside a native body.
 4. `patches/0004-vdc-video-snapshot.patch`
    - Adds read-only VDC VRAM, VCE palette, and background-register accessors.
    - The project-owned C boundary copies their values between frames and never

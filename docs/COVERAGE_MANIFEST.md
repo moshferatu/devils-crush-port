@@ -164,7 +164,7 @@ result. That finite baseline is complete.
 | `I-04` | Drain/session/score-display continuation | D | `dc_rom_session_scoring` |
 | `I-05` | All 12 normal-table and nine bonus/ending RNG consumers | D | RNG consumer regressions |
 | `I-06` | Transactional copied-RAM native invocation and shadow comparison | D | `dc_rom_native_replacement` |
-| `I-07` | Faithful end-to-end replacement of bounded `00:F241@1` | D | `dc_rom_native_replacement` |
+| `I-07` | Faithful end-to-end replacement of semantic `03:6966@all`, bounded `03:7FB1@1`, `03:7FB1@3`, `03:7FB1@7`, `01:D1A2@23`, `01:DD09@1`, `01:DD09@2`, `01:DD09@181`, `00:F1B4@1`, `00:F1B4@10`, `00:F1B4@17`, and `00:F241@1` | D | `dc_rom_collision_table_semantic`, `dc_rom_native_replacement`, `dc_rom_position_integration_positive`, `dc_rom_position_integration_integer_step`, `dc_rom_motion_damping_nonzero`, `dc_rom_motion_damping_negative`, `dc_rom_collision_boundary`, `dc_rom_collision_response_followup`, `dc_rom_collision_response_reload` |
 | `I-08` | Faithful mid-routine interrupt delivery for interrupt-bearing replacements | F | Implement before the first selected interrupt-bearing Milestone 4 port |
 
 ## Explicit post-Milestone-2 acceptance inventory

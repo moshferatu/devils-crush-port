@@ -21,6 +21,8 @@ typedef struct dc_beetle_cpu_state {
     uint8_t mpr[8];
     uint32_t master_cycle;
     uint64_t absolute_master_cycle;
+    uint32_t master_cycles_until_user_event;
+    uint32_t master_cycles_until_timer_interrupt;
 } dc_beetle_cpu_state;
 
 typedef struct dc_beetle_memory_write {
