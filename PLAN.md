@@ -380,6 +380,15 @@ Provide an interactive monitor-assignment screen and persist display identity, g
 
 ### 4. Native gameplay port
 
+- Keep application orchestration separate from instruction-faithful
+  replacement adapters. **Completed initial extraction 2026-07-30: the
+  11,857-line adapter/dispatcher block now lives behind
+  `app/native_replacements.hpp`, reducing `src/app/main.cpp` from 16,939 to
+  5,077 lines without changing replacement behavior. Further adapter growth
+  is assigned to subsystem-specific implementation files rather than
+  `main.cpp`. Completed 2026-07-30: collision, physics/arithmetic,
+  controls/actor, and RNG/score adapters now occupy subsystem implementation
+  files, while `native_replacements.cpp` is the 234-line central registry.**
 - Begin from the replacement-mode routine proven during Milestone 2 and use
   it as the reference vertical slice for later ports. **Milestone 4 began
   2026-07-28 with faithful `00:F1B4@17` position integration beside the
@@ -534,10 +543,11 @@ Provide an interactive monitor-assignment screen and persist display identity, g
   while the complete 1,784,119-write artifact remains exact. Near-target
   and later scan paths remain emulated.
   Semantic `01:CCD5@all` resolves the near-target geometry leaf through the
-  live MPR map and verified ROM pointer directories. Its atomic
-  783/789/885/891-cycle, 16/19-write transactions replace 5,819 of 66,523
-  remaining calls while preserving the complete 1,414,954-write artifact;
-  interrupt checkpoints remain the next expansion.
+  live MPR map and verified ROM pointer directories. Its path-sensitive
+  instruction transcript now covers all four 783/789/885/891-cycle,
+  16/19-write shapes and replaces all 66,523 remaining calls while
+  preserving the complete 1,414,954-write artifact and original interrupt
+  handling.
   The larger `01:D525` controller remains a decomposition boundary: its 128
   census calls span 29-1,456 writes and 1,035-49,122 body master cycles, so
   the largest live paths exceed the bridge's independent 512-write limit.

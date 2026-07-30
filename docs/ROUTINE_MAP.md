@@ -5107,10 +5107,12 @@ and negative descriptor offsets into four uninterrupted bodies:
 | Negative | Negative | 885 | 19 |
 | Negative | Positive | 891 | 19 |
 
-The atomic event/IRQ horizon admits 5,819 of 66,523 calls (8.7%). The other
-60,704 calls remain assembly fallbacks until this leaf receives instruction
-checkpoints. `dc_rom_collision_geometry_semantic` preserves the complete
-artifacts in Debug and Release:
+The path-sensitive instruction transcript covers both initial-difference
+prefixes and both descriptor-offset branches. All 66,523 calls now execute
+natively, including the 60,704 previously deferred interrupt-bearing
+scopes, while Beetle delivers and returns from original handlers at the
+declared instruction boundaries. `dc_rom_collision_geometry_semantic`
+preserves the complete artifacts in Debug and Release:
 
 - Call SHA-256:
   `c40fc23468d8d9ef9d966c13cb2b797107b61557343f5685833c0631d4e5fece`

@@ -40,7 +40,7 @@ endif()
 foreach(expected_line IN ITEMS
     "State census recording complete: 3600 frames"
     "Native replacement 01:CC1A@all entries: 19192 of 85715"
-    "Native replacement 01:CCD5@all entries: 5819 of 66523"
+    "Native replacement 01:CCD5@all entries: 66523 of 66523"
     "Observe hook 1 entries: 66523"
     "Routine call trace complete: 66523 calls, 1414954 writes"
 )
@@ -65,4 +65,4 @@ foreach(artifact IN ITEMS census call write)
     endif()
 endforeach()
 
-message(STATUS "Semantic CCD5 geometry covers 5,819 calls through atomic event/IRQ admission.")
+message(STATUS "Semantic CCD5 geometry covers all 66,523 calls through instruction checkpoints.")

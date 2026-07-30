@@ -26,6 +26,18 @@ high byte. The deterministic 1,800-frame route now executes 18,806 of 19,648
 preserving the byte-identical gameplay artifact, complete 19,648-call trace,
 and all 180,389 ordered writes.
 
+Application orchestration is now separated from native transaction
+synthesis. The replacement adapters and central dispatcher moved from
+`src/app/main.cpp` behind the single public
+`app/native_replacements.hpp` entry point. `main.cpp` fell from 16,939
+lines/630 KB to 5,077 lines while retaining command-line, recording, replay,
+cabinet, and runtime ownership. Collision, physics/arithmetic,
+controls/actor, and RNG/score synthesis now occupy four subsystem
+implementation units behind a private internal interface;
+`native_replacements.cpp` is the 234-line central registry. The extracted
+modules have no SDL, cabinet, recording-plan, or replay-capture dependency,
+and `main.cpp` no longer includes the game-logic C headers directly.
+
 Work has moved off the unusually large collision-table interpreter.
 Semantic `00:F1B4@all` now derives position-integration sign branches,
 comparison exits, flags, writes, and timing from live slot-zero state,
@@ -290,10 +302,10 @@ Semantic `01:CCD5@all` now covers the near-target collision-geometry leaf
 reached by the remaining `CC1A` calls. It resolves both ROM pointer
 directories through the live MPR map, selects the phase descriptor, and
 reproduces the signed offset, bounds, scratch pointers, stack write, flags,
-and four uninterrupted 783/789/885/891-cycle shapes. Conservative event/IRQ
-admission replaces 5,819 of 66,523 calls (8.7%); all 66,523 calls and
-1,414,954 writes remain byte-identical in Debug and Release. Checkpointing
-the leaf's instruction stream is the next expansion.
+and all four 783/789/885/891-cycle shapes. Its path-sensitive instruction
+transcript replaces all 66,523 calls, including the previously deferred
+interrupt-bearing scopes; all 66,523 calls and 1,414,954 writes remain
+byte-identical in Debug and Release.
 
 Twenty-one previously admitted `03:6966` ordinals remain as focused
 restored-assembly fixtures for full records, continuations, and early
@@ -3612,10 +3624,41 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
     handling, while preserving the established 61,291-write artifacts.
   - Retained ordinals 1, 2, and 181 as focused zero, positive-divider, and
     negative sign-restoration replay coordinates.
+- [x] Completed interruptible near-target collision geometry
+  `01:CCD5@all`:
+  - Added exact instruction checkpoints for both signed-difference prefixes
+    and both descriptor-offset branches.
+  - Replaced all 66,523 route calls, including the 60,704 calls previously
+    deferred at event/IRQ horizons.
+  - Preserved the established Debug/Release census, complete call, and
+    1,414,954-write artifacts byte-for-byte.
+- [x] Split the native replacement subsystem:
+  - Moved the `03:6966`, `03:7FB1`, `03:7F57`, `01:CC1A`, and `01:CCD5`
+    adapters into `src/app/native_replacements_collision.cpp`.
+  - Moved integration, rollback, signed arithmetic, damping, rotation, and
+    flipper projections into `native_replacements_physics.cpp`.
+  - Moved flipper input/phase/geometry, coroutine, nudge/session input, and
+    actor scheduling into `native_replacements_controls.cpp`.
+  - Moved RNG and score synthesis into `native_replacements_rules.cpp`,
+    leaving `native_replacements.cpp` as the central registry.
+  - Kept the public dispatcher unchanged, exposed only a private internal
+    interface, and re-ran 27 subsystem ROM-backed regressions after the
+    behavior-neutral moves.
 
 ## Next Actions
 
 - [x] Add repository hygiene for ROMs, generated assets, traces, build products, and local configuration.
+- [x] Extract the native replacement adapters and dispatcher from
+  `src/app/main.cpp` behind one compiled module interface; reduce the file
+  from 16,939 to 5,077 lines with no semantic change.
+- [x] Split replacement-adapter growth into subsystem implementation
+  files as those areas are modified; do not return transaction synthesis to
+  `main.cpp`:
+  - [x] Collision table, response, consumer, scan, and geometry.
+  - [x] Physics and arithmetic composition.
+  - [x] Controls and actor scheduling.
+  - [x] RNG and scoring rules.
+  - [x] Central registry.
 - [x] Add the project license and third-party attribution structure.
 - [x] Establish the C++20/CMake project and Windows CI build.
 - [x] Pin and integrate the Beetle PCE core baseline.
@@ -3816,8 +3859,9 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
   - [x] Add the atomic semantic `01:CCD5@all` near-target geometry leaf;
     cover 5,819 of 66,523 calls through exact ROM-resolved 783-891-cycle,
     16/19-write transactions.
-  - [ ] Add instruction checkpoints to semantic `01:CCD5@all` so original
-    interrupt handlers can preempt the remaining geometry calls.
+  - [x] Add path-sensitive instruction checkpoints to semantic
+    `01:CCD5@all`; cover all 66,523 geometry calls while original interrupt
+    handlers preempt and return inside the native transaction.
   - [x] Add semantic `01:D500@all` bidirectional flipper phase stepping;
     cover all 980 calls through 9/11-boundary transcripts with exact
     three-write timing and flags.
@@ -3948,11 +3992,11 @@ calls through exact state-derived positive/negative page and low-byte
 vertical-separation rejection transcripts. The complete
 85,715-call/1,784,119-write artifacts remain exact; near-target, pointer,
 mask, and contact paths remain emulated.
-Semantic `01:CCD5@all` replaces 5,819 of the 66,523 near-target geometry
-calls through live-MPR ROM pointer resolution and exact atomic
-783/789/885/891-cycle transcripts. All 1,414,954 aggregate writes remain
-exact; interrupt-adjacent calls retain automatic assembly fallback until
-instruction checkpoints are added.
+Semantic `01:CCD5@all` replaces all 66,523 near-target geometry calls through
+live-MPR ROM pointer resolution and exact path-sensitive
+783/789/885/891-cycle transcripts. Original interrupt handlers preempt and
+return at the declared instruction boundaries, and all 1,414,954 aggregate
+writes remain exact.
 Semantic `01:D500@all` replaces all 980 forward/reverse flipper phase steps
 on the route through exact 9/11-boundary, three-write, 126/138-cycle
 transcripts; endpoint and non-expiring timer paths outside the route remain
@@ -4028,6 +4072,17 @@ serviceable-timer-IRQ horizon—including ordinals 11 and 13—fall back
 automatically. Unimplemented collision-interpreter semantic paths remain
 emulated; checkpointed `DD09@all`, `D1A2@all`, and `7FB1@all` now cover
 every observed damping, rotation, and response call.
+
+The application boundary is now explicit: `main.cpp` owns process/runtime
+orchestration and calls one native-replacement dispatch API, while the
+replacement implementation units own the instruction-faithful adapters.
+Collision, physics/arithmetic, controls/actor, and RNG/score synthesis now
+occupy four subsystem implementation files behind a private internal
+interface; `native_replacements.cpp` is the 234-line registry. The
+extraction is behavior-neutral and preserves the existing pure C
+`src/game_logic` boundary. The 27 directly affected subsystem ROM-backed
+regressions pass in Release, representative Debug/Release semantic hashes
+remain exact, and both application configurations compile cleanly.
 
 Milestone 2 is complete. Milestone 3 now has the copied-video boundary,
 directional `00:F400` stream map, packed-source decoder, accepted
