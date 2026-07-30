@@ -2,6 +2,122 @@
 
 #include "devils_crush/game_logic/collision.h"
 
+int dc_classify_collision_scan_vertical_reject(
+    const uint8_t* const work_ram,
+    const size_t work_ram_size,
+    const uint8_t target_slot,
+    dc_collision_scan_vertical_reject* const reject)
+{
+    uint16_t subtrahend;
+    uint16_t difference;
+    uint16_t magnitude;
+
+    if (work_ram == NULL || reject == NULL
+        || work_ram_size < 0x2000U) {
+        return 0;
+    }
+
+    reject->source_low = work_ram[0x0066U];
+    reject->source_high = work_ram[0x0067U];
+    reject->target_low = work_ram[0x1300U + (size_t)target_slot];
+    reject->target_high = work_ram[0x1380U + (size_t)target_slot];
+    reject->branch = DC_COLLISION_SCAN_VERTICAL_DEFER;
+    reject->magnitude_low = 0U;
+    reject->magnitude_high = 0U;
+
+    reject->low_subtract_carry =
+        (uint8_t)(reject->source_low >= reject->target_low);
+    reject->difference_low =
+        (uint8_t)(reject->source_low - reject->target_low);
+    subtrahend = (uint16_t)reject->target_high
+        + (uint16_t)(reject->low_subtract_carry == 0U);
+    reject->high_subtract_carry =
+        (uint8_t)((uint16_t)reject->source_high >= subtrahend);
+    reject->difference_high = (uint8_t)(
+        (uint16_t)reject->source_high - subtrahend);
+
+    if (reject->difference_high == 0U) {
+        if (reject->difference_low >= 0x80U) {
+            reject->branch = DC_COLLISION_SCAN_VERTICAL_SAME_PAGE_LOW;
+        }
+        return 1;
+    }
+    if ((reject->difference_high & 0x80U) == 0U) {
+        reject->branch = DC_COLLISION_SCAN_VERTICAL_POSITIVE_PAGE;
+        return 1;
+    }
+
+    difference = (uint16_t)reject->difference_low
+        | ((uint16_t)reject->difference_high << 8U);
+    magnitude = (uint16_t)(0U - difference);
+    reject->magnitude_low = (uint8_t)magnitude;
+    reject->magnitude_high = (uint8_t)(magnitude >> 8U);
+    if (reject->magnitude_high != 0U) {
+        reject->branch = DC_COLLISION_SCAN_VERTICAL_NEGATIVE_PAGE;
+    } else if (reject->magnitude_low >= 0x80U) {
+        reject->branch = DC_COLLISION_SCAN_VERTICAL_NEGATIVE_LOW;
+    }
+    return 1;
+}
+
+int dc_prepare_collision_geometry(
+    const uint8_t* const work_ram,
+    const size_t work_ram_size,
+    const uint8_t target_slot,
+    const dc_collision_geometry_tables* const tables,
+    dc_collision_geometry* const geometry)
+{
+    uint16_t position;
+    uint16_t collision;
+
+    if (work_ram == NULL || tables == NULL || geometry == NULL
+        || target_slot >= 0x80U || work_ram_size < 0x2000U
+        || !dc_classify_collision_scan_vertical_reject(
+            work_ram,
+            work_ram_size,
+            target_slot,
+            &geometry->vertical)) {
+        return 0;
+    }
+
+    geometry->directory_index =
+        work_ram[0x1900U + (size_t)target_slot];
+    geometry->phase_index = (uint8_t)(
+        work_ram[0x1980U + (size_t)target_slot] << 1U);
+    geometry->position_rejected = 0U;
+    geometry->vertical_offset_negative =
+        (uint8_t)((tables->vertical_offset & 0x80U) != 0U);
+
+    position = (uint16_t)(
+        ((uint16_t)work_ram[0x1200U + (size_t)target_slot] << 8U)
+        | work_ram[0x1180U + (size_t)target_slot]);
+    position = (uint16_t)(position - 0x0020U);
+    geometry->position_low = (uint8_t)position;
+    geometry->position_high = (uint8_t)(position >> 8U);
+    geometry->adjusted_position_low = geometry->position_low;
+    geometry->collision_low = 0U;
+    geometry->collision_high = 0U;
+
+    if (geometry->vertical.branch
+            != DC_COLLISION_SCAN_VERTICAL_DEFER
+        || geometry->position_high != 0U) {
+        geometry->position_rejected =
+            (uint8_t)(geometry->position_high != 0U);
+        return 1;
+    }
+
+    geometry->adjusted_position_low = (uint8_t)(
+        geometry->position_low + tables->horizontal_offset);
+    collision = (uint16_t)(
+        ((uint16_t)work_ram[0x1380U + (size_t)target_slot] << 8U)
+        | work_ram[0x1300U + (size_t)target_slot]);
+    collision = (uint16_t)(
+        collision + (int8_t)tables->vertical_offset);
+    geometry->collision_low = (uint8_t)collision;
+    geometry->collision_high = (uint8_t)(collision >> 8U);
+    return 1;
+}
+
 int dc_select_collision_table_pass(
     const uint8_t* const work_ram,
     const size_t work_ram_size,

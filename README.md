@@ -151,6 +151,7 @@ The nested actor-slot activation boundary can be recorded independently:
 .\out\build\windows-vs2022\Release\devils-crush.exe `
   --record-state-census portable-data\state-census-actors.csv `
   --observe-hook 00:F4FC `
+  --replace-hook 00:F4FC@all `
   --routine-trace out\traces\state-census-actor-entries.csv `
   --routine-call-trace out\traces\state-census-actor-calls.csv `
   --routine-replay 00:F4FC@1 `
@@ -161,8 +162,17 @@ The route completes 519 ordered sweeps of all 127 slots plus 14 immediate
 post-allocation refreshes. The regression verifies occupancy, the signed
 camera-relative vertical window, bit-7 activation results, persistent and
 dynamic slot ranges, interrupt-bearing calls, and the first normalized
-replay. Exact path counts and artifact hashes are in
+replay. The semantic replacement admits all 65,927 calls through
+2/18/31-instruction empty, below-window, and upper-window transcripts,
+including 4,858 original interrupt-handler passages. Exact path counts and
+artifact hashes are in
 [`docs/ROUTINE_MAP.md`](docs/ROUTINE_MAP.md).
+
+The adjacent actor lifecycle reset can also run natively with
+`--observe-hook 01:C574 --replace-hook 01:C574@all`. One generated loop
+transcript clears all 32 parallel fields for any legal slot and replaces all
+132 state-census calls, including 35 interrupt-bearing calls. Debug and
+Release preserve the complete 132-call/14,163-write artifacts.
 
 Actor layout and live dispatch ownership use a smaller global write census:
 
@@ -861,9 +871,10 @@ direct write order, award set, 9,999,999 stored-unit saturation constant, and
 the first call's normalized replay. It also enables semantic
 `00:F55C@all`: ordinary unsaturated additions below the current high score
 reproduce all eight writes, result flags, and the 558-cycle body. The
-conservative event/IRQ horizon admits 12 calls (30%); the remaining calls
-stay in assembly automatically while the complete 40-call/446-write
-artifacts remain exact in Debug and Release. See
+44-boundary transcript spans the outer addition and both nested helpers, so
+all 40 calls execute natively while original interrupt handlers still run at
+their original boundaries. The complete 40-call/446-write artifacts remain
+exact in Debug and Release. See
 [`docs/ROUTINE_MAP.md`](docs/ROUTINE_MAP.md) for the field layout and exact
 trace hashes.
 
@@ -886,9 +897,9 @@ seed:
 Semantic `00:E8B3@all` derives the complete fixed RNG transaction from the
 live seed and frame counter: six scratch writes, two seed writes, the
 returned high byte, final arithmetic flags, and 282 body master cycles.
-Conservative event/IRQ scheduling admits 38 of 78 calls (48.7%); Debug and
-Release preserve the exact census, 78-call/703-write routine artifacts, and
-3,771 selected seed writes.
+Its 23-boundary transcript admits all 78 calls; Debug and Release preserve
+the exact census, 78-call/703-write routine artifacts, and 3,771 selected
+seed writes.
 
 The regression verifies the once-per-frame seed tick, all 78 exact RNG
 updates, both active actor-initialization consumers, and the first normalized
@@ -928,12 +939,16 @@ Release reproduce trace SHA-256
 while retaining the canonical RAM/video/audio hash.
 
 Replacement mode is available for mapped semantic routines and focused
-no-interrupt regression calls. Native game logic includes semantic position
+regression calls. Checkpointed replacements may cross event/IRQ horizons:
+Beetle samples interrupts at declared original instruction boundaries, runs
+the original handler, and resumes the remaining native transcript after a
+state-matching `RTI`. Native game logic includes semantic position
 integration `00:F1B4@all`, semantic collision rollback `00:F241@all`, and
-their focused `@1`, `@10`, and `@17` integration/rollback fixtures, plus the
-zero-component acceleration path `01:DD09@1` plus nonzero-divider path
-`01:DD09@2` and negative-divider path `01:DD09@181`, signed rotation
-`01:D1A2@23`, full collision-table record advancement `03:6966@1`,
+their focused `@1`, `@10`, and `@17` integration/rollback fixtures, plus
+semantic signed division `00:E905@all`, semantic damping/acceleration
+`01:DD09@all` with focused `@1`, `@2`, and `@181` fixtures, semantic signed
+rotation `01:D1A2@all` with focused fixture `@23`, full collision-table
+record advancement `03:6966@1`,
 `03:6966@2`, `03:6966@3`, `03:6966@4`, and `03:6966@9`,
 headerless collision-table continuations `03:6966@10` and `03:6966@12`,
 plus alternate-selector reverse-vertical continuation `03:6966@19` and
@@ -949,7 +964,8 @@ accumulation `00:F55C@all`, RNG advancement `00:E8B3@all`, and flipper
 input gating `01:D466@all`, flipper phase stepping `01:D500@all`,
 phase-indexed flipper geometry `01:D081@all`, shared actor-coroutine
 scheduling `01:C5C9@all`, session/nudge gating `01:C3CB@all`, and idle
-session-input gating `01:C49E@all`. This command
+session-input gating `01:C49E@all`, plus central collision-scan vertical
+rejection `01:CC1A@all` and near-target geometry `01:CCD5@all`. This command
 replaces the four simultaneous physics
 calls, observes the full physics set, and restores each pre-call savestate
 to compare the native result with assembly:
@@ -977,9 +993,15 @@ to compare the native result with assembly:
 The four native transactions declare final registers, 215 ordered writes
 and their entry-relative timing, 6,120 combined body master cycles, and their
 outer RTS boundaries. Gameplay, entry, call, and write artifacts remain
-byte-identical to the assembly baseline. Other ordinals and interrupt-bearing
-call variants remain in assembly until their paths are independently proven
-or the bridge gains faithful mid-routine interrupt delivery.
+byte-identical to the assembly baseline. Other variants remain in assembly
+until their semantic paths and checkpoint transcripts are independently
+proven.
+
+`01:D081@all` is the first interrupt-bearing aggregate proof. Its 14
+instruction checkpoints allow all 540 geometry calls to execute natively,
+including 38 calls interrupted by the original ROM handler. The resulting
+state census, complete call trace, and all 3,214 writes remain byte-identical
+in Debug and Release.
 
 A focused 1,800-frame collision-table regression replaces `03:6966@5`,
 restores its frame-941 pre-call state, and compares the alternate-pass early
@@ -1148,15 +1170,20 @@ ordinal fixtures. `--replace-hook 03:6966@all` reads the selector-pointer
 table from the verified user ROM and natively handles both the four-write
 alternate-pass early return and ordinary headerless record steps. The latter
 resolve the collision-list and motion cursors generically, then apply either
-or both signed axes with exact high-byte carry/borrow timing. Before
-committing, each transaction must finish before Beetle's next user/video
-event or serviceable timer interrupt; otherwise original assembly runs
-normally. Harmless timer-divider ticks do not force fallback. The bounded
-walker also
+or both signed axes with exact high-byte carry/borrow timing. The
+alternate-pass path supplies all 17 original instruction checkpoints, so
+Beetle can run an asserted interrupt through the original ROM handler and
+resume the transaction. Uncheckpointed paths still finish before the next
+user/video event or serviceable timer interrupt, otherwise original assembly
+runs normally. Harmless timer-divider ticks do not force fallback. The
+bounded walker also
 follows `$C0` motion terminators, applies `$FE`
 collision-list wraps, recognizes `$FF` table termination, and executes
-headered records with their accumulated cursor-write timing. Across the
-1,800-frame route this replaces 7,609 of 19,648 calls (38.7%) while
+headered records with their accumulated cursor-write timing. Generic
+forward/reverse one-axis headerless records add exact 50-instruction
+transcripts; ordinary two-axis records without a high-byte carry or borrow
+extend the same transcript to 55 instructions. Across the 1,800-frame route
+this replaces 18,806 of 19,648 calls (95.7%) while
 preserving the exact gameplay, complete call trace, and all 180,389 ordered
 writes. Ordinals remain useful regression coordinates, but are no longer the
 admission mechanism for these semantic paths; the former compiled
@@ -1180,27 +1207,33 @@ hashes.
 
 The semantic integration regression derives sign-extension stores,
 position-store timing, comparison exits, flags, and cycle budgets from the
-live slot-zero state rather than an ordinal. Automatic event/IRQ fallback
-executes 214 of 1,156 calls natively (18.5%). The adjacent six-store
-`00:F241@all` rollback executes 242 of 404 calls natively (59.9%). Both
-preserve the byte-identical gameplay and their complete call/write traces;
-the original ordinal fixtures remain focused restored-assembly checks.
+live slot-zero state rather than an ordinal. Path-sensitive 50-57-boundary
+transcripts execute all 1,156 calls natively, including 250 original
+interrupt-bearing scopes. The adjacent six-store `00:F241@all` rollback uses
+a 12-boundary transcript and executes all 404 calls natively. Both preserve
+the byte-identical gameplay and their complete
+call/write traces; the original ordinal fixtures remain focused
+restored-assembly checks.
 
-A focused 1,800-frame damping regression separately replaces `01:DD09@2`,
-restores its frame-1,049 pre-call state, and compares the native nonzero
-divider path with assembly. Axis two `$0010` divided by signed `$80`
-produces truncating quotient zero before `$10` acceleration yields `$0020`.
-The transaction declares 68 ordered writes and 2,409 body master cycles;
-Debug and Release preserve the established gameplay and complete
-753-call/61,291-write damping trace hashes.
+Semantic `00:E905@all` reproduces the signed divider's inherited carry,
+operand normalization, fixed 16-round unsigned core, nested stack traffic,
+and quotient sign restoration. All 752 gameplay calls run natively,
+including 583 calls with original interrupt-handler writes. Debug and
+Release preserve call SHA-256
+`20d7b35e6e17c63980db6b22e4ed425000d5a4576f1bfa5bd9b36fda86bf335d`
+and write SHA-256
+`59822abdd58d01fb652cd197fa0555fa40c4f21b57dbe51591adb5e0360fb81d`.
 
-A second damping regression replaces `01:DD09@181` and restores its
-frame-1,228 pre-call state. Axis two `$FF0D` runs through signed divisor
-`$80`, restores its negative result at `$FF0C`, and adds `$10` acceleration
-to produce `$FF1C`. The transaction returns `A=$FF`, `P=$80` after 69
-ordered writes and 2,427 body master cycles. Debug and Release preserve the
-same complete damping artifacts. `01:DD09@52` remains emulated because its
-normalized replay exposes an interrupt through `00:E058/E169`.
+Semantic `01:DD09@all` composes that divider for either nonzero motion
+component, subtracts the signed quotient, and applies `$8B/256` acceleration
+to the second component. All 753 calls now run natively, including the 669
+calls previously deferred for interrupt delivery. Debug and Release
+preserve call SHA-256
+`e285eb631a38539fcca0bed8c7e7d84a6f7dbbaa0613ee8009467b50c0f03327`
+and write SHA-256
+`ef4285d7a05ee530edb4563e88b4af8e0fb23deaee2188bc40828ff48b8571d8`.
+Focused ordinals 2 and 181 retain their exact 2,409-cycle/68-write positive
+and 2,427-cycle/69-write negative restored-assembly replays.
 
 The separate 3,600-frame collision-boundary regression replaces
 `03:7FB1@1`, restores its frame-957 pre-call state, and compares the native
@@ -1227,18 +1260,20 @@ hashes plus the complete 21,987-call/91,295-write `7FB1` artifacts.
 
 The aggregate `03:7FB1@all` regression uses that same routine for every live
 slot and derives the result flags as well as the 126-cycle decrement or
-162-cycle reload transaction from state. Conservative user/video-event and
-serviceable-timer-IRQ horizons admit 13,460 of the 21,987 calls (61.2%);
-the rest execute in assembly automatically. Debug and Release retain the
-exact state-census, call-trace, and write-trace hashes.
+162-cycle reload transaction from state. Its 11/14 instruction checkpoints
+cover all 21,987 calls, including 1,042 calls that execute an original ROM
+interrupt handler mid-routine. Debug and Release retain the exact
+state-census, call-trace, and write-trace hashes.
 
 The outer `03:7F57@all` aggregate reuses those state-based primitives rather
 than adding occurrence-specific handlers. Its admitted no-hit branch accepts
 any semantic `03:6966` transaction, stages its writes into a private snapshot,
 then derives either `03:7FB1` response branch from that resulting state.
 Both nested JSR stack pairs, the caller's final collision-byte test, write
-offsets, and total timing are composed around the child transactions.
-Conservative event/IRQ fallback admits 4,786 of 20,867 calls (22.9%).
+offsets, and total timing are composed around the child transactions. The
+alternate-pass child produces 35/38-boundary parent transcripts, the
+one-axis headerless child produces 68/71, and the bounded two-axis child
+produces 73/76. Together they admit 20,113 of 20,867 calls (96.4%).
 Debug and Release preserve the complete 20,867-call SHA-256
 `3ab64128aab89d056216f79d0d3f041e186eb109048aefe82785e2875f41ec4f`
 and 362,060-write SHA-256
@@ -1431,9 +1466,12 @@ Semantic `01:D466@all` derives behavior from live `$2CEE & $3B80,X` state.
 The zero result returns in 36 cycles with no writes. The common non-current
 slot activation marks the piece active, reproduces the nested stack/scratch
 writes, and installs coroutine dispatch `01:D48E` in nine writes over 282
-cycles. Current-slot, countdown, later held/release, and event/IRQ-adjacent
-variants stay in assembly. Debug and Release admit 6,029 of 7,470 calls
-(80.7%) while preserving call
+cycles. The two remaining current-slot calls enter `D525` and produce
+823/868 ordered writes, beyond the bridge's 512-write limit; later
+held/release variants stay in assembly. Three checkpoints cover the
+zero-input exit and 21 cover the nested
+activation/scheduler path, including event/IRQ-adjacent calls. Debug and
+Release admit 7,468 of 7,470 calls (99.97%) while preserving call
 SHA-256
 `5230b181b1cb23394d0a540346418e98244f25e0ea2a50fce136b0b007fe2947`
 and write SHA-256
@@ -1443,40 +1481,156 @@ Semantic `01:D500@all` handles the shared flipper phase step after its
 indexed countdown reaches one. It clears and reloads `$3A00,X`, then
 increments or decrements `$3980,X` according to `$3C80,X` orientation.
 Forward and reverse paths reproduce their three writes and direction-specific
-flags over 138 or 126 cycles. Event/IRQ fallback admits 600 of 980 calls
-(61.2%); endpoint and non-expiring timer states remain in assembly. Debug
-and Release preserve call SHA-256
+flags over 138 or 126 cycles. Their 11/9-boundary transcripts admit all 980
+route calls; endpoint and non-expiring timer states outside the route remain
+in assembly. Debug and Release preserve call SHA-256
 `8d3708e4fe36ddd9745d77af68c3a6d575acef3ce29e23c70e72dc30eca9056f`
 and write SHA-256
 `29274f5c8a62a9fc9d41f7796f343ac55167fcafdf71448dc6e9f76bcfd31965`.
+
+Semantic `01:CC1A@all` handles the central collision scan's earliest
+vertical-separation rejection. Four state-derived positive/negative page
+and low-byte paths reproduce the internal JSR stack writes, scratch state,
+binary flags, and 150/180/246/282-cycle timing. They admit 19,192 of 85,715
+route calls while preserving all 1,784,119 scoped writes. Near-target,
+pointer, mask, and contact paths continue in assembly. Debug and Release
+preserve call SHA-256
+`c01321d866af5636ce12db1174a9a3428d08ce273cf62820fcbf446dcab1a313`
+and write SHA-256
+`a0366616f0bbd85b22d5a4a72e8d03e09a8866525c4c90d50c51e2ea7d035881`.
+
+Semantic `01:CCD5@all` handles the near-target geometry leaf reached by the
+remaining scan calls. It follows the live MPR mapping into the verified ROM
+pointer directories, selects both phase geometry pointers, and emits the
+exact signed-offset, limit, stack, and scratch transaction. Atomic
+event/IRQ admission replaces 5,819 of 66,523 calls through
+783/789/885/891-cycle, 16/19-write paths. Debug and Release preserve all
+1,414,954 writes; instruction checkpoints are the next expansion.
 
 Semantic `01:D081@all` handles the flipper/ball interaction's shared
 geometry lookup. It masks `$78` to five phase bits and loads two 16-bit
 vectors from the verified user-ROM tables at `01:D2AE` and `01:D2EE`,
 preserving Y through the original stack write. Its five-write transaction
-returns after 159 cycles with exact accumulator and flag state. Event/IRQ
-fallback admits 305 of 540 calls (56.5%). Debug and Release preserve call
+returns after a 159-cycle native body with exact accumulator and flag state.
+Fourteen instruction checkpoints let Beetle run the original interrupt
+handler during 38 affected calls, so all 540 calls are native. Debug and
+Release preserve call
 SHA-256
 `32d52a16cff5b2f20d1b3e8174e75a4ca097648253ce0726970fb92707a96d08`
 and write SHA-256
 `b13407d580d6428cf3f7fc0460040953d4cb7136faa9305c2339ed99a8336934`.
+
+Semantic `00:E837@all` handles the shared signed 16-bit scratch-word
+negation used by the flipper projection and rotation paths. It complements
+`$2F:$30`, increments the low byte, and conditionally carries into the high
+byte through exact 8/9-boundary, three/four-write, 90/102-cycle transcripts.
+All 894 route calls now run natively, including 24 original interrupt
+passages. Debug and Release preserve call SHA-256
+`5871cb89939cddaaa4d7b3f9ed74dcb78b04cf80ccc9264c672d750c412ac849`
+and write SHA-256
+`2904482e2d30a8800ad5a13e26e11b3b0f12adc0d9ac6bca0ecc729b6252d6bd`.
+The adjacent `01:D09E` projection is now native through the composed
+transaction documented below.
+
+Semantic `00:E624@all` handles the fixed eight-bit unsigned multiply round
+inside that pipeline. It shifts `$42:$43/$30`, conditionally adds
+`$2D:$2E`, and propagates 16-bit carry into `$30`. The host generates
+41-113 instruction checkpoints directly from the eight live multiplier
+bits, preserving exact `600 + 84 * admitted-bit-count` timing. All 5,371 route calls
+now run natively, including 1,592 original interrupt passages. Debug and
+Release preserve call SHA-256
+`d704b3698ce86f82d504ad4b7693b40f425a035d056483fd473bebba672b022c`
+and write SHA-256
+`a073ff2ee296a0bd34a76bee12fcf8bcd15f5c4b2407c7698feabd16e08653d4`.
+
+Semantic `00:E65C@all` composes that child into the shared signed 8.8
+multiply wrapper. It normalizes both words at `$2D:$2E` and `$2F:$30`,
+skips or runs the high-byte round from live multiplier state, always runs
+the low-byte round, shifts the product back to 8.8, and restores the
+combined sign. The generated parent transcript includes every nested
+JSR/RTS and PHX/PLX stack boundary, both child transcripts, and the exact
+optional sign paths. All 3,700 route calls now run natively, including 2,157
+calls with original interrupt-handler writes. Debug and Release preserve
+call SHA-256
+`bd816aa5d64221cdb21835e6d27fe81b640f45c32e549490bedf5535a9adc695`
+and write SHA-256
+`c21901978bb16c29d33af18899cdb2494aee21b76da7560a43f6405841ad0ce4`.
+
+Semantic `01:D09E@all` composes four signed multiplications plus one
+`E837` negation into the flipper vector projection. It produces
+`$C0:$C1 = first*c + second*s` and
+`$BE:$BF = -first*s + second*c` from the indexed motion pair and the
+phase-selected coefficients at `$7D-$80`. The path-sensitive parent
+transcript includes all five nested stack transactions and child
+checkpoints. All 540 route calls now run natively, including 448 calls with
+original interrupt-handler writes. Debug and Release preserve call SHA-256
+`b2f33cee152dc71d55b6da09a446510faeecdca93010f4284ed24ab46a0e1cae`
+and write SHA-256
+`51fc462de6afc7355c005bbde18879a4fa0fa6390554ddf097ff3f06c9b44826`.
+
+Semantic `01:D1A2@all` uses the same bounded child family for signed
+two-dimensional rotation. From live `u=$C1:$C0`, `v=$BF:$BE`,
+`c=$7E:$7D`, and `s=$80:$7F`, it stores `u*c-v*s` in
+`$3480:$3400,X` and `u*s+v*c` in `$3580:$3500,X`. Its path-sensitive
+parent transcript composes four `E65C` multiplications and one `E837`
+negation with exact scratch, indexed output, stack, and interrupt timing.
+All 354 current route calls now run natively, including 296 calls with
+original interrupt-handler writes. Debug and Release preserve call SHA-256
+`dac3fcbd9d547af534494dbb2d0e85508209afce444689831d0fd9525d88578c`
+and write SHA-256
+`e0465a8fee8556dc82827845a87a1dc575a7d70f9d9aa81e9c9d75dca6cdf523`.
+
+Semantic `01:D612@all` scales the live signed 8.8 flipper radius
+`$31:$32` by coefficient `$7D:$7E` and stores the result in `$C2:$C3`.
+Its parent transcript composes one complete semantic `E65C` child with
+exact operand setup, result stores, nested stack writes, and interrupt
+checkpoints. All 62 calls run natively, including 51 calls with original
+interrupt-handler writes. Debug and Release preserve call SHA-256
+`20c409aa3cda48b3dbc0bf8c5e1e0a82319f7aa8efdeb2c70374ae884811bb52`
+and write SHA-256
+`73c5f1848187c576bbb48595f7d3fe95b03c70cee7c67cd18994b71c9038308f`.
+
+Semantic `01:D62E@all` derives a direct or wrapped flipper-angle delta from
+`$3180,X/Y` and `$3C80,Y`, converts it to 8.8 with the original five
+shift/rotate pairs, scales it by `$9E:$9F` through one semantic `E65C`
+child, and applies the direction-selected sign into `$31:$32`. All 62 calls
+run natively, including 43 calls with original interrupt-handler writes.
+Debug and Release preserve call SHA-256
+`fd133773c9c76ba17d3143052aaf88efc3a4cbbfe887b72dfd076f5f74e9eafb`
+and write SHA-256
+`23a2558bb00f772c4509ec470d8f8b5b642d95b2ac4c343c7f64ae1c870735eb`.
+
+Semantic `01:CFD8@all` applies the collision mode selected by `$78 & $60`
+to `$BF:$BE`: ordinary positive/negative clamping, signed 3/16 or 1/4
+scaling, one-half scaling, or one-sixteenth scaling. All 354 calls run
+natively, including 41 calls with original interrupt-handler writes. Debug
+and Release preserve call SHA-256
+`a3ec557a3eddcd91aa5b58918fb52ab8d038e36a7e2ea13bda6d602149bb842f`
+and write SHA-256
+`0f9ec94cd10cc59a8f0cbc9d70bfdd06c8ff2a3bea9623f76c6e662dc00b30ec`.
 
 Semantic `01:C5C9@all` handles the shared actor-coroutine scheduler used by
 many table controllers. It consumes the current JSR return from the stack,
 optionally decrements `$3D80,X`, and either yields or installs the following
 instruction in `$3F00,X/$3F80,X`. Immediate, delayed, and return-page-carry
 branches are derived from live state rather than callers or call ordinals.
-Event/IRQ fallback admits 1,537 of 2,462 calls (62.4%) across exact
-102-192-cycle transactions. Debug and Release preserve call SHA-256
+Its delayed-yield path supplies eight instruction-boundary checkpoints;
+installation paths supply 12-15 depending on countdown and page carry. All
+2,462 calls now remain native across exact 102-192-cycle transactions while
+Beetle executes original interrupt handlers. Debug and Release preserve call SHA-256
 `924221bbff7b244e91850fa206ad8ce70c2e86d3cf894824dd5e6b7b09da3bd9`
 and write SHA-256
 `1ef7a9e9aa5007f01a0138660f948ab77d5bc67292d9e5a076a8284d1eebc1aa`.
 
-Semantic `01:C3CB@all` covers the neighboring gate's session-state and
-ordinary idle branches. The former returns in 69 cycles without writes; the
-latter decrements `$2CC6` at cycle 96 and returns after 177 cycles when no
-Button-II nudge is active. Event/IRQ fallback admits 1,338 of 2,649 calls
-(50.5%). Active nudge, tilt, and timer-reload paths remain in assembly.
+Semantic `01:C3CB@all` covers the neighboring gate's session-state,
+ordinary idle, timer-reload, active-nudge start, and phase-finish branches.
+The first three paths retain their exact 69/177/207-cycle behavior. The
+three active starts use a 66-boundary, 762-cycle transcript; their three
+phase finishes use a 44-boundary, 522-cycle transcript. A strict
+physical-`$FF`, logical-`$0000-$0003` transaction allowance sends their base
+VDC port writes through Beetle's normal bus path and accounts for every VDC
+wait cycle. Together the 8/17/20/66/44-boundary transcripts admit all 2,649
+calls.
 Debug and Release preserve call SHA-256
 `eb17f2e9bc2e4fac07823be555379dfb75c21e5c0f4ef4161084ed7588198905`
 and write SHA-256
@@ -1484,10 +1638,10 @@ and write SHA-256
 
 Semantic `01:C49E@all` covers the immediately following no-Run-input return.
 It resolves the active player, tests `$2018,Y & $08`, and returns exact
-`A/Y/N/Z` state after 72 cycles without writes. Event/IRQ fallback admits
-1,716 of 2,649 calls (64.8%); pause, high-score, alternate-session, and
-initialization paths remain in assembly. Debug and Release preserve call
-SHA-256
+`A/Y/N/Z` state after 72 cycles without writes. Its seven-boundary transcript
+admits all 2,649 calls; pause, high-score, alternate-session, and
+initialization paths outside this route remain in assembly. Debug and Release
+preserve call SHA-256
 `1e5052965bd3252e116ee6cd4b72ea5213cab371e9e0c6faad083af9915e381e`
 and write SHA-256
 `09e04a8271fd92ad23977712ed8511a70fccac3457b3101cbda6671d5a0ec402`.

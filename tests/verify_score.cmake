@@ -68,7 +68,7 @@ endif()
 
 foreach(expected_line IN ITEMS
     "State census recording complete: 3600 frames"
-    "Native replacement 00:F55C@all entries: 12 of 40"
+    "Native replacement 00:F55C@all entries: 40 of 40"
     "Observe hook 1 entries: 40"
     "Routine trace complete: 40 entries"
     "Routine call trace complete: 40 calls, 446 writes"
@@ -151,5 +151,5 @@ endforeach()
 message(STATUS "${semantics_output}")
 message(
     STATUS
-    "Semantic F55C replacement covers 12 calls with automatic event/IRQ fallback."
+    "Semantic F55C replacement covers all 40 calls through instruction checkpoints."
 )

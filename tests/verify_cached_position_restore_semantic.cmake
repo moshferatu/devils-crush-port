@@ -49,7 +49,7 @@ endif()
 
 foreach(expected_line IN ITEMS
     "Gameplay recording complete: 1800 frames"
-    "Native replacement 00:F241@all entries: 242 of 404"
+    "Native replacement 00:F241@all entries: 404 of 404"
     "Routine call trace complete: 404 calls, 2634 writes"
 )
     string(FIND "${recorder_output}" "${expected_line}" line_offset)
@@ -84,5 +84,5 @@ endforeach()
 
 message(
     STATUS
-    "Semantic F241 replacement covers 242 calls with automatic event/IRQ fallback."
+    "Semantic F241 replacement covers all 404 calls with checkpointed interrupts."
 )

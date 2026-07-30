@@ -58,6 +58,56 @@ typedef struct dc_collision_table_record {
     uint8_t vertical_high_written;
 } dc_collision_table_record;
 
+typedef enum dc_collision_scan_vertical_branch {
+    DC_COLLISION_SCAN_VERTICAL_DEFER = 0,
+    DC_COLLISION_SCAN_VERTICAL_POSITIVE_PAGE = 1,
+    DC_COLLISION_SCAN_VERTICAL_SAME_PAGE_LOW = 2,
+    DC_COLLISION_SCAN_VERTICAL_NEGATIVE_PAGE = 3,
+    DC_COLLISION_SCAN_VERTICAL_NEGATIVE_LOW = 4
+} dc_collision_scan_vertical_branch;
+
+typedef struct dc_collision_scan_vertical_reject {
+    uint8_t source_low;
+    uint8_t source_high;
+    uint8_t target_low;
+    uint8_t target_high;
+    uint8_t difference_low;
+    uint8_t difference_high;
+    uint8_t magnitude_low;
+    uint8_t magnitude_high;
+    uint8_t low_subtract_carry;
+    uint8_t high_subtract_carry;
+    dc_collision_scan_vertical_branch branch;
+} dc_collision_scan_vertical_reject;
+
+typedef struct dc_collision_geometry_tables {
+    uint8_t first_directory_low;
+    uint8_t first_directory_high;
+    uint8_t second_directory_low;
+    uint8_t second_directory_high;
+    uint8_t first_geometry_low;
+    uint8_t first_geometry_high;
+    uint8_t second_geometry_low;
+    uint8_t second_geometry_high;
+    uint8_t horizontal_offset;
+    uint8_t vertical_offset;
+    uint8_t horizontal_limit;
+    uint8_t vertical_limit;
+} dc_collision_geometry_tables;
+
+typedef struct dc_collision_geometry {
+    dc_collision_scan_vertical_reject vertical;
+    uint8_t directory_index;
+    uint8_t phase_index;
+    uint8_t position_low;
+    uint8_t position_high;
+    uint8_t adjusted_position_low;
+    uint8_t collision_low;
+    uint8_t collision_high;
+    uint8_t position_rejected;
+    uint8_t vertical_offset_negative;
+} dc_collision_geometry;
+
 // Native collision-table pass selection used by ROM routine 03:6966.
 // The table pointer is supplied by the project-owned ROM metadata boundary.
 // A negative collision-state byte alternates its low seven-bit pass index;
@@ -95,6 +145,28 @@ int dc_advance_collision_response(
     size_t work_ram_size,
     uint8_t slot,
     dc_collision_response* response);
+
+// Native classification of CC1A's early vertical-separation returns. These
+// paths compare the source coordinate in zero page $66:$67 with the indexed
+// target coordinate at $3300/$3380,Y and return before collision-mask
+// metadata is read. Near targets are reported as DEFER for assembly fallback.
+int dc_classify_collision_scan_vertical_reject(
+    const uint8_t* work_ram,
+    size_t work_ram_size,
+    uint8_t target_slot,
+    dc_collision_scan_vertical_reject* reject);
+
+// Native state model for the near-target continuation of ROM leaf 01:CCD5.
+// The host resolves the routine's ROM-owned pointer directories and
+// descriptor through the current MPR map and supplies their selected bytes.
+// The function remains pure and reports non-near vertical states unchanged
+// for assembly fallback.
+int dc_prepare_collision_geometry(
+    const uint8_t* work_ram,
+    size_t work_ram_size,
+    uint8_t target_slot,
+    const dc_collision_geometry_tables* tables,
+    dc_collision_geometry* geometry);
 
 #ifdef __cplusplus
 }

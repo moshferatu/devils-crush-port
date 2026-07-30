@@ -36,6 +36,7 @@ typedef struct dc_beetle_memory_write {
 } dc_beetle_memory_write;
 
 #define DC_BEETLE_MAX_REPLACEMENT_WRITES 512
+#define DC_BEETLE_MAX_REPLACEMENT_CHECKPOINTS 2048
 
 typedef struct dc_beetle_replacement_write {
     uint16_t logical_address;
@@ -44,6 +45,20 @@ typedef struct dc_beetle_replacement_write {
     uint8_t instruction_physical_bank;
     uint32_t master_cycle_offset;
 } dc_beetle_replacement_write;
+
+typedef struct dc_beetle_replacement_checkpoint {
+    uint32_t interrupt_sample_master_cycle_offset;
+    uint32_t master_cycle_offset;
+    uint16_t instruction_logical_pc;
+    uint8_t instruction_physical_bank;
+    uint16_t resume_logical_pc;
+    uint8_t accumulator;
+    uint8_t x;
+    uint8_t y;
+    uint8_t stack_pointer;
+    uint8_t status;
+    uint8_t mpr[8];
+} dc_beetle_replacement_checkpoint;
 
 typedef struct dc_beetle_replacement_result {
     uint8_t handled;
@@ -57,6 +72,8 @@ typedef struct dc_beetle_replacement_result {
     uint32_t body_master_cycles;
     uint32_t write_count;
     const dc_beetle_replacement_write* writes;
+    uint32_t checkpoint_count;
+    const dc_beetle_replacement_checkpoint* checkpoints;
 } dc_beetle_replacement_result;
 
 typedef void (*dc_beetle_instruction_hook)(

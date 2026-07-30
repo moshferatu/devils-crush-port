@@ -59,7 +59,7 @@ endif()
 
 foreach(expected_line IN ITEMS
     "State census recording complete: 3600 frames"
-    "Native replacement 03:7FB1@all entries: 13460 of 21987"
+    "Native replacement 03:7FB1@all entries: 21987 of 21987"
     "Routine call trace complete: 21987 calls, 91295 writes"
 )
     string(FIND "${recorder_output}" "${expected_line}" line_offset)
@@ -94,5 +94,5 @@ endforeach()
 
 message(
     STATUS
-    "Semantic 7FB1 replacement covers 13,460 calls with automatic event/IRQ fallback."
+    "Semantic 7FB1 replacement covers all 21,987 calls with checkpointed IRQ delivery."
 )

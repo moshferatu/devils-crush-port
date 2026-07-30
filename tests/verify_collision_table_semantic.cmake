@@ -49,7 +49,7 @@ endif()
 
 foreach(expected_line IN ITEMS
     "Gameplay recording complete: 1800 frames"
-    "Native replacement 03:6966@all entries: 7609 of 19648"
+    "Native replacement 03:6966@all entries: 18806 of 19648"
     "Routine call trace complete: 19648 calls, 180389 writes"
 )
     string(FIND "${recorder_output}" "${expected_line}" line_offset)
@@ -98,5 +98,5 @@ endforeach()
 
 message(
     STATUS
-    "Semantic 6966 replacement covers 7,609 calls with automatic event/IRQ fallback."
+    "Semantic 6966 replacement covers 18,806 calls with checkpointed bounded-axis records."
 )

@@ -59,7 +59,7 @@ endif()
 
 foreach(expected_line IN ITEMS
     "State census recording complete: 3600 frames"
-    "Native replacement 01:C3CB@all entries: 1338 of 2649"
+    "Native replacement 01:C3CB@all entries: 2649 of 2649"
     "Routine call trace complete: 2649 calls, 5635 writes"
 )
     string(FIND "${recorder_output}" "${expected_line}" line_offset)
@@ -94,5 +94,5 @@ endforeach()
 
 message(
     STATUS
-    "Semantic C3CB gates cover 1,338 calls with automatic event/IRQ fallback."
+    "Semantic C3CB gates cover all 2,649 calls with checkpointed interrupts."
 )

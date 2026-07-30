@@ -41,6 +41,7 @@ function(dc_provide_beetle_pce)
         "${beetle_fork_root}/patches/0003-huc6280-native-replacement.patch"
         "${beetle_fork_root}/patches/0004-vdc-video-snapshot.patch"
         "${beetle_fork_root}/patches/0005-vdc-sprite-snapshot.patch"
+        "${beetle_fork_root}/patches/0006-huc6280-interruptible-replacement.patch"
     )
 
     find_package(Git REQUIRED)
@@ -143,7 +144,7 @@ function(dc_provide_beetle_pce)
                     "DebugGetVDCRegister"
                     beetle_patch_marker_two
                 )
-            else()
+            elseif(beetle_patch_name MATCHES "^0005-")
                 string(
                     FIND
                     "${beetle_video_header}"
@@ -154,6 +155,19 @@ function(dc_provide_beetle_pce)
                     FIND
                     "${beetle_video_header}"
                     "return vdc[0].PeekSAT"
+                    beetle_patch_marker_two
+                )
+            else()
+                string(
+                    FIND
+                    "${beetle_cpu_source}"
+                    "ApplyReplacementCheckpoint"
+                    beetle_patch_marker_one
+                )
+                string(
+                    FIND
+                    "${beetle_cpu_header}"
+                    "ReplacementCheckpoints"
                     beetle_patch_marker_two
                 )
             endif()

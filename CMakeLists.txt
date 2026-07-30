@@ -62,6 +62,7 @@ dc_enable_strict_warnings(dc_core)
 add_library(
     dc_game_logic
     STATIC
+    src/game_logic/actor.c
     src/game_logic/collision.c
     src/game_logic/controls.c
     src/game_logic/physics.c

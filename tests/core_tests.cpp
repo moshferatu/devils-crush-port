@@ -6,6 +6,7 @@
 #include "devils_crush/core/rom_image.hpp"
 #include "devils_crush/core/save_state.hpp"
 #include "devils_crush/emulation/pce_runtime.hpp"
+#include "devils_crush/game_logic/actor.h"
 #include "devils_crush/game_logic/collision.h"
 #include "devils_crush/game_logic/controls.h"
 #include "devils_crush/game_logic/physics.h"
@@ -413,6 +414,234 @@ void test_native_motion_rotation()
             &rotation)
             == 0,
         "native D1A2 rejects a truncated work-RAM snapshot");
+
+    work_ram[0x0031U] = 0x80U;
+    work_ram[0x0032U] = 0x01U;
+    work_ram[0x007DU] = 0x80U;
+    work_ram[0x007EU] = 0x00U;
+    dc_flipper_radius_projection radius_projection{};
+    check(
+        dc_project_flipper_radius(
+            work_ram.data(),
+            work_ram.size(),
+            &radius_projection)
+                != 0,
+        "native D612 accepts a complete work-RAM snapshot");
+    check(
+        radius_projection.radius == 0x0180U
+            && radius_projection.coefficient == 0x0080U
+            && radius_projection.output == 0x00C0U,
+        "native D612 scales a signed 8.8 flipper radius");
+
+    work_ram[0x0032U] = 0xFEU;
+    check(
+        dc_project_flipper_radius(
+            work_ram.data(),
+            work_ram.size(),
+            &radius_projection)
+                != 0
+            && radius_projection.output == 0xFF40U,
+        "native D612 preserves signed fractional truncation");
+    check(
+        dc_project_flipper_radius(
+            work_ram.data(),
+            work_ram.size() - 1U,
+            &radius_projection)
+            == 0,
+        "native D612 rejects a truncated work-RAM snapshot");
+
+    work_ram[0x1C85U] = 0x80U;
+    work_ram[0x1180U] = 0x30U;
+    work_ram[0x1185U] = 0x20U;
+    work_ram[0x009EU] = 0x00U;
+    work_ram[0x009FU] = 0x02U;
+    dc_flipper_angle_projection angle_projection{};
+    check(
+        dc_project_flipper_angle(
+            work_ram.data(),
+            work_ram.size(),
+            0U,
+            5U,
+            &angle_projection)
+                != 0,
+        "native D62E accepts a complete work-RAM snapshot");
+    check(
+        angle_projection.angle_difference == 0x10U
+            && angle_projection.fixed_difference == 0x0080U
+            && angle_projection.product == 0x0100U
+            && angle_projection.output == 0x0100U
+            && angle_projection.negates_product == 0U,
+        "native D62E projects the direct directional angle delta");
+
+    work_ram[0x1C85U] = 0x01U;
+    work_ram[0x1180U] = 0x20U;
+    work_ram[0x1185U] = 0x18U;
+    check(
+        dc_project_flipper_angle(
+            work_ram.data(),
+            work_ram.size(),
+            0U,
+            5U,
+            &angle_projection)
+                != 0
+            && angle_projection.uses_wrapped_difference != 0U
+            && angle_projection.angle_difference == 0x08U
+            && angle_projection.product == 0x0080U
+            && angle_projection.output == 0xFF80U
+            && angle_projection.negates_product != 0U,
+        "native D62E projects and negates the wrapped angle delta");
+
+    work_ram[0x1180U] = 0x40U;
+    check(
+        dc_project_flipper_angle(
+            work_ram.data(),
+            work_ram.size(),
+            0U,
+            5U,
+            &angle_projection)
+                != 0
+            && angle_projection.returns_zero != 0U
+            && angle_projection.output == 0U,
+        "native D62E clears output for a negative directional delta");
+    check(
+        dc_project_flipper_angle(
+            work_ram.data(),
+            work_ram.size() - 1U,
+            0U,
+            5U,
+            &angle_projection)
+            == 0,
+        "native D62E rejects a truncated work-RAM snapshot");
+
+    work_ram[0x0078U] = 0x40U;
+    work_ram[0x00BEU] = 0x00U;
+    work_ram[0x00BFU] = 0xFEU;
+    dc_collision_motion_adjustment motion_adjustment{};
+    check(
+        dc_adjust_collision_motion(
+            work_ram.data(),
+            work_ram.size(),
+            &motion_adjustment)
+                != 0
+            && motion_adjustment.output == 0xFF00U,
+        "native CFD8 performs signed one-half scaling");
+
+    work_ram[0x0078U] = 0x20U;
+    work_ram[0x022CU] = 0U;
+    work_ram[0x00BEU] = 0U;
+    work_ram[0x00BFU] = 0x08U;
+    check(
+        dc_adjust_collision_motion(
+            work_ram.data(),
+            work_ram.size(),
+            &motion_adjustment)
+                != 0
+            && motion_adjustment.output == 0x0180U,
+        "native CFD8 combines signed one-eighth and one-sixteenth scaling");
+
+    work_ram[0x022CU] = 1U;
+    check(
+        dc_adjust_collision_motion(
+            work_ram.data(),
+            work_ram.size(),
+            &motion_adjustment)
+                != 0
+            && motion_adjustment.output == 0x0200U,
+        "native CFD8 selects signed one-quarter scaling");
+
+    work_ram[0x0078U] = 0U;
+    work_ram[0x0CC7U] = 0U;
+    work_ram[0x0081U] = 0x20U;
+    work_ram[0x0082U] = 0x01U;
+    work_ram[0x00BEU] = 0xF0U;
+    work_ram[0x00BFU] = 0x05U;
+    check(
+        dc_adjust_collision_motion(
+            work_ram.data(),
+            work_ram.size(),
+            &motion_adjustment)
+                != 0
+            && motion_adjustment.output == 0x0610U
+            && motion_adjustment.clamps_high != 0U,
+        "native CFD8 applies the positive high-byte clamp");
+    check(
+        dc_adjust_collision_motion(
+            work_ram.data(),
+            work_ram.size() - 1U,
+            &motion_adjustment)
+            == 0,
+        "native CFD8 rejects a truncated work-RAM snapshot");
+}
+
+void test_native_signed_division()
+{
+    std::array<std::uint8_t, 0x2000> work_ram{};
+    work_ram[0x002DU] = 0x80U;
+    work_ram[0x002FU] = 0x0FU;
+    work_ram[0x0030U] = 0x00U;
+
+    dc_signed_division division{};
+    check(
+        dc_divide_signed_word(
+            work_ram.data(),
+            work_ram.size(),
+            1U,
+            &division)
+                != 0
+            && division.dividend_input == 0x000FU
+            && division.divisor_input == 0x80U
+            && division.divisor_magnitude == 0x80U
+            && division.dividend_magnitude == 0x000FU
+            && division.unsigned_initial_carry == 1U
+            && division.quotient_magnitude == 0U
+            && division.result == 0U
+            && division.remainder == 0x0FU
+            && division.result_negative == 1U,
+        "native E905 preserves carry-sensitive positive division");
+
+    work_ram[0x002DU] = 0x80U;
+    work_ram[0x002FU] = 0x0DU;
+    work_ram[0x0030U] = 0xFFU;
+    check(
+        dc_divide_signed_word(
+            work_ram.data(),
+            work_ram.size(),
+            1U,
+            &division)
+                != 0
+            && division.dividend_input == 0xFF0DU
+            && division.dividend_magnitude == 0x00F3U
+            && division.unsigned_initial_carry == 0U
+            && division.quotient_magnitude == 1U
+            && division.result == 1U
+            && division.remainder == 0x73U
+            && division.result_negative == 0U,
+        "native E905 normalizes two negative operands");
+
+    work_ram[0x002DU] = 0x04U;
+    work_ram[0x002FU] = 0x80U;
+    work_ram[0x0030U] = 0xFEU;
+    check(
+        dc_divide_signed_word(
+            work_ram.data(),
+            work_ram.size(),
+            0U,
+            &division)
+                != 0
+            && division.dividend_magnitude == 0x0180U
+            && division.quotient_magnitude == 0x0060U
+            && division.result == 0xFFA0U
+            && division.result_negative == 1U,
+        "native E905 restores a negative quotient");
+
+    check(
+        dc_divide_signed_word(
+            work_ram.data(),
+            work_ram.size() - 1U,
+            0U,
+            &division)
+            == 0,
+        "native E905 rejects a truncated work-RAM snapshot");
 }
 
 void test_native_collision_response()
@@ -487,6 +716,190 @@ void test_native_collision_response()
             &response)
             == 0,
         "native 7FB1 rejects a truncated work-RAM snapshot");
+}
+
+void test_native_collision_scan_vertical_reject()
+{
+    std::array<std::uint8_t, 0x2000> work_ram{};
+    constexpr std::uint8_t slot = 0x17U;
+    dc_collision_scan_vertical_reject reject{};
+
+    work_ram[0x0066U] = 0x20U;
+    work_ram[0x0067U] = 0x03U;
+    work_ram[0x1300U + slot] = 0x10U;
+    work_ram[0x1380U + slot] = 0x01U;
+    check(
+        dc_classify_collision_scan_vertical_reject(
+            work_ram.data(),
+            work_ram.size(),
+            slot,
+            &reject)
+                != 0
+            && reject.branch
+                == DC_COLLISION_SCAN_VERTICAL_POSITIVE_PAGE
+            && reject.difference_low == 0x10U
+            && reject.difference_high == 0x02U,
+        "native CC1A classifies a positive-page vertical rejection");
+
+    work_ram[0x0066U] = 0xF0U;
+    work_ram[0x0067U] = 0x01U;
+    work_ram[0x1300U + slot] = 0x20U;
+    work_ram[0x1380U + slot] = 0x01U;
+    check(
+        dc_classify_collision_scan_vertical_reject(
+            work_ram.data(),
+            work_ram.size(),
+            slot,
+            &reject)
+                != 0
+            && reject.branch
+                == DC_COLLISION_SCAN_VERTICAL_SAME_PAGE_LOW
+            && reject.difference_low == 0xD0U
+            && reject.difference_high == 0U,
+        "native CC1A classifies a same-page low-byte rejection");
+
+    work_ram[0x0066U] = 0x10U;
+    work_ram[0x0067U] = 0x01U;
+    work_ram[0x1300U + slot] = 0x20U;
+    work_ram[0x1380U + slot] = 0x03U;
+    check(
+        dc_classify_collision_scan_vertical_reject(
+            work_ram.data(),
+            work_ram.size(),
+            slot,
+            &reject)
+                != 0
+            && reject.branch
+                == DC_COLLISION_SCAN_VERTICAL_NEGATIVE_PAGE
+            && reject.magnitude_low == 0x10U
+            && reject.magnitude_high == 0x02U,
+        "native CC1A classifies a negative-page vertical rejection");
+
+    work_ram[0x0066U] = 0x20U;
+    work_ram[0x0067U] = 0x02U;
+    work_ram[0x1300U + slot] = 0xF0U;
+    work_ram[0x1380U + slot] = 0x02U;
+    check(
+        dc_classify_collision_scan_vertical_reject(
+            work_ram.data(),
+            work_ram.size(),
+            slot,
+            &reject)
+                != 0
+            && reject.branch
+                == DC_COLLISION_SCAN_VERTICAL_NEGATIVE_LOW
+            && reject.magnitude_low == 0xD0U
+            && reject.magnitude_high == 0U,
+        "native CC1A classifies a negative low-byte rejection");
+
+    work_ram[0x0066U] = 0x30U;
+    work_ram[0x0067U] = 0x02U;
+    work_ram[0x1300U + slot] = 0x20U;
+    work_ram[0x1380U + slot] = 0x02U;
+    check(
+        dc_classify_collision_scan_vertical_reject(
+            work_ram.data(),
+            work_ram.size(),
+            slot,
+            &reject)
+                != 0
+            && reject.branch == DC_COLLISION_SCAN_VERTICAL_DEFER,
+        "native CC1A defers a nearby vertical coordinate");
+    check(
+        dc_classify_collision_scan_vertical_reject(
+            work_ram.data(),
+            work_ram.size() - 1U,
+            slot,
+            &reject)
+            == 0,
+        "native CC1A rejects a truncated work-RAM snapshot");
+}
+
+void test_native_collision_geometry()
+{
+    std::array<std::uint8_t, 0x2000> work_ram{};
+    constexpr std::uint8_t slot = 0x15U;
+    dc_collision_geometry_tables tables{
+        .first_directory_low = 0x70U,
+        .first_directory_high = 0x87U,
+        .second_directory_low = 0x7EU,
+        .second_directory_high = 0x87U,
+        .first_geometry_low = 0x8CU,
+        .first_geometry_high = 0x87U,
+        .second_geometry_low = 0xC0U,
+        .second_geometry_high = 0x87U,
+        .horizontal_offset = 0xF8U,
+        .vertical_offset = 0xD4U,
+        .horizontal_limit = 0x30U,
+        .vertical_limit = 0x40U,
+    };
+    dc_collision_geometry geometry{};
+
+    work_ram[0x0066U] = 0x34U;
+    work_ram[0x0067U] = 0x02U;
+    work_ram[0x1300U + slot] = 0x20U;
+    work_ram[0x1380U + slot] = 0x02U;
+    work_ram[0x1180U + slot] = 0x4AU;
+    work_ram[0x1200U + slot] = 0x00U;
+    work_ram[0x1900U + slot] = 0x06U;
+    work_ram[0x1980U + slot] = 0x03U;
+
+    check(
+        dc_prepare_collision_geometry(
+            work_ram.data(),
+            work_ram.size(),
+            slot,
+            &tables,
+            &geometry)
+                != 0
+            && geometry.vertical.branch
+                == DC_COLLISION_SCAN_VERTICAL_DEFER
+            && geometry.directory_index == 0x06U
+            && geometry.phase_index == 0x06U
+            && geometry.position_low == 0x2AU
+            && geometry.position_high == 0U
+            && geometry.adjusted_position_low == 0x22U
+            && geometry.collision_low == 0xF4U
+            && geometry.collision_high == 0x01U
+            && geometry.vertical_offset_negative != 0U
+            && geometry.position_rejected == 0U,
+        "native CCD5 prepares the negative-offset geometry path");
+
+    tables.vertical_offset = 0x30U;
+    check(
+        dc_prepare_collision_geometry(
+            work_ram.data(),
+            work_ram.size(),
+            slot,
+            &tables,
+            &geometry)
+                != 0
+            && geometry.collision_low == 0x50U
+            && geometry.collision_high == 0x02U
+            && geometry.vertical_offset_negative == 0U,
+        "native CCD5 prepares the positive-offset geometry path");
+
+    work_ram[0x1200U + slot] = 0x01U;
+    check(
+        dc_prepare_collision_geometry(
+            work_ram.data(),
+            work_ram.size(),
+            slot,
+            &tables,
+            &geometry)
+                != 0
+            && geometry.position_rejected != 0U
+            && geometry.position_high == 0x01U,
+        "native CCD5 reports its late position-page rejection");
+    check(
+        dc_prepare_collision_geometry(
+            work_ram.data(),
+            work_ram.size() - 1U,
+            slot,
+            &tables,
+            &geometry)
+            == 0,
+        "native CCD5 rejects a truncated work-RAM snapshot");
 }
 
 void test_native_score_accumulator()
@@ -584,6 +997,215 @@ void test_native_rng_update()
         "native E8B3 rejects a truncated work-RAM snapshot");
 }
 
+void test_native_signed_word_negation()
+{
+    std::array<std::uint8_t, 0x2000> work_ram{};
+    dc_signed_word_negation negation{};
+
+    work_ram[0x002FU] = 0x01U;
+    work_ram[0x0030U] = 0x00U;
+    check(
+        dc_negate_signed_word(
+            work_ram.data(),
+            work_ram.size(),
+            &negation)
+            != 0
+            && negation.input == 0x0001U
+            && negation.result == 0xFFFFU
+            && negation.complemented_high == 0xFFU
+            && negation.increments_high == 0U,
+        "native E837 negates without a high-byte increment");
+
+    work_ram[0x002FU] = 0x00U;
+    work_ram[0x0030U] = 0x80U;
+    check(
+        dc_negate_signed_word(
+            work_ram.data(),
+            work_ram.size(),
+            &negation)
+            != 0
+            && negation.input == 0x8000U
+            && negation.result == 0x8000U
+            && negation.complemented_high == 0x7FU
+            && negation.increments_high != 0U,
+        "native E837 carries the low-byte wrap into the high byte");
+    check(
+        work_ram[0x002FU] == 0x00U
+            && work_ram[0x0030U] == 0x80U,
+        "native E837 leaves source work RAM unchanged");
+    check(
+        dc_negate_signed_word(
+            work_ram.data(),
+            work_ram.size() - 1U,
+            &negation)
+            == 0,
+        "native E837 rejects a truncated work-RAM snapshot");
+}
+
+void test_native_unsigned_multiply_round()
+{
+    std::array<std::uint8_t, 0x2000> work_ram{};
+    work_ram[0x002DU] = 0x34U;
+    work_ram[0x002EU] = 0x12U;
+    work_ram[0x0030U] = 0x81U;
+    work_ram[0x0042U] = 0x02U;
+    work_ram[0x0043U] = 0x01U;
+
+    dc_unsigned_multiply_round round{};
+    check(
+        dc_multiply_unsigned_round(
+            work_ram.data(),
+            work_ram.size(),
+            &round)
+            != 0
+            && round.accumulator == 0x0102U
+            && round.multiplicand == 0x1234U
+            && round.multiplier == 0x81U
+            && round.add_count == 2U,
+        "native E624 derives the eight-round multiply inputs");
+
+    std::uint32_t expected =
+        static_cast<std::uint32_t>(round.accumulator)
+        | (static_cast<std::uint32_t>(round.multiplier) << 16U);
+    for (std::size_t index = 0U;
+         index < DC_UNSIGNED_MULTIPLY_STEP_COUNT;
+         ++index) {
+        const bool adds = (expected & 0x800000U) != 0U;
+        expected = (expected << 1U) & 0xFFFFFFU;
+        if (adds) {
+            const auto sum =
+                (expected & 0xFFFFU) + round.multiplicand;
+            expected = (expected & 0xFF0000U)
+                | (sum & 0xFFFFU);
+            if (sum > 0xFFFFU) {
+                expected =
+                    (expected + 0x10000U) & 0xFFFFFFU;
+            }
+        }
+        const auto& step = round.steps[index];
+        check(
+            step.adds_multiplicand == static_cast<std::uint8_t>(adds)
+                && step.low_after_add
+                    == static_cast<std::uint8_t>(expected)
+                && step.high_after_add
+                    == static_cast<std::uint8_t>(expected >> 8U)
+                && step.multiplier_after_add
+                    == static_cast<std::uint8_t>(expected >> 16U),
+            "native E624 exposes each exact shift/add result");
+    }
+    check(
+        round.result == static_cast<std::uint16_t>(expected)
+            && round.multiplier_after
+                == static_cast<std::uint8_t>(expected >> 16U),
+        "native E624 returns the complete 24-bit round result");
+    check(
+        dc_multiply_unsigned_round(
+            work_ram.data(),
+            work_ram.size() - 1U,
+            &round)
+            == 0,
+        "native E624 rejects a truncated work-RAM snapshot");
+}
+
+void test_native_signed_fixed_multiply()
+{
+    std::array<std::uint8_t, 0x2000> work_ram{};
+    work_ram[0x002DU] = 0x00U;
+    work_ram[0x002EU] = 0x02U;
+    work_ram[0x002FU] = 0x80U;
+    work_ram[0x0030U] = 0x01U;
+
+    dc_signed_fixed_multiply multiply{};
+    check(
+        dc_multiply_signed_fixed(
+            work_ram.data(),
+            work_ram.size(),
+            &multiply)
+            != 0
+            && multiply.multiplicand_input == 0x0200U
+            && multiply.multiplier_input == 0x0180U
+            && multiply.runs_high_round != 0U
+            && multiply.high_round.multiplier == 0x01U
+            && multiply.low_round.multiplier == 0x80U
+            && multiply.magnitude == 0x0300U
+            && multiply.result == 0x0300U,
+        "native E65C composes both unsigned fixed-point rounds");
+
+    work_ram[0x002DU] = 0x00U;
+    work_ram[0x002EU] = 0xFEU;
+    work_ram[0x002FU] = 0x80U;
+    work_ram[0x0030U] = 0x00U;
+    check(
+        dc_multiply_signed_fixed(
+            work_ram.data(),
+            work_ram.size(),
+            &multiply)
+            != 0
+            && multiply.negates_multiplicand != 0U
+            && multiply.negates_multiplier == 0U
+            && multiply.runs_high_round == 0U
+            && multiply.multiplicand_magnitude == 0x0200U
+            && multiply.multiplier_magnitude == 0x0080U
+            && multiply.magnitude == 0x0100U
+            && multiply.result == 0xFF00U,
+        "native E65C normalizes and restores a negative result");
+    check(
+        dc_multiply_signed_fixed(
+            work_ram.data(),
+            work_ram.size() - 1U,
+            &multiply)
+            == 0,
+        "native E65C rejects a truncated work-RAM snapshot");
+}
+
+void test_native_flipper_projection()
+{
+    std::array<std::uint8_t, 0x2000> work_ram{};
+    constexpr std::uint8_t slot = 0x05U;
+    work_ram[0x1400U + slot] = 0x00U;
+    work_ram[0x1480U + slot] = 0x02U;
+    work_ram[0x1500U + slot] = 0x00U;
+    work_ram[0x1580U + slot] = 0x01U;
+    work_ram[0x007DU] = 0x00U;
+    work_ram[0x007EU] = 0x01U;
+    work_ram[0x007FU] = 0x80U;
+    work_ram[0x0080U] = 0x00U;
+
+    dc_flipper_projection projection{};
+    check(
+        dc_project_flipper_vectors(
+            work_ram.data(),
+            work_ram.size(),
+            slot,
+            &projection)
+            != 0
+            && projection.first_input == 0x0200U
+            && projection.second_input == 0x0100U
+            && projection.first_direct_product == 0x0200U
+            && projection.second_cross_product == 0x0080U
+            && projection.first_cross_product == 0x0100U
+            && projection.second_direct_product == 0x0100U
+            && projection.first_output == 0x0280U
+            && projection.second_output == 0U,
+        "native D09E composes all four signed fixed-point products");
+    check(
+        dc_project_flipper_vectors(
+            work_ram.data(),
+            work_ram.size(),
+            0x80U,
+            &projection)
+            == 0,
+        "native D09E rejects a slot outside the physics arrays");
+    check(
+        dc_project_flipper_vectors(
+            work_ram.data(),
+            work_ram.size() - 1U,
+            slot,
+            &projection)
+            == 0,
+        "native D09E rejects a truncated work-RAM snapshot");
+}
+
 void test_native_flipper_input_gate()
 {
     std::array<std::uint8_t, 0x2000> work_ram{};
@@ -663,6 +1285,93 @@ void test_native_flipper_input_gate()
         "native D466 rejects a truncated work-RAM snapshot");
 }
 
+void test_native_actor_camera_activation()
+{
+    std::array<std::uint8_t, 0x2000> work_ram{};
+    constexpr std::uint8_t slot = 0x2AU;
+    work_ram[0x00A9U] = 0x00U;
+    work_ram[0x00AAU] = 0x02U;
+    work_ram[0x1080U + slot] = 0xA5U;
+
+    dc_actor_camera_activation activation{};
+    check(
+        dc_classify_actor_camera_activation(
+            work_ram.data(),
+            work_ram.size(),
+            slot,
+            &activation)
+            != 0
+            && activation.path == DC_ACTOR_CAMERA_EMPTY
+            && activation.flags_after == 0xA5U
+            && activation.lower_low == 0xD0U
+            && activation.lower_high == 0x01U
+            && activation.upper_low == 0xF0U
+            && activation.upper_high == 0x02U,
+        "native F4FC preserves an empty actor slot");
+
+    work_ram[0x1000U + slot] = 0x82U;
+    work_ram[0x1300U + slot] = 0xCFU;
+    work_ram[0x1380U + slot] = 0x01U;
+    check(
+        dc_classify_actor_camera_activation(
+            work_ram.data(),
+            work_ram.size(),
+            slot,
+            &activation)
+            != 0
+            && activation.path == DC_ACTOR_CAMERA_BELOW
+            && activation.flags_after == 0x25U,
+        "native F4FC clears the flag below the camera window");
+
+    work_ram[0x1300U + slot] = 0xD0U;
+    check(
+        dc_classify_actor_camera_activation(
+            work_ram.data(),
+            work_ram.size(),
+            slot,
+            &activation)
+            != 0
+            && activation.path == DC_ACTOR_CAMERA_INSIDE
+            && activation.flags_after == 0xA5U,
+        "native F4FC includes the lower camera-window boundary");
+
+    work_ram[0x1300U + slot] = 0xF0U;
+    work_ram[0x1380U + slot] = 0x02U;
+    check(
+        dc_classify_actor_camera_activation(
+            work_ram.data(),
+            work_ram.size(),
+            slot,
+            &activation)
+            != 0
+            && activation.path == DC_ACTOR_CAMERA_ABOVE
+            && activation.flags_after == 0x25U,
+        "native F4FC excludes the upper camera-window boundary");
+    check(
+        dc_classify_actor_camera_activation(
+            work_ram.data(),
+            work_ram.size() - 1U,
+            slot,
+            &activation)
+            == 0,
+        "native F4FC rejects a truncated work-RAM view");
+}
+
+void test_native_actor_slot_reset()
+{
+    dc_actor_slot_reset reset{};
+    check(
+        dc_prepare_actor_slot_reset(0x62U, &reset) != 0
+            && reset.slot == 0x62U
+            && reset.work_ram_offsets[0] == 0x1062U
+            && reset.work_ram_offsets[1] == 0x10E2U
+            && reset.work_ram_offsets[31] == 0x1FE2U,
+        "native C574 maps all 32 parallel actor fields");
+    check(
+        dc_prepare_actor_slot_reset(0x80U, &reset) == 0,
+        "native C574 rejects a slot outside the actor array");
+}
+
 void test_native_nudge_input_gate()
 {
     std::array<std::uint8_t, 0x2000> work_ram{};
@@ -705,6 +1414,40 @@ void test_native_nudge_input_gate()
             != 0
             && gate.branch == DC_NUDGE_GATE_DEFER,
         "native C3CB defers an active Button-II path");
+
+    work_ram[0x1000U] = 1U;
+    check(
+        dc_evaluate_nudge_input_gate(
+            work_ram.data(),
+            work_ram.size(),
+            &gate)
+            != 0
+            && gate.branch == DC_NUDGE_GATE_ACTIVE_START,
+        "native C3CB identifies the ordinary active-nudge start");
+
+    work_ram[0x0019U] = 0U;
+    work_ram[0x0CC4U] = 1U;
+    check(
+        dc_evaluate_nudge_input_gate(
+            work_ram.data(),
+            work_ram.size(),
+            &gate)
+            != 0
+            && gate.branch == DC_NUDGE_GATE_ACTIVE_FINISH,
+        "native C3CB identifies the ordinary active-nudge finish");
+
+    work_ram[0x0CC4U] = 0U;
+    work_ram[0x0CC6U] = 1U;
+    check(
+        dc_evaluate_nudge_input_gate(
+            work_ram.data(),
+            work_ram.size(),
+            &gate)
+            != 0
+            && gate.branch == DC_NUDGE_GATE_TIMER_RELOAD_RETURN
+            && gate.timer_after == 0U,
+        "native C3CB identifies the timer-reload idle return");
+
     check(
         dc_evaluate_nudge_input_gate(
             work_ram.data(),
@@ -2931,11 +3674,20 @@ int main()
     test_hash_vectors();
     test_native_position_integrator();
     test_native_motion_damping();
+    test_native_signed_division();
     test_native_motion_rotation();
     test_native_collision_table_pass();
     test_native_collision_response();
+    test_native_collision_scan_vertical_reject();
+    test_native_collision_geometry();
     test_native_score_accumulator();
     test_native_rng_update();
+    test_native_signed_word_negation();
+    test_native_unsigned_multiply_round();
+    test_native_signed_fixed_multiply();
+    test_native_flipper_projection();
+    test_native_actor_camera_activation();
+    test_native_actor_slot_reset();
     test_native_flipper_input_gate();
     test_native_nudge_input_gate();
     test_native_session_input_gate();

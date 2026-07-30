@@ -47,6 +47,8 @@ execute_process(
         "${OUTPUT}"
         --observe-hook
         "00:F4FC"
+        --replace-hook
+        "00:F4FC@all"
         --routine-trace
         "${trace_output}"
         --routine-call-trace
@@ -69,6 +71,7 @@ endif()
 
 foreach(expected_line IN ITEMS
     "State census recording complete: 3600 frames"
+    "Native replacement 00:F4FC@all entries: 65927 of 65927"
     "Observe hook 1 entries: 65927"
     "Routine trace complete: 65927 entries"
     "Routine call trace complete: 65927 calls, 283956 writes"
@@ -153,3 +156,7 @@ foreach(expected_line IN ITEMS
     endif()
 endforeach()
 message(STATUS "${semantics_output}")
+message(
+    STATUS
+    "Semantic F4FC replacement covers all 65,927 actor-window calls."
+)

@@ -59,7 +59,7 @@ endif()
 
 foreach(expected_line IN ITEMS
     "State census recording complete: 3600 frames"
-    "Native replacement 03:7F57@all entries: 4786 of 20867"
+    "Native replacement 03:7F57@all entries: 20113 of 20867"
     "Routine call trace complete: 20867 calls, 362060 writes"
 )
     string(FIND "${recorder_output}" "${expected_line}" line_offset)
@@ -94,5 +94,5 @@ endforeach()
 
 message(
     STATUS
-    "Semantic 7F57 no-hit composition covers 4,786 calls with automatic event/IRQ fallback."
+    "Semantic 7F57 no-hit composition covers 20,113 calls with checkpointed children."
 )

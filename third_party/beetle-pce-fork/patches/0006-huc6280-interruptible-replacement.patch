@@ -1,0 +1,323 @@
+diff --git a/mednafen/pce/huc6280.h b/mednafen/pce/huc6280.h
+--- a/mednafen/pce/huc6280.h
++++ b/mednafen/pce/huc6280.h
+@@ -303,6 +303,10 @@ private:
+ 	uint8 S;		// Stack Pointer
+ 	uint8 P;		// Processor Flags/Status Register
+ 	uint32 GetMasterCyclesUntilTimerInterrupt(void) const;
++	void AdvanceReplacementTo(
++		uint32 master_cycle_offset,
++		const dc_beetle_replacement_checkpoint* completed_checkpoint = NULL);
++	void ApplyReplacementCheckpoint(void);
+ 	uint16 HookInstructionPC;
+ 	uint8 HookInstructionPhysicalBank;
+ 	uint8 IRQMask;
+@@ -348,6 +352,17 @@ private:
+ 	readfunc ReadMap[0x100];	// Read handler pointers for each 8KiB in the 21-bit physical address space.
+ 	writefunc WriteMap[0x100];	// Write handler pointers for each 8KiB in the 21-bit physical address space.
+ 
++	bool ReplacementActive;
++	uint32 ReplacementElapsed;
++	uint32 ReplacementWriteIndex;
++	uint32 ReplacementWriteCount;
++	uint32 ReplacementCheckpointIndex;
++	uint32 ReplacementCheckpointCount;
++	dc_beetle_replacement_write
++		ReplacementWrites[DC_BEETLE_MAX_REPLACEMENT_WRITES];
++	dc_beetle_replacement_checkpoint
++		ReplacementCheckpoints[DC_BEETLE_MAX_REPLACEMENT_CHECKPOINTS];
++
+ 	bool EmulateWAI;		// For speed hacks
+ };
+ 
+diff --git a/mednafen/pce/huc6280.cpp b/mednafen/pce/huc6280.cpp
+--- a/mednafen/pce/huc6280.cpp
++++ b/mednafen/pce/huc6280.cpp
+@@ -413,6 +413,12 @@ TPREFIX; {					\
+ 
+ void HuC6280::Reset(void)
+ {
++	ReplacementActive = false;
++	ReplacementElapsed = 0;
++	ReplacementWriteIndex = 0;
++	ReplacementWriteCount = 0;
++	ReplacementCheckpointIndex = 0;
++	ReplacementCheckpointCount = 0;
+ 	timer_inreload = false;
+ 	timer_div = 1024;
+ 	timer_load = 0;
+@@ -465,6 +471,17 @@ void HuC6280::Init(const bool emulate_wai)
+ 
+ 	LastLogicalReadAddr = 0;
+ 	LastLogicalWriteAddr = 0;
++	ReplacementActive = false;
++	ReplacementElapsed = 0;
++	ReplacementWriteIndex = 0;
++	ReplacementWriteCount = 0;
++	ReplacementCheckpointIndex = 0;
++	ReplacementCheckpointCount = 0;
++	memset(ReplacementWrites, 0, sizeof(ReplacementWrites));
++	memset(
++		ReplacementCheckpoints,
++		0,
++		sizeof(ReplacementCheckpoints));
+ }
+ 
+ HuC6280::~HuC6280()
+@@ -531,6 +548,93 @@ void HuC6280::TimerSync(void)
+ 	timer_lastts = timestamp;
+ }
+ 
++void HuC6280::AdvanceReplacementTo(
++	const uint32 master_cycle_offset,
++	const dc_beetle_replacement_checkpoint* const completed_checkpoint)
++{
++	while(ReplacementWriteIndex < ReplacementWriteCount)
++	{
++		const dc_beetle_replacement_write& write =
++			ReplacementWrites[ReplacementWriteIndex];
++		if(write.master_cycle_offset > master_cycle_offset
++			|| (write.master_cycle_offset == master_cycle_offset
++				&& completed_checkpoint != NULL
++				&& (write.instruction_physical_bank
++						!= completed_checkpoint
++							->instruction_physical_bank
++					|| write.instruction_logical_pc
++						!= completed_checkpoint
++							->instruction_logical_pc)))
++			break;
++		const bool bounded_vdc_port =
++			MPR[write.logical_address >> 13] == 0xFF
++			&& write.logical_address <= 0x0003;
++		const uint32 vdc_wait =
++			bounded_vdc_port ? (3U << speed_shift_cache) : 0U;
++		if(write.master_cycle_offset < vdc_wait)
++		{
++			ReplacementActive = false;
++			return;
++		}
++		const uint32 advance_offset =
++			write.master_cycle_offset - vdc_wait;
++		if(advance_offset < ReplacementElapsed)
++		{
++			ReplacementActive = false;
++			return;
++		}
++		if(advance_offset > ReplacementElapsed)
++			ADDCYC_MASTER(advance_offset - ReplacementElapsed);
++		ReplacementElapsed = write.master_cycle_offset;
++		HookInstructionPC = write.instruction_logical_pc;
++		HookInstructionPhysicalBank =
++			write.instruction_physical_bank;
++		WrMem(write.logical_address, write.value);
++		ReplacementWriteIndex++;
++	}
++
++	if(master_cycle_offset > ReplacementElapsed)
++		ADDCYC_MASTER(master_cycle_offset - ReplacementElapsed);
++	ReplacementElapsed = master_cycle_offset;
++}
++
++void HuC6280::ApplyReplacementCheckpoint(void)
++{
++	if(!ReplacementActive
++		|| ReplacementCheckpointIndex >= ReplacementCheckpointCount)
++	{
++		ReplacementActive = false;
++		return;
++	}
++
++	const dc_beetle_replacement_checkpoint& checkpoint =
++		ReplacementCheckpoints[ReplacementCheckpointIndex];
++	AdvanceReplacementTo(
++		checkpoint.interrupt_sample_master_cycle_offset);
++
++	A = checkpoint.accumulator;
++	X = checkpoint.x;
++	Y = checkpoint.y;
++	S = checkpoint.stack_pointer;
++	P = checkpoint.status;
++	REDOPIMCACHE();
++	for(unsigned i = 0; i < 8; i++)
++		SetMPR(i, checkpoint.mpr[i]);
++
++	IRQSample = (IRQlow & IRQMask) & PIMaskCache;
++	IFlagSample = P & I_FLAG;
++
++	AdvanceReplacementTo(checkpoint.master_cycle_offset, &checkpoint);
++	HookInstructionPC = checkpoint.instruction_logical_pc;
++	HookInstructionPhysicalBank =
++		checkpoint.instruction_physical_bank;
++	PC = checkpoint.resume_logical_pc;
++
++	ReplacementCheckpointIndex++;
++	if(ReplacementCheckpointIndex >= ReplacementCheckpointCount)
++		ReplacementActive = false;
++}
++
+ void HuC6280::HappySync(void)
+ {
+ 	TimerSync();
+@@ -623,6 +730,30 @@ NO_INLINE void HuC6280::RunSub(void)
+ 				}
+ 			}
+ 		}
++		if(ReplacementActive && ReplacementCheckpointIndex > 0)
++		{
++			const dc_beetle_replacement_checkpoint& previous =
++				ReplacementCheckpoints[
++					ReplacementCheckpointIndex - 1];
++			if(PC == previous.resume_logical_pc
++				&& S == previous.stack_pointer)
++			{
++				bool registers_match =
++					A == previous.accumulator
++					&& X == previous.x
++					&& Y == previous.y
++					&& P == previous.status;
++				for(unsigned i = 0; registers_match && i < 8; i++)
++					registers_match = MPR[i] == previous.mpr[i];
++				if(!registers_match)
++				{
++					ReplacementActive = false;
++					continue;
++				}
++				ApplyReplacementCheckpoint();
++				continue;
++			}
++		}
+ 		PC &= 0xFFFF;     // Our cpu core can only handle PC going about 8192 bytes over, so make sure it never gets that far...
+ 		HookInstructionPC = (uint16)PC;
+ 		HookInstructionPhysicalBank = MPR[(PC >> 13) & 0x7];
+@@ -654,9 +786,10 @@ NO_INLINE void HuC6280::RunSub(void)
+ 			dc_beetle_active_instruction_hook(
+ 				&hook_state,
+ 				dc_beetle_active_instruction_hook_user_data);
+ 		}
+ 
+-		if(MDFN_UNLIKELY(dc_beetle_active_replacement_hook != NULL))
++		if(!ReplacementActive
++			&& MDFN_UNLIKELY(dc_beetle_active_replacement_hook != NULL))
+ 		{
+ 			dc_beetle_cpu_state replacement_state =
+ 			{
+@@ -687,8 +818,12 @@ NO_INLINE void HuC6280::RunSub(void)
+ 			bool valid = replacement.handled != 0
+ 				&& replacement.write_count
+ 					<= DC_BEETLE_MAX_REPLACEMENT_WRITES
++				&& replacement.checkpoint_count
++					<= DC_BEETLE_MAX_REPLACEMENT_CHECKPOINTS
+ 				&& (replacement.write_count == 0
+-					|| replacement.writes != NULL);
++					|| replacement.writes != NULL)
++				&& (replacement.checkpoint_count == 0
++					|| replacement.checkpoints != NULL);
+ 			uint32 elapsed = 0;
+ 			for(uint32 i = 0; valid && i < replacement.write_count; i++)
+ 			{
+@@ -699,8 +834,59 @@ NO_INLINE void HuC6280::RunSub(void)
+ 						<= replacement.body_master_cycles;
+ 				elapsed = write.master_cycle_offset;
+ 			}
++			elapsed = 0;
++			for(uint32 i = 0;
++				valid && i < replacement.checkpoint_count;
++				i++)
++			{
++				const dc_beetle_replacement_checkpoint& checkpoint =
++					replacement.checkpoints[i];
++				valid =
++					checkpoint.interrupt_sample_master_cycle_offset
++						>= elapsed
++					&& checkpoint.interrupt_sample_master_cycle_offset
++						<= checkpoint.master_cycle_offset
++					&& checkpoint.master_cycle_offset
++						<= replacement.body_master_cycles;
++				elapsed = checkpoint.master_cycle_offset;
++			}
++			if(valid && replacement.checkpoint_count > 0)
++			{
++				const dc_beetle_replacement_checkpoint& final_checkpoint =
++					replacement.checkpoints[
++						replacement.checkpoint_count - 1];
++				valid = final_checkpoint.master_cycle_offset
++						== replacement.body_master_cycles
++					&& final_checkpoint.resume_logical_pc
++						== replacement.resume_logical_pc;
++			}
+ 			if(valid)
+ 			{
++				if(replacement.checkpoint_count > 0)
++				{
++					ReplacementActive = true;
++					ReplacementElapsed = 0;
++					ReplacementWriteIndex = 0;
++					ReplacementWriteCount = replacement.write_count;
++					ReplacementCheckpointIndex = 0;
++					ReplacementCheckpointCount =
++						replacement.checkpoint_count;
++					if(replacement.write_count > 0)
++						memcpy(
++							ReplacementWrites,
++							replacement.writes,
++							replacement.write_count
++								* sizeof(
++									dc_beetle_replacement_write));
++					memcpy(
++						ReplacementCheckpoints,
++						replacement.checkpoints,
++						replacement.checkpoint_count
++							* sizeof(
++								dc_beetle_replacement_checkpoint));
++					ApplyReplacementCheckpoint();
++					continue;
++				}
+ 				elapsed = 0;
+ 				for(uint32 i = 0; i < replacement.write_count; i++)
+ 				{
+@@ -844,6 +1030,24 @@ int HuC6280::StateAction(StateMem *sm, const unsigned load, const bool data_only
+ 		SFVARN(S, "S"),
+ 
+ 		SFVARN(lastop, "lastop"),
++		SFVARN(ReplacementActive, "ReplacementActive"),
++		SFVARN(ReplacementElapsed, "ReplacementElapsed"),
++		SFVARN(ReplacementWriteIndex, "ReplacementWriteIndex"),
++		SFVARN(ReplacementWriteCount, "ReplacementWriteCount"),
++		SFVARN(
++			ReplacementCheckpointIndex,
++			"ReplacementCheckpointIndex"),
++		SFVARN(
++			ReplacementCheckpointCount,
++			"ReplacementCheckpointCount"),
++		SFARRAYN(
++			reinterpret_cast<uint8*>(ReplacementWrites),
++			sizeof(ReplacementWrites),
++			"ReplacementWrites"),
++		SFARRAYN(
++			reinterpret_cast<uint8*>(ReplacementCheckpoints),
++			sizeof(ReplacementCheckpoints),
++			"ReplacementCheckpoints"),
+ 
+ 		SFVARN(IRQSample, "IRQSample"),
+ 		SFVARN(IRQlow, "IRQlow"),
+@@ -877,6 +1081,20 @@ int HuC6280::StateAction(StateMem *sm, const unsigned load, const bool data_only
+ 		speed &= 0x01;
+ 		if(timer_div < 1)
+ 			timer_div = 1;
++		if(ReplacementWriteCount > DC_BEETLE_MAX_REPLACEMENT_WRITES
++			|| ReplacementWriteIndex > ReplacementWriteCount
++			|| ReplacementCheckpointCount
++				> DC_BEETLE_MAX_REPLACEMENT_CHECKPOINTS
++			|| ReplacementCheckpointIndex
++				> ReplacementCheckpointCount)
++		{
++			ReplacementActive = false;
++			ReplacementElapsed = 0;
++			ReplacementWriteIndex = 0;
++			ReplacementWriteCount = 0;
++			ReplacementCheckpointIndex = 0;
++			ReplacementCheckpointCount = 0;
++		}
+ 		//
+ 		PC = tmp_PC;
+ 

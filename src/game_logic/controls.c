@@ -175,9 +175,29 @@ int dc_evaluate_nudge_input_gate(
         gate->branch = DC_NUDGE_GATE_SESSION_RETURN;
         return 1;
     }
-    if (gate->timer_after == 0U
-        || (uint8_t)(gate->nudge_phase - 1U) == 0U
-        || gate->matched_input != 0U) {
+    if (gate->timer_after == 0U) {
+        if ((uint8_t)(gate->nudge_phase - 1U) != 0U
+            && gate->matched_input == 0U) {
+            gate->branch = DC_NUDGE_GATE_TIMER_RELOAD_RETURN;
+        }
+        return 1;
+    }
+    if ((uint8_t)(gate->nudge_phase - 1U) == 0U) {
+        if (work_ram[0x1000U] != 0U
+            && (work_ram[0x1C80U] & 0x01U) == 0U) {
+            gate->branch = DC_NUDGE_GATE_ACTIVE_FINISH;
+        }
+        return 1;
+    }
+    if (gate->matched_input != 0U) {
+        const uint8_t counter_after =
+            (uint8_t)(work_ram[0x0CC5U] + 1U);
+        if (work_ram[0x0055U] == 0U
+            && counter_after < 0x14U
+            && work_ram[0x1000U] != 0U
+            && (work_ram[0x1C80U] & 0x01U) == 0U) {
+            gate->branch = DC_NUDGE_GATE_ACTIVE_START;
+        }
         return 1;
     }
 

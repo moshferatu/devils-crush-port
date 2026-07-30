@@ -1,6 +1,6 @@
 # Milestone 2 Coverage Manifest
 
-Last updated: 2026-07-28
+Last updated: 2026-07-29
 
 ## Purpose and classification rules
 
@@ -165,7 +165,7 @@ result. That finite baseline is complete.
 | `I-05` | All 12 normal-table and nine bonus/ending RNG consumers | D | RNG consumer regressions |
 | `I-06` | Transactional copied-RAM native invocation and shadow comparison | D | `dc_rom_native_replacement` |
 | `I-07` | Faithful end-to-end replacement of semantic `03:6966@all`, `03:7FB1@all`, composed Small-Soldier no-hit `03:7F57@all`, `00:F1B4@all`, `00:F241@all`, ordinary `00:F55C@all`, RNG `00:E8B3@all`, flipper input/activation `01:D466@all`, flipper phase step `01:D500@all`, phase-indexed flipper geometry `01:D081@all`, shared actor-coroutine scheduler `01:C5C9@all`, session/nudge gate `01:C3CB@all`, and idle session-input gate `01:C49E@all`, plus the bounded rotation/damping fixtures | D | Semantic collision, controls, position, score, RNG, and scheduler regressions plus `dc_rom_native_replacement`, `dc_rom_motion_damping_nonzero`, and `dc_rom_motion_damping_negative` |
-| `I-08` | Faithful mid-routine interrupt delivery for interrupt-bearing replacements | F | Implement before the first selected interrupt-bearing Milestone 4 port |
+| `I-08` | Faithful mid-routine interrupt delivery for interrupt-bearing replacements | D | Position integration/rollback, score, RNG, flipper input/activation, phase-step, geometry, collision-response, coroutine-scheduler, nudge-gate, and session-gate regressions exercise checkpoint transcripts for `00:F1B4`, `00:F241`, `00:F55C`, `00:E8B3`, `01:D466`, `01:D500`, `01:D081`, `03:7FB1`, `01:C5C9`, `01:C3CB`, and `01:C49E` with exact full-route artifacts |
 
 ## Explicit post-Milestone-2 acceptance inventory
 

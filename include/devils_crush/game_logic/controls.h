@@ -59,7 +59,10 @@ typedef struct dc_coroutine_schedule {
 typedef enum dc_nudge_gate_branch {
     DC_NUDGE_GATE_DEFER = 0,
     DC_NUDGE_GATE_SESSION_RETURN = 1,
-    DC_NUDGE_GATE_IDLE_RETURN = 2
+    DC_NUDGE_GATE_IDLE_RETURN = 2,
+    DC_NUDGE_GATE_TIMER_RELOAD_RETURN = 3,
+    DC_NUDGE_GATE_ACTIVE_START = 4,
+    DC_NUDGE_GATE_ACTIVE_FINISH = 5
 } dc_nudge_gate_branch;
 
 typedef struct dc_nudge_input_gate {
@@ -132,9 +135,10 @@ int dc_schedule_coroutine(
     uint8_t stack_pointer,
     dc_coroutine_schedule* schedule);
 
-// Native classification of the bounded session and ordinary idle exits at
-// ROM routine 01:C3CB. Active nudge, timer-reload, tilt, and other session
-// paths are reported as DC_NUDGE_GATE_DEFER for assembly fallback.
+// Native classification of the bounded session, ordinary idle, and
+// timer-reload exits and the ordinary active-nudge start/finish pair at ROM
+// routine 01:C3CB. Tilt and other session paths are reported as
+// DC_NUDGE_GATE_DEFER for assembly fallback.
 int dc_evaluate_nudge_input_gate(
     const uint8_t* work_ram,
     size_t work_ram_size,

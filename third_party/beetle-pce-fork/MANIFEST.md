@@ -40,12 +40,12 @@ this repository.
      HuC6280 memory path, advances hardware master time, applies final
      registers/MPRs, and resumes at the declared outer RTS.
    - Leaves normal opcode execution unchanged when no replacement is
-     returned. The host currently enables replacement only for mapped
-     no-interrupt scopes.
-  - Exposes conservative master-cycle distances to the next user/video event
-    and next serviceable timer interrupt. Broad semantic replacements can
-    cross harmless timer-divider ticks while still falling back before an
-    interrupt could be asserted inside a native body.
+     returned. Transactions without the checkpoint extension remain limited
+     to mapped no-interrupt scopes.
+   - Exposes conservative master-cycle distances to the next user/video event
+     and next serviceable timer interrupt. Broad semantic replacements can
+     cross harmless timer-divider ticks while still falling back before an
+     interrupt could be asserted inside a native body.
 4. `patches/0004-vdc-video-snapshot.patch`
    - Adds read-only VDC VRAM, VCE palette, and background-register accessors.
    - The project-owned C boundary copies their values between frames and never
@@ -55,6 +55,26 @@ this repository.
      attribute table.
    - Extends the same frame-boundary copy so the native renderer observes the
      table actually consumed by Beetle rather than only its VRAM DMA source.
+6. `patches/0006-huc6280-interruptible-replacement.patch`
+   - Adds optional instruction-boundary checkpoints to a native replacement
+     transaction, including the original interrupt-sampling time and complete
+     CPU/MPR state at each boundary.
+   - Advances one checkpoint at a time so Beetle can run an asserted interrupt
+     through the original ROM handler and then resume the remaining native
+     transcript after `RTI`.
+   - Defers a same-offset write attributed to the following instruction until
+     that instruction resumes, so an interrupt at the preceding boundary
+     cannot prematurely commit nested-JSR stack writes.
+   - Permits a replacement write to the base VDC's four logical ports only
+     when MPR0 maps them to physical bank `$FF`; advances to the pre-write
+     boundary and lets the normal HuC6280 bus path charge the VDC wait cycle.
+   - Preserves the pending transcript in savestates and safely abandons it at
+     the current original instruction if an interrupt handler does not restore
+     the checkpoint register/MPR state.
+   - Keeps replacement storage fixed and bounded; the checkpoint capacity is
+     2,048 so composed parents such as the four-multiply flipper projection
+     can retain every original interrupt-sampling boundary. The independent
+     write capacity remains 512.
 
 All local files and patches are GPL-3.0-or-later. Upstream per-file notices
 and licenses remain authoritative for upstream sources.

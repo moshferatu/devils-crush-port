@@ -1,6 +1,6 @@
 # Project Progress
 
-Last updated: 2026-07-29
+Last updated: 2026-07-30
 
 ## Current Status
 
@@ -15,30 +15,33 @@ user ROM and handles both the four-write alternate-pass early return and
 ordinary headerless record steps for any selector and actor slot. The record
 walker resolves the collision-list cursor, motion pointer, and motion cursor
 from ROM, then emits one- or two-axis signed movement with exact carry/borrow
-timing. Core-provided master-cycle horizons decline any transaction that
-could reach a user/video event or a serviceable timer interrupt, so
-interrupt-bearing and conservatively ambiguous calls remain in assembly
-without an ordinal blacklist while harmless timer-divider ticks may be
-crossed. The deterministic 1,800-frame route now executes 7,609 of 19,648
-`03:6966` calls natively (38.7%) while
+timing. The four-write alternate-pass return now supplies all 17 original
+instruction boundaries, allowing Beetle to execute and return from original
+interrupt handlers inside that native transaction. Other paths still use
+core-provided master-cycle horizons to fall back before a user/video event or
+serviceable timer interrupt. Exact checkpointing now covers both one-axis
+records and two-axis records that do not carry or borrow into a position
+high byte. The deterministic 1,800-frame route now executes 18,806 of 19,648
+`03:6966` calls natively (95.7%) while
 preserving the byte-identical gameplay artifact, complete 19,648-call trace,
 and all 180,389 ordered writes.
 
 Work has moved off the unusually large collision-table interpreter.
 Semantic `00:F1B4@all` now derives position-integration sign branches,
 comparison exits, flags, writes, and timing from live slot-zero state,
-executing 214 of 1,156 calls natively (18.5%). The adjacent state-generic
-`00:F241@all` rollback executes 242 of 404 calls (59.9%). Both retain exact
-gameplay and complete call/write artifacts through automatic event/IRQ
-fallback.
+executing all 1,156 calls through path-sensitive 50-57-boundary transcripts,
+including 250 original interrupt-bearing scopes. The adjacent state-generic
+`00:F241@all` rollback executes all 404 calls through a 12-boundary
+transcript. The complete 1,560-call position pipeline is native while both
+routines retain exact gameplay and complete call/write artifacts.
 
 Semantic `03:7FB1@all` now replaces the actor collision-response helper by
 live slot state rather than ordinal. It derives response, countdown,
 reload/phase advancement, result flags, three-or-five-write transcript, and
-126/162-cycle timing for any slot. The conservative event/IRQ horizon
-admits 13,460 of 21,987 census calls (61.2%); the state census and complete
-21,987-call/91,295-write artifacts remain byte-identical in Debug and
-Release.
+126/162-cycle timing for any slot. Its 11/14-boundary transcripts now admit
+all 21,987 calls, including 1,042 calls with original interrupt-handler
+passages; the state census and complete 21,987-call/91,295-write artifacts
+remain byte-identical in Debug and Release.
 
 Semantic `03:7F57@all` now composes those collision primitives at the
 Small-Soldier consumer boundary. For a live no-hit state it invokes any
@@ -46,81 +49,251 @@ admitted semantic `03:6966` transaction, stages those writes into a private
 snapshot, invokes either semantic `03:7FB1` branch from the resulting state,
 and finally reproduces the caller's collision-byte test. Write offsets and
 body timing are derived from the two child transactions without an ordinal
-table. Conservative event/IRQ fallback admits 4,786 of 20,867 calls (22.9%);
-the complete 20,867-call/362,060-write artifacts remain byte-identical in
-Debug and Release.
+table. The alternate-pass, one-axis, and bounded two-axis headerless shapes
+compose their children's checkpoints with both parent JSR/RTS boundaries
+and the final collision test, producing 35/38-, 68/71-, or
+73/76-boundary parent transcripts. This admits 20,113 of 20,867 calls
+(96.4%); the complete
+20,867-call/362,060-write artifacts remain byte-identical in Debug and
+Release.
 
 Semantic `00:F55C@all` now covers the central ordinary score-addition path:
 it selects the live score slot, adds the 16-bit award to the 24-bit stored
 score, proves the unsaturated/below-high-score exits, reproduces both nested
 JSR stack writes and the presentation-dirty write, and returns with exact
-flags after 558 master cycles. The conservative event/IRQ horizon admits 12
-of 40 census calls (30%); the complete 40-call/446-write score artifacts
+flags after 558 master cycles. Its 44-boundary transcript admits all 40
+census calls, including the ten calls whose original scopes contain an
+interrupt-handler passage; the complete 40-call/446-write score artifacts
 remain byte-identical in Debug and Release.
 
 Semantic `00:E8B3@all` now covers the shared RNG update. It derives all six
 scratch writes, both final seed writes, returned high byte, arithmetic
 flags, and the fixed 282-cycle budget from the live seed and frame counter.
-The conservative event/IRQ horizon admits 38 of 78 census calls (48.7%);
-the state census, complete 78-call/703-write routine artifacts, and 3,771
-selected seed writes remain byte-identical in Debug and Release.
+Its 23-boundary transcript admits all 78 census calls; the state census,
+complete 78-call/703-write routine artifacts, and 3,771 selected seed writes
+remain byte-identical in Debug and Release.
+
+Semantic `00:F4FC@all` now covers the shared actor camera-window helper.
+From live occupancy, signed vertical position, camera anchor, and flag state,
+it derives the empty, below-window, inside-window, and above-window exits.
+Its 2/18/31-boundary transcripts reproduce the exact zero-, three-, or
+five-write scratch/flag transaction over 27-333 body cycles. All 65,927
+census calls now execute natively, including 4,858 calls with original
+interrupt-handler passages; the state census and complete
+65,927-call/283,956-write artifacts remain byte-identical in Debug and
+Release.
+
+Semantic `01:C574@all` now covers the generic actor-slot reset. It preserves
+Y through the emulated stack, swaps the requested slot into the indirect
+index, and clears all 32 parallel fields while advancing `$2D:$2E` by `$80`.
+One generated 361-boundary loop transcript reproduces all 99 writes and the
+3,627-cycle body for any legal slot. All 132 census calls now execute
+natively, including 35 calls with original interrupt-handler passages; the
+state census and complete 132-call/14,163-write artifacts remain
+byte-identical in Debug and Release.
 
 Semantic `01:D466@all` now covers the high-frequency flipper/control-piece
 input gate. It intersects scheduler input `$2CEE` with the indexed piece mask
 at `$3B80,X` and reproduces both the 36-cycle, zero-write no-input return and
 the common 282-cycle activation/coroutine handoff. The latter marks the piece
 active, reproduces the nested JSR stack/scratch transcript, and installs
-dispatch `01:D48E` with nine exact writes. Conservative event/IRQ fallback
-admits 6,029 of 7,470 calls (80.7%); the complete 7,470-call/5,684-write
-artifacts remain byte-identical in Debug and Release. Current-slot,
-nonzero-countdown, held/release continuation, and other response variants
-remain in assembly.
+dispatch `01:D48E` with nine exact writes. The zero-input exit now supplies
+three instruction checkpoints and the activation/coroutine handoff supplies
+21, admitting 7,468 of 7,470 calls (99.97%). The complete
+7,470-call/5,684-write artifacts remain byte-identical in Debug and Release.
+The remaining frame-1,820 and frame-2,255 current-slot calls enter `D525`
+and produce 823 and 868 ordered writes, respectively, beyond the bridge's
+independent 512-write limit. They and held/release response variants remain
+in assembly.
 
 Semantic `01:D500@all` now covers the flipper controller's shared phase
 step. From indexed countdown, reload, orientation, and phase state it
 reproduces the timer-zero write, timer reload, and forward or reverse phase
 write. The reverse branch returns after 126 cycles and the forward branch
 after 138, with exact direction-specific accumulator and flag behavior.
-Conservative event/IRQ fallback admits 600 of 980 calls (61.2%); all 980
-calls and 3,613 writes remain byte-identical in Debug and Release. Endpoint
-and non-expiring timer states remain in assembly.
+The reverse/forward paths now supply 9/11 instruction checkpoints and admit
+all 980 route calls; all 980 calls and 3,613 writes remain byte-identical in
+Debug and Release. Endpoint and non-expiring timer states remain available
+as assembly fallback outside this route.
 
 Semantic `01:D081@all` now covers the flipper/ball interaction's shared
 geometry lookup. It masks live state `$78` to five phase bits, indexes the
 two verified vector tables at `01:D2AE` and `01:D2EE`, preserves Y through
 the emulated stack, and writes both 16-bit vectors to `$7F/$80` and
-`$7D/$7E`. Conservative event/IRQ fallback admits 305 of 540 calls (56.5%);
-the complete 540-call/3,214-write artifacts remain byte-identical in Debug
-and Release. The downstream `D09E` projection and larger `D525`
-flipper/ball controller remain in assembly.
+`$7D/$7E`. The replacement now supplies all 14 original instruction
+boundaries, including each interrupt-sampling offset and complete CPU/MPR
+state. Beetle pauses the native transcript to execute original ROM interrupt
+handlers and resumes it after a state-matching `RTI`. This admits all 540
+calls, including 38 interrupt-bearing calls that retain their longer handler
+transcripts; the complete 540-call/3,214-write artifacts remain
+byte-identical in Debug and Release. The downstream `D09E` projection is now
+native as a composed transaction; the larger `D525` flipper/ball controller
+remains in assembly.
+
+The downstream HuC6280 bridge now supports optional resumable replacement
+transcripts. It commits ordered writes only as their checkpoints are reached,
+samples IRQ state at the original instruction's last-cycle boundary, and
+serializes pending writes/checkpoints in savestates. If an interrupt handler
+returns without restoring the expected registers or MPRs, Beetle abandons the
+remaining transcript at that original instruction and continues in assembly.
+Atomic replacements without checkpoints retain their conservative event/IRQ
+horizon policy.
 
 Semantic `01:C5C9@all` now covers the shared actor-coroutine scheduler used
 by flippers, collision consumers, and table actors. It consumes the stacked
 JSR return, derives the next dispatch address, decrements indexed delay
 `$3D80,X` when active, and either yields or installs `$3F00,X/$3F80,X`.
 All immediate, delayed-yield, delayed-install, and return-page-carry shapes
-are state-derived rather than caller- or ordinal-specific. Conservative
-event/IRQ fallback admits 1,537 of 2,462 calls (62.4%); all 2,462 calls and
-863,105 writes remain byte-identical in Debug and Release.
+are state-derived rather than caller- or ordinal-specific. Branch-sensitive
+8- or 12-15-checkpoint transcripts now admit all 2,462 calls, including the
+925 calls previously rejected by the conservative event/IRQ horizon. All
+2,462 calls and 863,105 writes remain byte-identical in Debug and Release.
 
 Semantic `01:C3CB@all` now covers the adjacent session/nudge input gate's
-two dominant bounded branches. It derives the session-state return from
-`$53/$2CC7`, and the ordinary idle return from the nudge timer, phase,
-active-player index, and Button-II state. The idle branch reproduces the
-single `$2CC6` decrement at cycle 96 and exits after 177 cycles; the session
-branch exits without writes after 69 cycles. Conservative event/IRQ fallback
-admits 1,338 of 2,649 calls (50.5%), preserving all 2,649 calls and 5,635
-writes in Debug and Release. Active nudge, tilt, and reload paths remain in
-assembly.
+session-state, ordinary idle, timer-reload, active-nudge start, and
+phase-finish branches. The three starts initialize the signed nudge vector,
+apply it to the slot-zero motion pair, advance phase, and program the base
+VDC ports; the three finishes apply the live vector, clear phase, and restore
+the VDC write mode. Their 66/44-boundary, 762/522-cycle transcripts use a
+strict physical-`$FF`, logical-`$0000-$0003` bus-write allowance whose
+executor retains each VDC wait cycle. Together with the existing
+8/17/20-boundary returns, all 2,649 calls now execute natively while the
+complete 2,649-call/5,635-work-write artifacts and state census remain
+byte-identical in Debug and Release.
 
 Semantic `01:C49E@all` now covers the following pause/high-score session
 gate's ordinary idle return. It verifies session eligibility, resolves the
 active player through `$2251`, tests that player's Run edge at `$2018,Y`,
 and reproduces the returned `A/Y/N/Z` state after 72 cycles and no writes.
-Conservative event/IRQ fallback admits 1,716 of 2,649 calls (64.8%), while
-the complete 2,649-call/1,077-write artifacts remain byte-identical in
-Debug and Release. Pause, high-score, alternate-session, and initialization
-paths remain in assembly.
+Its seven-boundary transcript admits all 2,649 calls, including the 933
+previously rejected by the event/IRQ horizon, while the complete
+2,649-call/1,077-write artifacts remain byte-identical in Debug and Release.
+Pause, high-score, alternate-session, and initialization paths remain
+available as assembly fallback outside this route.
+
+Semantic `00:E837@all` now covers the shared signed 16-bit scratch-word
+negation used by the flipper projection and rotation paths. It derives the
+complement, low-byte increment, optional high-byte carry, accumulator,
+flags, writes, and 90/102-cycle timing from live `$2F:$30`. Its 8/9-boundary
+transcripts admit all 894 route calls, including 24 original
+interrupt-handler passages; the complete 894-call/3,122-write artifacts
+remain byte-identical in Debug and Release. The adjacent `01:D09E`
+projection's 5,328-33,471-cycle scopes are now fully composed from this leaf
+and semantic signed multiplication.
+
+Semantic `00:E624@all` now covers the fixed eight-bit unsigned multiply
+round inside the shared signed fixed-point pipeline. It derives all eight
+shift/admission decisions, 16-bit additions, carry propagation into `$30`,
+flags, writes, and `600 + 84 * admitted-bit-count` timing from live
+`$42:$43/$30/$2D:$2E`. Its generated 41-113-boundary transcripts admit all
+5,371 route calls, including 1,592 original interrupt-handler passages; the
+complete 5,371-call/181,868-write artifacts remain byte-identical in Debug
+and Release. Interrupt-bearing ordinal 1 and interrupt-free ordinal 2 also
+shadow restored assembly exactly.
+
+Semantic `00:E65C@all` now composes that child into the shared signed 8.8
+multiply wrapper. It derives both sign normalizations, the optional
+high-byte round, mandatory low-byte round, fixed-point result shift, and
+final sign restoration from live `$2D:$2E/$2F:$30`. Its generated
+path-sensitive transcript includes the original nested stack transactions
+and one or two complete `E624` child transcripts. All 3,700 calls execute
+natively, including 2,157 calls with original handler writes; the complete
+3,700-call/244,531-write artifacts remain byte-identical in Debug and
+Release. Interrupt-free ordinal 3 independently shadows its 921-cycle,
+35-write path against restored assembly.
+
+Semantic `01:D09E@all` now composes four signed multiplications and one
+negation into the indexed flipper vector projection. It derives both
+`$C0:$C1` and `$BE:$BF` outputs from live motion and coefficient state,
+staging every child result before the next operation. The replacement
+checkpoint capacity is now a fixed 2,048 while the write capacity remains
+512, admitting all five nested child transcripts without weakening either
+bound. All 540 calls execute natively, including 448 calls with original
+handler writes; the complete 540-call/168,532-write artifacts remain
+byte-identical in Debug and Release. Interrupt-free ordinal 16 independently
+shadows its 5,328-cycle, 194-write path against restored assembly.
+
+Semantic `01:D1A2@all` now replaces the adjacent signed two-dimensional
+rotation from live `$C0:$C1`, `$BE:$BF`, and coefficient state. The host
+composes four semantic `E65C` children and one semantic `E837` child with
+the exact parent scratch, indexed stores, additions, stack transactions,
+and instruction checkpoints. All 354 current route calls execute natively,
+including 296 calls with original handler writes; the complete
+354-call/103,362-write artifacts remain byte-identical in Debug and Release.
+The aggregate regression independently replays interrupt-free ordinal 23 at
+frame 1,241 with 7,584 cycles and 273 writes.
+
+Semantic `01:D612@all` now replaces the flipper-radius projection used by
+the `D525` controller. It derives the signed 8.8 product of `$31:$32` and
+`$7D:$7E`, composes one complete semantic `E65C` child, and preserves every
+parent scratch, result, stack, and checkpoint boundary. All 62 calls execute
+natively, including 51 calls with original handler writes; the complete
+62-call/6,271-write artifacts remain byte-identical in Debug and Release.
+Interrupt-free ordinal 36 independently shadows its frame-2,498,
+2,079-cycle, 77-write path against restored assembly.
+
+Semantic `01:D62E@all` now replaces the paired directional-angle projection.
+It selects the direct or wrapped angle delta from indexed flipper state,
+converts that byte to signed 8.8, composes one semantic `E65C` child, and
+stores or negates the result into `$31:$32`. All 62 calls execute natively,
+including 43 calls with original handler writes; the complete
+62-call/5,062-write artifacts remain byte-identical in Debug and Release.
+Interrupt-free ordinal 1 independently shadows its frame-1,268,
+1,407-cycle, 51-write path against restored assembly.
+
+Semantic `01:CFD8@all` now replaces the mode-selected collision-motion
+adjustment used by `D525`. It covers positive and negative clamps plus signed
+3/16, 1/4, 1/2, and 1/16 scaling with exact shift, carry, scratch, and flag
+behavior. All 354 calls execute natively, including 41 calls with original
+handler writes; the complete 354-call/4,103-write artifacts remain
+byte-identical in Debug and Release. Interrupt-free ordinal 29 independently
+shadows its frame-1,297, 102-cycle, two-write half-scale path.
+
+Semantic `00:E905@all` now replaces the shared signed divider. It preserves
+the inherited carry entering the initial dividend rotate, normalizes signed
+divisor and dividend magnitudes, runs the fixed 16-round unsigned core, and
+restores the quotient sign. All 752 calls execute natively, including 583
+calls with original handler writes; the complete 752-call/52,804-write
+artifacts remain byte-identical in Debug and Release. Interrupt-free ordinal
+516 independently shadows its frame-1,564, 2,037-cycle, 59-write path.
+
+Semantic `01:DD09@all` now composes that divider for each nonzero motion
+component before subtracting the signed quotient and applying `$8B/256`
+acceleration to the second component. All 753 calls execute natively,
+including the 669 calls previously deferred for interrupt delivery; the
+complete 753-call/61,291-write artifacts remain byte-identical in Debug and
+Release. The existing ordinal-181 replay retains exact frame-1,228,
+2,427-cycle, 69-write negative sign-restoration parity.
+
+The larger `01:D525` controller was re-profiled after its arithmetic leaves
+became native. Its 128 census calls still span 1,035-49,122 body master
+cycles and 29-1,456 ordered writes, with several external tail exits. Since
+the largest live paths exceed the bridge's independent 512-write envelope,
+`D525` remains a decomposition boundary rather than one semantic
+transaction.
+
+Semantic `01:CC1A@all` now covers the central collision scan's earliest
+vertical-separation rejection. A pure state classifier distinguishes
+positive-page rejection, same-page low-byte rejection, negative-page
+rejection, and negative low-byte-magnitude rejection. The host reproduces
+their exact internal JSR stack writes, `$2D/$2E/$2F/$30` scratch writes,
+binary subtraction/comparison flags, and return checkpoints over
+150/180/246/282 base master cycles. This admits 19,192 of 85,715 calls
+(22.4%); near-target, pointer, mask, and contact paths continue in assembly.
+The complete 85,715-call/1,784,119-write artifacts remain byte-identical in
+Debug and Release, with call SHA-256
+`c01321d866af5636ce12db1174a9a3428d08ce273cf62820fcbf446dcab1a313`
+and write SHA-256
+`a0366616f0bbd85b22d5a4a72e8d03e09a8866525c4c90d50c51e2ea7d035881`.
+
+Semantic `01:CCD5@all` now covers the near-target collision-geometry leaf
+reached by the remaining `CC1A` calls. It resolves both ROM pointer
+directories through the live MPR map, selects the phase descriptor, and
+reproduces the signed offset, bounds, scratch pointers, stack write, flags,
+and four uninterrupted 783/789/885/891-cycle shapes. Conservative event/IRQ
+admission replaces 5,819 of 66,523 calls (8.7%); all 66,523 calls and
+1,414,954 writes remain byte-identical in Debug and Release. Checkpointing
+the leaf's instruction stream is the next expansion.
 
 Twenty-one previously admitted `03:6966` ordinals remain as focused
 restored-assembly fixtures for full records, continuations, and early
@@ -141,11 +314,10 @@ writes, and `00:F241@1` performs collision rollback in 162 cycles with six
 writes. The 32 focused fixtures still shadow restored assembly from
 identical pre-call states with 553 exact writes and 21,327 combined body
 master cycles. Unimplemented semantic branches stay emulated while the
-shared interpreter is generalized. In particular, replayed `03:7FB1@2`
-contains a periodic interrupt and remains explicitly rejected. `01:DD09@52` also
-remains emulated after replay exposed an interrupt entering through
-`00:E058/E169`, expanding the recognized interrupt-owned instruction set
-beyond the earlier `FCxx/FDxx` examples.
+shared interpreter is generalized. Replayed `03:7FB1@2` contains a periodic
+interrupt and is now admitted through the checkpointed aggregate helper.
+The former `01:DD09@52` blocker is now covered by the semantic parent and
+child checkpoints, including its interrupt entry through `00:E058/E169`.
 
 **Deferred Milestone 3 gate:** all non-hidden fixed actors, all three flipper
 pairs, ten Small Soldiers, four Tower insects, and the mapped type-`$8F`
@@ -178,7 +350,7 @@ milestone closes when these four evidence-based gates are complete:
 | Normal-table controls and physics | One 3,600-frame route connects Button-I Devil-Shooter charge/release, right/left flipper state changes, and three Button-II nudges to slot-0 motion and later integration; `$2CC7` remains clear throughout | Deterministic combined route, ROM gates, complete work-RAM timeline, ordered calls, and selected writes are guarded by `dc_rom_controls_physics` | Closed |
 | Normal-table collision boundary | Natural Small-Soldier contacts at frames 1,479 and 1,852 connect `01:CBCF` and the type-`$82` ball response through `03:6966`/`03:7FB1` to actor state, score, command `$21`, `$2D16`, and complete actor release | ROM gates, complete work-RAM timeline, 97,379 ordered calls, 1,163,259 scoped writes, and selected state writes are guarded by `dc_rom_collision_boundary` | Closed |
 | Normal-table session and scoring boundary | One route connects the frame-3,000 live-ball drain, `$2D52` decrement, ordinary continuation decision, category-1 reload, 1,020-unit stored score, dirty-panel handoff, and remaining-ball redraw | ROM gates, complete work-RAM timeline, 402 ordered calls, 27,769 scoped writes, and exact score/ball glyph streams are guarded by `dc_rom_session_scoring` | Closed |
-| Coverage manifest and scope freeze | `docs/COVERAGE_MANIFEST.md` contains 105 unique classified behavior units: 56 dynamic, 29 static, and 20 deferred | `dc_coverage_manifest` guards unique IDs, the complete manual audit, classification totals, and registered evidence tests | Closed |
+| Coverage manifest and scope freeze | `docs/COVERAGE_MANIFEST.md` contains 105 unique classified behavior units: 57 dynamic, 29 static, and 19 deferred | `dc_coverage_manifest` guards unique IDs, the complete manual audit, classification totals, and registered evidence tests | Closed |
 
 The instrumentation registry, trace and replay support, transactional
 no-interrupt native boundary, shadow comparison, and faithful replacement of
@@ -197,10 +369,9 @@ The following work is explicitly deferred and must not reopen Milestone 2:
 - Additional bonus-stage event families and redundant success, perfect,
   failure, or timeout variants beyond the bounded baseline. Add them during
   the corresponding Milestone 4 port or Milestone 6 acceptance pass.
-- Faithful mid-routine interrupt delivery. Implement it in Milestone 4 before
-  enabling replacement for the first selected interrupt-bearing routine; the
-  proven no-interrupt replacement already satisfies the Milestone 2 exit
-  requirement.
+- Faithful mid-routine interrupt delivery was deferred from Milestone 2 and
+  completed in Milestone 4 on 2026-07-29. Semantic `01:D081@all` is the first
+  interrupt-bearing proof, with all 540 calls preserving exact artifacts.
 - Exhaustive combinations of both speeds, both player counts, every drain,
   extra-ball, last-chance, and stuck-ball variant. These remain release
   acceptance requirements, not prerequisites for closing the instrumentation
@@ -889,6 +1060,10 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
     verified observed awards 10, 30, 40, 50, 100, and 200.
   - Added `tools/Analyze-ScoreSemantics.ps1`, a normalized `00:F55C@1`
     replay, and a ROM-backed Debug/Release regression.
+  - Added a 44-boundary instruction transcript spanning the outer addition,
+    both nested helpers, both JSR stack pairs, and their RTS returns. All 40
+    calls now execute natively, including ten original interrupt-bearing
+    scopes, while the restored-assembly replay remains exact.
   - Verified byte-identical entry, call, and write artifacts with SHA-256
     values
     `d4cbf19841208ff7045f87bf76677fb3ed7e9a69db2d14458d390f9e6ce43fa7`,
@@ -936,6 +1111,9 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
     exhibit dynamic lifecycles, and `$01-$03/$72-$7E` remain empty.
   - Added `tools/Analyze-ActorActivationSemantics.ps1`, a normalized
     `00:F4FC@1` replay, and a ROM-backed Debug/Release regression.
+  - Added semantic `00:F4FC@all` replacement for all four live-state paths.
+    Its 2/18/31 instruction checkpoints admit all 65,927 calls, including
+    4,858 interrupt-bearing scopes, without a slot or occurrence allowlist.
   - Verified byte-identical entry, call, and write artifacts with SHA-256
     values
     `8cd60958fe27377c1eec09c3c665f27f3642c581ac10da84be319d83c7dbae74`,
@@ -952,6 +1130,10 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
     `$80-$84` type byte is not sufficient as a mechanism identity.
   - Mapped `01:C574` as the 32-array generic slot reset and `01:C5AB` as the
     first-free allocator over `$04-$7B`.
+  - Added semantic `01:C574@all` replacement using one generated
+    361-checkpoint loop transcript. It admits all 132 observed resets,
+    including 35 interrupt-bearing scopes, without a caller or slot
+    allowlist.
   - Captured 44 route allocations and 35 frees within dynamic slots
     `$62-$71`, plus seven active dynamic dispatch-writer families.
   - Identified `$3F80:$3F00,X` as the live state-machine pointer and captured
@@ -2554,8 +2736,8 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
     memory, all six bonus stages, and maximum-score ending.
   - Added the extra cartridge actors and native-bridge requirements needed
     by the implementation plan.
-  - Classified 105 unique behavior units: 56 dynamically verified, 29
-    statically ROM-mapped, and 20 explicitly deferred. No unknown or partial
+  - Classified 105 unique behavior units: 57 dynamically verified, 29
+    statically ROM-mapped, and 19 explicitly deferred. No unknown or partial
     classification exists.
   - Added `docs/COVERAGE_MANIFEST.md`,
     `tools/Verify-CoverageManifest.ps1`, and `dc_coverage_manifest`.
@@ -3024,10 +3206,9 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
     negative sign at `$FF0C`, then adds `$10` acceleration for `$FF1C`.
     Its exact 69-write transcript completes in 2,427 cycles and returns
     `A=$FF`, `P=$80`.
-  - Rejected `01:DD09@52` after normalized replay exposed interrupt-owned
-    stack/controller work through `00:E058/E169`. Its final registers and
-    cycle count agree, but its ordered scratch writes do not, so it cannot
-    cross the transactional no-interrupt boundary.
+  - Initially rejected `01:DD09@52` after normalized replay exposed
+    interrupt-owned stack/controller work through `00:E058/E169`. The later
+    semantic `E905`/`DD09` checkpoint composition now admits this path.
   - Restored the same pre-call state and proved exact final registers/MPRs,
     two ordered writes and timings, 168 body master cycles, and complete
     post-call work RAM. The established gameplay, entry, bounded-call, and
@@ -3035,7 +3216,8 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
   - ROM-free tests cover positive and negative signed damping, signed
     divisors, acceleration, zero-component branch skips, invalid divisors,
     indexed slots, the bounded nonzero-divider input, and truncated
-    snapshots. Unsupported DD09 ordinals are rejected by the CLI.
+    snapshots. Semantic `01:DD09@all` later replaced the ordinal-only CLI
+    admission.
   - Core, coverage-manifest, physics-oracle, unsupported-ordinal CLI, and
     `dc_rom_native_replacement` regressions pass in Release; the focused
     native replacement also passes in Debug.
@@ -3045,9 +3227,10 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
     sign-magnitude multiplies, fractional truncation, and
     `u*c-v*s` / `u*s+v*c` output combination.
   - Audited the initially selected `D1A2@1` transcript and found three
-    timer-interrupt handler passages (`FCxx`/`FDxx` writes). It remains
-    emulated because a work-RAM-only transaction cannot acknowledge and
-    deliver those interrupts faithfully.
+    timer-interrupt handler passages (`FCxx`/`FDxx` writes). It was initially
+    left emulated because a work-RAM-only transaction could not acknowledge
+    and deliver those interrupts faithfully; the later checkpointed
+    aggregate replacement now admits it.
   - Admitted the first independently replayed interrupt-free call,
     `01:D1A2@23`: identity coefficients `$0100/$0000`, inputs and outputs
     `$0000/$FFFF`, 5,076 body master cycles, 190 ordered writes, and outer
@@ -3308,23 +3491,127 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
     ordinal tests remain restored-assembly regression coordinates, but all
     admitted `6966` execution now comes from the semantic early-return,
     headerless-step, or bounded-walker paths.
-  - The aggregate Debug and Release regression executes 7,609 of 19,648
-    calls natively (38.7%) and preserves the established gameplay SHA-256,
-    complete call SHA-256, and complete 180,389-write SHA-256. Ordinals 11
-    and 13 retain their interrupt-owned transcripts under automatic fallback.
+  - Added exact 17-instruction alternate-pass and 50-instruction one-axis
+    headerless-record transcripts. The aggregate Debug and Release regression
+    now executes 17,308 of 19,648 calls natively (88.1%) and preserves the
+    established gameplay SHA-256, complete call SHA-256, and complete
+    180,389-write SHA-256. Uncheckpointed interpreter paths still use
+    automatic fallback.
+  - Generalized the same instruction transcript to ordinary two-axis records
+    without a high-byte carry or borrow. The resulting 55-checkpoint paths
+    raise semantic coverage to 18,806 of 19,648 calls (95.7%) and compose
+    20,113 of 20,867 Small-Soldier parent calls (96.4%). Release and Debug
+    retain the exact gameplay/state-census, call, and ordered-write hashes.
 - [x] Shifted Milestone 4 from the collision interpreter to bounded physics
   routines:
   - Replaced `F1B4`'s three state-specific admissions with one slot-zero
     semantic transaction covering both sign branches, all four integer
     comparisons, flags, exact writes, and variable cycle budgets.
-  - Verified its state/timing formula against all 906 interrupt-free calls;
-    automatic event/IRQ fallback safely admits 214 of 1,156 route calls.
+  - Verified its state/timing formula against all 906 interrupt-free calls,
+    then added path-sensitive 50-57-boundary transcripts that admit all
+    1,156 route calls, including 250 original interrupt-bearing scopes.
   - Enabled the already state-generic six-store `F241` rollback across all
-    safe calls, admitting 242 of 404.
+    calls through a 12-boundary transcript, admitting all 404.
   - Both semantic aggregate regressions preserve exact gameplay and complete
     call/write SHA-256 artifacts; the focused ordinal replays still pass.
   - Release core, both semantic aggregates, and the native-replacement shadow
     suite pass; Debug core and semantic `F1B4@all` also pass.
+- [x] Ported shared signed-word negation `00:E837@all`:
+  - Derived the exact complement/increment semantics from live `$2F:$30`,
+    including the low-byte-wrap carry into `$30`.
+  - Added exact 8/9-instruction transcripts for the 90-cycle three-write and
+    102-cycle four-write paths.
+  - Restored and shadow-compared ordinal 1's frame-1,064 wrap path against
+    original assembly with exact register, RAM, cycle, and write-order parity.
+  - Replaced all 894 state-census calls, including 24 interrupted scopes,
+    with byte-identical Debug/Release census, call, and 3,122-write artifacts.
+  - Profiled downstream `01:D09E` and initially deferred its variable
+    long-math transcript until the bounded multiply leaves were native.
+- [x] Ported unsigned fixed-point multiply round `00:E624@all`:
+  - Modeled eight exact shift/add decisions across `$42:$43/$30`, including
+    16-bit addition carry into the multiplier byte.
+  - Generated 41-113 instruction checkpoints and 24-48 writes from live
+    multiplier bits with exact `600 + 84 * admitted-bit-count` body timing.
+  - Replaced all 5,371 route calls, including 1,592 interrupted scopes, with
+    byte-identical Debug/Release census, call, and 181,868-write artifacts.
+  - Shadowed interrupted ordinal 1 and adjacent interrupt-free ordinal 2
+    against restored assembly with exact state, timing, and write parity.
+- [x] Ported signed fixed-point multiply wrapper `00:E65C@all`:
+  - Modeled both operand-normalization paths, optional high-byte round,
+    mandatory low-byte round, fixed-point shift, and final sign restoration.
+  - Composed exact nested JSR/RTS and PHX/PLX boundaries around one or two
+    semantic `E624` children over a private staged RAM snapshot.
+  - Replaced all 3,700 route calls, including 2,157 calls with original
+    handler writes, with byte-identical Debug/Release census, call, and
+    244,531-write artifacts.
+  - Shadowed interrupt-free ordinal 3 against restored assembly with exact
+    921-cycle, 35-write parity.
+- [x] Ported flipper vector projection `01:D09E@all`:
+  - Modeled the two signed 8.8 projected outputs from indexed motion and the
+    live phase-selected coefficient pair.
+  - Composed four semantic `E65C` children and one semantic `E837` child with
+    exact parent scratch, addition, nested-stack, and checkpoint timing.
+  - Increased the fixed checkpoint envelope from 512 to 2,048 while retaining
+    the independent 512-write bound and savestate serialization.
+  - Replaced all 540 calls, including 448 calls with original handler writes,
+    with byte-identical Debug/Release census, call, and 168,532-write
+    artifacts.
+  - Shadowed interrupt-free ordinal 16 against restored assembly with exact
+    5,328-cycle, 194-write parity.
+- [x] Ported signed two-dimensional rotation `01:D1A2@all`:
+  - Reused the pure signed 8.8 `dc_rotate_motion` result model over live
+    input and coefficient state.
+  - Composed four semantic `E65C` children and one semantic `E837` child
+    with exact parent scratch, addition, indexed-store, nested-stack, and
+    checkpoint timing.
+  - Replaced all 354 current route calls, including 296 calls with original
+    handler writes, with byte-identical Debug/Release census, call, and
+    103,362-write artifacts.
+  - Shadowed interrupt-free aggregate ordinal 23 against restored assembly
+    with exact frame-1,241, 7,584-cycle, 273-write parity.
+- [x] Ported flipper-radius projection `01:D612@all`:
+  - Added pure C `dc_project_flipper_radius` for the signed 8.8
+    `$31:$32 * $7D:$7E` result stored in `$C2:$C3`.
+  - Composed one semantic `E65C` child with exact parent operand, result,
+    nested-stack, and checkpoint timing.
+  - Replaced all 62 calls, including 51 calls with original handler writes,
+    with byte-identical Debug/Release census, call, and 6,271-write artifacts.
+  - Shadowed interrupt-free ordinal 36 against restored assembly with exact
+    frame-2,498, 2,079-cycle, 77-write parity.
+- [x] Ported directional flipper-angle projection `01:D62E@all`:
+  - Added pure C `dc_project_flipper_angle` for direct/wrapped angle delta,
+    8.8 conversion, signed scaling, and direction-selected result negation.
+  - Composed one semantic `E65C` child with exact branch, shift/rotate,
+    scratch, output, nested-stack, and checkpoint timing.
+  - Replaced all 62 calls, including 43 calls with original handler writes,
+    with byte-identical Debug/Release census, call, and 5,062-write artifacts.
+  - Shadowed interrupt-free ordinal 1 against restored assembly with exact
+    frame-1,268, 1,407-cycle, 51-write parity.
+- [x] Ported collision-motion adjustment `01:CFD8@all`:
+  - Added pure C `dc_adjust_collision_motion` for both clamp directions and
+    all four signed scaling modes.
+  - Generated exact mode, clamp, shift/rotate, addition, scratch, flag, and
+    interrupt checkpoints without nested child calls.
+  - Replaced all 354 calls, including 41 calls with original handler writes,
+    with byte-identical Debug/Release census, call, and 4,103-write artifacts.
+  - Shadowed interrupt-free ordinal 29 against restored assembly with exact
+    frame-1,297, 102-cycle, two-write parity.
+- [x] Ported signed division `00:E905@all`:
+  - Added pure C `dc_divide_signed_word` with explicit inherited-carry,
+    signed normalization, 16-round remainder/quotient, and sign-restoration
+    state.
+  - Replaced all 752 calls, including 583 calls with original handler writes,
+    with byte-identical Debug/Release gameplay, call, and 52,804-write
+    artifacts.
+  - Shadowed interrupt-free ordinal 516 against restored assembly with exact
+    frame-1,564, 2,037-cycle, 59-write parity.
+- [x] Generalized motion damping to semantic `01:DD09@all`:
+  - Replaced the three fixed ordinal transcripts with a state-derived parent
+    that conditionally composes one or two semantic `E905` children.
+  - Replaced all 753 calls, including 669 calls with original interrupt
+    handling, while preserving the established 61,291-write artifacts.
+  - Retained ordinals 1, 2, and 181 as focused zero, positive-divider, and
+    negative sign-restoration replay coordinates.
 
 ## Next Actions
 
@@ -3451,51 +3738,104 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
   - [x] Replace and shadow-test interrupt-free `00:F1B4@10` integer-step
     early return.
   - [x] Replace ordinal admission for `00:F1B4` with semantic slot-zero
-    integration; cover 214 of 1,156 route calls natively.
+    integration; cover all 1,156 route calls through path-sensitive
+    50-57-boundary transcripts.
   - [x] Retain bounded `00:F241@1` collision rollback as the reference slice.
-  - [x] Schedule state-generic `00:F241@all` rollback with automatic
-    event/IRQ fallback; cover 242 of 404 route calls natively.
+  - [x] Schedule state-generic `00:F241@all` rollback with checkpointed
+    mid-routine interrupt delivery; cover all 404 route calls natively.
   - [x] Replace and shadow-test bounded `01:DD09@1` zero-component
     acceleration.
   - [x] Replace and shadow-test interrupt-free `01:DD09@2` nonzero
     second-component damping and acceleration.
   - [x] Replace and shadow-test interrupt-free `01:DD09@181` negative
-    divider and sign restoration; keep interrupt-bearing `01:DD09@52`
-    emulated.
+    divider and sign restoration.
+  - [x] Add semantic `00:E905@all` signed division and compose it into
+    semantic `01:DD09@all`; cover all 752 child and 753 parent calls with
+    exact stack, scratch, timing, write, and original-interrupt parity.
   - [x] Replace and shadow-test interrupt-free `01:D1A2@23` signed
-    two-dimensional rotation; keep interrupt-bearing `D1A2@1` emulated.
+    two-dimensional rotation; initially keep interrupt-bearing `D1A2@1`
+    emulated pending checkpointed child composition.
+  - [x] Replace ordinal admission with semantic `01:D1A2@all`; compose four
+    `E65C` children and one `E837` child with exact scratch, indexed output,
+    stack, timing, write, and original-interrupt parity across all 354
+    current route calls.
+  - [x] Add semantic `01:D612@all` flipper-radius projection; compose one
+    `E65C` child with exact scratch, result, stack, timing, write, and
+    original-interrupt parity across all 62 calls.
+  - [x] Add semantic `01:D62E@all` directional-angle projection; compose
+    its direct/wrapped delta, five-step 8.8 conversion, one `E65C` child,
+    conditional negation, and original-interrupt parity across all 62 calls.
+  - [x] Add semantic `01:CFD8@all` collision-motion adjustment; cover both
+    clamp directions and 3/16, 1/4, 1/2, and 1/16 signed scaling across all
+    354 calls with exact write, timing, flag, and original-interrupt parity.
   - [x] Replace and shadow-test interrupt-free `03:7FB1@1` actor
     collision-response advancement.
   - [x] Replace and shadow-test interrupt-free `03:7FB1@3` follow-up
-    countdown advancement; keep interrupt-bearing `03:7FB1@2` emulated.
+    countdown advancement.
+  - [x] Admit interrupt-bearing `03:7FB1@2` through the aggregate
+    instruction-checkpoint transcript.
   - [x] Replace and shadow-test interrupt-free `03:7FB1@7`
     countdown-reload and phase advancement.
   - [x] Replace `03:7FB1` ordinal admission with semantic response,
-    countdown, phase, flag, write, and timing derivation; cover 13,460 of
-    21,987 census calls with automatic event/IRQ fallback.
+    countdown, phase, flag, write, timing, and interrupt checkpoints; cover
+    all 21,987 census calls.
   - [x] Compose semantic `03:7F57@all` no-hit collision consumption from
-    the existing `03:6966` and `03:7FB1` adapters; cover 4,786 of 20,867
-    calls with exact 362,060-write aggregate parity.
-  - [x] Add semantic `00:F55C@all` ordinary score accumulation; cover 12 of
-    40 census calls while retaining exact state, call, and write hashes.
-  - [x] Add semantic `00:E8B3@all` RNG advancement; cover 38 of 78 census
-    calls with exact scratch, seed, flag, and cycle parity.
+    the existing `03:6966` and `03:7FB1` adapters; compose the checkpointed
+    alternate-pass and one-axis children through both parent calls and cover
+    18,954 of 20,867 calls with exact 362,060-write aggregate parity.
+  - [x] Add semantic `00:F55C@all` ordinary score accumulation; cover all 40
+    census calls through a 44-boundary transcript while retaining exact
+    state, call, write, and original-interrupt parity.
+  - [x] Add semantic `00:E8B3@all` RNG advancement; cover all 78 census
+    calls through a 23-boundary transcript with exact scratch, seed, flag,
+    and cycle parity.
+  - [x] Add semantic `00:E837@all` signed 16-bit scratch negation; cover all
+    894 census calls through 8/9-boundary, 90/102-cycle transcripts with
+    exact flag, write, and original-interrupt parity.
+  - [x] Add semantic `00:E624@all` unsigned multiply rounds; cover all 5,371
+    census calls through generated 41-113-boundary transcripts with exact
+    shift/add, carry, timing, write, and original-interrupt parity.
+  - [x] Add semantic `00:E65C@all` signed fixed-point multiplication;
+    compose one or two `E624` children with exact sign, nested-stack,
+    timing, write, and original-interrupt parity across all 3,700 calls.
+  - [x] Add semantic `01:D09E@all` flipper vector projection; compose four
+    `E65C` children and one `E837` child with exact scratch, sum, stack,
+    timing, write, and original-interrupt parity across all 540 calls.
+  - [x] Add semantic `00:F4FC@all` actor camera-window classification; cover
+    all 65,927 census calls through 2/18/31-boundary transcripts with exact
+    scratch, flag, cycle, and original-interrupt parity.
+  - [x] Add semantic `01:C574@all` generic actor-slot reset; cover all 132
+    census calls through one generated 361-boundary loop transcript with
+    exact stack, scratch, 32-field clear, cycle, and interrupt parity.
   - [x] Add semantic `01:D466@all` flipper input gating and common
-    activation/coroutine handoff; cover 6,029 of 7,470 calls.
+    activation/coroutine handoff; cover 7,468 of 7,470 calls through
+    3/21-boundary transcripts.
+  - [x] Add semantic `01:CC1A@all` collision-scan vertical rejection; cover
+    19,192 of 85,715 calls through exact 150/180/246/282-cycle, three- or
+    six-write state-derived transcripts.
+  - [x] Add the atomic semantic `01:CCD5@all` near-target geometry leaf;
+    cover 5,819 of 66,523 calls through exact ROM-resolved 783-891-cycle,
+    16/19-write transactions.
+  - [ ] Add instruction checkpoints to semantic `01:CCD5@all` so original
+    interrupt handlers can preempt the remaining geometry calls.
   - [x] Add semantic `01:D500@all` bidirectional flipper phase stepping;
-    cover 600 of 980 calls with exact three-write timing and flags.
+    cover all 980 calls through 9/11-boundary transcripts with exact
+    three-write timing and flags.
   - [x] Add semantic `01:D081@all` phase-indexed flipper geometry lookup;
-    cover 305 of 540 calls with exact ROM-table, stack, flag, and 159-cycle
-    parity.
+    cover all 540 calls with exact ROM-table, stack, flag, 159-cycle native
+    body, and original-handler parity.
   - [x] Add semantic `01:C5C9@all` shared actor-coroutine scheduling; cover
-    1,537 of 2,462 calls with exact stack, delay, dispatch, flag, and
-    102-192-cycle parity.
-  - [x] Add semantic `01:C3CB@all` session/nudge gating; cover 1,338 of
-    2,649 calls through the 69-cycle session and 177-cycle idle returns.
-  - [x] Add semantic `01:C49E@all` session-input gating; cover 1,716 of
-    2,649 calls through the active-player 72-cycle no-Run-input return.
-  - [x] Profile aggregate `01:DD09` viability; defer its variable divider
-    transcript after finding 669 of 753 route calls contain interrupts.
+    all 2,462 calls with exact stack, delay, dispatch, flag, 102-192-cycle,
+    and original-interrupt parity.
+  - [x] Add semantic `01:C3CB@all` session/nudge gating; cover all 2,649
+    calls through checkpointed 69-cycle session, 177-cycle idle, 207-cycle
+    timer-reload, 762-cycle active-start, and 522-cycle active-finish paths,
+    including exact bounded VDC-port writes.
+  - [x] Add semantic `01:C49E@all` session-input gating; cover all 2,649
+    calls through the checkpointed active-player 72-cycle no-Run-input return.
+  - [x] Profile aggregate `01:DD09` viability; the initial 669-of-753
+    interrupt blocker is resolved by the later semantic `E905` child and
+    checkpointed parent composition.
   - [x] Replace and shadow-test interrupt-free `03:6966@5`
     collision-table alternate-pass early return.
   - [x] Replace and shadow-test interrupt-free `03:6966@1`
@@ -3548,56 +3888,132 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
     and headered records; cover 7,476 of 19,648 route calls natively.
   - [x] Separate harmless timer-divider ticks from serviceable timer IRQs in
     the core scheduling horizon; cover 7,609 of 19,648 route calls natively.
+  - [x] Add all 17 alternate-pass instruction checkpoints; cover 11,230 of
+    19,648 route calls natively while original interrupt handlers remain
+    exact.
+  - [x] Add the generic 50-checkpoint, one-axis headerless record family;
+    cover 17,308 of 19,648 route calls and compose 18,954 of 20,867
+    Small-Soldier parent calls.
+  - [x] Extend that state-based transcript to bounded two-axis headerless
+    records; cover 18,806 of 19,648 route calls and compose 20,113 of 20,867
+    Small-Soldier parent calls.
 - [ ] **Milestone 4 deferred:** reproduce additional normal-table and
   bonus-stage rule-family variants as their routines are ported.
-- [ ] **Milestone 4 deferred:** extend replacement scheduling with faithful
-  mid-routine interrupt delivery before replacing the first selected
-  interrupt-bearing call.
+- [x] Extend replacement scheduling with faithful mid-routine interrupt
+  delivery; `01:D081@all` is the first selected interrupt-bearing proof.
 
 ## Active Work
 
-Milestone 4 is now active. Semantic `03:6966@all` scheduling replaces 7,609
+Milestone 4 is now active. Semantic `03:6966@all` scheduling replaces 18,806
 of 19,648 deterministic-route calls by selector/slot state, while the
 previous `03:6966@1` through `@23` admissions remain focused regression
 coordinates for implemented full-record, continuation, and early-return
 branches. Further expansion of this unusually large interpreter is frozen
 while smaller routines are ported. Semantic `00:F1B4@all` integration and
-`00:F241@all` rollback now replace 456 calls across their 1,560-call
-position pipeline. Semantic `03:7FB1@all` replaces 13,460 of 21,987
-collision-response calls across all live slots; its `@1`, `@3`, and `@7`
-coordinates remain focused decrement/reload fixtures.
+`00:F241@all` rollback now replace all 1,560 calls across their position
+pipeline. Semantic `03:7FB1@all` replaces all 21,987
+collision-response calls across all live slots, including 1,042 original
+interrupt-handler passages; `@1`, `@3`, and `@7` remain focused
+decrement/reload fixtures, while `@2` is covered by the aggregate natural
+route.
 Semantic `03:7F57@all` composes every admitted collision-table transaction
-and both response branches for 4,786 of 20,867 Small-Soldier no-hit calls.
-Its single state-based adapter stages child state and derives the caller's
-write/timing transaction while preserving all 362,060 aggregate writes in
-Debug and Release.
-Semantic `00:F55C@all` replaces 12 of 40 ordinary score-addition calls with
-exact 24-bit arithmetic and display-dirty state. Aggregate `01:DD09`
-expansion is deferred as low-yield: only 84 of 753 calls are interrupt-free,
-and 83 of those traverse the long variable divider.
-Semantic `00:E8B3@all` replaces 38 of 78 shared RNG updates from live
-seed/frame state with exact eight-write and 282-cycle parity.
-Semantic `01:D466@all` replaces 6,029 of 7,470 flipper/control-piece input
-checks through one indexed mask test, the exact 36-cycle no-input return,
-and the common nine-write/282-cycle activation handoff; later held/release
-response variants remain emulated.
-Semantic `01:D500@all` replaces 600 of 980 forward/reverse flipper phase
-steps through exact three-write, 126/138-cycle transactions; endpoint and
-non-expiring timer paths remain emulated.
-Semantic `01:D081@all` replaces 305 of 540 phase-indexed flipper geometry
-lookups through an exact five-write, 159-cycle ROM-table transaction; the
-downstream projection and branch-heavy parent controller remain emulated.
-Semantic `01:C5C9@all` replaces 1,537 of 2,462 shared actor-coroutine
-scheduler calls. It derives immediate installation, delayed yield, delayed
-installation, and return-page carry from live stack/slot state through exact
-102-192-cycle transactions; event/IRQ-adjacent calls fall back automatically.
-Semantic `01:C3CB@all` replaces 1,338 of 2,649 session/nudge checks through
-the exact 69-cycle session and 177-cycle timer-decrement idle returns;
-active Button-II nudge behavior remains emulated.
-Semantic `01:C49E@all` replaces 1,716 of 2,649 pause/high-score session
-checks through the exact 72-cycle no-Run-input return; pause, high-score,
-and transition behavior remains emulated.
-`01:D1A2@23` signed rotation,
+and both response branches for 20,113 of 20,867 Small-Soldier no-hit calls.
+Its alternate-pass, one-axis, and bounded two-axis paths compose 35/38,
+68/71, or 73/76 parent checkpoints around the child transactions, including
+both nested call/return boundaries. The single state-based adapter preserves
+all 362,060 aggregate writes in Debug and Release.
+Semantic `00:F55C@all` replaces all 40 ordinary score-addition calls through
+a 44-boundary transcript with exact 24-bit arithmetic, nested call-stack,
+display-dirty, and original-interrupt state. Semantic `00:E905@all` replaces
+all 752 signed-divider calls through a carry-sensitive, 16-round transcript;
+all 583 original interrupt-handler passages and 52,804 writes remain exact.
+Semantic `01:DD09@all` composes that child and replaces all 753 damping
+calls, including the 669 calls that were previously deferred for interrupts.
+Semantic `00:E8B3@all` replaces all 78 shared RNG updates from live
+seed/frame state through a 23-boundary transcript with exact eight-write and
+282-cycle parity.
+Semantic `00:F4FC@all` replaces all 65,927 actor camera-window checks from
+live slot and camera state through 2/18/31-boundary empty, below, inside, and
+above transcripts. All 4,858 original interrupt-bearing scopes remain exact.
+Semantic `01:C574@all` replaces all 132 generic 32-array actor-slot resets
+through one generated 361-boundary transcript. All 35 original
+interrupt-bearing scopes and all 14,163 aggregate writes remain exact.
+Semantic `01:D466@all` replaces 7,468 of 7,470 flipper/control-piece input
+checks through exact 3/21-boundary no-input and common activation/coroutine
+transcripts. The two remaining current-slot calls enter `D525` and emit
+823/868 ordered writes, beyond the bridge's 512-write limit; later
+held/release behavior outside this route also remains emulated.
+Semantic `01:CC1A@all` replaces 19,192 of 85,715 central collision-scan
+calls through exact state-derived positive/negative page and low-byte
+vertical-separation rejection transcripts. The complete
+85,715-call/1,784,119-write artifacts remain exact; near-target, pointer,
+mask, and contact paths remain emulated.
+Semantic `01:CCD5@all` replaces 5,819 of the 66,523 near-target geometry
+calls through live-MPR ROM pointer resolution and exact atomic
+783/789/885/891-cycle transcripts. All 1,414,954 aggregate writes remain
+exact; interrupt-adjacent calls retain automatic assembly fallback until
+instruction checkpoints are added.
+Semantic `01:D500@all` replaces all 980 forward/reverse flipper phase steps
+on the route through exact 9/11-boundary, three-write, 126/138-cycle
+transcripts; endpoint and non-expiring timer paths outside the route remain
+emulated.
+Semantic `01:D081@all` replaces all 540 phase-indexed flipper geometry
+lookups through a 14-checkpoint, exact five-write, 159-cycle ROM-table
+transaction; 38 original interrupt-handler passages remain exact. The
+downstream `D09E` vector, `D612` radius, and `D62E` directional-angle
+projections are now native; the branch-heavy `D525` parent controller
+remains emulated.
+Semantic `01:C5C9@all` replaces all 2,462 shared actor-coroutine scheduler
+calls. It derives immediate installation, delayed yield, delayed installation,
+and return-page carry from live stack/slot state through exact 102-192-cycle
+transactions. Branch-sensitive checkpoints let Beetle deliver original
+interrupts inside the native transcript instead of falling back.
+Semantic `01:C3CB@all` replaces all 2,649 session/nudge checks through
+8/17/20/66/44-boundary transcripts for the exact 69-cycle session,
+177-cycle timer-decrement idle, 207-cycle timer-reload, 762-cycle
+active-start, and 522-cycle active-finish paths. The six active Button-II
+calls retain their original base-VDC port writes and wait cycles through the
+bounded replacement bus-write contract.
+Semantic `01:C49E@all` replaces all 2,649 pause/high-score session checks
+observed on the route through a seven-boundary transcript for the exact
+72-cycle no-Run-input return; pause, high-score, and transition behavior
+outside the route remains emulated.
+Semantic `00:E837@all` replaces all 894 shared signed-word negations from
+live `$2F:$30` through exact 8/9-boundary, three/four-write, 90/102-cycle
+transcripts. All 24 original interrupt-handler passages remain exact.
+Semantic `00:E624@all` replaces all 5,371 inner unsigned multiply rounds
+through state-generated 41-113-boundary transcripts. All 1,592 original
+interrupt-handler passages and 181,868 aggregate writes remain exact.
+Semantic `00:E65C@all` composes one or two of those rounds with signed
+operand normalization, nested stack boundaries, fixed-point result
+selection, and sign restoration. All 3,700 wrapper calls execute natively,
+including 2,157 calls with original handler writes; all 244,531 aggregate
+writes remain exact.
+Semantic `01:D09E@all` composes four signed multiply wrappers and one
+negation into both flipper projection outputs. All 540 calls execute
+natively, including 448 calls with original handler writes; all 168,532
+aggregate writes remain exact.
+Semantic `01:D1A2@all` composes the same child family into both indexed
+signed-rotation outputs. All 354 current route calls execute natively,
+including 296 calls with original handler writes; all 103,362 aggregate
+writes remain exact.
+Semantic `01:D612@all` composes one signed multiply into the controller's
+`$C2:$C3` radius projection. All 62 calls execute natively, including 51
+calls with original handler writes; all 6,271 aggregate writes remain exact.
+Semantic `01:D62E@all` composes the directional angle delta and one signed
+multiply into `$31:$32`. All 62 calls execute natively, including 43 calls
+with original handler writes; all 5,062 aggregate writes remain exact.
+Semantic `01:CFD8@all` covers both collision-motion clamp directions and all
+four signed scaling modes. All 354 calls execute natively, including 41
+calls with original handler writes; all 4,103 aggregate writes remain exact.
+Semantic `00:E905@all` covers signed normalization, the carry-sensitive
+16-round divider, and quotient sign restoration. All 752 calls execute
+natively, including 583 calls with original handler writes; all 52,804
+aggregate writes remain exact.
+Semantic `01:DD09@all` composes that divider for live nonzero motion axes.
+All 753 calls execute natively, including 669 calls with original handler
+writes; all 61,291 aggregate writes remain exact.
+The focused `01:D1A2@23` signed-rotation fixture,
 `01:DD09@1` zero-component acceleration, `01:DD09@2` positive-divider
 damping, `01:DD09@181` negative-divider damping, `00:F1B4@1` nonnegative
 integration, `00:F1B4@10` integer-step
@@ -3609,9 +4025,9 @@ write-order, and complete-RAM parity. Positive-state repeated passes and the
 reverse-oriented `SMB0 $35` record class remain frozen with the collision
 interpreter. Calls reaching the conservative user/video-event or
 serviceable-timer-IRQ horizon—including ordinals 11 and 13—fall back
-automatically. Unimplemented semantic paths and interrupt-bearing
-`DD09@52` and `D1A2@1` remain emulated; direct `7FB1@2` stays rejected as
-an interrupt-bearing fixture while `7FB1@all` falls back dynamically.
+automatically. Unimplemented collision-interpreter semantic paths remain
+emulated; checkpointed `DD09@all`, `D1A2@all`, and `7FB1@all` now cover
+every observed damping, rotation, and response call.
 
 Milestone 2 is complete. Milestone 3 now has the copied-video boundary,
 directional `00:F400` stream map, packed-source decoder, accepted
@@ -3694,27 +4110,41 @@ work RAM, audio, camera scopes, and ordered writes remain identical. That
 visual difference must be explained or normalized before this route becomes a
 single cross-configuration framebuffer golden. The normalized replay boundary
 removes frontend frame placement from deterministic no-interrupt call
-comparison. Broad replacement of interrupt-bearing calls remains blocked on
-faithful mid-routine interrupt delivery; the bridge deliberately declines
-those calls today. This is a Milestone 4 replacement constraint and does not
-block Milestone 2 closure or replacement of separately proven no-interrupt
-scopes. `03:6966@11` enters through `03:69A2` / `00:FC26`, while
-`03:6966@13` shifts interrupt-owned stores beginning near `03:69B7`; both
-remain emulated until that delivery boundary exists. Semantic
-`00:F1B4@all` and `00:F241@all` use the core-provided event/IRQ horizons;
-calls that could cross an internal delivery boundary remain in assembly
-automatically.
-`01:DD09@52` is also interrupt-bearing: normalized replay identifies
-interrupt-owned stack and controller writes through `00:E058/E169`, even
-though its natural trace does not enter the previously catalogued
-`FCxx/FDxx` handler range. Keep it emulated until faithful mid-routine
-delivery exists.
+comparison. Faithful checkpointed mid-routine interrupt delivery is now
+available and proven by all 540 `01:D081` calls. Other interrupt-bearing
+routines are no longer bridge-blocked, but each still needs an exact
+instruction-boundary transcript for its implemented semantic branch.
+`03:6966@11` enters through `03:69A2` / `00:FC26`, while `03:6966@13`
+shifts interrupt-owned stores beginning near `03:69B7`; both remain emulated
+until their corresponding semantic paths supply checkpoints. Checkpointed
+`00:F1B4@all` and `00:F241@all` now cover every integration and rollback
+call in their 1,560-call position pipeline.
+`01:DD09@52` demonstrated that interrupt-owned stack and controller writes
+can enter through `00:E058/E169` even when a natural trace does not visit the
+previously catalogued `FCxx/FDxx` handler range. Semantic `00:E905@all` and
+its `01:DD09@all` parent now supply those instruction checkpoints, so this
+call and every other observed damping call execute natively.
+The downstream flipper projection `01:D09E` is now fully native across all
+540 calls. Its 5,328-33,471-cycle observed range is explained by original
+interrupt handlers retained through the composed `E65C`/`E837` checkpoints.
+The fixed checkpoint capacity is 2,048 for this bounded parent while the
+independent write capacity remains 512.
+The same write bound explains the two `01:D466` fallbacks: their current-slot
+paths enter `D525` at frames 1,820 and 2,255 and emit 823/868 writes. They
+remain part of the `D525` decomposition boundary rather than an unresolved
+`D466` branch.
+The shared signed multiply wrapper `00:E65C` is now fully native across all
+3,700 route calls by composing the existing semantic `E624` transaction.
+Its 921-27,306-cycle observed range is explained by original interrupt
+handlers retained through exact instruction checkpoints. Adjacent helpers `E807`,
+`E813`, `E825`, and `E85D` were not entered by the deterministic route and
+remain emulated until a natural caller is reproduced.
 Undead-Head launch consumer `03:6177` is dynamically bounded through fixed
 slot `$4D`, but its 5,778-cycle combined-route scope contains a periodic
 interrupt. Its RNG-owned writes are deterministic, while normalized replay
 still detects shifted interrupt-owned writes. Keep it out of replacement
-coverage until faithful mid-routine delivery exists or a separately proven
-no-interrupt invocation is reproduced.
+coverage until its native semantic path supplies checkpoints or a separately
+proven no-interrupt invocation is reproduced.
 The frame-1,300 forced-entry bonus route starts result coroutine `04:456C`
 before a newly selected stage controller can finish shared completion
 animation `04:44DB-4560`; result startup then stops stage-actor scheduling.

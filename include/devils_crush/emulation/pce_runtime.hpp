@@ -122,9 +122,10 @@ struct RoutineEntry {
     std::uint64_t frame_number = 0;
     std::uint32_t master_cycle = 0;
     std::uint64_t absolute_master_cycle = 0;
-    // A broad native body must finish strictly before the user/video event
-    // or serviceable timer-IRQ boundary. Separating these clocks allows
-    // semantic replacements to cross harmless timer-divider ticks.
+    // Atomic native bodies must finish strictly before the user/video event
+    // or serviceable timer-IRQ boundary. A checkpointed transcript may cross
+    // these horizons because the core samples and delivers interrupts at its
+    // declared original instruction boundaries.
     std::uint32_t master_cycles_until_user_event =
         std::numeric_limits<std::uint32_t>::max();
     std::uint32_t master_cycles_until_timer_interrupt =
@@ -145,6 +146,16 @@ struct ReplacementMemoryWrite {
         const ReplacementMemoryWrite&) const = default;
 };
 
+struct ReplacementCheckpoint {
+    std::uint32_t interrupt_sample_master_cycle_offset = 0;
+    std::uint32_t master_cycle_offset = 0;
+    RoutineKey instruction;
+    CpuRegisters registers;
+
+    [[nodiscard]] bool operator==(
+        const ReplacementCheckpoint&) const = default;
+};
+
 struct RoutineReplacement {
     // The core advances to this routine's outer RTS after applying the
     // transaction. The RTS itself remains emulated, preserving stack and
@@ -152,7 +163,15 @@ struct RoutineReplacement {
     RoutineKey return_instruction;
     CpuRegisters output_registers;
     std::uint32_t body_master_cycles = 0;
+    // Legacy name: entries may target ordinary work RAM (physical bank F8)
+    // or the four base VDC ports on the PC Engine hardware page (physical
+    // bank FF, logical $0000-$0003). Hardware-page writes are used only for
+    // bounded, trace-locked device-register paths.
     std::vector<ReplacementMemoryWrite> work_ram_writes;
+    // Optional instruction-boundary transcript. When present, the core
+    // advances one checkpoint at a time so original interrupt handlers can
+    // preempt and return between native segments.
+    std::vector<ReplacementCheckpoint> checkpoints;
 };
 
 using ReplacementHookCallback = std::function<

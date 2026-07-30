@@ -983,9 +983,12 @@ private:
 
             const auto& result = *replacement;
             const auto write_count = result.work_ram_writes.size();
+            const auto checkpoint_count = result.checkpoints.size();
             const auto resume_segment =
                 result.return_instruction.logical_pc >> 13U;
             if (write_count > DC_BEETLE_MAX_REPLACEMENT_WRITES
+                || checkpoint_count
+                    > DC_BEETLE_MAX_REPLACEMENT_CHECKPOINTS
                 || result.output_registers.program_counter
                     != result.return_instruction.logical_pc
                 || result.output_registers.mpr[resume_segment]
@@ -997,14 +1000,41 @@ private:
             std::uint32_t previous_cycle = 0;
             for (const auto& write : result.work_ram_writes) {
                 const auto segment = write.logical_address >> 13U;
+                const auto physical_bank = state->mpr[segment];
+                const bool bounded_vdc_port =
+                    physical_bank == 0xFFU
+                    && write.logical_address <= 0x0003U;
                 if (write.master_cycle_offset < previous_cycle
                     || write.master_cycle_offset
                         > result.body_master_cycles
-                    || state->mpr[segment] != 0xF8U) {
+                    || (physical_bank != 0xF8U
+                        && !bounded_vdc_port)) {
                     throw std::runtime_error(
                         "Replacement hook returned an invalid write.");
                 }
                 previous_cycle = write.master_cycle_offset;
+            }
+
+            previous_cycle = 0;
+            for (const auto& checkpoint : result.checkpoints) {
+                if (checkpoint.interrupt_sample_master_cycle_offset
+                        < previous_cycle
+                    || checkpoint.interrupt_sample_master_cycle_offset
+                        > checkpoint.master_cycle_offset
+                    || checkpoint.master_cycle_offset
+                        > result.body_master_cycles) {
+                    throw std::runtime_error(
+                        "Replacement hook returned an invalid checkpoint.");
+                }
+                previous_cycle = checkpoint.master_cycle_offset;
+            }
+            if (!result.checkpoints.empty()
+                && (previous_cycle != result.body_master_cycles
+                    || result.checkpoints.back().registers
+                        != result.output_registers)) {
+                throw std::runtime_error(
+                    "Replacement hook returned an incomplete checkpoint "
+                    "transcript.");
             }
 
             core_result->resume_logical_pc =
@@ -1039,6 +1069,39 @@ private:
             }
             core_result->writes =
                 runtime->replacement_writes_.data();
+            core_result->checkpoint_count =
+                static_cast<std::uint32_t>(checkpoint_count);
+            for (std::size_t index = 0;
+                 index < checkpoint_count;
+                 ++index) {
+                const auto& checkpoint = result.checkpoints[index];
+                auto& core_checkpoint =
+                    runtime->replacement_checkpoints_[index];
+                core_checkpoint.interrupt_sample_master_cycle_offset =
+                    checkpoint.interrupt_sample_master_cycle_offset;
+                core_checkpoint.master_cycle_offset =
+                    checkpoint.master_cycle_offset;
+                core_checkpoint.instruction_logical_pc =
+                    checkpoint.instruction.logical_pc;
+                core_checkpoint.instruction_physical_bank =
+                    checkpoint.instruction.physical_bank;
+                core_checkpoint.resume_logical_pc =
+                    checkpoint.registers.program_counter;
+                core_checkpoint.accumulator =
+                    checkpoint.registers.accumulator;
+                core_checkpoint.x = checkpoint.registers.x;
+                core_checkpoint.y = checkpoint.registers.y;
+                core_checkpoint.stack_pointer =
+                    checkpoint.registers.stack_pointer;
+                core_checkpoint.status =
+                    checkpoint.registers.status;
+                std::copy(
+                    checkpoint.registers.mpr.begin(),
+                    checkpoint.registers.mpr.end(),
+                    core_checkpoint.mpr);
+            }
+            core_result->checkpoints =
+                runtime->replacement_checkpoints_.data();
             core_result->handled = 1U;
         } catch (...) {
             runtime->callback_failed_ = true;
@@ -1414,6 +1477,10 @@ private:
         dc_beetle_replacement_write,
         DC_BEETLE_MAX_REPLACEMENT_WRITES>
         replacement_writes_{};
+    std::array<
+        dc_beetle_replacement_checkpoint,
+        DC_BEETLE_MAX_REPLACEMENT_CHECKPOINTS>
+        replacement_checkpoints_{};
     int framebuffer_width_ = 0;
     int framebuffer_height_ = 0;
     std::uint64_t frame_number_ = 0;
