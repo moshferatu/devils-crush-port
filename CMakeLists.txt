@@ -46,6 +46,7 @@ add_library(
     src/render/pce_background.cpp
     src/render/pce_sprite_overlay.cpp
     src/render/sharp_pixel_scaler.cpp
+    src/render/title_logo.cpp
 )
 
 add_library(DevilsCrush::Core ALIAS dc_core)

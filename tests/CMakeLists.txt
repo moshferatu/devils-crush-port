@@ -8,6 +8,11 @@ add_executable(
     video_snapshot_tests.cpp
 )
 
+add_executable(
+    dc_title_logo_tests
+    title_logo_tests.cpp
+)
+
 target_link_libraries(
     dc_core_tests
     PRIVATE
@@ -23,10 +28,18 @@ target_link_libraries(
         DevilsCrush::Emulation
 )
 
+target_link_libraries(
+    dc_title_logo_tests
+    PRIVATE
+        DevilsCrush::Core
+)
+
 target_compile_features(dc_core_tests PRIVATE cxx_std_20)
 dc_enable_strict_warnings(dc_core_tests)
 target_compile_features(dc_video_snapshot_tests PRIVATE cxx_std_20)
 dc_enable_strict_warnings(dc_video_snapshot_tests)
+target_compile_features(dc_title_logo_tests PRIVATE cxx_std_20)
+dc_enable_strict_warnings(dc_title_logo_tests)
 
 add_test(NAME dc_core_tests COMMAND dc_core_tests)
 
@@ -419,6 +432,15 @@ if(TARGET devils_crush)
         )
         set_tests_properties(
             dc_rom_video_snapshot
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_title_logo
+            COMMAND dc_title_logo_tests "${DC_ROM_PATH}"
+        )
+        set_tests_properties(
+            dc_rom_title_logo
             PROPERTIES LABELS rom_required
         )
 

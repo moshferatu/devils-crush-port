@@ -1,6 +1,6 @@
 # Cabinet Preview
 
-Last updated: 2026-07-28
+Last updated: 2026-07-30
 
 ## Current vertical slice
 
@@ -9,11 +9,11 @@ windows:
 
 1. A resizable portrait playfield. This is the required host window and owns
    input, fullscreen toggling, and the fixed sharp-scaling pipeline.
-2. A resizable, non-focusable DMD. It draws the active stored score as
-   monitor-resolution seven-segment digits.
-3. A resizable, non-focusable backglass. It displays the persisted PNG, JPEG,
-   or WebP image with aspect-preserving sharp containment, or black when no
-   valid image is selected.
+2. A resizable, non-focusable DMD. It draws the stored score as
+   monitor-resolution seven-segment digits in frontend and gameplay states.
+3. A resizable, non-focusable backglass. It displays the native animated
+   Devil's Crush logo with aspect-preserving sharp containment. A persisted
+   PNG, JPEG, or WebP remains available only as a nonfatal fallback.
 
 Failure or closure of the DMD or backglass does not stop emulation. The
 playfield remains the lifecycle owner, so auxiliary windows cannot steal
@@ -34,6 +34,9 @@ in `TABLE_BACKGROUND.md`. Its pixel-aspect-correct presentation ratio is
 ```text
 (256 * 5 / 4) : 668 = 80 : 167
 ```
+
+The playfield's unused surround is cleared explicitly to RGB 0,0,0 before
+each presentation so letterboxing remains true black on emissive displays.
 
 The host decodes the packed ROM tile map and work-RAM palette attributes
 against the current copied VRAM/VCE state, then crops source rows 20-687.
@@ -114,7 +117,7 @@ titles carry the controls:
 - Left and Right cycle the selected role across currently connected displays.
 - F toggles borderless fullscreen for that role.
 - B opens the native PNG/JPEG/WebP backglass picker.
-- Delete clears the selected backglass and restores black.
+- Delete clears the selected static backglass fallback.
 - Enter, Escape, or F12 saves the assignments and resumes emulation.
 
 The host atomically stores `portable-data/cabinet.ini` after assignment and
@@ -129,22 +132,35 @@ playfield-only degradation when an auxiliary cannot be created.
 The bounded `--cabinet-smoke-test` uses safe defaults and deliberately does
 not read or write this user configuration.
 
-## Backglass image boundary
+## Backglass animation and image fallback
 
 `--backglass <image>` supplies a scripted selection; the F12 screen's B key
 provides the interactive equivalent. Successful selections are stored as
-UTF-8 in `portable-data/cabinet.ini` and loaded immediately.
+UTF-8 in `portable-data/cabinet.ini` and retained as the fallback used only
+when the native animation cannot be decoded or rendered.
 
 The loader recognizes PNG, JPEG, and WebP from file content rather than the
 extension. It rejects missing or empty files, files over 64 MiB, unsupported
 content, dimensions above 16384 pixels on either side, and decoded images
-above 64 megapixels. Failures are nonfatal and leave the backglass black.
+above 64 megapixels. Failures are nonfatal and leave black as the final
+fallback.
 
 Valid images are contained at their source aspect ratio against black. They
 use the same integer-nearest staging and controlled final linear resolve as
 the playfield, so pixel-art backglasses retain the fixed sharp policy. A
 backglass renderer reset reloads the persisted source; closing or losing that
 window still does not affect emulation.
+
+## Native backglass logo
+
+The backglass uses a native, ROM-derived title-logo renderer. It
+decodes the five original compressed graphic streams once, resolves the two
+title palettes and eye palette directly from the cartridge, and reproduces
+the mapped 64-frame palette and four-sprite eye cycle. The renderer does
+not crop the emulated framebuffer or read live VRAM/SAT state. Its curated
+216-by-152 logo crop preserves the complete lettering while omitting the
+trademark glyphs, and is presented against black through the fixed sharp
+scaler with the PCE's pixel aspect preserved.
 
 ## DMD state
 

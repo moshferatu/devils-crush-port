@@ -11,6 +11,7 @@
 #include "devils_crush/render/pce_background.hpp"
 #include "devils_crush/render/pce_sprite_overlay.hpp"
 #include "devils_crush/render/sharp_pixel_scaler.hpp"
+#include "devils_crush/render/title_logo.hpp"
 
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
@@ -45,6 +46,11 @@ namespace {
 
 constexpr std::uint32_t kDisplayAspectNumerator = 4U;
 constexpr std::uint32_t kDisplayAspectDenominator = 3U;
+constexpr std::array<std::uint8_t, 3> kPureBlack{0U, 0U, 0U};
+constexpr std::array<std::uint8_t, 3> kDesktopFrameColor{
+    8U,
+    8U,
+    12U};
 constexpr double kEmulationFramesPerSecond = 59.8261;
 constexpr int kSmokeTestFrames = 10;
 constexpr int kCanonicalRecordingFrames = 600;
@@ -4123,8 +4129,20 @@ int run_windows_host(
     SDL_Gamepad* gamepad = open_first_gamepad();
     SourceTexture source;
     StageTexture stage;
+    SourceTexture backglass_logo_source;
+    StageTexture backglass_logo_stage;
     SourceTexture backglass_source;
     StageTexture backglass_stage;
+    auto backglass_logo =
+        cabinet_rom
+        ? devils_crush::render::TitleLogoAnimation::decode(
+              *cabinet_rom)
+        : std::nullopt;
+    if (cabinet_mode && !backglass_logo) {
+        std::cerr
+            << "Native title-logo decode failed; the backglass will "
+               "use its static fallback.\n";
+    }
     if (effective_backglass_path) {
         const bool loaded =
             backglass.renderer != nullptr
@@ -4144,6 +4162,7 @@ int run_windows_host(
     devils_crush::render::PersistentActorSpriteCache
         persistent_actor_sprites;
     std::uint64_t dmd_score = 0U;
+    std::uint64_t backglass_logo_frame = 0U;
     bool assignment_active = false;
     bool backglass_dialog_open = false;
     auto assignment_role = AssignmentRole::playfield;
@@ -4246,6 +4265,8 @@ int run_windows_host(
                         backglass.window,
                         host_displays,
                         cabinet_config.backglass);
+                    destroy_stage(backglass_logo_stage);
+                    destroy_source(backglass_logo_source);
                     destroy_stage(backglass_stage);
                     destroy_source(backglass_source);
                     destroy_auxiliary_window(backglass);
@@ -4412,6 +4433,7 @@ int run_windows_host(
                     backglass.window != nullptr
                     && event.render.windowID
                         == SDL_GetWindowID(backglass.window)) {
+                    destroy_stage(backglass_logo_stage);
                     destroy_stage(backglass_stage);
                 }
             } else if (event.type == SDL_EVENT_RENDER_DEVICE_RESET) {
@@ -4423,6 +4445,8 @@ int run_windows_host(
                     backglass.window != nullptr
                     && event.render.windowID
                         == SDL_GetWindowID(backglass.window)) {
+                    destroy_stage(backglass_logo_stage);
+                    destroy_source(backglass_logo_source);
                     destroy_stage(backglass_stage);
                     destroy_source(backglass_source);
                     if (!cabinet_config.backglass_path.empty()) {
@@ -4461,6 +4485,24 @@ int run_windows_host(
                         work_ram);
                 if (cabinet_state) {
                     dmd_score = cabinet_state->displayed_score;
+                }
+                if (backglass_logo
+                    && backglass.renderer != nullptr) {
+                    const auto logo =
+                        backglass_logo->render(
+                            backglass_logo_frame++);
+                    if (!logo
+                        || !upload_image(
+                            backglass.renderer,
+                            *logo,
+                            backglass_logo_source)) {
+                        std::cerr
+                            << "Native backglass logo renderer "
+                               "failed; using the static fallback.\n";
+                        backglass_logo.reset();
+                        destroy_stage(backglass_logo_stage);
+                        destroy_source(backglass_logo_source);
+                    }
                 }
 
                 table_view = false;
@@ -4531,7 +4573,8 @@ int run_windows_host(
                     source,
                     stage,
                     aspect_numerator,
-                    aspect_denominator);
+                    aspect_denominator,
+                    cabinet_mode ? kPureBlack : kDesktopFrameColor);
             }
         }
         if (running && dmd.renderer != nullptr
@@ -4550,6 +4593,18 @@ int run_windows_host(
                         backglass.renderer,
                         AssignmentRole::backglass,
                         assignment_role == AssignmentRole::backglass)
+                    : backglass_logo_source.texture != nullptr
+                        ? present_frame(
+                            backglass.renderer,
+                            backglass_logo_source,
+                            backglass_logo_stage,
+                            static_cast<std::uint32_t>(
+                                devils_crush::render::
+                                    kTitleLogoWidth * 5),
+                            static_cast<std::uint32_t>(
+                                devils_crush::render::
+                                    kTitleLogoHeight * 4),
+                            kPureBlack)
                     : backglass_source.texture != nullptr
                         ? present_frame(
                             backglass.renderer,
@@ -4559,11 +4614,13 @@ int run_windows_host(
                                 backglass_source.width),
                             static_cast<std::uint32_t>(
                                 backglass_source.height),
-                            {0U, 0U, 0U})
+                            kPureBlack)
                         : present_black(backglass))) {
             std::cerr
                 << "Cabinet backglass renderer lost; disabling "
                    "backglass.\n";
+            destroy_stage(backglass_logo_stage);
+            destroy_source(backglass_logo_source);
             destroy_stage(backglass_stage);
             destroy_source(backglass_source);
             destroy_auxiliary_window(backglass);
@@ -4579,6 +4636,8 @@ int run_windows_host(
     destroy_audio(audio);
     destroy_stage(stage);
     destroy_source(source);
+    destroy_stage(backglass_logo_stage);
+    destroy_source(backglass_logo_source);
     destroy_stage(backglass_stage);
     destroy_source(backglass_source);
     if (gamepad != nullptr) {

@@ -748,7 +748,7 @@ progression, and group regeneration remain ROM-bounded.
 | --- | --- | --- |
 | 1. Emulated Windows baseline | Complete | Verified ROM runs through the pinned Beetle PCE fork with SDL3 video, audio, input, saves, and sharp monitor-resolution scaling |
 | 2. Instrumentation and hook bridge | Complete | Required game state is mapped and original routines can be observed, shadow-tested, and replaced |
-| 3. Cabinet preview | In progress | Three-window cabinet mode shows the stitched playfield, score DMD, black backglass fallback, assigned displays, and playfield-hosted bonus stages |
+| 3. Cabinet preview | In progress | Three-window cabinet mode shows the stitched playfield, score DMD, native animated-logo backglass, assigned displays, and playfield-hosted bonus stages |
 | 4. Native gameplay port | In progress | Physics, collisions, RNG, scoring, table rules, bonus stages, and session transitions execute natively |
 | 5. Final cabinet world model | Not started | Desktop and cabinet profiles share the same native gameplay state without divergence |
 | 6. Release hardening | Not started | Tested, documented, ROM-free Windows x64 package is ready for release |
@@ -757,6 +757,22 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
 
 ## Completed
 
+- [x] Replaced the backglass's static presentation with a native animated
+  Devil's Crush title logo and restored the DMD to score-only presentation:
+  - Mapped and decoded the five original compressed ROM graphic streams,
+    two title palettes, eye palette, and four eye-sprite descriptors.
+  - Reproduced the settled 64-frame palette/eye cycle without reading or
+    cropping the emulated framebuffer and without a live VRAM/SAT dependency.
+  - Presented the animation continuously on the backglass, retained the
+    configured static image as a failure fallback, kept the DMD on its native
+    score path throughout, and retained the PCE pixel aspect through the fixed
+    sharp scaler.
+  - Extended the native crop through the complete `Crush` lettering and
+    tightened its right edge before the title screen's trademark glyphs.
+  - Changed the cabinet playfield's unused surround from RGB `8,8,12` to
+    explicit RGB `0,0,0` for true-black OLED letterboxing.
+  - Added exact ROM-backed frame goldens and passed core, title-logo, and
+    dummy-driver three-window cabinet smoke coverage.
 - [x] Inspected and identified the repository contents.
 - [x] Confirmed the ROM as the supported USA image:
   - Size: 393,216 bytes
@@ -3736,6 +3752,8 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
   - [x] Define the actor/sprite overlay inputs required for the final
     cabinet playfield composite.
 - [x] Add the cabinet playfield, DMD, and backglass windows.
+- [x] Render the native ROM-derived animated title logo continuously on the
+  backglass and retain the score-only DMD throughout.
 - [ ] Add display assignment and finish playfield composition:
   - [x] Switch bonus stages and non-gameplay presentation back to the
     emulated framebuffer.
@@ -4122,8 +4140,11 @@ proves the eight Sorcerers continue changing position after leaving their
 region. Actor presentation Y is normalized past the 30-line status band,
 the stitched background retains a zero-pixel vertical offset across launch,
 and retained palette indices follow the settled VCE palette instead of
-freezing fade-time colors. Two-player/DMD work is explicitly deferred again at the user's
-request; Milestone 4 proceeds without that discriminator.
+freezing fade-time colors. The backglass now renders the mapped title logo
+through a native ROM-derived 64-frame animation while the DMD retains its
+score-only presentation. Only the two-player DMD
+discriminator remains deferred at the user's request; Milestone 4 proceeds
+without that discriminator.
 `$2251` remains proven only as the active score-array selector. The finite
 dynamic/static/deferred scope remains frozen in
 `docs/COVERAGE_MANIFEST.md`.
@@ -4228,7 +4249,8 @@ blocking mapping.
   - Full stitched table on the playfield monitor.
   - Bonus stages on the playfield monitor in place of the table.
   - Score on the DMD monitor.
-  - User-selected static image on the backglass monitor.
+  - Native animated Devil's Crush logo on the backglass monitor, with a
+    user-selected static image as a failure fallback.
 - Initial cabinet input supports keyboard/controllers and semantic feedback hooks; physical DMD, DOF, and SSF support are deferred.
 
 ## Progress Update Template

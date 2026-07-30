@@ -151,7 +151,7 @@ struct FrameEvents {
 - Preserve aspect ratio:
   - Desktop and bonus scenes occupy the largest correct PCE-aspect rectangle.
   - The full table fits completely by height.
-  - Remaining space receives a neutral dark frame.
+  - Remaining space receives a pure RGB 0,0,0 black frame.
 - Do not provide nearest-only, conventional bilinear, CRT, scanline, smoothing, stretch, or crop options in v1.
 - Render DMD text, setup UI, and framing directly at monitor resolution.
 - Support landscape and portrait 1080p, 1440p, and 4K displays. See the [SDL3 window documentation](https://wiki.libsdl.org/SDL3/SDL_CreateWindow).
@@ -178,9 +178,12 @@ Use three independently positioned borderless SDL windows:
    - Continue updating during bonus stages.
 
 3. **Backglass**
-   - Persistently display a user-selected PNG, JPEG, or WebP.
-   - Scale it with aspect-preserving containment and the same sharp scaling policy when pixel art is supplied.
-   - Fall back to black when no image exists.
+   - Persistently display a native ROM-derived animation of the title-screen
+     Devil's Crush logo.
+   - Preserve a user-selected PNG, JPEG, or WebP as a fallback if native logo
+     decoding or rendering fails.
+   - Scale both paths with aspect-preserving containment and the same sharp
+     scaling policy.
 
 The full-table renderer will:
 
@@ -296,8 +299,9 @@ Provide an interactive monitor-assignment screen and persist display identity, g
   - The first `--cabinet` vertical slice now creates non-focusable DMD and
     backglass auxiliaries, renders the accepted full-table background during
     normal sessions, restores the emulated framebuffer for menus and bonus
-    stages, displays the live score, and degrades to playfield-only operation
-    when an auxiliary closes or fails.
+    stages, displays the live score on the DMD and a native ROM-derived
+    animated logo on the backglass, and
+    degrades to playfield-only operation when an auxiliary closes or fails.
   - Display identities, window geometry fallbacks, current monitor rotation,
     and fullscreen state are now persisted atomically. The F12 assignment
     screen pauses emulation, color-identifies the three roles, cycles each
@@ -592,8 +596,8 @@ Provide an interactive monitor-assignment screen and persist display identity, g
   - Entire table visible without scrolling.
   - Equivalent crops matching original views.
   - Bonus stages replacing the playfield view.
-  - Score remaining on the DMD.
-  - Backglass remaining unchanged.
+  - Score remaining live on the DMD throughout frontend and gameplay states.
+  - Native animated title logo remaining live on the backglass.
   - Auxiliary windows never stealing controls.
   - Monitor reorder or loss degrading gracefully.
 
