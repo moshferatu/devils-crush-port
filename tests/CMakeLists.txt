@@ -2494,6 +2494,134 @@ if(TARGET devils_crush)
         )
 
         add_test(
+            NAME dc_rom_upper_wall_pocket_hand_expiry
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/upper-wall-pocket-hand-expiry-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_upper_wall_pocket_hand_expiry.cmake"
+        )
+        set_tests_properties(
+            dc_rom_upper_wall_pocket_hand_expiry
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_upper_wall_pocket_hand_opening
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/upper-wall-pocket-hand-opening-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_upper_wall_pocket_hand_opening.cmake"
+        )
+        set_tests_properties(
+            dc_rom_upper_wall_pocket_hand_opening
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_upper_wall_pocket_hand_guard
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/upper-wall-pocket-hand-guard-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_upper_wall_pocket_hand_guard.cmake"
+        )
+        set_tests_properties(
+            dc_rom_upper_wall_pocket_hand_guard
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_upper_wall_pocket_hand_close
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/upper-wall-pocket-hand-close-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_upper_wall_pocket_hand_close.cmake"
+        )
+        set_tests_properties(
+            dc_rom_upper_wall_pocket_hand_close
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_four_star_wall_pocket_collision
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/four-star-wall-pocket-collision-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_four_star_wall_pocket_collision.cmake"
+        )
+        set_tests_properties(
+            dc_rom_four_star_wall_pocket_collision
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_four_star_wall_pocket_matching
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/four-star-wall-pocket-matching-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_four_star_wall_pocket_matching.cmake"
+        )
+        set_tests_properties(
+            dc_rom_four_star_wall_pocket_matching
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_upper_wall_pocket_hand_opening_followup
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/upper-wall-pocket-hand-opening-followup-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_upper_wall_pocket_hand_opening_followup.cmake"
+        )
+        set_tests_properties(
+            dc_rom_upper_wall_pocket_hand_opening_followup
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_upper_wall_pocket_hand_opening_expiry
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/upper-wall-pocket-hand-opening-expiry-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_upper_wall_pocket_hand_opening_expiry.cmake"
+        )
+        set_tests_properties(
+            dc_rom_upper_wall_pocket_hand_opening_expiry
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
             NAME dc_rom_upper_wall_pocket_hand_response_rng
             COMMAND
                 "${CMAKE_COMMAND}"

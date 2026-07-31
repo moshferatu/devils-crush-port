@@ -2911,7 +2911,9 @@ marker `4C78`, and start with timer 1. Their no-hit state decrements a
 four-tick timer and cycles appearance `$3980,X` through 0-3. The route
 contains 1,748 steady calls, split evenly between the two slots. It records
 1,748 timer decrements, 438 timer reloads and appearance increments, and 146
-appearance resets. No helmet collision occurs.
+appearance resets. No helmet collision occurs. Semantic `02:4C91@all` now
+replaces all of these steady calls, preserving the three observed 66/135/144
+master-cycle paths and leaving collision activation in assembly.
 
 The exact inactive collision path first evaluates current score and the
 `$2D16/$2D17/$2D0D` special-condition state, then clears transformation
@@ -3070,10 +3072,12 @@ The countdown starts at `$0132` on frame 1,222, borrows the high byte at
 frame 1,273, and reaches `$0008` when the actor leaves the active window at
 frame 1,520. The route does not force a collision or opening transition.
 
-The capture contains 22 shared RNG calls. Twenty complete in 282 master
-cycles with eight writes. Calls at frames 1,285 and 1,297 contain periodic
-interrupts, taking 939/1,029 cycles and 20/22 scoped writes while preserving
-the same eight RNG-owned writes. `tools/Analyze-UpperWallPocketHandRngSemantics.ps1`
+The original mapping capture contains 22 shared RNG calls. Twenty complete in
+282 master cycles with eight writes. Calls at frames 1,285 and 1,297 contain
+periodic interrupts, taking 939/1,029 cycles and 20/22 scoped writes while
+preserving the same eight RNG-owned writes. The current native parent
+regression asserts the embedded eight-write recurrence directly while avoiding
+duplicate nested observer records. `tools/Analyze-UpperWallPocketHandRngSemantics.ps1`
 and `dc_rom_upper_wall_pocket_hand_rng` guard activation, live/consumer call
 contracts, all RNG recurrences, timer construction, continuation, and
 countdown. Debug and Release have distinct framebuffer census hashes but
@@ -3117,6 +3121,206 @@ framebuffer census hashes but byte-identical semantic artifacts:
 | Call | `7c6e516e4b053b490d59b4c16c1b84f33acd539e7f748e0294cdac9676f8a5e1` |
 | Scoped write | `3be62639e568238b02878718fd0c5396a21c04b0fadd40327414bee0a8ad7932` |
 | Selected state | `678b920696aeb42bab4cfd463a371fe1d212e54f1e9845606ba2f1769572e5a8` |
+
+### Fiftieth native replacement: semantic `02:5972@all`
+
+The two fixed upper-hand initializers now execute natively. Each composes the
+existing `01:C5C9` coroutine-scheduler replacement after the `01:C018`
+transfer: the native transaction preserves the two `02:5972` stack writes,
+the scheduler's five writes, the `02:5975` dispatch pointer, and the exact
+192-cycle return. The deterministic route has exactly two calls, one for
+each of slots `$40/$41`; the delayed RNG, collision, animation, and response
+continuations remain assembly fallback. Release preserves the existing
+hand-family artifacts:
+
+- Entry SHA-256:
+  `defcf166fa1b1bf77b4e415f57d082f06f60d73d8f73afbbad036b46713062d9`
+- Call SHA-256:
+  `98595fe928d45a59437f77f804b662a67f1860c2358c649c109b48d2d420ed92`
+- Write SHA-256:
+  `1f7ce0a73fc4e1c5c9dcc3953563ea48def6dfa37b482d9e827a57cbe23f3490`
+- Selected-state SHA-256:
+  `e4521a0c6afa7d98deba96c4f21032e2ff7e702629371a2ac07b9c097bd3dc0b`
+
+### Fifty-first native replacement: semantic `02:5991@all`
+
+The delayed upper-hand timer now executes natively for the fixed hand records.
+The traced slot-`$40` route admits all 299 non-expiry calls: 292 ordinary
+75-cycle low-byte decrements, one 90-cycle high-byte borrow, and six calls
+that pause at the original instruction checkpoints for interrupt handlers.
+The independently timed close-state expiry paths remain assembly-backed. The
+trace-backed initial `$0001`-to-zero handoff is recorded below; the current
+combined parent/countdown artifact hashes are recorded with the subsequent
+live-setup replacement.
+
+### Fifty-second native replacement: semantic `02:5975@all`
+
+The traced fixed slot-`$40` live timer setup now executes natively. It hides
+the hand collision surface, composes the existing eight-write `00:E8B3` RNG
+recurrence, masks result `$73` to `$33`, stores timer `$0133`, and composes the
+existing coroutine scheduler to install `02:5991`. Its complete parent scope
+preserves 33 ordered writes and 1,323 master cycles, including the original
+parent-level IRQ that returns through `02:5983`. The focused regression records
+the parent plus countdown scopes without redundant nested observer records:
+
+- Trace SHA-256:
+  `917e2973508c58a15a7c573149a808ecf723e69e05aa75010dc3ea40817eb36e`
+- Call SHA-256:
+  `cf195dceb46c10ceceb195f202c4ed3871c127ee8d28fbad4058819fca4ca395`
+- Write SHA-256:
+  `ac951f417d75a00928fb1dd255030856345542357f0315795f74af753ebbe92d`
+- Selected-state SHA-256:
+  `664cdeb5e46aa4e1f8e2986f9cd915d9dca00456a8c268546e897abe52ebcba5`
+
+### Fifty-third native replacement: semantic `02:5991@all` zero-timer handoff
+
+A controlled route changes only the first active fixed slot-`$40` countdown
+from `$0001` to `$0000`. The native replacement follows the original
+`02:5991 -> 01:C5C9` transfer, preserves the scheduler's periodic interrupt,
+and installs continuation `02:59A5`. The first parent call remains exactly
+918 master cycles and 20 ordered writes. The focused 174-call/235-write replay
+has configuration-specific census hashes
+`9679914eeb1d06e2ada37a32cbb9d64fa7cb82c7a7adce7745cf74984b2068ed`
+(Release) and
+`6b598922dcb8e8e668c537f7461504108cf5840221cc751743021d96175f008b`
+(Debug), with shared trace/call/write/state hashes
+`0e5676d007ede57f34e878ce69b920fb8d3e112b070cd025b0f12ad38785235d`,
+`32cdc094ab4f750ed568fe93598a73b401ef0688e087d8ab66ee453835227744`,
+`0ff5459dd6105bc7a05a7313cc2de3f59c7e7db765de6ca60c59351485adf41e`, and
+`638d7d5d24d36dba5188eaefa8ae48af1b3af8275fb8b93abe1f63792f1fbbab`.
+Later independently timed close-state expiry, collision, animation, and
+response paths remain assembly-backed.
+
+### Fifty-fourth native replacement: semantic `02:59A5@all` opening transition
+
+The handoff-installed slot-`$40` continuation now executes natively when its
+scene latch is clear. It masks collision flags with `$BF`, clears the actor's
+high state bit, assigns type `$83`, writes the `$59C4` coroutine continuation,
+and submits a four-tick delay to `01:C5C9`, which leaves three ticks. The
+complete 16-write, 456-master-cycle transcript contains no interrupt and
+matches assembly exactly. `dc_rom_upper_wall_pocket_hand_opening` composes the
+existing `$0001`-to-zero parent with this continuation; its Release census,
+entry, call, write, and selected-state SHA-256 values are
+`9679914eeb1d06e2ada37a32cbb9d64fa7cb82c7a7adce7745cf74984b2068ed`,
+`9df5f42ab0789c93b6127e0d40dd029b59e6b892a5b38a5fa69c61389cb0d24d`,
+`6796cbd0ac56579f11033fa2a96aca50d6a437f1eaf82d8486af89263fe5b1af`,
+`959c00ca63264aeb7e49b95a29d5f46c62b93c112b9a3cf607996c97735e597a`, and
+`638d7d5d24d36dba5188eaefa8ae48af1b3af8275fb8b93abe1f63792f1fbbab`.
+The `$2D33`-set branch is now natively covered below; later
+close-state/collision/animation responses remain assembly-backed.
+
+### Fifty-fifth native replacement: semantic `02:59C7@all` opening follow-up
+
+The hand's observed positive-state follow-up now executes natively for fixed
+slot `$40`. It writes type `$82` and the one-tick `$3A40` timer, then composes
+`01:C5C9` to install continuation `$59DF`. The complete no-interrupt scope is
+261 master cycles with nine ordered writes and matches assembly exactly.
+`dc_rom_upper_wall_pocket_hand_opening_followup` composes the existing
+`02:5991 -> 02:59A5 -> 02:59C7` route. Its Release/Debug census hashes are
+`9679914eeb1d06e2ada37a32cbb9d64fa7cb82c7a7adce7745cf74984b2068ed` and
+`6b598922dcb8e8e668c537f7461504108cf5840221cc751743021d96175f008b`; shared
+entry/call/write/state hashes are
+`b7d9ad263c05ebcbe441dd829947f36a30571ad693a4dc5e73798b62fc27ca05`,
+`8096c9e92792beabce21640fce8a0eeb516577c91ce1b185e515723cbb08ad26`,
+`f9b54e63be8bda6487d9499589586156d0c7bc5570dbdb3cb204f2ee2bd0c1f4`, and
+`638d7d5d24d36dba5188eaefa8ae48af1b3af8275fb8b93abe1f63792f1fbbab`.
+The negative-state close loop and later close-state/collision/response paths
+remain assembly-backed.
+
+### Fifty-sixth native replacement: semantic `02:59E0@all` scheduled opening expiry
+
+The `$59DF` stack return installed by the prior follow-up is dispatched at
+`$59E0`. Fixed slot `$40` now executes all five observed entries natively:
+the first one-tick expiry resets `$3A40`, advances `$39C0` to appearance one,
+three four-to-one timer decrements return directly, and the next zero expiry
+advances appearance two before composing `00:E8B3`, `01:C021`, and `01:C5C9`.
+The terminal path retains its randomized `$3DC0` delay and `$5A07` continuation.
+The complete artifact has 33 ordered writes; its terminal call is exactly 825
+master cycles.
+
+`dc_rom_upper_wall_pocket_hand_opening_expiry` composes
+`02:5991 -> 02:59A5 -> 02:59C7 -> 02:59E0 -> 02:5A08 -> 02:5A0B -> 02:5A1B` in both
+configurations.
+Its Release/Debug census hashes are
+`9679914eeb1d06e2ada37a32cbb9d64fa7cb82c7a7adce7745cf74984b2068ed`,
+and `6b598922dcb8e8e668c537f7461504108cf5840221cc751743021d96175f008b`;
+the shared entry, call, and write hashes are
+`0c42eb69a906861a5f2e6335aa08c89a72b0a5a61bd411b5f849faf04fd4a9cb`,
+`40ead7d76cf9de8f1621ed2e31f1b4363f153f5e31e8ccb8f11a1dfac5f2ce89`, and
+`fa415070ae64c33cf45ecb5dd700a2f3e2ae873658c1f2569eb34ef7518b3232`.
+
+### Fifty-seventh native replacement: semantic `02:5A08@all` post-opening scheduler
+
+`$5A07` is the JSR return address prepared by the opening-expiry path; the
+shared coroutine scheduler invokes the following instruction at `$5A08`.
+The fixed-slot-`$40` wrapper records the JSR's `$5A0A` return on the emulated
+stack, then composes `01:C018` and native `01:C5C9`. The one observed call is
+an exact 192-master-cycle, seven-write transfer that installs `$5A0B` as the
+next actor dispatch. The `$2D33` guard is covered by the opening semantic's
+dormant branch.
+
+### Fifty-eighth native replacement: semantic `02:5A0B@all` post-opening state
+
+The installed `$5A0B` dispatch now executes natively for fixed slot `$40`.
+It writes the one-tick `$3A40` timer, preserves the `$3080` collision mark,
+records the `$5A1A` JSR stack return, and composes `01:C018` with the native
+coroutine scheduler to install `$5A1B`. The one observed call has 24 ordered
+writes and a 1,170-master-cycle transcript; its 921-cycle timer IRQ occurs
+inside the scheduler and is preserved by the composed instruction checkpoints.
+The prior six-entry family regression has exact Release/Debug censuses and
+shared entry/call/write hashes recorded above. Later collision/response paths
+remain assembly-backed.
+
+### Fifty-ninth native replacement: semantic `02:5A1B@all` post-opening countdown
+
+The fixed slot-`$40` countdown now replaces all nine observed dispatches. Six
+single-byte timer decrements return through `$5A30` in 33 cycles. Each of the
+three expiries reloads four ticks at `$5A22`; the first two consume the live
+collision counter and return in 96 cycles. The final zero counter resumes the
+existing `$5975` live/RNG setup at its exact 81-cycle boundary, keeping that
+interrupt-bearing tail in assembly. The expanded family regression observes
+16 entries and has 112 ordered writes, with its established census and shared
+trace/call/write hashes recorded above. Later collision/response paths remain
+assembly-backed.
+
+### Sixtieth native replacement: semantic `02:59A5@all` `$2D33` dormant guard
+
+The same opening semantic now covers the shared-latch branch independently of
+the opening transition. A controlled route asserts `$2D33` at frame 1,222 and
+observes all 298 fixed-slot-`$40` calls from frames 1,223 through 1,520. Each
+performs only `LDA $2D33` and a taken branch to `$59F4`: 27 master cycles, no
+game-owned writes, and exact handler-owned writes when an interrupt falls in
+the routine scope. `dc_rom_upper_wall_pocket_hand_guard` preserves Release /
+Debug census SHA-256 values
+`c12f290cd61c254e573b362ab572cb1afb19a5ddaabc27ca77bcdd19e51c71d8` and
+`5ffb267191ede4e70121638ae0198463a25e95b71582d82bb6e84457bb80248e`; shared
+trace/call/write/state hashes are
+`3e2722d448c4e22c57bb4fb6846f4e5331ff062b55a3344c2afc95b312d57b9d`,
+`d114365a0d52b054fa80394cd83a2a9d86041847c069f709d567dff02f7039d2`,
+`edb384280b11fa4cab1e6527ac1ee928d13c9dd7b2753af938d76715eef38a83`, and
+`eccef7f1968b9576f34ba291712d1e67d52cbf428c1c8c74cc12855c6d5c1df0`.
+
+### Sixty-first native replacement: semantic `02:59C7@all` negative-state close loop
+
+The shared opening-followup semantic now also owns the close-state branch.
+The controlled route points fixed slot `$40` at `$59C7` and asserts its high
+state bit at frame 1,221. The first call clears `$3840`, branches through
+`$59BF`, writes the four-tick delay, and composes `01:C5C9` to schedule the
+same continuation again. Its 1,089-master-cycle, 27-write transcript includes
+the original timer IRQ through the scheduler's instruction checkpoints. The
+two following positive-state calls retain their existing 261-cycle,
+nine-write transcripts.
+
+`dc_rom_upper_wall_pocket_hand_close` pins all three calls. Its Release/Debug
+census hashes are
+`7a3466734aa3856e9158828057ce31f7a9854d95a9ce8e9b6768b372b3bcb9df` and
+`45a7a4ef3c92924574d97666aa03cfae4f36d837e2a74efc3eec71c6ecd4fba9`; the
+shared trace/call/write/state hashes are
+`2fbfe2597e236fc6f6249f9388f61999514985c88b339cfd9c9a4a4232542096`,
+`7b7516225b1a6fe7c1612c42c386816c69cef5ca04c294b76e720e623796fb4e`,
+`4514ec8143334011d1856f0163c460ce1d454601e2763307e2a1fd08cb8d352b`, and
+`d9608965ca1ec3f589fe9e048c9598e8a77a9a18a09d1fdf7a1ea5bd973595f2`.
+Collision/access and response branches remain assembly-backed.
 
 ## Little Skulls and the Big-Star feature network
 
@@ -6097,6 +6301,86 @@ natural route exercises them.
   `a95d0c343108b107d7ec1aa3c20915540d91bb08817704776531e5696ea9b5e2`
 - Release census SHA-256:
   `9036a9de0c3c9917f47bff8c04c136a4824ec12601fb457d260aa2dfe4443490`
+
+### Forty-eighth native replacement: semantic `02:4C91@all`
+
+Both mirrored Giant-Face helmet openings first load indexed collision state
+`$3800,X`. Bit 7 remains on the original activation path; the collision-free
+route branches to `02:4CDA`, decrements `$3A00,X`, and returns at `02:4CF1`
+while the timer remains nonzero. On expiry it reloads four, increments
+`$3980,X`, and either returns below appearance three or clears the appearance
+at three.
+
+`dc_classify_giant_face_helmet_controller` exposes collision, timer, and
+appearance state for fixed `$2A/$2B` channels. The adapter admits all
+collision-free paths through instruction checkpoints for the collision read,
+branches, decrement, reload, increment, compare, and optional reset. It
+preserves the three exact non-interrupt body shapes: 66 cycles/one write,
+135 cycles/three writes, and 144 cycles/four writes.
+
+All 1,748 steady calls execute natively. Fifty-seven calls retain original
+interrupt-handler passages; the complete 1,752-call/3,558-write helmet
+artifact and selected-state trace remain byte-identical in Release and at the
+Debug family checkpoint. ROM-free coverage exercises waiting, advance, reset,
+collision fallback, truncated RAM, and invalid-slot classification. The
+score, audio, request, open-state, and ball-routing activation remains
+assembly-backed until a natural collision route is traced.
+
+- Call SHA-256:
+  `48a1a89f272e80679e859d6ecdc34d4102d864985fba5ba64bdde12d0642e64b`
+- Write SHA-256:
+  `1d70d3313ad65639066692b2721f1df8d5ffc4d041e5625a3f84fceaf3dcd4fa`
+- Debug census SHA-256:
+  `a95d0c343108b107d7ec1aa3c20915540d91bb08817704776531e5696ea9b5e2`
+- Release census SHA-256:
+  `9036a9de0c3c9917f47bff8c04c136a4824ec12601fb457d260aa2dfe4443490`
+
+### Forty-ninth native replacement: semantic `02:4A93@all`
+
+The four Wall-Pocket records first load indexed collision state at
+`02:4A93`. The controlled lower-left collision now executes the exact
+`LDA $383E` / taken `BMI $4A9B` plus selector and zero-rotation decision
+prefix natively: the non-matching arrow reaches original `$4ABB` in 144
+cycles, while the matching arrow clears `$2CFA`, loads audio command `$41`, and reaches original `$4ACF` in 171 cycles. Its shared audio helper remains assembly-backed,
+but post-audio `02:4AD2@all` composes the fixed 100-unit score and four-tick
+timer (including the score's timer IRQ); after the original `$406F` appearance
+helper, `02:4AE5@all` writes phase four and composes the scheduler handoff to
+`$4AEB`. The matching route preserves its initial timer interrupt at the
+shared 27-cycle checkpoint. The
+1,008 collision-free calls branch to the ROM-shared
+`02:4CDA` tail, decrement `$3A00,X`, reload the four-tick timer on expiry,
+and advance or reset `$3980,X` exactly as the Giant-Face helmet controller.
+
+`dc_classify_four_star_wall_pocket_controller` makes that shared
+collision/timer/appearance state explicit. The adapter supplies the distinct
+`4A93/4A96/4A98` entry checkpoints before composing the common tail's exact
+66-cycle/one-write, 135-cycle/three-write, and 144-cycle/four-write paths.
+All no-entry calls execute natively; original interrupt handlers are retained
+through the instruction checkpoints. The focused collision route has 1,168
+entries, including the 4,482-cycle access scope, and its original/native
+artifacts match exactly in both configurations. Debug and Release preserve
+the complete 1,016-call/2,036-write steady-family artifact and selected-state
+trace.
+
+- Call SHA-256:
+  `2f86b84a3997f8a84239a554ecb34523fc94c564f337ff446b8df61f91b1d64b`
+- Write SHA-256:
+  `d4fe55cf0b4b975eecd160accace5b3f0e753bf05b99b2e6a5c7b7d375f256b8`
+- Debug census SHA-256:
+  `a95d0c343108b107d7ec1aa3c20915540d91bb08817704776531e5696ea9b5e2`
+- Release census SHA-256:
+  `9036a9de0c3c9917f47bff8c04c136a4824ec12601fb457d260aa2dfe4443490`
+
+`dc_rom_four_star_wall_pocket_collision` fixes the unique collision route's
+configuration-specific census SHA-256 values to
+`d7a897a7c019c8b618176c9b92371d08f82f602b3ba17cd5fede2e8dcf0c000c`
+(Debug) and
+`53432539e70810d69ef8b3cce45cd81300749ea021f27f4fd71e8587ccfbe28e`
+(Release). Its shared trace/call/write/state SHA-256 values are
+`414300f98d17d9dfcbb29723f818de3114848e7b44c7ca87d359153de24c3526`,
+`a4e5c8e36845ab70dd128a3b2e814dfdff5cc2ae406d00336c1494b0ee13f808`,
+`f822e87f6a423a9de0d00f10ae6bea73bde54c314c734d13c740f86886ccb9fc`, and
+`a019a78ef19fc7d72e11b329aaf90bb390e50cf6728a56aa897c1a974664069a`.
 
 ## Controls-to-physics closure route
 

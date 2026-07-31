@@ -2048,6 +2048,213 @@ void test_native_giant_face_mouth_gate()
         "native 7726 rejects an out-of-range actor slot");
 }
 
+void test_native_giant_face_helmet_controller()
+{
+    std::array<std::uint8_t, 0x2000> work_ram{};
+    dc_giant_face_helmet_controller controller{};
+
+    work_ram[0x182AU] = 0x00U;
+    work_ram[0x1A2AU] = 3U;
+    work_ram[0x19AAU] = 1U;
+    check(
+        dc_classify_giant_face_helmet_controller(
+            work_ram.data(), work_ram.size(), 0x2AU, &controller)
+                != 0
+            && controller.path == DC_GIANT_FACE_HELMET_CONTROLLER_WAITING
+            && controller.decremented_timer == 2U
+            && controller.advanced_appearance == 2U,
+        "native 4C91 identifies the Giant-Face helmet timer wait");
+
+    work_ram[0x1A2AU] = 1U;
+    check(
+        dc_classify_giant_face_helmet_controller(
+            work_ram.data(), work_ram.size(), 0x2AU, &controller)
+                != 0
+            && controller.path == DC_GIANT_FACE_HELMET_CONTROLLER_ADVANCE
+            && controller.decremented_timer == 0U
+            && controller.advanced_appearance == 2U,
+        "native 4C91 identifies the Giant-Face helmet appearance advance");
+
+    work_ram[0x19AAU] = 2U;
+    check(
+        dc_classify_giant_face_helmet_controller(
+            work_ram.data(), work_ram.size(), 0x2AU, &controller)
+                != 0
+            && controller.path == DC_GIANT_FACE_HELMET_CONTROLLER_RESET
+            && controller.advanced_appearance == 3U,
+        "native 4C91 identifies the Giant-Face helmet appearance reset");
+
+    work_ram[0x182AU] = 0x80U;
+    check(
+        dc_classify_giant_face_helmet_controller(
+            work_ram.data(), work_ram.size(), 0x2AU, &controller)
+                != 0
+            && controller.path == DC_GIANT_FACE_HELMET_CONTROLLER_COLLISION,
+        "native 4C91 defers the Giant-Face helmet collision path");
+
+    check(
+        dc_classify_giant_face_helmet_controller(
+            work_ram.data(), 0x1A2AU, 0x2AU, &controller)
+            == 0,
+        "native 4C91 rejects a truncated work-RAM snapshot");
+    check(
+        dc_classify_giant_face_helmet_controller(
+            work_ram.data(), work_ram.size(), 0x80U, &controller)
+            == 0,
+        "native 4C91 rejects an out-of-range actor slot");
+}
+
+void test_native_four_star_wall_pocket_controller()
+{
+    std::array<std::uint8_t, 0x2000> work_ram{};
+    dc_four_star_wall_pocket_controller controller{};
+
+    work_ram[0x183EU] = 0x00U;
+    work_ram[0x1A3EU] = 1U;
+    work_ram[0x19BEU] = 1U;
+    check(
+        dc_classify_four_star_wall_pocket_controller(
+            work_ram.data(), work_ram.size(), 0x3EU, &controller)
+                != 0
+            && controller.path == DC_FOUR_STAR_WALL_POCKET_CONTROLLER_ADVANCE
+            && controller.decremented_timer == 0U
+            && controller.advanced_appearance == 2U,
+        "native 4A93 identifies the Four-Star Wall-Pocket appearance advance");
+
+    work_ram[0x19BEU] = 2U;
+    check(
+        dc_classify_four_star_wall_pocket_controller(
+            work_ram.data(), work_ram.size(), 0x3EU, &controller)
+                != 0
+            && controller.path == DC_FOUR_STAR_WALL_POCKET_CONTROLLER_RESET,
+        "native 4A93 identifies the Four-Star Wall-Pocket appearance reset");
+
+    work_ram[0x183EU] = 0x80U;
+    check(
+        dc_classify_four_star_wall_pocket_controller(
+            work_ram.data(), work_ram.size(), 0x3EU, &controller)
+                != 0
+            && controller.path
+                == DC_FOUR_STAR_WALL_POCKET_CONTROLLER_COLLISION,
+        "native 4A93 defers the Four-Star Wall-Pocket collision path");
+}
+
+void test_native_upper_wall_pocket_hand_initializer()
+{
+    dc_upper_wall_pocket_hand_initializer initializer{};
+    check(
+        dc_prepare_upper_wall_pocket_hand_initializer(0x40U, &initializer)
+                != 0
+            && initializer.slot == 0x40U
+            && initializer.live_dispatch == 0x5975U,
+        "native 5972 prepares the upper-left Wall-Pocket hand dispatch");
+    check(
+        dc_prepare_upper_wall_pocket_hand_initializer(0x41U, &initializer)
+                != 0
+            && initializer.slot == 0x41U
+            && initializer.live_dispatch == 0x5975U,
+        "native 5972 prepares the upper-right Wall-Pocket hand dispatch");
+    check(
+        dc_prepare_upper_wall_pocket_hand_initializer(0x42U, &initializer)
+                == 0,
+        "native 5972 rejects a non-hand actor slot");
+    check(
+        dc_prepare_upper_wall_pocket_hand_initializer(0x40U, nullptr) == 0,
+        "native 5972 rejects a null initializer output");
+}
+
+void test_native_upper_wall_pocket_hand_live_setup()
+{
+    std::array<std::uint8_t, 0x2000> work_ram{};
+    dc_upper_wall_pocket_hand_live_setup setup{};
+
+    work_ram[0x10C0U] = 0x82U;
+    work_ram[0x0080U] = 0x05U;
+    check(
+        dc_prepare_upper_wall_pocket_hand_live_setup(
+            work_ram.data(), work_ram.size(), 0x40U, 0x73U, &setup)
+                != 0
+            && setup.slot == 0x40U
+            && setup.collision_flags == 0x82U
+            && setup.hidden_collision_flags == 0xC2U
+            && setup.masked_rng == 0x33U
+            && setup.timer_low == 0x38U
+            && setup.timer_high == 0x01U
+            && setup.countdown_dispatch == 0x5991U,
+        "native 5975 hides a routed hand and derives its delayed timer");
+    check(
+        dc_prepare_upper_wall_pocket_hand_live_setup(
+            work_ram.data(), work_ram.size(), 0x42U, 0x73U, &setup)
+                == 0,
+        "native 5975 rejects a non-hand actor slot");
+    check(
+        dc_prepare_upper_wall_pocket_hand_live_setup(
+            work_ram.data(), 0x10C0U, 0x40U, 0x73U, &setup)
+                == 0,
+        "native 5975 rejects a truncated collision snapshot");
+    check(
+        dc_prepare_upper_wall_pocket_hand_live_setup(
+            work_ram.data(), work_ram.size(), 0x40U, 0x73U, nullptr)
+                == 0,
+        "native 5975 rejects a null setup output");
+}
+
+void test_native_upper_wall_pocket_hand_countdown()
+{
+    std::array<std::uint8_t, 0x2000> work_ram{};
+    dc_upper_wall_pocket_hand_countdown countdown{};
+
+    work_ram[0x1B40U] = 0x33U;
+    work_ram[0x1BC0U] = 0x01U;
+    check(
+        dc_classify_upper_wall_pocket_hand_countdown(
+            work_ram.data(), work_ram.size(), 0x40U, &countdown)
+                != 0
+            && countdown.path == DC_UPPER_WALL_POCKET_HAND_COUNTDOWN_WAITING
+            && countdown.decremented_low == 0x32U
+            && countdown.decremented_high == 0x01U
+            && countdown.remaining_timer == 0x33U,
+        "native 5991 decrements an upper-hand timer without borrowing");
+
+    work_ram[0x1B40U] = 0x00U;
+    work_ram[0x1BC0U] = 0x01U;
+    check(
+        dc_classify_upper_wall_pocket_hand_countdown(
+            work_ram.data(), work_ram.size(), 0x40U, &countdown)
+                != 0
+            && countdown.path == DC_UPPER_WALL_POCKET_HAND_COUNTDOWN_WAITING
+            && countdown.decremented_low == 0xFFU
+            && countdown.decremented_high == 0x00U
+            && countdown.remaining_timer == 0xFFU,
+        "native 5991 borrows from the high timer byte");
+
+    work_ram[0x1B40U] = 0x01U;
+    work_ram[0x1BC0U] = 0x00U;
+    check(
+        dc_classify_upper_wall_pocket_hand_countdown(
+            work_ram.data(), work_ram.size(), 0x40U, &countdown)
+                != 0
+            && countdown.path == DC_UPPER_WALL_POCKET_HAND_COUNTDOWN_HANDOFF
+            && countdown.remaining_timer == 0x00U,
+        "native 5991 identifies the scheduler-backed expiry handoff");
+
+    check(
+        dc_classify_upper_wall_pocket_hand_countdown(
+            work_ram.data(), work_ram.size(), 0x42U, &countdown)
+                == 0,
+        "native 5991 rejects a non-hand actor slot");
+    check(
+        dc_classify_upper_wall_pocket_hand_countdown(
+            work_ram.data(), 0x1BC0U, 0x40U, &countdown)
+                == 0,
+        "native 5991 rejects a truncated timer snapshot");
+    check(
+        dc_classify_upper_wall_pocket_hand_countdown(
+            work_ram.data(), work_ram.size(), 0x40U, nullptr)
+                == 0,
+        "native 5991 rejects a null countdown output");
+}
+
 void test_native_walled_star_hit_gate()
 {
     std::array<std::uint8_t, 0x2000> work_ram{};
@@ -5317,6 +5524,11 @@ int main()
     test_native_giant_face_animator_gate();
     test_native_giant_face_crown_gate();
     test_native_giant_face_mouth_gate();
+    test_native_giant_face_helmet_controller();
+    test_native_four_star_wall_pocket_controller();
+    test_native_upper_wall_pocket_hand_initializer();
+    test_native_upper_wall_pocket_hand_live_setup();
+    test_native_upper_wall_pocket_hand_countdown();
     test_native_walled_star_hit_gate();
     test_native_tower_hit_gate();
     test_native_dragon_head_hit_gate();

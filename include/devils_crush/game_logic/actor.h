@@ -358,6 +358,75 @@ typedef struct dc_giant_face_mouth_gate {
     dc_giant_face_mouth_gate_path path;
 } dc_giant_face_mouth_gate;
 
+typedef enum dc_giant_face_helmet_controller_path {
+    DC_GIANT_FACE_HELMET_CONTROLLER_COLLISION = 0,
+    DC_GIANT_FACE_HELMET_CONTROLLER_WAITING = 1,
+    DC_GIANT_FACE_HELMET_CONTROLLER_ADVANCE = 2,
+    DC_GIANT_FACE_HELMET_CONTROLLER_RESET = 3
+} dc_giant_face_helmet_controller_path;
+
+typedef struct dc_giant_face_helmet_controller {
+    uint8_t slot;
+    uint8_t collision_state;
+    uint8_t timer;
+    uint8_t decremented_timer;
+    uint8_t appearance;
+    uint8_t advanced_appearance;
+    dc_giant_face_helmet_controller_path path;
+} dc_giant_face_helmet_controller;
+
+// ROM routines 02:4C91 and 02:4A93 share the same collision gate and
+// four-tick timer/appearance tail. The latter belongs to the four Wall
+// Pockets, but has the same native state representation.
+typedef dc_giant_face_helmet_controller dc_four_star_wall_pocket_controller;
+typedef dc_giant_face_helmet_controller_path
+    dc_four_star_wall_pocket_controller_path;
+
+#define DC_FOUR_STAR_WALL_POCKET_CONTROLLER_COLLISION \
+    DC_GIANT_FACE_HELMET_CONTROLLER_COLLISION
+#define DC_FOUR_STAR_WALL_POCKET_CONTROLLER_WAITING \
+    DC_GIANT_FACE_HELMET_CONTROLLER_WAITING
+#define DC_FOUR_STAR_WALL_POCKET_CONTROLLER_ADVANCE \
+    DC_GIANT_FACE_HELMET_CONTROLLER_ADVANCE
+#define DC_FOUR_STAR_WALL_POCKET_CONTROLLER_RESET \
+    DC_GIANT_FACE_HELMET_CONTROLLER_RESET
+
+// ROM routine 02:5972 initializes the mirrored upper Wall-Pocket hand
+// records. Its coroutine return installs the delayed live dispatch 02:5975.
+typedef struct dc_upper_wall_pocket_hand_initializer {
+    uint8_t slot;
+    uint16_t live_dispatch;
+} dc_upper_wall_pocket_hand_initializer;
+
+// Native state prepared by fixed upper Wall-Pocket hand live setup 02:5975.
+typedef struct dc_upper_wall_pocket_hand_live_setup {
+    uint8_t slot;
+    uint8_t collision_flags;
+    uint8_t hidden_collision_flags;
+    uint8_t timer_base;
+    uint8_t masked_rng;
+    uint8_t timer_low;
+    uint8_t timer_high;
+    uint16_t countdown_dispatch;
+} dc_upper_wall_pocket_hand_live_setup;
+
+typedef enum dc_upper_wall_pocket_hand_countdown_path {
+    DC_UPPER_WALL_POCKET_HAND_COUNTDOWN_WAITING = 0,
+    DC_UPPER_WALL_POCKET_HAND_COUNTDOWN_HANDOFF = 1
+} dc_upper_wall_pocket_hand_countdown_path;
+
+// ROM routine 02:5991 decrements the delayed hand timer. A zero low byte
+// borrows from the high byte; reaching zero transfers to the opening state.
+typedef struct dc_upper_wall_pocket_hand_countdown {
+    uint8_t slot;
+    uint8_t timer_low;
+    uint8_t timer_high;
+    uint8_t decremented_low;
+    uint8_t decremented_high;
+    uint8_t remaining_timer;
+    dc_upper_wall_pocket_hand_countdown_path path;
+} dc_upper_wall_pocket_hand_countdown;
+
 // Native classification performed by ROM routine 00:F4FC. Empty slots are
 // unchanged. Occupied slots set camera flag bit 7 exactly when their signed
 // integer Y coordinate lies in [anchor - 48, anchor + 240).
@@ -603,6 +672,50 @@ int dc_classify_giant_face_mouth_gate(
     size_t work_ram_size,
     uint8_t slot,
     dc_giant_face_mouth_gate* gate);
+
+// Native state classification for ROM routine 02:4C91. A collision enters
+// the assembly-backed Giant-Face activation path. Otherwise each mirrored
+// helmet channel decrements its four-tick timer, advances appearance 0-3 on
+// expiry, then resets appearance after the fourth frame.
+int dc_classify_giant_face_helmet_controller(
+    const uint8_t* work_ram,
+    size_t work_ram_size,
+    uint8_t slot,
+    dc_giant_face_helmet_controller* controller);
+
+// Native state classification for ROM routine 02:4A93. Collision access
+// remains assembly-backed; collision-free Wall-Pocket calls use the shared
+// four-tick timer and appearance controller.
+int dc_classify_four_star_wall_pocket_controller(
+    const uint8_t* work_ram,
+    size_t work_ram_size,
+    uint8_t slot,
+    dc_four_star_wall_pocket_controller* controller);
+
+// Native classification for the two fixed upper Wall-Pocket hand initializers
+// at ROM routine 02:5972.
+int dc_prepare_upper_wall_pocket_hand_initializer(
+    uint8_t slot,
+    dc_upper_wall_pocket_hand_initializer* initializer);
+
+// Native classification for the fixed upper Wall-Pocket hand live setup at
+// ROM routine 02:5975. It hides the hand collision surface, masks the RNG
+// high-byte result into the low timer byte, and selects countdown 02:5991.
+int dc_prepare_upper_wall_pocket_hand_live_setup(
+    const uint8_t* work_ram,
+    size_t work_ram_size,
+    uint8_t slot,
+    uint8_t rng_result,
+    dc_upper_wall_pocket_hand_live_setup* setup);
+
+// Native classification for the fixed upper Wall-Pocket hand countdown at
+// ROM routine 02:5991. The zero-timer coroutine handoff is reported to the
+// adapter so it can remain assembly-backed until separately traced.
+int dc_classify_upper_wall_pocket_hand_countdown(
+    const uint8_t* work_ram,
+    size_t work_ram_size,
+    uint8_t slot,
+    dc_upper_wall_pocket_hand_countdown* countdown);
 
 #ifdef __cplusplus
 } // extern "C"

@@ -139,79 +139,16 @@ $calls = @(Import-TraceCsv $CallPath)
 $writes = @(Import-TraceCsv $WritePath)
 $states = @(Import-TraceCsv $StatePath)
 if (
-    $calls.Count -ne 24 -or
-    $writes.Count -ne 267 -or
+    $calls.Count -ne 300 -or
+    $writes.Count -ne 407 -or
     $states.Count -ne 4478
 ) {
     throw "Upper-hand RNG artifact populations changed."
 }
 
-$rngCalls = @($calls | Where-Object { $_.logical_pc -eq "E8B3" })
-if ($rngCalls.Count -ne 22) {
-    throw "Upper-hand route RNG population changed."
-}
-foreach ($call in $rngCalls) {
-    $expectedCycles = switch ([int] $call.sequence) {
-        14 { 939 }
-        15 { 1029 }
-        default { 282 }
-    }
-    $expectedWriteCount = switch ([int] $call.sequence) {
-        14 { 20 }
-        15 { 22 }
-        default { 8 }
-    }
-    if (
-        $call.physical_bank -ne "00" -or
-        $call.return_physical_bank -ne "00" -or
-        $call.return_instruction_pc -ne "E8E6" -or
-        [int64] $call.body_master_cycles -ne $expectedCycles -or
-        [int] $call.write_count -ne $expectedWriteCount
-    ) {
-        throw "RNG call $($call.sequence) changed its bounded contract."
-    }
-
-    $expectedPairs = @(
-        "E8B9:0042",
-        "E8C0:0043",
-        "E8C2:0042",
-        "E8C4:0043",
-        "E8CC:0042",
-        "E8D3:0043",
-        "E8DB:022B",
-        "E8E0:022A"
-    )
-    $callWrites = @(
-        $writes |
-            Where-Object {
-                [int] $_.call_sequence -eq [int] $call.sequence -and
-                $expectedPairs -contains (
-                    "$($_.instruction_logical_pc):$($_.work_ram_offset)"
-                )
-            }
-    )
-    $actualPairs = @(
-        $callWrites |
-            ForEach-Object {
-                "$($_.instruction_logical_pc):$($_.work_ram_offset)"
-            }
-    )
-    if (($actualPairs -join ",") -ne ($expectedPairs -join ",")) {
-        throw "RNG call $($call.sequence) changed direct write order."
-    }
-}
-
-$firstRng = $calls[0]
-$live = $calls[1]
-$consumer = $calls[2]
+$live = $calls[0]
 if (
-    [int] $firstRng.sequence -ne 1 -or
-    [int] $firstRng.frame -ne 1221 -or
-    $firstRng.logical_pc -ne "E8B3" -or
-    $firstRng.caller_pc -ne "597D" -or
-    $firstRng.input_x -ne "40" -or
-    $firstRng.output_a -ne "73" -or
-    [int] $live.sequence -ne 2 -or
+    [int] $live.sequence -ne 1 -or
     [int] $live.frame -ne 1221 -or
     $live.physical_bank -ne "02" -or
     $live.logical_pc -ne "5975" -or
@@ -219,29 +156,73 @@ if (
     $live.return_physical_bank -ne "01" -or
     $live.return_instruction_pc -ne "C5E9" -or
     [int64] $live.body_master_cycles -ne 1323 -or
-    [int] $live.write_count -ne 33 -or
-    [int] $consumer.sequence -ne 3 -or
-    [int] $consumer.frame -ne 1221 -or
-    $consumer.physical_bank -ne "02" -or
-    $consumer.logical_pc -ne "597D" -or
-    $consumer.input_x -ne "40" -or
-    $consumer.return_physical_bank -ne "01" -or
-    $consumer.return_instruction_pc -ne "C5E9" -or
-    [int64] $consumer.body_master_cycles -ne 1287 -or
-    [int] $consumer.write_count -ne 32
+    [int] $live.write_count -ne 33
 ) {
-    throw "Upper-hand live/consumer call contract changed."
+    throw "Upper-hand native live-setup call contract changed."
+}
+
+$countdownCalls = @($calls | Where-Object { $_.logical_pc -eq "5991" })
+if ($countdownCalls.Count -ne 299) {
+    throw "Upper-hand countdown population changed."
+}
+$countdownCycles = @{
+    75 = 292
+    90 = 1
+    732 = 4
+    768 = 2
+}
+foreach ($cycle in $countdownCycles.Keys) {
+    $matchingCalls = @(
+        $countdownCalls |
+            Where-Object { [int64] $_.body_master_cycles -eq [int64] $cycle }
+    )
+    if ($matchingCalls.Count -ne $countdownCycles[$cycle]) {
+        throw "Upper-hand countdown cycle population changed at $cycle cycles."
+    }
+}
+foreach ($call in $countdownCalls) {
+    $expectedWriteCount = switch ([int64] $call.body_master_cycles) {
+        75 { 1 }
+        90 { 2 }
+        732 { 13 }
+        768 { 14 }
+        default { throw "Upper-hand countdown call $($call.sequence) changed its cycle contract." }
+    }
+    if (
+        $call.physical_bank -ne "02" -or
+        $call.input_x -ne "40" -or
+        $call.return_physical_bank -ne "02" -or
+        $call.return_instruction_pc -ne "59F4" -or
+        [int] $call.write_count -ne $expectedWriteCount
+    ) {
+        throw "Upper-hand countdown call $($call.sequence) changed its bounded contract."
+    }
+}
+$borrowedCountdown = @(
+    $countdownCalls |
+        Where-Object { [int64] $_.body_master_cycles -eq 90 }
+)
+if (
+    $borrowedCountdown.Count -ne 1 -or
+    $borrowedCountdown[0].frame -ne "1273" -or
+    $borrowedCountdown[0].input_a -ne "59" -or
+    $borrowedCountdown[0].output_a -ne "FF" -or
+    $borrowedCountdown[0].output_status -ne "80"
+) {
+    throw "Upper-hand countdown borrow transition changed."
 }
 
 # Result $73 masks to $33. The routine stores $0133, then the coroutine
 # helper installs countdown continuation 02:5991.
-Assert-ScopeWrite $writes 3 "02" "5986" "1B40" "33" `
+Assert-ScopeWrite $writes 1 "02" "597A" "10C0" "C2" `
+    "Upper-hand hidden collision flags"
+Assert-ScopeWrite $writes 1 "02" "5986" "1B40" "33" `
     "Upper-hand timer low byte"
-Assert-ScopeWrite $writes 3 "02" "598B" "1BC0" "01" `
+Assert-ScopeWrite $writes 1 "02" "598B" "1BC0" "01" `
     "Upper-hand timer high byte"
-Assert-ScopeWrite $writes 3 "01" "C5E1" "1F40" "91" `
+Assert-ScopeWrite $writes 1 "01" "C5E1" "1F40" "91" `
     "Upper-hand countdown pointer low"
-Assert-ScopeWrite $writes 3 "01" "C5E6" "1FC0" "59" `
+Assert-ScopeWrite $writes 1 "01" "C5E6" "1FC0" "59" `
     "Upper-hand countdown pointer high"
 
 $newSeedHigh = @(
@@ -302,12 +283,16 @@ Write-Output (
     "dispatches 02:5975 at frame 1221."
 )
 Write-Output (
-    "RNG consumer 02:597D: result 73 masks to 33 and installs timer 0133."
+    "Native live setup: 02:5975 composes RNG result 73 into timer 0133."
 )
 Write-Output (
-    "RNG recurrence: all 22 E8B3 calls retain the eight direct writes; " +
-    "20 are 282-cycle leaves and two include periodic interrupts."
+    "Native live setup: 02:5975 composes the eight-write RNG recurrence " +
+    "and one checkpointed parent interrupt passage."
 )
 Write-Output (
     "Countdown: 02:5991 decrements the routed timer through frame 1520."
+)
+Write-Output (
+    "Native countdown: all 299 calls retain the 75/90-cycle timer paths " +
+    "and six checkpointed interrupt passages."
 )

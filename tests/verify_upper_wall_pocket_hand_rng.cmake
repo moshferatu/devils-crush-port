@@ -25,15 +25,15 @@ endif()
 
 set(
     expected_trace_sha256
-    "4ed2526ec7db17332f1719d8ab6d22451c49dbb15cb6492e42a049a685a60112"
+    "917e2973508c58a15a7c573149a808ecf723e69e05aa75010dc3ea40817eb36e"
 )
 set(
     expected_call_sha256
-    "c747286dc2d5800e454ad9bd54087700c8ee4d16c661bc686bf9acec957a0432"
+    "cf195dceb46c10ceceb195f202c4ed3871c127ee8d28fbad4058819fca4ca395"
 )
 set(
     expected_write_sha256
-    "932562de125daad1e0d97ad4dab85e8b07a259ceec228174b34f7453e2ff48ff"
+    "ac951f417d75a00928fb1dd255030856345542357f0315795f74af753ebbe92d"
 )
 set(
     expected_state_sha256
@@ -52,8 +52,9 @@ execute_process(
         --work-ram-patch "1200:3340:2C"
         --work-ram-patch "1200:33C0:01"
         --observe-hook "02:5975"
-        --observe-hook "02:597D"
-        --observe-hook "00:E8B3"
+        --observe-hook "02:5991"
+        --replace-hook "02:5975@all"
+        --replace-hook "02:5991@all"
         --routine-trace "${trace_output}"
         --routine-call-trace "${call_output}"
         --work-ram-write-range "222A-222B"
@@ -83,10 +84,11 @@ foreach(expected_line IN ITEMS
     "State census recording complete: 3600 frames"
     "Work-RAM patches applied: 2"
     "Observe hook 1 entries: 1"
-    "Observe hook 2 entries: 1"
-    "Observe hook 3 entries: 22"
-    "Routine trace complete: 24 entries"
-    "Routine call trace complete: 24 calls, 267 writes"
+    "Observe hook 2 entries: 299"
+    "Native replacement 02:5975@all entries: 1 of 1"
+    "Native replacement 02:5991@all entries: 299 of 299"
+    "Routine trace complete: 300 entries"
+    "Routine call trace complete: 300 calls, 407 writes"
     "Work-RAM write trace complete: 4478 selected writes"
 )
     string(FIND "${recorder_output}" "${expected_line}" line_offset)
@@ -151,9 +153,9 @@ endif()
 foreach(expected_line IN ITEMS
     "Upper Wall-Pocket hand RNG semantics verified."
     "Activation: slot 40 enters the camera window at frame 1220"
-    "RNG consumer 02:597D: result 73 masks to 33"
-    "RNG recurrence: all 22 E8B3 calls retain the eight direct writes"
+    "Native live setup: 02:5975 composes the eight-write RNG recurrence"
     "Countdown: 02:5991 decrements the routed timer through frame 1520."
+    "Native countdown: all 299 calls retain the 75/90-cycle timer paths"
 )
     string(FIND "${semantics_output}" "${expected_line}" line_offset)
     if(line_offset EQUAL -1)

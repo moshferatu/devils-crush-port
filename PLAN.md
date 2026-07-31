@@ -392,7 +392,7 @@ Provide an interactive monitor-assignment screen and persist display identity, g
   is assigned to subsystem-specific implementation files rather than
   `main.cpp`. Completed 2026-07-30: collision, physics/arithmetic,
   controls/actor, and rules/RNG/score adapters now occupy subsystem
-  implementation files, while `native_replacements.cpp` is the 532-line
+  implementation files, while `native_replacements.cpp` is the 555-line
   central registry.**
 - Begin from the replacement-mode routine proven during Milestone 2 and use
   it as the reference vertical slice for later ports. **Milestone 4 began
@@ -641,6 +641,55 @@ Provide an interactive monitor-assignment screen and persist display identity, g
   checks through the exact 48-cycle, four-boundary closed/no-hit return. All
   22 original interrupt-handler passages and 288 handler-owned writes remain
   exact; open-mouth capture and the 300-point hit path remain in assembly.
+  Semantic `02:4C91@all` handles both collision-free Giant-Face helmet
+  channels through exact 66/135/144-cycle timer-wait, appearance-advance, and
+  appearance-reset transcripts. All 1,748 calls, including 57 original
+  interrupt-handler passages and the complete 3,558-write helmet artifact,
+  remain exact; collision activation remains in assembly.
+  Semantic `02:4A93@all` now applies the same shared four-tick controller to
+  all 1,008 collision-free Four-Star Wall-Pocket calls and the trace-backed
+  144-cycle ordinary or 171-cycle matching-arrow collision/access decision through
+  `$4ABB` or `$4ACF`, including the matching path's `$2CFA` latch clear and `$41`
+  audio-command load. Its post-audio continuations `02:4AD2@all` and
+  `02:4AE5@all` now compose the checkpointed 100-unit score, four-tick timer,
+  appearance write, and scheduler handoff natively while the shared audio and
+  appearance helpers remain emulated. The 66/135/144-cycle timer and appearance
+  transcripts, including their original interrupt passages, remain exact;
+  Big-Star score, color, and bonus-stage access paths remain assembly-backed.
+  Semantic `02:5972@all` now initializes both mirrored upper Wall-Pocket
+  hands natively. It composes the existing coroutine scheduler to preserve
+  each seven-write, 192-cycle setup and installs live dispatch `02:5975`;
+  semantic `02:5975@all` now composes the shared RNG recurrence and coroutine
+  scheduler for the traced slot-`$40` live timer setup, preserving its
+  1,323-cycle, 33-write parent transcript and original interrupt passage.
+  semantic `02:5991@all` also executes all 299 traced delayed-timer
+  decrements, including the high-byte borrow and original interrupt passages,
+  plus the trace-backed slot-`$40` `$0001`-to-zero coroutine handoff. That
+  20-write, 918-cycle passage composes `01:C5C9`, preserves its periodic IRQ,
+  and installs `02:59A5`. Semantic `02:59A5@all` now handles the traced
+  no-interrupt 16-write, 456-cycle opening transition, including its
+  collision/state/type changes, `$59C4` coroutine submission, and three-tick
+  scheduler result. Its `$2D33`-set branch also now replaces all 298 observed
+  dormant returns in 27 cycles without game-owned writes, preserving the
+  original interrupt-handler passages. Semantic `02:59C7@all` now executes
+  the positive-state opening follow-up, writing type `$82`, a one-tick timer,
+  and the `$59DF` scheduler continuation through an exact nine-write,
+  261-cycle no-interrupt transcript. Its negative close loop also executes
+  natively: it clears the state bit, resubmits the `$59BF` four-tick delay,
+  and composes the original scheduler IRQ. Collision, animation, and response
+  branches remain assembly-backed. Semantic `02:59E0@all` now covers the
+  scheduled opening timer: four exact decrement/appearance passes and the
+  terminal appearance-two RNG/delay/scheduler handoff complete in five calls,
+  with all 33 writes and the 825-cycle terminal transcript preserved. The
+  actual post-opening scheduler entry `02:5A08@all` now preserves its seven
+  writes and exact 192-cycle `C018`/`C5C9` transfer, installing the `$5A0B`
+  state dispatch. Semantic `02:5A0B@all` now initializes that fixed-slot
+  state, marks its collision byte, and schedules `$5A1B` through an exact
+  24-write, 1,170-cycle transcript including its timer IRQ. The later
+  collision/response state paths remain assembly-backed. The
+  scheduled `02:5A1B@all` countdown now covers all nine routed fixed-slot
+  calls: six 33-cycle ticks, two 96-cycle collision-counter expiries, and an
+  exact 81-cycle transfer into the existing interrupt-bearing `$5975` tail.
   Semantic
   `02:4DD9@all` handles the Giant Skeleton's Eyeball activation gate's
   dormant branch from the live Dragon's-Egg latch and session flags. Its
@@ -756,6 +805,18 @@ Provide an interactive monitor-assignment screen and persist display identity, g
 - Publish a source-complete GPL-3.0-or-later Windows x64 release containing no ROM, extracted assets, box art, traces, or generated disassembly.
 
 ## Tests and Acceptance Criteria
+
+### Native-port iteration cadence
+
+Milestone 4 routine work follows [the native-port workflow](docs/NATIVE_PORT_WORKFLOW.md).
+Each slice requires an incremental Release build, ROM-free core coverage, and
+one owning-family Release ROM regression. Related sibling routines should
+share that family route and artifact rather than add duplicate full-route
+tests. Debug compilation/core coverage and the owning Debug ROM regression are
+required at family, milestone, and cross-family checkpoints, or immediately
+when shared transaction/interrupt infrastructure or a new branch demands it.
+This cadence changes validation scheduling only: every admitted replacement
+still requires original-assembly parity for its complete observable behavior.
 
 - Verify ROM hashes, asset decompression, table stitching, palettes, display transforms, sharp-scaler math, and save versioning.
 - In pure-emulation mode, compare replay RAM hashes, framebuffer CRCs, audio timing, and scene transitions against Mesen2.

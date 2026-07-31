@@ -693,3 +693,125 @@ int dc_classify_giant_face_mouth_gate(
     }
     return 1;
 }
+
+int dc_classify_giant_face_helmet_controller(
+    const uint8_t* const work_ram,
+    const size_t work_ram_size,
+    const uint8_t slot,
+    dc_giant_face_helmet_controller* const controller)
+{
+    const size_t collision_offset = 0x1800U + (size_t)slot;
+    const size_t timer_offset = 0x1A00U + (size_t)slot;
+    const size_t appearance_offset = 0x1980U + (size_t)slot;
+
+    if (work_ram == NULL || controller == NULL || slot > 0x7FU
+        || work_ram_size <= collision_offset || work_ram_size <= timer_offset
+        || work_ram_size <= appearance_offset) {
+        return 0;
+    }
+
+    controller->slot = slot;
+    controller->collision_state = work_ram[collision_offset];
+    controller->timer = work_ram[timer_offset];
+    controller->decremented_timer = (uint8_t)(controller->timer - 1U);
+    controller->appearance = work_ram[appearance_offset];
+    controller->advanced_appearance =
+        (uint8_t)(controller->appearance + 1U);
+    if ((controller->collision_state & 0x80U) != 0U) {
+        controller->path = DC_GIANT_FACE_HELMET_CONTROLLER_COLLISION;
+    } else if (controller->decremented_timer != 0U) {
+        controller->path = DC_GIANT_FACE_HELMET_CONTROLLER_WAITING;
+    } else if (controller->advanced_appearance < 3U) {
+        controller->path = DC_GIANT_FACE_HELMET_CONTROLLER_ADVANCE;
+    } else {
+        controller->path = DC_GIANT_FACE_HELMET_CONTROLLER_RESET;
+    }
+    return 1;
+}
+
+int dc_classify_four_star_wall_pocket_controller(
+    const uint8_t* const work_ram,
+    const size_t work_ram_size,
+    const uint8_t slot,
+    dc_four_star_wall_pocket_controller* const controller)
+{
+    return dc_classify_giant_face_helmet_controller(
+        work_ram,
+        work_ram_size,
+        slot,
+        controller);
+}
+
+int dc_prepare_upper_wall_pocket_hand_initializer(
+    const uint8_t slot,
+    dc_upper_wall_pocket_hand_initializer* const initializer)
+{
+    if (initializer == NULL || (slot != 0x40U && slot != 0x41U)) {
+        return 0;
+    }
+
+    initializer->slot = slot;
+    initializer->live_dispatch = 0x5975U;
+    return 1;
+}
+
+int dc_prepare_upper_wall_pocket_hand_live_setup(
+    const uint8_t* const work_ram,
+    const size_t work_ram_size,
+    const uint8_t slot,
+    const uint8_t rng_result,
+    dc_upper_wall_pocket_hand_live_setup* const setup)
+{
+    const size_t collision_flags_offset = 0x1080U + (size_t)slot;
+
+    if (work_ram == NULL || setup == NULL
+        || (slot != 0x40U && slot != 0x41U)
+        || work_ram_size <= collision_flags_offset
+        || work_ram_size <= 0x0080U) {
+        return 0;
+    }
+
+    setup->slot = slot;
+    setup->collision_flags = work_ram[collision_flags_offset];
+    setup->hidden_collision_flags =
+        (uint8_t)(setup->collision_flags | 0x40U);
+    setup->timer_base = work_ram[0x0080U];
+    setup->masked_rng = (uint8_t)(rng_result & 0x3FU);
+    setup->timer_low = (uint8_t)(setup->masked_rng + setup->timer_base);
+    setup->timer_high = 0x01U;
+    setup->countdown_dispatch = 0x5991U;
+    return 1;
+}
+
+int dc_classify_upper_wall_pocket_hand_countdown(
+    const uint8_t* const work_ram,
+    const size_t work_ram_size,
+    const uint8_t slot,
+    dc_upper_wall_pocket_hand_countdown* const countdown)
+{
+    const size_t timer_low_offset = 0x1B00U + (size_t)slot;
+    const size_t timer_high_offset = 0x1B80U + (size_t)slot;
+
+    if (work_ram == NULL || countdown == NULL
+        || (slot != 0x40U && slot != 0x41U)
+        || work_ram_size <= timer_low_offset
+        || work_ram_size <= timer_high_offset) {
+        return 0;
+    }
+
+    countdown->slot = slot;
+    countdown->timer_low = work_ram[timer_low_offset];
+    countdown->timer_high = work_ram[timer_high_offset];
+    countdown->decremented_high = countdown->timer_high;
+    if (countdown->timer_low == 0U) {
+        countdown->decremented_high =
+            (uint8_t)(countdown->decremented_high - 1U);
+    }
+    countdown->decremented_low = (uint8_t)(countdown->timer_low - 1U);
+    countdown->remaining_timer = (uint8_t)(
+        countdown->decremented_low | countdown->decremented_high);
+    countdown->path = countdown->remaining_timer == 0U
+        ? DC_UPPER_WALL_POCKET_HAND_COUNTDOWN_HANDOFF
+        : DC_UPPER_WALL_POCKET_HAND_COUNTDOWN_WAITING;
+    return 1;
+}

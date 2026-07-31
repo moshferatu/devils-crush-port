@@ -52,6 +52,8 @@ execute_process(
         "${OUTPUT}"
         --observe-hook
         "02:5972"
+        --replace-hook
+        "02:5972@all"
         --routine-trace
         "${trace_output}"
         --routine-call-trace
@@ -105,6 +107,7 @@ endif()
 foreach(expected_line IN ITEMS
     "State census recording complete: 3600 frames"
     "Observe hook 1 entries: 2"
+    "Native replacement 02:5972@all entries: 2 of 2"
     "Routine trace complete: 2 entries"
     "Routine call trace complete: 2 calls, 14 writes"
     "Routine replay 02:5972@1 verified: frame 872, 192 body cycles"

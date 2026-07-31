@@ -68,6 +68,14 @@
       "output": {
         "outputOnFailure": true
       }
+    },
+    {
+      "name": "windows-release",
+      "configurePreset": "windows-vs2022",
+      "configuration": "Release",
+      "output": {
+        "outputOnFailure": true
+      }
     }
   ]
 }

@@ -1037,6 +1037,97 @@ parse_logical_address_range(const std::string_view text)
                                        .logical_pc = 0x7726U,
                                    }
                            && request.all_calls;
+                       const bool proven_giant_face_helmet_controller =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x02U,
+                                       .logical_pc = 0x4C91U,
+                                   }
+                           && request.all_calls;
+                       const bool proven_four_star_wall_pocket_controller =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x02U,
+                                       .logical_pc = 0x4A93U,
+                                   }
+                           && request.all_calls;
+                       const bool proven_four_star_wall_pocket_post_audio_score =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x02U,
+                                       .logical_pc = 0x4AD2U,
+                                   }
+                           && request.all_calls;
+                       const bool proven_four_star_wall_pocket_post_appearance =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x02U,
+                                       .logical_pc = 0x4AE5U,
+                                   }
+                           && request.all_calls;
+                       const bool proven_upper_wall_pocket_hand_initializer =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x02U,
+                                       .logical_pc = 0x5972U,
+                                   }
+                           && request.all_calls;
+                       const bool proven_upper_wall_pocket_hand_countdown =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x02U,
+                                       .logical_pc = 0x5991U,
+                                   }
+                           && request.all_calls;
+                       const bool proven_upper_wall_pocket_hand_opening =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x02U,
+                                       .logical_pc = 0x59A5U,
+                                   }
+                           && request.all_calls;
+                       const bool proven_upper_wall_pocket_hand_opening_followup =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x02U,
+                                       .logical_pc = 0x59C7U,
+                                   }
+                           && request.all_calls;
+                        const bool proven_upper_wall_pocket_hand_opening_expiry =
+                            request.routine
+                                    == RoutineKey{
+                                        .physical_bank = 0x02U,
+                                        .logical_pc = 0x59E0U,
+                                    }
+                            && request.all_calls;
+                        const bool proven_upper_wall_pocket_hand_post_opening_schedule =
+                            request.routine
+                                    == RoutineKey{
+                                        .physical_bank = 0x02U,
+                                        .logical_pc = 0x5A08U,
+                                    }
+                            && request.all_calls;
+                        const bool proven_upper_wall_pocket_hand_post_opening_state =
+                            request.routine
+                                    == RoutineKey{
+                                        .physical_bank = 0x02U,
+                                        .logical_pc = 0x5A0BU,
+                                    }
+                            && request.all_calls;
+                        const bool proven_upper_wall_pocket_hand_post_opening_countdown =
+                            request.routine
+                                    == RoutineKey{
+                                        .physical_bank = 0x02U,
+                                        .logical_pc = 0x5A1BU,
+                                    }
+                            && request.all_calls;
+                        const bool proven_upper_wall_pocket_hand_live_setup =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x02U,
+                                       .logical_pc = 0x5975U,
+                                   }
+                           && request.all_calls;
                        const bool proven_walled_star_hit_gate =
                            request.routine
                                    == RoutineKey{
@@ -1241,6 +1332,19 @@ parse_logical_address_range(const std::string_view text)
                            && !proven_giant_face_animator_gate
                            && !proven_giant_face_crown_gate
                            && !proven_giant_face_mouth_gate
+                           && !proven_giant_face_helmet_controller
+                           && !proven_four_star_wall_pocket_controller
+                           && !proven_four_star_wall_pocket_post_audio_score
+                           && !proven_four_star_wall_pocket_post_appearance
+                           && !proven_upper_wall_pocket_hand_initializer
+                           && !proven_upper_wall_pocket_hand_live_setup
+                           && !proven_upper_wall_pocket_hand_countdown
+                           && !proven_upper_wall_pocket_hand_opening
+                           && !proven_upper_wall_pocket_hand_opening_followup
+                           && !proven_upper_wall_pocket_hand_opening_expiry
+                           && !proven_upper_wall_pocket_hand_post_opening_schedule
+                           && !proven_upper_wall_pocket_hand_post_opening_state
+                           && !proven_upper_wall_pocket_hand_post_opening_countdown
                            && !proven_walled_star_hit_gate
                            && !proven_tower_hit_gate
                            && !proven_tower_hit_continuation
@@ -1291,6 +1395,8 @@ parse_logical_address_range(const std::string_view text)
             "semantic 02:445B@all, "
             "semantic 02:4DD9@all, "
             "semantic 02:4FC1@all, "
+            "semantic 02:4A93@all, semantic 02:4AD2@all, "
+            "semantic 02:4AE5@all, "
             "semantic 02:5116@all, "
             "semantic 02:52B8@all, "
             "semantic 02:54B9@all, "
@@ -1323,7 +1429,14 @@ parse_logical_address_range(const std::string_view text)
             "semantic 03:7BE0@all, semantic 03:7BE8@all, "
             "semantic 03:7BEC@all, "
             "semantic 02:5955@all, "
-            "semantic 03:65C2@all, and "
+            "semantic 02:5972@all, semantic 02:5975@all, semantic 02:5991@all, "
+            "semantic 02:59A5@all, "
+              "semantic 02:59C7@all, "
+              "semantic 02:59E0@all, "
+              "semantic 02:5A08@all, "
+              "semantic 02:5A0B@all, "
+              "semantic 02:5A1B@all, "
+              "semantic 03:65C2@all, and "
             "the proven 03:7FB1@1, 03:7FB1@3, 03:7FB1@7, 00:F55C@1, "
             "and 00:E8B3@1 calls.";
     } else if (!options.work_ram_patches.empty() && !recording_selected) {

@@ -313,6 +313,110 @@ replace_native_gameplay_routine_impl(
         replacement = detail::replace_giant_face_mouth_gate(entry, work_ram);
     } else if (entry.routine
         == RoutineKey{
+            .physical_bank = 0x02U,
+            .logical_pc = 0x4C91U,
+        }) {
+        replacement = detail::replace_giant_face_helmet_controller(
+            entry,
+            work_ram);
+    } else if (entry.routine
+        == RoutineKey{
+            .physical_bank = 0x02U,
+            .logical_pc = 0x4A93U,
+        }) {
+        replacement = detail::replace_giant_face_helmet_controller(
+            entry,
+            work_ram);
+    } else if (entry.routine
+        == RoutineKey{
+            .physical_bank = 0x02U,
+            .logical_pc = 0x4AD2U,
+        }) {
+        replacement = detail::replace_four_star_wall_pocket_post_audio_score(
+            entry,
+            work_ram);
+    } else if (entry.routine
+        == RoutineKey{
+            .physical_bank = 0x02U,
+            .logical_pc = 0x4AE5U,
+        }) {
+        replacement = detail::replace_four_star_wall_pocket_post_appearance(
+            entry,
+            work_ram);
+    } else if (entry.routine
+        == RoutineKey{
+            .physical_bank = 0x02U,
+            .logical_pc = 0x5972U,
+        }) {
+        replacement = detail::replace_upper_wall_pocket_hand_initializer(
+            entry,
+            work_ram);
+    } else if (entry.routine
+        == RoutineKey{
+            .physical_bank = 0x02U,
+            .logical_pc = 0x5975U,
+        }) {
+        replacement = detail::replace_upper_wall_pocket_hand_live_setup(
+            entry,
+            work_ram);
+    } else if (entry.routine
+        == RoutineKey{
+            .physical_bank = 0x02U,
+            .logical_pc = 0x5991U,
+        }) {
+        replacement = detail::replace_upper_wall_pocket_hand_countdown(
+            entry,
+            work_ram);
+    } else if (entry.routine
+        == RoutineKey{
+            .physical_bank = 0x02U,
+            .logical_pc = 0x59A5U,
+        }) {
+        replacement = detail::replace_upper_wall_pocket_hand_opening(
+            entry,
+            work_ram);
+    } else if (entry.routine
+        == RoutineKey{
+            .physical_bank = 0x02U,
+            .logical_pc = 0x59C7U,
+        }) {
+        replacement = detail::replace_upper_wall_pocket_hand_opening_followup(
+            entry,
+            work_ram);
+    } else if (entry.routine
+        == RoutineKey{
+            .physical_bank = 0x02U,
+            .logical_pc = 0x59E0U,
+        }) {
+        replacement = detail::replace_upper_wall_pocket_hand_opening_expiry(
+            entry,
+            work_ram);
+    } else if (entry.routine
+        == RoutineKey{
+            .physical_bank = 0x02U,
+            .logical_pc = 0x5A08U,
+        }) {
+        replacement = detail::replace_upper_wall_pocket_hand_post_opening_schedule(
+            entry,
+            work_ram);
+    } else if (entry.routine
+        == RoutineKey{
+            .physical_bank = 0x02U,
+            .logical_pc = 0x5A0BU,
+        }) {
+        replacement = detail::replace_upper_wall_pocket_hand_post_opening_state(
+            entry,
+            work_ram);
+    } else if (entry.routine
+        == RoutineKey{
+            .physical_bank = 0x02U,
+            .logical_pc = 0x5A1BU,
+        }) {
+        replacement = detail::replace_upper_wall_pocket_hand_post_opening_countdown(
+            entry,
+            work_ram);
+    } else if (entry.routine
+        == RoutineKey{
             .physical_bank = 0x03U,
             .logical_pc = 0x6339U,
         }) {

@@ -34,7 +34,7 @@ lines/630 KB to 5,077 lines while retaining command-line, recording, replay,
 cabinet, and runtime ownership. Collision, physics/arithmetic,
 controls/actor, and rules/RNG/score synthesis now occupy four subsystem
 implementation units behind a private internal interface;
-`native_replacements.cpp` is the 532-line central registry. The extracted
+`native_replacements.cpp` is the 555-line central registry. The extracted
 modules have no SDL, cabinet, recording-plan, or replay-capture dependency,
 and `main.cpp` no longer includes the game-logic C headers directly.
 
@@ -1800,6 +1800,10 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
     side selector, and restore the steady dispatch.
   - Added `tools/Analyze-GiantFaceHelmetSemantics.ps1`, normalized
     `02:4C91@1` replay, and `dc_rom_giant_face_helmet`.
+  - Replaced all 1,748 collision-free `02:4C91@all` calls with exact
+    66-cycle timer wait, 135-cycle appearance advance, and 144-cycle
+    appearance reset transcripts. The native adapter preserves all timer and
+    appearance writes and defers collision activation to assembly.
   - Verified byte-identical entry, call, write, and selected-state SHA-256
     values
     `fb473f9da4c43e0eea2abcfed06c5510b3d2c6a457bcbd6e791c5b91be6cb057`,
@@ -1807,8 +1811,9 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
     `1d70d3313ad65639066692b2721f1df8d5ffc4d041e5625a3f84fceaf3dcd4fa`,
     and
     `6692ff8cb8ddb9927b57e2844dea70ea8c11afc48a3ac18707350690b83c5d26`.
-  - Passed the focused Debug/Release regression; full Release verification
-    now contains 47 tests.
+  - Passed ROM-free core tests and the existing owning-family Release
+    regression, then the required Debug family checkpoint; the established
+    entry, call, write, and selected-state artifacts remain byte-identical.
 - [x] Bounded the upper-table Four-Star Wall Pockets:
   - Identified fixed type-`$84` slots `$3E/$3F/$42/$43`, positions
     `(80,214)/(254,214)/(86,76)/(246,76)`, and initializers
@@ -4557,14 +4562,264 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
   bonus-stage rule-family variants as their routines are ported.
 - [x] Extend replacement scheduling with faithful mid-routine interrupt
   delivery; `01:D081@all` is the first selected interrupt-bearing proof.
+- [x] Replace the Upper Wall-Pocket hand initializers:
+  - Composed `02:5972@all` with the existing `01:C5C9` coroutine scheduler
+    for fixed mirrored slots `$40/$41`.
+  - Replaced both route calls with their exact 192-cycle, seven-write setup
+    transcript and live dispatch `02:5975`; the delayed RNG, collision,
+    animation, and response states remain assembly fallback.
+  - Release core and owning-family ROM replay preserve the existing entry,
+    call, write, and selected-state artifacts:
+    `defcf166fa1b1bf77b4e415f57d082f06f60d73d8f73afbbad036b46713062d9`,
+    `98595fe928d45a59437f77f804b662a67f1860c2358c649c109b48d2d420ed92`,
+    `1f7ce0a73fc4e1c5c9dcc3953563ea48def6dfa37b482d9e827a57cbe23f3490`,
+    and `e4521a0c6afa7d98deba96c4f21032e2ff7e702629371a2ac07b9c097bd3dc0b`.
+- [x] Replace the Upper Wall-Pocket hand delayed countdown:
+  - Replaced all 299 traced non-expiry `02:5991@all` calls for fixed slot
+    `$40`, including 292 75-cycle decrements, the 90-cycle high-byte borrow,
+    and six original interrupt-handler passages.
+  - The independently timed close-state expiry paths remain assembly fallback;
+    the traced one-tick-zero opening handoff is completed below.
+  - The owning hand-RNG regression continues to observe every countdown call;
+    its current compact parent/countdown artifacts are recorded with the live
+    setup replacement below.
+  - Passed Release and required Debug owning-family checkpoints, plus the
+    ROM-free core suite in both configurations.
+- [x] Replace the Upper Wall-Pocket hand live timer setup:
+  - Replaced the traced fixed-slot-`$40` `02:5975@all` parent, composing the
+    shared `00:E8B3` RNG recurrence and `01:C5C9` coroutine scheduler.
+  - Preserved the exact 33-write, 1,323-cycle transcript, including the
+    `02:5982` parent-level IRQ boundary, all handler writes, RNG result `$73`,
+    timer `$0133`, and `02:5991` dispatch.
+  - The owning regression now records the non-duplicated native parent and
+    countdown scopes (300 calls/407 writes), preserving trace/call/write/state
+    SHA-256 values
+    `917e2973508c58a15a7c573149a808ecf723e69e05aa75010dc3ea40817eb36e`,
+    `cf195dceb46c10ceceb195f202c4ed3871c127ee8d28fbad4058819fca4ca395`,
+    `ac951f417d75a00928fb1dd255030856345542357f0315795f74af753ebbe92d`,
+    and `664cdeb5e46aa4e1f8e2986f9cd915d9dca00456a8c268546e897abe52ebcba5`.
+  - Passed Release and required Debug owning-family checkpoints, plus the
+    ROM-free core suite in both configurations.
+- [x] Replace the Upper Wall-Pocket hand traced zero-timer handoff:
+  - Forced only the first routed slot-`$40` countdown frame from `$0001` to
+    `$0000`, then captured its `02:5991 -> 01:C5C9 -> 02:59A5` continuation.
+  - Composed the existing coroutine scheduler natively, preserving the exact
+    20-write, 918-cycle transcript and its periodic IRQ passage.
+  - Added `dc_rom_upper_wall_pocket_hand_expiry`, which pins the 174-call,
+    235-write controlled replay. Its Release/Debug census SHA-256 values are
+    `9679914eeb1d06e2ada37a32cbb9d64fa7cb82c7a7adce7745cf74984b2068ed` and
+    `6b598922dcb8e8e668c537f7461504108cf5840221cc751743021d96175f008b`;
+    shared trace/call/write/state hashes are
+    `0e5676d007ede57f34e878ce69b920fb8d3e112b070cd025b0f12ad38785235d`,
+    `32cdc094ab4f750ed568fe93598a73b401ef0688e087d8ab66ee453835227744`,
+    `0ff5459dd6105bc7a05a7313cc2de3f59c7e7db765de6ca60c59351485adf41e`, and
+    `638d7d5d24d36dba5188eaefa8ae48af1b3af8275fb8b93abe1f63792f1fbbab`.
+  - Passed the Release fixture in 9.71 seconds and the required Debug family
+    checkpoint in 219.32 seconds, plus ROM-free core tests in both builds.
+- [x] Replace the Upper Wall-Pocket hand opening continuation:
+  - Replaced the trace-backed fixed-slot-`$40` `02:59A5@all` scene-clear
+    transition, including collision/state/type writes, `$59C4` continuation
+    submission, and the native shared scheduler's four-to-three-tick result.
+  - Added `dc_rom_upper_wall_pocket_hand_opening`, which pins the exact
+    16-write, 456-cycle no-interrupt scope and its combined 174-call parent
+    route. Release census/trace/call/write/state SHA-256 values are
+    `9679914eeb1d06e2ada37a32cbb9d64fa7cb82c7a7adce7745cf74984b2068ed`,
+    `9df5f42ab0789c93b6127e0d40dd029b59e6b892a5b38a5fa69c61389cb0d24d`,
+    `6796cbd0ac56579f11033fa2a96aca50d6a437f1eaf82d8486af89263fe5b1af`,
+    `959c00ca63264aeb7e49b95a29d5f46c62b93c112b9a3cf607996c97735e597a`, and
+    `638d7d5d24d36dba5188eaefa8ae48af1b3af8275fb8b93abe1f63792f1fbbab`.
+  - Passed the Release owning regression in 9.52 seconds and the Release
+    ROM-free core suite. Per `docs/NATIVE_PORT_WORKFLOW.md`, defer Debug until
+    the next hand-continuation sibling or the family-close checkpoint.
+- [x] Replace the Upper Wall-Pocket hand opening follow-up:
+  - Replaced the traced fixed-slot-`$40` positive-state `02:59C7@all` branch,
+    preserving the `$82` type write, one-tick timer, `$59DF` scheduler
+    continuation, and all nine ordered writes.
+  - Added `dc_rom_upper_wall_pocket_hand_opening_followup`, which composes
+    `02:5991`, `02:59A5`, and `02:59C7`. Release/Debug census SHA-256 values
+    are `9679914eeb1d06e2ada37a32cbb9d64fa7cb82c7a7adce7745cf74984b2068ed`
+    and `6b598922dcb8e8e668c537f7461504108cf5840221cc751743021d96175f008b`;
+    shared trace/call/write/state hashes are
+    `b7d9ad263c05ebcbe441dd829947f36a30571ad693a4dc5e73798b62fc27ca05`,
+    `8096c9e92792beabce21640fce8a0eeb516577c91ce1b185e515723cbb08ad26`,
+    `f9b54e63be8bda6487d9499589586156d0c7bc5570dbdb3cb204f2ee2bd0c1f4`, and
+    `638d7d5d24d36dba5188eaefa8ae48af1b3af8275fb8b93abe1f63792f1fbbab`.
+  - Passed Release core/owning regression (8.88 seconds) and the required
+    Debug family checkpoint (187.29 seconds); both Debug and Release core
+    suites pass.
+- [x] Replace the Upper Wall-Pocket hand scheduled opening expiry:
+  - Replaced fixed-slot-`$40` `02:59E0@all`, the actual scheduler entry after
+    `$59DF` is placed on the stack. Its five observed calls preserve four
+    timer/appearance paths and the appearance-two RNG, randomized-delay, and
+    `$5A07` scheduler handoff terminal path: 33 ordered writes total, with the
+    terminal call taking exactly 825 master cycles.
+  - Added the Release per-slice gate
+    `dc_rom_upper_wall_pocket_hand_opening_expiry`, initially composed with
+    `02:5991`, `02:59A5`, and `02:59C7`; the next sibling extends that same
+    family gate and adds its required Debug checkpoint.
+  - Passed the Release owning regression in 8.87 seconds and the Release
+    ROM-free core suite. Per `docs/NATIVE_PORT_WORKFLOW.md`, defer Debug until
+    the next sibling or the family-close checkpoint.
+- [x] Replace the Upper Wall-Pocket hand post-opening scheduler:
+  - Replaced fixed-slot-`$40` `02:5A08@all`, the actual scheduler target after
+    the `$5A07` return address prepared by the terminal opening-expiry path.
+    It preserves the `$5A0A` JSR stack return and the seven-write, 192-cycle
+    `01:C018`/`01:C5C9` transfer that installs `$5A0B`.
+  - Extended `dc_rom_upper_wall_pocket_hand_opening_expiry` across
+    `02:5991 -> 02:59A5 -> 02:59C7 -> 02:59E0 -> 02:5A08`. Release/Debug
+    census SHA-256 values are
+    `9679914eeb1d06e2ada37a32cbb9d64fa7cb82c7a7adce7745cf74984b2068ed` and
+    `6b598922dcb8e8e668c537f7461504108cf5840221cc751743021d96175f008b`;
+    shared trace/call/write SHA-256 values are
+    `1022784e50f4a7855690e288dc3ad51e2f42806fd9bcc78288f7f23bfb16be59`,
+    `d71bb60b3596138eef1a5132b9502c1657ac483af7e89a673bbf5f32d63e4b0c`, and
+    `5fdf45323d0455d86bc0df31033cd203604aef8290d404062fa88dfb802ea562`.
+  - Passed Release core/owning regression (8.78 seconds), plus the required
+    Debug core/owning family checkpoint (187.69 seconds).
+- [x] Replace the Upper Wall-Pocket hand post-opening state:
+  - Replaced fixed-slot-`$40` `02:5A0B@all`, which writes the one-tick
+    `$3A40` timer, preserves the `$3080` collision mark, and composes the
+    `$5A1A` scheduler return that installs `$5A1B`. Its single natural call
+    preserves all 24 ordered writes and the exact 1,170-cycle transcript,
+    including the timer IRQ through native scheduler checkpoints.
+  - Extended `dc_rom_upper_wall_pocket_hand_opening_expiry` across
+    `02:5991 -> 02:59A5 -> 02:59C7 -> 02:59E0 -> 02:5A08 -> 02:5A0B`.
+    Release/Debug census SHA-256 values are
+    `9679914eeb1d06e2ada37a32cbb9d64fa7cb82c7a7adce7745cf74984b2068ed` and
+    `6b598922dcb8e8e668c537f7461504108cf5840221cc751743021d96175f008b`;
+    shared trace/call/write SHA-256 values are
+    `2ad3bfd2b4f3b87786c7bba3c65809e08d8c683230deb0dae18316a104c035ae`,
+    `ca2d781786e8f820a290b4e2d934b875c4ec701001d3027557323dfa92f13694`, and
+    `1fbc49257075fc0fbc4b80594a0424ef1d125acb6d8d65ac164a2e6085a25d7a`.
+  - Passed Release core/owning regression (9.69 seconds) and the early Debug
+    core/owning checkpoint required for the new timer-IRQ transcript
+    (195.40 seconds).
+- [x] Replace the Upper Wall-Pocket hand post-opening countdown:
+  - Replaced all nine fixed-slot-`$40` `02:5A1B@all` dispatches: six
+    33-cycle timer decrements, two 96-cycle reload/collision-counter paths,
+    and the final 81-cycle zero-counter handoff to the existing `$5975`
+    live/RNG tail. The handoff deliberately resumes assembly before that
+    tail's interrupt-bearing work begins.
+  - Extended `dc_rom_upper_wall_pocket_hand_opening_expiry` across
+    `02:5991 -> 02:59A5 -> 02:59C7 -> 02:59E0 -> 02:5A08 -> 02:5A0B ->
+    02:5A1B`. Release/Debug census SHA-256 values remain
+    `9679914eeb1d06e2ada37a32cbb9d64fa7cb82c7a7adce7745cf74984b2068ed` and
+    `6b598922dcb8e8e668c537f7461504108cf5840221cc751743021d96175f008b`;
+    the expanded shared trace/call/write SHA-256 values are
+    `0c42eb69a906861a5f2e6335aa08c89a72b0a5a61bd411b5f849faf04fd4a9cb`,
+    `40ead7d76cf9de8f1621ed2e31f1b4363f153f5e31e8ccb8f11a1dfac5f2ce89`, and
+    `fa415070ae64c33cf45ecb5dd700a2f3e2ae873658c1f2569eb34ef7518b3232`.
+  - Passed the Release core suite and owning regression. Per the documented
+    cadence, defer Debug replay until another sibling or the family-close
+    checkpoint; this slice adds no new native interrupt transcript.
+- [x] Replace the Upper Wall-Pocket hand `$2D33` dormant guard:
+  - Extended `02:59A5@all` with the fixed-slot-`$40` nonzero-latch path:
+    exact `LDA $2D33` / taken-branch return through `$59F4`, 27 cycles, and
+    no game-owned writes for all 298 observed calls.
+  - Added `dc_rom_upper_wall_pocket_hand_guard`, asserting only `$2D33` at
+    frame 1,222. Release/Debug census SHA-256 values are
+    `c12f290cd61c254e573b362ab572cb1afb19a5ddaabc27ca77bcdd19e51c71d8` and
+    `5ffb267191ede4e70121638ae0198463a25e95b71582d82bb6e84457bb80248e`;
+    shared trace/call/write/state hashes are
+    `3e2722d448c4e22c57bb4fb6846f4e5331ff062b55a3344c2afc95b312d57b9d`,
+    `d114365a0d52b054fa80394cd83a2a9d86041847c069f709d567dff02f7039d2`,
+    `edb384280b11fa4cab1e6527ac1ee928d13c9dd7b2753af938d76715eef38a83`, and
+    `eccef7f1968b9576f34ba291712d1e67d52cbf428c1c8c74cc12855c6d5c1df0`.
+  - Passed Release core/owning replay (7.84 seconds) and the required Debug
+    core/owning new-branch checkpoint (165.19 seconds).
+- [x] Replace the Upper Wall-Pocket hand negative-state close loop:
+  - Extended `02:59C7@all` with the fixed-slot-`$40` high-state path. It
+    clears `$3840`, returns through `$59BF`, submits the four-tick delay, and
+    composes `01:C5C9` to dispatch the next `02:59C7` follow-up.
+  - Added `dc_rom_upper_wall_pocket_hand_close`, which observes one
+    interrupt-bearing 1,089-cycle, 27-write close loop and its two 261-cycle,
+    nine-write positive-state follow-ups. Release/Debug census SHA-256 values
+    are `7a3466734aa3856e9158828057ce31f7a9854d95a9ce8e9b6768b372b3bcb9df`
+    and `45a7a4ef3c92924574d97666aa03cfae4f36d837e2a74efc3eec71c6ecd4fba9`;
+    shared trace/call/write/state hashes are
+    `2fbfe2597e236fc6f6249f9388f61999514985c88b339cfd9c9a4a4232542096`,
+    `7b7516225b1a6fe7c1612c42c386816c69cef5ca04c294b76e720e623796fb4e`,
+    `4514ec8143334011d1856f0163c460ce1d454601e2763307e2a1fd08cb8d352b`, and
+    `d9608965ca1ec3f589fe9e048c9598e8a77a9a18a09d1fdf7a1ea5bd973595f2`.
+  - Passed Release core/owning replay (7.55 seconds) and the required Debug
+    core/owning new-branch checkpoint (168.64 seconds).
+- [x] Replace the Four-Star Wall-Pocket collision gate:
+  - Extended `02:4A93@all` with the fixed lower-left pocket's exact
+    `LDA $383E` / taken `BMI $4A9B` collision prefix and its controlled
+    zero-rotation selector decision: the non-matching access continues at
+    `$4ABB` after 144 master cycles and the matching arrow continues at
+    `$4ACF` after 171 cycles. The matching path includes its `$4ACA`
+    `STZ $2CFA` latch clear and `$4ACD` `$41` audio-command load; the paths
+    retain thirteen and fifteen instruction checkpoints respectively.
+  - Added matching-arrow continuations `02:4AD2@all` and `02:4AE5@all`:
+    after the original shared-audio return, they compose the native 100-unit
+    score transaction (including its timer IRQ), `$3A3E=4` timer, `$3980=4`
+    appearance write, and shared scheduler handoff that installs `$4AEB`.
+    The shared audio and `$406F` appearance helpers remain in assembly.
+  - Added `dc_rom_four_star_wall_pocket_matching`, which injects the
+    matching selector on collision frame 1,234. Its Release/Debug census
+    SHA-256 values are respectively
+    `285273abaf31a916d0fbebaaea2131b09f35ae595918ed53a066d7d2045f169b`
+    and `d1fc741494aaa41541494ce0c5b1c201990d175f0e4abd6cfa4ddfefa9aab0a1`;
+    Its Release trace/call/write/state SHA-256 values are
+    `0f55ad5c69a31bdadcd3ebf2392fb24005bc4cf463e86f2b0e5c0c06b0ab05ad`,
+    `e0e62f03a8be06ccda672042d8dda45b1b60656f4cd18a22ee450c5003627a49`,
+    `e354a6f21119dd9544d407c2e8c82883dfac774ee1ac4502e7470f99b0d5a65c`, and
+    `6c5946171ec29f2bf46eb93dbe307aa3492fb10fe80361fdaf7075c8225fd49c`.
+  - Passed Release core/owning replay (7.75 seconds) and the required Debug
+    core/owning family checkpoint (176.05 seconds); all captured artifacts
+    match in both configurations.
+  - Added the focused `dc_rom_four_star_wall_pocket_collision` regression;
+    the one controlled collision plus 1,167 subsequent controller entries
+    preserve Release/Debug census SHA-256 values
+    `53432539e70810d69ef8b3cce45cd81300749ea021f27f4fd71e8587ccfbe28e`
+    and `d7a897a7c019c8b618176c9b92371d08f82f602b3ba17cd5fede2e8dcf0c000c`.
+    The shared trace/call/write/state hashes are
+    `414300f98d17d9dfcbb29723f818de3114848e7b44c7ca87d359153de24c3526`,
+    `a4e5c8e36845ab70dd128a3b2e814dfdff5cc2ae406d00336c1494b0ee13f808`,
+    `f822e87f6a423a9de0d00f10ae6bea73bde54c314c734d13c740f86886ccb9fc`, and
+    `a019a78ef19fc7d72e11b329aaf90bb390e50cf6728a56aa897c1a974664069a`.
+  - Passed Release and Debug core tests; original-versus-native artifact
+    comparisons are byte-identical in both configurations.
+- [x] Replace the Four-Star Wall-Pocket steady controller:
+  - Reused the ROM-shared collision gate and four-tick timer/appearance tail
+    at `02:4A93` for fixed slots `$3E/$3F/$42/$43`.
+  - Replaced all 1,008 collision-free calls with exact 66-cycle wait,
+    135-cycle appearance advance, and 144-cycle appearance reset
+    transcripts; collision access, Big-Star score/color state, and
+    bonus-stage transition remain assembly fallback.
+  - Preserved the existing entry, call, write, and selected-state artifacts:
+    `eafb2abd72e818a258eee861904f0abb097cb1703c885a66316b08a318fad3d9`,
+    `2f86b84a3997f8a84239a554ecb34523fc94c564f337ff446b8df61f91b1d64b`,
+    `d4fe55cf0b4b975eecd160accace5b3f0e753bf05b99b2e6a5c7b7d375f256b8`,
+    and
+    `6bb4604bcffd88960c62c76ae98bc5a11984a4711bef456da014b3d31cf1de4e`.
+  - Passed ROM-free core tests, the Release owning-family regression, and the
+    required Debug family checkpoint.
 
 ## Active Work
 
 Current owner: Codex. The Giant-Face mouth closed/no-hit gate
-`03:7726@all` is complete; its `$2D21` open-mouth branch and bit-seven
-collision path remain assembly fallback candidates until trace-backed. The
-next bounded candidate is the Giant-Face helmet activation controller
-`02:4C91@all`, pending an exact route and interrupt transcript.
+`03:7726@all`, mirrored helmet controller `02:4C91@all`, Four-Star
+Wall-Pocket controller `02:4A93@all`, and the two Upper Wall-Pocket hand
+initializers `02:5972@all`, traced live timer setup `02:5975@all`, delayed
+timer `02:5991@all`, its trace-backed `$0001`-to-zero scheduler handoff, and
+the scene-clear opening continuation `02:59A5@all`, its positive-state
+follow-up `02:59C7@all`, and the actual scheduled opening expiry
+`02:59E0@all`, its actual post-opening scheduler `02:5A08@all`, and its
+post-opening state `02:5A0B@all`, and its scheduled post-opening countdown
+`02:5A1B@all` are complete, including the `$2D33` dormant guard at
+`02:59A5@all` and the negative-state close loop at `02:59C7@all`. The
+Four-Star Wall-Pocket controller also has its collision gate plus captured
+ordinary and matching-arrow access decisions at `02:4A93@all`; matching
+continuations `02:4AD2@all` and `02:4AE5@all` now cover its post-audio score,
+opening timer/appearance, and scheduler handoff. The shared audio and
+appearance helpers remain assembly fallback. The next bounded candidate is
+the scheduled `$4AEB` animation continuation in the same feature family.
+Native-port iterations now follow
+`docs/NATIVE_PORT_WORKFLOW.md`:
+batch siblings sharing a family route, use Release family parity per slice,
+and reserve Debug ROM replays for family or broader checkpoints.
 
 Milestone 4 is now active. Semantic `03:6966@all` scheduling replaces 18,806
 of 19,648 deterministic-route calls by selector/slot state, while the
@@ -4864,11 +5119,14 @@ orchestration and calls one native-replacement dispatch API, while the
 replacement implementation units own the instruction-faithful adapters.
 Collision, physics/arithmetic, controls/actor, and rules/RNG/score synthesis now
 occupy four subsystem implementation files behind a private internal
-interface; `native_replacements.cpp` is the 532-line registry. The
+interface; `native_replacements.cpp` is the 555-line registry. The
 extraction is behavior-neutral and preserves the existing pure C
 `src/game_logic` boundary. The 49 directly affected subsystem ROM-backed
 regressions pass in Release, representative Debug/Release semantic hashes
-remain exact, and both application configurations compile cleanly.
+remain exact, and both application configurations compile cleanly. The
+documented native-port iteration cadence now makes the Release owning-family
+regression the per-slice behavioral gate; Debug family replay remains required
+at the defined family and milestone checkpoints.
 
 Milestone 2 is complete. Milestone 3 now has the copied-video boundary,
 directional `00:F400` stream map, packed-source decoder, accepted

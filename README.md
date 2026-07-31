@@ -2,7 +2,7 @@
 
 This repository is the beginning of a hybrid Windows port of the TurboGrafx-16 game *Devil's Crush*. PC Engine hardware remains emulated while gameplay logic is progressively replaced with native C++.
 
-See [PLAN.md](PLAN.md) for the approved architecture and [PROGRESS.md](PROGRESS.md) for current implementation status.
+See [PLAN.md](PLAN.md) for the approved architecture, [PROGRESS.md](PROGRESS.md) for current implementation status, and [the native-port workflow](docs/NATIVE_PORT_WORKFLOW.md) for the validation cadence used during gameplay-port iterations.
 
 ## ROM requirement
 
@@ -43,6 +43,11 @@ cmake --preset windows-vs2022
 cmake --build --preset windows-debug
 ctest --preset windows-debug
 ```
+
+For normal native-port iterations, use the Release build and the owning
+family's targeted ROM regression; Debug ROM replay is a family-checkpoint
+audit rather than a duplicate per-routine step. The exact commands and
+admission rules are in [docs/NATIVE_PORT_WORKFLOW.md](docs/NATIVE_PORT_WORKFLOW.md).
 
 Validate a ROM without opening a window:
 
@@ -974,6 +979,19 @@ Mercy-Star not-last-ball gating `02:4FC1@all`, Giant-Door idle-hit gating
 Giant-Face hidden-animator idle gating `03:767E@all`,
 Giant-Face crown no-hit gating `03:76FA@all`,
 Giant-Face mouth no-hit gating `03:7726@all`,
+Giant-Face helmet idle controller `02:4C91@all`,
+Four-Star Wall-Pocket idle controller `02:4A93@all`,
+Upper Wall-Pocket hand initializers `02:5972@all`,
+Upper Wall-Pocket hand live timer setup `02:5975@all`,
+Upper Wall-Pocket hand delayed timer `02:5991@all`,
+Upper Wall-Pocket hand opening continuation `02:59A5@all`,
+Upper Wall-Pocket hand `$2D33` dormant guard `02:59A5@all`,
+Upper Wall-Pocket hand opening follow-up `02:59C7@all`,
+Upper Wall-Pocket hand negative-state close loop `02:59C7@all`,
+Upper Wall-Pocket hand scheduled opening expiry `02:59E0@all`,
+Upper Wall-Pocket hand post-opening scheduler `02:5A08@all`,
+Upper Wall-Pocket hand post-opening state `02:5A0B@all`,
+Upper Wall-Pocket hand post-opening countdown `02:5A1B@all`,
 Walled-Star idle-hit gating `03:6339@all`,
 Tower hit gating `03:60C3@all` with `03:60E0@all` and `03:611C@all`
 continuations, Dragon's-Head hit gating `02:5A4B@all` and countdown
@@ -1806,6 +1824,85 @@ paths remain in assembly. Debug and Release preserve call SHA-256
 `531e2094a7c17f742b1474a3c9511fa4918349e86dc415d7ed8ce5a28dc5dc95`
 and write SHA-256
 `48a862dec687758d8ecf7fcd480285dbc08e2fe1b9ee50a790a726ea0afc9ae5`.
+
+Semantic `02:4C91@all` covers both Giant Face helmet channels' collision-free
+steady controller. It retains collision activation in assembly, but for all
+1,748 route calls it reproduces the collision read, four-tick timer
+decrement, timer reload, appearance advance/reset, ordered writes, and
+66/135/144-cycle instruction-checkpoint transcripts. Debug and Release retain
+the existing Giant-Face helmet family call SHA-256
+`48a1a89f272e80679e859d6ecdc34d4102d864985fba5ba64bdde12d0642e64b` and
+write SHA-256
+`1d70d3313ad65639066692b2721f1df8d5ffc4d041e5625a3f84fceaf3dcd4fa`.
+
+Semantic `02:4A93@all` covers all four Four-Star Wall-Pocket collision-free
+steady calls and the trace-backed collision gate. The controlled lower-left
+access reproduces the exact collision load/taken branch and selector/rotation
+decision: the non-matching arrow reaches `$4ABB` in 144 cycles, while the
+matching arrow clears `$2CFA`, loads audio command `$41`, and reaches `$4ACF` in 171 cycles. Both then return to assembly for
+the shared audio thunk. Post-audio `02:4AD2@all` then composes the 100-unit
+score transaction and `$3A3E=4` timer natively; after the original `$406F`
+appearance helper, `02:4AE5@all` stores `$3980=4` and composes the scheduler
+handoff to `$4AEB`. The audio and appearance helpers remain assembly-backed.
+Its steady
+paths share the Giant-Face helmet's four-tick timer/appearance tail,
+preserving exact 66/135/144-cycle transcripts and ordered writes for 1,008
+calls. Debug and Release retain the existing Four-Star Wall-Pocket family call SHA-256
+`2f86b84a3997f8a84239a554ecb34523fc94c564f337ff446b8df61f91b1d64b` and
+write SHA-256
+`d4fe55cf0b4b975eecd160accace5b3f0e753bf05b99b2e6a5c7b7d375f256b8`.
+
+Semantic `02:5972@all` covers both mirrored Upper Wall-Pocket hand
+initializers. It composes the native coroutine scheduler after the original
+`C018` transfer, preserving the seven ordered writes, `02:5975` live-dispatch
+installation, and exact 192-cycle transcript for slots `$40/$41`.
+Semantic `02:5975@all` covers the traced slot-`$40` live timer setup. It
+composes the native `00:E8B3` RNG recurrence and `01:C5C9` coroutine
+scheduler, preserving all 33 parent-scope writes, the exact 1,323-cycle
+interrupt-bearing transcript, result `$73` to timer `$0133`, and countdown
+dispatch `02:5991`.
+Semantic `02:5991@all` covers all 299 traced delayed-timer decrements,
+including the 292 ordinary 75-cycle calls, one 90-cycle high-byte borrow, and
+six original interrupt-bearing calls. It also covers the trace-backed fixed
+slot-`$40` `$0001`-to-zero handoff: a 20-write, 918-cycle `01:C5C9`
+coroutine-scheduler passage that preserves its periodic IRQ and installs
+`02:59A5`. Semantic `02:59A5@all` then executes the traced slot-`$40`
+opening transition: it clears the collision/state bits, sets type `$83`,
+queues `$59C4`, and reduces the four-tick delay to three through the shared
+scheduler. Its 16-write, 456-cycle no-interrupt transcript is exact. Later
+close-state expiries, collision, animation, and response states remain
+assembly-backed. Semantic `02:59C7@all` then covers the observed positive-state
+follow-up: it assigns type `$82`, starts the one-tick timer, and composes the
+scheduler to install `$59DF` through an exact nine-write, 261-cycle
+no-interrupt transcript. Semantic `02:59E0@all` then replaces the scheduled
+opening timer for fixed slot `$40`: it preserves four decrement/appearance
+passes and the terminal appearance-two RNG, randomized delay, and `$5A07`
+scheduler handoff in the exact 33-write five-call artifact. Semantic
+`02:5A08@all` is the resulting scheduler target: it preserves the JSR's
+`$5A0A` stack return and the exact seven-write, 192-cycle `C018`/`C5C9`
+transfer that installs `$5A0B`. Semantic `02:5A0B@all` now starts that
+fixed-slot post-opening state by setting the one-tick timer, preserving the
+collision mark, and composing the `$5A1A` scheduler return that installs
+`$5A1B`. Its one observed 24-write, 1,170-cycle transcript includes the
+original timer interrupt through the scheduler's instruction checkpoints. The
+scheduled `02:5A1B@all` countdown now covers all nine fixed-slot calls: six
+33-cycle timer ticks, two 96-cycle collision-counter expiries, and the final
+81-cycle transfer back to the interrupt-bearing `$5975` live/RNG tail in
+assembly. Its `$2D33`-set dormant guard now replaces all 298 observed
+27-cycle no-write returns while retaining the original interrupt-handler
+passages. The same `02:59C7@all` semantic now also covers the negative-state
+close loop: it clears the state bit, restores the `$59BF` delay submission,
+and composes the scheduler's original timer IRQ. Collision and response paths
+remain assembly-backed.
+Release preserves the compact owning-parent hand-RNG trace SHA-256
+`917e2973508c58a15a7c573149a808ecf723e69e05aa75010dc3ea40817eb36e`, call
+SHA-256 `cf195dceb46c10ceceb195f202c4ed3871c127ee8d28fbad4058819fca4ca395`,
+and write SHA-256
+`ac951f417d75a00928fb1dd255030856345542357f0315795f74af753ebbe92d`, while
+the initializer-only route preserves its existing hand-family call SHA-256
+`98595fe928d45a59437f77f804b662a67f1860c2358c649c109b48d2d420ed92` and
+write SHA-256
+`1f7ce0a73fc4e1c5c9dcc3953563ea48def6dfa37b482d9e827a57cbe23f3490`.
 
 Semantic `02:445B@all` covers the hidden Big-Star feature controller's
 ordinary idle return. It loads shared Little-Skull latch `$2CFA` and returns
