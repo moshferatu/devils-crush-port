@@ -34,7 +34,7 @@ lines/630 KB to 5,077 lines while retaining command-line, recording, replay,
 cabinet, and runtime ownership. Collision, physics/arithmetic,
 controls/actor, and rules/RNG/score synthesis now occupy four subsystem
 implementation units behind a private internal interface;
-`native_replacements.cpp` is the 535-line central registry. The extracted
+`native_replacements.cpp` is the 532-line central registry. The extracted
 modules have no SDL, cabinet, recording-plan, or replay-capture dependency,
 and `main.cpp` no longer includes the game-logic C headers directly.
 
@@ -323,6 +323,18 @@ interrupt-bearing calls retain all 97 handler-owned writes, and the complete
 5,608-call Giant-Face family artifact remains byte-identical in Debug and
 Release. Mode one's active timer, phase, and drawing state machine remains
 in assembly.
+
+Semantic `03:76FA@all` now covers all 867 routed Giant-Face crown collision
+checks. A nonnegative indexed collision byte takes the exact two-boundary,
+27-cycle no-hit return with no native writes. The seven interrupt-bearing
+calls retain all 86 handler-owned writes; the 300-point hit path remains in
+assembly.
+
+Semantic `03:7726@all` now covers all 1,214 routed Giant-Face mouth checks.
+A zero `$2D21` mouth state plus nonnegative indexed collision byte takes the
+exact four-boundary, 48-cycle closed/no-hit return with no native writes. The
+22 interrupt-bearing calls retain all 288 handler-owned writes; the open-mouth
+capture and 300-point hit paths remain in assembly.
 
 Semantic `02:5A4B@all` now covers all 2,144 Dragon's-Head collision checks.
 It preserves the exact 27-cycle idle return and performs the routed hit's
@@ -3998,6 +4010,25 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
   - Shadowed ordinal 1 at frame 942 and preserved the complete
     5,608-call/812-write Giant Face family artifacts in Debug and Release.
   - Left wake and transformation request handling in assembly.
+- [x] Ported the Giant Face crown's no-hit collision gate `03:76FA@all`:
+  - Added a pure C classifier for the indexed collision byte and deferred
+    crown-hit path.
+  - Replaced all 867 route calls through a two-checkpoint, 27-cycle,
+    zero-write transcript while preserving seven original interrupt passages
+    and all 86 handler-owned writes.
+  - Shadowed ordinal 1 at frame 1,223 and preserved the complete
+    5,608-call/812-write Giant Face family artifacts in Debug and Release.
+  - Left the 300-point score, impact, and audio hit path in assembly.
+- [x] Ported the Giant Face mouth's closed/no-hit gate `03:7726@all`:
+  - Added a pure C classifier for mouth state, indexed collision state, and
+    the deferred open-mouth and hit paths.
+  - Replaced all 1,214 route calls through a four-checkpoint, 48-cycle,
+    zero-write transcript while preserving 22 original interrupt passages
+    and all 288 handler-owned writes.
+  - Shadowed ordinal 1 at frame 1,213 and preserved the complete
+    5,608-call/812-write Giant Face family artifacts in Debug and Release.
+  - Left open-mouth capture and the 300-point score, impact, and audio hit
+    paths in assembly.
 - [x] Ported the hidden Big-Star feature idle gate `02:445B@all`:
   - Added a pure C classifier for the shared Little-Skull latch, idle
     return, and deferred pending-feature path.
@@ -4453,6 +4484,11 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
   - [x] Add semantic `03:74D8@all`; cover all 2,648 routed Giant-Face
     controller idle returns while retaining wake and transformation request
     handling in assembly.
+  - [x] Add semantic `03:76FA@all`; cover all 867 routed Giant-Face crown
+    no-hit returns while retaining the 300-point hit path in assembly.
+  - [x] Add semantic `03:7726@all`; cover all 1,214 routed Giant-Face mouth
+    closed/no-hit returns while retaining open-mouth and collision paths in
+    assembly until naturally exercised.
   - [x] Profile aggregate `01:DD09` viability; the initial 669-of-753
     interrupt blocker is resolved by the later semantic `E905` child and
     checkpointed parent composition.
@@ -4523,6 +4559,12 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
   delivery; `01:D081@all` is the first selected interrupt-bearing proof.
 
 ## Active Work
+
+Current owner: Codex. The Giant-Face mouth closed/no-hit gate
+`03:7726@all` is complete; its `$2D21` open-mouth branch and bit-seven
+collision path remain assembly fallback candidates until trace-backed. The
+next bounded candidate is the Giant-Face helmet activation controller
+`02:4C91@all`, pending an exact route and interrupt transcript.
 
 Milestone 4 is now active. Semantic `03:6966@all` scheduling replaces 18,806
 of 19,648 deterministic-route calls by selector/slot state, while the
@@ -4755,6 +4797,17 @@ eight original interrupt-handler passages and 97 handler-owned writes remain
 exact. The complete 5,608-call/812-write Giant Face family artifact is
 unchanged; animation mode one's active timer, phase, and drawing path remains
 emulated.
+Semantic `03:76FA@all` replaces all 867 routed Giant-Face crown collision
+checks through exact two-boundary, 27-cycle no-hit transcripts. All seven
+original interrupt-handler passages and 86 handler-owned writes remain exact.
+The complete 5,608-call/812-write Giant Face family artifact is unchanged;
+the 300-point score, impact, and audio hit path remains emulated.
+Semantic `03:7726@all` replaces all 1,214 routed Giant-Face mouth checks
+through exact four-boundary, 48-cycle closed/no-hit transcripts. All 22
+original interrupt-handler passages and 288 handler-owned writes remain
+exact. The complete 5,608-call/812-write Giant Face family artifact is
+unchanged; open-mouth capture and the 300-point score, impact, and audio hit
+paths remain emulated.
 Semantic `00:E837@all` replaces all 894 shared signed-word negations from
 live `$2F:$30` through exact 8/9-boundary, three/four-write, 90/102-cycle
 transcripts. All 24 original interrupt-handler passages remain exact.
@@ -4811,9 +4864,9 @@ orchestration and calls one native-replacement dispatch API, while the
 replacement implementation units own the instruction-faithful adapters.
 Collision, physics/arithmetic, controls/actor, and rules/RNG/score synthesis now
 occupy four subsystem implementation files behind a private internal
-interface; `native_replacements.cpp` is the 535-line registry. The
+interface; `native_replacements.cpp` is the 532-line registry. The
 extraction is behavior-neutral and preserves the existing pure C
-`src/game_logic` boundary. The 47 directly affected subsystem ROM-backed
+`src/game_logic` boundary. The 49 directly affected subsystem ROM-backed
 regressions pass in Release, representative Debug/Release semantic hashes
 remain exact, and both application configurations compile cleanly.
 

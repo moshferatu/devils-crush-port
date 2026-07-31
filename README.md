@@ -972,6 +972,8 @@ Giant-Skeleton-Eyeball dormant gating `02:4DD9@all`,
 Mercy-Star not-last-ball gating `02:4FC1@all`, Giant-Door idle-hit gating
 `03:62B8@all`, Giant-Face controller idle-request gating `03:74D8@all`,
 Giant-Face hidden-animator idle gating `03:767E@all`,
+Giant-Face crown no-hit gating `03:76FA@all`,
+Giant-Face mouth no-hit gating `03:7726@all`,
 Walled-Star idle-hit gating `03:6339@all`,
 Tower hit gating `03:60C3@all` with `03:60E0@all` and `03:611C@all`
 continuations, Dragon's-Head hit gating `02:5A4B@all` and countdown
@@ -1781,6 +1783,29 @@ state machine remains in assembly. Debug and Release preserve call SHA-256
 `b960fb4cabe1f6009e49c62ad9a0e7036aa4d2407c60ad8119f9a23b64b100d6`
 and write SHA-256
 `874224be422684644a59f3bad052e8e6cf73098cdeb01caeba034b585d89e248`.
+
+Semantic `03:76FA@all` covers the Giant Face crown's routed no-hit entry. It
+loads indexed collision state `$3800,X` and takes `BPL` to return at
+`03:7717` while bit 7 is clear. Its two-boundary transcript admits all 867
+route calls after 27 cycles and no direct writes, including seven original
+interrupt-handler passages and all 86 handler-owned writes. The unobserved
+300-point score, impact, and audio hit path remains in assembly. Debug and
+Release preserve call SHA-256
+`2685dfcf37be1b335eebfa5eb143cc81c72193ab199594626fa5909de28b5582`
+and write SHA-256
+`f5a56fa651a27a000897546ee595dbe7cb003de7b30272c08c3f243911bce494`.
+
+Semantic `03:7726@all` covers the Giant Face mouth's routed closed/no-hit
+entry. It first loads mouth state `$2D21`; a nonzero state enters the original
+open-mouth capture path. While closed, it loads indexed collision state
+`$3800,X` and takes `BPL` to return at `03:7748` while bit 7 is clear. Its
+four-boundary transcript admits all 1,214 route calls after 48 cycles and no
+direct writes, including 22 original interrupt-handler passages and all 288
+handler-owned writes. The unobserved open-mouth capture and 300-point hit
+paths remain in assembly. Debug and Release preserve call SHA-256
+`531e2094a7c17f742b1474a3c9511fa4918349e86dc415d7ed8ce5a28dc5dc95`
+and write SHA-256
+`48a862dec687758d8ecf7fcd480285dbc08e2fe1b9ee50a790a726ea0afc9ae5`.
 
 Semantic `02:445B@all` covers the hidden Big-Star feature controller's
 ordinary idle return. It loads shared Little-Skull latch `$2CFA` and returns

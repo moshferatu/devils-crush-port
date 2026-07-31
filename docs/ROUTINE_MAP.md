@@ -6032,6 +6032,72 @@ truncated RAM. Wake and transformation handling continues through assembly.
 - Release census SHA-256:
   `9036a9de0c3c9917f47bff8c04c136a4824ec12601fb457d260aa2dfe4443490`
 
+### Forty-sixth native replacement: semantic `03:76FA@all`
+
+The Giant Face crown loads indexed collision byte `$3800,X`. Bit 7 enters
+the 300-point score, impact, and command-`$20` audio path beginning at
+`03:76FF`; a clear bit takes `BPL` and returns at `03:7717`. The deterministic
+state-census route invokes this collision check 867 times and always takes
+the no-hit return.
+
+`dc_classify_giant_face_crown_gate` exposes the live collision byte and
+separates the deferred hit path from the native no-hit path. The host adapter
+recreates the indexed load and taken branch through two exact instruction
+checkpoints. Each uninterrupted call consumes 27 master cycles and has no
+direct writes.
+
+All 867 calls execute natively. Seven contain original interrupt-handler
+passages, whose 86 writes remain exact. Ordinal 1 independently shadows the
+frame-1,223 call with exact 27-cycle, zero-write parity. The existing
+5,608-call/812-write Giant Face family regression remains byte-identical in
+Debug and Release with the controller, animator, and crown gates enabled.
+ROM-free tests
+cover nonnegative/no-hit, bit-seven/hit, truncated RAM, and invalid slots.
+The active hit path remains assembly until a natural route exercises it.
+
+- Call SHA-256:
+  `2685dfcf37be1b335eebfa5eb143cc81c72193ab199594626fa5909de28b5582`
+- Write SHA-256:
+  `f5a56fa651a27a000897546ee595dbe7cb003de7b30272c08c3f243911bce494`
+- Debug census SHA-256:
+  `a95d0c343108b107d7ec1aa3c20915540d91bb08817704776531e5696ea9b5e2`
+- Release census SHA-256:
+  `9036a9de0c3c9917f47bff8c04c136a4824ec12601fb457d260aa2dfe4443490`
+
+### Forty-seventh native replacement: semantic `03:7726@all`
+
+The Giant Face mouth first loads `$2D21`. A nonzero state enters the original
+open-mouth capture path at `03:7749`; while closed, it loads indexed collision
+byte `$3800,X`. Bit 7 enters the shared 300-point score, impact, and
+command-`$20` audio path at `03:7730`; a clear bit takes `BPL` and returns at
+`03:7748`. The deterministic state-census route invokes this closed/no-hit
+check 1,214 times and always takes that return.
+
+`dc_classify_giant_face_mouth_gate` exposes mouth state and indexed collision
+state, distinguishing deferred open-mouth and hit paths from the native
+closed/no-hit path. The host adapter recreates the absolute mouth-state load,
+not-taken branch, indexed collision load, and taken branch through four exact
+instruction checkpoints. Each uninterrupted call consumes 48 master cycles
+and has no direct writes.
+
+All 1,214 calls execute natively. Twenty-two contain original interrupt-handler
+passages, whose 288 writes remain exact. Ordinal 1 independently shadows the
+frame-1,213 call with exact 48-cycle, zero-write parity. The existing
+5,608-call/812-write Giant Face family regression remains byte-identical in
+Debug and Release with all four Giant Face gates enabled. ROM-free tests cover
+closed/no-hit, open-mouth fallback, bit-seven/hit fallback, truncated RAM, and
+invalid slots. The active open-mouth and hit paths remain assembly until a
+natural route exercises them.
+
+- Call SHA-256:
+  `531e2094a7c17f742b1474a3c9511fa4918349e86dc415d7ed8ce5a28dc5dc95`
+- Write SHA-256:
+  `48a862dec687758d8ecf7fcd480285dbc08e2fe1b9ee50a790a726ea0afc9ae5`
+- Debug census SHA-256:
+  `a95d0c343108b107d7ec1aa3c20915540d91bb08817704776531e5696ea9b5e2`
+- Release census SHA-256:
+  `9036a9de0c3c9917f47bff8c04c136a4824ec12601fb457d260aa2dfe4443490`
+
 ## Controls-to-physics closure route
 
 The 3,600-frame state-census input is now also the deterministic Milestone 2

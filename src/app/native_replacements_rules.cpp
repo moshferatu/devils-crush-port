@@ -5202,6 +5202,155 @@ replace_giant_face_animator_gate(
 }
 
 [[nodiscard]] std::optional<RoutineReplacement>
+replace_giant_face_crown_gate(
+    const RoutineEntry& entry,
+    const std::span<const std::byte> work_ram)
+{
+    constexpr RoutineKey kRoutine{
+        .physical_bank = 0x03U,
+        .logical_pc = 0x76FAU,
+    };
+    if (entry.routine != kRoutine) {
+        return std::nullopt;
+    }
+
+    dc_giant_face_crown_gate gate{};
+    if (!dc_classify_giant_face_crown_gate(
+            reinterpret_cast<const std::uint8_t*>(work_ram.data()),
+            work_ram.size(),
+            entry.registers.x,
+            &gate)) {
+        throw std::runtime_error(
+            "Native 76FA replacement rejected the work-RAM snapshot.");
+    }
+    if (gate.path != DC_GIANT_FACE_CROWN_GATE_IDLE) {
+        return std::nullopt;
+    }
+
+    const auto set_nz =
+        [](std::uint8_t status, const std::uint8_t value) {
+            status = static_cast<std::uint8_t>(status & 0x7DU);
+            if (value == 0U) {
+                status = static_cast<std::uint8_t>(status | 0x02U);
+            } else if ((value & 0x80U) != 0U) {
+                status = static_cast<std::uint8_t>(status | 0x80U);
+            }
+            return status;
+        };
+
+    auto output = entry.registers;
+    output.program_counter = 0x7717U;
+    output.accumulator = gate.collision_state;
+    output.status = set_nz(output.status, output.accumulator);
+
+    RoutineReplacement replacement{
+        .return_instruction = {
+            .physical_bank = 0x03U,
+            .logical_pc = 0x7717U,
+        },
+        .output_registers = output,
+        .body_master_cycles = 27U,
+    };
+    const auto append_checkpoint =
+        [&replacement](
+            const std::uint16_t instruction_pc,
+            const std::uint16_t resume_pc,
+            const std::uint32_t master_cycle,
+            auto registers) {
+            registers.program_counter = resume_pc;
+            replacement.checkpoints.push_back({
+                .interrupt_sample_master_cycle_offset =
+                    master_cycle - 3U,
+                .master_cycle_offset = master_cycle,
+                .instruction = {0x03U, instruction_pc},
+                .registers = registers,
+            });
+        };
+
+    append_checkpoint(0x76FAU, 0x76FDU, 15U, output);
+    append_checkpoint(0x76FDU, 0x7717U, 27U, output);
+    return replacement;
+}
+
+[[nodiscard]] std::optional<RoutineReplacement>
+replace_giant_face_mouth_gate(
+    const RoutineEntry& entry,
+    const std::span<const std::byte> work_ram)
+{
+    constexpr RoutineKey kRoutine{
+        .physical_bank = 0x03U,
+        .logical_pc = 0x7726U,
+    };
+    if (entry.routine != kRoutine) {
+        return std::nullopt;
+    }
+
+    dc_giant_face_mouth_gate gate{};
+    if (!dc_classify_giant_face_mouth_gate(
+            reinterpret_cast<const std::uint8_t*>(work_ram.data()),
+            work_ram.size(),
+            entry.registers.x,
+            &gate)) {
+        throw std::runtime_error(
+            "Native 7726 replacement rejected the work-RAM snapshot.");
+    }
+    if (gate.path != DC_GIANT_FACE_MOUTH_GATE_IDLE) {
+        return std::nullopt;
+    }
+
+    const auto set_nz =
+        [](std::uint8_t status, const std::uint8_t value) {
+            status = static_cast<std::uint8_t>(status & 0x7DU);
+            if (value == 0U) {
+                status = static_cast<std::uint8_t>(status | 0x02U);
+            } else if ((value & 0x80U) != 0U) {
+                status = static_cast<std::uint8_t>(status | 0x80U);
+            }
+            return status;
+        };
+
+    auto mouth_state_registers = entry.registers;
+    mouth_state_registers.accumulator = gate.mouth_state;
+    mouth_state_registers.status = set_nz(
+        mouth_state_registers.status, mouth_state_registers.accumulator);
+
+    auto output = entry.registers;
+    output.program_counter = 0x7748U;
+    output.accumulator = gate.collision_state;
+    output.status = set_nz(output.status, output.accumulator);
+
+    RoutineReplacement replacement{
+        .return_instruction = {
+            .physical_bank = 0x03U,
+            .logical_pc = 0x7748U,
+        },
+        .output_registers = output,
+        .body_master_cycles = 48U,
+    };
+    const auto append_checkpoint =
+        [&replacement](
+            const std::uint16_t instruction_pc,
+            const std::uint16_t resume_pc,
+            const std::uint32_t master_cycle,
+            auto registers) {
+            registers.program_counter = resume_pc;
+            replacement.checkpoints.push_back({
+                .interrupt_sample_master_cycle_offset =
+                    master_cycle - 3U,
+                .master_cycle_offset = master_cycle,
+                .instruction = {0x03U, instruction_pc},
+                .registers = registers,
+            });
+        };
+
+    append_checkpoint(0x7726U, 0x7729U, 15U, mouth_state_registers);
+    append_checkpoint(0x7729U, 0x772BU, 21U, mouth_state_registers);
+    append_checkpoint(0x772BU, 0x772EU, 36U, output);
+    append_checkpoint(0x772EU, 0x7748U, 48U, output);
+    return replacement;
+}
+
+[[nodiscard]] std::optional<RoutineReplacement>
 replace_three_blobs_controller(
     const RoutineEntry& entry,
     const std::span<const std::byte> work_ram)

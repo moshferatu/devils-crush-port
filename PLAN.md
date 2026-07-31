@@ -392,7 +392,7 @@ Provide an interactive monitor-assignment screen and persist display identity, g
   is assigned to subsystem-specific implementation files rather than
   `main.cpp`. Completed 2026-07-30: collision, physics/arithmetic,
   controls/actor, and rules/RNG/score adapters now occupy subsystem
-  implementation files, while `native_replacements.cpp` is the 535-line
+  implementation files, while `native_replacements.cpp` is the 532-line
   central registry.**
 - Begin from the replacement-mode routine proven during Milestone 2 and use
   it as the reference vertical slice for later ports. **Milestone 4 began
@@ -633,7 +633,15 @@ Provide an interactive monitor-assignment screen and persist display identity, g
   animator calls through the exact 27-cycle, three-boundary idle return for
   animation modes other than one. All eight original interrupt-handler
   passages and 97 handler-owned writes remain exact; mode one's active
-  animation stays in assembly. Semantic
+  animation stays in assembly. Semantic `03:76FA@all` handles all 867 routed
+  Giant-Face crown collision checks through the exact 27-cycle, two-boundary
+  no-hit return. All seven original interrupt-handler passages and 86
+  handler-owned writes remain exact; the 300-point crown-hit path remains in
+  assembly. Semantic `03:7726@all` handles all 1,214 routed Giant-Face mouth
+  checks through the exact 48-cycle, four-boundary closed/no-hit return. All
+  22 original interrupt-handler passages and 288 handler-owned writes remain
+  exact; open-mouth capture and the 300-point hit path remain in assembly.
+  Semantic
   `02:4DD9@all` handles the Giant Skeleton's Eyeball activation gate's
   dormant branch from the live Dragon's-Egg latch and session flags. Its
   six-boundary, zero-write, 57-cycle transcript replaces all 1,988 current

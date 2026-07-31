@@ -334,6 +334,30 @@ typedef struct dc_giant_face_request_gate {
     dc_giant_face_request_gate_path path;
 } dc_giant_face_request_gate;
 
+typedef enum dc_giant_face_crown_gate_path {
+    DC_GIANT_FACE_CROWN_GATE_IDLE = 0,
+    DC_GIANT_FACE_CROWN_GATE_HIT = 1
+} dc_giant_face_crown_gate_path;
+
+typedef struct dc_giant_face_crown_gate {
+    uint8_t slot;
+    uint8_t collision_state;
+    dc_giant_face_crown_gate_path path;
+} dc_giant_face_crown_gate;
+
+typedef enum dc_giant_face_mouth_gate_path {
+    DC_GIANT_FACE_MOUTH_GATE_IDLE = 0,
+    DC_GIANT_FACE_MOUTH_GATE_OPEN = 1,
+    DC_GIANT_FACE_MOUTH_GATE_HIT = 2
+} dc_giant_face_mouth_gate_path;
+
+typedef struct dc_giant_face_mouth_gate {
+    uint8_t mouth_state;
+    uint8_t slot;
+    uint8_t collision_state;
+    dc_giant_face_mouth_gate_path path;
+} dc_giant_face_mouth_gate;
+
 // Native classification performed by ROM routine 00:F4FC. Empty slots are
 // unchanged. Occupied slots set camera flag bit 7 exactly when their signed
 // integer Y coordinate lies in [anchor - 48, anchor + 240).
@@ -560,6 +584,25 @@ int dc_classify_giant_face_request_gate(
     const uint8_t* work_ram,
     size_t work_ram_size,
     dc_giant_face_request_gate* gate);
+
+// Native state classification for ROM routine 03:76FA. The Giant-Face crown
+// returns while its indexed collision state is nonnegative; bit 7 enters the
+// 300-point score, impact, and audio path.
+int dc_classify_giant_face_crown_gate(
+    const uint8_t* work_ram,
+    size_t work_ram_size,
+    uint8_t slot,
+    dc_giant_face_crown_gate* gate);
+
+// Native state classification for ROM routine 03:7726. A nonzero mouth
+// state enters the open-mouth capture path. While closed, the Giant Face
+// returns when its indexed collision state is nonnegative; bit 7 enters the
+// shared 300-point score, impact, and audio path.
+int dc_classify_giant_face_mouth_gate(
+    const uint8_t* work_ram,
+    size_t work_ram_size,
+    uint8_t slot,
+    dc_giant_face_mouth_gate* gate);
 
 #ifdef __cplusplus
 } // extern "C"

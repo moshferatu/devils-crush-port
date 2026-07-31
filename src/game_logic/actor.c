@@ -646,3 +646,50 @@ int dc_classify_giant_face_request_gate(
         : DC_GIANT_FACE_REQUEST_GATE_IDLE;
     return 1;
 }
+
+int dc_classify_giant_face_crown_gate(
+    const uint8_t* const work_ram,
+    const size_t work_ram_size,
+    const uint8_t slot,
+    dc_giant_face_crown_gate* const gate)
+{
+    const size_t collision_offset = 0x1800U + (size_t)slot;
+
+    if (work_ram == NULL || gate == NULL || slot > 0x7FU
+        || work_ram_size <= collision_offset) {
+        return 0;
+    }
+
+    gate->slot = slot;
+    gate->collision_state = work_ram[collision_offset];
+    gate->path = (gate->collision_state & 0x80U) != 0U
+        ? DC_GIANT_FACE_CROWN_GATE_HIT
+        : DC_GIANT_FACE_CROWN_GATE_IDLE;
+    return 1;
+}
+
+int dc_classify_giant_face_mouth_gate(
+    const uint8_t* const work_ram,
+    const size_t work_ram_size,
+    const uint8_t slot,
+    dc_giant_face_mouth_gate* const gate)
+{
+    const size_t collision_offset = 0x1800U + (size_t)slot;
+
+    if (work_ram == NULL || gate == NULL || slot > 0x7FU
+        || work_ram_size <= 0x0D21U || work_ram_size <= collision_offset) {
+        return 0;
+    }
+
+    gate->mouth_state = work_ram[0x0D21U];
+    gate->slot = slot;
+    gate->collision_state = work_ram[collision_offset];
+    if (gate->mouth_state != 0U) {
+        gate->path = DC_GIANT_FACE_MOUTH_GATE_OPEN;
+    } else {
+        gate->path = (gate->collision_state & 0x80U) != 0U
+            ? DC_GIANT_FACE_MOUTH_GATE_HIT
+            : DC_GIANT_FACE_MOUTH_GATE_IDLE;
+    }
+    return 1;
+}

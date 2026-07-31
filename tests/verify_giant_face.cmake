@@ -71,6 +71,10 @@ execute_process(
         "03:74D8@all"
         --replace-hook
         "03:767E@all"
+        --replace-hook
+        "03:76FA@all"
+        --replace-hook
+        "03:7726@all"
         --routine-trace
         "${trace_output}"
         --routine-call-trace
@@ -140,6 +144,8 @@ foreach(expected_line IN ITEMS
     "State census recording complete: 3600 frames"
     "Native replacement 03:74D8@all entries: 2648 of 2648"
     "Native replacement 03:767E@all entries: 873 of 873"
+    "Native replacement 03:76FA@all entries: 867 of 867"
+    "Native replacement 03:7726@all entries: 1214 of 1214"
     "Routine trace complete: 5608 entries"
     "Routine call trace complete: 5608 calls, 812 writes"
     "Routine replay 03:74D8@1 verified: frame 942"

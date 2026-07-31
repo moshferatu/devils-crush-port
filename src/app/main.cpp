@@ -1023,6 +1023,20 @@ parse_logical_address_range(const std::string_view text)
                                        .logical_pc = 0x74D8U,
                                    }
                            && request.all_calls;
+                       const bool proven_giant_face_crown_gate =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x03U,
+                                       .logical_pc = 0x76FAU,
+                                   }
+                           && request.all_calls;
+                       const bool proven_giant_face_mouth_gate =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x03U,
+                                       .logical_pc = 0x7726U,
+                                   }
+                           && request.all_calls;
                        const bool proven_walled_star_hit_gate =
                            request.routine
                                    == RoutineKey{
@@ -1225,6 +1239,8 @@ parse_logical_address_range(const std::string_view text)
                            && !proven_giant_door_hit_gate
                            && !proven_giant_face_request_gate
                            && !proven_giant_face_animator_gate
+                           && !proven_giant_face_crown_gate
+                           && !proven_giant_face_mouth_gate
                            && !proven_walled_star_hit_gate
                            && !proven_tower_hit_gate
                            && !proven_tower_hit_continuation
@@ -1289,6 +1305,8 @@ parse_logical_address_range(const std::string_view text)
             "semantic 03:62B8@all, "
             "semantic 03:74D8@all, "
             "semantic 03:767E@all, "
+            "semantic 03:76FA@all, "
+            "semantic 03:7726@all, "
             "semantic 03:6339@all, "
             "semantic 03:60C3@all, "
             "semantic 03:60E0@all, "

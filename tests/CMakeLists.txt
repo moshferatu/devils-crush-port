@@ -1376,6 +1376,38 @@ if(TARGET devils_crush)
         )
 
         add_test(
+            NAME dc_rom_giant_face_crown_gate_semantic
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/giant-face-crown-gate-semantic-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_giant_face_crown_gate_semantic.cmake"
+        )
+        set_tests_properties(
+            dc_rom_giant_face_crown_gate_semantic
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_giant_face_mouth_gate_semantic
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/giant-face-mouth-gate-semantic-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_giant_face_mouth_gate_semantic.cmake"
+        )
+        set_tests_properties(
+            dc_rom_giant_face_mouth_gate_semantic
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
             NAME dc_rom_collision_boundary
             COMMAND
                 "${CMAKE_COMMAND}"

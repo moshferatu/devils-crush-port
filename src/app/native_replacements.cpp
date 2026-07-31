@@ -302,6 +302,18 @@ replace_native_gameplay_routine_impl(
     } else if (entry.routine
         == RoutineKey{
             .physical_bank = 0x03U,
+            .logical_pc = 0x76FAU,
+        }) {
+        replacement = detail::replace_giant_face_crown_gate(entry, work_ram);
+    } else if (entry.routine
+        == RoutineKey{
+            .physical_bank = 0x03U,
+            .logical_pc = 0x7726U,
+        }) {
+        replacement = detail::replace_giant_face_mouth_gate(entry, work_ram);
+    } else if (entry.routine
+        == RoutineKey{
+            .physical_bank = 0x03U,
             .logical_pc = 0x6339U,
         }) {
         replacement =

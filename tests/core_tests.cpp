@@ -1954,6 +1954,100 @@ void test_native_giant_face_request_gate()
         "native 74D8 rejects a truncated work-RAM snapshot");
 }
 
+void test_native_giant_face_crown_gate()
+{
+    std::array<std::uint8_t, 0x2000> work_ram{};
+    dc_giant_face_crown_gate gate{};
+
+    work_ram[0x1839U] = 0x10U;
+    check(
+        dc_classify_giant_face_crown_gate(
+            work_ram.data(),
+            work_ram.size(),
+            0x39U,
+            &gate)
+                != 0
+            && gate.path == DC_GIANT_FACE_CROWN_GATE_IDLE
+            && gate.slot == 0x39U
+            && gate.collision_state == 0x10U,
+        "native 76FA identifies the Giant-Face crown no-hit return");
+
+    work_ram[0x1839U] = 0x90U;
+    check(
+        dc_classify_giant_face_crown_gate(
+            work_ram.data(),
+            work_ram.size(),
+            0x39U,
+            &gate)
+                != 0
+            && gate.path == DC_GIANT_FACE_CROWN_GATE_HIT
+            && gate.collision_state == 0x90U,
+        "native 76FA identifies the deferred Giant-Face crown hit path");
+
+    check(
+        dc_classify_giant_face_crown_gate(
+            work_ram.data(),
+            0x1839U,
+            0x39U,
+            &gate)
+            == 0,
+        "native 76FA rejects a truncated work-RAM snapshot");
+    check(
+        dc_classify_giant_face_crown_gate(
+            work_ram.data(),
+            work_ram.size(),
+            0x80U,
+            &gate)
+            == 0,
+        "native 76FA rejects an out-of-range actor slot");
+}
+
+void test_native_giant_face_mouth_gate()
+{
+    std::array<std::uint8_t, 0x2000> work_ram{};
+    dc_giant_face_mouth_gate gate{};
+
+    work_ram[0x0D21U] = 0U;
+    work_ram[0x1838U] = 0x10U;
+    check(
+        dc_classify_giant_face_mouth_gate(
+            work_ram.data(), work_ram.size(), 0x38U, &gate)
+                != 0
+            && gate.path == DC_GIANT_FACE_MOUTH_GATE_IDLE
+            && gate.mouth_state == 0U && gate.slot == 0x38U
+            && gate.collision_state == 0x10U,
+        "native 7726 identifies the Giant-Face mouth no-hit return");
+
+    work_ram[0x0D21U] = 1U;
+    check(
+        dc_classify_giant_face_mouth_gate(
+            work_ram.data(), work_ram.size(), 0x38U, &gate)
+                != 0
+            && gate.path == DC_GIANT_FACE_MOUTH_GATE_OPEN,
+        "native 7726 identifies the deferred Giant-Face open-mouth path");
+
+    work_ram[0x0D21U] = 0U;
+    work_ram[0x1838U] = 0x90U;
+    check(
+        dc_classify_giant_face_mouth_gate(
+            work_ram.data(), work_ram.size(), 0x38U, &gate)
+                != 0
+            && gate.path == DC_GIANT_FACE_MOUTH_GATE_HIT
+            && gate.collision_state == 0x90U,
+        "native 7726 identifies the deferred Giant-Face mouth hit path");
+
+    check(
+        dc_classify_giant_face_mouth_gate(
+            work_ram.data(), 0x1838U, 0x38U, &gate)
+            == 0,
+        "native 7726 rejects a truncated work-RAM snapshot");
+    check(
+        dc_classify_giant_face_mouth_gate(
+            work_ram.data(), work_ram.size(), 0x80U, &gate)
+            == 0,
+        "native 7726 rejects an out-of-range actor slot");
+}
+
 void test_native_walled_star_hit_gate()
 {
     std::array<std::uint8_t, 0x2000> work_ram{};
@@ -5221,6 +5315,8 @@ int main()
     test_native_big_star_feature_gate();
     test_native_giant_face_request_gate();
     test_native_giant_face_animator_gate();
+    test_native_giant_face_crown_gate();
+    test_native_giant_face_mouth_gate();
     test_native_walled_star_hit_gate();
     test_native_tower_hit_gate();
     test_native_dragon_head_hit_gate();
