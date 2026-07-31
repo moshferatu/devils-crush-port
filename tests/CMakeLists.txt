@@ -610,6 +610,22 @@ if(TARGET devils_crush)
         )
 
         add_test(
+            NAME dc_rom_collision_mask_lookup_semantic
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/collision-mask-lookup-semantic-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_collision_mask_lookup_semantic.cmake"
+        )
+        set_tests_properties(
+            dc_rom_collision_mask_lookup_semantic
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
             NAME dc_rom_flipper_phase_step_semantic
             COMMAND
                 "${CMAKE_COMMAND}"
@@ -654,6 +670,22 @@ if(TARGET devils_crush)
         )
         set_tests_properties(
             dc_rom_signed_word_negation_semantic
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_unsigned_byte_multiply_semantic
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/unsigned-byte-multiply-semantic-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_unsigned_byte_multiply_semantic.cmake"
+        )
+        set_tests_properties(
+            dc_rom_unsigned_byte_multiply_semantic
             PROPERTIES LABELS rom_required
         )
 
@@ -844,6 +876,502 @@ if(TARGET devils_crush)
         )
         set_tests_properties(
             dc_rom_session_input_gate_semantic
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_giant_skeleton_eyeball_gate_semantic
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/giant-skeleton-eyeball-gate-semantic-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_giant_skeleton_eyeball_gate_semantic.cmake"
+        )
+        set_tests_properties(
+            dc_rom_giant_skeleton_eyeball_gate_semantic
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_mercy_star_gate_semantic
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/mercy-star-gate-semantic-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_mercy_star_gate_semantic.cmake"
+        )
+        set_tests_properties(
+            dc_rom_mercy_star_gate_semantic
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_three_blobs_controller_semantic
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/three-blobs-controller-semantic-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_three_blobs_controller_semantic.cmake"
+        )
+        set_tests_properties(
+            dc_rom_three_blobs_controller_semantic
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_dragon_egg_controller_semantic
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/dragon-egg-controller-semantic-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_dragon_egg_controller_semantic.cmake"
+        )
+        set_tests_properties(
+            dc_rom_dragon_egg_controller_semantic
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_dragon_egg_hit_gate_semantic
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/dragon-egg-hit-gate-semantic-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_dragon_egg_hit_gate_semantic.cmake"
+        )
+        set_tests_properties(
+            dc_rom_dragon_egg_hit_gate_semantic
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_dragon_egg_hit_continuations_semantic
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/dragon-egg-hit-continuations-semantic-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_dragon_egg_hit_continuations_semantic.cmake"
+        )
+        set_tests_properties(
+            dc_rom_dragon_egg_hit_continuations_semantic
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_big_star_feature_gate_semantic
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/big-star-feature-gate-semantic-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_big_star_feature_gate_semantic.cmake"
+        )
+        set_tests_properties(
+            dc_rom_big_star_feature_gate_semantic
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_devil_shooter_hit_gate_semantic
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/devil-shooter-hit-gate-semantic-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_devil_shooter_hit_gate_semantic.cmake"
+        )
+        set_tests_properties(
+            dc_rom_devil_shooter_hit_gate_semantic
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_devil_shooter_catch_continuation_semantic
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/devil-shooter-catch-continuation-semantic-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_devil_shooter_catch_continuation_semantic.cmake"
+        )
+        set_tests_properties(
+            dc_rom_devil_shooter_catch_continuation_semantic
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_skeleton_insect_left_gate_semantic
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/skeleton-insect-left-gate-semantic-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_skeleton_insect_left_gate_semantic.cmake"
+        )
+        set_tests_properties(
+            dc_rom_skeleton_insect_left_gate_semantic
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_skeleton_insect_right_gate_semantic
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/skeleton-insect-right-gate-semantic-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_skeleton_insect_right_gate_semantic.cmake"
+        )
+        set_tests_properties(
+            dc_rom_skeleton_insect_right_gate_semantic
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_skeleton_insect_center_gate_semantic
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/skeleton-insect-center-gate-semantic-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_skeleton_insect_center_gate_semantic.cmake"
+        )
+          set_tests_properties(
+              dc_rom_skeleton_insect_center_gate_semantic
+              PROPERTIES LABELS rom_required
+          )
+
+          add_test(
+              NAME dc_rom_skeleton_insect_center_continuation_semantic
+              COMMAND
+                  "${CMAKE_COMMAND}"
+                  "-DAPP=$<TARGET_FILE:devils_crush>"
+                  "-DCONFIG=$<CONFIG>"
+                  "-DROM=${DC_ROM_PATH}"
+                  "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/skeleton-insect-center-continuation-semantic-v1.csv"
+                  "-P"
+                  "${CMAKE_CURRENT_SOURCE_DIR}/verify_skeleton_insect_center_continuation_semantic.cmake"
+          )
+          set_tests_properties(
+              dc_rom_skeleton_insect_center_continuation_semantic
+              PROPERTIES LABELS rom_required
+          )
+
+          add_test(
+            NAME dc_rom_devils_coffin_gate_semantic
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/devils-coffin-gate-semantic-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_devils_coffin_gate_semantic.cmake"
+        )
+        set_tests_properties(
+            dc_rom_devils_coffin_gate_semantic
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_devils_coffin_opening_semantic
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/devils-coffin-opening-semantic-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_devils_coffin_opening_semantic.cmake"
+        )
+        set_tests_properties(
+            dc_rom_devils_coffin_opening_semantic
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_devils_coffin_closing_semantic
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/devils-coffin-closing-semantic-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_devils_coffin_closing_semantic.cmake"
+        )
+        set_tests_properties(
+            dc_rom_devils_coffin_closing_semantic
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_dragon_head_hit_gate_semantic
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/dragon-head-hit-gate-semantic-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_dragon_head_hit_gate_semantic.cmake"
+        )
+        set_tests_properties(
+            dc_rom_dragon_head_hit_gate_semantic
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_dragon_head_hit_continuation_semantic
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/dragon-head-hit-continuation-semantic-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_dragon_head_hit_continuation_semantic.cmake"
+        )
+        set_tests_properties(
+            dc_rom_dragon_head_hit_continuation_semantic
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_walled_star_hit_gate_semantic
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/walled-star-hit-gate-semantic-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_walled_star_hit_gate_semantic.cmake"
+        )
+        set_tests_properties(
+            dc_rom_walled_star_hit_gate_semantic
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_tower_hit_gate_semantic
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/tower-hit-gate-semantic-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_tower_hit_gate_semantic.cmake"
+        )
+        set_tests_properties(
+            dc_rom_tower_hit_gate_semantic
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_tower_hit_continuations_semantic
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/tower-hit-continuations-semantic-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_tower_hit_continuations_semantic.cmake"
+        )
+        set_tests_properties(
+            dc_rom_tower_hit_continuations_semantic
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_tower_guard_selector_semantic
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/tower-guard-selector-semantic-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_tower_guard_selector_semantic.cmake"
+        )
+        set_tests_properties(
+            dc_rom_tower_guard_selector_semantic
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_bumper_hit_gate_semantic
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/bumper-hit-gate-semantic-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_bumper_hit_gate_semantic.cmake"
+        )
+        set_tests_properties(
+            dc_rom_bumper_hit_gate_semantic
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_bumper_hit_continuations_semantic
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/bumper-hit-continuations-semantic-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_bumper_hit_continuations_semantic.cmake"
+        )
+        set_tests_properties(
+            dc_rom_bumper_hit_continuations_semantic
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_fixed_response_gate_semantic
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/fixed-response-gate-semantic-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_fixed_response_gate_semantic.cmake"
+        )
+        set_tests_properties(
+            dc_rom_fixed_response_gate_semantic
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_fixed_scheduler_gate_semantic
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/fixed-scheduler-gate-semantic-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_fixed_scheduler_gate_semantic.cmake"
+        )
+        set_tests_properties(
+            dc_rom_fixed_scheduler_gate_semantic
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_fixed_marker_gate_semantic
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/fixed-marker-gate-semantic-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_fixed_marker_gate_semantic.cmake"
+        )
+        set_tests_properties(
+            dc_rom_fixed_marker_gate_semantic
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_scaled_word_add_semantic
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/scaled-word-add-semantic-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_scaled_word_add_semantic.cmake"
+        )
+        set_tests_properties(
+            dc_rom_scaled_word_add_semantic
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_giant_door_hit_gate_semantic
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/giant-door-hit-gate-semantic-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_giant_door_hit_gate_semantic.cmake"
+        )
+        set_tests_properties(
+            dc_rom_giant_door_hit_gate_semantic
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_giant_face_request_gate_semantic
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/giant-face-request-gate-semantic-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_giant_face_request_gate_semantic.cmake"
+        )
+        set_tests_properties(
+            dc_rom_giant_face_request_gate_semantic
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_giant_face_animator_gate_semantic
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/giant-face-animator-gate-semantic-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_giant_face_animator_gate_semantic.cmake"
+        )
+        set_tests_properties(
+            dc_rom_giant_face_animator_gate_semantic
             PROPERTIES LABELS rom_required
         )
 

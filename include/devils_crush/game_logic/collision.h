@@ -108,6 +108,56 @@ typedef struct dc_collision_geometry {
     uint8_t vertical_offset_negative;
 } dc_collision_geometry;
 
+typedef enum dc_collision_scan_bounds_branch {
+    DC_COLLISION_SCAN_BOUNDS_DEFER = 0,
+    DC_COLLISION_SCAN_BOUNDS_HORIZONTAL = 1,
+    DC_COLLISION_SCAN_BOUNDS_VERTICAL_NEGATIVE = 2,
+    DC_COLLISION_SCAN_BOUNDS_VERTICAL_PAGE = 3,
+    DC_COLLISION_SCAN_BOUNDS_VERTICAL_LOW = 4
+} dc_collision_scan_bounds_branch;
+
+typedef struct dc_collision_scan_bounds_reject {
+    uint8_t horizontal_source;
+    uint8_t horizontal_target;
+    uint8_t horizontal_limit;
+    uint8_t horizontal_difference;
+    uint8_t vertical_source_low;
+    uint8_t vertical_source_high;
+    uint8_t vertical_target_low;
+    uint8_t vertical_target_high;
+    uint8_t vertical_limit;
+    uint8_t vertical_difference_low;
+    uint8_t vertical_difference_high;
+    uint8_t vertical_low_subtract_carry;
+    uint8_t vertical_high_subtract_carry;
+    dc_collision_scan_bounds_branch branch;
+} dc_collision_scan_bounds_reject;
+
+typedef struct dc_collision_mask_lookup {
+    uint16_t first_table_pointer;
+    uint16_t second_table_pointer;
+    uint16_t mask_base_pointer;
+    uint16_t mask_pointer;
+    uint8_t table_index;
+    uint8_t first_table_value;
+    uint8_t second_table_value;
+    uint8_t mask_row;
+    uint8_t mask_column;
+    uint8_t mask_value;
+    uint8_t column_bit;
+    uint8_t collision;
+} dc_collision_mask_lookup;
+
+typedef struct dc_collision_mask_coordinates {
+    uint8_t side_flags_updated;
+    uint8_t side_flags;
+    uint8_t mask_column;
+    uint8_t horizontal_cell;
+    uint8_t rounded_horizontal_span;
+    uint8_t mask_row;
+    uint8_t vertical_cell;
+} dc_collision_mask_coordinates;
+
 // Native collision-table pass selection used by ROM routine 03:6966.
 // The table pointer is supplied by the project-owned ROM metadata boundary.
 // A negative collision-state byte alternates its low seven-bit pass index;
@@ -167,6 +217,38 @@ int dc_prepare_collision_geometry(
     uint8_t target_slot,
     const dc_collision_geometry_tables* tables,
     dc_collision_geometry* geometry);
+
+// Native classification of CC1A's post-CCD5 bounds checks. CCD5 leaves the
+// adjusted candidate coordinate and one-sided limits in $68-$6C. The parent
+// rejects horizontal overflow first, then negative, multi-page, or
+// out-of-range vertical differences. In-range candidates are reported as
+// DEFER for the still-emulated collision-mask and contact paths.
+int dc_classify_collision_scan_bounds_reject(
+    const uint8_t* work_ram,
+    size_t work_ram_size,
+    dc_collision_scan_bounds_reject* reject);
+
+// Native state model for CC41-CC97 after all geometry bounds pass. It
+// derives the optional side flag, sub-cell mask indices, cell coordinates,
+// and the two unsigned-multiply inputs consumed before CC98.
+int dc_prepare_collision_mask_coordinates(
+    const uint8_t* work_ram,
+    size_t work_ram_size,
+    uint8_t target_slot,
+    dc_collision_mask_coordinates* coordinates);
+
+// Native state model for CC98's final collision-mask lookup. The host
+// resolves the three pointer-derived ROM bytes and the column bit through
+// the current MPR map; this pure function derives all intermediate indices,
+// pointers, and the final contact decision.
+int dc_resolve_collision_mask_lookup(
+    const uint8_t* work_ram,
+    size_t work_ram_size,
+    uint8_t first_table_value,
+    uint8_t second_table_value,
+    uint8_t mask_value,
+    uint8_t column_bit,
+    dc_collision_mask_lookup* lookup);
 
 #ifdef __cplusplus
 }

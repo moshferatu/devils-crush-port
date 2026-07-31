@@ -27,6 +27,7 @@ execute_process(
         --observe-hook "01:CC1A"
         --replace-hook "01:CC1A@all"
         --routine-call-trace "${call_output}"
+        --routine-replay "01:CC1A@19176"
         --rom "${ROM}"
     RESULT_VARIABLE recorder_result
     OUTPUT_VARIABLE recorder_output
@@ -38,9 +39,11 @@ endif()
 
 foreach(expected_line IN ITEMS
     "State census recording complete: 3600 frames"
-    "Native replacement 01:CC1A@all entries: 19192 of 85715"
+    "Native replacement 01:CC1A@all entries: 85715 of 85715"
     "Observe hook 1 entries: 85715"
     "Routine call trace complete: 85715 calls, 1784119 writes"
+    "Routine replay 01:CC1A@19176 verified: frame 1553, 2277 body cycles, 52 ordered writes"
+    "Routine replay complete: 1 state-normalized calls"
 )
     string(FIND "${recorder_output}" "${expected_line}" line_offset)
     if(line_offset EQUAL -1)
@@ -63,4 +66,4 @@ foreach(artifact IN ITEMS census call write)
     endif()
 endforeach()
 
-message(STATUS "Semantic CC1A vertical rejection covers 19,192 calls with checkpointed interrupts.")
+message(STATUS "Semantic CC1A collision scan covers all 85,715 calls with composed CCD5, E569, and CC98 checkpoints.")

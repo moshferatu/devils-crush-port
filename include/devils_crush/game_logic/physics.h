@@ -106,6 +106,25 @@ typedef struct dc_unsigned_multiply_round {
     dc_unsigned_multiply_step steps[DC_UNSIGNED_MULTIPLY_STEP_COUNT];
 } dc_unsigned_multiply_round;
 
+typedef struct dc_unsigned_byte_multiply_step {
+    uint8_t low_after_shift;
+    uint8_t high_after_shift;
+    uint8_t adds_multiplicand;
+    uint8_t low_after_add;
+    uint8_t high_after_add;
+    uint8_t add_carry;
+} dc_unsigned_byte_multiply_step;
+
+typedef struct dc_unsigned_byte_multiply {
+    uint8_t multiplicand;
+    uint8_t multiplier;
+    uint8_t result_low;
+    uint8_t result_high;
+    uint8_t add_count;
+    uint8_t carry_count;
+    dc_unsigned_byte_multiply_step steps[DC_UNSIGNED_MULTIPLY_STEP_COUNT];
+} dc_unsigned_byte_multiply;
+
 typedef struct dc_signed_fixed_multiply {
     uint16_t multiplicand_input;
     uint16_t multiplier_input;
@@ -219,6 +238,14 @@ int dc_multiply_unsigned_round(
     const uint8_t* work_ram,
     size_t work_ram_size,
     dc_unsigned_multiply_round* round);
+
+// Native equivalent of ROM routine 00:E569. It multiplies the unsigned
+// bytes at zero-page $2F and $30 through the original eight shift/add
+// rounds. The function is pure: callers commit the returned product.
+int dc_multiply_unsigned_bytes(
+    const uint8_t* work_ram,
+    size_t work_ram_size,
+    dc_unsigned_byte_multiply* multiply);
 
 // Native equivalent of ROM routine 00:E65C. It normalizes two signed 8.8
 // words at 2D:2E and 2F:30, composes one or two E624 unsigned rounds, shifts

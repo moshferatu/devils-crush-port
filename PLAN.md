@@ -391,8 +391,9 @@ Provide an interactive monitor-assignment screen and persist display identity, g
   5,077 lines without changing replacement behavior. Further adapter growth
   is assigned to subsystem-specific implementation files rather than
   `main.cpp`. Completed 2026-07-30: collision, physics/arithmetic,
-  controls/actor, and RNG/score adapters now occupy subsystem implementation
-  files, while `native_replacements.cpp` is the 234-line central registry.**
+  controls/actor, and rules/RNG/score adapters now occupy subsystem
+  implementation files, while `native_replacements.cpp` is the 535-line
+  central registry.**
 - Begin from the replacement-mode routine proven during Milestone 2 and use
   it as the reference vertical slice for later ports. **Milestone 4 began
   2026-07-28 with faithful `00:F1B4@17` position integration beside the
@@ -497,6 +498,163 @@ Provide an interactive monitor-assignment screen and persist display identity, g
   handles the adjacent active-player no-Run-input return, replacing all 2,649
   calls with its seven-boundary, zero-write, 72-cycle transcript while pause,
   high-score, and session-transition paths remain emulated. Semantic
+  `02:42F6@all` handles the Dragon's-Egg group controller's nonzero-count
+  return from live count `$2CF4`. Its two-boundary, zero-write, 21-cycle
+  transcript replaces all 1,790 current route calls, including 17 original
+  interrupt-handler passages, while the count-zero award and reset sequence
+  remains emulated. Semantic `02:4345@all` handles all 9,857 Dragon's-Egg
+  hit checks. Idle calls retain their two-boundary, zero-write, 21-cycle
+  return; the routed hit installs the 10-unit score arguments through an
+  exact 57-cycle, two-write handoff. Shared score/audio work remains
+  emulated, semantic `02:4357@all` then disables the egg and installs the
+  `$39` impact/allocation parameters through 93 cycles and four writes, and
+  semantic `02:4371@all` activates the fixed slot after the original burst
+  and hatchling allocators. The complete outer 1,682-write artifact and all
+  original interrupt passages remain exact.
+  Semantic `02:445B@all` handles the hidden Big-Star feature controller's
+  clear `$2CFA` latch return. Its two-boundary, zero-write, 21-cycle
+  transcript replaces all 2,650 current route calls, including 28 original
+  interrupt-handler passages, while the pending Little-Skull direction and
+  scoring update remains emulated. Semantic `03:6339@all` handles the
+  Walled Star's ordinary no-hit return from indexed collision state
+  `$3800,X` and shared access latch `$2DBC`. Its four-boundary, zero-write,
+  54-cycle transcript replaces all 2,650 current route calls, including 49
+  original interrupt-handler passages, while wall damage and active
+  post-destruction access remain emulated. Semantic `03:60C3@all` handles
+  all 2,646 fixed-Tower hit checks. Idle calls retain their two-boundary,
+  zero-write, 27-cycle transcript; the routed hit clears its collision latch
+  in a 63-cycle native handoff. Shared score/audio work remains emulated,
+  then semantic `03:60E0@all` advances Tower progress and hands the
+  interrupt-bearing shared dispatcher to assembly. Semantic `03:611C@all`
+  composes the native coroutine scheduler for all four transition calls.
+  The complete outer 538-write artifact and all original interrupt passages
+  remain exact. Semantic `02:5A4B@all` handles all 2,144 Dragon's-Head
+  collision checks through exact 27-cycle idle or 42-cycle collision-clear
+  transcripts. Shared score/audio/bonus/appearance helpers remain emulated,
+  then semantic `02:5A6E@all` performs both routed 27-cycle, one-write
+  nonterminal counter decrements. The eighth-hit mouth-opening branch
+  remains emulated, while the complete outer 866-write artifact stays
+  exact. Semantic `03:78C7@all` handles all 3,468 fixed-Bumper checks:
+  ordinary calls retain their two-boundary, zero-write, 27-cycle return,
+  while all 11 routed hits clear the collision latch, advance the nine-step
+  phase, and dispatch to the original handler through an exact 165-cycle,
+  four-write native prefix. Shared score/audio/appearance/scheduler helpers
+  remain emulated. Semantic `03:78F5@all` performs all nine routed primary
+  progress increments in 36 cycles and one write, while `03:7912@all`
+  performs both routed secondary damage updates in 114 cycles and three
+  writes. The complete outer 3,127-write artifact remains exact; the
+  unobserved ninth-hit destruction award and six-child release remain
+  emulated. Semantic
+  `02:5116@all` handles all 125 fixed Devil Shooter collision-state checks:
+  124 idle calls return through the exact two-boundary, zero-write,
+  27-cycle path, while the catch takes the exact 21-cycle branch into the
+  original occupied-latch and shared `00:C087` helper. After that helper
+  performs the assembly-owned ball positioning/audio work and its interrupt,
+  semantic `02:52B8@all` executes the complete 228-cycle, nine-write
+  catch-state/coroutine continuation natively and installs `02:52C3`.
+  Semantic
+  `02:54B9@all` handles every left Skeleton Insect trigger check from
+  Front-Spider latch `$2D13`. Its two-boundary, zero-write, 21-cycle idle
+  transcript covers 1,630 calls, while the 978-cycle routed trigger composes
+  the native score accumulator and coroutine scheduler to award 4,000
+  points and start the opening animation. All nine original interrupt-
+  handler passages and the complete 1,631-call/150-write artifacts remain
+  exact. Semantic `02:5551@all` handles every right Skeleton Insect trigger
+  check from Front-Spider latch `$2D14`. Its two-boundary, zero-write,
+  21-cycle idle transcript covers 335 calls, while the 978-cycle routed
+  trigger composes the native score accumulator and coroutine scheduler to
+  award 4,000 points and start the opening animation. All six original
+  interrupt-handler passages and the complete 336-call/101-write artifacts
+  remain exact. Semantic `02:55F9@all` handles all 2,403 center
+  Skeleton-Insect trigger checks from Tower latch `$2CFC`: 2,402 clear
+  calls return after the exact two-boundary, zero-write, 21-cycle path, and
+  the nonzero call takes the exact 27-cycle branch into the original shared
+  drawing helper. After that helper returns, semantic `02:5604@all`
+  executes the complete 1,152-cycle, 30-write continuation natively,
+  composing the score accumulator and both coroutine helpers for the
+  10,000-point award, presentation-bit changes, delayed opening, and
+  `02:561A` loop toward `02:5625`. All 23 interrupt-bearing idle calls and
+  the trigger's assembly-owned interrupt remain exact. Semantic
+  `03:63F1@all` handles the Devil's Coffin's ordinary return,
+  Shooter-session type refresh, and both routed collision-entry paths. Its
+  five/seven/21/23-boundary, zero/one/eight/nine-write,
+  51/66/270/285-cycle transcripts replace all 643 current route calls,
+  including all 13 original interrupt-handler passages. The collision
+  entries compose the existing native coroutine scheduler to install
+  `03:640A`.
+  Semantic `03:640A@all` now advances that presentation boundary by
+  handling the opening pass's timer ticks, appearance advances, and final
+  coroutine handoff through the existing native scheduler. Its
+  two/eleven/28-boundary, one/four/12-write, 33/132/366-cycle transcripts
+  replace all 18 routed opening calls.
+  Semantic `03:6445@all` applies the same bounded contract to the complete
+  closing pass. Its terminal path clears the session-open bit, restores
+  type `$82`, runs initializer `03:63E1`, and composes the native scheduler
+  to reinstall steady dispatch `03:63F1`. Its two/nine/34-boundary,
+  one/four/15-write, 33/111/429-cycle transcripts replace all 18 routed
+  closing calls.
+  Semantic `03:60A6@all` handles the adjacent Tower
+  Guard's route-proven closed-selector update from nonzero gate counter
+  `$2D4D`. Its four-boundary, one-write, 48-cycle transcript replaces all
+  2,650 current route calls, including 58 original interrupt-handler
+  passages; the zero-counter `$8E` open selector and BS-5 entrance remain
+  emulated. Semantic `03:7CAF@all` handles the hidden fixed
+  collision/scene-response controller's route-proven dormant return from
+  nonnegative scene state `$2CC0` and zero collision scratch `$CC`. Its
+  four-boundary, zero-write, 45-cycle transcript replaces all 2,650 current
+  route calls, including 54 original interrupt-handler passages; negative
+  scenes and the nonzero response state machine remain emulated. Semantic
+  `03:7B27@all` handles all 2,650 adjacent hidden fixed-scheduler calls.
+  The 332 timer expiries reload the eight-frame cadence and install the
+  first `$02/$30/$08` banked-call submission natively; semantic
+  `03:7B4E@all` and `03:7B5D@all` install the remaining `$03` and `$07`
+  submissions after the original wrappers return. The wrapper and exported
+  `08:4030` routine remain emulated, and the complete 46,618-write artifact
+  stays exact; only the unobserved negative-scene path remains emulated.
+  Semantic `03:7B7A@all` handles all 2,650 paired hidden fixed-marker
+  calls. In addition to the exact 48/93-cycle suppressed and waiting paths,
+  all 332 timer expiries reload the cadence, advance/wrap the eight-phase
+  wave, select Y, and install the first `$1E:16` marker descriptor through
+  an exact 231/240-cycle routed prefix. Semantic `03:7BBB@all` and
+  `03:7BCD@all` install `$1E:18` and `$1E:1A` through 332 exact 36-cycle
+  continuations apiece. Semantic `03:7BE0/7BE8/7BEC@all` replaces all 996
+  marker-wrapper prologues, post-draw accumulator restores, and epilogues
+  through exact 33/12/12-cycle stack-aware segments. Semantic
+  `02:5955@all` now executes all 997 routed phase-stride additions, including
+  the 996 marker calls, through a 15-checkpoint, eight-write, 198-cycle
+  transcript; the remaining shared `01:C05D` drawing submission retains its
+  interrupt-bearing assembly behavior. The complete 88,480-write marker
+  artifact stays exact; only the unobserved negative-scene path remains
+  emulated. Semantic `03:74D8@all` handles all 2,648 routed Giant-Face
+  controller calls through the exact 27-cycle, three-boundary request-bit-
+  clear return. All 23 original interrupt-handler passages and 289 handler-
+  owned writes remain exact; wake and transformation requests stay in
+  assembly. Semantic `03:767E@all` handles all 873 routed Giant-Face hidden
+  animator calls through the exact 27-cycle, three-boundary idle return for
+  animation modes other than one. All eight original interrupt-handler
+  passages and 97 handler-owned writes remain exact; mode one's active
+  animation stays in assembly. Semantic
+  `02:4DD9@all` handles the Giant Skeleton's Eyeball activation gate's
+  dormant branch from the live Dragon's-Egg latch and session flags. Its
+  six-boundary, zero-write, 57-cycle transcript replaces all 1,988 current
+  route calls, including 37 original interrupt-handler passages, while the
+  inactive opening and final-animation paths remain emulated. Semantic
+  `02:4FC1@all` handles the three Mercy Stars' not-last-ball activation-gate
+  return from live table-mode and remaining-ball state. Its five-boundary,
+  zero-write, 54-cycle transcript replaces all 7,950 current route calls,
+  including 163 original interrupt-handler passages, while non-normal-mode,
+  last-ball score-limit, and activation paths remain emulated. Semantic
+  `03:62B8@all` handles the Giant Door's nonnegative collision-state return
+  from indexed `$3800,X`. Its two-boundary, zero-write, 27-cycle transcript
+  replaces all 676 current route calls, including seven original
+  interrupt-handler passages, while the score, hit-counter, and completion
+  handshake remain emulated. Semantic
+  `03:65C2@all` handles the Three-Blobs controller's first-pair and
+  third-value mismatch returns from live color state `$2D39-$2D3B`. Its
+  three/five-boundary, zero-write, 42/63-cycle transcripts replace all 2,650
+  current route calls, including 50 original interrupt-handler passages,
+  while equal-state score and randomized-reset outcomes remain emulated.
+  Semantic
   `00:E837@all` negates the shared signed 16-bit scratch word used by flipper
   projection and rotation. Its 8/9-boundary transcripts replace all 894
   route calls, including 24 interrupted scopes, through exact
@@ -541,11 +699,27 @@ Provide an interactive monitor-assignment screen and persist display identity, g
   deferred interrupt-bearing calls, while all 61,291 ordered writes remain
   exact.
   Semantic `01:CC1A@all` now rejects the central collision scan's four
-  state-derived vertical-separation shapes before its pointer, mask, and
-  contact work. Its 150/180/246/282-cycle transcripts replace 19,192 of
-  85,715 calls through exact three- or six-write stack/scratch transactions,
-  while the complete 1,784,119-write artifact remains exact. Near-target
-  and later scan paths remain emulated.
+  state-derived vertical-separation shapes, then composes semantic `CCD5`
+  through all post-geometry horizontal and vertical bound rejections. The
+  composed paths stage the child's ROM-resolved writes and all of its
+  interrupt checkpoints before reproducing the parent subtractions, limit
+  comparisons, stack, and return. The final in-range path now continues
+  through mask-coordinate preparation and composes semantic `E569` and
+  `CC98`, including their cross-bank stack, writes, flags, and interrupt
+  checkpoints. All 85,715 calls execute natively while the complete
+  1,784,119-write artifact remains exact.
+  Semantic `00:E569@all`, the only nested arithmetic leaf used by those
+  remaining calls, now executes all 874 eight-round unsigned-byte products
+  natively. Its live-bit-generated transcript preserves stack state,
+  conditional high-byte carries, 495-543-cycle uninterrupted paths, and
+  every original interrupt passage while retaining all 10,729 aggregate
+  writes.
+  Semantic `01:CC98@all` now completes the final collision-mask lookup for
+  all 874 in-range paths. It resolves both live-MPR pointer tables, derives
+  the eight-byte mask row, applies the ROM column bit, and returns through
+  the exact carry-set contact or carry-clear no-contact branch. Its
+  378/384-cycle, nine-write transcript preserves all 9,617 aggregate writes
+  and every original interrupt passage.
   Semantic `01:CCD5@all` resolves the near-target geometry leaf through the
   live MPR map and verified ROM pointer directories. Its path-sensitive
   instruction transcript now covers all four 783/789/885/891-cycle,

@@ -118,6 +118,135 @@ int dc_prepare_collision_geometry(
     return 1;
 }
 
+int dc_classify_collision_scan_bounds_reject(
+    const uint8_t* const work_ram,
+    const size_t work_ram_size,
+    dc_collision_scan_bounds_reject* const reject)
+{
+    uint16_t subtrahend;
+
+    if (work_ram == NULL || reject == NULL
+        || work_ram_size < 0x2000U) {
+        return 0;
+    }
+
+    reject->horizontal_source = work_ram[0x0065U];
+    reject->horizontal_target = work_ram[0x0068U];
+    reject->horizontal_limit = work_ram[0x006BU];
+    reject->horizontal_difference = (uint8_t)(
+        reject->horizontal_source - reject->horizontal_target);
+    reject->vertical_source_low = work_ram[0x0066U];
+    reject->vertical_source_high = work_ram[0x0067U];
+    reject->vertical_target_low = work_ram[0x0069U];
+    reject->vertical_target_high = work_ram[0x006AU];
+    reject->vertical_limit = work_ram[0x006CU];
+    reject->vertical_difference_low = 0U;
+    reject->vertical_difference_high = 0U;
+    reject->vertical_low_subtract_carry = 0U;
+    reject->vertical_high_subtract_carry = 0U;
+    reject->branch = DC_COLLISION_SCAN_BOUNDS_DEFER;
+
+    if (reject->horizontal_difference
+        >= reject->horizontal_limit) {
+        reject->branch = DC_COLLISION_SCAN_BOUNDS_HORIZONTAL;
+        return 1;
+    }
+
+    reject->vertical_low_subtract_carry = (uint8_t)(
+        reject->vertical_source_low >= reject->vertical_target_low);
+    reject->vertical_difference_low = (uint8_t)(
+        reject->vertical_source_low - reject->vertical_target_low);
+    subtrahend = (uint16_t)reject->vertical_target_high
+        + (uint16_t)(reject->vertical_low_subtract_carry == 0U);
+    reject->vertical_high_subtract_carry = (uint8_t)(
+        (uint16_t)reject->vertical_source_high >= subtrahend);
+    reject->vertical_difference_high = (uint8_t)(
+        (uint16_t)reject->vertical_source_high - subtrahend);
+
+    if ((reject->vertical_difference_high & 0x80U) != 0U) {
+        reject->branch = DC_COLLISION_SCAN_BOUNDS_VERTICAL_NEGATIVE;
+    } else if (reject->vertical_difference_high != 0U) {
+        reject->branch = DC_COLLISION_SCAN_BOUNDS_VERTICAL_PAGE;
+    } else if (reject->vertical_difference_low
+               >= reject->vertical_limit) {
+        reject->branch = DC_COLLISION_SCAN_BOUNDS_VERTICAL_LOW;
+    }
+    return 1;
+}
+
+int dc_resolve_collision_mask_lookup(
+    const uint8_t* const work_ram,
+    const size_t work_ram_size,
+    const uint8_t first_table_value,
+    const uint8_t second_table_value,
+    const uint8_t mask_value,
+    const uint8_t column_bit,
+    dc_collision_mask_lookup* const lookup)
+{
+    if (work_ram == NULL || lookup == NULL
+        || work_ram_size < 0x2000U) {
+        return 0;
+    }
+
+    lookup->first_table_pointer = (uint16_t)(
+        work_ram[0x0074U]
+        | ((uint16_t)work_ram[0x0075U] << 8U));
+    lookup->second_table_pointer = (uint16_t)(
+        work_ram[0x0072U]
+        | ((uint16_t)work_ram[0x0073U] << 8U));
+    lookup->mask_base_pointer = (uint16_t)(
+        work_ram[0x008EU]
+        | ((uint16_t)work_ram[0x008FU] << 8U));
+    lookup->table_index = (uint8_t)(
+        work_ram[0x002DU] + work_ram[0x002FU]);
+    lookup->first_table_value = first_table_value;
+    lookup->second_table_value = second_table_value;
+    lookup->mask_pointer = (uint16_t)(
+        lookup->mask_base_pointer
+        + ((uint16_t)second_table_value << 3U));
+    lookup->mask_row = work_ram[0x005FU];
+    lookup->mask_column = work_ram[0x005EU];
+    lookup->mask_value = mask_value;
+    lookup->column_bit = column_bit;
+    lookup->collision = (uint8_t)(
+        (mask_value & column_bit) != 0U);
+    return 1;
+}
+
+int dc_prepare_collision_mask_coordinates(
+    const uint8_t* const work_ram,
+    const size_t work_ram_size,
+    const uint8_t target_slot,
+    dc_collision_mask_coordinates* const coordinates)
+{
+    if (work_ram == NULL || coordinates == NULL
+        || work_ram_size < 0x2000U || target_slot >= 0x80U) {
+        return 0;
+    }
+
+    coordinates->side_flags_updated = (uint8_t)(
+        work_ram[0x0254U] != 0U
+        && target_slot < 0x0AU
+        && work_ram[0x1980U + target_slot] != 0x03U);
+    coordinates->side_flags = work_ram[0x00B7U];
+    if (coordinates->side_flags_updated != 0U) {
+        coordinates->side_flags = (uint8_t)(
+            coordinates->side_flags
+            | ((target_slot & 0x01U) != 0U ? 0x01U : 0x80U));
+    }
+    coordinates->mask_column =
+        (uint8_t)(work_ram[0x002DU] & 0x07U);
+    coordinates->horizontal_cell =
+        (uint8_t)(work_ram[0x002DU] >> 3U);
+    coordinates->rounded_horizontal_span = (uint8_t)(
+        ((uint16_t)work_ram[0x006BU] + 7U) >> 3U);
+    coordinates->mask_row =
+        (uint8_t)(work_ram[0x002FU] & 0x07U);
+    coordinates->vertical_cell =
+        (uint8_t)(work_ram[0x002FU] >> 3U);
+    return 1;
+}
+
 int dc_select_collision_table_pass(
     const uint8_t* const work_ram,
     const size_t work_ram_size,

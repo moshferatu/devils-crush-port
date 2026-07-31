@@ -21,6 +21,189 @@ replace_score_accumulator(
     std::span<const std::byte> work_ram);
 
 [[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_giant_skeleton_eyeball_gate(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram);
+
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_mercy_star_gate(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram);
+
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_three_blobs_controller(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram);
+
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_dragon_egg_controller(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram);
+
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_big_star_feature_gate(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram);
+
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_walled_star_hit_gate(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram);
+
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_tower_hit_gate(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram);
+
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_tower_hit_continuation(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram);
+
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_tower_post_dispatch(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram);
+
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_dragon_head_hit_gate(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram);
+
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_dragon_head_hit_continuation(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram);
+
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_bumper_hit_gate(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram);
+
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_bumper_primary_progress(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram);
+
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_bumper_secondary_progress(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram);
+
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_devil_shooter_hit_gate(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram);
+
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_devil_shooter_catch_continuation(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram);
+
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_skeleton_insect_left_gate(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram);
+
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_skeleton_insect_right_gate(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram);
+
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_skeleton_insect_center_gate(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram);
+
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_skeleton_insect_center_continuation(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram);
+
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_devils_coffin_gate(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram);
+
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_devils_coffin_opening(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram);
+
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_devils_coffin_closing(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram);
+
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_tower_guard_selector(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram);
+
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_fixed_scheduler_gate(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram);
+
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_fixed_scheduler_submission(
+    const emulation::RoutineEntry& entry);
+
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_fixed_marker_gate(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram);
+
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_fixed_marker_submission(
+    const emulation::RoutineEntry& entry);
+
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_fixed_marker_helper_segment(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram);
+
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_scaled_word_add(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram);
+
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_fixed_response_gate(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram);
+
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_dragon_egg_hit_gate(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram);
+
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_dragon_egg_hit_continuation(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram);
+
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_dragon_egg_post_allocation(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram);
+
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_giant_door_hit_gate(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram);
+
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_giant_face_animator_gate(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram);
+
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_giant_face_request_gate(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram);
+
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
 replace_position_integration(
     const emulation::RoutineEntry& entry,
     std::span<const std::byte> work_ram);
@@ -52,6 +235,11 @@ replace_signed_division(
 
 [[nodiscard]] std::optional<emulation::RoutineReplacement>
 replace_motion_damping(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram);
+
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_unsigned_byte_multiply(
     const emulation::RoutineEntry& entry,
     std::span<const std::byte> work_ram);
 
@@ -138,6 +326,12 @@ replace_collision_consumer_no_hit(
     std::span<const std::byte> rom);
 
 [[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_collision_mask_lookup(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram,
+    std::span<const std::byte> rom);
+
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
 replace_collision_geometry(
     const emulation::RoutineEntry& entry,
     std::span<const std::byte> work_ram,
@@ -146,6 +340,7 @@ replace_collision_geometry(
 [[nodiscard]] std::optional<emulation::RoutineReplacement>
 replace_collision_scan_vertical_reject(
     const emulation::RoutineEntry& entry,
-    std::span<const std::byte> work_ram);
+    std::span<const std::byte> work_ram,
+    std::span<const std::byte> rom);
 
 } // namespace devils_crush::app::detail

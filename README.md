@@ -964,8 +964,32 @@ accumulation `00:F55C@all`, RNG advancement `00:E8B3@all`, and flipper
 input gating `01:D466@all`, flipper phase stepping `01:D500@all`,
 phase-indexed flipper geometry `01:D081@all`, shared actor-coroutine
 scheduling `01:C5C9@all`, session/nudge gating `01:C3CB@all`, and idle
-session-input gating `01:C49E@all`, plus central collision-scan vertical
-rejection `01:CC1A@all` and near-target geometry `01:CCD5@all`. This command
+session-input gating `01:C49E@all`, Dragon-Egg active-count gating
+`02:42F6@all`, Dragon-Egg hit gating `02:4345@all` with
+disable/allocation continuations `02:4357@all` and `02:4371@all`,
+Big-Star feature idle gating `02:445B@all`,
+Giant-Skeleton-Eyeball dormant gating `02:4DD9@all`,
+Mercy-Star not-last-ball gating `02:4FC1@all`, Giant-Door idle-hit gating
+`03:62B8@all`, Giant-Face controller idle-request gating `03:74D8@all`,
+Giant-Face hidden-animator idle gating `03:767E@all`,
+Walled-Star idle-hit gating `03:6339@all`,
+Tower hit gating `03:60C3@all` with `03:60E0@all` and `03:611C@all`
+continuations, Dragon's-Head hit gating `02:5A4B@all` and countdown
+continuation `02:5A6E@all`,
+Bumper hit gating `03:78C7@all` with primary/secondary progress
+continuations `03:78F5@all` and `03:7912@all`,
+Devil-Shooter hit gating `02:5116@all` and catch continuation `02:52B8@all`,
+Tower-Guard closed-selector updates `03:60A6@all`,
+fixed collision-response dormant gating `03:7CAF@all`,
+complete routed fixed scheduling
+`03:7B27/7B4E/7B5D@all`,
+complete routed fixed-marker descriptor updates
+and stack wrapper `03:7B7A/7BBB/7BCD/7BE0/7BE8/7BEC@all`,
+marker phase-stride addition `02:5955@all`,
+Three-Blobs mismatch gating `03:65C2@all`, plus central
+collision-scan bounds rejection
+`01:CC1A@all`
+and near-target geometry `01:CCD5@all`. This command
 replaces the four simultaneous physics
 calls, observes the full physics set, and restores each pre-call savestate
 to compare the native result with assembly:
@@ -1488,24 +1512,43 @@ in assembly. Debug and Release preserve call SHA-256
 and write SHA-256
 `29274f5c8a62a9fc9d41f7796f343ac55167fcafdf71448dc6e9f76bcfd31965`.
 
-Semantic `01:CC1A@all` handles the central collision scan's earliest
-vertical-separation rejection. Four state-derived positive/negative page
-and low-byte paths reproduce the internal JSR stack writes, scratch state,
-binary flags, and 150/180/246/282-cycle timing. They admit 19,192 of 85,715
-route calls while preserving all 1,784,119 scoped writes. Near-target,
-pointer, mask, and contact paths continue in assembly. Debug and Release
+Semantic `01:CC1A@all` handles the central collision scan's four early
+vertical-separation rejections and all post-geometry horizontal/vertical
+bound rejections. The latter compose semantic `CCD5`, including its live-MPR
+ROM lookups, staged writes, and original-interrupt checkpoints, before
+reproducing the parent subtractions, comparisons, stack, and return. The 874
+in-range continuations derive side flags and sub-cell mask coordinates, then
+compose semantic `E569` and `CC98` through the cross-bank multiply return
+and final contact decision. All 85,715 route calls execute natively while
+preserving all 1,784,119 scoped writes. Debug and Release
 preserve call SHA-256
 `c01321d866af5636ce12db1174a9a3428d08ce273cf62820fcbf446dcab1a313`
 and write SHA-256
 `a0366616f0bbd85b22d5a4a72e8d03e09a8866525c4c90d50c51e2ea7d035881`.
 
-Semantic `01:CCD5@all` handles the near-target geometry leaf reached by the
-remaining scan calls. It follows the live MPR mapping into the verified ROM
-pointer directories, selects both phase geometry pointers, and emits the
-exact signed-offset, limit, stack, and scratch transaction. Atomic
-event/IRQ admission replaces 5,819 of 66,523 calls through
-783/789/885/891-cycle, 16/19-write paths. Debug and Release preserve all
-1,414,954 writes; instruction checkpoints are the next expansion.
+Semantic `01:CCD5@all` handles all 66,523 near-target geometry calls. It
+follows the live MPR mapping into the verified ROM pointer directories,
+selects both phase geometry pointers, and emits the exact signed-offset,
+limit, stack, and scratch transaction. Path-sensitive instruction
+checkpoints cover all 783/789/885/891-cycle, 16/19-write shapes and retain
+original interrupt-handler passages.
+
+Semantic `00:E569@all` handles the unsigned-byte scaler nested by all 874
+remaining in-range collision-mask calls. It multiplies zero-page `$2F` by
+`$30` through eight exact shift/add rounds, preserving the saved X register,
+conditional high-byte carries, path-dependent flags, and original interrupt
+delivery. All 874 calls and 10,729 ordered writes remain exact. Focused
+ordinal 2 shadows restored assembly at frame 1,072 with 519-cycle and
+10-write parity.
+
+Semantic `01:CC98@all` handles the final pointer and collision-mask lookup
+entered by those 874 in-range paths. It resolves both table reads and the
+row-mask byte through the live MPR map, builds the eight-byte mask pointer,
+applies the ROM column bit, and returns with carry matching contact. Exact
+378/384-cycle transcripts cover both outcomes and retain original interrupt
+delivery. All 874 calls and 9,617 ordered writes remain exact; focused
+ordinal 2 shadows restored assembly at frame 1,072 with 378-cycle and
+nine-write parity.
 
 Semantic `01:D081@all` handles the flipper/ball interaction's shared
 geometry lookup. It masks `$78` to five phase bits and loads two 16-bit
@@ -1645,6 +1688,330 @@ preserve call SHA-256
 `1e5052965bd3252e116ee6cd4b72ea5213cab371e9e0c6faad083af9915e381e`
 and write SHA-256
 `09e04a8271fd92ad23977712ed8511a70fccac3457b3101cbda6671d5a0ec402`.
+
+Semantic `02:42F6@all` covers the Dragon's-Egg group controller's ordinary
+active return. It loads shared live-egg count `$2CF4` and returns at
+`02:42FB` when that count is nonzero. Its two-boundary transcript admits all
+1,790 route calls after 21 cycles and no direct writes, including 17 original
+interrupt-handler passages that account for the 219 aggregate writes. The
+count-zero completion award, latch update, and egg-reset sequence remain in
+assembly. Debug and Release preserve call SHA-256
+`2adbbdfefa20a785460ddb24bf99f78e1f9d9b74210c05674667f0b91cb75e04`
+and write SHA-256
+`4a7b82f79cc0b85b1eaf1686eda6d17925898bb7685bc4fa3bf6bdcb8b15652e`.
+
+Semantic `02:4345@all` covers all 9,857 fixed Dragon's-Egg hit checks. It
+retains the 21-cycle, zero-write idle return and hands the routed hit to the
+original score/audio helpers after a 57-cycle, two-write score setup.
+Semantic `02:4357@all` then disables the egg and installs command `$39` plus
+the impact allocator parameters in 93 cycles and four writes. After the
+original burst and hatchling allocators, semantic `02:4371@all` writes the
+activation byte in 21 cycles before the original scheduler. Debug and
+Release preserve the complete outer call SHA-256
+`33b991bd2fa83f5e8aa0a3cefa5001b299c95e34cc8fdf230f0ed96fdc83c6b4`
+and write SHA-256
+`3fb20b0f8a9359c995f83c83f1bb0e96e1aa2c1c88158dbc162017d063a3ffd0`.
+The focused two-continuation artifacts use call SHA-256
+`291c4e486e4d173fd34b60f2b20b1b04a8a16e9a0f71edd500190b2adf2aec9c`
+and write SHA-256
+`2fc625cf5a5fc5d0f700bb7b8fb805a419a31733bc22baf5848aa5f7ad951088`.
+
+Semantic `02:4DD9@all` covers the Giant Skeleton's Eyeball activation gate's
+dormant return. It masks the Dragon's-Egg completion latch `$2D20`, then
+checks session flag `$53 & $02`; inactive state returns at `02:4DE9` after
+57 cycles and no direct writes. Its six-boundary transcript admits all 1,988
+route calls, including 37 original interrupt-handler passages. Opening and
+final-animation states remain in assembly. Debug and Release preserve call
+SHA-256
+`3d4b6d3bb0feca214446a05837ca88e0eaf2751eb49e2e2bfd5828b4a45f4dff`
+and write SHA-256
+`88c98631164d2f0c64fd2a1a255601c2806cb2fa050bafb4ed28b211f14be4ef`.
+
+Semantic `02:4FC1@all` covers the three Mercy Stars' activation gate's
+not-last-ball return. It verifies normal-table mode `$2254`, decrements live
+remaining-ball state `$2D52`, and returns at `02:4FE1` after 54 cycles and no
+direct writes. Its five-boundary transcript admits all 7,950 route calls,
+including 163 original interrupt-handler passages. Non-normal-mode,
+last-ball score-limit, and activation paths remain in assembly. Debug and
+Release preserve call SHA-256
+`18c767a16b3d205f3698a4a6961f43a3c8d4bd1b72e602631c1031dbb57eba33`
+and write SHA-256
+`ff4cb68930bc10a4e0f59b05a1e8e733ed6554aaa5b6bb874d77744410a3f91a`.
+
+Semantic `03:65C2@all` covers the Three-Blobs result controller's mismatch
+returns. It loads `$2D39`, compares `$2D3A`, and only when those are equal
+compares `$2D3B`. Its three/five-boundary transcript returns at `03:65E9`
+after 42/63 cycles with no direct writes. All 2,650 route calls execute
+natively, including 50 original interrupt-handler passages. Equal-state
+score and randomized-reset outcomes remain in assembly. Debug and Release
+preserve call SHA-256
+`ce6ebb6fe1f195baca404dcdadab54c645c35fa0bc2167a46f3b0aee1260024f`
+and write SHA-256
+`089a9dbb38d1e2044b005c9d070262b1aa0cd5150979a11a0207ad2fcbcb6f09`.
+
+Semantic `03:62B8@all` covers the Giant Door's ordinary idle return. It
+loads indexed collision state `$3800,X` and takes `BPL` to return at
+`03:62D3` while bit 7 is clear. Its two-boundary transcript admits all 676
+route calls after 27 cycles and no direct writes, including seven original
+interrupt-handler passages. The unexercised hit path remains in assembly,
+retaining its score, three-hit counter, and completion handshake. Debug and
+Release preserve call SHA-256
+`ce3630ab97227c504bdc79202e6ad794d558431a2af769b5c1f471fd452753cc`
+and write SHA-256
+`7e187ab17d7db0fc9411d3ec524023cf270c2d9ec6ce16f9b414a39541063ebb`.
+
+Semantic `03:74D8@all` covers the Giant Face controller's routed idle
+entry. It loads shared request byte `$2D0C`, masks wake bit zero, and returns
+at `03:74DF` while that bit is clear. Its three-boundary transcript admits
+all 2,648 route calls after 27 cycles and no direct writes, including 23
+original interrupt-handler passages and all 289 handler-owned writes. Wake
+and transformation request handling remains in assembly. Debug and Release
+preserve call SHA-256
+`d110a06449ef76dc8af186ca017263fa0302174c2173ec7b0b3d52b4d418e289`
+and write SHA-256
+`023a7f3933bdb84c56c5b68016fb622e6b9b21c08894a5abf85a0c65b6c978b9`.
+
+Semantic `03:767E@all` covers the Giant Face hidden-form animator's routed
+idle entry. It loads animation mode `$2D0E`, compares it with one, and
+returns at `03:7685` for every currently observed mode. Its three-boundary
+transcript admits all 873 route calls after 27 cycles and no direct writes,
+including eight original interrupt-handler passages and all 97
+handler-owned writes. Animation mode one's active timer, phase, and drawing
+state machine remains in assembly. Debug and Release preserve call SHA-256
+`b960fb4cabe1f6009e49c62ad9a0e7036aa4d2407c60ad8119f9a23b64b100d6`
+and write SHA-256
+`874224be422684644a59f3bad052e8e6cf73098cdeb01caeba034b585d89e248`.
+
+Semantic `02:445B@all` covers the hidden Big-Star feature controller's
+ordinary idle return. It loads shared Little-Skull latch `$2CFA` and returns
+at `02:4460` while the latch is clear. Its two-boundary transcript admits all
+2,650 route calls after 21 cycles and no direct writes, including 28 original
+interrupt-handler passages. The unexercised pending-feature path remains in
+assembly, retaining its Big-Star direction, actor, score, and audio updates.
+Debug and Release preserve call SHA-256
+`3afba05be63a290e4e1e453212f354495c082e90ab116fe3716e104ade182943`
+and write SHA-256
+`c0789fb65ce97f845a147d6c000ec55b3724ee3146499e4cb7c1328c186d3b29`.
+
+Semantic `03:6339@all` covers the Walled Star's ordinary idle return. It
+loads indexed collision state `$3800,X`, takes the nonnegative branch,
+loads shared access latch `$2DBC`, and returns at `03:6375` while that latch
+is clear. Its four-boundary transcript admits all 2,650 route calls after
+54 cycles and no direct writes, including 49 original interrupt-handler
+passages. Pending collisions and active post-destruction access remain in
+assembly. Debug and Release preserve call SHA-256
+`7789b6b0ef005e1d302342c9c03e569d2c8aad3c43bea200aa05920f7182f46e`
+and write SHA-256
+`f847b9fa97dd98c6afa4011eb6b134f9f1551d2ed25ab5a59f2f219b7471d2dc`.
+
+Semantic `03:60C3@all` covers all 2,646 fixed-Tower hit checks. Idle calls
+retain the two-boundary, 27-cycle return; the real hit clears its collision
+latch in a 63-cycle native handoff. Shared score and audio helpers remain
+emulated. Semantic `03:60E0@all` then advances Tower progress and reaches
+the interrupt-bearing shared dispatcher after 156 native cycles, while
+semantic `03:611C@all` composes the native coroutine scheduler across all
+four transition calls. Debug and Release preserve the outer call SHA-256
+`1b6440a384b815ba8ee97473dc389a56f9455ec0a82ee307c5baa499bbf3712f`
+and write SHA-256
+`26696c169ae2296a752ea3916c9151134febbb89ef1a9eea54826645c64815c3`.
+The five-call continuation artifact has call SHA-256
+`7e282adac47c3b913dc254b24cb364e41a12ac7c216f5d9944bac4a1e38306b8`
+and write SHA-256
+`eb7ffe66312e2c613cb842a6e755f8facba6574218e069a93be809ec2d27ba04`.
+
+Semantic `02:5A4B@all` covers all 2,144 Dragon's-Head collision checks. Idle
+calls load indexed collision state `$3800,X` and return at `02:5A73` after
+27 cycles and no direct writes. Both routed hits clear bit 7 natively and
+hand the original score, audio, bonus, and appearance helpers their expected
+state after 42 cycles. Semantic `02:5A6E@all` then performs both nonterminal
+eight-hit-counter decrements in 27 cycles with one write. Counter one falls
+back so the original mouth-opening transition remains authoritative. Debug
+and Release preserve the complete outer call SHA-256
+`81160e67b4b09b27825ea32260423151d866fdff6367da503b638c8456c25724`
+and write SHA-256
+`73f13fa9786e728cb2052de384052e5ee60e3fe496a6549a686f6cc3a3edcb94`.
+The focused two-call continuation has call SHA-256
+`564b3e42385479f383e4a93b46d568f58242867b4f7f9593810a37ece7fa0b3c`
+and write SHA-256
+`03b84e95c2335cb54cdfab0673164dc6a1816e7b16d12cf7509ba53e81dc2931`;
+ordinal 1 independently shadows frame 2,076 with exact 27-cycle, one-write
+parity.
+
+Semantic `03:78C7@all` covers all 3,468 fixed-Bumper checks. Its idle path
+still returns at `03:78E6` after two boundaries, 27 cycles, and no writes.
+Each of the 11 real hits now clears indexed collision state `$3800,X`,
+advances the nine-step phase, and dispatches to `03:78E7` or `03:7901`
+through a 165-cycle, four-write native prefix. Shared score, sound,
+appearance, and scheduler helpers remain in assembly. Semantic
+`03:78F5@all` owns all nine routed primary progress increments through exact
+36-cycle, one-write transcripts; semantic `03:7912@all` owns both routed
+secondary damage updates through exact 114-cycle, three-write transcripts.
+The inactive ninth-hit destruction and six-child release remain in
+assembly. Debug and Release preserve the complete outer call SHA-256
+`0495b9de1e3dcfb1781e0056411705464a2e52d8ddcde371d2efc4d0124b882a`
+and write SHA-256
+`754938e2e0b04dad1c51ee416f6d22ea3865055cfe4390a1af9d1610072f57da`.
+The 11-call continuation trace has call SHA-256
+`1225992b04220cdea996a4a1a11e3f67be24ef5dd5a42e0ae1d6039ded66b5ce`
+and write SHA-256
+`99674df0a29df6a45f2eb4e32c8d3f8dd0fe423fb30b699c6828825af7cb7b29`;
+the second `03:7912` call independently shadows frame 3,342 with exact
+114-cycle, three-write parity.
+
+Semantic `02:5116@all` covers all 125 fixed Devil Shooter collision-state
+checks. It loads indexed state `$3800,X` and preserves exact two-boundary,
+zero-write paths: 124 nonnegative calls return at `02:5123` after 27 cycles,
+while the catch branches to `02:511B` after 21. Assembly retains the
+occupied latch and shared `00:C087` ball-position/audio helper, including
+its original interrupt. On helper return, semantic `02:52B8@all` executes
+the 228-cycle, nine-write catch-state continuation and composes native
+`01:C5C9` to install `02:52C3`. Debug and Release preserve outer call
+SHA-256
+`35c847d6ba93f7cc2fc2b1157e6d8c6f3652c61271320d9c321bc06eebee393b`
+and write SHA-256
+`1def4a539ab329c73389dd0b7acbcd4ae76c8fd5616326da2c63ddedc75e7218`;
+the focused continuation preserves call SHA-256
+`7d3a28d70531af55837c5cb70573e7172b13469ecae092ca1c109f0f164bf55f`
+and write SHA-256
+`795ccd98c887afec7fab1c92e9b7bebbe61681c7d06dc08167dc742397f1c069`.
+
+Semantic `02:54B9@all` covers all 1,631 left Skeleton Insect trigger checks.
+It preserves the loaded Front-Spider latch `$2D13`, accumulator, N/Z flags,
+and exact two-boundary, 21-cycle clear-latch return for 1,630 calls. At
+frame 3,466, the 978-cycle, 23-write trigger composes native `00:F55C`
+scoring and `01:C5C9` scheduling to submit the 4,000-point award, set the
+four-tick opening timer, and install `02:54D0`. The focused
+`02:54B9@1631` replay is exact, including the cross-bank call stacks. Debug
+and Release preserve call SHA-256
+`8e07185d94f3dcd3323afdbc62f1cb314605b18c5eb60ca8d54d68c1a0c9cf51`
+and write SHA-256
+`925b610c5591457d8cec1d5b8795b5b5cd16e6a94b7af8433acdfd582c619296`.
+
+Semantic `02:5551@all` covers all 336 right Skeleton Insect trigger checks.
+It preserves the loaded Front-Spider latch `$2D14`, accumulator, N/Z flags,
+and exact two-boundary, 21-cycle clear-latch return for 335 calls. At frame
+2,182, the 978-cycle, 23-write trigger composes native `00:F55C` scoring and
+`01:C5C9` scheduling to submit the 4,000-point award, set the four-tick
+opening timer, and install `02:5568`. The focused `02:5551@336` replay is
+exact, including the cross-bank call stacks. Debug and Release preserve call
+SHA-256
+`5d492bfc62f7e50bf19b536e3c47a9e50ac45c55a400e399b7ac80909aa2023c`
+and write SHA-256
+`865a439dcddc733ff94cbf9ec50cd0185dd5d5f630e62458a91538b129584efe`.
+
+Semantic `02:55F9@all` covers all 2,403 center Skeleton-Insect trigger
+checks. It loads Tower latch `$2CFC`, preserves the accumulator and N/Z
+flags, and takes either the two-boundary 21-cycle idle return or exact
+27-cycle trigger branch. The trigger runs the original shared drawing
+helper, then semantic `02:5604@all` executes the entire 1,152-cycle,
+30-write continuation natively. That continuation composes `00:F55C`
+scoring, reproduces the immediate `01:C5EA` delay installer, and composes
+`01:C5C9` scheduling for the 10,000-point award, center presentation-bit
+changes, and delayed `02:561A` opening loop toward `02:5625`. Focused replay
+`02:5604@1` is exact. Debug and Release preserve outer call SHA-256
+`efd9519c4adab99a53ad1c2cb2c1d3085ce44460eefe83c0908f6c7d299aca06`
+and write SHA-256
+`d46e26ec07b399d23e0d3a64c62fda8af19658d75b0c3375c8761e9d5de603ad`;
+the continuation call/write hashes are
+`a66d5c7ed84a10d335b7e50d03102a870bb64882002922a76dbb674dcafc9482`
+and
+`449dd7d55c5e020681b24ced4c38dbca69d72361083eaee29f25ada2dd7c83ce`.
+
+Semantic `03:63F1@all` covers all of the Devil's Coffin's steady checks.
+It reads Shooter session bit `$53.3`, optionally refreshes indexed actor type
+`$3000,X` to `$83`, and reads collision marker `$3800,X`. A nonnegative
+marker returns at `03:6401`; each negative-marker contact starts the
+one-tick opening timer and composes the native coroutine scheduler to install
+`03:640A`. Its five/seven/21/23-boundary transcripts admit all 643 route
+calls through the 51-cycle idle, 66-cycle type-refresh, and 270/285-cycle
+collision-entry paths, including all 13 original interrupt-handler passages.
+Debug and Release preserve call SHA-256
+`be298d2a16ba1d3437f0abe284e63153d27c5aaefbde1373acf285cb75581523`
+and write SHA-256
+`df111ba927c865c9a94bc5fd8b47325103bfeb3374988d92beacfb006d824e1f`.
+
+Semantic `03:640A@all` covers the Devil's Coffin opening animation's
+timer ticks, timer-expiry advances, and final coroutine handoff. It derives
+indexed timer, appearance, and collision-marker state, then composes the
+native coroutine scheduler to install `03:6432`. Its two/eleven/28-boundary
+transcripts admit all 18 opening calls after exactly 33/132/366 cycles and
+one/four/12 ordered writes. Debug and Release preserve call SHA-256
+`fc6e5cf0cb80a28e6eff545ff3ba7aaec694d8b2dbad71c283a2a40109143c4c`
+and write SHA-256
+`654ee9d3753bb4500334b67b6fa4fd08ae931ccf3115baf36f51c4d1b6c956ca`.
+
+Semantic `03:6445@all` covers the matching Devil's Coffin closing
+animation's complete state machine. It derives indexed timer, appearance,
+collision-marker, and session state. The final closure clears `$53.3`,
+restores actor type `$82`, runs initializer `03:63E1`, and composes the
+native coroutine scheduler to reinstall steady dispatch `03:63F1`. Its
+two/nine/34-boundary transcripts admit all 18 closing calls after exactly
+33/111/429 cycles and one/four/15 ordered writes. Debug and Release preserve
+call SHA-256
+`5a88e7e39a4520287a584b68f8cb0ba789b190ad8f96cb047e642a96ae98cc92`
+and write SHA-256
+`3f16cadfd078c9f0713396202dbf3c4fee4505876f7c18dfd571436963e1a0e8`.
+
+Semantic `03:60A6@all` covers the adjacent Tower Guard's closed-selector
+update. It loads `$84`, reads the nonzero five-step gate counter `$2D4D`,
+writes `$84` to indexed completion selector `$3D00,X`, and returns at
+`03:60B2`. Its four-boundary transcript admits all 2,650 route calls after
+48 cycles and one direct write, including 58 original interrupt-handler
+passages. The unexercised zero-counter `$8E` selector and open BS-5 entrance
+remain in assembly. Debug and Release preserve call SHA-256
+`942df45f1604783b877753a92fedf7ef806cf7b56cbd7456f0fc1b53cc4c26bd`
+and write SHA-256
+`e2a76edd3d070915c33cc37891072178bbd8427c816d88262fe8ac1cc0ce5528`.
+
+Semantic `03:7CAF@all` covers the hidden fixed collision/scene-response
+controller's dormant return. It loads scene state `$2CC0`, takes the
+nonnegative branch, loads zero collision scratch `$CC`, and returns at
+`03:7CBB`. Its four-boundary transcript admits all 2,650 route calls after
+45 cycles and no direct writes, including 54 original interrupt-handler
+passages. Negative-scene handling and the unexercised nonzero response state
+machine remain in assembly. Debug and Release preserve call SHA-256
+`64a5571154cc9053e92176ea6b7100432f73540d464e3f8b48c6ef80a8b322fa`
+and write SHA-256
+`e585851a0949429e428026066f706bb4c40a5b0cd9ef59dbef9fd553df2d5a47`.
+
+Semantic `03:7B27@all` covers all 2,650 adjacent hidden triple banked-call
+scheduler calls. It reads scene `$2CC0`, presentation gate `$2BB9`, and
+indexed timer `$3A00,X`. Nonzero presentation state returns at `03:7B34`
+after 48 cycles and no write; an enabled timer that does not expire
+decrements once and returns at `03:7B6C` after 87 cycles and one write. Each
+of the 332 expiries reloads eight and prepares selector `$02` through an
+exact 156-cycle native prefix. After the original banked-call wrapper,
+semantic `03:7B4E@all` and `03:7B5D@all` prepare selectors `$03` and `$07`
+through 332 exact 54-cycle, three-write continuations apiece. The wrapper and
+exported `08:4030` routine remain assembly, preserving their original
+interrupt behavior. Negative scenes remain unobserved and emulated. Debug
+and Release preserve call SHA-256
+`f8696a6a4fe1eceef25d312e722a5ac2279b1886f018eb5f6cf145984acb8645`
+and write SHA-256
+`257383a1a8128e9d5b3159ceaeb9766c54257bc2cc6b0b53b3fe641ee625c521`.
+
+Semantic `03:7B7A@all` covers all 2,650 paired hidden three-marker animator
+calls. It retains the exact 48-cycle suppressed and 93-cycle non-expiring
+timer paths. All 332 expiries reload the timer, advance and modulo-eight
+wrap `$3A80,X`, select the phase in Y, and install descriptor `$1E:16`
+through a 231-cycle prefix (240 cycles on the 41 wrap ticks). After the
+original shared helpers return, semantic `03:7BBB@all` and
+`03:7BCD@all` install `$1E:18` and `$1E:1A` through exact 36-cycle,
+two-write continuations. Semantic `03:7BE0/7BE8/7BEC@all` replaces all 996
+phase-table/stack prologues, post-draw accumulator restores, and Y-restoring
+epilogues through exact 33/12/12-cycle segments. Semantic `02:5955@all`
+replaces all 997 routed five-bit phase-stride additions to `$2F:$30`,
+including all 996 marker calls, through exact 198-cycle, eight-write
+transcripts. Negative scenes remain unobserved and emulated; the remaining
+`01:C05D` drawing submission retains its assembly behavior.
+Debug and Release preserve call SHA-256
+`5ed50a6da96f19502e06fd4622c3986ca9fab5aadd28d26603075e6968cc52ff`
+and write SHA-256
+`2b78c118caa3cdb9f37a19d40dc9f967eb0eb232b56c27d3bde64a6d350301f9`.
+The focused `02:5955` regression preserves call SHA-256
+`1b13d35fb24027b1cce65657d384c44df7c12a1c1cad8b2c5bfb0e77ed8cd7f8`
+and write SHA-256
+`4f850f8293f347dd5798764fd07f1fc83e01fd41a81c666aac1cbcf3c907795c`.
 
 The Milestone 2 collision closure regression follows two natural contacts
 with Small-Soldier slot `$62`. It connects confirmed-contact dispatcher

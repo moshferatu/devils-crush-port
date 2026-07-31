@@ -1512,6 +1512,34 @@ stored score units. Of the remaining calls, 3,419 are 27-cycle zero-write
 no-hit paths and 38 include periodic interrupt activity. The first call is
 the normalized replay sample at frame 872.
 
+Semantic `03:78C7@all` replaces all 3,468 calls. The 3,457 no-hit calls
+retain the exact two-instruction path: `LDA $3800,X`, taken `BPL`, then the
+RTS at `03:78E6`. Its two-checkpoint transcript preserves 27 body cycles,
+zero direct writes, the loaded accumulator and N/Z flags, and every one of
+the 38 original idle interrupt-handler passages. Each of the 11 collision
+paths now clears `$3800,X`, increments `$3E80,X`, resolves the nine-entry
+handler table, and hands assembly the selected `03:78E7` or `03:7901`
+handler through a 13-boundary, 165-cycle, four-write transcript.
+
+Shared score, audio, appearance, and scheduler helpers remain in assembly.
+After those helpers, semantic `03:78F5@all` performs all nine routed primary
+counter increments through exact two-boundary, 36-cycle, one-write
+transcripts. Semantic `03:7912@all` performs both routed secondary
+counter/appearance/collision updates through nine-boundary, 114-cycle,
+three-write transcripts; the second call at frame 3,342 is the normalized
+replay fixture. Counter two still falls back to the original ninth-hit
+destruction award and six-child release.
+
+The semantic Release and Debug routes preserve the outer call and write
+hashes below; their census hashes are respectively
+`9036a9de0c3c9917f47bff8c04c136a4824ec12601fb457d260aa2dfe4443490`
+and
+`a95d0c343108b107d7ec1aa3c20915540d91bb08817704776531e5696ea9b5e2`.
+The focused 11-call/953-write continuation trace has call SHA-256
+`1225992b04220cdea996a4a1a11e3f67be24ef5dd5a42e0ae1d6039ded66b5ce`
+and write SHA-256
+`99674df0a29df6a45f2eb4e32c8d3f8dd0fe423fb30b699c6828825af7cb7b29`.
+
 `tools/Analyze-BumperFamilySemantics.ps1` guards both layout records,
 initializers, the nine-entry phase table, every routed hit and counter value,
 score/audio coupling, the terminal award and six-child initializer, fixed
@@ -1540,7 +1568,7 @@ sets a `(264,632)` reference position, and installs idle dispatch `02:5116`.
 The deterministic route bounds the first service cycle across two dispatcher
 states:
 
-1. `02:5116` runs 125 times. Its first 123 ordinary calls are 27-cycle,
+1. `02:5116` runs 125 times. Its first 124 ordinary calls are 27-cycle,
    zero-write idle samples. At frame 1,064 the collision result enters
    `02:52B1`, sets the shooter-occupied latch `$3C80`, emits command `$25`,
    places the ball at X=`$010E`, and advances the live pointer.
@@ -1553,6 +1581,31 @@ states:
    zero-write delay path. Frame 1,185 computes `$F8` launch velocity at
    `$3580`, clears animation state, emits command `$2B`, and advances to
    `02:5208`.
+
+Semantic `02:5116@all` replaces all 125 checks through two exact,
+two-instruction paths: `LDA $3800,X` plus taken `BPL` reaches the RTS at
+`02:5123` after 27 body cycles, while the untaken catch branch reaches
+`02:511B` after 21. Both paths have zero direct writes and preserve the
+loaded accumulator and N/Z flags. The frame-1,064 catch resumes assembly for
+the occupied latch and shared `00:C087` ball-position/audio helper. After
+that helper's original interrupt-bearing scope returns, semantic
+`02:52B8@all` writes `$3180=$0E` and `$3200=$01`, reproduces both JSR stack
+writes, and composes native `01:C5C9` to install `02:52C3`. Its one routed
+call is exact at 228 cycles and nine ordered writes. The semantic Release
+and Debug routes preserve the 125-call and 116-write outer hashes below;
+their census hashes are respectively
+`9036a9de0c3c9917f47bff8c04c136a4824ec12601fb457d260aa2dfe4443490`
+and
+`a95d0c343108b107d7ec1aa3c20915540d91bb08817704776531e5696ea9b5e2`.
+
+- Call SHA-256:
+  `35c847d6ba93f7cc2fc2b1157e6d8c6f3652c61271320d9c321bc06eebee393b`
+- Write SHA-256:
+  `1def4a539ab329c73389dd0b7acbcd4ae76c8fd5616326da2c63ddedc75e7218`
+- Continuation call SHA-256:
+  `7d3a28d70531af55837c5cb70573e7172b13469ecae092ca1c109f0f164bf55f`
+- Continuation write SHA-256:
+  `795ccd98c887afec7fab1c92e9b7bebbe61681c7d06dc08167dc742397f1c069`
 
 No score-accumulator store occurs anywhere in this boundary: the Devil
 Shooter serves and launches the ball but awards no points. The global actor
@@ -1669,6 +1722,98 @@ all four replays. Debug and Release reproduce:
 - Selected-state SHA-256:
   `1c3fd4bac31662487cb5c48b2389a4584526bd567a42fdcc587bf5d0cbfe3169`
 
+Semantic `03:63F1@all` replaces all 643 steady checks. When indexed collision
+marker `$3800,X` is nonnegative, the native path exactly preserves the
+51-cycle clear-session return or the 66-cycle Shooter-session path that
+writes `$83` to indexed actor type `$3000,X`. The two negative-marker
+contacts at frames 1,244 and 1,297 continue natively by writing one to
+indexed timer `$3A00,X`, reproducing the `JSR 01:C018` stack transaction,
+and composing semantic `01:C5C9` to install `03:640A`. The no-refresh and
+type-refresh collision paths use 21/23 checkpoints, eight/nine writes, and
+exactly 270/285 master cycles. Together with the five/seven-checkpoint
+ordinary returns, these transcripts preserve the accumulator, N/Z flags,
+write ordering, and all 13 original interrupt-handler passages. Ordinal 18
+independently shadows the 285-cycle, nine-write frame-1,244 contact. Debug
+and Release preserve:
+
+- Call SHA-256:
+  `be298d2a16ba1d3437f0abe284e63153d27c5aaefbde1373acf285cb75581523`
+- Write SHA-256:
+  `df111ba927c865c9a94bc5fd8b47325103bfeb3374988d92beacfb006d824e1f`
+
+Semantic `03:640A@all` extends native coverage into the Devil's-Coffin
+opening presentation pass. The indexed `DEC $3A00,X` is classified from
+live slot state. When its result is nonzero, the adapter emits the original
+timer write at master-cycle offset 21, preserves the accumulator and exact
+N/Z flags, takes `BNE`, and returns at `03:6426` after 33 master cycles.
+Two instruction checkpoints preserve the original interrupt-sampling
+boundaries. When the timer expires and incremented appearance remains below
+three, the adapter also reproduces the timer reload, appearance increment,
+collision-marker update, compare, and return through eleven checkpoints,
+four ordered writes, and exactly 132 master cycles.
+
+When appearance advances to three, the adapter clears the indexed collision
+sign bit and reproduces `JSR 01:C018`, including both stack writes. `C018`
+tail-jumps into the existing semantic `01:C5C9` scheduler transaction,
+which consumes that return, writes scratch `$26:$27`, and installs
+`03:6432` in indexed dispatch. The composed handoff uses 28 checkpoints,
+12 ordered writes, and exactly 366 master cycles before returning through
+`01:C5E9`.
+
+The route contains 18 opening calls. Twelve decrement timer values
+`4→3→2→1`, four advance appearance from zero to one or one to two, and two
+perform the final scheduler handoff; all execute natively. The complete
+18-call/52-write artifact remains exact. Ordinal 9 independently shadows
+frame 1,253 with exact 366-cycle/12-write parity. ROM-free tests also cover
+both expiry classifications, byte wraparound, invalid slots, and truncated
+snapshots. Debug and Release preserve:
+
+- Call SHA-256:
+  `fc6e5cf0cb80a28e6eff545ff3ba7aaec694d8b2dbad71c283a2a40109143c4c`
+- Write SHA-256:
+  `654ee9d3753bb4500334b67b6fa4fd08ae931ccf3115baf36f51c4d1b6c956ca`
+- Debug census SHA-256:
+  `a95d0c343108b107d7ec1aa3c20915540d91bb08817704776531e5696ea9b5e2`
+- Release census SHA-256:
+  `9036a9de0c3c9917f47bff8c04c136a4824ec12601fb457d260aa2dfe4443490`
+
+Semantic `03:6445@all` applies the same bounded native contract to the
+Devil's-Coffin closing presentation pass. A nonzero result from indexed
+`DEC $3A00,X` writes the timer at master-cycle offset 21, preserves the
+accumulator and exact N/Z flags, takes `BNE`, and returns at `03:645C`
+after 33 master cycles. Two instruction checkpoints preserve the original
+interrupt-sampling boundaries.
+
+On a timer expiry whose appearance remains nonzero, native execution reloads
+the timer to four, ORs `$40` into indexed collision state, decrements indexed
+appearance, and returns at `03:645C` after 111 master cycles. Four ordered
+writes and nine instruction checkpoints preserve the original transaction.
+
+An appearance decrement to zero continues natively through the final
+closure. It clears session bit `$53.3`, restores actor type `$82`, jumps
+through initializer `03:63E1` to normalize collision and appearance, then
+reproduces `JSR 01:C018` and composes semantic `01:C5C9`. The scheduler
+increments stacked return `$63F0` into steady dispatch `03:63F1` and returns
+through `01:C5E9`. This path preserves 15 ordered writes, 34 instruction
+checkpoints, and exactly 429 master cycles.
+
+The route contains 18 closing calls: twelve non-expiring decrements, four
+nonterminal timer expiries, and two final closures all execute natively. The
+complete 18-call/58-write artifact remains exact. Ordinal 9 independently
+shadows frame 1,263 with exact 429-cycle/15-write parity. ROM-free tests also
+cover all three classifications, session-bit derivation, byte wraparound,
+invalid slots, and truncated snapshots.
+Debug and Release preserve:
+
+- Call SHA-256:
+  `5a88e7e39a4520287a584b68f8cb0ba789b190ad8f96cb047e642a96ae98cc92`
+- Write SHA-256:
+  `3f16cadfd078c9f0713396202dbf3c4fee4505876f7c18dfd571436963e1a0e8`
+- Debug census SHA-256:
+  `a95d0c343108b107d7ec1aa3c20915540d91bb08817704776531e5696ea9b5e2`
+- Release census SHA-256:
+  `9036a9de0c3c9917f47bff8c04c136a4824ec12601fb457d260aa2dfe4443490`
+
 ## Dragon's Head and Giant Skeleton
 
 The
@@ -1707,6 +1852,29 @@ ordered writes. The three hits contribute 140 stored score units and three
 command-`$2E` writes. The Dragon accounts for 2,144 calls, including 2,125
 27-cycle zero-write paths, 17 interrupt-bearing no-hit paths, and two hits.
 The normalized first Dragon call is a 27-cycle zero-write sample.
+
+Semantic `02:5A4B@all` now replaces all 2,144 Dragon's-Head collision
+checks. Its idle transcript reproduces indexed `LDA $3800,X`, the taken
+`BPL`, accumulator/status output, outer return at `02:5A73`, and the exact
+27-cycle zero-write body, including all 17 interrupt-bearing idle scopes.
+For the bit-7 hits at frames 2,076 and 2,080, the native path reproduces
+`AND #$7F` and indexed `STA $3800,X`, then hands the shared score, audio,
+bonus, and appearance helpers to assembly after exactly 42 cycles.
+
+Post-helper semantic `02:5A6E@all` owns both route-proven nonterminal
+countdowns. It decrements indexed counter `$3C00,X` from 8 to 7 and 7 to 6,
+updates flags, and returns at `02:5A73` after 27 cycles and one write.
+Counter one is rejected so the second 50-unit award and mouth-opening
+transition at `02:5A74` remain original. Debug and Release preserve outer
+call SHA-256
+`81160e67b4b09b27825ea32260423151d866fdff6367da503b638c8456c25724`
+and write SHA-256
+`73f13fa9786e728cb2052de384052e5ee60e3fe496a6549a686f6cc3a3edcb94`.
+The focused continuation artifact has call SHA-256
+`564b3e42385479f383e4a93b46d568f58242867b4f7f9593810a37ece7fa0b3c`
+and write SHA-256
+`03b84e95c2335cb54cdfab0673164dc6a1816e7b16d12cf7509ba53e81dc2931`;
+ordinal 1 shadows frame 2,076 with exact 27-cycle and one-write parity.
 
 `tools/Analyze-DragonGiantSkeletonSemantics.ps1` guards both layout records,
 initializers and hit rules, the inactive Dragon terminal path, fixed
@@ -2275,7 +2443,87 @@ retain inactive secondary collision/award branches in `02:5500` and
 
 The capture contains 5,805 calls and 1,316 scoped writes. Normalized first
 steady-state replays for `02:54B9`, `02:5551`, and `02:55F9` each take 21
-cycles and make no writes. `tools/Analyze-SkeletonInsectSemantics.ps1`
+cycles and make no writes.
+
+Semantic `02:54B9@all` replaces all 1,631 left-target trigger checks. The
+clear-latch path remains the exact `LDA $2D13`, not-taken `BNE`, and RTS at
+`02:54BE`: 1,630 calls take 21 body cycles, write nothing, and preserve the
+loaded accumulator and N/Z flags. The frame-3,466 nonzero latch now follows
+a 978-cycle, 23-write transcript. It writes award `$002F:$0030 = $0028`,
+composes native `00:F55C` for the 4,000-point score, sets `$3A31 = $04`,
+and composes native `01:C5C9` to install dispatch `02:54D0`. Focused replay
+`02:54B9@1631` verifies the cross-bank stack and complete RAM result. All
+nine original interrupt-handler passages remain exact, and Debug and
+Release preserve the complete 1,631-call/150-write artifacts:
+
+- Call SHA-256:
+  `8e07185d94f3dcd3323afdbc62f1cb314605b18c5eb60ca8d54d68c1a0c9cf51`
+- Write SHA-256:
+  `925b610c5591457d8cec1d5b8795b5b5cd16e6a94b7af8433acdfd582c619296`
+- Release census SHA-256:
+  `9036a9de0c3c9917f47bff8c04c136a4824ec12601fb457d260aa2dfe4443490`
+- Debug census SHA-256:
+  `a95d0c343108b107d7ec1aa3c20915540d91bb08817704776531e5696ea9b5e2`
+
+Semantic `02:5551@all` replaces all 336 right-target trigger checks. The
+clear-latch path remains the exact `LDA $2D14`, not-taken `BNE`, and RTS at
+`02:5556`: 335 calls take 21 body cycles, write nothing, and preserve the
+loaded accumulator and N/Z flags. The frame-2,182 nonzero latch now follows
+a 978-cycle, 23-write transcript. It writes award
+`$002F:$0030 = $0028`, composes native `00:F55C` for the 4,000-point score,
+sets `$3A33 = $04`, and composes native `01:C5C9` to install dispatch
+`02:5568`. Focused replay `02:5551@336` verifies the cross-bank stack and
+complete RAM result. All six original interrupt-handler passages remain
+exact, and Debug and Release preserve the complete 336-call/101-write
+artifacts:
+
+- Call SHA-256:
+  `5d492bfc62f7e50bf19b536e3c47a9e50ac45c55a400e399b7ac80909aa2023c`
+- Write SHA-256:
+  `865a439dcddc733ff94cbf9ec50cd0185dd5d5f630e62458a91538b129584efe`
+- Release census SHA-256:
+  `9036a9de0c3c9917f47bff8c04c136a4824ec12601fb457d260aa2dfe4443490`
+- Debug census SHA-256:
+  `a95d0c343108b107d7ec1aa3c20915540d91bb08817704776531e5696ea9b5e2`
+
+Semantic `02:55F9@all` replaces all 2,403 center-target trigger checks. The
+2,402 clear-latch calls execute `LDA $2CFC`, the not-taken `BNE`, and the
+RTS at `02:55FE` through an exact two-checkpoint, zero-write, 21-cycle
+transcript. The frame-3,353 nonzero latch takes the exact 27-cycle branch
+and resumes assembly at `02:55FF`, where the shared `01:D8D2` drawing
+helper remains emulated.
+
+When that helper returns, semantic `02:5604@all` owns the complete remainder
+of the trigger. Its 1,152-cycle, 30-write transcript writes
+`$002F:$0030 = $0064`, composes native `00:F55C` for the 10,000-point
+award, clears center presentation bit `$3080,X.6`, reproduces immediate
+delay installer `01:C5EA`, toggles `$3080,X.5`, and composes native
+`01:C5C9` to decrement the new `$10` delay and yield through `01:C5E9`
+while retaining the `02:561A` loop that eventually installs `02:5625`.
+Focused replay `02:5604@1` verifies exact register, cycle, stack,
+write-order, and complete-RAM parity.
+
+All 23 idle interrupt-handler passages and the one interrupt inside the
+assembly-owned drawing helper remain exact. Debug and Release preserve the
+complete outer 2,403-call/391-write artifacts:
+
+- Call SHA-256:
+  `efd9519c4adab99a53ad1c2cb2c1d3085ce44460eefe83c0908f6c7d299aca06`
+- Write SHA-256:
+  `d46e26ec07b399d23e0d3a64c62fda8af19658d75b0c3375c8761e9d5de603ad`
+- Release census SHA-256:
+  `9036a9de0c3c9917f47bff8c04c136a4824ec12601fb457d260aa2dfe4443490`
+- Debug census SHA-256:
+  `a95d0c343108b107d7ec1aa3c20915540d91bb08817704776531e5696ea9b5e2`
+
+The native continuation independently preserves:
+
+- Call SHA-256:
+  `a66d5c7ed84a10d335b7e50d03102a870bb64882002922a76dbb674dcafc9482`
+- Write SHA-256:
+  `449dd7d55c5e020681b24ced4c38dbca69d72361083eaee29f25ada2dd7c83ce`
+
+`tools/Analyze-SkeletonInsectSemantics.ps1`
 guards all three layout records, initializer clears, latch-to-award coupling,
 dispatch timelines, the non-rewarding second right latch, score/audio
 ownership, inactive branches, and normalized samples. Debug and Release
@@ -5070,10 +5318,21 @@ the instruction checkpoints through the shared `CLC`/`RTS` at `01:CC3F`.
 The positive paths emit three ordered writes and the negative paths emit
 six.
 
-Across the 3,600-frame held-flipper route, 19,192 of 85,715 `CC1A` calls
-(22.4%) execute natively. The other 66,523 calls remain assembly fallbacks
-for near-target, pointer, mask, and contact work. Debug and Release preserve
-the complete 85,715-call/1,784,119-write artifacts:
+The parent now also composes semantic `CCD5` for candidates that fail any
+post-geometry bound at `CC26-CC3D`. The composition stages the child's
+live-MPR ROM lookups and writes, carries all child instruction checkpoints
+through the parent's JSR/RTS boundary, then reproduces `CC1D-CC3F` with
+exact horizontal/vertical subtraction, comparisons, `$2D/$2F` writes,
+flags, and timing. Focused route ordinal 5 independently replays the
+resulting 1,005-cycle, 22-write horizontal path against restored assembly.
+
+The final in-range continuation now derives its optional side flag, sub-cell
+row/column, rounded horizontal span, and cell coordinates, then composes the
+semantic `E569` multiply and `CC98` mask lookup through the parent. The
+cross-bank `E57F` return retains its physical-bank identity for interrupt
+sampling and write attribution. Across the 3,600-frame held-flipper route,
+all 85,715 `CC1A` calls execute natively. Debug and Release preserve the
+complete 85,715-call/1,784,119-write artifacts:
 
 - Call SHA-256:
   `c01321d866af5636ce12db1174a9a3428d08ce273cf62820fcbf446dcab1a313`
@@ -5084,9 +5343,11 @@ the complete 85,715-call/1,784,119-write artifacts:
 - Release state-census SHA-256:
   `9036a9de0c3c9917f47bff8c04c136a4824ec12601fb457d260aa2dfe4443490`
 
-`dc_rom_collision_scan_vertical_semantic` guards all four native shapes,
-aggregate admission, and exact state/call/write artifacts. ROM-free core
-tests cover those shapes, the near-target fallback, and truncated snapshots.
+`dc_rom_collision_scan_vertical_semantic` guards all four early vertical
+shapes, the composed post-geometry bound shapes, full aggregate admission,
+in-range ordinal 19,176 replay at 2,277 cycles/52 writes, and exact
+state/call/write artifacts. ROM-free core tests cover every bounds
+classification, mask-coordinate preparation, and truncated snapshots.
 
 ### Twenty-seventh native replacement: semantic `01:CCD5@all`
 
@@ -5108,19 +5369,112 @@ and negative descriptor offsets into four uninterrupted bodies:
 | Negative | Positive | 891 | 19 |
 
 The path-sensitive instruction transcript covers both initial-difference
-prefixes and both descriptor-offset branches. All 66,523 calls now execute
-natively, including the 60,704 previously deferred interrupt-bearing
-scopes, while Beetle delivers and returns from original handlers at the
-declared instruction boundaries. `dc_rom_collision_geometry_semantic`
-preserves the complete artifacts in Debug and Release:
+prefixes and both descriptor-offset branches. All 66,523 near-target calls
+now execute natively, including the 60,704 previously deferred
+interrupt-bearing scopes, while Beetle delivers and returns from original
+handlers at the declared instruction boundaries. The standalone
+`dc_rom_collision_geometry_semantic` regression observes all 85,715 leaf
+entries and admits the 66,523 near-target calls, preserving these complete
+artifacts in Debug and Release:
 
 - Call SHA-256:
-  `c40fc23468d8d9ef9d966c13cb2b797107b61557343f5685833c0631d4e5fece`
+  `394b345b5ba30aadd0d4fdfd27e88a4fe812d749b5560b4f0ccea10a88c2f578`
 - Write SHA-256:
-  `f392326b5bdfa2e382b0fb15cb1076fa7cf65c8c3263f2753cc3e1b4f2ad3b2b`
+  `ba33300ad75be145eff8a7d6de4f98356fc4ca338aa111cfe27cb77057d019dc`
 
 ROM-free tests cover both signed descriptor paths, the late position-page
 rejection model, and truncated snapshots.
+
+### Twenty-eighth native replacement: semantic `00:E569@all`
+
+Every one of the 874 in-range `CC1A` mask paths calls `00:E569` once. The
+leaf treats `$2F` as an unsigned multiplicand and `$30` as an unsigned
+multiplier, clears A, and performs eight left-shift/add rounds. The low
+product returns in A and `$2F`; `$30` holds the high product byte. X is
+preserved through the original stack transaction.
+
+`dc_multiply_unsigned_bytes` records each admitted multiplier bit and
+high-byte carry. The host turns that state into a 45-69-boundary transcript
+with exact `471 + 24 * admitted-bit-count + 12 * carry-count` base timing.
+All 874 route calls execute natively, including calls containing original
+interrupt-handler passages, while the complete artifacts remain exact:
+
+- Call SHA-256:
+  `8f1438081244282123e463ae80ed2570e3d6573830efdea00d0ac0eecadedfd4`
+- Write SHA-256:
+  `300a548b00ea468d70108085d950ca867282a3903075b7fb789d08c6da50156e`
+
+Ordinal 2 independently shadows its uninterrupted frame-1,072 path against
+restored assembly with exact 519-cycle and 10-write parity. The collision
+parent composes this leaf before its ROM-pointer and final mask test.
+
+### Twenty-ninth native replacement: semantic `01:CC98@all`
+
+The final collision-mask tail adds scratch bytes `$2D+$2F`, uses the wrapped
+sum to read the first pointer table at `$74`, and uses the sum plus four to
+read the second table at `$72`. The second byte is multiplied by eight and
+added to mask base `$8E:$8F`. Row `$5F` selects the mask byte; column `$5E`
+selects the ROM bit table at `01:CF2B`. A nonzero intersection returns at
+`CCD2` with carry set, while a zero intersection returns at `CCD4` with carry
+clear.
+
+`dc_resolve_collision_mask_lookup` exposes the pure index, pointer, mask, and
+contact state. The host resolves all pointer-derived bytes through the live
+MPR map and turns that state into an exact instruction transcript. Across the
+3,600-frame route, all 874 calls execute natively: 270 take the contact return
+and 604 take the no-contact return. Their uninterrupted bodies are 378 and
+384 master cycles respectively, with nine direct writes on either path.
+Original handlers can still preempt at every declared instruction boundary.
+
+The registered Debug/Release regression preserves:
+
+- Call SHA-256:
+  `0e5caea1ddc513ddb39089b2653be432029ee03589822467a56ec63d011f46e0`
+- Write SHA-256:
+  `e40d0c2787fc68ae883799dee3d688ae9e60f2521693e6bb105edb988e1a3fc6`
+- Debug state-census SHA-256:
+  `a95d0c343108b107d7ec1aa3c20915540d91bb08817704776531e5696ea9b5e2`
+- Release state-census SHA-256:
+  `9036a9de0c3c9917f47bff8c04c136a4824ec12601fb457d260aa2dfe4443490`
+
+Ordinal 2 independently shadows its uninterrupted contact return at frame
+1,072 with exact 378-cycle and nine-write parity. ROM-free tests cover index
+wrap, pointer derivation, contact/no-contact masking, and truncated snapshots.
+The enclosing 874 `CC1A` calls now compose this tail and the native `E569`
+child through the parent transaction; focused parent ordinal 19,176 matches
+restored assembly at 2,277 cycles and 52 ordered writes.
+
+### Thirtieth native replacement: semantic `02:4DD9@all`
+
+The Giant Skeleton's Eyeball steady routine is a compact normal-table rule
+gate. It loads Dragon's-Egg completion latch `$2D20`, masks bit 0, and enters
+the opening state when set. Otherwise it loads session flags `$53`, masks bit
+1, jumps to the final animation when set, or returns dormant at `02:4DE9`.
+
+`dc_classify_giant_skeleton_eyeball_gate` exposes all three state-derived
+outcomes. The native adapter admits the current dormant path and reproduces
+both loads, masks, branches, accumulator, flags, and interrupt sampling
+through a six-checkpoint, 57-master-cycle, zero-direct-write transcript.
+Across the 3,600-frame route, all 1,988 steady calls execute natively,
+including 37 calls containing original interrupt handlers. Those handlers
+account for all 493 aggregate writes.
+
+The registered Debug/Release regression preserves:
+
+- Call SHA-256:
+  `3d4b6d3bb0feca214446a05837ca88e0eaf2751eb49e2e2bfd5828b4a45f4dff`
+- Write SHA-256:
+  `88c98631164d2f0c64fd2a1a255601c2806cb2fa050bafb4ed28b211f14be4ef`
+- Debug state-census SHA-256:
+  `a95d0c343108b107d7ec1aa3c20915540d91bb08817704776531e5696ea9b5e2`
+- Release state-census SHA-256:
+  `9036a9de0c3c9917f47bff8c04c136a4824ec12601fb457d260aa2dfe4443490`
+
+Ordinal 1 independently shadows its frame-873 dormant path against restored
+assembly with exact 57-cycle and zero-write parity. ROM-free tests cover
+the dormant, activation, and final-animation classifications plus a
+truncated work-RAM snapshot. The inactive opening and final-animation paths
+remain emulated until a natural route exercises them.
 
 The enclosing `01:D525` controller is not admissible as one bounded
 transaction under the current bridge. Its 128 census calls cover
@@ -5130,6 +5484,553 @@ split at smaller state-derived boundaries; the existing 512-write limit is
 not raised for this parent. The two remaining `01:D466` calls are concrete
 examples: their current-slot paths enter `D525` at frames 1,820 and 2,255
 and emit 823 and 868 ordered writes.
+
+### Thirty-first native replacement: semantic `02:4FC1@all`
+
+The three Mercy Stars share a compact normal-table activation gate. It first
+returns when mode `$2254` is not normal play, then decrements remaining-ball
+state `$2D52` and returns unless the original value was exactly 1. Only that
+last-ball state selects the active player through `$2251`, subtracts stored
+threshold `$001388` from the three score bytes at `$2205/$220C/$2213,Y`,
+and activates when the score is below 500,000 displayed points.
+
+`dc_classify_mercy_star_gate` exposes all four state-derived outcomes. The
+native adapter admits the current not-last-ball path and reproduces both
+loads, both branches, the decrement, accumulator, flags, and interrupt
+sampling through a five-checkpoint, 54-master-cycle, zero-direct-write
+transcript. Across the 3,600-frame route, all 7,950 steady calls execute
+natively, including 163 calls containing original interrupt handlers. Those
+handlers account for all 2,173 aggregate writes.
+
+The registered Debug/Release regression preserves:
+
+- Call SHA-256:
+  `18c767a16b3d205f3698a4a6961f43a3c8d4bd1b72e602631c1031dbb57eba33`
+- Write SHA-256:
+  `ff4cb68930bc10a4e0f59b05a1e8e733ed6554aaa5b6bb874d77744410a3f91a`
+- Debug state-census SHA-256:
+  `a95d0c343108b107d7ec1aa3c20915540d91bb08817704776531e5696ea9b5e2`
+- Release state-census SHA-256:
+  `9036a9de0c3c9917f47bff8c04c136a4824ec12601fb457d260aa2dfe4443490`
+
+Ordinal 1 independently shadows its frame-873 return against restored
+assembly with exact 54-cycle and zero-write parity. ROM-free tests cover
+non-normal mode, not-last-ball, exact score limit, activation, selected-player
+score lookup, and a truncated work-RAM snapshot. The unexercised gate paths
+remain emulated until natural routes exercise them.
+
+### Thirty-second native replacement: semantic `03:65C2@all`
+
+The fixed Three-Blobs controller compares the three global color states at
+`$2D39-$2D3B`. A mismatch between the first two values returns immediately
+at `03:65E9`. When the first pair matches, it compares the third value and
+returns at the same instruction when that value differs. Equal states
+continue into the existing score and randomized consecutive-state reset
+dispatcher.
+
+`dc_classify_three_blobs_controller` exposes the first-pair mismatch,
+third-value mismatch, and equal-state outcomes. The native adapter admits
+the two mismatch paths and reproduces the load, one or two comparisons,
+accumulator, compare flags, and interrupt sampling through three/five
+checkpoints. The uninterrupted bodies consume exactly 42 or 63 master
+cycles and perform no direct writes.
+
+Across the 3,600-frame route, all 2,650 steady calls execute natively,
+including 50 calls containing original interrupt handlers. Those handlers
+account for all 665 aggregate writes. The registered Debug/Release
+regression preserves:
+
+- Call SHA-256:
+  `ce6ebb6fe1f195baca404dcdadab54c645c35fa0bc2167a46f3b0aee1260024f`
+- Write SHA-256:
+  `089a9dbb38d1e2044b005c9d070262b1aa0cd5150979a11a0207ad2fcbcb6f09`
+- Debug state-census SHA-256:
+  `a95d0c343108b107d7ec1aa3c20915540d91bb08817704776531e5696ea9b5e2`
+- Release state-census SHA-256:
+  `9036a9de0c3c9917f47bff8c04c136a4824ec12601fb457d260aa2dfe4443490`
+
+Ordinal 1 independently shadows its frame-873 first-pair mismatch against
+restored assembly with exact 42-cycle and zero-write parity. ROM-free tests
+cover both mismatch paths, equal-state fallback classification, and a
+truncated work-RAM snapshot. Equal-state outcomes remain emulated until a
+bounded natural route is selected for their nested scoring and RNG work.
+
+### Thirty-third native replacement: semantic `02:42F6@all`
+
+The Dragon's-Egg group controller loads shared live count `$2CF4`. A nonzero
+count returns immediately at `02:42FB`; zero continues into the existing
+completion sequence that increments `$2CFB`, sets `$2D20` bit 0, awards 100
+stored score units, and begins the egg reset.
+
+`dc_classify_dragon_egg_controller` exposes the active and complete outcomes.
+The native adapter admits the active path and reproduces the absolute load,
+not-taken zero branch, accumulator, flags, and interrupt sampling through two
+checkpoints. The uninterrupted body consumes exactly 21 master cycles and
+performs no direct writes.
+
+Across the 3,600-frame route, all 1,790 controller calls execute natively,
+including 17 calls containing original interrupt handlers. Those handlers
+account for all 219 aggregate writes. The registered Debug/Release regression
+preserves:
+
+- Call SHA-256:
+  `2adbbdfefa20a785460ddb24bf99f78e1f9d9b74210c05674667f0b91cb75e04`
+- Write SHA-256:
+  `4a7b82f79cc0b85b1eaf1686eda6d17925898bb7685bc4fa3bf6bdcb8b15652e`
+- Debug state-census SHA-256:
+  `a95d0c343108b107d7ec1aa3c20915540d91bb08817704776531e5696ea9b5e2`
+- Release state-census SHA-256:
+  `9036a9de0c3c9917f47bff8c04c136a4824ec12601fb457d260aa2dfe4443490`
+
+Ordinal 1 independently shadows its frame-873 active return against restored
+assembly with exact 21-cycle and zero-write parity. ROM-free tests cover
+nonzero and zero classification plus a truncated work-RAM snapshot. The
+count-zero completion path remains emulated until its nested score and reset
+work is selected as a bounded replacement.
+
+### Thirty-fourth native replacement: semantic `02:4345@all`
+
+Each fixed Dragon's Egg loads its indexed collision state from `$3800,X`.
+A nonnegative byte returns immediately at `02:434A`; bit 7 continues into
+the existing path that awards 10 stored score units, selects impact command
+`$39`, disables the egg, and allocates its hatchling.
+
+`dc_classify_dragon_egg_hit_gate` exposes the idle and triggered outcomes for
+the live actor slot. The native adapter retains the two-checkpoint,
+21-cycle, zero-write idle return. On the routed hit, it takes the negative
+branch and writes score argument `$002F:$0030 = $000A` before handing the
+original score/audio helpers entry `02:4351` control after 57 cycles.
+
+Semantic continuation `02:4357@all` resumes after those helpers. It sets bit
+6 in indexed actor state `$3080,X`, installs impact command `$39`, and writes
+`$F8` to allocator parameters `$2B/$2C` through a 93-cycle, four-write
+transcript. Original helper `02:41FF` and allocator `02:43A4` retain burst
+and hatchling creation. Semantic `02:4371@all` then writes `$01` to
+`$3980,X` in 21 cycles before returning to the original coroutine scheduler
+at `02:4376`.
+
+Across the 3,600-frame route, all 9,857 gate calls plus the one entry at each
+continuation execute natively. The registered Debug/Release regression
+preserves all 1,682 aggregate outer writes and:
+
+- Call SHA-256:
+  `33b991bd2fa83f5e8aa0a3cefa5001b299c95e34cc8fdf230f0ed96fdc83c6b4`
+- Write SHA-256:
+  `3fb20b0f8a9359c995f83c83f1bb0e96e1aa2c1c88158dbc162017d063a3ffd0`
+- Debug state-census SHA-256:
+  `a95d0c343108b107d7ec1aa3c20915540d91bb08817704776531e5696ea9b5e2`
+- Release state-census SHA-256:
+  `9036a9de0c3c9917f47bff8c04c136a4824ec12601fb457d260aa2dfe4443490`
+
+Ordinal 1 independently shadows its frame-873 idle return against restored
+assembly with exact 21-cycle and zero-write parity. ROM-free tests cover
+idle and triggered classification, a truncated snapshot, and an invalid
+actor slot. The stable frame-2,425 `02:4371@1` replay preserves the complete
+213-cycle, eight-write outer scope around its 21-cycle native prefix. The
+focused continuation call/write SHA-256 values are
+`291c4e486e4d173fd34b60f2b20b1b04a8a16e9a0f71edd500190b2adf2aec9c`
+and
+`2fc625cf5a5fc5d0f700bb7b8fb805a419a31733bc22baf5848aa5f7ad951088`.
+
+### Thirty-fifth native replacement: semantic `03:62B8@all`
+
+The upper-middle Giant Door loads its indexed collision state from
+`$3800,X`. A nonnegative byte takes `BPL` and returns immediately at
+`03:62D3`; bit 7 continues into the existing path that awards 50 stored
+score units, decrements the three-hit counter, and starts the four-channel
+completion handshake after the final hit.
+
+`dc_classify_giant_door_hit_gate` exposes the idle and triggered outcomes for
+the live actor slot. The native adapter admits the idle path and reproduces
+the absolute-indexed load, taken positive branch, accumulator, flags, and
+interrupt sampling through two checkpoints. The uninterrupted body consumes
+exactly 27 master cycles and performs no direct writes.
+
+Across the 3,600-frame route, all 676 calls execute natively, including
+seven calls containing original interrupt handlers. Those handlers account
+for all 88 aggregate writes. The registered Debug/Release regression
+preserves:
+
+- Call SHA-256:
+  `ce3630ab97227c504bdc79202e6ad794d558431a2af769b5c1f471fd452753cc`
+- Write SHA-256:
+  `7e187ab17d7db0fc9411d3ec524023cf270c2d9ec6ce16f9b414a39541063ebb`
+- Debug state-census SHA-256:
+  `a95d0c343108b107d7ec1aa3c20915540d91bb08817704776531e5696ea9b5e2`
+- Release state-census SHA-256:
+  `9036a9de0c3c9917f47bff8c04c136a4824ec12601fb457d260aa2dfe4443490`
+
+Ordinal 1 independently shadows its frame-1,228 idle return against restored
+assembly with exact 27-cycle and zero-write parity. ROM-free tests cover
+idle and triggered classification, a truncated snapshot, and an invalid
+actor slot. The triggered path remains emulated so its nested scoring,
+hit-counter, impact, and completion behavior retains the established
+assembly implementation.
+
+### Thirty-sixth native replacement: semantic `02:445B@all`
+
+The hidden Big-Star feature controller loads the shared Little-Skull result
+latch from `$2CFA`. A zero value falls through `BNE` and returns immediately
+at `02:4460`; pending bits continue into the existing direction, actor,
+score, and audio update.
+
+`dc_classify_big_star_feature_gate` exposes the idle and pending outcomes.
+The native adapter admits the idle path and reproduces the absolute load,
+not-taken nonzero branch, accumulator, flags, and interrupt sampling through
+two checkpoints. The uninterrupted body consumes exactly 21 master cycles
+and performs no writes.
+
+The state-census route contains 2,650 calls: 2,622 uninterrupted leaves and
+28 calls containing original interrupt-handler passages. Semantic
+replacement admits all 2,650 calls while preserving the complete 364-write
+aggregate. Debug and Release preserve the assembly-only artifacts exactly:
+
+- Call SHA-256:
+  `3afba05be63a290e4e1e453212f354495c082e90ab116fe3716e104ade182943`
+- Write SHA-256:
+  `c0789fb65ce97f845a147d6c000ec55b3724ee3146499e4cb7c1328c186d3b29`
+- Debug census SHA-256:
+  `a95d0c343108b107d7ec1aa3c20915540d91bb08817704776531e5696ea9b5e2`
+- Release census SHA-256:
+  `9036a9de0c3c9917f47bff8c04c136a4824ec12601fb457d260aa2dfe4443490`
+
+Ordinal 1 independently shadows its frame-873 idle return against restored
+assembly with exact 21-cycle and zero-write parity. ROM-free tests cover
+idle and pending classification plus a truncated work-RAM snapshot. The
+pending-feature path remains emulated until a natural route exercises its
+direction, actor, score, and audio behavior.
+
+### Thirty-seventh native replacement: semantic `03:6339@all`
+
+The Walled Star controller first loads indexed collision state `$3800,X`.
+Bit 7 enters the existing wall-damage path. A nonnegative value branches to
+the shared post-destruction access latch at `$2DBC`; zero returns immediately
+at `03:6375`, while a nonzero latch continues into the existing access path.
+
+`dc_classify_walled_star_hit_gate` exposes collision, idle, and shared-active
+outcomes. The native adapter admits the idle path and reproduces both loads,
+the taken nonnegative and zero branches, accumulator, flags, and interrupt
+sampling through four checkpoints. The uninterrupted body consumes exactly
+54 master cycles and performs no writes.
+
+The state-census route contains 2,650 calls: 2,601 uninterrupted leaves and
+49 calls containing original interrupt-handler passages. Semantic
+replacement admits all 2,650 calls while preserving the complete 659-write
+aggregate. Debug and Release preserve the assembly-only artifacts exactly:
+
+- Call SHA-256:
+  `7789b6b0ef005e1d302342c9c03e569d2c8aad3c43bea200aa05920f7182f46e`
+- Write SHA-256:
+  `f847b9fa97dd98c6afa4011eb6b134f9f1551d2ed25ab5a59f2f219b7471d2dc`
+- Debug census SHA-256:
+  `a95d0c343108b107d7ec1aa3c20915540d91bb08817704776531e5696ea9b5e2`
+- Release census SHA-256:
+  `9036a9de0c3c9917f47bff8c04c136a4824ec12601fb457d260aa2dfe4443490`
+
+Ordinal 1 independently shadows its frame-873 idle return against restored
+assembly with exact 54-cycle and zero-write parity. ROM-free tests cover
+idle, collision, shared-active, and truncated-snapshot classification.
+Collision damage and active post-destruction access remain emulated.
+
+### Thirty-eighth native replacement: semantic `03:60C3@all`
+
+The fixed Tower controller first loads indexed collision state `$3800,X`.
+Bit 7 enters its existing hit path; a nonnegative value branches directly
+to the return at `03:612A`.
+
+`dc_classify_tower_hit_gate` exposes idle and triggered outcomes. The native
+adapter reproduces the indexed load, branch, accumulator, flags, and
+interrupt sampling. Idle calls consume exactly 27 master cycles and perform
+no writes. The routed trigger clears the indexed collision latch and reaches
+the shared score helper after 63 native cycles.
+
+The state-census route contains 2,646 calls: 2,615 uninterrupted idle
+leaves, 30 idle calls containing original interrupt-handler passages, and
+one real hit at frame 3,353. Semantic replacement admits all 2,646 calls.
+The score and audio helpers remain emulated. Post-helper semantic
+`03:60E0@all` performs the routed progress increment and transition flag in
+156 native cycles, then hands the original interrupt-bearing shared
+dispatcher to assembly. Post-dispatch semantic `03:611C@all` composes the
+native coroutine scheduler for all four transition calls: three 135-cycle,
+five-write countdown paths and one 213-cycle, eight-write dispatch install.
+The complete outer 538-write aggregate remains exact:
+
+- Call SHA-256:
+  `1b6440a384b815ba8ee97473dc389a56f9455ec0a82ee307c5baa499bbf3712f`
+- Write SHA-256:
+  `26696c169ae2296a752ea3916c9151134febbb89ef1a9eea54826645c64815c3`
+- Debug census SHA-256:
+  `a95d0c343108b107d7ec1aa3c20915540d91bb08817704776531e5696ea9b5e2`
+- Release census SHA-256:
+  `9036a9de0c3c9917f47bff8c04c136a4824ec12601fb457d260aa2dfe4443490`
+
+Ordinal 1 independently shadows its frame-873 idle return against restored
+assembly with exact 27-cycle and zero-write parity. `03:611C@1` independently
+replays the first frame-3,353 transition with exact 135-cycle and five-write
+parity. The five-call continuation artifact has call SHA-256
+`7e282adac47c3b913dc254b24cb364e41a12ac7c216f5d9944bac4a1e38306b8`
+and write SHA-256
+`eb7ffe66312e2c613cb842a6e755f8facba6574218e069a93be809ec2d27ba04`.
+ROM-free tests cover idle, triggered, and truncated-snapshot classification.
+The shared score/audio and dispatcher helpers remain emulated; Tower-owned
+progress and Tower-Guard/BS-5 entrance-gate transition state are native on
+the routed path.
+
+### Thirty-ninth native replacement: semantic `03:60A6@all`
+
+The Tower Guard update loads closed selector `$84`, reads Tower-owned
+five-step counter `$2D4D`, and branches past the open-selector load while
+that counter is nonzero. It then writes the selector to indexed completion
+field `$3D00,X` and reaches the return at `03:60B2`.
+
+`dc_classify_tower_guard_selector` exposes the nonzero closed outcome and
+zero-counter open outcome. The native adapter admits only the route-proven
+closed path and reproduces the accumulator, Y register, flags, indexed
+write, and interrupt sampling through four checkpoints. The uninterrupted
+body consumes exactly 48 master cycles and performs one write.
+
+All 2,650 state-census calls retain counter `$05` and selector `$84`: 2,592
+are uninterrupted leaves and 58 contain original interrupt-handler
+passages. Semantic replacement admits every call and preserves the complete
+3,403-write aggregate. Debug and Release preserve the assembly-only
+artifacts exactly:
+
+- Call SHA-256:
+  `942df45f1604783b877753a92fedf7ef806cf7b56cbd7456f0fc1b53cc4c26bd`
+- Write SHA-256:
+  `e2a76edd3d070915c33cc37891072178bbd8427c816d88262fe8ac1cc0ce5528`
+- Debug census SHA-256:
+  `a95d0c343108b107d7ec1aa3c20915540d91bb08817704776531e5696ea9b5e2`
+- Release census SHA-256:
+  `9036a9de0c3c9917f47bff8c04c136a4824ec12601fb457d260aa2dfe4443490`
+
+Ordinal 1 independently shadows its frame-873 closed update against restored
+assembly with exact 48-cycle, one-write parity. ROM-free tests cover closed,
+open, and truncated-snapshot classification. Counter zero, selector `$8E`,
+and the open BS-5 entrance remain in assembly until dynamically exercised.
+
+### Fortieth native replacement: semantic `03:7CAF@all`
+
+The hidden fixed collision/scene-response controller first loads scene state
+`$2CC0`; a negative value jumps to the shared inactive actor path. A
+nonnegative value loads zero-page collision scratch `$CC`. Zero returns at
+`03:7CBB`, while nonzero scratch enters the existing scene query, audio,
+ball-response, and countdown state machine.
+
+`dc_classify_fixed_response_gate` exposes inactive, dormant, and active
+outcomes. The native adapter admits only the route-proven dormant path and
+reproduces both loads, both branches, accumulator, flags, and interrupt
+sampling through four checkpoints. The uninterrupted body consumes exactly
+45 master cycles and performs no direct writes.
+
+All 2,650 state-census calls take the dormant path: 2,596 are uninterrupted
+leaves and 54 contain original interrupt-handler passages. Semantic
+replacement admits every call and preserves the complete 721-write
+aggregate. Debug and Release preserve the assembly-only artifacts exactly:
+
+- Call SHA-256:
+  `64a5571154cc9053e92176ea6b7100432f73540d464e3f8b48c6ef80a8b322fa`
+- Write SHA-256:
+  `e585851a0949429e428026066f706bb4c40a5b0cd9ef59dbef9fd553df2d5a47`
+- Debug census SHA-256:
+  `a95d0c343108b107d7ec1aa3c20915540d91bb08817704776531e5696ea9b5e2`
+- Release census SHA-256:
+  `9036a9de0c3c9917f47bff8c04c136a4824ec12601fb457d260aa2dfe4443490`
+
+Ordinal 1 independently shadows its frame-873 dormant return against
+restored assembly with exact 45-cycle, zero-write parity. ROM-free tests
+cover inactive, dormant, active, and truncated-snapshot classification.
+Negative-scene handling and the nonzero response state machine remain in
+assembly until dynamically exercised.
+
+### Forty-first native replacement: semantic `03:7B27@all`
+
+The hidden slot-`$5C` fixed scheduler first loads scene state `$2CC0`; a
+negative value jumps to the shared inactive actor path. A nonnegative scene
+loads presentation gate `$2BB9`; nonzero returns immediately at `03:7B34`.
+When presentation is enabled, indexed timer `$3A00,X` decrements. A nonzero
+result returns at `03:7B6C`, while zero reloads eight and submits selectors
+`$02`, `$03`, and `$07` through the original banked-call wrapper.
+
+`dc_classify_fixed_scheduler_gate` exposes inactive, suppressed, waiting,
+and active outcomes from live work RAM. The native adapter admits every
+route-proven nonnegative-scene path. It reproduces the loads, branches,
+indexed decrement, accumulator, flags, ordered writes, and interrupt
+sampling. Suppressed/waiting bodies consume 48/87 master cycles and perform
+zero/one direct writes. An active tick uses a 156-cycle prefix to reload
+eight and install the first `$02/$30/$08` submission before handing the
+original wrapper control.
+
+Of 2,650 state-census calls, one is presentation-suppressed, 2,317 decrement
+without timer expiry, and 332 enter the active triple-submission tick.
+Semantic `03:7B27@all` therefore admits all 2,650. Once the first original
+wrapper returns, semantic `03:7B4E@all` installs the `$03` submission and
+semantic `03:7B5D@all` installs `$07`; each continuation executes 332 times
+through an exact 54-cycle, three-write transcript. All three wrappers and
+the exported `08:4030` routine stay in assembly. The complete 46,618-write
+aggregate remains exact, and Debug and Release preserve the baseline
+artifacts:
+
+- Call SHA-256:
+  `f8696a6a4fe1eceef25d312e722a5ac2279b1886f018eb5f6cf145984acb8645`
+- Write SHA-256:
+  `257383a1a8128e9d5b3159ceaeb9766c54257bc2cc6b0b53b3fe641ee625c521`
+- Debug census SHA-256:
+  `a95d0c343108b107d7ec1aa3c20915540d91bb08817704776531e5696ea9b5e2`
+- Release census SHA-256:
+  `9036a9de0c3c9917f47bff8c04c136a4824ec12601fb457d260aa2dfe4443490`
+
+Ordinal 1 independently shadows its frame-873 presentation-suppressed
+return against restored assembly with exact 48-cycle, zero-write parity.
+ROM-free tests cover inactive, suppressed, waiting, active, and
+truncated-snapshot classification. The stable ordinal-1 suppressed call
+shadows exactly; full-route hashes guard every active tick because a
+normalized isolated replay of the long downstream helper can shift its
+interrupt instruction. Only negative-scene handling remains in assembly.
+
+### Forty-second native replacement: semantic `03:7B7A@all`
+
+The hidden slot-`$5D` three-marker animator shares the scheduler's scene and
+presentation gates. A negative scene jumps to the shared inactive actor
+path, while a nonzero `$2BB9` returns at `03:7B87`. When presentation is
+enabled, indexed timer `$3A00,X` decrements. A nonzero result jumps to the
+return at `03:7BDF`; zero reloads eight and advances the three marker
+descriptors through phase table `0,1,2,3,4,3,2,1`.
+
+The shared `dc_classify_fixed_scheduler_gate` exposes inactive, suppressed,
+waiting, and active outcomes from live work RAM. The `03:7B7A` adapter
+reproduces the exact 48/93-cycle suppressed and waiting paths. On every
+route-proven active tick it reloads eight, increments `$3A80,X`, wraps at
+eight, loads the resulting phase into Y, preserves the compare carry, and
+installs the first `$1E:16` descriptor before returning at the original
+`PHY`/drawing-helper boundary. Nineteen instruction checkpoints describe
+the 231-cycle non-wrap prefix; a twentieth checkpoint and second ordered
+phase write describe each 240-cycle wrap prefix.
+
+Of 2,650 state-census calls, one is presentation-suppressed, 2,317 decrement
+without timer expiry, and 332 enter the active marker-update tick. All 2,650
+now enter native code. The active set contains 291 non-wrap prefixes and 41
+wrap prefixes. After the first original drawing and marker-helper calls,
+semantic `03:7BBB@all` installs descriptor `$1E:18`; after the second pair,
+semantic `03:7BCD@all` installs `$1E:1A`. Each continuation executes 332
+times through four instruction checkpoints, two direct writes, and 36
+master cycles. Semantic `03:7BE0@all` replaces every marker wrapper's
+`PHY/PHA`, phase-table load, and handoff to the first shared helper through
+three checkpoints, two stack writes, and 33 master cycles. Semantic
+`03:7BE8@all` restores the saved accumulator in 12 cycles after that helper,
+and semantic `03:7BEC@all` restores Y in 12 cycles after the second helper.
+Each segment executes 996 times and reads or writes the live emulated stack.
+The shared phase-stride helper is now native as described below; only the
+`01:C05D` drawing submission remains an assembly boundary. The complete
+88,480-write aggregate remains exact. Debug and Release preserve:
+
+- Call SHA-256:
+  `5ed50a6da96f19502e06fd4622c3986ca9fab5aadd28d26603075e6968cc52ff`
+- Write SHA-256:
+  `2b78c118caa3cdb9f37a19d40dc9f967eb0eb232b56c27d3bde64a6d350301f9`
+- Debug census SHA-256:
+  `a95d0c343108b107d7ec1aa3c20915540d91bb08817704776531e5696ea9b5e2`
+- Release census SHA-256:
+  `9036a9de0c3c9917f47bff8c04c136a4824ec12601fb457d260aa2dfe4443490`
+
+Ordinal 1 independently shadows its frame-873 presentation-suppressed
+return against restored assembly with exact 48-cycle, zero-write parity.
+ROM-free tests cover slot-`$5D` timer classification and truncated snapshots.
+Negative-scene handling remains unobserved and in assembly.
+
+### Forty-third native replacement: semantic `02:5955@all`
+
+This shared phase-stride helper shifts the input accumulator left five
+places and adds the resulting unsigned word to scratch pointer `$2F:$30`.
+Each marker wrapper calls it after selecting phase
+`0,1,2,3,4,3,2,1`, advancing the descriptor source by 32 bytes per phase
+before `01:C05D` performs the drawing submission. One additional routed
+caller at `03:7664` uses the same arithmetic.
+
+`dc_add_scaled_byte_to_word` exposes all five shifted low/high pairs and the
+final little-endian sum without mutating the copied RAM view. The host
+adapter recreates `STZ`, five `ASL A`/`ROL $2E` pairs, `CLC`, and the two
+byte additions through 15 exact instruction checkpoints. The uninterrupted
+body consumes 198 master cycles and writes `$2E` six times followed by
+`$2F` and `$30`.
+
+The state-census route contains 997 calls: 996 from the marker wrapper and
+one from `03:7664`. All execute natively, including 75 calls containing
+original interrupt-handler passages; all 8,978 aggregate writes remain
+exact. Ordinal 1 independently shadows its frame-940 call against restored
+assembly with exact 198-cycle and eight-write parity. ROM-free tests cover
+ordinary addition, both shift and addition carries, and truncated RAM.
+Debug and Release preserve:
+
+- Call SHA-256:
+  `1b13d35fb24027b1cce65657d384c44df7c12a1c1cad8b2c5bfb0e77ed8cd7f8`
+- Write SHA-256:
+  `4f850f8293f347dd5798764fd07f1fc83e01fd41a81c666aac1cbcf3c907795c`
+- Debug census SHA-256:
+  `a95d0c343108b107d7ec1aa3c20915540d91bb08817704776531e5696ea9b5e2`
+- Release census SHA-256:
+  `9036a9de0c3c9917f47bff8c04c136a4824ec12601fb457d260aa2dfe4443490`
+
+### Forty-fourth native replacement: semantic `03:767E@all`
+
+The Giant Face's hidden-form animator loads shared animation mode `$2D0E`
+and compares it with one. Mode one enters the timer, phase, and drawing
+state machine beginning at `03:7687`; every other value returns at
+`03:7685`. The state-census route visits the dispatch 873 times and always
+takes that idle return.
+
+`dc_classify_giant_face_animator_gate` exposes the live mode and separates
+the mode-one active path from the routed idle path. The host adapter
+recreates the absolute load, immediate comparison, and untaken `BEQ` through
+three exact instruction checkpoints. Each uninterrupted call consumes 27
+master cycles and performs no direct writes.
+
+All 873 calls execute natively. Eight contain original interrupt-handler
+passages, whose 97 writes remain exact. Ordinal 1 independently shadows its
+frame-1,222 call with exact 27-cycle, zero-write parity. The existing
+5,608-call/812-write Giant Face family regression remains byte-identical in
+Debug and Release with the replacement enabled. ROM-free tests cover mode
+zero, active mode one, a non-one mode, and truncated RAM. Active mode one
+continues through assembly until a natural route exercises it.
+
+- Call SHA-256:
+  `b960fb4cabe1f6009e49c62ad9a0e7036aa4d2407c60ad8119f9a23b64b100d6`
+- Write SHA-256:
+  `874224be422684644a59f3bad052e8e6cf73098cdeb01caeba034b585d89e248`
+- Debug census SHA-256:
+  `a95d0c343108b107d7ec1aa3c20915540d91bb08817704776531e5696ea9b5e2`
+- Release census SHA-256:
+  `9036a9de0c3c9917f47bff8c04c136a4824ec12601fb457d260aa2dfe4443490`
+
+### Forty-fifth native replacement: semantic `03:74D8@all`
+
+The Giant Face controller loads shared request byte `$2D0C` and masks wake
+bit zero. A set bit enters the wake sequence at `03:74E0`; a clear bit
+returns at `03:74DF`. The state-census route visits the dispatch 2,648 times
+and always takes that idle return.
+
+`dc_classify_giant_face_request_gate` exposes the live request byte and
+separates the wake path from the routed idle path. The host adapter recreates
+the absolute load, immediate mask, and untaken `BNE` through three exact
+instruction checkpoints. Each uninterrupted call consumes 27 master cycles
+and performs no direct writes.
+
+All 2,648 calls execute natively. Twenty-three contain original interrupt-
+handler passages, whose 289 writes remain exact. Ordinal 1 independently
+shadows its frame-942 call with exact 27-cycle, zero-write parity. The
+existing 5,608-call/812-write Giant Face family regression remains byte-
+identical in Debug and Release with both native Giant Face gates enabled.
+ROM-free tests cover request zero, unrelated bit one, wake bit zero, and
+truncated RAM. Wake and transformation handling continues through assembly.
+
+- Call SHA-256:
+  `d110a06449ef76dc8af186ca017263fa0302174c2173ec7b0b3d52b4d418e289`
+- Write SHA-256:
+  `023a7f3933bdb84c56c5b68016fb622e6b9b21c08894a5abf85a0c65b6c978b9`
+- Debug census SHA-256:
+  `a95d0c343108b107d7ec1aa3c20915540d91bb08817704776531e5696ea9b5e2`
+- Release census SHA-256:
+  `9036a9de0c3c9917f47bff8c04c136a4824ec12601fb457d260aa2dfe4443490`
 
 ## Controls-to-physics closure route
 

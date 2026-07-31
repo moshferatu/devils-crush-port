@@ -455,6 +455,59 @@ static void multiply_unsigned_values(
     round->multiplier_after = (uint8_t)(shifted >> 16U);
 }
 
+int dc_multiply_unsigned_bytes(
+    const uint8_t* const work_ram,
+    const size_t work_ram_size,
+    dc_unsigned_byte_multiply* const multiply)
+{
+    uint8_t low;
+    uint8_t high;
+    size_t index;
+
+    if (work_ram == NULL || multiply == NULL
+        || work_ram_size < 0x2000U) {
+        return 0;
+    }
+
+    multiply->multiplicand = work_ram[0x002FU];
+    multiply->multiplier = work_ram[0x0030U];
+    multiply->add_count = 0U;
+    multiply->carry_count = 0U;
+    low = 0U;
+    high = multiply->multiplier;
+    for (index = 0U; index < DC_UNSIGNED_MULTIPLY_STEP_COUNT; ++index) {
+        dc_unsigned_byte_multiply_step* const step =
+            &multiply->steps[index];
+        const uint8_t low_carry = (uint8_t)(low >> 7U);
+        const uint8_t adds = (uint8_t)(high >> 7U);
+        uint16_t sum;
+
+        low = (uint8_t)(low << 1U);
+        high = (uint8_t)((high << 1U) | low_carry);
+        step->low_after_shift = low;
+        step->high_after_shift = high;
+        step->adds_multiplicand = adds;
+        step->add_carry = 0U;
+        if (adds != 0U) {
+            sum = (uint16_t)low + (uint16_t)multiply->multiplicand;
+            low = (uint8_t)sum;
+            step->add_carry = (uint8_t)(sum > 0xFFU);
+            if (step->add_carry != 0U) {
+                high = (uint8_t)(high + 1U);
+                multiply->carry_count =
+                    (uint8_t)(multiply->carry_count + 1U);
+            }
+            multiply->add_count =
+                (uint8_t)(multiply->add_count + 1U);
+        }
+        step->low_after_add = low;
+        step->high_after_add = high;
+    }
+    multiply->result_low = low;
+    multiply->result_high = high;
+    return 1;
+}
+
 int dc_multiply_unsigned_round(
     const uint8_t* const work_ram,
     const size_t work_ram_size,

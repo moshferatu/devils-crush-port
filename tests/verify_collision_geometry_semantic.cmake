@@ -14,8 +14,8 @@ else()
     message(FATAL_ERROR "Unsupported collision-geometry configuration: ${CONFIG}")
 endif()
 
-set(expected_call_sha256 "c40fc23468d8d9ef9d966c13cb2b797107b61557343f5685833c0631d4e5fece")
-set(expected_write_sha256 "f392326b5bdfa2e382b0fb15cb1076fa7cf65c8c3263f2753cc3e1b4f2ad3b2b")
+set(expected_call_sha256 "394b345b5ba30aadd0d4fdfd27e88a4fe812d749b5560b4f0ccea10a88c2f578")
+set(expected_write_sha256 "ba33300ad75be145eff8a7d6de4f98356fc4ca338aa111cfe27cb77057d019dc")
 
 set(call_output "${OUTPUT}.calls.csv")
 set(write_output "${call_output}.writes.csv")
@@ -25,7 +25,6 @@ execute_process(
         "${APP}"
         --record-state-census "${OUTPUT}"
         --observe-hook "01:CCD5"
-        --replace-hook "01:CC1A@all"
         --replace-hook "01:CCD5@all"
         --routine-call-trace "${call_output}"
         --rom "${ROM}"
@@ -39,10 +38,9 @@ endif()
 
 foreach(expected_line IN ITEMS
     "State census recording complete: 3600 frames"
-    "Native replacement 01:CC1A@all entries: 19192 of 85715"
-    "Native replacement 01:CCD5@all entries: 66523 of 66523"
-    "Observe hook 1 entries: 66523"
-    "Routine call trace complete: 66523 calls, 1414954 writes"
+    "Native replacement 01:CCD5@all entries: 66523 of 85715"
+    "Observe hook 1 entries: 85715"
+    "Routine call trace complete: 85715 calls, 1456713 writes"
 )
     string(FIND "${recorder_output}" "${expected_line}" line_offset)
     if(line_offset EQUAL -1)
@@ -65,4 +63,4 @@ foreach(artifact IN ITEMS census call write)
     endif()
 endforeach()
 
-message(STATUS "Semantic CCD5 geometry covers all 66,523 calls through instruction checkpoints.")
+message(STATUS "Semantic CCD5 geometry covers all 66,523 near-target calls through instruction checkpoints.")

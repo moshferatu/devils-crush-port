@@ -3666,6 +3666,244 @@ replace_motion_damping(
 }
 
 [[nodiscard]] std::optional<RoutineReplacement>
+replace_unsigned_byte_multiply(
+    const RoutineEntry& entry,
+    const std::span<const std::byte> work_ram)
+{
+    constexpr RoutineKey kRoutine{
+        .physical_bank = 0x00U,
+        .logical_pc = 0xE569U,
+    };
+    if (entry.routine != kRoutine || work_ram.size() < 0x2000U
+        || (entry.registers.status & 0x08U) != 0U) {
+        return std::nullopt;
+    }
+
+    dc_unsigned_byte_multiply multiply{};
+    if (!dc_multiply_unsigned_bytes(
+            reinterpret_cast<const std::uint8_t*>(work_ram.data()),
+            work_ram.size(),
+            &multiply)) {
+        throw std::runtime_error(
+            "Native E569 replacement rejected the work-RAM snapshot.");
+    }
+
+    RoutineReplacement replacement{
+        .return_instruction = {
+            .physical_bank = 0x00U,
+            .logical_pc = 0xE57FU,
+        },
+        .output_registers = entry.registers,
+    };
+    replacement.work_ram_writes.reserve(
+        static_cast<std::size_t>(10U + multiply.carry_count));
+    replacement.checkpoints.reserve(
+        static_cast<std::size_t>(
+            45U + 2U * multiply.add_count
+            + multiply.carry_count));
+
+    const auto set_nz = [](std::uint8_t status, const std::uint8_t value) {
+        status = static_cast<std::uint8_t>(
+            status & static_cast<std::uint8_t>(~0xA2U));
+        if (value == 0U) {
+            status = static_cast<std::uint8_t>(status | 0x02U);
+        } else if ((value & 0x80U) != 0U) {
+            status = static_cast<std::uint8_t>(status | 0x80U);
+        }
+        return status;
+    };
+    const auto shift_status =
+        [&set_nz](
+            std::uint8_t status,
+            const std::uint8_t original,
+            const std::uint8_t result) {
+            status = static_cast<std::uint8_t>(
+                status & static_cast<std::uint8_t>(~0x01U));
+            status = set_nz(status, result);
+            if ((original & 0x80U) != 0U) {
+                status = static_cast<std::uint8_t>(
+                    status | 0x01U);
+            }
+            return status;
+        };
+    const auto adc_status =
+        [&set_nz](
+            std::uint8_t status,
+            const std::uint8_t left,
+            const std::uint8_t right,
+            const std::uint8_t result) {
+            const auto sum = static_cast<std::uint16_t>(
+                static_cast<std::uint16_t>(left)
+                + static_cast<std::uint16_t>(right));
+            status = static_cast<std::uint8_t>(
+                status & static_cast<std::uint8_t>(~0xC1U));
+            status = set_nz(status, result);
+            if (sum > 0xFFU) {
+                status = static_cast<std::uint8_t>(
+                    status | 0x01U);
+            }
+            if (((~(left ^ right) & (left ^ result)) & 0x80U) != 0U) {
+                status = static_cast<std::uint8_t>(
+                    status | 0x40U);
+            }
+            return status;
+        };
+    const auto append_checkpoint =
+        [&replacement](
+            const std::uint16_t instruction_pc,
+            const std::uint16_t resume_pc,
+            const std::uint32_t master_cycle,
+            auto registers) {
+            registers.program_counter = resume_pc;
+            replacement.checkpoints.push_back({
+                .interrupt_sample_master_cycle_offset =
+                    master_cycle - 3U,
+                .master_cycle_offset = master_cycle,
+                .instruction = {0x00U, instruction_pc},
+                .registers = registers,
+            });
+        };
+    const auto append_write =
+        [&replacement](
+            const std::uint16_t instruction_pc,
+            const std::uint16_t logical_address,
+            const std::uint8_t value,
+            const std::uint32_t master_cycle) {
+            replacement.work_ram_writes.push_back({
+                .instruction = {0x00U, instruction_pc},
+                .logical_address = logical_address,
+                .value = value,
+                .master_cycle_offset = master_cycle,
+            });
+        };
+
+    auto checkpoint = entry.registers;
+    std::uint32_t cycle = 9U;
+    append_write(
+        0xE569U,
+        static_cast<std::uint16_t>(
+            0x2100U + checkpoint.stack_pointer),
+        checkpoint.x,
+        cycle);
+    checkpoint.stack_pointer = static_cast<std::uint8_t>(
+        checkpoint.stack_pointer - 1U);
+    append_checkpoint(0xE569U, 0xE56AU, cycle, checkpoint);
+
+    cycle += 6U;
+    checkpoint.accumulator = 0U;
+    checkpoint.status = static_cast<std::uint8_t>(
+        checkpoint.status & static_cast<std::uint8_t>(~0x20U));
+    append_checkpoint(0xE56AU, 0xE56BU, cycle, checkpoint);
+    cycle += 6U;
+    checkpoint.x = 8U;
+    checkpoint.status = set_nz(checkpoint.status, checkpoint.x);
+    append_checkpoint(0xE56BU, 0xE56DU, cycle, checkpoint);
+
+    std::uint8_t low = 0U;
+    std::uint8_t high = multiply.multiplier;
+    for (std::size_t index = 0U;
+         index < DC_UNSIGNED_MULTIPLY_STEP_COUNT;
+         ++index) {
+        const auto& step = multiply.steps[index];
+        const auto low_before_shift = low;
+        cycle += 6U;
+        low = step.low_after_shift;
+        checkpoint.accumulator = low;
+        checkpoint.status = shift_status(
+            checkpoint.status,
+            low_before_shift,
+            low);
+        append_checkpoint(0xE56DU, 0xE56EU, cycle, checkpoint);
+
+        const auto high_before_shift = high;
+        cycle += 18U;
+        high = step.high_after_shift;
+        checkpoint.status = shift_status(
+            checkpoint.status,
+            high_before_shift,
+            high);
+        append_write(0xE56EU, 0x2030U, high, cycle);
+        append_checkpoint(0xE56EU, 0xE570U, cycle, checkpoint);
+
+        if (step.adds_multiplicand == 0U) {
+            cycle += 12U;
+            append_checkpoint(0xE570U, 0xE579U, cycle, checkpoint);
+        } else {
+            cycle += 6U;
+            append_checkpoint(0xE570U, 0xE572U, cycle, checkpoint);
+            cycle += 6U;
+            checkpoint.status = static_cast<std::uint8_t>(
+                checkpoint.status
+                & static_cast<std::uint8_t>(~0x21U));
+            append_checkpoint(0xE572U, 0xE573U, cycle, checkpoint);
+
+            const auto low_before_add = low;
+            cycle += 12U;
+            low = step.low_after_add;
+            checkpoint.accumulator = low;
+            checkpoint.status = adc_status(
+                checkpoint.status,
+                low_before_add,
+                multiply.multiplicand,
+                low);
+            append_checkpoint(0xE573U, 0xE575U, cycle, checkpoint);
+            if (step.add_carry == 0U) {
+                cycle += 12U;
+                append_checkpoint(
+                    0xE575U, 0xE579U, cycle, checkpoint);
+            } else {
+                cycle += 6U;
+                append_checkpoint(
+                    0xE575U, 0xE577U, cycle, checkpoint);
+                cycle += 18U;
+                high = step.high_after_add;
+                checkpoint.status =
+                    set_nz(checkpoint.status, high);
+                append_write(0xE577U, 0x2030U, high, cycle);
+                append_checkpoint(
+                    0xE577U, 0xE579U, cycle, checkpoint);
+            }
+        }
+
+        cycle += 6U;
+        checkpoint.x = static_cast<std::uint8_t>(
+            checkpoint.x - 1U);
+        checkpoint.status = set_nz(checkpoint.status, checkpoint.x);
+        append_checkpoint(0xE579U, 0xE57AU, cycle, checkpoint);
+        cycle += checkpoint.x != 0U ? 12U : 6U;
+        append_checkpoint(
+            0xE57AU,
+            checkpoint.x != 0U ? 0xE56DU : 0xE57CU,
+            cycle,
+            checkpoint);
+    }
+
+    cycle += 12U;
+    append_write(0xE57CU, 0x202FU, low, cycle);
+    append_checkpoint(0xE57CU, 0xE57EU, cycle, checkpoint);
+    cycle += 12U;
+    checkpoint.stack_pointer = static_cast<std::uint8_t>(
+        checkpoint.stack_pointer + 1U);
+    checkpoint.x = entry.registers.x;
+    checkpoint.status = set_nz(checkpoint.status, checkpoint.x);
+    append_checkpoint(0xE57EU, 0xE57FU, cycle, checkpoint);
+
+    const auto expected_cycles = static_cast<std::uint32_t>(
+        471U + 24U * multiply.add_count
+        + 12U * multiply.carry_count);
+    if (cycle != expected_cycles
+        || low != multiply.result_low
+        || high != multiply.result_high) {
+        throw std::runtime_error(
+            "Native E569 transcript diverged from its state model.");
+    }
+    replacement.body_master_cycles = cycle;
+    checkpoint.program_counter = 0xE57FU;
+    replacement.output_registers = checkpoint;
+    return replacement;
+}
+
+[[nodiscard]] std::optional<RoutineReplacement>
 replace_unsigned_multiply_round(
     const RoutineEntry& entry,
     const std::span<const std::byte> work_ram)

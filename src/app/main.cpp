@@ -775,6 +775,13 @@ parse_logical_address_range(const std::string_view text)
                            && (request.all_calls
                                || request.ordinal == 1U
                                || request.ordinal == 2U);
+                       const bool proven_unsigned_byte_multiply =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x00U,
+                                       .logical_pc = 0xE569U,
+                                   }
+                           && request.all_calls;
                        const bool proven_signed_fixed_multiply =
                            request.routine
                                    == RoutineKey{
@@ -808,6 +815,14 @@ parse_logical_address_range(const std::string_view text)
                                    == RoutineKey{
                                        .physical_bank = 0x01U,
                                        .logical_pc = 0xCC1AU,
+                                   }
+                           && (request.all_calls
+                               || request.ordinal == 19176U);
+                       const bool proven_collision_mask_lookup =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x01U,
+                                       .logical_pc = 0xCC98U,
                                    }
                            && request.all_calls;
                        const bool proven_collision_geometry =
@@ -852,6 +867,287 @@ parse_logical_address_range(const std::string_view text)
                                        .logical_pc = 0xC49EU,
                                    }
                            && request.all_calls;
+                       const bool proven_giant_skeleton_eyeball_gate =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x02U,
+                                       .logical_pc = 0x4DD9U,
+                                   }
+                           && request.all_calls;
+                       const bool proven_mercy_star_gate =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x02U,
+                                       .logical_pc = 0x4FC1U,
+                                   }
+                           && request.all_calls;
+                       const bool proven_dragon_egg_controller =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x02U,
+                                       .logical_pc = 0x42F6U,
+                                   }
+                           && request.all_calls;
+                       const bool proven_dragon_egg_hit_gate =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x02U,
+                                       .logical_pc = 0x4345U,
+                                   }
+                           && request.all_calls;
+                       const bool proven_dragon_egg_hit_continuation =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x02U,
+                                       .logical_pc = 0x4357U,
+                                   }
+                           && request.all_calls;
+                       const bool proven_dragon_egg_post_allocation =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x02U,
+                                       .logical_pc = 0x4371U,
+                                   }
+                           && request.all_calls;
+                       const bool proven_big_star_feature_gate =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x02U,
+                                       .logical_pc = 0x445BU,
+                                   }
+                           && request.all_calls;
+                       const bool proven_dragon_head_hit_gate =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x02U,
+                                       .logical_pc = 0x5A4BU,
+                                   }
+                           && request.all_calls;
+                       const bool proven_dragon_head_hit_continuation =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x02U,
+                                       .logical_pc = 0x5A6EU,
+                                   }
+                           && request.all_calls;
+                       const bool proven_devil_shooter_hit_gate =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x02U,
+                                       .logical_pc = 0x5116U,
+                                   }
+                           && request.all_calls;
+                       const bool
+                           proven_devil_shooter_catch_continuation =
+                               request.routine
+                                       == RoutineKey{
+                                           .physical_bank = 0x02U,
+                                           .logical_pc = 0x52B8U,
+                                       }
+                               && request.all_calls;
+                       const bool proven_skeleton_insect_left_gate =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x02U,
+                                       .logical_pc = 0x54B9U,
+                                   }
+                           && request.all_calls;
+                       const bool proven_skeleton_insect_right_gate =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x02U,
+                                       .logical_pc = 0x5551U,
+                                   }
+                           && request.all_calls;
+                       const bool proven_skeleton_insect_center_gate =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x02U,
+                                       .logical_pc = 0x55F9U,
+                                   }
+                           && request.all_calls;
+                       const bool
+                           proven_skeleton_insect_center_continuation =
+                               request.routine
+                                       == RoutineKey{
+                                           .physical_bank = 0x02U,
+                                           .logical_pc = 0x5604U,
+                                       }
+                               && request.all_calls;
+                       const bool proven_devils_coffin_gate =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x03U,
+                                       .logical_pc = 0x63F1U,
+                                   }
+                           && request.all_calls;
+                       const bool proven_devils_coffin_opening =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x03U,
+                                       .logical_pc = 0x640AU,
+                                   }
+                           && request.all_calls;
+                       const bool proven_devils_coffin_closing =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x03U,
+                                       .logical_pc = 0x6445U,
+                                   }
+                           && request.all_calls;
+                       const bool proven_three_blobs_controller =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x03U,
+                                       .logical_pc = 0x65C2U,
+                                   }
+                           && request.all_calls;
+                       const bool proven_giant_door_hit_gate =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x03U,
+                                       .logical_pc = 0x62B8U,
+                                   }
+                           && request.all_calls;
+                       const bool proven_giant_face_animator_gate =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x03U,
+                                       .logical_pc = 0x767EU,
+                                   }
+                           && request.all_calls;
+                       const bool proven_giant_face_request_gate =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x03U,
+                                       .logical_pc = 0x74D8U,
+                                   }
+                           && request.all_calls;
+                       const bool proven_walled_star_hit_gate =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x03U,
+                                       .logical_pc = 0x6339U,
+                                   }
+                           && request.all_calls;
+                       const bool proven_tower_hit_gate =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x03U,
+                                       .logical_pc = 0x60C3U,
+                                   }
+                           && request.all_calls;
+                       const bool proven_tower_hit_continuation =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x03U,
+                                       .logical_pc = 0x60E0U,
+                                   }
+                           && request.all_calls;
+                       const bool proven_tower_post_dispatch =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x03U,
+                                       .logical_pc = 0x611CU,
+                                   }
+                           && request.all_calls;
+                       const bool proven_tower_guard_selector =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x03U,
+                                       .logical_pc = 0x60A6U,
+                                   }
+                           && request.all_calls;
+                       const bool proven_bumper_hit_gate =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x03U,
+                                       .logical_pc = 0x78C7U,
+                                   }
+                           && request.all_calls;
+                       const bool proven_bumper_primary_progress =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x03U,
+                                       .logical_pc = 0x78F5U,
+                                   }
+                           && request.all_calls;
+                       const bool proven_bumper_secondary_progress =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x03U,
+                                       .logical_pc = 0x7912U,
+                                   }
+                           && request.all_calls;
+                       const bool proven_fixed_response_gate =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x03U,
+                                       .logical_pc = 0x7CAFU,
+                                   }
+                           && request.all_calls;
+                       const bool proven_fixed_scheduler_gate =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x03U,
+                                       .logical_pc = 0x7B27U,
+                                   }
+                           && request.all_calls;
+                       const bool proven_fixed_scheduler_submission =
+                           (request.routine
+                                    == RoutineKey{
+                                        .physical_bank = 0x03U,
+                                        .logical_pc = 0x7B4EU,
+                                    }
+                                || request.routine
+                                    == RoutineKey{
+                                        .physical_bank = 0x03U,
+                                        .logical_pc = 0x7B5DU,
+                                    })
+                           && request.all_calls;
+                       const bool proven_fixed_marker_gate =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x03U,
+                                       .logical_pc = 0x7B7AU,
+                                   }
+                           && request.all_calls;
+                       const bool proven_fixed_marker_submission =
+                           (request.routine
+                                    == RoutineKey{
+                                        .physical_bank = 0x03U,
+                                        .logical_pc = 0x7BBBU,
+                                    }
+                                || request.routine
+                                    == RoutineKey{
+                                        .physical_bank = 0x03U,
+                                        .logical_pc = 0x7BCDU,
+                                    })
+                           && request.all_calls;
+                       const bool proven_fixed_marker_helper =
+                           (request.routine
+                                    == RoutineKey{
+                                        .physical_bank = 0x03U,
+                                        .logical_pc = 0x7BE0U,
+                                    }
+                                || request.routine
+                                    == RoutineKey{
+                                        .physical_bank = 0x03U,
+                                        .logical_pc = 0x7BE8U,
+                                    }
+                                || request.routine
+                                    == RoutineKey{
+                                        .physical_bank = 0x03U,
+                                        .logical_pc = 0x7BECU,
+                                    })
+                           && request.all_calls;
+                       const bool proven_scaled_word_add =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x02U,
+                                       .logical_pc = 0x5955U,
+                                   }
+                           && request.all_calls;
                        const bool proven_collision_table_pass =
                            request.routine
                                    == RoutineKey{
@@ -894,18 +1190,57 @@ parse_logical_address_range(const std::string_view text)
                            && !proven_rng_update
                            && !proven_signed_word_negation
                            && !proven_signed_division
+                           && !proven_unsigned_byte_multiply
                            && !proven_unsigned_multiply_round
                            && !proven_signed_fixed_multiply
                            && !proven_actor_camera_activation
                            && !proven_actor_slot_reset
                            && !proven_flipper_input_gate
                            && !proven_collision_scan_vertical_reject
+                           && !proven_collision_mask_lookup
                            && !proven_collision_geometry
                            && !proven_flipper_phase_step
                            && !proven_flipper_geometry
                            && !proven_coroutine_scheduler
                            && !proven_nudge_input_gate
                            && !proven_session_input_gate
+                           && !proven_giant_skeleton_eyeball_gate
+                           && !proven_mercy_star_gate
+                           && !proven_dragon_egg_controller
+                           && !proven_dragon_egg_hit_gate
+                           && !proven_dragon_egg_hit_continuation
+                           && !proven_dragon_egg_post_allocation
+                           && !proven_big_star_feature_gate
+                           && !proven_dragon_head_hit_gate
+                           && !proven_dragon_head_hit_continuation
+                           && !proven_devil_shooter_hit_gate
+                           && !proven_devil_shooter_catch_continuation
+                           && !proven_skeleton_insect_left_gate
+                           && !proven_skeleton_insect_right_gate
+                           && !proven_skeleton_insect_center_gate
+                           && !proven_skeleton_insect_center_continuation
+                           && !proven_devils_coffin_gate
+                           && !proven_devils_coffin_opening
+                           && !proven_devils_coffin_closing
+                           && !proven_giant_door_hit_gate
+                           && !proven_giant_face_request_gate
+                           && !proven_giant_face_animator_gate
+                           && !proven_walled_star_hit_gate
+                           && !proven_tower_hit_gate
+                           && !proven_tower_hit_continuation
+                           && !proven_tower_post_dispatch
+                           && !proven_tower_guard_selector
+                           && !proven_bumper_hit_gate
+                           && !proven_bumper_primary_progress
+                           && !proven_bumper_secondary_progress
+                           && !proven_fixed_response_gate
+                           && !proven_fixed_scheduler_gate
+                           && !proven_fixed_scheduler_submission
+                           && !proven_fixed_marker_gate
+                           && !proven_fixed_marker_submission
+                           && !proven_fixed_marker_helper
+                           && !proven_scaled_word_add
+                           && !proven_three_blobs_controller
                            && !proven_collision_table_pass;
                    })) {
         options.error =
@@ -921,17 +1256,56 @@ parse_logical_address_range(const std::string_view text)
             "03:6966@22, 03:6966@23, semantic 03:6966@all, semantic "
             "03:7FB1@all, semantic 03:7F57@all, semantic 00:F55C@all, "
             "semantic 00:E8B3@all, semantic 00:E837@all, "
-            "semantic 00:E905@all, semantic 00:E624@all, "
+            "semantic 00:E905@all, semantic 00:E569@all, "
+            "semantic 00:E624@all, "
             "semantic 00:E65C@all, "
             "semantic 01:D09E@all, semantic 01:D612@all, "
             "semantic 01:D62E@all, "
             "semantic 01:CFD8@all, "
             "semantic 00:F4FC@all, semantic "
             "01:C574@all, semantic 01:D466@all, semantic 01:CC1A@all, "
+            "01:CC1A@19176, "
+            "semantic 01:CC98@all, "
             "semantic 01:CCD5@all, "
             "semantic "
             "01:D500@all, semantic 01:D081@all, semantic 01:C5C9@all, "
-            "semantic 01:C3CB@all, semantic 01:C49E@all, and "
+            "semantic 01:C3CB@all, semantic 01:C49E@all, "
+            "semantic 02:42F6@all, semantic 02:4345@all, "
+            "semantic 02:4357@all, semantic 02:4371@all, "
+            "semantic 02:445B@all, "
+            "semantic 02:4DD9@all, "
+            "semantic 02:4FC1@all, "
+            "semantic 02:5116@all, "
+            "semantic 02:52B8@all, "
+            "semantic 02:54B9@all, "
+            "semantic 02:5551@all, "
+            "semantic 02:55F9@all, "
+            "semantic 02:5604@all, "
+            "semantic 02:5A4B@all, "
+            "semantic 02:5A6E@all, "
+            "semantic 03:63F1@all, "
+            "semantic 03:640A@all, "
+            "semantic 03:6445@all, "
+            "semantic 03:62B8@all, "
+            "semantic 03:74D8@all, "
+            "semantic 03:767E@all, "
+            "semantic 03:6339@all, "
+            "semantic 03:60C3@all, "
+            "semantic 03:60E0@all, "
+            "semantic 03:611C@all, "
+            "semantic 03:60A6@all, "
+            "semantic 03:78C7@all, "
+            "semantic 03:78F5@all, "
+            "semantic 03:7912@all, "
+            "semantic 03:7CAF@all, "
+            "semantic 03:7B27@all, "
+            "semantic 03:7B4E@all, semantic 03:7B5D@all, "
+            "semantic 03:7B7A@all, "
+            "semantic 03:7BBB@all, semantic 03:7BCD@all, "
+            "semantic 03:7BE0@all, semantic 03:7BE8@all, "
+            "semantic 03:7BEC@all, "
+            "semantic 02:5955@all, "
+            "semantic 03:65C2@all, and "
             "the proven 03:7FB1@1, 03:7FB1@3, 03:7FB1@7, 00:F55C@1, "
             "and 00:E8B3@1 calls.";
     } else if (!options.work_ram_patches.empty() && !recording_selected) {

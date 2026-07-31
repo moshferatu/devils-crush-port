@@ -902,6 +902,219 @@ void test_native_collision_geometry()
         "native CCD5 rejects a truncated work-RAM snapshot");
 }
 
+void test_native_collision_scan_bounds_reject()
+{
+    std::array<std::uint8_t, 0x2000> work_ram{};
+    dc_collision_scan_bounds_reject reject{};
+
+    work_ram[0x0065U] = 0x50U;
+    work_ram[0x0068U] = 0x20U;
+    work_ram[0x006BU] = 0x20U;
+    check(
+        dc_classify_collision_scan_bounds_reject(
+            work_ram.data(),
+            work_ram.size(),
+            &reject)
+                != 0
+            && reject.branch
+                == DC_COLLISION_SCAN_BOUNDS_HORIZONTAL
+            && reject.horizontal_difference == 0x30U,
+        "native CC1A classifies a post-geometry horizontal rejection");
+
+    work_ram[0x0065U] = 0x30U;
+    work_ram[0x0068U] = 0x20U;
+    work_ram[0x006BU] = 0x20U;
+    work_ram[0x0066U] = 0x10U;
+    work_ram[0x0067U] = 0x02U;
+    work_ram[0x0069U] = 0x20U;
+    work_ram[0x006AU] = 0x02U;
+    work_ram[0x006CU] = 0x40U;
+    check(
+        dc_classify_collision_scan_bounds_reject(
+            work_ram.data(),
+            work_ram.size(),
+            &reject)
+                != 0
+            && reject.branch
+                == DC_COLLISION_SCAN_BOUNDS_VERTICAL_NEGATIVE
+            && reject.vertical_difference_low == 0xF0U
+            && reject.vertical_difference_high == 0xFFU,
+        "native CC1A classifies a negative post-geometry vertical rejection");
+
+    work_ram[0x0066U] = 0x20U;
+    work_ram[0x0067U] = 0x04U;
+    work_ram[0x0069U] = 0x10U;
+    work_ram[0x006AU] = 0x02U;
+    check(
+        dc_classify_collision_scan_bounds_reject(
+            work_ram.data(),
+            work_ram.size(),
+            &reject)
+                != 0
+            && reject.branch
+                == DC_COLLISION_SCAN_BOUNDS_VERTICAL_PAGE
+            && reject.vertical_difference_high == 0x02U,
+        "native CC1A classifies a post-geometry vertical-page rejection");
+
+    work_ram[0x0066U] = 0x70U;
+    work_ram[0x0067U] = 0x02U;
+    work_ram[0x0069U] = 0x20U;
+    work_ram[0x006AU] = 0x02U;
+    work_ram[0x006CU] = 0x40U;
+    check(
+        dc_classify_collision_scan_bounds_reject(
+            work_ram.data(),
+            work_ram.size(),
+            &reject)
+                != 0
+            && reject.branch
+                == DC_COLLISION_SCAN_BOUNDS_VERTICAL_LOW
+            && reject.vertical_difference_low == 0x50U,
+        "native CC1A classifies a same-page post-geometry vertical rejection");
+
+    work_ram[0x0066U] = 0x50U;
+    check(
+        dc_classify_collision_scan_bounds_reject(
+            work_ram.data(),
+            work_ram.size(),
+            &reject)
+                != 0
+            && reject.branch == DC_COLLISION_SCAN_BOUNDS_DEFER
+            && reject.vertical_difference_low == 0x30U,
+        "native CC1A defers an in-range post-geometry candidate");
+    check(
+        dc_classify_collision_scan_bounds_reject(
+            work_ram.data(),
+            work_ram.size() - 1U,
+            &reject)
+            == 0,
+        "native CC1A post-geometry classifier rejects truncated work RAM");
+}
+
+void test_native_collision_mask_lookup()
+{
+    std::array<std::uint8_t, 0x2000> work_ram{};
+    dc_collision_mask_lookup lookup{};
+
+    work_ram[0x002DU] = 0xF8U;
+    work_ram[0x002FU] = 0x0CU;
+    work_ram[0x005EU] = 0x03U;
+    work_ram[0x005FU] = 0x05U;
+    work_ram[0x0072U] = 0x00U;
+    work_ram[0x0073U] = 0xA0U;
+    work_ram[0x0074U] = 0x00U;
+    work_ram[0x0075U] = 0xB0U;
+    work_ram[0x008EU] = 0xF8U;
+    work_ram[0x008FU] = 0xC0U;
+
+    check(
+        dc_resolve_collision_mask_lookup(
+            work_ram.data(),
+            work_ram.size(),
+            0x2AU,
+            0x07U,
+            0x28U,
+            0x08U,
+            &lookup)
+                != 0
+            && lookup.first_table_pointer == 0xB000U
+            && lookup.second_table_pointer == 0xA000U
+            && lookup.mask_base_pointer == 0xC0F8U
+            && lookup.table_index == 0x04U
+            && lookup.first_table_value == 0x2AU
+            && lookup.second_table_value == 0x07U
+            && lookup.mask_pointer == 0xC130U
+            && lookup.mask_row == 0x05U
+            && lookup.mask_column == 0x03U
+            && lookup.mask_value == 0x28U
+            && lookup.column_bit == 0x08U
+            && lookup.collision != 0U,
+        "native CC98 resolves a wrapping table index and collision mask");
+
+    check(
+        dc_resolve_collision_mask_lookup(
+            work_ram.data(),
+            work_ram.size(),
+            0x2AU,
+            0x07U,
+            0x20U,
+            0x08U,
+            &lookup)
+                != 0
+            && lookup.collision == 0U,
+        "native CC98 resolves a clear collision mask");
+    check(
+        dc_resolve_collision_mask_lookup(
+            work_ram.data(),
+            work_ram.size() - 1U,
+            0U,
+            0U,
+            0U,
+            0U,
+            &lookup)
+            == 0,
+        "native CC98 rejects a truncated work-RAM snapshot");
+}
+
+void test_native_collision_mask_coordinates()
+{
+    std::array<std::uint8_t, 0x2000> work_ram{};
+    dc_collision_mask_coordinates coordinates{};
+
+    work_ram[0x002DU] = 0xA7U;
+    work_ram[0x002FU] = 0x5EU;
+    work_ram[0x006BU] = 0x39U;
+    work_ram[0x00B7U] = 0x10U;
+    work_ram[0x0254U] = 1U;
+    work_ram[0x1984U] = 2U;
+    check(
+        dc_prepare_collision_mask_coordinates(
+            work_ram.data(),
+            work_ram.size(),
+            4U,
+            &coordinates)
+                != 0
+            && coordinates.side_flags_updated != 0U
+            && coordinates.side_flags == 0x90U
+            && coordinates.mask_column == 0x07U
+            && coordinates.horizontal_cell == 0x14U
+            && coordinates.rounded_horizontal_span == 0x08U
+            && coordinates.mask_row == 0x06U
+            && coordinates.vertical_cell == 0x0BU,
+        "native CC1A prepares collision-mask coordinates and even side flag");
+
+    work_ram[0x1985U] = 3U;
+    check(
+        dc_prepare_collision_mask_coordinates(
+            work_ram.data(),
+            work_ram.size(),
+            5U,
+            &coordinates)
+                != 0
+            && coordinates.side_flags_updated == 0U
+            && coordinates.side_flags == 0x10U,
+        "native CC1A suppresses side flags for excluded target state");
+    work_ram[0x1985U] = 2U;
+    check(
+        dc_prepare_collision_mask_coordinates(
+            work_ram.data(),
+            work_ram.size(),
+            5U,
+            &coordinates)
+                != 0
+            && coordinates.side_flags_updated != 0U
+            && coordinates.side_flags == 0x11U,
+        "native CC1A prepares the odd-target side flag");
+    check(
+        dc_prepare_collision_mask_coordinates(
+            work_ram.data(),
+            work_ram.size() - 1U,
+            5U,
+            &coordinates)
+            == 0,
+        "native CC1A mask-coordinate preparation rejects truncated work RAM");
+}
+
 void test_native_score_accumulator()
 {
     std::array<std::uint8_t, 0x2000> work_ram{};
@@ -1040,6 +1253,51 @@ void test_native_signed_word_negation()
             &negation)
             == 0,
         "native E837 rejects a truncated work-RAM snapshot");
+}
+
+void test_native_unsigned_byte_multiply()
+{
+    std::array<std::uint8_t, 0x2000> work_ram{};
+    dc_unsigned_byte_multiply multiply{};
+
+    work_ram[0x002FU] = 0x38U;
+    work_ram[0x0030U] = 0x17U;
+    check(
+        dc_multiply_unsigned_bytes(
+            work_ram.data(),
+            work_ram.size(),
+            &multiply)
+                != 0
+            && multiply.multiplicand == 0x38U
+            && multiply.multiplier == 0x17U
+            && multiply.result_low == 0x08U
+            && multiply.result_high == 0x05U
+            && multiply.add_count == 4U
+            && multiply.steps[0].adds_multiplicand == 0U
+            && multiply.steps[3].adds_multiplicand != 0U
+            && multiply.steps[7].low_after_add == 0x08U,
+        "native E569 multiplies unsigned scratch bytes");
+
+    work_ram[0x002FU] = 0xFFU;
+    work_ram[0x0030U] = 0xFFU;
+    check(
+        dc_multiply_unsigned_bytes(
+            work_ram.data(),
+            work_ram.size(),
+            &multiply)
+                != 0
+            && multiply.result_low == 0x01U
+            && multiply.result_high == 0xFEU
+            && multiply.add_count == 8U
+            && multiply.carry_count != 0U,
+        "native E569 preserves high-byte carries");
+    check(
+        dc_multiply_unsigned_bytes(
+            work_ram.data(),
+            work_ram.size() - 1U,
+            &multiply)
+            == 0,
+        "native E569 rejects truncated work RAM");
 }
 
 void test_native_unsigned_multiply_round()
@@ -1370,6 +1628,1270 @@ void test_native_actor_slot_reset()
     check(
         dc_prepare_actor_slot_reset(0x80U, &reset) == 0,
         "native C574 rejects a slot outside the actor array");
+}
+
+void test_native_giant_skeleton_eyeball_gate()
+{
+    std::array<std::uint8_t, 0x2000> work_ram{};
+    dc_giant_skeleton_eyeball_gate gate{};
+
+    check(
+        dc_classify_giant_skeleton_eyeball_gate(
+            work_ram.data(),
+            work_ram.size(),
+            &gate)
+            != 0
+            && gate.path == DC_GIANT_SKELETON_EYEBALL_DORMANT
+            && gate.egg_completion_bit == 0U
+            && gate.final_animation_bit == 0U,
+        "native 4DD9 identifies the dormant return");
+
+    work_ram[0x0D20U] = 0x81U;
+    work_ram[0x0053U] = 0x02U;
+    check(
+        dc_classify_giant_skeleton_eyeball_gate(
+            work_ram.data(),
+            work_ram.size(),
+            &gate)
+            != 0
+            && gate.path == DC_GIANT_SKELETON_EYEBALL_ACTIVATE
+            && gate.egg_completion_bit == 1U,
+        "native 4DD9 gives the egg-completion latch priority");
+
+    work_ram[0x0D20U] = 0x80U;
+    check(
+        dc_classify_giant_skeleton_eyeball_gate(
+            work_ram.data(),
+            work_ram.size(),
+            &gate)
+            != 0
+            && gate.path
+                == DC_GIANT_SKELETON_EYEBALL_FINAL_ANIMATION
+            && gate.final_animation_bit == 0x02U,
+        "native 4DD9 identifies the final-animation branch");
+
+    check(
+        dc_classify_giant_skeleton_eyeball_gate(
+            work_ram.data(),
+            0x0D20U,
+            &gate)
+            == 0,
+        "native 4DD9 rejects a truncated work-RAM snapshot");
+}
+
+void test_native_mercy_star_gate()
+{
+    std::array<std::uint8_t, 0x2000> work_ram{};
+    dc_mercy_star_gate gate{};
+
+    work_ram[0x0254U] = 1U;
+    work_ram[0x0D52U] = 1U;
+    check(
+        dc_classify_mercy_star_gate(
+            work_ram.data(),
+            work_ram.size(),
+            &gate)
+            != 0
+            && gate.path == DC_MERCY_STAR_NON_NORMAL_MODE,
+        "native 4FC1 identifies the non-normal-table return");
+
+    work_ram[0x0254U] = 0U;
+    work_ram[0x0D52U] = 3U;
+    check(
+        dc_classify_mercy_star_gate(
+            work_ram.data(),
+            work_ram.size(),
+            &gate)
+            != 0
+            && gate.path == DC_MERCY_STAR_NOT_LAST_BALL,
+        "native 4FC1 identifies the not-last-ball return");
+
+    work_ram[0x0D52U] = 1U;
+    work_ram[0x0251U] = 1U;
+    work_ram[0x0206U] = 0x88U;
+    work_ram[0x020DU] = 0x13U;
+    check(
+        dc_classify_mercy_star_gate(
+            work_ram.data(),
+            work_ram.size(),
+            &gate)
+            != 0
+            && gate.path == DC_MERCY_STAR_SCORE_LIMIT
+            && gate.stored_score == 0x001388UL,
+        "native 4FC1 identifies the 500000-point limit");
+
+    work_ram[0x020DU] = 0x12U;
+    check(
+        dc_classify_mercy_star_gate(
+            work_ram.data(),
+            work_ram.size(),
+            &gate)
+            != 0
+            && gate.path == DC_MERCY_STAR_ACTIVATE
+            && gate.selected_player == 1U,
+        "native 4FC1 identifies the activation branch");
+
+    check(
+        dc_classify_mercy_star_gate(
+            work_ram.data(),
+            0x0D52U,
+            &gate)
+            == 0,
+        "native 4FC1 rejects a truncated work-RAM snapshot");
+}
+
+void test_native_three_blobs_controller()
+{
+    std::array<std::uint8_t, 0x2000> work_ram{};
+    dc_three_blobs_controller controller{};
+
+    work_ram[0x0D39U] = 2U;
+    work_ram[0x0D3AU] = 1U;
+    work_ram[0x0D3BU] = 2U;
+    check(
+        dc_classify_three_blobs_controller(
+            work_ram.data(),
+            work_ram.size(),
+            &controller)
+            != 0
+            && controller.path == DC_THREE_BLOBS_FIRST_PAIR_MISMATCH
+            && controller.first_state == 2U
+            && controller.second_state == 1U,
+        "native 65C2 identifies the first-pair mismatch return");
+
+    work_ram[0x0D3AU] = 2U;
+    work_ram[0x0D3BU] = 1U;
+    check(
+        dc_classify_three_blobs_controller(
+            work_ram.data(),
+            work_ram.size(),
+            &controller)
+            != 0
+            && controller.path
+                == DC_THREE_BLOBS_THIRD_VALUE_MISMATCH
+            && controller.third_state == 1U,
+        "native 65C2 identifies the third-value mismatch return");
+
+    work_ram[0x0D3BU] = 2U;
+    check(
+        dc_classify_three_blobs_controller(
+            work_ram.data(),
+            work_ram.size(),
+            &controller)
+            != 0
+            && controller.path == DC_THREE_BLOBS_EQUAL,
+        "native 65C2 identifies the equal-state outcome");
+
+    check(
+        dc_classify_three_blobs_controller(
+            work_ram.data(),
+            0x0D3BU,
+            &controller)
+            == 0,
+        "native 65C2 rejects a truncated work-RAM snapshot");
+}
+
+void test_native_dragon_egg_controller()
+{
+    std::array<std::uint8_t, 0x2000> work_ram{};
+    dc_dragon_egg_controller controller{};
+
+    work_ram[0x0CF4U] = 6U;
+    check(
+        dc_classify_dragon_egg_controller(
+            work_ram.data(),
+            work_ram.size(),
+            &controller)
+            != 0
+            && controller.path == DC_DRAGON_EGG_CONTROLLER_ACTIVE
+            && controller.live_egg_count == 6U,
+        "native 42F6 identifies the nonzero-count return");
+
+    work_ram[0x0CF4U] = 0U;
+    check(
+        dc_classify_dragon_egg_controller(
+            work_ram.data(),
+            work_ram.size(),
+            &controller)
+            != 0
+            && controller.path == DC_DRAGON_EGG_CONTROLLER_COMPLETE,
+        "native 42F6 identifies the group-completion path");
+
+    check(
+        dc_classify_dragon_egg_controller(
+            work_ram.data(),
+            0x0CF4U,
+            &controller)
+            == 0,
+        "native 42F6 rejects a truncated work-RAM snapshot");
+}
+
+void test_native_big_star_feature_gate()
+{
+    std::array<std::uint8_t, 0x2000> work_ram{};
+    dc_big_star_feature_gate gate{};
+
+    work_ram[0x0CFAU] = 0U;
+    check(
+        dc_classify_big_star_feature_gate(
+            work_ram.data(),
+            work_ram.size(),
+            &gate)
+            != 0
+            && gate.path == DC_BIG_STAR_FEATURE_GATE_IDLE
+            && gate.pending_feature_bits == 0U,
+        "native 445B identifies the idle feature return");
+
+    work_ram[0x0CFAU] = 0x05U;
+    check(
+        dc_classify_big_star_feature_gate(
+            work_ram.data(),
+            work_ram.size(),
+            &gate)
+            != 0
+            && gate.path == DC_BIG_STAR_FEATURE_GATE_PENDING
+            && gate.pending_feature_bits == 0x05U,
+        "native 445B identifies the pending feature path");
+
+    check(
+        dc_classify_big_star_feature_gate(
+            work_ram.data(),
+            0x0CFAU,
+            &gate)
+            == 0,
+        "native 445B rejects a truncated work-RAM snapshot");
+}
+
+void test_native_giant_face_animator_gate()
+{
+    std::array<std::uint8_t, 0x2000> work_ram{};
+    dc_giant_face_animator_gate gate{};
+
+    check(
+        dc_classify_giant_face_animator_gate(
+            work_ram.data(),
+            work_ram.size(),
+            &gate)
+                != 0
+            && gate.animation_mode == 0U
+            && gate.path == DC_GIANT_FACE_ANIMATOR_GATE_IDLE,
+        "native 767E identifies the idle hidden-form animator");
+
+    work_ram[0x0D0EU] = 1U;
+    check(
+        dc_classify_giant_face_animator_gate(
+            work_ram.data(),
+            work_ram.size(),
+            &gate)
+                != 0
+            && gate.animation_mode == 1U
+            && gate.path == DC_GIANT_FACE_ANIMATOR_GATE_ACTIVE,
+        "native 767E identifies the active hidden-form animator");
+
+    work_ram[0x0D0EU] = 2U;
+    check(
+        dc_classify_giant_face_animator_gate(
+            work_ram.data(),
+            work_ram.size(),
+            &gate)
+                != 0
+            && gate.animation_mode == 2U
+            && gate.path == DC_GIANT_FACE_ANIMATOR_GATE_IDLE,
+        "native 767E returns at this entry for non-one animator modes");
+
+    check(
+        dc_classify_giant_face_animator_gate(
+            work_ram.data(),
+            0x0D0EU,
+            &gate)
+            == 0,
+        "native 767E rejects a truncated work-RAM snapshot");
+}
+
+void test_native_giant_face_request_gate()
+{
+    std::array<std::uint8_t, 0x2000> work_ram{};
+    dc_giant_face_request_gate gate{};
+
+    check(
+        dc_classify_giant_face_request_gate(
+            work_ram.data(),
+            work_ram.size(),
+            &gate)
+                != 0
+            && gate.request_flags == 0U
+            && gate.path == DC_GIANT_FACE_REQUEST_GATE_IDLE,
+        "native 74D8 identifies the idle Giant-Face request gate");
+
+    work_ram[0x0D0CU] = 0x02U;
+    check(
+        dc_classify_giant_face_request_gate(
+            work_ram.data(),
+            work_ram.size(),
+            &gate)
+                != 0
+            && gate.request_flags == 0x02U
+            && gate.path == DC_GIANT_FACE_REQUEST_GATE_IDLE,
+        "native 74D8 ignores unrelated Giant-Face request bits");
+
+    work_ram[0x0D0CU] = 0x01U;
+    check(
+        dc_classify_giant_face_request_gate(
+            work_ram.data(),
+            work_ram.size(),
+            &gate)
+                != 0
+            && gate.request_flags == 0x01U
+            && gate.path == DC_GIANT_FACE_REQUEST_GATE_ACTIVE,
+        "native 74D8 identifies the Giant-Face wake request");
+
+    check(
+        dc_classify_giant_face_request_gate(
+            work_ram.data(),
+            0x0D0CU,
+            &gate)
+            == 0,
+        "native 74D8 rejects a truncated work-RAM snapshot");
+}
+
+void test_native_walled_star_hit_gate()
+{
+    std::array<std::uint8_t, 0x2000> work_ram{};
+    dc_walled_star_hit_gate gate{};
+
+    work_ram[0x185BU] = 0x10U;
+    work_ram[0x0DBCU] = 0U;
+    check(
+        dc_classify_walled_star_hit_gate(
+            work_ram.data(),
+            work_ram.size(),
+            0x5BU,
+            &gate)
+            != 0
+            && gate.path == DC_WALLED_STAR_HIT_GATE_IDLE
+            && gate.slot == 0x5BU
+            && gate.collision_state == 0x10U
+            && gate.shared_access_latch == 0U,
+        "native 6339 identifies the idle wall return");
+
+    work_ram[0x185BU] = 0x90U;
+    check(
+        dc_classify_walled_star_hit_gate(
+            work_ram.data(),
+            work_ram.size(),
+            0x5BU,
+            &gate)
+            != 0
+            && gate.path == DC_WALLED_STAR_HIT_GATE_COLLISION,
+        "native 6339 identifies the pending wall collision");
+
+    work_ram[0x185BU] = 0x10U;
+    work_ram[0x0DBCU] = 0x01U;
+    check(
+        dc_classify_walled_star_hit_gate(
+            work_ram.data(),
+            work_ram.size(),
+            0x5BU,
+            &gate)
+            != 0
+            && gate.path == DC_WALLED_STAR_HIT_GATE_SHARED_ACTIVE,
+        "native 6339 identifies the shared access path");
+
+    check(
+        dc_classify_walled_star_hit_gate(
+            work_ram.data(),
+            0x185BU,
+            0x5BU,
+            &gate)
+            == 0,
+        "native 6339 rejects a truncated work-RAM snapshot");
+}
+
+void test_native_tower_hit_gate()
+{
+    std::array<std::uint8_t, 0x2000> work_ram{};
+    dc_tower_hit_gate gate{};
+
+    work_ram[0x182DU] = 0x00U;
+    check(
+        dc_classify_tower_hit_gate(
+            work_ram.data(),
+            work_ram.size(),
+            0x2DU,
+            &gate)
+            != 0
+            && gate.path == DC_TOWER_HIT_GATE_IDLE
+            && gate.slot == 0x2DU
+            && gate.collision_state == 0x00U,
+        "native 60C3 identifies the idle Tower return");
+
+    work_ram[0x182DU] = 0x80U;
+    check(
+        dc_classify_tower_hit_gate(
+            work_ram.data(),
+            work_ram.size(),
+            0x2DU,
+            &gate)
+            != 0
+            && gate.path == DC_TOWER_HIT_GATE_TRIGGERED
+            && gate.collision_state == 0x80U,
+        "native 60C3 identifies the pending Tower collision");
+
+    check(
+        dc_classify_tower_hit_gate(
+            work_ram.data(),
+            0x182DU,
+            0x2DU,
+            &gate)
+            == 0,
+        "native 60C3 rejects a truncated work-RAM snapshot");
+}
+
+void test_native_dragon_head_hit_gate()
+{
+    std::array<std::uint8_t, 0x2000> work_ram{};
+    dc_dragon_head_hit_gate gate{};
+
+    work_ram[0x1813U] = 0x00U;
+    check(
+        dc_classify_dragon_head_hit_gate(
+            work_ram.data(),
+            work_ram.size(),
+            0x13U,
+            &gate)
+            != 0
+            && gate.path == DC_DRAGON_HEAD_HIT_GATE_IDLE
+            && gate.slot == 0x13U
+            && gate.collision_state == 0x00U,
+        "native 5A4B identifies the idle Dragon's-Head return");
+
+    work_ram[0x1813U] = 0x80U;
+    check(
+        dc_classify_dragon_head_hit_gate(
+            work_ram.data(),
+            work_ram.size(),
+            0x13U,
+            &gate)
+            != 0
+            && gate.path == DC_DRAGON_HEAD_HIT_GATE_TRIGGERED
+            && gate.collision_state == 0x80U,
+        "native 5A4B identifies the pending Dragon's-Head collision");
+
+    check(
+        dc_classify_dragon_head_hit_gate(
+            work_ram.data(),
+            0x1813U,
+            0x13U,
+            &gate)
+            == 0,
+        "native 5A4B rejects a truncated work-RAM snapshot");
+    check(
+        dc_classify_dragon_head_hit_gate(
+            work_ram.data(),
+            work_ram.size(),
+            0x80U,
+            &gate)
+            == 0,
+        "native 5A4B rejects an out-of-range actor slot");
+}
+
+void test_native_bumper_hit_gate()
+{
+    std::array<std::uint8_t, 0x2000> work_ram{};
+    dc_bumper_hit_gate gate{};
+
+    work_ram[0x1814U] = 0x00U;
+    check(
+        dc_classify_bumper_hit_gate(
+            work_ram.data(),
+            work_ram.size(),
+            0x14U,
+            &gate)
+            != 0
+            && gate.path == DC_BUMPER_HIT_GATE_IDLE
+            && gate.slot == 0x14U
+            && gate.collision_state == 0x00U,
+        "native 78C7 identifies the idle Bumper return");
+
+    work_ram[0x1815U] = 0x80U;
+    check(
+        dc_classify_bumper_hit_gate(
+            work_ram.data(),
+            work_ram.size(),
+            0x15U,
+            &gate)
+            != 0
+            && gate.path == DC_BUMPER_HIT_GATE_TRIGGERED
+            && gate.slot == 0x15U
+            && gate.collision_state == 0x80U,
+        "native 78C7 identifies the pending Bumper collision");
+
+    check(
+        dc_classify_bumper_hit_gate(
+            work_ram.data(),
+            0x1814U,
+            0x14U,
+            &gate)
+            == 0,
+        "native 78C7 rejects a truncated work-RAM snapshot");
+    check(
+        dc_classify_bumper_hit_gate(
+            work_ram.data(),
+            work_ram.size(),
+            0x80U,
+            &gate)
+            == 0,
+        "native 78C7 rejects an out-of-range actor slot");
+}
+
+void test_native_devil_shooter_hit_gate()
+{
+    std::array<std::uint8_t, 0x2000> work_ram{};
+    dc_devil_shooter_hit_gate gate{};
+
+    work_ram[0x180EU] = 0x00U;
+    check(
+        dc_classify_devil_shooter_hit_gate(
+            work_ram.data(),
+            work_ram.size(),
+            0x0EU,
+            &gate)
+            != 0
+            && gate.path == DC_DEVIL_SHOOTER_HIT_GATE_IDLE
+            && gate.slot == 0x0EU
+            && gate.collision_state == 0x00U,
+        "native 5116 identifies the idle Devil-Shooter return");
+
+    work_ram[0x180EU] = 0x80U;
+    check(
+        dc_classify_devil_shooter_hit_gate(
+            work_ram.data(),
+            work_ram.size(),
+            0x0EU,
+            &gate)
+            != 0
+            && gate.path == DC_DEVIL_SHOOTER_HIT_GATE_TRIGGERED
+            && gate.collision_state == 0x80U,
+        "native 5116 identifies the pending Devil-Shooter catch");
+
+    check(
+        dc_classify_devil_shooter_hit_gate(
+            work_ram.data(),
+            0x180EU,
+            0x0EU,
+            &gate)
+            == 0,
+        "native 5116 rejects a truncated work-RAM snapshot");
+    check(
+        dc_classify_devil_shooter_hit_gate(
+            work_ram.data(),
+            work_ram.size(),
+            0x80U,
+            &gate)
+            == 0,
+        "native 5116 rejects an out-of-range actor slot");
+}
+
+void test_native_skeleton_insect_left_gate()
+{
+    std::array<std::uint8_t, 0x2000> work_ram{};
+    dc_skeleton_insect_left_gate gate{};
+
+    work_ram[0x0D13U] = 0x00U;
+    check(
+        dc_classify_skeleton_insect_left_gate(
+            work_ram.data(),
+            work_ram.size(),
+            0x31U,
+            &gate)
+            != 0
+            && gate.path == DC_SKELETON_INSECT_LEFT_GATE_IDLE
+            && gate.slot == 0x31U
+            && gate.trigger_latch == 0x00U,
+        "native 54B9 identifies the idle left Skeleton-Insect return");
+
+    work_ram[0x0D13U] = 0x01U;
+    check(
+        dc_classify_skeleton_insect_left_gate(
+            work_ram.data(),
+            work_ram.size(),
+            0x31U,
+            &gate)
+            != 0
+            && gate.path == DC_SKELETON_INSECT_LEFT_GATE_TRIGGERED
+            && gate.trigger_latch == 0x01U,
+        "native 54B9 identifies the pending left Skeleton-Insect award");
+
+    check(
+        dc_classify_skeleton_insect_left_gate(
+            work_ram.data(),
+            0x0D13U,
+            0x31U,
+            &gate)
+            == 0,
+        "native 54B9 rejects a truncated work-RAM snapshot");
+    check(
+        dc_classify_skeleton_insect_left_gate(
+            work_ram.data(),
+            work_ram.size(),
+            0x80U,
+            &gate)
+            == 0,
+        "native 54B9 rejects an out-of-range actor slot");
+}
+
+void test_native_skeleton_insect_right_gate()
+{
+    std::array<std::uint8_t, 0x2000> work_ram{};
+    dc_skeleton_insect_right_gate gate{};
+
+    work_ram[0x0D14U] = 0x00U;
+    check(
+        dc_classify_skeleton_insect_right_gate(
+            work_ram.data(),
+            work_ram.size(),
+            0x33U,
+            &gate)
+            != 0
+            && gate.path == DC_SKELETON_INSECT_RIGHT_GATE_IDLE
+            && gate.slot == 0x33U
+            && gate.trigger_latch == 0x00U,
+        "native 5551 identifies the idle right Skeleton-Insect return");
+
+    work_ram[0x0D14U] = 0x01U;
+    check(
+        dc_classify_skeleton_insect_right_gate(
+            work_ram.data(),
+            work_ram.size(),
+            0x33U,
+            &gate)
+            != 0
+            && gate.path == DC_SKELETON_INSECT_RIGHT_GATE_TRIGGERED
+            && gate.trigger_latch == 0x01U,
+        "native 5551 identifies the pending right Skeleton-Insect award");
+
+    check(
+        dc_classify_skeleton_insect_right_gate(
+            work_ram.data(),
+            0x0D14U,
+            0x33U,
+            &gate)
+            == 0,
+        "native 5551 rejects a truncated work-RAM snapshot");
+    check(
+        dc_classify_skeleton_insect_right_gate(
+            work_ram.data(),
+            work_ram.size(),
+            0x80U,
+            &gate)
+            == 0,
+        "native 5551 rejects an out-of-range actor slot");
+}
+
+void test_native_skeleton_insect_center_gate()
+{
+    std::array<std::uint8_t, 0x2000> work_ram{};
+    dc_skeleton_insect_center_gate gate{};
+
+    work_ram[0x0CFCU] = 0x00U;
+    check(
+        dc_classify_skeleton_insect_center_gate(
+            work_ram.data(),
+            work_ram.size(),
+            0x32U,
+            &gate)
+            != 0
+            && gate.path == DC_SKELETON_INSECT_CENTER_GATE_IDLE
+            && gate.slot == 0x32U
+            && gate.trigger_latch == 0x00U,
+        "native 55F9 identifies the idle center Skeleton-Insect return");
+
+    work_ram[0x0CFCU] = 0x01U;
+    check(
+        dc_classify_skeleton_insect_center_gate(
+            work_ram.data(),
+            work_ram.size(),
+            0x32U,
+            &gate)
+            != 0
+            && gate.path == DC_SKELETON_INSECT_CENTER_GATE_TRIGGERED
+            && gate.trigger_latch == 0x01U,
+        "native 55F9 identifies the pending center Skeleton-Insect award");
+
+    check(
+        dc_classify_skeleton_insect_center_gate(
+            work_ram.data(),
+            0x0CFCU,
+            0x32U,
+            &gate)
+            == 0,
+        "native 55F9 rejects a truncated work-RAM snapshot");
+    check(
+        dc_classify_skeleton_insect_center_gate(
+            work_ram.data(),
+            work_ram.size(),
+            0x80U,
+            &gate)
+            == 0,
+        "native 55F9 rejects an out-of-range actor slot");
+}
+
+void test_native_devils_coffin_gate()
+{
+    std::array<std::uint8_t, 0x2000> work_ram{};
+    dc_devils_coffin_gate gate{};
+
+    work_ram[0x0053U] = 0x00U;
+    work_ram[0x180FU] = 0x40U;
+    check(
+        dc_classify_devils_coffin_gate(
+            work_ram.data(),
+            work_ram.size(),
+            0x0FU,
+            &gate)
+            != 0
+            && gate.path == DC_DEVILS_COFFIN_GATE_IDLE
+            && gate.slot == 0x0FU
+            && gate.session_state == 0x00U
+            && gate.collision_state == 0x40U,
+        "native 63F1 identifies the idle Devil's-Coffin return");
+
+    work_ram[0x0053U] = 0x08U;
+    check(
+        dc_classify_devils_coffin_gate(
+            work_ram.data(),
+            work_ram.size(),
+            0x0FU,
+            &gate)
+            != 0
+            && gate.path == DC_DEVILS_COFFIN_GATE_TYPE_REFRESH
+            && gate.session_state == 0x08U,
+        "native 63F1 identifies the Devil's-Coffin type refresh");
+
+    work_ram[0x180FU] = 0xC0U;
+    check(
+        dc_classify_devils_coffin_gate(
+            work_ram.data(),
+            work_ram.size(),
+            0x0FU,
+            &gate)
+            != 0
+            && gate.path == DC_DEVILS_COFFIN_GATE_COLLISION
+            && gate.collision_state == 0xC0U,
+        "native 63F1 identifies the Devil's-Coffin collision path");
+
+    check(
+        dc_classify_devils_coffin_gate(
+            work_ram.data(),
+            0x180FU,
+            0x0FU,
+            &gate)
+            == 0,
+        "native 63F1 rejects a truncated work-RAM snapshot");
+    check(
+        dc_classify_devils_coffin_gate(
+            work_ram.data(),
+            work_ram.size(),
+            0x80U,
+            &gate)
+            == 0,
+        "native 63F1 rejects an out-of-range actor slot");
+}
+
+void test_native_devils_coffin_opening()
+{
+    std::array<std::uint8_t, 0x2000> work_ram{};
+    dc_devils_coffin_opening opening{};
+
+    work_ram[0x1A0FU] = 0x04U;
+    check(
+        dc_classify_devils_coffin_opening(
+            work_ram.data(),
+            work_ram.size(),
+            0x0FU,
+            &opening)
+            != 0
+            && opening.path == DC_DEVILS_COFFIN_OPENING_WAITING
+            && opening.slot == 0x0FU
+            && opening.timer == 0x04U
+            && opening.decremented_timer == 0x03U,
+        "native 640A identifies a waiting Devil's-Coffin opening tick");
+
+    work_ram[0x1A0FU] = 0x01U;
+    work_ram[0x180FU] = 0x80U;
+    work_ram[0x198FU] = 0x01U;
+    check(
+        dc_classify_devils_coffin_opening(
+            work_ram.data(),
+            work_ram.size(),
+            0x0FU,
+            &opening)
+            != 0
+            && opening.path == DC_DEVILS_COFFIN_OPENING_ADVANCE
+            && opening.decremented_timer == 0x00U
+            && opening.collision_state == 0x80U
+            && opening.appearance == 0x01U
+            && opening.advanced_appearance == 0x02U,
+        "native 640A identifies an appearance-advance tick");
+
+    work_ram[0x198FU] = 0x02U;
+    check(
+        dc_classify_devils_coffin_opening(
+            work_ram.data(),
+            work_ram.size(),
+            0x0FU,
+            &opening)
+            != 0
+            && opening.path == DC_DEVILS_COFFIN_OPENING_HANDOFF
+            && opening.advanced_appearance == 0x03U,
+        "native 640A leaves the reverse-pass handoff classified separately");
+
+    work_ram[0x1A0FU] = 0x00U;
+    check(
+        dc_classify_devils_coffin_opening(
+            work_ram.data(),
+            work_ram.size(),
+            0x0FU,
+            &opening)
+            != 0
+            && opening.path == DC_DEVILS_COFFIN_OPENING_WAITING
+            && opening.decremented_timer == 0xFFU,
+        "native 640A preserves the indexed-decrement wraparound");
+
+    check(
+        dc_classify_devils_coffin_opening(
+            work_ram.data(),
+            0x1A0FU,
+            0x0FU,
+            &opening)
+            == 0,
+        "native 640A rejects a truncated work-RAM snapshot");
+    check(
+        dc_classify_devils_coffin_opening(
+            work_ram.data(),
+            work_ram.size(),
+            0x80U,
+            &opening)
+            == 0,
+        "native 640A rejects an out-of-range actor slot");
+}
+
+void test_native_devils_coffin_closing()
+{
+    std::array<std::uint8_t, 0x2000> work_ram{};
+    dc_devils_coffin_closing closing{};
+
+    work_ram[0x1A0FU] = 0x04U;
+    check(
+        dc_classify_devils_coffin_closing(
+            work_ram.data(),
+            work_ram.size(),
+            0x0FU,
+            &closing)
+            != 0
+            && closing.path == DC_DEVILS_COFFIN_CLOSING_WAITING
+            && closing.slot == 0x0FU
+            && closing.timer == 0x04U
+            && closing.decremented_timer == 0x03U,
+        "native 6445 identifies a waiting Devil's-Coffin closing tick");
+
+    work_ram[0x1A0FU] = 0x01U;
+    work_ram[0x180FU] = 0x23U;
+    work_ram[0x198FU] = 0x03U;
+    work_ram[0x0053U] = 0xABU;
+    check(
+        dc_classify_devils_coffin_closing(
+            work_ram.data(),
+            work_ram.size(),
+            0x0FU,
+            &closing)
+            != 0
+            && closing.path == DC_DEVILS_COFFIN_CLOSING_ADVANCE
+            && closing.decremented_timer == 0x00U
+            && closing.collision_state == 0x23U
+            && closing.appearance == 0x03U
+            && closing.decremented_appearance == 0x02U
+            && closing.session_state == 0xABU
+            && closing.closed_session_state == 0xA3U,
+        "native 6445 identifies an appearance-decrement tick");
+
+    work_ram[0x198FU] = 0x01U;
+    check(
+        dc_classify_devils_coffin_closing(
+            work_ram.data(),
+            work_ram.size(),
+            0x0FU,
+            &closing)
+            != 0
+            && closing.path == DC_DEVILS_COFFIN_CLOSING_COMPLETE
+            && closing.decremented_appearance == 0x00U
+            && closing.closed_session_state == 0xA3U,
+        "native 6445 identifies the final closure transition");
+
+    work_ram[0x1A0FU] = 0x00U;
+    check(
+        dc_classify_devils_coffin_closing(
+            work_ram.data(),
+            work_ram.size(),
+            0x0FU,
+            &closing)
+            != 0
+            && closing.path == DC_DEVILS_COFFIN_CLOSING_WAITING
+            && closing.decremented_timer == 0xFFU,
+        "native 6445 preserves the indexed-decrement wraparound");
+
+    check(
+        dc_classify_devils_coffin_closing(
+            work_ram.data(),
+            0x1A0FU,
+            0x0FU,
+            &closing)
+            == 0,
+        "native 6445 rejects a truncated work-RAM snapshot");
+    check(
+        dc_classify_devils_coffin_closing(
+            work_ram.data(),
+            work_ram.size(),
+            0x80U,
+            &closing)
+            == 0,
+        "native 6445 rejects an out-of-range actor slot");
+}
+
+void test_native_tower_guard_selector()
+{
+    std::array<std::uint8_t, 0x2000> work_ram{};
+    dc_tower_guard_selector selector{};
+
+    work_ram[0x0D4DU] = 0x05U;
+    check(
+        dc_classify_tower_guard_selector(
+            work_ram.data(),
+            work_ram.size(),
+            0x2EU,
+            &selector)
+            != 0
+            && selector.path == DC_TOWER_GUARD_SELECTOR_CLOSED
+            && selector.slot == 0x2EU
+            && selector.gate_counter == 0x05U
+            && selector.selector == 0x84U,
+        "native 60A6 identifies the closed Tower Guard selector");
+
+    work_ram[0x0D4DU] = 0x00U;
+    check(
+        dc_classify_tower_guard_selector(
+            work_ram.data(),
+            work_ram.size(),
+            0x2EU,
+            &selector)
+            != 0
+            && selector.path == DC_TOWER_GUARD_SELECTOR_OPEN
+            && selector.gate_counter == 0x00U
+            && selector.selector == 0x8EU,
+        "native 60A6 identifies the open Tower Guard selector");
+
+    check(
+        dc_classify_tower_guard_selector(
+            work_ram.data(),
+            0x0D4DU,
+            0x2EU,
+            &selector)
+            == 0,
+        "native 60A6 rejects a truncated work-RAM snapshot");
+}
+
+void test_native_fixed_response_gate()
+{
+    std::array<std::uint8_t, 0x2000> work_ram{};
+    dc_fixed_response_gate gate{};
+
+    work_ram[0x0CC0U] = 0x00U;
+    work_ram[0x00CCU] = 0x00U;
+    check(
+        dc_classify_fixed_response_gate(
+            work_ram.data(),
+            work_ram.size(),
+            &gate)
+            != 0
+            && gate.path == DC_FIXED_RESPONSE_GATE_DORMANT
+            && gate.scene_state == 0x00U
+            && gate.collision_scratch == 0x00U,
+        "native 7CAF identifies the dormant response return");
+
+    work_ram[0x0CC0U] = 0x80U;
+    work_ram[0x00CCU] = 0x31U;
+    check(
+        dc_classify_fixed_response_gate(
+            work_ram.data(),
+            work_ram.size(),
+            &gate)
+            != 0
+            && gate.path == DC_FIXED_RESPONSE_GATE_INACTIVE
+            && gate.scene_state == 0x80U
+            && gate.collision_scratch == 0x31U,
+        "native 7CAF identifies the inactive scene path");
+
+    work_ram[0x0CC0U] = 0x01U;
+    check(
+        dc_classify_fixed_response_gate(
+            work_ram.data(),
+            work_ram.size(),
+            &gate)
+            != 0
+            && gate.path == DC_FIXED_RESPONSE_GATE_ACTIVE
+            && gate.scene_state == 0x01U
+            && gate.collision_scratch == 0x31U,
+        "native 7CAF identifies the active response path");
+
+    check(
+        dc_classify_fixed_response_gate(
+            work_ram.data(),
+            0x0CC0U,
+            &gate)
+            == 0,
+        "native 7CAF rejects a truncated work-RAM snapshot");
+}
+
+void test_native_fixed_scheduler_gate()
+{
+    std::array<std::uint8_t, 0x2000> work_ram{};
+    dc_fixed_scheduler_gate gate{};
+
+    work_ram[0x0CC0U] = 0x00U;
+    work_ram[0x0BB9U] = 0xFFU;
+    work_ram[0x1A5CU] = 0x08U;
+    check(
+        dc_classify_fixed_scheduler_gate(
+            work_ram.data(),
+            work_ram.size(),
+            0x5CU,
+            &gate)
+            != 0
+            && gate.path == DC_FIXED_SCHEDULER_GATE_SUPPRESSED
+            && gate.slot == 0x5CU
+            && gate.scene_state == 0x00U
+            && gate.presentation_gate == 0xFFU
+            && gate.timer == 0x08U
+            && gate.decremented_timer == 0x07U,
+        "native 7B27 identifies the presentation-suppressed return");
+
+    work_ram[0x0BB9U] = 0x00U;
+    check(
+        dc_classify_fixed_scheduler_gate(
+            work_ram.data(),
+            work_ram.size(),
+            0x5CU,
+            &gate)
+            != 0
+            && gate.path == DC_FIXED_SCHEDULER_GATE_WAITING
+            && gate.decremented_timer == 0x07U,
+        "native 7B27 identifies a non-expiring timer decrement");
+
+    work_ram[0x1A5CU] = 0x01U;
+    check(
+        dc_classify_fixed_scheduler_gate(
+            work_ram.data(),
+            work_ram.size(),
+            0x5CU,
+            &gate)
+            != 0
+            && gate.path == DC_FIXED_SCHEDULER_GATE_ACTIVE
+            && gate.decremented_timer == 0x00U,
+        "native 7B27 identifies an expiring scheduler tick");
+
+    work_ram[0x0CC0U] = 0x80U;
+    check(
+        dc_classify_fixed_scheduler_gate(
+            work_ram.data(),
+            work_ram.size(),
+            0x5CU,
+            &gate)
+            != 0
+            && gate.path == DC_FIXED_SCHEDULER_GATE_INACTIVE,
+        "native 7B27 identifies the inactive scene path");
+
+    check(
+        dc_classify_fixed_scheduler_gate(
+            work_ram.data(),
+            0x1A5CU,
+            0x5CU,
+            &gate)
+            == 0,
+        "native 7B27 rejects a truncated work-RAM snapshot");
+}
+
+void test_native_fixed_marker_gate()
+{
+    std::array<std::uint8_t, 0x2000> work_ram{};
+    dc_fixed_scheduler_gate gate{};
+
+    work_ram[0x0CC0U] = 0x00U;
+    work_ram[0x0BB9U] = 0x00U;
+    work_ram[0x1A5DU] = 0x08U;
+    check(
+        dc_classify_fixed_scheduler_gate(
+            work_ram.data(),
+            work_ram.size(),
+            0x5DU,
+            &gate)
+            != 0
+            && gate.path == DC_FIXED_SCHEDULER_GATE_WAITING
+            && gate.slot == 0x5DU
+            && gate.timer == 0x08U
+            && gate.decremented_timer == 0x07U,
+        "native 7B7A classifies the slot-5D marker timer");
+
+    check(
+        dc_classify_fixed_scheduler_gate(
+            work_ram.data(),
+            0x1A5DU,
+            0x5DU,
+            &gate)
+            == 0,
+        "native 7B7A rejects a truncated work-RAM snapshot");
+}
+
+void test_native_scaled_word_add()
+{
+    std::array<std::uint8_t, 0x2000> work_ram{};
+    dc_scaled_word_add addition{};
+
+    work_ram[0x002FU] = 0x97U;
+    work_ram[0x0030U] = 0xB3U;
+    check(
+        dc_add_scaled_byte_to_word(
+            work_ram.data(),
+            work_ram.size(),
+            0x04U,
+            &addition)
+                != 0
+            && addition.input == 0x04U
+            && addition.shifted_low[0] == 0x08U
+            && addition.shifted_low[4] == 0x80U
+            && addition.shifted_high[4] == 0x00U
+            && addition.result_low == 0x17U
+            && addition.result_high == 0xB4U,
+        "native 5955 adds the five-bit-scaled byte to the scratch word");
+
+    work_ram[0x002FU] = 0xF0U;
+    work_ram[0x0030U] = 0x12U;
+    check(
+        dc_add_scaled_byte_to_word(
+            work_ram.data(),
+            work_ram.size(),
+            0xFFU,
+            &addition)
+                != 0
+            && addition.shifted_low[4] == 0xE0U
+            && addition.shifted_high[4] == 0x1FU
+            && addition.result_low == 0xD0U
+            && addition.result_high == 0x32U,
+        "native 5955 preserves shift and addition carries");
+
+    check(
+        dc_add_scaled_byte_to_word(
+            work_ram.data(),
+            0x0030U,
+            0x01U,
+            &addition)
+            == 0,
+        "native 5955 rejects a truncated work-RAM snapshot");
+}
+
+void test_native_dragon_egg_hit_gate()
+{
+    std::array<std::uint8_t, 0x2000> work_ram{};
+    dc_dragon_egg_hit_gate gate{};
+
+    work_ram[0x1822U] = 0x00U;
+    check(
+        dc_classify_dragon_egg_hit_gate(
+            work_ram.data(),
+            work_ram.size(),
+            0x22U,
+            &gate)
+            != 0
+            && gate.path == DC_DRAGON_EGG_HIT_GATE_IDLE
+            && gate.slot == 0x22U
+            && gate.collision_state == 0x00U,
+        "native 4345 identifies the idle egg return");
+
+    work_ram[0x1822U] = 0x80U;
+    check(
+        dc_classify_dragon_egg_hit_gate(
+            work_ram.data(),
+            work_ram.size(),
+            0x22U,
+            &gate)
+            != 0
+            && gate.path == DC_DRAGON_EGG_HIT_GATE_TRIGGERED
+            && gate.collision_state == 0x80U,
+        "native 4345 identifies the triggered hit path");
+
+    check(
+        dc_classify_dragon_egg_hit_gate(
+            work_ram.data(),
+            0x1822U,
+            0x22U,
+            &gate)
+            == 0,
+        "native 4345 rejects a truncated work-RAM snapshot");
+    check(
+        dc_classify_dragon_egg_hit_gate(
+            work_ram.data(),
+            work_ram.size(),
+            0x80U,
+            &gate)
+            == 0,
+        "native 4345 rejects an out-of-range actor slot");
+}
+
+void test_native_giant_door_hit_gate()
+{
+    std::array<std::uint8_t, 0x2000> work_ram{};
+    dc_giant_door_hit_gate gate{};
+
+    work_ram[0x184CU] = 0x10U;
+    check(
+        dc_classify_giant_door_hit_gate(
+            work_ram.data(),
+            work_ram.size(),
+            0x4CU,
+            &gate)
+            != 0
+            && gate.path == DC_GIANT_DOOR_HIT_GATE_IDLE
+            && gate.slot == 0x4CU
+            && gate.collision_state == 0x10U,
+        "native 62B8 identifies the Giant Door idle return");
+
+    work_ram[0x184CU] = 0x90U;
+    check(
+        dc_classify_giant_door_hit_gate(
+            work_ram.data(),
+            work_ram.size(),
+            0x4CU,
+            &gate)
+            != 0
+            && gate.path == DC_GIANT_DOOR_HIT_GATE_TRIGGERED
+            && gate.collision_state == 0x90U,
+        "native 62B8 identifies the Giant Door hit path");
+
+    check(
+        dc_classify_giant_door_hit_gate(
+            work_ram.data(),
+            0x184CU,
+            0x4CU,
+            &gate)
+            == 0,
+        "native 62B8 rejects a truncated work-RAM snapshot");
+    check(
+        dc_classify_giant_door_hit_gate(
+            work_ram.data(),
+            work_ram.size(),
+            0x80U,
+            &gate)
+            == 0,
+        "native 62B8 rejects an out-of-range actor slot");
 }
 
 void test_native_nudge_input_gate()
@@ -3680,14 +5202,43 @@ int main()
     test_native_collision_response();
     test_native_collision_scan_vertical_reject();
     test_native_collision_geometry();
+    test_native_collision_scan_bounds_reject();
+    test_native_collision_mask_lookup();
+    test_native_collision_mask_coordinates();
     test_native_score_accumulator();
     test_native_rng_update();
     test_native_signed_word_negation();
+    test_native_unsigned_byte_multiply();
     test_native_unsigned_multiply_round();
     test_native_signed_fixed_multiply();
     test_native_flipper_projection();
     test_native_actor_camera_activation();
     test_native_actor_slot_reset();
+    test_native_giant_skeleton_eyeball_gate();
+    test_native_mercy_star_gate();
+    test_native_three_blobs_controller();
+    test_native_dragon_egg_controller();
+    test_native_big_star_feature_gate();
+    test_native_giant_face_request_gate();
+    test_native_giant_face_animator_gate();
+    test_native_walled_star_hit_gate();
+    test_native_tower_hit_gate();
+    test_native_dragon_head_hit_gate();
+    test_native_bumper_hit_gate();
+    test_native_devil_shooter_hit_gate();
+    test_native_skeleton_insect_left_gate();
+    test_native_skeleton_insect_right_gate();
+    test_native_skeleton_insect_center_gate();
+    test_native_devils_coffin_gate();
+    test_native_devils_coffin_opening();
+    test_native_devils_coffin_closing();
+    test_native_tower_guard_selector();
+    test_native_fixed_response_gate();
+    test_native_fixed_scheduler_gate();
+    test_native_fixed_marker_gate();
+    test_native_scaled_word_add();
+    test_native_dragon_egg_hit_gate();
+    test_native_giant_door_hit_gate();
     test_native_flipper_input_gate();
     test_native_nudge_input_gate();
     test_native_session_input_gate();
