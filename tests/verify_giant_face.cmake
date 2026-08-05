@@ -68,6 +68,18 @@ execute_process(
         --observe-hook
         "03:7726"
         --replace-hook
+        "03:7428@all"
+        --replace-hook
+        "03:742B@all"
+        --replace-hook
+        "03:742E@all"
+        --replace-hook
+        "03:766C@all"
+        --replace-hook
+        "03:7718@all"
+        --replace-hook
+        "03:76F7@all"
+        --replace-hook
         "03:74D8@all"
         --replace-hook
         "03:767E@all"
@@ -79,6 +91,18 @@ execute_process(
         "${trace_output}"
         --routine-call-trace
         "${call_output}"
+        --routine-replay
+        "03:7428@1"
+        --routine-replay
+        "03:742B@1"
+        --routine-replay
+        "03:742E@1"
+        --routine-replay
+        "03:766C@1"
+        --routine-replay
+        "03:7718@1"
+        --routine-replay
+        "03:76F7@1"
         --routine-replay
         "03:74D8@1"
         --routine-replay
@@ -142,17 +166,29 @@ endforeach()
 
 foreach(expected_line IN ITEMS
     "State census recording complete: 3600 frames"
+    "Native replacement 03:7428@all entries: 1 of 1"
+    "Native replacement 03:742B@all entries: 1 of 1"
+    "Native replacement 03:742E@all entries: 1 of 1"
+    "Native replacement 03:766C@all entries: 1 of 1"
+    "Native replacement 03:7718@all entries: 1 of 1"
+    "Native replacement 03:76F7@all entries: 1 of 1"
     "Native replacement 03:74D8@all entries: 2648 of 2648"
     "Native replacement 03:767E@all entries: 873 of 873"
     "Native replacement 03:76FA@all entries: 867 of 867"
     "Native replacement 03:7726@all entries: 1214 of 1214"
     "Routine trace complete: 5608 entries"
     "Routine call trace complete: 5608 calls, 812 writes"
+    "Routine replay 03:7428@1 verified: frame 872, 192 body cycles, 7 ordered writes"
+    "Routine replay 03:742B@1 verified: frame 873, 192 body cycles, 7 ordered writes"
+    "Routine replay 03:742E@1 verified: frame 941, 306 body cycles, 12 ordered writes"
+    "Routine replay 03:766C@1 verified: frame 872, 255 body cycles, 10 ordered writes"
+    "Routine replay 03:7718@1 verified: frame 872, 243 body cycles, 9 ordered writes"
+    "Routine replay 03:76F7@1 verified: frame 872, 192 body cycles, 7 ordered writes"
     "Routine replay 03:74D8@1 verified: frame 942"
     "Routine replay 03:767E@1 verified: frame 1222"
     "Routine replay 03:76FA@1 verified: frame 1223"
     "Routine replay 03:7726@1 verified: frame 1213"
-    "Routine replay complete: 4 state-normalized calls"
+    "Routine replay complete: 10 state-normalized calls"
     "Work-RAM write trace complete: 127 selected writes"
 )
     string(FIND "${recorder_output}" "${expected_line}" line_offset)

@@ -55,6 +55,10 @@ execute_process(
         "02:4A4C"
         --observe-hook
         "02:4C0A"
+        --replace-hook
+        "02:4BD5@all"
+        --replace-hook
+        "02:4C0A@all"
         --routine-trace
         "${trace_output}"
         --routine-call-trace
@@ -155,6 +159,8 @@ foreach(expected_line IN ITEMS
     "Observe hook 2 entries: 1277"
     "Observe hook 3 entries: 1"
     "Observe hook 4 entries: 905"
+    "Native replacement 02:4BD5@all entries: 1277 of 1277"
+    "Native replacement 02:4C0A@all entries: 905 of 905"
     "Routine trace complete: 2184 entries"
     "Routine call trace complete: 2184 calls, 4298 writes"
     "Routine replay 02:4BD5@1 verified: frame 871, 135 body cycles, 3 ordered writes"

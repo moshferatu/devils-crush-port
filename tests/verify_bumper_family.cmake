@@ -22,15 +22,15 @@ endif()
 
 set(
     expected_trace_sha256
-    "5fb7885f28519eec2758e06dac02327d2a9a86f3c0a416124fa0c7ce4865f3db"
+    "e514cded86529e0a97c1a544fee3b5a7944cd6348f00e6367e4c9358973374bc"
 )
 set(
     expected_call_sha256
-    "0495b9de1e3dcfb1781e0056411705464a2e52d8ddcde371d2efc4d0124b882a"
+    "2973c427b27c5bdf763e4a1e19d76ef83bba9697f57610a4ad721643ec42125d"
 )
 set(
     expected_write_sha256
-    "754938e2e0b04dad1c51ee416f6d22ea3865055cfe4390a1af9d1610072f57da"
+    "db7f5e7350b2c31a2469dc4eaec06618af2b6d5043d42bd18258bd42ce8e4021"
 )
 set(
     expected_actor_write_sha256
@@ -48,11 +48,29 @@ execute_process(
         --record-state-census
         "${OUTPUT}"
         --observe-hook
+        "03:789A"
+        --observe-hook
+        "03:78A4"
+        --observe-hook
         "03:78C7"
+        --replace-hook
+        "03:789A@all"
+        --replace-hook
+        "03:78A4@all"
+        --replace-hook
+        "03:78C7@all"
+        --replace-hook
+        "03:78F5@all"
+        --replace-hook
+        "03:7912@all"
         --routine-trace
         "${trace_output}"
         --routine-call-trace
         "${call_output}"
+        --routine-replay
+        "03:789A@1"
+        --routine-replay
+        "03:78A4@1"
         --routine-replay
         "03:78C7@1"
         --work-ram-write-range
@@ -77,11 +95,20 @@ endif()
 
 foreach(expected_line IN ITEMS
     "State census recording complete: 3600 frames"
-    "Observe hook 1 entries: 3468"
-    "Routine trace complete: 3468 entries"
-    "Routine call trace complete: 3468 calls, 3127 writes"
+    "Native replacement 03:789A@all entries: 1 of 1"
+    "Native replacement 03:78A4@all entries: 1 of 1"
+    "Native replacement 03:78C7@all entries: 3468 of 3468"
+    "Native replacement 03:78F5@all entries: 9 of 9"
+    "Native replacement 03:7912@all entries: 2 of 2"
+    "Observe hook 1 entries: 1"
+    "Observe hook 2 entries: 1"
+    "Observe hook 3 entries: 3468"
+    "Routine trace complete: 3470 entries"
+    "Routine call trace complete: 3470 calls, 3155 writes"
+    "Routine replay 03:789A@1 verified: frame 871, 342 body cycles, 14 ordered writes"
+    "Routine replay 03:78A4@1 verified: frame 871, 336 body cycles, 14 ordered writes"
     "Routine replay 03:78C7@1 verified: frame 872"
-    "Routine replay complete: 1 state-normalized calls"
+    "Routine replay complete: 3 state-normalized calls"
     "Work-RAM write trace complete: 3872 selected writes"
 )
     string(FIND "${recorder_output}" "${expected_line}" line_offset)

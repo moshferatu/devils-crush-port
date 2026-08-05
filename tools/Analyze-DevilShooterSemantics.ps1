@@ -177,6 +177,13 @@ Assert-RomBytes $rom 0x0052E3 @(
     0x38, 0xBD, 0x00, 0x33, 0xFD, 0x00, 0x3E,
     0x8D, 0x15, 0x2D, 0xC9, 0x27, 0x90, 0x15
 ) "Devil-Shooter charge integrator"
+Assert-RomBytes $rom 0x00533B @(
+    0x38, 0xBD, 0x80, 0x32, 0xE9, 0x00, 0x9D, 0x80, 0x32,
+    0xBD, 0x00, 0x33, 0xE9, 0x02, 0x9D, 0x00, 0x33,
+    0xBD, 0x80, 0x33, 0xE9, 0x00, 0x9D, 0x80, 0x33,
+    0x38, 0xBD, 0x00, 0x33, 0xFD, 0x00, 0x3E,
+    0x8D, 0x15, 0x2D, 0xBD, 0x80, 0x33, 0xFD, 0x80, 0x3E
+) "Devil-Shooter charge retraction"
 Assert-RomBytes $rom 0x002087 @(0x4C, 0xFD, 0xEC) "Audio-command entry"
 Assert-RomBytes $rom 0x00202A @(0x4C, 0x4F, 0xF5) "Score entry"
 
@@ -184,12 +191,12 @@ $calls = @(Import-TraceCsv $CallPath)
 $writes = @(Import-TraceCsv $WritePath)
 $actorWrites = @(Import-TraceCsv $ActorWritePath)
 if (
-    $calls.Count -ne 226 -or
-    $writes.Count -ne 8999 -or
+    $calls.Count -ne 510 -or
+    $writes.Count -ne 10744 -or
     $actorWrites.Count -ne 3872
 ) {
     throw (
-        "Expected 226 Devil-Shooter calls, 8,999 scoped writes, and " +
+        "Expected 510 Devil-Shooter calls, 10,744 scoped writes, and " +
         "3,872 actor identity writes."
     )
 }
@@ -199,13 +206,30 @@ for ($index = 0; $index -lt $calls.Count; ++$index) {
     if (
         [int] $call.sequence -ne $index + 1 -or
         $call.physical_bank -ne "02" -or
-        $call.logical_pc -notin @("5116", "5159") -or
-        $call.caller_pc -ne "C51D" -or
-        $call.return_pc -ne "C520" -or
+        $call.logical_pc -notin @("5116", "5159", "52E3", "533B") -or
         $call.input_x -ne "0E" -or
         $call.output_x -ne "0E" -or
         $call.input_sp -ne $call.output_sp
     ) {
+        throw "Devil-Shooter bounded-call identity changed at sequence $($index + 1)."
+    }
+    if ($call.logical_pc -eq "52E3") {
+        if (
+            (($call.caller_pc -ne "5194" -or $call.return_pc -ne "5197") -and
+             ($call.caller_pc -ne "5249" -or $call.return_pc -ne "524C")) -or
+            $call.return_instruction_pc -ne "533A"
+        ) {
+            throw "Devil-Shooter charge-position identity changed at sequence $($index + 1)."
+        }
+    } elseif ($call.logical_pc -eq "533B") {
+        if (
+            (($call.caller_pc -ne "52C3" -or $call.return_pc -ne "52C6") -and
+             ($call.caller_pc -ne "5208" -or $call.return_pc -ne "520B")) -or
+            $call.return_instruction_pc -ne "5393"
+        ) {
+            throw "Devil-Shooter charge-retraction identity changed at sequence $($index + 1)."
+        }
+    } elseif ($call.caller_pc -ne "C51D" -or $call.return_pc -ne "C520") {
         throw "Devil-Shooter bounded-call identity changed at sequence $($index + 1)."
     }
     # Held-charge calls exit through the audio bank and intentionally leave
@@ -220,16 +244,22 @@ for ($index = 0; $index -lt $calls.Count; ++$index) {
 Assert-Histogram $calls "logical_pc" @{
     "5116" = 125
     "5159" = 101
+    "52E3" = 252
+    "533B" = 32
 } "Devil-Shooter routine"
 Assert-Histogram $calls "return_instruction_pc" @{
     "5123" = 124
     "C5E9" = 2
     "EBD6" = 96
     "5178" = 4
+    "533A" = 252
+    "5393" = 32
 } "Devil-Shooter return"
 
 $idleCalls = @($calls | Where-Object { $_.logical_pc -eq "5116" })
 $chargeCalls = @($calls | Where-Object { $_.logical_pc -eq "5159" })
+$chargePositionCalls = @($calls | Where-Object { $_.logical_pc -eq "52E3" })
+$chargeRetractionCalls = @($calls | Where-Object { $_.logical_pc -eq "533B" })
 if (
     [int] $idleCalls[0].frame -ne 872 -or
     [int] $idleCalls[-1].frame -ne 1064 -or
@@ -244,10 +274,10 @@ if (
     throw "Devil-Shooter frame, idle-path, or replay sample changed."
 }
 
-$catchCall = $calls[124]
-$heldCalls = @($calls[125..220])
-$releaseDelayCalls = @($calls[221..224])
-$releaseCall = $calls[225]
+$catchCall = $idleCalls[-1]
+$heldCalls = @($chargeCalls | Where-Object { $_.return_instruction_pc -eq "EBD6" })
+$releaseDelayCalls = @($chargeCalls | Where-Object { $_.return_instruction_pc -eq "5178" })
+$releaseCall = @($chargeCalls | Where-Object { [int] $_.frame -eq 1185 })[0]
 if (
     [int] $catchCall.frame -ne 1064 -or
     $catchCall.logical_pc -ne "5116" -or
@@ -288,7 +318,9 @@ for ($index = 0; $index -lt $releaseDelayCalls.Count; ++$index) {
     }
 }
 
-$catchWrites = @($writes | Where-Object { [int] $_.call_sequence -eq 125 })
+$catchWrites = @($writes | Where-Object {
+    [int] $_.call_sequence -eq [int] $catchCall.sequence
+})
 Assert-SingleWrite $catchWrites "02" "511D" "1C80" "01" "Shooter occupied latch"
 Assert-SingleWrite $catchWrites "00" "ECFD" "002A" "25" "Catch audio command"
 Assert-SingleWrite $catchWrites "02" "52B8" "1180" "0E" "Caught-ball X low byte"
@@ -308,7 +340,7 @@ Assert-Histogram $audioWrites "value" @{
     "2B" = 1
 } "Devil-Shooter audio command"
 if (
-    ($audioWrites.call_sequence -join ",") -ne "125,126,127,128,129,226"
+    ($audioWrites.call_sequence -join ",") -ne "125,147,149,151,153,342"
 ) {
     throw "Devil-Shooter audio-command timing changed."
 }
@@ -316,22 +348,62 @@ if (
 $chargeCounters = @(
     $writes |
         Where-Object {
+            [int] $_.call_sequence -in @($chargePositionCalls | ForEach-Object {
+                [int] $_.sequence
+            }) -and
             $_.instruction_physical_bank -eq "02" -and
             $_.instruction_logical_pc -eq "5302" -and
             $_.work_ram_offset -eq "0D15"
         }
 )
 if (
-    $chargeCounters.Count -ne 96 -or
-    $chargeCounters[0].call_sequence -ne "126" -or
+    $chargePositionCalls.Count -ne 252 -or
+    [int] $chargePositionCalls[0].frame -ne 1085 -or
+    [int] $chargePositionCalls[-1].frame -ne 1420 -or
+    (@($chargePositionCalls | Where-Object {
+        $_.write_count -eq "5" -and
+        $_.body_master_cycles -in @("243", "261", "279", "297")
+    })).Count -ne 231 -or
+    $chargeCounters.Count -ne 252 -or
+    $chargeCounters[0].call_sequence -ne "146" -or
     $chargeCounters[0].value -ne "00" -or
-    $chargeCounters[-1].call_sequence -ne "221" -or
-    $chargeCounters[-1].value -ne "18"
+    $chargeCounters[-1].call_sequence -ne "510" -or
+    $chargeCounters[-1].value -ne "27"
 ) {
     throw "Devil-Shooter charge progression changed."
 }
 
-$releaseWrites = @($writes | Where-Object { [int] $_.call_sequence -eq 226 })
+$retractionCounters = @(
+    $writes |
+        Where-Object {
+            [int] $_.call_sequence -in @($chargeRetractionCalls | ForEach-Object {
+                [int] $_.sequence
+            }) -and
+            $_.instruction_physical_bank -eq "02" -and
+            $_.instruction_logical_pc -eq "535B" -and
+            $_.work_ram_offset -eq "0D15"
+        }
+)
+if (
+    $chargeRetractionCalls.Count -ne 32 -or
+    [int] $chargeRetractionCalls[0].frame -ne 1065 -or
+    [int] $chargeRetractionCalls[-1].frame -ne 1197 -or
+    (@($chargeRetractionCalls | Where-Object {
+        $_.write_count -in @("4", "5") -and
+        $_.body_master_cycles -in @("234", "273", "291", "309", "327")
+    })).Count -ne 28 -or
+    $retractionCounters.Count -ne 32 -or
+    $retractionCounters[0].call_sequence -ne "126" -or
+    $retractionCounters[0].value -ne "25" -or
+    $retractionCounters[-1].call_sequence -ne "354" -or
+    $retractionCounters[-1].value -ne "00"
+) {
+    throw "Devil-Shooter charge retraction changed."
+}
+
+$releaseWrites = @($writes | Where-Object {
+    [int] $_.call_sequence -eq [int] $releaseCall.sequence
+})
 Assert-SingleWrite $releaseWrites "02" "51FA" "1580" "F8" "Launch velocity"
 Assert-SingleWrite $releaseWrites "02" "51FD" "1980" "00" "Launch animation reset"
 Assert-SingleWrite $releaseWrites "00" "ECFD" "002A" "2B" "Launch audio command"

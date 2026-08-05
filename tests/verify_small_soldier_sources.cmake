@@ -66,10 +66,22 @@ execute_process(
         "03:7E87"
         --observe-hook
         "03:7F81"
+        --replace-hook
+        "03:7D4D@all"
+        --replace-hook
+        "03:7DE9@all"
+        --replace-hook
+        "03:7D6F@all"
+        --replace-hook
+        "03:7E0D@all"
         --routine-trace
         "${trace_output}"
         --routine-call-trace
         "${call_output}"
+        --routine-replay
+        "03:7D4D@1"
+        --routine-replay
+        "03:7DE9@1"
         --routine-replay
         "03:7D85@1"
         --routine-replay
@@ -78,6 +90,10 @@ execute_process(
         "03:7E87@1"
         --routine-replay
         "03:7F81@1"
+        --routine-replay
+        "03:7D6F@2"
+        --routine-replay
+        "03:7E0D@2"
         --work-ram-write-range
         "2D16-2D17"
         --work-ram-write-range
@@ -117,13 +133,21 @@ endforeach()
 
 foreach(expected_line IN ITEMS
     "State census recording complete: 3600 frames"
+    "Native replacement 03:7D4D@all entries: 1 of 1"
+    "Native replacement 03:7DE9@all entries: 1 of 1"
+    "Native replacement 03:7D6F@all entries: 155 of 193"
+    "Native replacement 03:7E0D@all entries: 161 of 193"
     "Routine trace complete: 5322 entries"
     "Routine call trace complete: 5322 calls, 3324 writes"
+    "Routine replay 03:7D4D@1 verified: frame 872, 327 body cycles, 14 ordered writes"
+    "Routine replay 03:7DE9@1 verified: frame 872, 333 body cycles, 14 ordered writes"
+    "Routine replay 03:7D6F@2 verified: frame 941, 33 body cycles, 1 ordered writes"
+    "Routine replay 03:7E0D@2 verified: frame 941, 33 body cycles, 1 ordered writes"
     "Routine replay 03:7D85@1 verified: frame 1133"
     "Routine replay 03:7E23@1 verified: frame 1133"
     "Routine replay 03:7E87@1 verified: frame 873"
     "Routine replay 03:7F81@1 verified: frame 1852"
-    "Routine replay complete: 4 state-normalized calls"
+    "Routine replay complete: 8 state-normalized calls"
     "Work-RAM write trace complete: 3888 selected writes"
 )
     string(FIND "${recorder_output}" "${expected_line}" line_offset)

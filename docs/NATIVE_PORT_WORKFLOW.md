@@ -62,6 +62,34 @@ behavior.
   before choosing the next batch. A natural route is stronger evidence than a
   synthetic state patch.
 
+## Fallback hotspot profiling
+
+Use `tools/Analyze-NativeFallbackHotspots.ps1` to rank a bounded observer set
+from one or more routine-call traces. It measures calls, master cycles, and
+ordered writes, then assigns a transparent heuristic weight of total master
+cycles plus 12 per write. The native dispatch registry automatically marks
+registered addresses; all other observed addresses are assembly candidates.
+
+The runtime deliberately records routine-call scopes only for explicit
+`--observe-hook` addresses. This is therefore a measured candidate/family
+profile, not a misleading whole-ROM call graph. Before selecting a batch,
+observe the current native parent plus its likely continuation or sibling
+addresses on a natural route, then rank them:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File `
+  .\tools\Analyze-NativeFallbackHotspots.ps1 `
+  -CallPath out\build\windows-vs2022\candidate.calls.csv `
+  -AssemblyOnly
+```
+
+Use `-AssemblyRoutine 02:4AEB` to force an address to be shown as an assembly
+candidate when a deliberately broad experimental registration exists. Passing
+multiple call traces combines their route weights; compare like-for-like
+recording plans, not Debug and Release duplicates. Treat the result as a
+prioritization aid: confirm each selected branch with its original transcript
+before writing a replacement.
+
 ## Commands
 
 Assuming the full host preset has been configured and `DC_ROM_PATH` is

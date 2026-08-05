@@ -52,6 +52,195 @@ typedef struct dc_giant_skeleton_eyeball_gate {
     dc_giant_skeleton_eyeball_gate_path path;
 } dc_giant_skeleton_eyeball_gate;
 
+// Direct ROM routine 02:4DC8 initializes the fixed Giant-Skeleton Eyeball
+// actor in slot $2F before handing it to the 02:4DD9 activation gate.
+typedef struct dc_giant_skeleton_eyeball_initializer {
+    uint8_t slot;
+    uint8_t flags_before;
+    uint8_t flags_after;
+} dc_giant_skeleton_eyeball_initializer;
+
+// Direct scheduled ROM routine 02:4DF7 decrements the Eyeball opening timer.
+// Only a still-positive countdown returns locally; both expiry branches retain
+// the original animation, audio, and scheduler behavior.
+typedef struct dc_giant_skeleton_eyeball_opening_wait {
+    uint8_t slot;
+    uint8_t timer;
+    uint8_t decremented_timer;
+} dc_giant_skeleton_eyeball_opening_wait;
+
+// Direct scheduled ROM routine 02:4E24 returns locally while the fixed
+// Eyeball has no signed collision state and the final-animation flag is clear.
+// Collision/animation continuations remain in assembly.
+typedef struct dc_giant_skeleton_eyeball_steady_idle {
+    uint8_t slot;
+    uint8_t collision_state;
+    uint8_t session_flags;
+} dc_giant_skeleton_eyeball_steady_idle;
+
+// Direct scheduled ROM routine 02:4F3D advances the fixed Eyeball's final
+// animation. Only the non-expiring timer and nonzero phase return is bounded.
+typedef struct dc_giant_skeleton_eyeball_final_wait {
+    uint8_t slot;
+    uint8_t timer;
+    uint8_t phase;
+    uint8_t secondary_counter;
+    uint8_t decremented_timer;
+    uint8_t decremented_phase;
+    uint8_t final_accumulator;
+} dc_giant_skeleton_eyeball_final_wait;
+
+// Direct ROM routine 03:6876 initializes one of the seven upper-chute Gray
+// Blobs.  It preserves the layout position while installing the shared live
+// animation, collision, and script fields used by 03:68A1.
+typedef struct dc_gray_blob_initializer {
+    uint8_t slot;
+    uint8_t position_low;
+    uint8_t position_high;
+} dc_gray_blob_initializer;
+
+int dc_classify_gray_blob_initializer(
+    const uint8_t* work_ram,
+    size_t work_ram_size,
+    uint8_t slot,
+    dc_gray_blob_initializer* initializer);
+
+// Direct ROM routine 03:68A1 begins a newly visible Gray Blob's first live
+// pass.  This bounded prefix clears its transient flags, seeds the movement
+// timer through the shared RNG, and then enters the original scheduler.
+typedef struct dc_gray_blob_first_live {
+    uint8_t slot;
+    uint8_t flags_before;
+    uint8_t flags_after;
+    uint8_t collision_before;
+    uint8_t collision_after;
+} dc_gray_blob_first_live;
+
+int dc_classify_gray_blob_first_live(
+    const uint8_t* work_ram,
+    size_t work_ram_size,
+    uint8_t slot,
+    dc_gray_blob_first_live* first_live);
+
+// Direct ROM routine 02:4F9F installs the dormant appearance, collision,
+// and script fields for one of the three lower-table Mercy Stars.
+typedef struct dc_mercy_star_initializer {
+    uint8_t slot;
+} dc_mercy_star_initializer;
+
+int dc_classify_mercy_star_initializer(
+    const uint8_t* work_ram,
+    size_t work_ram_size,
+    uint8_t slot,
+    dc_mercy_star_initializer* initializer);
+
+// Direct ROM routine 02:50EE initializes the fixed Devil-Shooter actor
+// before handing it to the 02:5116 collision/catch gate.
+typedef struct dc_devil_shooter_initializer {
+    uint8_t slot;
+} dc_devil_shooter_initializer;
+
+int dc_classify_devil_shooter_initializer(
+    const uint8_t* work_ram,
+    size_t work_ram_size,
+    uint8_t slot,
+    dc_devil_shooter_initializer* initializer);
+
+// Direct ROM routine 02:44E4 installs one of the four fixed Little-Skull
+// actors, increments its owning pair's live count, and schedules 02:4515.
+typedef struct dc_little_skull_initializer {
+    uint8_t slot;
+    uint8_t pair;
+    uint8_t live_count_after;
+} dc_little_skull_initializer;
+
+int dc_classify_little_skull_initializer(
+    const uint8_t* work_ram,
+    size_t work_ram_size,
+    uint8_t slot,
+    uint8_t pair,
+    dc_little_skull_initializer* initializer);
+
+// Direct ROM routine 02:4485 resets one Little-Skull pair's live count and
+// regeneration flag before scheduling its 02:449A controller.
+typedef struct dc_little_skull_pair_initializer {
+    uint8_t slot;
+    uint8_t pair;
+} dc_little_skull_pair_initializer;
+
+int dc_classify_little_skull_pair_initializer(
+    const uint8_t* work_ram,
+    size_t work_ram_size,
+    uint8_t slot,
+    uint8_t pair,
+    dc_little_skull_pair_initializer* initializer);
+
+// Direct ROM routine 02:4455 clears the shared Little-Skull feature latch
+// before scheduling the hidden 02:445B transition controller in slot $44.
+typedef struct dc_little_skull_hidden_initializer {
+    uint8_t slot;
+} dc_little_skull_hidden_initializer;
+
+int dc_classify_little_skull_hidden_initializer(
+    const uint8_t* work_ram,
+    size_t work_ram_size,
+    uint8_t slot,
+    dc_little_skull_hidden_initializer* initializer);
+
+// Direct ROM routine 02:5A31 installs the fixed Dragon's Head appearance,
+// collision counter, and script fields before its eight-hit gate begins at
+// 02:5A4B.
+typedef struct dc_dragon_head_initializer {
+    uint8_t slot;
+    uint8_t flags_before;
+    uint8_t flags_after;
+} dc_dragon_head_initializer;
+
+int dc_classify_dragon_head_initializer(
+    const uint8_t* work_ram,
+    size_t work_ram_size,
+    uint8_t slot,
+    dc_dragon_head_initializer* initializer);
+
+// Direct ROM routine 02:5EE4 installs the fixed Giant Skeleton's initial
+// appearance before its collision and animation controller begins at 02:5EEC.
+typedef struct dc_giant_skeleton_initializer {
+    uint8_t slot;
+} dc_giant_skeleton_initializer;
+
+int dc_classify_giant_skeleton_initializer(
+    const uint8_t* work_ram,
+    size_t work_ram_size,
+    uint8_t slot,
+    dc_giant_skeleton_initializer* initializer);
+
+// Direct ROM routine 03:664A initializes the three fixed Three-Blobs layouts
+// before their alternating movement states begin at 03:66A3/03:66D3.
+typedef struct dc_three_blobs_initializer {
+    uint8_t slot;
+    uint8_t initial_state;
+    uint8_t appearance;
+} dc_three_blobs_initializer;
+
+int dc_classify_three_blobs_initializer(
+    const uint8_t* work_ram,
+    size_t work_ram_size,
+    uint8_t slot,
+    uint8_t initial_state,
+    dc_three_blobs_initializer* initializer);
+
+// Direct ROM routine 03:65BC initializes the fixed Three-Blobs result
+// controller before its equality gate begins at 03:65C2.
+typedef struct dc_three_blobs_controller_initializer {
+    uint8_t slot;
+} dc_three_blobs_controller_initializer;
+
+int dc_classify_three_blobs_controller_initializer(
+    const uint8_t* work_ram,
+    size_t work_ram_size,
+    uint8_t slot,
+    dc_three_blobs_controller_initializer* initializer);
+
 typedef enum dc_mercy_star_gate_path {
     DC_MERCY_STAR_NON_NORMAL_MODE = 0,
     DC_MERCY_STAR_NOT_LAST_BALL = 1,
@@ -83,6 +272,47 @@ typedef struct dc_three_blobs_controller {
     dc_three_blobs_controller_path path;
 } dc_three_blobs_controller;
 
+typedef enum dc_three_blobs_appearance_gate_path {
+    DC_THREE_BLOBS_APPEARANCE_GATE_IDLE = 0,
+    DC_THREE_BLOBS_APPEARANCE_GATE_COLLISION = 1
+} dc_three_blobs_appearance_gate_path;
+
+// Direct ROM routine 03:67B3 maps one of the three shared Blob color states
+// through its six-entry appearance table before checking the actor collision
+// latch. The no-hit branch returns immediately; collision handling remains
+// assembly-owned.
+typedef struct dc_three_blobs_appearance_gate {
+    uint8_t slot;
+    uint8_t phase_index;
+    uint8_t global_state;
+    uint8_t appearance;
+    uint8_t collision_state;
+    dc_three_blobs_appearance_gate_path path;
+} dc_three_blobs_appearance_gate;
+
+// Direct ROM routine 03:67C0 is the shared final collision latch gate.  A
+// nonnegative latch returns immediately; a hit continues into the original
+// audio, state-advance, and appearance-update path.
+typedef struct dc_three_blobs_collision_gate {
+    uint8_t slot;
+    uint8_t collision_state;
+} dc_three_blobs_collision_gate;
+
+typedef enum dc_three_blobs_first_movement_prefix_path {
+    DC_THREE_BLOBS_FIRST_MOVEMENT_PREFIX_DIRECT = 0,
+    DC_THREE_BLOBS_FIRST_MOVEMENT_PREFIX_TIMER_EXPIRY = 1,
+    DC_THREE_BLOBS_FIRST_MOVEMENT_PREFIX_X_EXPIRY = 2,
+    DC_THREE_BLOBS_FIRST_MOVEMENT_PREFIX_Y_EXPIRY = 3
+} dc_three_blobs_first_movement_prefix_path;
+
+typedef struct dc_three_blobs_first_movement_prefix {
+    uint8_t slot;
+    uint8_t decremented_timer;
+    uint8_t decremented_x;
+    uint8_t decremented_y;
+    dc_three_blobs_first_movement_prefix_path path;
+} dc_three_blobs_first_movement_prefix;
+
 typedef enum dc_dragon_egg_controller_path {
     DC_DRAGON_EGG_CONTROLLER_ACTIVE = 0,
     DC_DRAGON_EGG_CONTROLLER_COMPLETE = 1
@@ -93,6 +323,20 @@ typedef struct dc_dragon_egg_controller {
     dc_dragon_egg_controller_path path;
 } dc_dragon_egg_controller;
 
+// Direct ROM routine 02:42EB initializes the invisible fixed Dragon's-Egg
+// group controller before the live-count gate at 02:42F6 begins.
+typedef struct dc_dragon_egg_controller_initializer {
+    uint8_t slot;
+} dc_dragon_egg_controller_initializer;
+
+// Direct ROM routine 02:433F installs each of the six fixed Dragon's-Egg
+// records and increments the shared live-egg count before its 02:4345
+// collision controller begins.
+typedef struct dc_dragon_egg_initializer {
+    uint8_t slot;
+    uint8_t live_egg_count_after;
+} dc_dragon_egg_initializer;
+
 typedef enum dc_big_star_feature_gate_path {
     DC_BIG_STAR_FEATURE_GATE_IDLE = 0,
     DC_BIG_STAR_FEATURE_GATE_PENDING = 1
@@ -102,6 +346,171 @@ typedef struct dc_big_star_feature_gate {
     uint8_t pending_feature_bits;
     dc_big_star_feature_gate_path path;
 } dc_big_star_feature_gate;
+
+typedef enum dc_big_star_pending_gate_path {
+    DC_BIG_STAR_PENDING_GATE_IDLE = 0,
+    DC_BIG_STAR_PENDING_GATE_ACTIVE = 1
+} dc_big_star_pending_gate_path;
+
+typedef struct dc_big_star_pending_gate {
+    uint8_t pending_feature_bits;
+    uint8_t selected_pending_bits;
+    dc_big_star_pending_gate_path path;
+} dc_big_star_pending_gate;
+
+// Direct ROM helper 02:5722 selects the next Big-Star angular-velocity
+// vector from its indexed phase. Verified pending-left routes reset fixed slot
+// $4B phases zero through two to three, increment phases three through five,
+// and saturate phase six.
+typedef struct dc_big_star_pending_helper {
+    uint8_t slot;
+    uint8_t phase;
+    uint8_t next_phase;
+} dc_big_star_pending_helper;
+
+// Direct ROM helper 02:5738 selects the mirrored Big-Star angular-velocity
+// vector. Verified pending-right routes retain fixed slot $4B at phase zero,
+// decrement phases one through three, and reset phase four to phase three
+// before selecting its stopped vector.
+typedef struct dc_big_star_pending_right_helper {
+    uint8_t slot;
+    uint8_t phase;
+    uint8_t next_phase;
+} dc_big_star_pending_right_helper;
+
+// Direct ROM routine 02:565C initializes the fixed Big-Star pending feature,
+// stopped direction, velocity, and timer state before 02:5674 takes over.
+typedef struct dc_big_star_initializer {
+    uint8_t slot;
+} dc_big_star_initializer;
+
+// Direct ROM routine 03:61A0 installs the fixed Undead-Head selector gate
+// through the shared coroutine scheduler before its controller runs at 03:61A3.
+typedef struct dc_undead_head_initializer {
+    uint8_t slot;
+} dc_undead_head_initializer;
+
+typedef enum dc_undead_head_selector_gate_path {
+    DC_UNDEAD_HEAD_SELECTOR_GATE_WAITING = 0,
+    DC_UNDEAD_HEAD_SELECTOR_GATE_ACTIVE = 1
+} dc_undead_head_selector_gate_path;
+
+// Direct ROM routine 03:61AB returns while the stopped-selector is nonzero.
+// Selector zero enters the original activation, collision, RNG, scoring, and
+// bonus sequence.
+typedef struct dc_undead_head_selector_gate {
+    uint8_t slot;
+    uint8_t selector;
+    dc_undead_head_selector_gate_path path;
+} dc_undead_head_selector_gate;
+
+// The preceding controller entry returns through the stopped-selector gate
+// while both session-transition bytes are clear.
+typedef struct dc_undead_head_waiting_parent {
+    uint8_t slot;
+    uint8_t selector;
+} dc_undead_head_waiting_parent;
+
+// ROM routines 02:5C4B and 02:5C7C install the fixed left/right Side-Worm
+// state, selector, collision, appearance, and steady-dispatch fields.
+typedef struct dc_side_worm_initializer {
+    uint8_t slot;
+    uint8_t selector;
+    uint8_t initial_state;
+} dc_side_worm_initializer;
+
+typedef enum dc_side_worm_selector_gate_path {
+    DC_SIDE_WORM_SELECTOR_GATE_WAITING = 0,
+    DC_SIDE_WORM_SELECTOR_GATE_ACTIVE = 1
+} dc_side_worm_selector_gate_path;
+
+// Direct ROM routine 02:5CCD returns while the stopped-selector differs from
+// this Side-Worm's per-record selector. A matching selector enters the
+// original motion, collision, scoring, and feature path.
+typedef struct dc_side_worm_selector_gate {
+    uint8_t slot;
+    uint8_t selector;
+    uint8_t expected_selector;
+    dc_side_worm_selector_gate_path path;
+} dc_side_worm_selector_gate;
+
+typedef struct dc_side_worm_waiting_parent {
+    uint8_t slot;
+    uint8_t selector;
+    uint8_t expected_selector;
+} dc_side_worm_waiting_parent;
+
+typedef enum dc_big_star_rotation_wait_path {
+    DC_BIG_STAR_ROTATION_WAIT_STABLE = 0,
+    DC_BIG_STAR_ROTATION_WAIT_ACTIVE = 1
+} dc_big_star_rotation_wait_path;
+
+// Direct ROM routine 02:5674 first consumes the Little-Skull direction
+// latch, then takes this compact path while the Big Star has nonzero angular
+// speed and its indexed rotation timer has not expired. The timer and session
+// flag remain work-RAM owned so presentation and active rotation stay in
+// assembly.
+typedef struct dc_big_star_rotation_wait {
+    uint8_t slot;
+    uint8_t pending_feature_bits;
+    uint8_t velocity_low;
+    uint8_t velocity_high;
+    uint8_t timer;
+    uint8_t decremented_timer;
+    uint8_t session_flags;
+    uint8_t cleared_session_flags;
+    dc_big_star_rotation_wait_path path;
+} dc_big_star_rotation_wait;
+
+typedef enum dc_devil_shooter_companion_dormant_path {
+    DC_DEVIL_SHOOTER_COMPANION_DORMANT_IDLE = 0,
+    DC_DEVIL_SHOOTER_COMPANION_DORMANT_ACTIVE = 1
+} dc_devil_shooter_companion_dormant_path;
+
+typedef struct dc_devil_shooter_companion_dormant {
+    uint8_t slot;
+    uint8_t session_flags;
+    uint8_t active_session_bits;
+    dc_devil_shooter_companion_dormant_path path;
+} dc_devil_shooter_companion_dormant;
+
+typedef struct dc_devil_shooter_companion_position {
+    uint8_t slot;
+    uint8_t charge;
+    uint8_t vertical_low;
+    uint8_t vertical_high;
+    uint8_t low_add_carry;
+} dc_devil_shooter_companion_position;
+
+typedef enum dc_devil_shooter_companion_appearance_path {
+    DC_DEVIL_SHOOTER_COMPANION_APPEARANCE_IDLE = 0,
+    DC_DEVIL_SHOOTER_COMPANION_APPEARANCE_ADVANCE = 1,
+    DC_DEVIL_SHOOTER_COMPANION_APPEARANCE_RESET = 2
+} dc_devil_shooter_companion_appearance_path;
+
+typedef struct dc_devil_shooter_companion_appearance {
+    uint8_t slot;
+    uint8_t charge;
+    uint8_t cached_charge;
+    uint8_t appearance;
+    uint8_t advanced_appearance;
+    dc_devil_shooter_companion_appearance_path path;
+} dc_devil_shooter_companion_appearance;
+
+typedef enum dc_devil_shooter_companion_active_timer_path {
+    DC_DEVIL_SHOOTER_COMPANION_ACTIVE_TIMER_WAIT = 0,
+    DC_DEVIL_SHOOTER_COMPANION_ACTIVE_TIMER_ADVANCE = 1,
+    DC_DEVIL_SHOOTER_COMPANION_ACTIVE_TIMER_RESET = 2
+} dc_devil_shooter_companion_active_timer_path;
+
+typedef struct dc_devil_shooter_companion_active_timer {
+    uint8_t slot;
+    uint8_t timer;
+    uint8_t decremented_timer;
+    uint8_t appearance;
+    uint8_t advanced_appearance;
+    dc_devil_shooter_companion_active_timer_path path;
+} dc_devil_shooter_companion_active_timer;
 
 typedef enum dc_walled_star_hit_gate_path {
     DC_WALLED_STAR_HIT_GATE_IDLE = 0,
@@ -116,6 +525,12 @@ typedef struct dc_walled_star_hit_gate {
     dc_walled_star_hit_gate_path path;
 } dc_walled_star_hit_gate;
 
+// Direct ROM routine 03:6319 installs the fixed Walled Star's wall state,
+// collision, completion, and steady-controller fields before 03:6339 begins.
+typedef struct dc_walled_star_initializer {
+    uint8_t slot;
+} dc_walled_star_initializer;
+
 typedef enum dc_tower_hit_gate_path {
     DC_TOWER_HIT_GATE_IDLE = 0,
     DC_TOWER_HIT_GATE_TRIGGERED = 1
@@ -126,6 +541,289 @@ typedef struct dc_tower_hit_gate {
     uint8_t collision_state;
     dc_tower_hit_gate_path path;
 } dc_tower_hit_gate;
+
+// Direct ROM routine 03:60B3 installs the fixed Tower controller's initial
+// progress, phase, and guard state.
+typedef struct dc_tower_initializer {
+    uint8_t slot;
+} dc_tower_initializer;
+
+int dc_classify_tower_initializer(
+    const uint8_t* work_ram,
+    size_t work_ram_size,
+    uint8_t slot,
+    dc_tower_initializer* initializer);
+
+// Direct ROM routines 03:789A and 03:78A4 install the two fixed Bumpers'
+// side identity and initial gameplay state.
+typedef struct dc_bumper_initializer {
+    uint8_t slot;
+    uint8_t side;
+} dc_bumper_initializer;
+
+int dc_classify_bumper_initializer(
+    const uint8_t* work_ram,
+    size_t work_ram_size,
+    uint8_t slot,
+    dc_bumper_initializer* initializer);
+
+// Direct ROM routine 03:79DE initializes each child spawned when the right
+// fixed Bumper reaches its terminal phase.
+typedef struct dc_bumper_child_initializer {
+    uint8_t parent_slot;
+    uint8_t child_slot;
+    uint8_t parent_horizontal_low;
+    uint8_t parent_horizontal_high;
+    uint8_t parent_vertical_low;
+    uint8_t parent_vertical_high;
+    uint8_t parent_appearance;
+} dc_bumper_child_initializer;
+
+int dc_classify_bumper_child_initializer(
+    const uint8_t* work_ram,
+    size_t work_ram_size,
+    uint8_t parent_slot,
+    uint8_t child_slot,
+    dc_bumper_child_initializer* initializer);
+
+// Direct ROM routines 03:7D4D and 03:7DE9 install the two fixed Side-Star
+// sources that later spawn the Small-Soldier groups.
+typedef struct dc_small_soldier_source_initializer {
+    uint8_t slot;
+    uint8_t side;
+} dc_small_soldier_source_initializer;
+
+int dc_classify_small_soldier_source_initializer(
+    const uint8_t* work_ram,
+    size_t work_ram_size,
+    uint8_t slot,
+    dc_small_soldier_source_initializer* initializer);
+
+typedef enum dc_small_soldier_delayed_spawn_gate_path {
+    DC_SMALL_SOLDIER_DELAYED_SPAWN_GATE_WAITING = 0,
+    DC_SMALL_SOLDIER_DELAYED_SPAWN_GATE_ACTIVE = 1
+} dc_small_soldier_delayed_spawn_gate_path;
+
+typedef struct dc_small_soldier_delayed_spawn_gate {
+    uint8_t slot;
+    uint8_t timer_before;
+    uint8_t timer_after;
+    dc_small_soldier_delayed_spawn_gate_path path;
+} dc_small_soldier_delayed_spawn_gate;
+
+int dc_classify_small_soldier_delayed_spawn_gate(
+    const uint8_t* work_ram,
+    size_t work_ram_size,
+    uint8_t slot,
+    dc_small_soldier_delayed_spawn_gate* gate);
+
+// The three staged Giant-Face controller setup entries install its delayed
+// scheduler states. Stage two is native only for the empty persisted form;
+// nonzero persisted-form restoration remains assembly-owned.
+typedef struct dc_giant_face_controller_initializer {
+    uint8_t slot;
+    uint8_t stage;
+    uint8_t persisted_form;
+} dc_giant_face_controller_initializer;
+
+int dc_classify_giant_face_controller_initializer(
+    const uint8_t* work_ram,
+    size_t work_ram_size,
+    uint8_t slot,
+    uint8_t stage,
+    dc_giant_face_controller_initializer* initializer);
+
+typedef struct dc_giant_face_animator_initializer {
+    uint8_t slot;
+} dc_giant_face_animator_initializer;
+
+int dc_classify_giant_face_animator_initializer(
+    const uint8_t* work_ram,
+    size_t work_ram_size,
+    uint8_t slot,
+    dc_giant_face_animator_initializer* initializer);
+
+// Direct ROM routine 03:76C5 advances the active hidden-form animator's
+// local timer. Only the non-expiring decrement returns without entering the
+// original phase, drawing, and scheduler path.
+typedef struct dc_giant_face_animator_active_wait {
+    uint8_t slot;
+    uint8_t timer;
+    uint8_t decremented_timer;
+} dc_giant_face_animator_active_wait;
+
+int dc_classify_giant_face_animator_active_wait(
+    const uint8_t* work_ram,
+    size_t work_ram_size,
+    uint8_t slot,
+    dc_giant_face_animator_active_wait* wait);
+
+// The Giant-Face crown surface has one fixed direct scheduler setup entry.
+typedef struct dc_giant_face_crown_initializer {
+    uint8_t slot;
+} dc_giant_face_crown_initializer;
+
+int dc_classify_giant_face_crown_initializer(
+    const uint8_t* work_ram,
+    size_t work_ram_size,
+    uint8_t slot,
+    dc_giant_face_crown_initializer* initializer);
+
+// The Giant-Face mouth surface has one fixed direct scheduler setup entry.
+typedef struct dc_giant_face_mouth_initializer {
+    uint8_t slot;
+} dc_giant_face_mouth_initializer;
+
+int dc_classify_giant_face_mouth_initializer(
+    const uint8_t* work_ram,
+    size_t work_ram_size,
+    uint8_t slot,
+    dc_giant_face_mouth_initializer* initializer);
+
+typedef enum dc_knight_hit_gate_path {
+    DC_KNIGHT_HIT_GATE_IDLE = 0,
+    DC_KNIGHT_HIT_GATE_TRIGGERED = 1
+} dc_knight_hit_gate_path;
+
+typedef struct dc_knight_hit_gate {
+    uint8_t slot;
+    uint8_t collision_state;
+    dc_knight_hit_gate_path path;
+} dc_knight_hit_gate;
+
+typedef struct dc_knight_initializer {
+    uint8_t slot;
+    uint8_t queue_index;
+} dc_knight_initializer;
+
+typedef struct dc_side_spider_initializer {
+    uint8_t slot;
+    uint8_t side_parameter;
+} dc_side_spider_initializer;
+
+typedef struct dc_front_spider_initializer {
+    uint8_t slot;
+    uint8_t side_parameter;
+} dc_front_spider_initializer;
+
+typedef enum dc_knight_waiting_parent_path {
+    DC_KNIGHT_WAITING_PARENT_WAITING = 0,
+    DC_KNIGHT_WAITING_PARENT_ACTIVATING = 1,
+    DC_KNIGHT_WAITING_PARENT_HIT = 2
+} dc_knight_waiting_parent_path;
+
+typedef struct dc_knight_waiting_parent {
+    uint8_t slot;
+    uint8_t queue_index;
+    uint8_t door_handshake;
+    uint8_t collision_state;
+    dc_knight_waiting_parent_path path;
+} dc_knight_waiting_parent;
+
+typedef enum dc_spider_appearance_path {
+    DC_SPIDER_APPEARANCE_WAITING = 0,
+    DC_SPIDER_APPEARANCE_ADVANCE = 1,
+    DC_SPIDER_APPEARANCE_RESET = 2
+} dc_spider_appearance_path;
+
+typedef struct dc_spider_appearance {
+    uint8_t slot;
+    uint8_t timer;
+    uint8_t decremented_timer;
+    uint8_t appearance;
+    uint8_t advanced_appearance;
+    dc_spider_appearance_path path;
+} dc_spider_appearance;
+
+typedef enum dc_tower_insect_animation_path {
+    DC_TOWER_INSECT_ANIMATION_WAITING = 0,
+    DC_TOWER_INSECT_ANIMATION_ADVANCE = 1
+} dc_tower_insect_animation_path;
+
+typedef struct dc_tower_insect_animation {
+    uint8_t slot;
+    uint8_t cadence;
+    uint8_t phase;
+    uint8_t lookup_index;
+    uint8_t frame;
+    uint8_t timer;
+    uint8_t decremented_timer;
+    uint8_t advanced_phase;
+    dc_tower_insect_animation_path path;
+} dc_tower_insect_animation;
+
+// Direct ROM routine 02:5F22 schedules the fixed Tower-insect source's
+// initial controller continuation.
+typedef struct dc_tower_insect_source_initializer {
+    uint8_t slot;
+} dc_tower_insect_source_initializer;
+
+int dc_classify_tower_insect_source_initializer(
+    const uint8_t* work_ram,
+    size_t work_ram_size,
+    uint8_t slot,
+    dc_tower_insect_source_initializer* initializer);
+
+typedef enum dc_tower_insect_source_gate_path {
+    DC_TOWER_INSECT_SOURCE_GATE_WAITING = 0,
+    DC_TOWER_INSECT_SOURCE_GATE_ACTIVE = 1
+} dc_tower_insect_source_gate_path;
+
+typedef struct dc_tower_insect_source_gate {
+    uint8_t slot;
+    uint8_t child_count;
+    dc_tower_insect_source_gate_path path;
+} dc_tower_insect_source_gate;
+
+typedef struct dc_tower_insect_source_countdown_wait {
+    uint8_t slot;
+    uint8_t timer;
+    uint8_t decremented_timer;
+} dc_tower_insect_source_countdown_wait;
+
+typedef enum dc_small_soldier_source_gate_path {
+    DC_SMALL_SOLDIER_SOURCE_GATE_WAITING = 0,
+    DC_SMALL_SOLDIER_SOURCE_GATE_ACTIVE = 1
+} dc_small_soldier_source_gate_path;
+
+typedef struct dc_small_soldier_source_gate {
+    uint8_t slot;
+    uint8_t group_count;
+    dc_small_soldier_source_gate_path path;
+} dc_small_soldier_source_gate;
+
+typedef enum dc_sorcerer_color_gate_path {
+    DC_SORCERER_COLOR_GATE_WAITING = 0,
+    DC_SORCERER_COLOR_GATE_ACTIVE = 1
+} dc_sorcerer_color_gate_path;
+
+typedef struct dc_sorcerer_color_gate {
+    uint8_t slot;
+    uint8_t shared_color;
+    uint8_t cached_color;
+    dc_sorcerer_color_gate_path path;
+} dc_sorcerer_color_gate;
+
+// Direct ROM routine 02:5808 moves one staged Sorcerer into the fixed orbit
+// setup, assigns its initial direction/timer, increments the live count, and
+// schedules the staggered deployment state at 02:586F.
+typedef struct dc_sorcerer_deployment_initializer {
+    uint8_t slot;
+    uint8_t route_index;
+    uint8_t flags_after;
+    uint8_t collision_selector;
+    uint8_t live_count_after;
+    uint8_t initial_delay_low;
+    uint8_t initial_delay_high;
+} dc_sorcerer_deployment_initializer;
+
+// Direct ROM routine 02:57F8 installs one staged Sorcerer's route index,
+// collision byte, and first scheduler dispatch to the 02:5808 deployment
+// initializer.
+typedef struct dc_sorcerer_staging_initializer {
+    uint8_t slot;
+    uint8_t route_index;
+} dc_sorcerer_staging_initializer;
 
 typedef enum dc_dragon_head_hit_gate_path {
     DC_DRAGON_HEAD_HIT_GATE_IDLE = 0,
@@ -159,6 +857,63 @@ typedef struct dc_devil_shooter_hit_gate {
     uint8_t collision_state;
     dc_devil_shooter_hit_gate_path path;
 } dc_devil_shooter_hit_gate;
+
+// ROM routine 02:5159 dispatches the fixed Devil-Shooter's Button-I state.
+// This narrow gate covers its normal-table, released-input, collision-free
+// return before charge and launch behavior begins.
+typedef struct dc_devil_shooter_release_delay_gate {
+    uint8_t slot;
+    uint8_t table_mode;
+    uint8_t active_player;
+    uint8_t button_input;
+    uint8_t collision_state;
+    uint8_t returns_idle;
+} dc_devil_shooter_release_delay_gate;
+
+int dc_classify_devil_shooter_release_delay_gate(
+    const uint8_t* work_ram,
+    size_t work_ram_size,
+    uint8_t slot,
+    dc_devil_shooter_release_delay_gate* gate);
+
+// ROM routine 02:52E3 advances the fixed Devil-Shooter charge position.
+// The bounded normal path carries its three-byte position, derives the shared
+// charge counter, and selects one of the five charge appearances.
+typedef struct dc_devil_shooter_charge_position {
+    uint8_t slot;
+    uint8_t vertical_low;
+    uint8_t vertical_middle;
+    uint8_t vertical_high;
+    uint8_t charge;
+    uint8_t appearance;
+    uint8_t subtract_overflow;
+} dc_devil_shooter_charge_position;
+
+int dc_classify_devil_shooter_charge_position(
+    const uint8_t* work_ram,
+    size_t work_ram_size,
+    uint8_t slot,
+    dc_devil_shooter_charge_position* position);
+
+// ROM routine 02:533B retracts the fixed Devil-Shooter charge position.
+// The bounded normal path subtracts two vertical units, derives the remaining
+// charge, and updates the corresponding charge appearance when nonzero.
+typedef struct dc_devil_shooter_charge_retraction {
+    uint8_t slot;
+    uint8_t vertical_low;
+    uint8_t vertical_middle;
+    uint8_t vertical_high;
+    uint8_t charge;
+    uint8_t appearance;
+    uint8_t has_appearance_write;
+    uint8_t high_subtract_overflow;
+} dc_devil_shooter_charge_retraction;
+
+int dc_classify_devil_shooter_charge_retraction(
+    const uint8_t* work_ram,
+    size_t work_ram_size,
+    uint8_t slot,
+    dc_devil_shooter_charge_retraction* retraction);
 
 typedef enum dc_skeleton_insect_left_gate_path {
     DC_SKELETON_INSECT_LEFT_GATE_IDLE = 0,
@@ -205,6 +960,12 @@ typedef struct dc_devils_coffin_gate {
     uint8_t collision_state;
     dc_devils_coffin_gate_path path;
 } dc_devils_coffin_gate;
+
+// Direct ROM routine 03:63E1 restores the fixed Devil's-Coffin collision
+// marker and appearance, then installs its 03:63F1 steady dispatch.
+typedef struct dc_devils_coffin_initializer {
+    uint8_t slot;
+} dc_devils_coffin_initializer;
 
 typedef enum dc_devils_coffin_opening_path {
     DC_DEVILS_COFFIN_OPENING_WAITING = 0,
@@ -268,6 +1029,24 @@ typedef struct dc_fixed_scheduler_gate {
     dc_fixed_scheduler_gate_path path;
 } dc_fixed_scheduler_gate;
 
+// Direct ROM routine 03:7B1F initializes hidden fixed slot $5C with its
+// one-tick scheduler timer before the steady 03:7B27 controller begins.
+typedef struct dc_fixed_scheduler_initializer {
+    uint8_t slot;
+} dc_fixed_scheduler_initializer;
+
+// Direct ROM routine 03:7B6D initializes hidden fixed slot $5D with its
+// marker mode and one-tick scheduler timer before 03:7B7A begins.
+typedef struct dc_fixed_marker_initializer {
+    uint8_t slot;
+} dc_fixed_marker_initializer;
+
+// Direct ROM routine 03:7CA7 initializes hidden fixed slot $5E by clearing
+// its shared response and collision-scratch state before 03:7CAF begins.
+typedef struct dc_fixed_response_initializer {
+    uint8_t slot;
+} dc_fixed_response_initializer;
+
 typedef enum dc_fixed_response_gate_path {
     DC_FIXED_RESPONSE_GATE_INACTIVE = 0,
     DC_FIXED_RESPONSE_GATE_DORMANT = 1,
@@ -302,6 +1081,12 @@ typedef struct dc_dragon_egg_hit_gate {
     uint8_t collision_state;
     dc_dragon_egg_hit_gate_path path;
 } dc_dragon_egg_hit_gate;
+
+// Direct ROM routine 03:6294 initializes the fixed Giant Door before its
+// collision gate begins at 03:62B8.
+typedef struct dc_giant_door_initializer {
+    uint8_t slot;
+} dc_giant_door_initializer;
 
 typedef enum dc_giant_door_hit_gate_path {
     DC_GIANT_DOOR_HIT_GATE_IDLE = 0,
@@ -374,6 +1159,11 @@ typedef struct dc_giant_face_helmet_controller {
     uint8_t advanced_appearance;
     dc_giant_face_helmet_controller_path path;
 } dc_giant_face_helmet_controller;
+
+typedef struct dc_giant_face_helmet_initializer {
+    uint8_t slot;
+    uint8_t selector;
+} dc_giant_face_helmet_initializer;
 
 // ROM routines 02:4C91 and 02:4A93 share the same collision gate and
 // four-tick timer/appearance tail. The latter belongs to the four Wall
@@ -450,6 +1240,30 @@ int dc_classify_giant_skeleton_eyeball_gate(
     size_t work_ram_size,
     dc_giant_skeleton_eyeball_gate* gate);
 
+int dc_classify_giant_skeleton_eyeball_initializer(
+    const uint8_t* work_ram,
+    size_t work_ram_size,
+    uint8_t slot,
+    dc_giant_skeleton_eyeball_initializer* initializer);
+
+int dc_classify_giant_skeleton_eyeball_opening_wait(
+    const uint8_t* work_ram,
+    size_t work_ram_size,
+    uint8_t slot,
+    dc_giant_skeleton_eyeball_opening_wait* wait);
+
+int dc_classify_giant_skeleton_eyeball_steady_idle(
+    const uint8_t* work_ram,
+    size_t work_ram_size,
+    uint8_t slot,
+    dc_giant_skeleton_eyeball_steady_idle* idle);
+
+int dc_classify_giant_skeleton_eyeball_final_wait(
+    const uint8_t* work_ram,
+    size_t work_ram_size,
+    uint8_t slot,
+    dc_giant_skeleton_eyeball_final_wait* wait);
+
 // Native state classification for the ROM routine 02:4FC1 activation gate.
 // Mercy Stars activate only during normal-table play, on the last ball, and
 // below 5,000 stored score units (500,000 displayed points).
@@ -466,6 +1280,30 @@ int dc_classify_three_blobs_controller(
     size_t work_ram_size,
     dc_three_blobs_controller* controller);
 
+// Native state classification for direct ROM routine 03:67B3. The three
+// fixed Blob slots map their selected global color through the original
+// appearance table, then return while their collision state is nonnegative.
+int dc_classify_three_blobs_appearance_gate(
+    const uint8_t* work_ram,
+    size_t work_ram_size,
+    uint8_t slot,
+    dc_three_blobs_appearance_gate* gate);
+
+int dc_classify_three_blobs_collision_gate(
+    const uint8_t* work_ram,
+    size_t work_ram_size,
+    uint8_t slot,
+    dc_three_blobs_collision_gate* gate);
+
+// Native state classification for ROM routine 03:66A3. Direct no-zero and
+// timer/x/y-expiry prefixes each resume through original assembly before their
+// respective mixed movement, reset, or coroutine work.
+int dc_classify_three_blobs_first_movement_prefix(
+    const uint8_t* work_ram,
+    size_t work_ram_size,
+    uint8_t slot,
+    dc_three_blobs_first_movement_prefix* prefix);
+
 // Native state classification for ROM routine 02:42F6. A nonzero live-egg
 // count returns immediately; zero enters the group-completion award and reset
 // sequence.
@@ -474,6 +1312,18 @@ int dc_classify_dragon_egg_controller(
     size_t work_ram_size,
     dc_dragon_egg_controller* controller);
 
+int dc_classify_dragon_egg_controller_initializer(
+    const uint8_t* work_ram,
+    size_t work_ram_size,
+    uint8_t slot,
+    dc_dragon_egg_controller_initializer* initializer);
+
+int dc_classify_dragon_egg_initializer(
+    const uint8_t* work_ram,
+    size_t work_ram_size,
+    uint8_t slot,
+    dc_dragon_egg_initializer* initializer);
+
 // Native state classification for ROM routine 02:445B. A clear shared
 // Little-Skull feature latch returns immediately; pending bits continue into
 // the Big-Star direction and scoring update.
@@ -481,6 +1331,117 @@ int dc_classify_big_star_feature_gate(
     const uint8_t* work_ram,
     size_t work_ram_size,
     dc_big_star_feature_gate* gate);
+
+// Native state classification for the Big-Star pending-bit consumer at
+// 02:570A. Only bits zero and one invoke the direction-selection helpers;
+// when both are clear the routine clears the source byte and returns.
+int dc_classify_big_star_pending_gate(
+    const uint8_t* work_ram,
+    size_t work_ram_size,
+    dc_big_star_pending_gate* gate);
+
+int dc_classify_big_star_pending_helper(
+    const uint8_t* work_ram,
+    size_t work_ram_size,
+    uint8_t slot,
+    dc_big_star_pending_helper* helper);
+
+int dc_classify_big_star_pending_right_helper(
+    const uint8_t* work_ram,
+    size_t work_ram_size,
+    uint8_t slot,
+    dc_big_star_pending_right_helper* helper);
+
+int dc_classify_big_star_initializer(
+    const uint8_t* work_ram,
+    size_t work_ram_size,
+    uint8_t slot,
+    dc_big_star_initializer* initializer);
+
+int dc_classify_undead_head_initializer(
+    const uint8_t* work_ram,
+    size_t work_ram_size,
+    uint8_t slot,
+    dc_undead_head_initializer* initializer);
+
+int dc_classify_undead_head_selector_gate(
+    const uint8_t* work_ram,
+    size_t work_ram_size,
+    uint8_t slot,
+    dc_undead_head_selector_gate* gate);
+
+int dc_classify_undead_head_waiting_parent(
+    const uint8_t* work_ram,
+    size_t work_ram_size,
+    uint8_t slot,
+    dc_undead_head_waiting_parent* parent);
+
+int dc_classify_side_worm_initializer(
+    const uint8_t* work_ram,
+    size_t work_ram_size,
+    uint8_t slot,
+    dc_side_worm_initializer* initializer);
+
+int dc_classify_side_worm_selector_gate(
+    const uint8_t* work_ram,
+    size_t work_ram_size,
+    uint8_t slot,
+    dc_side_worm_selector_gate* gate);
+
+int dc_classify_side_worm_waiting_parent(
+    const uint8_t* work_ram,
+    size_t work_ram_size,
+    uint8_t slot,
+    dc_side_worm_waiting_parent* parent);
+
+int dc_classify_big_star_rotation_wait(
+    const uint8_t* work_ram,
+    size_t work_ram_size,
+    uint8_t slot,
+    dc_big_star_rotation_wait* rotation);
+
+// Native state classification for the Devil-Shooter side-companion dormant
+// dispatches at 02:53DD and 02:5456. Slots $0A and $0D loop back into their
+// active animation only while session bit 3 remains set.
+int dc_classify_devil_shooter_companion_dormant(
+    const uint8_t* work_ram,
+    size_t work_ram_size,
+    uint8_t slot,
+    dc_devil_shooter_companion_dormant* companion);
+
+// Native state classification for the Devil-Shooter charge-position leaf at
+// 02:5397. Fixed slot $0B derives its 16-bit vertical coordinate directly
+// from the shared charge counter at $2D15.
+int dc_classify_devil_shooter_companion_position(
+    const uint8_t* work_ram,
+    size_t work_ram_size,
+    uint8_t slot,
+    dc_devil_shooter_companion_position* position);
+
+// Native state classification for the Devil-Shooter charge-appearance leaf
+// at 02:5408. Fixed slot $0C caches the shared charge counter, then advances
+// its three-frame appearance only when the counter changes.
+int dc_classify_devil_shooter_companion_appearance(
+    const uint8_t* work_ram,
+    size_t work_ram_size,
+    uint8_t slot,
+    dc_devil_shooter_companion_appearance* appearance);
+
+// Native state classification for the Devil-Shooter side-companion active
+// timer leaves at 02:53E4 and 02:545D. Fixed slots $0A/$0D decrement their
+// timers; expiry reloads eight ticks and advances their four-/five-frame
+// appearances, clearing them at frames 4/5 respectively.
+int dc_classify_devil_shooter_companion_active_timer(
+    const uint8_t* work_ram,
+    size_t work_ram_size,
+    uint8_t slot,
+    dc_devil_shooter_companion_active_timer* timer);
+
+int dc_classify_walled_star_initializer(
+    const uint8_t* work_ram,
+    size_t work_ram_size,
+    uint8_t slot,
+    dc_walled_star_initializer* initializer);
 
 // Native state classification for ROM routine 03:6339. A pending collision
 // enters the wall-damage path; otherwise a clear shared access latch returns
@@ -499,6 +1460,117 @@ int dc_classify_tower_hit_gate(
     size_t work_ram_size,
     uint8_t slot,
     dc_tower_hit_gate* gate);
+
+// Native state classification for ROM routine 03:73D8. The four queued
+// Knights return while their indexed collision state is nonnegative; bit 7
+// enters the assembly-backed four-hit score and completion path.
+int dc_classify_knight_hit_gate(
+    const uint8_t* work_ram,
+    size_t work_ram_size,
+    uint8_t slot,
+    dc_knight_hit_gate* gate);
+
+// Native state classification for the four fixed queued-Knight setup
+// routines 03:734E/7353/735A/7361. Each maps its fixed slot $3A-$3D to
+// the matching Giant-Door queue index before installing the common state.
+int dc_classify_knight_initializer(
+    const uint8_t* work_ram,
+    size_t work_ram_size,
+    uint8_t slot,
+    dc_knight_initializer* initializer);
+
+// Native state classification for shared ROM initializer 03:64FA. The two
+// fixed Side Spiders preserve side parameter zero/one in slots $28/$29.
+int dc_classify_side_spider_initializer(
+    const uint8_t* work_ram,
+    size_t work_ram_size,
+    uint8_t slot,
+    uint8_t side_parameter,
+    dc_side_spider_initializer* initializer);
+
+// Native state classification for shared ROM initializer 03:646B. The two
+// fixed Front Spiders preserve side parameter zero/one in slots $26/$27.
+int dc_classify_front_spider_initializer(
+    const uint8_t* work_ram,
+    size_t work_ram_size,
+    uint8_t slot,
+    uint8_t side_parameter,
+    dc_front_spider_initializer* initializer);
+
+// Native state classification for ROM routine 03:7378. The queued Knights
+// remain in their waiting parent while their indexed Giant-Door handshake bit
+// is clear and the shared child collision gate is idle. Door activation and
+// four-hit handling remain assembly-backed.
+int dc_classify_knight_waiting_parent(
+    const uint8_t* work_ram,
+    size_t work_ram_size,
+    uint8_t slot,
+    dc_knight_waiting_parent* parent);
+
+// Native state classification for ROM routine 03:65A4. The shared Front-
+// and Side-Spider appearance helper counts down four ticks, advances its
+// phase through zero to three, then resets it. Only fixed Spider slots
+// $26-$29 are accepted.
+int dc_classify_spider_appearance(
+    const uint8_t* work_ram,
+    size_t work_ram_size,
+    uint8_t slot,
+    dc_spider_appearance* appearance);
+
+// Native state classification for direct ROM branch target 03:6054. The four
+// dynamic Tower insects select a table frame from their cadence/phase state,
+// then decrement a six-tick animation timer and advance the phase on expiry.
+int dc_classify_tower_insect_animation(
+    const uint8_t* work_ram,
+    size_t work_ram_size,
+    uint8_t slot,
+    dc_tower_insect_animation* animation);
+
+// Native state classification for direct ROM entry 02:5F5F. The fixed
+// Tower-insect source returns while its live child count is nonzero; zero
+// continues into the assembly-owned group-clear award path.
+int dc_classify_tower_insect_source_gate(
+    const uint8_t* work_ram,
+    size_t work_ram_size,
+    uint8_t slot,
+    dc_tower_insect_source_gate* gate);
+
+int dc_classify_tower_insect_source_countdown_wait(
+    const uint8_t* work_ram,
+    size_t work_ram_size,
+    uint8_t slot,
+    dc_tower_insect_source_countdown_wait* wait);
+
+// Native state classification for ROM routines 03:7D85 and 03:7E23. The
+// fixed Small-Soldier sources return while their side-selected group count is
+// nonzero; zero continues into the assembly-owned group-completion path.
+int dc_classify_small_soldier_source_gate(
+    const uint8_t* work_ram,
+    size_t work_ram_size,
+    uint8_t slot,
+    dc_small_soldier_source_gate* gate);
+
+// Native state classification for direct ROM branch target 02:57E9. The
+// hidden Sorcerer controller returns when its shared color matches its cached
+// color; a mismatch writes the new color and enters the assembly-owned helper.
+int dc_classify_sorcerer_color_gate(
+    const uint8_t* work_ram,
+    size_t work_ram_size,
+    uint8_t slot,
+    dc_sorcerer_color_gate* gate);
+
+int dc_classify_sorcerer_deployment_initializer(
+    const uint8_t* work_ram,
+    size_t work_ram_size,
+    uint8_t slot,
+    dc_sorcerer_deployment_initializer* initializer);
+
+int dc_classify_sorcerer_staging_initializer(
+    const uint8_t* work_ram,
+    size_t work_ram_size,
+    uint8_t slot,
+    uint8_t route_index,
+    dc_sorcerer_staging_initializer* initializer);
 
 // Native state classification for ROM routine 02:5A4B. The fixed Dragon's
 // Head returns while its indexed collision state is nonnegative; bit 7 enters
@@ -564,6 +1636,12 @@ int dc_classify_devils_coffin_gate(
     uint8_t slot,
     dc_devils_coffin_gate* gate);
 
+int dc_classify_devils_coffin_initializer(
+    const uint8_t* work_ram,
+    size_t work_ram_size,
+    uint8_t slot,
+    dc_devils_coffin_initializer* initializer);
+
 // Native state classification for ROM routine 03:640A. A nonzero timer
 // after the indexed decrement returns immediately. Timer expiry advances
 // the Devil's-Coffin opening appearance; values below three return, while
@@ -603,6 +1681,24 @@ int dc_classify_fixed_scheduler_gate(
     uint8_t slot,
     dc_fixed_scheduler_gate* gate);
 
+int dc_classify_fixed_scheduler_initializer(
+    const uint8_t* work_ram,
+    size_t work_ram_size,
+    uint8_t slot,
+    dc_fixed_scheduler_initializer* initializer);
+
+int dc_classify_fixed_marker_initializer(
+    const uint8_t* work_ram,
+    size_t work_ram_size,
+    uint8_t slot,
+    dc_fixed_marker_initializer* initializer);
+
+int dc_classify_fixed_response_initializer(
+    const uint8_t* work_ram,
+    size_t work_ram_size,
+    uint8_t slot,
+    dc_fixed_response_initializer* initializer);
+
 // Native state classification for ROM routine 03:7CAF. A negative scene
 // state takes the shared inactive path. Otherwise zero collision scratch
 // returns dormant, while a nonzero byte enters the response state machine.
@@ -628,6 +1724,12 @@ int dc_classify_dragon_egg_hit_gate(
     size_t work_ram_size,
     uint8_t slot,
     dc_dragon_egg_hit_gate* gate);
+
+int dc_classify_giant_door_initializer(
+    const uint8_t* work_ram,
+    size_t work_ram_size,
+    uint8_t slot,
+    dc_giant_door_initializer* initializer);
 
 // Native state classification for ROM routine 03:62B8. The Giant Door
 // returns while its indexed collision state is nonnegative; bit 7 enters the
@@ -683,6 +1785,15 @@ int dc_classify_giant_face_helmet_controller(
     uint8_t slot,
     dc_giant_face_helmet_controller* controller);
 
+// Shared ROM setup 02:4C78 installs the fixed Giant-Face helmet channels.
+// Collision-marked entries continue through the original active path.
+int dc_classify_giant_face_helmet_initializer(
+    const uint8_t* work_ram,
+    size_t work_ram_size,
+    uint8_t slot,
+    uint8_t selector,
+    dc_giant_face_helmet_initializer* initializer);
+
 // Native state classification for ROM routine 02:4A93. Collision access
 // remains assembly-backed; collision-free Wall-Pocket calls use the shared
 // four-tick timer and appearance controller.
@@ -691,6 +1802,117 @@ int dc_classify_four_star_wall_pocket_controller(
     size_t work_ram_size,
     uint8_t slot,
     dc_four_star_wall_pocket_controller* controller);
+
+// ROM routine 02:4B3F is the Walled-Star access pocket's collision gate and
+// shares the same four-tick timer/appearance tail. Its collision/bonus-stage
+// transition remains a distinct assembly-owned path.
+typedef dc_giant_face_helmet_controller dc_walled_star_access_controller;
+typedef dc_giant_face_helmet_controller_path
+    dc_walled_star_access_controller_path;
+
+// Direct ROM routine 02:4A44 initializes the fixed Walled-Star access
+// pocket before its collision and bonus-stage controller begins at 02:4B3F.
+typedef struct dc_walled_star_access_initializer {
+    uint8_t slot;
+} dc_walled_star_access_initializer;
+
+#define DC_WALLED_STAR_ACCESS_CONTROLLER_COLLISION \
+    DC_GIANT_FACE_HELMET_CONTROLLER_COLLISION
+#define DC_WALLED_STAR_ACCESS_CONTROLLER_WAITING \
+    DC_GIANT_FACE_HELMET_CONTROLLER_WAITING
+#define DC_WALLED_STAR_ACCESS_CONTROLLER_ADVANCE \
+    DC_GIANT_FACE_HELMET_CONTROLLER_ADVANCE
+#define DC_WALLED_STAR_ACCESS_CONTROLLER_RESET \
+    DC_GIANT_FACE_HELMET_CONTROLLER_RESET
+
+int dc_classify_walled_star_access_controller(
+    const uint8_t* work_ram,
+    size_t work_ram_size,
+    uint8_t slot,
+    dc_walled_star_access_controller* controller);
+
+int dc_classify_walled_star_access_initializer(
+    const uint8_t* work_ram,
+    size_t work_ram_size,
+    uint8_t slot,
+    dc_walled_star_access_initializer* initializer);
+
+// ROM routines 02:4BD5 and 02:4C0A are the lower-left and upper-right
+// Screen-2 Side-Star collision gates.  Their collision-free paths share the
+// same four-tick timer/appearance tail; scoring, transformation, and bonus
+// entrance paths remain separately assembly-backed.
+typedef dc_giant_face_helmet_controller dc_side_star_access_controller;
+typedef dc_giant_face_helmet_controller_path dc_side_star_access_controller_path;
+
+// Direct ROM routines 02:4A54 and 02:4A4C initialize the lower-left and
+// upper-right Side-Star access surfaces before their respective controllers.
+typedef struct dc_side_star_initializer {
+    uint8_t slot;
+    uint8_t appearance;
+    uint16_t first_dispatch;
+    uint16_t steady_dispatch;
+} dc_side_star_initializer;
+
+#define DC_SIDE_STAR_ACCESS_CONTROLLER_COLLISION \
+    DC_GIANT_FACE_HELMET_CONTROLLER_COLLISION
+#define DC_SIDE_STAR_ACCESS_CONTROLLER_WAITING \
+    DC_GIANT_FACE_HELMET_CONTROLLER_WAITING
+#define DC_SIDE_STAR_ACCESS_CONTROLLER_ADVANCE \
+    DC_GIANT_FACE_HELMET_CONTROLLER_ADVANCE
+#define DC_SIDE_STAR_ACCESS_CONTROLLER_RESET \
+    DC_GIANT_FACE_HELMET_CONTROLLER_RESET
+
+int dc_classify_side_star_access_controller(
+    const uint8_t* work_ram,
+    size_t work_ram_size,
+    uint8_t slot,
+    dc_side_star_access_controller* controller);
+
+int dc_classify_side_star_initializer(
+    const uint8_t* work_ram,
+    size_t work_ram_size,
+    uint8_t slot,
+    dc_side_star_initializer* initializer);
+
+// ROM routine 02:4AEB is the scheduled Four-Star Wall-Pocket animation
+// continuation.  Appearance six begins the scene-transition path, which
+// remains assembly-owned; lower appearances run the four-tick animation.
+typedef enum dc_four_star_wall_pocket_animation_path {
+    DC_FOUR_STAR_WALL_POCKET_ANIMATION_WAITING = 0,
+    DC_FOUR_STAR_WALL_POCKET_ANIMATION_ADVANCE = 1,
+    DC_FOUR_STAR_WALL_POCKET_ANIMATION_TRANSITION = 2
+} dc_four_star_wall_pocket_animation_path;
+
+typedef struct dc_four_star_wall_pocket_animation {
+    uint8_t slot;
+    uint8_t timer;
+    uint8_t decremented_timer;
+    uint8_t appearance;
+    uint8_t advanced_appearance;
+    dc_four_star_wall_pocket_animation_path path;
+} dc_four_star_wall_pocket_animation;
+
+// Native state classification for the Four-Star scheduled animation at
+// 02:4AEB.  The transition path is reported distinctly so its scene and
+// scheduler behavior can safely remain in assembly until traced.
+int dc_classify_four_star_wall_pocket_animation(
+    const uint8_t* work_ram,
+    size_t work_ram_size,
+    uint8_t slot,
+    dc_four_star_wall_pocket_animation* animation);
+
+// ROM routine 02:4C33 is the upper-right Side-Star's six-step bonus-entrance
+// animation. It has the same timer/appearance shape as 02:4AEB, but only
+// fixed slot $12 is valid and appearance six remains a scene transition.
+typedef dc_four_star_wall_pocket_animation_path
+    dc_side_star_bonus_entrance_animation_path;
+typedef dc_four_star_wall_pocket_animation dc_side_star_bonus_entrance_animation;
+
+int dc_classify_side_star_bonus_entrance_animation(
+    const uint8_t* work_ram,
+    size_t work_ram_size,
+    uint8_t slot,
+    dc_side_star_bonus_entrance_animation* animation);
 
 // Native classification for the two fixed upper Wall-Pocket hand initializers
 // at ROM routine 02:5972.

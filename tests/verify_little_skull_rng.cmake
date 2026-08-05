@@ -56,11 +56,13 @@ execute_process(
         --work-ram-patch "1222:3346:2C"
         --work-ram-patch "1222:33C6:01"
         --observe-hook "02:458A"
+        --replace-hook "02:458A@all"
         --observe-hook "02:45A4"
         --observe-hook "02:45C9"
         --observe-hook "00:E8B3"
         --routine-trace "${trace_output}"
         --routine-call-trace "${call_output}"
+        --routine-replay "02:458A@1"
         --routine-replay "02:45A4@1"
         --routine-replay "02:45C9@1"
         --work-ram-write-range "222A-222B"
@@ -98,6 +100,7 @@ endif()
 foreach(expected_line IN ITEMS
     "State census recording complete: 3600 frames"
     "Work-RAM patches applied: 6"
+    "Native replacement 02:458A@all entries: 1 of 1"
     "Observe hook 1 entries: 1"
     "Observe hook 2 entries: 1"
     "Observe hook 3 entries: 1"
@@ -105,9 +108,10 @@ foreach(expected_line IN ITEMS
     "Routine trace complete: 131 entries"
     "Routine call trace complete: 131 calls, 1268 writes"
     "Work-RAM write trace complete: 5274 selected writes"
+    "Routine replay 02:458A@1 verified: frame 1221, 291 body cycles, 11 ordered writes"
     "Routine replay 02:45A4@1 verified: frame 1223, 768 body cycles"
     "Routine replay 02:45C9@1 verified: frame 1223, 606 body cycles"
-    "Routine replay complete: 2 state-normalized calls"
+    "Routine replay complete: 3 state-normalized calls"
 )
     string(FIND "${recorder_output}" "${expected_line}" line_offset)
     if(line_offset EQUAL -1)

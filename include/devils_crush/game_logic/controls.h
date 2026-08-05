@@ -86,6 +86,26 @@ typedef struct dc_session_input_gate {
     uint8_t returns_idle;
 } dc_session_input_gate;
 
+typedef enum dc_ball_drain_threshold_path {
+    DC_BALL_DRAIN_THRESHOLD_NORMAL = 0,
+    DC_BALL_DRAIN_THRESHOLD_DRAINED = 1,
+    DC_BALL_DRAIN_THRESHOLD_DEFER = 2
+} dc_ball_drain_threshold_path;
+
+// Direct ROM routine 01:DD6E compares the indexed ball Y coordinate against
+// the normal-table drain threshold $02D0.  The alternate session-state
+// threshold continues through a separate controller and remains assembly
+// owned; the ordinary state returns locally with carry clear or set.
+typedef struct dc_ball_drain_threshold {
+    uint8_t slot;
+    uint8_t session_state;
+    uint8_t position_low;
+    uint8_t position_high;
+    uint8_t difference_low;
+    uint8_t difference_high;
+    dc_ball_drain_threshold_path path;
+} dc_ball_drain_threshold;
+
 // Native equivalent of the input test at ROM routine 01:D466. It intersects
 // the scheduler's held-input byte with the indexed flipper/control-piece
 // mask. The function is pure; callers choose the no-input exit or continue
@@ -150,6 +170,15 @@ int dc_evaluate_session_input_gate(
     const uint8_t* work_ram,
     size_t work_ram_size,
     dc_session_input_gate* gate);
+
+// Native classification of the ordinary drain threshold at 01:DD6E.  A
+// nonzero session-state byte selects the original alternate threshold path
+// and is reported as DEFER for assembly fallback.
+int dc_classify_ball_drain_threshold(
+    const uint8_t* work_ram,
+    size_t work_ram_size,
+    uint8_t slot,
+    dc_ball_drain_threshold* threshold);
 
 #ifdef __cplusplus
 } // extern "C"

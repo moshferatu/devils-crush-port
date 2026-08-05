@@ -867,12 +867,328 @@ parse_logical_address_range(const std::string_view text)
                                        .logical_pc = 0xC49EU,
                                    }
                            && request.all_calls;
+                       const bool proven_ball_drain_threshold =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x01U,
+                                       .logical_pc = 0xDD6EU,
+                                   }
+                           && request.all_calls;
+                       const bool proven_remaining_ball_presentation =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x01U,
+                                       .logical_pc = 0xC80AU,
+                                   }
+                           && request.all_calls;
+                       const bool proven_remaining_ball_transition_gate =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x01U,
+                                       .logical_pc = 0xC7EAU,
+                                   }
+                           && request.all_calls;
+                       const bool proven_remaining_ball_decision =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x01U,
+                                       .logical_pc = 0xC7E5U,
+                                   }
+                           && request.all_calls;
                        const bool proven_giant_skeleton_eyeball_gate =
                            request.routine
                                    == RoutineKey{
                                        .physical_bank = 0x02U,
                                        .logical_pc = 0x4DD9U,
                                    }
+                           && request.all_calls;
+                       const bool proven_giant_skeleton_eyeball_initializer =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x02U,
+                                       .logical_pc = 0x4DC8U,
+                                   }
+                           && request.all_calls;
+                       const bool proven_giant_skeleton_eyeball_opening_wait =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x02U,
+                                       .logical_pc = 0x4DF7U,
+                                   }
+                           && request.all_calls;
+                       const bool proven_giant_skeleton_eyeball_steady_idle =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x02U,
+                                       .logical_pc = 0x4E24U,
+                                   }
+                           && request.all_calls;
+                       const bool proven_giant_skeleton_eyeball_final_wait =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x02U,
+                                       .logical_pc = 0x4F3DU,
+                                   }
+                           && request.all_calls;
+                       const bool proven_gray_blob_initializer =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x03U,
+                                       .logical_pc = 0x6876U,
+                                   }
+                           && request.all_calls;
+                       const bool proven_gray_blob_first_live_prefix =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x03U,
+                                       .logical_pc = 0x68A1U,
+                                   }
+                           && request.all_calls;
+                       const bool proven_sorcerer_live_controller_gate =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x02U,
+                                       .logical_pc = 0x57ADU,
+                                   }
+                           && request.all_calls;
+                       const bool proven_mercy_star_initializer =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x02U,
+                                       .logical_pc = 0x4F9FU,
+                                   }
+                           && request.all_calls;
+                       const bool proven_devil_shooter_initializer =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x02U,
+                                       .logical_pc = 0x50EEU,
+                           }
+                           && request.all_calls;
+                       const bool proven_little_skull_initializer =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x02U,
+                                       .logical_pc = 0x44E4U,
+                           }
+                           && request.all_calls;
+                       const bool proven_little_skull_gray_initializer =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x02U,
+                                       .logical_pc = 0x458AU,
+                                   }
+                           && request.all_calls;
+                       const bool proven_little_skull_gray_release =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x02U,
+                                       .logical_pc = 0x45A4U,
+                                   }
+                           && request.all_calls;
+                       const bool proven_little_skull_live_continuation =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x02U,
+                                       .logical_pc = 0x4515U,
+                                   }
+                           && request.all_calls;
+                       const bool proven_little_skull_pair_initializer =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x02U,
+                                       .logical_pc = 0x4485U,
+                           }
+                           && request.all_calls;
+                       const bool proven_little_skull_hidden_initializer =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x02U,
+                                       .logical_pc = 0x4455U,
+                           }
+                           && request.all_calls;
+                       const bool proven_big_star_initializer =
+                            request.routine
+                                    == RoutineKey{
+                                        .physical_bank = 0x02U,
+                                        .logical_pc = 0x565CU,
+                                    }
+                            && request.all_calls;
+                       const bool proven_sorcerer_deployment_initializer =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x02U,
+                                       .logical_pc = 0x5808U,
+                                   }
+                           && request.all_calls;
+                       const bool proven_sorcerer_staging_initializer =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x02U,
+                                       .logical_pc = 0x57F8U,
+                                   }
+                           && request.all_calls;
+                       const bool proven_dragon_egg_initializer =
+                            request.routine
+                                    == RoutineKey{
+                                        .physical_bank = 0x02U,
+                                        .logical_pc = 0x433FU,
+                                    }
+                            && request.all_calls;
+                       const bool proven_undead_head_initializer =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x03U,
+                                       .logical_pc = 0x61A0U,
+                                   }
+                           && request.all_calls;
+                       const bool proven_undead_head_selector_gate =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x03U,
+                                       .logical_pc = 0x61ABU,
+                                   }
+                           && request.all_calls;
+                       const bool proven_undead_head_waiting_parent =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x03U,
+                                       .logical_pc = 0x61A3U,
+                                   }
+                           && request.all_calls;
+                       const bool proven_side_worm_initializers =
+                           (request.routine
+                                    == RoutineKey{
+                                        .physical_bank = 0x02U,
+                                        .logical_pc = 0x5C4BU,
+                                    }
+                               || request.routine
+                                      == RoutineKey{
+                                          .physical_bank = 0x02U,
+                                          .logical_pc = 0x5C7CU,
+                                      })
+                           && request.all_calls;
+                       const bool proven_side_worm_selector_gate =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x02U,
+                                       .logical_pc = 0x5CCDU,
+                                   }
+                           && request.all_calls;
+                       const bool proven_side_worm_waiting_parent =
+                           request.routine == RoutineKey{.physical_bank = 0x02U, .logical_pc = 0x5CC5U}
+                           && request.all_calls;
+                       const bool proven_side_worm_active_timer_initializer =
+                           request.routine == RoutineKey{.physical_bank = 0x02U, .logical_pc = 0x5D4AU}
+                           && request.all_calls;
+                       const bool proven_dragon_head_initializer =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x02U,
+                                       .logical_pc = 0x5A31U,
+                                   }
+                           && request.all_calls;
+                       const bool proven_giant_skeleton_initializer =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x02U,
+                                       .logical_pc = 0x5EE4U,
+                                   }
+                           && request.all_calls;
+                       const bool proven_three_blobs_initializer =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x03U,
+                                       .logical_pc = 0x664AU,
+                                   }
+                           && request.all_calls;
+                       const bool proven_three_blobs_controller_initializer =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x03U,
+                                       .logical_pc = 0x65BCU,
+                                   }
+                           && request.all_calls;
+                       const bool proven_walled_star_initializer =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x03U,
+                                       .logical_pc = 0x6319U,
+                           }
+                           && request.all_calls;
+                       const bool proven_walled_star_access_initializer =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x02U,
+                                       .logical_pc = 0x4A44U,
+                           }
+                           && request.all_calls;
+                       const bool proven_side_star_initializers =
+                           (request.routine
+                                    == RoutineKey{
+                                        .physical_bank = 0x02U,
+                                        .logical_pc = 0x4A54U,
+                                    }
+                                || request.routine
+                                    == RoutineKey{
+                                        .physical_bank = 0x02U,
+                                        .logical_pc = 0x4A4CU,
+                                    })
+                           && request.all_calls;
+                       const bool proven_knight_initializers =
+                           (request.routine
+                                    == RoutineKey{
+                                        .physical_bank = 0x03U,
+                                        .logical_pc = 0x734EU,
+                                    }
+                                || request.routine
+                                    == RoutineKey{
+                                        .physical_bank = 0x03U,
+                                        .logical_pc = 0x7353U,
+                                    }
+                                || request.routine
+                                    == RoutineKey{
+                                        .physical_bank = 0x03U,
+                                        .logical_pc = 0x735AU,
+                                    }
+                                || request.routine
+                                    == RoutineKey{
+                                        .physical_bank = 0x03U,
+                                        .logical_pc = 0x7361U,
+                                    })
+                           && request.all_calls;
+                       const bool proven_side_spider_initializer =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x03U,
+                                       .logical_pc = 0x64FAU,
+                                   }
+                           && request.all_calls;
+                       const bool proven_front_spider_initializer =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x03U,
+                                       .logical_pc = 0x646BU,
+                                   }
+                           && request.all_calls;
+                       const bool proven_giant_face_helmet_initializer =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x02U,
+                                       .logical_pc = 0x4C78U,
+                                   }
+                           && request.all_calls;
+                       const bool proven_giant_face_helmet_outer_initializers =
+                           (request.routine
+                                    == RoutineKey{
+                                        .physical_bank = 0x02U,
+                                        .logical_pc = 0x4A5CU,
+                                    }
+                            || request.routine
+                                    == RoutineKey{
+                                        .physical_bank = 0x02U,
+                                        .logical_pc = 0x4A64U,
+                                    })
                            && request.all_calls;
                        const bool proven_mercy_star_gate =
                            request.routine
@@ -916,6 +1232,91 @@ parse_logical_address_range(const std::string_view text)
                                        .logical_pc = 0x445BU,
                                    }
                            && request.all_calls;
+                       const bool proven_big_star_pending_gate =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x02U,
+                                       .logical_pc = 0x570AU,
+                                   }
+                           && request.all_calls;
+                       const bool proven_big_star_pending_helper =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x02U,
+                                       .logical_pc = 0x5722U,
+                                   }
+                           && request.all_calls;
+                       const bool proven_big_star_pending_right_helper =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x02U,
+                                       .logical_pc = 0x5738U,
+                                   }
+                           && request.all_calls;
+                       const bool proven_big_star_rotation_wait =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x02U,
+                                       .logical_pc = 0x5674U,
+                                   }
+                           && request.all_calls;
+                       const bool proven_devil_shooter_companion_dormant =
+                           (request.routine
+                                == RoutineKey{
+                                    .physical_bank = 0x02U,
+                                    .logical_pc = 0x53DDU,
+                                }
+                           || request.routine
+                                == RoutineKey{
+                                    .physical_bank = 0x02U,
+                                    .logical_pc = 0x5456U,
+                                })
+                           && request.all_calls;
+                       const bool proven_devil_shooter_companion_position =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x02U,
+                                       .logical_pc = 0x5397U,
+                                   }
+                           && request.all_calls;
+                       const bool proven_devil_shooter_companion_appearance =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x02U,
+                                       .logical_pc = 0x5408U,
+                                   }
+                           && request.all_calls;
+                       const bool proven_devil_shooter_companion_active_timer =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x02U,
+                                       .logical_pc = 0x545DU,
+                                   }
+                           && request.all_calls;
+                       const bool
+                           proven_devil_shooter_companion_left_active_timer =
+                               request.routine
+                                       == RoutineKey{
+                                           .physical_bank = 0x02U,
+                                           .logical_pc = 0x53E4U,
+                                       }
+                               && request.all_calls;
+                       const bool
+                           proven_devil_shooter_left_active_controller =
+                               request.routine
+                                       == RoutineKey{
+                                           .physical_bank = 0x02U,
+                                           .logical_pc = 0x53C8U,
+                                       }
+                               && request.all_calls;
+                       const bool
+                           proven_devil_shooter_right_active_controller =
+                               request.routine
+                                       == RoutineKey{
+                                           .physical_bank = 0x02U,
+                                           .logical_pc = 0x5441U,
+                                       }
+                               && request.all_calls;
                        const bool proven_dragon_head_hit_gate =
                            request.routine
                                    == RoutineKey{
@@ -935,6 +1336,20 @@ parse_logical_address_range(const std::string_view text)
                                    == RoutineKey{
                                        .physical_bank = 0x02U,
                                        .logical_pc = 0x5116U,
+                                   }
+                           && request.all_calls;
+                       const bool proven_devil_shooter_release_delay_gate =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x02U,
+                                       .logical_pc = 0x5159U,
+                                   }
+                           && request.all_calls;
+                       const bool proven_devil_shooter_charge_position =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x02U,
+                                       .logical_pc = 0x52E3U,
                                    }
                            && request.all_calls;
                        const bool
@@ -981,6 +1396,13 @@ parse_logical_address_range(const std::string_view text)
                                        .logical_pc = 0x63F1U,
                                    }
                            && request.all_calls;
+                       const bool proven_devils_coffin_initializer =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x03U,
+                                       .logical_pc = 0x63E1U,
+                                   }
+                           && request.all_calls;
                        const bool proven_devils_coffin_opening =
                            request.routine
                                    == RoutineKey{
@@ -1002,6 +1424,13 @@ parse_logical_address_range(const std::string_view text)
                                        .logical_pc = 0x65C2U,
                                    }
                            && request.all_calls;
+                       const bool proven_three_blobs_appearance_gate =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x03U,
+                                       .logical_pc = 0x67B3U,
+                                   }
+                           && request.all_calls;
                        const bool proven_giant_door_hit_gate =
                            request.routine
                                    == RoutineKey{
@@ -1009,11 +1438,25 @@ parse_logical_address_range(const std::string_view text)
                                        .logical_pc = 0x62B8U,
                                    }
                            && request.all_calls;
+                       const bool proven_giant_door_initializer =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x03U,
+                                       .logical_pc = 0x6294U,
+                                   }
+                           && request.all_calls;
                        const bool proven_giant_face_animator_gate =
                            request.routine
                                    == RoutineKey{
                                        .physical_bank = 0x03U,
                                        .logical_pc = 0x767EU,
+                                   }
+                           && request.all_calls;
+                       const bool proven_giant_face_animator_active_wait =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x03U,
+                                       .logical_pc = 0x76C5U,
                                    }
                            && request.all_calls;
                        const bool proven_giant_face_request_gate =
@@ -1044,12 +1487,45 @@ parse_logical_address_range(const std::string_view text)
                                        .logical_pc = 0x4C91U,
                                    }
                            && request.all_calls;
+                       const bool proven_giant_face_helmet_hit_continuation =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x02U,
+                                       .logical_pc = 0x4CFBU,
+                                   }
+                           && request.all_calls;
+                       const bool proven_giant_face_helmet_followup_timer =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x02U,
+                                       .logical_pc = 0x4D0BU,
+                                   }
+                           && request.all_calls;
                        const bool proven_four_star_wall_pocket_controller =
                            request.routine
                                    == RoutineKey{
                                        .physical_bank = 0x02U,
                                        .logical_pc = 0x4A93U,
                                    }
+                           && request.all_calls;
+                       const bool proven_walled_star_access_controller =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x02U,
+                                       .logical_pc = 0x4B3FU,
+                                   }
+                           && request.all_calls;
+                       const bool proven_side_star_access_controller =
+                           (request.routine
+                                    == RoutineKey{
+                                        .physical_bank = 0x02U,
+                                        .logical_pc = 0x4BD5U,
+                                    }
+                                || request.routine
+                                    == RoutineKey{
+                                        .physical_bank = 0x02U,
+                                        .logical_pc = 0x4C0AU,
+                                    })
                            && request.all_calls;
                        const bool proven_four_star_wall_pocket_post_audio_score =
                            request.routine
@@ -1063,6 +1539,20 @@ parse_logical_address_range(const std::string_view text)
                                    == RoutineKey{
                                        .physical_bank = 0x02U,
                                        .logical_pc = 0x4AE5U,
+                                   }
+                           && request.all_calls;
+                       const bool proven_four_star_wall_pocket_animation =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x02U,
+                                       .logical_pc = 0x4AEBU,
+                                   }
+                           && request.all_calls;
+                       const bool proven_side_star_bonus_entrance_animation =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x02U,
+                                       .logical_pc = 0x4C33U,
                                    }
                            && request.all_calls;
                        const bool proven_upper_wall_pocket_hand_initializer =
@@ -1142,6 +1632,150 @@ parse_logical_address_range(const std::string_view text)
                                        .logical_pc = 0x60C3U,
                                    }
                            && request.all_calls;
+                       const bool proven_tower_initializer =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x03U,
+                                       .logical_pc = 0x60B3U,
+                                   }
+                           && request.all_calls;
+                       const bool proven_knight_hit_gate =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x03U,
+                                       .logical_pc = 0x73D8U,
+                                   }
+                           && request.all_calls;
+                       const bool proven_knight_waiting_parent =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x03U,
+                                       .logical_pc = 0x7378U,
+                                   }
+                           && request.all_calls;
+                       const bool proven_spider_appearance =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x03U,
+                                       .logical_pc = 0x65A4U,
+                           }
+                           && request.all_calls;
+                       const bool proven_devil_shooter_charge_retraction =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x02U,
+                                       .logical_pc = 0x533BU,
+                                   }
+                           && request.all_calls;
+                       const bool proven_tower_insect_animation =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x03U,
+                                       .logical_pc = 0x6054U,
+                                   }
+                           && request.all_calls;
+                       const bool proven_small_soldier_source_gates =
+                           (request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x03U,
+                                       .logical_pc = 0x7D85U,
+                                   }
+                               || request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x03U,
+                                       .logical_pc = 0x7E23U,
+                           })
+                           && request.all_calls;
+                       const bool proven_small_soldier_source_initializers =
+                           (request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x03U,
+                                       .logical_pc = 0x7D4DU,
+                                   }
+                               || request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x03U,
+                                       .logical_pc = 0x7DE9U,
+                           })
+                           && request.all_calls;
+                       const bool proven_small_soldier_delayed_spawn_gates =
+                           (request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x03U,
+                                       .logical_pc = 0x7D6FU,
+                                   }
+                               || request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x03U,
+                                       .logical_pc = 0x7E0DU,
+                                   })
+                           && request.all_calls;
+                       const bool proven_giant_face_controller_initializers =
+                           (request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x03U,
+                                       .logical_pc = 0x7428U,
+                                   }
+                               || request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x03U,
+                                       .logical_pc = 0x742BU,
+                                   }
+                               || request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x03U,
+                                       .logical_pc = 0x742EU,
+                           })
+                           && request.all_calls;
+                       const bool proven_giant_face_animator_initializer =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x03U,
+                                       .logical_pc = 0x766CU,
+                                   }
+                           && request.all_calls;
+                       const bool proven_giant_face_crown_initializer =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x03U,
+                                       .logical_pc = 0x76F7U,
+                                   }
+                           && request.all_calls;
+                       const bool proven_giant_face_mouth_initializer =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x03U,
+                                       .logical_pc = 0x7718U,
+                                   }
+                           && request.all_calls;
+                       const bool proven_tower_insect_source_gate =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x02U,
+                                       .logical_pc = 0x5F5FU,
+                                   }
+                           && request.all_calls;
+                       const bool proven_tower_insect_source_countdown_wait =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x02U,
+                                       .logical_pc = 0x5F4AU,
+                                   }
+                           && request.all_calls;
+                       const bool proven_tower_insect_source_initializer =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x02U,
+                                       .logical_pc = 0x5F22U,
+                                   }
+                           && request.all_calls;
+                       const bool proven_sorcerer_color_gate =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x02U,
+                                       .logical_pc = 0x57E9U,
+                                   }
+                           && request.all_calls;
                        const bool proven_tower_hit_continuation =
                            request.routine
                                    == RoutineKey{
@@ -1170,6 +1804,25 @@ parse_logical_address_range(const std::string_view text)
                                        .logical_pc = 0x78C7U,
                                    }
                            && request.all_calls;
+                       const bool proven_bumper_initializers =
+                           (request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x03U,
+                                       .logical_pc = 0x789AU,
+                                   }
+                               || request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x03U,
+                                       .logical_pc = 0x78A4U,
+                                   })
+                           && request.all_calls;
+                       const bool proven_bumper_child_initializer =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x03U,
+                                       .logical_pc = 0x79DEU,
+                                   }
+                           && request.all_calls;
                        const bool proven_bumper_primary_progress =
                            request.routine
                                    == RoutineKey{
@@ -1191,14 +1844,70 @@ parse_logical_address_range(const std::string_view text)
                                        .logical_pc = 0x7CAFU,
                                    }
                            && request.all_calls;
-                       const bool proven_fixed_scheduler_gate =
-                           request.routine
-                                   == RoutineKey{
-                                       .physical_bank = 0x03U,
-                                       .logical_pc = 0x7B27U,
-                                   }
-                           && request.all_calls;
-                       const bool proven_fixed_scheduler_submission =
+                        const bool proven_fixed_scheduler_gate =
+                            request.routine
+                                    == RoutineKey{
+                                        .physical_bank = 0x03U,
+                                        .logical_pc = 0x7B27U,
+                                    }
+                            && request.all_calls;
+                        const bool proven_fixed_scheduler_initializer =
+                            request.routine
+                                    == RoutineKey{
+                                        .physical_bank = 0x03U,
+                                        .logical_pc = 0x7B1FU,
+                                    }
+                            && request.all_calls;
+                        const bool proven_fixed_marker_initializer =
+                            request.routine
+                                    == RoutineKey{
+                                        .physical_bank = 0x03U,
+                                        .logical_pc = 0x7B6DU,
+                                    }
+                            && request.all_calls;
+                       const bool proven_fixed_response_initializer =
+                            request.routine
+                                    == RoutineKey{
+                                        .physical_bank = 0x03U,
+                                        .logical_pc = 0x7CA7U,
+                                    }
+                            && request.all_calls;
+                        const bool proven_dragon_egg_controller_initializer =
+                            request.routine
+                                    == RoutineKey{
+                                        .physical_bank = 0x02U,
+                                        .logical_pc = 0x42EBU,
+                                    }
+                            && request.all_calls;
+                        const bool proven_three_blobs_first_movement_prefix =
+                            request.routine
+                                    == RoutineKey{
+                                        .physical_bank = 0x03U,
+                                        .logical_pc = 0x66A3U,
+                                    }
+                            && request.all_calls;
+                        const bool proven_three_blobs_direct_continuation =
+                            request.routine
+                                    == RoutineKey{
+                                        .physical_bank = 0x03U,
+                                        .logical_pc = 0x66DEU,
+                                    }
+                            && request.all_calls;
+                        const bool proven_three_blobs_shared_motion_idle =
+                            request.routine
+                                    == RoutineKey{
+                                        .physical_bank = 0x03U,
+                                        .logical_pc = 0x676BU,
+                                    }
+                            && request.all_calls;
+                        const bool proven_three_blobs_collision_gate =
+                            request.routine
+                                    == RoutineKey{
+                                        .physical_bank = 0x03U,
+                                        .logical_pc = 0x67C0U,
+                                    }
+                            && request.all_calls;
+                        const bool proven_fixed_scheduler_submission =
                            (request.routine
                                     == RoutineKey{
                                         .physical_bank = 0x03U,
@@ -1309,33 +2018,98 @@ parse_logical_address_range(const std::string_view text)
                            && !proven_coroutine_scheduler
                            && !proven_nudge_input_gate
                            && !proven_session_input_gate
+                           && !proven_ball_drain_threshold
+                           && !proven_remaining_ball_presentation
+                           && !proven_remaining_ball_transition_gate
+                           && !proven_remaining_ball_decision
                            && !proven_giant_skeleton_eyeball_gate
+                           && !proven_giant_skeleton_eyeball_initializer
+                           && !proven_giant_skeleton_eyeball_opening_wait
+                           && !proven_giant_skeleton_eyeball_steady_idle
+                           && !proven_giant_skeleton_eyeball_final_wait
+                           && !proven_gray_blob_initializer
+                           && !proven_gray_blob_first_live_prefix
+                           && !proven_sorcerer_live_controller_gate
+                           && !proven_mercy_star_initializer
+                           && !proven_devil_shooter_initializer
+                           && !proven_little_skull_initializer
+                           && !proven_little_skull_gray_initializer
+                           && !proven_little_skull_gray_release
+                           && !proven_little_skull_live_continuation
+                            && !proven_little_skull_pair_initializer
+                            && !proven_little_skull_hidden_initializer
+                            && !proven_big_star_initializer
+                            && !proven_sorcerer_deployment_initializer
+                            && !proven_sorcerer_staging_initializer
+                            && !proven_dragon_egg_initializer
+                           && !proven_undead_head_initializer
+                           && !proven_side_worm_initializers
+                           && !proven_side_worm_selector_gate
+                           && !proven_side_worm_waiting_parent
+                           && !proven_side_worm_active_timer_initializer
+                           && !proven_dragon_head_initializer
+                           && !proven_giant_skeleton_initializer
+                           && !proven_three_blobs_initializer
+                           && !proven_three_blobs_controller_initializer
+                           && !proven_undead_head_selector_gate
+                           && !proven_undead_head_waiting_parent
+                           && !proven_walled_star_initializer
+                           && !proven_walled_star_access_initializer
+                           && !proven_side_star_initializers
+                           && !proven_knight_initializers
+                           && !proven_side_spider_initializer
+                           && !proven_front_spider_initializer
+                           && !proven_giant_face_helmet_initializer
+                           && !proven_giant_face_helmet_outer_initializers
                            && !proven_mercy_star_gate
                            && !proven_dragon_egg_controller
                            && !proven_dragon_egg_hit_gate
                            && !proven_dragon_egg_hit_continuation
                            && !proven_dragon_egg_post_allocation
                            && !proven_big_star_feature_gate
+                           && !proven_big_star_pending_gate
+                           && !proven_big_star_pending_helper
+                           && !proven_big_star_pending_right_helper
+                           && !proven_big_star_rotation_wait
+                           && !proven_devil_shooter_companion_dormant
+                           && !proven_devil_shooter_companion_position
+                           && !proven_devil_shooter_companion_appearance
+                           && !proven_devil_shooter_companion_active_timer
+                           && !proven_devil_shooter_companion_left_active_timer
+                           && !proven_devil_shooter_left_active_controller
+                           && !proven_devil_shooter_right_active_controller
                            && !proven_dragon_head_hit_gate
                            && !proven_dragon_head_hit_continuation
                            && !proven_devil_shooter_hit_gate
+                           && !proven_devil_shooter_release_delay_gate
+                           && !proven_devil_shooter_charge_position
+                           && !proven_devil_shooter_charge_retraction
                            && !proven_devil_shooter_catch_continuation
                            && !proven_skeleton_insect_left_gate
                            && !proven_skeleton_insect_right_gate
                            && !proven_skeleton_insect_center_gate
                            && !proven_skeleton_insect_center_continuation
                            && !proven_devils_coffin_gate
+                           && !proven_devils_coffin_initializer
                            && !proven_devils_coffin_opening
                            && !proven_devils_coffin_closing
                            && !proven_giant_door_hit_gate
+                           && !proven_giant_door_initializer
                            && !proven_giant_face_request_gate
                            && !proven_giant_face_animator_gate
+                           && !proven_giant_face_animator_active_wait
                            && !proven_giant_face_crown_gate
                            && !proven_giant_face_mouth_gate
                            && !proven_giant_face_helmet_controller
+                           && !proven_giant_face_helmet_hit_continuation
+                           && !proven_giant_face_helmet_followup_timer
                            && !proven_four_star_wall_pocket_controller
+                           && !proven_walled_star_access_controller
+                           && !proven_side_star_access_controller
                            && !proven_four_star_wall_pocket_post_audio_score
                            && !proven_four_star_wall_pocket_post_appearance
+                           && !proven_four_star_wall_pocket_animation
+                           && !proven_side_star_bonus_entrance_animation
                            && !proven_upper_wall_pocket_hand_initializer
                            && !proven_upper_wall_pocket_hand_live_setup
                            && !proven_upper_wall_pocket_hand_countdown
@@ -1347,20 +2121,47 @@ parse_logical_address_range(const std::string_view text)
                            && !proven_upper_wall_pocket_hand_post_opening_countdown
                            && !proven_walled_star_hit_gate
                            && !proven_tower_hit_gate
+                           && !proven_tower_initializer
+                           && !proven_knight_hit_gate
+                           && !proven_knight_waiting_parent
+                           && !proven_spider_appearance
+                           && !proven_tower_insect_animation
+                           && !proven_small_soldier_source_gates
+                           && !proven_small_soldier_source_initializers
+                           && !proven_small_soldier_delayed_spawn_gates
+                           && !proven_giant_face_controller_initializers
+                           && !proven_giant_face_animator_initializer
+                           && !proven_giant_face_crown_initializer
+                           && !proven_giant_face_mouth_initializer
+                           && !proven_tower_insect_source_gate
+                           && !proven_tower_insect_source_countdown_wait
+                           && !proven_tower_insect_source_initializer
+                           && !proven_sorcerer_color_gate
                            && !proven_tower_hit_continuation
                            && !proven_tower_post_dispatch
                            && !proven_tower_guard_selector
                            && !proven_bumper_hit_gate
+                           && !proven_bumper_initializers
+                           && !proven_bumper_child_initializer
                            && !proven_bumper_primary_progress
-                           && !proven_bumper_secondary_progress
-                           && !proven_fixed_response_gate
-                           && !proven_fixed_scheduler_gate
-                           && !proven_fixed_scheduler_submission
+                            && !proven_bumper_secondary_progress
+                            && !proven_fixed_response_gate
+                            && !proven_fixed_scheduler_gate
+                            && !proven_fixed_scheduler_initializer
+                            && !proven_fixed_marker_initializer
+                            && !proven_fixed_response_initializer
+                            && !proven_dragon_egg_controller_initializer
+                            && !proven_three_blobs_first_movement_prefix
+                            && !proven_three_blobs_direct_continuation
+                            && !proven_three_blobs_shared_motion_idle
+                            && !proven_three_blobs_collision_gate
+                            && !proven_fixed_scheduler_submission
                            && !proven_fixed_marker_gate
                            && !proven_fixed_marker_submission
                            && !proven_fixed_marker_helper
                            && !proven_scaled_word_add
                            && !proven_three_blobs_controller
+                           && !proven_three_blobs_appearance_gate
                            && !proven_collision_table_pass;
                    })) {
         options.error =
@@ -1389,15 +2190,26 @@ parse_logical_address_range(const std::string_view text)
             "semantic 01:CCD5@all, "
             "semantic "
             "01:D500@all, semantic 01:D081@all, semantic 01:C5C9@all, "
-            "semantic 01:C3CB@all, semantic 01:C49E@all, "
+            "semantic 01:C3CB@all, semantic 01:C49E@all, semantic 01:DD6E@all, "
+            "semantic 01:C80A@all, semantic 01:C7EA@all, semantic 01:C7E5@all, "
+            "semantic 02:42EB@all, "
             "semantic 02:42F6@all, semantic 02:4345@all, "
             "semantic 02:4357@all, semantic 02:4371@all, "
             "semantic 02:445B@all, "
-            "semantic 02:4DD9@all, "
+            "semantic 02:570A@all, semantic 02:5674@all, "
+            "semantic 02:5397@all, semantic 02:5408@all, semantic 02:53C8@all, semantic 02:53E4@all, semantic 02:5441@all, semantic 02:545D@all, semantic 02:53DD@all, semantic 02:5456@all, "
+            "semantic 02:4DC8@all, semantic 02:4DD9@all, semantic 02:4DF7@all, semantic 02:4E24@all, semantic 02:4F3D@all, semantic 03:76C5@all, "
+            "semantic 03:6876@all, semantic 03:68A1@all, semantic 02:5A31@all, semantic 02:5EE4@all, semantic 03:664A@all, semantic 03:65BC@all, semantic 03:66DE@all, "
+            "semantic 02:57AD@all, "
             "semantic 02:4FC1@all, "
             "semantic 02:4A93@all, semantic 02:4AD2@all, "
-            "semantic 02:4AE5@all, "
+            "semantic 02:4AE5@all, semantic 02:4AEB@all, "
+            "semantic 02:4B3F@all, "
+            "semantic 02:4BD5@all, semantic 02:4C0A@all, semantic 02:4C33@all, semantic 02:4CFB@all, semantic 02:4D0B@all, "
             "semantic 02:5116@all, "
+            "semantic 02:5159@all, "
+            "semantic 02:52E3@all, "
+            "semantic 02:533B@all, "
             "semantic 02:52B8@all, "
             "semantic 02:54B9@all, "
             "semantic 02:5551@all, "
@@ -1408,20 +2220,40 @@ parse_logical_address_range(const std::string_view text)
             "semantic 03:63F1@all, "
             "semantic 03:640A@all, "
             "semantic 03:6445@all, "
-            "semantic 03:62B8@all, "
+            "semantic 03:6294@all, semantic 03:62B8@all, "
             "semantic 03:74D8@all, "
             "semantic 03:767E@all, "
             "semantic 03:76FA@all, "
             "semantic 03:7726@all, "
             "semantic 03:6339@all, "
             "semantic 03:60C3@all, "
+            "semantic 03:60B3@all, "
+            "semantic 03:7378@all, "
+            "semantic 03:73D8@all, "
+            "semantic 03:65A4@all, "
+            "semantic 03:6054@all, "
+            "semantic 02:5F22@all, "
+            "semantic 02:5F4A@all, "
+            "semantic 02:5F5F@all, "
+            "semantic 03:7D85@all, semantic 03:7E23@all, "
+            "semantic 03:7D4D@all, semantic 03:7DE9@all, "
+            "semantic 03:7D6F@all, semantic 03:7E0D@all, "
+            "semantic 03:7428@all, semantic 03:742B@all, "
+            "semantic 03:742E@all, "
+            "semantic 03:766C@all, "
+            "semantic 03:76F7@all, "
+            "semantic 03:7718@all, "
+            "semantic 02:57E9@all, "
             "semantic 03:60E0@all, "
             "semantic 03:611C@all, "
             "semantic 03:60A6@all, "
             "semantic 03:78C7@all, "
+            "semantic 03:789A@all, semantic 03:78A4@all, "
+            "semantic 03:79DE@all, "
             "semantic 03:78F5@all, "
             "semantic 03:7912@all, "
             "semantic 03:7CAF@all, "
+            "semantic 03:7CA7@all, "
             "semantic 03:7B27@all, "
             "semantic 03:7B4E@all, semantic 03:7B5D@all, "
             "semantic 03:7B7A@all, "
@@ -1436,7 +2268,8 @@ parse_logical_address_range(const std::string_view text)
               "semantic 02:5A08@all, "
               "semantic 02:5A0B@all, "
               "semantic 02:5A1B@all, "
-              "semantic 03:65C2@all, and "
+            "semantic 03:65BC@all, semantic 03:65C2@all, semantic 03:67B3@all, "
+            "semantic 03:66A3@all, and semantic 03:676B@all, "
             "the proven 03:7FB1@1, 03:7FB1@3, 03:7FB1@7, 00:F55C@1, "
             "and 00:E8B3@1 calls.";
     } else if (!options.work_ram_patches.empty() && !recording_selected) {

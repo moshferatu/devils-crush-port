@@ -18,9 +18,9 @@ elseif(CONFIG STREQUAL "Release")
 else()
     message(FATAL_ERROR "Unsupported Four-Star Wall-Pocket matching configuration: ${CONFIG}")
 endif()
-set(expected_trace_sha256 "0f55ad5c69a31bdadcd3ebf2392fb24005bc4cf463e86f2b0e5c0c06b0ab05ad")
-set(expected_call_sha256 "e0e62f03a8be06ccda672042d8dda45b1b60656f4cd18a22ee450c5003627a49")
-set(expected_write_sha256 "e354a6f21119dd9544d407c2e8c82883dfac774ee1ac4502e7470f99b0d5a65c")
+set(expected_trace_sha256 "6105daa60a740fc1d9f9a1b9e421a1dc9c87fe980e8aec4b804214a12087dea2")
+set(expected_call_sha256 "9abc6c7b5a8d2518f5ecc5481bc693917b056659e9d9f0eec95e155e4ee30e24")
+set(expected_write_sha256 "4e983a7998075dfa71ddd478cdcab4ed8995ce7c7960ced84ccbc0bd15ff59a3")
 set(expected_state_sha256 "6c5946171ec29f2bf46eb93dbe307aa3492fb10fe80361fdaf7075c8225fd49c")
 
 set(trace_output "${OUTPUT}.trace.csv")
@@ -36,9 +36,11 @@ execute_process(
         --observe-hook "02:4A93"
         --observe-hook "02:4AD2"
         --observe-hook "02:4AE5"
+        --observe-hook "02:4AEB"
         --replace-hook "02:4A93@all"
         --replace-hook "02:4AD2@all"
         --replace-hook "02:4AE5@all"
+        --replace-hook "02:4AEB@all"
         --routine-trace "${trace_output}"
         --routine-call-trace "${call_output}"
         --work-ram-write-range "2CFA-2CFA"
@@ -72,11 +74,13 @@ foreach(expected_line IN ITEMS
     "Native replacement 02:4A93@all entries: 1168 of 1168"
     "Native replacement 02:4AD2@all entries: 1 of 1"
     "Native replacement 02:4AE5@all entries: 1 of 1"
+    "Native replacement 02:4AEB@all entries: 506 of 506"
     "Observe hook 1 entries: 1168"
     "Observe hook 2 entries: 1"
     "Observe hook 3 entries: 1"
-    "Routine trace complete: 1170 entries"
-    "Routine call trace complete: 1170 calls, 2481 writes"
+    "Observe hook 4 entries: 506"
+    "Routine trace complete: 1676 entries"
+    "Routine call trace complete: 1676 calls, 3338 writes"
     "Work-RAM write trace complete: 789 selected writes"
 )
     string(FIND "${recorder_output}" "${expected_line}" line_offset)

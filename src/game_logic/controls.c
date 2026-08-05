@@ -224,3 +224,38 @@ int dc_evaluate_session_input_gate(
         && gate->run_input == 0U);
     return 1;
 }
+
+int dc_classify_ball_drain_threshold(
+    const uint8_t* const work_ram,
+    const size_t work_ram_size,
+    const uint8_t slot,
+    dc_ball_drain_threshold* const threshold)
+{
+    const size_t low_offset = 0x1300U + (size_t)slot;
+    const size_t high_offset = 0x1380U + (size_t)slot;
+    if (work_ram == NULL || threshold == NULL || work_ram_size < 0x2000U
+        || low_offset >= work_ram_size || high_offset >= work_ram_size) {
+        return 0;
+    }
+
+    threshold->slot = slot;
+    threshold->session_state = work_ram[0x0055U];
+    threshold->position_low = work_ram[low_offset];
+    threshold->position_high = work_ram[high_offset];
+    threshold->difference_low =
+        (uint8_t)(threshold->position_low - 0xD0U);
+    threshold->difference_high =
+        (uint8_t)(threshold->position_high - 0x02U
+            - (threshold->position_low < 0xD0U ? 1U : 0U));
+    threshold->path = DC_BALL_DRAIN_THRESHOLD_DEFER;
+    if (threshold->session_state != 0U) {
+        return 1;
+    }
+
+    threshold->path =
+        (((uint16_t)threshold->position_high << 8U)
+            | threshold->position_low) >= 0x02D0U
+        ? DC_BALL_DRAIN_THRESHOLD_DRAINED
+        : DC_BALL_DRAIN_THRESHOLD_NORMAL;
+    return 1;
+}

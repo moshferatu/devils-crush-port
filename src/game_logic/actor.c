@@ -104,6 +104,302 @@ int dc_classify_giant_skeleton_eyeball_gate(
     return 1;
 }
 
+int dc_classify_giant_skeleton_eyeball_initializer(
+    const uint8_t* const work_ram,
+    const size_t work_ram_size,
+    const uint8_t slot,
+    dc_giant_skeleton_eyeball_initializer* const initializer)
+{
+    const size_t flags_offset = 0x1080U + (size_t)slot;
+
+    if (work_ram == NULL || initializer == NULL || slot != 0x2FU
+        || work_ram_size <= flags_offset) {
+        return 0;
+    }
+
+    initializer->slot = slot;
+    initializer->flags_before = work_ram[flags_offset];
+    initializer->flags_after = (uint8_t)(initializer->flags_before & 0xBFU);
+    return 1;
+}
+
+int dc_classify_giant_skeleton_eyeball_opening_wait(
+    const uint8_t* const work_ram,
+    const size_t work_ram_size,
+    const uint8_t slot,
+    dc_giant_skeleton_eyeball_opening_wait* const wait)
+{
+    const size_t timer_offset = 0x1A00U + (size_t)slot;
+    const size_t state_offset = 0x1E00U + (size_t)slot;
+
+    if (work_ram == NULL || wait == NULL || slot != 0x2FU
+        || work_ram_size <= state_offset || work_ram[timer_offset] <= 1U
+        || work_ram[state_offset] != 0x02U) {
+        return 0;
+    }
+
+    wait->slot = slot;
+    wait->timer = work_ram[timer_offset];
+    wait->decremented_timer = (uint8_t)(wait->timer - 1U);
+    return 1;
+}
+
+int dc_classify_giant_skeleton_eyeball_steady_idle(
+    const uint8_t* const work_ram,
+    const size_t work_ram_size,
+    const uint8_t slot,
+    dc_giant_skeleton_eyeball_steady_idle* const idle)
+{
+    const size_t collision_offset = 0x1800U + (size_t)slot;
+
+    if (work_ram == NULL || idle == NULL || slot != 0x2FU
+        || work_ram_size <= collision_offset
+        || (work_ram[collision_offset] & 0x80U) != 0U
+        || (work_ram[0x0053U] & 0x02U) != 0U) {
+        return 0;
+    }
+
+    idle->slot = slot;
+    idle->collision_state = work_ram[collision_offset];
+    idle->session_flags = work_ram[0x0053U];
+    return 1;
+}
+
+int dc_classify_giant_skeleton_eyeball_final_wait(
+    const uint8_t* const work_ram,
+    const size_t work_ram_size,
+    const uint8_t slot,
+    dc_giant_skeleton_eyeball_final_wait* const wait)
+{
+    const size_t timer_offset = 0x1A00U + (size_t)slot;
+    const size_t phase_offset = 0x1B00U + (size_t)slot;
+    const size_t secondary_offset = 0x1B80U + (size_t)slot;
+
+    if (work_ram == NULL || wait == NULL || slot != 0x2FU
+        || work_ram_size <= secondary_offset || work_ram[timer_offset] <= 1U
+        || work_ram[phase_offset] <= 1U) {
+        return 0;
+    }
+
+    wait->slot = slot;
+    wait->timer = work_ram[timer_offset];
+    wait->phase = work_ram[phase_offset];
+    wait->secondary_counter = work_ram[secondary_offset];
+    wait->decremented_timer = (uint8_t)(wait->timer - 1U);
+    wait->decremented_phase = (uint8_t)(wait->phase - 1U);
+    wait->final_accumulator = (uint8_t)(
+        wait->decremented_phase | wait->secondary_counter);
+    return 1;
+}
+
+int dc_classify_gray_blob_initializer(
+    const uint8_t* const work_ram,
+    const size_t work_ram_size,
+    const uint8_t slot,
+    dc_gray_blob_initializer* const initializer)
+{
+    const size_t position_low_offset = 0x1300U + (size_t)slot;
+    const size_t position_high_offset = 0x1380U + (size_t)slot;
+
+    if (work_ram == NULL || initializer == NULL || slot < 0x50U
+        || slot > 0x56U || work_ram_size <= position_low_offset
+        || work_ram_size <= position_high_offset) {
+        return 0;
+    }
+
+    initializer->slot = slot;
+    initializer->position_low = work_ram[position_low_offset];
+    initializer->position_high = work_ram[position_high_offset];
+    return 1;
+}
+
+int dc_classify_gray_blob_first_live(
+    const uint8_t* const work_ram,
+    const size_t work_ram_size,
+    const uint8_t slot,
+    dc_gray_blob_first_live* const first_live)
+{
+    const size_t flags_offset = 0x1080U + (size_t)slot;
+    const size_t collision_offset = 0x1800U + (size_t)slot;
+    const size_t phase_timer_offset = 0x1A00U + (size_t)slot;
+
+    if (work_ram == NULL || first_live == NULL || slot < 0x50U
+        || slot > 0x56U || work_ram_size <= flags_offset
+        || work_ram_size <= collision_offset
+        || work_ram_size <= phase_timer_offset
+        || work_ram[flags_offset] != 0x82U
+        || work_ram[collision_offset] != 0x13U
+        || work_ram[phase_timer_offset] != 0x01U) {
+        return 0;
+    }
+
+    first_live->slot = slot;
+    first_live->flags_before = work_ram[flags_offset];
+    first_live->flags_after = (uint8_t)(first_live->flags_before & 0x9FU);
+    first_live->collision_before = work_ram[collision_offset];
+    first_live->collision_after =
+        (uint8_t)(first_live->collision_before & 0x7FU);
+    return 1;
+}
+
+int dc_classify_mercy_star_initializer(
+    const uint8_t* const work_ram,
+    const size_t work_ram_size,
+    const uint8_t slot,
+    dc_mercy_star_initializer* const initializer)
+{
+    if (work_ram == NULL || initializer == NULL
+        || (slot != 0x5FU && slot != 0x60U && slot != 0x61U)
+        || work_ram_size <= 0x1FE1U) {
+        return 0;
+    }
+
+    initializer->slot = slot;
+    return 1;
+}
+
+int dc_classify_devil_shooter_initializer(
+    const uint8_t* const work_ram,
+    const size_t work_ram_size,
+    const uint8_t slot,
+    dc_devil_shooter_initializer* const initializer)
+{
+    if (work_ram == NULL || initializer == NULL || slot != 0x0EU
+        || work_ram_size <= 0x1F8EU) {
+        return 0;
+    }
+
+    initializer->slot = slot;
+    return 1;
+}
+
+int dc_classify_little_skull_initializer(
+    const uint8_t* const work_ram,
+    const size_t work_ram_size,
+    const uint8_t slot,
+    const uint8_t pair,
+    dc_little_skull_initializer* const initializer)
+{
+    const size_t live_count_offset = 0x0CF5U + (size_t)pair;
+
+    if (work_ram == NULL || initializer == NULL
+        || (slot != 0x46U && slot != 0x47U && slot != 0x49U && slot != 0x4AU)
+        || pair > 1U || pair != (slot >= 0x49U ? 1U : 0U)
+        || work_ram_size <= live_count_offset || work_ram_size <= 0x1FCAU) {
+        return 0;
+    }
+
+    initializer->slot = slot;
+    initializer->pair = pair;
+    initializer->live_count_after =
+        (uint8_t)(work_ram[live_count_offset] + 1U);
+    return 1;
+}
+
+int dc_classify_little_skull_pair_initializer(
+    const uint8_t* const work_ram,
+    const size_t work_ram_size,
+    const uint8_t slot,
+    const uint8_t pair,
+    dc_little_skull_pair_initializer* const initializer)
+{
+    if (work_ram == NULL || initializer == NULL
+        || (slot != 0x45U && slot != 0x48U)
+        || pair > 1U || pair != (slot == 0x48U ? 1U : 0U)
+        || work_ram_size <= 0x1FC8U) {
+        return 0;
+    }
+
+    initializer->slot = slot;
+    initializer->pair = pair;
+    return 1;
+}
+
+int dc_classify_little_skull_hidden_initializer(
+    const uint8_t* const work_ram,
+    const size_t work_ram_size,
+    const uint8_t slot,
+    dc_little_skull_hidden_initializer* const initializer)
+{
+    if (work_ram == NULL || initializer == NULL || slot != 0x44U
+        || work_ram_size <= 0x1FC4U) {
+        return 0;
+    }
+
+    initializer->slot = slot;
+    return 1;
+}
+
+int dc_classify_dragon_head_initializer(
+    const uint8_t* const work_ram,
+    const size_t work_ram_size,
+    const uint8_t slot,
+    dc_dragon_head_initializer* const initializer)
+{
+    const size_t flags_offset = 0x1080U + (size_t)slot;
+
+    if (work_ram == NULL || initializer == NULL || slot != 0x13U
+        || work_ram_size <= 0x1F93U) {
+        return 0;
+    }
+
+    initializer->slot = slot;
+    initializer->flags_before = work_ram[flags_offset];
+    initializer->flags_after = (uint8_t)(initializer->flags_before & 0xBFU);
+    return 1;
+}
+
+int dc_classify_giant_skeleton_initializer(
+    const uint8_t* const work_ram,
+    const size_t work_ram_size,
+    const uint8_t slot,
+    dc_giant_skeleton_initializer* const initializer)
+{
+    if (work_ram == NULL || initializer == NULL || slot != 0x30U
+        || work_ram_size <= 0x1FB0U) {
+        return 0;
+    }
+
+    initializer->slot = slot;
+    return 1;
+}
+
+int dc_classify_three_blobs_initializer(
+    const uint8_t* const work_ram,
+    const size_t work_ram_size,
+    const uint8_t slot,
+    const uint8_t initial_state,
+    dc_three_blobs_initializer* const initializer)
+{
+    static const uint8_t appearances[] = {0x8AU, 0x82U, 0x85U};
+
+    if (work_ram == NULL || initializer == NULL || slot < 0x58U
+        || slot > 0x5AU || initial_state != (uint8_t)(slot - 0x58U)
+        || work_ram_size <= 0x1FDAU) {
+        return 0;
+    }
+
+    initializer->slot = slot;
+    initializer->initial_state = initial_state;
+    initializer->appearance = appearances[initial_state];
+    return 1;
+}
+
+int dc_classify_three_blobs_controller_initializer(
+    const uint8_t* const work_ram,
+    const size_t work_ram_size,
+    const uint8_t slot,
+    dc_three_blobs_controller_initializer* const initializer)
+{
+    if (work_ram == NULL || initializer == NULL || slot != 0x57U
+        || work_ram_size <= 0x0CFDU) {
+        return 0;
+    }
+
+    initializer->slot = slot;
+    return 1;
+}
+
 int dc_classify_mercy_star_gate(
     const uint8_t* const work_ram,
     const size_t work_ram_size,
@@ -163,6 +459,98 @@ int dc_classify_three_blobs_controller(
     return 1;
 }
 
+int dc_classify_three_blobs_appearance_gate(
+    const uint8_t* const work_ram,
+    const size_t work_ram_size,
+    const uint8_t slot,
+    dc_three_blobs_appearance_gate* const gate)
+{
+    static const uint8_t appearance_table[6] = {
+        0x8AU, 0x82U, 0x85U, 0x8AU, 0x8EU, 0x85U
+    };
+    const size_t phase_offset = 0x1A80U + (size_t)slot;
+    const size_t collision_offset = 0x1800U + (size_t)slot;
+
+    if (work_ram == NULL || gate == NULL
+        || (slot != 0x58U && slot != 0x59U && slot != 0x5AU)
+        || work_ram_size <= phase_offset || work_ram_size <= collision_offset
+        || work_ram_size <= 0x0D3BU) {
+        return 0;
+    }
+
+    gate->slot = slot;
+    gate->phase_index = work_ram[phase_offset];
+    if (gate->phase_index >= 3U) {
+        return 0;
+    }
+    gate->global_state = work_ram[0x0D39U + (size_t)gate->phase_index];
+    if (gate->global_state >= sizeof(appearance_table)) {
+        return 0;
+    }
+    gate->appearance = appearance_table[gate->global_state];
+    gate->collision_state = work_ram[collision_offset];
+    gate->path = (gate->collision_state & 0x80U) != 0U
+        ? DC_THREE_BLOBS_APPEARANCE_GATE_COLLISION
+        : DC_THREE_BLOBS_APPEARANCE_GATE_IDLE;
+    return 1;
+}
+
+int dc_classify_three_blobs_collision_gate(
+    const uint8_t* const work_ram,
+    const size_t work_ram_size,
+    const uint8_t slot,
+    dc_three_blobs_collision_gate* const gate)
+{
+    const size_t collision_offset = 0x1800U + (size_t)slot;
+
+    if (work_ram == NULL || gate == NULL
+        || (slot != 0x58U && slot != 0x59U && slot != 0x5AU)
+        || work_ram_size <= collision_offset) {
+        return 0;
+    }
+
+    gate->slot = slot;
+    gate->collision_state = work_ram[collision_offset];
+    return 1;
+}
+
+int dc_classify_three_blobs_first_movement_prefix(
+    const uint8_t* const work_ram,
+    const size_t work_ram_size,
+    const uint8_t slot,
+    dc_three_blobs_first_movement_prefix* const prefix)
+{
+    const size_t timer_offset = 0x1A00U + (size_t)slot;
+    const size_t x_offset = 0x1B00U + (size_t)slot;
+    const size_t y_offset = 0x1B80U + (size_t)slot;
+
+    if (work_ram == NULL || prefix == NULL
+        || (slot != 0x58U && slot != 0x59U && slot != 0x5AU)
+        || work_ram_size <= timer_offset || work_ram_size <= x_offset
+        || work_ram_size <= y_offset) {
+        return 0;
+    }
+
+    prefix->slot = slot;
+    prefix->decremented_timer = (uint8_t)(work_ram[timer_offset] - 1U);
+    prefix->decremented_x = (uint8_t)(work_ram[x_offset] - 1U);
+    prefix->decremented_y = (uint8_t)(work_ram[y_offset] - 1U);
+    if (prefix->decremented_timer == 0U) {
+        prefix->path = DC_THREE_BLOBS_FIRST_MOVEMENT_PREFIX_TIMER_EXPIRY;
+        return 1;
+    }
+    if (prefix->decremented_x == 0U) {
+        prefix->path = DC_THREE_BLOBS_FIRST_MOVEMENT_PREFIX_X_EXPIRY;
+        return 1;
+    }
+    if (prefix->decremented_y == 0U) {
+        prefix->path = DC_THREE_BLOBS_FIRST_MOVEMENT_PREFIX_Y_EXPIRY;
+        return 1;
+    }
+    prefix->path = DC_THREE_BLOBS_FIRST_MOVEMENT_PREFIX_DIRECT;
+    return 1;
+}
+
 int dc_classify_dragon_egg_controller(
     const uint8_t* const work_ram,
     const size_t work_ram_size,
@@ -180,6 +568,39 @@ int dc_classify_dragon_egg_controller(
     return 1;
 }
 
+int dc_classify_dragon_egg_controller_initializer(
+    const uint8_t* const work_ram,
+    const size_t work_ram_size,
+    const uint8_t slot,
+    dc_dragon_egg_controller_initializer* const initializer)
+{
+    if (work_ram == NULL || initializer == NULL || slot != 0x1FU
+        || work_ram_size <= 0x0CF7U) {
+        return 0;
+    }
+
+    initializer->slot = slot;
+    return 1;
+}
+
+int dc_classify_dragon_egg_initializer(
+    const uint8_t* const work_ram,
+    const size_t work_ram_size,
+    const uint8_t slot,
+    dc_dragon_egg_initializer* const initializer)
+{
+    if (work_ram == NULL || initializer == NULL
+        || (slot < 0x20U || slot > 0x25U)
+        || work_ram_size <= 0x0CF4U) {
+        return 0;
+    }
+
+    initializer->slot = slot;
+    initializer->live_egg_count_after =
+        (uint8_t)(work_ram[0x0CF4U] + 1U);
+    return 1;
+}
+
 int dc_classify_big_star_feature_gate(
     const uint8_t* const work_ram,
     const size_t work_ram_size,
@@ -194,6 +615,344 @@ int dc_classify_big_star_feature_gate(
     gate->path = gate->pending_feature_bits == 0U
         ? DC_BIG_STAR_FEATURE_GATE_IDLE
         : DC_BIG_STAR_FEATURE_GATE_PENDING;
+    return 1;
+}
+
+int dc_classify_big_star_pending_gate(
+    const uint8_t* const work_ram,
+    const size_t work_ram_size,
+    dc_big_star_pending_gate* const gate)
+{
+    if (work_ram == NULL || gate == NULL
+        || work_ram_size <= 0x0D04U) {
+        return 0;
+    }
+
+    gate->pending_feature_bits = work_ram[0x0D04U];
+    gate->selected_pending_bits =
+        (uint8_t)(gate->pending_feature_bits & 0x03U);
+    gate->path = gate->selected_pending_bits == 0U
+        ? DC_BIG_STAR_PENDING_GATE_IDLE
+        : DC_BIG_STAR_PENDING_GATE_ACTIVE;
+    return 1;
+}
+
+int dc_classify_big_star_pending_helper(
+    const uint8_t* const work_ram,
+    const size_t work_ram_size,
+    const uint8_t slot,
+    dc_big_star_pending_helper* const helper)
+{
+    const size_t phase_offset = 0x1B00U + (size_t)slot;
+
+    if (work_ram == NULL || helper == NULL || slot != 0x4BU
+        || work_ram_size <= phase_offset) {
+        return 0;
+    }
+
+    helper->slot = slot;
+    helper->phase = work_ram[phase_offset];
+    helper->next_phase = helper->phase < 3U
+        ? 3U
+        : (helper->phase <= 5U ? (uint8_t)(helper->phase + 1U) : helper->phase);
+    return 1;
+}
+
+int dc_classify_big_star_pending_right_helper(
+    const uint8_t* const work_ram,
+    const size_t work_ram_size,
+    const uint8_t slot,
+    dc_big_star_pending_right_helper* const helper)
+{
+    const size_t phase_offset = 0x1B00U + (size_t)slot;
+
+    if (work_ram == NULL || helper == NULL || slot != 0x4BU
+        || work_ram_size <= phase_offset) {
+        return 0;
+    }
+
+    helper->slot = slot;
+    helper->phase = work_ram[phase_offset];
+    helper->next_phase = helper->phase == 4U
+        ? 3U
+        : (helper->phase > 0U && helper->phase < 4U
+               ? (uint8_t)(helper->phase - 1U)
+               : helper->phase);
+    return 1;
+}
+
+int dc_classify_big_star_initializer(
+    const uint8_t* const work_ram,
+    const size_t work_ram_size,
+    const uint8_t slot,
+    dc_big_star_initializer* const initializer)
+{
+    if (work_ram == NULL || initializer == NULL || slot != 0x4BU
+        || work_ram_size <= 0x1FCBU) {
+        return 0;
+    }
+
+    initializer->slot = slot;
+    return 1;
+}
+
+int dc_classify_undead_head_initializer(
+    const uint8_t* const work_ram,
+    const size_t work_ram_size,
+    const uint8_t slot,
+    dc_undead_head_initializer* const initializer)
+{
+    if (work_ram == NULL || initializer == NULL || slot != 0x4DU
+        || work_ram_size <= 0x1FCDU) {
+        return 0;
+    }
+
+    initializer->slot = slot;
+    return 1;
+}
+
+int dc_classify_undead_head_selector_gate(
+    const uint8_t* const work_ram,
+    const size_t work_ram_size,
+    const uint8_t slot,
+    dc_undead_head_selector_gate* const gate)
+{
+    const size_t selector_offset = 0x0D18U;
+
+    if (work_ram == NULL || gate == NULL || slot != 0x4DU
+        || work_ram_size <= selector_offset) {
+        return 0;
+    }
+
+    gate->slot = slot;
+    gate->selector = work_ram[selector_offset];
+    gate->path = gate->selector != 0U
+        ? DC_UNDEAD_HEAD_SELECTOR_GATE_WAITING
+        : DC_UNDEAD_HEAD_SELECTOR_GATE_ACTIVE;
+    return 1;
+}
+
+int dc_classify_undead_head_waiting_parent(
+    const uint8_t* const work_ram,
+    const size_t work_ram_size,
+    const uint8_t slot,
+    dc_undead_head_waiting_parent* const parent)
+{
+    const size_t session_offset = 0x0D00U;
+    const size_t selector_offset = 0x0D18U;
+
+    if (work_ram == NULL || parent == NULL || slot != 0x4DU
+        || work_ram_size <= selector_offset) {
+        return 0;
+    }
+    if (work_ram[session_offset] != 0U
+        || work_ram[session_offset + 1U] != 0U
+        || work_ram[selector_offset] == 0U) {
+        return 0;
+    }
+
+    parent->slot = slot;
+    parent->selector = work_ram[selector_offset];
+    return 1;
+}
+
+int dc_classify_side_worm_initializer(
+    const uint8_t* const work_ram,
+    const size_t work_ram_size,
+    const uint8_t slot,
+    dc_side_worm_initializer* const initializer)
+{
+    if (work_ram == NULL || initializer == NULL
+        || (slot != 0x4EU && slot != 0x4FU) || work_ram_size <= 0x1FCFU) {
+        return 0;
+    }
+
+    initializer->slot = slot;
+    initializer->selector = slot == 0x4EU ? 0x06U : 0x02U;
+    initializer->initial_state = slot == 0x4EU ? 0x00U : 0x01U;
+    return 1;
+}
+
+int dc_classify_side_worm_selector_gate(
+    const uint8_t* const work_ram,
+    const size_t work_ram_size,
+    const uint8_t slot,
+    dc_side_worm_selector_gate* const gate)
+{
+    const size_t selector_offset = 0x0D18U;
+    const size_t expected_selector_offset = 0x1780U + (size_t)slot;
+
+    if (work_ram == NULL || gate == NULL || (slot != 0x4EU && slot != 0x4FU)
+        || work_ram_size <= selector_offset
+        || work_ram_size <= expected_selector_offset) {
+        return 0;
+    }
+
+    gate->slot = slot;
+    gate->selector = work_ram[selector_offset];
+    gate->expected_selector = work_ram[expected_selector_offset];
+    gate->path = gate->selector != gate->expected_selector
+        ? DC_SIDE_WORM_SELECTOR_GATE_WAITING
+        : DC_SIDE_WORM_SELECTOR_GATE_ACTIVE;
+    return 1;
+}
+
+int dc_classify_side_worm_waiting_parent(
+    const uint8_t* const work_ram,
+    const size_t work_ram_size,
+    const uint8_t slot,
+    dc_side_worm_waiting_parent* const parent)
+{
+    dc_side_worm_selector_gate gate;
+    if (work_ram == NULL || parent == NULL || work_ram_size <= 0x0D01U
+        || work_ram[0x0D00U] != 0U || work_ram[0x0D01U] != 0U
+        || !dc_classify_side_worm_selector_gate(
+            work_ram, work_ram_size, slot, &gate)
+        || gate.path != DC_SIDE_WORM_SELECTOR_GATE_WAITING) {
+        return 0;
+    }
+    parent->slot = gate.slot;
+    parent->selector = gate.selector;
+    parent->expected_selector = gate.expected_selector;
+    return 1;
+}
+
+int dc_classify_big_star_rotation_wait(
+    const uint8_t* const work_ram,
+    const size_t work_ram_size,
+    const uint8_t slot,
+    dc_big_star_rotation_wait* const rotation)
+{
+    const size_t timer_offset = 0x1A00U + (size_t)slot;
+
+    if (work_ram == NULL || rotation == NULL || slot != 0x4BU
+        || work_ram_size <= 0x0D04U || work_ram_size <= 0x0D01U
+        || work_ram_size <= timer_offset || work_ram_size <= 0x00CBU) {
+        return 0;
+    }
+
+    rotation->slot = slot;
+    rotation->pending_feature_bits = work_ram[0x0D04U];
+    rotation->velocity_low = work_ram[0x0D00U];
+    rotation->velocity_high = work_ram[0x0D01U];
+    rotation->timer = work_ram[timer_offset];
+    rotation->decremented_timer = (uint8_t)(rotation->timer - 1U);
+    rotation->session_flags = work_ram[0x00CBU];
+    rotation->cleared_session_flags =
+        (uint8_t)(rotation->session_flags & 0xFDU);
+    rotation->path = ((rotation->pending_feature_bits & 0x03U) == 0U
+            && (rotation->velocity_low != 0U
+                || rotation->velocity_high != 0U)
+            && rotation->decremented_timer != 0U)
+        ? DC_BIG_STAR_ROTATION_WAIT_STABLE
+        : DC_BIG_STAR_ROTATION_WAIT_ACTIVE;
+    return 1;
+}
+
+int dc_classify_devil_shooter_companion_dormant(
+    const uint8_t* const work_ram,
+    const size_t work_ram_size,
+    const uint8_t slot,
+    dc_devil_shooter_companion_dormant* const companion)
+{
+    if (work_ram == NULL || companion == NULL || work_ram_size <= 0x0053U
+        || (slot != 0x0AU && slot != 0x0DU)) {
+        return 0;
+    }
+
+    companion->slot = slot;
+    companion->session_flags = work_ram[0x0053U];
+    companion->active_session_bits =
+        (uint8_t)(companion->session_flags & 0x08U);
+    companion->path = companion->active_session_bits == 0U
+        ? DC_DEVIL_SHOOTER_COMPANION_DORMANT_IDLE
+        : DC_DEVIL_SHOOTER_COMPANION_DORMANT_ACTIVE;
+    return 1;
+}
+
+int dc_classify_devil_shooter_companion_position(
+    const uint8_t* const work_ram,
+    const size_t work_ram_size,
+    const uint8_t slot,
+    dc_devil_shooter_companion_position* const position)
+{
+    if (work_ram == NULL || position == NULL || work_ram_size <= 0x0D15U
+        || slot != 0x0BU) {
+        return 0;
+    }
+
+    const uint16_t vertical =
+        (uint16_t)(0x00A8U + (uint16_t)(work_ram[0x0D15U] >> 1U));
+    position->slot = slot;
+    position->charge = work_ram[0x0D15U];
+    position->vertical_low = (uint8_t)vertical;
+    position->low_add_carry = (uint8_t)(vertical >> 8U);
+    position->vertical_high = (uint8_t)(0x02U + position->low_add_carry);
+    return 1;
+}
+
+int dc_classify_devil_shooter_companion_appearance(
+    const uint8_t* const work_ram,
+    const size_t work_ram_size,
+    const uint8_t slot,
+    dc_devil_shooter_companion_appearance* const appearance)
+{
+    const size_t cache_offset = 0x1E00U + (size_t)slot;
+    const size_t appearance_offset = 0x1980U + (size_t)slot;
+
+    if (work_ram == NULL || appearance == NULL || slot != 0x0CU
+        || work_ram_size <= 0x0D15U || work_ram_size <= cache_offset
+        || work_ram_size <= appearance_offset) {
+        return 0;
+    }
+
+    appearance->slot = slot;
+    appearance->charge = work_ram[0x0D15U];
+    appearance->cached_charge = work_ram[cache_offset];
+    appearance->appearance = work_ram[appearance_offset];
+    appearance->advanced_appearance = appearance->appearance;
+    if (appearance->charge == appearance->cached_charge) {
+        appearance->path = DC_DEVIL_SHOOTER_COMPANION_APPEARANCE_IDLE;
+    } else if (appearance->appearance >= 3U) {
+        return 0;
+    } else {
+        appearance->advanced_appearance =
+            (uint8_t)(appearance->appearance + 1U);
+        appearance->path = appearance->advanced_appearance == 3U
+            ? DC_DEVIL_SHOOTER_COMPANION_APPEARANCE_RESET
+            : DC_DEVIL_SHOOTER_COMPANION_APPEARANCE_ADVANCE;
+    }
+    return 1;
+}
+
+int dc_classify_devil_shooter_companion_active_timer(
+    const uint8_t* const work_ram,
+    const size_t work_ram_size,
+    const uint8_t slot,
+    dc_devil_shooter_companion_active_timer* const timer)
+{
+    const size_t timer_offset = 0x1B00U + (size_t)slot;
+    const size_t appearance_offset = 0x1980U + (size_t)slot;
+
+    if (work_ram == NULL || timer == NULL || (slot != 0x0AU && slot != 0x0DU)
+        || work_ram_size <= timer_offset || work_ram_size <= appearance_offset) {
+        return 0;
+    }
+
+    timer->slot = slot;
+    timer->timer = work_ram[timer_offset];
+    timer->decremented_timer = (uint8_t)(timer->timer - 1U);
+    timer->appearance = work_ram[appearance_offset];
+    timer->advanced_appearance = timer->appearance;
+    if (timer->decremented_timer != 0U) {
+        timer->path = DC_DEVIL_SHOOTER_COMPANION_ACTIVE_TIMER_WAIT;
+    } else {
+        timer->advanced_appearance = (uint8_t)(timer->appearance + 1U);
+        const uint8_t terminal_appearance = slot == 0x0AU ? 4U : 5U;
+        timer->path = timer->advanced_appearance == terminal_appearance
+            ? DC_DEVIL_SHOOTER_COMPANION_ACTIVE_TIMER_RESET
+            : DC_DEVIL_SHOOTER_COMPANION_ACTIVE_TIMER_ADVANCE;
+    }
     return 1;
 }
 
@@ -241,6 +1000,523 @@ int dc_classify_tower_hit_gate(
     gate->path = (gate->collision_state & 0x80U) != 0U
         ? DC_TOWER_HIT_GATE_TRIGGERED
         : DC_TOWER_HIT_GATE_IDLE;
+    return 1;
+}
+
+int dc_classify_tower_initializer(
+    const uint8_t* const work_ram,
+    const size_t work_ram_size,
+    const uint8_t slot,
+    dc_tower_initializer* const initializer)
+{
+    if (work_ram == NULL || initializer == NULL || slot != 0x2DU
+        || work_ram_size <= 0x1FADU) {
+        return 0;
+    }
+
+    initializer->slot = slot;
+    return 1;
+}
+
+int dc_classify_bumper_initializer(
+    const uint8_t* const work_ram,
+    const size_t work_ram_size,
+    const uint8_t slot,
+    dc_bumper_initializer* const initializer)
+{
+    if (work_ram == NULL || initializer == NULL
+        || (slot != 0x14U && slot != 0x15U) || work_ram_size <= 0x1F95U) {
+        return 0;
+    }
+
+    initializer->slot = slot;
+    initializer->side = (uint8_t)(slot - 0x14U);
+    return 1;
+}
+
+int dc_classify_bumper_child_initializer(
+    const uint8_t* const work_ram,
+    const size_t work_ram_size,
+    const uint8_t parent_slot,
+    const uint8_t child_slot,
+    dc_bumper_child_initializer* const initializer)
+{
+    if (work_ram == NULL || initializer == NULL || parent_slot != 0x15U
+        || child_slot < 0x71U || child_slot > 0x76U
+        || work_ram_size <= 0x1FF6U) {
+        return 0;
+    }
+
+    initializer->parent_slot = parent_slot;
+    initializer->child_slot = child_slot;
+    initializer->parent_horizontal_low = work_ram[0x1180U + parent_slot];
+    initializer->parent_horizontal_high = work_ram[0x1200U + parent_slot];
+    initializer->parent_vertical_low = work_ram[0x1300U + parent_slot];
+    initializer->parent_vertical_high = work_ram[0x1380U + parent_slot];
+    initializer->parent_appearance = work_ram[0x1E00U + parent_slot];
+    return 1;
+}
+
+int dc_classify_small_soldier_source_initializer(
+    const uint8_t* const work_ram,
+    const size_t work_ram_size,
+    const uint8_t slot,
+    dc_small_soldier_source_initializer* const initializer)
+{
+    if (work_ram == NULL || initializer == NULL
+        || (slot != 0x34U && slot != 0x35U) || work_ram_size <= 0x1FB5U) {
+        return 0;
+    }
+
+    initializer->slot = slot;
+    initializer->side = (uint8_t)(slot - 0x34U);
+    return 1;
+}
+
+int dc_classify_small_soldier_delayed_spawn_gate(
+    const uint8_t* const work_ram,
+    const size_t work_ram_size,
+    const uint8_t slot,
+    dc_small_soldier_delayed_spawn_gate* const gate)
+{
+    const size_t timer_offset = 0x1A00U + (size_t)slot;
+
+    if (work_ram == NULL || gate == NULL
+        || (slot != 0x34U && slot != 0x35U)
+        || work_ram_size <= timer_offset) {
+        return 0;
+    }
+
+    gate->slot = slot;
+    gate->timer_before = work_ram[timer_offset];
+    gate->timer_after = (uint8_t)(gate->timer_before - 1U);
+    gate->path = gate->timer_after != 0U
+        ? DC_SMALL_SOLDIER_DELAYED_SPAWN_GATE_WAITING
+        : DC_SMALL_SOLDIER_DELAYED_SPAWN_GATE_ACTIVE;
+    return 1;
+}
+
+int dc_classify_giant_face_controller_initializer(
+    const uint8_t* const work_ram,
+    const size_t work_ram_size,
+    const uint8_t slot,
+    const uint8_t stage,
+    dc_giant_face_controller_initializer* const initializer)
+{
+    if (work_ram == NULL || initializer == NULL || slot != 0x36U
+        || stage > 2U || work_ram_size <= 0x1FB6U) {
+        return 0;
+    }
+
+    initializer->slot = slot;
+    initializer->stage = stage;
+    initializer->persisted_form = work_ram[0x0258U];
+    return stage != 2U || initializer->persisted_form == 0U;
+}
+
+int dc_classify_giant_face_animator_initializer(
+    const uint8_t* const work_ram,
+    const size_t work_ram_size,
+    const uint8_t slot,
+    dc_giant_face_animator_initializer* const initializer)
+{
+    if (work_ram == NULL || initializer == NULL || slot != 0x37U
+        || work_ram_size <= 0x1FB7U) {
+        return 0;
+    }
+    initializer->slot = slot;
+    return 1;
+}
+
+int dc_classify_giant_face_animator_active_wait(
+    const uint8_t* const work_ram,
+    const size_t work_ram_size,
+    const uint8_t slot,
+    dc_giant_face_animator_active_wait* const wait)
+{
+    const size_t timer_offset = 0x1A00U + (size_t)slot;
+
+    if (work_ram == NULL || wait == NULL || slot != 0x37U
+        || work_ram_size <= timer_offset || work_ram[timer_offset] <= 1U) {
+        return 0;
+    }
+
+    wait->slot = slot;
+    wait->timer = work_ram[timer_offset];
+    wait->decremented_timer = (uint8_t)(wait->timer - 1U);
+    return 1;
+}
+
+int dc_classify_giant_face_crown_initializer(
+    const uint8_t* const work_ram,
+    const size_t work_ram_size,
+    const uint8_t slot,
+    dc_giant_face_crown_initializer* const initializer)
+{
+    if (work_ram == NULL || initializer == NULL || slot != 0x39U
+        || work_ram_size <= 0x1FB9U) {
+        return 0;
+    }
+    initializer->slot = slot;
+    return 1;
+}
+
+int dc_classify_giant_face_mouth_initializer(
+    const uint8_t* const work_ram,
+    const size_t work_ram_size,
+    const uint8_t slot,
+    dc_giant_face_mouth_initializer* const initializer)
+{
+    if (work_ram == NULL || initializer == NULL || slot != 0x38U
+        || work_ram_size <= 0x1FB8U) {
+        return 0;
+    }
+    initializer->slot = slot;
+    return 1;
+}
+
+int dc_classify_knight_hit_gate(
+    const uint8_t* const work_ram,
+    const size_t work_ram_size,
+    const uint8_t slot,
+    dc_knight_hit_gate* const gate)
+{
+    const size_t collision_offset = 0x1800U + (size_t)slot;
+
+    if (work_ram == NULL || gate == NULL
+        || (slot < 0x3AU || slot > 0x3DU)
+        || work_ram_size <= collision_offset) {
+        return 0;
+    }
+
+    gate->slot = slot;
+    gate->collision_state = work_ram[collision_offset];
+    gate->path = (gate->collision_state & 0x80U) != 0U
+        ? DC_KNIGHT_HIT_GATE_TRIGGERED
+        : DC_KNIGHT_HIT_GATE_IDLE;
+    return 1;
+}
+
+int dc_classify_knight_initializer(
+    const uint8_t* const work_ram,
+    const size_t work_ram_size,
+    const uint8_t slot,
+    dc_knight_initializer* const initializer)
+{
+    if (work_ram == NULL || initializer == NULL
+        || slot < 0x3AU || slot > 0x3DU
+        || work_ram_size <= 0x1FBDU) {
+        return 0;
+    }
+
+    initializer->slot = slot;
+    initializer->queue_index = (uint8_t)(slot - 0x3AU);
+    return 1;
+}
+
+int dc_classify_side_spider_initializer(
+    const uint8_t* const work_ram,
+    const size_t work_ram_size,
+    const uint8_t slot,
+    const uint8_t side_parameter,
+    dc_side_spider_initializer* const initializer)
+{
+    if (work_ram == NULL || initializer == NULL
+        || (slot != 0x28U && slot != 0x29U)
+        || side_parameter != (uint8_t)(slot - 0x28U)
+        || work_ram_size <= 0x1FA9U) {
+        return 0;
+    }
+
+    initializer->slot = slot;
+    initializer->side_parameter = side_parameter;
+    return 1;
+}
+
+int dc_classify_front_spider_initializer(
+    const uint8_t* const work_ram,
+    const size_t work_ram_size,
+    const uint8_t slot,
+    const uint8_t side_parameter,
+    dc_front_spider_initializer* const initializer)
+{
+    if (work_ram == NULL || initializer == NULL
+        || (slot != 0x26U && slot != 0x27U)
+        || side_parameter != (uint8_t)(slot - 0x26U)
+        || work_ram_size <= 0x1FA7U) {
+        return 0;
+    }
+
+    initializer->slot = slot;
+    initializer->side_parameter = side_parameter;
+    return 1;
+}
+
+int dc_classify_knight_waiting_parent(
+    const uint8_t* const work_ram,
+    const size_t work_ram_size,
+    const uint8_t slot,
+    dc_knight_waiting_parent* const parent)
+{
+    const size_t queue_index_offset = 0x1B00U + (size_t)slot;
+    const size_t collision_offset = 0x1800U + (size_t)slot;
+
+    if (work_ram == NULL || parent == NULL
+        || slot < 0x3AU || slot > 0x3DU
+        || work_ram_size <= queue_index_offset
+        || work_ram_size <= collision_offset) {
+        return 0;
+    }
+
+    parent->slot = slot;
+    parent->queue_index = work_ram[queue_index_offset];
+    if (parent->queue_index > 3U
+        || work_ram_size <= 0x0D06U + (size_t)parent->queue_index) {
+        return 0;
+    }
+    parent->door_handshake =
+        work_ram[0x0D06U + (size_t)parent->queue_index];
+    parent->collision_state = work_ram[collision_offset];
+    if ((parent->door_handshake & 0x01U) != 0U) {
+        parent->path = DC_KNIGHT_WAITING_PARENT_ACTIVATING;
+    } else if ((parent->collision_state & 0x80U) != 0U) {
+        parent->path = DC_KNIGHT_WAITING_PARENT_HIT;
+    } else {
+        parent->path = DC_KNIGHT_WAITING_PARENT_WAITING;
+    }
+    return 1;
+}
+
+int dc_classify_spider_appearance(
+    const uint8_t* const work_ram,
+    const size_t work_ram_size,
+    const uint8_t slot,
+    dc_spider_appearance* const appearance)
+{
+    const size_t timer_offset = 0x1A00U + (size_t)slot;
+    const size_t appearance_offset = 0x1980U + (size_t)slot;
+
+    if (work_ram == NULL || appearance == NULL || slot < 0x26U
+        || slot > 0x29U || work_ram_size <= timer_offset
+        || work_ram_size <= appearance_offset) {
+        return 0;
+    }
+
+    appearance->slot = slot;
+    appearance->timer = work_ram[timer_offset];
+    appearance->decremented_timer = (uint8_t)(appearance->timer - 1U);
+    appearance->appearance = work_ram[appearance_offset];
+    appearance->advanced_appearance =
+        (uint8_t)(appearance->appearance + 1U);
+    if (appearance->decremented_timer != 0U) {
+        appearance->path = DC_SPIDER_APPEARANCE_WAITING;
+    } else if (appearance->advanced_appearance < 4U) {
+        appearance->path = DC_SPIDER_APPEARANCE_ADVANCE;
+    } else {
+        appearance->path = DC_SPIDER_APPEARANCE_RESET;
+    }
+    return 1;
+}
+
+int dc_classify_tower_insect_animation(
+    const uint8_t* const work_ram,
+    const size_t work_ram_size,
+    const uint8_t slot,
+    dc_tower_insect_animation* const animation)
+{
+    static const uint8_t frame_table[32] = {
+        0x00U, 0x01U, 0x02U, 0x01U, 0x03U, 0x04U, 0x05U, 0x04U,
+        0x06U, 0x07U, 0x08U, 0x07U, 0x09U, 0x0AU, 0x0BU, 0x0AU,
+        0x0CU, 0x0DU, 0x0EU, 0x0DU, 0x0FU, 0x10U, 0x11U, 0x10U,
+        0x12U, 0x13U, 0x14U, 0x13U, 0x15U, 0x16U, 0x17U, 0x16U,
+    };
+    const size_t cadence_offset = 0x1A80U + (size_t)slot;
+    const size_t phase_offset = 0x1C80U + (size_t)slot;
+    const size_t timer_offset = 0x1A00U + (size_t)slot;
+    uint8_t lookup_index;
+
+    if (work_ram == NULL || animation == NULL
+        || (slot != 0x64U && slot != 0x67U && slot != 0x6AU
+            && slot != 0x6DU)
+        || work_ram_size <= cadence_offset || work_ram_size <= phase_offset
+        || work_ram_size <= timer_offset) {
+        return 0;
+    }
+
+    animation->slot = slot;
+    animation->cadence = work_ram[cadence_offset];
+    animation->phase = work_ram[phase_offset];
+    lookup_index = (uint8_t)((uint8_t)((animation->cadence & 0xFEU) << 1U)
+        + (uint8_t)(animation->phase & 0x03U));
+    if (lookup_index >= sizeof(frame_table)) {
+        return 0;
+    }
+    animation->lookup_index = lookup_index;
+    animation->frame = frame_table[lookup_index];
+    animation->timer = work_ram[timer_offset];
+    animation->decremented_timer = (uint8_t)(animation->timer - 1U);
+    animation->advanced_phase = (uint8_t)(animation->phase + 1U);
+    animation->path = animation->decremented_timer != 0U
+        ? DC_TOWER_INSECT_ANIMATION_WAITING
+        : DC_TOWER_INSECT_ANIMATION_ADVANCE;
+    return 1;
+}
+
+int dc_classify_tower_insect_source_initializer(
+    const uint8_t* const work_ram,
+    const size_t work_ram_size,
+    const uint8_t slot,
+    dc_tower_insect_source_initializer* const initializer)
+{
+    if (work_ram == NULL || initializer == NULL || slot != 0x2CU
+        || work_ram_size <= 0x1FACU) {
+        return 0;
+    }
+
+    initializer->slot = slot;
+    return 1;
+}
+
+int dc_classify_tower_insect_source_gate(
+    const uint8_t* const work_ram,
+    const size_t work_ram_size,
+    const uint8_t slot,
+    dc_tower_insect_source_gate* const gate)
+{
+    const size_t child_count_offset = 0x0D2BU;
+
+    if (work_ram == NULL || gate == NULL || slot != 0x2CU
+        || work_ram_size <= child_count_offset) {
+        return 0;
+    }
+
+    gate->slot = slot;
+    gate->child_count = work_ram[child_count_offset];
+    gate->path = gate->child_count != 0U
+        ? DC_TOWER_INSECT_SOURCE_GATE_WAITING
+        : DC_TOWER_INSECT_SOURCE_GATE_ACTIVE;
+    return 1;
+}
+
+int dc_classify_tower_insect_source_countdown_wait(
+    const uint8_t* const work_ram,
+    const size_t work_ram_size,
+    const uint8_t slot,
+    dc_tower_insect_source_countdown_wait* const wait)
+{
+    const size_t timer_offset = 0x1A00U + (size_t)slot;
+
+    if (work_ram == NULL || wait == NULL || slot != 0x2CU
+        || work_ram_size <= timer_offset) {
+        return 0;
+    }
+
+    wait->slot = slot;
+    wait->timer = work_ram[timer_offset];
+    wait->decremented_timer = (uint8_t)(wait->timer - 1U);
+    return 1;
+}
+
+int dc_classify_small_soldier_source_gate(
+    const uint8_t* const work_ram,
+    const size_t work_ram_size,
+    const uint8_t slot,
+    dc_small_soldier_source_gate* const gate)
+{
+    size_t group_count_offset;
+
+    if (slot == 0x34U) {
+        group_count_offset = 0x0D16U;
+    } else if (slot == 0x35U) {
+        group_count_offset = 0x0D17U;
+    } else {
+        return 0;
+    }
+    if (work_ram == NULL || gate == NULL
+        || work_ram_size <= group_count_offset) {
+        return 0;
+    }
+
+    gate->slot = slot;
+    gate->group_count = work_ram[group_count_offset];
+    gate->path = gate->group_count != 0U
+        ? DC_SMALL_SOLDIER_SOURCE_GATE_WAITING
+        : DC_SMALL_SOLDIER_SOURCE_GATE_ACTIVE;
+    return 1;
+}
+
+int dc_classify_sorcerer_color_gate(
+    const uint8_t* const work_ram,
+    const size_t work_ram_size,
+    const uint8_t slot,
+    dc_sorcerer_color_gate* const gate)
+{
+    const size_t shared_color_offset = 0x0D40U;
+    const size_t cached_color_offset = 0x1980U + (size_t)slot;
+
+    if (work_ram == NULL || gate == NULL || slot != 0x16U
+        || work_ram_size <= shared_color_offset
+        || work_ram_size <= cached_color_offset) {
+        return 0;
+    }
+
+    gate->slot = slot;
+    gate->shared_color = work_ram[shared_color_offset];
+    gate->cached_color = work_ram[cached_color_offset];
+    gate->path = gate->shared_color == gate->cached_color
+        ? DC_SORCERER_COLOR_GATE_WAITING
+        : DC_SORCERER_COLOR_GATE_ACTIVE;
+    return 1;
+}
+
+int dc_classify_sorcerer_deployment_initializer(
+    const uint8_t* const work_ram,
+    const size_t work_ram_size,
+    const uint8_t slot,
+    dc_sorcerer_deployment_initializer* const initializer)
+{
+    static const uint8_t initial_delay_low[8] = {
+        0x00U, 0x2CU, 0x58U, 0x84U, 0xB0U, 0xDCU, 0x08U, 0x34U
+    };
+    const size_t route_offset = 0x1700U + (size_t)slot;
+    const size_t flags_offset = 0x1080U + (size_t)slot;
+
+    if (work_ram == NULL || initializer == NULL || slot < 0x17U
+        || slot > 0x1EU || work_ram_size <= route_offset
+        || work_ram_size <= flags_offset || work_ram_size <= 0x0D0FU) {
+        return 0;
+    }
+
+    initializer->slot = slot;
+    initializer->route_index = work_ram[route_offset];
+    if (initializer->route_index > 7U
+        || initializer->route_index != (uint8_t)(slot - 0x17U)) {
+        return 0;
+    }
+    initializer->flags_after = (uint8_t)(work_ram[flags_offset] | 0x60U);
+    initializer->collision_selector = work_ram[0x0D0BU];
+    initializer->live_count_after = (uint8_t)(work_ram[0x0D0FU] + 1U);
+    initializer->initial_delay_low =
+        initial_delay_low[initializer->route_index];
+    initializer->initial_delay_high = initializer->route_index < 6U ? 0U : 1U;
+    return 1;
+}
+
+int dc_classify_sorcerer_staging_initializer(
+    const uint8_t* const work_ram,
+    const size_t work_ram_size,
+    const uint8_t slot,
+    const uint8_t route_index,
+    dc_sorcerer_staging_initializer* const initializer)
+{
+    if (work_ram == NULL || initializer == NULL || slot < 0x17U
+        || slot > 0x1EU || route_index > 7U
+        || route_index != (uint8_t)(slot - 0x17U)
+        || work_ram_size <= 0x1F9EU) {
+        return 0;
+    }
+    initializer->slot = slot;
+    initializer->route_index = route_index;
     return 1;
 }
 
@@ -304,6 +1580,141 @@ int dc_classify_devil_shooter_hit_gate(
     gate->path = (gate->collision_state & 0x80U) != 0U
         ? DC_DEVIL_SHOOTER_HIT_GATE_TRIGGERED
         : DC_DEVIL_SHOOTER_HIT_GATE_IDLE;
+    return 1;
+}
+
+int dc_classify_devil_shooter_release_delay_gate(
+    const uint8_t* const work_ram,
+    const size_t work_ram_size,
+    const uint8_t slot,
+    dc_devil_shooter_release_delay_gate* const gate)
+{
+    const size_t collision_offset = 0x1800U + (size_t)slot;
+    if (work_ram == NULL || gate == NULL || slot != 0x0EU
+        || work_ram_size <= 0x0254U || collision_offset >= work_ram_size) {
+        return 0;
+    }
+
+    gate->slot = slot;
+    gate->table_mode = work_ram[0x0254U];
+    gate->active_player = work_ram[0x0251U];
+    if ((size_t)gate->active_player > work_ram_size - 1U - 0x0013U) {
+        return 0;
+    }
+    gate->button_input = work_ram[0x0013U + (size_t)gate->active_player];
+    gate->collision_state = work_ram[collision_offset];
+    gate->returns_idle = (uint8_t)(
+        gate->table_mode == 0U
+        && (gate->button_input & 0x01U) == 0U
+        && (gate->collision_state & 0x80U) == 0U);
+    return 1;
+}
+
+int dc_classify_devil_shooter_charge_position(
+    const uint8_t* const work_ram,
+    const size_t work_ram_size,
+    const uint8_t slot,
+    dc_devil_shooter_charge_position* const position)
+{
+    const size_t low_offset = 0x1280U + (size_t)slot;
+    const size_t middle_offset = 0x1300U + (size_t)slot;
+    const size_t high_offset = 0x1380U + (size_t)slot;
+    const size_t charge_base_offset = 0x1E00U + (size_t)slot;
+
+    if (work_ram == NULL || position == NULL || slot != 0x0EU
+        || work_ram_size <= charge_base_offset) {
+        return 0;
+    }
+
+    const uint16_t low_sum = (uint16_t)work_ram[low_offset] + 0x40U;
+    const uint8_t vertical_low = (uint8_t)low_sum;
+    const uint16_t middle_sum = (uint16_t)work_ram[middle_offset]
+        + (uint16_t)(low_sum >> 8U);
+    const uint8_t vertical_middle = (uint8_t)middle_sum;
+    const uint8_t vertical_high = (uint8_t)(work_ram[high_offset]
+        + (uint8_t)(middle_sum >> 8U));
+    const uint8_t charge =
+        (uint8_t)(vertical_middle - work_ram[charge_base_offset]);
+
+    // Charge values at and above $27 enter the separate coordinate-clamp
+    // branch, which is intentionally left with original assembly.
+    if (charge >= 0x27U) {
+        return 0;
+    }
+
+    position->slot = slot;
+    position->vertical_low = vertical_low;
+    position->vertical_middle = vertical_middle;
+    position->vertical_high = vertical_high;
+    position->charge = charge;
+    position->appearance = charge < 0x07U ? 0U
+        : charge < 0x13U               ? 1U
+        : charge < 0x1AU               ? 2U
+        : charge < 0x20U               ? 3U
+                                      : 4U;
+    position->subtract_overflow =
+        ((vertical_middle ^ work_ram[charge_base_offset])
+         & (vertical_middle ^ charge) & 0x80U)
+        != 0U;
+    return 1;
+}
+
+int dc_classify_devil_shooter_charge_retraction(
+    const uint8_t* const work_ram,
+    const size_t work_ram_size,
+    const uint8_t slot,
+    dc_devil_shooter_charge_retraction* const retraction)
+{
+    const size_t low_offset = 0x1280U + (size_t)slot;
+    const size_t middle_offset = 0x1300U + (size_t)slot;
+    const size_t high_offset = 0x1380U + (size_t)slot;
+    const size_t charge_base_offset = 0x1E00U + (size_t)slot;
+    const size_t high_base_offset = 0x1E80U + (size_t)slot;
+
+    if (work_ram == NULL || retraction == NULL || slot != 0x0EU
+        || work_ram_size <= high_base_offset) {
+        return 0;
+    }
+
+    const uint8_t vertical_low = work_ram[low_offset];
+    const uint16_t middle_difference = (uint16_t)work_ram[middle_offset]
+        - 0x02U;
+    const uint8_t vertical_middle = (uint8_t)middle_difference;
+    const uint8_t vertical_high = (uint8_t)(work_ram[high_offset]
+        - (middle_difference > 0xFFU ? 1U : 0U));
+    const uint8_t charge =
+        (uint8_t)(vertical_middle - work_ram[charge_base_offset]);
+    const uint8_t charge_borrow = vertical_middle
+        < work_ram[charge_base_offset]
+        ? 1U
+        : 0U;
+    const uint8_t high_difference =
+        (uint8_t)(vertical_high - work_ram[high_base_offset]
+            - charge_borrow);
+
+    // The BPL after the high-byte subtraction takes the bounded path only
+    // when bit seven is clear. The negative path clamps to the base position
+    // and is intentionally left with original assembly.
+    if ((high_difference & 0x80U) != 0U) {
+        return 0;
+    }
+
+    retraction->slot = slot;
+    retraction->vertical_low = vertical_low;
+    retraction->vertical_middle = vertical_middle;
+    retraction->vertical_high = vertical_high;
+    retraction->charge = charge;
+    retraction->has_appearance_write = charge != 0U;
+    retraction->appearance = charge < 0x07U ? 0U
+        : charge < 0x13U               ? 1U
+        : charge < 0x1AU               ? 2U
+        : charge < 0x20U               ? 3U
+                                      : 4U;
+    retraction->high_subtract_overflow =
+        ((vertical_high
+          ^ (uint8_t)(work_ram[high_base_offset] + charge_borrow))
+         & (vertical_high ^ high_difference) & 0x80U)
+        != 0U;
     return 1;
 }
 
@@ -387,6 +1798,21 @@ int dc_classify_devils_coffin_gate(
     } else {
         gate->path = DC_DEVILS_COFFIN_GATE_IDLE;
     }
+    return 1;
+}
+
+int dc_classify_devils_coffin_initializer(
+    const uint8_t* const work_ram,
+    const size_t work_ram_size,
+    const uint8_t slot,
+    dc_devils_coffin_initializer* const initializer)
+{
+    if (work_ram == NULL || initializer == NULL || slot != 0x0FU
+        || work_ram_size <= 0x198FU) {
+        return 0;
+    }
+
+    initializer->slot = slot;
     return 1;
 }
 
@@ -511,6 +1937,51 @@ int dc_classify_fixed_scheduler_gate(
     return 1;
 }
 
+int dc_classify_fixed_scheduler_initializer(
+    const uint8_t* const work_ram,
+    const size_t work_ram_size,
+    const uint8_t slot,
+    dc_fixed_scheduler_initializer* const initializer)
+{
+    if (work_ram == NULL || initializer == NULL || slot != 0x5CU
+        || work_ram_size <= 0x1A5CU) {
+        return 0;
+    }
+
+    initializer->slot = slot;
+    return 1;
+}
+
+int dc_classify_fixed_marker_initializer(
+    const uint8_t* const work_ram,
+    const size_t work_ram_size,
+    const uint8_t slot,
+    dc_fixed_marker_initializer* const initializer)
+{
+    if (work_ram == NULL || initializer == NULL || slot != 0x5DU
+        || work_ram_size <= 0x1E5DU) {
+        return 0;
+    }
+
+    initializer->slot = slot;
+    return 1;
+}
+
+int dc_classify_fixed_response_initializer(
+    const uint8_t* const work_ram,
+    const size_t work_ram_size,
+    const uint8_t slot,
+    dc_fixed_response_initializer* const initializer)
+{
+    if (work_ram == NULL || initializer == NULL || slot != 0x5EU
+        || work_ram_size <= 0x0D38U) {
+        return 0;
+    }
+
+    initializer->slot = slot;
+    return 1;
+}
+
 int dc_classify_fixed_response_gate(
     const uint8_t* const work_ram,
     const size_t work_ram_size,
@@ -589,6 +2060,36 @@ int dc_classify_dragon_egg_hit_gate(
     gate->path = (gate->collision_state & 0x80U) != 0U
         ? DC_DRAGON_EGG_HIT_GATE_TRIGGERED
         : DC_DRAGON_EGG_HIT_GATE_IDLE;
+    return 1;
+}
+
+int dc_classify_giant_door_initializer(
+    const uint8_t* const work_ram,
+    const size_t work_ram_size,
+    const uint8_t slot,
+    dc_giant_door_initializer* const initializer)
+{
+    if (work_ram == NULL || initializer == NULL || slot != 0x4CU
+        || work_ram_size <= 0x1FCCU) {
+        return 0;
+    }
+
+    initializer->slot = slot;
+    return 1;
+}
+
+int dc_classify_walled_star_initializer(
+    const uint8_t* const work_ram,
+    const size_t work_ram_size,
+    const uint8_t slot,
+    dc_walled_star_initializer* const initializer)
+{
+    if (work_ram == NULL || initializer == NULL || slot != 0x5BU
+        || work_ram_size <= 0x1FDBU) {
+        return 0;
+    }
+
+    initializer->slot = slot;
     return 1;
 }
 
@@ -729,6 +2230,28 @@ int dc_classify_giant_face_helmet_controller(
     return 1;
 }
 
+int dc_classify_giant_face_helmet_initializer(
+    const uint8_t* const work_ram,
+    const size_t work_ram_size,
+    const uint8_t slot,
+    const uint8_t selector,
+    dc_giant_face_helmet_initializer* const initializer)
+{
+    const size_t collision_offset = 0x1800U + (size_t)slot;
+
+    if (work_ram == NULL || initializer == NULL
+        || (slot != 0x2AU && slot != 0x2BU)
+        || selector != (slot == 0x2AU ? 0x13U : 0x1DU)
+        || work_ram_size <= collision_offset || work_ram_size <= 0x1FABU
+        || (work_ram[collision_offset] & 0x80U) != 0U) {
+        return 0;
+    }
+
+    initializer->slot = slot;
+    initializer->selector = selector;
+    return 1;
+}
+
 int dc_classify_four_star_wall_pocket_controller(
     const uint8_t* const work_ram,
     const size_t work_ram_size,
@@ -740,6 +2263,114 @@ int dc_classify_four_star_wall_pocket_controller(
         work_ram_size,
         slot,
         controller);
+}
+
+int dc_classify_walled_star_access_controller(
+    const uint8_t* const work_ram,
+    const size_t work_ram_size,
+    const uint8_t slot,
+    dc_walled_star_access_controller* const controller)
+{
+    return dc_classify_giant_face_helmet_controller(
+        work_ram,
+        work_ram_size,
+        slot,
+        controller);
+}
+
+int dc_classify_walled_star_access_initializer(
+    const uint8_t* const work_ram,
+    const size_t work_ram_size,
+    const uint8_t slot,
+    dc_walled_star_access_initializer* const initializer)
+{
+    if (work_ram == NULL || initializer == NULL || slot != 0x11U
+        || work_ram_size <= 0x1F91U) {
+        return 0;
+    }
+
+    initializer->slot = slot;
+    return 1;
+}
+
+int dc_classify_side_star_initializer(
+    const uint8_t* const work_ram,
+    const size_t work_ram_size,
+    const uint8_t slot,
+    dc_side_star_initializer* const initializer)
+{
+    if (work_ram == NULL || initializer == NULL
+        || (slot != 0x10U && slot != 0x12U) || work_ram_size <= 0x1F92U) {
+        return 0;
+    }
+
+    initializer->slot = slot;
+    if (slot == 0x10U) {
+        initializer->appearance = 0x1CU;
+        initializer->first_dispatch = 0x4BBCU;
+        initializer->steady_dispatch = 0x4BD5U;
+    } else {
+        initializer->appearance = 0x0AU;
+        initializer->first_dispatch = 0x4BF1U;
+        initializer->steady_dispatch = 0x4C0AU;
+    }
+    return 1;
+}
+
+int dc_classify_side_star_access_controller(
+    const uint8_t* const work_ram,
+    const size_t work_ram_size,
+    const uint8_t slot,
+    dc_side_star_access_controller* const controller)
+{
+    return dc_classify_giant_face_helmet_controller(
+        work_ram,
+        work_ram_size,
+        slot,
+        controller);
+}
+
+int dc_classify_four_star_wall_pocket_animation(
+    const uint8_t* const work_ram,
+    const size_t work_ram_size,
+    const uint8_t slot,
+    dc_four_star_wall_pocket_animation* const animation)
+{
+    const size_t timer_offset = 0x1A00U + (size_t)slot;
+    const size_t appearance_offset = 0x1980U;
+
+    if (work_ram == NULL || animation == NULL || slot > 0x7FU
+        || work_ram_size <= timer_offset || work_ram_size <= appearance_offset) {
+        return 0;
+    }
+
+    animation->slot = slot;
+    animation->timer = work_ram[timer_offset];
+    animation->decremented_timer = (uint8_t)(animation->timer - 1U);
+    animation->appearance = work_ram[appearance_offset];
+    animation->advanced_appearance =
+        (uint8_t)(animation->appearance + 1U);
+    if (animation->appearance == 6U) {
+        animation->path = DC_FOUR_STAR_WALL_POCKET_ANIMATION_TRANSITION;
+    } else if (animation->decremented_timer != 0U) {
+        animation->path = DC_FOUR_STAR_WALL_POCKET_ANIMATION_WAITING;
+    } else {
+        animation->path = DC_FOUR_STAR_WALL_POCKET_ANIMATION_ADVANCE;
+    }
+    return 1;
+}
+
+int dc_classify_side_star_bonus_entrance_animation(
+    const uint8_t* const work_ram,
+    const size_t work_ram_size,
+    const uint8_t slot,
+    dc_side_star_bonus_entrance_animation* const animation)
+{
+    if (slot != 0x12U) {
+        return 0;
+    }
+    return dc_classify_four_star_wall_pocket_animation(
+        work_ram, work_ram_size, slot, animation);
 }
 
 int dc_prepare_upper_wall_pocket_hand_initializer(

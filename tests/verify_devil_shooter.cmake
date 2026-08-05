@@ -22,15 +22,15 @@ endif()
 
 set(
     expected_trace_sha256
-    "c5b2500b726c9e161a138880e5f35b1dd306cd9c41e06bfb2994c8716367ec1d"
+    "7ce4e1d5b4304b8d4e490d674a843e111b5575d5a0865830457e3182ac3ac469"
 )
 set(
     expected_call_sha256
-    "0ee9384584f2d5e177ce8580a6dc535c0c8a30c94b3d7dbaf953c97ad96bfdaf"
+    "b52db13b5af2afdf174ba1de2d739504bd78c42356395a84fa78e58c6a0ba037"
 )
 set(
     expected_write_sha256
-    "90557ce04ba3e79132967255e9cdf6747cb4c5628f0f99a15d6f5c402ade0139"
+    "c14f3c56f8917da8eb5a1a6abbbb0152f6a2ec454248349201e6366c68051019"
 )
 set(
     expected_actor_write_sha256
@@ -51,12 +51,28 @@ execute_process(
         "02:5116"
         --observe-hook
         "02:5159"
+        --observe-hook
+        "02:52E3"
+        --observe-hook
+        "02:533B"
+        --replace-hook
+        "02:5159@all"
+        --replace-hook
+        "02:52E3@all"
+        --replace-hook
+        "02:533B@all"
         --routine-trace
         "${trace_output}"
         --routine-call-trace
         "${call_output}"
         --routine-replay
         "02:5116@1"
+        --routine-replay
+        "02:5159@97"
+        --routine-replay
+        "02:52E3@1"
+        --routine-replay
+        "02:533B@2"
         --work-ram-write-range
         "3000-307F"
         --work-ram-write-range
@@ -81,10 +97,18 @@ foreach(expected_line IN ITEMS
     "State census recording complete: 3600 frames"
     "Observe hook 1 entries: 125"
     "Observe hook 2 entries: 101"
-    "Routine trace complete: 226 entries"
-    "Routine call trace complete: 226 calls, 8999 writes"
+    "Observe hook 3 entries: 252"
+    "Observe hook 4 entries: 32"
+    "Native replacement 02:5159@all entries: 4 of 101"
+    "Native replacement 02:52E3@all entries: 137 of 252"
+    "Native replacement 02:533B@all entries: 11 of 32"
+    "Routine trace complete: 510 entries"
+    "Routine call trace complete: 510 calls, 10744 writes"
     "Routine replay 02:5116@1 verified: frame 872"
-    "Routine replay complete: 1 state-normalized calls"
+    "Routine replay 02:5159@97 verified: frame 1181, 96 body cycles, 0 ordered writes"
+    "Routine replay 02:52E3@1 verified: frame 1085, 243 body cycles, 5 ordered writes"
+    "Routine replay 02:533B@2 verified: frame 1066, 327 body cycles, 5 ordered writes"
+    "Routine replay complete: 4 state-normalized calls"
     "Work-RAM write trace complete: 3872 selected writes"
 )
     string(FIND "${recorder_output}" "${expected_line}" line_offset)

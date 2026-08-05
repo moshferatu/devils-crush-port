@@ -26,15 +26,15 @@ set(
 )
 set(
     expected_trace_sha256
-    "bd1bf1250380a6a7c7d87c92d5884e0190584619f1fed96ebd412413c96d8d47"
+    "708911509d4c40cbf8cedb221d68ee4b1ccdfa2338354b0419fc3e57a3e942ea"
 )
 set(
     expected_call_sha256
-    "31f9af5449deeef5395aec78f916dbe54b42d72436c98fd36413c8550173e25a"
+    "4e47497731f54305d39017e573c2f686145afe34b7a678878a726de289162d92"
 )
 set(
     expected_write_sha256
-    "19a322d5efee8660e00e93f759c3b5ff308de8f2727e85becc13ed7b915bf567"
+    "c3555460f6a4c7146fb4ea90b8faa82de50c7427769c20bb93ce2e1b86ccc735"
 )
 
 set(work_ram_output "${OUTPUT}.wram.bin")
@@ -53,6 +53,8 @@ execute_process(
         "3000:3380:03"
         --work-ram-patch
         "3000:3300:00"
+        --replace-hook
+        "01:C7E5@all"
         --observe-hook
         "00:F55C"
         --observe-hook
@@ -63,10 +65,6 @@ execute_process(
         "01:C7BF"
         --observe-hook
         "01:C7E5"
-        --observe-hook
-        "01:C7EA"
-        --observe-hook
-        "01:C80A"
         --observe-hook
         "01:C812"
         --observe-hook
@@ -96,6 +94,7 @@ endif()
 foreach(expected_line IN ITEMS
     "State census recording complete: 3600 frames"
     "Work-RAM patches applied: 2"
+    "Native replacement 01:C7E5@all entries: 1 of 1"
     "Observe hook 1 entries: 33"
     "Observe hook 2 entries: 1"
     "Observe hook 3 entries: 1"
@@ -103,12 +102,10 @@ foreach(expected_line IN ITEMS
     "Observe hook 5 entries: 1"
     "Observe hook 6 entries: 1"
     "Observe hook 7 entries: 1"
-    "Observe hook 8 entries: 1"
-    "Observe hook 9 entries: 1"
-    "Observe hook 10 entries: 29"
-    "Observe hook 11 entries: 332"
-    "Routine trace complete: 402 entries"
-    "Routine call trace complete: 402 calls, 27769 writes"
+    "Observe hook 8 entries: 29"
+    "Observe hook 9 entries: 332"
+    "Routine trace complete: 400 entries"
+    "Routine call trace complete: 400 calls, 27743 writes"
 )
     string(FIND "${recorder_output}" "${expected_line}" line_offset)
     if(line_offset EQUAL -1)

@@ -25,11 +25,11 @@ endif()
 
 set(
     expected_call_sha256
-    "3d4b6d3bb0feca214446a05837ca88e0eaf2751eb49e2e2bfd5828b4a45f4dff"
+    "5a5b2e1fc0edc68a5930c51a0f18714e6ce1f27541b0357718d0ae64c15b8d6f"
 )
 set(
     expected_write_sha256
-    "88c98631164d2f0c64fd2a1a255601c2806cb2fa050bafb4ed28b211f14be4ef"
+    "dc8a4ef320c2acaa1ddf0601f0bbaaff69c83898e48da804b72e1243d9ddea4f"
 )
 
 set(call_output "${OUTPUT}.calls.csv")
@@ -41,11 +41,17 @@ execute_process(
         --record-state-census
         "${OUTPUT}"
         --observe-hook
+        "02:4DC8"
+        --observe-hook
         "02:4DD9"
+        --replace-hook
+        "02:4DC8@all"
         --replace-hook
         "02:4DD9@all"
         --routine-call-trace
         "${call_output}"
+        --routine-replay
+        "02:4DC8@1"
         --routine-replay
         "02:4DD9@1"
         --rom
@@ -64,11 +70,14 @@ endif()
 
 foreach(expected_line IN ITEMS
     "State census recording complete: 3600 frames"
+    "Native replacement 02:4DC8@all entries: 1 of 1"
     "Native replacement 02:4DD9@all entries: 1988 of 1988"
-    "Observe hook 1 entries: 1988"
-    "Routine call trace complete: 1988 calls, 493 writes"
+    "Observe hook 1 entries: 1"
+    "Observe hook 2 entries: 1988"
+    "Routine call trace complete: 1989 calls, 503 writes"
+    "Routine replay 02:4DC8@1 verified: frame 872, 258 body cycles, 10 ordered writes"
     "Routine replay 02:4DD9@1 verified: frame 873, 57 body cycles, 0 ordered writes"
-    "Routine replay complete: 1 state-normalized calls"
+    "Routine replay complete: 2 state-normalized calls"
 )
     string(FIND "${recorder_output}" "${expected_line}" line_offset)
     if(line_offset EQUAL -1)
@@ -103,5 +112,5 @@ endforeach()
 
 message(
     STATUS
-    "Semantic 4DD9 dormant gate covers all 1,988 calls with checkpointed interrupts."
+    "Semantic 4DC8 initializer and 4DD9 dormant gate cover all 1,989 Eyeball calls."
 )

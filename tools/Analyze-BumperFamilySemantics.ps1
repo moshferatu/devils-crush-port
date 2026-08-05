@@ -192,16 +192,45 @@ Assert-RomBytes $rom 0x0079DE @(
 Assert-RomBytes $rom 0x00202A @(0x4C, 0x4F, 0xF5) "Score entry"
 Assert-RomBytes $rom 0x002087 @(0x4C, 0xFD, 0xEC) "Audio-command entry"
 
-$calls = @(Import-TraceCsv $CallPath)
-$writes = @(Import-TraceCsv $WritePath)
+$allCalls = @(Import-TraceCsv $CallPath)
+$allWrites = @(Import-TraceCsv $WritePath)
 $actorWrites = @(Import-TraceCsv $ActorWritePath)
+$initializers = @(
+    $allCalls |
+        Where-Object {
+            $_.physical_bank -eq "03" -and
+            ($_.logical_pc -eq "789A" -or $_.logical_pc -eq "78A4")
+        }
+)
+$calls = @(
+    $allCalls |
+        Where-Object {
+            $_.physical_bank -eq "03" -and $_.logical_pc -eq "78C7"
+        }
+)
+$bumperCallSequences = @{}
+$callsBySequence = @{}
+foreach ($call in $calls) {
+    $sequence = [int] $call.sequence
+    $bumperCallSequences[$sequence] = $true
+    $callsBySequence[$sequence] = $call
+}
+$writes = @(
+    $allWrites |
+        Where-Object {
+            $bumperCallSequences.ContainsKey([int] $_.call_sequence)
+        }
+)
 if (
+    $initializers.Count -ne 2 -or
+    [int] $initializers[0].body_master_cycles -ne 342 -or
+    [int] $initializers[1].body_master_cycles -ne 336 -or
     $calls.Count -ne 3468 -or
     $writes.Count -ne 3127 -or
     $actorWrites.Count -ne 3872
 ) {
     throw (
-        "Expected 3,468 bumper calls, 3,127 scoped writes, and 3,872 " +
+        "Expected two Bumper initializers, 3,468 steady calls, 3,127 scoped writes, and 3,872 " +
         "actor identity writes."
     )
 }
@@ -209,7 +238,7 @@ if (
 for ($index = 0; $index -lt $calls.Count; ++$index) {
     $call = $calls[$index]
     if (
-        [int] $call.sequence -ne $index + 1 -or
+        [int] $call.sequence -ne $initializers.Count + $index + 1 -or
         $call.physical_bank -ne "03" -or
         $call.logical_pc -ne "78C7" -or
         $call.caller_pc -ne "C51D" -or
@@ -272,7 +301,7 @@ if ($hitMarkers.Count -ne 11) {
 
 for ($index = 0; $index -lt $hitMarkers.Count; ++$index) {
     $sequence = [int] $hitMarkers[$index].call_sequence
-    $call = $calls[$sequence - 1]
+    $call = $callsBySequence[$sequence]
     $slot = [Convert]::ToInt32($expectedHitSlots[$index], 16)
     $callWrites = @(
         $writes |
@@ -306,7 +335,7 @@ for ($index = 0; $index -lt $hitMarkers.Count; ++$index) {
             }
     )
     if (
-        $sequence -ne $expectedHitSequences[$index] -or
+        $sequence - $initializers.Count -ne $expectedHitSequences[$index] -or
         [int] $call.frame -ne $expectedHitFrames[$index] -or
         $call.input_x -ne $expectedHitSlots[$index] -or
         $phaseWrites.Count -ne 1 -or
@@ -355,7 +384,7 @@ $interruptOnlyCalls = @(
     $calls |
         Where-Object {
             [int] $_.write_count -gt 0 -and
-            [int] $_.sequence -notin $expectedHitSequences
+            ([int] $_.sequence - $initializers.Count) -notin $expectedHitSequences
         }
 )
 if ($zeroWriteCalls.Count -ne 3419 -or $interruptOnlyCalls.Count -ne 38) {

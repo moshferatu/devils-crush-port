@@ -262,15 +262,15 @@ for ($frame = 2962; $frame -le 3600; ++$frame) {
 }
 
 $trace = Import-TraceCsv $TracePath
-if ($trace.Count -ne 402) {
-    throw "Expected 402 ordered entries, found $($trace.Count)."
+if ($trace.Count -ne 400) {
+    throw "Expected 400 ordered entries, found $($trace.Count)."
 }
 $eventEntries = @(
     $trace |
         Where-Object {
             $_.logical_pc -in @(
                 "C786", "C7B0", "C7BF", "C7E5",
-                "C7EA", "C80A", "C812", "4003"
+                "C812", "4003"
             )
         } |
         ForEach-Object {
@@ -282,8 +282,6 @@ $expectedEventEntries = @(
     "3016:01:C7B0",
     "3016:01:C7BF",
     "3271:01:C7E5",
-    "3271:01:C7EA",
-    "3271:01:C80A",
     "3287:01:C812",
     "3287:02:4003"
 )
@@ -302,8 +300,8 @@ Assert-GlyphStream $trace 3287 @(
 ) "Post-drain score and remaining-ball glyph stream"
 
 $calls = Import-TraceCsv $CallPath
-if ($calls.Count -ne 402) {
-    throw "Expected 402 bounded calls, found $($calls.Count)."
+if ($calls.Count -ne 400) {
+    throw "Expected 400 bounded calls, found $($calls.Count)."
 }
 $scoreCalls = @($calls | Where-Object logical_pc -eq "F55C")
 $panelCalls = @($calls | Where-Object logical_pc -eq "7266")
@@ -330,8 +328,6 @@ $expectedDecisionCalls = @{
     C7B0 = @(3016, 4806, 114)
     C7BF = @(3016, 4752, 114)
     C7E5 = @(3271, 366, 13)
-    C7EA = @(3271, 345, 13)
-    C80A = @(3271, 318, 13)
     C812 = @(3287, 105072, 2268)
 }
 foreach ($pc in $expectedDecisionCalls.Keys) {
@@ -360,8 +356,8 @@ if (
 }
 
 $writes = Import-TraceCsv $WritePath
-if ($writes.Count -ne 27769) {
-    throw "Expected 27,769 scoped writes, found $($writes.Count)."
+if ($writes.Count -ne 27743) {
+    throw "Expected 27,743 scoped writes, found $($writes.Count)."
 }
 $directStorePcs = @("F587", "F58F", "F597", "F5A5")
 $expectedOffsets = @("0205", "020C", "0213", "0CC0")

@@ -1,6 +1,6 @@
 # Project Progress
 
-Last updated: 2026-07-31
+Last updated: 2026-08-04
 
 ## Current Status
 
@@ -201,14 +201,17 @@ semantic `02:4371@all` writes the activation byte in 21 cycles and returns to
 the original scheduler. The complete 9,857-call/1,682-write artifacts remain
 byte-identical in Debug and Release.
 
-Semantic `02:4DD9@all` now covers the Giant Skeleton's Eyeball activation
-gate's dormant path. It reads the Dragon's-Egg completion latch `$2D20` and
-session flags `$53`, then reproduces the two masks, branches, accumulator,
-flags, and 57-cycle return through six instruction checkpoints. All 1,988
-route calls execute natively, including 37 original interrupt-handler
-passages; the complete 1,988-call/493-write artifacts remain byte-identical
-in Debug and Release. Opening and final-animation paths remain available as
-assembly fallback when their state becomes active.
+Semantic `02:4DC8/4DD9@all` now covers the Giant Skeleton's Eyeball
+initializer and activation gate's dormant path. The fixed slot-`$2F`
+initializer clears the transient flag/latch/state fields and installs its
+steady script through the exact 258-cycle, ten-write helper transcript. The
+gate reads the Dragon's-Egg completion latch `$2D20` and session flags `$53`,
+then reproduces the two masks, branches, accumulator, flags, and 57-cycle
+return through six instruction checkpoints. All 1,988 route gate calls plus
+the one initializer execute natively, including 37 original interrupt-handler
+passages; the complete 1,989-call/503-write expanded artifact remains
+byte-identical in Release. Opening and final-animation paths remain available
+as assembly fallback when their state becomes active.
 
 Semantic `02:4FC1@all` now covers the three Mercy Stars' activation gate's
 not-last-ball path. It reads normal-table mode `$2254`, decrements remaining
@@ -367,6 +370,17 @@ continuation: it writes the catch presentation/state fields and composes
 native `01:C5C9` to install dispatch `02:52C3`. The complete
 125-call/116-write outer artifacts and the focused one-call/nine-write
 continuation artifacts remain byte-identical in Debug and Release.
+Semantic `02:5159@all` now also replaces the four exact 96-cycle, zero-write
+released-Button-I returns for fixed Shooter slot `$0E`; held charge, occupied,
+alternate-mode, and launch paths remain assembly-backed.
+Semantic `02:52E3@all` now replaces 137 horizon-safe normal charge-position
+calls across the main Shooter's two natural callers, preserving its exact
+five stores and 243/261/279/297-cycle timelines; event/IRQ scopes and the
+capped-charge coordinate path remain assembly-backed.
+Semantic `02:533B@all` now replaces 11 horizon-safe charge-retraction calls
+across the Shooter catch and launch-controller callers, preserving its exact
+four-/five-store 234/273/291/309/327-cycle transcripts; the remaining
+event/IRQ horizons remain assembly-backed.
 
 Semantic `02:54B9@all` now covers all 1,631 left Skeleton Insect trigger
 checks. It preserves the exact two-boundary, 21-cycle clear-trigger return
@@ -1481,7 +1495,7 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
     to guard the absolute-cycle ownership correlation.
 - [x] Bounded the first dynamic table-rule family:
   - Identified the family as the manual's insects living in Tower: fixed
-    source slot `$2C` at `(140,526)` uses `BSR 03:5F78` to create the four
+    source slot `$2C` at `(140,526)` uses `BSR 02:5F78` to create the four
     children and declares a 200-unit group-clear award.
   - Identified `02:5F78` as a four-instance dynamic type-`$82` spawner that
     initializes `$3C00,Y` to 2 and transitions from `02:5FDB` to steady
@@ -3969,7 +3983,11 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
     writes and the complete outer call hash.
   - Shadowed ordinal 1 at frame 873 with exact 21-cycle, zero-write parity
     and post-allocation ordinal 1 at frame 2,425 with exact outer parity.
-- [x] Ported the Giant Skeleton's Eyeball dormant gate `02:4DD9@all`:
+- [x] Ported the Giant Skeleton's Eyeball initializer and dormant gate
+  `02:4DC8/4DD9@all`:
+  - Added a typed fixed-slot initializer classifier and replaced the sole
+    frame-872 setup through its exact 258-cycle, ten-write transcript and
+    final shared-script interrupt boundary.
   - Added a pure C classifier for the Dragon's-Egg completion latch,
     final-animation session flag, and dormant return.
   - Replaced all 1,988 route calls through a six-checkpoint, 57-cycle,
@@ -4041,6 +4059,107 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
     zero-write transcript while preserving 28 original interrupt passages
     and all 364 handler-owned writes.
   - Shadowed ordinal 1 at frame 873 with exact 21-cycle, zero-write parity.
+- [x] Ported the Big-Star active pending gate `02:570A@all`:
+  - Added a pure C classifier for `$2D04`'s two pending direction bits;
+    unrelated high bits retain the original clear-and-return behavior.
+  - Replaced 489 of 490 controlled active-window calls through seven
+    checkpoints and the 81-cycle `$2D04` clear. Its sole pending-left child
+    `02:5722@all` now also replaces the fixed-slot phase-zero through phase-six
+    velocity/cadence helper: 240 cycles for phase advances and 252 cycles for
+    lower-phase reset or phase-six saturation; all other helper phases remain
+    assembly fallback.
+  - The lower-reset Release artifacts are byte-identical; its required Debug
+    checkpoint has census
+    `84638ea265c2f353cf112b9927bc95b5ece558c3e411336a57dcd7b84b839bf7`
+    with matching entry/call/write artifacts.
+    A separate controlled `$2D18 == 4` Release regression covers the
+    latch-clear tail opposite its normal increment-and-latch exit.
+  - The independently controlled phase-four Release artifacts are
+    byte-identical; the required Debug checkpoint has census
+    `700587830ac9cc82e1f19ac5ee54506410241cc87ef1c42c4e92ea629807b5a8`
+    with matching entry/call/write artifacts.
+  - Independently controlled phase-five and phase-six Release regressions
+    freeze the 240-cycle advance and 252-cycle saturation transcripts.
+    The phase-six Debug census is
+    `a31bfb402382bea7a77e13c7bac7c66164162d2887589ede746b217a5ecda6e7`;
+    its entry/call/write artifacts match Release and assembly.
+  - Shadowed ordinal 2 at frame 1,222 with exact 81-cycle, one-write parity
+    and the child at frame 1,221 with 240-cycle, six-write parity; froze the
+    focused Release census/call artifacts.
+- [x] Ported the Devil-Shooter side-companion dormant leaves
+  `02:53DD/5456@all`:
+  - Added a pure C classifier for the two fixed companion slots and session
+    bit `$53.3`; active-loop states remain assembly fallback.
+  - Replaced 929 of 1,055 left and 926 of 1,085 right calls through the
+    exact 24-cycle zero-write return. The 285 calls within a user-event or
+    serviceable timer-IRQ horizon remain assembly-backed.
+  - Shadowed ordinal 10 for each leaf at frames 2,145/2,141 and froze the
+    byte-identical focused Release census, call, and ordered-write artifacts.
+- [x] Ported the Devil-Shooter charge-position leaf `02:5397@all`:
+  - Added a pure C classifier for fixed slot `$0B`, charge counter `$2D15`,
+    and its carry-aware 16-bit vertical-coordinate result.
+  - Replaced 873 of 1,260 calls with the exact 75-cycle, two-write
+    transcript. The remaining 387 calls near a user-event or serviceable
+    timer-IRQ horizon remain assembly-backed.
+  - Extended the owning Release companion regression; it shadows ordinal 10
+    at frame 949 and preserves byte-identical census, call, and ordered-write
+    artifacts.
+- [x] Ported the Devil-Shooter charge-appearance leaf `02:5408@all`:
+  - Added a pure C classifier for fixed slot `$0C`, shared charge counter
+    `$2D15`, cached charge `$3E0C`, and its bounded three-frame appearance.
+  - Replaced 1,015 of 1,288 calls through exact 42-cycle cached, 105-cycle
+    advance, and 114-cycle reset transcripts. The 273 calls at a user-event
+    or serviceable timer-IRQ horizon, including all 22 interrupt-bearing
+    variants, remain assembly-backed.
+  - Extended the same Release companion regression with an ordinal-10
+    frame-949 42-cycle zero-write replay; census, call, and ordered-write
+    artifacts remain byte-identical.
+- [x] Ported the Devil-Shooter right-companion active timer leaf `02:545D@all`:
+  - Added a pure C classifier for fixed slot `$0D`, indexed timer `$3B0D`,
+    and its five-frame appearance `$398D`.
+  - Replaced 219 of 267 calls through exact 33-cycle timer wait, 102-cycle
+    reload/advance, and 111-cycle reload/advance/reset transcripts. The 48
+    user-event or timer-IRQ horizon calls, including both observed
+    interrupt-bearing variants, remain assembly-backed.
+  - Extended the same Release companion regression with an ordinal-10
+    frame-952 33-cycle one-write replay and refreshed its focused call/write
+    artifacts while retaining the byte-identical state census.
+- [x] Ported the Devil-Shooter left-companion active timer leaf `02:53E4@all`:
+  - Reclassified the shared code entry to admit only fixed left slot `$0A`;
+    right/other contexts and all user- or timer-IRQ horizons remain assembly
+    fallback.
+  - Preserved the left four-frame appearance limit and exact 33/102/111-cycle
+    wait/advance/reset paths, including stores at `53E4/53EB/53EE/53F8`.
+  - Extended the owning Release companion regression: 214 of 272 calls now
+    execute natively and replay `02:53E4@3` has exact frame-941 33-cycle,
+    one-write parity while the state census remains byte-identical.
+- [x] Ported the Devil-Shooter left active controller `02:53C8@all`:
+  - Composed the fixed-slot `$0A` timer child with its authentic JSR/RTS and
+    nonzero `$53 & $09` tail, preserving exact 99/168/177-cycle
+    wait/advance/reset transcripts and the `$01FB/$01FA = $53/$CA` stack
+    writes.
+  - Requires a full no-event/no-timer-IRQ window, leaving transfer, alternate,
+    and horizon-bound controller paths in assembly.
+  - The Release companion regression now replaces 180 of 266 controller calls
+    plus 34 of the 92 remaining direct timer calls; replay `02:53C8@3` pins
+    the frame-945 99-cycle, three-write path with byte-identical census.
+- [x] Ported the mirrored Devil-Shooter right active controller `02:5441@all`:
+  - Generalized the composed controller adapter for fixed slot `$0D`, its
+    five-frame timer child, `02:544A` return, and `$01FB/$01FA = $54/$43`
+    authentic JSR stack writes.
+  - Replaces 174 of 267 bounded controller calls, while its timer leaf covers
+    45 of the 93 remaining direct calls; replay `02:5441@3` pins the
+    frame-945 99-cycle, three-write transcript without changing the census.
+- [x] Ported the Big-Star rotating wait path `02:5674@all`:
+  - Added a pure C classifier for fixed slot `$4B`, pending-direction latch
+    `$2D04`, signed angular velocity `$2D00:$2D01`, timer `$3A4B`, and
+    session flags `$20CB`.
+  - Replaced 199 of 490 active-window controller calls through the exact
+    222-cycle, five-write nested-pending-gate/timer-decrement path. The
+    classifier keeps stopped, pending-direction, timer-expiry, transfer-mode,
+    and event/IRQ-horizon calls in assembly.
+  - Extended the Release Big-Star family regression with an ordinal-4
+    frame-1224 replay and refreshed census, call, and ordered-write artifacts.
 - [x] Ported the Walled Star's idle hit gate `03:6339@all`:
   - Added a pure C classifier for indexed collision state, shared access
     latch, idle return, and the two deferred active paths.
@@ -4104,6 +4223,36 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
     catch-state and coroutine continuation through native `01:C5C9`.
   - Shadowed `02:5116@1` and `02:52B8@1`; the latter matches registers,
     cycles, both JSR stacks, write order, and complete RAM at frame 1,064.
+- [x] Added the Devil-Shooter released-input delay gate `02:5159@all`:
+  - Classifies only fixed slot `$0E` in normal-table mode with Button I clear
+    for the active player and a nonnegative collision state.
+  - Replaces all four frames 1,181--1,184 returns through the exact
+    eight-checkpoint, 96-cycle, zero-write transcript; held charge and launch
+    behavior remain assembly-backed.
+  - Extended the owning `dc_rom_devil_shooter` regression with normalized
+    replay `02:5159@97`; Release and the required Debug family checkpoint
+    preserve its existing census, trace, call, and ordered-write artifacts.
+- [x] Added the Devil-Shooter charge-position leaf `02:52E3@all`:
+  - Classifies fixed Shooter slot `$0E`, carries its three-byte coordinate,
+    derives charge `$00`--`$26`, and selects appearance values 0--4.
+  - Replaces 137 of 252 calls through five exact stores and the 243-, 261-,
+    279-, or 297-cycle normal transcripts; capped-charge and event/IRQ
+    horizons remain assembly-backed.
+  - Extended `dc_rom_devil_shooter` with normalized replay `02:52E3@1` and
+    refreshed the Release entry, call, and ordered-write artifacts; the
+    required Debug family checkpoint preserves the matching behavior.
+- [x] Added the Devil-Shooter charge-retraction leaf `02:533B@all`:
+  - Classifies fixed Shooter slot `$0E`, subtracts two vertical units,
+    derives the remaining charge, and preserves the conditional appearance
+    write or final zero-charge return.
+  - Carries the low-byte charge subtraction borrow into the high-byte clamp
+    comparison, keeping clamp states on the original assembly path.
+  - Replaces 11 of 32 calls through exact four-/five-store 234-, 273-,
+    291-, 309-, or 327-cycle transcripts; all event/IRQ horizons and the
+    clamp path remain assembly-backed.
+  - Extended `dc_rom_devil_shooter` with normalized replay `02:533B@2` and
+    refreshed the Release entry, call, and ordered-write artifacts; the
+    required Debug family checkpoint preserves the matching behavior.
 - [x] Completed the left Skeleton Insect trigger gate `02:54B9@all`:
   - Retained the 1,630 exact 21-cycle, zero-write clear-latch returns.
   - Composed the native score accumulator and coroutine scheduler for the
@@ -4417,6 +4566,22 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
     including exact bounded VDC-port writes.
   - [x] Add semantic `01:C49E@all` session-input gating; cover all 2,649
     calls through the checkpointed active-player 72-cycle no-Run-input return.
+  - [x] Add semantic `01:DD6E@all` ordinary ball-drain threshold; cover all
+    1,744 session-route calls through exact 84-cycle carry-clear and
+    78-cycle carry-set transcripts, including the injected frame-3,000 drain.
+  - [x] Add semantic `01:C80A@all` ordinary remaining-ball presentation;
+    cover its complete 318-cycle, thirteen-write timer-install/decrement
+    transcript on the session route.
+  - [x] Compose semantic `01:C80A@all` through `01:C7EA@all` for the
+    zero-transition-latch ordinary continuation; cover its complete
+    345-cycle, thirteen-write parent transcript and defer the alternate latch.
+  - [x] Compose semantic `01:C7EA@all` through `01:C7E5@all` for the
+    nonzero-ball ordinary decision; cover its complete 366-cycle,
+    thirteen-write route and defer zero-ball and alternate-latch paths.
+  - [x] Reprofile the preceding session/ball-count and panel boundaries after
+    `01:C7E5@all`; retain `01:C786`, `01:C7B0/C7BF`, and direct-VDC
+    `09:72FD` assembly-backed until a separately composable gameplay leaf is
+    captured.
   - [x] Add semantic `02:42F6@all` Dragon-Egg controller gating; cover all
     1,790 nonzero-count route calls through the checkpointed 21-cycle return.
   - [x] Complete semantic `02:4345@all` Dragon-Egg hit gating for all 9,857
@@ -4769,6 +4934,10 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
   - Passed Release core/owning replay (7.75 seconds) and the required Debug
     core/owning family checkpoint (176.05 seconds); all captured artifacts
     match in both configurations.
+  - Added `tools/Analyze-NativeFallbackHotspots.ps1` and its documented
+    observer-set workflow. Its first natural Four-Star pilot ranks unported
+    `02:4AEB` at 506 calls, 40,368 master cycles, and 857 ordered writes
+    (50,652 weighted cost), making it the measured next family candidate.
   - Added the focused `dc_rom_four_star_wall_pocket_collision` regression;
     the one controlled collision plus 1,167 subsequent controller entries
     preserve Release/Debug census SHA-256 values
@@ -4781,6 +4950,182 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
     `a019a78ef19fc7d72e11b329aaf90bb390e50cf6728a56aa897c1a974664069a`.
   - Passed Release and Debug core tests; original-versus-native artifact
     comparisons are byte-identical in both configurations.
+- [x] Replace the Four-Star Wall-Pocket scheduled animation continuation:
+  - Semantic `02:4AEB@all` now covers the naturally observed lower-left
+    pocket's four-tick countdown and phase-advance paths. The adapter retains
+    the exact 60-cycle/one-write and 96-cycle/three-write transcripts, and
+    separately reproduces instruction-boundary IRQ delivery through the
+    decrement checkpoint. Appearance six enters the measured 942-cycle,
+    22-write scene transition at `$4B00`, which deliberately remains
+    assembly-backed.
+  - Extended `dc_rom_four_star_wall_pocket_matching` to observe and replace
+    all 506 scheduled calls. Its Release census and selected-state artifacts
+    remain unchanged; the expanded trace, call, and write artifacts are
+    `6105daa60a740fc1d9f9a1b9e421a1dc9c87fe980e8aec4b804214a12087dea2`,
+    `9abc6c7b5a8d2518f5ecc5481bc693917b056659e9d9f0eec95e155e4ee30e24`,
+    and
+    `4e983a7998075dfa71ddd478cdcab4ed8995ce7c7960ced84ccbc0bd15ff59a3`.
+    The focused Release replay passed in 7.88 seconds; the required new-branch
+    Debug family checkpoint also passed in 156.09 seconds.
+- [x] Replace the Walled-Star access pocket steady controller:
+  - A fresh parent/continuation profile ranked `02:4B3F` at 905 natural
+    calls, 95,532 master cycles, 1,791 ordered writes, and 117,024 weighted
+    cost. The higher-cost `01:C05D` fixed-marker result was correctly scoped
+    out as the shared emulated video-drawing jump table.
+  - Semantic `02:4B3F@all` reuses the independently proven four-tick
+    timer/appearance tail for the collision-free fixed-slot-`$11` path. All
+    905 calls execute natively through exact 66-cycle waits, 135-cycle
+    advances, and 144-cycle resets, including the original interrupt
+    checkpoints. The collision score/opening/bonus-stage transition remains
+    assembly fallback pending a dedicated transition transcript.
+  - Added the explicit pure-C Walled-Star access classifier alias and
+    extended `dc_rom_walled_star_access`; Release core and owning-family ROM
+    replay passed with all existing artifacts unchanged in 8.57 seconds.
+- [x] Replace both Screen-2 Side-Star access steady controllers:
+  - A fresh sibling-family profile ranked lower-left `02:4BD5` at 1,277
+    natural calls, 132,906 master cycles, 2,494 ordered writes, and 162,834
+    weighted cost; upper-right `02:4C0A` added 905 calls, 94,947 cycles,
+    1,786 writes, and 116,379 weighted cost.
+  - Semantic `02:4BD5/4C0A@all` reuses the independently proven four-tick
+    tail for all 2,182 collision-free fixed-slot `$10/$12` calls. Exact
+    66-cycle waits, 135-cycle advances, 144-cycle resets, and instruction
+    checkpoints remain intact; the scoring, transformation, and bonus-stage
+    entrance collision branches deliberately remain assembly fallback.
+  - Added the pure-C Side-Star access classifier alias and extended
+    `dc_rom_side_star_access`; Release core and owning-family ROM replay
+    passed with all existing artifacts unchanged in 8.81 seconds. The
+    required Debug family checkpoint then passed both Walled-Star and
+    Side-Star replays in 190.39 and 172.06 seconds respectively.
+- [x] Replace the upper-right Side-Star entrance-animation leaf `02:4C33@all`:
+  - A controlled `$3812=$80` collision route exposes nine fixed-slot `$12`
+    entrance calls. Six are 60-cycle, one-write timer decrements and two are
+    96-cycle, three-write timer reload/appearance advances; the ninth is the
+    309-cycle stage-selection transition.
+  - Semantic `02:4C33@all` covers the eight nonterminal calls and falls back
+    for appearance six. Its normalized replay at frame 1,221 preserves exact
+    60-cycle, one-write parity.
+  - Added the Release-only
+    `dc_rom_side_star_bonus_entrance_animation_semantic` regression. Census,
+    entry, call, and ordered-write artifacts are byte-identical to assembly.
+- [x] Replace the queued-Knight collision helper:
+  - Fresh comparison profiles measured Front-Spider parent `03:6490` at
+    2,645 calls / 2,324,265 weighted cost and the passive Knight parent
+    `03:7378` at 10,600 calls / 1,982,160 weighted cost. The latter exposed
+    compact collision child `03:73D8` at all 10,600 entries.
+  - Semantic `03:73D8@all` now handles the fixed Knight slots `$3A-$3D` when
+    their collision byte is nonnegative. It preserves the exact 33-cycle
+    load/branch/return transcript and all three IRQ checkpoints; bit-seven
+    hits continue into the assembly-owned four-hit, score, and completion
+    sequence.
+  - Added the pure-C classifier and `dc_rom_knight_hit_gate_semantic`.
+    Release core and focused ROM replay preserve census/call/write SHA-256
+    values `9036a9de0c3c9917f47bff8c04c136a4824ec12601fb457d260aa2dfe4443490`,
+    `6d8c143b2d3519b08ab769316c6754d14d7b8217e4c1d31609c76b085ecfb3c1`,
+    and `9d7282f06841f7e4dcbd40d6ccfeb507647c85afe351251be26d2c04832f31da`.
+    The composed waiting-parent slice below completes the required Knight
+    family checkpoint.
+- [x] Compose the queued-Knight waiting parent:
+  - A fresh six-entry screen reprofiled the four initializers, steady parent,
+    and native collision child. Parent `03:7378` remains the clear payoff at
+    10,600 calls and 1,982,160 weighted cost; the four initializers total
+    only 1,662 weighted cost.
+  - Semantic `03:7378@all` now composes only the fixed-slot `$3A-$3D`
+    waiting branch: clear indexed Giant-Door request bit plus nonnegative
+    collision state. It preserves the exact 123-cycle queue/channel reads,
+    child-call stack writes, nested `RTS`, and carry-clear outer return.
+    Door activation, movement, and the four-hit path remain assembly fallback.
+  - Added pure-C classification and
+    `dc_rom_knight_waiting_parent_semantic`. Release core and focused ROM
+    replay preserve census/call/write SHA-256 values
+    `9036a9de0c3c9917f47bff8c04c136a4824ec12601fb457d260aa2dfe4443490`,
+    `fcc85209b476ba21441502ef04ae63c9511045399c9720cd188dc5de49b68f6c`, and
+    `a43918c5cb8f86a9a2c458e2dc9ec4687f0eb33b3550be3a1f5592258854c793`.
+  - The required Debug core/family checkpoint also passes: its census is
+    `a95d0c343108b107d7ec1aa3c20915540d91bb08817704776531e5696ea9b5e2`
+    and its call/write artifacts match Release. The durable regression covers
+    both configurations; this completes the Knight family batch.
+- [x] Replace the shared Front-/Side-Spider appearance helper:
+  - A composed observer set separated `03:65A4` from Front-Spider collision
+    parent `03:6490`, collision interpreter `03:6966`, and the same helper's
+    Side-Spider callers. It measured 5,441 calls, 293,640 master cycles,
+    8,167 ordered writes, and 391,644 weighted cost.
+  - Semantic `03:65A4@all` now covers fixed Spider slots `$26-$29` through
+    exact 33-cycle timer waits, 102-cycle phase advances, and 111-cycle phase
+    resets. Its instruction checkpoints preserve the native timer writes and
+    original timer-interrupt passages; both collision parents remain assembly
+    fallback for their selector, interpreter, score, and transition work.
+  - Added the pure-C classifier and `dc_rom_spider_appearance_semantic`.
+    Release core and focused ROM replay preserve census/call/write SHA-256
+    values `9036a9de0c3c9917f47bff8c04c136a4824ec12601fb457d260aa2dfe4443490`,
+    `7e987ec3f4faa07710a6d528d2e108ca4b5157cf8dd0f9183c701a1eb3583356`, and
+    `d7c55c4dde46c9c844669f67e5a3e932d411fa8aac206d6e1d9bc284fccac210`.
+    Debug replay is deferred until a Spider parent composition or family
+    checkpoint under the documented cadence.
+- [x] Replace the paired Small-Soldier source waits:
+  - A fresh Walled-Star screen rejected `03:6366` as an internal branch
+    already subsumed by native `03:6339`. The separate Small-Soldier profile
+    then measured left/right source waits `03:7D85/7E23` at 2,457 calls each,
+    with a combined 131,439 weighted cost.
+  - Semantic `03:7D85/7E23@all` now covers fixed source slots `$34/$35`
+    whenever their corresponding `$2D16/$2D17` group count is nonzero. Both
+    use the exact 21-cycle absolute-load/branch/return transcript and retain
+    their timer-interrupt passages; zero-count completion, child deployment,
+    and collision dispatch remain assembly fallback.
+  - Added the pure-C classifier and `dc_rom_small_soldier_source_gates_semantic`.
+    Release core and focused ROM replay preserve census/call/write SHA-256
+    values `9036a9de0c3c9917f47bff8c04c136a4824ec12601fb457d260aa2dfe4443490`,
+    `15b059014d358901b21d75b349df894df0fc9e981f1f038ded740e622ce779db`, and
+    `e9918a499097dea8cc28d1315f6e25d6adf6012ece1914b236d26ff33451993f`.
+    Debug replay is deferred until a Small-Soldier child or family checkpoint
+    under the documented cadence.
+- [x] Replace the Sorcerer controller stable-color gate:
+  - A fresh Sorcerer profile rejected broad orbit `02:58C2` as a mixed
+    collision/drawing/interrupt parent despite its 22,113,279 weighted cost.
+    It instead identified direct controller branch target `02:57E9` at 2,648
+    calls and 145,128 weighted cost.
+  - Semantic `02:57E9@all` handles fixed hidden controller slot `$16` when
+    shared color `$2D40` equals cached `$3980,X`. Its exact 42-cycle
+    load/compare/branch return retains original interrupt passages; the
+    color-update store and `02:593F` helper remain assembly fallback.
+  - Added the pure-C classifier and Release-only
+    `dc_rom_sorcerer_color_gate_semantic`. Release core and focused ROM replay
+    preserve native census/call/write SHA-256 values
+    `e4826889df5db0c7585e889ab2df1db3e8401be39db0b909ebea6be0950278ce`,
+    `902b5143e8de9aabf2accc6954f6e870bbee820e5ca0fd0edf933fd651962a64`, and
+    `6ca2df71d6b3cd024e9dbf997f7e590083aeb18772abc79961b36a15aa753ca4`.
+    Debug replay is deferred until a Sorcerer sibling or family checkpoint.
+- [x] Replace the Tower-insect animation leaf:
+  - A fresh Tower-insect profile rejected mixed controller `03:6016` (6,494
+    calls; 6,819,600 weighted cost) because it composes collision, scoring,
+    audio, and child lifetime. It selected direct `BSR` target `03:6054`
+    (6,750 calls; 1,612,386 weighted cost) instead.
+  - Semantic `03:6054@all` accepts dynamic insect slots `$64/$67/$6A/$6D`,
+    selects the ROM frame-table value from cadence/phase state, and executes
+    exact 147-cycle timer waits or 183-cycle reload/phase advances. Collision,
+    scoring, audio, and release behavior remain assembly fallback.
+  - Added pure-C classification and Release-only
+    `dc_rom_tower_insect_animation_semantic`. Release core and focused ROM
+    replay preserve native census/call/write SHA-256 values
+    `7c99d041007e2a735b2bf8e6c7c870615c15bb0e79dee9330f1414da2187853c`,
+    `9d3beee15ee6ada8ea7b15b414745437e71876b1ef5be14e5f184c188b7ddf76`, and
+    `a0d6ad02b991511ecfde741d752b4c11b5da61afe9a27cdd02d90b397a4c2f2e`.
+    The paired source-gate slice completes the documented Debug family checkpoint.
+- [x] Replace the Tower-insect source child-count gate:
+  - The corrected physical-bank family profile observed source countdown
+    `02:5F4A`, direct child-count gate `02:5F5F`, and allocator `02:5F78`
+    beside the dynamic controller and animation leaf. It selected `02:5F5F`
+    as the composable sibling: 2,504 calls and 67,395 weighted cost.
+  - Semantic `02:5F5F@all` admits only fixed source slot `$2C` while live
+    child count `$2D2B` is nonzero, preserving its 21-cycle load/branch/return
+    transcript. The zero-count 20,000-point group-clear branch, source
+    countdown, and child allocator remain assembly fallback.
+  - Added pure-C classification and Release-only
+    `dc_rom_tower_insect_source_gate_semantic`. Release core and focused ROM
+    replay preserve native census/call/write SHA-256 values
+    `9036a9de0c3c9917f47bff8c04c136a4824ec12601fb457d260aa2dfe4443490`,
+    `d0caafb2f34cd597e0fa24e2f1a179bf44897dc5fd1aa3fc63ffbcdc186f3c05`, and
+    `338ff7769d0f05f93aab446eaac4c27066232aa9daf86cac5cebf033622da6f9`.
+    The combined Debug Tower-insect family replay passes both native leaves.
 - [x] Replace the Four-Star Wall-Pocket steady controller:
   - Reused the ROM-shared collision gate and four-tick timer/appearance tail
     at `02:4A93` for fixed slots `$3E/$3F/$42/$43`.
@@ -4799,7 +5144,31 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
 
 ## Active Work
 
-Current owner: Codex. The Giant-Face mouth closed/no-hit gate
+Current owner: Codex. The ordinary session drain threshold `01:DD6E@all`
+now executes natively for the live slot-0 Y comparison against `$02D0`.
+All 1,744 session-route calls retain byte-identical Release census, call,
+and ordered-write artifacts; the exact-threshold drain at frame 3,000 also
+retains its 78-cycle carry-set return. The ordinary remaining-ball
+presentation `01:C80A@all` is also native: it installs its 16-tick
+coroutine, consumes its first tick, and returns through the exact 318-cycle,
+thirteen-write transcript. Its parent `01:C7EA@all` now reads the zero shared
+transition latch and composes that child after the exact 27-cycle branch,
+covering the 345-cycle ordinary continuation while deferring nonzero-latch
+transitions. Outer decision `01:C7E5@all` now adds the nonzero remaining-ball
+test and its exact 21-cycle fall-through, completing the observed 366-cycle
+ordinary branch while deferring zero-ball and alternate-latch paths. The
+alternate nonzero-`$55` session threshold, the preceding transition/ball-count
+decisions, and later table-reload and panel paths remain assembly-backed
+pending their own bounded transcripts. A follow-up assembly-only profile
+retained the nested continuation observers and established that preceding
+`01:C786`, `01:C7B0`, and `01:C7BF` are not prefix-only leaves: their ordinary
+paths enter shared `00:ECFD` before the `C5EA/C5C9` coroutine handoff and
+carry 83/114/114 scoped writes, including interrupt-owned work. They remain
+assembly-backed until that helper has a composable transcript or a local
+natural branch is captured. The panel's dominant `09:72FD` form is likewise
+kept emulated because its otherwise small transcript writes VDC ports
+directly, outside the work-RAM gameplay transaction boundary. The Giant-Face
+mouth closed/no-hit gate
 `03:7726@all`, mirrored helmet controller `02:4C91@all`, Four-Star
 Wall-Pocket controller `02:4A93@all`, and the two Upper Wall-Pocket hand
 initializers `02:5972@all`, traced live timer setup `02:5975@all`, delayed
@@ -4814,12 +5183,692 @@ Four-Star Wall-Pocket controller also has its collision gate plus captured
 ordinary and matching-arrow access decisions at `02:4A93@all`; matching
 continuations `02:4AD2@all` and `02:4AE5@all` now cover its post-audio score,
 opening timer/appearance, and scheduler handoff. The shared audio and
-appearance helpers remain assembly fallback. The next bounded candidate is
-the scheduled `$4AEB` animation continuation in the same feature family.
+appearance helpers remain assembly fallback. Its scheduled `$4AEB` animation
+continuation now executes natively for the observed countdown and
+phase-advance paths; the measured appearance-six scene transition remains a
+942-cycle, 22-write assembly fallback. The next bounded candidate
+should be selected from a new profile observer set rather than assumed from
+this closed slice. The Walled-Star access controller `02:4B3F@all` now adds
+its 905 collision-free four-tick calls to the native set; its collision score,
+opening, wall handshake, and bonus-stage selection remain assembly fallback.
+The sibling Screen-2 Side-Star access controllers `02:4BD5/4C0A@all` add
+their 1,277/905 collision-free calls through the same timer/appearance tail;
+their score, Giant-Face transformation, and upper-right bonus-stage entrance
+branches remain assembly fallback. A controlled lower-left Side-Star collision
+at frame 1,210 spans 1,902 cycles and 44 writes across the score/effect,
+Giant-Face request, animation, and scheduler sequence, so its continuation
+also remains assembly-backed. A controlled Walled-Star access collision
+at frame 1,220 enters a 1,182-cycle, 31-write allocation/score/animation/
+scheduler transaction, so it remains assembly-backed rather than becoming a
+parent composition target. A controlled upper-right Side-Star collision at
+frame 1,220 starts the distinct persisted-form-zero bonus-stage-6 entrance
+as a 1,188-cycle, 30-write score/animation/scheduler transaction, so that
+collision transaction remains assembly-backed. Its eight subsequent
+`02:4C33@all` timer/appearance calls now execute natively through exact
+60-cycle decrement and 96-cycle reload/advance transcripts; only the ninth
+stage-selection transition remains assembly-backed. A fresh comparison profile now selected
+the Knight collision helper `03:73D8@all`, and the fresh follow-up parent
+screen now composes its 10,600 fixed-slot `$3A-$3D` waiting calls at
+`03:7378@all` through the exact checkpointed 123-cycle nested-call
+transcript. Door activation, movement, and hit behavior remain assembly
+fallback. A composed Front-/Side-Spider profile now adds shared helper
+`03:65A4@all`: all 5,441 fixed-slot `$26-$29` timer calls execute through
+its checkpointed wait/advance/reset paths, while both collision parents stay
+assembly fallback. A fresh Release re-screen confirms that enabling the
+current `03:6966@all` and `03:65A4@all` children preserves the baseline
+census (51,294/54,149 collision entries and all 5,441 appearance entries
+native), but the two Spider parents still require a parent-relative nested
+interrupt/timing transcript. An inexact no-hit composition was discarded;
+`03:6490/651F` remain assembly fallback. A subsequent profile rejected duplicate Walled-Star child
+`03:6366` and selected paired Small-Soldier source waits `03:7D85/7E23@all`:
+all 4,914 fixed-slot `$34/$35` nonzero-group calls execute through their
+checkpointed 21-cycle transcripts, while zero-count completion, deployment,
+and child collision behavior remain assembly fallback. The next candidate
+should be selected from a new profile observer set rather than assumed from
+this bounded family slice. A fresh Sorcerer screen rejected its broad orbit
+parent as mixed collision/drawing work but added direct controller color gate
+`02:57E9@all`: all 2,648 hidden-slot-`$16` entries run through the checkpointed
+42-cycle stable-color return while the mismatch/update helper remains assembly
+fallback. The next candidate should again come from a new observer set.
+The Tower-insect profile then selected direct animation leaf `03:6054@all`:
+all 6,750 dynamic-slot `$64/$67/$6A/$6D` calls now execute through its
+checkpointed frame-table, timer, and phase-advance transcripts, while mixed
+parent `03:6016` and its collision/scoring/lifetime paths remain assembly
+fallback. Its corrected physical-bank sibling screen then selected fixed-source
+gate `02:5F5F@all`: all 2,504 slot-`$2C` nonzero-child-count returns execute
+through their checkpointed 21-cycle transcript, while source countdown,
+spawning, and group-clear remain assembly fallback. Their combined Debug
+family checkpoint now passes with both native leaves enabled.
+The next Small-Soldier child-deployment screen rejects `03:7EFA` as a small
+mixed collision/scheduling parent whose major children already have native
+coverage. A fresh Three-Blobs movement screen instead selects direct
+appearance/collision gate `03:67B3@all`: all 1,965 fixed-slot `$58-$5A`
+entries now begin natively. Its 1,950 collision-free calls execute the
+checkpointed 93-cycle color lookup and appearance-store path; the 15
+collision-active calls execute the exact 66-cycle prefix then hand off at
+the original collision dispatcher, leaving its scoring/audio/state path in
+assembly. Both mixed movement parents remain assembly fallback. The owning
+Release replay and original-artifact hashes pass; the next candidate should
+again come from a new bounded observer set. A Tower-source re-screen keeps `02:5F4A/5F78`
+assembly-backed: their 145-countdown/four-allocation scope is too small and
+allocation-coupled to justify a parent composition around native `02:5F5F`.
+An unrelated Giant-Skeleton screen finds high raw fallback cost at `02:5EEC`,
+but every call depends on mixed physical-bank child `01:DAF8` before the
+random appearance/collision gate. Both remain assembly until that child has
+its own classified, instruction-timed boundary; the measured decision is
+recorded in `docs/NATIVE_FALLBACK_HOTSPOTS.md`.
 Native-port iterations now follow
 `docs/NATIVE_PORT_WORKFLOW.md`:
 batch siblings sharing a family route, use Release family parity per slice,
 and reserve Debug ROM replays for family or broader checkpoints.
+The naturally exercised Little-Skull gray initializer `02:458A@all` now ports
+its sole strict slot-`$46` setup at frame 1,221: all eleven ordered writes,
+the 291-cycle scheduler transaction, and the hand-off to `02:45A4` retain the
+existing Little-Skull RNG route's exact Release artifacts. The gray-release,
+RNG, collision, and regeneration continuations remain assembly-backed unless
+they meet their own bounded replacement contracts.
+The immediate observed gray-release continuation `02:45A4@all` now also runs
+natively at frame 1,223: it composes its state restore, odd-RNG pending-bit
+selection, and coroutine installation of `02:4515` through the exact
+768-cycle, 23-write transaction. Alternate RNG parity, collision, and
+regeneration paths remain assembly-backed.
+The downstream ordinary Little-Skull continuation `02:4515@all` now ports
+all 22 naturally observed entries for live slots `$46`, `$47`, `$49`, and
+`$4A`: its three-write 105-cycle wait and ten-write 303-cycle expiry handoff
+to the existing coroutine scheduler are exact in Release. The existing
+instruction-boundary transcript now preserves the one slot-`$49` timer IRQ
+between the position and appearance stores, so no focused calls remain in
+assembly. The focused Release semantic regression replays the 303-cycle
+expiry branch and freezes the complete census, call, and ordered-write
+artifacts.
+The active Big-Star pending gate `02:570A@all` now covers 489 of 490 calls in
+a controlled visible-window profile. Its pending-left helper `02:5722@all`
+runs natively for fixed-slot phases zero through six, and mirrored
+pending-right helper `02:5738@all` runs for phases zero through four; all
+other helper states remain assembly-backed.
+The Devil-Shooter companion re-screen then selected its two 24-cycle dormant
+leaves `02:53DD/5456@all`. Their Release-only semantic regression preserves
+the full family census/call/write artifacts while replacing 1,855 event-
+horizon-safe calls; 285 near-event or timer-IRQ calls conservatively remain
+in assembly. The separate fresh sibling profile then selected charge-position
+leaf `02:5397@all`: its exact two-write 75-cycle transcript now replaces 873
+of 1,260 calls while 387 near-horizon calls remain in assembly. A fresh
+expanded companion profile then admitted the variable charge-appearance leaf
+`02:5408@all`: 1,015 of 1,288 calls now execute natively through its exact
+42/105/114-cycle cached/advance/reset branches, while 273 near-horizon calls
+remain in assembly. A new child-level companion screen then selected the
+right active timer leaf `02:545D@all`: 219 of 267 calls run natively through
+its 33/102/111-cycle wait/advance/reset paths, while 48 horizon calls remain
+in assembly. A fresh active-window screen then selected the Big-Star rotating
+wait in `02:5674@all`: 199 of 490 controller calls now run natively through
+its nested latch clear, timer decrement, and session-bit-clear transcript;
+the 291 non-admitted controller calls continue to expose their child gate,
+where `02:570A@all` replaces 290 no-pending entries. The remaining Big-Star
+timer expiry, drawing, stopped, and direction-helper paths remain assembly.
+A later controlled stopped-selector screen confirms `02:56BA` is not a
+callable candidate: it is an unentered internal selector-V branch whose
+nonmatching case jumps back into the mixed controller and matching case
+continues through session/timer writes.
+A fresh expiry screen confirms that `02:56EA` and shared `01:C0A5/C0A8` are
+original drawing submissions, so their 1.66M weighted units are retained
+within the emulated graphics-driver boundary rather than miscounted as
+gameplay fallback. A second fresh Giant-Skeleton re-screen keeps
+`02:5EEC/01:DAF8` assembly-backed: all 2,139 parent/child pairs remain mixed
+coordinate/collision paths with no independently bounded state-derived leaf.
+A fresh Devil-Shooter left-active re-screen resolved the earlier all-call
+failure: `02:53E4` is a shared entry, so the adapter admits only fixed slot
+`$0A` and rejects non-left contexts plus user/timer-IRQ horizons. Its normal
+`02:53C8` parent composes 180 of 266 fixed-slot, nonzero-flag controller calls
+through exact 99/168/177-cycle transcripts; the leaf handles 34 of the
+remaining 92 direct entries. Mirrored `02:5441` now applies the same bounded
+composition for 174 of 267 right-controller calls, leaving `02:545D` to cover
+45 of 93 direct leaf entries. In each case the remaining alternate or
+horizon-bound paths retain assembly execution. A fresh Three-Blobs second-phase
+re-screen also keeps `03:66D3` assembly-backed: all 720 calls are complete
+1,008--24,168-cycle motion/collision/scheduler transactions with 24--422
+writes, rather than independently returnable prefixes. The next candidate
+should be selected from a new cross-family bounded observer set. That screen now
+admitted the upper-chute Gray-Blob initializer `03:6876@all`: its exact
+372-cycle, 15-write typed setup transcript now runs natively for all seven
+Release layouts. Its final authentic `01:C5E6` interrupt-sampling checkpoint
+preserves the original scheduler timing for the four calls formerly blocked
+by the conservative pre-entry horizon. The owning semantic regression
+preserves the complete census, call, and ordered-write artifacts. The same
+natural upper-chute route now also admits all seven first-live `03:68A1@all`
+prefixes: each exact 462-cycle native transaction clears the initial latches,
+composes RNG, stores its movement timer, and hands off at original `01:C018`.
+The complete 633-cycle/20-write calls retain their byte-identical Release
+census, call, and ordered-write artifacts; later live movement, collision,
+hit, impact, and score behavior remains assembly-backed. The same next family
+extension now ports the Giant-Skeleton-Eyeball setup `02:4DC8@all`: its sole
+fixed-slot frame-872 invocation runs through the exact 258-cycle, ten-write
+script transcript and final interrupt boundary alongside all 1,988 native
+`02:4DD9@all` dormant calls. The same lower-table family now adds all three
+Mercy-Star setup calls at `02:4F9F@all`: fixed slots `$5F-$61` execute the
+exact 318-cycle, eleven-write dormant-state/script-installation transcript
+with the final `01:C5E6` scheduler checkpoint, alongside the existing 7,950
+native `02:4FC1@all` dormant-gate calls. Activation, scoring, transport, and
+release remain assembly fallback. The same fixed Devil-Shooter family now
+adds initializer `02:50EE@all`: its sole `$0E` setup call runs through the
+exact 351-cycle, 15-write timer/position/appearance/script transcript with
+the final `01:C5E6` scheduler checkpoint. Collision/catch, charge, and launch
+continue through their existing bounded native or assembly paths. The
+adjacent direct retraction leaf `02:533B@all` now covers the fixed Shooter's
+four-/five-store charge decay from both catch and launch callers, while its
+mixed launch parent `02:5208` remains assembly-backed. The adjacent
+Three-Blobs layout initializer `03:664A@all` now ports all three fixed
+`$58-$5A` calls through the exact 396-cycle, 16-write state/appearance/script
+transaction and final `01:C5E6` scheduler checkpoint. Alternating movement
+and collision behavior retain their current bounded native-or-assembly split.
+The fixed Dragon's Head layout initializer `02:5A31@all` now likewise ports
+its sole `$13` setup call through the exact 291-cycle, eleven-write
+appearance/collision/script transaction and final `01:C5E6` scheduler
+checkpoint. Its eight-hit score/audio gate and mouth-opening paths retain
+their existing native-or-assembly split. The adjacent Giant Skeleton layout
+initializer `02:5EE4@all` now ports its sole `$30` setup call through the
+exact 213-cycle, eight-write appearance/script transaction and the same final
+`01:C5E6` scheduler checkpoint. Its collision and animation controller at
+`02:5EEC` remains assembly-backed because it is still mixed with its
+physical-bank child `01:DAF8`. The corresponding Three-Blobs controller
+initializer `03:65BC@all` now ports its sole fixed `$57` setup call through
+the exact 207-cycle, eight-write automatic-safety-clear and scheduler
+transaction. The equality, scoring, and randomized-reset paths at `03:65C2`
+retain their existing native-or-assembly split. The fixed Giant Door layout
+initializer `03:6294@all` now ports its sole `$4C` setup call through the
+exact 345-cycle, fifteen-write handshake-reset/counter/script transaction and
+final `01:C5E6` scheduler checkpoint. Its three-hit collision, score, and
+destruction paths at `03:62B8` retain their existing native-or-assembly split.
+The adjacent Walled Star layout initializer `03:6319@all` now ports its sole
+fixed `$5B` setup call through the exact 321-cycle, twelve-write wall-state,
+collision-selector, and scheduler transaction with the final `01:C5E6`
+checkpoint. Its wall-damage, scoring, and access paths at `03:6339` retain
+their existing native-or-assembly split.
+The Walled-Star access pocket initializer `02:4A44@all` now ports its sole
+fixed `$11` setup call through the exact 273-cycle, nine-write
+appearance/collision/script transaction and final `02:4CE4` checkpoint. Its
+collision, score, opening, and random bonus-stage transition retain the
+existing `02:4B3F` native-or-assembly split.
+
+The scheduler-selected active Side-Worm continuation `02:5D4D` was re-screened
+after the new `02:5D4A@all` timer initializer. Its 39 calls alternate between
+an apparent 69-cycle, two-write turn that still invokes shared `01:C07E` and
+longer turns that immediately enter the mixed `02:5DFC` coordinate/collision
+helper. It remains assembly-backed; no safe standalone continuation exists at
+that boundary.
+
+The appearance-six terminal call of the native Side-Star entrance animation
+`02:4C33@all` was also re-traced. Although its enclosing scope is only 309
+cycles and ten writes, its `01:C018` path reaches `01:C5C9` after 150 cycles
+with changed registers and enters a 1,926-cycle mixed scheduler/controller
+scope. It remains the intentional ninth-call assembly fallback rather than
+an invalid direct composition of the ordinary coroutine scheduler.
+
+A fresh Mercy-Star last-ball screen sets only `$2D52` to one at frame 1,200.
+The three fixed `02:4FC1` activations immediately span 471, 1,128, and 471
+cycles with mixed release/presentation/scheduler work; their downstream
+`01:C018` scopes range from 822 to 3,333 cycles. The later selected
+`02:50C1` continuation is a 5,625-cycle, 133-write animation/state scope.
+Mercy-Star activation, award, transport, safety, and release remain
+assembly-backed; the existing native dormant gate is the correct boundary.
+The separately forced Giant-Face mouth-open state `$2D21=1` reaches
+`03:7726/7749` once at frame 1,213. Its 27-cycle gate prefix joins a
+1,122-cycle, 40-write capture/score/actor-script transaction, whose
+`01:C5C9` descendant takes another 1,395 cycles and 27 writes. It does not
+reach the later `03:7821/7834` RNG-release route from this state alone.
+Open-mouth capture remains assembly-backed; the closed/no-hit gate remains
+the correct native boundary.
+The complementary closed-mouth collision probe sets only `$3838=$80` for
+fixed slot `$38`. Its frame-1,213 `03:7726` call reaches `03:7730` after the
+42-cycle gate prefix, then spans a 15,414-cycle, 236-write shared
+score/impact/audio and actor/display transaction (15,456 cycles for the
+enclosing gate). A later `01:C5C9` scheduler entry occurs 64,023 cycles after
+the gate and takes 1,896 cycles with 36 writes. Collision hits remain
+assembly-backed; the native contract is still only the closed/no-hit leaf.
+The Giant-Face wake probe sets only `$2D0C.0` at frame 1,200. Fixed slot
+`$36` reaches `03:74D8/74E0` once for a 261-cycle, nine-write
+mode-one/script-installation transaction; first active animator `03:767E`
+arrives at frame 1,222, followed by a 3,675-cycle, 77-write `03:76C5`
+drawing/animation scope. A guarded exact-write replacement trial diverged on
+frame 1,200, so the scheduler transfer remains an assembly boundary. The
+native request-free `03:74D8` leaf is unchanged.
+The natural Dragon-Egg hatchling in dynamic slot `$64` was also re-screened.
+Its four ordinary `02:441E` updates span 1,164--1,986 cycles and 22--38
+writes through the shared collision/drawing helper; the fifth is a
+19,965-cycle, 384-write score/impact/release transaction returning through
+`01:C594`. No standalone timer leaf remains, so the hatchling controller
+continues through assembly after the existing Egg-owned prefixes.
+The Giant Door active-hit probe confirms that `$384C` is a collision-pipeline
+surface rather than a durable request byte: controlled `$80` and
+selector-preserving `$90` patches around its frame-1,229 dispatch are both
+normalized to the normal `$10` selector before `03:62B8` reads them. All 676
+observed calls retain their native 27-cycle idle leaf, while the score,
+three-hit counter, and completion handshake must wait for a real collision
+delivery or a later pipeline injection point. No invalid parent composition
+was added.
+The mirrored Giant-Face helmet collision was then captured by setting either
+slot `$2A` or `$2B`'s true collision bit (`$382A/$382B=$80`) at frame 1,200. Its
+frame-1,222 `02:4C91` parent is a 3,171-cycle, 76-write score/audio/wake and
+ball-return transaction, so it remains assembly-backed. Its direct post-score
+entry `02:4CFB@all` is now native: the exact 396-cycle, 15-write continuation
+reloads the active left or right helmet timer, restores slot-0 to `$0086,$0124`
+or `$009E,$0124`, sets phase four, and composes the original coroutine scheduler
+to install `$4D0B`. Focused Release replays and owning regressions cover both
+channels; the existing normal helmet family regression also passes.
+The scheduled helmet follow-up `02:4D0B@all` now also natively covers both
+channels' exact 60-cycle timer waits and 96-cycle timer reload/phase advances.
+The left route admits 92 of 93 entries and intentionally leaves its phase-six
+animation transition in assembly; the mirrored right route admits all 353
+observed calls. Focused Release replay preserves the initial one-write wait
+at frame 1,518 and the complete route artifacts.
+The retained left phase-six call was then traced through direct successor
+`02:4D20`: at frame 1,614 it consumes 18,474 cycles and 296 writes across
+drawing, scheduler, actor, and animation work (18,507 cycles for enclosing
+`02:4D0B`). It remains assembly-backed; no further local continuation was
+exposed by that transaction.
+The mirrored Side-Star layout initializers `02:4A54/4A4C@all` now port the
+fixed `$10/$12` setup calls through their exact 273-cycle, nine-write
+appearance/collision/script transcripts and final `02:4CE4` checkpoints.
+Their existing `02:4BD5/4C0A` collision, score, transformation, and entrance
+paths retain their current native-or-assembly split.
+
+The queued-Knight layout initializers `03:734E/7353/735A/7361@all` now port
+all four fixed `$3A-$3D` setup calls. Their typed queue-index mapping preserves
+the exact 276-288-cycle, eleven-write selector/counter/script transcripts and
+the final `01:C5E6` scheduler checkpoint; later release, collision, and
+four-hit behavior retains the existing native-or-assembly split.
+
+The shared Side-Spider layout initializer `03:64FA@all` now ports both fixed
+`$28/$29` setups through their exact 342-cycle, fourteen-write
+side-parameter/collision/script transcript and final `01:C5E6` checkpoint.
+The collision, scoring, and transition parent `03:651F` remains assembly-backed.
+
+The shared Front-Spider layout initializer `03:646B@all` now ports both fixed
+`$26/$27` setups through the exact same 342-cycle, fourteen-write
+side-parameter/collision/script shape, including its Front-Spider-specific
+dispatch target and final `01:C5E6` checkpoint. The collision, scoring, and
+transition parent `03:6490` remains assembly-backed.
+
+The shared Giant-Face helmet initializer `02:4C78@all` now ports both fixed
+channel layouts `$2A/$2B` through their exact 240-cycle, eight-write
+script/timer/appearance transcript, returning at the original `02:4CF1` RTS
+boundary. Collision-marked entries and all later activation behavior remain
+assembly-backed.
+
+The direct mirrored Giant-Face helmet outer initializers `02:4A5C/4A64@all`
+now port the fixed selector store plus shared setup as exact 273-cycle,
+nine-write transcripts for slots `$2A/$2B`. Their collision-marked states
+continue through the complete original wrapper and active path; the new
+Release semantic regression independently guards both outer entries.
+
+The four fixed Little-Skull layouts now execute shared initializer
+`02:44E4@all` natively. Its pair-constrained adapter preserves the 8-bit
+live-count increments and each exact 390-cycle, fourteen-write actor and
+coroutine transcript, with a final `01:C5E6` checkpoint. The collision,
+regeneration, gray-release, scoring, and Big-Star paths remain assembly-owned
+outside their already mapped gates; a dedicated Release semantic regression
+guards all four setup calls.
+
+The two Little-Skull pair-controller layouts now execute shared initializer
+`02:4485@all` natively. Its pair-constrained adapter clears each live-count
+and regeneration byte, schedules the original `02:449A` controller through
+an exact 285-cycle, ten-write transcript, and preserves the final
+`01:C5E6` checkpoint. A separate Release semantic regression covers both
+fixed pair-controller entries.
+
+The Little-Skull hidden transition controller now executes initializer
+`02:4455@all` natively. The fixed-slot adapter clears feature latch `$2CFA`
+and schedules the existing gate through the exact 207-cycle, eight-write
+transcript with its final `01:C5E6` checkpoint. A dedicated Release semantic
+regression guards the sole startup entry.
+
+The fixed Big-Star initializer `02:565C@all` now executes natively. Its
+slot-constrained adapter preserves the exact pending-bit, stopped-direction,
+zero-velocity, and speed-state setup as a 285-cycle, twelve-write transcript
+with the final `01:C5E6` checkpoint. The existing direction/rotation gates
+and all event-owned behavior remain unchanged; a focused Release semantic
+regression guards the startup entry.
+
+The mirrored fixed Side-Worm initializers `02:5C4B/5C7C@all` now execute
+natively. Their slot-constrained adapters preserve the left/right state,
+selector, collision, appearance, and `02:5CC5` dispatch writes as exact
+204/210-cycle, ten-write direct-return transcripts. A focused Release
+semantic regression independently replays both startup entries. Their shared
+stopped-selector gate `02:5CCD@all` now also covers all 1,760 calls in a
+controlled fixed-selector visible-window fixture: 1,739 clean 36-cycle,
+zero-write returns and 21 interrupt passages reproduce byte-identical census,
+entry, call, and ordered-write artifacts through four exact instruction
+checkpoints. Matching-selector activation and all collision, movement,
+scoring, and outcome paths remain assembly-owned.
+
+The fixed Undead-Head initializer `03:61A0@all` now executes natively for
+slot `$4D`. Its exact 192-cycle, seven-write shared coroutine-scheduler
+handoff installs `03:61A3` and returns through the original `01:C5E9`
+boundary. Its direct stopped-selector gate `03:61AB@all` now also covers the
+controlled visible-window return: all 770 fixed-slot calls preserve the
+three-checkpoint 27-cycle, zero-write `LDA`/`CMP`/branch transcript, including
+eight original interrupt passages. The selector-zero activation, collision,
+RNG, scoring, and bonus behavior remain in assembly; focused Release semantic
+regressions guard both the startup and selector gate.
+
+The fixed Devil's-Coffin initializer `03:63E1@all` now executes natively for
+its startup and both post-cycle resets. Its slot-constrained adapter preserves
+the 249-cycle, nine-write collision-normalization and scheduler transcript,
+including direct and coroutine caller stack shapes. A focused Release
+semantic regression guards all three observed calls; the Coffin's collision,
+opening, closing, and session behaviors retain their existing boundaries.
+
+The six fixed Dragon's-Egg layouts now execute natively at `02:433F@all`.
+Their typed `$20-$25` adapter derives the shared `$2CF4` live-count increment
+from work RAM and preserves each exact 213-cycle, eight-write scheduler
+handoff to `02:4345`, including the caller-relative stack writes. The focused
+Release regression guards all six layouts; the group-completion, collision,
+score, hatchling, and reset behaviors retain their existing boundaries.
+
+The hidden Dragon's-Egg group-controller initializer `02:42EB@all` now
+executes natively for slot `$1F`. Its exact 228-cycle, eight-write setup
+clears group-reset byte `$2CF7` and installs the existing `02:42F6`
+live-count controller through the original scheduler boundary. A focused
+Release regression guards this one-time call; completion, collision, score,
+hatchling, and reset behavior retain their existing native-or-assembly split.
+
+Semantic `03:66A3@all` now ports all 1,107 observed Three-Blobs
+first-movement calls. The 535 direct no-zero paths write all three live
+countdown decrements and resume at `03:66DE`; their exact six instruction
+checkpoints preserve both taken and fall-through branch timing, including the
+249 formerly event-horizon-adjacent calls. The 272 timer-expiry paths
+preserve the decrement, four-tick reload, and phase-bit toggle through
+instruction checkpoints, then resume the original mixed motion/collision tail
+at `03:66B5`. Forty-five y-expiry paths write the timer/x/y decrements and
+resume at `03:66BF` before the original reset/coroutine path. All six x-expiry
+paths write the timer/x decrements and resume at `03:66E2` before the original
+reset/scheduler tail. The focused Release regression preserves exact census,
+call, and ordered-write artifacts across the complete route.
+
+Semantic `03:676B@all` now ports the shared Three-Blobs scene-clear idle leaf.
+Both alternating movement phases reach this child after their position work.
+When group latch `$2CFD`, scene latch `$2D3C`, and the actor collision latch
+are clear, the adapter reproduces the exact 147-cycle path through the shared
+color-to-appearance store at `03:67BD` and returns through `03:67E5`. Its
+instruction-timed latch and appearance checkpoints now admit 1,950 of 1,965
+calls, including formerly event-horizon-adjacent idle calls; suspended, moving,
+and collision-active states retain assembly execution. Its focused Release
+census, call, and ordered-write artifacts are byte-identical to assembly.
+
+Semantic `03:66DE@all` now composes the first-movement direct continuation:
+the nested `03:676B` scene-clear idle leaf plus its caller's `JSR` stack frame
+and child return to the outer `RTS`. It admits 1,034 of 1,041 calls through
+the exact 189-cycle, three-write transcript, while mixed non-idle continuations
+retain assembly execution. The focused Release census, call, and ordered-write
+artifacts are byte-identical to assembly.
+
+Semantic `03:67C0@all` now ports every focused Three-Blobs direct final
+collision-gate call. For fixed slots `$58-$5A`, its 27-cycle no-hit leaf
+reloads `$3800,X`, derives the original N/Z flags, and takes the outer return
+through two exact checkpoints. The 15 collision-active calls now also execute
+the 69-cycle latch-clear, command-`$44`, and original-audio-trampoline prefix
+natively, including its return stack frame; the original audio, color-state
+advance, and appearance update remain assembly-backed after that handoff. The
+dedicated Release regression preserves the exact census, call, and ordered-
+write artifacts and replays ordinal one at frame 1,229 with 27 cycles and no
+writes.
+
+The hidden fixed-system scheduler initializer `03:7B1F@all` now executes
+natively for slot `$5C`. Its exact 213-cycle, eight-write setup restores the
+one-tick timer and installs `03:7B27` through the original scheduler boundary.
+A focused Release regression guards this one-time call; steady selector
+submission remains within its existing native-or-assembly split.
+
+The paired hidden fixed-marker initializer `03:7B6D@all` now executes natively
+for slot `$5D`. Its exact 234-cycle, nine-write setup restores marker mode
+`$04`, the one-tick timer, and the original scheduler handoff to `03:7B7A`.
+A focused Release regression guards this one-time call; phase-wave marker
+presentation remains within its existing native-or-assembly split.
+
+The final hidden fixed-response initializer `03:7CA7@all` now executes
+natively for slot `$5E`. Its exact 219-cycle, nine-write setup clears shared
+response state `$2D38` and collision scratch `$CD`, then installs `03:7CAF`
+through the original scheduler boundary. A focused Release regression guards
+this one-time call; the conservative collision/scene response remains within
+its existing native-or-assembly split.
+
+The Sorcerer direct-tail investigation is complete with no replacement
+admitted. A fresh Release cross-family observer set retained `02:58C2`,
+`02:5EEC`, `01:DAF8`, `03:6490`, and `03:651F` in assembly because each still
+combines collision, drawing, or parent-relative interrupt timing. Splitting
+the natural Sorcerer route initially ranked `02:5903` (18,152 calls;
+2,579,169 weighted units), but the caller/return transcript and ROM-byte
+check proved it is the shared one-byte `RTS` at the orbit-path boundary.
+Its measured variants therefore aggregate caller work rather than an isolated
+leaf; the surrounding orbit controller remains explicitly emulated.
+The next sibling screen, staggered deployment `02:586F`, has 1,189 apparent
+84-cycle, one-write countdown passes among 1,240 calls, but its remaining
+deployment and interrupt-bearing states are caller-relative. A guarded trial
+of the countdown shape diverged at frame 941, so no adapter was admitted and
+the complete state remains assembly-backed.
+Its direct predecessor `02:5808@all` is now native for all eight fixed
+Sorcerer slots `$17-$1E`. The slot-and-route-index-bounded adapter preserves
+the exact 642-cycle, 22-write orbit-field, live-count, staggered-delay, and
+`01:C5E6` scheduler transcript; the complete Release family census, call,
+ordered-write, and selected-state artifacts remain byte-identical. The
+owning Sorcerer regression replays `02:5808@1` at frame 873.
+The preceding route-indexed staging initializer `02:57F8@all` is now native
+for the same eight fixed slots. Its exact 249-cycle, ten-write transcript
+installs route and collision state before the original scheduler transfers to
+`02:5808`; the owning regression replays `02:57F8@1` at frame 871 alongside
+the existing deployment replay.
+The complete Sorcerer family checkpoint now passes in both Release and Debug,
+including the native counts and normalized replays for both setup adapters.
+The adjacent Tower-insect source initializer `02:5F22@all` now executes
+natively for its sole fixed `$2C` frame-872 call. Its exact 192-cycle,
+seven-write transaction installs the original `$5F24` continuation and
+preserves the `01:C5E6` scheduler checkpoint; later spawn countdown,
+allocation, collision, and group-clear behavior remains assembly-backed. The
+expanded Tower-insect source regression passes in Release, and the complete
+Debug Tower-insect family checkpoint now replays `02:5F22@1`, `03:60B3@1`,
+`03:6054@1`, and `02:5F5F@1` with byte-identical census and updated complete call/write
+artifacts.
+The adjacent fixed Tower initializer `03:60B3@all` now executes natively for
+its sole frame-872 slot `$2D` call. Its exact 249-cycle, ten-write progress,
+phase, guard, and scheduler transaction is covered by the expanded Release
+Tower-family replay and final Debug family checkpoint, which replays
+`02:5F22@1`, `03:60B3@1`, `03:6054@1`, and `02:5F5F@1`; the busy child
+controller and collision paths remain assembly-backed.
+The mirrored fixed Bumper initializers `03:789A/78A4@all` now execute natively
+for their sole frame-871 slots `$14/$15` calls. Their side-specific exact
+342/336-cycle, fourteen-write transactions establish side/type, collision,
+phase, and appearance state before handing off to the existing `03:78C7`
+dispatcher through the original scheduler boundary. The expanded owning
+Bumper regression replays both entries alongside `03:78C7@1` and preserves
+the full steady hit, score, and actor-identity semantic route in Release and
+the final 202.17-second Debug family checkpoint.
+The right Bumper's real terminal child release at `03:79DE@all` now executes
+natively for all six slot `$71-$76` child initializers after the frame-3,342
+slot-`$15` hit. Its exact 402-cycle, seventeen-write transaction copies parent
+position and appearance, installs type `$83`, and preserves the first child's
+in-flight frame interrupt through an instruction-boundary checkpoint. The new
+`dc_rom_bumper_terminal` regression advances only the authentic phase before
+contact and proves native census, call, and ordered-write artifacts are
+byte-identical to the assembly baseline.
+The child-controller sibling `03:7A71` was also screened at that real terminal
+frame: all six entries immediately compose the shared collision-table walker
+and later motion work, so it remains assembly-backed rather than duplicating
+the existing `03:6966` ownership boundary.
+The paired fixed Small-Soldier source initializers `03:7D4D/7DE9@all` now
+execute natively for their sole frame-872 slots `$34/$35` calls. Their exact
+327/333-cycle, fourteen-write side-specific transactions install collision
+IDs, side, source state, subtype, child budget, and the original scheduler
+handoff to delayed spawn states `03:7D6F/7E0D`. The expanded owning source
+regression replays both entries while retaining delayed spawning, allocation,
+source waiting, and child completion under their established ownership in
+Release and the final 180.52-second Debug family checkpoint.
+The staged Giant-Face controller setup `03:7428/742B/742E@all` now executes
+natively for the frame-872/873 scheduler stages and the frame-941 empty-form
+finalization of fixed slot `$36`. It preserves the 192/192/306-cycle,
+7/7/12-write transactions that install the original `742B`, `742E`, and
+`74D8` scheduler states. Persisted forms one through six still fall back to
+the original restoration branch. The expanded Giant-Face regression replays
+all three direct entries with the established request, animator, crown, and
+mouth gates.
+The paired Small-Soldier delayed-spawn waits `03:7D6F/7E0D@all` now execute
+natively whenever their source timers remain nonzero and clear of the user or
+timer interrupt horizon. The exact 33-cycle, one-write decrement/return path
+replaces 155 left and 161 right calls; expiry, allocation, and 70 timing
+boundary calls remain assembly-owned. The source regression retains its
+existing child-spawner and completion replay before independently replaying
+both native waits.
+The fixed Giant-Face hidden animator initializer `03:766C@all` now executes
+natively for its sole frame-872 slot `$37` call. Its exact 255-cycle,
+ten-write setup establishes timer, phase, and form state before the existing
+`03:767E` animator gate; active animation modes remain assembly-owned.
+The fixed Giant-Face crown initializer `03:76F7@all` now executes natively
+for its sole frame-872 slot `$39` call. Its exact 192-cycle, seven-write
+scheduler transaction installs the existing `03:76FA` collision gate; hit
+handling remains assembly-owned.
+The fixed Giant-Face mouth initializer `03:7718@all` now executes natively
+for its sole frame-872 slot `$38` call. Its exact 243-cycle, nine-write
+collision-clear and scheduler transaction installs the existing `03:7726`
+mouth gate; capture and hit handling remain assembly-owned.
+The stopped Undead-Head controller parent `03:61A3@all` now composes its
+two clear session-transition reads with the existing selector return for
+fixed slot `$4D`. All 770 camera-window calls preserve the exact 63-cycle
+no-write path and all original interrupt passages through six instruction
+checkpoints; transition and activation paths remain assembly-owned.
+The paired Side-Worm stopped-parent routine `02:5CC5@all` now composes its
+two clear session-transition reads with the existing selector return for
+fixed slots `$4E/$4F`. All 1,760 camera-window calls preserve the exact
+72-cycle no-write path and 35 original interrupt passages through six
+instruction checkpoints; transition and activation paths remain
+assembly-owned. The permanent Release replay and Debug ROM-free core
+checkpoint both pass.
+The Giant-Skeleton Eyeball opening wait `02:4DF7@all` now executes natively
+for its fixed slot `$2F` while opening-state timer `$3A2F` exceeds one. The
+controlled completion-latch route replaces all seven exact 33-cycle,
+one-write decrements and preserves byte-identical artifacts; its first and
+second expiry paths remain assembly-owned for their animation, audio, and
+scheduler work. The expanded Eyeball Debug family checkpoint also passes;
+its controlled census is `eb5b0e905cf6a88aa9317329d6167b95fe19d683f2d598373a3312837c43f89c`
+and its entry/call/write artifacts match Release.
+The following scheduled steady return `02:4E24@all` now replaces 1,066 of
+1,377 observed calls. It admits only fixed slot `$2F` with a nonsigned
+collision byte and clear final-animation flag, then reproduces the 51-cycle,
+zero-write local return. The 311 calls at a conservative event horizon and
+the 22 collision/animation continuations remain assembly-owned. Release and
+Debug census, entry, call, and ordered-write artifacts are exact, and the
+normalized `02:4E24@2` replay passes in both configurations.
+The final-animation wait `02:4F3D@all` now also replaces 122 of 224 calls
+for fixed slot `$2F` when its timer and phase both remain above one and clear
+of every conservative event horizon. It preserves the 102-cycle, two-write
+main-timer/phase decrement and local return. Expiry, phase-transition, and
+the other 102 horizon-bound calls remain assembly-owned. Release and Debug
+artifacts are exact, and normalized replay `02:4F3D@2` passes in both builds.
+A follow-up Eyeball continuation screen retains `02:4F76` in assembly: its
+sole natural entry is a 2,388-cycle, 64-write drawing/coroutine/scheduler
+transition with an interrupt passage, not an independently bounded leaf.
+A separate controlled Giant-Face crown-hit screen likewise retains active
+helper `03:761E` in assembly: its one hit call spans 10,473 cycles and 109
+writes (16,839 cycles/262 writes for the enclosing gate), crossing original
+impact allocation and score/audio behavior rather than exposing a direct leaf.
+The separate active hidden-form screen now ports `03:76C5@all` for fixed slot
+`$37`: 639 of 872 calls execute the exact 27-cycle, one-write non-expiry timer
+wait through two instruction checkpoints. Its 233 expiry or conservative
+horizon calls retain the original phase, drawing, and scheduler behavior; the
+focused Release census, entry, call, and ordered-write artifacts are exact and
+normalized replay `03:76C5@2` passes at frame 1,224. The required Debug
+Giant-Face family checkpoint also passes with census
+`b56d786a79b31e51e5ffef5ebc40be80f46be13a1d930b11c7372be76a4eca4e` and
+matching entry/call/write artifacts.
+The mirrored Big-Star pending-right helper `02:5738@all` now executes for its
+controlled fixed-slot `$4B` phase-zero through phase-four calls. It
+reproduces exact 228-cycle, six-write phase-zero hold and phase-one-to-zero
+`$40:$00`/cadence-three selections, phase-two-to-one/`$20:$00`/cadence-six,
+and phase-three-to-two/`$10:$00`/cadence-eight, each with normalized replay
+at frame 1,221. The verified phase-four reset writes phase three, selects zero
+velocity/cadence, and follows its separate 252-cycle tail to set the pending
+latch to one unless `$2D18` equals four, where it clears the latch through the
+other 252-cycle tail. The new phase-zero and phase-one focused Release
+artifacts are byte-identical, and the required Debug family checkpoint for
+phase one preserves matching entry/call/write artifacts with census
+`ed64e39a4c427c98052151f3c4f7e0410945cbf0ca809ee2be06d14179633e65`.
+The phase-zero Debug checkpoint has census
+`493a1ee77abf53ab229a95d5ef50ba4067617b72556845324ffd9dfac4c362af` with
+matching Release entry/call/write artifacts.
+The phase-four Release artifacts are likewise byte-identical; its required
+Debug checkpoint has census
+`3684061b116d8626b85b21bcdc3b550cf61e52fd506bed136cbfcc6c91f5c325`
+with matching entry/call/write artifacts.
+The Tower-insect source countdown `02:5F4A@all` now replaces 141 of 145
+natural calls when fixed source slot `$2C` has a timer above one. It preserves
+the exact 33-cycle, one-write decrement wait and instruction checkpoints for
+the two interrupt-bearing calls; timer expiry and spawning remain assembly
+fallback. The required Debug Tower-insect checkpoint preserves matching
+entry/call/write artifacts and census
+`a95d0c343108b107d7ec1aa3c20915540d91bb08817704776531e5696ea9b5e2`.
+A controlled Four-Star appearance-six probe set fixed slot `$3E`'s indexed
+appearance `$39BE` at frame 1,235 and reached `02:4B00` once. Its 942-cycle,
+22-write original-helper and scheduler transaction is not an independently
+bounded leaf, so the transition remains assembly-backed.
+A follow-up activation screen now ports the Side-Worm's first active
+coroutine handoff `02:5D4A@all`: the fixed left slot `$4E` preserves its
+192-cycle, seven-write `01:C018`/scheduler transaction and installs `02:5D4D`
+at frame 1,997. Its only repeated direct helper, `02:5DFC`, remains a
+pointer-driven
+coordinate/collision transaction (20 calls, 13,584 cycles, and 329 writes),
+so active motion/collision behavior stays assembly-backed. A separate
+Dragon's-Head terminal screen also remains assembly-backed: setting the
+existing frame-2,076 hit counter to one one frame early exposes one
+25,248-cycle, 356-write cross-subsystem completion transaction at `02:5A4B`,
+not an isolated leaf.
+The complete direct-setup initializer batch plus the Side-Worm selector gate
+has been revalidated in Release: all 25 focused ROM regressions, the owning
+build, and ROM-free core suite
+pass. Its required Debug family checkpoint also passes: the owning Side-Worm
+initializer replay `02:5C4B@1` preserves the one native entry, frame-872
+204-cycle/10-write transcript, and the Release call/write hashes. The known
+configuration-specific framebuffer census is
+`a95d0c343108b107d7ec1aa3c20915540d91bb08817704776531e5696ea9b5e2`;
+the Debug ROM-free core suite passes as well.
+
+A fresh ordinary live-ball sibling profile now explicitly rejects the broad
+`01:C765` handler and shared `01:DC95` post-motion helper as the next slice:
+their 2,340/2,895 calls contain mixed integration, collision, pointer-driven
+geometry, drain, and presentation work. The remaining `01:C696` ball
+dispatch is a shared `C5C9/C5EA` scheduler/coroutine entry rather than a
+local gameplay leaf. No replacement was added from this screen; its measured
+call, cycle, write, and return populations are recorded in
+`docs/NATIVE_FALLBACK_HOTSPOTS.md`. The next candidate must come from a new
+bounded sibling observer set.
+
+A second ordinary contact-response observer set now likewise rejects
+`01:CBCF`, `01:CF33`, and interior `01:D524`. Their 270/520/980 calls consume
+5,064,033/7,933,113/2,000,790 master cycles and 159,371/251,090/50,335
+ordered writes. The apparently compact `CF33` form enters mixed `CF89`, whose
+228 internal-entry scopes return through post-motion `DCD7`/`DD08`; its
+sibling `CE94` crosses collision or arithmetic work. `D524` remains part of the
+previously bounded-but-broad `D525` controller. No independent state-derived
+return exists in this natural family, so no replacement was registered; the
+next candidate must again come from a new sibling observer set.
+
+A controlled fixed-response screen now sets only collision scratch `$20CC`
+at frame 1,200 and retains the active `03:7CAF` branch in assembly. Its one
+8,949-cycle, 225-write transition issues original audio command `$08`, updates
+response/countdown state, and reschedules through `01:C5E9`; the next frame's
+continuation issues command `$01`. The two `00:ECFD` audio-driver child scopes
+take 5,799/10,830 cycles and 149/269 writes, so the branch remains a combined
+collision/audio/ball-response scene transaction rather than an extension of
+the native 45-cycle dormant gate. No replacement was registered.
+
+A separate Tower-Guard open-entrance probe set only gate `$2D4D` to zero and
+fixed collision byte `$382E` to `$80` at frame 1,200. The route continues to
+run all 2,650 selector updates but never enters `03:612B`; the staged byte is
+not a durable entrance request. BS-5 selection, command `$41`, counter reset,
+and scene transition must be captured from a real collision delivery or a
+validated later collision-pipeline boundary. The native selector leaf is
+unchanged and no parent composition was registered.
+Placing the live ball at the Guard's mapped `(132,510)` position with the
+same open selector exercised the normal collision walker but never dispatched
+actor slot `$2E` or reached `03:612B`. The Guard entrance is therefore not a
+normal ball-coordinate collision consumer; future screening must begin at its
+separate trigger delivery rather than further position/latch probes.
 
 Milestone 4 is now active. Semantic `03:6966@all` scheduling replaces 18,806
 of 19,648 deterministic-route calls by selector/slot state, while the
@@ -4915,11 +5964,30 @@ impact/allocation setup, and semantic `02:4371@all` owns the 21-cycle,
 one-write post-allocation activation. Shared score/audio, burst allocation,
 hatchling allocation, and scheduling remain assembly; all 1,682 aggregate
 writes remain exact.
-Semantic `02:4DD9@all` replaces all 1,988 Giant-Skeleton-Eyeball activation
-checks observed on the route through a six-boundary transcript for the exact
-57-cycle dormant return. All 37 original interrupt-handler passages and 493
-aggregate handler writes remain exact; opening and final-animation states
-outside the route remain emulated.
+Semantic `02:4DC8/4DD9@all` replaces the fixed Giant-Skeleton-Eyeball
+initializer and all 1,988 activation checks observed on the route. The
+initializer uses its exact 258-cycle, ten-write script transcript and final
+interrupt boundary; the gate retains its six-boundary 57-cycle dormant
+return. All 37 original interrupt-handler passages and the expanded 503-write
+aggregate remain exact; opening and final-animation states outside the route
+remain emulated.
+Semantic `03:6876@all` now replaces all seven Gray-Blob layout initializers.
+Its 15-write setup transcript uses the final `01:C5E6` checkpoint to admit
+the four calls that had previously remained at the conservative event/IRQ
+horizon, preserving the same Release census, call, and ordered-write
+artifacts.
+Semantic `03:68A1@all` now replaces all seven naturally activated Gray-Blob
+first-live prefixes on the maximum-score route. For slots `$50-$56` with the
+initial one-tick phase timer, it clears transient/collision latches, composes
+the native RNG recurrence, stores the original 64--95-tick movement interval,
+and hands off at `01:C018`. Every complete 633-cycle, 20-write scope (and the
+focused Release census, call, and ordered-write artifacts) remains exact;
+later movement, collision, hit, impact, and scoring paths stay assembly-backed.
+Semantic `02:57AD@all` now replaces all 2,648 live Sorcerer-controller
+branches on the standard route. Its exact 27-cycle `$2D0F` load and taken
+branch hands off to the existing native `02:57E9` color gate; the complete
+Release census, call, and ordered-write artifacts remain exact. Zero-live
+delay, RNG selection, and redeployment behavior remain emulated.
 Semantic `02:4FC1@all` replaces all 7,950 Mercy-Star activation checks
 observed on the route through a five-boundary transcript for the exact
 54-cycle not-last-ball return. All 163 original interrupt-handler passages

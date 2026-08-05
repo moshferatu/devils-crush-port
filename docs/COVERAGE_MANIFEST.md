@@ -126,7 +126,7 @@ manual's numbered chart. Together with `dc_rom_actor_layout`, they close the
 | --- | --- | :---: | --- |
 | `C-ACT-01` | All 88 fixed records, 59 initializer identities, and 127-slot ownership | D | `dc_rom_actor_layout`, `dc_rom_actor_activation` |
 | `C-ACT-02` | Camera-window activation, persistence, and both selective table loaders | D | `dc_rom_actor_activation`, `dc_rom_scene_layout`, `dc_rom_selective_scene`, `dc_rom_bonus_return` |
-| `C-ACT-03` | Lower-table bumper hit phases | D | `dc_rom_bumper_family` |
+| `C-ACT-03` | Lower-table bumper hit phases and terminal child release | D | `dc_rom_bumper_family`, `dc_rom_bumper_terminal` |
 | `C-ACT-04` | Front-Spider hits and side-safety latches | D | `dc_rom_front_spider` |
 | `C-ACT-05` | Side-Spider collision/transition result | S | `dc_rom_side_spiders` |
 | `C-ACT-06` | Upper Wall-Pocket hands, timers, response RNG, and continuation | D | `dc_rom_upper_wall_pocket_hands`, both upper-hand RNG regressions |
