@@ -67,6 +67,19 @@ Run the cabinet preview:
 .\out\build\windows-vs2022\Debug\devils-crush.exe --cabinet --rom "D:\path\to\Devil's Crush.pce"
 ```
 
+## Deploying to a cabinet
+
+`tools/Publish-Cabinet.ps1` builds the `windows-cabinet` preset and stages a
+self-contained folder that can be synced to a cabinet on its own, without the
+workspace:
+
+```powershell
+.\tools\Publish-Cabinet.ps1
+```
+
+See [docs/CABINET_PREVIEW.md](docs/CABINET_PREVIEW.md#deploying-to-a-cabinet)
+for what the folder contains and how runtime state is kept per-machine.
+
 Supply and persist a backglass image from the command line:
 
 ```powershell

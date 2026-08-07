@@ -391,6 +391,60 @@ respond wherever they stand, and `--cabinet-freeze-census` shows the spiders at
 `$26-$29` changing 12.5 times per 100 off-camera frames against 9.7 on camera,
 where they previously missed most of what the ROM asked of them.
 
+## Deploying to a cabinet
+
+The cabinet is a separate machine from the workstation the port is developed
+on, and the workspace is far too large to sync. `tools/Publish-Cabinet.ps1`
+builds the `windows-cabinet` preset and stages a folder that stands alone:
+
+```powershell
+.\tools\Publish-Cabinet.ps1
+```
+
+It stages to `..\devils-crush-cabinet` by default, refusing any destination
+inside the workspace, and accepts `-Destination` and `-RomPath`. `-SkipBuild`
+restages an executable that is already built.
+
+The staged folder holds six files and about 9 MiB:
+
+| File | Why it is there |
+| --- | --- |
+| `devils-crush.exe` | The whole game |
+| `Devil's Crush.pce` | Proprietary, so never part of the CMake install set |
+| `LICENSE`, `THIRD_PARTY_NOTICES.md`, `README.md` | GPL-3.0 distribution set |
+| `.stignore` | Keeps runtime state out of the sync |
+
+The `windows-cabinet` preset differs from `windows-vs2022` in three ways:
+Release only, tests off, and `CMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded`. SDL3,
+SDL3_image, libwebp, and Beetle PCE were already linked statically; folding in
+the Microsoft C runtime removes the last file the cabinet would otherwise have
+had to obtain separately. `dumpbin /dependents` on the staged executable lists
+only DLLs that ship with Windows — no `MSVCP140.dll`, no `VCRUNTIME140*.dll`,
+no `api-ms-win-crt-*`. Nothing needs installing on the cabinet.
+
+Because it uses its own build directory, the first publish rebuilds every
+dependency and takes as long as a clean configure. The workstation's
+`windows-vs2022` tree, and therefore the oracle and the test suite, is left
+untouched.
+
+### Runtime state is per-machine
+
+Every path the host reads or writes at run time is relative to the working
+directory: `portable-data/cabinet.ini`, `portable-data/devils-crush.sav`,
+`portable-data/devils-crush.state`. Run the executable from inside the staged
+folder and that directory is created there on first use.
+
+Syncing it back would be actively wrong. Display assignment records SDL display
+names and window rectangles for the machine that wrote it, so a workstation
+push would overwrite whatever the cabinet was configured with, and the
+cabinet's assignment would replace the workstation's on the next pull. The
+generated `.stignore` excludes `portable-data`, `logs`, and `captures`, so each
+machine keeps its own display layout, high scores, and quick states.
+
+That also means display assignment is a one-time step on the cabinet itself:
+launch with `--cabinet`, press F12, and assign the playfield, DMD, and
+backglass to the cabinet's own displays as described above.
+
 ## Remaining cabinet work
 
 - Fixed-mechanism pre-seeding is complete. The eight stream-backed
