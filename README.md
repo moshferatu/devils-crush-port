@@ -73,6 +73,16 @@ Supply and persist a backglass image from the command line:
 .\out\build\windows-vs2022\Debug\devils-crush.exe --cabinet --backglass "D:\cabinet\backglass.webp" --rom "D:\path\to\Devil's Crush.pce"
 ```
 
+Both host modes deploy the ported code. Every routine an `@all` regression has
+proven is installed before the first frame and executes in place of the
+emulated original; the host reports the deployment on startup and its share of
+the session on exit. `--emulate-only` runs the untouched assembly instead,
+which is the control when a live session misbehaves and the question is
+whether a native routine caused it. `--native-cycle-census <census.csv>` writes
+the per-routine breakdown for the session that was played. See
+[`docs/NATIVE_REGISTRY.md`](docs/NATIVE_REGISTRY.md) for the admitted set and
+its measured coverage.
+
 Cabinet mode opens a portrait playfield, a non-focusable score DMD, and a
 non-focusable backglass. Menus and bonus stages use the sharply scaled
 emulator framebuffer. A live normal session switches the playfield to the

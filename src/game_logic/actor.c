@@ -2,6 +2,76 @@
 
 #include "devils_crush/game_logic/actor.h"
 
+int dc_classify_actor_scan_run(
+    const uint8_t* const work_ram,
+    const size_t work_ram_size,
+    const uint8_t slot,
+    const uint8_t maximum_skips,
+    dc_actor_scan_run* const run)
+{
+    uint8_t current;
+    uint8_t skipped;
+    uint8_t accumulator;
+
+    if (work_ram == NULL || run == NULL || work_ram_size < 0x2000U
+        || slot >= DC_ACTOR_SCAN_SLOT_COUNT
+        || maximum_skips > DC_ACTOR_SCAN_SLOT_COUNT) {
+        return 0;
+    }
+
+    current = slot;
+    skipped = 0U;
+    accumulator = 0U;
+    for (;;) {
+        uint8_t flags;
+
+        /* The budget is spent at the loop head, before the next slot is
+           read, so the run resumes exactly where the assembly would. */
+        if (skipped >= maximum_skips) {
+            run->exit = DC_ACTOR_SCAN_BUDGET;
+            break;
+        }
+
+        /* LDA $3000,X : BPL to the increment when the slot is idle. */
+        flags = work_ram[0x1000U + (size_t)current];
+
+        accumulator = flags;
+        if ((flags & 0x80U) != 0U) {
+            /* LDA $3080,X : BMI straight to the dispatch branch. */
+            const uint8_t attributes =
+                work_ram[0x1080U + (size_t)current];
+
+            accumulator = attributes;
+            if ((attributes & 0x80U) != 0U) {
+                run->exit = DC_ACTOR_SCAN_DISPATCH_NEGATIVE;
+                break;
+            }
+            /* AND #$02 : BNE back to the increment when bit 1 survives. */
+            accumulator = (uint8_t)(attributes & 0x02U);
+            if (accumulator == 0U) {
+                run->exit = DC_ACTOR_SCAN_DISPATCH_MASKED;
+                break;
+            }
+            run->skips[skipped] = (uint8_t)DC_ACTOR_SCAN_SKIP_MASKED;
+        } else {
+            run->skips[skipped] = (uint8_t)DC_ACTOR_SCAN_SKIP_INACTIVE;
+        }
+
+        /* INC $4D : LDX $4D : CPX #$80 : BNE back to the loop head. */
+        ++skipped;
+        ++current;
+        if (current >= DC_ACTOR_SCAN_SLOT_COUNT) {
+            run->exit = DC_ACTOR_SCAN_COMPLETE;
+            break;
+        }
+    }
+
+    run->skipped = skipped;
+    run->slot = current;
+    run->accumulator = accumulator;
+    return 1;
+}
+
 int dc_classify_actor_camera_activation(
     const uint8_t* const work_ram,
     const size_t work_ram_size,

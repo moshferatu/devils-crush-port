@@ -128,6 +128,23 @@ public:
         return false;
     }
 
+    [[nodiscard]] bool set_instruction_profiling(bool) override
+    {
+        return false;
+    }
+
+    [[nodiscard]] bool instruction_profiling_enabled()
+        const noexcept override
+    {
+        return false;
+    }
+
+    [[nodiscard]] std::vector<InstructionProfileEntry>
+    export_instruction_profile() const override
+    {
+        return {};
+    }
+
     [[nodiscard]] bool set_bus_write_observer(
         BusWriteCallback) override
     {

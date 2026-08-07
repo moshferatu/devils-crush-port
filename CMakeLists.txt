@@ -46,6 +46,7 @@ add_library(
     src/render/pce_background.cpp
     src/render/pce_sprite_overlay.cpp
     src/render/sharp_pixel_scaler.cpp
+    src/render/table_palette_cache.cpp
     src/render/title_logo.cpp
 )
 
@@ -69,6 +70,7 @@ add_library(
     src/game_logic/physics.c
     src/game_logic/rng.c
     src/game_logic/score.c
+    src/game_logic/sprite.c
 )
 
 add_library(DevilsCrush::GameLogic ALIAS dc_game_logic)
@@ -94,6 +96,19 @@ if(DC_FETCH_BEETLE)
 else()
     set(dc_emulation_source src/emulation/pce_runtime_stub.cpp)
 endif()
+
+add_library(dc_native_registry STATIC src/app/native_registry.cpp)
+
+add_library(DevilsCrush::NativeRegistry ALIAS dc_native_registry)
+
+target_include_directories(
+    dc_native_registry
+    PUBLIC
+        "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
+)
+
+target_compile_features(dc_native_registry PUBLIC cxx_std_20)
+dc_enable_strict_warnings(dc_native_registry)
 
 add_library(dc_emulation STATIC "${dc_emulation_source}")
 
@@ -155,6 +170,7 @@ if(DC_BUILD_APP)
         src/app/native_replacements_controls.cpp
         src/app/native_replacements_physics.cpp
         src/app/native_replacements_rules.cpp
+        src/app/native_replacements_video.cpp
     )
 
     target_link_libraries(
@@ -164,6 +180,7 @@ if(DC_BUILD_APP)
             DevilsCrush::Emulation
             DevilsCrush::GameLogic
             DevilsCrush::Image
+            DevilsCrush::NativeRegistry
             SDL3::SDL3
             SDL3_image::SDL3_image
     )

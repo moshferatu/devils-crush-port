@@ -35,6 +35,27 @@ replace_native_gameplay_routine_impl(
         return detail::replace_ball_drain_threshold(entry, work_ram);
     }
     if (entry.routine
+        == RoutineKey{
+            .physical_bank = 0x01U,
+            .logical_pc = 0xC510U,
+        }) {
+        return detail::replace_actor_scan_run(entry, work_ram);
+    }
+    if (entry.routine
+        == RoutineKey{
+            .physical_bank = 0x01U,
+            .logical_pc = 0xCB48U,
+        }) {
+        return detail::replace_collision_scan_run(entry, work_ram);
+    }
+    if (entry.routine
+        == RoutineKey{
+            .physical_bank = 0x08U,
+            .logical_pc = 0x40DFU,
+        }) {
+        return detail::replace_sprite_emit_run(entry, work_ram, rom);
+    }
+    if (entry.routine
             == RoutineKey{
                 .physical_bank = 0x01U,
                 .logical_pc = 0xC80AU,

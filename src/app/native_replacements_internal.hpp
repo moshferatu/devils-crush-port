@@ -1184,6 +1184,22 @@ replace_actor_slot_reset(
     const emulation::RoutineEntry& entry);
 
 [[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_actor_scan_run(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram);
+
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_collision_scan_run(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram);
+
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_sprite_emit_run(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram,
+    std::span<const std::byte> rom);
+
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
 replace_collision_table_interpreter(
     const emulation::RoutineEntry& entry,
     std::span<const std::byte> work_ram,

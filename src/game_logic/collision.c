@@ -2,6 +2,78 @@
 
 #include "devils_crush/game_logic/collision.h"
 
+int dc_classify_collision_scan_run(
+    const uint8_t* const work_ram,
+    const size_t work_ram_size,
+    const uint8_t slot,
+    const uint8_t remaining,
+    const uint8_t gate,
+    const uint8_t maximum_skips,
+    dc_collision_scan_run* const run)
+{
+    uint8_t current;
+    uint8_t left;
+    uint8_t skipped;
+    uint8_t accumulator;
+
+    if (work_ram == NULL || run == NULL || work_ram_size < 0x2000U
+        || remaining == 0U || maximum_skips > DC_COLLISION_SCAN_MAX_SKIPS) {
+        return 0;
+    }
+    /* A nonzero gate takes the second eligibility test through $3000,Y,
+       which no observed route exercises. */
+    if (gate != 0U) {
+        return 0;
+    }
+
+    current = slot;
+    left = remaining;
+    skipped = 0U;
+    accumulator = 0U;
+    for (;;) {
+        uint8_t attributes;
+
+        if (skipped >= maximum_skips) {
+            run->exit = DC_COLLISION_SCAN_BUDGET;
+            break;
+        }
+        if ((size_t)0x1080U + (size_t)current >= work_ram_size) {
+            return 0;
+        }
+
+        /* LDY $64 : LDA $3080,Y : BPL to the increment. */
+        attributes = work_ram[0x1080U + (size_t)current];
+        accumulator = attributes;
+        if ((attributes & 0x80U) != 0U) {
+            /* BIT #$40 : BNE to the increment when bit 6 survives. */
+            if ((attributes & 0x40U) == 0U) {
+                /* LDA $55 : BEQ to the vertical scan call. */
+                accumulator = gate;
+                run->exit = DC_COLLISION_SCAN_CANDIDATE;
+                break;
+            }
+            run->skips[skipped] = (uint8_t)DC_COLLISION_SCAN_SKIP_MASKED;
+        } else {
+            run->skips[skipped] = (uint8_t)DC_COLLISION_SCAN_SKIP_POSITIVE;
+        }
+
+        /* INC $64 : DEC $60 : BNE back to the sweep head. */
+        ++skipped;
+        ++current;
+        --left;
+        if (left == 0U) {
+            run->exit = DC_COLLISION_SCAN_EXHAUSTED;
+            break;
+        }
+    }
+
+    run->skipped = skipped;
+    run->slot = current;
+    run->remaining = left;
+    run->accumulator = accumulator;
+    return 1;
+}
+
 int dc_classify_collision_scan_vertical_reject(
     const uint8_t* const work_ram,
     const size_t work_ram_size,

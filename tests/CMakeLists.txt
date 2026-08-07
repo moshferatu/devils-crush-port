@@ -19,6 +19,7 @@ target_link_libraries(
         DevilsCrush::Core
         DevilsCrush::Emulation
         DevilsCrush::GameLogic
+        DevilsCrush::NativeRegistry
 )
 
 target_link_libraries(
@@ -72,6 +73,20 @@ add_test(
         "${CMAKE_CURRENT_SOURCE_DIR}/../docs/COVERAGE_MANIFEST.md"
         -TestListPath
         "${CMAKE_CURRENT_SOURCE_DIR}/CMakeLists.txt"
+)
+
+add_test(
+    NAME dc_native_registry_manifest
+    COMMAND
+        powershell
+        -NoProfile
+        -ExecutionPolicy
+        Bypass
+        -File
+        "${CMAKE_CURRENT_SOURCE_DIR}/../tools/Generate-NativeRegistry.ps1"
+        -RepositoryRoot
+        "${CMAKE_CURRENT_SOURCE_DIR}/.."
+        -Check
 )
 
 if(TARGET devils_crush)
@@ -473,6 +488,23 @@ if(TARGET devils_crush)
         )
         set_tests_properties(
             dc_rom_cabinet_smoke
+            PROPERTIES
+                LABELS rom_required
+                ENVIRONMENT
+                    "SDL_VIDEODRIVER=dummy;SDL_AUDIODRIVER=dummy"
+        )
+
+        add_test(
+            NAME dc_rom_host_registry
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DROM=${DC_ROM_PATH}"
+                -P
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_host_registry.cmake"
+        )
+        set_tests_properties(
+            dc_rom_host_registry
             PROPERTIES
                 LABELS rom_required
                 ENVIRONMENT
@@ -1608,6 +1640,40 @@ if(TARGET devils_crush)
         )
         set_tests_properties(
             dc_rom_walled_star_access_initializer_semantic
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_collision_scan_semantic
+            CONFIGURATIONS Release
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/collision-scan-semantic-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_collision_scan_semantic.cmake"
+        )
+        set_tests_properties(
+            dc_rom_collision_scan_semantic
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_actor_scan_semantic
+            CONFIGURATIONS Release
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/actor-scan-semantic-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_actor_scan_semantic.cmake"
+        )
+        set_tests_properties(
+            dc_rom_actor_scan_semantic
             PROPERTIES LABELS rom_required
         )
 

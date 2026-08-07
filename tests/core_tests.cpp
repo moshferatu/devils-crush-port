@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+#include "devils_crush/app/native_registry.hpp"
 #include "devils_crush/core/backup_ram.hpp"
 #include "devils_crush/cabinet/cabinet_state.hpp"
 #include "devils_crush/cabinet/display_config.hpp"
@@ -8,6 +9,8 @@
 #include "devils_crush/emulation/pce_runtime.hpp"
 #include "devils_crush/game_logic/actor.h"
 #include "devils_crush/game_logic/collision.h"
+#include "devils_crush/game_logic/sprite.h"
+#include "devils_crush/render/table_palette_cache.hpp"
 #include "devils_crush/game_logic/controls.h"
 #include "devils_crush/game_logic/physics.h"
 #include "devils_crush/game_logic/rng.h"
@@ -8004,6 +8007,440 @@ void test_backup_ram_storage()
         "backup RAM test file is removed");
 }
 
+void test_actor_scan_run()
+{
+    std::vector<std::uint8_t> work_ram(0x2000U, 0U);
+    const auto reset = [&work_ram]() {
+        std::ranges::fill(work_ram, static_cast<std::uint8_t>(0));
+    };
+    dc_actor_scan_run run{};
+
+    // Every slot idle: the walk runs out of slots and exits at the loop's
+    // terminal comparison.
+    reset();
+    check(
+        dc_classify_actor_scan_run(
+            work_ram.data(), work_ram.size(), 0U, 0x80U, &run) == 1,
+        "actor scan classifies an entirely idle sweep");
+    check(run.exit == DC_ACTOR_SCAN_COMPLETE, "idle sweep completes");
+    check(run.skipped == 0x80U && run.slot == 0x80U, "idle sweep walks 128 slots");
+
+    // A negative attribute byte dispatches immediately.
+    reset();
+    work_ram[0x1000U + 3U] = 0x80U;
+    work_ram[0x1080U + 3U] = 0x80U;
+    check(
+        dc_classify_actor_scan_run(
+            work_ram.data(), work_ram.size(), 0U, 0x80U, &run) == 1,
+        "actor scan classifies a negative dispatch");
+    check(
+        run.exit == DC_ACTOR_SCAN_DISPATCH_NEGATIVE && run.slot == 3U
+            && run.skipped == 3U && run.accumulator == 0x80U,
+        "negative dispatch stops on its slot with the attribute byte");
+
+    // Bit 1 clear on a positive attribute byte also dispatches, leaving the
+    // masked accumulator behind.
+    reset();
+    work_ram[0x1000U + 1U] = 0x80U;
+    work_ram[0x1080U + 1U] = 0x04U;
+    check(
+        dc_classify_actor_scan_run(
+            work_ram.data(), work_ram.size(), 0U, 0x80U, &run) == 1,
+        "actor scan classifies a masked dispatch");
+    check(
+        run.exit == DC_ACTOR_SCAN_DISPATCH_MASKED && run.slot == 1U
+            && run.accumulator == 0U,
+        "masked dispatch clears the accumulator");
+
+    // Bit 1 set keeps the slot idle and records the costlier skip shape.
+    reset();
+    work_ram[0x1000U + 0U] = 0x80U;
+    work_ram[0x1080U + 0U] = 0x02U;
+    work_ram[0x1000U + 1U] = 0x80U;
+    work_ram[0x1080U + 1U] = 0x80U;
+    check(
+        dc_classify_actor_scan_run(
+            work_ram.data(), work_ram.size(), 0U, 0x80U, &run) == 1,
+        "actor scan classifies a masked skip");
+    check(
+        run.skipped == 1U
+            && run.skips[0] == static_cast<std::uint8_t>(
+                   DC_ACTOR_SCAN_SKIP_MASKED),
+        "masked skip is recorded with its own shape");
+
+    // A spent budget rests at the loop head without consuming a slot.
+    reset();
+    check(
+        dc_classify_actor_scan_run(
+            work_ram.data(), work_ram.size(), 0U, 4U, &run) == 1,
+        "actor scan honours its skip budget");
+    check(
+        run.exit == DC_ACTOR_SCAN_BUDGET && run.skipped == 4U
+            && run.slot == 4U,
+        "budgeted walk stops after its allowance");
+
+    // Malformed inputs are refused rather than guessed at.
+    check(
+        dc_classify_actor_scan_run(nullptr, 0x2000U, 0U, 1U, &run) == 0,
+        "actor scan rejects a missing snapshot");
+    check(
+        dc_classify_actor_scan_run(
+            work_ram.data(), 0x100U, 0U, 1U, &run) == 0,
+        "actor scan rejects a short snapshot");
+    check(
+        dc_classify_actor_scan_run(
+            work_ram.data(), work_ram.size(), 0x80U, 1U, &run) == 0,
+        "actor scan rejects an out-of-range slot");
+}
+
+void test_collision_scan_run()
+{
+    std::vector<std::uint8_t> work_ram(0x2000U, 0U);
+    const auto reset = [&work_ram]() {
+        std::ranges::fill(work_ram, static_cast<std::uint8_t>(0));
+    };
+    dc_collision_scan_run run{};
+
+    // Every slot positive: the countdown runs out and the sweep falls through.
+    reset();
+    check(
+        dc_classify_collision_scan_run(
+            work_ram.data(), work_ram.size(), 4U, 0x7CU, 0U, 0x80U, &run) == 1,
+        "collision scan classifies an entirely rejected sweep");
+    check(
+        run.exit == DC_COLLISION_SCAN_EXHAUSTED && run.skipped == 0x7CU
+            && run.remaining == 0U && run.slot == 0x80U,
+        "rejected sweep exhausts its countdown");
+
+    // A negative attribute byte without bit 6 is eligible.
+    reset();
+    work_ram[0x1080U + 6U] = 0x80U;
+    check(
+        dc_classify_collision_scan_run(
+            work_ram.data(), work_ram.size(), 4U, 0x7CU, 0U, 0x80U, &run) == 1,
+        "collision scan finds an eligible slot");
+    check(
+        run.exit == DC_COLLISION_SCAN_CANDIDATE && run.slot == 6U
+            && run.skipped == 2U && run.remaining == 0x7AU
+            && run.accumulator == 0U,
+        "eligible slot stops the sweep with the zero gate loaded");
+
+    // Bit 6 rejects a negative slot and records the costlier shape.
+    reset();
+    work_ram[0x1080U + 4U] = 0xC0U;
+    work_ram[0x1080U + 5U] = 0x80U;
+    check(
+        dc_classify_collision_scan_run(
+            work_ram.data(), work_ram.size(), 4U, 0x7CU, 0U, 0x80U, &run) == 1,
+        "collision scan rejects a masked slot");
+    check(
+        run.skipped == 1U
+            && run.skips[0] == static_cast<std::uint8_t>(
+                   DC_COLLISION_SCAN_SKIP_MASKED)
+            && run.exit == DC_COLLISION_SCAN_CANDIDATE,
+        "masked rejection is recorded with its own shape");
+
+    // A spent budget rests at the sweep head.
+    reset();
+    check(
+        dc_classify_collision_scan_run(
+            work_ram.data(), work_ram.size(), 4U, 0x7CU, 0U, 3U, &run) == 1,
+        "collision scan honours its skip budget");
+    check(
+        run.exit == DC_COLLISION_SCAN_BUDGET && run.skipped == 3U
+            && run.slot == 7U && run.remaining == 0x79U,
+        "budgeted sweep stops after its allowance");
+
+    // The nonzero gate selects an unmodelled test and must be refused.
+    check(
+        dc_classify_collision_scan_run(
+            work_ram.data(), work_ram.size(), 4U, 0x7CU, 1U, 0x80U, &run) == 0,
+        "collision scan refuses a nonzero gate");
+    check(
+        dc_classify_collision_scan_run(
+            work_ram.data(), work_ram.size(), 4U, 0U, 0U, 0x80U, &run) == 0,
+        "collision scan refuses an empty countdown");
+    check(
+        dc_classify_collision_scan_run(
+            nullptr, 0x2000U, 4U, 0x7CU, 0U, 0x80U, &run) == 0,
+        "collision scan rejects a missing snapshot");
+}
+
+void test_sprite_emit_run()
+{
+    // A synthetic bank standing in for the routine's own: one descriptor
+    // pointer table, one frame pointer, then a single six-byte entry.
+    std::vector<std::uint8_t> rom(DC_SPRITE_EMIT_ROM_SIZE, 0U);
+    std::vector<std::uint8_t> work_ram(0x2000U, 0U);
+    const auto at = [&rom](const std::uint16_t address) -> std::uint8_t& {
+        return rom[address - DC_SPRITE_EMIT_ROM_BASE];
+    };
+    constexpr std::uint16_t kDescriptor = 0x4300U;
+    constexpr std::uint16_t kEntries = 0x4400U;
+
+    const auto reset = [&]() {
+        std::ranges::fill(rom, static_cast<std::uint8_t>(0));
+        std::ranges::fill(work_ram, static_cast<std::uint8_t>(0));
+        // Descriptor id 0 resolves to kDescriptor, whose frame 0 entry list
+        // is kEntries.
+        at(0x41ACU) = static_cast<std::uint8_t>(kDescriptor);
+        at(0x41F1U) = static_cast<std::uint8_t>(kDescriptor >> 8U);
+        at(kDescriptor) = static_cast<std::uint8_t>(kEntries);
+        at(kDescriptor + 1U) = static_cast<std::uint8_t>(kEntries >> 8U);
+        at(kEntries) = 1U;  // one entry
+    };
+
+    dc_sprite_emit_run run{};
+
+    // A plain entry: every offset positive, no attribute merge.
+    reset();
+    at(kEntries + 1U) = 0x10U;  // vertical offset
+    at(kEntries + 2U) = 0x20U;  // horizontal offset
+    at(kEntries + 3U) = 0x30U;  // pattern low
+    at(kEntries + 4U) = 0x00U;  // pattern high
+    at(kEntries + 5U) = 0x44U;  // attribute low
+    at(kEntries + 6U) = 0x55U;  // attribute high
+    work_ram[0x1300U + 7U] = 0x04U;  // vertical low
+    work_ram[0x1380U + 7U] = 0x01U;  // vertical high
+    work_ram[0x1180U + 7U] = 0x05U;  // horizontal low
+    work_ram[0x1200U + 7U] = 0x02U;  // horizontal high
+    check(
+        dc_classify_sprite_emit_run(
+            work_ram.data(), work_ram.size(), rom.data(), rom.size(), 7U,
+            &run) == 1,
+        "sprite emit classifies a single positive entry");
+    check(
+        run.count == 1U && run.cursor == 1U && run.final_y == 7U
+            && run.entry_pointer == kEntries,
+        "single entry advances the cursor and the descriptor index");
+    check(
+        run.entries[0].widen_low == 0x14U && run.entries[0].widen_high == 0x01U,
+        "positive vertical offset widens without sign extension");
+    check(
+        run.entries[0].vertical_low == 0x54U
+            && run.entries[0].vertical_high == 0x01U,
+        "vertical origin adds after the camera subtracts");
+    check(
+        run.entries[0].horizontal_low == 0x25U
+            && run.entries[0].horizontal_high == 0x02U,
+        "positive horizontal offset widens without sign extension");
+    check(
+        run.entries[0].attribute_low == 0x44U
+            && run.entries[0].attribute_high == 0x55U
+            && run.entries[0].attribute_low_merged == 0U,
+        "an unflagged actor passes its attribute bytes through");
+
+    // A negative vertical offset sign-extends through $3380,X.
+    reset();
+    at(kEntries + 1U) = 0xF0U;
+    work_ram[0x1300U + 7U] = 0x04U;
+    work_ram[0x1380U + 7U] = 0x01U;
+    check(
+        dc_classify_sprite_emit_run(
+            work_ram.data(), work_ram.size(), rom.data(), rom.size(), 7U,
+            &run) == 1,
+        "sprite emit classifies a negative vertical entry");
+    check(
+        run.entries[0].vertical_negative == 1U
+            && run.entries[0].widen_low == 0xF4U
+            && run.entries[0].widen_high == 0x00U,
+        "negative vertical offset borrows from the high byte");
+
+    // The camera origin subtracts out of the widened coordinate.
+    reset();
+    at(kEntries + 1U) = 0x10U;
+    work_ram[0x1300U + 7U] = 0x04U;
+    work_ram[0x1380U + 7U] = 0x01U;
+    work_ram[0xA9U] = 0x20U;  // camera vertical low
+    work_ram[0xAAU] = 0x01U;  // camera vertical high
+    check(
+        dc_classify_sprite_emit_run(
+            work_ram.data(), work_ram.size(), rom.data(), rom.size(), 7U,
+            &run) == 1,
+        "sprite emit classifies a camera-relative entry");
+    // $0114 - $0120 borrows to $FFF4, and the $40 origin carries it back.
+    check(
+        run.entries[0].camera_low == 0xF4U
+            && run.entries[0].camera_high == 0xFFU
+            && run.entries[0].vertical_low == 0x34U
+            && run.entries[0].vertical_high == 0x00U,
+        "camera subtraction borrows before the origin adds");
+
+    // A bit-4 actor merges $3D00,X into the attribute low byte.
+    reset();
+    at(kEntries + 5U) = 0x41U;
+    work_ram[0x1800U + 7U] = 0x10U;
+    work_ram[0x1D00U + 7U] = 0x82U;
+    check(
+        dc_classify_sprite_emit_run(
+            work_ram.data(), work_ram.size(), rom.data(), rom.size(), 7U,
+            &run) == 1,
+        "sprite emit classifies a merged-attribute entry");
+    check(
+        run.entries[0].attribute_low_merged == 1U
+            && run.entries[0].attribute_low == 0xC3U,
+        "a bit-4 actor merges its attribute low byte");
+
+    // Two entries advance six descriptor bytes at a time.
+    reset();
+    at(kEntries) = 2U;
+    at(kEntries + 7U) = 0x01U;
+    at(kEntries + 11U) = 0x66U;
+    at(kEntries + 12U) = 0x77U;
+    check(
+        dc_classify_sprite_emit_run(
+            work_ram.data(), work_ram.size(), rom.data(), rom.size(), 7U,
+            &run) == 1,
+        "sprite emit classifies a two-entry descriptor");
+    check(
+        run.count == 2U && run.cursor == 2U && run.final_y == 13U
+            && run.entries[1].vertical_low == 0x41U
+            && run.entries[1].attribute_low == 0x66U
+            && run.entries[1].attribute_high == 0x77U,
+        "the second entry reads six bytes further on");
+    check(
+        run.accumulator == 0x77U,
+        "the accumulator returns the last attribute high byte");
+
+    // Shapes the classifier refuses rather than model.
+    reset();
+    at(kEntries) = 0U;
+    check(
+        dc_classify_sprite_emit_run(
+            work_ram.data(), work_ram.size(), rom.data(), rom.size(), 7U,
+            &run) == 0,
+        "sprite emit refuses a zero entry count, which would underflow $2C");
+
+    reset();
+    work_ram[0x4EU] = 0x3FU;
+    check(
+        dc_classify_sprite_emit_run(
+            work_ram.data(), work_ram.size(), rom.data(), rom.size(), 7U,
+            &run) == 0,
+        "sprite emit refuses a cursor overflow, which returns early");
+
+    reset();
+    work_ram[0x1800U + 7U] = 0x20U;
+    check(
+        dc_classify_sprite_emit_run(
+            work_ram.data(), work_ram.size(), rom.data(), rom.size(), 7U,
+            &run) == 0,
+        "sprite emit refuses the unobserved attribute-high merge");
+
+    reset();
+    at(kDescriptor) = 0x00U;
+    at(kDescriptor + 1U) = 0x20U;  // $2000 is outside the routine's bank
+    check(
+        dc_classify_sprite_emit_run(
+            work_ram.data(), work_ram.size(), rom.data(), rom.size(), 7U,
+            &run) == 0,
+        "sprite emit refuses a pointer outside its own bank");
+
+    reset();
+    check(
+        dc_classify_sprite_emit_run(
+            nullptr, 0x2000U, rom.data(), rom.size(), 7U, &run) == 0,
+        "sprite emit rejects a missing snapshot");
+}
+
+void test_table_palette_cache()
+{
+    using devils_crush::render::TablePaletteCache;
+    constexpr auto kBytes = TablePaletteCache::kByteCount;
+    constexpr auto kPerRow = TablePaletteCache::kBytesPerRow;
+
+    std::vector<std::byte> live(kBytes, std::byte{0x11});
+    TablePaletteCache cache;
+
+    // The first sight of the plane is the scene-start whole-table write.
+    auto plane = cache.update(live, 0, 16);
+    check(plane.size() == kBytes, "palette cache returns the whole plane");
+    check(
+        std::ranges::all_of(
+            plane,
+            [](const std::byte value) { return value == std::byte{0x11}; }),
+        "the first update adopts the whole plane as its baseline");
+    // A 16-row viewport at the top covers exactly tile rows 0 and 1.
+    check(cache.learned_rows() == 2U, "only the covered rows are learned");
+
+    // Rewrite every row, then update with the same two rows on camera.
+    std::ranges::fill(live, std::byte{0x22});
+    plane = cache.update(live, 0, 16);
+    check(
+        plane[0] == std::byte{0x22} && plane[kPerRow] == std::byte{0x22},
+        "rows under the camera follow the live plane");
+    check(
+        plane[2U * kPerRow] == std::byte{0x11}
+            && plane[kBytes - 1U] == std::byte{0x11},
+        "rows outside the camera retain what they last saw on screen");
+
+    // Scroll down two rows: row 2 learns, rows 0 and 1 freeze at 0x22.
+    std::ranges::fill(live, std::byte{0x33});
+    plane = cache.update(live, 16, 16);
+    check(
+        plane[2U * kPerRow] == std::byte{0x33}
+            && plane[3U * kPerRow] == std::byte{0x33},
+        "scrolling learns the newly covered rows");
+    check(
+        plane[0] == std::byte{0x22} && plane[kPerRow] == std::byte{0x22},
+        "rows the camera has left keep their last on-screen bytes");
+    check(
+        plane[4U * kPerRow] == std::byte{0x11},
+        "rows never covered keep the scene-start assignment");
+    check(cache.learned_rows() == 4U, "learned rows accumulate");
+
+    // A partial viewport row still counts as covered.
+    std::ranges::fill(live, std::byte{0x44});
+    plane = cache.update(live, 36, 4);
+    check(
+        plane[4U * kPerRow] == std::byte{0x44},
+        "a partially covered row is refreshed");
+
+    // A plane shorter than the attribute region passes straight through.
+    std::vector<std::byte> stub(4U, std::byte{0x55});
+    const auto passthrough = cache.update(stub, 0, 16);
+    check(
+        passthrough.size() == stub.size(),
+        "a short plane is returned unchanged");
+
+    cache.reset();
+    check(cache.learned_rows() == 0U, "reset forgets every learned row");
+}
+
+void test_native_registry()
+{
+    const auto admitted = devils_crush::app::admitted_native_routines();
+    check(!admitted.empty(), "native registry is populated");
+
+    const auto ordered = std::ranges::is_sorted(
+        admitted,
+        [](const devils_crush::app::AdmittedRoutine& left,
+           const devils_crush::app::AdmittedRoutine& right) {
+            return std::pair{left.routine.physical_bank, left.routine.logical_pc}
+            < std::pair{right.routine.physical_bank, right.routine.logical_pc};
+        });
+    check(ordered, "native registry is sorted by bank and program counter");
+
+    const auto duplicate = std::ranges::adjacent_find(
+        admitted,
+        [](const devils_crush::app::AdmittedRoutine& left,
+           const devils_crush::app::AdmittedRoutine& right) {
+            return left.routine == right.routine;
+        });
+    check(duplicate == admitted.end(), "native registry has no duplicate keys");
+
+    const auto counted = std::ranges::all_of(
+        admitted,
+        [](const devils_crush::app::AdmittedRoutine& routine) {
+            return routine.proven_native_calls != 0U
+                && routine.proven_native_calls <= routine.proven_observed_calls
+                && !routine.evidence.empty();
+        });
+    check(
+        counted,
+        "every admitted routine cites evidence and a proven call count");
+}
+
 void test_runtime_boundary()
 {
     const auto runtime = devils_crush::emulation::create_pce_runtime();
@@ -8257,6 +8694,11 @@ int main()
     test_pce_sprite_overlay();
     test_save_state_container();
     test_backup_ram_storage();
+    test_actor_scan_run();
+    test_collision_scan_run();
+    test_sprite_emit_run();
+    test_table_palette_cache();
+    test_native_registry();
     test_runtime_boundary();
 
     if (failures == 0) {

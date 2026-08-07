@@ -1128,6 +1128,15 @@ PersistentActorSpriteCache::update_and_composite(
             actor_visual_variants_[slot].clear();
             continue;
         }
+        if ((actor.flags & 0x20U) != 0U) {
+            // Bit 5 hides an actor. The ROM descriptor walk already omits
+            // hidden actors, so without this the retained layer keeps
+            // drawing whatever artwork the mechanism last had while live
+            // work RAM continues to move it. Learned phase variants are
+            // kept: hiding is a visibility state, not a family change.
+            visual = {};
+            continue;
+        }
         if (slot
                 >= devils_crush::cabinet::
                        kFirstDynamicActorSlot
@@ -1171,6 +1180,17 @@ PersistentActorSpriteCache::update_and_composite(
         const int actor_table_y =
             static_cast<int>(actor.world_y)
             - framebuffer_playfield_y;
+        // An actor straddling the camera window is drawn by the retained
+        // layer from work-RAM coordinates while the live SAT is already
+        // drawing it, producing two copies of one actor that disagree. The
+        // obvious repair -- treating "any sprite reaches the window" as
+        // observed -- is wrong: it predicts what the hardware *could* put in
+        // the SAT, not what it does, because the ROM culls on its own terms
+        // and the 64-sprite and 16-halves-per-line limits drop entries. On
+        // the scripted route that geometric rule erased two enemies the SAT
+        // was never drawing. Omission must therefore be driven by the SAT's
+        // actual contents, not by geometry, so the anchor test stands until
+        // that mapping exists.
         const bool anchor_in_viewport =
             actor.camera_active()
             && actor_table_y >= viewport_world_y
@@ -1234,6 +1254,11 @@ PersistentActorSpriteCache::update_and_composite(
             }
         }
 
+        // An off-camera actor whose phase moved must be re-resolved this
+        // frame. Every path that gives up below leaves the previous artwork
+        // in place while live position keeps moving it, so each is counted.
+        const bool stale_off_camera =
+            !anchor_in_viewport && !signature_matches;
         if (!pattern_atlas_ || !metadata_sprites) {
             continue;
         }
@@ -1252,6 +1277,7 @@ PersistentActorSpriteCache::update_and_composite(
                     appearance_descriptor_indices[actor.appearance];
             if (descriptor_index
                 >= pattern_atlas_->descriptors.size()) {
+                stats.stale_no_descriptor += stale_off_camera ? 1U : 0U;
                 continue;
             }
             const auto& descriptor =
@@ -1268,6 +1294,12 @@ PersistentActorSpriteCache::update_and_composite(
         }
         const auto& actor_metadata = metadata_by_slot[slot];
         if (actor_metadata.empty()) {
+            if (stale_off_camera) {
+                ++stats.stale_no_metadata;
+                if ((actor.flags & 0x20U) != 0U) {
+                    ++stats.stale_no_metadata_hidden;
+                }
+            }
             continue;
         }
 
@@ -1339,6 +1371,7 @@ PersistentActorSpriteCache::update_and_composite(
         }
         if (!selected_upload_covers_actor
             && !use_live_static_patterns) {
+            stats.stale_unusable_patterns += stale_off_camera ? 1U : 0U;
             continue;
         }
 
@@ -1456,6 +1489,8 @@ PersistentActorSpriteCache::update_and_composite(
                     ++stats.seeded_table_world_effects;
                 }
             }
+        } else {
+            stats.stale_resolve_failed += stale_off_camera ? 1U : 0U;
         }
     }
 

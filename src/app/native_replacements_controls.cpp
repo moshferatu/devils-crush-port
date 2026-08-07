@@ -3168,6 +3168,169 @@ replace_actor_camera_activation(
 }
 
 [[nodiscard]] std::optional<RoutineReplacement>
+replace_actor_scan_run(
+    const RoutineEntry& entry,
+    const std::span<const std::byte> work_ram)
+{
+    // The main actor loop head. Each arrival either dispatches the slot
+    // through the $3F00/$3F80 jump table or skips it, and only the skip run
+    // is native: a dispatch enters an emulated handler this transaction
+    // cannot call. The run therefore walks idle slots and hands control back
+    // at the dispatch branch, the loop head, or the terminal comparison.
+    constexpr RoutineKey kRoutine{
+        .physical_bank = 0x01U,
+        .logical_pc = 0xC510U,
+    };
+    constexpr std::uint16_t kDispatchPc = 0xC51EU;
+    constexpr std::uint16_t kLoopHeadPc = 0xC510U;
+    constexpr std::uint16_t kTerminalPc = 0xC52BU;
+    constexpr std::uint16_t kCounterAddress = 0x204DU;
+
+    // Master cycles for the two skip shapes and the three exits, at three
+    // master cycles per CPU cycle with taken branches costing four.
+    constexpr std::uint32_t kInactiveSkipCycles = 75U;   // LDA BPL INC LDX CPX BNE
+    constexpr std::uint32_t kMaskedSkipCycles = 108U;    // + LDA BMI AND BNE
+    constexpr std::uint32_t kInactiveWriteOffset = 45U;  // after INC $4D
+    constexpr std::uint32_t kMaskedWriteOffset = 78U;
+    constexpr std::uint32_t kTerminalBranchSaving = 6U;  // BNE falls through
+    constexpr std::uint32_t kDispatchNegativeCycles = 48U;
+    constexpr std::uint32_t kDispatchMaskedCycles = 54U;
+
+    if (entry.routine != kRoutine) {
+        return std::nullopt;
+    }
+    // Decimal mode is never proven for this walk.
+    if ((entry.registers.status & 0x08U) != 0U) {
+        return std::nullopt;
+    }
+    // The loop reloads X from $4D every iteration, so an entry whose X has
+    // drifted from the counter is a state this walk was never proven for.
+    if (work_ram.size() <= kCounterAddress - 0x2000U
+        || std::to_integer<std::uint8_t>(
+               work_ram[kCounterAddress - 0x2000U])
+            != entry.registers.x) {
+        return std::nullopt;
+    }
+
+    // Keep the atomic body inside the entry's interrupt horizons. The budget
+    // is the number of cheapest skips that still fit, so a long idle tail
+    // resumes at the loop head instead of being declined outright.
+    const auto horizon = std::min(
+        entry.master_cycles_until_user_event,
+        entry.master_cycles_until_timer_interrupt);
+    // The horizon must cover the worst-case shape of a walked slot plus its
+    // exit before any of this run is admitted. The same floor relaxed on the
+    // sibling collision sweep changed its state census, so it is kept
+    // conservative here too.
+    if (horizon <= kMaskedSkipCycles + kDispatchMaskedCycles) {
+        return std::nullopt;
+    }
+    const auto budget = std::min<std::uint32_t>(
+        DC_ACTOR_SCAN_SLOT_COUNT,
+        (horizon - kDispatchMaskedCycles - 1U) / kMaskedSkipCycles);
+    if (budget == 0U) {
+        return std::nullopt;
+    }
+
+    dc_actor_scan_run run{};
+    if (!dc_classify_actor_scan_run(
+            reinterpret_cast<const std::uint8_t*>(work_ram.data()),
+            work_ram.size(),
+            entry.registers.x,
+            static_cast<std::uint8_t>(budget),
+            &run)) {
+        return std::nullopt;
+    }
+    // A run that walks nothing would resume where it started.
+    if (run.exit == DC_ACTOR_SCAN_BUDGET && run.skipped == 0U) {
+        return std::nullopt;
+    }
+
+    std::uint32_t cycle = 0U;
+    std::vector<emulation::ReplacementMemoryWrite> writes;
+    writes.reserve(run.skipped);
+    for (std::uint8_t index = 0U; index < run.skipped; ++index) {
+        const bool masked =
+            run.skips[index] == static_cast<std::uint8_t>(
+                DC_ACTOR_SCAN_SKIP_MASKED);
+        writes.push_back({
+            .instruction = {0x01U, 0xC523U},
+            .logical_address = kCounterAddress,
+            .value = static_cast<std::uint8_t>(entry.registers.x + index + 1U),
+            .master_cycle_offset = cycle
+                + (masked ? kMaskedWriteOffset : kInactiveWriteOffset),
+        });
+        cycle += masked ? kMaskedSkipCycles : kInactiveSkipCycles;
+    }
+
+    auto output = entry.registers;
+    output.accumulator = run.accumulator;
+    output.x = run.slot;
+
+    // Only N, Z, and C move here; the loop touches no other flag.
+    const auto set_nz = [](std::uint8_t status, const std::uint8_t value) {
+        status = static_cast<std::uint8_t>(
+            status & static_cast<std::uint8_t>(~0x82U));
+        if (value == 0U) {
+            status = static_cast<std::uint8_t>(status | 0x02U);
+        } else if ((value & 0x80U) != 0U) {
+            status = static_cast<std::uint8_t>(status | 0x80U);
+        }
+        return status;
+    };
+
+    switch (run.exit) {
+    case DC_ACTOR_SCAN_DISPATCH_NEGATIVE:
+        // LDA $3080,X left the attribute byte and its N flag standing.
+        cycle += kDispatchNegativeCycles;
+        output.status = set_nz(output.status, run.accumulator);
+        output.program_counter = kDispatchPc;
+        break;
+    case DC_ACTOR_SCAN_DISPATCH_MASKED:
+        // AND #$02 cleared the accumulator, so the BNE fell through.
+        cycle += kDispatchMaskedCycles;
+        output.status = set_nz(output.status, run.accumulator);
+        output.program_counter = kDispatchPc;
+        break;
+    case DC_ACTOR_SCAN_COMPLETE:
+        // The final CPX #$80 matched, so its BNE cost two cycles, not four.
+        cycle -= kTerminalBranchSaving;
+        output.status = set_nz(output.status, 0U);
+        output.status = static_cast<std::uint8_t>(output.status | 0x01U);
+        output.program_counter = kTerminalPc;
+        break;
+    case DC_ACTOR_SCAN_BUDGET:
+        // Resting at the loop head after a taken BNE: CPX #$80 against a
+        // slot below $80 borrows, leaving carry clear and the difference
+        // negative.
+        output.status = set_nz(
+            output.status,
+            static_cast<std::uint8_t>(run.slot - 0x80U));
+        output.status = static_cast<std::uint8_t>(output.status & ~0x01U);
+        output.program_counter = kLoopHeadPc;
+        break;
+    default:
+        return std::nullopt;
+    }
+
+    if (cycle >= horizon) {
+        return std::nullopt;
+    }
+
+    RoutineReplacement replacement{
+        .return_instruction =
+            {
+                .physical_bank = 0x01U,
+                .logical_pc = output.program_counter,
+            },
+        .output_registers = output,
+        .body_master_cycles = cycle,
+    };
+    replacement.work_ram_writes = std::move(writes);
+    return replacement;
+}
+
+[[nodiscard]] std::optional<RoutineReplacement>
 replace_actor_slot_reset(
     const RoutineEntry& entry)
 {

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "devils_crush/core/backup_ram.hpp"
+#include "devils_crush/app/native_registry.hpp"
 #include "devils_crush/app/native_replacements.hpp"
 #include "devils_crush/cabinet/cabinet_state.hpp"
 #include "devils_crush/cabinet/display_config.hpp"
@@ -10,11 +11,13 @@
 #include "devils_crush/render/backglass_image.hpp"
 #include "devils_crush/render/pce_background.hpp"
 #include "devils_crush/render/pce_sprite_overlay.hpp"
+#include "devils_crush/render/table_palette_cache.hpp"
 #include "devils_crush/render/sharp_pixel_scaler.hpp"
 #include "devils_crush/render/title_logo.hpp"
 
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
+#include <SDL3_image/SDL_image.h>
 
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
@@ -109,6 +112,57 @@ struct WorkRamPatch {
     [[nodiscard]] bool operator==(const WorkRamPatch&) const = default;
 };
 
+// One admitted routine's share of a registry-deployed recording.
+struct RegistryCensusRow {
+    RoutineKey routine;
+    std::string_view evidence;
+    std::uint64_t entries = 0;
+    std::uint64_t accepted = 0;
+    std::uint64_t declined_at_horizon = 0;
+    std::uint64_t native_master_cycles = 0;
+    // True when an explicit --replace-hook or --observe-hook already owns the
+    // key. Each key may be registered only once.
+    bool skipped = false;
+};
+
+// The core reports absolute master cycles at hook entry only, so a run's
+// elapsed span is bracketed by its first and last registry entry.
+struct NativeCycleSpan {
+    std::uint64_t first = std::numeric_limits<std::uint64_t>::max();
+    std::uint64_t last = 0;
+
+    void observe(const std::uint64_t absolute_master_cycle) noexcept
+    {
+        first = std::min(first, absolute_master_cycle);
+        last = std::max(last, absolute_master_cycle);
+    }
+
+    [[nodiscard]] std::uint64_t elapsed() const noexcept
+    {
+        return last > first ? last - first : 0U;
+    }
+};
+
+[[nodiscard]] std::string format_routine_key(const RoutineKey routine)
+{
+    std::ostringstream text;
+    text << std::uppercase << std::hex << std::setfill('0') << std::setw(2)
+         << static_cast<unsigned>(routine.physical_bank) << ':'
+         << std::setw(4) << routine.logical_pc;
+    return text.str();
+}
+
+// Which layers the stitched cabinet playfield draws. The retained layer and
+// the copied live SAT render the same actors through different coordinate
+// paths, swapping authority as the camera passes over each one, so isolating
+// them is how a disagreement between the two is attributed.
+enum class CabinetLayers {
+    all,
+    background_only,
+    retained_only,
+    sat_only,
+};
+
 struct CommandLine {
     std::filesystem::path rom_path = "Devil's Crush.pce";
     bool validate_only = false;
@@ -116,6 +170,10 @@ struct CommandLine {
     bool cabinet_smoke_test = false;
     bool cabinet = false;
     bool backglass_path_set = false;
+    // Diagnostic: draw only one of the stitched playfield's layers.
+    CabinetLayers cabinet_layers = CabinetLayers::all;
+    // Diagnostic: report retained-overlay composition once a second.
+    bool cabinet_overlay_stats = false;
     std::filesystem::path backglass_path;
     bool record_canonical = false;
     std::filesystem::path canonical_path = kCanonicalRecordingPath;
@@ -135,6 +193,19 @@ struct CommandLine {
     std::vector<WorkRamPatch> work_ram_patches;
     std::vector<LogicalAddressRange> work_ram_write_ranges;
     std::filesystem::path work_ram_write_trace_path;
+    bool replace_registry = false;
+    // The interactive host deploys the registry by default so a session runs
+    // the ported code; this opts back out to the emulated original.
+    bool emulate_only = false;
+    std::filesystem::path cabinet_dump_route_directory;
+    // Bisection aid: deploy only registry entries [first, first + count).
+    bool registry_slice_set = false;
+    std::size_t registry_slice_first = 0U;
+    std::size_t registry_slice_count = 0U;
+    std::vector<RoutineKey> registry_excludes;
+    std::filesystem::path native_cycle_census_path;
+    std::filesystem::path instruction_profile_path;
+    std::filesystem::path table_vram_census_path;
     bool backup_ram_test = false;
     std::filesystem::path backup_ram_test_path = kBackupRamTestPath;
     bool show_help = false;
@@ -602,6 +673,110 @@ parse_logical_address_range(const std::string_view text)
                 return options;
             }
             options.work_ram_write_trace_path = argv[++index];
+        } else if (argument == "--replace-registry") {
+            options.replace_registry = true;
+        } else if (argument == "--cabinet-overlay-stats") {
+            options.cabinet_overlay_stats = true;
+        } else if (argument == "--cabinet-layers") {
+            if (index + 1 >= argc) {
+                options.error =
+                    "--cabinet-layers requires all, background, retained, "
+                    "or sat.";
+                return options;
+            }
+            const std::string_view value = argv[++index];
+            if (value == "all") {
+                options.cabinet_layers = CabinetLayers::all;
+            } else if (value == "background") {
+                options.cabinet_layers = CabinetLayers::background_only;
+            } else if (value == "retained") {
+                options.cabinet_layers = CabinetLayers::retained_only;
+            } else if (value == "sat") {
+                options.cabinet_layers = CabinetLayers::sat_only;
+            } else {
+                options.error =
+                    "--cabinet-layers requires all, background, retained, "
+                    "or sat.";
+                return options;
+            }
+        } else if (argument == "--table-vram-census") {
+            if (index + 1 >= argc) {
+                options.error = "--table-vram-census requires a path.";
+                return options;
+            }
+            options.table_vram_census_path = argv[++index];
+        } else if (argument == "--cabinet-dump-route") {
+            if (index + 1 >= argc) {
+                options.error =
+                    "--cabinet-dump-route requires a directory.";
+                return options;
+            }
+            options.cabinet_dump_route_directory = argv[++index];
+        } else if (argument == "--emulate-only") {
+            options.emulate_only = true;
+        } else if (argument == "--registry-slice") {
+            if (index + 1 >= argc) {
+                options.error =
+                    "--registry-slice requires FIRST:COUNT.";
+                return options;
+            }
+            const std::string_view value = argv[++index];
+            const auto separator = value.find(':');
+            if (separator == std::string_view::npos) {
+                options.error =
+                    "--registry-slice requires FIRST:COUNT.";
+                return options;
+            }
+            const auto parse_index =
+                [](const std::string_view text) -> std::optional<std::size_t> {
+                std::size_t parsed = 0U;
+                const auto result = std::from_chars(
+                    text.data(),
+                    text.data() + text.size(),
+                    parsed);
+                if (result.ec != std::errc{}
+                    || result.ptr != text.data() + text.size()) {
+                    return std::nullopt;
+                }
+                return parsed;
+            };
+            const auto first = parse_index(value.substr(0U, separator));
+            const auto count = parse_index(value.substr(separator + 1U));
+            if (!first || !count || *count == 0U) {
+                options.error =
+                    "--registry-slice requires decimal FIRST:COUNT with a "
+                    "nonzero count.";
+                return options;
+            }
+            options.registry_slice_set = true;
+            options.registry_slice_first = *first;
+            options.registry_slice_count = *count;
+        } else if (argument == "--registry-exclude") {
+            if (index + 1 >= argc) {
+                options.error = "--registry-exclude requires BANK:PC.";
+                return options;
+            }
+            const auto routine = parse_routine_key(argv[++index]);
+            if (!routine) {
+                options.error =
+                    "--registry-exclude requires hexadecimal BANK:PC.";
+                return options;
+            }
+            options.registry_excludes.push_back(*routine);
+        } else if (argument == "--native-cycle-census") {
+            if (index + 1 >= argc) {
+                options.error =
+                    "--native-cycle-census requires a path.";
+                return options;
+            }
+            options.native_cycle_census_path = argv[++index];
+        } else if (argument == "--instruction-profile") {
+            if (index + 1 >= argc) {
+                options.error =
+                    "--instruction-profile requires a path.";
+                return options;
+            }
+            options.instruction_profile_path = argv[++index];
         } else if (argument == "--backup-ram-test") {
             options.backup_ram_test = true;
             const std::string_view next =
@@ -626,6 +801,11 @@ parse_logical_address_range(const std::string_view text)
     const bool recording_selected =
         options.record_canonical || options.record_gameplay
         || options.record_state_census;
+    // Both interactive entry points run the same host loop, and both deploy
+    // the admitted-routine registry unless told to emulate the original.
+    const bool host_selected = !options.validate_only
+        && (operation_count == 0 || options.cabinet_smoke_test);
+    const bool host_registry = host_selected && !options.emulate_only;
     const int recording_frame_count = options.record_state_census
         ? kStateCensusRecordingFrames
         : options.record_gameplay
@@ -642,6 +822,15 @@ parse_logical_address_range(const std::string_view text)
             "--cabinet is available only for the interactive host.";
     } else if (options.backglass_path_set && !options.cabinet) {
         options.error = "--backglass requires --cabinet.";
+    } else if (options.cabinet_overlay_stats && !options.cabinet
+               && !options.cabinet_smoke_test) {
+        options.error =
+            "--cabinet-overlay-stats requires --cabinet or "
+            "--cabinet-smoke-test.";
+    } else if (options.cabinet_layers != CabinetLayers::all
+               && !options.cabinet && !options.cabinet_smoke_test) {
+        options.error =
+            "--cabinet-layers requires --cabinet or --cabinet-smoke-test.";
     } else if ((!options.canonical_work_ram_path.empty()
                 || !options.canonical_framebuffer_path.empty()
                 || !options.canonical_audio_path.empty())
@@ -654,7 +843,37 @@ parse_logical_address_range(const std::string_view text)
                 || !options.replace_hooks.empty())
                && !recording_selected) {
         options.error =
-            "Execution hooks currently require a recording operation.";
+            "Individual execution hooks currently require a recording "
+            "operation.";
+    } else if (options.emulate_only && !host_selected) {
+        options.error =
+            "--emulate-only is available only for the interactive host.";
+    } else if (options.emulate_only && options.replace_registry) {
+        options.error =
+            "--emulate-only and --replace-registry are mutually exclusive.";
+    } else if (
+        options.replace_registry && !recording_selected && !host_registry) {
+        options.error =
+            "--replace-registry requires a recording operation or the "
+            "interactive host.";
+    } else if (!options.native_cycle_census_path.empty()
+               && !options.replace_registry && !host_registry) {
+        options.error =
+            "--native-cycle-census requires a deployed registry.";
+    } else if (options.registry_slice_set && !options.replace_registry
+               && !host_registry) {
+        options.error = "--registry-slice requires a deployed registry.";
+    } else if (!options.registry_excludes.empty()
+               && !options.replace_registry && !host_registry) {
+        options.error = "--registry-exclude requires a deployed registry.";
+    } else if (!options.instruction_profile_path.empty()
+               && !recording_selected) {
+        options.error =
+            "--instruction-profile requires a recording operation.";
+    } else if (!options.table_vram_census_path.empty()
+               && !recording_selected) {
+        options.error =
+            "--table-vram-census requires a recording operation.";
     } else if (std::any_of(
                    options.replace_hooks.begin(),
                    options.replace_hooks.end(),
@@ -2416,7 +2635,31 @@ parse_logical_address_range(const std::string_view text)
                                || request.ordinal == 21U
                                || request.ordinal == 22U
                                || request.ordinal == 23U);
+                       const bool proven_actor_scan_run =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x01U,
+                                       .logical_pc = 0xC510U,
+                                   }
+                           && request.all_calls;
+                       const bool proven_collision_scan_run =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x01U,
+                                       .logical_pc = 0xCB48U,
+                                   }
+                           && request.all_calls;
+                       const bool proven_sprite_emit_run =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x08U,
+                                       .logical_pc = 0x40DFU,
+                                   }
+                           && request.all_calls;
                        return !cached_position_restore
+                           && !proven_sprite_emit_run
+                           && !proven_collision_scan_run
+                           && !proven_actor_scan_run
                            && !proven_position_integration
                            && !proven_motion_damping
                            && !proven_motion_rotation
@@ -2895,7 +3138,9 @@ void print_usage()
         << "Devil's Crush PC port - Milestone 4\n\n"
         << "Usage:\n"
         << "  devils-crush [--rom <path>]\n"
+           "      [--emulate-only] [--native-cycle-census <census.csv>]\n"
         << "  devils-crush --cabinet [--backglass <image>] [--rom <path>]\n"
+           "      [--emulate-only] [--native-cycle-census <census.csv>]\n"
         << "  devils-crush --validate-rom [path]\n"
         << "  devils-crush --smoke-test [--rom <path>]\n"
         << "  devils-crush --cabinet-smoke-test [--rom <path>]\n"
@@ -2934,6 +3179,11 @@ void print_usage()
            "      [--pass-through-hook <bank:pc>]...\n"
            "      [--observe-hook <bank:pc>]...\n"
            "      [--replace-hook <bank:pc@ordinal|bank:pc@all>]...\n"
+           "      [--replace-registry]\n"
+           "      [--registry-slice <first:count>]\n"
+           "      [--registry-exclude <bank:pc>]...\n"
+           "      [--native-cycle-census <census.csv>]\n"
+           "      [--instruction-profile <profile.csv>]\n"
            "      [--routine-trace <entries.csv>]\n"
            "      [--routine-call-trace <calls.csv>]\n"
            "      [--routine-replay <bank:pc@ordinal>]...\n"
@@ -2943,6 +3193,10 @@ void print_usage()
            "      [--rom <path>]\n"
         << "  devils-crush --backup-ram-test [output.sav] [--rom <path>]\n"
         << "  devils-crush --help\n\n"
+        << "Native code:\n"
+        << "  The interactive host deploys every admitted native routine by\n"
+           "  default and reports its share of the session on exit. Pass\n"
+           "  --emulate-only to run the untouched emulated original instead.\n\n"
         << "Controls:\n"
         << "  Z / Left Shift    PCE button I\n"
         << "  X / Right Shift   PCE button II\n"
@@ -2954,6 +3208,7 @@ void print_usage()
         << "  F9                Restore quick state\n"
         << "  F10               Reload custom gamepad mappings\n"
         << "  F11               Toggle borderless fullscreen\n"
+        << "  F8                Capture 4 playfield frames as BMP\n"
         << "  F12               Cabinet display assignment\n"
         << "  Escape            Exit\n";
 }
@@ -3292,6 +3547,35 @@ void destroy_source(SourceTexture& source)
             .pitch_pixels = image.width,
         },
         source);
+}
+
+// Writes the composed playfield exactly as it reaches the scaler, so a
+// reported seam can be examined in the same pixels the player saw rather
+// than reasoned about from counters.
+[[nodiscard]] bool save_playfield_png(
+    const devils_crush::render::ArgbImage& image,
+    const std::filesystem::path& path)
+{
+    if (!image.valid()) {
+        return false;
+    }
+    SDL_Surface* const surface = SDL_CreateSurfaceFrom(
+        image.width,
+        image.height,
+        SDL_PIXELFORMAT_ARGB8888,
+        const_cast<std::uint32_t*>(image.pixels.data()),
+        image.width * static_cast<int>(sizeof(std::uint32_t)));
+    if (surface == nullptr) {
+        return report_sdl_error("SDL_CreateSurfaceFrom (dump) failed");
+    }
+    // SDL_image here is built without PNG write support, so use core SDL's
+    // BMP writer: this is a diagnostic dump, not a deliverable asset.
+    const bool saved = SDL_SaveBMP(surface, path.string().c_str());
+    SDL_DestroySurface(surface);
+    if (!saved) {
+        return report_sdl_error("SDL_SaveBMP failed");
+    }
+    return true;
 }
 
 [[nodiscard]] std::filesystem::path path_from_utf8(
@@ -4111,13 +4395,158 @@ void set_assignment_titles(
     return true;
 }
 
+// Tracks which actor slots the camera never claims. A slot whose anchor never
+// enters the viewport is never observed, so the retained layer seeds it once
+// from ROM and never refreshes it against its live phase — the shape of an
+// actor that is drawn but never animates.
+class SeededActorTracker {
+public:
+    void observe(
+        const std::span<const std::byte> work_ram,
+        const int viewport_top_row,
+        const int viewport_rows)
+    {
+        const auto actors =
+            devils_crush::cabinet::decode_table_actor_state(work_ram);
+        if (!actors) {
+            return;
+        }
+        ++frames_;
+        camera_low_ = std::min(camera_low_, viewport_top_row);
+        camera_high_ = std::max(camera_high_, viewport_top_row);
+        for (const auto& actor : *actors) {
+            if (!actor.occupied() || !actor.camera_active()) {
+                continue;
+            }
+            auto& record = slots_[actor.slot];
+            ++record.live_frames;
+            record.low_y = std::min(record.low_y, actor.world_y);
+            record.high_y = std::max(record.high_y, actor.world_y);
+            // The playfield sits 30 lines below the camera's top line.
+            const int anchor = static_cast<int>(actor.world_y) - 30;
+            const bool observed =
+                anchor >= viewport_top_row
+                && anchor < viewport_top_row + viewport_rows;
+            if (observed) {
+                ++record.observed_frames;
+            }
+            // Does the ROM keep advancing this actor's animation while the
+            // camera is elsewhere? If not, the renderer is faithful and the
+            // freeze is original behaviour rather than a presentation bug.
+            const auto phase_index = kActorPhaseBase + actor.slot;
+            if (phase_index >= work_ram.size()) {
+                continue;
+            }
+            const auto phase =
+                static_cast<std::uint8_t>(work_ram[phase_index]);
+            if (record.have_phase && phase != record.last_phase) {
+                if (observed) {
+                    ++record.phase_changes_on;
+                } else {
+                    ++record.phase_changes_off;
+                }
+            }
+            record.last_phase = phase;
+            record.have_phase = true;
+        }
+    }
+
+    void report() const
+    {
+        if (frames_ == 0U) {
+            return;
+        }
+        std::cout << "Seeded-actor census over " << frames_
+                  << " table frames; camera top spanned " << camera_low_
+                  << ".." << camera_high_ << '\n';
+        std::cout << "  slot  live  observed  offCam  dPhaseOn  dPhaseOff\n";
+        std::size_t animate_off_camera = 0U;
+        std::size_t frozen_off_camera = 0U;
+        for (std::size_t slot = 0U; slot < slots_.size(); ++slot) {
+            const auto& record = slots_[slot];
+            if (record.live_frames == 0U) {
+                continue;
+            }
+            const auto off_camera_frames =
+                record.live_frames - record.observed_frames;
+            if (off_camera_frames == 0U) {
+                continue;
+            }
+            if (record.phase_changes_off != 0U) {
+                ++animate_off_camera;
+            } else if (record.phase_changes_on != 0U) {
+                // Animates only while the camera holds it.
+                ++frozen_off_camera;
+            }
+            std::cout << "  " << std::hex << std::uppercase << std::setw(4)
+                      << std::setfill('0') << slot << std::dec
+                      << std::setfill(' ') << std::setw(6)
+                      << record.live_frames << std::setw(10)
+                      << record.observed_frames << std::setw(8)
+                      << off_camera_frames << std::setw(10)
+                      << record.phase_changes_on << std::setw(11)
+                      << record.phase_changes_off << '\n';
+        }
+        std::cout << "  " << animate_off_camera
+                  << " slots advanced phase off-camera; " << frozen_off_camera
+                  << " advanced only while observed\n";
+        std::cout << "  slot  live  observed  world_y range  fixed\n";
+        std::size_t never = 0U;
+        for (std::size_t slot = 0U; slot < slots_.size(); ++slot) {
+            const auto& record = slots_[slot];
+            if (record.live_frames == 0U) {
+                continue;
+            }
+            if (record.observed_frames != 0U) {
+                continue;
+            }
+            ++never;
+            const bool fixed =
+                slot >= devils_crush::cabinet::kFirstFixedActorSlot
+                && slot <= devils_crush::cabinet::kLastFixedActorSlot;
+            std::cout << "  " << std::hex << std::uppercase << std::setw(4)
+                      << std::setfill('0') << slot << std::dec
+                      << std::setfill(' ') << std::setw(6)
+                      << record.live_frames << std::setw(10)
+                      << record.observed_frames << std::setw(8)
+                      << record.low_y << ".." << record.high_y
+                      << (fixed ? "   yes" : "   no") << '\n';
+        }
+        std::cout << "  " << never
+                  << " live slots were never observed in the camera\n";
+    }
+
+private:
+    // Work RAM is $2000-based; the actor appearance-phase array is $3980.
+    static constexpr std::size_t kActorPhaseBase = 0x1980U;
+
+    struct Record {
+        std::uint64_t live_frames = 0U;
+        std::uint64_t observed_frames = 0U;
+        std::uint64_t phase_changes_on = 0U;
+        std::uint64_t phase_changes_off = 0U;
+        std::int16_t low_y = std::numeric_limits<std::int16_t>::max();
+        std::int16_t high_y = std::numeric_limits<std::int16_t>::min();
+        std::uint8_t last_phase = 0U;
+        bool have_phase = false;
+    };
+    std::array<Record, devils_crush::cabinet::kActorSlotCount> slots_{};
+    std::uint64_t frames_ = 0U;
+    int camera_low_ = std::numeric_limits<int>::max();
+    int camera_high_ = std::numeric_limits<int>::min();
+};
+
 [[nodiscard]] std::optional<devils_crush::render::PceBackgroundLayer>
 decode_cabinet_table(
     const std::span<const std::byte> rom_bytes,
     const std::span<const std::byte> work_ram,
     const devils_crush::emulation::VideoMemorySnapshot& video,
     devils_crush::render::PersistentActorSpriteCache&
-        persistent_actor_sprites)
+        persistent_actor_sprites,
+    devils_crush::render::TablePaletteCache& table_palette_cache,
+    const CabinetLayers layers,
+    const bool report_overlay_stats,
+    SeededActorTracker* const seeded_actors)
 {
     constexpr std::size_t table_width_tiles = 32U;
     constexpr std::size_t table_height_tiles = 96U;
@@ -4138,14 +4567,62 @@ decode_cabinet_table(
         return std::nullopt;
     }
 
+    // The validation above already guarantees work RAM reaches well past the
+    // camera pair at $0B:$0C.
+    const auto camera_y = static_cast<std::int16_t>(
+        static_cast<std::uint16_t>(
+            std::to_integer<std::uint8_t>(work_ram[0x0BU]))
+        | (static_cast<std::uint16_t>(
+               std::to_integer<std::uint8_t>(work_ram[0x0CU]))
+           << 8U));
+    const auto viewport_top_row = 480 + static_cast<int>(camera_y);
+
+    // The copied SAT is latched at vblank, in the same time base as the
+    // VDC's background scroll register, while work RAM is exported after
+    // the frame's logic has run. Translating SAT screen coordinates with
+    // the post-frame camera displaces every live sprite relative to the
+    // retained actors and the fixed table by one frame of camera motion.
+    // On the video-snapshot route that skew is zero on 2,279 of 2,727
+    // frames -- every frame the camera rests -- and reaches 13 pixels on
+    // the 448 frames it moves. Recover the camera the SAT was built
+    // against: the scroll register settles exactly 32 rows below the
+    // table-world viewport, and work RAM supplies the absolute region that
+    // the register's 256-line wrap cannot.
+    constexpr int scroll_register_world_bias = 32;
+    constexpr int maximum_camera_skew = 32;
+    auto sat_viewport_top_row = viewport_top_row;
+    {
+        auto skew =
+            (static_cast<int>(video.background_y_scroll)
+             - scroll_register_world_bias - viewport_top_row)
+            % 256;
+        if (skew > 127) {
+            skew -= 256;
+        } else if (skew < -128) {
+            skew += 256;
+        }
+        if (skew >= -maximum_camera_skew
+            && skew <= maximum_camera_skew) {
+            sat_viewport_top_row += skew;
+        }
+    }
+    if (seeded_actors != nullptr) {
+        seeded_actors->observe(work_ram, viewport_top_row, 208);
+    }
+
+    // The attribute plane is region-owned, so the table is decoded against
+    // the rows retained while the camera covered them rather than against
+    // whichever region the game happens to be streaming this frame.
+    const auto retained_palette_nibbles = table_palette_cache.update(
+        work_ram.subspan(table_attribute_offset, table_attribute_bytes),
+        viewport_top_row,
+        208);
+
     const auto source =
         devils_crush::render::decode_packed_pce_background_layer({
             .tile_words =
                 rom_bytes.subspan(table_rom_offset, table_tile_bytes),
-            .packed_palette_nibbles =
-                work_ram.subspan(
-                    table_attribute_offset,
-                    table_attribute_bytes),
+            .packed_palette_nibbles = retained_palette_nibbles,
             .vram_words = video.vram_words,
             .palette_entries = video.palette_entries,
             .width_tiles = static_cast<int>(table_width_tiles),
@@ -4160,17 +4637,13 @@ decode_cabinet_table(
         devils_crush::cabinet::kTableWorldTop,
         devils_crush::cabinet::kTableWorldWidth,
         devils_crush::cabinet::kTableWorldHeight);
-    if (!table || work_ram.size() <= 0x0CU) {
+    if (!table) {
         return table;
     }
 
-    const auto camera_y = static_cast<std::int16_t>(
-        static_cast<std::uint16_t>(
-            std::to_integer<std::uint8_t>(work_ram[0x0BU]))
-        | (static_cast<std::uint16_t>(
-               std::to_integer<std::uint8_t>(work_ram[0x0CU]))
-           << 8U));
-    static_cast<void>(
+    if (layers == CabinetLayers::all
+        || layers == CabinetLayers::retained_only) {
+    const auto overlay_stats =
         persistent_actor_sprites.update_and_composite(
             table->image,
             {
@@ -4181,12 +4654,41 @@ decode_cabinet_table(
                     video.memory_width_register,
             },
             work_ram,
-            480 + static_cast<int>(camera_y),
+            viewport_top_row,
             devils_crush::cabinet::kTableWorldTop,
             30,
             208,
             table->opaque_pixels,
-            rom_bytes));
+            rom_bytes);
+    // A retained actor whose current phase has no ROM-owned artwork either
+    // freezes on its last learned image or drops out entirely. Both read as
+    // an actor that stops animating off-camera and then snaps when the live
+    // SAT takes authority, so the counts are worth surfacing.
+    if (report_overlay_stats && overlay_stats) {
+        std::cout << "Overlay: observed " << overlay_stats->observed_fixed_actors
+                  << ", cached " << overlay_stats->cached_fixed_actors
+                  << ", seeded " << overlay_stats->seeded_fixed_actors
+                  << " | rendered "
+                  << overlay_stats->rendered_fixed_actors << " ("
+                  << overlay_stats->rendered_retained_fixed_actors
+                  << " retained + "
+                  << overlay_stats->rendered_seeded_fixed_actors
+                  << " seeded) | frozen "
+                  << overlay_stats->static_phase_fallbacks << ", missing "
+                  << overlay_stats->missing_phase_variants << ", restored "
+                  << overlay_stats->restored_phase_variants << '/'
+                  << overlay_stats->restored_animated_phase_variants
+                  << " phases/animated\n";
+        std::cout << "  stale off-camera: no-descriptor "
+                  << overlay_stats->stale_no_descriptor
+                  << ", no-metadata " << overlay_stats->stale_no_metadata
+                  << ", unusable-patterns "
+                  << overlay_stats->stale_unusable_patterns
+                  << ", resolve-failed "
+                  << overlay_stats->stale_resolve_failed << '\n';
+    }
+    }
+    if (layers == CabinetLayers::all || layers == CabinetLayers::sat_only) {
     static_cast<void>(
         devils_crush::render::composite_pce_sprites(
             table->image,
@@ -4197,11 +4699,12 @@ decode_cabinet_table(
                 .memory_width_register =
                     video.memory_width_register,
             },
-            480 + static_cast<int>(camera_y),
+            sat_viewport_top_row,
             devils_crush::cabinet::kTableWorldTop,
             30,
             208,
             table->opaque_pixels));
+    }
     return table;
 }
 
@@ -5128,6 +5631,560 @@ bool write_pcm16_wave_header(
     return true;
 }
 
+[[nodiscard]] bool write_instruction_profile(
+    const std::filesystem::path& path,
+    const std::span<const devils_crush::emulation::InstructionProfileEntry>
+        entries,
+    const std::string_view core_revision)
+{
+    if (entries.empty()) {
+        std::cerr << "The instruction profile recorded no executions.\n";
+        return false;
+    }
+
+    std::error_code error;
+    const auto directory = path.parent_path();
+    if (!directory.empty()) {
+        std::filesystem::create_directories(directory, error);
+    }
+    if (error) {
+        std::cerr << "Could not create instruction profile directory: "
+                  << error.message() << '\n';
+        return false;
+    }
+
+    auto temporary_path = path;
+    temporary_path += ".tmp";
+    std::ofstream output(
+        temporary_path,
+        std::ios::binary | std::ios::trunc);
+    if (!output) {
+        std::cerr << "Could not create instruction profile: "
+                  << temporary_path.string() << '\n';
+        return false;
+    }
+
+    const auto admitted = devils_crush::app::admitted_native_routines();
+    std::uint64_t total_cycles = 0U;
+    std::uint64_t total_executions = 0U;
+    for (const auto& entry : entries) {
+        total_cycles += entry.master_cycles;
+        total_executions += entry.executions;
+    }
+
+    output << "# format=devils-crush-instruction-profile-v1\n"
+           << "# rom_sha256=" << devils_crush::rom::kSupportedSha256 << '\n'
+           << "# core_revision=" << core_revision << '\n'
+           << "# address_count=" << entries.size() << '\n'
+           << "# total_executions=" << total_executions << '\n'
+           << "# total_master_cycles=" << total_cycles << '\n'
+           << "physical_bank,logical_pc,executions,master_cycles,"
+              "cycle_share_percent,registry_entry\n";
+
+    for (const auto& entry : entries) {
+        const bool registry_entry = std::ranges::any_of(
+            admitted,
+            [&entry](const devils_crush::app::AdmittedRoutine& routine) {
+                return routine.routine == entry.instruction;
+            });
+        output << std::uppercase << std::hex << std::setfill('0')
+               << std::setw(2)
+               << static_cast<unsigned>(entry.instruction.physical_bank)
+               << ',' << std::setw(4) << entry.instruction.logical_pc
+               << std::dec << std::setfill(' ') << ','
+               << entry.executions << ',' << entry.master_cycles << ','
+               << std::fixed << std::setprecision(4)
+               << (total_cycles == 0U
+                       ? 0.0
+                       : 100.0 * static_cast<double>(entry.master_cycles)
+                           / static_cast<double>(total_cycles))
+               << std::defaultfloat << ','
+               << (registry_entry ? 1 : 0) << '\n';
+    }
+
+    output.close();
+    if (!output) {
+        std::cerr << "Could not finalize instruction profile.\n";
+        return false;
+    }
+    if (!MoveFileExW(
+            temporary_path.c_str(),
+            path.c_str(),
+            MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
+        std::cerr << "Could not commit instruction profile; Windows error "
+                  << GetLastError() << ".\n";
+        return false;
+    }
+
+    std::cout << "Instruction profile complete: " << entries.size()
+              << " addresses, " << total_cycles << " master cycles\n"
+              << "Output: " << path.string() << '\n';
+    return true;
+}
+
+[[nodiscard]] bool write_native_cycle_census(
+    const std::filesystem::path& path,
+    const std::span<const RegistryCensusRow> rows,
+    const NativeCycleSpan& span,
+    const std::string_view core_revision)
+{
+    if (rows.empty()) {
+        return false;
+    }
+
+    std::error_code error;
+    const auto directory = path.parent_path();
+    if (!directory.empty()) {
+        std::filesystem::create_directories(directory, error);
+    }
+    if (error) {
+        std::cerr << "Could not create native cycle census directory: "
+                  << error.message() << '\n';
+        return false;
+    }
+
+    auto temporary_path = path;
+    temporary_path += ".tmp";
+    std::ofstream output(
+        temporary_path,
+        std::ios::binary | std::ios::trunc);
+    if (!output) {
+        std::cerr << "Could not create native cycle census: "
+                  << temporary_path.string() << '\n';
+        return false;
+    }
+
+    std::uint64_t native_cycles = 0U;
+    for (const auto& row : rows) {
+        native_cycles += row.native_master_cycles;
+    }
+    const auto elapsed = span.elapsed();
+
+    output << "# format=devils-crush-native-cycle-census-v1\n"
+           << "# rom_sha256=" << devils_crush::rom::kSupportedSha256 << '\n'
+           << "# core_revision=" << core_revision << '\n'
+           << "# admitted_routines=" << rows.size() << '\n'
+           << "# elapsed_master_cycles=" << elapsed << '\n'
+           << "# native_master_cycles=" << native_cycles << '\n'
+           << "physical_bank,logical_pc,entries,native_calls,"
+              "declined_at_horizon,native_master_cycles,installed,evidence\n";
+
+    for (const auto& row : rows) {
+        output << std::uppercase << std::hex << std::setfill('0')
+               << std::setw(2)
+               << static_cast<unsigned>(row.routine.physical_bank) << ','
+               << std::setw(4) << row.routine.logical_pc
+               << std::dec << std::setfill(' ') << ','
+               << row.entries << ',' << row.accepted << ','
+               << row.declined_at_horizon << ','
+               << row.native_master_cycles << ','
+               << (row.skipped ? 0 : 1) << ','
+               << row.evidence << '\n';
+    }
+
+    output.close();
+    if (!output) {
+        std::cerr << "Could not finalize native cycle census.\n";
+        return false;
+    }
+    if (!MoveFileExW(
+            temporary_path.c_str(),
+            path.c_str(),
+            MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
+        std::cerr
+            << "Could not commit native cycle census; Windows error "
+            << GetLastError() << ".\n";
+        return false;
+    }
+
+    std::cout << "Native cycle census complete: " << rows.size()
+              << " admitted routines\nOutput: " << path.string() << '\n';
+    return true;
+}
+
+// One registry deployment's live state. The row vector is sized once and never
+// resized afterwards, so the installed hooks may capture row indices.
+struct NativeRegistryDeployment {
+    std::vector<RegistryCensusRow> rows;
+    NativeCycleSpan span;
+};
+
+// Admitted routines that are nonetheless withheld from a composed deployment.
+//
+// Both of these pass an @all regression, but each one alone moves the state
+// census off the assembly-only baseline 9036a9de..., and each one's own
+// regression blesses the moved hash rather than the baseline. Whatever they
+// change is therefore locked in by their evidence instead of caught by it, so
+// they are not eligible for live play or for a faithful cycle measurement.
+// Their own regressions still exercise them through --replace-hook, which is
+// how they should be studied until the divergence is understood.
+constexpr std::array kWithheldRoutines{
+    // Excluding 03:6054 leaves exactly the census that
+    // verify_sorcerer_color_gate_semantic expects.
+    RoutineKey{.physical_bank = 0x02U, .logical_pc = 0x57E9U},
+    // Excluding 02:57E9 leaves exactly the census that
+    // verify_tower_insect_animation_semantic expects.
+    RoutineKey{.physical_bank = 0x03U, .logical_pc = 0x6054U},
+};
+
+// Installs every admitted routine that is neither withheld nor already claimed
+// by an explicit hook. The recording paths and the interactive host share this
+// installer so a routine cannot be proven under one and quietly absent under
+// the other.
+[[nodiscard]] bool install_native_registry(
+    PceRuntime& runtime,
+    const CommandLine& options,
+    const std::vector<std::byte>& replacement_rom,
+    const std::span<const RoutineKey> claimed_routines,
+    NativeRegistryDeployment& deployment)
+{
+    const auto admitted = devils_crush::app::admitted_native_routines();
+    deployment.rows.clear();
+    deployment.rows.reserve(admitted.size());
+    for (const auto& routine : admitted) {
+        deployment.rows.push_back({
+            .routine = routine.routine,
+            .evidence = routine.evidence,
+        });
+    }
+
+    for (std::size_t index = 0U; index < deployment.rows.size(); ++index) {
+        if (std::find(
+                kWithheldRoutines.begin(),
+                kWithheldRoutines.end(),
+                deployment.rows[index].routine)
+            != kWithheldRoutines.end()) {
+            deployment.rows[index].skipped = true;
+            continue;
+        }
+        if (options.registry_slice_set
+            && (index < options.registry_slice_first
+                || index >= options.registry_slice_first
+                    + options.registry_slice_count)) {
+            deployment.rows[index].skipped = true;
+            continue;
+        }
+        if (std::find(
+                options.registry_excludes.begin(),
+                options.registry_excludes.end(),
+                deployment.rows[index].routine)
+            != options.registry_excludes.end()) {
+            deployment.rows[index].skipped = true;
+            continue;
+        }
+        // An explicit --replace-hook or --observe-hook owns its key; each key
+        // may be registered only once.
+        if (std::find(
+                claimed_routines.begin(),
+                claimed_routines.end(),
+                deployment.rows[index].routine)
+            != claimed_routines.end()) {
+            deployment.rows[index].skipped = true;
+            continue;
+        }
+        if (runtime.install_execution_hook({
+                .routine = deployment.rows[index].routine,
+                .mode = HookMode::replace,
+                .replacement_callback =
+                    [&deployment, &replacement_rom, index](
+                        const RoutineEntry& entry,
+                        const std::span<const std::byte> work_ram) {
+                        auto& row = deployment.rows[index];
+                        ++row.entries;
+                        deployment.span.observe(entry.absolute_master_cycle);
+                        auto result = replace_native_gameplay_routine(
+                            entry,
+                            work_ram,
+                            replacement_rom);
+                        // The same interrupt-horizon valve the proven @all
+                        // routes use: an atomic body may not span a user or
+                        // video event or a serviceable timer interrupt.
+                        if (result && result->checkpoints.empty()
+                            && result->body_master_cycles
+                                >= std::min(
+                                    entry.master_cycles_until_user_event,
+                                    entry
+                                        .master_cycles_until_timer_interrupt)) {
+                            result.reset();
+                            ++row.declined_at_horizon;
+                        }
+                        if (result) {
+                            ++row.accepted;
+                            row.native_master_cycles +=
+                                result->body_master_cycles;
+                        }
+                        return result;
+                    },
+            })) {
+            continue;
+        }
+        std::cerr << "Could not install registry hook "
+                  << format_routine_key(deployment.rows[index].routine)
+                  << ".\n";
+        return false;
+    }
+    return true;
+}
+
+void print_native_registry_summary(
+    const NativeRegistryDeployment& deployment)
+{
+    const auto deployed = static_cast<std::size_t>(std::count_if(
+        deployment.rows.begin(),
+        deployment.rows.end(),
+        [](const RegistryCensusRow& row) { return !row.skipped; }));
+    std::uint64_t entered_routines = 0U;
+    std::uint64_t total_entries = 0U;
+    std::uint64_t total_accepted = 0U;
+    std::uint64_t total_declined = 0U;
+    std::uint64_t native_cycles = 0U;
+    for (const auto& row : deployment.rows) {
+        if (row.entries != 0U) {
+            ++entered_routines;
+        }
+        total_entries += row.entries;
+        total_accepted += row.accepted;
+        total_declined += row.declined_at_horizon;
+        native_cycles += row.native_master_cycles;
+    }
+    const auto elapsed = deployment.span.elapsed();
+    if (!kWithheldRoutines.empty()) {
+        std::cout << "Registry hold-backs: ";
+        for (std::size_t index = 0U; index < kWithheldRoutines.size();
+             ++index) {
+            std::cout << (index == 0U ? "" : ", ")
+                      << format_routine_key(kWithheldRoutines[index]);
+        }
+        std::cout << " withheld; each moves the state census off the "
+                     "assembly baseline.\n";
+    }
+    std::cout << "Registry deployment: " << deployed << " of "
+              << deployment.rows.size() << " admitted routines installed, "
+              << entered_routines << " entered\n"
+              << "Registry calls: " << total_accepted << " native of "
+              << total_entries << " entered (" << total_declined
+              << " declined at an interrupt horizon)\n"
+              << "Registry cycles: " << native_cycles << " native of "
+              << elapsed << " elapsed master cycles";
+    if (elapsed != 0U) {
+        std::cout << " (" << std::fixed << std::setprecision(2)
+                  << 100.0 * static_cast<double>(native_cycles)
+                      / static_cast<double>(elapsed)
+                  << "%)" << std::defaultfloat;
+    }
+    std::cout << '\n';
+}
+
+// Per-frame census of which table tiles' VRAM pattern words change, split by
+// whether the tile is inside the camera window.
+//
+// The cabinet decodes the whole 32x96 table from live VRAM every frame, but
+// the PC Engine only holds valid pattern data for the region the camera is
+// in. An off-camera tile whose words change is therefore a tile the cabinet
+// will draw differently for no in-game reason — the table appearing to
+// re-render as the ball travels.
+class TableVramCensus {
+public:
+    static constexpr std::size_t kWidthTiles = 32U;
+    static constexpr std::size_t kHeightTiles = 96U;
+    static constexpr std::size_t kTileWords = 16U;
+    static constexpr std::size_t kTilePixels = 8U;
+    static constexpr std::size_t kTileCount = kWidthTiles * kHeightTiles;
+    static constexpr std::size_t kRomOffset = 0x14U * 0x2000U + 0x000AU;
+    // The camera window is the playfield band of the 240-line presentation.
+    static constexpr int kCameraWindowRows = 208;
+    // decode_cabinet_table maps the camera through this origin to reach the
+    // decoded source's row space.
+    static constexpr int kViewportOrigin = 480;
+
+    [[nodiscard]] bool begin(const std::span<const std::byte> rom)
+    {
+        if (rom.size() < kRomOffset + kTileCount * 2U) {
+            return false;
+        }
+        tile_numbers_.resize(kTileCount);
+        for (std::size_t index = 0U; index < kTileCount; ++index) {
+            const auto low = std::to_integer<std::uint16_t>(
+                rom[kRomOffset + index * 2U]);
+            const auto high = static_cast<std::uint16_t>(
+                std::to_integer<std::uint8_t>(
+                    rom[kRomOffset + index * 2U + 1U])
+                & 0x0FU);
+            tile_numbers_[index] =
+                static_cast<std::uint16_t>(low | (high << 8U));
+        }
+        return true;
+    }
+
+    void observe(
+        const int frame,
+        const std::span<const std::byte> work_ram,
+        const std::span<const std::uint16_t> vram_words)
+    {
+        if (tile_numbers_.empty() || work_ram.size() <= 0x0CU) {
+            return;
+        }
+
+        const auto camera_y = static_cast<std::int16_t>(
+            static_cast<std::uint16_t>(
+                std::to_integer<std::uint8_t>(work_ram[0x0BU]))
+            | (static_cast<std::uint16_t>(
+                   std::to_integer<std::uint8_t>(work_ram[0x0CU]))
+               << 8U));
+        const auto window_top = kViewportOrigin + static_cast<int>(camera_y);
+        const auto window_bottom = window_top + kCameraWindowRows;
+
+        std::vector<std::uint64_t> hashes(kTileCount);
+        for (std::size_t index = 0U; index < kTileCount; ++index) {
+            const std::size_t offset =
+                static_cast<std::size_t>(tile_numbers_[index]) * kTileWords;
+            std::uint64_t hash = 1469598103934665603ULL;
+            for (std::size_t word = 0U; word < kTileWords; ++word) {
+                const auto value = offset + word < vram_words.size()
+                    ? vram_words[offset + word]
+                    : std::uint16_t{0};
+                hash = (hash ^ value) * 1099511628211ULL;
+            }
+            hashes[index] = hash;
+        }
+
+        // The same retention the cabinet applies, measured against the live
+        // plane so the suppressed off-camera churn is visible.
+        std::uint64_t suppressed = 0U;
+        std::size_t learned = 0U;
+        constexpr std::size_t kAttributeOffset = 0x0259U;
+        if (work_ram.size()
+            >= kAttributeOffset
+                + devils_crush::render::TablePaletteCache::kByteCount) {
+            const auto live = work_ram.subspan(
+                kAttributeOffset,
+                devils_crush::render::TablePaletteCache::kByteCount);
+            const auto retained = palette_cache_.update(
+                live,
+                window_top,
+                kCameraWindowRows);
+            for (std::size_t byte = 0U; byte < retained.size(); ++byte) {
+                if (retained[byte] != live[byte]) {
+                    ++suppressed;
+                }
+            }
+            learned = palette_cache_.learned_rows();
+            total_suppressed_ += suppressed;
+        }
+
+        if (!previous_.empty()) {
+            std::uint64_t on_camera = 0U;
+            std::uint64_t off_camera = 0U;
+            for (std::size_t index = 0U; index < kTileCount; ++index) {
+                if (hashes[index] == previous_[index]) {
+                    continue;
+                }
+                const auto tile_row =
+                    static_cast<int>(index / kWidthTiles);
+                const auto row_top =
+                    tile_row * static_cast<int>(kTilePixels);
+                const auto row_bottom =
+                    row_top + static_cast<int>(kTilePixels);
+                if (row_bottom > window_top && row_top < window_bottom) {
+                    ++on_camera;
+                } else {
+                    ++off_camera;
+                }
+            }
+            rows_ << frame << ',' << window_top << ','
+                  << on_camera + off_camera << ',' << on_camera << ','
+                  << off_camera << ',' << suppressed << ',' << learned
+                  << '\n';
+            total_on_camera_ += on_camera;
+            total_off_camera_ += off_camera;
+            if (off_camera != 0U) {
+                ++frames_with_off_camera_change_;
+            }
+            ++compared_frames_;
+        }
+        previous_ = std::move(hashes);
+    }
+
+    [[nodiscard]] bool write(
+        const std::filesystem::path& path,
+        const std::string_view core_revision) const
+    {
+        std::error_code error;
+        const auto directory = path.parent_path();
+        if (!directory.empty()) {
+            std::filesystem::create_directories(directory, error);
+        }
+        if (error) {
+            std::cerr << "Could not create table VRAM census directory: "
+                      << error.message() << '\n';
+            return false;
+        }
+
+        auto temporary_path = path;
+        temporary_path += ".tmp";
+        std::ofstream output(
+            temporary_path,
+            std::ios::binary | std::ios::trunc);
+        if (!output) {
+            std::cerr << "Could not create table VRAM census: "
+                      << temporary_path.string() << '\n';
+            return false;
+        }
+        output << "# format=devils-crush-table-vram-census-v1\n"
+               << "# rom_sha256=" << devils_crush::rom::kSupportedSha256
+               << '\n'
+               << "# core_revision=" << core_revision << '\n'
+               << "# table_tiles=" << kTileCount << '\n'
+               << "# compared_frames=" << compared_frames_ << '\n'
+               << "# frames_with_off_camera_change="
+               << frames_with_off_camera_change_ << '\n'
+               << "# total_on_camera_tile_changes=" << total_on_camera_
+               << '\n'
+               << "# total_off_camera_tile_changes=" << total_off_camera_
+               << '\n'
+               << "# total_suppressed_palette_bytes=" << total_suppressed_
+               << '\n'
+               << "frame,camera_top_row,tiles_changed,on_camera,off_camera,"
+                  "retained_palette_bytes_differing,learned_rows\n"
+               << rows_.str();
+        output.close();
+        if (!output) {
+            std::cerr << "Could not finalize table VRAM census.\n";
+            return false;
+        }
+        if (!MoveFileExW(
+                temporary_path.c_str(),
+                path.c_str(),
+                MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
+            std::cerr
+                << "Could not commit table VRAM census; Windows error "
+                << GetLastError() << ".\n";
+            return false;
+        }
+
+        std::cout << "Table VRAM census complete: " << compared_frames_
+                  << " compared frames, " << frames_with_off_camera_change_
+                  << " with off-camera tile changes ("
+                  << total_off_camera_ << " off-camera vs "
+                  << total_on_camera_ << " on-camera tile changes)\n"
+                  << "Palette retention held back " << total_suppressed_
+                  << " off-camera attribute bytes across the route\n"
+                  << "Output: " << path.string() << '\n';
+        return true;
+    }
+
+private:
+    std::vector<std::uint16_t> tile_numbers_;
+    std::vector<std::uint64_t> previous_;
+    std::ostringstream rows_;
+    std::uint64_t total_on_camera_ = 0U;
+    std::uint64_t total_off_camera_ = 0U;
+    std::uint64_t compared_frames_ = 0U;
+    std::uint64_t frames_with_off_camera_change_ = 0U;
+    std::uint64_t total_suppressed_ = 0U;
+    devils_crush::render::TablePaletteCache palette_cache_;
+};
+
 int run_deterministic_recording(
     PceRuntime& runtime,
     const std::filesystem::path& path,
@@ -5136,7 +6193,9 @@ int run_deterministic_recording(
     const std::filesystem::path& audio_path,
     const std::string_view core_revision,
     const RecordingPlan& plan,
-    const std::span<const WorkRamPatch> work_ram_patches)
+    const std::span<const WorkRamPatch> work_ram_patches,
+    const std::filesystem::path& table_vram_census_path = {},
+    const std::span<const std::byte> rom = {})
 {
     if (runtime.work_ram_size() == 0U || plan.frame_count <= 0
         || plan.input_for_frame == nullptr || plan.format.empty()
@@ -5275,6 +6334,12 @@ int run_deterministic_recording(
     int audio_sample_rate = 0;
     std::uint32_t audio_data_bytes = 0U;
     std::vector<std::byte> framebuffer_rgb;
+    TableVramCensus table_vram_census;
+    if (!table_vram_census_path.empty() && !table_vram_census.begin(rom)) {
+        std::cerr << "Could not resolve the table map for the VRAM census.\n";
+        return EXIT_FAILURE;
+    }
+
     for (int index = 1; index <= plan.frame_count; ++index) {
         const auto first_patch = std::find_if(
             work_ram_patches.begin(),
@@ -5317,6 +6382,13 @@ int run_deterministic_recording(
             std::cerr << plan.label << " recording failed on frame " << index
                       << ".\n";
             return EXIT_FAILURE;
+        }
+
+        if (!table_vram_census_path.empty()) {
+            const auto video = runtime.export_video_memory();
+            if (video) {
+                table_vram_census.observe(index, work_ram, video->vram_words);
+            }
         }
 
         output << frame.frame_number << ',' << std::hex
@@ -5510,6 +6582,11 @@ int run_deterministic_recording(
         std::cerr << "Could not commit " << plan.label
                   << " audio; Windows error "
                   << GetLastError() << ".\n";
+        return EXIT_FAILURE;
+    }
+
+    if (!table_vram_census_path.empty()
+        && !table_vram_census.write(table_vram_census_path, core_revision)) {
         return EXIT_FAILURE;
     }
 
@@ -5889,13 +6966,18 @@ int run_smoke_test(PceRuntime& runtime)
     return EXIT_SUCCESS;
 }
 
+// A non-null native_registry deploys every admitted routine into the live
+// session and supplies the slice, exclusion, and census settings for it.
 int run_windows_host(
     PceRuntime& runtime,
     const std::filesystem::path& rom_path,
     const bool cabinet_mode,
     const std::optional<std::filesystem::path> backglass_override =
         std::nullopt,
-    const int frame_limit = 0)
+    const int frame_limit = 0,
+    const CommandLine* native_registry = nullptr,
+    const CabinetLayers layers = CabinetLayers::all,
+    const bool overlay_stats = false)
 {
     if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMEPAD)) {
         report_sdl_error("SDL_Init failed");
@@ -6059,8 +7141,11 @@ int run_windows_host(
         }
     }
     bool table_view = false;
+    bool reported_table_view = false;
     devils_crush::render::PersistentActorSpriteCache
         persistent_actor_sprites;
+    devils_crush::render::TablePaletteCache table_palette_cache;
+    SeededActorTracker seeded_actors;
     std::uint64_t dmd_score = 0U;
     std::uint64_t backglass_logo_frame = 0U;
     bool assignment_active = false;
@@ -6099,6 +7184,40 @@ int run_windows_host(
     bool running = true;
     bool host_ok = true;
     int emulated_frames = 0;
+    int playfield_dump_remaining = 0;
+
+    // The registry is installed last, once every fallible setup step has
+    // succeeded, so no early return can leave a hook pointing at a dead
+    // deployment. Nothing below returns before the shutdown tail clears them.
+    const auto replacement_rom = native_registry != nullptr
+        ? read_rom_bytes(rom_path)
+        : std::optional<std::vector<std::byte>>{std::vector<std::byte>{}};
+    NativeRegistryDeployment registry_deployment;
+    if (native_registry != nullptr) {
+        if (!replacement_rom
+            || !install_native_registry(
+                runtime,
+                *native_registry,
+                *replacement_rom,
+                {},
+                registry_deployment)) {
+            running = false;
+            host_ok = false;
+        } else {
+            const auto deployed =
+                static_cast<std::size_t>(std::count_if(
+                    registry_deployment.rows.begin(),
+                    registry_deployment.rows.end(),
+                    [](const RegistryCensusRow& row) {
+                        return !row.skipped;
+                    }));
+            std::cout << "Native registry: " << deployed << " of "
+                      << registry_deployment.rows.size()
+                      << " admitted routines deployed ("
+                      << kWithheldRoutines.size()
+                      << " withheld as state-diverging).\n";
+        }
+    }
     while (running && host_ok) {
         SDL_Event event;
         while (SDL_PollEvent(&event)) {
@@ -6171,6 +7290,13 @@ int run_windows_host(
                     destroy_source(backglass_source);
                     destroy_auxiliary_window(backglass);
                 }
+            } else if (
+                cabinet_mode && event.type == SDL_EVENT_KEY_DOWN
+                && !event.key.repeat && event.key.key == SDLK_F8) {
+                // Capture a short burst rather than one frame: a seam that
+                // tracks the camera only identifies itself across frames.
+                playfield_dump_remaining = 4;
+                std::cout << "Cabinet playfield capture armed.\n";
             } else if (
                 cabinet_mode && event.type == SDL_EVENT_KEY_DOWN
                 && !event.key.repeat && event.key.key == SDLK_F12) {
@@ -6407,6 +7533,9 @@ int run_windows_host(
 
                 table_view = false;
                 bool source_uploaded = false;
+                const bool overlay_stats_due =
+                    overlay_stats
+                    && frame.frame_number % 60U == 0U;
                 if (cabinet_state
                     && cabinet_state->playfield
                         == devils_crush::cabinet::PlayfieldView::
@@ -6418,8 +7547,25 @@ int run_windows_host(
                               *cabinet_rom,
                               work_ram,
                               *video,
-                              persistent_actor_sprites)
+                              persistent_actor_sprites,
+                              table_palette_cache,
+                              layers,
+                              overlay_stats_due,
+                              overlay_stats ? &seeded_actors : nullptr)
                         : std::nullopt;
+                    if (table && playfield_dump_remaining > 0) {
+                        --playfield_dump_remaining;
+                        std::ostringstream name;
+                        name << "playfield-" << std::setw(6)
+                             << std::setfill('0') << frame.frame_number
+                             << ".bmp";
+                        const auto dump_path =
+                            std::filesystem::current_path() / name.str();
+                        if (save_playfield_png(table->image, dump_path)) {
+                            std::cout << "Captured " << dump_path.string()
+                                      << '\n';
+                        }
+                    }
                     if (table) {
                         host_ok =
                             upload_image(
@@ -6432,10 +7578,31 @@ int run_windows_host(
                 }
                 if (host_ok && !source_uploaded) {
                     persistent_actor_sprites.reset();
+                    table_palette_cache.reset();
                     host_ok = upload_framebuffer(
                         renderer,
                         frame.framebuffer,
                         source);
+                }
+                // The stitched table and the emulated framebuffer behave
+                // very differently — the framebuffer scrolls with the camera
+                // and hardware-clips its sprites — so say which one is on
+                // screen whenever that changes.
+                if (table_view != reported_table_view) {
+                    reported_table_view = table_view;
+                    std::cout << "Cabinet playfield: "
+                              << (table_view
+                                      ? "stitched table"
+                                      : "emulated framebuffer")
+                              << " (frame " << frame.frame_number;
+                    if (!table_view && cabinet_state) {
+                        std::cout << "; balls="
+                                  << static_cast<unsigned>(
+                                         cabinet_state->balls_in_session)
+                                  << ", bonus="
+                                  << (cabinet_state->bonus_stage ? 1 : 0);
+                    }
+                    std::cout << ")\n";
                 }
                 if (host_ok) {
                     host_ok = queue_audio(frame.audio, audio);
@@ -6533,6 +7700,9 @@ int run_windows_host(
         }
     }
 
+    // The hooks capture the deployment and the replacement ROM, both of which
+    // die with this frame, so they must go before either does.
+    runtime.clear_execution_hooks();
     destroy_audio(audio);
     destroy_stage(stage);
     destroy_source(source);
@@ -6549,11 +7719,111 @@ int run_windows_host(
     SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);
     SDL_Quit();
+    if (overlay_stats) {
+        seeded_actors.report();
+    }
+    if (native_registry != nullptr) {
+        print_native_registry_summary(registry_deployment);
+        if (!native_registry->native_cycle_census_path.empty()
+            && !write_native_cycle_census(
+                native_registry->native_cycle_census_path,
+                registry_deployment.rows,
+                registry_deployment.span,
+                runtime.info().upstream_revision)) {
+            host_ok = false;
+        }
+    }
     if (host_ok && frame_limit > 0) {
         std::cout << "Cabinet host smoke test passed: "
                   << emulated_frames << " frames.\n";
     }
     return host_ok ? EXIT_SUCCESS : EXIT_FAILURE;
+}
+
+// Composes the cabinet playfield over the scripted state-census route and
+// writes selected frames as PNG, once per layer selection. The retained and
+// SAT layers are drawn from different sources, so a disagreement between
+// them is only visible by comparing the same frame across selections.
+[[nodiscard]] int dump_cabinet_route(
+    devils_crush::emulation::PceRuntime& runtime,
+    const std::filesystem::path& rom_path,
+    const std::filesystem::path& directory)
+{
+    const auto rom = read_rom_bytes(rom_path);
+    if (!rom) {
+        return EXIT_FAILURE;
+    }
+    std::error_code error;
+    std::filesystem::create_directories(directory, error);
+    if (error) {
+        std::cerr << "Could not create dump directory: "
+                  << error.message() << '\n';
+        return EXIT_FAILURE;
+    }
+
+    static constexpr std::array dump_frames{
+        1256, 1257, 1258, 1500, 1800, 2100};
+    static constexpr int last_frame = 2100;
+    struct Pass {
+        CabinetLayers layers;
+        const char* name;
+    };
+    static constexpr std::array passes{
+        Pass{CabinetLayers::all, "all"},
+        Pass{CabinetLayers::retained_only, "retained"},
+        Pass{CabinetLayers::sat_only, "sat"},
+        Pass{CabinetLayers::background_only, "background"},
+    };
+
+    for (const auto& pass : passes) {
+        runtime.reset();
+        devils_crush::render::PersistentActorSpriteCache actors;
+        devils_crush::render::TablePaletteCache palette;
+        for (int frame_number = 1;
+             frame_number <= last_frame;
+             ++frame_number) {
+            static_cast<void>(runtime.run_frame(
+                state_census_input_for_frame(frame_number)));
+            const auto work_ram = runtime.export_work_ram();
+            const auto state =
+                devils_crush::cabinet::decode_cabinet_state(work_ram);
+            if (!state
+                || state->playfield
+                    != devils_crush::cabinet::PlayfieldView::
+                           table_background) {
+                continue;
+            }
+            const auto video = runtime.export_video_memory();
+            if (!video) {
+                continue;
+            }
+            // The caches learn across every decoded frame, so the decode
+            // must run on all of them and not only the captured ones.
+            const auto table = decode_cabinet_table(
+                *rom,
+                work_ram,
+                *video,
+                actors,
+                palette,
+                pass.layers,
+                false,
+                nullptr);
+            if (!table
+                || std::ranges::find(dump_frames, frame_number)
+                    == dump_frames.end()) {
+                continue;
+            }
+            std::ostringstream name;
+            name << "route-" << std::setw(4) << std::setfill('0')
+                 << frame_number << '-' << pass.name << ".bmp";
+            const auto path = directory / name.str();
+            if (!save_playfield_png(table->image, path)) {
+                return EXIT_FAILURE;
+            }
+            std::cout << "Captured " << path.string() << '\n';
+        }
+    }
+    return EXIT_SUCCESS;
 }
 
 } // namespace
@@ -6594,12 +7864,21 @@ int main(const int argc, char* argv[])
         }
         std::cout << load_result.message << '\n';
 
-        const auto replacement_rom = options.replace_hooks.empty()
+        const auto replacement_rom =
+            options.replace_hooks.empty() && !options.replace_registry
+            && options.table_vram_census_path.empty()
             ? std::optional<std::vector<std::byte>>{
                   std::vector<std::byte>{}}
             : read_rom_bytes(options.rom_path);
         if (!replacement_rom) {
             return EXIT_FAILURE;
+        }
+
+        if (!options.cabinet_dump_route_directory.empty()) {
+            return dump_cabinet_route(
+                *runtime,
+                options.rom_path,
+                options.cabinet_dump_route_directory);
         }
 
         if (options.record_canonical || options.record_gameplay
@@ -6808,6 +8087,24 @@ int main(const int argc, char* argv[])
                           << index + 1U << ".\n";
                 return EXIT_FAILURE;
             }
+            NativeRegistryDeployment registry_deployment;
+            if (options.replace_registry) {
+                std::vector<RoutineKey> claimed_routines =
+                    options.observe_hooks;
+                claimed_routines.reserve(
+                    claimed_routines.size() + options.replace_hooks.size());
+                for (const auto& request : options.replace_hooks) {
+                    claimed_routines.push_back(request.routine);
+                }
+                if (!install_native_registry(
+                        *runtime,
+                        options,
+                        *replacement_rom,
+                        claimed_routines,
+                        registry_deployment)) {
+                    return EXIT_FAILURE;
+                }
+            }
             if (!options.routine_call_trace_path.empty()) {
                 for (std::size_t index = 0U;
                      index < options.observe_hooks.size();
@@ -6888,6 +8185,12 @@ int main(const int argc, char* argv[])
                 return EXIT_FAILURE;
             }
 
+            if (!options.instruction_profile_path.empty()
+                && !runtime->set_instruction_profiling(true)) {
+                std::cerr << "Could not enable instruction profiling.\n";
+                return EXIT_FAILURE;
+            }
+
             const int result = run_deterministic_recording(
                 *runtime,
                 recording_path,
@@ -6896,7 +8199,9 @@ int main(const int argc, char* argv[])
                 options.canonical_audio_path,
                 runtime_info.upstream_revision,
                 recording_plan,
-                options.work_ram_patches);
+                options.work_ram_patches,
+                options.table_vram_census_path,
+                *replacement_rom);
             if (result != EXIT_SUCCESS) {
                 return result;
             }
@@ -6940,6 +8245,24 @@ int main(const int argc, char* argv[])
                     std::cout << " of " << replacement_entries[index];
                 }
                 std::cout << '\n';
+            }
+            if (!options.instruction_profile_path.empty()
+                && !write_instruction_profile(
+                    options.instruction_profile_path,
+                    runtime->export_instruction_profile(),
+                    runtime_info.upstream_revision)) {
+                return EXIT_FAILURE;
+            }
+            if (options.replace_registry) {
+                print_native_registry_summary(registry_deployment);
+            }
+            if (!options.native_cycle_census_path.empty()
+                && !write_native_cycle_census(
+                    options.native_cycle_census_path,
+                    registry_deployment.rows,
+                    registry_deployment.span,
+                    runtime_info.upstream_revision)) {
+                return EXIT_FAILURE;
             }
             for (std::size_t index = 0U;
                  index < options.observe_hooks.size();
@@ -7005,13 +8328,21 @@ int main(const int argc, char* argv[])
         if (options.smoke_test) {
             return run_smoke_test(*runtime);
         }
+        // The registry is the interactive default: a session on the cabinet
+        // runs every routine the regressions have proven, and --emulate-only
+        // falls back to the untouched emulated original.
+        const CommandLine* const host_registry =
+            options.emulate_only ? nullptr : &options;
         if (options.cabinet_smoke_test) {
             return run_windows_host(
                 *runtime,
                 options.rom_path,
                 true,
                 std::nullopt,
-                kSmokeTestFrames);
+                kSmokeTestFrames,
+                host_registry,
+                options.cabinet_layers,
+                options.cabinet_overlay_stats);
         }
 
         (void)load_backup_ram(*runtime, kBackupRamPath);
@@ -7022,7 +8353,11 @@ int main(const int argc, char* argv[])
             options.backglass_path_set
                 ? std::optional<std::filesystem::path>{
                     options.backglass_path}
-                : std::nullopt);
+                : std::nullopt,
+            0,
+            host_registry,
+            options.cabinet_layers,
+            options.cabinet_overlay_stats);
         const bool save_succeeded =
             save_backup_ram(*runtime, kBackupRamPath);
         return host_result == EXIT_SUCCESS && save_succeeded

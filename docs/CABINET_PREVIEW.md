@@ -40,6 +40,27 @@ each presentation so letterboxing remains true black on emissive displays.
 
 The host decodes the packed ROM tile map and work-RAM palette attributes
 against the current copied VRAM/VCE state, then crops source rows 20-687.
+
+The palette-attribute plane is region-owned and must be retained rather than
+read live. The game writes all 1,536 packed bytes once at scene start, then
+rewrites one or two tile rows at a time as the camera scrolls: across the
+3,600-frame state-census route, 8,274 of its 8,669 in-play byte changes —
+95.4% — land on rows the camera is not showing. Decoding the full table
+against the live plane therefore recoloured unrelated rows every time the
+ball travelled. `render::TablePaletteCache` refreshes a row only while the
+camera covers it, so each row keeps the bytes that were authoritative when it
+was last on screen, and rows the camera has never reached keep the scene-start
+assignment. On the same route the retained plane differs from the live one on
+95.2% of frames, by up to 817 of 1,536 bytes at once.
+
+The tile patterns themselves need no such treatment. The table's 3,072 cells
+reference only 663 distinct tiles against a 2,048-tile VRAM capacity, so its
+artwork stays resident; pattern words change on 55 of 3,599 frames and the
+large bursts are scene loads. 23 of those 663 tiles carry pattern numbers past
+the end of VRAM and decode as zeroed cells, which remains a known gap.
+
+`--table-vram-census <path>` records both, per frame, split by whether each
+change lands inside the camera window.
 The table is decoded only after:
 
 - at least one packed table-attribute byte is initialized;
@@ -82,6 +103,42 @@ the SAT authoritative without punching a 208-line hole through other
 inactive mechanisms. This keeps all three flipper pairs visible and prevents
 clustered Sorcerers or star/pentagram parts from inheriting one another's
 geometry.
+
+The copied SAT and the work-RAM camera are not in the same time base. The
+SAT is latched at vblank alongside the VDC's background scroll register,
+while work RAM is exported after the frame's logic has run. Translating SAT
+screen coordinates through the post-frame camera therefore displaces every
+live sprite relative to the retained actors and the fixed table by one
+frame of camera motion. Across the video-snapshot route the residue is zero
+on 2,279 of 2,727 frames -- every frame the camera is at rest -- and
+reaches 13 pixels on the 448 frames it moves, which is why the defect is
+invisible in `--cabinet-layers retained` or `sat` alone and only appears
+while the ball travels. The host recovers the camera the SAT was built
+against: the scroll register settles exactly 32 rows below the table-world
+viewport, and work RAM supplies the absolute region that the register's
+256-line wrap cannot. `dc_rom_video_snapshot` guards both halves of that
+relation -- agreement at rest, and bounded disagreement while scrolling.
+
+Actor flags bit 5 hides an actor, and the retained layer must honour it.
+The bank-8 descriptor walk already omits hidden actors, so a hidden slot
+produces no sprite metadata; the composition loop previously read that as
+"nothing new to resolve" and kept drawing whatever artwork the mechanism
+last had while live work RAM went on moving it. Across the 2,727 decoded
+frames of the video-snapshot route that was 53,871 stale resolutions, an
+average of 19.75 ghost actors per frame. Many mechanisms are hidden for an
+entire session — slots `$16`, `$44`, `$45`, `$48`, and `$5C`-`$5E` are
+hidden on all 520 sampled frames — so their artwork persisted permanently
+once seeded. Hidden slots now clear their visual each frame while keeping
+their learned phase variants, because hiding is a visibility state rather
+than a family change. `dc_rom_video_snapshot` asserts that no off-camera
+actor keeps stale artwork after its phase moves.
+
+The hidden bit is not a camera cull. Actor phases keep advancing while the
+camera is elsewhere: over the state-census route every one of the 36 slots
+with more than 50 off-camera samples changed phase off-camera, and none
+advanced only while observed. Slots `$17`-`$1E` never entered the camera at
+all on that route and still changed phase 194-208 times each. Off-camera
+actors therefore must be re-resolved, never frozen.
 
 Live VRAM is region-owned. Animated actors therefore keep bounded exact
 phase variants. An off-camera enemy resolves its current phase from a
@@ -173,6 +230,45 @@ The current DMD omits the P1/P2 discriminator until the two-player session
 field is dynamically mapped. The score remains live during emulated
 framebuffer and bonus-stage presentation because it is read independently
 from work RAM.
+
+## Open defect: one actor drawn by both layers
+
+`--cabinet-dump-route <dir>` replays the scripted state-census route
+headlessly and writes each layer selection to its own BMP per captured
+frame, so the composition can be inspected directly instead of inferred
+from counters. Comparing those images against the background isolates
+exactly which layer contributes each pixel.
+
+That comparison shows the retained layer and the copied SAT drawing the
+same actor at different positions. At route frame 1,256 the right flipper
+appears in the SAT and again in the retained layer about six pixels away;
+both reach the composite. The retained layer omits an actor only when it is
+observed, and observed tests the actor's *anchor* against the 208-row
+camera window, so an actor whose anchor lies outside the window while its
+sprites reach into it is drawn twice. Same-pixel overlap between the two
+layers is 465, 250, 308, and 0 pixels at route frames 1,256, 1,500, 1,800,
+and 2,100.
+
+Two repairs were measured and both regressed, so neither is in the tree:
+
+- Treating "any sprite reaches the window" as observed predicts what the
+  hardware *could* place in the SAT rather than what it does. The ROM culls
+  on its own terms and the 64-sprite and 16-halves-per-line limits drop
+  entries. It removed 341 pixels at frame 1,500 -- two enemies the SAT was
+  never drawing vanished entirely.
+- Conceding an actor whenever one of its sprite patterns appears anywhere in
+  the SAT eliminates all double drawing but is far too permissive: parked
+  entries retain their pattern words, and 2,100 to 4,100 pixels of content
+  disappear per frame, including at frame 2,100 where nothing was doubled.
+
+Omission must therefore be driven by a proven correspondence between decoded
+actor groups and live SAT entries, matching position as well as pattern,
+rather than by geometry or pattern alone. The existing frame-1,200 proof
+that 23 live groups match the copied SAT word-for-word is the basis to build
+that mapping on. A second, separate issue is visible at frame 1,800: the SAT
+is clipped to the camera window while the retained layer is not, so an actor
+straddling the boundary is necessarily inconsistent between them whichever
+layer owns it.
 
 ## Remaining cabinet work
 

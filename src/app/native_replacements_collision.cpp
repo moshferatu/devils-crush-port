@@ -22,6 +22,166 @@ using emulation::RoutineKey;
 using emulation::RoutineReplacement;
 
 [[nodiscard]] std::optional<RoutineReplacement>
+replace_collision_scan_run(
+    const RoutineEntry& entry,
+    const std::span<const std::byte> work_ram)
+{
+    // The collision sweep's head. Each arrival either finds a slot eligible
+    // for the vertical scan at CC1A or rejects it, and only the rejections
+    // are native: an eligible slot enters CC1A and the emulated response
+    // chain beyond it. The run walks rejected slots and hands control back at
+    // the scan call, the sweep head, or the exhausted countdown.
+    constexpr RoutineKey kRoutine{
+        .physical_bank = 0x01U,
+        .logical_pc = 0xCB48U,
+    };
+    constexpr std::uint16_t kCandidatePc = 0xCB5EU;
+    constexpr std::uint16_t kSweepHeadPc = 0xCB48U;
+    constexpr std::uint16_t kExhaustedPc = 0xCB71U;
+    constexpr std::uint16_t kSlotAddress = 0x2064U;
+    constexpr std::uint16_t kCountdownAddress = 0x2060U;
+    constexpr std::uint16_t kGateAddress = 0x2055U;
+
+    // Master cycles for the two rejection shapes and the exits.
+    constexpr std::uint32_t kPositiveSkipCycles = 87U;  // LDY LDA BPL INC DEC BNE
+    constexpr std::uint32_t kMaskedSkipCycles = 99U;    // + BIT BNE
+    constexpr std::uint32_t kPositiveSlotWrite = 57U;
+    constexpr std::uint32_t kPositiveCountdownWrite = 75U;
+    constexpr std::uint32_t kMaskedSlotWrite = 69U;
+    constexpr std::uint32_t kMaskedCountdownWrite = 87U;
+    constexpr std::uint32_t kCandidateCycles = 69U;
+    constexpr std::uint32_t kExhaustedBranchSaving = 6U;
+
+    if (entry.routine != kRoutine) {
+        return std::nullopt;
+    }
+    if ((entry.registers.status & 0x08U) != 0U) {
+        return std::nullopt;
+    }
+    if (work_ram.size() <= kSlotAddress - 0x2000U) {
+        return std::nullopt;
+    }
+
+    const auto slot = std::to_integer<std::uint8_t>(
+        work_ram[kSlotAddress - 0x2000U]);
+    const auto remaining = std::to_integer<std::uint8_t>(
+        work_ram[kCountdownAddress - 0x2000U]);
+    const auto gate = std::to_integer<std::uint8_t>(
+        work_ram[kGateAddress - 0x2000U]);
+
+    const auto horizon = std::min(
+        entry.master_cycles_until_user_event,
+        entry.master_cycles_until_timer_interrupt);
+    // The horizon must cover the worst-case shape of a walked slot plus its
+    // exit before any of this run is admitted. Relaxing this floor to a single
+    // slot admits short-horizon runs that measurably change the state census,
+    // so the conservative bound is load-bearing rather than merely cautious.
+    if (horizon <= kMaskedSkipCycles + kCandidateCycles) {
+        return std::nullopt;
+    }
+    const auto budget = std::min<std::uint32_t>(
+        DC_COLLISION_SCAN_MAX_SKIPS,
+        (horizon - kCandidateCycles - 1U) / kMaskedSkipCycles);
+    if (budget == 0U) {
+        return std::nullopt;
+    }
+
+    dc_collision_scan_run run{};
+    if (!dc_classify_collision_scan_run(
+            reinterpret_cast<const std::uint8_t*>(work_ram.data()),
+            work_ram.size(),
+            slot,
+            remaining,
+            gate,
+            static_cast<std::uint8_t>(budget),
+            &run)) {
+        return std::nullopt;
+    }
+    if (run.exit == DC_COLLISION_SCAN_BUDGET && run.skipped == 0U) {
+        return std::nullopt;
+    }
+
+    std::uint32_t cycle = 0U;
+    std::vector<emulation::ReplacementMemoryWrite> writes;
+    writes.reserve(static_cast<std::size_t>(run.skipped) * 2U);
+    for (std::uint8_t index = 0U; index < run.skipped; ++index) {
+        const bool masked =
+            run.skips[index] == static_cast<std::uint8_t>(
+                DC_COLLISION_SCAN_SKIP_MASKED);
+        writes.push_back({
+            .instruction = {0x01U, 0xCB6BU},
+            .logical_address = kSlotAddress,
+            .value = static_cast<std::uint8_t>(slot + index + 1U),
+            .master_cycle_offset = cycle
+                + (masked ? kMaskedSlotWrite : kPositiveSlotWrite),
+        });
+        writes.push_back({
+            .instruction = {0x01U, 0xCB6DU},
+            .logical_address = kCountdownAddress,
+            .value = static_cast<std::uint8_t>(remaining - index - 1U),
+            .master_cycle_offset = cycle
+                + (masked ? kMaskedCountdownWrite : kPositiveCountdownWrite),
+        });
+        cycle += masked ? kMaskedSkipCycles : kPositiveSkipCycles;
+    }
+
+    auto output = entry.registers;
+    output.accumulator = run.accumulator;
+
+    const auto set_nz = [](std::uint8_t status, const std::uint8_t value) {
+        status = static_cast<std::uint8_t>(
+            status & static_cast<std::uint8_t>(~0x82U));
+        if (value == 0U) {
+            status = static_cast<std::uint8_t>(status | 0x02U);
+        } else if ((value & 0x80U) != 0U) {
+            status = static_cast<std::uint8_t>(status | 0x80U);
+        }
+        return status;
+    };
+
+    switch (run.exit) {
+    case DC_COLLISION_SCAN_CANDIDATE:
+        // LDY loaded this slot and LDA $55 left the zero gate standing.
+        cycle += kCandidateCycles;
+        output.y = run.slot;
+        output.status = set_nz(output.status, run.accumulator);
+        output.program_counter = kCandidatePc;
+        break;
+    case DC_COLLISION_SCAN_EXHAUSTED:
+        // DEC $60 reached zero, so its BNE cost two cycles, not four. Y still
+        // holds the slot the last LDY read, one behind the stored counter.
+        cycle -= kExhaustedBranchSaving;
+        output.y = static_cast<std::uint8_t>(run.slot - 1U);
+        output.status = set_nz(output.status, 0U);
+        output.program_counter = kExhaustedPc;
+        break;
+    case DC_COLLISION_SCAN_BUDGET:
+        output.y = static_cast<std::uint8_t>(run.slot - 1U);
+        output.status = set_nz(output.status, run.remaining);
+        output.program_counter = kSweepHeadPc;
+        break;
+    default:
+        return std::nullopt;
+    }
+
+    if (cycle >= horizon) {
+        return std::nullopt;
+    }
+
+    RoutineReplacement replacement{
+        .return_instruction =
+            {
+                .physical_bank = 0x01U,
+                .logical_pc = output.program_counter,
+            },
+        .output_registers = output,
+        .body_master_cycles = cycle,
+    };
+    replacement.work_ram_writes = std::move(writes);
+    return replacement;
+}
+
+[[nodiscard]] std::optional<RoutineReplacement>
 replace_collision_table_interpreter(
     const RoutineEntry& entry,
     const std::span<const std::byte> work_ram,

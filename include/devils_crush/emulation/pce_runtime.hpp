@@ -229,6 +229,20 @@ struct RoutineCall {
     [[nodiscard]] bool operator==(const RoutineCall&) const = default;
 };
 
+// One executed instruction address and the master cycles attributed to it.
+// Cycles are the span between this instruction's entry and the next observed
+// instruction's entry, so a natively replaced routine attributes its whole
+// body to its entry address. Profile with replacements disabled to rank the
+// code that is still emulated.
+struct InstructionProfileEntry {
+    RoutineKey instruction;
+    std::uint64_t executions = 0;
+    std::uint64_t master_cycles = 0;
+
+    [[nodiscard]] bool operator==(
+        const InstructionProfileEntry&) const = default;
+};
+
 using RoutineCallCallback = std::function<void(const RoutineCall&)>;
 
 struct RoutineCallObserver {
@@ -307,6 +321,18 @@ public:
     virtual void clear_routine_call_observers() noexcept = 0;
     [[nodiscard]] virtual std::size_t routine_call_observer_count()
         const noexcept = 0;
+
+    // An optional whole-ROM instruction cycle profile. Unlike execution hooks
+    // it is not keyed, so it ranks code nobody has thought to observe yet.
+    // Enabling it is only available after a ROM has loaded; it counts every
+    // executed instruction and costs roughly the same as one observation hook.
+    [[nodiscard]] virtual bool set_instruction_profiling(bool enabled) = 0;
+    [[nodiscard]] virtual bool instruction_profiling_enabled()
+        const noexcept = 0;
+    // Entries are returned in descending master-cycle order. Addresses that
+    // never executed are omitted.
+    [[nodiscard]] virtual std::vector<InstructionProfileEntry>
+    export_instruction_profile() const = 0;
 
     // One optional global observer receives every write to the physical
     // 8 KiB PCE work-RAM bank. It is intended for selective state-writer

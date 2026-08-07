@@ -31,6 +31,54 @@ typedef struct dc_actor_camera_activation {
     dc_actor_camera_path path;
 } dc_actor_camera_activation;
 
+// The main per-frame actor loop at 01:C510 walks 128 slots, dispatching the
+// ones whose flags demand it and skipping the rest. Only the skip run is
+// classifiable here: a dispatch enters an emulated handler through the
+// $3F00/$3F80 jump table, which native code cannot call.
+#define DC_ACTOR_SCAN_SLOT_COUNT 0x80U
+
+typedef enum dc_actor_scan_exit {
+    // A slot needs its handler; the loop resumes at the dispatch branch.
+    DC_ACTOR_SCAN_DISPATCH_NEGATIVE = 0,
+    DC_ACTOR_SCAN_DISPATCH_MASKED = 1,
+    // Every remaining slot was inactive; the loop reached its terminal
+    // comparison and falls out to the routine's RTS.
+    DC_ACTOR_SCAN_COMPLETE = 2,
+    // The skip budget ran out first; the loop resumes at its own head with
+    // the slots walked so far already committed.
+    DC_ACTOR_SCAN_BUDGET = 3
+} dc_actor_scan_exit;
+
+typedef enum dc_actor_scan_skip {
+    // $3000,X was positive, so the loop branched straight to its increment.
+    DC_ACTOR_SCAN_SKIP_INACTIVE = 0,
+    // $3000,X was negative but $3080,X was positive with bit 1 set.
+    DC_ACTOR_SCAN_SKIP_MASKED = 1
+} dc_actor_scan_skip;
+
+typedef struct dc_actor_scan_run {
+    // Slots skipped before the exit, and the slot index the loop rests on.
+    uint8_t skipped;
+    uint8_t slot;
+    // The accumulator the skipped and exit instructions leave behind.
+    uint8_t accumulator;
+    dc_actor_scan_exit exit;
+    // One dc_actor_scan_skip per skipped slot, in order. The two shapes cost
+    // different cycles and place their increment write at different offsets.
+    uint8_t skips[DC_ACTOR_SCAN_SLOT_COUNT];
+} dc_actor_scan_run;
+
+// Classifies one run of the 01:C510 loop starting at slot `slot`. Returns 0
+// when the snapshot cannot support the walk. `slot` must be below
+// DC_ACTOR_SCAN_SLOT_COUNT; the caller bounds the run with `maximum_skips` so
+// an atomic native body stays inside its interrupt horizon.
+int dc_classify_actor_scan_run(
+    const uint8_t* work_ram,
+    size_t work_ram_size,
+    uint8_t slot,
+    uint8_t maximum_skips,
+    dc_actor_scan_run* run);
+
 #define DC_ACTOR_SLOT_FIELD_COUNT 32U
 
 typedef struct dc_actor_slot_reset {

@@ -584,6 +584,82 @@ public:
         return static_cast<bool>(work_ram_write_observer_);
     }
 
+    [[nodiscard]] bool set_instruction_profiling(
+        const bool enabled) override
+    {
+        assert_owner_thread();
+        if (!loaded_) {
+            return false;
+        }
+        if (!enabled) {
+            instruction_profile_.reset();
+            refresh_core_observation_hooks();
+            return true;
+        }
+        if (!instruction_profile_) {
+            instruction_profile_ = std::make_unique<InstructionProfile>();
+        }
+        refresh_core_observation_hooks();
+        return true;
+    }
+
+    [[nodiscard]] bool instruction_profiling_enabled()
+        const noexcept override
+    {
+        assert_owner_thread();
+        return instruction_profile_ != nullptr;
+    }
+
+    [[nodiscard]] std::vector<InstructionProfileEntry>
+    export_instruction_profile() const override
+    {
+        assert_owner_thread();
+        std::vector<InstructionProfileEntry> entries;
+        if (!instruction_profile_) {
+            return entries;
+        }
+
+        for (std::size_t bank = 0U;
+             bank < instruction_profile_->banks.size();
+             ++bank) {
+            const auto& counters = instruction_profile_->banks[bank];
+            if (!counters) {
+                continue;
+            }
+            for (std::size_t pc = 0U; pc < counters->size(); ++pc) {
+                const auto& counter = (*counters)[pc];
+                if (counter.executions == 0U) {
+                    continue;
+                }
+                entries.push_back({
+                    .instruction =
+                        {
+                            .physical_bank = static_cast<std::uint8_t>(bank),
+                            .logical_pc = static_cast<std::uint16_t>(pc),
+                        },
+                    .executions = counter.executions,
+                    .master_cycles = counter.master_cycles,
+                });
+            }
+        }
+
+        std::ranges::sort(
+            entries,
+            [](const InstructionProfileEntry& left,
+               const InstructionProfileEntry& right) {
+                if (left.master_cycles != right.master_cycles) {
+                    return left.master_cycles > right.master_cycles;
+                }
+                return std::pair{
+                           left.instruction.physical_bank,
+                           left.instruction.logical_pc}
+                < std::pair{
+                           right.instruction.physical_bank,
+                           right.instruction.logical_pc};
+            });
+        return entries;
+    }
+
     [[nodiscard]] bool set_bus_write_observer(
         BusWriteCallback callback) override
     {
@@ -749,7 +825,8 @@ private:
     void refresh_core_observation_hooks() noexcept
     {
         if (execution_hooks_.empty()
-            && routine_call_observers_.empty()) {
+            && routine_call_observers_.empty()
+            && !instruction_profile_) {
             dc_beetle_clear_instruction_hook();
         } else {
             dc_beetle_set_instruction_hook(
@@ -830,9 +907,17 @@ private:
     {
         auto* const runtime =
             static_cast<BeetlePceRuntime*>(user_data);
-        if (runtime == nullptr || state == nullptr
-            || (runtime->execution_hooks_.empty()
-                && runtime->routine_call_observers_.empty())) {
+        if (runtime == nullptr || state == nullptr) {
+            return;
+        }
+        if (runtime->instruction_profile_) {
+            runtime->instruction_profile_->sample(
+                state->physical_bank,
+                state->logical_pc,
+                state->absolute_master_cycle);
+        }
+        if (runtime->execution_hooks_.empty()
+            && runtime->routine_call_observers_.empty()) {
             return;
         }
 
@@ -1469,6 +1554,49 @@ private:
     retro_system_av_info av_info_{};
     std::vector<std::uint32_t> framebuffer_pixels_;
     std::vector<float> audio_samples_;
+    // Counters are indexed directly by physical bank and logical PC. A bank's
+    // 1 MiB page is allocated on first execution, so only the handful of banks
+    // the game actually runs from is resident.
+    struct InstructionCounter {
+        std::uint64_t executions = 0;
+        std::uint64_t master_cycles = 0;
+    };
+
+    struct InstructionProfile {
+        using BankCounters = std::array<InstructionCounter, 0x10000U>;
+
+        std::array<std::unique_ptr<BankCounters>, 0x100U> banks{};
+        // The previous instruction, whose cost is the span to the next entry.
+        bool has_previous = false;
+        std::uint8_t previous_bank = 0;
+        std::uint16_t previous_pc = 0;
+        std::uint64_t previous_absolute_master_cycle = 0;
+
+        void sample(
+            const std::uint8_t bank,
+            const std::uint16_t pc,
+            const std::uint64_t absolute_master_cycle)
+        {
+            if (has_previous
+                && absolute_master_cycle
+                    >= previous_absolute_master_cycle) {
+                auto& page = banks[previous_bank];
+                if (!page) {
+                    page = std::make_unique<BankCounters>();
+                }
+                auto& counter = (*page)[previous_pc];
+                ++counter.executions;
+                counter.master_cycles += absolute_master_cycle
+                    - previous_absolute_master_cycle;
+            }
+            has_previous = true;
+            previous_bank = bank;
+            previous_pc = pc;
+            previous_absolute_master_cycle = absolute_master_cycle;
+        }
+    };
+
+    std::unique_ptr<InstructionProfile> instruction_profile_;
     std::vector<ExecutionHook> execution_hooks_;
     std::vector<RoutineCallRegistration> routine_call_observers_;
     WorkRamWriteCallback work_ram_write_observer_;

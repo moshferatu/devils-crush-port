@@ -44,6 +44,14 @@ struct PersistentActorOverlayStats {
     std::size_t resolved_sorcerer_phase_variants = 0;
     std::size_t missing_phase_variants = 0;
     std::size_t static_phase_fallbacks = 0;
+    // Off-camera actors that changed phase but could not be re-resolved.
+    // Each of these keeps its previous artwork while its position keeps
+    // moving, which presents as a frozen actor.
+    std::size_t stale_no_descriptor = 0;
+    std::size_t stale_no_metadata = 0;
+    std::size_t stale_no_metadata_hidden = 0;
+    std::size_t stale_unusable_patterns = 0;
+    std::size_t stale_resolve_failed = 0;
     std::size_t observed_table_world_effects = 0;
     std::size_t seeded_table_world_effects = 0;
     std::size_t cached_table_world_effects = 0;

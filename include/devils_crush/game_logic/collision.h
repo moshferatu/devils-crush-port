@@ -250,6 +250,50 @@ int dc_resolve_collision_mask_lookup(
     uint8_t column_bit,
     dc_collision_mask_lookup* lookup);
 
+// The collision sweep at 01:CB48 walks the slot table looking for actors
+// eligible for a vertical scan. Only the rejected slots are classifiable
+// here: an eligible one calls CC1A and the responses beyond it.
+#define DC_COLLISION_SCAN_MAX_SKIPS 0x80U
+
+typedef enum dc_collision_scan_exit {
+    // A slot is eligible; the sweep resumes at its CC1A call.
+    DC_COLLISION_SCAN_CANDIDATE = 0,
+    // The slot countdown reached zero and the sweep falls through.
+    DC_COLLISION_SCAN_EXHAUSTED = 1,
+    // The skip budget ran out; the sweep resumes at its own head.
+    DC_COLLISION_SCAN_BUDGET = 2
+} dc_collision_scan_exit;
+
+typedef enum dc_collision_scan_skip {
+    // $3080,Y was positive, so the sweep branched to its increment.
+    DC_COLLISION_SCAN_SKIP_POSITIVE = 0,
+    // $3080,Y was negative but carried bit 6.
+    DC_COLLISION_SCAN_SKIP_MASKED = 1
+} dc_collision_scan_skip;
+
+typedef struct dc_collision_scan_run {
+    uint8_t skipped;
+    // The slot the sweep rests on and the countdown left in $60.
+    uint8_t slot;
+    uint8_t remaining;
+    uint8_t accumulator;
+    dc_collision_scan_exit exit;
+    uint8_t skips[DC_COLLISION_SCAN_MAX_SKIPS];
+} dc_collision_scan_run;
+
+// Classifies one run of the 01:CB48 sweep. `gate` is $55, which selects a
+// second eligibility test; only its zero form is modelled, so a nonzero gate
+// returns 0. `maximum_skips` bounds the run so an atomic native body stays
+// inside its interrupt horizon.
+int dc_classify_collision_scan_run(
+    const uint8_t* work_ram,
+    size_t work_ram_size,
+    uint8_t slot,
+    uint8_t remaining,
+    uint8_t gate,
+    uint8_t maximum_skips,
+    dc_collision_scan_run* run);
+
 #ifdef __cplusplus
 }
 #endif

@@ -1523,6 +1523,9 @@ int main(const int argc, char** const argv)
     std::size_t restored_animated_actor_phases = 0;
     std::size_t presented_sorcerer_animation_phases = 0;
     std::set<std::uint8_t> presented_sorcerer_phase_values;
+    devils_crush::render::PersistentActorOverlayStats stale_totals{};
+    std::uint32_t camera_skew_zero = 0;
+    int camera_skew_maximum = 0;
     devils_crush::emulation::EmulatedFrame frame;
     for (int frame_number = 1; frame_number <= capture_frames.back();
         ++frame_number) {
@@ -1545,6 +1548,28 @@ int main(const int argc, char** const argv)
                                std::to_integer<std::uint8_t>(
                                    learning_work_ram[0x0CU]))
                            << 8U));
+                {
+                    // The vblank-latched scroll register settles exactly 32
+                    // rows below the post-frame work-RAM viewport. Any other
+                    // residue is one frame of camera motion, which is the
+                    // amount the live SAT is displaced from the retained
+                    // actors unless it is translated in its own time base.
+                    const int top = 480 + static_cast<int>(
+                        learning_camera_y);
+                    int skew = (static_cast<int>(
+                        learning_snapshot->background_y_scroll)
+                        - 32 - top) % 256;
+                    if (skew > 127) {
+                        skew -= 256;
+                    }
+                    if (skew < -128) {
+                        skew += 256;
+                    }
+                    camera_skew_zero += skew == 0 ? 1U : 0U;
+                    camera_skew_maximum = std::max(
+                        camera_skew_maximum,
+                        skew < 0 ? -skew : skew);
+                }
                 const auto learning_stats =
                     persistent_actor_sprites.
                         update_and_composite(
@@ -1574,6 +1599,22 @@ int main(const int argc, char** const argv)
                     animation_cache_updates_valid
                     && learning_stats.has_value();
                 if (learning_stats) {
+                    stale_totals.stale_no_descriptor +=
+                        learning_stats->stale_no_descriptor;
+                    stale_totals.stale_no_metadata +=
+                        learning_stats->stale_no_metadata;
+                    stale_totals.stale_no_metadata_hidden +=
+                        learning_stats->stale_no_metadata_hidden;
+                    stale_totals.stale_unusable_patterns +=
+                        learning_stats->stale_unusable_patterns;
+                    stale_totals.stale_resolve_failed +=
+                        learning_stats->stale_resolve_failed;
+                    stale_totals.resolved_sorcerer_phase_variants +=
+                        learning_stats->resolved_sorcerer_phase_variants;
+                    stale_totals.missing_phase_variants +=
+                        learning_stats->missing_phase_variants;
+                    stale_totals.static_phase_fallbacks +=
+                        learning_stats->static_phase_fallbacks;
                     restored_animation_phases +=
                         learning_stats->
                             restored_phase_variants;
@@ -1599,6 +1640,31 @@ int main(const int argc, char** const argv)
                     }
                 }
             }
+        }
+        if (frame_number == capture_frames.back()) {
+            // The scroll register must agree with the work-RAM camera
+            // whenever the camera is at rest, which is what makes 32 the
+            // real alignment constant rather than a fitted offset. It must
+            // also disagree while the camera moves, because that residue is
+            // exactly the displacement the host now corrects for.
+            check(
+                camera_skew_zero > 2000U,
+                "scroll register agrees with the work-RAM camera at rest");
+            check(
+                camera_skew_maximum > 0 && camera_skew_maximum < 32,
+                "scroll register lags the work-RAM camera by a bounded "
+                "amount while scrolling");
+            // An off-camera actor whose phase moved must either resolve new
+            // artwork or be cleared. Every path that silently keeps the old
+            // artwork leaves a frozen sprite riding live coordinates, which
+            // is what hidden mechanisms did before they were suppressed.
+            check(
+                stale_totals.stale_no_descriptor == 0U
+                    && stale_totals.stale_no_metadata == 0U
+                    && stale_totals.stale_unusable_patterns == 0U
+                    && stale_totals.stale_resolve_failed == 0U,
+                "no off-camera actor keeps stale artwork after its phase "
+                "moves");
         }
         if (capture_index >= capture_frames.size()
             || frame_number != capture_frames[capture_index]) {
