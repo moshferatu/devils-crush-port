@@ -2145,14 +2145,15 @@ int main(const int argc, char** const argv)
                     && off_camera_effect_stats->
                            rendered_retained_table_world_effects
                         == 1U
-                    // Rebaselined for the single layer: every occupied actor
-                    // is drawn from work RAM now, so the probe carries 112
-                    // more pixels than when observed actors were withheld.
+                    // Single-layer, and resident-pattern actors now animate
+                    // off camera rather than holding stale artwork, so the
+                    // probe carries more pixels than when observed actors
+                    // were withheld and off-camera phases were frozen.
                     && off_camera_effect_stats->opaque_pixel_writes
-                        == 25277U
+                        == 25473U
                     && off_camera_effect_digest.sha256
-                        == "8696b3323f466e58b3dbc873a22b4627"
-                           "7d80f4302c15e1b54db49324ce877278",
+                        == "5ed21861a853de36d4b3a1b001d030d5"
+                           "1a5426b1d7f04d26a9b43c680dbeeab6",
                 "impact burst remains visible when probed outside the copied camera");
         } else if (frame_number == 2400
                    || frame_number == 2700) {
@@ -2660,14 +2661,14 @@ int main(const int argc, char** const argv)
                     "settled upper-middle source matches emulator output");
                 check(
                     persistent_digest.sha256
-                            == "de214ff8a7195a1e1d8a099a00889dcef3a2ed5df4d068"
-                               "85fb3da0d2e68447e8"
+                            == "4c8a494557cb85a45306aa4b87a038b253f76cc5da6b7"
+                               "d1efcb2f79c72aaaea0"
                         && persistent_stats
                         && persistent_stats->cached_fixed_actors
-                            == 82U
+                            == 84U
                         && persistent_stats->
                                rendered_seeded_fixed_actors
-                            == 31U
+                            == 33U
                         // All six flipper slots now render. Two used to be
                         // withheld for the live SAT, which is what this
                         // check's own name asks for.
@@ -2688,14 +2689,14 @@ int main(const int argc, char** const argv)
                     "settled middle-region source matches emulator output");
                 check(
                     persistent_digest.sha256
-                            == "b8680ea899a0ea273118d9349d9d2b51006d497f47f5e"
-                               "1fb630b04159a4fe890"
+                            == "19982cc0ffe12db7955fe4ba66f12b07417b22470debb"
+                               "04893649da2efd916b5"
                         && persistent_stats
                         && persistent_stats->cached_fixed_actors
-                            == 79U
+                            == 84U
                         && persistent_stats->
                                rendered_seeded_fixed_actors
-                            == 31U
+                            == 36U
                         // All six flipper slots now render. Two used to be
                         // withheld for the live SAT, which is what this
                         // check's own name asks for.

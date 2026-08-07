@@ -1301,14 +1301,49 @@ PersistentActorSpriteCache::update_and_composite(
                         sprite.pattern,
                         sprite.flags);
                 });
+        // Patterns no decoded loader ever writes are resident: they sit at
+        // the same VRAM addresses whatever region the camera is on, so live
+        // VRAM is authoritative for them everywhere. Proving that here rather
+        // than after the guard below is what lets a resident actor keep
+        // animating off camera. Flippers and the lower-table enemies are
+        // exactly this case, and holding their learned artwork instead froze
+        // them the moment the ball left.
+        const auto overlaps_actor =
+            [&actor_metadata](const PceVramUpload& candidate) {
+                return std::ranges::any_of(
+                    actor_metadata,
+                    [&candidate](const FixedActorSprite& sprite) {
+                        return upload_overlaps_sprite(
+                            candidate,
+                            sprite.pattern,
+                            sprite.flags);
+                    });
+            };
+        // Only asked when it can change the outcome: an actor under the
+        // camera, or one whose own upload already covers it, never needs it.
+        const auto patterns_are_resident = [&] {
+            return std::ranges::none_of(
+                       pattern_atlas_->resident_uploads,
+                       overlaps_actor)
+                && std::ranges::all_of(
+                       pattern_atlas_->descriptors,
+                       [&overlaps_actor](
+                           const PcePatternLoaderDescriptor& descriptor) {
+                           return std::ranges::none_of(
+                               descriptor.uploads,
+                               overlaps_actor);
+                       });
+        };
+        const bool resident_patterns =
+            !anchor_in_viewport && !selected_upload_covers_actor
+            && patterns_are_resident();
         if (!anchor_in_viewport
             && !selected_upload_covers_actor
+            && !resident_patterns
             && !actor_visual_variants_[slot].empty()) {
-            // Once authoritative live-camera phases have been learned,
-            // never replace them with another region's live VRAM. A phase
-            // not yet observed remains absent for this frame rather than
-            // corrupting the cache; normal cabinet updates learn the full
-            // cycle while the region is live.
+            // A streamed phase that was never observed has no honest source:
+            // live VRAM belongs to whichever region the camera is on. Hold the
+            // learned artwork rather than corrupt the cache with it.
             if (static_phase_fallback) {
                 visual = std::move(*static_phase_fallback);
                 visual.phase = phase;
@@ -1319,41 +1354,11 @@ PersistentActorSpriteCache::update_and_composite(
             }
             continue;
         }
-        bool use_live_static_patterns = anchor_in_viewport;
-        if (!selected_upload_covers_actor
-            && !use_live_static_patterns) {
-            // A sentinel or out-of-table appearance can use live VRAM
-            // before its first camera visit. The same proof also applies to
-            // a stream-family actor whose selected upload does not own its
-            // descriptor patterns: no decoded loader may replace any
-            // complete 64-word block used by the actor.
-            const auto overlaps_actor =
-                [&actor_metadata](
-                    const PceVramUpload& candidate) {
-                    return std::ranges::any_of(
-                        actor_metadata,
-                        [&candidate](
-                            const FixedActorSprite& sprite) {
-                            return upload_overlaps_sprite(
-                                candidate,
-                                sprite.pattern,
-                                sprite.flags);
-                        });
-                };
-            use_live_static_patterns =
-                std::ranges::none_of(
-                    pattern_atlas_->resident_uploads,
-                    overlaps_actor)
-                && std::ranges::all_of(
-                    pattern_atlas_->descriptors,
-                    [&overlaps_actor](
-                        const PcePatternLoaderDescriptor&
-                            descriptor) {
-                        return std::ranges::none_of(
-                            descriptor.uploads,
-                            overlaps_actor);
-                        });
-        }
+        // A sentinel or out-of-table appearance can use live VRAM before its
+        // first camera visit, as can a stream-family actor whose selected
+        // upload does not own its descriptor patterns.
+        const bool use_live_static_patterns =
+            anchor_in_viewport || resident_patterns;
         if (!selected_upload_covers_actor
             && !use_live_static_patterns) {
             stats.stale_unusable_patterns += stale_off_camera ? 1U : 0U;
@@ -1477,6 +1482,48 @@ PersistentActorSpriteCache::update_and_composite(
         } else {
             stats.stale_resolve_failed += stale_off_camera ? 1U : 0U;
         }
+    }
+
+    // Record what each slot resolved to, so a caller can compare artwork
+    // against phase directly instead of trusting a code path's own report.
+    for (std::size_t slot = first_persistent;
+         slot <= last_persistent;
+         ++slot) {
+        const auto& actor = (*actors)[slot];
+        const auto& visual = actor_visuals_[slot];
+        stats.actor_occupied[slot] = actor.occupied() ? 1U : 0U;
+        stats.actor_on_camera[slot] = observed[slot] ? 1U : 0U;
+        stats.actor_phase[slot] =
+            byte_value(work_ram[kActorAppearancePhaseBase + slot]);
+        std::uint32_t hash = 2166136261U;
+        for (const auto& sprite : visual.sprites) {
+            for (const std::uint32_t field : {
+                     static_cast<std::uint32_t>(sprite.pattern),
+                     static_cast<std::uint32_t>(sprite.flags),
+                     static_cast<std::uint32_t>(
+                         static_cast<std::uint16_t>(sprite.offset_x)),
+                     static_cast<std::uint32_t>(
+                         static_cast<std::uint16_t>(sprite.offset_y))}) {
+                hash = (hash ^ field) * 16777619U;
+            }
+        }
+        stats.actor_visual_hash[slot] =
+            visual.sprites.empty() ? 0U : hash;
+        std::uint32_t metadata_hash = 2166136261U;
+        for (const auto& sprite : metadata_by_slot[slot]) {
+            for (const std::uint32_t field : {
+                     static_cast<std::uint32_t>(sprite.pattern),
+                     static_cast<std::uint32_t>(sprite.flags),
+                     static_cast<std::uint32_t>(
+                         sprite.world_x - static_cast<int>(actor.world_x)),
+                     static_cast<std::uint32_t>(
+                         sprite.world_y
+                         - static_cast<int>(actor.world_y))}) {
+                metadata_hash = (metadata_hash ^ field) * 16777619U;
+            }
+        }
+        stats.actor_metadata_hash[slot] =
+            metadata_by_slot[slot].empty() ? 0U : metadata_hash;
     }
 
     // Without ROM descriptor metadata, retain the legacy live-SAT fallback

@@ -256,6 +256,34 @@ cabinet's whole-table view and the original 208-row view can share one path.
 `observed` survives only to drive learning, because the moment an actor is
 under the live camera is the only moment its artwork is in VRAM.
 
+### Resident patterns and off-camera animation
+
+One layer is necessary but not sufficient: an actor also needs artwork for the
+phase it is currently in. Sprite patterns normally arrive through per-phase
+VRAM uploads that the decoded ROM atlas can reproduce, so an off-camera actor
+resolves its own artwork. When the atlas upload for an actor's appearance does
+not cover its descriptor patterns, there is no ROM-side source, and the cache
+used to hold the last learned artwork rather than sample live VRAM -- which
+belongs to whichever region the camera is on and would be the wrong data.
+
+That guard was too broad. Patterns no decoded loader ever writes are
+*resident*: they occupy fixed VRAM addresses regardless of the camera, so live
+VRAM is authoritative for them everywhere. The proof already existed but ran
+after the guard, so resident actors were held at stale artwork before it was
+ever consulted. Flippers and the lower-table enemies are exactly this case, and
+they froze the moment the ball left them -- the last visible symptom of the old
+architecture, surviving the layer merge.
+
+Hoisting the proof above the guard resolves them. Over the census route,
+`missing_phase_variants` -- an off-camera actor whose phase moved with no
+artwork to match -- falls from 2,194 to zero, with every other freeze path
+already at zero. Oracle disagreement improves from 2.398% to 2.394%, so nothing
+on camera regresses, and compose cost rises from 1.16 to 1.28 ms per frame
+against a 16.7 ms budget: the cost of actors that actually animate.
+
+A streamed phase never observed under the camera still has no honest source and
+still holds its learned artwork. That case is real but no longer fires here.
+
 ### The oracle
 
 `--cabinet-oracle` is what makes this checkable without looking at a screen. It

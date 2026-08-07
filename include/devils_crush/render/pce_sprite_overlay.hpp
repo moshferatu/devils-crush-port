@@ -59,6 +59,26 @@ struct PersistentActorOverlayStats {
     std::size_t rendered_retained_table_world_effects = 0;
     std::size_t flipper_opaque_pixel_writes = 0;
     std::size_t opaque_pixel_writes = 0;
+
+    // Per-slot record of what was actually drawn this frame, so a caller can
+    // ask the question that matters directly: did this actor's artwork change
+    // while its phase advanced? Counting code paths cannot answer that -- a
+    // path can report success and still emit the same pixels.
+    // actor_visual_hash folds each resolved sprite's pattern, attributes and
+    // offsets; it is zero when the actor drew nothing.
+    std::array<std::uint32_t, devils_crush::cabinet::kActorSlotCount>
+        actor_visual_hash{};
+    // What the ROM descriptors ask the actor to look like right now,
+    // independent of phase. If this moves while actor_visual_hash does not,
+    // the drawn artwork is stale whatever field drove the change.
+    std::array<std::uint32_t, devils_crush::cabinet::kActorSlotCount>
+        actor_metadata_hash{};
+    std::array<std::uint8_t, devils_crush::cabinet::kActorSlotCount>
+        actor_phase{};
+    std::array<std::uint8_t, devils_crush::cabinet::kActorSlotCount>
+        actor_on_camera{};
+    std::array<std::uint8_t, devils_crush::cabinet::kActorSlotCount>
+        actor_occupied{};
 };
 
 struct FixedActorSprite {

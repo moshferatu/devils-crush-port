@@ -36,6 +36,7 @@
 #include <iostream>
 #include <limits>
 #include <optional>
+#include <set>
 #include <span>
 #include <sstream>
 #include <stdexcept>
@@ -199,6 +200,8 @@ struct CommandLine {
     bool emulate_only = false;
     std::filesystem::path cabinet_dump_route_directory;
     bool cabinet_oracle = false;
+    bool cabinet_freeze_census = false;
+    std::filesystem::path cabinet_freeze_census_state;
     // Bisection aid: deploy only registry entries [first, first + count).
     bool registry_slice_set = false;
     std::size_t registry_slice_first = 0U;
@@ -715,6 +718,11 @@ parse_logical_address_range(const std::string_view text)
             options.cabinet_dump_route_directory = argv[++index];
         } else if (argument == "--cabinet-oracle") {
             options.cabinet_oracle = true;
+        } else if (argument == "--cabinet-freeze-census") {
+            options.cabinet_freeze_census = true;
+        } else if (argument == "--cabinet-freeze-census-state") {
+            options.cabinet_freeze_census = true;
+            options.cabinet_freeze_census_state = kQuickStatePath;
         } else if (argument == "--emulate-only") {
             options.emulate_only = true;
         } else if (argument == "--registry-slice") {
@@ -4549,7 +4557,9 @@ decode_cabinet_table(
     devils_crush::render::TablePaletteCache& table_palette_cache,
     const CabinetLayers layers,
     const bool report_overlay_stats,
-    SeededActorTracker* const seeded_actors)
+    SeededActorTracker* const seeded_actors,
+    devils_crush::render::PersistentActorOverlayStats* const out_stats =
+        nullptr)
 {
     constexpr std::size_t table_width_tiles = 32U;
     constexpr std::size_t table_height_tiles = 96U;
@@ -4667,6 +4677,9 @@ decode_cabinet_table(
     // freezes on its last learned image or drops out entirely. Both read as
     // an actor that stops animating off-camera and then snaps when the live
     // SAT takes authority, so the counts are worth surfacing.
+    if (out_stats != nullptr && overlay_stats) {
+        *out_stats = *overlay_stats;
+    }
     if (report_overlay_stats && overlay_stats) {
         std::cout << "Overlay: observed " << overlay_stats->observed_fixed_actors
                   << ", cached " << overlay_stats->cached_fixed_actors
@@ -7754,6 +7767,189 @@ int run_windows_host(
 // writes selected frames as PNG, once per layer selection. The retained and
 // SAT layers are drawn from different sources, so a disagreement between
 // them is only visible by comparing the same frame across selections.
+// Answers the only question that matters about off-camera actors: does the
+// artwork they draw change while their phase advances?
+//
+// Freeze counters report code paths, and a path can report success while
+// emitting the same pixels, so they cannot see this. Comparing the per-slot
+// visual hash against the phase can: a slot whose phase moves many times off
+// camera while its artwork takes one value is frozen, by definition, and that
+// is exactly what a player sees.
+[[nodiscard]] int run_freeze_census(
+    devils_crush::emulation::PceRuntime& runtime,
+    const std::filesystem::path& rom_path,
+    const std::filesystem::path& state_path)
+{
+    const auto rom = read_rom_bytes(rom_path);
+    if (!rom) {
+        return EXIT_FAILURE;
+    }
+    const bool from_state = !state_path.empty();
+    if (from_state && !load_quick_state(runtime, state_path)) {
+        return EXIT_FAILURE;
+    }
+
+    struct SlotRecord {
+        std::set<std::uint32_t> on_camera_art;
+        std::set<std::uint32_t> off_camera_art;
+        std::set<std::uint32_t> off_camera_wanted;
+        std::size_t on_camera_frames = 0;
+        std::size_t off_camera_frames = 0;
+        std::size_t on_camera_phase_changes = 0;
+        std::size_t off_camera_phase_changes = 0;
+        std::size_t off_camera_wanted_changes = 0;
+        std::size_t on_camera_wanted_changes = 0;
+        std::size_t off_camera_missed_changes = 0;
+        std::uint32_t last_wanted = 0;
+        std::uint32_t last_art = 0;
+        bool have_wanted = false;
+        std::uint8_t last_phase = 0;
+        bool have_phase = false;
+    };
+    std::array<SlotRecord, devils_crush::cabinet::kActorSlotCount> slots;
+
+    devils_crush::render::PersistentActorSpriteCache actors;
+    devils_crush::render::TablePaletteCache palette;
+    const int frame_count = from_state ? 600 : 2100;
+    for (int frame_number = 1; frame_number <= frame_count; ++frame_number) {
+        // Working the flippers is the whole point when replaying a state:
+        // their artwork is driven by being flipped, not by the ball, so a
+        // hands-off replay never asks them to change and cannot show whether
+        // the ones away from the ball follow.
+        InputFrame replay_input{};
+        if (from_state && (frame_number / 20) % 2 == 0) {
+            replay_input.player_one = static_cast<std::uint16_t>(
+                static_cast<std::uint16_t>(Button::one)
+                | static_cast<std::uint16_t>(Button::two));
+        }
+        static_cast<void>(runtime.run_frame(
+            from_state
+                ? replay_input
+                : state_census_input_for_frame(frame_number)));
+        const auto work_ram = runtime.export_work_ram();
+        const auto state =
+            devils_crush::cabinet::decode_cabinet_state(work_ram);
+        const auto video = runtime.export_video_memory();
+        if (!state || !video
+            || state->playfield
+                != devils_crush::cabinet::PlayfieldView::table_background) {
+            continue;
+        }
+        devils_crush::render::PersistentActorOverlayStats frame_stats{};
+        const auto table = decode_cabinet_table(
+            *rom, work_ram, *video, actors, palette,
+            CabinetLayers::all, false, nullptr, &frame_stats);
+        if (!table) {
+            continue;
+        }
+        for (std::size_t slot = 0;
+             slot < devils_crush::cabinet::kActorSlotCount;
+             ++slot) {
+            if (frame_stats.actor_occupied[slot] == 0U) {
+                slots[slot].have_phase = false;
+                continue;
+            }
+            auto& record = slots[slot];
+            const bool on_camera = frame_stats.actor_on_camera[slot] != 0U;
+            const auto phase = frame_stats.actor_phase[slot];
+            const auto art = frame_stats.actor_visual_hash[slot];
+            // Split the ROM's own activity by camera. If a slot's descriptors
+            // change constantly on camera and not at all off it, the game
+            // logic stopped simulating it -- the renderer is then faithfully
+            // drawing a state that itself froze, and no rendering fix applies.
+            const auto wanted_now = frame_stats.actor_metadata_hash[slot];
+            if (record.have_wanted && wanted_now != record.last_wanted) {
+                if (on_camera) {
+                    ++record.on_camera_wanted_changes;
+                } else {
+                    ++record.off_camera_wanted_changes;
+                }
+            }
+            if (on_camera) {
+                ++record.on_camera_frames;
+                if (art != 0U) {
+                    record.on_camera_art.insert(art);
+                }
+            } else {
+                ++record.off_camera_frames;
+                if (art != 0U) {
+                    record.off_camera_art.insert(art);
+                }
+                if (wanted_now != 0U) {
+                    record.off_camera_wanted.insert(wanted_now);
+                }
+                // Distinct-look counts cannot see lag: artwork that follows
+                // late still visits every value. Every frame the ROM changes
+                // what it asks for, the drawn artwork must change with it.
+                const auto wanted = wanted_now;
+                if (record.have_wanted && wanted != record.last_wanted) {
+                    if (art == record.last_art) {
+                        ++record.off_camera_missed_changes;
+                    }
+                }
+            }
+            record.last_wanted = wanted_now;
+            record.have_wanted = true;
+            record.last_art = art;
+            if (record.have_phase && phase != record.last_phase) {
+                if (on_camera) {
+                    ++record.on_camera_phase_changes;
+                } else {
+                    ++record.off_camera_phase_changes;
+                }
+            }
+            record.last_phase = phase;
+            record.have_phase = true;
+        }
+    }
+
+    std::cout << "slot  on-frames  on-chg/100  off-frames  off-chg/100  missed  "
+                 "verdict\n";
+    std::size_t frozen = 0;
+    for (std::size_t slot = 0;
+         slot < devils_crush::cabinet::kActorSlotCount;
+         ++slot) {
+        const auto& record = slots[slot];
+        // The ROM asked for several different looks while the actor was off
+        // camera. Phase is not the test: whatever field drove the change, the
+        // descriptors moved and the drawn artwork should have followed.
+        const bool flipper =
+            slot >= devils_crush::cabinet::kFirstFlipperControlSlot
+            && slot <= devils_crush::cabinet::kLastFlipperControlSlot;
+        if (!flipper && record.off_camera_wanted_changes < 2U) {
+            continue;
+        }
+        const bool is_frozen = record.off_camera_missed_changes > 0U;
+        if (is_frozen) {
+            ++frozen;
+        }
+        std::cout << "  " << std::hex << std::setw(2) << std::setfill('0')
+                  << slot << std::dec << std::setfill(' ') << std::setw(11)
+                  << record.on_camera_frames << std::setw(15)
+                  << (record.on_camera_frames == 0U
+                          ? 0.0
+                          : 100.0
+                              * static_cast<double>(
+                                    record.on_camera_wanted_changes)
+                              / static_cast<double>(record.on_camera_frames))
+                  << std::setw(12) << record.off_camera_frames
+                  << std::setw(13)
+                  << (record.off_camera_frames == 0U
+                          ? 0.0
+                          : 100.0
+                              * static_cast<double>(
+                                    record.off_camera_wanted_changes)
+                              / static_cast<double>(record.off_camera_frames))
+                  << std::setw(8) << record.off_camera_missed_changes
+                  << "  "
+                  << (is_frozen ? "FROZEN" : "animates") << "\n";
+    }
+    std::cout << "\n" << frozen
+              << " slots draw fewer distinct looks off camera than the ROM "
+                 "asked for\n";
+    return EXIT_SUCCESS;
+}
+
 // Measures the native reconstruction against the emulator itself.
 //
 // The cabinet composes the whole table, but only the 208 rows under the camera
@@ -7801,6 +7997,7 @@ int run_windows_host(
     std::uint64_t compared_frames = 0;
     std::uint64_t decode_nanoseconds = 0;
     std::uint64_t decoded_frames = 0;
+    devils_crush::render::PersistentActorOverlayStats freeze_totals{};
     std::uint64_t compared_pixels = 0;
     std::uint64_t mismatched_pixels = 0;
     std::size_t worst_frame_mismatch = 0;
@@ -7821,9 +8018,20 @@ int run_windows_host(
             continue;
         }
         const auto decode_started = std::chrono::steady_clock::now();
+        devils_crush::render::PersistentActorOverlayStats frame_stats{};
         const auto table = decode_cabinet_table(
             *rom, work_ram, *video, actors, palette,
-            oracle_pass.layers, false, nullptr);
+            oracle_pass.layers, false, nullptr, &frame_stats);
+        freeze_totals.missing_phase_variants +=
+            frame_stats.missing_phase_variants;
+        freeze_totals.static_phase_fallbacks +=
+            frame_stats.static_phase_fallbacks;
+        freeze_totals.stale_unusable_patterns +=
+            frame_stats.stale_unusable_patterns;
+        freeze_totals.stale_no_descriptor += frame_stats.stale_no_descriptor;
+        freeze_totals.stale_resolve_failed += frame_stats.stale_resolve_failed;
+        freeze_totals.restored_phase_variants +=
+            frame_stats.restored_phase_variants;
         decode_nanoseconds += static_cast<std::uint64_t>(
             std::chrono::duration_cast<std::chrono::nanoseconds>(
                 std::chrono::steady_clock::now() - decode_started)
@@ -7960,7 +8168,16 @@ int run_windows_host(
                       ? 0.0
                       : static_cast<double>(decode_nanoseconds)
                           / static_cast<double>(decoded_frames) / 1.0e6)
-              << " ms/frame against a 16.7 ms budget\n";
+              << " ms/frame against a 16.7 ms budget\n"
+              << "off-camera artwork: missing "
+              << freeze_totals.missing_phase_variants
+              << ", static-fallback " << freeze_totals.static_phase_fallbacks
+              << ", unusable-patterns "
+              << freeze_totals.stale_unusable_patterns
+              << ", no-descriptor " << freeze_totals.stale_no_descriptor
+              << ", resolve-failed " << freeze_totals.stale_resolve_failed
+              << ", restored " << freeze_totals.restored_phase_variants
+              << '\n';
     }
     return EXIT_SUCCESS;
 }
@@ -8095,6 +8312,12 @@ int main(const int argc, char* argv[])
             return EXIT_FAILURE;
         }
 
+        if (options.cabinet_freeze_census) {
+            return run_freeze_census(
+                *runtime,
+                options.rom_path,
+                options.cabinet_freeze_census_state);
+        }
         if (options.cabinet_oracle) {
             return run_cabinet_oracle(*runtime, options.rom_path);
         }
