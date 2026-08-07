@@ -20,6 +20,33 @@ using emulation::RoutineEntry;
 using emulation::RoutineKey;
 using emulation::RoutineReplacement;
 
+// Every one-shot initializer below reproduces a `JSR` whose return is pushed
+// through the stack page, so the cells it writes follow the stack pointer the
+// transcript was recorded at. That depth is part of the proven shape, not
+// incidental. Re-entering one level shallower -- which is exactly what
+// re-initializing the table after a drained ball does -- would put the return
+// bytes in cells the real push never touched and leave the scheduler at
+// `01:C5C9` popping whatever was already there. A lost return address does not
+// fail quietly: the processor resumes inside data and writes through work RAM
+// until the frame ends. Decline any depth but the proven one.
+struct ProvenStackReturn {
+    std::uint16_t high = 0;
+    std::uint16_t low = 0;
+};
+
+[[nodiscard]] std::optional<ProvenStackReturn> proven_stack_return(
+    const RoutineEntry& entry,
+    const std::uint8_t proven_stack_pointer)
+{
+    if (entry.registers.stack_pointer != proven_stack_pointer) {
+        return std::nullopt;
+    }
+    const auto high = static_cast<std::uint16_t>(
+        0x2100U + entry.registers.stack_pointer);
+    return ProvenStackReturn{
+        .high = high, .low = static_cast<std::uint16_t>(high - 1U)};
+}
+
 [[nodiscard]] std::optional<RoutineReplacement>
 replace_giant_skeleton_eyeball_initializer(
     const RoutineEntry& entry,
@@ -33,8 +60,16 @@ replace_giant_skeleton_eyeball_initializer(
     // The sole routed setup call is a no-interrupt transcript at frame 872.
     // Its caller enters the same fixed slot/register state every game, while
     // the frontend's conservative horizon lies inside this one-shot script.
+    //
+    // Re-initializing the table after a drained ball reaches this routine a
+    // second time, one level shallower at S=$F2, with slot and status
+    // matching. See proven_stack_return for why that has to be declined.
     if (entry.routine != kRoutine || entry.registers.x != 0x2FU
         || entry.registers.status != 0x02U) {
+        return std::nullopt;
+    }
+    const auto stack_return = proven_stack_return(entry, 0xF3U);
+    if (!stack_return) {
         return std::nullopt;
     }
 
@@ -70,8 +105,8 @@ replace_giant_skeleton_eyeball_initializer(
     add_write(0x02U, 0x4DCDU, 0x30AFU, initializer.flags_after, 36U);
     add_write(0x02U, 0x4DD0U, 0x2D20U, 0x00U, 51U);
     add_write(0x02U, 0x4DD3U, 0x3E2FU, 0x00U, 66U);
-    add_write(0x02U, 0x4DD6U, 0x21F3U, 0x4DU, 66U);
-    add_write(0x02U, 0x4DD6U, 0x21F2U, 0xD8U, 66U);
+    add_write(0x02U, 0x4DD6U, stack_return->high, 0x4DU, 66U);
+    add_write(0x02U, 0x4DD6U, stack_return->low, 0xD8U, 66U);
     add_write(0x01U, 0xC5CAU, 0x2026U, 0xD8U, 123U);
     add_write(0x01U, 0xC5CDU, 0x2027U, 0x4DU, 147U);
     add_write(0x01U, 0xC5D9U, 0x2026U, 0xD9U, 192U);
@@ -420,6 +455,10 @@ replace_gray_blob_initializer(
     if (entry.routine != kRoutine || (entry.registers.status & 0x20U) != 0U) {
         return std::nullopt;
     }
+    const auto stack_return = proven_stack_return(entry, 0xF3U);
+    if (!stack_return) {
+        return std::nullopt;
+    }
 
     dc_gray_blob_initializer initializer{};
     if (!dc_classify_gray_blob_initializer(
@@ -461,8 +500,8 @@ replace_gray_blob_initializer(
     add_write(0x03U, 0x6891U, slot_address(0x3400U), 0x00U, 138U);
     add_write(0x03U, 0x6896U, slot_address(0x3480U), 0x01U, 159U);
     add_write(0x03U, 0x689BU, slot_address(0x3A00U), 0x01U, 180U);
-    add_write(0x03U, 0x689EU, 0x21F3U, 0x68U, 180U);
-    add_write(0x03U, 0x689EU, 0x21F2U, 0xA0U, 180U);
+    add_write(0x03U, 0x689EU, stack_return->high, 0x68U, 180U);
+    add_write(0x03U, 0x689EU, stack_return->low, 0xA0U, 180U);
     add_write(0x01U, 0xC5CAU, 0x2026U, 0xA0U, 237U);
     add_write(0x01U, 0xC5CDU, 0x2027U, 0x68U, 261U);
     add_write(0x01U, 0xC5D9U, 0x2026U, 0xA1U, 306U);
@@ -684,6 +723,10 @@ replace_mercy_star_initializer(
         || entry.registers.accumulator != 0U || entry.registers.y != 0x0BU) {
         return std::nullopt;
     }
+    const auto stack_return = proven_stack_return(entry, 0xF3U);
+    if (!stack_return) {
+        return std::nullopt;
+    }
 
     dc_mercy_star_initializer initializer{};
     if (!dc_classify_mercy_star_initializer(
@@ -721,8 +764,8 @@ replace_mercy_star_initializer(
     add_write(0x02U, 0x4FAEU, slot_address(0x3700U), 0x01U, 69U);
     add_write(0x02U, 0x4FB3U, slot_address(0x3780U), 0x05U, 90U);
     add_write(0x02U, 0x4FBBU, slot_address(0x3080U), 0xE0U, 126U);
-    add_write(0x02U, 0x4FBEU, 0x21F3U, 0x4FU, 126U);
-    add_write(0x02U, 0x4FBEU, 0x21F2U, 0xC0U, 126U);
+    add_write(0x02U, 0x4FBEU, stack_return->high, 0x4FU, 126U);
+    add_write(0x02U, 0x4FBEU, stack_return->low, 0xC0U, 126U);
     add_write(0x01U, 0xC5CAU, 0x2026U, 0xC0U, 183U);
     add_write(0x01U, 0xC5CDU, 0x2027U, 0x4FU, 207U);
     add_write(0x01U, 0xC5D9U, 0x2026U, 0xC1U, 252U);
@@ -1565,6 +1608,10 @@ replace_big_star_rotation_wait(
         || entry.master_cycles_until_timer_interrupt <= kBodyCycles) {
         return std::nullopt;
     }
+    const auto stack_return = proven_stack_return(entry, 0xFBU);
+    if (!stack_return) {
+        return std::nullopt;
+    }
 
     dc_big_star_rotation_wait rotation{};
     if (!dc_classify_big_star_rotation_wait(
@@ -1599,13 +1646,13 @@ replace_big_star_rotation_wait(
     replacement.work_ram_writes = {
         {
             .instruction = {0x02U, 0x5674U},
-            .logical_address = 0x21FBU,
+            .logical_address = stack_return->high,
             .value = 0x56U,
             .master_cycle_offset = 0U,
         },
         {
             .instruction = {0x02U, 0x5674U},
-            .logical_address = 0x21FAU,
+            .logical_address = stack_return->low,
             .value = 0x76U,
             .master_cycle_offset = 0U,
         },
@@ -5179,6 +5226,10 @@ replace_knight_initializers(
         || entry.registers.status != 0x02U || entry.registers.y != 0x0BU) {
         return std::nullopt;
     }
+    const auto stack_return = proven_stack_return(entry, 0xF3U);
+    if (!stack_return) {
+        return std::nullopt;
+    }
 
     const auto expected_slot = static_cast<std::uint8_t>(
         entry.routine == kFirstRoutine ? 0x3AU
@@ -5242,9 +5293,9 @@ replace_knight_initializers(
         first_cycle + common_offset + 21U);
     add_write(0x03U, 0x7372U, slot_address(0x3C00U), 0x04U,
         first_cycle + common_offset + 42U);
-    add_write(0x03U, 0x7375U, 0x21F3U, 0x73U,
+    add_write(0x03U, 0x7375U, stack_return->high, 0x73U,
         first_cycle + common_offset + 42U);
-    add_write(0x03U, 0x7375U, 0x21F2U, 0x77U,
+    add_write(0x03U, 0x7375U, stack_return->low, 0x77U,
         first_cycle + common_offset + 42U);
     add_write(0x01U, 0xC5CAU, 0x2026U, 0x77U,
         first_cycle + common_offset + 99U);
@@ -5273,6 +5324,10 @@ replace_side_spider_initializer(
     constexpr RoutineKey kRoutine{.physical_bank = 0x03U, .logical_pc = 0x64FAU};
     if (entry.routine != kRoutine || entry.registers.y != 0x0BU
         || (entry.registers.status & 0x20U) != 0U) {
+        return std::nullopt;
+    }
+    const auto stack_return = proven_stack_return(entry, 0xF3U);
+    if (!stack_return) {
         return std::nullopt;
     }
 
@@ -5318,8 +5373,8 @@ replace_side_spider_initializer(
     add_write(0x03U, 0x650EU, slot_address(0x3A00U), 0x01U, 99U);
     add_write(0x03U, 0x6516U, slot_address(0x3800U), 0x10U, 135U);
     add_write(0x03U, 0x6519U, slot_address(0x3980U), 0x00U, 150U);
-    add_write(0x03U, 0x651CU, 0x21F3U, 0x65U, 150U);
-    add_write(0x03U, 0x651CU, 0x21F2U, 0x1EU, 150U);
+    add_write(0x03U, 0x651CU, stack_return->high, 0x65U, 150U);
+    add_write(0x03U, 0x651CU, stack_return->low, 0x1EU, 150U);
     add_write(0x01U, 0xC5CAU, 0x2026U, 0x1EU, 207U);
     add_write(0x01U, 0xC5CDU, 0x2027U, 0x65U, 231U);
     add_write(0x01U, 0xC5D9U, 0x2026U, 0x1FU, 276U);
@@ -5342,6 +5397,10 @@ replace_front_spider_initializer(
     constexpr RoutineKey kRoutine{.physical_bank = 0x03U, .logical_pc = 0x646BU};
     if (entry.routine != kRoutine || entry.registers.y != 0x0BU
         || (entry.registers.status & 0x20U) != 0U) {
+        return std::nullopt;
+    }
+    const auto stack_return = proven_stack_return(entry, 0xF3U);
+    if (!stack_return) {
         return std::nullopt;
     }
 
@@ -5387,8 +5446,8 @@ replace_front_spider_initializer(
     add_write(0x03U, 0x647FU, slot_address(0x3A00U), 0x01U, 99U);
     add_write(0x03U, 0x6482U, slot_address(0x3980U), 0x00U, 114U);
     add_write(0x03U, 0x648AU, slot_address(0x3800U), 0x10U, 150U);
-    add_write(0x03U, 0x648DU, 0x21F3U, 0x64U, 150U);
-    add_write(0x03U, 0x648DU, 0x21F2U, 0x8FU, 150U);
+    add_write(0x03U, 0x648DU, stack_return->high, 0x64U, 150U);
+    add_write(0x03U, 0x648DU, stack_return->low, 0x8FU, 150U);
     add_write(0x01U, 0xC5CAU, 0x2026U, 0x8FU, 207U);
     add_write(0x01U, 0xC5CDU, 0x2027U, 0x64U, 231U);
     add_write(0x01U, 0xC5D9U, 0x2026U, 0x90U, 276U);
@@ -8489,6 +8548,10 @@ replace_big_star_initializer(
         || entry.registers.y != 0x0BU) {
         return std::nullopt;
     }
+    const auto stack_return = proven_stack_return(entry, 0xF3U);
+    if (!stack_return) {
+        return std::nullopt;
+    }
 
     dc_big_star_initializer initializer{};
     if (!dc_classify_big_star_initializer(
@@ -8524,8 +8587,8 @@ replace_big_star_initializer(
     add_write(0x02U, 0x5666U, 0x2D00U, 0x00U, 57U);
     add_write(0x02U, 0x5669U, 0x2D01U, 0x00U, 72U);
     add_write(0x02U, 0x566EU, 0x3B4BU, 0x03U, 93U);
-    add_write(0x02U, 0x5671U, 0x21F3U, 0x56U, 93U);
-    add_write(0x02U, 0x5671U, 0x21F2U, 0x73U, 93U);
+    add_write(0x02U, 0x5671U, stack_return->high, 0x56U, 93U);
+    add_write(0x02U, 0x5671U, stack_return->low, 0x73U, 93U);
     add_write(0x01U, 0xC5CAU, 0x2026U, 0x73U, 150U);
     add_write(0x01U, 0xC5CDU, 0x2027U, 0x56U, 174U);
     add_write(0x01U, 0xC5D9U, 0x2026U, 0x74U, 219U);
@@ -8549,6 +8612,10 @@ replace_undead_head_initializer(
     constexpr std::uint32_t kBodyCycles = 192U;
     if (entry.routine != kRoutine || entry.registers.accumulator != 0U
         || entry.registers.y != 0x0BU) {
+        return std::nullopt;
+    }
+    const auto stack_return = proven_stack_return(entry, 0xF3U);
+    if (!stack_return) {
         return std::nullopt;
     }
 
@@ -8581,8 +8648,8 @@ replace_undead_head_initializer(
             .master_cycle_offset = cycle,
         });
     };
-    add_write(0x03U, 0x61A0U, 0x21F3U, 0x61U, 0U);
-    add_write(0x03U, 0x61A0U, 0x21F2U, 0xA2U, 0U);
+    add_write(0x03U, 0x61A0U, stack_return->high, 0x61U, 0U);
+    add_write(0x03U, 0x61A0U, stack_return->low, 0xA2U, 0U);
     add_write(0x01U, 0xC5CAU, 0x2026U, 0xA2U, 57U);
     add_write(0x01U, 0xC5CDU, 0x2027U, 0x61U, 81U);
     add_write(0x01U, 0xC5D9U, 0x2026U, 0xA3U, 126U);
@@ -9033,6 +9100,10 @@ replace_little_skull_hidden_initializer(
         || entry.registers.y != 0x0BU) {
         return std::nullopt;
     }
+    const auto stack_return = proven_stack_return(entry, 0xF3U);
+    if (!stack_return) {
+        return std::nullopt;
+    }
 
     dc_little_skull_hidden_initializer initializer{};
     if (!dc_classify_little_skull_hidden_initializer(
@@ -9064,8 +9135,8 @@ replace_little_skull_hidden_initializer(
         });
     };
     add_write(0x02U, 0x4455U, 0x2CFAU, 0U, 15U);
-    add_write(0x02U, 0x4458U, 0x21F3U, 0x44U, 15U);
-    add_write(0x02U, 0x4458U, 0x21F2U, 0x5AU, 15U);
+    add_write(0x02U, 0x4458U, stack_return->high, 0x44U, 15U);
+    add_write(0x02U, 0x4458U, stack_return->low, 0x5AU, 15U);
     add_write(0x01U, 0xC5CAU, 0x2026U, 0x5AU, 72U);
     add_write(0x01U, 0xC5CDU, 0x2027U, 0x44U, 96U);
     add_write(0x01U, 0xC5D9U, 0x2026U, 0x5BU, 141U);
@@ -9088,6 +9159,10 @@ replace_little_skull_pair_initializer(
     constexpr RoutineKey kRoutine{.physical_bank = 0x02U, .logical_pc = 0x4485U};
     constexpr std::uint32_t kBodyCycles = 285U;
     if (entry.routine != kRoutine || entry.registers.y != 0x0BU) {
+        return std::nullopt;
+    }
+    const auto stack_return = proven_stack_return(entry, 0xF3U);
+    if (!stack_return) {
         return std::nullopt;
     }
 
@@ -9130,8 +9205,8 @@ replace_little_skull_pair_initializer(
         static_cast<std::uint16_t>(0x2CF5U + initializer.pair), 0U, 42U);
     add_write(0x02U, 0x4495U,
         static_cast<std::uint16_t>(0x2CF8U + initializer.pair), 0U, 93U);
-    add_write(0x02U, 0x4498U, 0x21F3U, 0x44U, 93U);
-    add_write(0x02U, 0x4498U, 0x21F2U, 0x9AU, 93U);
+    add_write(0x02U, 0x4498U, stack_return->high, 0x44U, 93U);
+    add_write(0x02U, 0x4498U, stack_return->low, 0x9AU, 93U);
     add_write(0x01U, 0xC5CAU, 0x2026U, 0x9AU, 150U);
     add_write(0x01U, 0xC5CDU, 0x2027U, 0x44U, 174U);
     add_write(0x01U, 0xC5D9U, 0x2026U, 0x9BU, 219U);
@@ -9154,6 +9229,10 @@ replace_little_skull_initializer(
     constexpr RoutineKey kRoutine{.physical_bank = 0x02U, .logical_pc = 0x44E4U};
     constexpr std::uint32_t kBodyCycles = 390U;
     if (entry.routine != kRoutine || entry.registers.y != 0x0BU) {
+        return std::nullopt;
+    }
+    const auto stack_return = proven_stack_return(entry, 0xF3U);
+    if (!stack_return) {
         return std::nullopt;
     }
 
@@ -9200,8 +9279,8 @@ replace_little_skull_initializer(
     add_write(0x02U, 0x4507U,
         static_cast<std::uint16_t>(0x2CF5U + initializer.pair),
         initializer.live_count_after, 171U);
-    add_write(0x02U, 0x4512U, 0x21F3U, 0x45U, 198U);
-    add_write(0x02U, 0x4512U, 0x21F2U, 0x14U, 198U);
+    add_write(0x02U, 0x4512U, stack_return->high, 0x45U, 198U);
+    add_write(0x02U, 0x4512U, stack_return->low, 0x14U, 198U);
     add_write(0x01U, 0xC5CAU, 0x2026U, 0x14U, 255U);
     add_write(0x01U, 0xC5CDU, 0x2027U, 0x45U, 279U);
     add_write(0x01U, 0xC5D9U, 0x2026U, 0x15U, 324U);
@@ -9666,6 +9745,10 @@ replace_devil_shooter_initializer(
         || entry.registers.accumulator != 0U || entry.registers.y != 0x0BU) {
         return std::nullopt;
     }
+    const auto stack_return = proven_stack_return(entry, 0xF3U);
+    if (!stack_return) {
+        return std::nullopt;
+    }
 
     dc_devil_shooter_initializer initializer{};
     if (!dc_classify_devil_shooter_initializer(
@@ -9707,8 +9790,8 @@ replace_devil_shooter_initializer(
     add_write(0x02U, 0x5109U, slot_address(0x3980U), 0x04U, 126U);
     add_write(0x02U, 0x510EU, 0x2D15U, 0x27U, 147U);
     add_write(0x02U, 0x5111U, 0x20BDU, 0x00U, 159U);
-    add_write(0x02U, 0x5113U, 0x21F3U, 0x51U, 159U);
-    add_write(0x02U, 0x5113U, 0x21F2U, 0x15U, 159U);
+    add_write(0x02U, 0x5113U, stack_return->high, 0x51U, 159U);
+    add_write(0x02U, 0x5113U, stack_return->low, 0x15U, 159U);
     add_write(0x01U, 0xC5CAU, 0x2026U, 0x15U, 216U);
     add_write(0x01U, 0xC5CDU, 0x2027U, 0x51U, 240U);
     add_write(0x01U, 0xC5D9U, 0x2026U, 0x16U, 285U);
@@ -9736,6 +9819,10 @@ replace_dragon_head_initializer(
     if (entry.routine != kRoutine || entry.registers.x != 0x13U
         || entry.registers.accumulator != 0U || entry.registers.y != 0x0BU
         || entry.registers.status != 0x02U) {
+        return std::nullopt;
+    }
+    const auto stack_return = proven_stack_return(entry, 0xF3U);
+    if (!stack_return) {
         return std::nullopt;
     }
 
@@ -9775,8 +9862,8 @@ replace_dragon_head_initializer(
     add_write(0x02U, 0x5A3BU, slot_address(0x3800U), 0x10U, 57U);
     add_write(0x02U, 0x5A40U, slot_address(0x3D00U), 0x82U, 78U);
     add_write(0x02U, 0x5A45U, slot_address(0x3C00U), 0x08U, 99U);
-    add_write(0x02U, 0x5A48U, 0x21F3U, 0x5AU, 99U);
-    add_write(0x02U, 0x5A48U, 0x21F2U, 0x4AU, 99U);
+    add_write(0x02U, 0x5A48U, stack_return->high, 0x5AU, 99U);
+    add_write(0x02U, 0x5A48U, stack_return->low, 0x4AU, 99U);
     add_write(0x01U, 0xC5CAU, 0x2026U, 0x4AU, 156U);
     add_write(0x01U, 0xC5CDU, 0x2027U, 0x5AU, 180U);
     add_write(0x01U, 0xC5D9U, 0x2026U, 0x4BU, 225U);
@@ -9804,6 +9891,10 @@ replace_giant_skeleton_initializer(
     if (entry.routine != kRoutine || entry.registers.x != 0x30U
         || entry.registers.accumulator != 0U || entry.registers.y != 0x0BU
         || entry.registers.status != 0x02U) {
+        return std::nullopt;
+    }
+    const auto stack_return = proven_stack_return(entry, 0xF3U);
+    if (!stack_return) {
         return std::nullopt;
     }
 
@@ -9840,8 +9931,8 @@ replace_giant_skeleton_initializer(
         return static_cast<std::uint16_t>(base + slot);
     };
     add_write(0x02U, 0x5EE6U, slot_address(0x3980U), 0x03U, 21U);
-    add_write(0x02U, 0x5EE9U, 0x21F3U, 0x5EU, 21U);
-    add_write(0x02U, 0x5EE9U, 0x21F2U, 0xEBU, 21U);
+    add_write(0x02U, 0x5EE9U, stack_return->high, 0x5EU, 21U);
+    add_write(0x02U, 0x5EE9U, stack_return->low, 0xEBU, 21U);
     add_write(0x01U, 0xC5CAU, 0x2026U, 0xEBU, 78U);
     add_write(0x01U, 0xC5CDU, 0x2027U, 0x5EU, 102U);
     add_write(0x01U, 0xC5D9U, 0x2026U, 0xECU, 147U);
@@ -9867,6 +9958,10 @@ replace_three_blobs_initializer(
     };
     constexpr std::uint32_t kBodyCycles = 396U;
     if (entry.routine != kRoutine || entry.registers.y != 0x0BU) {
+        return std::nullopt;
+    }
+    const auto stack_return = proven_stack_return(entry, 0xF3U);
+    if (!stack_return) {
         return std::nullopt;
     }
 
@@ -9913,8 +10008,8 @@ replace_three_blobs_initializer(
     add_write(0x03U, 0x666AU, slot_address(0x3680U), 0x20U, 168U);
     add_write(0x03U, 0x666DU, slot_address(0x3400U), 0x00U, 183U);
     add_write(0x03U, 0x6672U, slot_address(0x3480U), 0x01U, 204U);
-    add_write(0x03U, 0x6675U, 0x21F3U, 0x66U, 204U);
-    add_write(0x03U, 0x6675U, 0x21F2U, 0x77U, 204U);
+    add_write(0x03U, 0x6675U, stack_return->high, 0x66U, 204U);
+    add_write(0x03U, 0x6675U, stack_return->low, 0x77U, 204U);
     add_write(0x01U, 0xC5CAU, 0x2026U, 0x77U, 261U);
     add_write(0x01U, 0xC5CDU, 0x2027U, 0x66U, 285U);
     add_write(0x01U, 0xC5D9U, 0x2026U, 0x78U, 330U);
@@ -9942,6 +10037,10 @@ replace_three_blobs_controller_initializer(
     if (entry.routine != kRoutine || entry.registers.x != 0x57U
         || entry.registers.accumulator != 0x02U || entry.registers.y != 0x0BU
         || entry.registers.status != 0U) {
+        return std::nullopt;
+    }
+    const auto stack_return = proven_stack_return(entry, 0xF3U);
+    if (!stack_return) {
         return std::nullopt;
     }
 
@@ -9977,8 +10076,8 @@ replace_three_blobs_controller_initializer(
         return static_cast<std::uint16_t>(base + slot);
     };
     add_write(0x03U, 0x65BCU, 0x2CFDU, 0x00U, 15U);
-    add_write(0x03U, 0x65BFU, 0x21F3U, 0x65U, 15U);
-    add_write(0x03U, 0x65BFU, 0x21F2U, 0xC1U, 15U);
+    add_write(0x03U, 0x65BFU, stack_return->high, 0x65U, 15U);
+    add_write(0x03U, 0x65BFU, stack_return->low, 0xC1U, 15U);
     add_write(0x01U, 0xC5CAU, 0x2026U, 0xC1U, 72U);
     add_write(0x01U, 0xC5CDU, 0x2027U, 0x65U, 96U);
     add_write(0x01U, 0xC5D9U, 0x2026U, 0xC2U, 141U);
@@ -10006,6 +10105,10 @@ replace_walled_star_initializer(
     if (entry.routine != kRoutine || entry.registers.accumulator != 0U
         || entry.registers.x != 0x5BU || entry.registers.y != 0x0BU
         || entry.registers.status != 0x02U) {
+        return std::nullopt;
+    }
+    const auto stack_return = proven_stack_return(entry, 0xF3U);
+    if (!stack_return) {
         return std::nullopt;
     }
 
@@ -10046,8 +10149,8 @@ replace_walled_star_initializer(
     add_write(0x03U, 0x6326U, slot_address(0x3800U), 0x10U, 72U);
     add_write(0x03U, 0x632BU, slot_address(0x3D00U), 0x84U, 93U);
     add_write(0x03U, 0x6333U, slot_address(0x3800U), 0x50U, 129U);
-    add_write(0x03U, 0x6336U, 0x21F3U, 0x63U, 129U);
-    add_write(0x03U, 0x6336U, 0x21F2U, 0x38U, 129U);
+    add_write(0x03U, 0x6336U, stack_return->high, 0x63U, 129U);
+    add_write(0x03U, 0x6336U, stack_return->low, 0x38U, 129U);
     add_write(0x01U, 0xC5CAU, 0x2026U, 0x38U, 186U);
     add_write(0x01U, 0xC5CDU, 0x2027U, 0x63U, 210U);
     add_write(0x01U, 0xC5D9U, 0x2026U, 0x39U, 255U);
@@ -14309,6 +14412,10 @@ replace_giant_door_initializer(
         || entry.registers.status != 0x02U) {
         return std::nullopt;
     }
+    const auto stack_return = proven_stack_return(entry, 0xF3U);
+    if (!stack_return) {
+        return std::nullopt;
+    }
 
     dc_giant_door_initializer initializer{};
     if (!dc_classify_giant_door_initializer(
@@ -14350,8 +14457,8 @@ replace_giant_door_initializer(
     add_write(0x03U, 0x62A5U, slot_address(0x3B00U), 0x03U, 96U);
     add_write(0x03U, 0x62ADU, slot_address(0x3800U), 0x10U, 132U);
     add_write(0x03U, 0x62B2U, slot_address(0x3D00U), 0x81U, 153U);
-    add_write(0x03U, 0x62B5U, 0x21F3U, 0x62U, 153U);
-    add_write(0x03U, 0x62B5U, 0x21F2U, 0xB7U, 153U);
+    add_write(0x03U, 0x62B5U, stack_return->high, 0x62U, 153U);
+    add_write(0x03U, 0x62B5U, stack_return->low, 0xB7U, 153U);
     add_write(0x01U, 0xC5CAU, 0x2026U, 0xB7U, 210U);
     add_write(0x01U, 0xC5CDU, 0x2027U, 0x62U, 234U);
     add_write(0x01U, 0xC5D9U, 0x2026U, 0xB8U, 279U);

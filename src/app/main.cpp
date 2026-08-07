@@ -204,6 +204,8 @@ struct CommandLine {
     bool cabinet_freeze_census = false;
     std::filesystem::path cabinet_freeze_census_state;
     bool cabinet_flipper_trace = false;
+    bool cabinet_drain_probe = false;
+    bool cabinet_seed_check = false;
     // Bisection aid: deploy only registry entries [first, first + count).
     bool registry_slice_set = false;
     std::size_t registry_slice_first = 0U;
@@ -727,6 +729,10 @@ parse_logical_address_range(const std::string_view text)
             options.cabinet_freeze_census_state = kQuickStatePath;
         } else if (argument == "--cabinet-flipper-trace") {
             options.cabinet_flipper_trace = true;
+        } else if (argument == "--cabinet-drain-probe") {
+            options.cabinet_drain_probe = true;
+        } else if (argument == "--cabinet-seed-check") {
+            options.cabinet_seed_check = true;
         } else if (argument == "--emulate-only") {
             options.emulate_only = true;
         } else if (argument == "--registry-slice") {
@@ -820,7 +826,11 @@ parse_logical_address_range(const std::string_view text)
     // the admitted-routine registry unless told to emulate the original.
     const bool host_selected = !options.validate_only
         && (operation_count == 0 || options.cabinet_smoke_test);
-    const bool host_registry = host_selected && !options.emulate_only;
+    // The drain probe deploys the registry too, so it can be bisected with
+    // --registry-slice and --registry-exclude like the host can.
+    const bool host_registry =
+        (host_selected || options.cabinet_drain_probe)
+        && !options.emulate_only;
     const int recording_frame_count = options.record_state_census
         ? kStateCensusRecordingFrames
         : options.record_gameplay
@@ -7017,19 +7027,42 @@ int run_smoke_test(PceRuntime& runtime)
 // sprite table cannot overflow and the framebuffer the oracle measures
 // against stays the same picture.
 //
-// The dynamic pool at `$62-$7E` keeps its cull. Those slots hold transient
-// effects whose lifetimes the camera scopes on purpose.
+// Only named slots are lifted, and deliberately so. The cull is not merely an
+// optimization the ROM could have done without: actor state machines are
+// written on the assumption that they stop while off camera, and running all
+// 88 fixed mechanisms everywhere advances timers and appearances that were
+// never meant to advance unseen. Lifting it wholesale left the middle-table
+// circles and the giant face reading as lit from the start of a game until the
+// camera reached them and the on-camera logic put them right.
+//
+// The flipper pieces are safe because their state machine is driven entirely
+// by the button through `01:D466` and consults nothing else, and the spiders
+// were the other family the whole-table view exposed as frozen. The dynamic
+// pool at `$62-$7E` and every other fixed mechanism keep their cull.
 void keep_fixed_actors_simulating(
     devils_crush::emulation::PceRuntime& runtime)
 {
+    // Front Spiders sit beneath the Bumpers, Side Spiders at the lower-table
+    // side shoots.
+    constexpr std::size_t kFirstSpiderSlot = 0x26U;
+    constexpr std::size_t kLastSpiderSlot = 0x29U;
+    const auto simulates_off_camera = [](const std::size_t slot) {
+        return (slot >= devils_crush::cabinet::kFirstFlipperControlSlot
+                && slot <= devils_crush::cabinet::kLastFlipperControlSlot)
+            || (slot >= kFirstSpiderSlot && slot <= kLastSpiderSlot);
+    };
+
     auto work_ram = runtime.export_work_ram();
     if (work_ram.size() < 0x2000U) {
         return;
     }
     bool changed = false;
     for (std::size_t slot = devils_crush::cabinet::kFirstFlipperControlSlot;
-         slot <= devils_crush::cabinet::kLastFixedActorSlot;
+         slot <= kLastSpiderSlot;
          ++slot) {
+        if (!simulates_off_camera(slot)) {
+            continue;
+        }
         const std::size_t offset = 0x1080U + slot;
         const auto flags = std::to_integer<std::uint8_t>(work_ram[offset]);
         if ((flags & 0x02U) == 0U) {
@@ -7830,6 +7863,296 @@ int run_windows_host(
 // visual hash against the phase can: a slot whose phase moves many times off
 // camera while its artwork takes one value is frozen, by definition, and that
 // is exactly what a player sees.
+// Attributes an early-game appearance defect to either the lifted camera cull
+// or the renderer's own seeding.
+//
+// Composing the same frame twice from one snapshot separates them. The learned
+// cache has already watched the whole table go past the camera, so it resolves
+// every actor from artwork it has actually seen; a fresh cache has seen
+// nothing and must seed from ROM descriptors. Any pixel they disagree on is a
+// pixel the seeding path gets wrong, and that is what "lit until the ball goes
+// up the table" looks like: the camera arrives, the actor is learned, and it
+// corrects itself.
+[[nodiscard]] int run_seed_check(
+    devils_crush::emulation::PceRuntime& runtime,
+    const std::filesystem::path& rom_path,
+    const bool uncull)
+{
+    std::cout << std::unitbuf;
+    const auto rom = read_rom_bytes(rom_path);
+    if (!rom) {
+        return EXIT_FAILURE;
+    }
+    runtime.reset();
+    devils_crush::render::PersistentActorSpriteCache learned;
+    devils_crush::render::TablePaletteCache palette;
+    // Pass one: drive the camera over the whole table so the cache learns.
+    constexpr int kLearnFrames = 2100;
+    for (int frame_number = 1; frame_number <= kLearnFrames; ++frame_number) {
+        if (uncull) {
+            keep_fixed_actors_simulating(runtime);
+        }
+        static_cast<void>(
+            runtime.run_frame(state_census_input_for_frame(frame_number)));
+        const auto work_ram = runtime.export_work_ram();
+        const auto state =
+            devils_crush::cabinet::decode_cabinet_state(work_ram);
+        const auto video = runtime.export_video_memory();
+        if (!state || !video
+            || state->playfield
+                != devils_crush::cabinet::PlayfieldView::table_background) {
+            continue;
+        }
+        static_cast<void>(decode_cabinet_table(
+            *rom, work_ram, *video, learned, palette, CabinetLayers::all,
+            false, nullptr, nullptr));
+    }
+
+    // Pass two: replay to just after table setup and compose that one snapshot
+    // both ways.
+    runtime.reset();
+    // Sweep the opening rather than sampling one frame: the complaint is that
+    // the table looks wrong "at the beginning" and settles once the camera
+    // reaches it, so the disagreement has to be looked for across that window.
+    static constexpr std::array kProbeFrames{
+        880, 920, 1000, 1100, 1200, 1300};
+    std::vector<std::byte> work_ram;
+    std::optional<devils_crush::emulation::VideoMemorySnapshot> video;
+    for (int frame_number = 1; frame_number <= kProbeFrames.back();
+         ++frame_number) {
+        if (uncull) {
+            keep_fixed_actors_simulating(runtime);
+        }
+        static_cast<void>(
+            runtime.run_frame(state_census_input_for_frame(frame_number)));
+        work_ram = runtime.export_work_ram();
+        video = runtime.export_video_memory();
+        if (std::ranges::find(kProbeFrames, frame_number)
+            == kProbeFrames.end()) {
+            continue;
+        }
+        if (!video) {
+            continue;
+        }
+        const auto probe_state =
+            devils_crush::cabinet::decode_cabinet_state(work_ram);
+        if (!probe_state
+            || probe_state->playfield
+                != devils_crush::cabinet::PlayfieldView::table_background) {
+            continue;
+        }
+        devils_crush::render::PersistentActorSpriteCache probe_actors;
+        devils_crush::render::TablePaletteCache probe_palette;
+        const auto probe_seeded = decode_cabinet_table(
+            *rom, work_ram, *video, probe_actors, probe_palette,
+            CabinetLayers::all, false, nullptr, nullptr);
+        devils_crush::render::PersistentActorSpriteCache learned_copy = learned;
+        devils_crush::render::TablePaletteCache palette_copy = palette;
+        const auto probe_learned = decode_cabinet_table(
+            *rom, work_ram, *video, learned_copy, palette_copy,
+            CabinetLayers::all, false, nullptr, nullptr);
+        if (!probe_seeded || !probe_learned) {
+            continue;
+        }
+        std::size_t probe_total = 0;
+        for (std::size_t index = 0;
+             index < probe_seeded->image.pixels.size(); ++index) {
+            probe_total += probe_seeded->image.pixels[index]
+                    != probe_learned->image.pixels[index]
+                ? 1U
+                : 0U;
+        }
+        std::cout << "  frame " << frame_number << ": " << probe_total
+                  << " pixels differ\n";
+    }
+    return EXIT_SUCCESS;
+}
+
+// Runs the quick state hands-off until the ball drains and keeps going, with
+// the full cabinet decode on every frame, so a drain that crashes or locks up
+// does it here rather than in front of someone playing.
+//
+// A crash surfaces as an exception or a fault out of decode_cabinet_table. A
+// lock-up surfaces as work RAM that stops changing: the drain sequence hands
+// off to the ball-loss scene and then back to the table, and if either end of
+// that handoff never completes the state simply stops moving.
+[[nodiscard]] int run_drain_probe(
+    devils_crush::emulation::PceRuntime& runtime,
+    const std::filesystem::path& rom_path,
+    const std::filesystem::path& state_path,
+    const bool uncull,
+    const CommandLine* const native_registry)
+{
+    // This probe exists to catch a fault, and a fault loses whatever is still
+    // sitting in the stream buffer, so nothing here may be buffered.
+    std::cout << std::unitbuf;
+    const auto rom = read_rom_bytes(rom_path);
+    if (!rom) {
+        return EXIT_FAILURE;
+    }
+    // A session runs with the registry deployed, so a drain that only fails
+    // there fails because of a native routine. Probing the stock ROM alone
+    // would measure a configuration nobody plays.
+    NativeRegistryDeployment registry_deployment;
+    if (native_registry != nullptr
+        && !install_native_registry(
+            runtime, *native_registry, *rom, {}, registry_deployment)) {
+        std::cerr << "Could not deploy the native registry.\n";
+        return EXIT_FAILURE;
+    }
+    if (!load_quick_state(runtime, state_path)) {
+        return EXIT_FAILURE;
+    }
+    std::cout << "camera cull: " << (uncull ? "lifted" : "original")
+              << ", registry: "
+              << (native_registry != nullptr ? "deployed" : "off") << "\n";
+
+    devils_crush::render::PersistentActorSpriteCache actors;
+    devils_crush::render::TablePaletteCache palette;
+    std::uint64_t previous_hash = 0;
+    int stalled_since = 0;
+    int longest_stall = 0;
+    int longest_stall_frame = 0;
+    std::optional<devils_crush::cabinet::PlayfieldView> previous_view;
+    std::optional<std::uint8_t> previous_balls;
+    // Hands off until the ball drains, then work the plunger: "impossible to
+    // continue playing the second ball" is a claim about what happens after
+    // the drain, so the probe has to actually try to launch one.
+    int drained_at = 0;
+    int highest_reach = 0x7FFF;
+    constexpr int kFrames = 5000;
+    for (int frame_number = 1; frame_number <= kFrames; ++frame_number) {
+        if (uncull) {
+            keep_fixed_actors_simulating(runtime);
+        }
+        InputFrame probe_input{};
+        if (drained_at != 0) {
+            const int since = frame_number - drained_at;
+            // Button I charges the plunger and releasing it fires. A single
+            // timed press can land while the ball is still being returned and
+            // be spent on nothing, so keep cycling: if the ball never leaves
+            // the lane under this it is not for want of asking.
+            if (since > 240 && (since / 60) % 2 == 0) {
+                probe_input.player_one =
+                    static_cast<std::uint16_t>(Button::one);
+            }
+        }
+        if (frame_number % 100 == 0) {
+            std::cout << "  ... frame " << frame_number << "\n";
+        }
+        static_cast<void>(runtime.run_frame(probe_input));
+        const auto work_ram = runtime.export_work_ram();
+        const auto state =
+            devils_crush::cabinet::decode_cabinet_state(work_ram);
+        if (!state) {
+            std::cout << "frame " << frame_number
+                      << ": cabinet state failed to decode\n";
+            return EXIT_FAILURE;
+        }
+        if (!previous_view || *previous_view != state->playfield) {
+            std::cout << "frame " << frame_number << ": playfield -> "
+                      << (state->playfield
+                                  == devils_crush::cabinet::PlayfieldView::
+                                      table_background
+                              ? "table"
+                              : "emulated framebuffer")
+                      << "\n";
+            previous_view = state->playfield;
+        }
+        if (!previous_balls || *previous_balls != state->balls_in_session) {
+            std::cout << "frame " << frame_number << ": balls -> "
+                      << static_cast<unsigned>(state->balls_in_session)
+                      << "\n";
+            if (previous_balls && state->balls_in_session < *previous_balls
+                && drained_at == 0) {
+                drained_at = frame_number;
+            }
+            previous_balls = state->balls_in_session;
+        }
+        if (drained_at != 0 && work_ram.size() >= 0x2000U) {
+            const int since = frame_number - drained_at;
+            const auto byte_at = [&work_ram](const std::size_t offset) {
+                return static_cast<int>(
+                    std::to_integer<std::uint8_t>(work_ram[offset]));
+            };
+            const auto ball_y = static_cast<int>(
+                static_cast<std::int16_t>(static_cast<std::uint16_t>(
+                    byte_at(0x1300U) | (byte_at(0x1380U) << 8))));
+            highest_reach = std::min(highest_reach, ball_y);
+            // The table is 768 rows and a session has at most a handful of
+            // balls. Either of these leaving its range means state has been
+            // overwritten, which is the failure this probe exists to catch.
+            if (ball_y < -2000 || ball_y > 2000
+                || state->balls_in_session > 5U) {
+                std::cout << "CORRUPTED at frame " << frame_number << " (+"
+                          << since << " after the drain): ball y " << ball_y
+                          << ", balls "
+                          << static_cast<unsigned>(state->balls_in_session)
+                          << "\n";
+                return EXIT_FAILURE;
+            }
+            if (since % 120 == 0 && since <= 2400) {
+                // $AA:$A9 is the anchor 00:F4FC culls against; $0C:$0B is the
+                // camera the cabinet crops with. If the ball's own $3080 bit 7
+                // is clear it has been culled and stops simulating, which is
+                // exactly what a ball that will not play looks like.
+                const auto anchor = static_cast<int>(
+                    static_cast<std::int16_t>(static_cast<std::uint16_t>(
+                        byte_at(0x00A9U) | (byte_at(0x00AAU) << 8))));
+                std::cout << "  +" << std::setw(4) << since
+                          << " after drain: ball type "
+                          << byte_at(0x1000U) << " flags "
+                          << std::hex << byte_at(0x1080U) << std::dec
+                          << " y " << ball_y << " anchor " << anchor
+                          << " camera "
+                          << static_cast<int>(
+                                 static_cast<std::int16_t>(
+                                     static_cast<std::uint16_t>(
+                                         byte_at(0x0BU)
+                                         | (byte_at(0x0CU) << 8))))
+                          << "\n";
+            }
+        }
+
+        std::uint64_t hash = 1469598103934665603ULL;
+        for (const auto byte : work_ram) {
+            hash = (hash ^ std::to_integer<std::uint8_t>(byte))
+                * 1099511628211ULL;
+        }
+        if (hash == previous_hash) {
+            if (frame_number - stalled_since > longest_stall) {
+                longest_stall = frame_number - stalled_since;
+                longest_stall_frame = stalled_since;
+            }
+        } else {
+            stalled_since = frame_number;
+        }
+        previous_hash = hash;
+
+        const auto video = runtime.export_video_memory();
+        if (!video
+            || state->playfield
+                != devils_crush::cabinet::PlayfieldView::table_background) {
+            continue;
+        }
+        const auto table = decode_cabinet_table(
+            *rom, work_ram, *video, actors, palette,
+            CabinetLayers::all, false, nullptr, nullptr);
+        if (!table) {
+            std::cout << "frame " << frame_number
+                      << ": cabinet table failed to compose\n";
+            return EXIT_FAILURE;
+        }
+    }
+    std::cout << "survived " << kFrames
+              << " frames; longest run of unchanged work RAM was "
+              << longest_stall << " frames from frame " << longest_stall_frame
+              << "\nafter the drain the ball reached y " << highest_reach
+              << " (the plunger lane is around 720; the upper table is "
+                 "under 300)\n";
+    return EXIT_SUCCESS;
+}
+
 // Reads the flipper pieces' own state straight out of work RAM while the
 // buttons are worked, so the question "why doesn't that pair move?" is
 // answered by the ROM's fields rather than by what reached the screen.
@@ -8532,6 +8855,23 @@ int main(const int argc, char* argv[])
             return EXIT_FAILURE;
         }
 
+        if (options.cabinet_seed_check) {
+            // Both ways: if the seeded and learned composes already disagreed
+            // before the cull was lifted, lifting it did not cause this.
+            if (run_seed_check(*runtime, options.rom_path, false)
+                != EXIT_SUCCESS) {
+                return EXIT_FAILURE;
+            }
+            return run_seed_check(*runtime, options.rom_path, true);
+        }
+        if (options.cabinet_drain_probe) {
+            return run_drain_probe(
+                *runtime,
+                options.rom_path,
+                kQuickStatePath,
+                true,
+                options.emulate_only ? nullptr : &options);
+        }
         if (options.cabinet_flipper_trace) {
             if (run_flipper_trace(*runtime, kQuickStatePath, false)
                 != EXIT_SUCCESS) {

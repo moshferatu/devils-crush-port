@@ -296,8 +296,7 @@ the decoder scales those bits directly.
 | --- | --- |
 | background + retained + live SAT (previous) | 3.33% |
 | background + retained, live SAT withheld | 9.28% |
-| single layer, every actor from work RAM | 2.40% |
-| **single layer, camera cull lifted** | **1.75%** |
+| **single layer, every actor from work RAM** | **2.40%** |
 
 The middle row is why the seam was invisible to earlier measurements: with the
 SAT withheld but the handover still in place, the composition had a hole
@@ -336,14 +335,27 @@ A slot is skipped only when bit 7 is clear *and* bit 1 is set, so bit 1 is the
 opt-in to the cull. Those two sites are the only reads of bit 1 anywhere in the
 cartridge; every other `$3080` access in all 384 KB touches bits 5, 6, or 7.
 
-The cabinet therefore clears bit 1 for slots `$04-$61` -- the flippers and the
-88 fixed mechanisms -- before each frame. Bit 1 rather than bit 7 because bit 7
-is also the gate on `08:4036`, the original SAT presentation path: leaving it
-alone keeps the emulator queueing exactly the actors the hardware drew, so its
-64-entry sprite table cannot overflow and the framebuffer the oracle measures
-against stays the same picture. The dynamic pool at `$62-$7E` keeps its cull;
-those slots hold transient effects whose lifetimes the camera scopes on
-purpose.
+The cabinet therefore clears bit 1 before each frame -- but only for the
+flipper pieces at `$04-$09` and the Front and Side Spiders at `$26-$29`.
+
+Bit 1 rather than bit 7 because bit 7 is also the gate on `08:4036`, the
+original SAT presentation path: leaving it alone keeps the emulator queueing
+exactly the actors the hardware drew, so its 64-entry sprite table cannot
+overflow and the framebuffer the oracle measures against stays the same
+picture.
+
+Named slots rather than all of `$04-$61` because the cull is not merely an
+optimization the ROM could have done without. Actor state machines are written
+on the assumption that they stop while off camera, and running all 88 fixed
+mechanisms everywhere advances timers and appearances that were never meant to
+advance unseen: lifting it wholesale left the middle-table circles and the
+giant face reading as lit from the start of a game until the camera reached
+them and the on-camera logic put them right. The flippers are safe because
+`01:D466` is driven entirely by the button and consults nothing else, and the
+spiders were the other family the whole-table view exposed as frozen.
+`--cabinet-seed-check` measures the blast radius: under the named-slot lift its
+opening sweep is pixel-identical to the original cull, where the wholesale lift
+moved several hundred pixels a frame.
 
 `--cabinet-flipper-trace` measures this directly, replaying the quick state for
 600 frames while working both flipper buttons (Button I carries `$3B80` mask
@@ -357,9 +369,9 @@ purpose.
 
 Every change all six pieces made happened while their bit 7 was set, and they
 made one between them while it was clear. With the cull lifted all three pairs
-respond identically. The oracle improves at the same time, from 2.40% to
-**1.75%**, with the worst frame falling from 34,100 mismatched pixels to 5,175:
-actors near the window edge were being drawn from a frozen state.
+respond wherever they stand, and `--cabinet-freeze-census` shows the spiders at
+`$26-$29` changing 12.5 times per 100 off-camera frames against 9.7 on camera,
+where they previously missed most of what the ROM asked of them.
 
 ## Remaining cabinet work
 

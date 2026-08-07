@@ -139,6 +139,33 @@ Check any new `@all` admission against the baseline before trusting it. A
 regression that blesses whatever hash the recorder produced proves the routine
 is deterministic, not that it is faithful.
 
+### Stack depth is part of the proven shape
+
+A replacement that reproduces a `JSR` must reproduce its pushes, and those land
+at `$2100 + S`. Derive both cells from `entry.registers.stack_pointer`; never
+write the recorded addresses as literals. A literal silently encodes the depth
+the transcript happened to be recorded at, and the handler's own entry checks
+will not catch a second call one level shallower — slot, registers, and status
+can all match there.
+
+This is not a cosmetic slip. The replacement writes the return bytes into cells
+the real push never touched, the scheduler at `01:C5C9` pops whatever was
+already in the real ones, and the processor resumes inside data and writes
+through work RAM until the frame ends. The visible result is a game that dies
+seconds later, far from the routine at fault.
+
+`02:4DC8` shipped this way. Its single admitted call is the frame-872 table
+setup at `S=$F3`; re-initializing the table after a drained ball reaches it
+again at `S=$F2`, which wiped work RAM and made the second ball unplayable.
+Eighteen sibling one-shot initializers carried the same latent defect. All of
+them now go through `proven_stack_return`, which declines any depth but the
+recorded one and derives the cells from it.
+
+`--cabinet-drain-probe` is the regression for this class: it replays the quick
+state hands-off until the ball drains, works the plunger, and fails on a ball
+coordinate or ball count that leaves its range. Run it with the registry
+deployed, since that is the configuration a session runs.
+
 ## Deploying to the interactive host
 
 The interactive host installs the whole admitted registry before its first
