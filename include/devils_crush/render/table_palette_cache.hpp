@@ -9,20 +9,34 @@
 
 namespace devils_crush::render {
 
-// The table's packed palette-attribute plane is region-owned.
+// The table's packed palette-attribute plane, retained per tile row.
 //
 // The game writes the whole 1,536-byte plane once at scene start, then
-// rewrites one or two tile rows at a time as the camera scrolls. Over a
-// 3,600-frame route, 8,274 of its 8,669 in-play byte changes — 95.4% — land
-// on rows the camera is not showing. A full-table decode that reads the plane
-// live therefore repaints unrelated parts of the table every time the ball
-// travels, which is what makes the cabinet playfield look like it is being
-// re-rendered as the ball moves.
+// rewrites tile rows as play continues. Over a 3,600-frame route, 8,274 of its
+// 8,669 in-play byte changes — 95.4% — land on rows the camera is not showing,
+// and this class originally refreshed a row only while the camera covered it
+// on the theory that off-camera writes belonged to a region being streamed in
+// rather than to the row they addressed.
 //
-// This retains the plane per tile row. A row is refreshed only while the
-// camera covers it, so the bytes describing a row are always the ones that
-// were authoritative when that row was last on screen. Rows the camera has
-// not reached keep the scene-start whole-table assignment.
+// That theory does not survive measurement, and holding rows back caused a
+// worse defect than the one it was meant to prevent. The plane is indexed by
+// tile row: a write to row N is about row N, and the game keeps animating rows
+// it is not currently showing. Freezing them left five consecutive rows at
+// world y 440-479 displaying a subpalette from a long-finished animation phase
+// for 330 frames each — a tile-aligned rectangular band across the table in
+// the wrong colours until the ball travelled far enough to refresh it. Nine
+// displayed rows were affected across 2,264 row-frames.
+//
+// Every row is now refreshed. Scored at the one instant the answer is not a
+// matter of opinion — when a row arrives under the camera, where the live
+// plane is authoritative for it by definition — reading live agreed on 129 of
+// 129 arrivals against the retained copy's 123. `--cabinet-attribute-check`
+// is that measurement.
+//
+// The retained buffer and per-row learned marks remain: they cost one copy,
+// they keep the decode reading from a stable span rather than straight out of
+// work RAM, and they are where a narrower policy would go if one is ever
+// shown to be needed.
 class TablePaletteCache {
 public:
     static constexpr std::size_t kWidthTiles = 32U;

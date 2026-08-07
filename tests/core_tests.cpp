@@ -8372,10 +8372,13 @@ void test_table_palette_cache()
     check(
         plane[0] == std::byte{0x22} && plane[kPerRow] == std::byte{0x22},
         "rows under the camera follow the live plane");
+    // Every row follows the live plane, on camera or off. Holding rows back
+    // froze them on stale animation phases, which is what put a rectangular
+    // band of wrong subpalettes across the middle of the table.
     check(
-        plane[2U * kPerRow] == std::byte{0x11}
-            && plane[kBytes - 1U] == std::byte{0x11},
-        "rows outside the camera retain what they last saw on screen");
+        plane[2U * kPerRow] == std::byte{0x22}
+            && plane[kBytes - 1U] == std::byte{0x22},
+        "rows outside the camera follow the live plane too");
 
     // Scroll down two rows: row 2 learns, rows 0 and 1 freeze at 0x22.
     std::ranges::fill(live, std::byte{0x33});
@@ -8385,11 +8388,11 @@ void test_table_palette_cache()
             && plane[3U * kPerRow] == std::byte{0x33},
         "scrolling learns the newly covered rows");
     check(
-        plane[0] == std::byte{0x22} && plane[kPerRow] == std::byte{0x22},
-        "rows the camera has left keep their last on-screen bytes");
+        plane[0] == std::byte{0x33} && plane[kPerRow] == std::byte{0x33},
+        "rows the camera has left keep following the live plane");
     check(
-        plane[4U * kPerRow] == std::byte{0x11},
-        "rows never covered keep the scene-start assignment");
+        plane[4U * kPerRow] == std::byte{0x33},
+        "rows the camera has never covered follow it as well");
     check(cache.learned_rows() == 4U, "learned rows accumulate");
 
     // A partial viewport row still counts as covered.

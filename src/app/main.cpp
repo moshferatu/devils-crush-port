@@ -206,6 +206,9 @@ struct CommandLine {
     bool cabinet_flipper_trace = false;
     bool cabinet_drain_probe = false;
     bool cabinet_seed_check = false;
+    bool cabinet_palette_check = false;
+    bool cabinet_attribute_check = false;
+    std::filesystem::path cabinet_state_dump_directory;
     // Bisection aid: deploy only registry entries [first, first + count).
     bool registry_slice_set = false;
     std::size_t registry_slice_first = 0U;
@@ -733,6 +736,16 @@ parse_logical_address_range(const std::string_view text)
             options.cabinet_drain_probe = true;
         } else if (argument == "--cabinet-seed-check") {
             options.cabinet_seed_check = true;
+        } else if (argument == "--cabinet-palette-check") {
+            options.cabinet_palette_check = true;
+        } else if (argument == "--cabinet-attribute-check") {
+            options.cabinet_attribute_check = true;
+        } else if (argument == "--cabinet-state-dump") {
+            if (index + 1 >= argc) {
+                options.error = "--cabinet-state-dump requires a directory.";
+                return options;
+            }
+            options.cabinet_state_dump_directory = argv[++index];
         } else if (argument == "--emulate-only") {
             options.emulate_only = true;
         } else if (argument == "--registry-slice") {
@@ -7914,8 +7927,11 @@ int run_windows_host(
     // Sweep the opening rather than sampling one frame: the complaint is that
     // the table looks wrong "at the beginning" and settles once the camera
     // reaches it, so the disagreement has to be looked for across that window.
+    // Probe where the camera has left the lower table, so the actors under
+    // test are genuinely off camera. Sampling frames where they are on camera
+    // proves nothing: both composes resolve from the same live VRAM there.
     static constexpr std::array kProbeFrames{
-        880, 920, 1000, 1100, 1200, 1300};
+        1450, 1530, 1600, 1700, 1870, 1950};
     std::vector<std::byte> work_ram;
     std::optional<devils_crush::emulation::VideoMemorySnapshot> video;
     for (int frame_number = 1; frame_number <= kProbeFrames.back();
@@ -7964,6 +7980,407 @@ int run_windows_host(
         }
         std::cout << "  frame " << frame_number << ": " << probe_total
                   << " pixels differ\n";
+        if (probe_total == 0) {
+            continue;
+        }
+        // Name the off-camera actors responsible rather than a pixel count.
+        const auto probe_actors_state =
+            devils_crush::cabinet::decode_table_actor_state(work_ram);
+        if (!probe_actors_state) {
+            continue;
+        }
+        const int probe_width = probe_seeded->image.width;
+        const int probe_height = probe_seeded->image.height;
+        for (const auto& actor : *probe_actors_state) {
+            if (!actor.occupied() || actor.camera_active()) {
+                continue;
+            }
+            const int origin_x = actor.world_x - 24;
+            const int origin_y =
+                actor.world_y - devils_crush::cabinet::kTableWorldTop - 24;
+            std::size_t count = 0;
+            for (int row = std::max(origin_y, 0);
+                 row < std::min(origin_y + 48, probe_height); ++row) {
+                for (int column = std::max(origin_x, 0);
+                     column < std::min(origin_x + 48, probe_width); ++column) {
+                    const auto index =
+                        static_cast<std::size_t>(row)
+                            * static_cast<std::size_t>(probe_width)
+                        + static_cast<std::size_t>(column);
+                    count += probe_seeded->image.pixels[index]
+                            != probe_learned->image.pixels[index]
+                        ? 1U
+                        : 0U;
+                }
+            }
+            if (count < 64) {
+                continue;
+            }
+            std::cout << "      off-camera slot " << std::hex << std::setw(2)
+                      << std::setfill('0')
+                      << static_cast<unsigned>(actor.slot) << std::dec
+                      << std::setfill(' ') << " appearance "
+                      << static_cast<unsigned>(actor.appearance) << " at ("
+                      << actor.world_x << "," << actor.world_y
+                      << "): " << count << " pixels\n";
+        }
+    }
+    return EXIT_SUCCESS;
+}
+
+// Watches the palette-attribute plane for whole-table rewrites.
+//
+// TablePaletteCache seeds its retained copy from the first plane it is shown,
+// on the stated grounds that scene start is the only moment every row is
+// simultaneously authoritative. It never seeds again. So if the game performs
+// another whole-table assignment later -- and leaving and re-entering the
+// table scene is exactly that -- every row the camera has not visited since
+// keeps the previous scene's attributes indefinitely, drawing those tiles
+// through the wrong subpalette until the camera happens to reach them.
+//
+// Reports every frame in which a large number of tile rows change at once,
+// which incremental streaming never does, together with how many rows the
+// camera had visited by then. Rows not visited are rows left stale.
+[[nodiscard]] int run_attribute_check(
+    devils_crush::emulation::PceRuntime& runtime)
+{
+    std::cout << std::unitbuf;
+    runtime.reset();
+    constexpr std::size_t kPlaneOffset = 0x0259U;
+    using Cache = devils_crush::render::TablePaletteCache;
+    constexpr std::size_t kRows = Cache::kHeightTiles;
+    constexpr std::size_t kBytesPerRow = Cache::kBytesPerRow;
+    // Only rows the cabinet actually shows can be seen to be wrong.
+    constexpr std::size_t kFirstShownRow =
+        devils_crush::cabinet::kTableWorldTop / Cache::kTilePixels;
+    constexpr std::size_t kLastShownRow =
+        (devils_crush::cabinet::kTableWorldTop
+         + devils_crush::cabinet::kTableWorldHeight - 1)
+        / Cache::kTilePixels;
+
+    // Mirror TablePaletteCache exactly: seed once, refresh rows under the
+    // camera. Then ask what that costs -- a displayed row whose retained
+    // bytes have fallen behind the live plane is a row the player is being
+    // shown in the wrong colours until the camera returns to it.
+    std::vector<std::byte> retained;
+    std::vector<std::byte> previous_live;
+    std::array<bool, kRows> was_on_camera{};
+    std::size_t entries = 0;
+    std::size_t retained_correct_on_entry = 0;
+    std::size_t live_correct_on_entry = 0;
+    std::array<std::size_t, kRows> stale_frames{};
+    std::size_t worst_rows_at_once = 0;
+    int worst_frame = 0;
+    std::size_t compared_frames = 0;
+    for (int frame_number = 1; frame_number <= 2100; ++frame_number) {
+        keep_fixed_actors_simulating(runtime);
+        static_cast<void>(
+            runtime.run_frame(state_census_input_for_frame(frame_number)));
+        const auto work_ram = runtime.export_work_ram();
+        const auto state =
+            devils_crush::cabinet::decode_cabinet_state(work_ram);
+        if (!state || work_ram.size() < kPlaneOffset + kRows * kBytesPerRow
+            || state->playfield
+                != devils_crush::cabinet::PlayfieldView::table_background) {
+            continue;
+        }
+        const auto plane = std::span<const std::byte>{work_ram}.subspan(
+            kPlaneOffset, kRows * kBytesPerRow);
+        if (retained.size() != plane.size()) {
+            retained.assign(plane.begin(), plane.end());
+        }
+        const auto byte_at = [&work_ram](const std::size_t offset) {
+            return static_cast<int>(
+                std::to_integer<std::uint8_t>(work_ram[offset]));
+        };
+        const int viewport_top_row = 480
+            + static_cast<int>(static_cast<std::int16_t>(
+                static_cast<std::uint16_t>(
+                    byte_at(0x0BU) | (byte_at(0x0CU) << 8))));
+        ++compared_frames;
+        std::size_t stale_now = 0;
+        for (std::size_t row = kFirstShownRow; row <= kLastShownRow; ++row) {
+            const auto offset = static_cast<std::ptrdiff_t>(row * kBytesPerRow);
+            const auto row_top = static_cast<int>(row * Cache::kTilePixels);
+            const bool on_camera =
+                row_top + static_cast<int>(Cache::kTilePixels)
+                    > viewport_top_row
+                && row_top < viewport_top_row + 208;
+            if (on_camera) {
+                // The moment a row arrives under the camera the live plane is
+                // authoritative for it. That is the one instant the two
+                // candidate policies can be scored against ground truth: what
+                // the retained copy has been showing, and what simply reading
+                // the live plane would have shown.
+                if (!was_on_camera[row]) {
+                    const bool retained_agrees = std::equal(
+                        plane.begin() + offset,
+                        plane.begin() + offset
+                            + static_cast<std::ptrdiff_t>(kBytesPerRow),
+                        retained.begin() + offset);
+                    const bool live_agrees = previous_live.empty()
+                        || std::equal(
+                            plane.begin() + offset,
+                            plane.begin() + offset
+                                + static_cast<std::ptrdiff_t>(kBytesPerRow),
+                            previous_live.begin() + offset);
+                    ++entries;
+                    retained_correct_on_entry += retained_agrees ? 1U : 0U;
+                    live_correct_on_entry += live_agrees ? 1U : 0U;
+                }
+                was_on_camera[row] = true;
+                std::copy_n(
+                    plane.begin() + offset, kBytesPerRow,
+                    retained.begin() + offset);
+                continue;
+            }
+            was_on_camera[row] = false;
+            if (!std::equal(
+                    plane.begin() + offset,
+                    plane.begin() + offset
+                        + static_cast<std::ptrdiff_t>(kBytesPerRow),
+                    retained.begin() + offset)) {
+                ++stale_frames[row];
+                ++stale_now;
+            }
+        }
+        previous_live.assign(plane.begin(), plane.end());
+
+        if (stale_now > worst_rows_at_once) {
+            worst_rows_at_once = stale_now;
+            worst_frame = frame_number;
+        }
+    }
+
+    std::size_t rows_ever_stale = 0;
+    std::size_t total = 0;
+    for (std::size_t row = kFirstShownRow; row <= kLastShownRow; ++row) {
+        total += stale_frames[row];
+        rows_ever_stale += stale_frames[row] != 0U ? 1U : 0U;
+    }
+    std::cout << "over " << compared_frames << " table frames, "
+              << rows_ever_stale << " of "
+              << (kLastShownRow - kFirstShownRow + 1)
+              << " displayed tile rows were shown with stale attributes at "
+                 "some point\n"
+              << "worst single frame: " << worst_rows_at_once
+              << " stale rows at frame " << worst_frame << "\n"
+              << "row-frames drawn stale: " << total << "\n";
+    // Scored where the answer is not a matter of opinion: the instant a row
+    // arrives under the camera, the live plane is authoritative for it.
+    std::cout << "\nat the instant each row arrives under the camera:\n"
+              << "  retained copy agreed with it on "
+              << retained_correct_on_entry << " of " << entries
+              << " arrivals\n"
+              << "  reading the live plane would have agreed on "
+              << live_correct_on_entry << " of " << entries << "\n";
+    std::cout << "\nworst rows (tile row, world y, frames stale)\n";
+    std::vector<std::pair<std::size_t, std::size_t>> ranked;
+    for (std::size_t row = kFirstShownRow; row <= kLastShownRow; ++row) {
+        if (stale_frames[row] != 0U) {
+            ranked.emplace_back(stale_frames[row], row);
+        }
+    }
+    std::ranges::sort(ranked, std::ranges::greater{});
+    for (std::size_t index = 0; index < std::min<std::size_t>(12, ranked.size());
+         ++index) {
+        std::cout << "  row " << ranked[index].second << "  y "
+                  << ranked[index].second * Cache::kTilePixels << "  "
+                  << ranked[index].first << " frames\n";
+    }
+    return EXIT_SUCCESS;
+}
+
+// Composes the whole table from a saved state and writes it out, so a defect
+// that only a player can see becomes pixels that can be examined directly.
+//
+// A single-frame compose from a fresh cache is what a session looks like at
+// the moment the state was taken only in the sense that matters here: nothing
+// off camera has been learned. Dumping the learned compose beside it says
+// immediately whether the defect is the cache or something upstream of it.
+[[nodiscard]] int run_state_dump(
+    devils_crush::emulation::PceRuntime& runtime,
+    const std::filesystem::path& rom_path,
+    const std::filesystem::path& state_path,
+    const std::filesystem::path& output_directory)
+{
+    std::cout << std::unitbuf;
+    const auto rom = read_rom_bytes(rom_path);
+    if (!rom) {
+        return EXIT_FAILURE;
+    }
+    std::error_code directory_error;
+    std::filesystem::create_directories(output_directory, directory_error);
+
+    // The learned pass has to run before the state is restored, because
+    // restoring rewinds the emulator but not the cache.
+    devils_crush::render::PersistentActorSpriteCache learned;
+    devils_crush::render::TablePaletteCache learned_palette;
+    for (int frame_number = 1; frame_number <= 2100; ++frame_number) {
+        keep_fixed_actors_simulating(runtime);
+        static_cast<void>(
+            runtime.run_frame(state_census_input_for_frame(frame_number)));
+        const auto work_ram = runtime.export_work_ram();
+        const auto state =
+            devils_crush::cabinet::decode_cabinet_state(work_ram);
+        const auto video = runtime.export_video_memory();
+        if (!state || !video
+            || state->playfield
+                != devils_crush::cabinet::PlayfieldView::table_background) {
+            continue;
+        }
+        static_cast<void>(decode_cabinet_table(
+            *rom, work_ram, *video, learned, learned_palette,
+            CabinetLayers::all, false, nullptr, nullptr));
+    }
+
+    if (!load_quick_state(runtime, state_path)) {
+        return EXIT_FAILURE;
+    }
+    keep_fixed_actors_simulating(runtime);
+    const auto emulated = runtime.run_frame({});
+    if (!emulated.framebuffer.pixels.empty()) {
+        // Hardware's own picture of whatever the camera covers. Any
+        // disagreement inside that window is the reconstruction's fault.
+        devils_crush::render::ArgbImage hardware;
+        hardware.width = emulated.framebuffer.width;
+        hardware.height = emulated.framebuffer.height;
+        hardware.pixels.resize(
+            static_cast<std::size_t>(hardware.width)
+            * static_cast<std::size_t>(hardware.height));
+        for (int row = 0; row < hardware.height; ++row) {
+            for (int column = 0; column < hardware.width; ++column) {
+                hardware.pixels[
+                    static_cast<std::size_t>(row) * hardware.width + column] =
+                    emulated.framebuffer.pixels[
+                        static_cast<std::size_t>(row)
+                            * emulated.framebuffer.pitch_pixels
+                        + column];
+            }
+        }
+        static_cast<void>(save_playfield_png(
+            hardware, output_directory / "state-emulated.bmp"));
+    }
+    const auto work_ram = runtime.export_work_ram();
+    const auto video = runtime.export_video_memory();
+    const auto state = devils_crush::cabinet::decode_cabinet_state(work_ram);
+    if (!video || !state
+        || state->playfield
+            != devils_crush::cabinet::PlayfieldView::table_background) {
+        std::cout << "the saved state is not on the table playfield\n";
+        return EXIT_FAILURE;
+    }
+
+    devils_crush::render::PersistentActorSpriteCache fresh;
+    devils_crush::render::TablePaletteCache fresh_palette;
+    const auto fresh_table = decode_cabinet_table(
+        *rom, work_ram, *video, fresh, fresh_palette, CabinetLayers::all,
+        false, nullptr, nullptr);
+    const auto learned_table = decode_cabinet_table(
+        *rom, work_ram, *video, learned, learned_palette, CabinetLayers::all,
+        false, nullptr, nullptr);
+    const auto background_only = [&] {
+        devils_crush::render::PersistentActorSpriteCache empty;
+        devils_crush::render::TablePaletteCache empty_palette;
+        return decode_cabinet_table(
+            *rom, work_ram, *video, empty, empty_palette,
+            CabinetLayers::background_only, false, nullptr, nullptr);
+    }();
+    if (!fresh_table || !learned_table || !background_only) {
+        std::cout << "compose failed\n";
+        return EXIT_FAILURE;
+    }
+    static_cast<void>(save_playfield_png(
+        fresh_table->image, output_directory / "state-fresh.bmp"));
+    static_cast<void>(save_playfield_png(
+        learned_table->image, output_directory / "state-learned.bmp"));
+    static_cast<void>(save_playfield_png(
+        background_only->image, output_directory / "state-background.bmp"));
+
+    std::size_t differing = 0;
+    for (std::size_t index = 0; index < fresh_table->image.pixels.size();
+         ++index) {
+        differing += fresh_table->image.pixels[index]
+                != learned_table->image.pixels[index]
+            ? 1U
+            : 0U;
+    }
+    std::cout << "wrote three composes to " << output_directory.string()
+              << "\nfresh vs learned: " << differing << " pixels differ\n";
+    return EXIT_SUCCESS;
+}
+
+// Asks whether the sprite palette is region-loaded.
+//
+// Sprite colors live in VCE entries 256-511 as sixteen subpalettes of sixteen.
+// The compositor resolves an actor's palette indices against the live VCE on
+// purpose, so an actor learned during a fade-in picks up settled colors instead
+// of freezing as a dark silhouette. That is right for an actor under the
+// camera. It is only right off camera if the subpalette it names still holds
+// its colors -- and if the ROM reloads subpalettes as the camera moves between
+// table regions, an off-camera actor is drawn through whichever region's colors
+// happen to be resident, which reads as the wrong color or as gray.
+//
+// Reports, as the camera sweeps the table, which subpalettes change and whether
+// the actor under test was on camera when they did.
+[[nodiscard]] int run_palette_check(
+    devils_crush::emulation::PceRuntime& runtime)
+{
+    std::cout << std::unitbuf;
+    runtime.reset();
+    constexpr std::size_t kSpriteSubpalettes = 16U;
+    constexpr std::size_t kSpritePaletteBase = 256U;
+    constexpr std::size_t kDragonHeadSlot = 0x13U;
+    std::array<std::uint64_t, kSpriteSubpalettes> previous{};
+    bool have_previous = false;
+    std::cout << "frame  camera  slot13  changed subpalettes\n";
+    for (int frame_number = 1; frame_number <= 2100; ++frame_number) {
+        keep_fixed_actors_simulating(runtime);
+        static_cast<void>(
+            runtime.run_frame(state_census_input_for_frame(frame_number)));
+        const auto video = runtime.export_video_memory();
+        const auto work_ram = runtime.export_work_ram();
+        if (!video || video->palette_entries.size() < 512U
+            || work_ram.size() < 0x2000U) {
+            continue;
+        }
+        std::array<std::uint64_t, kSpriteSubpalettes> now{};
+        for (std::size_t sub = 0; sub < kSpriteSubpalettes; ++sub) {
+            std::uint64_t hash = 1469598103934665603ULL;
+            for (std::size_t entry = 0; entry < 16U; ++entry) {
+                hash = (hash
+                        ^ video->palette_entries
+                              [kSpritePaletteBase + sub * 16U + entry])
+                    * 1099511628211ULL;
+            }
+            now[sub] = hash;
+        }
+        std::string changed;
+        if (have_previous) {
+            for (std::size_t sub = 0; sub < kSpriteSubpalettes; ++sub) {
+                if (now[sub] != previous[sub]) {
+                    changed += std::format("{:X} ", sub);
+                }
+            }
+        }
+        previous = now;
+        have_previous = true;
+        if (changed.empty()) {
+            continue;
+        }
+        const auto byte_at = [&work_ram](const std::size_t offset) {
+            return static_cast<int>(
+                std::to_integer<std::uint8_t>(work_ram[offset]));
+        };
+        std::cout << std::setw(5) << frame_number << std::setw(8)
+                  << static_cast<int>(static_cast<std::int16_t>(
+                         static_cast<std::uint16_t>(
+                             byte_at(0x0BU) | (byte_at(0x0CU) << 8))))
+                  << std::setw(8)
+                  << (((byte_at(0x1080U + kDragonHeadSlot) & 0x80U) != 0)
+                          ? "on"
+                          : "off")
+                  << "  " << changed << "\n";
     }
     return EXIT_SUCCESS;
 }
@@ -8855,6 +9272,17 @@ int main(const int argc, char* argv[])
             return EXIT_FAILURE;
         }
 
+        if (!options.cabinet_state_dump_directory.empty()) {
+            return run_state_dump(
+                *runtime, options.rom_path, kQuickStatePath,
+                options.cabinet_state_dump_directory);
+        }
+        if (options.cabinet_attribute_check) {
+            return run_attribute_check(*runtime);
+        }
+        if (options.cabinet_palette_check) {
+            return run_palette_check(*runtime);
+        }
         if (options.cabinet_seed_check) {
             // Both ways: if the seeded and learned composes already disagreed
             // before the cull was lifted, lifting it did not cause this.

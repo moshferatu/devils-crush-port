@@ -41,17 +41,35 @@ each presentation so letterboxing remains true black on emissive displays.
 The host decodes the packed ROM tile map and work-RAM palette attributes
 against the current copied VRAM/VCE state, then crops source rows 20-687.
 
-The palette-attribute plane is region-owned and must be retained rather than
-read live. The game writes all 1,536 packed bytes once at scene start, then
-rewrites one or two tile rows at a time as the camera scrolls: across the
-3,600-frame state-census route, 8,274 of its 8,669 in-play byte changes —
-95.4% — land on rows the camera is not showing. Decoding the full table
-against the live plane therefore recoloured unrelated rows every time the
-ball travelled. `render::TablePaletteCache` refreshes a row only while the
-camera covers it, so each row keeps the bytes that were authoritative when it
-was last on screen, and rows the camera has never reached keep the scene-start
-assignment. On the same route the retained plane differs from the live one on
-95.2% of frames, by up to 817 of 1,536 bytes at once.
+The palette-attribute plane was originally treated as region-owned. The game
+writes all 1,536 packed bytes once at scene start, then rewrites tile rows as
+play continues: across the 3,600-frame state-census route, 8,274 of its 8,669
+in-play byte changes — 95.4% — land on rows the camera is not showing, and
+`render::TablePaletteCache` refreshed a row only while the camera covered it
+on the theory that those writes belonged to a region being streamed in.
+
+That theory did not survive measurement, and holding rows back caused a worse
+defect than the one it prevented. The plane is indexed by tile row — a write to
+row N is about row N — and the game keeps animating rows it is not showing.
+Freezing them left five consecutive rows at world y 440-479 displaying a
+subpalette from a long-finished animation phase for 330 frames each: a
+tile-aligned rectangular band across the middle of the table in the wrong
+colours until the ball travelled far enough to refresh it. Nine displayed rows
+were affected across 2,264 row-frames of the census route.
+
+Every row now follows the live plane. `--cabinet-attribute-check` is the
+measurement that settled it, scoring both policies at the one instant the
+answer is not a matter of opinion — when a row arrives under the camera, where
+the live plane is authoritative for it by definition:
+
+| policy | agreed with the authoritative value |
+| --- | --- |
+| retained until the camera covers the row | 123 of 129 arrivals |
+| **read the live plane** | **129 of 129** |
+
+The oracle is unchanged at 2.41%, as expected: inside the camera window the two
+policies agree by construction, so the whole difference is in what the cabinet
+shows of the table the original never displayed.
 
 The tile patterns themselves need no such treatment. The table's 3,072 cells
 reference only 663 distinct tiles against a 2,048-tile VRAM capacity, so its

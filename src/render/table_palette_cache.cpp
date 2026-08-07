@@ -30,23 +30,40 @@ std::span<const std::byte> TablePaletteCache::update(
         learned_.assign(kHeightTiles, std::uint8_t{0});
     }
 
+    // Refreshing only under the camera freezes a row on whatever the game had
+    // written when it last scrolled past. The game keeps animating rows it is
+    // not showing -- flashing table features rewrite their own attribute rows
+    // continuously -- so a row can sit for hundreds of frames displaying a
+    // subpalette from a phase that ended long ago. On the full-table view that
+    // reads as a rectangular band, tile-row aligned and eight pixels per row,
+    // in the wrong colours until the ball travels far enough to refresh it.
+    //
+    // Measured on the census route, five consecutive rows at world y 440-479
+    // spent 330 frames each in that state, and nine displayed rows were
+    // affected across 2,264 row-frames.
+    //
+    // The plane is indexed by tile row and a write to row N is about row N, so
+    // every row is refreshed. Scored at the one instant the answer is not a
+    // matter of opinion -- when a row arrives under the camera, where the live
+    // plane is authoritative for it by definition -- reading live agreed on
+    // 129 of 129 arrivals against the retained copy's 123.
+    for (std::size_t row = 0U; row < kHeightTiles; ++row) {
+        const auto offset = static_cast<std::ptrdiff_t>(row * kBytesPerRow);
+        std::copy_n(
+            live_plane.begin() + offset,
+            kBytesPerRow,
+            retained_.begin() + offset);
+    }
+
     if (viewport_rows > 0) {
         const auto viewport_bottom_row = viewport_top_row + viewport_rows;
         for (std::size_t row = 0U; row < kHeightTiles; ++row) {
-            const auto row_top =
-                static_cast<int>(row * kTilePixels);
-            const auto row_bottom =
-                row_top + static_cast<int>(kTilePixels);
+            const auto row_top = static_cast<int>(row * kTilePixels);
+            const auto row_bottom = row_top + static_cast<int>(kTilePixels);
             if (row_bottom <= viewport_top_row
                 || row_top >= viewport_bottom_row) {
                 continue;
             }
-            const auto offset =
-                static_cast<std::ptrdiff_t>(row * kBytesPerRow);
-            std::copy_n(
-                live_plane.begin() + offset,
-                kBytesPerRow,
-                retained_.begin() + offset);
             learned_[row] = 1U;
         }
     }
