@@ -35,11 +35,51 @@ replace_native_gameplay_routine_impl(
         return detail::replace_ball_drain_threshold(entry, work_ram);
     }
     if (entry.routine
+            == RoutineKey{
+                .physical_bank = 0x01U,
+                .logical_pc = 0xC80AU,
+            }
+        || entry.routine
+               == RoutineKey{
+                   .physical_bank = 0x01U,
+                   .logical_pc = 0xC7F4U,
+               }) {
+        return detail::replace_remaining_ball_presentation(entry, work_ram);
+    }
+    if (entry.routine
         == RoutineKey{
             .physical_bank = 0x01U,
-            .logical_pc = 0xC80AU,
+            .logical_pc = 0xC7EFU,
         }) {
-        return detail::replace_remaining_ball_presentation(entry, work_ram);
+        return detail::replace_remaining_ball_alternate_scheduler(entry, work_ram);
+    }
+    if (entry.routine
+        == RoutineKey{
+            .physical_bank = 0x01U,
+            .logical_pc = 0xC7F9U,
+        }) {
+        return detail::replace_zero_ball_countdown_tick(entry, work_ram);
+    }
+    if (entry.routine
+        == RoutineKey{
+            .physical_bank = 0x01U,
+            .logical_pc = 0xC7FCU,
+        }) {
+        return detail::replace_zero_ball_expiry_scheduler(entry, work_ram);
+    }
+    if (entry.routine
+        == RoutineKey{
+            .physical_bank = 0x01U,
+            .logical_pc = 0xC804U,
+        }) {
+        return detail::replace_zero_ball_presentation_gate(entry, work_ram);
+    }
+    if (entry.routine
+        == RoutineKey{
+            .physical_bank = 0x01U,
+            .logical_pc = 0xC812U,
+        }) {
+        return detail::replace_zero_ball_state_gate(entry, work_ram);
     }
     if (entry.routine
         == RoutineKey{
@@ -373,6 +413,375 @@ replace_native_gameplay_routine_impl(
             .logical_pc = 0x4C33U,
         }) {
         return detail::replace_side_star_bonus_entrance_animation(
+            entry,
+            work_ram);
+    }
+    if (entry.routine
+        == RoutineKey{
+            .physical_bank = 0x02U,
+            .logical_pc = 0x41A0U,
+        }) {
+        return detail::replace_knight_terminal_release_helper_prefix(entry, work_ram);
+    }
+    if (entry.routine
+        == RoutineKey{
+            .physical_bank = 0x02U,
+            .logical_pc = 0x41A8U,
+        }) {
+        return detail::replace_knight_terminal_release_helper_setup_prefix(
+            entry,
+            work_ram);
+    }
+    if (entry.routine
+        == RoutineKey{
+            .physical_bank = 0x02U,
+            .logical_pc = 0x41ADU,
+        }) {
+        return detail::replace_knight_terminal_release_helper_table_setup_prefix(
+            entry,
+            work_ram);
+    }
+    if (entry.routine
+        == RoutineKey{
+            .physical_bank = 0x02U,
+            .logical_pc = 0x41C2U,
+        }) {
+        return detail::replace_knight_terminal_release_helper_call_prefix(
+            entry,
+            work_ram);
+    }
+    if (entry.routine
+        == RoutineKey{
+            .physical_bank = 0x02U,
+            .logical_pc = 0x41F5U,
+        }) {
+        return detail::replace_knight_terminal_release_helper_pointer_prefix(
+            entry,
+            work_ram);
+    }
+    if (entry.routine
+        == RoutineKey{
+            .physical_bank = 0x02U,
+            .logical_pc = 0x420BU,
+        }) {
+        return detail::replace_knight_terminal_release_helper_shared_call_prefix(
+            entry,
+            work_ram);
+    }
+    if (entry.routine
+        == RoutineKey{
+            .physical_bank = 0x02U,
+            .logical_pc = 0x420EU,
+        }) {
+        return detail::replace_knight_terminal_release_helper_post_return_mode_branch_prefix(
+            entry,
+            work_ram);
+    }
+    if (entry.routine
+        == RoutineKey{
+            .physical_bank = 0x02U,
+            .logical_pc = 0x4210U,
+        }) {
+        return detail::replace_knight_terminal_release_helper_post_return_pointer_low_load_prefix(
+            entry,
+            work_ram);
+    }
+    if (entry.routine
+        == RoutineKey{
+            .physical_bank = 0x02U,
+            .logical_pc = 0x4212U,
+        }) {
+        return detail::replace_knight_terminal_release_helper_post_return_pointer_low_store_prefix(
+            entry,
+            work_ram);
+    }
+    if (entry.routine
+        == RoutineKey{
+            .physical_bank = 0x02U,
+            .logical_pc = 0x4215U,
+        }) {
+        return detail::replace_knight_terminal_release_helper_post_return_pointer_high_load_prefix(
+            entry,
+            work_ram);
+    }
+    if (entry.routine
+        == RoutineKey{
+            .physical_bank = 0x02U,
+            .logical_pc = 0x4217U,
+        }) {
+        return detail::replace_knight_terminal_release_helper_post_return_pointer_high_store_prefix(
+            entry,
+            work_ram);
+    }
+    if (entry.routine
+        == RoutineKey{
+            .physical_bank = 0x02U,
+            .logical_pc = 0x421AU,
+        }) {
+        return detail::replace_knight_terminal_release_helper_post_return_scratch_clear_prefix(
+            entry,
+            work_ram);
+    }
+    if (entry.routine
+        == RoutineKey{
+            .physical_bank = 0x02U,
+            .logical_pc = 0x421CU,
+        }) {
+        return detail::replace_knight_terminal_release_helper_post_return_mode_load_prefix(
+            entry,
+            work_ram);
+    }
+    if (entry.routine
+        == RoutineKey{
+            .physical_bank = 0x02U,
+            .logical_pc = 0x421EU,
+        }) {
+        return detail::replace_knight_terminal_release_helper_post_return_mode_signed_branch_prefix(
+            entry,
+            work_ram);
+    }
+    if (entry.routine
+        == RoutineKey{
+            .physical_bank = 0x02U,
+            .logical_pc = 0x4222U,
+        }) {
+        return detail::replace_knight_terminal_release_helper_post_return_position_carry_clear_prefix(
+            entry,
+            work_ram);
+    }
+    if (entry.routine
+        == RoutineKey{
+            .physical_bank = 0x02U,
+            .logical_pc = 0x4223U,
+        }) {
+        return detail::replace_knight_terminal_release_helper_post_return_position_base_load_prefix(
+            entry,
+            work_ram);
+    }
+    if (entry.routine
+        == RoutineKey{
+            .physical_bank = 0x02U,
+            .logical_pc = 0x4226U,
+        }) {
+        return detail::replace_knight_terminal_release_helper_post_return_position_mode_add_prefix(
+            entry,
+            work_ram);
+    }
+    if (entry.routine
+        == RoutineKey{
+            .physical_bank = 0x02U,
+            .logical_pc = 0x4228U,
+        }) {
+        return detail::replace_knight_terminal_release_helper_post_return_position_store_prefix(
+            entry,
+            work_ram);
+    }
+    if (entry.routine
+        == RoutineKey{
+            .physical_bank = 0x02U,
+            .logical_pc = 0x422BU,
+        }) {
+        return detail::replace_knight_terminal_release_helper_post_return_position_high_load_prefix(
+            entry,
+            work_ram);
+    }
+    if (entry.routine
+        == RoutineKey{.physical_bank = 0x02U, .logical_pc = 0x422EU}) {
+        return detail::replace_knight_terminal_release_helper_post_return_position_high_add_prefix(
+            entry, work_ram);
+    }
+    if (entry.routine == RoutineKey{.physical_bank = 0x02U, .logical_pc = 0x4230U}) {
+        return detail::replace_knight_terminal_release_helper_post_return_position_high_store_prefix(
+            entry, work_ram);
+    }
+    if (entry.routine == RoutineKey{.physical_bank = 0x02U, .logical_pc = 0x4233U}) {
+        return detail::replace_knight_terminal_release_helper_post_return_position_high_scratch_clear_prefix(
+            entry, work_ram);
+    }
+    if (entry.routine == RoutineKey{.physical_bank = 0x02U, .logical_pc = 0x4235U}) {
+        return detail::replace_knight_terminal_release_helper_post_return_position_high_mode_load_prefix(
+            entry, work_ram);
+    }
+    if (entry.routine == RoutineKey{.physical_bank = 0x02U, .logical_pc = 0x4237U}) {
+        return detail::replace_knight_terminal_release_helper_post_return_position_high_mode_signed_branch_prefix(
+            entry, work_ram);
+    }
+    if (entry.routine == RoutineKey{.physical_bank = 0x02U, .logical_pc = 0x423BU}) {
+        return detail::replace_knight_terminal_release_helper_post_return_position_high_carry_clear_prefix(
+            entry, work_ram);
+    }
+    if (entry.routine == RoutineKey{.physical_bank = 0x02U, .logical_pc = 0x423CU}) {
+        return detail::replace_knight_terminal_release_helper_post_return_position_high_base_load_prefix(
+            entry, work_ram);
+    }
+    if (entry.routine == RoutineKey{.physical_bank = 0x02U, .logical_pc = 0x423FU}) {
+        return detail::replace_knight_terminal_release_helper_post_return_position_high_scratch_add_prefix(
+            entry, work_ram);
+    }
+    if (entry.routine == RoutineKey{.physical_bank = 0x02U, .logical_pc = 0x4241U}) {
+        return detail::replace_knight_terminal_release_helper_post_return_position_high_actor_store_prefix(
+            entry, work_ram);
+    }
+    if (entry.routine == RoutineKey{.physical_bank = 0x02U, .logical_pc = 0x4244U}) {
+        return detail::replace_knight_terminal_release_helper_post_return_actor_field_load_prefix(
+            entry, work_ram);
+    }
+    if (entry.routine == RoutineKey{.physical_bank = 0x02U, .logical_pc = 0x4247U}) {
+        return detail::replace_knight_terminal_release_helper_post_return_actor_field_scratch_add_prefix(
+            entry, work_ram);
+    }
+    if (entry.routine == RoutineKey{.physical_bank = 0x02U, .logical_pc = 0x4249U}) {
+        return detail::replace_knight_terminal_release_helper_post_return_actor_field_store_prefix(
+            entry, work_ram);
+    }
+    if (entry.routine == RoutineKey{.physical_bank = 0x02U, .logical_pc = 0x424CU}) {
+        return detail::replace_knight_terminal_release_helper_post_return_actor_field_clear_prefix(
+            entry, work_ram);
+    }
+    if (entry.routine == RoutineKey{.physical_bank = 0x02U, .logical_pc = 0x424DU}) {
+        return detail::replace_knight_terminal_release_helper_post_return_actor_field_zero_store_prefix(
+            entry, work_ram);
+    }
+    if (entry.routine == RoutineKey{.physical_bank = 0x02U, .logical_pc = 0x4250U}) {
+        return detail::replace_knight_terminal_release_helper_post_return_actor_field_second_zero_store_prefix(
+            entry, work_ram);
+    }
+    if (entry.routine == RoutineKey{.physical_bank = 0x02U, .logical_pc = 0x4253U}) {
+        return detail::replace_knight_terminal_release_helper_post_return_actor_attribute_load_prefix(
+            entry, work_ram);
+    }
+    if (entry.routine == RoutineKey{.physical_bank = 0x02U, .logical_pc = 0x4256U}) {
+        return detail::replace_knight_terminal_release_helper_post_return_actor_attribute_mask_prefix(
+            entry, work_ram);
+    }
+    if (entry.routine == RoutineKey{.physical_bank = 0x02U, .logical_pc = 0x4258U}) {
+        return detail::replace_knight_terminal_release_helper_post_return_actor_attribute_mode_merge_prefix(
+            entry, work_ram);
+    }
+    if (entry.routine == RoutineKey{.physical_bank = 0x02U, .logical_pc = 0x425AU}) {
+        return detail::replace_knight_terminal_release_helper_post_return_actor_attribute_store_prefix(
+            entry, work_ram);
+    }
+    if (entry.routine == RoutineKey{.physical_bank = 0x02U, .logical_pc = 0x425DU}) {
+        return detail::replace_knight_terminal_release_helper_post_return_actor_field_constant_load_prefix(
+            entry, work_ram);
+    }
+    if (entry.routine == RoutineKey{.physical_bank = 0x02U, .logical_pc = 0x425FU}) {
+        return detail::replace_knight_terminal_release_helper_post_return_actor_field_constant_store_prefix(
+            entry, work_ram);
+    }
+    if (entry.routine == RoutineKey{.physical_bank = 0x02U, .logical_pc = 0x4262U}) {
+        return detail::replace_knight_terminal_release_helper_post_return_actor_field_second_constant_load_prefix(
+            entry, work_ram);
+    }
+    if (entry.routine == RoutineKey{.physical_bank = 0x02U, .logical_pc = 0x4264U}) {
+        return detail::replace_knight_terminal_release_helper_post_return_actor_field_second_constant_store_prefix(entry, work_ram);
+    }
+    if (entry.routine
+        == RoutineKey{
+            .physical_bank = 0x01U,
+            .logical_pc = 0xC024U,
+        }) {
+        return detail::replace_knight_terminal_release_helper_shared_jump_prefix(
+            entry,
+            work_ram);
+    }
+    if (entry.routine
+        == RoutineKey{
+            .physical_bank = 0x01U,
+            .logical_pc = 0xC5ABU,
+        }) {
+        return detail::replace_knight_terminal_release_helper_shared_scan_initializer_prefix(
+            entry,
+            work_ram);
+    }
+    if (entry.routine
+        == RoutineKey{
+            .physical_bank = 0x01U,
+            .logical_pc = 0xC5ADU,
+        }) {
+        return detail::replace_knight_terminal_release_helper_shared_scan_read_prefix(
+            entry,
+            work_ram);
+    }
+    if (entry.routine
+        == RoutineKey{
+            .physical_bank = 0x01U,
+            .logical_pc = 0xC5B0U,
+        }) {
+        return detail::replace_knight_terminal_release_helper_shared_scan_nonzero_branch_prefix(
+            entry,
+            work_ram);
+    }
+    if (entry.routine
+        == RoutineKey{
+            .physical_bank = 0x01U,
+            .logical_pc = 0xC5B2U,
+        }) {
+        return detail::replace_knight_terminal_release_helper_shared_scan_increment_prefix(
+            entry,
+            work_ram);
+    }
+    if (entry.routine
+        == RoutineKey{
+            .physical_bank = 0x01U,
+            .logical_pc = 0xC5B3U,
+        }) {
+        return detail::replace_knight_terminal_release_helper_shared_scan_range_compare_prefix(
+            entry,
+            work_ram);
+    }
+    if (entry.routine
+        == RoutineKey{
+            .physical_bank = 0x01U,
+            .logical_pc = 0xC5B5U,
+        }) {
+        return detail::replace_knight_terminal_release_helper_shared_scan_loop_branch_prefix(
+            entry,
+            work_ram);
+    }
+    if (entry.routine
+        == RoutineKey{
+            .physical_bank = 0x01U,
+            .logical_pc = 0xC5B9U,
+        }) {
+        return detail::replace_knight_terminal_release_helper_allocator_load_prefix(
+            entry,
+            work_ram);
+    }
+    if (entry.routine
+        == RoutineKey{
+            .physical_bank = 0x01U,
+            .logical_pc = 0xC5BBU,
+        }) {
+        return detail::replace_knight_terminal_release_helper_allocator_store_prefix(
+            entry,
+            work_ram);
+    }
+    if (entry.routine
+        == RoutineKey{
+            .physical_bank = 0x01U,
+            .logical_pc = 0xC5BEU,
+        }) {
+        return detail::replace_knight_terminal_release_helper_allocator_mode_load_prefix(
+            entry,
+            work_ram);
+    }
+    if (entry.routine
+        == RoutineKey{
+            .physical_bank = 0x01U,
+            .logical_pc = 0xC5C0U,
+        }) {
+        return detail::replace_knight_terminal_release_helper_allocator_mode_branch_prefix(
+            entry,
+            work_ram);
+    }
+    if (entry.routine
+        == RoutineKey{
+            .physical_bank = 0x01U,
+            .logical_pc = 0xC5C7U,
+        }) {
+        return detail::replace_knight_terminal_release_helper_allocator_return_carry_clear_prefix(
             entry,
             work_ram);
     }
@@ -850,12 +1259,57 @@ replace_native_gameplay_routine_impl(
         replacement =
             detail::replace_giant_door_initializer(entry, work_ram);
     } else if (entry.routine
-        == RoutineKey{
-            .physical_bank = 0x03U,
-            .logical_pc = 0x62B8U,
-        }) {
-        replacement =
-            detail::replace_giant_door_hit_gate(entry, work_ram);
+            == RoutineKey{
+                .physical_bank = 0x03U,
+                .logical_pc = 0x62B8U,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x03U,
+                .logical_pc = 0x62CBU,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x03U,
+                .logical_pc = 0x62D4U,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x03U,
+                .logical_pc = 0x62E2U,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x03U,
+                .logical_pc = 0x62F0U,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x03U,
+                .logical_pc = 0x62FEU,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x03U,
+                .logical_pc = 0x6308U,
+            }) {
+        replacement = entry.routine.logical_pc == 0x62B8U
+            ? detail::replace_giant_door_hit_gate(entry, work_ram)
+            : entry.routine.logical_pc == 0x62D4U
+            ? detail::replace_giant_door_completion_score_prefix(entry, work_ram)
+            : entry.routine.logical_pc == 0x62E2U
+            ? detail::replace_giant_door_completion_scheduler_prefix(
+                  entry, work_ram)
+            : entry.routine.logical_pc == 0x62F0U
+            ? detail::replace_giant_door_completion_request_prefix(
+                  entry, work_ram)
+            : entry.routine.logical_pc == 0x62FEU
+            ? detail::replace_giant_door_completion_wait_gate(entry, work_ram)
+            : entry.routine.logical_pc == 0x6308U
+            ? detail::replace_giant_door_completion_channel_advance(
+                  entry, work_ram)
+            : detail::replace_giant_door_hit_continuation(
+                  entry, work_ram);
     } else if (entry.routine
         == RoutineKey{
             .physical_bank = 0x03U,
@@ -1051,24 +1505,73 @@ replace_native_gameplay_routine_impl(
             entry,
             work_ram);
     } else if (entry.routine
-        == RoutineKey{
-            .physical_bank = 0x03U,
-            .logical_pc = 0x6339U,
-        }) {
-        replacement =
-            detail::replace_walled_star_hit_gate(entry, work_ram);
+            == RoutineKey{
+                .physical_bank = 0x03U,
+                .logical_pc = 0x6339U,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x03U,
+                .logical_pc = 0x638FU,
+            }) {
+        replacement = entry.routine.logical_pc == 0x6339U
+            ? detail::replace_walled_star_hit_gate(entry, work_ram)
+            : detail::replace_walled_star_post_destruction_idle(
+                  entry, work_ram);
     } else if (entry.routine
         == RoutineKey{
             .physical_bank = 0x03U,
-            .logical_pc = 0x60C3U,
-        }) {
-        replacement = detail::replace_tower_hit_gate(entry, work_ram);
+                       .logical_pc = 0x60C3U,
+                   }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x03U,
+                .logical_pc = 0x60F9U,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x03U,
+                .logical_pc = 0x6136U,
+            }) {
+        replacement = entry.routine.logical_pc == 0x60F9U
+            ? detail::replace_tower_bonus_terminal(entry, work_ram)
+            : entry.routine.logical_pc == 0x6136U
+            ? detail::replace_tower_bonus_continuation(entry, work_ram)
+            : detail::replace_tower_hit_gate(entry, work_ram);
     } else if (entry.routine
         == RoutineKey{
             .physical_bank = 0x03U,
             .logical_pc = 0x73D8U,
-        }) {
-        replacement = detail::replace_knight_hit_gate(entry, work_ram);
+        }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x03U,
+                .logical_pc = 0x73FEU,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x03U,
+                .logical_pc = 0x740AU,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x03U,
+                .logical_pc = 0x7420U,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x03U,
+                .logical_pc = 0x7418U,
+            }) {
+        replacement = entry.routine.logical_pc == 0x73D8U
+            ? detail::replace_knight_hit_gate(entry, work_ram)
+            : entry.routine.logical_pc == 0x73FEU
+            ? detail::replace_knight_terminal_score_prefix(entry, work_ram)
+            : entry.routine.logical_pc == 0x740AU
+            ? detail::replace_knight_terminal_acknowledgement_prefix(entry, work_ram)
+            : entry.routine.logical_pc == 0x7420U
+            ? detail::replace_knight_terminal_scheduler(entry, work_ram)
+            : detail::replace_knight_terminal_release_prefix(entry, work_ram);
     } else if (entry.routine
             == RoutineKey{
                 .physical_bank = 0x03U,
@@ -1103,11 +1606,18 @@ replace_native_gameplay_routine_impl(
         }) {
         replacement = detail::replace_front_spider_initializer(entry, work_ram);
     } else if (entry.routine
-        == RoutineKey{
-            .physical_bank = 0x03U,
-            .logical_pc = 0x7378U,
-        }) {
-        replacement = detail::replace_knight_waiting_parent(entry, work_ram);
+            == RoutineKey{
+                .physical_bank = 0x03U,
+                .logical_pc = 0x7378U,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x03U,
+                .logical_pc = 0x73A6U,
+            }) {
+        replacement = entry.routine.logical_pc == 0x7378U
+            ? detail::replace_knight_waiting_parent(entry, work_ram)
+            : detail::replace_knight_movement_parent(entry, work_ram, rom);
     } else if (entry.routine
         == RoutineKey{
             .physical_bank = 0x03U,

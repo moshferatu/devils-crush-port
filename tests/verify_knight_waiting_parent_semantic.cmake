@@ -14,7 +14,7 @@ else()
     message(FATAL_ERROR "Unsupported Knight waiting-parent configuration: ${CONFIG}")
 endif()
 set(expected_call_sha256 "fcc85209b476ba21441502ef04ae63c9511045399c9720cd188dc5de49b68f6c")
-set(expected_write_sha256 "a43918c5cb8f86a9a2c458e2dc9ec4687f0eb33b3550be3a1f5592258854c793")
+set(expected_write_sha256 "66e905370e6333ef4466eb922b24f1ae04897f1599ea77582e03f6c58e4c36e9")
 
 set(call_output "${OUTPUT}.calls.csv")
 set(write_output "${call_output}.writes.csv")

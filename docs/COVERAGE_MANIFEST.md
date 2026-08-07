@@ -1,6 +1,6 @@
 # Milestone 2 Coverage Manifest
 
-Last updated: 2026-07-29
+Last updated: 2026-08-04
 
 ## Purpose and classification rules
 
@@ -91,7 +91,7 @@ map.
 | `M-T09B-A` | 9b Insects Living in Tower: allocation, two-hit rule, score, audio, release | D | `dc_rom_two_hit_target` |
 | `M-T09B-B` | All-insects group-clear award and regeneration | S | Exact inactive group-clear branch |
 | `M-T10-A` | 10 Guard: closed selector and Tower gate coupling | D | `dc_rom_tower_guard` |
-| `M-T10-B` | Five qualifying passes, open Guard, and BS-5 entrance | S | Exact `03:612B` entrance contract |
+| `M-T10-B` | Five qualifying Tower passes and BS-5 entrance | D | `dc_rom_tower_bonus_entrance` |
 | `M-T11A-A` | 11a Giant Face: persisted form/request controller and seven-level transformation registry | S | `dc_rom_giant_face` |
 | `M-T11A-B` | Open-mouth capture and BS-4 entrance | S | Exact mouth branch in `dc_rom_giant_face` |
 | `M-T11B` | 11b Crown on Giant Face: 300-point hit and form request | S | `dc_rom_giant_face`, `dc_rom_giant_face_helmet` |

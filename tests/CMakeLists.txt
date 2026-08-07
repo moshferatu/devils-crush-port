@@ -1712,6 +1712,754 @@ if(TARGET devils_crush)
         )
 
         add_test(
+            NAME dc_rom_knight_hit_prefix
+            CONFIGURATIONS Release
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/knight-hit-prefix-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_knight_hit_prefix.cmake"
+        )
+        set_tests_properties(
+            dc_rom_knight_hit_prefix
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_knight_terminal_prefix
+            CONFIGURATIONS Release
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/knight-terminal-prefix-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_knight_terminal_prefix.cmake"
+        )
+        set_tests_properties(
+            dc_rom_knight_terminal_prefix
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_knight_terminal_score_prefix
+            CONFIGURATIONS Release
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/knight-terminal-score-prefix-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_knight_terminal_score_prefix.cmake"
+        )
+        set_tests_properties(
+            dc_rom_knight_terminal_score_prefix
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_knight_terminal_acknowledgement_prefix
+            CONFIGURATIONS Release
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/knight-terminal-acknowledgement-prefix-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_knight_terminal_acknowledgement_prefix.cmake"
+        )
+        set_tests_properties(
+            dc_rom_knight_terminal_acknowledgement_prefix
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_knight_terminal_scheduler
+            CONFIGURATIONS Release
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/knight-terminal-scheduler-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_knight_terminal_scheduler.cmake"
+        )
+        set_tests_properties(
+            dc_rom_knight_terminal_scheduler
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_knight_terminal_release_helper_prefix
+            CONFIGURATIONS Release
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/knight-terminal-release-helper-prefix-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_knight_terminal_release_helper_prefix.cmake"
+        )
+        set_tests_properties(
+            dc_rom_knight_terminal_release_helper_prefix
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_knight_terminal_release_helper_setup_prefix
+            CONFIGURATIONS Release
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/knight-terminal-release-helper-setup-prefix-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_knight_terminal_release_helper_setup_prefix.cmake"
+        )
+        set_tests_properties(
+            dc_rom_knight_terminal_release_helper_setup_prefix
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_knight_terminal_release_helper_table_setup_prefix
+            CONFIGURATIONS Release
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/knight-terminal-release-helper-table-setup-prefix-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_knight_terminal_release_helper_table_setup_prefix.cmake"
+        )
+        set_tests_properties(
+            dc_rom_knight_terminal_release_helper_table_setup_prefix
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_knight_terminal_release_helper_call_prefix
+            CONFIGURATIONS Release
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/knight-terminal-release-helper-call-prefix-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_knight_terminal_release_helper_call_prefix.cmake"
+        )
+        set_tests_properties(
+            dc_rom_knight_terminal_release_helper_call_prefix
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_knight_terminal_release_helper_pointer_prefix
+            CONFIGURATIONS Release
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/knight-terminal-release-helper-pointer-prefix-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_knight_terminal_release_helper_pointer_prefix.cmake"
+        )
+        set_tests_properties(
+            dc_rom_knight_terminal_release_helper_pointer_prefix
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_knight_terminal_release_helper_shared_call_prefix
+            CONFIGURATIONS Release
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/knight-terminal-release-helper-shared-call-prefix-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_knight_terminal_release_helper_shared_call_prefix.cmake"
+        )
+        set_tests_properties(
+            dc_rom_knight_terminal_release_helper_shared_call_prefix
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_knight_terminal_release_helper_post_return_mode_branch_prefix
+            CONFIGURATIONS Release
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/knight-terminal-release-helper-post-return-mode-branch-prefix-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_knight_terminal_release_helper_post_return_mode_branch_prefix.cmake"
+        )
+        set_tests_properties(
+            dc_rom_knight_terminal_release_helper_post_return_mode_branch_prefix
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_knight_terminal_release_helper_post_return_position_carry_clear_prefix
+            CONFIGURATIONS Release
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/knight-terminal-release-helper-post-return-position-carry-clear-prefix-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_knight_terminal_release_helper_post_return_position_carry_clear_prefix.cmake"
+        )
+        set_tests_properties(
+            dc_rom_knight_terminal_release_helper_post_return_position_carry_clear_prefix
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_knight_terminal_release_helper_post_return_position_base_load_prefix
+            CONFIGURATIONS Release
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/knight-terminal-release-helper-post-return-position-base-load-prefix-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_knight_terminal_release_helper_post_return_position_base_load_prefix.cmake"
+        )
+        set_tests_properties(
+            dc_rom_knight_terminal_release_helper_post_return_position_base_load_prefix
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_knight_terminal_release_helper_post_return_position_mode_add_prefix
+            CONFIGURATIONS Release
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/knight-terminal-release-helper-post-return-position-mode-add-prefix-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_knight_terminal_release_helper_post_return_position_mode_add_prefix.cmake"
+        )
+        set_tests_properties(
+            dc_rom_knight_terminal_release_helper_post_return_position_mode_add_prefix
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_knight_terminal_release_helper_post_return_position_store_prefix
+            CONFIGURATIONS Release
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/knight-terminal-release-helper-post-return-position-store-prefix-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_knight_terminal_release_helper_post_return_position_store_prefix.cmake"
+        )
+        set_tests_properties(
+            dc_rom_knight_terminal_release_helper_post_return_position_store_prefix
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_knight_terminal_release_helper_post_return_position_high_load_prefix
+            CONFIGURATIONS Release
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/knight-terminal-release-helper-post-return-position-high-load-prefix-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_knight_terminal_release_helper_post_return_position_high_load_prefix.cmake"
+        )
+        set_tests_properties(
+            dc_rom_knight_terminal_release_helper_post_return_position_high_load_prefix
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_knight_terminal_release_helper_post_return_position_high_add_prefix
+            CONFIGURATIONS Release
+            COMMAND "${CMAKE_COMMAND}" "-DAPP=$<TARGET_FILE:devils_crush>" "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/knight-terminal-release-helper-post-return-position-high-add-prefix-v1.csv"
+                "-P" "${CMAKE_CURRENT_SOURCE_DIR}/verify_knight_terminal_release_helper_post_return_position_high_add_prefix.cmake"
+        )
+        set_tests_properties(dc_rom_knight_terminal_release_helper_post_return_position_high_add_prefix PROPERTIES LABELS rom_required)
+
+        add_test(NAME dc_rom_knight_terminal_release_helper_post_return_position_high_store_prefix CONFIGURATIONS Release
+            COMMAND "${CMAKE_COMMAND}" "-DAPP=$<TARGET_FILE:devils_crush>" "-DCONFIG=$<CONFIG>" "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/knight-terminal-release-helper-post-return-position-high-store-prefix-v1.csv"
+                "-P" "${CMAKE_CURRENT_SOURCE_DIR}/verify_knight_terminal_release_helper_post_return_position_high_store_prefix.cmake")
+        set_tests_properties(dc_rom_knight_terminal_release_helper_post_return_position_high_store_prefix PROPERTIES LABELS rom_required)
+
+        add_test(NAME dc_rom_knight_terminal_release_helper_post_return_position_high_scratch_clear_prefix CONFIGURATIONS Release
+            COMMAND "${CMAKE_COMMAND}" "-DAPP=$<TARGET_FILE:devils_crush>" "-DCONFIG=$<CONFIG>" "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/knight-terminal-release-helper-post-return-position-high-scratch-clear-prefix-v1.csv"
+                "-P" "${CMAKE_CURRENT_SOURCE_DIR}/verify_knight_terminal_release_helper_post_return_position_high_scratch_clear_prefix.cmake")
+        set_tests_properties(dc_rom_knight_terminal_release_helper_post_return_position_high_scratch_clear_prefix PROPERTIES LABELS rom_required)
+
+        add_test(NAME dc_rom_knight_terminal_release_helper_post_return_position_high_mode_load_prefix CONFIGURATIONS Release
+            COMMAND "${CMAKE_COMMAND}" "-DAPP=$<TARGET_FILE:devils_crush>" "-DCONFIG=$<CONFIG>" "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/knight-terminal-release-helper-post-return-position-high-mode-load-prefix-v1.csv"
+                "-P" "${CMAKE_CURRENT_SOURCE_DIR}/verify_knight_terminal_release_helper_post_return_position_high_mode_load_prefix.cmake")
+        set_tests_properties(dc_rom_knight_terminal_release_helper_post_return_position_high_mode_load_prefix PROPERTIES LABELS rom_required)
+
+        add_test(NAME dc_rom_knight_terminal_release_helper_post_return_position_high_mode_signed_branch_prefix CONFIGURATIONS Release
+            COMMAND "${CMAKE_COMMAND}" "-DAPP=$<TARGET_FILE:devils_crush>" "-DCONFIG=$<CONFIG>" "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/knight-terminal-release-helper-post-return-position-high-mode-signed-branch-prefix-v1.csv"
+                "-P" "${CMAKE_CURRENT_SOURCE_DIR}/verify_knight_terminal_release_helper_post_return_position_high_mode_signed_branch_prefix.cmake")
+        set_tests_properties(dc_rom_knight_terminal_release_helper_post_return_position_high_mode_signed_branch_prefix PROPERTIES LABELS rom_required)
+
+        add_test(NAME dc_rom_knight_terminal_release_helper_post_return_position_high_carry_clear_prefix CONFIGURATIONS Release
+            COMMAND "${CMAKE_COMMAND}" "-DAPP=$<TARGET_FILE:devils_crush>" "-DCONFIG=$<CONFIG>" "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/knight-terminal-release-helper-post-return-position-high-carry-clear-prefix-v1.csv"
+                "-P" "${CMAKE_CURRENT_SOURCE_DIR}/verify_knight_terminal_release_helper_post_return_position_high_carry_clear_prefix.cmake")
+        set_tests_properties(dc_rom_knight_terminal_release_helper_post_return_position_high_carry_clear_prefix PROPERTIES LABELS rom_required)
+
+        add_test(NAME dc_rom_knight_terminal_release_helper_post_return_position_high_base_load_prefix CONFIGURATIONS Release
+            COMMAND "${CMAKE_COMMAND}" "-DAPP=$<TARGET_FILE:devils_crush>" "-DCONFIG=$<CONFIG>" "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/knight-terminal-release-helper-post-return-position-high-base-load-prefix-v1.csv"
+                "-P" "${CMAKE_CURRENT_SOURCE_DIR}/verify_knight_terminal_release_helper_post_return_position_high_base_load_prefix.cmake")
+        set_tests_properties(dc_rom_knight_terminal_release_helper_post_return_position_high_base_load_prefix PROPERTIES LABELS rom_required)
+
+        add_test(NAME dc_rom_knight_terminal_release_helper_post_return_position_high_scratch_add_prefix CONFIGURATIONS Release
+            COMMAND "${CMAKE_COMMAND}" "-DAPP=$<TARGET_FILE:devils_crush>" "-DCONFIG=$<CONFIG>" "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/knight-terminal-release-helper-post-return-position-high-scratch-add-prefix-v1.csv"
+                "-P" "${CMAKE_CURRENT_SOURCE_DIR}/verify_knight_terminal_release_helper_post_return_position_high_scratch_add_prefix.cmake")
+        set_tests_properties(dc_rom_knight_terminal_release_helper_post_return_position_high_scratch_add_prefix PROPERTIES LABELS rom_required)
+
+        add_test(NAME dc_rom_knight_terminal_release_helper_post_return_position_high_actor_store_prefix CONFIGURATIONS Release
+            COMMAND "${CMAKE_COMMAND}" "-DAPP=$<TARGET_FILE:devils_crush>" "-DCONFIG=$<CONFIG>" "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/knight-terminal-release-helper-post-return-position-high-actor-store-prefix-v1.csv"
+                "-P" "${CMAKE_CURRENT_SOURCE_DIR}/verify_knight_terminal_release_helper_post_return_position_high_actor_store_prefix.cmake")
+        set_tests_properties(dc_rom_knight_terminal_release_helper_post_return_position_high_actor_store_prefix PROPERTIES LABELS rom_required)
+
+        add_test(NAME dc_rom_knight_terminal_release_helper_post_return_actor_field_load_prefix CONFIGURATIONS Release
+            COMMAND "${CMAKE_COMMAND}" "-DAPP=$<TARGET_FILE:devils_crush>" "-DCONFIG=$<CONFIG>" "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/knight-terminal-release-helper-post-return-actor-field-load-prefix-v1.csv"
+                "-P" "${CMAKE_CURRENT_SOURCE_DIR}/verify_knight_terminal_release_helper_post_return_actor_field_load_prefix.cmake")
+        set_tests_properties(dc_rom_knight_terminal_release_helper_post_return_actor_field_load_prefix PROPERTIES LABELS rom_required)
+
+        add_test(NAME dc_rom_knight_terminal_release_helper_post_return_actor_field_scratch_add_prefix CONFIGURATIONS Release
+            COMMAND "${CMAKE_COMMAND}" "-DAPP=$<TARGET_FILE:devils_crush>" "-DCONFIG=$<CONFIG>" "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/knight-terminal-release-helper-post-return-actor-field-scratch-add-prefix-v1.csv"
+                "-P" "${CMAKE_CURRENT_SOURCE_DIR}/verify_knight_terminal_release_helper_post_return_actor_field_scratch_add_prefix.cmake")
+        set_tests_properties(dc_rom_knight_terminal_release_helper_post_return_actor_field_scratch_add_prefix PROPERTIES LABELS rom_required)
+
+        add_test(NAME dc_rom_knight_terminal_release_helper_post_return_actor_field_store_prefix CONFIGURATIONS Release
+            COMMAND "${CMAKE_COMMAND}" "-DAPP=$<TARGET_FILE:devils_crush>" "-DCONFIG=$<CONFIG>" "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/knight-terminal-release-helper-post-return-actor-field-store-prefix-v1.csv"
+                "-P" "${CMAKE_CURRENT_SOURCE_DIR}/verify_knight_terminal_release_helper_post_return_actor_field_store_prefix.cmake")
+        set_tests_properties(dc_rom_knight_terminal_release_helper_post_return_actor_field_store_prefix PROPERTIES LABELS rom_required)
+
+        add_test(NAME dc_rom_knight_terminal_release_helper_post_return_actor_field_clear_prefix CONFIGURATIONS Release
+            COMMAND "${CMAKE_COMMAND}" "-DAPP=$<TARGET_FILE:devils_crush>" "-DCONFIG=$<CONFIG>" "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/knight-terminal-release-helper-post-return-actor-field-clear-prefix-v1.csv"
+                "-P" "${CMAKE_CURRENT_SOURCE_DIR}/verify_knight_terminal_release_helper_post_return_actor_field_clear_prefix.cmake")
+        set_tests_properties(dc_rom_knight_terminal_release_helper_post_return_actor_field_clear_prefix PROPERTIES LABELS rom_required)
+
+        add_test(NAME dc_rom_knight_terminal_release_helper_post_return_actor_field_zero_store_prefix CONFIGURATIONS Release
+            COMMAND "${CMAKE_COMMAND}" "-DAPP=$<TARGET_FILE:devils_crush>" "-DCONFIG=$<CONFIG>" "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/knight-terminal-release-helper-post-return-actor-field-zero-store-prefix-v1.csv"
+                "-P" "${CMAKE_CURRENT_SOURCE_DIR}/verify_knight_terminal_release_helper_post_return_actor_field_zero_store_prefix.cmake")
+        set_tests_properties(dc_rom_knight_terminal_release_helper_post_return_actor_field_zero_store_prefix PROPERTIES LABELS rom_required)
+
+        add_test(NAME dc_rom_knight_terminal_release_helper_post_return_actor_field_second_zero_store_prefix CONFIGURATIONS Release
+            COMMAND "${CMAKE_COMMAND}" "-DAPP=$<TARGET_FILE:devils_crush>" "-DCONFIG=$<CONFIG>" "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/knight-terminal-release-helper-post-return-actor-field-second-zero-store-prefix-v1.csv"
+                "-P" "${CMAKE_CURRENT_SOURCE_DIR}/verify_knight_terminal_release_helper_post_return_actor_field_second_zero_store_prefix.cmake")
+        set_tests_properties(dc_rom_knight_terminal_release_helper_post_return_actor_field_second_zero_store_prefix PROPERTIES LABELS rom_required)
+
+        add_test(NAME dc_rom_knight_terminal_release_helper_post_return_actor_attribute_load_prefix CONFIGURATIONS Release
+            COMMAND "${CMAKE_COMMAND}" "-DAPP=$<TARGET_FILE:devils_crush>" "-DCONFIG=$<CONFIG>" "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/knight-terminal-release-helper-post-return-actor-attribute-load-prefix-v1.csv"
+                "-P" "${CMAKE_CURRENT_SOURCE_DIR}/verify_knight_terminal_release_helper_post_return_actor_attribute_load_prefix.cmake")
+        set_tests_properties(dc_rom_knight_terminal_release_helper_post_return_actor_attribute_load_prefix PROPERTIES LABELS rom_required)
+
+        add_test(NAME dc_rom_knight_terminal_release_helper_post_return_actor_attribute_mask_prefix CONFIGURATIONS Release
+            COMMAND "${CMAKE_COMMAND}" "-DAPP=$<TARGET_FILE:devils_crush>" "-DCONFIG=$<CONFIG>" "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/knight-terminal-release-helper-post-return-actor-attribute-mask-prefix-v1.csv"
+                "-P" "${CMAKE_CURRENT_SOURCE_DIR}/verify_knight_terminal_release_helper_post_return_actor_attribute_mask_prefix.cmake")
+        set_tests_properties(dc_rom_knight_terminal_release_helper_post_return_actor_attribute_mask_prefix PROPERTIES LABELS rom_required)
+
+        add_test(NAME dc_rom_knight_terminal_release_helper_post_return_actor_attribute_mode_merge_prefix CONFIGURATIONS Release
+            COMMAND "${CMAKE_COMMAND}" "-DAPP=$<TARGET_FILE:devils_crush>" "-DCONFIG=$<CONFIG>" "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/knight-terminal-release-helper-post-return-actor-attribute-mode-merge-prefix-v1.csv"
+                "-P" "${CMAKE_CURRENT_SOURCE_DIR}/verify_knight_terminal_release_helper_post_return_actor_attribute_mode_merge_prefix.cmake")
+        set_tests_properties(dc_rom_knight_terminal_release_helper_post_return_actor_attribute_mode_merge_prefix PROPERTIES LABELS rom_required)
+
+        add_test(NAME dc_rom_knight_terminal_release_helper_post_return_actor_attribute_store_prefix CONFIGURATIONS Release
+            COMMAND "${CMAKE_COMMAND}" "-DAPP=$<TARGET_FILE:devils_crush>" "-DCONFIG=$<CONFIG>" "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/knight-terminal-release-helper-post-return-actor-attribute-store-prefix-v1.csv"
+                "-P" "${CMAKE_CURRENT_SOURCE_DIR}/verify_knight_terminal_release_helper_post_return_actor_attribute_store_prefix.cmake")
+        set_tests_properties(dc_rom_knight_terminal_release_helper_post_return_actor_attribute_store_prefix PROPERTIES LABELS rom_required)
+
+        add_test(NAME dc_rom_knight_terminal_release_helper_post_return_actor_field_constant_load_prefix CONFIGURATIONS Release
+            COMMAND "${CMAKE_COMMAND}" "-DAPP=$<TARGET_FILE:devils_crush>" "-DCONFIG=$<CONFIG>" "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/knight-terminal-release-helper-post-return-actor-field-constant-load-prefix-v1.csv"
+                "-P" "${CMAKE_CURRENT_SOURCE_DIR}/verify_knight_terminal_release_helper_post_return_actor_field_constant_load_prefix.cmake")
+        set_tests_properties(dc_rom_knight_terminal_release_helper_post_return_actor_field_constant_load_prefix PROPERTIES LABELS rom_required)
+
+        add_test(NAME dc_rom_knight_terminal_release_helper_post_return_actor_field_constant_store_prefix CONFIGURATIONS Release
+            COMMAND "${CMAKE_COMMAND}" "-DAPP=$<TARGET_FILE:devils_crush>" "-DCONFIG=$<CONFIG>" "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/knight-terminal-release-helper-post-return-actor-field-constant-store-prefix-v1.csv"
+                "-P" "${CMAKE_CURRENT_SOURCE_DIR}/verify_knight_terminal_release_helper_post_return_actor_field_constant_store_prefix.cmake")
+        set_tests_properties(dc_rom_knight_terminal_release_helper_post_return_actor_field_constant_store_prefix PROPERTIES LABELS rom_required)
+
+        add_test(NAME dc_rom_knight_terminal_release_helper_post_return_actor_field_second_constant_load_prefix CONFIGURATIONS Release
+            COMMAND "${CMAKE_COMMAND}" "-DAPP=$<TARGET_FILE:devils_crush>" "-DCONFIG=$<CONFIG>" "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/knight-terminal-release-helper-post-return-actor-field-second-constant-load-prefix-v1.csv"
+                "-P" "${CMAKE_CURRENT_SOURCE_DIR}/verify_knight_terminal_release_helper_post_return_actor_field_second_constant_load_prefix.cmake")
+        set_tests_properties(dc_rom_knight_terminal_release_helper_post_return_actor_field_second_constant_load_prefix PROPERTIES LABELS rom_required)
+
+        add_test(
+            NAME dc_rom_knight_terminal_release_helper_post_return_pointer_low_load_prefix
+            CONFIGURATIONS Release
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/knight-terminal-release-helper-post-return-pointer-low-load-prefix-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_knight_terminal_release_helper_post_return_pointer_low_load_prefix.cmake"
+        )
+        set_tests_properties(
+            dc_rom_knight_terminal_release_helper_post_return_pointer_low_load_prefix
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_knight_terminal_release_helper_post_return_pointer_low_store_prefix
+            CONFIGURATIONS Release
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/knight-terminal-release-helper-post-return-pointer-low-store-prefix-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_knight_terminal_release_helper_post_return_pointer_low_store_prefix.cmake"
+        )
+        set_tests_properties(
+            dc_rom_knight_terminal_release_helper_post_return_pointer_low_store_prefix
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_knight_terminal_release_helper_post_return_pointer_high_load_prefix
+            CONFIGURATIONS Release
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/knight-terminal-release-helper-post-return-pointer-high-load-prefix-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_knight_terminal_release_helper_post_return_pointer_high_load_prefix.cmake"
+        )
+        set_tests_properties(
+            dc_rom_knight_terminal_release_helper_post_return_pointer_high_load_prefix
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_knight_terminal_release_helper_post_return_pointer_high_store_prefix
+            CONFIGURATIONS Release
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/knight-terminal-release-helper-post-return-pointer-high-store-prefix-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_knight_terminal_release_helper_post_return_pointer_high_store_prefix.cmake"
+        )
+        set_tests_properties(
+            dc_rom_knight_terminal_release_helper_post_return_pointer_high_store_prefix
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_knight_terminal_release_helper_post_return_scratch_clear_prefix
+            CONFIGURATIONS Release
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/knight-terminal-release-helper-post-return-scratch-clear-prefix-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_knight_terminal_release_helper_post_return_scratch_clear_prefix.cmake"
+        )
+        set_tests_properties(
+            dc_rom_knight_terminal_release_helper_post_return_scratch_clear_prefix
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_knight_terminal_release_helper_post_return_mode_load_prefix
+            CONFIGURATIONS Release
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/knight-terminal-release-helper-post-return-mode-load-prefix-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_knight_terminal_release_helper_post_return_mode_load_prefix.cmake"
+        )
+        set_tests_properties(
+            dc_rom_knight_terminal_release_helper_post_return_mode_load_prefix
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_knight_terminal_release_helper_shared_jump_prefix
+            CONFIGURATIONS Release
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/knight-terminal-release-helper-shared-jump-prefix-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_knight_terminal_release_helper_shared_jump_prefix.cmake"
+        )
+        set_tests_properties(
+            dc_rom_knight_terminal_release_helper_shared_jump_prefix
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_knight_terminal_release_helper_shared_scan_initializer_prefix
+            CONFIGURATIONS Release
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/knight-terminal-release-helper-shared-scan-initializer-prefix-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_knight_terminal_release_helper_shared_scan_initializer_prefix.cmake"
+        )
+        set_tests_properties(
+            dc_rom_knight_terminal_release_helper_shared_scan_initializer_prefix
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_knight_terminal_release_helper_shared_scan_read_prefix
+            CONFIGURATIONS Release
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/knight-terminal-release-helper-shared-scan-read-prefix-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_knight_terminal_release_helper_shared_scan_read_prefix.cmake"
+        )
+        set_tests_properties(
+            dc_rom_knight_terminal_release_helper_shared_scan_read_prefix
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_knight_terminal_release_helper_shared_scan_nonzero_branch_prefix
+            CONFIGURATIONS Release
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/knight-terminal-release-helper-shared-scan-nonzero-branch-prefix-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_knight_terminal_release_helper_shared_scan_nonzero_branch_prefix.cmake"
+        )
+        set_tests_properties(
+            dc_rom_knight_terminal_release_helper_shared_scan_nonzero_branch_prefix
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_knight_terminal_release_helper_shared_scan_increment_prefix
+            CONFIGURATIONS Release
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/knight-terminal-release-helper-shared-scan-increment-prefix-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_knight_terminal_release_helper_shared_scan_increment_prefix.cmake"
+        )
+        set_tests_properties(
+            dc_rom_knight_terminal_release_helper_shared_scan_increment_prefix
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_knight_terminal_release_helper_shared_scan_range_compare_prefix
+            CONFIGURATIONS Release
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/knight-terminal-release-helper-shared-scan-range-compare-prefix-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_knight_terminal_release_helper_shared_scan_range_compare_prefix.cmake"
+        )
+        set_tests_properties(
+            dc_rom_knight_terminal_release_helper_shared_scan_range_compare_prefix
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_knight_terminal_release_helper_shared_scan_loop_branch_prefix
+            CONFIGURATIONS Release
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/knight-terminal-release-helper-shared-scan-loop-branch-prefix-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_knight_terminal_release_helper_shared_scan_loop_branch_prefix.cmake"
+        )
+        set_tests_properties(
+            dc_rom_knight_terminal_release_helper_shared_scan_loop_branch_prefix
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_knight_terminal_release_helper_allocator_load_prefix
+            CONFIGURATIONS Release
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/knight-terminal-release-helper-allocator-load-prefix-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_knight_terminal_release_helper_allocator_load_prefix.cmake"
+        )
+        set_tests_properties(
+            dc_rom_knight_terminal_release_helper_allocator_load_prefix
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_knight_terminal_release_helper_allocator_store_prefix
+            CONFIGURATIONS Release
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/knight-terminal-release-helper-allocator-store-prefix-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_knight_terminal_release_helper_allocator_store_prefix.cmake"
+        )
+        set_tests_properties(
+            dc_rom_knight_terminal_release_helper_allocator_store_prefix
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_knight_terminal_release_helper_allocator_mode_load_prefix
+            CONFIGURATIONS Release
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/knight-terminal-release-helper-allocator-mode-load-prefix-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_knight_terminal_release_helper_allocator_mode_load_prefix.cmake"
+        )
+        set_tests_properties(
+            dc_rom_knight_terminal_release_helper_allocator_mode_load_prefix
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_knight_terminal_release_helper_allocator_mode_branch_prefix
+            CONFIGURATIONS Release
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/knight-terminal-release-helper-allocator-mode-branch-prefix-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_knight_terminal_release_helper_allocator_mode_branch_prefix.cmake"
+        )
+        set_tests_properties(
+            dc_rom_knight_terminal_release_helper_allocator_mode_branch_prefix
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_knight_terminal_release_helper_allocator_return_carry_clear_prefix
+            CONFIGURATIONS Release
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/knight-terminal-release-helper-allocator-return-carry-clear-prefix-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_knight_terminal_release_helper_allocator_return_carry_clear_prefix.cmake"
+        )
+        set_tests_properties(
+            dc_rom_knight_terminal_release_helper_allocator_return_carry_clear_prefix
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_knight_terminal_release_prefix
+            CONFIGURATIONS Release
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/knight-terminal-release-prefix-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_knight_terminal_release_prefix.cmake"
+        )
+        set_tests_properties(
+            dc_rom_knight_terminal_release_prefix
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
             NAME dc_rom_knight_waiting_parent_semantic
             COMMAND
                 "${CMAKE_COMMAND}"
@@ -1724,6 +2472,131 @@ if(TARGET devils_crush)
         )
         set_tests_properties(
             dc_rom_knight_waiting_parent_semantic
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_knight_release_transition
+            CONFIGURATIONS Release
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/knight-release-transition-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_knight_release_transition.cmake"
+        )
+        set_tests_properties(
+            dc_rom_knight_release_transition
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_knight_movement_parent_semantic
+            CONFIGURATIONS Release
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/knight-movement-parent-semantic-v1.csv"
+                "-DORDINAL=2"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_knight_movement_parent_semantic.cmake"
+        )
+        set_tests_properties(
+            dc_rom_knight_movement_parent_semantic
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_knight_movement_parent_timer_expiry_semantic
+            CONFIGURATIONS Release
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/knight-movement-parent-timer-expiry-semantic-v1.csv"
+                "-DORDINAL=4"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_knight_movement_parent_semantic.cmake"
+        )
+        set_tests_properties(
+            dc_rom_knight_movement_parent_timer_expiry_semantic
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_knight_movement_parent_phase_wrap_semantic
+            CONFIGURATIONS Release
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/knight-movement-parent-phase-wrap-semantic-v1.csv"
+                "-DORDINAL=16"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_knight_movement_parent_semantic.cmake"
+        )
+        set_tests_properties(
+            dc_rom_knight_movement_parent_phase_wrap_semantic
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_knight_movement_parent_interrupt_semantic
+            CONFIGURATIONS Release
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/knight-movement-parent-interrupt-semantic-v1.csv"
+                "-DORDINAL=58"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_knight_movement_parent_semantic.cmake"
+        )
+        set_tests_properties(
+            dc_rom_knight_movement_parent_interrupt_semantic
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_knight_movement_parent_collision_return_interrupt_semantic
+            CONFIGURATIONS Release
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/knight-movement-parent-collision-return-interrupt-semantic-v1.csv"
+                "-DORDINAL=60"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_knight_movement_parent_semantic.cmake"
+        )
+        set_tests_properties(
+            dc_rom_knight_movement_parent_collision_return_interrupt_semantic
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_knight_movement_parent_all_semantic
+            CONFIGURATIONS Release
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/knight-movement-parent-all-semantic-v1.csv"
+                "-DORDINAL=all"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_knight_movement_parent_semantic.cmake"
+        )
+        set_tests_properties(
+            dc_rom_knight_movement_parent_all_semantic
             PROPERTIES LABELS rom_required
         )
 
@@ -4064,6 +4937,292 @@ if(TARGET devils_crush)
         )
         set_tests_properties(
             dc_rom_tower_guard
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_tower_bonus_entrance
+            CONFIGURATIONS Release
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/tower-bonus-entrance-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_tower_bonus_entrance.cmake"
+        )
+        set_tests_properties(
+            dc_rom_tower_bonus_entrance
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_tower_bonus_stage_selection
+            CONFIGURATIONS Release
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/tower-bonus-stage-selection-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_tower_bonus_stage_selection.cmake"
+        )
+        set_tests_properties(
+            dc_rom_tower_bonus_stage_selection
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_giant_door_hit_prefix
+            CONFIGURATIONS Release
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/giant-door-hit-prefix-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_giant_door_hit_prefix.cmake"
+        )
+        set_tests_properties(
+            dc_rom_giant_door_hit_prefix
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_giant_door_completion_prefix
+            CONFIGURATIONS Release
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/giant-door-completion-prefix-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_giant_door_completion_prefix.cmake"
+        )
+        set_tests_properties(
+            dc_rom_giant_door_completion_prefix
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_giant_door_completion_score_prefix
+            CONFIGURATIONS Release
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/giant-door-completion-score-prefix-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_giant_door_completion_score_prefix.cmake"
+        )
+        set_tests_properties(
+            dc_rom_giant_door_completion_score_prefix
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_giant_door_completion_scheduler_prefix
+            CONFIGURATIONS Release
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/giant-door-completion-scheduler-prefix-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_giant_door_completion_scheduler_prefix.cmake"
+        )
+        set_tests_properties(
+            dc_rom_giant_door_completion_scheduler_prefix
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_giant_door_completion_request_prefix
+            CONFIGURATIONS Release
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/giant-door-completion-request-prefix-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_giant_door_completion_request_prefix.cmake"
+        )
+        set_tests_properties(
+            dc_rom_giant_door_completion_request_prefix
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_giant_door_completion_wait_gate
+            CONFIGURATIONS Release
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/giant-door-completion-wait-gate-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_giant_door_completion_wait_gate.cmake"
+        )
+        set_tests_properties(
+            dc_rom_giant_door_completion_wait_gate
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_giant_door_completion_channel_advance
+            CONFIGURATIONS Release
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/giant-door-completion-channel-advance-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_giant_door_completion_channel_advance.cmake"
+        )
+        set_tests_properties(
+            dc_rom_giant_door_completion_channel_advance
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_giant_door_completion_terminal_channel
+            CONFIGURATIONS Release
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/giant-door-completion-terminal-channel-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_giant_door_completion_terminal_channel.cmake"
+        )
+        set_tests_properties(
+            dc_rom_giant_door_completion_terminal_channel
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_session_zero_ball_prefix
+            CONFIGURATIONS Release
+            COMMAND "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>" "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/session-zero-ball-prefix-v1.csv"
+                "-P" "${CMAKE_CURRENT_SOURCE_DIR}/verify_session_zero_ball_prefix.cmake"
+        )
+        set_tests_properties(dc_rom_session_zero_ball_prefix PROPERTIES LABELS rom_required)
+
+        add_test(
+            NAME dc_rom_session_zero_ball_scheduler
+            CONFIGURATIONS Release
+            COMMAND "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>" "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/session-zero-ball-scheduler-v1.csv"
+                "-P" "${CMAKE_CURRENT_SOURCE_DIR}/verify_session_zero_ball_scheduler.cmake"
+        )
+        set_tests_properties(dc_rom_session_zero_ball_scheduler PROPERTIES LABELS rom_required)
+
+        add_test(
+            NAME dc_rom_session_zero_ball_countdown
+            CONFIGURATIONS Release
+            COMMAND "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>" "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/session-zero-ball-countdown-v1.csv"
+                "-P" "${CMAKE_CURRENT_SOURCE_DIR}/verify_session_zero_ball_countdown.cmake"
+        )
+        set_tests_properties(dc_rom_session_zero_ball_countdown PROPERTIES LABELS rom_required)
+
+        add_test(
+            NAME dc_rom_session_zero_ball_expiry_scheduler
+            CONFIGURATIONS Release
+            COMMAND "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>" "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/session-zero-ball-expiry-scheduler-v1.csv"
+                "-P" "${CMAKE_CURRENT_SOURCE_DIR}/verify_session_zero_ball_expiry_scheduler.cmake"
+        )
+        set_tests_properties(dc_rom_session_zero_ball_expiry_scheduler PROPERTIES LABELS rom_required)
+
+        add_test(
+            NAME dc_rom_session_zero_ball_presentation_gate
+            CONFIGURATIONS Release
+            COMMAND "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>" "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/session-zero-ball-presentation-gate-v1.csv"
+                "-P" "${CMAKE_CURRENT_SOURCE_DIR}/verify_session_zero_ball_presentation_gate.cmake"
+        )
+        set_tests_properties(dc_rom_session_zero_ball_presentation_gate PROPERTIES LABELS rom_required)
+
+        add_test(
+            NAME dc_rom_session_zero_ball_state_gate
+            CONFIGURATIONS Release
+            COMMAND "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>" "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/session-zero-ball-state-gate-v1.csv"
+                "-P" "${CMAKE_CURRENT_SOURCE_DIR}/verify_session_zero_ball_state_gate.cmake"
+        )
+        set_tests_properties(dc_rom_session_zero_ball_state_gate PROPERTIES LABELS rom_required)
+
+        add_test(
+            NAME dc_rom_session_alternate_latch_prefix
+            CONFIGURATIONS Release
+            COMMAND "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>" "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/session-alternate-latch-prefix-v1.csv"
+                "-P" "${CMAKE_CURRENT_SOURCE_DIR}/verify_session_alternate_latch_prefix.cmake"
+        )
+        set_tests_properties(dc_rom_session_alternate_latch_prefix PROPERTIES LABELS rom_required)
+
+        add_test(
+            NAME dc_rom_session_alternate_scheduler
+            CONFIGURATIONS Release
+            COMMAND "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>" "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/session-alternate-scheduler-v1.csv"
+                "-P" "${CMAKE_CURRENT_SOURCE_DIR}/verify_session_alternate_scheduler.cmake"
+        )
+        set_tests_properties(dc_rom_session_alternate_scheduler PROPERTIES LABELS rom_required)
+
+        add_test(
+            NAME dc_rom_session_alternate_outer
+            CONFIGURATIONS Release
+            COMMAND "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>" "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/session-alternate-outer-v1.csv"
+                "-P" "${CMAKE_CURRENT_SOURCE_DIR}/verify_session_alternate_outer.cmake"
+        )
+        set_tests_properties(dc_rom_session_alternate_outer PROPERTIES LABELS rom_required)
+
+        add_test(
+            NAME dc_rom_walled_star_post_destruction_idle
+            CONFIGURATIONS Release
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/walled-star-post-destruction-idle-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_walled_star_post_destruction_idle.cmake"
+        )
+        set_tests_properties(
+            dc_rom_walled_star_post_destruction_idle
             PROPERTIES LABELS rom_required
         )
 

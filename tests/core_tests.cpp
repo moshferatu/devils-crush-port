@@ -3825,6 +3825,65 @@ void test_native_tower_hit_gate()
         "native 60C3 rejects a truncated work-RAM snapshot");
 }
 
+void test_native_tower_bonus_terminal()
+{
+    std::array<std::uint8_t, 0x2000> work_ram{};
+    dc_tower_bonus_terminal terminal{};
+
+    work_ram[0x0CFCU] = 0x01U;
+    work_ram[0x0D4DU] = 0x01U;
+    work_ram[0x182DU] = 0x80U;
+    check(
+        dc_classify_tower_bonus_terminal(
+            work_ram.data(), work_ram.size(), 0x2DU, &terminal)
+                != 0
+            && terminal.slot == 0x2DU
+            && terminal.qualifying_latch == 0x01U
+            && terminal.gate_counter == 0x01U
+            && terminal.collision_state == 0x80U,
+        "native 60F9 identifies the armed final Tower pass");
+
+    work_ram[0x0D4DU] = 0x02U;
+    check(
+        dc_classify_tower_bonus_terminal(
+            work_ram.data(), work_ram.size(), 0x2DU, &terminal)
+            == 0,
+        "native 60F9 defers a nonterminal Tower gate");
+    check(
+        dc_classify_tower_bonus_terminal(
+            work_ram.data(), 0x182DU, 0x2DU, &terminal)
+            == 0,
+        "native 60F9 rejects a truncated work-RAM snapshot");
+}
+
+void test_native_tower_bonus_continuation()
+{
+    std::array<std::uint8_t, 0x2000> work_ram{};
+    dc_tower_bonus_continuation continuation{};
+
+    work_ram[0x182DU] = 0x10U;
+    check(
+        dc_classify_tower_bonus_continuation(
+            work_ram.data(), work_ram.size(), 0x2DU, &continuation)
+                != 0
+            && continuation.slot == 0x2DU
+            && continuation.collision_state == 0x10U,
+        "native 6136 identifies the Tower no-hit continuation");
+
+    work_ram[0x182DU] = 0x90U;
+    check(
+        dc_classify_tower_bonus_continuation(
+            work_ram.data(), work_ram.size(), 0x2DU, &continuation)
+                != 0
+            && continuation.collision_state == 0x90U,
+        "native 6136 identifies the Tower stage-selection continuation");
+    check(
+        dc_classify_tower_bonus_continuation(
+            work_ram.data(), 0x182DU, 0x2DU, &continuation)
+                == 0,
+        "native 6136 rejects a truncated work-RAM snapshot");
+}
+
 void test_native_knight_hit_gate()
 {
     std::array<std::uint8_t, 0x2000> work_ram{};
@@ -8132,6 +8191,8 @@ int main()
     test_native_upper_wall_pocket_hand_countdown();
     test_native_walled_star_hit_gate();
     test_native_tower_hit_gate();
+    test_native_tower_bonus_terminal();
+    test_native_tower_bonus_continuation();
     test_native_knight_hit_gate();
     test_native_knight_initializers();
     test_native_side_spider_initializer();

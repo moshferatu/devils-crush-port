@@ -77,8 +77,8 @@ $dynamicCount = @($rows | Where-Object Class -eq "D").Count
 $staticCount = @($rows | Where-Object Class -eq "S").Count
 $deferredCount = @($rows | Where-Object Class -eq "F").Count
 if (
-    $dynamicCount -ne 57 -or
-    $staticCount -ne 29 -or
+    $dynamicCount -ne 58 -or
+    $staticCount -ne 28 -or
     $deferredCount -ne 19
 ) {
     throw (
@@ -126,7 +126,7 @@ foreach ($phrase in $requiredAuditPhrases) {
 
 Write-Output "Coverage manifest verified."
 Write-Output (
-    "Classified rows: 105 total; 57 dynamic, 29 static, 19 deferred."
+    "Classified rows: 105 total; 58 dynamic, 28 static, 19 deferred."
 )
 Write-Output (
     "Manual audit: frontend, controls, session, scoring, chart 1-28, " +

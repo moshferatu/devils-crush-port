@@ -1014,6 +1014,48 @@ parse_logical_address_range(const std::string_view text)
                                         .logical_pc = 0x565CU,
                                     }
                             && request.all_calls;
+                       const bool proven_zero_ball_scheduler =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x01U,
+                                       .logical_pc = 0xC7F4U,
+                                   }
+                           && request.all_calls;
+                       const bool proven_alternate_ball_scheduler =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x01U,
+                                       .logical_pc = 0xC7EFU,
+                                   }
+                           && request.all_calls;
+                       const bool proven_zero_ball_countdown_tick =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x01U,
+                                       .logical_pc = 0xC7F9U,
+                                   }
+                           && request.all_calls;
+                       const bool proven_zero_ball_expiry_scheduler =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x01U,
+                                       .logical_pc = 0xC7FCU,
+                                   }
+                           && request.all_calls;
+                       const bool proven_zero_ball_presentation_gate =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x01U,
+                                       .logical_pc = 0xC804U,
+                                   }
+                           && request.all_calls;
+                       const bool proven_zero_ball_state_gate =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x01U,
+                                       .logical_pc = 0xC812U,
+                                   }
+                           && request.all_calls;
                        const bool proven_sorcerer_deployment_initializer =
                            request.routine
                                    == RoutineKey{
@@ -1438,6 +1480,48 @@ parse_logical_address_range(const std::string_view text)
                                        .logical_pc = 0x62B8U,
                                    }
                            && request.all_calls;
+                       const bool proven_giant_door_hit_continuation =
+                               request.routine
+                                       == RoutineKey{
+                                           .physical_bank = 0x03U,
+                                           .logical_pc = 0x62CBU,
+                                       }
+                               && request.all_calls;
+                       const bool proven_giant_door_completion_score_prefix =
+                               request.routine
+                                       == RoutineKey{
+                                           .physical_bank = 0x03U,
+                                           .logical_pc = 0x62D4U,
+                                       }
+                               && request.all_calls;
+                       const bool proven_giant_door_completion_scheduler_prefix =
+                               request.routine
+                                       == RoutineKey{
+                                           .physical_bank = 0x03U,
+                                           .logical_pc = 0x62E2U,
+                                       }
+                               && request.all_calls;
+                       const bool proven_giant_door_completion_request_prefix =
+                               request.routine
+                                       == RoutineKey{
+                                           .physical_bank = 0x03U,
+                                           .logical_pc = 0x62F0U,
+                                       }
+                               && request.all_calls;
+                       const bool proven_giant_door_completion_wait_gate =
+                               request.routine
+                                       == RoutineKey{
+                                           .physical_bank = 0x03U,
+                                           .logical_pc = 0x62FEU,
+                                       }
+                               && request.all_calls;
+                       const bool proven_giant_door_completion_channel_advance =
+                               request.routine
+                                       == RoutineKey{
+                                           .physical_bank = 0x03U,
+                                           .logical_pc = 0x6308U,
+                                       }
+                               && request.all_calls;
                        const bool proven_giant_door_initializer =
                            request.routine
                                    == RoutineKey{
@@ -1625,11 +1709,32 @@ parse_logical_address_range(const std::string_view text)
                                        .logical_pc = 0x6339U,
                                    }
                            && request.all_calls;
+                       const bool proven_walled_star_post_destruction_idle =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x03U,
+                                       .logical_pc = 0x638FU,
+                                   }
+                           && request.all_calls;
                        const bool proven_tower_hit_gate =
                            request.routine
                                    == RoutineKey{
                                        .physical_bank = 0x03U,
                                        .logical_pc = 0x60C3U,
+                                   }
+                           && request.all_calls;
+                       const bool proven_tower_bonus_terminal =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x03U,
+                                       .logical_pc = 0x60F9U,
+                                   }
+                           && request.all_calls;
+                       const bool proven_tower_bonus_continuation =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x03U,
+                                       .logical_pc = 0x6136U,
                                    }
                            && request.all_calls;
                        const bool proven_tower_initializer =
@@ -1646,6 +1751,318 @@ parse_logical_address_range(const std::string_view text)
                                        .logical_pc = 0x73D8U,
                                    }
                            && request.all_calls;
+                       const bool proven_knight_terminal_score_prefix =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x03U,
+                                       .logical_pc = 0x73FEU,
+                                   }
+                           && request.all_calls;
+                        const bool proven_knight_terminal_release_prefix =
+                            request.routine
+                                    == RoutineKey{
+                                        .physical_bank = 0x03U,
+                                        .logical_pc = 0x7418U,
+                                    }
+                            && request.all_calls;
+                        const bool proven_knight_terminal_acknowledgement_prefix =
+                            request.routine
+                                    == RoutineKey{
+                                        .physical_bank = 0x03U,
+                                        .logical_pc = 0x740AU,
+                                    }
+                            && request.all_calls;
+                        const bool proven_knight_terminal_scheduler =
+                            request.routine
+                                    == RoutineKey{
+                                        .physical_bank = 0x03U,
+                                        .logical_pc = 0x7420U,
+                                    }
+                            && request.all_calls;
+                        const bool proven_knight_terminal_release_helper_prefix =
+                            request.routine
+                                    == RoutineKey{
+                                        .physical_bank = 0x02U,
+                                        .logical_pc = 0x41A0U,
+                                    }
+                            && request.all_calls;
+                        const bool proven_knight_terminal_release_helper_setup_prefix =
+                            request.routine
+                                    == RoutineKey{
+                                        .physical_bank = 0x02U,
+                                        .logical_pc = 0x41A8U,
+                                    }
+                            && request.all_calls;
+                        const bool proven_knight_terminal_release_helper_table_setup_prefix =
+                            request.routine
+                                    == RoutineKey{
+                                        .physical_bank = 0x02U,
+                                        .logical_pc = 0x41ADU,
+                                    }
+                            && request.all_calls;
+                        const bool proven_knight_terminal_release_helper_call_prefix =
+                            request.routine
+                                    == RoutineKey{
+                                        .physical_bank = 0x02U,
+                                        .logical_pc = 0x41C2U,
+                                    }
+                            && request.all_calls;
+                        const bool proven_knight_terminal_release_helper_pointer_prefix =
+                            request.routine
+                                    == RoutineKey{
+                                        .physical_bank = 0x02U,
+                                        .logical_pc = 0x41F5U,
+                                    }
+                            && request.all_calls;
+                        const bool proven_knight_terminal_release_helper_shared_call_prefix =
+                            request.routine
+                                    == RoutineKey{
+                                        .physical_bank = 0x02U,
+                                        .logical_pc = 0x420BU,
+                                    }
+                            && request.all_calls;
+                        const bool proven_knight_terminal_release_helper_post_return_mode_branch_prefix =
+                            request.routine
+                                    == RoutineKey{
+                                        .physical_bank = 0x02U,
+                                        .logical_pc = 0x420EU,
+                                    }
+                            && request.all_calls;
+                        const bool proven_knight_terminal_release_helper_post_return_pointer_low_load_prefix =
+                            request.routine
+                                    == RoutineKey{
+                                        .physical_bank = 0x02U,
+                                        .logical_pc = 0x4210U,
+                                    }
+                            && request.all_calls;
+                        const bool proven_knight_terminal_release_helper_post_return_pointer_low_store_prefix =
+                            request.routine
+                                    == RoutineKey{
+                                        .physical_bank = 0x02U,
+                                        .logical_pc = 0x4212U,
+                                    }
+                            && request.all_calls;
+                        const bool proven_knight_terminal_release_helper_post_return_pointer_high_load_prefix =
+                            request.routine
+                                    == RoutineKey{
+                                        .physical_bank = 0x02U,
+                                        .logical_pc = 0x4215U,
+                                    }
+                            && request.all_calls;
+                        const bool proven_knight_terminal_release_helper_post_return_pointer_high_store_prefix =
+                            request.routine
+                                    == RoutineKey{
+                                        .physical_bank = 0x02U,
+                                        .logical_pc = 0x4217U,
+                                    }
+                            && request.all_calls;
+                        const bool proven_knight_terminal_release_helper_post_return_scratch_clear_prefix =
+                            request.routine
+                                    == RoutineKey{
+                                        .physical_bank = 0x02U,
+                                        .logical_pc = 0x421AU,
+                                    }
+                            && request.all_calls;
+                        const bool proven_knight_terminal_release_helper_post_return_mode_load_prefix =
+                            request.routine
+                                    == RoutineKey{
+                                        .physical_bank = 0x02U,
+                                        .logical_pc = 0x421CU,
+                                    }
+                            && request.all_calls;
+                        const bool proven_knight_terminal_release_helper_post_return_mode_signed_branch_prefix =
+                            request.routine
+                                    == RoutineKey{
+                                        .physical_bank = 0x02U,
+                                        .logical_pc = 0x421EU,
+                                    }
+                            && request.all_calls;
+                        const bool proven_knight_terminal_release_helper_post_return_position_carry_clear_prefix =
+                            request.routine
+                                    == RoutineKey{
+                                        .physical_bank = 0x02U,
+                                        .logical_pc = 0x4222U,
+                                    }
+                            && request.all_calls;
+                        const bool proven_knight_terminal_release_helper_post_return_position_base_load_prefix =
+                            request.routine
+                                    == RoutineKey{
+                                        .physical_bank = 0x02U,
+                                        .logical_pc = 0x4223U,
+                                    }
+                            && request.all_calls;
+                        const bool proven_knight_terminal_release_helper_post_return_position_mode_add_prefix =
+                            request.routine
+                                    == RoutineKey{
+                                        .physical_bank = 0x02U,
+                                        .logical_pc = 0x4226U,
+                                    }
+                            && request.all_calls;
+                        const bool proven_knight_terminal_release_helper_post_return_position_store_prefix =
+                            request.routine
+                                    == RoutineKey{
+                                        .physical_bank = 0x02U,
+                                        .logical_pc = 0x4228U,
+                                    }
+                            && request.all_calls;
+                        const bool proven_knight_terminal_release_helper_post_return_position_high_load_prefix =
+                            request.routine
+                                    == RoutineKey{
+                                        .physical_bank = 0x02U,
+                                        .logical_pc = 0x422BU,
+                                    }
+                            && request.all_calls;
+                        const bool proven_knight_terminal_release_helper_post_return_position_high_add_prefix =
+                            request.routine == RoutineKey{.physical_bank = 0x02U, .logical_pc = 0x422EU}
+                            && request.all_calls;
+                        const bool proven_knight_terminal_release_helper_post_return_position_high_store_prefix =
+                            request.routine == RoutineKey{.physical_bank = 0x02U, .logical_pc = 0x4230U}
+                            && request.all_calls;
+                        const bool proven_knight_terminal_release_helper_post_return_position_high_scratch_clear_prefix =
+                            request.routine == RoutineKey{.physical_bank = 0x02U, .logical_pc = 0x4233U}
+                            && request.all_calls;
+                        const bool proven_knight_terminal_release_helper_post_return_position_high_mode_load_prefix =
+                            request.routine == RoutineKey{.physical_bank = 0x02U, .logical_pc = 0x4235U}
+                            && request.all_calls;
+                        const bool proven_knight_terminal_release_helper_post_return_position_high_mode_signed_branch_prefix =
+                            request.routine == RoutineKey{.physical_bank = 0x02U, .logical_pc = 0x4237U}
+                            && request.all_calls;
+                        const bool proven_knight_terminal_release_helper_post_return_position_high_carry_clear_prefix =
+                            request.routine == RoutineKey{.physical_bank = 0x02U, .logical_pc = 0x423BU}
+                            && request.all_calls;
+                        const bool proven_knight_terminal_release_helper_post_return_position_high_base_load_prefix =
+                            request.routine == RoutineKey{.physical_bank = 0x02U, .logical_pc = 0x423CU}
+                            && request.all_calls;
+                        const bool proven_knight_terminal_release_helper_post_return_position_high_scratch_add_prefix =
+                            request.routine == RoutineKey{.physical_bank = 0x02U, .logical_pc = 0x423FU}
+                            && request.all_calls;
+                        const bool proven_knight_terminal_release_helper_post_return_position_high_actor_store_prefix =
+                            request.routine == RoutineKey{.physical_bank = 0x02U, .logical_pc = 0x4241U}
+                            && request.all_calls;
+                        const bool proven_knight_terminal_release_helper_post_return_actor_field_load_prefix =
+                            request.routine == RoutineKey{.physical_bank = 0x02U, .logical_pc = 0x4244U}
+                            && request.all_calls;
+                        const bool proven_knight_terminal_release_helper_post_return_actor_field_scratch_add_prefix =
+                            request.routine == RoutineKey{.physical_bank = 0x02U, .logical_pc = 0x4247U}
+                            && request.all_calls;
+                        const bool proven_knight_terminal_release_helper_post_return_actor_field_store_prefix =
+                            request.routine == RoutineKey{.physical_bank = 0x02U, .logical_pc = 0x4249U}
+                            && request.all_calls;
+                        const bool proven_knight_terminal_release_helper_post_return_actor_field_clear_prefix =
+                            request.routine == RoutineKey{.physical_bank = 0x02U, .logical_pc = 0x424CU}
+                            && request.all_calls;
+                        const bool proven_knight_terminal_release_helper_post_return_actor_field_zero_store_prefix =
+                            request.routine == RoutineKey{.physical_bank = 0x02U, .logical_pc = 0x424DU}
+                            && request.all_calls;
+                        const bool proven_knight_terminal_release_helper_post_return_actor_field_second_zero_store_prefix =
+                            request.routine == RoutineKey{.physical_bank = 0x02U, .logical_pc = 0x4250U}
+                            && request.all_calls;
+                        const bool proven_knight_terminal_release_helper_post_return_actor_attribute_load_prefix =
+                            request.routine == RoutineKey{.physical_bank = 0x02U, .logical_pc = 0x4253U}
+                            && request.all_calls;
+                        const bool proven_knight_terminal_release_helper_post_return_actor_attribute_mask_prefix =
+                            request.routine == RoutineKey{.physical_bank = 0x02U, .logical_pc = 0x4256U}
+                            && request.all_calls;
+                        const bool proven_knight_terminal_release_helper_post_return_actor_attribute_mode_merge_prefix =
+                            request.routine == RoutineKey{.physical_bank = 0x02U, .logical_pc = 0x4258U}
+                            && request.all_calls;
+                        const bool proven_knight_terminal_release_helper_post_return_actor_attribute_store_prefix =
+                            request.routine == RoutineKey{.physical_bank = 0x02U, .logical_pc = 0x425AU}
+                            && request.all_calls;
+                        const bool proven_knight_terminal_release_helper_post_return_actor_field_constant_load_prefix =
+                            request.routine == RoutineKey{.physical_bank = 0x02U, .logical_pc = 0x425DU}
+                            && request.all_calls;
+                        const bool proven_knight_terminal_release_helper_post_return_actor_field_constant_store_prefix =
+                            request.routine == RoutineKey{.physical_bank = 0x02U, .logical_pc = 0x425FU}
+                            && request.all_calls;
+                        const bool proven_knight_terminal_release_helper_post_return_actor_field_second_constant_load_prefix =
+                            request.routine == RoutineKey{.physical_bank = 0x02U, .logical_pc = 0x4262U}
+                            && request.all_calls;
+                        const bool proven_knight_terminal_release_helper_post_return_actor_field_second_constant_store_prefix = request.routine == RoutineKey{.physical_bank = 0x02U, .logical_pc = 0x4264U} && request.all_calls;
+                        const bool proven_knight_terminal_release_helper_shared_jump_prefix =
+                            request.routine
+                                    == RoutineKey{
+                                        .physical_bank = 0x01U,
+                                        .logical_pc = 0xC024U,
+                                    }
+                            && request.all_calls;
+                        const bool proven_knight_terminal_release_helper_shared_scan_initializer_prefix =
+                            request.routine
+                                    == RoutineKey{
+                                        .physical_bank = 0x01U,
+                                        .logical_pc = 0xC5ABU,
+                                    }
+                            && request.all_calls;
+                        const bool proven_knight_terminal_release_helper_shared_scan_read_prefix =
+                            request.routine
+                                    == RoutineKey{
+                                        .physical_bank = 0x01U,
+                                        .logical_pc = 0xC5ADU,
+                                    }
+                            && request.all_calls;
+                        const bool proven_knight_terminal_release_helper_shared_scan_nonzero_branch_prefix =
+                            request.routine
+                                    == RoutineKey{
+                                        .physical_bank = 0x01U,
+                                        .logical_pc = 0xC5B0U,
+                                    }
+                            && request.all_calls;
+                        const bool proven_knight_terminal_release_helper_shared_scan_increment_prefix =
+                            request.routine
+                                    == RoutineKey{
+                                        .physical_bank = 0x01U,
+                                        .logical_pc = 0xC5B2U,
+                                    }
+                            && request.all_calls;
+                        const bool proven_knight_terminal_release_helper_shared_scan_range_compare_prefix =
+                            request.routine
+                                    == RoutineKey{
+                                        .physical_bank = 0x01U,
+                                        .logical_pc = 0xC5B3U,
+                                    }
+                            && request.all_calls;
+                        const bool proven_knight_terminal_release_helper_shared_scan_loop_branch_prefix =
+                            request.routine
+                                    == RoutineKey{
+                                        .physical_bank = 0x01U,
+                                        .logical_pc = 0xC5B5U,
+                                    }
+                            && request.all_calls;
+                        const bool proven_knight_terminal_release_helper_allocator_load_prefix =
+                            request.routine
+                                    == RoutineKey{
+                                        .physical_bank = 0x01U,
+                                        .logical_pc = 0xC5B9U,
+                                    }
+                            && request.all_calls;
+                        const bool proven_knight_terminal_release_helper_allocator_store_prefix =
+                            request.routine
+                                    == RoutineKey{
+                                        .physical_bank = 0x01U,
+                                        .logical_pc = 0xC5BBU,
+                                    }
+                            && request.all_calls;
+                        const bool proven_knight_terminal_release_helper_allocator_mode_load_prefix =
+                            request.routine
+                                    == RoutineKey{
+                                        .physical_bank = 0x01U,
+                                        .logical_pc = 0xC5BEU,
+                                    }
+                            && request.all_calls;
+                        const bool proven_knight_terminal_release_helper_allocator_mode_branch_prefix =
+                            request.routine
+                                    == RoutineKey{
+                                        .physical_bank = 0x01U,
+                                        .logical_pc = 0xC5C0U,
+                                    }
+                            && request.all_calls;
+                        const bool proven_knight_terminal_release_helper_allocator_return_carry_clear_prefix =
+                            request.routine
+                                    == RoutineKey{
+                                        .physical_bank = 0x01U,
+                                        .logical_pc = 0xC5C7U,
+                                    }
+                            && request.all_calls;
                        const bool proven_knight_waiting_parent =
                            request.routine
                                    == RoutineKey{
@@ -1653,6 +2070,15 @@ parse_logical_address_range(const std::string_view text)
                                        .logical_pc = 0x7378U,
                                    }
                            && request.all_calls;
+                       const bool proven_knight_movement_parent =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x03U,
+                                       .logical_pc = 0x73A6U,
+                                   }
+                          && (request.all_calls || request.ordinal == 2U || request.ordinal == 4U
+                              || request.ordinal == 16U || request.ordinal == 58U
+                              || request.ordinal == 60U);
                        const bool proven_spider_appearance =
                            request.routine
                                    == RoutineKey{
@@ -2020,6 +2446,12 @@ parse_logical_address_range(const std::string_view text)
                            && !proven_session_input_gate
                            && !proven_ball_drain_threshold
                            && !proven_remaining_ball_presentation
+                           && !proven_zero_ball_scheduler
+                           && !proven_alternate_ball_scheduler
+                           && !proven_zero_ball_countdown_tick
+                           && !proven_zero_ball_expiry_scheduler
+                           && !proven_zero_ball_presentation_gate
+                           && !proven_zero_ball_state_gate
                            && !proven_remaining_ball_transition_gate
                            && !proven_remaining_ball_decision
                            && !proven_giant_skeleton_eyeball_gate
@@ -2094,6 +2526,12 @@ parse_logical_address_range(const std::string_view text)
                            && !proven_devils_coffin_opening
                            && !proven_devils_coffin_closing
                            && !proven_giant_door_hit_gate
+                           && !proven_giant_door_hit_continuation
+                           && !proven_giant_door_completion_score_prefix
+                           && !proven_giant_door_completion_scheduler_prefix
+                           && !proven_giant_door_completion_request_prefix
+                           && !proven_giant_door_completion_wait_gate
+                           && !proven_giant_door_completion_channel_advance
                            && !proven_giant_door_initializer
                            && !proven_giant_face_request_gate
                            && !proven_giant_face_animator_gate
@@ -2120,10 +2558,72 @@ parse_logical_address_range(const std::string_view text)
                            && !proven_upper_wall_pocket_hand_post_opening_state
                            && !proven_upper_wall_pocket_hand_post_opening_countdown
                            && !proven_walled_star_hit_gate
+                           && !proven_walled_star_post_destruction_idle
                            && !proven_tower_hit_gate
+                           && !proven_tower_bonus_terminal
+                           && !proven_tower_bonus_continuation
                            && !proven_tower_initializer
-                           && !proven_knight_hit_gate
-                           && !proven_knight_waiting_parent
+                            && !proven_knight_hit_gate
+                            && !proven_knight_terminal_score_prefix
+                            && !proven_knight_terminal_release_prefix
+                            && !proven_knight_terminal_acknowledgement_prefix
+                            && !proven_knight_terminal_scheduler
+                            && !proven_knight_terminal_release_helper_prefix
+                            && !proven_knight_terminal_release_helper_setup_prefix
+                            && !proven_knight_terminal_release_helper_table_setup_prefix
+                            && !proven_knight_terminal_release_helper_call_prefix
+                            && !proven_knight_terminal_release_helper_pointer_prefix
+                            && !proven_knight_terminal_release_helper_shared_call_prefix
+                            && !proven_knight_terminal_release_helper_post_return_mode_branch_prefix
+                            && !proven_knight_terminal_release_helper_post_return_pointer_low_load_prefix
+                            && !proven_knight_terminal_release_helper_post_return_pointer_low_store_prefix
+                            && !proven_knight_terminal_release_helper_post_return_pointer_high_load_prefix
+                            && !proven_knight_terminal_release_helper_post_return_pointer_high_store_prefix
+                            && !proven_knight_terminal_release_helper_post_return_scratch_clear_prefix
+                            && !proven_knight_terminal_release_helper_post_return_mode_load_prefix
+                            && !proven_knight_terminal_release_helper_post_return_mode_signed_branch_prefix
+                            && !proven_knight_terminal_release_helper_post_return_position_carry_clear_prefix
+                            && !proven_knight_terminal_release_helper_post_return_position_base_load_prefix
+                            && !proven_knight_terminal_release_helper_post_return_position_mode_add_prefix
+                            && !proven_knight_terminal_release_helper_post_return_position_store_prefix
+                            && !proven_knight_terminal_release_helper_post_return_position_high_load_prefix
+                            && !proven_knight_terminal_release_helper_post_return_position_high_add_prefix
+                            && !proven_knight_terminal_release_helper_post_return_position_high_store_prefix
+                            && !proven_knight_terminal_release_helper_post_return_position_high_scratch_clear_prefix
+                            && !proven_knight_terminal_release_helper_post_return_position_high_mode_load_prefix
+                            && !proven_knight_terminal_release_helper_post_return_position_high_mode_signed_branch_prefix
+                            && !proven_knight_terminal_release_helper_post_return_position_high_carry_clear_prefix
+                            && !proven_knight_terminal_release_helper_post_return_position_high_base_load_prefix
+                            && !proven_knight_terminal_release_helper_post_return_position_high_scratch_add_prefix
+                            && !proven_knight_terminal_release_helper_post_return_position_high_actor_store_prefix
+                            && !proven_knight_terminal_release_helper_post_return_actor_field_load_prefix
+                            && !proven_knight_terminal_release_helper_post_return_actor_field_scratch_add_prefix
+                            && !proven_knight_terminal_release_helper_post_return_actor_field_store_prefix
+                            && !proven_knight_terminal_release_helper_post_return_actor_field_clear_prefix
+                            && !proven_knight_terminal_release_helper_post_return_actor_field_zero_store_prefix
+                            && !proven_knight_terminal_release_helper_post_return_actor_field_second_zero_store_prefix
+                            && !proven_knight_terminal_release_helper_post_return_actor_attribute_load_prefix
+                            && !proven_knight_terminal_release_helper_post_return_actor_attribute_mask_prefix
+                            && !proven_knight_terminal_release_helper_post_return_actor_attribute_mode_merge_prefix
+                            && !proven_knight_terminal_release_helper_post_return_actor_attribute_store_prefix
+                            && !proven_knight_terminal_release_helper_post_return_actor_field_constant_load_prefix
+                            && !proven_knight_terminal_release_helper_post_return_actor_field_constant_store_prefix
+                            && !proven_knight_terminal_release_helper_post_return_actor_field_second_constant_load_prefix
+                            && !proven_knight_terminal_release_helper_post_return_actor_field_second_constant_store_prefix
+                            && !proven_knight_terminal_release_helper_shared_jump_prefix
+                            && !proven_knight_terminal_release_helper_shared_scan_initializer_prefix
+                            && !proven_knight_terminal_release_helper_shared_scan_read_prefix
+                            && !proven_knight_terminal_release_helper_shared_scan_nonzero_branch_prefix
+                            && !proven_knight_terminal_release_helper_shared_scan_increment_prefix
+                            && !proven_knight_terminal_release_helper_shared_scan_range_compare_prefix
+                            && !proven_knight_terminal_release_helper_shared_scan_loop_branch_prefix
+                            && !proven_knight_terminal_release_helper_allocator_load_prefix
+                            && !proven_knight_terminal_release_helper_allocator_store_prefix
+                            && !proven_knight_terminal_release_helper_allocator_mode_load_prefix
+                            && !proven_knight_terminal_release_helper_allocator_mode_branch_prefix
+                            && !proven_knight_terminal_release_helper_allocator_return_carry_clear_prefix
+                            && !proven_knight_waiting_parent
+                           && !proven_knight_movement_parent
                            && !proven_spider_appearance
                            && !proven_tower_insect_animation
                            && !proven_small_soldier_source_gates
@@ -2191,7 +2691,7 @@ parse_logical_address_range(const std::string_view text)
             "semantic "
             "01:D500@all, semantic 01:D081@all, semantic 01:C5C9@all, "
             "semantic 01:C3CB@all, semantic 01:C49E@all, semantic 01:DD6E@all, "
-            "semantic 01:C80A@all, semantic 01:C7EA@all, semantic 01:C7E5@all, "
+            "semantic 01:C80A@all, semantic 01:C7F4@all, semantic 01:C7EF@all, semantic 01:C7F9@all, semantic 01:C7FC@all, semantic 01:C804@all, semantic 01:C812@all, semantic 01:C7EA@all, semantic 01:C7E5@all, "
             "semantic 02:42EB@all, "
             "semantic 02:42F6@all, semantic 02:4345@all, "
             "semantic 02:4357@all, semantic 02:4371@all, "
@@ -2220,17 +2720,79 @@ parse_logical_address_range(const std::string_view text)
             "semantic 03:63F1@all, "
             "semantic 03:640A@all, "
             "semantic 03:6445@all, "
-            "semantic 03:6294@all, semantic 03:62B8@all, "
+            "semantic 03:6294@all, semantic 03:62B8@all, semantic 03:62CB@all, "
+            "semantic 03:62D4@all, semantic 03:62E2@all, "
             "semantic 03:74D8@all, "
             "semantic 03:767E@all, "
             "semantic 03:76FA@all, "
             "semantic 03:7726@all, "
             "semantic 03:6339@all, "
             "semantic 03:60C3@all, "
+            "semantic 03:60F9@all, "
+            "semantic 03:6136@all, "
             "semantic 03:60B3@all, "
             "semantic 03:7378@all, "
-            "semantic 03:73D8@all, "
-            "semantic 03:65A4@all, "
+            "semantic 03:73A6@all, "
+             "semantic 03:73D8@all, "
+             "semantic 03:73FE@all, "
+             "semantic 03:740A@all, "
+             "semantic 03:7418@all, "
+             "semantic 03:7420@all, "
+             "semantic 02:41A0@all, "
+             "semantic 02:41A8@all, "
+             "semantic 02:41AD@all, "
+             "semantic 02:41C2@all, "
+             "semantic 02:41F5@all, "
+             "semantic 02:420B@all, "
+             "semantic 02:420E@all, "
+             "semantic 02:4210@all, "
+             "semantic 02:4212@all, "
+             "semantic 02:4215@all, "
+             "semantic 02:4217@all, "
+             "semantic 02:421A@all, "
+             "semantic 02:421C@all, "
+             "semantic 02:421E@all, "
+             "semantic 02:4222@all, "
+             "semantic 02:4223@all, "
+             "semantic 02:4226@all, "
+             "semantic 02:4228@all, "
+             "semantic 02:422B@all, "
+             "semantic 02:422E@all, "
+             "semantic 02:4230@all, "
+             "semantic 02:4233@all, "
+             "semantic 02:4235@all, "
+             "semantic 02:4237@all, "
+             "semantic 02:423B@all, "
+             "semantic 02:423C@all, "
+             "semantic 02:423F@all, "
+             "semantic 02:4241@all, "
+             "semantic 02:4244@all, "
+             "semantic 02:4247@all, "
+             "semantic 02:4249@all, "
+             "semantic 02:424C@all, "
+             "semantic 02:424D@all, "
+             "semantic 02:4250@all, "
+             "semantic 02:4253@all, "
+             "semantic 02:4256@all, "
+             "semantic 02:4258@all, "
+             "semantic 02:425A@all, "
+             "semantic 02:425D@all, "
+             "semantic 02:425F@all, "
+             "semantic 02:4262@all, "
+             "semantic 02:4264@all, "
+             "semantic 01:C024@all, "
+             "semantic 01:C5AB@all, "
+             "semantic 01:C5AD@all, "
+             "semantic 01:C5B0@all, "
+             "semantic 01:C5B2@all, "
+             "semantic 01:C5B3@all, "
+             "semantic 01:C5B5@all, "
+             "semantic 01:C5B9@all, "
+             "semantic 01:C5BB@all, "
+             "semantic 01:C5BE@all, "
+             "semantic 01:C5C0@all, "
+             "semantic 01:C5C7@all, "
+             "semantic 03:65A4@all, "
             "semantic 03:6054@all, "
             "semantic 02:5F22@all, "
             "semantic 02:5F4A@all, "

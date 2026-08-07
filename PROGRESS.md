@@ -1,6 +1,6 @@
 # Project Progress
 
-Last updated: 2026-08-04
+Last updated: 2026-08-06
 
 ## Current Status
 
@@ -231,14 +231,47 @@ complete 2,650-call/665-write artifacts remain byte-identical in Debug and
 Release. Equal-state score and randomized-reset outcomes remain available as
 assembly fallback.
 
-Semantic `03:62B8@all` now covers the Giant Door's idle hit gate. It reads
-indexed collision state `$3800,X` and reproduces the load, taken positive
-branch, accumulator, flags, and 27-cycle return through two instruction
-checkpoints. All 676 route calls execute natively, including seven calls
-containing original interrupt handlers; the complete 676-call/88-write
-artifacts remain byte-identical in Debug and Release. The unexercised hit
-path retains its score, three-hit counter, and completion handshake in
-assembly.
+Semantic `03:62B8@all` now covers the Giant Door's idle hit gate and the
+geometry-delivered collision-clear/score-load prefix. Semantic `03:62CB@all`
+reproduces the exact first-two-hit 27-cycle counter decrement/nonterminal
+branch to original `03:62D0` and third-hit 33-cycle zero branch to native
+`03:62D4`. That successor now reproduces the exact 57-cycle, four-write
+50,000-point argument/stack handoff to the original score helper. Its
+post-score `03:62E2` successor now reproduces the exact 243-cycle, nine-write
+completion-state/coroutine handoff: it marks the Door complete, clears its
+counter, and installs `03:62F0` through native-equivalent `01:C018/C5C9`
+scheduling. That `03:62F0` successor now reproduces its exact 243-cycle,
+eight-write completion-channel request and coroutine handoff, setting bit zero
+of the indexed `$2D06` channel and installing `03:62FE`. That successor now
+owns its exact 48-cycle clear-bit wait return through four instruction
+checkpoints, including all five observed timer-interrupt passages. The later
+`03:6308` set-bit successor now owns all four channel advances and their
+coroutine reschedules: channels one through three take the exact 252-cycle,
+eight-write path, while terminal channel four takes its exact 246-cycle,
+eight-write handoff to the one-byte `03:6318` coroutine-return callback.
+Semantic `03:7378@all` now consumes each released Knight channel through its
+exact 363-cycle, 12-write activation transaction, clears bit zero, disables
+the waiting surface, initializes motion, and installs `03:73A6`; later motion
+and hit handling remain assembly-owned. The three carry-clear movement
+fixtures, `03:73A6@2`, `03:73A6@4`, and `03:73A6@16`, now compose the exact
+165-cycle collision-free table pass: ordinal two performs the 360-cycle,
+nine-write timer-decrement/no-hit tick; ordinal four takes the 429-cycle,
+11-write timer-reload/phase-advance/no-hit tick; and ordinal 16 takes the
+438-cycle, 12-write phase-wrap/no-hit tick. The first checkpointed
+interrupt fixture, `03:73A6@58`, preserves its 1,053-cycle, 22-write
+timer-interrupt passage byte-for-byte. Collision-return fixture `03:73A6@60`
+preserves its 1,233-cycle, 27-write timer-interrupt passage and `73AF` stacked
+return boundary; the collision/multi-pass and remaining
+interrupt-bearing movement records remain
+assembly-owned. The dedicated terminal routes are byte-identical in Debug and
+Release.
+
+Semantic `03:73A6@all` subsequently proved the complete compatible subset:
+all 64 collision-free, one-pass, no-hit calls on the controlled 129-call
+route now execute natively, including the timer-decrement, timer-reload,
+phase-wrap, and checkpointed `73D8`/`73AF` interrupt boundaries. Collision/
+multi-pass and hit records conservatively return to assembly; the aggregate
+census, call, and ordered-write artifacts remain byte-identical.
 
 Semantic `02:445B@all` now covers the hidden Big-Star feature controller's
 idle gate. It reads shared Little-Skull latch `$2CFA` and reproduces the
@@ -1034,6 +1067,209 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
 
 ## Completed
 
+- [x] Extend the bounded Knight movement parent through its timer-expiry and
+  phase-wrap branches: `03:73A6@2` preserves the collision-free
+  timer-decrement/no-hit tick, `03:73A6@4` its timer-reload/phase-advance/no-hit
+  sibling, and `03:73A6@16` its phase-wrap/no-hit sibling. The native
+  `CMP #4` and downstream no-hit `CLC` now retain their carry/zero behavior;
+  all three dedicated Release regressions retain byte-identical census, call,
+  and ordered-write artifacts.
+- [x] Add the first checkpointed Knight-movement interrupt fixture:
+  `03:73A6@58` preserves its 1,053-cycle, 22-write movement call and the
+  handler's `73D8` stacked return boundary. Its dedicated Release regression
+  retains byte-identical census, call, and ordered-write artifacts.
+- [x] Compose the Knight collision-helper return into the movement parent:
+  `03:73A6@60` now preserves the child `03:6988` RTS, parent `03:73AF`
+  carry branch, and their 1,233-cycle, 27-write timer-interrupt passage.
+  Its dedicated Release regression retains byte-identical census, call, and
+  ordered-write artifacts.
+- [x] Promote the collision-free Knight movement parent to semantic
+  `03:73A6@all`: all 64 compatible calls on the controlled 129-call route
+  now run natively with byte-identical aggregate census, call, and ordered-
+  write artifacts. Collision/multi-pass and hit calls remain conservative
+  assembly fallbacks.
+- [x] Extend the semantic Knight hit gate through its terminal prefix:
+  a forced fourth hit at `03:73D8@1848` now preserves the exact 75-cycle
+  latch-clear/counter-zero/carry-set return at `03:73E8`. The movement parent
+  deliberately retains the carry-set destruction continuation in assembly.
+  Its `03:73FE@all` successor now natively prepares the 100-unit award and
+  takes the exact 51-cycle banked `01:C02A` score handoff. Following the
+  assembly-owned score/release helper, `03:740A@all` additionally owns the
+  exact 51-cycle queue-channel acknowledgement prefix and resumes original
+  `03:7415` for the common helper. Its `02:41A0@all` entry now owns the exact
+  48-cycle four-store scratch-clear prefix and resumes original `02:41A8`;
+  its `02:41A8@all` successor then owns the exact 21-cycle command setup;
+  `02:41AD@all` then owns the exact 123-cycle saved-index/table-coordinate
+  setup and resumes original `02:41C2`; its `02:41C2@all` successor then owns
+  the exact 21-cycle `JSR $41F5` stack frame and resumes the shared child.
+  Its terminal-only `02:41F5@all` entry then owns the exact 48-cycle pointer
+  copy through `$2D:$2E`, resuming at original `02:420B`. Its terminal-only
+  successor owns the exact 21-cycle `JSR $C024` stack frame. Its terminal-only
+  `01:C024@all` successor then owns the exact 12-cycle jump to `$C5AB`.
+  Its terminal-only `01:C5AB@all` successor then owns the exact 6-cycle scan
+  initializer, and its terminal-only `01:C5AD@all` successor then owns the
+  exact 15-cycle slot-four occupancy read and resumes at the original branch.
+  Its terminal-only `01:C5B0@all` successor then owns the exact 6-cycle
+  nonzero not-taken branch and resumes at the original scan increment. Its
+  terminal-only `01:C5B2@all` successor then owns the exact 6-cycle increment
+  and N/Z update, resuming at the original range comparison. Its
+  terminal-only `01:C5B3@all` successor then owns the exact 6-cycle limit
+  comparison, resuming at the original loop branch. Its terminal-only
+  `01:C5B5@all` successor then owns the exact 12-cycle taken loop branch and
+  resumes at the shared scan read. Its terminal-only `01:C5B9@all` successor
+  then owns the exact 6-cycle `$80` reservation-byte load after the shared
+  scan finds its first free slot, resuming at the original indexed store. The
+  terminal-only `01:C5BB@all` successor then owns the exact 15-cycle indexed
+  reservation store and resumes at the original actor setup. The later actor
+  setup's terminal-only `01:C5BE@all` successor then owns the exact 12-cycle
+  cleared `$55` mode-byte load and resumes at the original branch. The branch
+  path's terminal-only `01:C5C0@all` successor then owns the exact 12-cycle
+  taken cleared-mode branch and resumes at the original carry-clear return.
+  Its terminal-only `01:C5C7@all` successor then owns the exact 6-cycle
+  carry clear and resumes at the shared return. That return and the shared
+  worker's later actor/coroutine body remain assembly-backed. After the
+  terminal return, `02:420E@all` owns the exact 6-cycle nonnegative `BMI`
+  fall-through and resumes at the original actor setup. Its terminal-only
+  `02:4210@all` successor then owns the exact 12-cycle `$2D` pointer-low-byte
+  load and resumes at the original indexed store. Its terminal-only
+  `02:4212@all` successor then owns the exact 15-cycle indexed pointer-low-byte
+  store and resumes at the original actor setup. Its terminal-only
+  `02:4215@all` successor then owns the exact 12-cycle `$2E` pointer-high-byte
+  load and resumes at the original indexed store. Its terminal-only
+  `02:4217@all` successor then owns the exact 15-cycle indexed pointer-high-byte
+  store and resumes at the original actor setup. Its terminal-only
+  `02:421A@all` successor then owns the exact 12-cycle `$26` scratch clear and
+  resumes at the original position-field setup. Its `02:421C@all` successor
+  then owns the exact 12-cycle `$2B` mode load and resumes at the original
+  signed branch. Its `02:421E@all` successor then owns the terminal
+  nonnegative 12-cycle signed branch and resumes at the original position
+  load. Its `02:4222@all` successor then owns the exact 6-cycle carry clear
+  before the terminal position arithmetic. Its `02:4223@all` successor then
+  owns the exact 15-cycle indexed base-position load before the original
+  mode-byte add. Its `02:4226@all` successor then owns the exact 12-cycle
+  mode-byte add before the original actor-field store. Its `02:4228@all`
+  successor then owns the exact 15-cycle indexed position store before the
+  remaining actor setup. Its `02:422B@all` successor then owns the exact
+  15-cycle indexed high-position load before the original scratch-byte add.
+  Its `02:422E@all` successor then owns the exact terminal 12-cycle
+  cleared-scratch high-byte add before the original indexed store. Its
+  `02:4230@all` successor owns that exact 15-cycle indexed high-position
+  store. Its terminal-only `02:4233@all` successor then owns the exact
+  12-cycle high-position scratch clear. Its terminal-only `02:4235@all`
+  successor then owns the exact 12-cycle high-byte mode load. Its terminal-only
+  `02:4237@all` successor then owns the exact 12-cycle nonnegative signed
+  branch. Its terminal-only `02:423B@all` successor then owns the exact
+  6-cycle carry clear. Its terminal-only `02:423C@all` successor then owns
+  the exact 15-cycle indexed high-position base load. Its terminal-only
+  `02:423F@all` successor then owns the exact 12-cycle high-position scratch
+  add. Its terminal-only `02:4241@all` successor then owns the exact 15-cycle
+  indexed high-position actor-field store. Its terminal-only `02:4244@all`
+  successor then owns the exact 15-cycle indexed companion actor-field load.
+  Its terminal-only `02:4247@all` successor then owns the exact 12-cycle
+  companion-field scratch add. Its terminal-only `02:4249@all` successor then
+  owns the exact 15-cycle indexed companion actor-field store. Its terminal-only
+  `02:424C@all` successor then owns the exact 6-cycle companion actor-field
+  accumulator clear. Its terminal-only `02:424D@all` successor then owns the
+  exact 15-cycle indexed companion actor-field zero store before the remaining
+  setup. Its terminal-only `02:4250@all` successor then owns the exact
+  15-cycle indexed second companion actor-field zero store. Its terminal-only
+  `02:4253@all` successor then owns the exact 15-cycle indexed actor-attribute
+  load. Its terminal-only `02:4256@all` successor then owns the exact 6-cycle
+  actor-attribute high-nibble mask. Its terminal-only `02:4258@all` successor
+  then owns the exact 6-cycle actor-attribute mode-bit merge before the
+  remaining setup. Its terminal-only `02:425A@all` successor then owns the
+  exact 15-cycle indexed actor-attribute store. Its terminal-only `02:425D@all`
+  successor then owns the exact 6-cycle actor-field constant load before the
+  remaining setup. Its terminal-only `02:425F@all` successor then owns the
+  exact 15-cycle indexed actor-field constant store. Its terminal-only
+  `02:4262@all` successor then owns the exact 6-cycle second actor-field
+  constant load before the remaining setup.
+  `03:7418@all` then owns the exact 36-cycle
+  surface-release prefix and its timer-IRQ handoff to native `03:7420@all`.
+  That successor composes its exact 33-cycle banked-call wrapper with the
+  existing 159-cycle coroutine scheduler, preserving the terminal 192-cycle,
+  seven-write dispatch. Score accumulation and post-dispatch continuation stay
+  assembly-backed. Release regressions
+  `dc_rom_knight_terminal_prefix`, `dc_rom_knight_terminal_score_prefix`,
+  `dc_rom_knight_terminal_acknowledgement_prefix`, and
+  `dc_rom_knight_terminal_release_helper_prefix`,
+  `dc_rom_knight_terminal_release_helper_setup_prefix`, and
+  `dc_rom_knight_terminal_release_helper_table_setup_prefix`,
+  `dc_rom_knight_terminal_release_helper_call_prefix`, and
+  `dc_rom_knight_terminal_release_helper_pointer_prefix`,
+  `dc_rom_knight_terminal_release_helper_shared_call_prefix`,
+  `dc_rom_knight_terminal_release_helper_shared_jump_prefix`,
+  `dc_rom_knight_terminal_release_helper_shared_scan_initializer_prefix`,
+  `dc_rom_knight_terminal_release_helper_shared_scan_read_prefix`,
+  `dc_rom_knight_terminal_release_helper_shared_scan_nonzero_branch_prefix`,
+  `dc_rom_knight_terminal_release_helper_shared_scan_increment_prefix`,
+  `dc_rom_knight_terminal_release_helper_shared_scan_range_compare_prefix`,
+  `dc_rom_knight_terminal_release_helper_shared_scan_loop_branch_prefix`,
+  `dc_rom_knight_terminal_release_helper_allocator_load_prefix`,
+  `dc_rom_knight_terminal_release_helper_allocator_store_prefix`,
+  `dc_rom_knight_terminal_release_helper_allocator_mode_load_prefix`,
+  `dc_rom_knight_terminal_release_helper_allocator_mode_branch_prefix`,
+  `dc_rom_knight_terminal_release_helper_allocator_return_carry_clear_prefix`,
+  `dc_rom_knight_terminal_release_helper_post_return_mode_branch_prefix`,
+  `dc_rom_knight_terminal_release_helper_post_return_pointer_low_load_prefix`,
+  `dc_rom_knight_terminal_release_helper_post_return_pointer_low_store_prefix`,
+  `dc_rom_knight_terminal_release_helper_post_return_pointer_high_load_prefix`,
+  `dc_rom_knight_terminal_release_helper_post_return_pointer_high_store_prefix`,
+  `dc_rom_knight_terminal_release_helper_post_return_scratch_clear_prefix`,
+  `dc_rom_knight_terminal_scheduler`, and
+  `dc_rom_knight_terminal_release_prefix` prove byte-identical census, call,
+  and ordered-write SHA-256 artifacts
+  `5bee19b564a4e54444f444fdaf156fcec1385fbca952abf8b531b910eeb75243`,
+  `a4ac7d7692fca47e030823d339961c2952ed83097b72d2203c97225726774aa6`, and
+  `21189884146f10cfe9567127daac6ab96602c2cb1bf14a96874ccf1713abb0b5` for
+  the hit gate, and `5bee19b564a4e54444f444fdaf156fcec1385fbca952abf8b531b910eeb75243`,
+  `2a461b3c1ba2fcc3cfae51c84bd1b2415c13a8f63aa730c87f617aac74dd52b9`, and
+  `4e62b85c9cab18feb840a61b64220579c7319a201a71d1f26f1c230b467a6d3c` for
+  the score handoff, and `5bee19b564a4e54444f444fdaf156fcec1385fbca952abf8b531b910eeb75243`,
+  `aecb7ba43fb1b687c5dd97fddb479e65625700ea9769ec97740dc7cffcd43483`, and
+  `6019ada362a26dc590e99929eaecbb360cad545ae72f401dc21c63285aae8688` for
+  the acknowledgement prefix, and
+  `5bee19b564a4e54444f444fdaf156fcec1385fbca952abf8b531b910eeb75243`,
+  `0461b3880057e3389bfa2bccf6a830468626af05e64d17487d17e29729662ee2`, and
+  `d70def79e1b9a9a254ecca17951a0e1eec328f2e4f997cb11bdf2ca29249bcd0` for
+  the release-helper prefix, and
+  `5bee19b564a4e54444f444fdaf156fcec1385fbca952abf8b531b910eeb75243`,
+  `61f9e088ffef26b31b9217546b61d63c043e8064592791edb2bfca007fdc2dc6`, and
+  `2ae2b3609f6ccec3d25fdfc902949853e91986fcb2d7379d69552b46d83d5346` for
+  the release-helper setup prefix, and
+  `5bee19b564a4e54444f444fdaf156fcec1385fbca952abf8b531b910eeb75243`,
+  `7dbd3b550fe6b13ab5fc207eeced1ac08f4e8692a482fab95c489e099e67519b`, and
+  `5141d9cc48662da37968c0aa785ca34fba6902ea52fad52fd354becd975a6eb7` for
+  the terminal scheduler, and
+  `5bee19b564a4e54444f444fdaf156fcec1385fbca952abf8b531b910eeb75243`,
+  `90f7abb310002e88b4822a68fb324de747d14c3e3b3278ace125bfa1b870b234`, and
+  `dc120b5ea8e1f7377d44b9d57b76fc7def58d294a224808fc53ad4691f0a873b` for
+  the release prefix. The pointer-copy prefix additionally preserves the
+  terminal route's census/call/write SHA-256 values
+  `5bee19b564a4e54444f444fdaf156fcec1385fbca952abf8b531b910eeb75243`,
+  `9584d8d808a3896f382524de2a68fab5dc4ccbce0978f5a8a870594876b99a9e`, and
+  `83b7539cc3d10b658572c721f14484a1a490b87e1e4089d849f6118c9187d676`.
+  The following shared-call frame preserves the same census and its call/write
+  SHA-256 values `fd88f68464e3c2e4edcd260514156502433a90aa09164b66700e1d7f79362d7d`
+  and `347f7b6b0aea1af064dc08d81b2df665df820c8737e6902d2a1f9b1289ce3f91`.
+  The shared-entry jump preserves the same census and its call/write SHA-256
+  values `09f30c6f356257a699ed0722cee40a1d3d7cb51a2c161b8f37b03e046df16935`
+  and `a3ae6fedc5e16e5994e008038d5b614c9f2810db5261f5d0df6764ca1f06cf5d`.
+  The first shared scan read preserves the same census and its call/write
+  SHA-256 values `be670143b988e155b53e512c71dd21aea33df170c93bd1b2c1509766fc247ffa`
+  and `8d3e38d3fd311eb367de6991007ccd88e97ae7dd147a2409025a1d4e4f5f6d52`.
+  The first nonzero shared scan branch preserves the same census and its
+  call/write SHA-256 values `5d70ba2ccf962ecad19da18542c993fd4ed2d093a99571b87912c0ea59268cea`
+  and `3a8cde3d85b7cc50689e4dc852278fe5a2134b14136638f422055cbe9aa0a950`.
+  The first shared scan increment preserves the same census and its call/write
+  SHA-256 values `67a520562e7d42444b3e21954dc663a6a0aab3c0c8fafbbe762759a4bcd6c63a`
+  and `23f9aaaca91dbdb601ef32fe348ff79c7d51187ff28d5c1f5a66a983714a58f0`.
+  The first shared scan range comparison preserves the same census and its
+  call/write SHA-256 values `940976e7e02e216d0680bda4df6e5115f38b0d1230eda7ebae0ccaddf1757a87`
+  and `97434d0e6594e5671b0dabfd19a5c07e7426fa320048cc7660f9884e4bcab836`.
+  The first shared scan loop branch preserves the same census and its
+  call/write SHA-256 values `1167163402dbd8d5377bebb59589b675c9971ad82dd76d62719130df0cee56be`
+  and `f68e62f638a06924a5ee2707a94006a7476999e710733b69a63b10d8fb3f8d69`.
 - [x] Replaced the backglass's static presentation with a native animated
   Devil's Crush title logo and restored the DMD to score-only presentation:
   - Mapped and decoded the five original compressed ROM graphic streams,
@@ -4574,10 +4810,50 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
     transcript on the session route.
   - [x] Compose semantic `01:C80A@all` through `01:C7EA@all` for the
     zero-transition-latch ordinary continuation; cover its complete
-    345-cycle, thirteen-write parent transcript and defer the alternate latch.
+    345-cycle, thirteen-write parent transcript.
   - [x] Compose semantic `01:C7EA@all` through `01:C7E5@all` for the
     nonzero-ball ordinary decision; cover its complete 366-cycle,
-    thirteen-write route and defer zero-ball and alternate-latch paths.
+    thirteen-write route. Its zero-ball sibling composes that 27-cycle
+    load/taken branch with native `01:C7F4` into the exact 345-cycle,
+    thirteen-write zero-ball scheduler transaction, while the alternate
+    nonzero-`$2D32` sibling composes its 21-cycle load/fall-through with the
+    following `01:C7EF` 228-cycle scheduler setup into the exact 249-cycle,
+    nine-write transaction; its nonzero-ball `01:C7E5@all` parent composes
+    that alternate branch into the exact 270-cycle, nine-write outer scope.
+    `01:C7F4@all` now owns the following 318-cycle,
+    thirteen-write zero-ball scheduler setup and resumes at `01:C5E9`; the
+    installed `01:C7F9@all` callback additionally owns 254 common
+    non-expiring delay ticks through exact 123-cycle, five-write composed
+    scopes, while its one `01:C7FC@all` expiry callback owns the exact
+    201-cycle, eight-write scheduler-install tail; the following state-machine
+    body reaches native `01:C804@all` on its clear latch, composing an exact
+    345-cycle, thirteen-write presentation gate; its nonzero-latch return and
+    remaining state-machine body remain assembly-backed. Native `01:C812@all`
+    now also owns its zero-count 237-cycle, eight-write state-flag/scheduler
+    setup while retaining its nonzero reload path in assembly. The
+    alternate `01:C7EF@all` tail likewise owns its 228-cycle, nine-write
+    latch-clear/scheduler setup and resumes at `01:C5E9`; its later body
+    remains in assembly. Its controlled Debug and Release route is byte-identical:
+    Debug census SHA-256 is
+    `000f85c840f1ae52475746d8e8af723c9509a24b37a28baa4e9c4b895c814b7d`,
+    and native call/write SHA-256 values are
+    `80feb43474cb780365d2d36701379863e05de79a35c193aa6a61120d2ed16771` and
+    `773ab75800ad5b961c131313e5499bf04735c62e0471890cd63f1ad80aada1bf`.
+    The alternate scheduler's paired Debug replay has census SHA-256
+    `78576500728927e8bd6fd5595743b04ea54f1662e092040191a4efcd9e0e36af`
+    and native call/write SHA-256 values
+    `0da1d358166e9079b5f156af8797caa34743778f470855502183d9d8802c6e42`
+    and `cca4b5ac2294bbfdcdb7e0b57c6265a7be22609273d05c75fcd8886b11c61b1a`.
+    The alternate-latch controlled route is byte-identical
+    in Debug and Release: Debug census SHA-256 is
+    `78576500728927e8bd6fd5595743b04ea54f1662e092040191a4efcd9e0e36af`,
+    with the same call and ordered-write hashes as Release.
+    The paired Debug audit of the later clear-latch `C804` and zero-count
+    `C812` leaves is also byte-identical: its census, call, and ordered-write
+    SHA-256 values are
+    `baf530269ea4effe1c42aaead83c7f1f18b953e992d890c0dc08a4906a3a851c`,
+    `fc7e46a8258045229faea9a87070da05f358a0197b07701c3981f7feec95ad52`,
+    and `d4bf75fdea28df80ea85151ef0d4c53e10dc8767ed0dd6009e1b3fe405727de6`.
   - [x] Reprofile the preceding session/ball-count and panel boundaries after
     `01:C7E5@all`; retain `01:C786`, `01:C7B0/C7BF`, and direct-VDC
     `09:72FD` assembly-backed until a separately composable gameplay leaf is
@@ -5014,14 +5290,24 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
     compact collision child `03:73D8` at all 10,600 entries.
   - Semantic `03:73D8@all` now handles the fixed Knight slots `$3A-$3D` when
     their collision byte is nonnegative. It preserves the exact 33-cycle
-    load/branch/return transcript and all three IRQ checkpoints; bit-seven
-    hits continue into the assembly-owned four-hit, score, and completion
-    sequence.
+    load/branch/return transcript and all three IRQ checkpoints. A bit-seven
+    nonterminal hit now also natively clears its collision latch, decrements
+    the counter, and hands the original `03:7BF6` collision/audio/score
+    helper its exact JSR frame. A terminal fourth hit likewise natively clears
+    the latch and decrements to zero through its carry-set `03:73E8` return;
+    the subsequent destruction state machine remains assembly-owned.
   - Added the pure-C classifier and `dc_rom_knight_hit_gate_semantic`.
     Release core and focused ROM replay preserve census/call/write SHA-256
     values `9036a9de0c3c9917f47bff8c04c136a4824ec12601fb457d260aa2dfe4443490`,
     `6d8c143b2d3519b08ab769316c6754d14d7b8217e4c1d31609c76b085ecfb3c1`,
     and `9d7282f06841f7e4dcbd40d6ccfeb507647c85afe351251be26d2c04832f31da`.
+  - A forced release/hit route sets only `$383A=$80` at frame 1,402. Its
+    10,642-call `03:73D8@all` replay executes the 96-cycle nonterminal-hit
+    prefix while retaining the 150-write helper transaction in assembly; the
+    census/call/write SHA-256 artifacts are
+    `116338aeb088606d937f58c7aa04d853c2284e2137c60d323fe0e1125e416890`,
+    `6bb57b4cbce1bd9dac52677950a2b430513a873df2942774eb43550ea44f8ced`, and
+    `62b0d5380d9719cd86cc9f6b98b710a64d15bea4fdb88a23b77a6e46ab0f2acd`.
     The composed waiting-parent slice below completes the required Knight
     family checkpoint.
 - [x] Compose the queued-Knight waiting parent:
@@ -5141,11 +5427,102 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
     `6bb4604bcffd88960c62c76ae98bc5a11984a4711bef456da014b3d31cf1de4e`.
   - Passed ROM-free core tests, the Release owning-family regression, and the
     required Debug family checkpoint.
+- [x] Replace the Walled Star's post-destruction idle prefix:
+  - A controlled dispatcher profile at fixed slot `$5B` isolates `03:638F`
+    while both access latches `$2D53/$2D32` are clear. All 2,390 calls resume
+    at the original `03:6399` RTS through the exact 42-cycle, zero-write
+    two-load/two-branch transcript; 36 timer-interrupt passages remain
+    emulator-owned through four instruction checkpoints.
+  - The Release owning regression preserves census/call/write SHA-256 values
+    `432af3cde4152def8c9afc6845b9575c8812859e76330e8de1f3dd61c9a24ee6`,
+    `6bdbc72c548309243846bb601536361693c162bd6689dbec1532f6a034f78cf6`, and
+    `1df166a843eb05bb8f258d942b6c0999b14dee6c5c723276dab8702b55b96b10`.
+    Debug repeats the exact call/write artifacts and preserves its matching
+    census hash `7de49230f4654595da7eb268945929c9cbceabcadb03de21cddd376dc285d1ac`.
+    The live acknowledgement, wall-clear animation, and bonus routing stay
+    assembly-backed.
 
 ## Active Work
 
-Current owner: Codex. The ordinary session drain threshold `01:DD6E@all`
+Current owner: Codex. Current slice: semantic `03:73A6@all` now replaces all
+64 compatible collision-free, one-pass, no-hit Knight movement calls on the
+controlled 129-call route, including timer-decrement, timer-reload,
+phase-wrap, and checkpointed `73D8`/`73AF` interrupt boundaries. Collision/
+multi-pass and downstream hit-helper records remain assembly-backed;
+`03:73D8@all` now supplies both the nonterminal 96-cycle `7BF6` handoff and
+the terminal 75-cycle carry-set prefix, whose `03:73FE@all` successor owns
+the exact 51-cycle 100-unit banked score handoff, whose `03:740A@all`
+successor owns the exact 51-cycle queue acknowledgement prefix, and whose
+`02:41A0@all` common-helper entry owns the exact 48-cycle scratch-clear
+  prefix, whose `02:41A8@all` successor owns the exact 21-cycle command setup,
+  whose `02:41AD@all` successor owns the exact 123-cycle saved-index/table-
+  coordinate setup and resumes original `02:41C2`, whose successor owns the
+  exact 21-cycle `$41F5` call frame, whose terminal-only child successor owns
+  the exact 48-cycle `$2D:$2E` pointer-copy prefix and resumes at `02:420B`,
+  whose successor owns the exact 21-cycle `$C024` call frame, whose child
+  successor owns the exact 12-cycle jump to `$C5AB`, whose successor owns the
+  exact 6-cycle scan initializer, whose terminal-only `01:C5AD` successor
+  owns the exact 15-cycle slot-four occupancy read and resumes at the original
+  branch, whose terminal-only `01:C5B0` successor owns the exact 6-cycle
+  nonzero not-taken branch and resumes at the original scan increment, whose
+  terminal-only `01:C5B2` successor owns the exact 6-cycle increment and N/Z
+  update and resumes at the original range comparison, whose terminal-only
+  `01:C5B3` successor owns the exact 6-cycle limit comparison and resumes at
+  the original loop branch, whose terminal-only `01:C5B5` successor owns the
+  exact 12-cycle taken loop branch and resumes at the shared scan read.
+Its later `03:7418@all` successor owns the exact 36-cycle release/scheduler
+handoff.
+The terminal `03:7420@all` successor composes its 33-cycle banked wrapper
+with the exact 159-cycle coroutine scheduler, preserving its seven-write
+terminal dispatch.
+The Tower's armed
+final-gate prefix `03:60F9@all` now
+replaces only fixed slot `$2D` with qualifying latch `$2CFC=1` and final gate
+`$2D4D=1`. Its exact 54-cycle transcript preserves A across the decrement,
+commits the zero gate at cycle 42, and branches to original `03:612B`. The
+scheduled no-hit continuation `03:6136@all` now replaces all 245 observed
+calls through the exact 21-cycle indexed-load/not-taken-branch transcript,
+resuming at original `613B` for `RTS`. Its cycle-15 checkpoint preserves the
+frame-3413 timer IRQ's stack return PC `6139`. A real geometry-delivered
+Tower collision now also runs `6136`'s exact 75-cycle sign-bit prefix: it
+sets `$3C80=1` and hands off at original `01:C021`, retaining the shared
+timer/audio/scene dispatcher in assembly. The dedicated Release collision
+regression has byte-identical census, call, ordered-write, and selected-state
+artifacts, while the existing BS-5 entrance census, trace, call,
+ordered-write, and selected-state artifacts remain byte-identical. The
+related Debug family audit repeats both controlled routes: the original
+no-hit route retains its 1/1 and 245/245 native counts, and the real collision
+route has 1/1 terminal and stage-selection entries. Both retain exact
+original-vs-native census, trace/call, ordered-write, and selected-state
+hashes. The Giant Door's formerly unprofiled sign-bit collision branch is now
+bounded by a real geometry route: a ball placement at frame 1,228 naturally
+delivers `$384C=$90` twice (frames 1,316 and 1,338). Semantic `03:62B8@all`
+executes the exact 48-cycle collision-clear and 50-unit score-load prefix,
+then resumes original `03:62C4` for the alias-sensitive score operands. All
+2,373 calls in the controlled Release route execute natively, and its owning
+regression preserves byte-identical census, call, ordered-write, and
+selected-state artifacts. A second placement at frame 1,340 naturally delivers
+the third collision at frame 1,372; semantic `03:62CB@all` owns all three
+counter-decrement branches, resuming the first two at original `03:62D0` and
+the terminal branch at native `03:62D4`. Its exact 57-cycle 50,000-point
+argument/stack prefix hands the original score helper back to assembly; the
+later destruction, Knight release, and completion handshake remain
+assembly-backed. The matching Debug
+original-versus-native completion route preserves the same four artifacts
+exactly.
+The Walled Star's post-destruction dispatcher `03:638F@all` now additionally
+owns its fixed-slot clear-latch leaf. With both `$2D53` and `$2D32` zero, it
+replays the 42-cycle two-load/two-branch prefix and hands the original RTS at
+`03:6399` back to assembly. The acknowledgment, animation, and bonus-routing
+branches remain assembly-backed: a controlled `$2D53=1` entry takes one
+912-cycle, 20-write transition and reaches 878 mixed `01:C018` descendants
+with 262,468 aggregate writes, so it is not a composable parent prefix.
+The ordinary session drain threshold `01:DD6E@all`
 now executes natively for the live slot-0 Y comparison against `$02D0`.
+The sibling zero-ball branch at `01:C7E5@all` now composes its exact 27-cycle
+`$2D52` load/taken branch with the native `01:C7F4` 318-cycle scheduler setup,
+forming the exact 345-cycle, thirteen-write outer transaction and resuming at
+`01:C5E9`; the following scheduler-driven game-over body remains assembly-backed.
 All 1,744 session-route calls retain byte-identical Release census, call,
 and ordered-write artifacts; the exact-threshold drain at frame 3,000 also
 retains its 78-cycle carry-set return. The ordinary remaining-ball
@@ -5156,7 +5533,9 @@ transition latch and composes that child after the exact 27-cycle branch,
 covering the 345-cycle ordinary continuation while deferring nonzero-latch
 transitions. Outer decision `01:C7E5@all` now adds the nonzero remaining-ball
 test and its exact 21-cycle fall-through, completing the observed 366-cycle
-ordinary branch while deferring zero-ball and alternate-latch paths. The
+ordinary branch while deferring zero-ball and alternate-latch paths. Both are
+now bounded, composed scheduler transactions; their later bodies remain
+assembly-backed. The
 alternate nonzero-`$55` session threshold, the preceding transition/ball-count
 decisions, and later table-reload and panel paths remain assembly-backed
 pending their own bounded transcripts. A follow-up assembly-only profile
@@ -5167,7 +5546,16 @@ carry 83/114/114 scoped writes, including interrupt-owned work. They remain
 assembly-backed until that helper has a composable transcript or a local
 natural branch is captured. The panel's dominant `09:72FD` form is likewise
 kept emulated because its otherwise small transcript writes VDC ports
-directly, outside the work-RAM gameplay transaction boundary. The Giant-Face
+directly, outside the work-RAM gameplay transaction boundary. A fresh
+standalone screen likewise rejects `01:C5EA`: its stack-rewriting delay
+installer continues into the installed coroutine, so 73 ordinary-route
+observer scopes range from 831 cycles/22 writes to 423,162 cycles/11,369
+writes. Preserve the exact inline `C5EA` compositions already used by native
+parents, but keep the direct boundary assembly-backed. The remaining
+`00:ECFD` dependency has also been re-profiled: it is the mapped audio driver,
+not a gameplay helper. Its 71 controlled-route calls span 314,442 cycles and
+7,869 writes over 16 command IDs, including the session's `$22` and `$27`
+commands; retain it and its `C786/C7B0/C7BF` callers in assembly. The Giant-Face
 mouth closed/no-hit gate
 `03:7726@all`, mirrored helmet controller `02:4C91@all`, Four-Star
 Wall-Pocket controller `02:4A93@all`, and the two Upper Wall-Pocket hand
@@ -5210,8 +5598,9 @@ stage-selection transition remains assembly-backed. A fresh comparison profile n
 the Knight collision helper `03:73D8@all`, and the fresh follow-up parent
 screen now composes its 10,600 fixed-slot `$3A-$3D` waiting calls at
 `03:7378@all` through the exact checkpointed 123-cycle nested-call
-transcript. Door activation, movement, and hit behavior remain assembly
-fallback. A composed Front-/Side-Spider profile now adds shared helper
+transcript. Door activation and terminal Knight destruction remain assembly
+fallback; the nonterminal hit's 96-cycle clear/decrement/`7BF6` handoff is
+now semantic at `03:73D8@all`. A composed Front-/Side-Spider profile now adds shared helper
 `03:65A4@all`: all 5,441 fixed-slot `$26-$29` timer calls execute through
 its checkpointed wait/advance/reset paths, while both collision parents stay
 assembly fallback. A fresh Release re-screen confirms that enabling the
@@ -5377,7 +5766,8 @@ retain their existing native-or-assembly split. The fixed Giant Door layout
 initializer `03:6294@all` now ports its sole `$4C` setup call through the
 exact 345-cycle, fifteen-write handshake-reset/counter/script transaction and
 final `01:C5E6` scheduler checkpoint. Its three-hit collision, score, and
-destruction paths at `03:62B8` retain their existing native-or-assembly split.
+destruction paths at `03:62B8` retain their existing native-or-assembly split;
+the geometry-delivered first-hit prefix resumes at original `03:62C4`.
 The adjacent Walled Star layout initializer `03:6319@all` now ports its sole
 fixed `$5B` setup call through the exact 321-cycle, twelve-write wall-state,
 collision-selector, and scheduler transaction with the final `01:C5E6`
@@ -5857,18 +6247,41 @@ take 5,799/10,830 cycles and 149/269 writes, so the branch remains a combined
 collision/audio/ball-response scene transaction rather than an extension of
 the native 45-cycle dormant gate. No replacement was registered.
 
-A separate Tower-Guard open-entrance probe set only gate `$2D4D` to zero and
+A separate Tower-Guard open-selector probe set only gate `$2D4D` to zero and
 fixed collision byte `$382E` to `$80` at frame 1,200. The route continues to
-run all 2,650 selector updates but never enters `03:612B`; the staged byte is
-not a durable entrance request. BS-5 selection, command `$41`, counter reset,
-and scene transition must be captured from a real collision delivery or a
-validated later collision-pipeline boundary. The native selector leaf is
-unchanged and no parent composition was registered.
-Placing the live ball at the Guard's mapped `(132,510)` position with the
-same open selector exercised the normal collision walker but never dispatched
-actor slot `$2E` or reached `03:612B`. The Guard entrance is therefore not a
-normal ball-coordinate collision consumer; future screening must begin at its
-separate trigger delivery rather than further position/latch probes.
+run all 2,650 selector updates but never enters `03:612B`; the Guard collision
+is not the BS-5 transition source. The native selector leaf is unchanged and
+no parent composition was registered. The fixed-target scanner `01:CC1A`
+does select slot `$2E` twice per frame. Its inner `CC98` trace proves that its
+descriptor accepts ball X=`$84-$A3`, Y=`$0206-$022D` and returns through
+`$CCD2`; those hits return `A=$08`, `Y=$04` to generic `01:CBCF`, not to the
+entrance.
+
+The actual Tower terminal route is now captured: at frame 3,353, slot `$2D`
+with qualifying latch `$2CFC=1` and gate `$2D4D=1` enters `60F9`, decrements
+the gate, and branches to `612B`. That 228-cycle prefix clears `$382D` and
+schedules `6136`. Its controlled route does not deliver a sign-bit Tower
+collision: the 714-cycle frame-3,413 call is a timer-interrupt-bearing no-hit
+return, not stage selection. A separate geometry-delivered probe places the
+ball at the Tower contact surface at frame 3,354; collision staging then writes
+`$382D=$80` naturally and the frame-3,355 `6136` call takes the real
+stage-selection branch. Its local 75-cycle flag/store/`C021` prefix is native,
+while the shared dispatcher remains assembly-backed.
+`dc_rom_tower_bonus_entrance` now freezes this controlled route in Release:
+the terminal and scheduler-prefix entries each occur once, `6136` occurs 245
+times with its later collision-gated continuation, and the census, ordered
+call/write, and selected Tower-state artifacts remain exact.
+Semantic `03:60F9@all` now replaces the single armed final-gate pass through
+an exact four-checkpoint, 54-cycle transcript. It retains the latch-loaded
+accumulator across `DEC $2D4D`, records the zero gate write at cycle 42, and
+hands control to the original `03:612B`; the same Release entrance regression
+proves its complete artifact remains byte-identical.
+The refreshed `03:6136` original trace corrects that earlier rejection: its
+frame-3,413 timer IRQ saves `PC=6139` immediately after the indexed collision
+load. Semantic `03:6136@all` therefore owns all 245 observed no-hit calls
+through cycle-15 and cycle-21 checkpoints, then resumes original `613B` for
+`RTS`. The separately captured geometry-delivered sign-bit call owns its
+75-cycle prefix through the original `01:C021` dispatcher handoff.
 
 Milestone 4 is now active. Semantic `03:6966@all` scheduling replaces 18,806
 of 19,648 deterministic-route calls by selector/slot state, while the
@@ -5998,11 +6411,20 @@ observed on the route through three/five-boundary transcripts for the exact
 42/63-cycle mismatch returns. All 50 original interrupt-handler passages and
 665 aggregate handler writes remain exact; equal-state score and randomized
 reset outcomes remain emulated.
-Semantic `03:62B8@all` replaces all 676 Giant-Door hit checks observed on
-the route through a two-boundary transcript for the exact 27-cycle idle
-return. All seven original interrupt-handler passages and 88 aggregate
-handler writes remain exact; the score, hit-counter, and completion path
-outside the route remains emulated.
+Semantic `03:62B8@all` replaces all 676 baseline Giant-Door hit checks through
+a two-boundary transcript for the exact 27-cycle idle return, plus both
+geometry-delivered sign-bit calls through the exact 48-cycle collision-clear
+and score-load prefix to original `03:62C4`. Semantic `03:62CB@all` adds the
+two observed nonterminal 27-cycle counter decrements before original `03:62D0`
+and the 33-cycle terminal zero branch to `03:62D4`; the completion body remains
+emulated after native `03:62D4` contributes its exact 57-cycle, four-write
+score-helper handoff and native `03:62E2` contributes its exact 243-cycle,
+nine-write completion-state/coroutine handoff to `03:62F0`; native `03:62F0`
+then contributes its exact 243-cycle, eight-write channel-request/scheduler
+handoff to `03:62FE`, whose native clear-bit wait leaf contributes its exact
+48-cycle zero-write return across all 378 observed polls, including five
+timer-interrupt passages. All seven baseline interrupt-handler passages and 88
+aggregate handler writes remain exact.
 Semantic `02:445B@all` replaces all 2,650 hidden Big-Star feature-controller
 calls observed on the route through a two-boundary transcript for the exact
 21-cycle clear-latch return. All 28 original interrupt-handler passages and

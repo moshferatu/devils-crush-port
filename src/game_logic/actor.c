@@ -1003,6 +1003,45 @@ int dc_classify_tower_hit_gate(
     return 1;
 }
 
+int dc_classify_tower_bonus_terminal(
+    const uint8_t* const work_ram,
+    const size_t work_ram_size,
+    const uint8_t slot,
+    dc_tower_bonus_terminal* const terminal)
+{
+    const size_t collision_offset = 0x1800U + (size_t)slot;
+
+    if (work_ram == NULL || terminal == NULL || slot != 0x2DU
+        || work_ram_size <= collision_offset) {
+        return 0;
+    }
+
+    terminal->slot = slot;
+    terminal->qualifying_latch = work_ram[0x0CFCU];
+    terminal->gate_counter = work_ram[0x0D4DU];
+    terminal->collision_state = work_ram[collision_offset];
+    return terminal->qualifying_latch == 0x01U
+        && terminal->gate_counter == 0x01U;
+}
+
+int dc_classify_tower_bonus_continuation(
+    const uint8_t* const work_ram,
+    const size_t work_ram_size,
+    const uint8_t slot,
+    dc_tower_bonus_continuation* const continuation)
+{
+    const size_t collision_offset = 0x1800U + (size_t)slot;
+
+    if (work_ram == NULL || continuation == NULL || slot != 0x2DU
+        || work_ram_size <= collision_offset) {
+        return 0;
+    }
+
+    continuation->slot = slot;
+    continuation->collision_state = work_ram[collision_offset];
+    return 1;
+}
+
 int dc_classify_tower_initializer(
     const uint8_t* const work_ram,
     const size_t work_ram_size,
@@ -1284,6 +1323,34 @@ int dc_classify_knight_waiting_parent(
     } else {
         parent->path = DC_KNIGHT_WAITING_PARENT_WAITING;
     }
+    return 1;
+}
+
+int dc_classify_knight_movement_parent(
+    const uint8_t* const work_ram,
+    const size_t work_ram_size,
+    const uint8_t slot,
+    dc_knight_movement_parent* const parent)
+{
+    const size_t queue_index_offset = 0x1B00U + (size_t)slot;
+    const size_t timer_offset = 0x1A00U + (size_t)slot;
+    const size_t phase_offset = 0x1980U + (size_t)slot;
+
+    if (work_ram == NULL || parent == NULL
+        || slot < 0x3AU || slot > 0x3DU
+        || work_ram_size <= queue_index_offset
+        || work_ram_size <= timer_offset
+        || work_ram_size <= phase_offset) {
+        return 0;
+    }
+
+    parent->slot = slot;
+    parent->queue_index = work_ram[queue_index_offset];
+    if (parent->queue_index > 3U) {
+        return 0;
+    }
+    parent->timer = work_ram[timer_offset];
+    parent->phase = work_ram[phase_offset];
     return 1;
 }
 

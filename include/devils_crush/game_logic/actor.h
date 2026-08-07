@@ -542,6 +542,25 @@ typedef struct dc_tower_hit_gate {
     dc_tower_hit_gate_path path;
 } dc_tower_hit_gate;
 
+// Internal Tower-controller entry 03:60F9 reaches the BS-5 entrance
+// scheduler only after the five qualifying passes have armed the latch and
+// decremented its final gate tick. Its scheduled 03:6136 continuation is
+// separately classified.
+typedef struct dc_tower_bonus_terminal {
+    uint8_t slot;
+    uint8_t qualifying_latch;
+    uint8_t gate_counter;
+    uint8_t collision_state;
+} dc_tower_bonus_terminal;
+
+// Scheduled ROM continuation 03:6136 returns immediately while the Tower
+// collision byte remains nonnegative. A sign-bit collision takes its bounded
+// stage-selection prefix before handing off to the shared dispatcher.
+typedef struct dc_tower_bonus_continuation {
+    uint8_t slot;
+    uint8_t collision_state;
+} dc_tower_bonus_continuation;
+
 // Direct ROM routine 03:60B3 installs the fixed Tower controller's initial
 // progress, phase, and guard state.
 typedef struct dc_tower_initializer {
@@ -719,6 +738,13 @@ typedef struct dc_knight_waiting_parent {
     uint8_t collision_state;
     dc_knight_waiting_parent_path path;
 } dc_knight_waiting_parent;
+
+typedef struct dc_knight_movement_parent {
+    uint8_t slot;
+    uint8_t queue_index;
+    uint8_t timer;
+    uint8_t phase;
+} dc_knight_movement_parent;
 
 typedef enum dc_spider_appearance_path {
     DC_SPIDER_APPEARANCE_WAITING = 0,
@@ -1461,6 +1487,21 @@ int dc_classify_tower_hit_gate(
     uint8_t slot,
     dc_tower_hit_gate* gate);
 
+// Native state classification for the terminal 03:60F9 Tower prefix. It
+// admits only the armed slot-$2D, final-gate state that falls through 03:612B
+// to schedule 03:6136.
+int dc_classify_tower_bonus_terminal(
+    const uint8_t* work_ram,
+    size_t work_ram_size,
+    uint8_t slot,
+    dc_tower_bonus_terminal* terminal);
+
+int dc_classify_tower_bonus_continuation(
+    const uint8_t* work_ram,
+    size_t work_ram_size,
+    uint8_t slot,
+    dc_tower_bonus_continuation* continuation);
+
 // Native state classification for ROM routine 03:73D8. The four queued
 // Knights return while their indexed collision state is nonnegative; bit 7
 // enters the assembly-backed four-hit score and completion path.
@@ -1506,6 +1547,15 @@ int dc_classify_knight_waiting_parent(
     size_t work_ram_size,
     uint8_t slot,
     dc_knight_waiting_parent* parent);
+
+// Native state classification for ROM routine 03:73A6. Released queued
+// Knights use the same four slots and retain their Giant-Door queue index
+// while a four-tick movement timer advances their phase.
+int dc_classify_knight_movement_parent(
+    const uint8_t* work_ram,
+    size_t work_ram_size,
+    uint8_t slot,
+    dc_knight_movement_parent* parent);
 
 // Native state classification for ROM routine 03:65A4. The shared Front-
 // and Side-Spider appearance helper counts down four ticks, advances its

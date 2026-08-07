@@ -124,9 +124,9 @@ AD FC 2C F0 14 CE 4D 2D F0 28 DE 00 3B D0 22 A9 03
 9D 00 3B 20 69 C0 80 05 A9 01 8D FC 2C
 "@ "Tower gate-counter progression"
 
-# Once selector $8E admits the ball, the Guard clears the collision latch,
-# awards the table bonus, selects stage 5, emits command $41, resets the
-# five-step gate, and marks the insect/Tower family for its next cycle.
+# Tower slot $2D reaches this prefix when its qualifying latch is set and the
+# decrement of the five-step gate reaches zero. It clears Tower collision
+# state and schedules the later collision-gated stage-selection continuation.
 Assert-RomHex $rom 0x00612B @"
 BD 00 38 29 7F 9D 00 38 20 18 C0 BD 00 38 30 01 60
 A9 01 8D 80 3C A9 10 20 21 C0 20 18 C0 A9 05 85 55
@@ -309,8 +309,8 @@ Write-Output (
     "and 58 contain periodic interrupts."
 )
 Write-Output (
-    "ROM-bounded gate zero selects 8E; the open entrance selects BS-5, " +
-    "command 41, and resets the five-step Tower gate."
+    "ROM-bounded gate zero selects 8E; Tower terminal 612B schedules the " +
+    "later collision-gated BS-5 continuation."
 )
 Write-Output (
     "Normalized sample: 03:60A6@1, frame 873, 48 cycles, 1 write."

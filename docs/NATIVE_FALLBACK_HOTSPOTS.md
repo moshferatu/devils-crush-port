@@ -108,9 +108,98 @@ The Knight parent exposes a smaller, self-contained child boundary at
 `03:73D8`: indexed collision state returns immediately when nonnegative and
 otherwise enters the four-hit score/completion sequence. It is consequently
 the safer measured slice. `03:73D8` now executes natively for all 10,600
-natural no-hit calls, including 117 original timer-interrupt passages; its
-bit-seven hit path remains assembly fallback. The Front-Spider family remains
-a candidate for a later composed-transition batch.
+natural no-hit calls, including 117 original timer-interrupt passages. Its
+forced nonterminal bit-seven route also owns the 96-cycle latch-clear,
+counter-decrement, and `7BF6` handoff prefix. The forced fourth-hit route
+owns the terminal 75-cycle latch-clear/decrement-to-zero/carry-set return;
+its `03:73FE` successor additionally owns the 51-cycle 100-unit score
+argument/stack handoff. Its later `03:740A` path owns the exact 51-cycle
+queue-channel acknowledgement prefix before the common release helper, and
+the helper's terminal `02:41A0` entry owns its exact 48-cycle four-store
+scratch-clear prefix. Its `02:41A8` successor owns the exact 21-cycle command
+setup, and its `02:41AD` successor owns the exact 123-cycle saved-index/table-
+coordinate setup. Its `02:41C2` successor owns the exact 21-cycle shared-
+helper call frame, and its terminal-only `02:41F5` successor owns the exact
+48-cycle `$2D:$2E` pointer-copy prefix. The shared call, table, actor, and
+coroutine work stays assembly-backed. Its terminal-only `02:420B` successor
+owns the exact 21-cycle `$C024` call frame, whose terminal-only `01:C024`
+successor owns the exact 12-cycle jump to `$C5AB`, whose successor owns the
+exact 6-cycle scan initializer. Its terminal-only `01:C5AD` successor owns
+the exact 15-cycle slot-four occupancy read. Its terminal-only `01:C5B0`
+successor owns the exact 6-cycle nonzero not-taken branch. Its terminal-only
+`01:C5B2` successor owns the exact 6-cycle increment and N/Z update. Its
+terminal-only `01:C5B3` successor owns the exact 6-cycle limit comparison.
+Its terminal-only `01:C5B5` successor owns the exact 12-cycle taken loop
+branch. Its terminal-only `01:C5B9` successor owns the exact 6-cycle `$80`
+reservation-byte load after the shared scan finds a free slot. Its
+terminal-only `01:C5BB` successor owns the exact 15-cycle indexed reservation
+store. Its terminal-only `01:C5BE` successor owns the exact 12-cycle cleared
+`$55` mode-byte load. Its terminal-only `01:C5C0` successor owns the exact
+12-cycle taken cleared-mode branch. Its terminal-only `01:C5C7` successor
+owns the exact 6-cycle carry clear and resumes at the shared return; that
+return and later shared-worker body stay assembly-backed. After the terminal
+return, `02:420E` owns the exact 6-cycle nonnegative `BMI` fall-through before
+the original actor setup. Its terminal-only `02:4210` successor owns the exact
+12-cycle `$2D` pointer-low-byte load. Its terminal-only `02:4212` successor
+owns the exact 15-cycle indexed pointer-low-byte store before the original
+actor setup. Its terminal-only `02:4215` successor owns the exact 12-cycle
+`$2E` pointer-high-byte load before the original indexed store.
+Its terminal-only `02:4217` successor owns the exact 15-cycle indexed
+pointer-high-byte store before the original actor setup.
+Its terminal-only `02:421A` successor owns the exact 12-cycle `$26` scratch
+clear before the original position-field setup.
+Its terminal-only `02:421C` successor owns the exact 12-cycle `$2B` mode load
+before the original signed branch.
+Its terminal-only `02:421E` successor owns the terminal nonnegative 12-cycle
+signed branch before the original position load.
+Its terminal-only `02:4222` successor owns the exact 6-cycle carry clear
+before the terminal position arithmetic.
+Its terminal-only `02:4223` successor owns the exact 15-cycle indexed
+base-position load before the original mode-byte add.
+Its terminal-only `02:4226` successor owns the exact 12-cycle mode-byte add
+before the original actor-field store.
+Its terminal-only `02:4228` successor owns the exact 15-cycle indexed
+position store before the remaining actor setup.
+Its terminal-only `02:422B` successor owns the exact 15-cycle indexed
+high-position load before the original scratch-byte add.
+Its terminal-only `02:422E` successor owns the exact terminal 12-cycle
+cleared-scratch high-byte add before the original indexed store.
+Its terminal-only `02:4230` successor owns that exact 15-cycle indexed
+high-position store. Its terminal-only `02:4233` successor then owns the
+exact 12-cycle high-position scratch clear. Its terminal-only `02:4235`
+successor then owns the exact 12-cycle high-byte mode load. Its terminal-only
+`02:4237` successor then owns the exact 12-cycle nonnegative signed branch.
+Its terminal-only `02:423B` successor then owns the exact 6-cycle carry clear.
+Its terminal-only `02:423C` successor then owns the exact 15-cycle indexed
+high-position base load. Its terminal-only `02:423F` successor then owns the
+exact 12-cycle high-position scratch add. Its terminal-only `02:4241`
+successor then owns the exact 15-cycle indexed high-position actor-field store.
+Its terminal-only `02:4244` successor then owns the exact 15-cycle indexed
+companion actor-field load. Its terminal-only `02:4247` successor then owns
+the exact 12-cycle companion-field scratch add. Its terminal-only `02:4249`
+successor then owns the exact 15-cycle indexed companion actor-field store
+before the remaining setup. Its terminal-only `02:424C` successor then owns
+the exact 6-cycle companion actor-field accumulator clear. Its terminal-only
+`02:424D` successor then owns the exact 15-cycle indexed companion actor-field
+zero store. Its terminal-only `02:4250` successor then owns the exact 15-cycle
+indexed second companion actor-field zero store. Its terminal-only `02:4253`
+successor then owns the exact 15-cycle indexed actor-attribute load before the
+remaining mask and setup. Its terminal-only `02:4256` successor then owns the
+exact 6-cycle actor-attribute high-nibble mask. Its terminal-only `02:4258`
+successor then owns the exact 6-cycle actor-attribute mode-bit merge before the
+remaining setup. Its terminal-only `02:425A` successor then owns the exact
+15-cycle indexed actor-attribute store. Its terminal-only `02:425D` successor
+then owns the exact 6-cycle actor-field constant load before the remaining
+setup. Its terminal-only `02:425F` successor then owns the exact 15-cycle
+indexed actor-field constant store. Its terminal-only `02:4262` successor then
+owns the exact 6-cycle second actor-field constant load before the remaining
+setup.
+`03:7418` owns the 36-cycle surface-release prefix through its timer-IRQ
+scheduler handoff. Its `03:7420` successor now composes the 33-cycle banked
+wrapper with the existing 159-cycle coroutine scheduler. The following
+destruction, score, common-helper body, and post-dispatch transactions stay
+assembly-backed. The Front-Spider family remains a candidate for a later
+composed-transition batch.
 
 ## Queued-Knight parent composition screen
 
@@ -1032,7 +1121,28 @@ collision selectors, and steady scheduler state.
 Semantic `03:6319@all` now ports fixed slot `$5B` through the exact
 321-cycle, twelve-write transcript. The final `01:C5E6` checkpoint preserves
 the original scheduler boundary; wall damage, scoring, and access paths at
-`03:6339` retain their existing native-or-assembly split.
+`03:6339` retain their existing native-or-assembly split. The later
+post-destruction dispatcher `03:638F@all` now also replaces only its 42-cycle
+clear-`$2D53/$2D32` leaf and resumes at the original RTS; asserted-latch
+acknowledgment, animation, and bonus routing remain assembly-owned.
+
+## Walled Star asserted-latch continuation screen
+
+A controlled fixed-slot `$5B` dispatcher probe asserts primary access latch
+`$2D53` while fallback latch `$2D32` remains clear. The next `03:638F` entry
+takes the post-destruction acknowledgement branch rather than the native
+clear-latch leaf.
+
+| Routine | Calls | Body cycles | Writes | Decision |
+| --- | ---: | ---: | ---: | --- |
+| `03:638F` asserted-latch transition | 1 | 912 | 20 | Assembly-backed |
+| `01:C018` shared descendant | 878 | mixed | 262,468 aggregate | Assembly-backed |
+
+The asserted branch enters `01:C018`, clears the access handshake, and
+installs the ensuing actor/animation work through the shared scheduler. Its
+single parent scope is not a local extension of the 42-cycle return, and the
+descendant population is broad enough to include the later presentation and
+state machine. Keep every nonzero-latch `03:638F` entry in original assembly.
 
 ## Giant Skeleton initializer
 
@@ -1534,33 +1644,93 @@ initialized `$10` selector before the controller read it:
 | `03:62B8` Giant Door gate | 676 | 0 | Keep the existing idle leaf native |
 | `03:62D3` immediate return | 676 | 0 | Active path remains unprofiled |
 
-The ROM's sign-bit path clears the collision byte, awards 5,000 points, and
-decrements the three-hit counter before shared score and completion work. It
-must be captured from a real collision delivery (or a later collision-pipeline
-injection point), not synthesized by a frame-boundary work-RAM patch. Do not
-add a parent composition from this probe.
+The later geometry route places ball slot zero at `(64,256)` in frame 1,228.
+It naturally delivers `$384C=$90` at frames 1,316 and 1,338, proving the
+sign-bit entry without synthesizing a collision request. Semantic
+`03:62B8@all` now owns its exact 48-cycle load/not-taken-branch/mask/clear/
+50-unit-score-load prefix, then resumes at original `03:62C4` for the
+alias-sensitive score operands and shared score helper. The 2,373-call
+Release route's census, call, ordered-write, and selected-state artifacts are
+byte-identical. Semantic `03:62CB@all` now owns all three post-score counter
+decrements: its first two 27-cycle nonterminal prefixes resume original
+`03:62D0`, while its 33-cycle counter-one zero branch enters native `03:62D4`.
+That successor owns the exact 57-cycle, four-write 50,000-point argument and
+stack-frame prefix before returning to original `01:C02A` score processing.
+Its callable post-score successor `03:62E2@all` then owns the exact
+243-cycle, nine-write completion-state/scheduler transaction: it sets the
+Door-complete bits, clears the three-hit counter, and composes the existing
+`01:C018/C5C9` coroutine handoff to `03:62F0`. The completion request prefix
+`03:62F0@all` now sets bit zero in indexed `$2D06`
+and schedules `03:62FE` through the exact 243-cycle, eight-write transaction.
+Semantic `03:62FE@all` now owns the clear-bit wait leaf, reproducing all 378
+observed 48-cycle, zero-write polls and their five timer-interrupt passages.
+Semantic `03:6308@all` owns all four channel advances and scheduler
+resubmissions, including terminal channel four's exact 246-cycle handoff to
+the one-byte `03:6318` coroutine return. Semantic `03:7378@all` then owns
+the exact 363-cycle released-Knight activation through scheduler handoff to
+`03:73A6`. Its collision-free ordinal-two, ordinal-four, and ordinal-sixteen
+movement ticks now also compose the 165-cycle table pass and no-hit return
+natively, covering the timer-decrement, timer-reload/phase-advance, and
+phase-wrap paths. Checkpointed ordinal 58 also preserves its 1,053-cycle,
+22-write timer-interrupt passage. Checkpointed ordinal 60 composes the
+collision-helper return and preserves its 1,233-cycle, 27-write timer-IRQ
+passage; the collision/multi-pass, remaining
+interrupt-bearing, and hit paths remain assembly-backed.
+
+Semantic `03:73A6@all` now accepts the complete compatible subset: all 64
+collision-free, one-pass, no-hit calls exercised by the controlled 129-call
+route, including its `73D8` and collision-return `73AF` timer-IRQ boundaries.
+Collision/multi-pass and hit records still return to assembly automatically.
 
 ## Tower Guard open-entrance collision screen
 
 The Tower Guard's documented open selector was independently tested by setting
 only its five-step gate `$2D4D` to zero and its fixed collision byte `$382E`
 to `$80` at frame 1,200. All 2,650 observed `03:60A6` updates run with the
-open selector available, but no entry reaches `03:612B`.
+open selector available, but no entry reaches `03:612B`. That result is
+expected: the Guard collision is not the BS-5 transition source.
 
-The scheduled controller/collision staging therefore does not treat the
-frame-boundary collision byte as a durable Guard-entrance request. The open
-path's bonus-stage-5 selection, command `$41`, counter reset, and scene
-transition must be captured from a real collision delivery (or a validated
-later collision-pipeline injection point). Keep the existing selector leaf
-native and the entrance assembly-backed; no parent composition was added.
+A corrected follow-up observes the actual fixed-target geometry scanner
+`01:CC1A`, rather than the moving-actor `03:6966` table helper. It selects
+target slot `$2E` twice per frame, so the Guard is a normal collision-scan
+consumer after all. The scanner uses the ball's X coordinate minus `$20`;
+therefore a source aligned to the Guard's `(132,510)` record needs ball
+X=`$A4`, not `$84`. The initial coordinate hold did not yet account for the
+descriptor's contact origin.
+The `01:CC1A` geometry and inner `01:CC98` mask trace resolves the contact
+surface: the target descriptor has origin `$64,$0206` and spans `$20,$28`.
+Because the scanner derives its source X as ball X minus `$20`, valid ball
+coordinates are X=`$84-$A3`, Y=`$0206-$022D`; `CC98` reaches its `$CCD2`
+collision return inside that rectangle. A five-frame held mask hit plus the
+zero gate nevertheless does not enter `03:612B`: a Guard hit returns
+`A=$08`, `Y=$04` to generic ball-response dispatcher `01:CBCF`.
 
-A second controlled probe placed the live ball at the Guard's mapped table
-position `(132,510)` while setting only `$2D4D` to zero. It exercised the
-ordinary collision pipeline (52,729 `03:6966` and 21,050 `03:7FB1` scopes),
-but none used actor slot `$2E` and `03:612B` remained unreached. The Guard is
-therefore not a normal ball-coordinate scan consumer; future entrance work
-must identify its separate trigger delivery rather than retrying position or
-latch injection.
+The actual entrance is Tower-slot `$2D`'s terminal controller. With its live
+qualifying latch `$2CFC=1` and gate `$2D4D=1` at frame 3,353, `03:60F9`
+decrements the gate and branches directly to `03:612B` (X=`$2D`). That
+228-cycle prefix clears Tower collision `$382D` and uses the shared scheduler
+to install `03:6136`. The controlled route then takes only its 21-cycle
+no-hit return; the 714-cycle frame-3,413 scope is a timer-interrupt-bearing
+no-hit call, not a negative-collision stage-selection prefix. A separate
+geometry-delivered probe at frame 3,354 naturally writes `$382D=$80` and
+drives the frame-3,355 sign-bit call.
+
+Semantic `03:60F9@all` owns the one armed final-gate prefix only. Its four
+checkpoints reproduce the 54-cycle latch read, final gate decrement, and taken
+branch to original `612B`; the decrement writes zero at cycle 42 while A
+remains one. The same Release entrance regression preserves the full
+assembly-derived census, trace, call, and ordered-write artifacts.
+
+A fresh original trace corrected the earlier interrupt diagnosis for
+`03:6136`: the frame-3,413 timer IRQ saves `PC=$6139`, immediately after the
+indexed collision load, rather than at the terminal `RTS`. Semantic
+`03:6136@all` now covers all 245 observed nonnegative-collision returns with
+two checkpoints at cycles 15 and 21, then resumes original `613B` for `RTS`.
+The complete entrance artifacts remain byte-identical. The real sign-bit
+collision takes a bounded 75-cycle native prefix that writes `$3C80=1` and
+transfers to original `01:C021`; its shared dispatcher remains assembly-backed.
+The controlled Debug original-vs-native census, call, ordered-write, and
+selected-state artifacts also match exactly.
 
 ## Giant-Face helmet collision continuation screen
 
@@ -1610,7 +1780,7 @@ same slice.
 | `01:C7E5` remaining-ball decision | 1 | 366 | 13 | Native |
 | `01:C7EA` zero-latch transition gate | 1 | 345 | 13 | Native |
 | `01:C80A` ordinary presentation handoff | 1 | 318 | 13 | Native |
-| `01:C812` table-reload setup | 1 | 105,072 | 2,268 | Assembly-backed |
+| `01:C812` table-reload setup | 1 | 105,072 | 2,268 | Native 237-cycle zero-count prefix; later body assembly-backed |
 | `02:4003` selective table reload | 1 | 98,931 | 2,095 | Assembly-backed |
 
 `01:DD6E` has 1,680 ordinary 84-cycle no-write carry-clear returns plus the
@@ -1622,9 +1792,41 @@ separate branch-free leaf. Semantic `01:C80A@all` replaces its exact
 and semantic `01:C7EA@all` composes it after the zero-latch 27-cycle branch
 for the exact 345-cycle parent scope. Semantic `01:C7E5@all` then composes
 that gate after the nonzero-ball 21-cycle decision for the exact 366-cycle
-outer scope. The zero-ball and nonzero-latch paths fall back to assembly. The
-nonzero-`$55` alternate threshold, the preceding transition and ball-count
+outer scope. The zero-ball and nonzero-latch decisions now compose their
+bounded scheduler setups; only their later game-over or alternate-presentation
+bodies remain assembly-backed. The nonzero-`$55` alternate threshold, the
+preceding transition and ball-count
 decisions, and later reload and panel flows remain assembly-backed.
+
+The zero-ball decision is now fully composed through its bounded scheduler:
+with `$2D52` zero, semantic `01:C7E5@all` joins the 27-cycle load/taken
+branch to `01:C7F4`'s 318-cycle, thirteen-write `$FF` setup through the first
+`C5C9` tick. The exact 345-cycle outer transaction resumes at `01:C5E9`; the
+following game-over body remains assembly-backed.
+
+The installed `C7F9` delay callback now also owns its common non-expiring
+tick. It composes the 21-cycle JSR frame with `C5C9`'s 102-cycle decrement for
+254 exact 123-cycle, five-write calls on the controlled route. The sole
+countdown-expiry callback `C7FC` now separately owns its 201-cycle,
+eight-write scheduler-install tail; only the later state-machine body remains
+assembly-backed.
+
+When that state machine reaches `C804` with `$2D53` clear, its native gate
+now composes the 27-cycle latch branch with `C80A` into the exact 345-cycle,
+thirteen-write presentation setup. The nonzero-latch RTS remains assembly-backed.
+
+Likewise, with nonzero `$2D32`, semantic `01:C7EA@all` reproduces the
+21-cycle load/fall-through path and composes native `01:C7EF`'s following
+228-cycle, nine-write latch-clear/scheduler setup through `C5C9`. The exact
+249-cycle parent resumes at `01:C5E9`; the later alternate presentation tail
+remains assembly-backed. Its controlled
+Release census, call, and ordered-write hashes are
+`987c6f07d131bae52958c71ef8345304ca7d737216687bcadd77ec03b5a742c1`,
+`fde029cff362c212d8d2a000ce683e4545bab79c922d8b373ac53bebeee3149a`, and
+`775e0419916ea3fe37b35e8aacf00b26b5c2c6d3d7119cc1d81f57d8f4a80e87`.
+The direct scheduler regression records native call and ordered-write hashes
+`0da1d358166e9079b5f156af8797caa34743778f470855502183d9d8802c6e42` and
+`cca4b5ac2294bbfdcdb7e0b57c6265a7be22609273d05c75fcd8886b11c61b1a`.
 
 The post-`C7E5` assembly-only reprofile deliberately retained nested
 `C7EA/C80A` observers and added the three earlier boundaries. It records 402
@@ -1639,11 +1841,53 @@ assembly-backed until `00:ECFD` has a separately proven composable transcript
 or a genuinely local branch is reproduced; do not bless a prefix-only
 replacement from this broad parent trace.
 
+A follow-up observer set resolves that dependency rather than treating it as
+an unknown gameplay helper. `00:ECFD` is the mapped audio driver: it accepts
+the command in A, stores `$2A`, selects raw audio banks `$45-$47`, and returns
+only after the parser boundary at `00:ED85`. The controlled drain route records
+71 `ECFD` calls over 314,442 master cycles and 7,869 writes across 16 command
+IDs. Its two session calls are command `$22` from `C786` (2,457 cycles, 67
+writes) and `$27` from the later ball-count continuation (3,342 cycles, 81
+writes). This is original audio/hardware compatibility work, not a faithful
+gameplay transaction; retain `ECFD`, `C786`, `C7B0`, and `C7BF` in assembly.
+
 The same screen also classifies the repeated `09:72FD` panel helper. Its
 common 255 calls are only 699 cycles and nine scoped writes, but the routine
 directly submits VDC commands through `$0000/$0002/$0003`; it is emulated
 presentation hardware, not a work-RAM gameplay transaction. Keep it and its
 `09:7266` parent outside the native-gameplay candidate queue.
+
+The terminal state-machine dispatch was also re-screened after the two native
+leaves. `01:C841` is the one-byte `RTS` scheduler sentinel and has no routine
+entry to replace. `01:C842` is the next ball-count/session body, beginning
+with the mode test and the same `00:ECFD` presentation handoff as `C7B0/C7BF`;
+it does not execute on the controlled zero-ball route. A second controlled
+screen set `$2254` at the observed `C7B0` frame in an attempt to take its
+`BNE C842` transfer; frame-internal session work restores the latch before
+the test, and the enclosing 1,266-cycle/25-write scope instead enters the
+ordinary `C7F4` scheduler path. The hook interface records callable entries,
+not this direct jump target. An authentic nonzero-mode session transition is
+therefore required before `C842` can be bounded. Neither is a new gameplay
+leaf, so both remain assembly-owned.
+
+## Shared coroutine-delay boundary screen
+
+Although native adapters compose `01:C5EA`'s delay installation internally,
+the routine was separately observed on the ordinary 3,600-frame route before
+considering a standalone hook:
+
+| Routine | Calls | Total master cycles | Writes | Decision |
+| --- | ---: | ---: | ---: | --- |
+| `01:C5EA` delay installer | 73 | 507,702 | 13,431 | Assembly-backed |
+
+`C5EA` stores the indexed delay and consumes its caller's stack return to
+install a dispatch address; it does not return as a local subroutine. The
+observer consequently follows the installed coroutine until its later return.
+The 73 scopes range from 831 cycles/22 writes to 423,162 cycles/11,369 writes,
+with callers spanning physical banks `$00-$03`. The compact fragments already
+embedded in native parents remain faithful compositions, but a direct hook
+would incorrectly claim ownership of mixed controller, presentation, and
+scheduler work. No standalone replacement was registered.
 
 ## Ball-handler sibling screen
 
