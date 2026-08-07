@@ -13,6 +13,7 @@
 #include <fstream>
 #include <limits>
 #include <map>
+#include <ranges>
 #include <string>
 #include <system_error>
 #include <utility>
@@ -188,6 +189,97 @@ void append_placement(
     return true;
 }
 
+// Key names are joined with commas. `escape_value` leaves letters, digits and
+// spaces alone, so "Left Shift,Left" survives a round trip verbatim and stays
+// readable to anyone editing the file by hand.
+void append_bindings(std::string& output, const InputBindings& input)
+{
+    for (std::size_t index = 0; index < kPadButtonCount; ++index) {
+        const auto button = static_cast<PadButton>(index);
+        output += "input.";
+        output += pad_button_field(button);
+        output += '=';
+        bool first = true;
+        for (const auto& key : input[button]) {
+            if (!std::exchange(first, false)) {
+                output += ',';
+            }
+            output += escape_value(key);
+        }
+        output += '\n';
+    }
+}
+
+[[nodiscard]] std::string_view trim(std::string_view text) noexcept
+{
+    const auto is_space = [](const char value) {
+        return std::isspace(static_cast<unsigned char>(value)) != 0;
+    };
+    while (!text.empty() && is_space(text.front())) {
+        text.remove_prefix(1U);
+    }
+    while (!text.empty() && is_space(text.back())) {
+        text.remove_suffix(1U);
+    }
+    return text;
+}
+
+[[nodiscard]] std::optional<std::vector<std::string>> parse_binding(
+    const std::string_view text)
+{
+    std::vector<std::string> keys;
+    std::size_t start = 0;
+    while (start <= text.size()) {
+        const auto separator = text.find(',', start);
+        const auto piece = trim(text.substr(
+            start,
+            separator == std::string_view::npos
+                ? std::string_view::npos
+                : separator - start));
+        if (!piece.empty()) {
+            auto key = unescape_value(piece);
+            if (!key) {
+                return std::nullopt;
+            }
+            // A key bound twice to the same input is the same key; keeping
+            // both would only make the host test it twice.
+            if (std::ranges::find(keys, *key) == keys.end()) {
+                keys.push_back(std::move(*key));
+            }
+        }
+        if (separator == std::string_view::npos) {
+            break;
+        }
+        start = separator + 1U;
+    }
+    return keys;
+}
+
+// Absent fields take the default so that a configuration written before
+// bindings existed, or one that names only the inputs its author cared
+// about, still produces a playable pad.
+[[nodiscard]] bool parse_bindings(
+    const std::map<std::string, std::string, std::less<>>& fields,
+    InputBindings& input)
+{
+    input = default_input_bindings();
+    for (std::size_t index = 0; index < kPadButtonCount; ++index) {
+        const auto button = static_cast<PadButton>(index);
+        std::string key("input.");
+        key += pad_button_field(button);
+        const auto found = fields.find(key);
+        if (found == fields.end()) {
+            continue;
+        }
+        auto parsed = parse_binding(found->second);
+        if (!parsed) {
+            return false;
+        }
+        input[button] = std::move(*parsed);
+    }
+    return true;
+}
+
 [[nodiscard]] std::uint64_t overlap_area(
     const DisplayRect& left,
     const DisplayRect& right) noexcept
@@ -217,6 +309,49 @@ void append_placement(
 
 } // namespace
 
+std::string_view pad_button_field(const PadButton button) noexcept
+{
+    switch (button) {
+    case PadButton::one:
+        return "one";
+    case PadButton::two:
+        return "two";
+    case PadButton::select:
+        return "select";
+    case PadButton::run:
+        return "run";
+    case PadButton::up:
+        return "up";
+    case PadButton::right:
+        return "right";
+    case PadButton::down:
+        return "down";
+    case PadButton::left:
+        return "left";
+    }
+    return "";
+}
+
+InputBindings default_input_bindings()
+{
+    InputBindings bindings;
+    // Button I is the right flipper and the ball launcher. Z stays bound so
+    // the original keyboard layout keeps working.
+    bindings[PadButton::one] = {"Right Shift", "Right", "Z"};
+    bindings[PadButton::two] = {"X"};
+    bindings[PadButton::select] = {"Backspace"};
+    bindings[PadButton::run] = {"Return"};
+    bindings[PadButton::up] = {"Up"};
+    // Right belongs to the right flipper now, so D-pad right has no default
+    // key. Up, Down and Left still reach every menu the game presents.
+    bindings[PadButton::right] = {};
+    bindings[PadButton::down] = {"Down"};
+    // Any direction works the left flipper; Left is the natural one to pair
+    // with Left Shift.
+    bindings[PadButton::left] = {"Left Shift", "Left"};
+    return bindings;
+}
+
 std::vector<std::byte> encode_display_config(const DisplayConfig& config)
 {
     if (config.format_version != kDisplayConfigVersion) {
@@ -231,6 +366,7 @@ std::vector<std::byte> encode_display_config(const DisplayConfig& config)
     text += "backglass.path=";
     text += escape_value(config.backglass_path);
     text += '\n';
+    append_bindings(text, config.input);
 
     std::vector<std::byte> bytes(text.size());
     std::transform(
@@ -302,7 +438,7 @@ std::optional<DisplayConfig> decode_display_config(
         return std::nullopt;
     }
     const auto backglass_path = unescape_value(path->second);
-    if (!backglass_path) {
+    if (!backglass_path || !parse_bindings(fields, config.input)) {
         return std::nullopt;
     }
     config.backglass_path = *backglass_path;

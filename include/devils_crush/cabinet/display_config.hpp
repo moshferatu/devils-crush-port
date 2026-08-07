@@ -2,6 +2,7 @@
 
 #pragma once
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
@@ -53,12 +54,67 @@ struct WindowPlacement {
     [[nodiscard]] bool operator==(const WindowPlacement&) const = default;
 };
 
+// The eight PC Engine pad inputs, in the order they are written to
+// `cabinet.ini`. These are pad inputs rather than game actions on purpose:
+// the cartridge decides what each one does, and it does not do the same thing
+// in a menu as it does in play.
+//
+// During play `01:D466` gates each flipper piece on `$3B80,X`. The left-side
+// pieces `$04/$06/$08` carry mask `$F0`, so *any* direction works the left
+// flipper; the right-side pieces `$05/$07/$09` carry mask `$01`, so button I
+// works the right flipper and also launches the ball. Button II is nudge.
+enum class PadButton : std::size_t {
+    one = 0,
+    two = 1,
+    select = 2,
+    run = 3,
+    up = 4,
+    right = 5,
+    down = 6,
+    left = 7,
+};
+
+inline constexpr std::size_t kPadButtonCount = 8U;
+
+// Keys are held as SDL scancode names -- "Left Shift", "Left", "Z" -- so the
+// host can resolve them with `SDL_GetScancodeFromName` and the file stays
+// hand-editable without a bespoke key table to keep in step. A bound input
+// with no keys is unbound; that is distinct from the field being absent,
+// which takes the default.
+struct InputBindings {
+    std::array<std::vector<std::string>, kPadButtonCount> keys;
+
+    [[nodiscard]] const std::vector<std::string>& operator[](
+        const PadButton button) const noexcept
+    {
+        return keys[static_cast<std::size_t>(button)];
+    }
+
+    [[nodiscard]] std::vector<std::string>& operator[](
+        const PadButton button) noexcept
+    {
+        return keys[static_cast<std::size_t>(button)];
+    }
+
+    [[nodiscard]] bool operator==(const InputBindings&) const = default;
+};
+
+// The `input.` suffix each pad input is stored under.
+[[nodiscard]] std::string_view pad_button_field(PadButton button) noexcept;
+
+// Left Shift and Left work the left flipper; Right Shift and Right work the
+// right flipper and launch. Z and X stay bound so the original keyboard
+// layout still works, and D-pad right has no default key because Right now
+// belongs to the right flipper.
+[[nodiscard]] InputBindings default_input_bindings();
+
 struct DisplayConfig {
     std::uint32_t format_version = kDisplayConfigVersion;
     WindowPlacement playfield;
     WindowPlacement dmd;
     WindowPlacement backglass;
     std::string backglass_path;
+    InputBindings input = default_input_bindings();
 
     [[nodiscard]] bool operator==(const DisplayConfig&) const = default;
 };

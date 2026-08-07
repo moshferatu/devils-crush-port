@@ -67,6 +67,14 @@ Run the cabinet preview:
 .\out\build\windows-vs2022\Debug\devils-crush.exe --cabinet --rom "D:\path\to\Devil's Crush.pce"
 ```
 
+## Controls
+
+Left Shift and Left work the left flipper; Right Shift and Right work the
+right flipper and launch the ball. X nudges. Keys are rebindable under
+`input.` in `portable-data/cabinet.ini` — see
+[docs/CABINET_PREVIEW.md](docs/CABINET_PREVIEW.md#controls) for the full
+mapping and why any direction works the left flipper.
+
 ## Deploying to a cabinet
 
 `tools/Publish-Cabinet.ps1` builds the `windows-cabinet` preset and stages a

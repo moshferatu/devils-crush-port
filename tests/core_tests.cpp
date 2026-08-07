@@ -6945,6 +6945,92 @@ void test_cabinet_display_config()
             std::span<const std::byte>(encoded).first(8U)),
         "truncated cabinet display configuration is rejected");
 
+    {
+        using devils_crush::cabinet::InputBindings;
+        using devils_crush::cabinet::PadButton;
+        using devils_crush::cabinet::default_input_bindings;
+
+        const auto to_bytes = [](const std::string_view text) {
+            std::vector<std::byte> bytes(text.size());
+            std::transform(
+                text.begin(),
+                text.end(),
+                bytes.begin(),
+                [](const char value) {
+                    return static_cast<std::byte>(
+                        static_cast<unsigned char>(value));
+                });
+            return bytes;
+        };
+
+        // The requested defaults: the left flipper is a d-pad direction and
+        // the right flipper is button I, so this is what those two keys pairs
+        // have to land on.
+        const auto defaults = default_input_bindings();
+        check(
+            defaults[PadButton::left]
+                == std::vector<std::string>{"Left Shift", "Left"},
+            "Left Shift and Left work the left flipper by default");
+        check(
+            defaults[PadButton::one]
+                == std::vector<std::string>{"Right Shift", "Right", "Z"},
+            "Right Shift and Right work the right flipper by default");
+        check(
+            defaults[PadButton::right].empty(),
+            "d-pad right has no default key now that Right is a flipper");
+
+        // Names with spaces have to survive the escaping the format applies
+        // to every other value.
+        auto rebound = source;
+        rebound.input[PadButton::left] = {"Left Ctrl", "A"};
+        rebound.input[PadButton::one] = {"Right Ctrl"};
+        rebound.input[PadButton::two] = {};
+        const auto rebound_decoded =
+            decode_display_config(encode_display_config(rebound));
+        check(
+            rebound_decoded && *rebound_decoded == rebound,
+            "rebound inputs round trip through the cabinet configuration");
+
+        // A configuration written before bindings existed must keep its
+        // display assignment rather than being rejected wholesale.
+        std::string legacy;
+        for (const auto value : encoded) {
+            legacy.push_back(
+                static_cast<char>(std::to_integer<unsigned char>(value)));
+        }
+        const auto input_start = legacy.find("input.");
+        check(
+            input_start != std::string::npos,
+            "the encoder writes the input section");
+        legacy.resize(input_start);
+        const auto legacy_decoded = decode_display_config(to_bytes(legacy));
+        check(
+            legacy_decoded && legacy_decoded->playfield == source.playfield
+                && legacy_decoded->input == defaults,
+            "a configuration without an input section takes the defaults");
+
+        // An input named but left empty is unbound, which is not the same as
+        // the field being absent.
+        auto unbound = legacy;
+        unbound += "input.two=\n";
+        const auto unbound_decoded = decode_display_config(to_bytes(unbound));
+        check(
+            unbound_decoded && unbound_decoded->input[PadButton::two].empty()
+                && unbound_decoded->input[PadButton::one]
+                    == defaults[PadButton::one],
+            "an empty binding unbinds only that input");
+
+        // Whitespace around a name is an editing artefact, not part of it.
+        auto spaced = legacy;
+        spaced += "input.run= Space , Return \n";
+        const auto spaced_decoded = decode_display_config(to_bytes(spaced));
+        check(
+            spaced_decoded
+                && spaced_decoded->input[PadButton::run]
+                    == std::vector<std::string>{"Space", "Return"},
+            "surrounding whitespace is trimmed from bound key names");
+    }
+
     const std::array displays{
         DisplayDescriptor{
             .identity = "Primary",

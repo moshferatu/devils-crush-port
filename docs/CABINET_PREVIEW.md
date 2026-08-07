@@ -181,6 +181,123 @@ dispatch transition, phase, table coordinates, and slot lifetime drive two
 exact bank-8 primitives. Unclassified effects remain live-camera-only, and
 slot reuse clears retained pixels immediately.
 
+## Controls
+
+The cartridge decides what each pad input does, and it does not do the same
+thing in a menu as it does in play. During play `01:D466` gates each flipper
+piece on `$3B80,X`: the left-side pieces `$04/$06/$08` carry mask `$F0`, so
+*any* direction works the left flipper, and the right-side pieces
+`$05/$07/$09` carry mask `$01`, so button I works the right flipper and also
+launches the ball. Button II is nudge.
+
+The defaults follow from that:
+
+| Key | Pad input | In play |
+| --- | --- | --- |
+| Left Shift, Left | d-pad left | Left flipper |
+| Right Shift, Right | button I | Right flipper, launch |
+| Z | button I | Right flipper, launch |
+| X | button II | Nudge |
+| Up, Down | d-pad up/down | Also the left flipper |
+| Backspace, Enter | select, run | — |
+
+Two consequences are worth stating plainly. Up and Down work the left flipper
+too, because the ROM accepts any direction; that is cartridge behaviour and
+not something the host can filter without diverging from the original. And
+d-pad right has no default key, because Right now belongs to the right
+flipper — Up, Down and Left still reach every menu the game presents.
+
+Binding one key to both button I and d-pad right would make that key work
+both flippers at once. `--cabinet-flipper-trace` holds each pad input in turn
+and reports what the scheduler copied to `$2CEE`, which is the byte
+`01:D466` masks against:
+
+```text
+pressed -> $2CEE:  01->01  10->10  20->20  40->40  80->80
+```
+
+Every bit is copied verbatim, so d-pad right arrives as `$20`, and `$20` is
+inside the left pieces' `$F0`. Over a 600-frame sweep the mask-`$F0` slots
+opened on 241 frames — all four direction blocks, not just left. So the
+conflict is real, and the free key for d-pad right has to be some key that is
+not also a flipper.
+
+### Nudge
+
+Nudging works and is faithful to the cartridge; it is simply very small.
+`--cabinet-nudge-probe` measures it by running the state-census route twice
+from a cold boot, identically except for the Button-II taps, and diffing the
+ball's own coordinates.
+
+`01:C3CB` is gated on `$53 & $2A`. Two of those bits are reached in ordinary
+play: `$08` while the ball is in the Devil Shooter, and `$02` during the
+post-drain session transition. Nudging is refused in both, which is correct —
+a ball in the launcher cannot be nudged. A saved state taken with the ball in
+the shooter therefore has `$53=08` and refuses every press until the ball is
+launched.
+
+Past the gate the routine tests Button II at the per-player *edge* latch
+`$2018,Y`, not the held-input copy `$2CEE` the flippers read, so a held button
+nudges once rather than continuously. `01:C457` then halves the signed vector
+at `$2CC2/$2CC3` and adds it to slot-0 motion at `$3500/$3580`.
+
+Halving is why it is hard to see. Measured on the route, one nudge moves the
+ball by one pixel horizontally and two to four vertically over the following
+frames:
+
+```text
+frame 1312  dx -1  dy  0
+frame 1315  dx -1  dy -2
+frame 1317  dx -1  dy -3
+frame 1320  dx -1  dy -4
+```
+
+The cumulative effect is not small at all — over the same route the nudged
+ball never drained, where the un-nudged one drained at frame 1,931, and the
+two tracks ended 318 units apart. There is simply no per-press feedback: the
+table does not shake and nothing sounds.
+
+The tilt lock `$2CC7` was not reached even by deliberate spam. At 510 presses
+and 194 accepted nudges the accumulator `$2CC5` peaked at 15 and never tripped
+the lock, because `$2CC5` is cleared every time the `$2CC6` counter wraps at
+120 frames.
+
+All of this is identical with `--emulate-only`: the same `$53` timeline, the
+same 487 gate passes, the same phase transitions. No native replacement is
+involved in the behaviour.
+
+### Rebinding
+
+Bindings live in `portable-data/cabinet.ini` under `input.`, one line per pad
+input, holding a comma-separated list of SDL key names:
+
+```ini
+input.one=Right Shift,Right,Z
+input.two=X
+input.select=Backspace
+input.run=Return
+input.up=Up
+input.right=
+input.down=Down
+input.left=Left Shift,Left
+```
+
+Names are SDL scancode names, matched case-insensitively, so the host can
+resolve them with `SDL_GetScancodeFromName` and there is no bespoke key table
+to keep in step with SDL. Any number of keys may share an input. An input
+that is named but left empty is unbound; an input whose line is absent takes
+its default, so a configuration written before bindings existed still loads
+and keeps its display assignment. A name SDL does not recognise is reported
+on stderr and skipped without disturbing the rest of the binding.
+
+The gamepad keeps a fixed layout — south and east for buttons I and II, the
+hat for directions — since only the keyboard has to match whatever a
+cabinet's encoder is wired to send.
+
+`cabinet.ini` is rewritten in full on exit and after display assignment, so
+the bindings are a stored field rather than a passthrough: an existing file
+without them gains the section the first time the host exits normally.
+
 ## Display assignment and persistence
 
 Press F12 in cabinet mode to pause emulation and enter display assignment.
@@ -411,9 +528,10 @@ spiders were the other family the whole-table view exposed as frozen.
 opening sweep is pixel-identical to the original cull, where the wholesale lift
 moved several hundred pixels a frame.
 
-`--cabinet-flipper-trace` measures this directly, replaying the quick state for
-600 frames while working both flipper buttons (Button I carries `$3B80` mask
-`$01` for the right-hand pieces, any direction carries `$F0` for the left):
+`--cabinet-flipper-trace` measures this directly, booting the census route to
+frame 1,300 and then running 600 frames while holding each pad input the
+flippers respond to in turn (Button I carries `$3B80` mask `$01` for the
+right-hand pieces, any direction carries `$F0` for the left):
 
 | slot | phase changes on camera | off camera | with the cull lifted |
 | --- | ---: | ---: | ---: |

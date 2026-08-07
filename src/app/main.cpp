@@ -212,6 +212,7 @@ struct CommandLine {
     std::filesystem::path cabinet_freeze_census_state;
     bool cabinet_flipper_trace = false;
     bool cabinet_drain_probe = false;
+    bool cabinet_nudge_probe = false;
     bool cabinet_seed_check = false;
     bool cabinet_palette_check = false;
     bool cabinet_attribute_check = false;
@@ -741,6 +742,8 @@ parse_logical_address_range(const std::string_view text)
             options.cabinet_flipper_trace = true;
         } else if (argument == "--cabinet-drain-probe") {
             options.cabinet_drain_probe = true;
+        } else if (argument == "--cabinet-nudge-probe") {
+            options.cabinet_nudge_probe = true;
         } else if (argument == "--cabinet-seed-check") {
             options.cabinet_seed_check = true;
         } else if (argument == "--cabinet-palette-check") {
@@ -846,10 +849,12 @@ parse_logical_address_range(const std::string_view text)
     // the admitted-routine registry unless told to emulate the original.
     const bool host_selected = !options.validate_only
         && (operation_count == 0 || options.cabinet_smoke_test);
-    // The drain probe deploys the registry too, so it can be bisected with
-    // --registry-slice and --registry-exclude like the host can.
+    // The drain and nudge probes deploy the registry too, so they can be
+    // bisected with --registry-slice and --registry-exclude like the host can,
+    // and so they measure the configuration people actually play.
     const bool host_registry =
-        (host_selected || options.cabinet_drain_probe)
+        (host_selected || options.cabinet_drain_probe
+         || options.cabinet_nudge_probe)
         && !options.emulate_only;
     const int recording_frame_count = options.record_state_census
         ? kStateCensusRecordingFrames
@@ -3242,20 +3247,22 @@ void print_usage()
         << "  The interactive host deploys every admitted native routine by\n"
            "  default and reports its share of the session on exit. Pass\n"
            "  --emulate-only to run the untouched emulated original instead.\n\n"
-        << "Controls:\n"
-        << "  Z / Left Shift    PCE button I\n"
-        << "  X / Right Shift   PCE button II\n"
-        << "  Backspace         Select\n"
-        << "  Enter             Run\n"
-        << "  Arrow keys        Direction pad\n"
-        << "  Gamepad           First connected SDL gamepad\n"
-        << "  F5                Save quick state\n"
-        << "  F9                Restore quick state\n"
-        << "  F10               Reload custom gamepad mappings\n"
-        << "  F11               Toggle borderless fullscreen\n"
-        << "  F8                Capture 4 playfield frames as BMP\n"
-        << "  F12               Cabinet display assignment\n"
-        << "  Escape            Exit\n";
+        << "Controls (defaults; see input.* in portable-data/cabinet.ini):\n"
+        << "  Left Shift / Left    Left flipper (PCE d-pad left)\n"
+        << "  Right Shift / Right  Right flipper and launch (PCE button I)\n"
+        << "  Z                    PCE button I\n"
+        << "  X                    Nudge (PCE button II)\n"
+        << "  Backspace            Select\n"
+        << "  Enter                Run\n"
+        << "  Up / Down            PCE d-pad up and down\n"
+        << "  Gamepad              First connected SDL gamepad\n"
+        << "  F5                   Save quick state\n"
+        << "  F9                   Restore quick state\n"
+        << "  F10                  Reload custom gamepad mappings\n"
+        << "  F11                  Toggle borderless fullscreen\n"
+        << "  F8                   Capture 4 playfield frames as BMP\n"
+        << "  F12                  Cabinet display assignment\n"
+        << "  Escape               Exit\n";
 }
 
 void print_validation(const devils_crush::rom::ValidationResult& result)
@@ -4938,71 +4945,102 @@ void set_button(
     }
 }
 
-[[nodiscard]] InputFrame read_input(SDL_Gamepad* gamepad)
+// The pad inputs in `PadButton` order, paired with the emulator button they
+// set and the gamepad button that also reaches them. The gamepad keeps its
+// fixed layout: only the keyboard has to match whatever a cabinet's encoder
+// is wired to send.
+struct PadBinding {
+    devils_crush::cabinet::PadButton pad;
+    Button button;
+    SDL_GamepadButton gamepad;
+};
+
+constexpr std::array<PadBinding, devils_crush::cabinet::kPadButtonCount>
+    kPadBindings{
+        PadBinding{
+            devils_crush::cabinet::PadButton::one,
+            Button::one,
+            SDL_GAMEPAD_BUTTON_SOUTH},
+        PadBinding{
+            devils_crush::cabinet::PadButton::two,
+            Button::two,
+            SDL_GAMEPAD_BUTTON_EAST},
+        PadBinding{
+            devils_crush::cabinet::PadButton::select,
+            Button::select,
+            SDL_GAMEPAD_BUTTON_BACK},
+        PadBinding{
+            devils_crush::cabinet::PadButton::run,
+            Button::run,
+            SDL_GAMEPAD_BUTTON_START},
+        PadBinding{
+            devils_crush::cabinet::PadButton::up,
+            Button::up,
+            SDL_GAMEPAD_BUTTON_DPAD_UP},
+        PadBinding{
+            devils_crush::cabinet::PadButton::right,
+            Button::right,
+            SDL_GAMEPAD_BUTTON_DPAD_RIGHT},
+        PadBinding{
+            devils_crush::cabinet::PadButton::down,
+            Button::down,
+            SDL_GAMEPAD_BUTTON_DPAD_DOWN},
+        PadBinding{
+            devils_crush::cabinet::PadButton::left,
+            Button::left,
+            SDL_GAMEPAD_BUTTON_DPAD_LEFT},
+    };
+
+// Scancodes resolved once from the configured key names, so the per-frame
+// read stays an array lookup.
+using ResolvedKeyBindings = std::array<
+    std::vector<SDL_Scancode>,
+    devils_crush::cabinet::kPadButtonCount>;
+
+[[nodiscard]] ResolvedKeyBindings resolve_key_bindings(
+    const devils_crush::cabinet::InputBindings& bindings)
+{
+    ResolvedKeyBindings resolved;
+    for (const auto& binding : kPadBindings) {
+        const auto index = static_cast<std::size_t>(binding.pad);
+        for (const auto& name : bindings[binding.pad]) {
+            const auto scancode = SDL_GetScancodeFromName(name.c_str());
+            if (scancode == SDL_SCANCODE_UNKNOWN) {
+                // An unusable name is the one thing a hand-edited file gets
+                // wrong silently, so name it and keep the rest of the
+                // binding rather than dropping the whole input.
+                std::cerr
+                    << "Unknown key name \"" << name << "\" bound to input."
+                    << devils_crush::cabinet::pad_button_field(binding.pad)
+                    << "; ignoring it.\n";
+                continue;
+            }
+            resolved[index].push_back(scancode);
+        }
+    }
+    return resolved;
+}
+
+[[nodiscard]] InputFrame read_input(
+    SDL_Gamepad* gamepad,
+    const ResolvedKeyBindings& bindings)
 {
     InputFrame input;
     const bool* keys = SDL_GetKeyboardState(nullptr);
 
-    set_button(
-        input.player_one,
-        Button::one,
-        keys[SDL_SCANCODE_Z] || keys[SDL_SCANCODE_LSHIFT]
+    for (const auto& binding : kPadBindings) {
+        const auto& scancodes =
+            bindings[static_cast<std::size_t>(binding.pad)];
+        const bool pressed =
+            std::ranges::any_of(
+                scancodes,
+                [keys](const SDL_Scancode scancode) {
+                    return keys[scancode];
+                })
             || (gamepad != nullptr
-                && SDL_GetGamepadButton(
-                    gamepad,
-                    SDL_GAMEPAD_BUTTON_SOUTH)));
-    set_button(
-        input.player_one,
-        Button::two,
-        keys[SDL_SCANCODE_X] || keys[SDL_SCANCODE_RSHIFT]
-            || (gamepad != nullptr
-                && SDL_GetGamepadButton(
-                    gamepad,
-                    SDL_GAMEPAD_BUTTON_EAST)));
-    set_button(
-        input.player_one,
-        Button::select,
-        keys[SDL_SCANCODE_BACKSPACE]
-            || (gamepad != nullptr
-                && SDL_GetGamepadButton(gamepad, SDL_GAMEPAD_BUTTON_BACK)));
-    set_button(
-        input.player_one,
-        Button::run,
-        keys[SDL_SCANCODE_RETURN]
-            || (gamepad != nullptr
-                && SDL_GetGamepadButton(gamepad, SDL_GAMEPAD_BUTTON_START)));
-    set_button(
-        input.player_one,
-        Button::up,
-        keys[SDL_SCANCODE_UP]
-            || (gamepad != nullptr
-                && SDL_GetGamepadButton(
-                    gamepad,
-                    SDL_GAMEPAD_BUTTON_DPAD_UP)));
-    set_button(
-        input.player_one,
-        Button::right,
-        keys[SDL_SCANCODE_RIGHT]
-            || (gamepad != nullptr
-                && SDL_GetGamepadButton(
-                    gamepad,
-                    SDL_GAMEPAD_BUTTON_DPAD_RIGHT)));
-    set_button(
-        input.player_one,
-        Button::down,
-        keys[SDL_SCANCODE_DOWN]
-            || (gamepad != nullptr
-                && SDL_GetGamepadButton(
-                    gamepad,
-                    SDL_GAMEPAD_BUTTON_DPAD_DOWN)));
-    set_button(
-        input.player_one,
-        Button::left,
-        keys[SDL_SCANCODE_LEFT]
-            || (gamepad != nullptr
-                && SDL_GetGamepadButton(
-                    gamepad,
-                    SDL_GAMEPAD_BUTTON_DPAD_LEFT)));
+                && SDL_GetGamepadButton(gamepad, binding.gamepad));
+        set_button(input.player_one, binding.button, pressed);
+    }
     return input;
 }
 
@@ -7155,6 +7193,9 @@ int run_windows_host(
                       << " Using safe window defaults.\n";
         }
     }
+    // Resolved once: the names cannot change while the host runs, and this is
+    // where an unusable one gets reported.
+    const auto key_bindings = resolve_key_bindings(cabinet_config.input);
     std::optional<std::filesystem::path> effective_backglass_path;
     if (cabinet_mode && backglass_override) {
         if (backglass_override->empty()) {
@@ -7634,7 +7675,8 @@ int run_windows_host(
             if (cabinet_mode) {
                 keep_fixed_actors_simulating(runtime);
             }
-            const auto frame = runtime.run_frame(read_input(gamepad));
+            const auto frame =
+                runtime.run_frame(read_input(gamepad, key_bindings));
             ++emulated_frames;
             if (!cabinet_mode) {
                 host_ok =
@@ -8598,13 +8640,376 @@ int run_windows_host(
 // piece never moves, either its mask misses the held buttons, or its
 // coroutine pointer at $3F80:$3F00,X is parked somewhere that never consults
 // the gate at all. Both are visible here.
+// Presses Button II against the quick state and reports every gate the ROM's
+// nudge routine consults, so "nudging does nothing" can be localised rather
+// than guessed at.
+//
+// `01:C3CB` reads Button II from the per-player edge latch `$2018,Y`, not from
+// the held-input copy `$2CEE` the flippers use, and it is gated on the session
+// flags at `$53`, the tilt lock at `$2CC7`, the cooldown timer at `$2CC6` and
+// the nudge phase at `$2CC4`. When it does fire, `01:C457` adds a halved
+// signed vector to slot-0 motion at `$3500/$3580`.
+// The gate opening, and the button reaching it, say nothing about whether a
+// player can feel the result. Running the same route twice -- once with the
+// nudge taps and once without -- and diffing the ball's own coordinates
+// measures the effect rather than the mechanism.
+struct NudgePassResult {
+    std::vector<int> ball_x;
+    std::vector<int> ball_y;
+    std::size_t in_play_frames = 0;
+};
+
+[[nodiscard]] int run_nudge_probe(
+    devils_crush::emulation::PceRuntime& runtime,
+    const std::filesystem::path& rom_path,
+    const std::filesystem::path& state_path,
+    const CommandLine* const native_registry,
+    const bool from_boot,
+    const bool nudge_enabled,
+    NudgePassResult& pass)
+{
+    const auto rom = read_rom_bytes(rom_path);
+    if (!rom) {
+        return EXIT_FAILURE;
+    }
+    // The hooks survive a reset, so the second pass reuses the first pass's
+    // deployment rather than installing over it.
+    static NativeRegistryDeployment registry_deployment;
+    static bool registry_installed = false;
+    if (native_registry != nullptr && !registry_installed) {
+        if (!install_native_registry(
+                runtime, *native_registry, *rom, {}, registry_deployment)) {
+            std::cerr << "Could not deploy the native registry.\n";
+            return EXIT_FAILURE;
+        }
+        registry_installed = true;
+    }
+    if (!from_boot && !load_quick_state(runtime, state_path)) {
+        return EXIT_FAILURE;
+    }
+    std::cout << "\n=== " << (from_boot ? "from a cold boot" : "from the quick state")
+              << ", registry: "
+              << (native_registry != nullptr ? "deployed" : "off") << " ===\n";
+
+    // Work RAM is exported from $2000: zero page $53 lands at $0053 and every
+    // $2xxx address at its low twelve bits.
+    constexpr std::size_t kSessionFlags = 0x0053U;
+    constexpr std::size_t kEdgeInputBase = 0x0018U;
+    constexpr std::size_t kHeldInputBase = 0x0013U;
+    constexpr std::size_t kActivePlayer = 0x0251U;
+    constexpr std::size_t kNudgePhase = 0x0CC4U;
+    constexpr std::size_t kNudgeCounter = 0x0CC5U;
+    constexpr std::size_t kNudgeTimer = 0x0CC6U;
+    constexpr std::size_t kTiltLock = 0x0CC7U;
+    constexpr std::size_t kHeldInputCopy = 0x0CEEU;
+    constexpr std::size_t kMotionLowBase = 0x1500U;
+    constexpr std::size_t kMotionHighBase = 0x1580U;
+
+    struct Sample {
+        unsigned edge = 0;
+        unsigned held = 0;
+        unsigned held_copy = 0;
+        unsigned session = 0;
+        unsigned tilt = 0;
+        unsigned timer = 0;
+        unsigned phase = 0;
+        unsigned counter = 0;
+        unsigned player = 0;
+        int motion = 0;
+        int ball_x = 0;
+        int ball_y = 0;
+    };
+
+    const auto sample = [&](const Sample& previous) {
+        Sample now;
+        const auto work_ram = runtime.export_work_ram();
+        if (work_ram.size() < 0x2000U) {
+            return previous;
+        }
+        const auto byte_at = [&work_ram](const std::size_t offset) {
+            return static_cast<unsigned>(
+                static_cast<std::uint8_t>(work_ram[offset]));
+        };
+        now.player = byte_at(kActivePlayer);
+        const auto player = now.player & 0x01U;
+        now.edge = byte_at(kEdgeInputBase + player);
+        now.held = byte_at(kHeldInputBase + player);
+        now.held_copy = byte_at(kHeldInputCopy);
+        now.session = byte_at(kSessionFlags);
+        now.tilt = byte_at(kTiltLock);
+        now.timer = byte_at(kNudgeTimer);
+        now.phase = byte_at(kNudgePhase);
+        now.counter = byte_at(kNudgeCounter);
+        now.motion = static_cast<int>(
+            static_cast<std::int16_t>(static_cast<std::uint16_t>(
+                byte_at(kMotionLowBase) | (byte_at(kMotionHighBase) << 8U))));
+        now.ball_x = static_cast<int>(
+            byte_at(0x1180U) | (byte_at(0x1200U) << 8U));
+        now.ball_y = static_cast<int>(
+            byte_at(0x1300U) | (byte_at(0x1380U) << 8U));
+        return now;
+    };
+
+
+    // The quick state has the ball in the Devil Shooter, where `$53.3` is set
+    // and `01:C3CB` returns at `$C3DC` before Button II is ever tested --
+    // correctly, since a ball in the launcher cannot be nudged. So launch
+    // first: hold Button I to charge the shooter, release, and only start
+    // tapping once the shooter session has actually ended.
+    //
+    // Tap rather than hold: `$2018` is an edge latch, so a held button that
+    // never re-edges would be indistinguishable from one that never arrives.
+    constexpr int kFrames = 1800;
+    constexpr int kPeriod = 60;
+    constexpr int kPressFrames = 3;
+
+    std::size_t pressed_frames = 0;
+    std::size_t edge_frames = 0;
+    std::size_t held_frames = 0;
+    std::size_t motion_changes_while_pressed = 0;
+    std::size_t blocked_by_session = 0;
+    std::size_t blocked_by_tilt = 0;
+    std::size_t phase_changes = 0;
+    unsigned highest_counter = 0;
+    unsigned highest_tilt = 0;
+    std::vector<std::pair<int, unsigned>> session_timeline;
+    std::set<unsigned> session_values;
+    std::set<unsigned> timer_values;
+    std::set<unsigned> phase_values;
+    int printed = 0;
+
+    // `$2CC6` is decremented by the first instruction past the session gate
+    // and by nothing else, so a frame where it changed is a frame the gate
+    // let through. That makes "blocked" and "let through but had no effect"
+    // distinguishable without inspecting the routine itself.
+    std::size_t gate_passed = 0;
+    std::size_t gate_passed_while_pressed = 0;
+    int first_blocked_frame = 0;
+    int last_passed_frame = 0;
+
+    const int total_frames = from_boot ? kStateCensusRecordingFrames : kFrames;
+    const int nudge_from = from_boot ? 1250 : 1;
+
+    Sample previous = sample(Sample{});
+    std::cout << "frame  in  $2018 $2013 $2CEE  $53 tilt timer phase count "
+                 "  motion\n";
+    for (int frame_number = 1; frame_number <= total_frames; ++frame_number) {
+        InputFrame replay_input{};
+        if (from_boot) {
+            // The census script boots the frontend, starts a session and
+            // launches the ball. Its own Button-II taps are stripped so the
+            // two passes differ in nothing but the nudge.
+            replay_input = state_census_input_for_frame(frame_number);
+            replay_input.player_one = static_cast<std::uint16_t>(
+                replay_input.player_one
+                & ~static_cast<std::uint16_t>(Button::two));
+        }
+        // Sparse taps first, then deliberate spam. `$2CC5` accumulates nudges
+        // and is cleared every time the `$2CC6` counter wraps, so a tilt can
+        // only be provoked by nudging repeatedly inside one wrap.
+        const int period = frame_number >= 2400 ? 8 : kPeriod;
+        const bool press = nudge_enabled && frame_number >= nudge_from
+            && ((frame_number - nudge_from) % period) < kPressFrames;
+        if (press) {
+            replay_input.player_one |=
+                static_cast<std::uint16_t>(Button::two);
+            ++pressed_frames;
+        }
+        static_cast<void>(runtime.run_frame(replay_input));
+        const auto now = sample(previous);
+
+        if (press) {
+            if ((now.edge & 0x02U) != 0U) {
+                ++edge_frames;
+            }
+            if ((now.held & 0x02U) != 0U) {
+                ++held_frames;
+            }
+            if (now.motion != previous.motion) {
+                ++motion_changes_while_pressed;
+            }
+            // The two early returns before Button II is ever tested.
+            if ((now.session & 0x02U) != 0U) {
+                ++blocked_by_session;
+            }
+            if (now.tilt != 0U) {
+                ++blocked_by_tilt;
+            }
+        }
+        if (now.phase != previous.phase) {
+            ++phase_changes;
+        }
+        if (now.timer != previous.timer) {
+            ++gate_passed;
+            last_passed_frame = frame_number;
+            if (press) {
+                ++gate_passed_while_pressed;
+            }
+        } else if (last_passed_frame != 0 && first_blocked_frame == 0) {
+            first_blocked_frame = frame_number;
+        }
+        if (now.session != previous.session) {
+            session_timeline.emplace_back(frame_number, now.session);
+        }
+        pass.ball_x.push_back(now.ball_x);
+        pass.ball_y.push_back(now.ball_y);
+        if ((now.session & 0x2AU) == 0U) {
+            ++pass.in_play_frames;
+        }
+        highest_counter = std::max(highest_counter, now.counter);
+        highest_tilt = std::max(highest_tilt, now.tilt);
+        session_values.insert(now.session);
+        timer_values.insert(now.timer);
+        phase_values.insert(now.phase);
+
+        const bool interesting = press || (now.phase != previous.phase)
+            || now.session != previous.session;
+        if (interesting && printed < 40) {
+            ++printed;
+            std::cout << std::setw(5) << frame_number << std::setw(4)
+                      << (press ? "II" : "-") << std::hex << std::setw(7)
+                      << now.edge << std::setw(6) << now.held << std::setw(6)
+                      << now.held_copy << std::setw(5) << now.session
+                      << std::setw(5) << now.tilt << std::dec << std::setw(6)
+                      << now.timer << std::setw(6) << now.phase << std::setw(6)
+                      << now.counter << std::setw(8) << now.motion << '\n';
+        }
+        previous = now;
+    }
+
+    const auto set_text = [](const std::set<unsigned>& values) {
+        std::string text;
+        for (const auto value : values) {
+            if (!text.empty()) {
+                text += ' ';
+            }
+            text += std::format("{:02X}", value);
+        }
+        return text;
+    };
+
+    std::cout << "\nover " << total_frames
+              << " frames, Button II was pressed on " << pressed_frames << "\n"
+              << "  frames the session gate let through ($2CC6 moved): "
+              << gate_passed << "\n"
+              << "    of those, with Button II pressed: "
+              << gate_passed_while_pressed << "\n"
+              << "  last frame the gate let through: " << last_passed_frame
+              << "\n"
+              << "  first frame it blocked after that: " << first_blocked_frame
+              << "\n"
+              << "  frames where the edge latch $2018 carried bit 1: "
+              << edge_frames << "\n"
+              << "  frames where the held latch $2013 carried bit 1: "
+              << held_frames << "\n"
+              << "  slot-0 motion changed while pressed: "
+              << motion_changes_while_pressed << "\n"
+              << "  nudge phase $2CC4 changed: " << phase_changes << "\n"
+              << "  blocked before the button test by $53 bit 1: "
+              << blocked_by_session << "\n"
+              << "  blocked before the button test by tilt lock $2CC7: "
+              << blocked_by_tilt << "\n"
+              << "  $53 values seen: " << set_text(session_values) << "\n"
+              << "  $2CC6 values seen: " << set_text(timer_values) << "\n"
+              << "  $2CC4 values seen: " << set_text(phase_values) << "\n"
+              << "  highest nudge accumulator $2CC5: " << highest_counter
+              << "\n"
+              << "  highest tilt lock $2CC7: " << highest_tilt << "\n";
+
+    // `$53 & $28` is the gate. Printing every transition shows whether the
+    // blocking value is a passing session state or one the session latches
+    // and never leaves.
+    std::cout << "  $53 timeline (frame=value, * blocks the nudge):\n   ";
+    if (session_timeline.empty()) {
+        std::cout << " never changed from "
+                  << std::format("{:02X}", previous.session);
+    }
+    for (std::size_t index = 0; index < session_timeline.size(); ++index) {
+        if (index != 0U && index % 8U == 0U) {
+            std::cout << "\n   ";
+        }
+        const auto [frame, value] = session_timeline[index];
+        std::cout << ' ' << frame << '='
+                  << std::format("{:02X}", value)
+                  << ((value & 0x2AU) != 0U ? "*" : "");
+    }
+    std::cout << "\n";
+    return EXIT_SUCCESS;
+}
+
+void report_nudge_effect(
+    const NudgePassResult& without,
+    const NudgePassResult& with)
+{
+    const auto frames = std::min(without.ball_x.size(), with.ball_x.size());
+    int first_divergence = 0;
+    int worst_dx = 0;
+    int worst_dy = 0;
+    int worst_frame = 0;
+    std::size_t diverged_frames = 0;
+    for (std::size_t index = 0; index < frames; ++index) {
+        const auto dx = with.ball_x[index] - without.ball_x[index];
+        const auto dy = with.ball_y[index] - without.ball_y[index];
+        if (dx == 0 && dy == 0) {
+            continue;
+        }
+        ++diverged_frames;
+        if (first_divergence == 0) {
+            first_divergence = static_cast<int>(index) + 1;
+        }
+        if (std::abs(dx) + std::abs(dy) > std::abs(worst_dx) + std::abs(worst_dy)) {
+            worst_dx = dx;
+            worst_dy = dy;
+            worst_frame = static_cast<int>(index) + 1;
+        }
+    }
+
+    // Divergence compounds: a ball that bounces differently once is somewhere
+    // else forever. Only the first few frames measure the impulse itself.
+    std::cout << "\n=== effect of nudging, same route with and without ===\n"
+              << "  first frames that differ (the impulse, before it "
+                 "compounds):\n";
+    int listed = 0;
+    for (std::size_t index = 0; index < frames && listed < 8; ++index) {
+        const auto dx = with.ball_x[index] - without.ball_x[index];
+        const auto dy = with.ball_y[index] - without.ball_y[index];
+        if (dx == 0 && dy == 0) {
+            continue;
+        }
+        ++listed;
+        std::cout << "    frame " << (index + 1) << "  dx " << dx << "  dy "
+                  << dy << "  (ball at " << with.ball_x[index] << ","
+                  << with.ball_y[index] << ")\n";
+    }
+    std::cout << "  frames compared: " << frames << "\n"
+              << "  frames the ball was in play: " << with.in_play_frames
+              << "\n"
+              << "  first frame the ball diverged: "
+              << (first_divergence != 0 ? std::to_string(first_divergence)
+                                        : std::string("never"))
+              << "\n"
+              << "  frames the ball sat somewhere else: " << diverged_frames
+              << "\n"
+              << "  widest divergence: dx " << worst_dx << ", dy " << worst_dy
+              << " at frame " << worst_frame << "\n";
+}
+
 [[nodiscard]] int run_flipper_trace(
     devils_crush::emulation::PceRuntime& runtime,
     const std::filesystem::path& state_path,
     const bool uncull)
 {
-    if (!load_quick_state(runtime, state_path)) {
-        return EXIT_FAILURE;
+    // Booting into play rather than loading the quick state. The flippers are
+    // only driven while the ball is out of the Devil Shooter, and a saved
+    // state is whatever the last F5 captured -- against one taken with the
+    // ball in the launcher this whole trace reads zero, which looks like a
+    // frozen flipper and is not one. Frame 1,300 of the census route is
+    // reliably mid-play.
+    static_cast<void>(state_path);
+    runtime.reset();
+    for (int boot = 1; boot <= 1300; ++boot) {
+        static_cast<void>(
+            runtime.run_frame(state_census_input_for_frame(boot)));
     }
     std::cout << "camera cull: " << (uncull ? "lifted" : "original") << "\n";
     // Work RAM is exported from $2000, so the actor arrays at $3000 + n*$80
@@ -8637,6 +9042,7 @@ int run_windows_host(
             - devils_crush::cabinet::kFirstFlipperControlSlot + 1U>
         pieces;
 
+    std::set<std::pair<unsigned, unsigned>> probe_input_map;
     std::cout << "frame  in  cam"
                  "   |  slot mask phase disp   |  ... (first 4 button edges)\n";
     std::size_t printed_windows = 0;
@@ -8644,12 +9050,21 @@ int run_windows_host(
         const bool held = (frame_number / 20) % 2 == 0;
         InputFrame replay_input{};
         if (held) {
-            // Button I works the right-hand pieces ($3B80 mask $01) and any
-            // direction works the left-hand ones (mask $F0). Button II is the
-            // nudge, not a flipper, so it stays out of this.
+            // Each input the flippers can respond to is held in turn, so the
+            // trace measures which pad bits actually reach them rather than
+            // assuming. Button I works the right-hand pieces ($3B80 mask
+            // $01); the left-hand ones carry mask $F0, which is every
+            // direction, not just left. Button II is the nudge, not a
+            // flipper, so it stays out of this.
+            constexpr std::array<Button, 5> kProbed{
+                Button::left,
+                Button::right,
+                Button::up,
+                Button::down,
+                Button::one,
+            };
             replay_input.player_one = static_cast<std::uint16_t>(
-                static_cast<std::uint16_t>(Button::one)
-                | static_cast<std::uint16_t>(Button::left));
+                kProbed[static_cast<std::size_t>(frame_number / 120) % 5U]);
         }
         if (uncull) {
             keep_fixed_actors_simulating(runtime);
@@ -8664,6 +9079,7 @@ int run_windows_host(
                 static_cast<std::uint8_t>(work_ram[offset]));
         };
         const auto input = byte_at(kHeldInput);
+        probe_input_map.emplace(replay_input.player_one, input);
         const auto camera = static_cast<int>(
             static_cast<std::int16_t>(static_cast<std::uint16_t>(
                 byte_at(0x0BU) | (byte_at(0x0CU) << 8U))));
@@ -8744,6 +9160,14 @@ int run_windows_host(
                   << piece.moved_in_window << piece.moved_out_of_window
                   << std::right << "\n";
     }
+    // The scheduler's copy of held input is what `01:D466` masks against, so
+    // this line is the ground truth for which key can work which flipper.
+    std::cout << "\npressed -> $2CEE:";
+    for (const auto& [pressed, copied] : probe_input_map) {
+        std::cout << ' ' << std::format("{:02X}", pressed) << "->"
+                  << std::format("{:02X}", copied);
+    }
+    std::cout << "\n";
     return EXIT_SUCCESS;
 }
 
@@ -9318,6 +9742,27 @@ int main(const int argc, char* argv[])
                 kQuickStatePath,
                 true,
                 options.emulate_only ? nullptr : &options);
+        }
+        if (options.cabinet_nudge_probe) {
+            const auto* const registry =
+                options.emulate_only ? nullptr : &options;
+            NudgePassResult without;
+            NudgePassResult with;
+            if (run_nudge_probe(
+                    *runtime, options.rom_path, kQuickStatePath, registry,
+                    true, false, without)
+                != EXIT_SUCCESS) {
+                return EXIT_FAILURE;
+            }
+            runtime->reset();
+            if (run_nudge_probe(
+                    *runtime, options.rom_path, kQuickStatePath, registry,
+                    true, true, with)
+                != EXIT_SUCCESS) {
+                return EXIT_FAILURE;
+            }
+            report_nudge_effect(without, with);
+            return EXIT_SUCCESS;
         }
         if (options.cabinet_flipper_trace) {
             if (run_flipper_trace(*runtime, kQuickStatePath, false)
