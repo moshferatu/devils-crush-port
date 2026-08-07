@@ -198,6 +198,7 @@ struct CommandLine {
     // the ported code; this opts back out to the emulated original.
     bool emulate_only = false;
     std::filesystem::path cabinet_dump_route_directory;
+    bool cabinet_oracle = false;
     // Bisection aid: deploy only registry entries [first, first + count).
     bool registry_slice_set = false;
     std::size_t registry_slice_first = 0U;
@@ -712,6 +713,8 @@ parse_logical_address_range(const std::string_view text)
                 return options;
             }
             options.cabinet_dump_route_directory = argv[++index];
+        } else if (argument == "--cabinet-oracle") {
+            options.cabinet_oracle = true;
         } else if (argument == "--emulate-only") {
             options.emulate_only = true;
         } else if (argument == "--registry-slice") {
@@ -4688,7 +4691,14 @@ decode_cabinet_table(
                   << overlay_stats->stale_resolve_failed << '\n';
     }
     }
-    if (layers == CabinetLayers::all || layers == CabinetLayers::sat_only) {
+    // The live SAT is no longer part of the render. Measured against the
+    // emulator's own framebuffer over the census route, compositing it on top
+    // of the native layer disagreed on 3.14% of pixels while the native layer
+    // alone disagreed on 2.40%: hardware's copy is latched at vblank and
+    // placed through the scroll register, so it lands in a different time base
+    // from the work-RAM actors beside it and the two disagree wherever they
+    // overlap. It stays reachable as sat_only, purely as a diagnostic.
+    if (layers == CabinetLayers::sat_only) {
     static_cast<void>(
         devils_crush::render::composite_pce_sprites(
             table->image,
@@ -7744,6 +7754,217 @@ int run_windows_host(
 // writes selected frames as PNG, once per layer selection. The retained and
 // SAT layers are drawn from different sources, so a disagreement between
 // them is only visible by comparing the same frame across selections.
+// Measures the native reconstruction against the emulator itself.
+//
+// The cabinet composes the whole table, but only the 208 rows under the camera
+// were ever drawn by hardware. Cropping the composition to that window makes
+// the two directly comparable, so Beetle's own framebuffer becomes continuous
+// ground truth for the reconstruction: every disagreement is a pixel the
+// native path gets wrong. This is the check that has to exist before the
+// retained and live layers can be collapsed into one, because it answers
+// "is the reconstruction right?" without anyone having to look at a screen.
+//
+// Beetle reaches ARGB through RGB565 while the decoder scales the VCE's three
+// bits directly, so both sides are quantized back to those three bits rather
+// than compared as ARGB.
+[[nodiscard]] int run_cabinet_oracle(
+    devils_crush::emulation::PceRuntime& runtime,
+    const std::filesystem::path& rom_path)
+{
+    const auto rom = read_rom_bytes(rom_path);
+    if (!rom) {
+        return EXIT_FAILURE;
+    }
+    const auto quantize = [](const std::uint32_t argb) {
+        const auto channel = [&](const unsigned shift) {
+            return ((argb >> shift) & 0xFFU) * 7U + 127U;
+        };
+        return std::tuple{
+            channel(16U) / 255U, channel(8U) / 255U, channel(0U) / 255U};
+    };
+
+    struct Pass {
+        CabinetLayers layers;
+        const char* name;
+    };
+    // "all" measures the architecture as it stands; "retained" measures the
+    // native reconstruction alone, with the live SAT withheld. The second is
+    // the number that has to reach the first before the layers can collapse.
+    static constexpr std::array oracle_passes{
+        Pass{CabinetLayers::all, "background + retained + live SAT"},
+        Pass{CabinetLayers::retained_only, "background + retained only"},
+    };
+    for (const auto& oracle_pass : oracle_passes) {
+    runtime.reset();
+    devils_crush::render::PersistentActorSpriteCache actors;
+    devils_crush::render::TablePaletteCache palette;
+    std::uint64_t compared_frames = 0;
+    std::uint64_t decode_nanoseconds = 0;
+    std::uint64_t decoded_frames = 0;
+    std::uint64_t compared_pixels = 0;
+    std::uint64_t mismatched_pixels = 0;
+    std::size_t worst_frame_mismatch = 0;
+    int worst_frame = 0;
+    std::optional<int> previous_viewport;
+
+    static constexpr int last_frame = 2100;
+    for (int frame_number = 1; frame_number <= last_frame; ++frame_number) {
+        const auto frame =
+            runtime.run_frame(state_census_input_for_frame(frame_number));
+        const auto work_ram = runtime.export_work_ram();
+        const auto state =
+            devils_crush::cabinet::decode_cabinet_state(work_ram);
+        const auto video = runtime.export_video_memory();
+        if (!state || !video
+            || state->playfield
+                != devils_crush::cabinet::PlayfieldView::table_background) {
+            continue;
+        }
+        const auto decode_started = std::chrono::steady_clock::now();
+        const auto table = decode_cabinet_table(
+            *rom, work_ram, *video, actors, palette,
+            oracle_pass.layers, false, nullptr);
+        decode_nanoseconds += static_cast<std::uint64_t>(
+            std::chrono::duration_cast<std::chrono::nanoseconds>(
+                std::chrono::steady_clock::now() - decode_started)
+                .count());
+        ++decoded_frames;
+        if (!table || frame.framebuffer.width < 256
+            || frame.framebuffer.height < 238) {
+            continue;
+        }
+        const auto camera_y = static_cast<std::int16_t>(
+            static_cast<std::uint16_t>(
+                std::to_integer<std::uint8_t>(work_ram[0x0BU]))
+            | (static_cast<std::uint16_t>(
+                   std::to_integer<std::uint8_t>(work_ram[0x0CU]))
+               << 8U));
+        const int work_ram_viewport = 480 + static_cast<int>(camera_y);
+        // Work RAM is exported after the frame's logic, so its camera is the
+        // one the *next* frame will use. The framebuffer just produced was
+        // drawn with the previous value, and that is the camera the crop has
+        // to use to line the two up.
+        // The VDC scans the background from BYR, which settles 32 rows below
+        // the table-world viewport, so that register -- not work RAM -- says
+        // which rows hardware actually put on screen. Work RAM is exported
+        // after the frame's logic and so already holds the *next* frame's
+        // camera; cropping with it misaligns every scrolling frame by a full
+        // frame of camera motion, which alone accounted for 12.1% disagreement
+        // against 3.3% here. The register wraps at 256, so work RAM still
+        // supplies the absolute region.
+        auto viewport_top_row =
+            static_cast<int>(video->background_y_scroll) - 32;
+        while (viewport_top_row + 128 < work_ram_viewport) {
+            viewport_top_row += 256;
+        }
+        while (viewport_top_row - 128 > work_ram_viewport) {
+            viewport_top_row -= 256;
+        }
+
+        std::size_t frame_mismatch = 0;
+        std::size_t frame_compared = 0;
+        for (int framebuffer_y = 30; framebuffer_y < 238; ++framebuffer_y) {
+            const int table_row = viewport_top_row + framebuffer_y - 30
+                - devils_crush::cabinet::kTableWorldTop;
+            if (table_row < 0 || table_row >= table->image.height) {
+                continue;
+            }
+            for (int x = 0; x < 256; ++x) {
+                const auto native = table->image.pixels[
+                    static_cast<std::size_t>(table_row)
+                        * static_cast<std::size_t>(table->image.width)
+                    + static_cast<std::size_t>(x)];
+                const auto emulated = frame.framebuffer.pixels[
+                    static_cast<std::size_t>(framebuffer_y)
+                        * static_cast<std::size_t>(
+                            frame.framebuffer.pitch_pixels)
+                    + static_cast<std::size_t>(x)];
+                ++frame_compared;
+                if (quantize(native) != quantize(emulated)) {
+                    ++frame_mismatch;
+                }
+            }
+        }
+        if (frame_compared == 0U) {
+            continue;
+        }
+        ++compared_frames;
+        compared_pixels += frame_compared;
+        mismatched_pixels += frame_mismatch;
+        if (frame_mismatch > worst_frame_mismatch) {
+            worst_frame_mismatch = frame_mismatch;
+            worst_frame = frame_number;
+        }
+        // A frame that disagrees almost everywhere is not sprite error, it is
+        // the crop landing on the wrong rows. Sweeping the row offset says so
+        // outright: if some shift collapses the mismatch, the camera the
+        // composition used is wrong by exactly that many rows.
+        if (frame_mismatch * 4U > frame_compared) {
+            int best_shift = 0;
+            std::size_t best_mismatch = frame_mismatch;
+            for (int shift = -24; shift <= 24; ++shift) {
+                if (shift == 0) {
+                    continue;
+                }
+                std::size_t mismatch = 0;
+                for (int framebuffer_y = 30; framebuffer_y < 238;
+                     ++framebuffer_y) {
+                    const int table_row = viewport_top_row + framebuffer_y
+                        - 30 - devils_crush::cabinet::kTableWorldTop + shift;
+                    if (table_row < 0
+                        || table_row >= table->image.height) {
+                        continue;
+                    }
+                    for (int x = 0; x < 256; ++x) {
+                        if (quantize(table->image.pixels[
+                                static_cast<std::size_t>(table_row)
+                                    * static_cast<std::size_t>(
+                                        table->image.width)
+                                + static_cast<std::size_t>(x)])
+                            != quantize(frame.framebuffer.pixels[
+                                static_cast<std::size_t>(framebuffer_y)
+                                    * static_cast<std::size_t>(
+                                        frame.framebuffer.pitch_pixels)
+                                + static_cast<std::size_t>(x)])) {
+                            ++mismatch;
+                        }
+                    }
+                }
+                if (mismatch < best_mismatch) {
+                    best_mismatch = mismatch;
+                    best_shift = shift;
+                }
+            }
+            std::cout << "frame " << frame_number << " camera "
+                      << viewport_top_row << ": " << frame_mismatch
+                      << " mismatched, best shift " << best_shift << " -> "
+                      << best_mismatch << '\n';
+        } else if (frame_number % 200 == 0) {
+            std::cout << "frame " << frame_number << ": "
+                      << frame_mismatch << " / " << frame_compared
+                      << " mismatched\n";
+        }
+    }
+
+    std::cout << "\n[" << oracle_pass.name << "] over " << compared_frames
+              << " frames: " << mismatched_pixels << " / " << compared_pixels
+              << " pixels disagree ("
+              << (compared_pixels == 0U
+                      ? 0.0
+                      : 100.0 * static_cast<double>(mismatched_pixels)
+                          / static_cast<double>(compared_pixels))
+              << "%)\nworst frame " << worst_frame << " with "
+              << worst_frame_mismatch << " mismatched pixels\n"
+              << "compose cost: "
+              << (decoded_frames == 0U
+                      ? 0.0
+                      : static_cast<double>(decode_nanoseconds)
+                          / static_cast<double>(decoded_frames) / 1.0e6)
+              << " ms/frame against a 16.7 ms budget\n";
+    }
+    return EXIT_SUCCESS;
+}
+
 [[nodiscard]] int dump_cabinet_route(
     devils_crush::emulation::PceRuntime& runtime,
     const std::filesystem::path& rom_path,
@@ -7874,6 +8095,9 @@ int main(const int argc, char* argv[])
             return EXIT_FAILURE;
         }
 
+        if (options.cabinet_oracle) {
+            return run_cabinet_oracle(*runtime, options.rom_path);
+        }
         if (!options.cabinet_dump_route_directory.empty()) {
             return dump_cabinet_route(
                 *runtime,

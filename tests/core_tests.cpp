@@ -7449,8 +7449,11 @@ void test_pce_sprite_overlay()
         observed_stats
             && observed_stats->observed_fixed_actors == 1U
             && observed_stats->cached_fixed_actors == 1U
-            && observed_stats->rendered_fixed_actors == 0U,
-        "persistent actor cache learns from the live camera");
+            // Single-layer: an actor inside the camera is drawn from work RAM
+            // like any other. It used to be withheld for the live SAT, and the
+            // seam between the two layers is what disagreed.
+            && observed_stats->rendered_fixed_actors == 1U,
+        "persistent actor cache learns from and draws the live camera");
 
     work_ram[0x1980U + actor_slot] = std::byte{1};
     vram[64U] = 0x4000U;
@@ -7478,7 +7481,7 @@ void test_pce_sprite_overlay()
         second_phase_stats
             && second_phase_stats->observed_fixed_actors == 1U
             && second_phase_stats->cached_fixed_actors == 1U
-            && second_phase_stats->rendered_fixed_actors == 0U,
+            && second_phase_stats->rendered_fixed_actors == 1U,
         "persistent actor cache learns a second live animation phase");
 
     work_ram[0x1080U + actor_slot] = std::byte{0};
@@ -7608,7 +7611,7 @@ void test_pce_sprite_overlay()
         observed_effect_stats
             && observed_effect_stats->observed_table_world_effects == 1U
             && observed_effect_stats->cached_table_world_effects == 1U
-            && observed_effect_stats->rendered_table_world_effects == 0U,
+            && observed_effect_stats->rendered_table_world_effects == 1U,
         "impact burst learns its exact visual from the live camera");
 
     effect_ram[0x1080U + effect_slot] = std::byte{0};

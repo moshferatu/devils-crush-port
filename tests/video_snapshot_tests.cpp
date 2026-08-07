@@ -2145,11 +2145,14 @@ int main(const int argc, char** const argv)
                     && off_camera_effect_stats->
                            rendered_retained_table_world_effects
                         == 1U
+                    // Rebaselined for the single layer: every occupied actor
+                    // is drawn from work RAM now, so the probe carries 112
+                    // more pixels than when observed actors were withheld.
                     && off_camera_effect_stats->opaque_pixel_writes
-                        == 25165U
+                        == 25277U
                     && off_camera_effect_digest.sha256
-                        == "f075afa29ad327d70535fcbc53123e7f"
-                           "e7aae1b6be0322cda0ccf536d78c7c60",
+                        == "8696b3323f466e58b3dbc873a22b4627"
+                           "7d80f4302c15e1b54db49324ce877278",
                 "impact burst remains visible when probed outside the copied camera");
         } else if (frame_number == 2400
                    || frame_number == 2700) {
@@ -2441,7 +2444,8 @@ int main(const int argc, char** const argv)
                              rendered_flipper_actors
                       << " persistent_flipper_writes="
                       << persistent_stats->
-                             flipper_opaque_pixel_writes;
+                             flipper_opaque_pixel_writes
+;
         }
         if (frame_number == 2100
             && table_world_effect_census
@@ -2536,16 +2540,23 @@ int main(const int argc, char** const argv)
                                "cb2fc3936f17501785"
                         && persistent_stats
                         && persistent_stats->cached_fixed_actors
-                            == 81U
+                            == 82U
                         && persistent_stats->seeded_fixed_actors
                             == 52U
                         && persistent_stats->
                                rendered_seeded_fixed_actors
                             == 52U
+                        // Single-layer: observed actors are drawn from work
+                        // RAM too, adding 9,183 writes beneath the live SAT
+                        // this harness still composites on top. The resulting
+                        // image is unchanged, as its digest above shows.
                         && persistent_stats->opaque_pixel_writes
-                            == 14918U
+                            == 24101U
+                        // All six flipper slots now render. Two used to be
+                        // withheld for the live SAT, which is what this
+                        // check's own name asks for.
                         && persistent_stats->rendered_flipper_actors
-                            == 4U
+                            == 6U
                         && persistent_stats->flipper_opaque_pixel_writes
                             != 0U,
                     "lower full-table composite includes fixed actors, all flipper pairs, and persistent enemies");
@@ -2653,12 +2664,15 @@ int main(const int argc, char** const argv)
                                "85fb3da0d2e68447e8"
                         && persistent_stats
                         && persistent_stats->cached_fixed_actors
-                            == 81U
+                            == 82U
                         && persistent_stats->
                                rendered_seeded_fixed_actors
                             == 31U
+                        // All six flipper slots now render. Two used to be
+                        // withheld for the live SAT, which is what this
+                        // check's own name asks for.
                         && persistent_stats->rendered_flipper_actors
-                            == 4U
+                            == 6U
                         && persistent_stats->flipper_opaque_pixel_writes
                             != 0U,
                     "upper-middle persistent composite matches its golden");
@@ -2678,12 +2692,15 @@ int main(const int argc, char** const argv)
                                "1fb630b04159a4fe890"
                         && persistent_stats
                         && persistent_stats->cached_fixed_actors
-                            == 78U
+                            == 79U
                         && persistent_stats->
                                rendered_seeded_fixed_actors
                             == 31U
+                        // All six flipper slots now render. Two used to be
+                        // withheld for the live SAT, which is what this
+                        // check's own name asks for.
                         && persistent_stats->rendered_flipper_actors
-                            == 4U
+                            == 6U
                         && persistent_stats->flipper_opaque_pixel_writes
                             != 0U,
                     "middle persistent composite matches its golden");

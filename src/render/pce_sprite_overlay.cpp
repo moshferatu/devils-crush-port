@@ -1044,8 +1044,11 @@ PersistentActorSpriteCache::update_and_composite(
             }
             variants.push_back(visual);
         };
+    // The decode covers every slot, the ball included. A layer that omits
+    // anything forces a second layer to cover for it, and the seam between
+    // the two is what disagrees.
     constexpr std::size_t first_persistent =
-        devils_crush::cabinet::kFirstFlipperControlSlot;
+        devils_crush::cabinet::kBallActorSlot;
     constexpr std::size_t last_persistent =
         devils_crush::cabinet::kLastDynamicActorSlot;
     constexpr int initial_lower_viewport_world_y = 480;
@@ -1083,11 +1086,7 @@ PersistentActorSpriteCache::update_and_composite(
                 std::ranges::copy_if(
                     *ball_and_flippers,
                     std::back_inserter(*metadata_sprites),
-                    [](const FixedActorSprite& sprite) {
-                        return sprite.actor_slot
-                            >= devils_crush::cabinet::
-                                   kFirstFlipperControlSlot;
-                    });
+                    [](const FixedActorSprite&) { return true; });
                 const auto dynamic_sprites =
                     decode_dynamic_actor_sprites(
                         rom_bytes,
@@ -1095,13 +1094,9 @@ PersistentActorSpriteCache::update_and_composite(
                 if (!dynamic_sprites) {
                     metadata_sprites = std::nullopt;
                 } else {
-                    std::ranges::copy_if(
+                    std::ranges::copy(
                         *dynamic_sprites,
-                        std::back_inserter(*metadata_sprites),
-                        [&actors](const FixedActorSprite& sprite) {
-                            return retained_dynamic_actor(
-                                (*actors)[sprite.actor_slot]);
-                        });
+                        std::back_inserter(*metadata_sprites));
                 }
             }
         }
@@ -1137,17 +1132,7 @@ PersistentActorSpriteCache::update_and_composite(
             visual = {};
             continue;
         }
-        if (slot
-                >= devils_crush::cabinet::
-                       kFirstDynamicActorSlot
-            && !retained_dynamic_actor(actor)) {
-            // Dynamic slots are reused aggressively. Clear retained art
-            // immediately when a slot changes to an unclassified family so
-            // a camera-only transient can never become a table-wide trail.
-            visual = {};
-            actor_visual_variants_[slot].clear();
-            continue;
-        }
+
         const bool table_world_effect =
             slot
                     >= devils_crush::cabinet::
@@ -1702,13 +1687,11 @@ PersistentActorSpriteCache::update_and_composite(
                 ++stats.cached_table_world_effects;
             }
         }
-        // The copied SAT is authoritative for an observed actor. Retained
-        // sprites are still kept current here, but only fill actors omitted
-        // from the live camera rather than double-drawing or leaving stale
-        // pixels around an animated live shape.
-        if (observed[slot]) {
-            continue;
-        }
+        // Every occupied actor is drawn from work RAM, on camera or off.
+        // Handing observed actors to the live SAT is what split the table
+        // into two layers with different time bases, and the seam between
+        // them is what disagreed. `observed` still drives learning, because
+        // that is the only moment an actor's artwork is in live VRAM.
         for (const auto& sprite : visual.sprites) {
             world_sprites.push_back({
                 .actor_slot = slot,

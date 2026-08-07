@@ -231,44 +231,61 @@ field is dynamically mapped. The score remains live during emulated
 framebuffer and bonus-stage presentation because it is read independently
 from work RAM.
 
-## Open defect: one actor drawn by both layers
+## One rendered layer, measured against the emulator
 
-`--cabinet-dump-route <dir>` replays the scripted state-census route
-headlessly and writes each layer selection to its own BMP per captured
-frame, so the composition can be inspected directly instead of inferred
-from counters. Comparing those images against the background isolates
-exactly which layer contributes each pixel.
+The cabinet used to compose two sprite layers: actors reconstructed from work
+RAM and ROM descriptors, plus the copied hardware SAT for whatever the camera
+was showing. The two sit in different time bases -- the SAT is the VDC's
+internal sprite cache, DMA'd at vblank and placed through the scroll register,
+while work RAM is exported after the frame's logic -- so they disagreed
+wherever they met. Every symptom traced back to that seam rather than to any
+one of them: actors drawn twice a few pixels apart, mechanisms that animated
+only while the ball was near, and the whole live region displaced by a full
+camera step whenever the table scrolled.
 
-That comparison shows the retained layer and the copied SAT drawing the
-same actor at different positions. At route frame 1,256 the right flipper
-appears in the SAT and again in the retained layer about six pixels away;
-both reach the composite. The retained layer omits an actor only when it is
-observed, and observed tests the actor's *anchor* against the 208-row
-camera window, so an actor whose anchor lies outside the window while its
-sprites reach into it is drawn twice. Same-pixel overlap between the two
-layers is 465, 250, 308, and 0 pixels at route frames 1,256, 1,500, 1,800,
-and 2,100.
+Ownership predicates cannot fix this. Several were tried -- anchor-in-window,
+sprite-extent geometry, pattern presence in the SAT, and a full
+pattern-plus-position correspondence -- and each traded double-drawn pixels for
+erased ones, because the question "which layer owns this actor" has no stable
+answer when the two sources disagree about when the frame was.
 
-Two repairs were measured and both regressed, so neither is in the tree:
+So there is one layer. Every occupied actor, the ball included, is drawn from
+work RAM through its ROM descriptors, on camera or off. The camera no longer
+places sprites at all; it only decides what is visible, which is why the
+cabinet's whole-table view and the original 208-row view can share one path.
+`observed` survives only to drive learning, because the moment an actor is
+under the live camera is the only moment its artwork is in VRAM.
 
-- Treating "any sprite reaches the window" as observed predicts what the
-  hardware *could* place in the SAT rather than what it does. The ROM culls
-  on its own terms and the 64-sprite and 16-halves-per-line limits drop
-  entries. It removed 341 pixels at frame 1,500 -- two enemies the SAT was
-  never drawing vanished entirely.
-- Conceding an actor whenever one of its sprite patterns appears anywhere in
-  the SAT eliminates all double drawing but is far too permissive: parked
-  entries retain their pattern words, and 2,100 to 4,100 pixels of content
-  disappear per frame, including at frame 2,100 where nothing was doubled.
+### The oracle
 
-Omission must therefore be driven by a proven correspondence between decoded
-actor groups and live SAT entries, matching position as well as pattern,
-rather than by geometry or pattern alone. The existing frame-1,200 proof
-that 23 live groups match the copied SAT word-for-word is the basis to build
-that mapping on. A second, separate issue is visible at frame 1,800: the SAT
-is clipped to the camera window while the retained layer is not, so an actor
-straddling the boundary is necessarily inconsistent between them whichever
-layer owns it.
+`--cabinet-oracle` is what makes this checkable without looking at a screen. It
+replays the census route and, per frame, crops the composition to the camera
+window and diffs it against Beetle's own framebuffer, quantized back to the
+VCE's three bits per channel because Beetle reaches ARGB through RGB565 while
+the decoder scales those bits directly.
+
+| composition | disagreement with hardware |
+| --- | --- |
+| background + retained + live SAT (previous) | 3.33% |
+| background + retained, live SAT withheld | 9.28% |
+| **single layer, every actor from work RAM** | **2.40%** |
+
+The middle row is why the seam was invisible to earlier measurements: with the
+SAT withheld but the handover still in place, the composition had a hole
+exactly where the camera was. Removing the handover closed it, and the single
+layer is now measurably closer to hardware than the two-layer composite it
+replaces -- the copied SAT was making the result worse. Compose cost fell from
+1.33 to 1.17 ms per frame against a 16.7 ms budget.
+
+The oracle also found that cropping with the work-RAM camera disagreed on
+12.1% of pixels, with scrolling frames misaligned by a full frame of camera
+motion. Work RAM is exported after the frame's logic, so its camera belongs to
+the *next* frame; the VDC's scroll register says which rows hardware actually
+drew.
+
+The remaining 2.40% is genuine reconstruction error and is the number to drive
+down. Route frame 1,451 is the worst single frame at 34,100 pixels, where a
+row-offset sweep collapses it to 619 -- the camera lands between values there.
 
 ## Remaining cabinet work
 
