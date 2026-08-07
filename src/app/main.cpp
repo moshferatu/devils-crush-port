@@ -5,6 +5,7 @@
 #include "devils_crush/app/native_replacements.hpp"
 #include "devils_crush/cabinet/cabinet_state.hpp"
 #include "devils_crush/cabinet/display_config.hpp"
+#include "devils_crush/cabinet/dmd_layout.hpp"
 #include "devils_crush/core/rom_image.hpp"
 #include "devils_crush/core/save_state.hpp"
 #include "devils_crush/emulation/pce_runtime.hpp"
@@ -56,6 +57,12 @@ constexpr std::array<std::uint8_t, 3> kDesktopFrameColor{
     8U,
     8U,
     12U};
+// A real backglass sits inside its frame rather than running to the edge of
+// the glass. Six per cent of the shorter axis reads as deliberate breathing
+// room without shrinking the artwork noticeably: on a 1108-by-739 window it
+// is a 44-pixel border. The playfield takes no margin -- it is the one
+// surface that should fill its display.
+constexpr float kBackglassMarginFraction = 0.06F;
 constexpr double kEmulationFramesPerSecond = 59.8261;
 constexpr int kSmokeTestFrames = 10;
 constexpr int kCanonicalRecordingFrames = 600;
@@ -3715,7 +3722,8 @@ void destroy_stage(StageTexture& stage)
     StageTexture& stage,
     const std::uint32_t aspect_numerator,
     const std::uint32_t aspect_denominator,
-    const std::array<std::uint8_t, 3> clear_color = {8U, 8U, 12U})
+    const std::array<std::uint8_t, 3> clear_color = {8U, 8U, 12U},
+    const float margin_fraction = 0.0F)
 {
     int output_width = 0;
     int output_height = 0;
@@ -3741,9 +3749,22 @@ void destroy_stage(StageTexture& stage)
             || report_sdl_error("SDL_RenderPresent failed");
     }
 
-    const auto layout = devils_crush::render::calculate_scale_layout(
-        output_width,
-        output_height,
+    // The margin is taken from the shorter axis so the reserved border is the
+    // same number of pixels on every side, rather than a wide window getting a
+    // wide border and a short one a thin border.
+    const auto margin = margin_fraction > 0.0F
+        ? static_cast<int>(std::lround(
+              static_cast<double>(std::min(output_width, output_height))
+              * static_cast<double>(margin_fraction)))
+        : 0;
+    const auto inset_width = output_width - 2 * margin;
+    const auto inset_height = output_height - 2 * margin;
+    const bool inset_fits = inset_width > 0 && inset_height > 0;
+    const auto inset = inset_fits ? margin : 0;
+
+    auto layout = devils_crush::render::calculate_scale_layout(
+        inset_fits ? inset_width : output_width,
+        inset_fits ? inset_height : output_height,
         source.width,
         source.height,
         aspect_numerator,
@@ -3751,6 +3772,10 @@ void destroy_stage(StageTexture& stage)
     if (!layout.valid() || !ensure_stage(renderer, layout, stage)) {
         return false;
     }
+    // `calculate_scale_layout` centres within the box it was given, so the
+    // destination only has to move by the border that box was inset by.
+    layout.destination.x += inset;
+    layout.destination.y += inset;
 
     if (!SDL_SetRenderTarget(renderer, stage.texture)) {
         return report_sdl_error("SDL_SetRenderTarget (integer stage) failed");
@@ -4398,32 +4423,24 @@ void set_assignment_titles(
     }
 
     const auto digits = std::to_string(displayed_score);
-    const auto digit_count = static_cast<float>(digits.size());
-    const auto available_width = static_cast<float>(output_width) * 0.9F;
-    const auto maximum_height = static_cast<float>(output_height) * 0.75F;
-    auto digit_height = std::min(
-        maximum_height,
-        available_width
-            / (digit_count * 0.72F - 0.12F)
-            * (5.0F / 3.0F));
-    auto digit_width = digit_height * 0.6F;
-    auto gap = digit_width * 0.2F;
-    const auto total_width =
-        digit_count * digit_width + (digit_count - 1.0F) * gap;
-    const auto origin_x =
-        (static_cast<float>(output_width) - total_width) / 2.0F;
-    const auto origin_y =
-        (static_cast<float>(output_height) - digit_height) / 2.0F;
+    const auto layout = devils_crush::cabinet::calculate_dmd_digit_layout(
+        output_width,
+        output_height,
+        digits.size());
+    if (!layout.valid()) {
+        return SDL_RenderPresent(output.renderer)
+            || report_sdl_error("SDL_RenderPresent (DMD) failed");
+    }
 
     for (std::size_t index = 0; index < digits.size(); ++index) {
         if (!draw_dmd_digit(
                 output.renderer,
                 digits[index] - '0',
-                origin_x
-                    + static_cast<float>(index) * (digit_width + gap),
-                origin_y,
-                digit_width,
-                digit_height)) {
+                layout.origin_x
+                    + static_cast<float>(index) * layout.pitch(),
+                layout.origin_y,
+                layout.digit_width,
+                layout.digit_height)) {
             return false;
         }
     }
@@ -7795,7 +7812,8 @@ int run_windows_host(
                             static_cast<std::uint32_t>(
                                 devils_crush::render::
                                     kTitleLogoHeight * 4),
-                            kPureBlack)
+                            kPureBlack,
+                            kBackglassMarginFraction)
                     : backglass_source.texture != nullptr
                         ? present_frame(
                             backglass.renderer,
@@ -7805,7 +7823,8 @@ int run_windows_host(
                                 backglass_source.width),
                             static_cast<std::uint32_t>(
                                 backglass_source.height),
-                            kPureBlack)
+                            kPureBlack,
+                            kBackglassMarginFraction)
                         : present_black(backglass))) {
             std::cerr
                 << "Cabinet backglass renderer lost; disabling "

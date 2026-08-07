@@ -40,6 +40,7 @@ add_library(
     STATIC
     src/cabinet/cabinet_state.cpp
     src/cabinet/display_config.cpp
+    src/cabinet/dmd_layout.cpp
     src/core/backup_ram.cpp
     src/core/rom_image.cpp
     src/core/save_state.cpp

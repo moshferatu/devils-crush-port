@@ -94,12 +94,26 @@ $stignore = @"
 /logs
 /captures
 "@
+$stignorePath = Join-Path $destinationFull ".stignore"
+
+# A dot-prefixed file tends to end up Hidden on Windows, and .NET refuses to
+# truncate a hidden file: it throws UnauthorizedAccessException rather than
+# overwriting. Clear the attributes before writing and restore Hidden after,
+# so restaging works and the file stays out of the way.
+if (Test-Path -LiteralPath $stignorePath) {
+    (Get-Item -LiteralPath $stignorePath -Force).Attributes = `
+        [System.IO.FileAttributes]::Normal
+}
+
 # Windows PowerShell's `-Encoding utf8` emits a BOM, which Syncthing would
 # read as part of the first pattern rather than as a comment marker.
 [System.IO.File]::WriteAllText(
-    (Join-Path $destinationFull ".stignore"),
+    $stignorePath,
     $stignore + [System.Environment]::NewLine,
     (New-Object System.Text.UTF8Encoding $false))
+
+(Get-Item -LiteralPath $stignorePath -Force).Attributes = `
+    [System.IO.FileAttributes]::Hidden
 
 $size = (Get-Item -LiteralPath $executable).Length
 $staged = Get-ChildItem -LiteralPath $destinationFull -File -Force |

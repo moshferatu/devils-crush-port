@@ -4,6 +4,7 @@
 #include "devils_crush/core/backup_ram.hpp"
 #include "devils_crush/cabinet/cabinet_state.hpp"
 #include "devils_crush/cabinet/display_config.hpp"
+#include "devils_crush/cabinet/dmd_layout.hpp"
 #include "devils_crush/core/rom_image.hpp"
 #include "devils_crush/core/save_state.hpp"
 #include "devils_crush/emulation/pce_runtime.hpp"
@@ -8346,6 +8347,89 @@ void test_sprite_emit_run()
         "sprite emit rejects a missing snapshot");
 }
 
+void test_dmd_digit_layout()
+{
+    using devils_crush::cabinet::calculate_dmd_digit_layout;
+    using devils_crush::cabinet::kDmdScoreFieldDigits;
+    using devils_crush::cabinet::kDmdWidthUsage;
+
+    // Every shape a DMD role can take: the default window, a dedicated DMD
+    // strip, a fullscreen 16:9 panel, a fullscreen 16:10 panel, and a panel
+    // rotated into portrait. The last three are what the score used to run
+    // off the edge of.
+    struct Output {
+        int width;
+        int height;
+        const char* name;
+    };
+    constexpr std::array<Output, 5> outputs{
+        Output{960, 240, "the default DMD window"},
+        Output{1920, 360, "a dedicated DMD strip"},
+        Output{1920, 1080, "a fullscreen 16:9 panel"},
+        Output{1920, 1200, "a fullscreen 16:10 panel"},
+        Output{1080, 1920, "a portrait-rotated panel"},
+    };
+
+    for (const auto& output : outputs) {
+        for (std::size_t digits = 1U; digits <= 12U; ++digits) {
+            const auto layout = calculate_dmd_digit_layout(
+                output.width, output.height, digits);
+            check(layout.valid(), "the DMD layout is drawable");
+
+            // Digits are laid left to right from the origin, so the field
+            // runs from origin_x to the right edge of the last digit.
+            const auto drawn_width =
+                static_cast<float>(digits - 1U) * layout.pitch()
+                + layout.digit_width;
+            check(
+                layout.origin_x >= 0.0F
+                    && layout.origin_x + drawn_width
+                        <= static_cast<float>(output.width) + 0.5F,
+                "the score fits horizontally");
+            check(
+                layout.origin_y >= 0.0F
+                    && layout.origin_y + layout.digit_height
+                        <= static_cast<float>(output.height) + 0.5F,
+                "the score fits vertically");
+        }
+    }
+
+    // Digit size must not change as the score grows: a scoreboard that
+    // rescales itself on every carry reads as a fault.
+    const auto one_digit = calculate_dmd_digit_layout(1920, 360, 1U);
+    const auto full_field =
+        calculate_dmd_digit_layout(1920, 360, kDmdScoreFieldDigits);
+    check(
+        one_digit.digit_height == full_field.digit_height,
+        "a short score is drawn at the same size as a full one");
+
+    // A score wider than the nominal field still has to fit rather than
+    // overflow, so the field grows instead.
+    const auto over_field =
+        calculate_dmd_digit_layout(1920, 360, kDmdScoreFieldDigits + 2U);
+    check(
+        over_field.digit_height < full_field.digit_height,
+        "a score wider than the field shrinks to fit it");
+
+    // On a strip wide enough for the height bound to bind, the field must
+    // still be the one that binds -- this is the direction the old formula
+    // got wrong by applying the digit aspect a second time.
+    const auto strip = calculate_dmd_digit_layout(1920, 360, 10U);
+    const auto strip_width =
+        static_cast<float>(kDmdScoreFieldDigits - 1U) * strip.pitch()
+        + strip.digit_width;
+    check(
+        strip_width
+            <= static_cast<float>(1920) * kDmdWidthUsage + 0.5F,
+        "the full field stays inside its width budget");
+
+    check(
+        !calculate_dmd_digit_layout(0, 240, 4U).valid()
+            && !calculate_dmd_digit_layout(960, 0, 4U).valid()
+            && !calculate_dmd_digit_layout(960, 240, 0U).valid(),
+        "a degenerate DMD output yields no layout");
+}
+
 void test_table_palette_cache()
 {
     using devils_crush::render::TablePaletteCache;
@@ -8703,6 +8787,7 @@ int main()
     test_actor_scan_run();
     test_collision_scan_run();
     test_sprite_emit_run();
+    test_dmd_digit_layout();
     test_table_palette_cache();
     test_native_registry();
     test_runtime_boundary();

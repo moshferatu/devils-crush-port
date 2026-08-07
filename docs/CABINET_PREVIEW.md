@@ -226,6 +226,17 @@ the playfield, so pixel-art backglasses retain the fixed sharp policy. A
 backglass renderer reset reloads the persisted source; closing or losing that
 window still does not affect emulation.
 
+Both the native logo and the image fallback are inset by
+`kBackglassMarginFraction`, currently 6%, so the artwork sits inside its
+window the way a real backglass sits inside its frame rather than running to
+the edge of the glass. The margin is taken from the shorter axis so the
+reserved border is the same number of pixels on every side: on the default
+1108-by-739 backglass window it is 44 pixels. `present_frame()` insets the box
+it hands to `calculate_scale_layout()` and then offsets the returned
+destination, so containment and the sharp-scaling policy are unchanged — the
+artwork is simply contained in a smaller box. The playfield passes no margin;
+it is the one surface that should fill its display.
+
 ## Native backglass logo
 
 The backglass uses a native, ROM-derived title-logo renderer. It
@@ -248,6 +259,31 @@ The current DMD omits the P1/P2 discriminator until the two-player session
 field is dynamically mapped. The score remains live during emulated
 framebuffer and bonus-stage presentation because it is read independently
 from work RAM.
+
+### Digit layout
+
+`cabinet::calculate_dmd_digit_layout()` places the seven-segment digits. A
+digit is three units wide by five tall and neighbours are separated by a fifth
+of a digit width, so a row of `n` digits spans `0.72n - 0.12` digit heights.
+The field may use 90% of the window's width and 75% of its height.
+
+Both bounds have to be taken. Taking only the height bound is what made a
+fullscreen DMD illegible: at 0.75 of a 1080-pixel panel a digit is 810 pixels
+tall, and nine digits at that size span 5,152 pixels across a 1,920-pixel
+panel, so most of the score fell off both edges. The width bound was present
+but computed as `available_width / (0.72n - 0.12) * 5 / 3`. The `0.72n - 0.12`
+coefficients are already expressed in digit heights, so the trailing `5 / 3`
+applied the digit aspect a second time and inflated the width-limited height
+by 67%, leaving the field 1.5 times wider than the window whenever that bound
+did bind.
+
+Digits are sized against `kDmdScoreFieldDigits` rather than the count actually
+being drawn, so the score does not rescale itself each time it gains a digit.
+A short score is centred within the window, not left-aligned in the field. If
+a score longer than the field is ever decoded the field widens to hold it.
+`test_dmd_digit_layout` asserts that both bounds hold for one to twelve digits
+across five output shapes: the default 960-by-240 window, a 1920-by-360 DMD
+strip, fullscreen 16:9 and 16:10 panels, and a portrait-rotated panel.
 
 ## One rendered layer, measured against the emulator
 
