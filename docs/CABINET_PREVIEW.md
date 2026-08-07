@@ -296,7 +296,8 @@ the decoder scales those bits directly.
 | --- | --- |
 | background + retained + live SAT (previous) | 3.33% |
 | background + retained, live SAT withheld | 9.28% |
-| **single layer, every actor from work RAM** | **2.40%** |
+| single layer, every actor from work RAM | 2.40% |
+| **single layer, camera cull lifted** | **1.75%** |
 
 The middle row is why the seam was invisible to earlier measurements: with the
 SAT withheld but the handover still in place, the composition had a hole
@@ -314,6 +315,51 @@ drew.
 The remaining 2.40% is genuine reconstruction error and is the number to drive
 down. Route frame 1,451 is the worst single frame at 34,100 pixels, where a
 row-offset sweep collapses it to 619 -- the camera lands between values there.
+
+### Lifting the camera cull
+
+Once the layers collapsed, what was left was not a rendering fault at all. Of
+the three flipper pairs only the one under the camera answered the buttons, and
+the Front Spiders at `$26/$27` stood still. The renderer was following the ROM
+exactly -- the ROM had stopped simulating the rest of the table.
+
+`00:F4FC` sweeps every slot each frame and sets `$3080,X` bit 7 only inside
+`[camera - 48, camera + 240)`. Two per-frame sweeps then read that flag:
+
+```
+01:C515   LDA $3080,X : BMI dispatch : AND #$02 : BNE skip    actor scheduler
+02:404A   LDA $3080,X : BMI dispatch : AND #$02 : BNE skip    collision sweep
+08:407C   LDA $3080,X : BPL skip     : AND #$20 : BNE skip    SAT presentation
+```
+
+A slot is skipped only when bit 7 is clear *and* bit 1 is set, so bit 1 is the
+opt-in to the cull. Those two sites are the only reads of bit 1 anywhere in the
+cartridge; every other `$3080` access in all 384 KB touches bits 5, 6, or 7.
+
+The cabinet therefore clears bit 1 for slots `$04-$61` -- the flippers and the
+88 fixed mechanisms -- before each frame. Bit 1 rather than bit 7 because bit 7
+is also the gate on `08:4036`, the original SAT presentation path: leaving it
+alone keeps the emulator queueing exactly the actors the hardware drew, so its
+64-entry sprite table cannot overflow and the framebuffer the oracle measures
+against stays the same picture. The dynamic pool at `$62-$7E` keeps its cull;
+those slots hold transient effects whose lifetimes the camera scopes on
+purpose.
+
+`--cabinet-flipper-trace` measures this directly, replaying the quick state for
+600 frames while working both flipper buttons (Button I carries `$3B80` mask
+`$01` for the right-hand pieces, any direction carries `$F0` for the left):
+
+| slot | phase changes on camera | off camera | with the cull lifted |
+| --- | ---: | ---: | ---: |
+| `$04`/`$05` | 24 | 0 | 84 |
+| `$06`/`$07` | 72 | 0 | 84 |
+| `$08`/`$09` | 17 | 1 | 84 |
+
+Every change all six pieces made happened while their bit 7 was set, and they
+made one between them while it was clear. With the cull lifted all three pairs
+respond identically. The oracle improves at the same time, from 2.40% to
+**1.75%**, with the worst frame falling from 34,100 mismatched pixels to 5,175:
+actors near the window edge were being drawn from a frozen state.
 
 ## Remaining cabinet work
 

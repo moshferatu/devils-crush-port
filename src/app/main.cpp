@@ -31,6 +31,7 @@
 #include <cstdlib>
 #include <exception>
 #include <filesystem>
+#include <format>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
@@ -202,6 +203,7 @@ struct CommandLine {
     bool cabinet_oracle = false;
     bool cabinet_freeze_census = false;
     std::filesystem::path cabinet_freeze_census_state;
+    bool cabinet_flipper_trace = false;
     // Bisection aid: deploy only registry entries [first, first + count).
     bool registry_slice_set = false;
     std::size_t registry_slice_first = 0U;
@@ -723,6 +725,8 @@ parse_logical_address_range(const std::string_view text)
         } else if (argument == "--cabinet-freeze-census-state") {
             options.cabinet_freeze_census = true;
             options.cabinet_freeze_census_state = kQuickStatePath;
+        } else if (argument == "--cabinet-flipper-trace") {
+            options.cabinet_flipper_trace = true;
         } else if (argument == "--emulate-only") {
             options.emulate_only = true;
         } else if (argument == "--registry-slice") {
@@ -6991,6 +6995,54 @@ int run_smoke_test(PceRuntime& runtime)
 
 // A non-null native_registry deploys every admitted routine into the live
 // session and supplies the slice, exclusion, and census settings for it.
+// Keeps the table's fixed mechanisms simulating outside the original camera.
+//
+// The ROM culls actors by camera band. `00:F4FC` sweeps every slot each frame
+// and sets `$3080,X` bit 7 only inside [camera - 48, camera + 240); the actor
+// scheduler then skips a slot whose bit 7 is clear while bit 1 is set. Bit 1
+// is the opt-in to that cull -- a slot that clears it is dispatched every
+// frame wherever it stands.
+//
+// On the original hardware one screen was all anyone could see, so the cull
+// cost nothing. The cabinet shows all 768 rows at once and it becomes the
+// dominant visual defect: of the three flipper pairs only the one under the
+// camera answers the buttons, and the Front Spiders at `$26/$27` stand still.
+// Measured over 600 frames of worked flippers, every phase change any of the
+// six pieces made happened while its bit 7 was set, and they made one change
+// between them while it was clear.
+//
+// Bit 1 is the right lever rather than bit 7 because bit 7 is also the gate on
+// `08:4036`, the original SAT presentation path. Leaving it alone keeps the
+// emulator queueing exactly the actors the hardware drew, so its own 64-entry
+// sprite table cannot overflow and the framebuffer the oracle measures
+// against stays the same picture.
+//
+// The dynamic pool at `$62-$7E` keeps its cull. Those slots hold transient
+// effects whose lifetimes the camera scopes on purpose.
+void keep_fixed_actors_simulating(
+    devils_crush::emulation::PceRuntime& runtime)
+{
+    auto work_ram = runtime.export_work_ram();
+    if (work_ram.size() < 0x2000U) {
+        return;
+    }
+    bool changed = false;
+    for (std::size_t slot = devils_crush::cabinet::kFirstFlipperControlSlot;
+         slot <= devils_crush::cabinet::kLastFixedActorSlot;
+         ++slot) {
+        const std::size_t offset = 0x1080U + slot;
+        const auto flags = std::to_integer<std::uint8_t>(work_ram[offset]);
+        if ((flags & 0x02U) == 0U) {
+            continue;
+        }
+        work_ram[offset] = static_cast<std::byte>(flags & 0xFDU);
+        changed = true;
+    }
+    if (changed) {
+        static_cast<void>(runtime.import_work_ram(work_ram));
+    }
+}
+
 int run_windows_host(
     PceRuntime& runtime,
     const std::filesystem::path& rom_path,
@@ -7516,6 +7568,9 @@ int run_windows_host(
                && now >= next_frame_time
                && catch_up_frames < kMaximumCatchUpFrames
                && (frame_limit <= 0 || emulated_frames < frame_limit)) {
+            if (cabinet_mode) {
+                keep_fixed_actors_simulating(runtime);
+            }
             const auto frame = runtime.run_frame(read_input(gamepad));
             ++emulated_frames;
             if (!cabinet_mode) {
@@ -7775,6 +7830,164 @@ int run_windows_host(
 // visual hash against the phase can: a slot whose phase moves many times off
 // camera while its artwork takes one value is frozen, by definition, and that
 // is exactly what a player sees.
+// Reads the flipper pieces' own state straight out of work RAM while the
+// buttons are worked, so the question "why doesn't that pair move?" is
+// answered by the ROM's fields rather than by what reached the screen.
+//
+// 01:D466 is the per-piece input helper and it opens with one gate:
+// LDA $2CEE; AND $3B80,X -- a zero intersection returns immediately. If a
+// piece never moves, either its mask misses the held buttons, or its
+// coroutine pointer at $3F80:$3F00,X is parked somewhere that never consults
+// the gate at all. Both are visible here.
+[[nodiscard]] int run_flipper_trace(
+    devils_crush::emulation::PceRuntime& runtime,
+    const std::filesystem::path& state_path,
+    const bool uncull)
+{
+    if (!load_quick_state(runtime, state_path)) {
+        return EXIT_FAILURE;
+    }
+    std::cout << "camera cull: " << (uncull ? "lifted" : "original") << "\n";
+    // Work RAM is exported from $2000, so the actor arrays at $3000 + n*$80
+    // land at offset $1000 + n*$80 and the held-input byte $2CEE at $0CEE.
+    constexpr std::size_t kHeldInput = 0x0CEEU;
+    constexpr std::size_t kFlagsBase = 0x1080U;
+    constexpr std::size_t kPhaseBase = 0x1980U;
+    constexpr std::size_t kInputMaskBase = 0x1B80U;
+    constexpr std::size_t kDispatchLow = 0x1F00U;
+    constexpr std::size_t kDispatchHigh = 0x1F80U;
+
+    struct PieceRecord {
+        std::set<unsigned> masks;
+        std::set<unsigned> dispatches;
+        std::set<unsigned> phases;
+        std::size_t frames = 0;
+        std::size_t gate_open_frames = 0;
+        std::size_t phase_changes = 0;
+        // 00:F4FC sets $3080,X bit 7 only for actors inside
+        // [camera - 48, camera + 240). Cross-tabulating that flag against the
+        // frames the piece actually moved says whether it is the whole story.
+        std::size_t in_window_frames = 0;
+        std::size_t moved_in_window = 0;
+        std::size_t moved_out_of_window = 0;
+        unsigned last_phase = 0x100U;
+    };
+    std::array<
+        PieceRecord,
+        devils_crush::cabinet::kLastFlipperControlSlot
+            - devils_crush::cabinet::kFirstFlipperControlSlot + 1U>
+        pieces;
+
+    std::cout << "frame  in  cam"
+                 "   |  slot mask phase disp   |  ... (first 4 button edges)\n";
+    std::size_t printed_windows = 0;
+    for (int frame_number = 1; frame_number <= 600; ++frame_number) {
+        const bool held = (frame_number / 20) % 2 == 0;
+        InputFrame replay_input{};
+        if (held) {
+            // Button I works the right-hand pieces ($3B80 mask $01) and any
+            // direction works the left-hand ones (mask $F0). Button II is the
+            // nudge, not a flipper, so it stays out of this.
+            replay_input.player_one = static_cast<std::uint16_t>(
+                static_cast<std::uint16_t>(Button::one)
+                | static_cast<std::uint16_t>(Button::left));
+        }
+        if (uncull) {
+            keep_fixed_actors_simulating(runtime);
+        }
+        static_cast<void>(runtime.run_frame(replay_input));
+        const auto work_ram = runtime.export_work_ram();
+        if (work_ram.size() < 0x2000U) {
+            continue;
+        }
+        const auto byte_at = [&work_ram](const std::size_t offset) {
+            return static_cast<unsigned>(
+                static_cast<std::uint8_t>(work_ram[offset]));
+        };
+        const auto input = byte_at(kHeldInput);
+        const auto camera = static_cast<int>(
+            static_cast<std::int16_t>(static_cast<std::uint16_t>(
+                byte_at(0x0BU) | (byte_at(0x0CU) << 8U))));
+        const bool trace_window =
+            printed_windows < 4U && frame_number > 20 && (frame_number % 20) < 6;
+        if (trace_window && (frame_number % 20) == 0) {
+            ++printed_windows;
+        }
+        if (trace_window) {
+            std::cout << std::setw(5) << frame_number << std::setw(4)
+                      << std::hex << input << std::dec << std::setw(5)
+                      << camera << "  |";
+        }
+        for (std::size_t slot = devils_crush::cabinet::kFirstFlipperControlSlot;
+             slot <= devils_crush::cabinet::kLastFlipperControlSlot;
+             ++slot) {
+            auto& piece =
+                pieces[slot - devils_crush::cabinet::kFirstFlipperControlSlot];
+            const auto mask = byte_at(kInputMaskBase + slot);
+            const auto phase = byte_at(kPhaseBase + slot);
+            const auto dispatch = byte_at(kDispatchLow + slot)
+                | (byte_at(kDispatchHigh + slot) << 8U);
+            ++piece.frames;
+            piece.masks.insert(mask);
+            piece.dispatches.insert(dispatch);
+            piece.phases.insert(phase);
+            if ((input & mask) != 0U) {
+                ++piece.gate_open_frames;
+            }
+            const bool in_window = (byte_at(kFlagsBase + slot) & 0x80U) != 0U;
+            if (in_window) {
+                ++piece.in_window_frames;
+            }
+            if (piece.last_phase != 0x100U && phase != piece.last_phase) {
+                ++piece.phase_changes;
+                if (in_window) {
+                    ++piece.moved_in_window;
+                } else {
+                    ++piece.moved_out_of_window;
+                }
+            }
+            piece.last_phase = phase;
+            if (trace_window) {
+                std::cout << "  " << std::hex << std::setw(2)
+                          << std::setfill('0') << slot << " " << std::setw(2)
+                          << mask << " " << std::setw(2) << phase << " "
+                          << std::setw(4) << dispatch << std::setfill(' ')
+                          << std::dec;
+            }
+        }
+        if (trace_window) {
+            std::cout << "\n";
+        }
+    }
+
+    std::cout << "\nslot  mask(s)      dispatch(es)        phases  "
+                 "gate-open  in-window  moved-in  moved-out\n";
+    for (std::size_t slot = devils_crush::cabinet::kFirstFlipperControlSlot;
+         slot <= devils_crush::cabinet::kLastFlipperControlSlot;
+         ++slot) {
+        const auto& piece =
+            pieces[slot - devils_crush::cabinet::kFirstFlipperControlSlot];
+        std::cout << "  " << std::hex << std::setw(2) << std::setfill('0')
+                  << slot << std::setfill(' ') << "  ";
+        std::string masks;
+        for (const auto mask : piece.masks) {
+            masks += std::format("{:02X} ", mask);
+        }
+        std::string dispatches;
+        for (const auto dispatch : piece.dispatches) {
+            dispatches += std::format("{:04X} ", dispatch);
+        }
+        std::cout << std::dec << std::left << std::setw(13) << masks
+                  << std::setw(20) << dispatches << std::setw(8)
+                  << piece.phases.size() << std::setw(11)
+                  << piece.gate_open_frames << std::setw(11)
+                  << piece.in_window_frames << std::setw(10)
+                  << piece.moved_in_window << piece.moved_out_of_window
+                  << std::right << "\n";
+    }
+    return EXIT_SUCCESS;
+}
+
 [[nodiscard]] int run_freeze_census(
     devils_crush::emulation::PceRuntime& runtime,
     const std::filesystem::path& rom_path,
@@ -7822,6 +8035,7 @@ int run_windows_host(
                 static_cast<std::uint16_t>(Button::one)
                 | static_cast<std::uint16_t>(Button::two));
         }
+        keep_fixed_actors_simulating(runtime);
         static_cast<void>(runtime.run_frame(
             from_state
                 ? replay_input
@@ -8006,6 +8220,12 @@ int run_windows_host(
 
     static constexpr int last_frame = 2100;
     for (int frame_number = 1; frame_number <= last_frame; ++frame_number) {
+        // Measure the reconstruction under the same cull the cabinet runs
+        // under. Lifting it puts ~90 more actors on the scheduler every frame,
+        // and if that thrashed the pattern VRAM the two sides would part
+        // company here: the native layer resolves artwork from ROM
+        // descriptors while the emulator draws from live VRAM.
+        keep_fixed_actors_simulating(runtime);
         const auto frame =
             runtime.run_frame(state_census_input_for_frame(frame_number));
         const auto work_ram = runtime.export_work_ram();
@@ -8312,6 +8532,13 @@ int main(const int argc, char* argv[])
             return EXIT_FAILURE;
         }
 
+        if (options.cabinet_flipper_trace) {
+            if (run_flipper_trace(*runtime, kQuickStatePath, false)
+                != EXIT_SUCCESS) {
+                return EXIT_FAILURE;
+            }
+            return run_flipper_trace(*runtime, kQuickStatePath, true);
+        }
         if (options.cabinet_freeze_census) {
             return run_freeze_census(
                 *runtime,
