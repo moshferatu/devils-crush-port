@@ -253,17 +253,37 @@ is the game waiting on the VBlank counter, not work to port.
 ### Cycle share is not the whole selection criterion
 
 A candidate also has to fit its interrupt horizon, and the profile does not
-show that. `08:40DF`, the sprite emitter, is the largest portable cluster left
-at 7.77% of all master cycles, but its mean body is 1,328 cycles and it runs
-inside the video window, where the user-event horizon is far shorter than the
-~5,068-cycle timer period. The valve admits 535 of 73,818 calls, turning 7.77%
-into 0.056%. `src/app/native_replacements_video.cpp` carries the measurement
-and the two blockers.
+show that. `08:40DF`, the sprite emitter, was the largest portable cluster
+left at 7.77% of all master cycles, but its mean body is 1,328 cycles and it
+runs inside the video window, where the user-event horizon is far shorter than
+the ~5,068-cycle timer period. Priced atomically the valve admitted 535 of
+73,818 calls, turning 7.77% into 0.056%.
 
 Estimate acceptance before building an adapter: divide the candidate's mean
 body by its call count and compare against the horizons its `RoutineEntry`
 reports. A body that approaches a frame's event spacing needs a checkpointed
-transcript, not an atomic one, and that is a materially larger job.
+transcript, not an atomic one, and that is a materially larger job — but it is
+the job that pays. Checkpointing `08:40DF` took it from 535 calls to all
+73,818 and the registry from 13.75% to 21.35% of all master cycles, because a
+checkpointed transcript crosses the horizons the valve exists to protect.
+
+### A hardware wait cycle belongs to the transcript, not the total
+
+Only the checkpointed path prices a write to the VDC's four logical ports
+correctly. It advances to the boundary *before* the write and lets the
+ordinary HuC6280 bus path charge the wait cycle, so the declared offset is
+where the write really lands. An atomic body pays that cycle twice: the
+transaction's own `body_master_cycles` already contains it and `WrMem` charges
+it again. `08:40DF` ran 24 master cycles per entry long for exactly that
+reason — eight port writes, three cycles each — and the excess shifted every
+later interrupt.
+
+The same distinction sets the interrupt-sample offset. Ordinary instructions
+sample one CPU cycle before they end, so `master_cycle_offset - 3` is right
+for them. A port store's last cycle is the stolen wait, which lands *after*
+`LastCycle`, so it samples at `master_cycle_offset - 6`. Getting this wrong by
+one CPU cycle is not cosmetic: it moved a VDC event, which moved a timer
+interrupt by one instruction 943 frames later, which moved the state census.
 
 Note also what the harnesses do not cover. `--routine-replay` compares
 registers, return state, relative cycles, and ordered work-RAM writes; the

@@ -150,6 +150,8 @@ int dc_classify_sprite_emit_run(
             }
         }
 
+        memcpy(entry->descriptor, descriptor, sizeof(descriptor));
+
         /* LDA ($2F),Y : BMI : the signed vertical offset widens to 16 bits
            against the actor's own coordinate. */
         entry->vertical_negative = (descriptor[0] & 0x80U) != 0U ? 1U : 0U;

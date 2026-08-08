@@ -23,6 +23,11 @@ extern "C" {
 #define DC_SPRITE_EMIT_ROM_SIZE 0x2000U
 
 typedef struct dc_sprite_emit_entry {
+    // The six descriptor bytes this entry was built from. An instruction
+    // transcript needs them as well as the results: each one is the
+    // accumulator at a load boundary, before the arithmetic that consumes
+    // it, and two of them cannot be recovered from the results alone.
+    uint8_t descriptor[6];
     // The eight VDC data-port values, in write order: vertical, horizontal,
     // pattern, then attribute, each low byte to $0002 and high to $0003.
     uint8_t vertical_low;

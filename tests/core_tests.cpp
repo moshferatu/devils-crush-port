@@ -8548,6 +8548,14 @@ void test_sprite_emit_run()
             && run.entries[0].attribute_high == 0x55U
             && run.entries[0].attribute_low_merged == 0U,
         "an unflagged actor passes its attribute bytes through");
+    check(
+        run.entries[0].descriptor[0] == 0x10U
+            && run.entries[0].descriptor[1] == 0x20U
+            && run.entries[0].descriptor[2] == 0x30U
+            && run.entries[0].descriptor[3] == 0x00U
+            && run.entries[0].descriptor[4] == 0x44U
+            && run.entries[0].descriptor[5] == 0x55U,
+        "the six descriptor bytes are reported alongside the results");
 
     // A negative vertical offset sign-extends through $3380,X.
     reset();

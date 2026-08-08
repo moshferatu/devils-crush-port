@@ -1,6 +1,6 @@
 # Project Progress
 
-Last updated: 2026-08-06
+Last updated: 2026-08-08
 
 ## Current Status
 
@@ -5443,6 +5443,20 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
     assembly-backed.
 
 ## Active Work
+
+Current owner: Claude. Current slice: semantic `08:40DF@all` replaces the
+satellite sprite attribute-table emitter for all 73,818 calls on the
+3,600-frame state-census route, taking the deployed registry from 13.75% to
+21.35% of all master cycles -- 60.7% of the portable pool once the emitter's
+own 100,468,839 cycles join the gameplay pool in the denominator. It is a
+full instruction-boundary transcript: 21 prologue checkpoints and up to 61
+per emitted entry, so interrupts are sampled and delivered where the original
+samples and delivers them, and the core charges the VDC's stolen wait cycle
+once rather than twice. The Release and Debug censuses, all 73,818 call
+records, all 1,477,731 scoped work-RAM writes, and all 4,205,700 interrupt
+stack writes are byte-identical to assembly. A zero entry count, a cursor
+overflow, and a bit-five attribute-high merge remain declined by the
+classifier and assembly-backed.
 
 Current owner: Codex. Current slice: semantic `03:73A6@all` now replaces all
 64 compatible collision-free, one-pass, no-hit Knight movement calls on the

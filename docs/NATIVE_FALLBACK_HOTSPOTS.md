@@ -2004,6 +2004,53 @@ retraction transcript; semantic `02:533B@all` admits 11 once event and IRQ
 horizons are respected. The remaining 21 calls, including five interrupted
 transactions, retain original assembly execution.
 
+## Sprite attribute-table emitter
+
+A whole-ROM `--instruction-profile` of the ordinary 3,600-frame route ranks
+`08:40DF` first among everything the port can own: 100,468,839 master cycles,
+7.77% of the whole recording, in 73,818 calls that emit 109,678
+attribute-table entries. It resolves an actor's sprite descriptor for the
+current animation frame and pushes four 16-bit words per entry -- vertical,
+horizontal, pattern, attribute -- through the VDC data ports, advancing the
+table cursor in `$4E`.
+
+| Routine | Calls | Total master cycles | Share of all cycles | Decision |
+| --- | ---: | ---: | ---: | --- |
+| `08:40DF` sprite emitter | 73,818 | 100,468,839 | 7.77% | Native, checkpointed |
+| `08:4036-40DE` caller/setup | -- | 28,276,836 | 2.19% | Assembly-backed |
+
+Priced as an atomic body it was not worth having. The mean body is 1,328
+master cycles and the routine runs inside the video window, where the
+user-event horizon is far shorter than the ~5,068-cycle timer period, so the
+valve admitted 535 calls and 0.056%. It was also not faithful: each entry ran
+24 master cycles longer than it declared, because an atomic transaction pays
+the VDC's stolen wait cycle twice -- once inside its own declared duration and
+again when the core commits the write through `WrMem`.
+
+Both are the same defect, and a full instruction-boundary transcript fixes
+both. Semantic `08:40DF@all` now declares a checkpoint for each of the
+routine's own instructions -- 21 in the prologue and up to 61 per entry -- so
+interrupts are sampled and delivered exactly where the original samples and
+delivers them, and the core advances to the pre-write boundary and lets the
+bus path charge the VDC wait. All 73,818 calls run natively. Every call
+record, every one of the 1,477,731 scoped work-RAM writes, all 4,205,700
+interrupt stack writes across the whole route, and the complete state census
+are byte-identical to assembly in both Release and Debug.
+
+Two details were load-bearing and neither is visible in a cycle profile.
+Beetle's `BIT` clears N and V in immediate mode as well, so both attribute
+tests leave V clear and the routine returns with V clear even when the pattern
+high-byte add overflowed -- the atomic model had set V from that add. And a
+port store samples its interrupt six master cycles before it ends rather than
+three, because its last cycle is the stolen wait, which falls after
+`LastCycle`. The three-cycle version moved a VDC event, which moved one timer
+interrupt by one instruction at frame 943, which moved the census.
+
+The routine's own three unmodelled shapes stay assembly-backed and are
+declined by the classifier: a zero entry count, a cursor overflow returning
+early at `4106`, and a `$3800,X` bit-five actor merging `$3E00,X` into the
+attribute high byte. None occurs on any observed route.
+
 ## Use on future families
 
 Follow the command and interpretation rules in
