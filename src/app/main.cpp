@@ -7271,6 +7271,13 @@ int run_windows_host(
         report_sdl_error("SDL_Init failed");
         return EXIT_FAILURE;
     }
+    // Nothing here reads the mouse, and a pointer parked on the playfield is
+    // just something to look at. This is application-wide, so it covers the
+    // DMD and backglass windows too, and `SDL_Quit` puts it back.
+    if (!SDL_HideCursor()) {
+        std::cerr << "Could not hide the mouse cursor: " << SDL_GetError()
+                  << '\n';
+    }
 
     AudioOutput audio;
     audio.available = SDL_InitSubSystem(SDL_INIT_AUDIO);

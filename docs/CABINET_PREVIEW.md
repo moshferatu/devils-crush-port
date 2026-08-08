@@ -428,6 +428,14 @@ To pick up changed defaults, delete the `input.` lines from `cabinet.ini`.
 They are rewritten from the defaults on the next exit, and the window
 placements above them are untouched.
 
+### The mouse cursor
+
+The host hides it at startup. Nothing here reads the mouse — not play, not
+the F12 display assignment, which is entirely keyboard-driven — so a pointer
+left on the playfield is only something to look at, and a cabinet has no way
+to move it off. `SDL_HideCursor` is application-wide, so one call covers the
+DMD and backglass windows too, and `SDL_Quit` restores it on exit.
+
 ## Display assignment and persistence
 
 Press F12 in cabinet mode to pause emulation and enter display assignment.
