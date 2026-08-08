@@ -190,37 +190,144 @@ piece on `$3B80,X`: the left-side pieces `$04/$06/$08` carry mask `$F0`, so
 `$05/$07/$09` carry mask `$01`, so button I works the right flipper and also
 launches the ball. Button II is nudge.
 
-The defaults follow from that:
+Left as shipped, that makes the flipper buttons unusable on a cabinet. Every
+direction works the left flipper, so the right flipper button works the left
+one too; and a right flipper button bound to button I accepts a letter during
+high-score entry instead of scrolling one.
 
-| Key | Pad input | In play |
+### Rewriting the flipper masks
+
+The host therefore rewrites `$3B80,X` for the six flipper pieces each frame
+from `input.left_flipper` and `input.right_flipper`. This is the surgical
+place to do it: filtering the input instead would have to go through `$2CEE`,
+which the scheduler shares with every other actor that reads held input, and
+would take the directions away from the menus too.
+
+| | cartridge | as shipped |
 | --- | --- | --- |
-| Left Shift, Left | d-pad left | Left flipper |
-| Right Shift, Right | button I | Right flipper, launch |
-| Z | button I | Right flipper, launch |
-| X | button II | Nudge |
-| Up, Down | d-pad up/down | Also the left flipper |
-| Backspace, Enter | select, run | — |
+| left pieces `$04/$06/$08` | `$F0` — any direction | `$80` — d-pad left |
+| right pieces `$05/$07/$09` | `$01` — button I | `$30` — d-pad right or up |
 
-Two consequences are worth stating plainly. Up and Down work the left flipper
-too, because the ROM accepts any direction; that is cartridge behaviour and
-not something the host can filter without diverging from the original. And
-d-pad right has no default key, because Right now belongs to the right
-flipper — Up, Down and Left still reach every menu the game presents.
+### Both flippers at once
 
-Binding one key to both button I and d-pad right would make that key work
-both flippers at once. `--cabinet-flipper-trace` holds each pad input in turn
-and reports what the scheduler copied to `$2CEE`, which is the byte
-`01:D466` masks against:
+A pad cannot be pushed left and right together, and the cartridge rejects the
+impossible rather than interpreting it: the *whole* held-input byte arrives at
+`$2CEE` as zero, not merely the two bits. Measured across a sweep:
+
+```text
+pressed -> $2CEE:  90->90  C0->C0  81->81  84->84  A0->00  50->00
+```
+
+`$A0` is left with right and `$50` is up with down. Both are discarded
+entirely; every other combination passes through intact. Two flipper buttons
+on opposing directions therefore silence each other, and neither flipper
+moves — which is exactly what happens if the two flippers are simply given
+`$80` and `$20` and left there.
+
+The right flipper's mask is `$30` for that reason: d-pad right *or* up.
+`cabinet::resolve_opposing_directions()` swaps the flipper onto the second
+input for the frames both buttons are held, and leaves the byte alone
+otherwise. Each button keeps its natural direction when pressed alone, which
+is all the menus and high-score entry ever see; up is never sent by a flipper
+key on its own.
+
+With the substitution in place the trace shows `A0` never reaching the game —
+it arrives as `90` — and gate-open equal on all six pieces, meaning both
+flippers open together during the both-held block:
+
+| slot | mask | gate-open |
+| --- | --- | ---: |
+| `$04/$06/$08` | `80` | 150 |
+| `$05/$07/$09` | `30` | 150 |
+
+A configuration whose flipper list offers no alternative is left unchanged
+rather than being given an input its flipper does not accept.
+
+That decouples *which key works a flipper* from *which pad input the key
+sends*, which is what makes the rest fit together:
+
+| Key | Pad input | In the shooter | In play | Elsewhere |
+| --- | --- | --- | --- | --- |
+| Left Shift, Left | d-pad left | — | Left flipper | A direction — scrolls |
+| Right, Right Shift | d-pad right | — | Right flipper | A direction — scrolls |
+| Enter | button I + run | **Launch** | Pause | Start, pause, confirm |
+| X | button II | — | Nudge | — |
+| Up, Down | d-pad up/down | — | — | Menu navigation |
+
+No key that works a flipper sends button I, so no flipper button can accept a
+high-score letter; all four arrive as directions and scroll. Confirming is
+Enter's alone. Up and Down no longer flip anything.
+
+Button I is dropped from the right flipper's mask for the same reason in
+reverse: with nothing that flips sending it, leaving it there would only let
+the confirm key flip on every press.
+
+### Launch keys
+
+Launching is button I — and so is accepting a high-score letter, and the
+Devil Shooter reads it at `02:5159` as `LDA $2013,Y : AND #$01`, an immediate
+operand with no per-actor mask to rewrite the way the flippers have. A key
+therefore cannot launch and also avoid accepting unless the host looks at
+where the ball is.
+
+`input.launch` names keys that send button I, and only button I, while `$53`
+bit 3 marks the Devil Shooter session. That bit marks the shooter session and
+nothing else, which `--cabinet-nudge-probe` established while tracing the
+nudge gate. Suppressing the key's ordinary pad input is the point rather than
+a side effect: a launch button that also sent Run would pause the game at the
+moment it was pressed.
+
+```ini
+input.launch=Return
+```
+
+Return launches from the shooter and still starts, pauses and confirms
+everywhere else. The flipper buttons launch nothing. An empty list disables
+the override entirely.
+
+`--cabinet-launch-check` holds one key through a launch and reports what the
+ball did:
+
+```text
+holding Return from frame 1000:
+  frames the key sent button I: 180
+  frames it sent its ordinary input: 0
+  ball left the shooter at frame 1278
+  $53 timeline: 1=00 942=08 1278=00 1567=02
+```
+
+One caveat the check turned up: the shooter fires on *release*, and holding
+the key continuously from before the ball is seated did not launch even with
+the charge counter well past `$18`. Pressing once the ball is in the shooter
+does. That is cartridge behaviour — `$2018` is an edge latch — and not
+something the override introduces.
+
+An empty list leaves the cartridge's own mask untouched:
+
+```ini
+input.left_flipper=
+input.right_flipper=
+```
+
+`--cabinet-flipper-trace` measures all of this. It reports what the scheduler
+copied to `$2CEE`, which is the byte `01:D466` masks against:
 
 ```text
 pressed -> $2CEE:  01->01  10->10  20->20  40->40  80->80
 ```
 
-Every bit is copied verbatim, so d-pad right arrives as `$20`, and `$20` is
-inside the left pieces' `$F0`. Over a 600-frame sweep the mask-`$F0` slots
-opened on 241 frames — all four direction blocks, not just left. So the
-conflict is real, and the free key for d-pad right has to be some key that is
-not also a flipper.
+Every bit is copied verbatim, so d-pad right arrives as `$20`. Over a
+600-frame sweep holding each input in turn for 120 frames — 60 of them held —
+the gate-open counts confirm the rewrite:
+
+| slot | cartridge mask | gate-open | rewritten mask | gate-open |
+| --- | --- | ---: | --- | ---: |
+| `$04/$06/$08` | `F0` | 241 | `80` | 60 |
+| `$05/$07/$09` | `01` | 60 | `30` | 60 |
+
+241 is all four direction blocks; 60 is one. All six pieces still reach four
+dispatch phases and still move, so nothing was disabled — the left flipper was
+narrowed and the right one moved from button I to a direction.
 
 ### Nudge
 
@@ -272,15 +379,21 @@ Bindings live in `portable-data/cabinet.ini` under `input.`, one line per pad
 input, holding a comma-separated list of SDL key names:
 
 ```ini
-input.one=Right Shift,Right,Z
+input.one=Return
 input.two=X
 input.select=Backspace
 input.run=Return
 input.up=Up
-input.right=
+input.right=Right,Right Shift
 input.down=Down
 input.left=Left Shift,Left
+input.left_flipper=left
+input.right_flipper=right,up
+input.launch=Return
 ```
+
+The two `_flipper` lines name pad inputs rather than keys, from the same set
+as the `input.` suffixes above.
 
 Names are SDL scancode names, matched case-insensitively, so the host can
 resolve them with `SDL_GetScancodeFromName` and there is no bespoke key table
@@ -297,6 +410,23 @@ cabinet's encoder is wired to send.
 `cabinet.ini` is rewritten in full on exit and after display assignment, so
 the bindings are a stored field rather than a passthrough: an existing file
 without them gains the section the first time the host exits normally.
+
+### An existing file pins its bindings
+
+Because the file is rewritten in full, the first normal exit writes every
+binding explicitly, and a stored field always wins over the default. Changing
+a default in code therefore does not reach a configuration that already
+exists.
+
+This is worth knowing before chasing a phantom bug. It kept
+`input.one=Right Shift,Right,Z` alive after the defaults had stopped saying
+so, which left the right flipper button launching the ball — button I charges
+the Devil Shooter — well after the code had removed it from that role. The
+binding was correct; the file was old.
+
+To pick up changed defaults, delete the `input.` lines from `cabinet.ini`.
+They are rewritten from the defaults on the next exit, and the window
+placements above them are untouched.
 
 ## Display assignment and persistence
 

@@ -76,6 +76,34 @@ enum class PadButton : std::size_t {
 
 inline constexpr std::size_t kPadButtonCount = 8U;
 
+// Which pad inputs work each flipper.
+//
+// The cartridge gives the left-side pieces `$04/$06/$08` the input mask `$F0`
+// at `$3B80,X` and the right-side pieces `$05/$07/$09` the mask `$01`, so
+// `01:D466` opens the left gate on up, right, down *or* left, and the right
+// gate on button I alone.
+//
+// That coupling is the problem on a cabinet. A flipper button has to work its
+// flipper during play *and* do something sensible on the screens that are not
+// play -- scrolling a letter during high-score entry, for instance -- and the
+// cartridge decides the latter from which pad input arrives. Rewriting these
+// masks lets a key send whatever pad input the other screens want while still
+// working the flipper it is physically wired to.
+//
+// An empty list leaves the cartridge's own mask untouched.
+struct FlipperInputs {
+    std::vector<PadButton> left;
+    std::vector<PadButton> right;
+
+    [[nodiscard]] bool operator==(const FlipperInputs&) const = default;
+};
+
+// The actor slots each flipper owns, per `docs/ROUTINE_MAP.md`.
+inline constexpr std::array<std::size_t, 3> kLeftFlipperSlots{
+    0x04U, 0x06U, 0x08U};
+inline constexpr std::array<std::size_t, 3> kRightFlipperSlots{
+    0x05U, 0x07U, 0x09U};
+
 // Keys are held as SDL scancode names -- "Left Shift", "Left", "Z" -- so the
 // host can resolve them with `SDL_GetScancodeFromName` and the file stays
 // hand-editable without a bespoke key table to keep in step. A bound input
@@ -83,6 +111,22 @@ inline constexpr std::size_t kPadButtonCount = 8U;
 // which takes the default.
 struct InputBindings {
     std::array<std::vector<std::string>, kPadButtonCount> keys;
+    FlipperInputs flippers;
+
+    // Keys that send button I, and only button I, while the ball is sitting
+    // in the Devil Shooter.
+    //
+    // Launching is button I, and so is accepting a letter during high-score
+    // entry -- the Devil Shooter reads it at `02:5159` as
+    // `LDA $2013,Y : AND #$01`, an immediate operand with no per-actor mask
+    // to rewrite. So a key cannot launch and also avoid accepting unless the
+    // host looks at where the ball is. Session flag `$53` bit 3 marks the
+    // shooter session and nothing else, which makes it exactly the condition.
+    //
+    // A launch key's ordinary pad input is suppressed while it applies, so
+    // binding one that normally sends Run pauses the game everywhere except
+    // the one screen where it should launch instead.
+    std::vector<std::string> launch_keys;
 
     [[nodiscard]] const std::vector<std::string>& operator[](
         const PadButton button) const noexcept
@@ -99,8 +143,41 @@ struct InputBindings {
     [[nodiscard]] bool operator==(const InputBindings&) const = default;
 };
 
-// The `input.` suffix each pad input is stored under.
+// The `input.` suffix each pad input is stored under. Also the name used in
+// the `left_flipper`/`right_flipper` lists.
 [[nodiscard]] std::string_view pad_button_field(PadButton button) noexcept;
+
+// The `$2CEE` bit a pad input arrives as, which is also its bit in the
+// `$3B80,X` mask `01:D466` tests against.
+[[nodiscard]] std::uint8_t pad_button_bit(PadButton button) noexcept;
+
+// The `$3B80,X` mask a list of pad inputs comes to. Zero for an empty list,
+// which callers read as "leave the cartridge's mask alone".
+[[nodiscard]] std::uint8_t flipper_input_mask(
+    std::span<const PadButton> inputs) noexcept;
+
+// Whether a held-input byte asks for left and right, or up and down, at once.
+//
+// A real pad cannot be pushed both ways, and the cartridge rejects the
+// impossible rather than interpreting it: the whole byte arrives at `$2CEE`
+// as zero, not merely the two bits. Measured, `$A0` and `$50` are zeroed
+// while `$90`, `$C0`, `$81` and `$84` pass through intact.
+[[nodiscard]] bool has_opposing_directions(std::uint8_t pad) noexcept;
+
+// Moves one flipper onto another input it already accepts so that an
+// otherwise impossible pad byte survives.
+//
+// Two flipper buttons on opposing directions silence each other, and neither
+// flipper moves. A flipper's input list is a set of equivalents -- `01:D466`
+// opens its gate on any bit in the rewritten mask -- so one of them can be
+// swapped for a non-opposing sibling and both still fire. Each flipper keeps
+// its natural direction when pressed alone, which is all the menus and
+// high-score entry ever see; the substitution exists only for the frames both
+// are held. A byte that needs no help, or a configuration that offers no
+// alternative, is returned unchanged.
+[[nodiscard]] std::uint8_t resolve_opposing_directions(
+    std::uint8_t pad,
+    const FlipperInputs& flippers) noexcept;
 
 // Left Shift and Left work the left flipper; Right Shift and Right work the
 // right flipper and launch. Z and X stay bound so the original keyboard

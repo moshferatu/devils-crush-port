@@ -208,6 +208,45 @@ void append_bindings(std::string& output, const InputBindings& input)
         }
         output += '\n';
     }
+    const auto append_flipper = [&output](
+                                    const std::string_view key,
+                                    const std::vector<PadButton>& inputs) {
+        output += "input.";
+        output += key;
+        output += '=';
+        bool first = true;
+        for (const auto input : inputs) {
+            if (!std::exchange(first, false)) {
+                output += ',';
+            }
+            output += pad_button_field(input);
+        }
+        output += '\n';
+    };
+    append_flipper("left_flipper", input.flippers.left);
+    append_flipper("right_flipper", input.flippers.right);
+
+    output += "input.launch=";
+    bool first_launch = true;
+    for (const auto& key : input.launch_keys) {
+        if (!std::exchange(first_launch, false)) {
+            output += ',';
+        }
+        output += escape_value(key);
+    }
+    output += '\n';
+}
+
+[[nodiscard]] std::optional<PadButton> pad_button_from_field(
+    const std::string_view name) noexcept
+{
+    for (std::size_t index = 0; index < kPadButtonCount; ++index) {
+        const auto button = static_cast<PadButton>(index);
+        if (pad_button_field(button) == name) {
+            return button;
+        }
+    }
+    return std::nullopt;
 }
 
 [[nodiscard]] std::string_view trim(std::string_view text) noexcept
@@ -255,9 +294,14 @@ void append_bindings(std::string& output, const InputBindings& input)
     return keys;
 }
 
-// Absent fields take the default so that a configuration written before
-// bindings existed, or one that names only the inputs its author cared
-// about, still produces a playable pad.
+// Absent fields take the default, so a configuration written before bindings
+// existed, or one that names only the inputs its author cared about, still
+// produces a playable pad.
+//
+// Note that the host rewrites `cabinet.ini` in full on exit, so once a file
+// has been written every field is present and pinned. Changing a default in
+// code will not reach an existing file: that file has to be edited, or its
+// `input.` lines deleted so the defaults apply again.
 [[nodiscard]] bool parse_bindings(
     const std::map<std::string, std::string, std::less<>>& fields,
     InputBindings& input)
@@ -277,7 +321,53 @@ void append_bindings(std::string& output, const InputBindings& input)
         }
         input[button] = std::move(*parsed);
     }
-    return true;
+    const auto parse_flipper =
+        [&fields](
+            const std::string_view key,
+            std::vector<PadButton>& inputs) {
+            std::string field("input.");
+            field += key;
+            const auto found = fields.find(field);
+            if (found == fields.end()) {
+                return true;
+            }
+            std::vector<PadButton> parsed;
+            const std::string_view text(found->second);
+            std::size_t start = 0;
+            while (start <= text.size()) {
+                const auto separator = text.find(',', start);
+                const auto piece = trim(text.substr(
+                    start,
+                    separator == std::string_view::npos
+                        ? std::string_view::npos
+                        : separator - start));
+                if (!piece.empty()) {
+                    const auto button = pad_button_from_field(piece);
+                    if (!button) {
+                        return false;
+                    }
+                    if (std::ranges::find(parsed, *button) == parsed.end()) {
+                        parsed.push_back(*button);
+                    }
+                }
+                if (separator == std::string_view::npos) {
+                    break;
+                }
+                start = separator + 1U;
+            }
+            inputs = std::move(parsed);
+            return true;
+        };
+    const auto launch = fields.find("input.launch");
+    if (launch != fields.end()) {
+        auto parsed = parse_binding(launch->second);
+        if (!parsed) {
+            return false;
+        }
+        input.launch_keys = std::move(*parsed);
+    }
+    return parse_flipper("left_flipper", input.flippers.left)
+        && parse_flipper("right_flipper", input.flippers.right);
 }
 
 [[nodiscard]] std::uint64_t overlap_area(
@@ -332,23 +422,99 @@ std::string_view pad_button_field(const PadButton button) noexcept
     return "";
 }
 
+std::uint8_t pad_button_bit(const PadButton button) noexcept
+{
+    return static_cast<std::uint8_t>(
+        1U << static_cast<unsigned>(static_cast<std::size_t>(button)));
+}
+
+std::uint8_t flipper_input_mask(
+    const std::span<const PadButton> inputs) noexcept
+{
+    std::uint8_t mask = 0;
+    for (const auto input : inputs) {
+        mask = static_cast<std::uint8_t>(mask | pad_button_bit(input));
+    }
+    return mask;
+}
+
+bool has_opposing_directions(const std::uint8_t pad) noexcept
+{
+    const auto set = [pad](const PadButton button) {
+        return (pad & pad_button_bit(button)) != 0U;
+    };
+    return (set(PadButton::left) && set(PadButton::right))
+        || (set(PadButton::up) && set(PadButton::down));
+}
+
+std::uint8_t resolve_opposing_directions(
+    std::uint8_t pad,
+    const FlipperInputs& flippers) noexcept
+{
+    if (!has_opposing_directions(pad)) {
+        return pad;
+    }
+    for (const auto* const list : {&flippers.right, &flippers.left}) {
+        if (list->size() < 2U) {
+            continue;
+        }
+        const auto owned = flipper_input_mask(*list);
+        if ((pad & owned) == 0U) {
+            continue;
+        }
+        for (const auto input : *list) {
+            const auto candidate = static_cast<std::uint8_t>(
+                static_cast<std::uint8_t>(pad & ~owned)
+                | pad_button_bit(input));
+            if (!has_opposing_directions(candidate)) {
+                return candidate;
+            }
+        }
+    }
+    return pad;
+}
+
 InputBindings default_input_bindings()
 {
     InputBindings bindings;
-    // Button I is the right flipper and the ball launcher. Z stays bound so
-    // the original keyboard layout keeps working.
-    bindings[PadButton::one] = {"Right Shift", "Right", "Z"};
+    // Button I confirms -- it is what accepts a letter during high-score
+    // entry -- and Return is the only key that should do that. Neither
+    // flipper button sends it: both reach their flipper as a direction, so
+    // both scroll a letter rather than accepting one.
+    bindings[PadButton::one] = {"Return"};
     bindings[PadButton::two] = {"X"};
     bindings[PadButton::select] = {"Backspace"};
     bindings[PadButton::run] = {"Return"};
     bindings[PadButton::up] = {"Up"};
-    // Right belongs to the right flipper now, so D-pad right has no default
-    // key. Up, Down and Left still reach every menu the game presents.
-    bindings[PadButton::right] = {};
+    // Both right-hand flipper keys. They reach the flipper through the right
+    // pieces' rewritten mask rather than through button I, so on screens that
+    // are not play they arrive as a direction and scroll rather than confirm.
+    bindings[PadButton::right] = {"Right", "Right Shift"};
     bindings[PadButton::down] = {"Down"};
-    // Any direction works the left flipper; Left is the natural one to pair
-    // with Left Shift.
     bindings[PadButton::left] = {"Left Shift", "Left"};
+
+    // The left flipper drops the cartridge's up/right/down, so Right and the
+    // menu directions stop working it. The right flipper gains d-pad right
+    // alongside button I, so Right works it while still arriving as a
+    // direction on the screens that are not play.
+    // Button I is dropped from the right flipper: nothing that works a
+    // flipper sends it now, so leaving it would only let the confirm key flip
+    // on every press.
+    //
+    // The right flipper additionally accepts d-pad up. A pad cannot be pushed
+    // left and right at once and the cartridge zeroes the whole input byte
+    // when it sees the attempt, so two flipper buttons on opposing directions
+    // would silence each other. Listing a second, non-opposing input gives
+    // the host somewhere to move this flipper for exactly those frames. Up is
+    // never sent on its own by any flipper key; it is only ever the stand-in
+    // for right while left is also held.
+    bindings.flippers.left = {PadButton::left};
+    bindings.flippers.right = {PadButton::right, PadButton::up};
+
+    // Return is the cabinet's launch button. Listing it here makes it send
+    // button I alone while the ball is in the shooter, so it launches instead
+    // of pausing, and leaves it starting and pausing everywhere else.
+    bindings.launch_keys = {"Return"};
     return bindings;
 }
 

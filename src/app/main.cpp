@@ -213,6 +213,7 @@ struct CommandLine {
     bool cabinet_flipper_trace = false;
     bool cabinet_drain_probe = false;
     bool cabinet_nudge_probe = false;
+    bool cabinet_launch_check = false;
     bool cabinet_seed_check = false;
     bool cabinet_palette_check = false;
     bool cabinet_attribute_check = false;
@@ -744,6 +745,8 @@ parse_logical_address_range(const std::string_view text)
             options.cabinet_drain_probe = true;
         } else if (argument == "--cabinet-nudge-probe") {
             options.cabinet_nudge_probe = true;
+        } else if (argument == "--cabinet-launch-check") {
+            options.cabinet_launch_check = true;
         } else if (argument == "--cabinet-seed-check") {
             options.cabinet_seed_check = true;
         } else if (argument == "--cabinet-palette-check") {
@@ -854,7 +857,7 @@ parse_logical_address_range(const std::string_view text)
     // and so they measure the configuration people actually play.
     const bool host_registry =
         (host_selected || options.cabinet_drain_probe
-         || options.cabinet_nudge_probe)
+         || options.cabinet_nudge_probe || options.cabinet_launch_check)
         && !options.emulate_only;
     const int recording_frame_count = options.record_state_census
         ? kStateCensusRecordingFrames
@@ -3249,11 +3252,11 @@ void print_usage()
            "  --emulate-only to run the untouched emulated original instead.\n\n"
         << "Controls (defaults; see input.* in portable-data/cabinet.ini):\n"
         << "  Left Shift / Left    Left flipper (PCE d-pad left)\n"
-        << "  Right Shift / Right  Right flipper and launch (PCE button I)\n"
-        << "  Z                    PCE button I\n"
+        << "  Right / Right Shift  Right flipper (PCE d-pad right)\n"
+        << "  Enter                Launch in the shooter; otherwise start,\n"
+        << "                       pause and confirm\n"
         << "  X                    Nudge (PCE button II)\n"
         << "  Backspace            Select\n"
-        << "  Enter                Run\n"
         << "  Up / Down            PCE d-pad up and down\n"
         << "  Gamepad              First connected SDL gamepad\n"
         << "  F5                   Save quick state\n"
@@ -4993,54 +4996,99 @@ constexpr std::array<PadBinding, devils_crush::cabinet::kPadButtonCount>
 
 // Scancodes resolved once from the configured key names, so the per-frame
 // read stays an array lookup.
-using ResolvedKeyBindings = std::array<
-    std::vector<SDL_Scancode>,
-    devils_crush::cabinet::kPadButtonCount>;
+struct ResolvedKeyBindings {
+    std::array<
+        std::vector<SDL_Scancode>,
+        devils_crush::cabinet::kPadButtonCount>
+        pads;
+    std::vector<SDL_Scancode> launch;
+};
+
+[[nodiscard]] std::vector<SDL_Scancode> resolve_key_names(
+    const std::vector<std::string>& names,
+    const std::string_view field)
+{
+    std::vector<SDL_Scancode> resolved;
+    for (const auto& name : names) {
+        const auto scancode = SDL_GetScancodeFromName(name.c_str());
+        if (scancode == SDL_SCANCODE_UNKNOWN) {
+            // An unusable name is the one thing a hand-edited file gets wrong
+            // silently, so name it and keep the rest of the binding rather
+            // than dropping the whole input.
+            std::cerr << "Unknown key name \"" << name << "\" bound to input."
+                      << field << "; ignoring it.\n";
+            continue;
+        }
+        resolved.push_back(scancode);
+    }
+    return resolved;
+}
 
 [[nodiscard]] ResolvedKeyBindings resolve_key_bindings(
     const devils_crush::cabinet::InputBindings& bindings)
 {
     ResolvedKeyBindings resolved;
     for (const auto& binding : kPadBindings) {
-        const auto index = static_cast<std::size_t>(binding.pad);
-        for (const auto& name : bindings[binding.pad]) {
-            const auto scancode = SDL_GetScancodeFromName(name.c_str());
-            if (scancode == SDL_SCANCODE_UNKNOWN) {
-                // An unusable name is the one thing a hand-edited file gets
-                // wrong silently, so name it and keep the rest of the
-                // binding rather than dropping the whole input.
-                std::cerr
-                    << "Unknown key name \"" << name << "\" bound to input."
-                    << devils_crush::cabinet::pad_button_field(binding.pad)
-                    << "; ignoring it.\n";
-                continue;
-            }
-            resolved[index].push_back(scancode);
-        }
+        resolved.pads[static_cast<std::size_t>(binding.pad)] =
+            resolve_key_names(
+                bindings[binding.pad],
+                devils_crush::cabinet::pad_button_field(binding.pad));
     }
+    resolved.launch = resolve_key_names(bindings.launch_keys, "launch");
     return resolved;
+}
+
+// The pad byte and the emulator's `Button` bits are the same eight bits, so
+// resolving the impossible-direction case is a straight hand-off.
+void resolve_opposing_directions(
+    std::uint16_t& pad,
+    const devils_crush::cabinet::FlipperInputs& flippers)
+{
+    pad = devils_crush::cabinet::resolve_opposing_directions(
+        static_cast<std::uint8_t>(pad & 0xFFU), flippers);
 }
 
 [[nodiscard]] InputFrame read_input(
     SDL_Gamepad* gamepad,
-    const ResolvedKeyBindings& bindings)
+    const ResolvedKeyBindings& bindings,
+    const bool ball_in_launcher,
+    const devils_crush::cabinet::FlipperInputs& flippers)
 {
     InputFrame input;
     const bool* keys = SDL_GetKeyboardState(nullptr);
 
+    // While the ball is in the shooter a launch key means launch and nothing
+    // else. Suppressing its ordinary pad input is the point: a launch button
+    // that also sends Run would pause the game at the moment it is pressed.
+    const bool launching = ball_in_launcher
+        && std::ranges::any_of(
+               bindings.launch,
+               [keys](const SDL_Scancode scancode) {
+                   return keys[scancode];
+               });
+    const auto suppressed = [&](const SDL_Scancode scancode) {
+        return ball_in_launcher
+            && std::ranges::find(bindings.launch, scancode)
+            != bindings.launch.end();
+    };
+
     for (const auto& binding : kPadBindings) {
         const auto& scancodes =
-            bindings[static_cast<std::size_t>(binding.pad)];
+            bindings.pads[static_cast<std::size_t>(binding.pad)];
         const bool pressed =
             std::ranges::any_of(
                 scancodes,
-                [keys](const SDL_Scancode scancode) {
-                    return keys[scancode];
+                [&](const SDL_Scancode scancode) {
+                    return keys[scancode] && !suppressed(scancode);
                 })
             || (gamepad != nullptr
                 && SDL_GetGamepadButton(gamepad, binding.gamepad));
         set_button(input.player_one, binding.button, pressed);
     }
+    if (launching) {
+        set_button(input.player_one, Button::one, true);
+    }
+    resolve_opposing_directions(input.player_one, flippers);
     return input;
 }
 
@@ -7144,6 +7192,70 @@ void keep_fixed_actors_simulating(
     }
 }
 
+// Rewrites which pad inputs work each flipper.
+//
+// `01:D466` opens a piece's gate with `LDA $2CEE : AND $3B80,X`. Rewriting
+// that mask is the surgical place to change which key works which flipper:
+// filtering the input instead would have to go through `$2CEE`, which the
+// scheduler shares with every other actor that reads held input, and would
+// take the directions away from the menus too.
+//
+// The masks are written by the piece initializers at `01:D335`/`01:D376`
+// rather than each frame, but reapplying costs one compare per piece and
+// survives a re-init at any point, so it is done every frame.
+// Returns whether the ball is in the Devil Shooter, which the caller needs
+// for the launch keys and which is free here because this already holds the
+// work-RAM image.
+[[nodiscard]] bool apply_flipper_inputs(
+    devils_crush::emulation::PceRuntime& runtime,
+    const devils_crush::cabinet::FlipperInputs& flippers)
+{
+    // Session flags $53 land at offset $0053: the HuC6280 zero page is mapped
+    // at $2000 and work RAM is exported from there. Bit 3 is the Devil
+    // Shooter session.
+    constexpr std::size_t kSessionFlags = 0x0053U;
+    constexpr std::uint8_t kShooterSession = 0x08U;
+    constexpr std::size_t kInputMaskBase = 0x1B80U;
+    const auto left_mask =
+        devils_crush::cabinet::flipper_input_mask(flippers.left);
+    const auto right_mask =
+        devils_crush::cabinet::flipper_input_mask(flippers.right);
+
+    auto work_ram = runtime.export_work_ram();
+    if (work_ram.size() < 0x2000U) {
+        return false;
+    }
+    const bool ball_in_launcher =
+        (std::to_integer<std::uint8_t>(work_ram[kSessionFlags])
+         & kShooterSession)
+        != 0U;
+    if (left_mask == 0U && right_mask == 0U) {
+        return ball_in_launcher;
+    }
+    bool changed = false;
+    const auto apply = [&](const std::size_t slot, const std::uint8_t mask) {
+        if (mask == 0U) {
+            return;
+        }
+        const std::size_t offset = kInputMaskBase + slot;
+        if (std::to_integer<std::uint8_t>(work_ram[offset]) == mask) {
+            return;
+        }
+        work_ram[offset] = static_cast<std::byte>(mask);
+        changed = true;
+    };
+    for (const auto slot : devils_crush::cabinet::kLeftFlipperSlots) {
+        apply(slot, left_mask);
+    }
+    for (const auto slot : devils_crush::cabinet::kRightFlipperSlots) {
+        apply(slot, right_mask);
+    }
+    if (changed) {
+        static_cast<void>(runtime.import_work_ram(work_ram));
+    }
+    return ball_in_launcher;
+}
+
 int run_windows_host(
     PceRuntime& runtime,
     const std::filesystem::path& rom_path,
@@ -7675,8 +7787,13 @@ int run_windows_host(
             if (cabinet_mode) {
                 keep_fixed_actors_simulating(runtime);
             }
-            const auto frame =
-                runtime.run_frame(read_input(gamepad, key_bindings));
+            const bool ball_in_launcher = apply_flipper_inputs(
+                runtime, cabinet_config.input.flippers);
+            const auto frame = runtime.run_frame(read_input(
+                gamepad,
+                key_bindings,
+                ball_in_launcher,
+                cabinet_config.input.flippers));
             ++emulated_frames;
             if (!cabinet_mode) {
                 host_ok =
@@ -8937,6 +9054,110 @@ struct NudgePassResult {
     return EXIT_SUCCESS;
 }
 
+// Holds one physical key through the launch and reports what the ball did,
+// applying the same rule the host applies: while `$53` bit 3 marks the Devil
+// Shooter session the key sends button I, and otherwise it sends its ordinary
+// pad input.
+[[nodiscard]] int run_launch_check(
+    devils_crush::emulation::PceRuntime& runtime,
+    const Button ordinary_input,
+    const std::string_view label)
+{
+    constexpr std::size_t kSessionFlags = 0x0053U;
+    constexpr std::uint8_t kShooterSession = 0x08U;
+    constexpr int kHoldFrom = 1000;
+    constexpr int kReleaseAt = 1180;
+    constexpr int kFrames = 1600;
+
+    runtime.reset();
+    int launched_at = 0;
+    int first_shooter_frame = 0;
+    std::size_t button_one_frames = 0;
+    std::size_t ordinary_frames = 0;
+    int ball_y_at_hold = 0;
+    int ball_y_at_end = 0;
+    std::uint8_t last_session = 0xFFU;
+    std::uint8_t highest_charge = 0;
+    std::vector<std::pair<int, unsigned>> session_timeline;
+
+    for (int frame_number = 1; frame_number <= kFrames; ++frame_number) {
+        const auto work_ram = runtime.export_work_ram();
+        if (work_ram.size() < 0x2000U) {
+            return EXIT_FAILURE;
+        }
+        const bool in_launcher =
+            (std::to_integer<std::uint8_t>(work_ram[kSessionFlags])
+             & kShooterSession)
+            != 0U;
+        const auto ball_y = static_cast<int>(
+            std::to_integer<std::uint8_t>(work_ram[0x1300U])
+            | (std::to_integer<std::uint8_t>(work_ram[0x1380U]) << 8U));
+        if (in_launcher && first_shooter_frame == 0) {
+            first_shooter_frame = frame_number;
+        }
+        if (first_shooter_frame != 0 && !in_launcher && launched_at == 0) {
+            launched_at = frame_number;
+        }
+
+        // Before the hold the census script drives; after it, one key is held
+        // and the launch rule decides what that key sends. The Devil Shooter
+        // charges while button I is down and fires when it is let go, so the
+        // key has to be released or nothing ever launches.
+        const bool holding =
+            frame_number >= kHoldFrom && frame_number < kReleaseAt;
+        InputFrame input;
+        if (frame_number < kHoldFrom) {
+            input = state_census_input_for_frame(frame_number);
+        } else if (holding) {
+            if (ball_y_at_hold == 0) {
+                ball_y_at_hold = ball_y;
+            }
+            if (in_launcher) {
+                input.player_one = static_cast<std::uint16_t>(Button::one);
+                ++button_one_frames;
+            } else {
+                input.player_one =
+                    static_cast<std::uint16_t>(ordinary_input);
+                ++ordinary_frames;
+            }
+        }
+        const auto session = std::to_integer<std::uint8_t>(
+            work_ram[kSessionFlags]);
+        if (session != last_session) {
+            session_timeline.emplace_back(frame_number, session);
+            last_session = session;
+        }
+        // The Devil Shooter's charge counter, per docs/ROUTINE_MAP.md.
+        highest_charge = std::max(
+            highest_charge,
+            std::to_integer<std::uint8_t>(work_ram[0x0D15U]));
+        static_cast<void>(runtime.run_frame(input));
+        ball_y_at_end = ball_y;
+    }
+
+    std::cout << "holding " << label << " from frame " << kHoldFrom << ":\n"
+              << "  shooter session began at frame " << first_shooter_frame
+              << "\n"
+              << "  frames the key sent button I: " << button_one_frames
+              << "\n"
+              << "  frames it sent its ordinary input: " << ordinary_frames
+              << "\n"
+              << "  ball left the shooter at frame "
+              << (launched_at != 0 ? std::to_string(launched_at)
+                                   : std::string("never"))
+              << "\n"
+              << "  ball y at hold " << ball_y_at_hold << ", at end "
+              << ball_y_at_end << "\n"
+              << "  highest charge counter $2D15: "
+              << static_cast<unsigned>(highest_charge) << "\n"
+              << "  $53 timeline:";
+    for (const auto& [frame, value] : session_timeline) {
+        std::cout << ' ' << frame << '=' << std::format("{:02X}", value);
+    }
+    std::cout << "\n";
+    return launched_at != 0 ? EXIT_SUCCESS : EXIT_FAILURE;
+}
+
 void report_nudge_effect(
     const NudgePassResult& without,
     const NudgePassResult& with)
@@ -9056,18 +9277,36 @@ void report_nudge_effect(
             // $01); the left-hand ones carry mask $F0, which is every
             // direction, not just left. Button II is the nudge, not a
             // flipper, so it stays out of this.
-            constexpr std::array<Button, 5> kProbed{
-                Button::left,
-                Button::right,
-                Button::up,
-                Button::down,
-                Button::one,
+            const auto pair = [](const Button first, const Button second) {
+                return static_cast<std::uint16_t>(
+                    static_cast<std::uint16_t>(first)
+                    | static_cast<std::uint16_t>(second));
             };
-            replay_input.player_one = static_cast<std::uint16_t>(
-                kProbed[static_cast<std::size_t>(frame_number / 120) % 5U]);
+            const std::array<std::uint16_t, 4> kProbed{
+                static_cast<std::uint16_t>(Button::left),
+                static_cast<std::uint16_t>(Button::right),
+                // Both flipper buttons at once, which is the case a pad
+                // cannot express and the host has to resolve.
+                pair(Button::left, Button::right),
+                static_cast<std::uint16_t>(Button::one),
+            };
+            replay_input.player_one =
+                kProbed[static_cast<std::size_t>(frame_number / 150) % 4U];
+            if (uncull) {
+                // The second pass is the host's configuration, so it applies
+                // the host's substitution too.
+                resolve_opposing_directions(
+                    replay_input.player_one,
+                    devils_crush::cabinet::default_input_bindings().flippers);
+            }
         }
         if (uncull) {
             keep_fixed_actors_simulating(runtime);
+            // The second pass is the host's configuration, which rewrites the
+            // flipper masks.
+            static_cast<void>(apply_flipper_inputs(
+                runtime,
+                devils_crush::cabinet::default_input_bindings().flippers));
         }
         static_cast<void>(runtime.run_frame(replay_input));
         const auto work_ram = runtime.export_work_ram();
@@ -9763,6 +10002,14 @@ int main(const int argc, char* argv[])
             }
             report_nudge_effect(without, with);
             return EXIT_SUCCESS;
+        }
+        if (options.cabinet_launch_check) {
+            std::cout << "=== launch keys ===\n";
+            if (run_launch_check(*runtime, Button::right, "Right")
+                != EXIT_SUCCESS) {
+                return EXIT_FAILURE;
+            }
+            return run_launch_check(*runtime, Button::run, "Return");
         }
         if (options.cabinet_flipper_trace) {
             if (run_flipper_trace(*runtime, kQuickStatePath, false)

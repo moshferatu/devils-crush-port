@@ -69,11 +69,13 @@ Run the cabinet preview:
 
 ## Controls
 
-Left Shift and Left work the left flipper; Right Shift and Right work the
-right flipper and launch the ball. X nudges. Keys are rebindable under
-`input.` in `portable-data/cabinet.ini` — see
+Left Shift and Left work the left flipper; Right and Right Shift work the
+right flipper. Enter launches the ball while it is in the shooter, and starts,
+pauses and confirms everywhere else. X nudges. Keys are
+rebindable under `input.` in `portable-data/cabinet.ini`, and which pad inputs
+work each flipper is configurable too — see
 [docs/CABINET_PREVIEW.md](docs/CABINET_PREVIEW.md#controls) for the full
-mapping and why any direction works the left flipper.
+mapping and the measurements behind it.
 
 ## Deploying to a cabinet
 
