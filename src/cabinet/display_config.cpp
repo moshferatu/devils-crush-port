@@ -537,9 +537,6 @@ std::vector<std::byte> encode_display_config(const DisplayConfig& config)
     append_placement(text, "playfield", config.playfield);
     append_placement(text, "dmd", config.dmd);
     append_placement(text, "backglass", config.backglass);
-    text += "backglass.path=";
-    text += escape_value(config.backglass_path);
-    text += '\n';
     append_bindings(text, config.input);
 
     std::vector<std::byte> bytes(text.size());
@@ -570,11 +567,22 @@ std::optional<DisplayConfig> decode_display_config(
                 std::to_integer<unsigned char>(value));
         });
 
+    // A hand-edited file can come back with a byte-order mark -- several
+    // Windows editors add one on save -- and without this the mark becomes
+    // part of the first key, so `version` goes missing and the whole file is
+    // discarded. Since the documented way to change a binding is to edit this
+    // file, that would silently cost the user their display assignment too.
+    constexpr std::string_view kByteOrderMark = "\xEF\xBB\xBF";
+    std::string_view body{text};
+    if (body.starts_with(kByteOrderMark)) {
+        body.remove_prefix(kByteOrderMark.size());
+    }
+
     std::map<std::string, std::string, std::less<>> fields;
     std::size_t line_start = 0;
-    while (line_start < text.size()) {
-        const auto line_end = text.find('\n', line_start);
-        auto line = std::string_view(text).substr(
+    while (line_start < body.size()) {
+        const auto line_end = body.find('\n', line_start);
+        auto line = body.substr(
             line_start,
             line_end == std::string::npos
                 ? std::string::npos
@@ -601,9 +609,8 @@ std::optional<DisplayConfig> decode_display_config(
     }
 
     const auto version = fields.find("version");
-    const auto path = fields.find("backglass.path");
     DisplayConfig config;
-    if (version == fields.end() || path == fields.end()
+    if (version == fields.end()
         || !parse_integer(version->second, config.format_version)
         || config.format_version != kDisplayConfigVersion
         || !parse_placement(fields, "playfield", config.playfield)
@@ -611,11 +618,12 @@ std::optional<DisplayConfig> decode_display_config(
         || !parse_placement(fields, "backglass", config.backglass)) {
         return std::nullopt;
     }
-    const auto backglass_path = unescape_value(path->second);
-    if (!backglass_path || !parse_bindings(fields, config.input)) {
+    // A file written before the backglass image was removed still carries
+    // `backglass.path`. Unknown fields are ignored, so it stays loadable and
+    // the line simply disappears the next time the file is written.
+    if (!parse_bindings(fields, config.input)) {
         return std::nullopt;
     }
-    config.backglass_path = *backglass_path;
     return config;
 }
 

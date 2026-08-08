@@ -44,22 +44,6 @@ dc_enable_strict_warnings(dc_title_logo_tests)
 
 add_test(NAME dc_core_tests COMMAND dc_core_tests)
 
-if(TARGET dc_image)
-    add_executable(
-        dc_image_tests
-        image_tests.cpp
-    )
-    target_link_libraries(
-        dc_image_tests
-        PRIVATE
-            DevilsCrush::Image
-            SDL3_image::SDL3_image
-    )
-    target_compile_features(dc_image_tests PRIVATE cxx_std_20)
-    dc_enable_strict_warnings(dc_image_tests)
-    add_test(NAME dc_image_tests COMMAND dc_image_tests)
-endif()
-
 add_test(
     NAME dc_coverage_manifest
     COMMAND
@@ -100,15 +84,6 @@ if(TARGET devils_crush)
 
     add_test(NAME dc_cli_unknown_option COMMAND devils_crush --not-an-option)
     set_tests_properties(dc_cli_unknown_option PROPERTIES WILL_FAIL TRUE)
-
-    add_test(
-        NAME dc_cli_orphan_backglass
-        COMMAND devils_crush --backglass unused.png
-    )
-    set_tests_properties(
-        dc_cli_orphan_backglass
-        PROPERTIES WILL_FAIL TRUE
-    )
 
     add_test(
         NAME dc_cli_orphan_canonical_work_ram

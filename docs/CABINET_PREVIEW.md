@@ -491,26 +491,20 @@ playfield-only degradation when an auxiliary cannot be created.
 The bounded `--cabinet-smoke-test` uses safe defaults and deliberately does
 not read or write this user configuration.
 
-## Backglass animation and image fallback
+## Backglass animation
 
-`--backglass <image>` supplies a scripted selection; the F12 screen's B key
-provides the interactive equivalent. Successful selections are stored as
-UTF-8 in `portable-data/cabinet.ini` and retained as the fallback used only
-when the native animation cannot be decoded or rendered.
-
-The loader recognizes PNG, JPEG, and WebP from file content rather than the
-extension. It rejects missing or empty files, files over 64 MiB, unsupported
-content, dimensions above 16384 pixels on either side, and decoded images
-above 64 megapixels. Failures are nonfatal and leave black as the final
-fallback.
-
-Valid images are contained at their source aspect ratio against black. They
-use the same integer-nearest staging and controlled final linear resolve as
-the playfield, so pixel-art backglasses retain the fixed sharp policy. A
-backglass renderer reset reloads the persisted source; closing or losing that
+The backglass shows the native title-logo animation, and nothing else. Black
+is the fallback when it cannot be decoded or rendered; closing or losing that
 window still does not affect emulation.
 
-Both the native logo and the image fallback are inset by
+A user-supplied backglass image was supported for a while — a `backglass.path`
+field in `cabinet.ini`, a `--backglass <image>` switch, and a file picker on
+the F12 screen — and has been removed along with the SDL_image dependency that
+decoded it. A configuration file still naming an image loads normally: an
+unknown field is ignored, and the line disappears the next time the file is
+written.
+
+The logo is inset by
 `kBackglassMarginFraction`, currently 6%, so the artwork sits inside its
 window the way a real backglass sits inside its frame rather than running to
 the edge of the glass. The margin is taken from the shorter axis so the
@@ -736,10 +730,10 @@ The staged folder holds six files and about 9 MiB:
 | `.stignore` | Keeps runtime state out of the sync |
 
 The `windows-cabinet` preset differs from `windows-vs2022` in three ways:
-Release only, tests off, and `CMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded`. SDL3,
-SDL3_image, libwebp, and Beetle PCE were already linked statically; folding in
-the Microsoft C runtime removes the last file the cabinet would otherwise have
-had to obtain separately. `dumpbin /dependents` on the staged executable lists
+Release only, tests off, and `CMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded`. SDL3
+and Beetle PCE were already linked statically; folding in the Microsoft C
+runtime removes the last file the cabinet would otherwise have had to obtain
+separately. `dumpbin /dependents` on the staged executable lists
 only DLLs that ship with Windows — no `MSVCP140.dll`, no `VCRUNTIME140*.dll`,
 no `api-ms-win-crt-*`. Nothing needs installing on the cabinet.
 

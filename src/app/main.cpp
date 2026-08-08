@@ -9,7 +9,6 @@
 #include "devils_crush/core/rom_image.hpp"
 #include "devils_crush/core/save_state.hpp"
 #include "devils_crush/emulation/pce_runtime.hpp"
-#include "devils_crush/render/backglass_image.hpp"
 #include "devils_crush/render/pce_background.hpp"
 #include "devils_crush/render/pce_sprite_overlay.hpp"
 #include "devils_crush/render/table_palette_cache.hpp"
@@ -18,7 +17,6 @@
 
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
-#include <SDL3_image/SDL_image.h>
 
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
@@ -178,12 +176,10 @@ struct CommandLine {
     bool smoke_test = false;
     bool cabinet_smoke_test = false;
     bool cabinet = false;
-    bool backglass_path_set = false;
     // Diagnostic: draw only one of the stitched playfield's layers.
     CabinetLayers cabinet_layers = CabinetLayers::all;
     // Diagnostic: report retained-overlay composition once a second.
     bool cabinet_overlay_stats = false;
-    std::filesystem::path backglass_path;
     bool record_canonical = false;
     std::filesystem::path canonical_path = kCanonicalRecordingPath;
     bool record_gameplay = false;
@@ -460,13 +456,6 @@ parse_logical_address_range(const std::string_view text)
             options.cabinet_smoke_test = true;
         } else if (argument == "--cabinet") {
             options.cabinet = true;
-        } else if (argument == "--backglass") {
-            if (index + 1 >= argc) {
-                options.error = "--backglass requires a path.";
-                return options;
-            }
-            options.backglass_path_set = true;
-            options.backglass_path = argv[++index];
         } else if (argument == "--record-canonical") {
             options.record_canonical = true;
             const std::string_view next =
@@ -873,8 +862,6 @@ parse_logical_address_range(const std::string_view text)
         options.cabinet && (operation_count != 0 || options.validate_only)) {
         options.error =
             "--cabinet is available only for the interactive host.";
-    } else if (options.backglass_path_set && !options.cabinet) {
-        options.error = "--backglass requires --cabinet.";
     } else if (options.cabinet_overlay_stats && !options.cabinet
                && !options.cabinet_smoke_test) {
         options.error =
@@ -3192,7 +3179,7 @@ void print_usage()
         << "Usage:\n"
         << "  devils-crush [--rom <path>]\n"
            "      [--emulate-only] [--native-cycle-census <census.csv>]\n"
-        << "  devils-crush --cabinet [--backglass <image>] [--rom <path>]\n"
+        << "  devils-crush --cabinet [--rom <path>]\n"
            "      [--emulate-only] [--native-cycle-census <census.csv>]\n"
         << "  devils-crush --validate-rom [path]\n"
         << "  devils-crush --smoke-test [--rom <path>]\n"
@@ -3623,62 +3610,13 @@ void destroy_source(SourceTexture& source)
     if (surface == nullptr) {
         return report_sdl_error("SDL_CreateSurfaceFrom (dump) failed");
     }
-    // SDL_image here is built without PNG write support, so use core SDL's
-    // BMP writer: this is a diagnostic dump, not a deliverable asset.
+    // Core SDL's BMP writer is the only encoder linked in: this is a
+    // diagnostic dump, not a deliverable asset.
     const bool saved = SDL_SaveBMP(surface, path.string().c_str());
     SDL_DestroySurface(surface);
     if (!saved) {
         return report_sdl_error("SDL_SaveBMP failed");
     }
-    return true;
-}
-
-[[nodiscard]] std::filesystem::path path_from_utf8(
-    const std::string_view text)
-{
-    std::u8string encoded;
-    encoded.reserve(text.size());
-    for (const unsigned char byte : text) {
-        encoded.push_back(static_cast<char8_t>(byte));
-    }
-    return std::filesystem::path(encoded);
-}
-
-[[nodiscard]] bool load_backglass_texture(
-    SDL_Renderer* const renderer,
-    const std::filesystem::path& path,
-    SourceTexture& source)
-{
-    const auto image =
-        devils_crush::render::load_backglass_image(path);
-    if (!image.loaded()) {
-        std::cerr << "Could not load backglass image: "
-                  << image.message << " (" << path.string() << ")\n";
-        return false;
-    }
-
-    SDL_Texture* const texture =
-        SDL_CreateTextureFromSurface(renderer, image.surface);
-    const auto width = image.surface->w;
-    const auto height = image.surface->h;
-    if (texture == nullptr) {
-        report_sdl_error(
-            "Creating the backglass texture failed");
-        return false;
-    }
-    if (!configure_texture(texture, SDL_SCALEMODE_NEAREST)) {
-        SDL_DestroyTexture(texture);
-        return false;
-    }
-
-    destroy_source(source);
-    source = {
-        .texture = texture,
-        .width = width,
-        .height = height,
-    };
-    std::cout << "Loaded backglass image: " << path.string() << " ("
-              << width << 'x' << height << ")\n";
     return true;
 }
 
@@ -4041,37 +3979,6 @@ enum class AssignmentRole {
     backglass,
 };
 
-constexpr std::int32_t kBackglassDialogSelected = 1;
-constexpr std::int32_t kBackglassDialogCancelled = 2;
-constexpr std::int32_t kBackglassDialogFailed = 3;
-constexpr std::array kBackglassDialogFilters{
-    SDL_DialogFileFilter{
-        "Backglass images",
-        "png;jpg;jpeg;webp",
-    },
-};
-
-void SDLCALL backglass_dialog_callback(
-    void*,
-    const char* const* file_list,
-    int)
-{
-    SDL_Event event{};
-    event.type = SDL_EVENT_USER;
-    if (file_list == nullptr) {
-        event.user.code = kBackglassDialogFailed;
-        event.user.data1 = SDL_strdup(SDL_GetError());
-    } else if (file_list[0] == nullptr) {
-        event.user.code = kBackglassDialogCancelled;
-    } else {
-        event.user.code = kBackglassDialogSelected;
-        event.user.data1 = SDL_strdup(file_list[0]);
-    }
-    if (!SDL_PushEvent(&event) && event.user.data1 != nullptr) {
-        SDL_free(event.user.data1);
-    }
-}
-
 [[nodiscard]] SDL_Window* assignment_window(
     const AssignmentRole role,
     SDL_Window* const playfield,
@@ -4148,8 +4055,7 @@ void set_assignment_titles(
         std::string value = role == selected ? "[SELECTED] " : "";
         value += name;
         value +=
-            " - 1/2/3 select, arrows display, F fullscreen, "
-            "B image, Delete clears, Enter done";
+            " - 1/2/3 select, arrows display, F fullscreen, Enter done";
         return value;
     };
     const auto playfield_title =
@@ -7279,8 +7185,6 @@ int run_windows_host(
     PceRuntime& runtime,
     const std::filesystem::path& rom_path,
     const bool cabinet_mode,
-    const std::optional<std::filesystem::path> backglass_override =
-        std::nullopt,
     const int frame_limit = 0,
     const CommandLine* native_registry = nullptr,
     const CabinetLayers layers = CabinetLayers::all,
@@ -7334,17 +7238,6 @@ int run_windows_host(
     // Resolved once: the names cannot change while the host runs, and this is
     // where an unusable one gets reported.
     const auto key_bindings = resolve_key_bindings(cabinet_config.input);
-    std::optional<std::filesystem::path> effective_backglass_path;
-    if (cabinet_mode && backglass_override) {
-        if (backglass_override->empty()) {
-            cabinet_config.backglass_path.clear();
-        } else {
-            effective_backglass_path = *backglass_override;
-        }
-    } else if (!cabinet_config.backglass_path.empty()) {
-        effective_backglass_path =
-            path_from_utf8(cabinet_config.backglass_path);
-    }
     auto host_displays =
         cabinet_mode ? enumerate_host_displays() : HostDisplays{};
 
@@ -7430,8 +7323,6 @@ int run_windows_host(
     StageTexture stage;
     SourceTexture backglass_logo_source;
     StageTexture backglass_logo_stage;
-    SourceTexture backglass_source;
-    StageTexture backglass_stage;
     auto backglass_logo =
         cabinet_rom
         ? devils_crush::render::TitleLogoAnimation::decode(
@@ -7442,21 +7333,6 @@ int run_windows_host(
             << "Native title-logo decode failed; the backglass will "
                "use its static fallback.\n";
     }
-    if (effective_backglass_path) {
-        const bool loaded =
-            backglass.renderer != nullptr
-            ? load_backglass_texture(
-                backglass.renderer,
-                *effective_backglass_path,
-                backglass_source)
-            : devils_crush::render::
-                  load_backglass_image(*effective_backglass_path)
-                      .loaded();
-        if (loaded && backglass_override) {
-            cabinet_config.backglass_path =
-                path_to_utf8(*effective_backglass_path);
-        }
-    }
     bool table_view = false;
     bool reported_table_view = false;
     devils_crush::render::PersistentActorSpriteCache
@@ -7466,7 +7342,6 @@ int run_windows_host(
     std::uint64_t dmd_score = 0U;
     std::uint64_t backglass_logo_frame = 0U;
     bool assignment_active = false;
-    bool backglass_dialog_open = false;
     auto assignment_role = AssignmentRole::playfield;
     const auto save_current_cabinet_config = [&]() {
         if (!persist_cabinet_config) {
@@ -7538,47 +7413,7 @@ int run_windows_host(
     while (running && host_ok) {
         SDL_Event event;
         while (SDL_PollEvent(&event)) {
-            if (event.type == SDL_EVENT_USER
-                && (event.user.code == kBackglassDialogSelected
-                    || event.user.code == kBackglassDialogCancelled
-                    || event.user.code == kBackglassDialogFailed)) {
-                backglass_dialog_open = false;
-                char* const dialog_text =
-                    static_cast<char*>(event.user.data1);
-                if (event.user.code == kBackglassDialogSelected
-                    && dialog_text != nullptr) {
-                    const auto selected_path =
-                        path_from_utf8(dialog_text);
-                    bool selected = false;
-                    if (backglass.renderer != nullptr) {
-                        selected = load_backglass_texture(
-                            backglass.renderer,
-                            selected_path,
-                            backglass_source);
-                        if (selected) {
-                            destroy_stage(backglass_stage);
-                        }
-                    } else {
-                        selected =
-                            devils_crush::render::
-                                load_backglass_image(selected_path)
-                                    .loaded();
-                    }
-                    if (selected) {
-                        cabinet_config.backglass_path =
-                            path_to_utf8(selected_path);
-                        save_current_cabinet_config();
-                    }
-                } else if (
-                    event.user.code == kBackglassDialogFailed) {
-                    std::cerr << "Backglass file dialog failed: "
-                              << (dialog_text != nullptr
-                                      ? dialog_text
-                                      : "unknown error")
-                              << '\n';
-                }
-                SDL_free(dialog_text);
-            } else if (event.type == SDL_EVENT_QUIT) {
+            if (event.type == SDL_EVENT_QUIT) {
                 running = false;
             } else if (event.type == SDL_EVENT_WINDOW_CLOSE_REQUESTED) {
                 const auto main_window_id = SDL_GetWindowID(window);
@@ -7603,8 +7438,6 @@ int run_windows_host(
                         cabinet_config.backglass);
                     destroy_stage(backglass_logo_stage);
                     destroy_source(backglass_logo_source);
-                    destroy_stage(backglass_stage);
-                    destroy_source(backglass_source);
                     destroy_auxiliary_window(backglass);
                 }
             } else if (
@@ -7693,30 +7526,6 @@ int run_windows_host(
                                 "fullscreen state failed");
                         }
                     }
-                } else if (
-                    event.key.key == SDLK_B
-                    && !backglass_dialog_open) {
-                    const char* const default_location =
-                        cabinet_config.backglass_path.empty()
-                        ? nullptr
-                        : cabinet_config.backglass_path.c_str();
-                    backglass_dialog_open = true;
-                    SDL_ShowOpenFileDialog(
-                        backglass_dialog_callback,
-                        nullptr,
-                        window,
-                        kBackglassDialogFilters.data(),
-                        static_cast<int>(
-                            kBackglassDialogFilters.size()),
-                        default_location,
-                        false);
-                } else if (
-                    event.key.key == SDLK_DELETE
-                    && assignment_role == AssignmentRole::backglass) {
-                    destroy_stage(backglass_stage);
-                    destroy_source(backglass_source);
-                    cabinet_config.backglass_path.clear();
-                    save_current_cabinet_config();
                 }
                 set_assignment_titles(
                     window,
@@ -7777,7 +7586,6 @@ int run_windows_host(
                     && event.render.windowID
                         == SDL_GetWindowID(backglass.window)) {
                     destroy_stage(backglass_logo_stage);
-                    destroy_stage(backglass_stage);
                 }
             } else if (event.type == SDL_EVENT_RENDER_DEVICE_RESET) {
                 if (event.render.windowID == SDL_GetWindowID(window)) {
@@ -7790,15 +7598,6 @@ int run_windows_host(
                         == SDL_GetWindowID(backglass.window)) {
                     destroy_stage(backglass_logo_stage);
                     destroy_source(backglass_logo_source);
-                    destroy_stage(backglass_stage);
-                    destroy_source(backglass_source);
-                    if (!cabinet_config.backglass_path.empty()) {
-                        (void)load_backglass_texture(
-                            backglass.renderer,
-                            path_from_utf8(
-                                cabinet_config.backglass_path),
-                            backglass_source);
-                    }
                 }
             }
         }
@@ -7999,25 +7798,12 @@ int run_windows_host(
                                     kTitleLogoHeight * 4),
                             kPureBlack,
                             kBackglassMarginFraction)
-                    : backglass_source.texture != nullptr
-                        ? present_frame(
-                            backglass.renderer,
-                            backglass_source,
-                            backglass_stage,
-                            static_cast<std::uint32_t>(
-                                backglass_source.width),
-                            static_cast<std::uint32_t>(
-                                backglass_source.height),
-                            kPureBlack,
-                            kBackglassMarginFraction)
                         : present_black(backglass))) {
             std::cerr
                 << "Cabinet backglass renderer lost; disabling "
                    "backglass.\n";
             destroy_stage(backglass_logo_stage);
             destroy_source(backglass_logo_source);
-            destroy_stage(backglass_stage);
-            destroy_source(backglass_source);
             destroy_auxiliary_window(backglass);
         }
         if (frame_limit > 0 && emulated_frames >= frame_limit) {
@@ -8036,8 +7822,6 @@ int run_windows_host(
     destroy_source(source);
     destroy_stage(backglass_logo_stage);
     destroy_source(backglass_logo_source);
-    destroy_stage(backglass_stage);
-    destroy_source(backglass_source);
     if (gamepad != nullptr) {
         SDL_CloseGamepad(gamepad);
     }
@@ -10517,7 +10301,6 @@ int main(const int argc, char* argv[])
                 *runtime,
                 options.rom_path,
                 true,
-                std::nullopt,
                 kSmokeTestFrames,
                 host_registry,
                 options.cabinet_layers,
@@ -10529,10 +10312,6 @@ int main(const int argc, char* argv[])
             *runtime,
             options.rom_path,
             options.cabinet,
-            options.backglass_path_set
-                ? std::optional<std::filesystem::path>{
-                    options.backglass_path}
-                : std::nullopt,
             0,
             host_registry,
             options.cabinet_layers,

@@ -6921,7 +6921,6 @@ void test_cabinet_display_config()
             .rotation = DisplayRotation::landscape_flipped,
             .fullscreen = true,
         },
-        .backglass_path = "cabinet art/backglass=final%2.png",
     };
     const auto encoded = encode_display_config(source);
     const auto decoded = decode_display_config(encoded);
@@ -7145,6 +7144,36 @@ void test_cabinet_display_config()
             legacy_decoded && legacy_decoded->playfield == source.playfield
                 && legacy_decoded->input == defaults,
             "a configuration without an input section takes the defaults");
+
+        // Every cabinet configuration written before the backglass image was
+        // removed still carries `backglass.path`. That field is gone, and an
+        // unknown one is ignored rather than fatal, so those files keep their
+        // display assignment instead of being rejected wholesale.
+        auto retired_field = legacy;
+        retired_field += "backglass.path=cabinet art/glass%3Dfinal.png\n";
+        const auto retired_decoded =
+            decode_display_config(to_bytes(retired_field));
+        check(
+            retired_decoded
+                && retired_decoded->backglass == source.backglass
+                && retired_decoded->input == defaults,
+            "a configuration naming a backglass image still loads");
+        const auto rewritten = encode_display_config(*retired_decoded);
+        check(
+            std::ranges::search(rewritten, to_bytes("backglass.path"))
+                .empty(),
+            "and the retired field is dropped when it is written back");
+
+        // Several Windows editors add a byte-order mark on save, and the
+        // documented way to change a binding is to hand-edit this file. Left
+        // in the first key, the mark would cost the user the display
+        // assignment as well as the bindings.
+        auto marked = std::string("\xEF\xBB\xBF");
+        marked += legacy;
+        const auto marked_decoded = decode_display_config(to_bytes(marked));
+        check(
+            marked_decoded && marked_decoded->playfield == source.playfield,
+            "a hand-edited file with a byte-order mark still loads");
 
         // A stored field always wins over the default, including one the
         // defaults have since moved away from. The host rewrites the file in

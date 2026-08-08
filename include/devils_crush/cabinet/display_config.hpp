@@ -214,7 +214,6 @@ struct DisplayConfig {
     WindowPlacement playfield;
     WindowPlacement dmd;
     WindowPlacement backglass;
-    std::string backglass_path;
     InputBindings input = default_input_bindings();
 
     [[nodiscard]] bool operator==(const DisplayConfig&) const = default;

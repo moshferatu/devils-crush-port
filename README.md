@@ -90,12 +90,6 @@ workspace:
 See [docs/CABINET_PREVIEW.md](docs/CABINET_PREVIEW.md#deploying-to-a-cabinet)
 for what the folder contains and how runtime state is kept per-machine.
 
-Supply and persist a backglass image from the command line:
-
-```powershell
-.\out\build\windows-vs2022\Debug\devils-crush.exe --cabinet --backglass "D:\cabinet\backglass.webp" --rom "D:\path\to\Devil's Crush.pce"
-```
-
 Both host modes deploy the ported code. Every routine an `@all` regression has
 proven is installed before the first frame and executes in place of the
 emulated original; the host reports the deployment on startup and its share of

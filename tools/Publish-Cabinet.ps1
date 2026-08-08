@@ -8,7 +8,7 @@
 .DESCRIPTION
     The staged folder holds one executable, the ROM, and the licence texts.
     Nothing else is required at run time: the `windows-cabinet` preset links
-    SDL3, SDL3_image, Beetle PCE, and the Microsoft C runtime statically, so
+    SDL3, Beetle PCE, and the Microsoft C runtime statically, so
     the cabinet needs no redistributable installed.
 
     Runtime state -- display assignment, backup RAM, quick states -- is
