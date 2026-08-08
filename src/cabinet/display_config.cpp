@@ -438,6 +438,14 @@ std::uint8_t flipper_input_mask(
     return mask;
 }
 
+bool rewrites_flipper_input_mask(
+    const std::uint8_t current,
+    const std::uint8_t cartridge_mask,
+    const std::uint8_t desired) noexcept
+{
+    return desired != 0U && current != desired && current == cartridge_mask;
+}
+
 bool has_opposing_directions(const std::uint8_t pad) noexcept
 {
     const auto set = [pad](const PadButton button) {

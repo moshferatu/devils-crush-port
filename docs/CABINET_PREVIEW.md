@@ -208,6 +208,35 @@ would take the directions away from the menus too.
 | left pieces `$04/$06/$08` | `$F0` — any direction | `$80` — d-pad left |
 | right pieces `$05/$07/$09` | `$01` — button I | `$30` — d-pad right or up |
 
+#### Only while a flipper is in the slot
+
+`$3B80,X` is a general-purpose per-actor byte, not a dedicated flipper field.
+`03:6697` stores `1 + (A & $1F)` there and `03:68B1` stores `$40 + (A & $1F)`,
+so slots `$04-$09` hold an input mask only while the pieces `01:D335`/`01:D376`
+created still occupy them.
+
+Rewriting the byte on every screen therefore corrupts whatever else owns the
+slot. It did: the title screen keeps a counter in slot `$05`, and overwriting
+it silenced the title music from about five seconds in. Measured at the title
+screen, `$3B84..$3B89` reads `00 0A 00 00 00 00`; in play it reads
+`F0 01 F0 01 F0 01`.
+
+Two conditions now gate the write, and both are needed:
+
+- a table session is in progress (`balls_in_session` is non-zero — it is `0`
+  across the whole title screen)
+- the byte still reads as the initializer left it, `$F0` or `$01`
+
+The value test alone is not enough, because `$01` falls inside `03:6697`'s
+`$01-$20` counter range. The session test alone would rely on slots `$04-$09`
+never being lent to anything else mid-session. Together they also make the
+rewrite idempotent, and it still reapplies if a piece is re-initialized
+mid-session — the cartridge writes `$F0`/`$01` again and the next frame
+catches it.
+
+Occupancy is no help here: `$3000,X` reads `$80` for slots `$04`/`$05` at the
+title screen exactly as it does in play.
+
 ### Both flippers at once
 
 A pad cannot be pushed left and right together, and the cartridge rejects the

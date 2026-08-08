@@ -104,6 +104,30 @@ inline constexpr std::array<std::size_t, 3> kLeftFlipperSlots{
 inline constexpr std::array<std::size_t, 3> kRightFlipperSlots{
     0x05U, 0x07U, 0x09U};
 
+// What the piece initializers `01:D335`/`01:D376` themselves store at
+// `$3B80,X`, and so what the byte reads as before anything rewrites it.
+inline constexpr std::uint8_t kCartridgeLeftFlipperMask = 0xF0U;
+inline constexpr std::uint8_t kCartridgeRightFlipperMask = 0x01U;
+
+// Whether `$3B80,X` may be rewritten to `desired` for one flipper piece.
+//
+// `$3B80,X` is a general-purpose per-actor byte rather than a dedicated
+// flipper field -- `03:6697` stores `1 + (A & $1F)` there and `03:68B1`
+// stores `$40 + (A & $1F)` -- so the slot only holds an input mask while a
+// flipper piece occupies it. Overwriting it regardless corrupts whatever
+// else is using the slot; measured, that silenced the title-screen music,
+// which keeps a counter in slot `$05`.
+//
+// So the byte is only rewritten while it still reads as the initializer left
+// it. That also makes the rewrite idempotent, and it reapplies if a piece is
+// re-initialized mid-session. Note `kCartridgeRightFlipperMask` falls inside
+// `03:6697`'s `$01-$20` range, so this test is necessary but not sufficient
+// on its own -- callers must already know a table session is in progress.
+[[nodiscard]] bool rewrites_flipper_input_mask(
+    std::uint8_t current,
+    std::uint8_t cartridge_mask,
+    std::uint8_t desired) noexcept;
+
 // Keys are held as SDL scancode names -- "Left Shift", "Left", "Z" -- so the
 // host can resolve them with `SDL_GetScancodeFromName` and the file stays
 // hand-editable without a bespoke key table to keep in step. A bound input

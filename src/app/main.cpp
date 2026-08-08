@@ -7232,23 +7232,42 @@ void keep_fixed_actors_simulating(
     if (left_mask == 0U && right_mask == 0U) {
         return ball_in_launcher;
     }
+    // `$3B80,X` is a general-purpose per-actor byte, not a dedicated flipper
+    // field: `03:6697` and `03:68B1` keep counters there for other actors.
+    // Slots `$04-$09` only hold flipper pieces during a table session, so
+    // outside one they belong to whatever the current screen put in them --
+    // measured, the title screen keeps a counter in slot `$05` -- and writing
+    // through that corrupts it.
+    const auto state =
+        devils_crush::cabinet::decode_cabinet_state(work_ram);
+    if (!state || state->balls_in_session == 0U) {
+        return ball_in_launcher;
+    }
     bool changed = false;
-    const auto apply = [&](const std::size_t slot, const std::uint8_t mask) {
-        if (mask == 0U) {
-            return;
-        }
+    const auto apply = [&](const std::size_t slot,
+                           const std::uint8_t mask,
+                           const std::uint8_t cartridge_mask) {
         const std::size_t offset = kInputMaskBase + slot;
-        if (std::to_integer<std::uint8_t>(work_ram[offset]) == mask) {
+        if (!devils_crush::cabinet::rewrites_flipper_input_mask(
+                std::to_integer<std::uint8_t>(work_ram[offset]),
+                cartridge_mask,
+                mask)) {
             return;
         }
         work_ram[offset] = static_cast<std::byte>(mask);
         changed = true;
     };
     for (const auto slot : devils_crush::cabinet::kLeftFlipperSlots) {
-        apply(slot, left_mask);
+        apply(
+            slot,
+            left_mask,
+            devils_crush::cabinet::kCartridgeLeftFlipperMask);
     }
     for (const auto slot : devils_crush::cabinet::kRightFlipperSlots) {
-        apply(slot, right_mask);
+        apply(
+            slot,
+            right_mask,
+            devils_crush::cabinet::kCartridgeRightFlipperMask);
     }
     if (changed) {
         static_cast<void>(runtime.import_work_ram(work_ram));

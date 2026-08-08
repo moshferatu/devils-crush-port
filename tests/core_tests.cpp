@@ -7074,6 +7074,39 @@ void test_cabinet_display_config()
             devils_crush::cabinet::flipper_input_mask({}) == 0x00U,
             "an empty flipper list leaves the cartridge mask alone");
 
+        // $3B80,X is shared with other actors -- 03:6697 keeps a counter
+        // there -- so the slot only holds an input mask while a flipper piece
+        // occupies it. Writing regardless corrupted whatever else owned the
+        // slot; measured, that silenced the title-screen music, which keeps a
+        // counter in slot $05.
+        using devils_crush::cabinet::kCartridgeLeftFlipperMask;
+        using devils_crush::cabinet::kCartridgeRightFlipperMask;
+        using devils_crush::cabinet::rewrites_flipper_input_mask;
+        check(
+            rewrites_flipper_input_mask(
+                kCartridgeLeftFlipperMask, kCartridgeLeftFlipperMask, 0x80U),
+            "a byte the initializer wrote is rewritten");
+        check(
+            !rewrites_flipper_input_mask(
+                0x0AU, kCartridgeRightFlipperMask, 0x30U),
+            "a byte holding anything else is left alone");
+        check(
+            !rewrites_flipper_input_mask(
+                0x80U, kCartridgeLeftFlipperMask, 0x80U),
+            "an already-rewritten byte is not written again");
+        check(
+            !rewrites_flipper_input_mask(
+                kCartridgeLeftFlipperMask, kCartridgeLeftFlipperMask, 0x00U),
+            "an empty flipper list writes nothing");
+        // Re-initializing a piece mid-session restores the cartridge value,
+        // and the rewrite has to take hold again from there.
+        check(
+            rewrites_flipper_input_mask(
+                kCartridgeRightFlipperMask,
+                kCartridgeRightFlipperMask,
+                0x30U),
+            "a re-initialized piece is rewritten again");
+
         auto authentic = source;
         authentic.input.flippers = {};
         const auto authentic_decoded =
