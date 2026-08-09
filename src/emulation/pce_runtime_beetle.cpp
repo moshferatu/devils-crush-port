@@ -42,6 +42,10 @@ constexpr std::size_t kPcePaletteEntryCount =
 // writes are ordinary stores with no wait state, so a transcript can price
 // them like any other instruction:
 //   $0000-$0003  VDC base ports (address/data), used by the video paths.
+//   $0400-$0405  VCE register file. The palette upload at 00:EB30 points the
+//                colour table at $0402/$0403 and pushes colours through
+//                $0404/$0405; $0400 and $0401 are here to keep the range a
+//                whole register file, and nothing writes them yet.
 //   $0800-$0809  PSG register file, used by the timer-interrupt sound
 //                driver, which streams DDA samples through $0806.
 //   $0C00-$0C01  Timer counter and control; the sound driver stops the
@@ -53,6 +57,7 @@ constexpr std::size_t kPcePaletteEntryCount =
     const std::uint16_t logical_address)
 {
     return logical_address <= 0x0003U
+        || (logical_address >= 0x0400U && logical_address <= 0x0405U)
         || (logical_address >= 0x0800U && logical_address <= 0x0809U)
         || (logical_address >= 0x0C00U && logical_address <= 0x0C01U)
         || (logical_address >= 0x1402U && logical_address <= 0x1403U);

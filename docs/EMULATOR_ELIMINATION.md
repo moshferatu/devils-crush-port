@@ -83,7 +83,7 @@ native entry points:
 | `00:E2B7`–`E39C` | 584,758,197 | 45.25% | Frame-sync spin loop |
 | `00:FC03`–`FCB3`, `00:FD07`–`FDF1` | 173,243,694 | 13.41% | Sound driver — **already ported** (see below) |
 | bank `45` (`4000`–`4A9B`) | 45,586,602 | 3.53% | Music sequencer — 55% ported; the rest is **blocked**, see below |
-| `00:E93C`–`EBD6` | 20,611,233 | 1.59% | Palette shadow buffer — 10.2M ported, `EB30` upload left |
+| `00:E93C`–`EBD6` | 20,611,233 | 1.59% | Palette shadow buffer — 18.2M ported; the rest is **blocked**, see below |
 | `00:E0EB`–`E292` | 15,342,522 | 1.19% | VBlank handler and pad reader |
 | `00:E3C0`–`E47C` | 7,031,316 | 0.54% | VRAM tile upload |
 | `00:F240`–`F4FB` | 5,761,776 | 0.45% | Tilemap upload, camera-sweep outer |
@@ -154,7 +154,7 @@ Remaining real logic, in rough order of value:
 
    | Routine | Master cycles | State |
    | --- | ---: | --- |
-   | `00:EB30` VCE upload | 8,636,040 | needs `$0400`-`$0405` on the write channel |
+   | `00:EB30` VCE upload | 8,636,040 | **native** except the 29-call `TIA` arm |
    | `00:E9B6` block interpolator | 6,548,946 | **native** |
    | `00:EBA5` block stager | 2,629,866 | **native** |
    | `00:EAA7` block decrement | 1,640,100 | 205,012 cycles per call, over the checkpoint cap |
@@ -163,20 +163,30 @@ Remaining real logic, in rough order of value:
 
    The two fade drivers are not portable for the same structural reason the
    spin loop is not: a transcript for either would have to span the
-   twenty-one frames they wait through. `00:EB30` is the one worth doing
-   next, and it needs the bounded-register move described in item 3 —
-   the same one made for the PSG, applied to the VCE register file.
+   twenty-one frames they wait through. `00:EB30` is done: it took the
+   bounded-register move described in item 3, applied to the VCE, plus the
+   matching widening of the core's wait-state compensation. Its whole-palette
+   arm stays emulated — one `TIA` moving 1,024 bytes is 1,024 writes against
+   a 512-write channel — but that arm is 29 calls of 3,599.
+
+   The palette group is therefore finished for the hybrid at 18.2M of 20.6M.
 
    Still untouched in this item: VRAM tiles `00:E3C0`–`E47C` (7.0M) and
    tilemap `00:F240`–`F452` (5.8M). Both write the VDC ports at `$0000`-`$0003`,
    which the write channel already carries.
 3. **VBlank handler and pad reader** (15.3M), now the largest single portable
    block left. Needs the write channel widened again to reach the joypad port
-   at `$1000` — the same bounded-register move made for the PSG, and the same
-   one `00:EB30` needs for the VCE at `$0400`-`$0405`. The allowlist is
-   `is_replaceable_hardware_port` in `src/emulation/pce_runtime_beetle.cpp`,
-   in this repo rather than in the fork, so widening it is a two-line change
-   plus whatever wait-state pricing the new ports need in the transcript.
+   at `$1000` — the same bounded-register move made for the PSG and then for
+   the VCE. That move is two edits, not one, and the VCE slice is the worked
+   example. The allowlist is `is_replaceable_hardware_port` in
+   `src/emulation/pce_runtime_beetle.cpp`, in this repo. The second edit is in
+   the fork: `AdvanceReplacementTo` in
+   `patches/0006-huc6280-interruptible-replacement.patch` advances to the
+   cycle *before* a write whose device steals a CPU cycle, so the steal lands
+   inside the declared offset. Miss it and the transcript runs three master
+   cycles long per port write, with correct values in the wrong places on the
+   clock. `$1000` does not steal — `IOWrite` only calls `StealCycle` for the
+   VDC and VCE cases — so the joypad needs the first edit and not the second.
 4. **Gameplay tails** (~20M spread thin, no single address above 0.14%).
 5. **Boot and reset path.** Off the census route's hot path but required.
 6. **The frame-sync spin loop** (584.8M). Trivial code, but it is where the

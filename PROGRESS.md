@@ -5444,73 +5444,83 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
 
 ## Active Work
 
-Current owner: Claude. Current slice: **the palette shadow buffer's three leaf
-maintainers are native**, taking the deployed registry to **38.56%** of all
-master cycles (498,392,511 of 1,292,370,213) across 2,267,283 native calls and
-297 admitted routines. This is the first slice into the video paths.
+Current owner: Claude. Current slice: **the palette upload `00:EB30` is
+native**, taking the deployed registry to **39.10%** of all master cycles
+(505,263,027 of 1,292,370,213) across 2,270,435 native calls and 298 admitted
+routines. It is the first routine in the port to drive a device other than the
+VDC and the PSG.
 
-Gameplay code never writes the VCE. It keeps thirty-two 32-byte blocks of
-packed nine-bit GRB in a shadow buffer at `$27B9`-`$2BB8`, marks the blocks it
-changed in `$2CCC`-`$2CEB`, and `00:EB30` drains the dirty ones to the VCE
-ports once a frame. Three routines maintain that buffer and all three are now
-native: `00:E9B6`, the block interpolator, which is one crossfade step over
-one block's sixteen colours (672 calls, 6,548,946 cycles); `00:EBA5`, the
-block stager, a 32-byte copy plus the dirty flags (1,121 calls, 2,629,866);
-and `00:E93C`, the sixteen-bit compare the fade drivers branch on (8,969
-calls, 758,370).
+`00:EB30` runs once a frame. It walks the thirty-two dirty flags at
+`$2CCC`-`$2CEB`, and for each dirty block points the VCE colour table at
+`$0402`/`$0403` and pushes sixteen colours through `$0404`/`$0405`, keeping its
+shadow-buffer read pointer in `$47`/`$48` and its colour-table address in
+`$49`/`$4A`. On this route it runs that walk 616 times, returns early 2,954
+times, and takes a whole-palette arm 29 times where a single
+`TIA $27B9, $0404, $0400` moves all 1,024 bytes at once. That arm is 1,024
+writes against a replacement channel that carries 512, so the walk declines in
+front of its first store; a further 418 calls never reach the hook because
+another transcript is suspended when they arrive. Admitted 3,152 of 3,181
+entered, 6,870,516 cycles.
 
-All three are admitted on **every** call, which is worth explaining because
-nothing else in the port has been. They are leaves in the strong sense: no
-`JSR`, no device port, and nothing another thread of control writes. There is
-no horizon to miss and no snapshot to go stale, so the only thing an interrupt
-can do is land on a checkpoint, which is already handled. Verification was
-byte-identical on the first run — 7,281,171 work-RAM writes across the shadow
-buffer, the dirty flags, the zero-page scratch and the stack, plus the census
-(`9036a9de...`), all matching a pure-assembly run of the same route.
-Regression: `dc_rom_palette_shadow_semantic`.
+Verification is the two-run diff over three artifacts, all byte-identical to a
+pure-assembly run of the same route: 7,369,685 work-RAM writes, 115,688 VCE
+register writes, and the state census (`9036a9de...`). Regression:
+`dc_rom_palette_shadow_semantic`, now covering all four palette entry points.
 
 **Findings worth carrying forward.**
 
-*A lumped inventory row hides both the target and the blockers.* The
-elimination plan listed `00:E93C`-`EBD6` as one 20.6M "VCE palette DMA". It is
-six routines with nothing in common but an address range, and three of them
-are unreachable for three different reasons: `00:EB30` (8.6M) writes the VCE
-register file at `$0400`-`$0405`, which the replacement write channel does not
-carry; `00:EAA7` (1.6M) is 205,012 cycles per call, roughly nine times the
-checkpoint cap; and `00:E94D` and `00:EA77`, the two fade drivers, both call
-the frame-sync spin at `00:E321`, so a transcript for either would span
-twenty-one frames. Ranking by cycles *within* the cluster took one query and
-put the three portable leaves in front. Reading the range top to bottom would
-have started at its smallest routine.
+*Widening the write channel is two edits, and the second one is in the fork.*
+Adding `$0400`-`$0405` to `is_replaceable_hardware_port` in
+`src/emulation/pce_runtime_beetle.cpp` let the writes through, and the
+transcript then ran three master cycles long per colour — 102 per block,
+accumulating all frame. `AdvanceReplacementTo` in
+`patches/0006-huc6280-interruptible-replacement.patch` advances to the cycle
+*before* a write whose device steals a CPU cycle, so the steal lands inside the
+declared offset, and it tested only `logical_address <= 0x0003`. `IOWrite`
+steals for the VDC *and* the VCE — those are its only two stealing cases — so
+both belong in that test. Every write value and every write order was already
+correct when the clock was wrong, which is the whole argument for diffing
+traces rather than end state. The joypad port at `$1000` does not steal, so the
+VBlank slice needs the first edit and not the second.
 
-*Two divisions decide whether a candidate can be admitted at all, and they are
-cheaper than the disassembly.* The obvious next slice was `45:4015`, the music
-sequencer's per-frame tick: 13.8M cycles, composes entirely from routines
-already native, about 95 new instructions plus `45:4936`. It is not portable.
-Its voice loop reaches `45:4148` — `LDA $F5,X`, the timer driver's channel
-bank byte — on all 3,604 of `4142`'s calls, not the 12 that the conspicuous
-`LDA $F5` at `415A` suggests, so the shared-state guard applies to the whole
-body. The body is 12,667 master cycles and the timer period on this route is
-5,068 (254,990 driver entries across 1,292,370,213 cycles), so a transcript
-builder for it would decline 3,599 calls out of 3,599. Two profile queries
-established that; the caps, which were the thing I checked first, turned out
-not to be the constraint at all. Bank 45 is finished for the hybrid at 55%.
+*Whether the routine runs masked decides the shadowing cost, not its length.*
+The previous slice measured that a long transcript shadows the sound driver,
+because the core will not consult the replacement hook while a replacement is
+active. `00:EB30` runs up to 18,585 cycles — more than three timer periods —
+and cost the driver nothing at all: the 298-routine cycle census before and
+after differs by exactly one row, its own. Every one of its 3,599 calls arrives
+with `I` already set, because a VCE upload has to land inside the blanking
+interval, so there was never an interrupt to shadow. Span is the upper bound;
+one `--observe-hook` run and the `input_status` column turn it into a number
+before any code is written.
 
-*A long transcript shadows the interrupt handler, and the cost is real.* The
-core will not consult the replacement hook while a replacement is active, so
-every interrupt landing inside a transcript runs its handler emulated.
-`00:E9B6` runs 9,745 cycles per call — about two timer periods — and cost the
-sound driver 1,181 native entries, roughly 694,000 cycles. The slice added
-9,937,182 and netted 9,243,210. Strongly positive, but the effect scales with
-body length and belongs in the arithmetic before a long slice, not after.
+*The palette group is now finished for the hybrid* at 18.2M of its 20.6M. What
+is left is unreachable rather than unported: `00:EAA7` at 205,012 cycles per
+call is nine times the checkpoint cap, and both fade drivers call the
+frame-sync spin at `00:E321`.
 
-Next: `00:EB30` (8.6M) needs the VCE register file added to
-`is_replaceable_hardware_port` in `src/emulation/pce_runtime_beetle.cpp` —
-the same bounded-register move made for the PSG, in this repo rather than in
-the fork. After that the largest portable blocks left are the VBlank handler
-and pad reader (15.3M, which needs the joypad port at `$1000` by the same
-move), the VRAM tile upload `00:E3C0` (7.0M) and the tilemap upload `00:F240`
-(5.8M); the last two write `$0000`-`$0003`, which the channel already carries.
+Next: the VBlank handler and pad reader (15.3M) is the largest portable block
+left and needs `$1000` on the write channel; then the VRAM tile upload
+`00:E3C0` (7.0M) and the tilemap upload `00:F240` (5.8M), both of which write
+`$0000`-`$0003`, which the channel already carries.
+
+Previous slice: **the palette shadow buffer's three leaf maintainers are
+native** — `00:E9B6`, the block interpolator (672 calls, 6,548,946 cycles);
+`00:EBA5`, the block stager (1,121 calls, 2,629,866); and `00:E93C`, the
+sixteen-bit compare the fade drivers branch on (8,969 calls, 758,370) — taking
+the registry to 38.56%. All three are admitted on **every** call, because they
+are leaves in the strong sense: no `JSR`, no device port, and nothing another
+thread of control writes, so there is no horizon to miss and no snapshot to go
+stale. Two findings came with it. A lumped inventory row hides both the target
+and the blockers: the elimination plan listed `00:E93C`-`EBD6` as one 20.6M
+"VCE palette DMA", and it is six routines with nothing in common but an address
+range. And two divisions decide whether a candidate can be admitted at all,
+more cheaply than the disassembly — the obvious next slice was `45:4015`, the
+music sequencer's per-frame tick, and it is not portable: its voice loop
+reaches `45:4148` (`LDA $F5,X`, the timer driver's channel bank byte) on all
+3,604 of `4142`'s calls, so the shared-state guard applies to a 12,667-cycle
+body against a 5,068-cycle timer period, and a builder for it would decline
+3,599 calls out of 3,599. Bank 45 is finished for the hybrid at 55%.
 
 Previous slice: **the bank-45 music sequencer's command interpreter,
 portamento stepper, sample/envelope group and PSG register programmer are

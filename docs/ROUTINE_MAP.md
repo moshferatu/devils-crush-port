@@ -556,8 +556,13 @@ routine below unpacks and repacks it the same way, through the scratch bytes
 
 `EB30` is the only one that touches hardware. It tests `$2BB9` and `$2CCB`,
 and takes one of two paths: a whole-palette `TIA $27B9, $0404, $0400` when
-`$2BB9` is zero, or a walk of the thirty-two dirty flags, writing the VCE
-address to `$0402`/`$0403` and then sixteen colours through `$0404`/`$0405`.
+`$2BB9` is non-zero and positive, or a walk of the thirty-two dirty flags,
+writing the VCE address to `$0402`/`$0403` and then sixteen colours through
+`$0404`/`$0405`. The dirty walk keeps its shadow-buffer read pointer in
+`$47`/`$48` and its colour-table address in `$49`/`$4A`, advancing them by
+`$20` and `$10` per block whether the block was dirty or not. On this route it
+runs the walk 616 times, the `TIA` 29 times, and returns early 2,954 times;
+the largest walk finds seven dirty blocks.
 
 `E9B6` is the interesting one. For each of the sixteen colours it sums the
 target's three channels and compares the total against the step counter at
@@ -574,10 +579,16 @@ against a `$27B9` base, sets `$2CCC,Y` and `$2CCB`, and copies thirty-two
 bytes in from `$2F/$30`. The source is always ROM on this route: `$8000`-
 `$BFFF` through MPR4/MPR5.
 
-`E93C`, `E9B6` and `EBA5` now run natively. `EB30` needs the VCE register
-file on the replacement write channel; `EAA7` is 205,012 cycles per call,
-which is past the checkpoint cap; and both drivers call the frame-sync spin
-at `00:E321`, so no transcript can cover them.
+`E93C`, `E9B6`, `EBA5` and `EB30` now run natively. `EB30`'s `TIA` arm is the
+one exception: 1,024 writes against a replacement channel that carries 512,
+so the walk declines in front of it and those 29 calls stay emulated. `EAA7`
+is 205,012 cycles per call, which is past the checkpoint cap; and both fade
+drivers call the frame-sync spin at `00:E321`, so no transcript can cover
+them.
+
+Every call to `EB30` arrives with `I` set — the upload has to land inside the
+blanking interval — which is why an 18,585-cycle transcript here costs the
+sound driver nothing, while `E9B6` at half the length costs it 1,181 entries.
 
 ## Camera-visibility sweep
 

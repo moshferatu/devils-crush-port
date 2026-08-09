@@ -64,7 +64,7 @@ diff --git a/mednafen/pce/huc6280.cpp b/mednafen/pce/huc6280.cpp
  }
  
  HuC6280::~HuC6280()
-@@ -531,6 +548,93 @@ void HuC6280::TimerSync(void)
+@@ -531,6 +548,101 @@ void HuC6280::TimerSync(void)
  	timer_lastts = timestamp;
  }
  
@@ -86,18 +86,26 @@ diff --git a/mednafen/pce/huc6280.cpp b/mednafen/pce/huc6280.cpp
 +						!= completed_checkpoint
 +							->instruction_logical_pc)))
 +			break;
-+		const bool bounded_vdc_port =
++		// IOWrite steals a CPU cycle for the two hardware-page register
++		// files whose devices arbitrate the bus: the VDC base ports at
++		// $0000-$0003 and the VCE at $0400-$0405. A transcript prices that
++		// steal into the instruction, so advance to the cycle before the
++		// write and let the steal land inside the declared offset instead
++		// of past it.
++		const bool bounded_stalling_port =
 +			MPR[write.logical_address >> 13] == 0xFF
-+			&& write.logical_address <= 0x0003;
-+		const uint32 vdc_wait =
-+			bounded_vdc_port ? (3U << speed_shift_cache) : 0U;
-+		if(write.master_cycle_offset < vdc_wait)
++			&& (write.logical_address <= 0x0003
++				|| (write.logical_address >= 0x0400
++					&& write.logical_address <= 0x0405));
++		const uint32 port_wait =
++			bounded_stalling_port ? (3U << speed_shift_cache) : 0U;
++		if(write.master_cycle_offset < port_wait)
 +		{
 +			ReplacementActive = false;
 +			return;
 +		}
 +		const uint32 advance_offset =
-+			write.master_cycle_offset - vdc_wait;
++			write.master_cycle_offset - port_wait;
 +		if(advance_offset < ReplacementElapsed)
 +		{
 +			ReplacementActive = false;
@@ -158,7 +166,7 @@ diff --git a/mednafen/pce/huc6280.cpp b/mednafen/pce/huc6280.cpp
  void HuC6280::HappySync(void)
  {
  	TimerSync();
-@@ -623,6 +730,30 @@ NO_INLINE void HuC6280::RunSub(void)
+@@ -623,6 +738,30 @@ NO_INLINE void HuC6280::RunSub(void)
  				}
  			}
  		}
@@ -189,7 +197,7 @@ diff --git a/mednafen/pce/huc6280.cpp b/mednafen/pce/huc6280.cpp
  		PC &= 0xFFFF;     // Our cpu core can only handle PC going about 8192 bytes over, so make sure it never gets that far...
  		HookInstructionPC = (uint16)PC;
  		HookInstructionPhysicalBank = MPR[(PC >> 13) & 0x7];
-@@ -654,9 +786,10 @@ NO_INLINE void HuC6280::RunSub(void)
+@@ -654,9 +794,10 @@ NO_INLINE void HuC6280::RunSub(void)
  			dc_beetle_active_instruction_hook(
  				&hook_state,
  				dc_beetle_active_instruction_hook_user_data);
@@ -201,7 +209,7 @@ diff --git a/mednafen/pce/huc6280.cpp b/mednafen/pce/huc6280.cpp
  		{
  			dc_beetle_cpu_state replacement_state =
  			{
-@@ -687,8 +818,12 @@ NO_INLINE void HuC6280::RunSub(void)
+@@ -687,8 +826,12 @@ NO_INLINE void HuC6280::RunSub(void)
  			bool valid = replacement.handled != 0
  				&& replacement.write_count
  					<= DC_BEETLE_MAX_REPLACEMENT_WRITES
@@ -215,7 +223,7 @@ diff --git a/mednafen/pce/huc6280.cpp b/mednafen/pce/huc6280.cpp
  			uint32 elapsed = 0;
  			for(uint32 i = 0; valid && i < replacement.write_count; i++)
  			{
-@@ -699,8 +834,59 @@ NO_INLINE void HuC6280::RunSub(void)
+@@ -699,8 +842,59 @@ NO_INLINE void HuC6280::RunSub(void)
  						<= replacement.body_master_cycles;
  				elapsed = write.master_cycle_offset;
  			}
@@ -275,7 +283,7 @@ diff --git a/mednafen/pce/huc6280.cpp b/mednafen/pce/huc6280.cpp
  				elapsed = 0;
  				for(uint32 i = 0; i < replacement.write_count; i++)
  				{
-@@ -844,6 +1030,24 @@ int HuC6280::StateAction(StateMem *sm, const unsigned load, const bool data_only
+@@ -844,6 +1038,24 @@ int HuC6280::StateAction(StateMem *sm, const unsigned load, const bool data_only
  		SFVARN(S, "S"),
  
  		SFVARN(lastop, "lastop"),
@@ -300,7 +308,7 @@ diff --git a/mednafen/pce/huc6280.cpp b/mednafen/pce/huc6280.cpp
  
  		SFVARN(IRQSample, "IRQSample"),
  		SFVARN(IRQlow, "IRQlow"),
-@@ -877,6 +1081,20 @@ int HuC6280::StateAction(StateMem *sm, const unsigned load, const bool data_only
+@@ -877,6 +1089,20 @@ int HuC6280::StateAction(StateMem *sm, const unsigned load, const bool data_only
  		speed &= 0x01;
  		if(timer_div < 1)
  			timer_div = 1;

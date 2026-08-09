@@ -128,9 +128,10 @@ replace_native_gameplay_routine_impl(
             }) {
         return detail::replace_music_sequencer(entry, work_ram, rom);
     }
-    // One shared walk, three entry points: the leaves that maintain the
-    // palette shadow buffer at $27B9. None of them calls anything, so each
-    // transcript is a single straight walk to its own RTS.
+    // One shared walk, four entry points: the leaves that maintain the palette
+    // shadow buffer at $27B9, and the upload that drains it to the VCE. None
+    // of them calls anything, so each transcript is a single straight walk to
+    // its own RTS.
     if (entry.routine
             == RoutineKey{
                 .physical_bank = 0x00U,
@@ -140,6 +141,11 @@ replace_native_gameplay_routine_impl(
             == RoutineKey{
                 .physical_bank = 0x00U,
                 .logical_pc = 0xE9B6U,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x00U,
+                .logical_pc = 0xEB30U,
             }
         || entry.routine
             == RoutineKey{

@@ -65,9 +65,12 @@ this repository.
    - Defers a same-offset write attributed to the following instruction until
      that instruction resumes, so an interrupt at the preceding boundary
      cannot prematurely commit nested-JSR stack writes.
-   - Permits a replacement write to the base VDC's four logical ports only
-     when MPR0 maps them to physical bank `$FF`; advances to the pre-write
-     boundary and lets the normal HuC6280 bus path charge the VDC wait cycle.
+   - Advances to the pre-write boundary for a replacement write to a device
+     that arbitrates the bus -- the base VDC's four logical ports and the VCE
+     register file at `$0400`-`$0405`, the two cases where `IOWrite` calls
+     `StealCycle` -- and lets the normal HuC6280 bus path charge that stolen
+     cycle, so it lands inside the offset the transcript declared. Applies
+     only when MPR0 maps the hardware page to physical bank `$FF`.
    - Preserves the pending transcript in savestates and safely abandons it at
      the current original instruction if an interrupt handler does not restore
      the checkpoint register/MPR state.

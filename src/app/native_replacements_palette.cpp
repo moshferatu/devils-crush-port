@@ -19,10 +19,9 @@ using emulation::RoutineReplacement;
 // nine-bit GRB here, marks the ones that changed in $2CCC-$2CEB, and lets
 // 00:EB30 push the dirty blocks out to the VCE ports once a frame.
 //
-// This slice ports the three leaves that maintain that buffer. They are all
-// self-contained -- no JSR, no device port, no state another thread of control
-// writes -- which is what makes them the right first step into the video
-// paths:
+// Four entry points are ported here. Three are leaves in the strong sense --
+// no JSR, no device port, no state another thread of control writes -- which
+// is what makes them the right first step into the video paths:
 //
 //   00:E93C  the sixteen-bit compare ($2F/$30 against $2D/$2E) the fade
 //            drivers use to decide whether a source pointer has run past its
@@ -34,12 +33,21 @@ using emulation::RoutineReplacement;
 //   00:EBA5  the block stager: copy thirty-two bytes of a source palette into
 //            block N of the shadow buffer and mark it dirty
 //
-// Together they are 10.2M of the census route's 1,292M master cycles. The two
+// The fourth is 00:EB30, the upload itself, and it is the first routine in the
+// project to drive the VCE. It reads the flags, and for each dirty block
+// points the colour-table address at $0402/$0403 and pushes sixteen colours
+// through $0404/$0405. Only its whole-palette arm is out of reach: when $2BB9
+// is set the routine uploads all 1,024 bytes with a single TIA, and a
+// transcript for that arm would need 1,024 writes against the channel's cap of
+// 512, so the walk declines in front of it. Twenty-nine of 3,599 calls take
+// that arm.
+//
+// Together they are 18.2M of the census route's 1,292M master cycles. The two
 // drivers above them -- the crossfade at 00:E94D and the fade-to-black at
 // 00:EA77 -- are not portable in the hybrid: both call the frame-sync spin at
 // 00:E321, so a transcript for either would have to span twenty-one frames.
-// 00:EB30, the VCE upload itself, needs the write channel widened to the VCE
-// register file at $0400-$0405 and is left for the slice that does that.
+// 00:EAA7, the fade-to-black stepper, is 205,012 master cycles per call, which
+// is past the checkpoint cap however the transcript is arranged.
 constexpr std::uint8_t kBank = 0x00U;
 
 constexpr std::uint8_t kCarry = 0x01U;
@@ -74,15 +82,17 @@ constexpr std::uint16_t kWorkRamEnd = 0x4000U;
 [[nodiscard]] constexpr bool is_owned_entry(const std::uint16_t logical_pc)
 {
     return logical_pc == 0xE93CU || logical_pc == 0xE9B6U
-        || logical_pc == 0xEBA5U;
+        || logical_pc == 0xEB30U || logical_pc == 0xEBA5U;
 }
 
 // The RTS each entry point walks to. The transcript stops in front of it and
-// the core executes the return itself.
+// the core executes the return itself. 00:EB30 has two of them: the early
+// return it takes when nothing is dirty, and the one after the block walk.
 [[nodiscard]] constexpr bool is_return_instruction(
     const std::uint16_t logical_pc)
 {
     return logical_pc == 0xE94CU || logical_pc == 0xEA76U
+        || logical_pc == 0xEB3AU || logical_pc == 0xEBA4U
         || logical_pc == 0xEBD6U;
 }
 
@@ -101,6 +111,13 @@ std::optional<RoutineReplacement> replace_palette_shadow(
     // None of these routines is written to run in decimal mode or under the
     // memory-operand T flag; both would change ADC/SBC and the loads.
     if ((entry.registers.status & (kDecimal | kMemory)) != 0U) {
+        return std::nullopt;
+    }
+    // 00:EB30 addresses the VCE at $0400-$0405, which only reaches the device
+    // while the hardware page is mapped at segment 0 -- the same condition the
+    // core's write validator imposes before it will commit a port write.
+    if (entry.routine.logical_pc == 0xEB30U
+        && entry.registers.mpr[0] != 0xFFU) {
         return std::nullopt;
     }
 
@@ -165,16 +182,21 @@ std::optional<RoutineReplacement> replace_palette_shadow(
             }
         };
 
+    // An instruction samples the interrupt one CPU cycle before its own last,
+    // which is where the core's LastCycle sits. A store to the VCE is the
+    // exception: its last cycle is the one the VCE steals after the bus write,
+    // so it samples two CPU cycles early and passes sample_back = 6.
     const auto append_checkpoint =
         [&replacement, &registers, &cycle, &commit_pending_writes](
             const std::uint16_t instruction_pc,
             const std::uint16_t resume_pc,
-            const std::uint32_t instruction_cycles) {
+            const std::uint32_t instruction_cycles,
+            const std::uint32_t sample_back = 3U) {
             cycle += instruction_cycles;
             commit_pending_writes(cycle);
             registers.program_counter = resume_pc;
             replacement.checkpoints.push_back({
-                .interrupt_sample_master_cycle_offset = cycle - 3U,
+                .interrupt_sample_master_cycle_offset = cycle - sample_back,
                 .master_cycle_offset = cycle,
                 .instruction = {kBank, instruction_pc},
                 .registers = registers,
@@ -202,9 +224,30 @@ std::optional<RoutineReplacement> replace_palette_shadow(
             });
         };
 
+    // The VCE colour-table registers at $0402-$0405. These are the only stores
+    // in this module that leave work RAM, and they are ordinary bus writes
+    // that the core commits through the HuC6280 memory path; nothing here
+    // needs to model the colour table, only to emit the writes in order.
+    const auto store_port =
+        [&replacement](
+            const std::uint16_t instruction_pc,
+            const std::uint16_t address,
+            const std::uint8_t value) {
+            replacement.work_ram_writes.push_back({
+                .instruction = {kBank, instruction_pc},
+                .logical_address = address,
+                .value = value,
+                .master_cycle_offset = 0U,
+            });
+        };
+
     // Zero page lives at $2000; an absolute address is used as written.
     const auto zp = [](const std::uint8_t address) {
         return static_cast<std::uint16_t>(kWorkRamBase + address);
+    };
+    const auto indexed_x = [&registers](const std::uint16_t base) {
+        return static_cast<std::uint16_t>(
+            base + static_cast<std::uint16_t>(registers.x));
     };
     const auto indexed_y = [&registers](const std::uint16_t base) {
         return static_cast<std::uint16_t>(
@@ -1208,6 +1251,317 @@ std::optional<RoutineReplacement> replace_palette_shadow(
         case 0xEA73U:  // JMP $E9B7
             append_checkpoint(0xEA73U, 0xE9B7U, 12U);
             pc = 0xE9B7U;
+            break;
+
+        // ---- 00:EB30  VCE upload ----------------------------------------
+        // Once a frame. $2BB9 asks for a whole-palette upload, $2CCB says at
+        // least one block is dirty, and $2CCC,X says which. The walk keeps the
+        // shadow-buffer read pointer in $47/$48 and the VCE colour-table
+        // address in $49/$4A, advancing them by $20 and $10 per block.
+        case 0xEB30U:  // LDA $2BB9
+            load_accumulator(read_ram(0x2BB9U));
+            append_checkpoint(0xEB30U, 0xEB33U, 15U);
+            pc = 0xEB33U;
+            break;
+
+        case 0xEB33U:  // BMI $EB3A
+            pc = branch(
+                0xEB33U,
+                0xEB3AU,
+                0xEB35U,
+                (registers.status & kNegative) != 0U);
+            break;
+
+        case 0xEB35U:  // LDA $2CCB
+            load_accumulator(read_ram(0x2CCBU));
+            append_checkpoint(0xEB35U, 0xEB38U, 15U);
+            pc = 0xEB38U;
+            break;
+
+        case 0xEB38U:  // BNE $EB3B
+            pc = branch(
+                0xEB38U,
+                0xEB3BU,
+                0xEB3AU,
+                (registers.status & kZero) == 0U);
+            break;
+
+        case 0xEB3BU:  // LDA $2BB9
+            load_accumulator(read_ram(0x2BB9U));
+            append_checkpoint(0xEB3BU, 0xEB3EU, 15U);
+            pc = 0xEB3EU;
+            break;
+
+        case 0xEB3EU:  // BEQ $EB54
+            pc = branch(
+                0xEB3EU,
+                0xEB54U,
+                0xEB40U,
+                (registers.status & kZero) != 0U);
+            break;
+
+        // The whole-palette arm. TIA $27B9, $0404, $0400 moves 1,024 bytes
+        // alternating between the two data ports, which is 1,024 writes
+        // against a channel that carries 512. There is no transcript for it,
+        // so the walk hands the call back before its first store lands.
+        case 0xEB40U:  // STZ $0402
+            return std::nullopt;
+
+        case 0xEB54U:  // CLX -- no flags
+            registers.x = 0x00U;
+            append_checkpoint(0xEB54U, 0xEB55U, 6U);
+            pc = 0xEB55U;
+            break;
+
+        case 0xEB55U:  // LDA #$B9
+            load_accumulator(0xB9U);
+            append_checkpoint(0xEB55U, 0xEB57U, 6U);
+            pc = 0xEB57U;
+            break;
+
+        case 0xEB57U:  // STA $47
+            store(0xEB57U, zp(0x47U), registers.accumulator);
+            append_checkpoint(0xEB57U, 0xEB59U, 12U);
+            pc = 0xEB59U;
+            break;
+
+        case 0xEB59U:  // LDA #$27
+            load_accumulator(0x27U);
+            append_checkpoint(0xEB59U, 0xEB5BU, 6U);
+            pc = 0xEB5BU;
+            break;
+
+        case 0xEB5BU:  // STA $48
+            store(0xEB5BU, zp(0x48U), registers.accumulator);
+            append_checkpoint(0xEB5BU, 0xEB5DU, 12U);
+            pc = 0xEB5DU;
+            break;
+
+        case 0xEB5DU:  // STZ $49
+            store(0xEB5DU, zp(0x49U), 0x00U);
+            append_checkpoint(0xEB5DU, 0xEB5FU, 12U);
+            pc = 0xEB5FU;
+            break;
+
+        case 0xEB5FU:  // STZ $4A
+            store(0xEB5FU, zp(0x4AU), 0x00U);
+            append_checkpoint(0xEB5FU, 0xEB61U, 12U);
+            pc = 0xEB61U;
+            break;
+
+        case 0xEB61U:  // LDA $2CCC,X -- is this block dirty?
+            load_accumulator(read_ram(indexed_x(0x2CCCU)));
+            append_checkpoint(0xEB61U, 0xEB64U, 15U);
+            pc = 0xEB64U;
+            break;
+
+        case 0xEB64U:  // BEQ $EB84
+            pc = branch(
+                0xEB64U,
+                0xEB84U,
+                0xEB66U,
+                (registers.status & kZero) != 0U);
+            break;
+
+        case 0xEB66U:  // LDA $49
+            load_accumulator(read_ram(zp(0x49U)));
+            append_checkpoint(0xEB66U, 0xEB68U, 12U);
+            pc = 0xEB68U;
+            break;
+
+        case 0xEB68U:  // STA $0402 -- colour-table address low
+            store_port(0xEB68U, 0x0402U, registers.accumulator);
+            append_checkpoint(0xEB68U, 0xEB6BU, 18U, 6U);
+            pc = 0xEB6BU;
+            break;
+
+        case 0xEB6BU:  // LDA $4A
+            load_accumulator(read_ram(zp(0x4AU)));
+            append_checkpoint(0xEB6BU, 0xEB6DU, 12U);
+            pc = 0xEB6DU;
+            break;
+
+        case 0xEB6DU:  // STA $0403 -- colour-table address high
+            store_port(0xEB6DU, 0x0403U, registers.accumulator);
+            append_checkpoint(0xEB6DU, 0xEB70U, 18U, 6U);
+            pc = 0xEB70U;
+            break;
+
+        case 0xEB70U:  // CLY -- no flags
+            registers.y = 0x00U;
+            append_checkpoint(0xEB70U, 0xEB71U, 6U);
+            pc = 0xEB71U;
+            break;
+
+        case 0xEB71U:  // LDA ($47),Y
+            load_accumulator(read_mapped(indirect_y(0x47U)));
+            append_checkpoint(0xEB71U, 0xEB73U, 21U);
+            pc = 0xEB73U;
+            break;
+
+        case 0xEB73U:  // STA $0404 -- colour low
+            store_port(0xEB73U, 0x0404U, registers.accumulator);
+            append_checkpoint(0xEB73U, 0xEB76U, 18U, 6U);
+            pc = 0xEB76U;
+            break;
+
+        case 0xEB76U:  // INY
+            registers.y = static_cast<std::uint8_t>(registers.y + 1U);
+            registers.status = set_nz(registers.status, registers.y);
+            append_checkpoint(0xEB76U, 0xEB77U, 6U);
+            pc = 0xEB77U;
+            break;
+
+        case 0xEB77U:  // LDA ($47),Y
+            load_accumulator(read_mapped(indirect_y(0x47U)));
+            append_checkpoint(0xEB77U, 0xEB79U, 21U);
+            pc = 0xEB79U;
+            break;
+
+        case 0xEB79U:  // STA $0405 -- colour high; the VCE steps its address
+            store_port(0xEB79U, 0x0405U, registers.accumulator);
+            append_checkpoint(0xEB79U, 0xEB7CU, 18U, 6U);
+            pc = 0xEB7CU;
+            break;
+
+        case 0xEB7CU:  // INY
+            registers.y = static_cast<std::uint8_t>(registers.y + 1U);
+            registers.status = set_nz(registers.status, registers.y);
+            append_checkpoint(0xEB7CU, 0xEB7DU, 6U);
+            pc = 0xEB7DU;
+            break;
+
+        case 0xEB7DU:  // CPY #$20
+            compare(registers.y, 0x20U);
+            append_checkpoint(0xEB7DU, 0xEB7FU, 6U);
+            pc = 0xEB7FU;
+            break;
+
+        case 0xEB7FU:  // BNE $EB71
+            pc = branch(
+                0xEB7FU,
+                0xEB71U,
+                0xEB81U,
+                (registers.status & kZero) == 0U);
+            break;
+
+        case 0xEB81U:  // STZ $2CCC,X -- the block is clean again
+            store(0xEB81U, indexed_x(0x2CCCU), 0x00U);
+            append_checkpoint(0xEB81U, 0xEB84U, 15U);
+            pc = 0xEB84U;
+            break;
+
+        case 0xEB84U:  // CLC
+            registers.status = static_cast<std::uint8_t>(
+                registers.status & static_cast<std::uint8_t>(~kCarry));
+            append_checkpoint(0xEB84U, 0xEB85U, 6U);
+            pc = 0xEB85U;
+            break;
+
+        case 0xEB85U:  // LDA $47
+            load_accumulator(read_ram(zp(0x47U)));
+            append_checkpoint(0xEB85U, 0xEB87U, 12U);
+            pc = 0xEB87U;
+            break;
+
+        case 0xEB87U:  // ADC #$20 -- next block, thirty-two bytes on
+            add_with_carry(0x20U);
+            append_checkpoint(0xEB87U, 0xEB89U, 6U);
+            pc = 0xEB89U;
+            break;
+
+        case 0xEB89U:  // STA $47
+            store(0xEB89U, zp(0x47U), registers.accumulator);
+            append_checkpoint(0xEB89U, 0xEB8BU, 12U);
+            pc = 0xEB8BU;
+            break;
+
+        case 0xEB8BU:  // CLA -- no flags; the carry survives into the ADC
+            registers.accumulator = 0x00U;
+            append_checkpoint(0xEB8BU, 0xEB8CU, 6U);
+            pc = 0xEB8CU;
+            break;
+
+        case 0xEB8CU:  // ADC $48
+            add_with_carry(read_ram(zp(0x48U)));
+            append_checkpoint(0xEB8CU, 0xEB8EU, 12U);
+            pc = 0xEB8EU;
+            break;
+
+        case 0xEB8EU:  // STA $48
+            store(0xEB8EU, zp(0x48U), registers.accumulator);
+            append_checkpoint(0xEB8EU, 0xEB90U, 12U);
+            pc = 0xEB90U;
+            break;
+
+        case 0xEB90U:  // CLC
+            registers.status = static_cast<std::uint8_t>(
+                registers.status & static_cast<std::uint8_t>(~kCarry));
+            append_checkpoint(0xEB90U, 0xEB91U, 6U);
+            pc = 0xEB91U;
+            break;
+
+        case 0xEB91U:  // LDA $49
+            load_accumulator(read_ram(zp(0x49U)));
+            append_checkpoint(0xEB91U, 0xEB93U, 12U);
+            pc = 0xEB93U;
+            break;
+
+        case 0xEB93U:  // ADC #$10 -- sixteen colours on
+            add_with_carry(0x10U);
+            append_checkpoint(0xEB93U, 0xEB95U, 6U);
+            pc = 0xEB95U;
+            break;
+
+        case 0xEB95U:  // STA $49
+            store(0xEB95U, zp(0x49U), registers.accumulator);
+            append_checkpoint(0xEB95U, 0xEB97U, 12U);
+            pc = 0xEB97U;
+            break;
+
+        case 0xEB97U:  // CLA -- no flags
+            registers.accumulator = 0x00U;
+            append_checkpoint(0xEB97U, 0xEB98U, 6U);
+            pc = 0xEB98U;
+            break;
+
+        case 0xEB98U:  // ADC $4A
+            add_with_carry(read_ram(zp(0x4AU)));
+            append_checkpoint(0xEB98U, 0xEB9AU, 12U);
+            pc = 0xEB9AU;
+            break;
+
+        case 0xEB9AU:  // STA $4A
+            store(0xEB9AU, zp(0x4AU), registers.accumulator);
+            append_checkpoint(0xEB9AU, 0xEB9CU, 12U);
+            pc = 0xEB9CU;
+            break;
+
+        case 0xEB9CU:  // INX
+            registers.x = static_cast<std::uint8_t>(registers.x + 1U);
+            registers.status = set_nz(registers.status, registers.x);
+            append_checkpoint(0xEB9CU, 0xEB9DU, 6U);
+            pc = 0xEB9DU;
+            break;
+
+        case 0xEB9DU:  // CPX #$20
+            compare(registers.x, 0x20U);
+            append_checkpoint(0xEB9DU, 0xEB9FU, 6U);
+            pc = 0xEB9FU;
+            break;
+
+        case 0xEB9FU:  // BNE $EB61
+            pc = branch(
+                0xEB9FU,
+                0xEB61U,
+                0xEBA1U,
+                (registers.status & kZero) == 0U);
+            break;
+
+        case 0xEBA1U:  // STZ $2CCB -- nothing is dirty any more
+            store(0xEBA1U, 0x2CCBU, 0x00U);
+            append_checkpoint(0xEBA1U, 0xEBA4U, 15U);
+            pc = 0xEBA4U;
             break;
 
         // ---- 00:EBA5  block stager --------------------------------------

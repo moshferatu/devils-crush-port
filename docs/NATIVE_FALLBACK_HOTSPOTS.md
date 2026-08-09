@@ -2522,7 +2522,7 @@ them was the whole of the analysis:
 
 | Routine | Calls | Master cycles | Per call | Outcome |
 | --- | ---: | ---: | ---: | --- |
-| `00:EB30` | 3,599 | 8,636,040 | 2,400 | Writes the VCE; blocked on the write channel |
+| `00:EB30` | 3,599 | 8,636,040 | 2,400 | Native, 3,152 of 3,181 entered |
 | `00:E9B6` | 672 | 6,548,946 | 9,768 | Native, 672 of 672 |
 | `00:EBA5` | 1,121 | 2,629,866 | 2,388 | Native, 1,121 of 1,121 |
 | `00:EAA7` | 8 | 1,640,100 | 205,012 | Over the checkpoint cap |
@@ -2543,7 +2543,7 @@ times the checkpoint cap. `00:E94D` and `00:EA77` are worse — they call the
 frame-sync spin, so a transcript for either spans twenty-one frames. Both are
 visible from the call graph and the per-call figure alone.
 
-**100% admission has a cause, and it is worth naming.** All three ported
+**100% admission has a cause, and it is worth naming.** The three ported
 leaves are admitted on every call because they are leaves in the strong
 sense: no `JSR`, no device port, and nothing another thread of control writes.
 There is no horizon to miss and no snapshot to go stale, so the only thing an
@@ -2555,10 +2555,27 @@ There is a cost on the other side of the ledger, and it is new. A long
 transcript shadows the sound driver for its whole body, because the core will
 not consult the replacement hook while one is active. `00:E9B6` runs 9,745
 cycles and spans about two timer periods, so the interrupts that land inside
-it run the driver emulated. The slice added 9,937,182 native cycles and gave
-back about 694,000 in lost driver entries — 1,181 fewer than before, net
-strongly positive, but the effect scales with transcript length and should be
-checked whenever a slice's per-call body is large.
+it run the driver emulated. The first three leaves added 9,937,182 native
+cycles and gave back about 694,000 in lost driver entries — 1,181 fewer than
+before, net strongly positive, but the effect scales with transcript length
+and should be checked whenever a slice's per-call body is large.
+
+`00:EB30` then made the rule precise by breaking it. It runs up to 18,585
+cycles, more than three timer periods, and cost the driver nothing at all —
+the 298-routine cycle census before and after differs by exactly one row, its
+own. Every call arrives with `I` already set, because the upload has to land
+inside the blanking interval. Span is the upper bound on the shadowing cost;
+whether the routine runs masked is what turns that bound into a number, and
+`--observe-hook` plus the `input_status` column answers it in one run.
+
+The upload itself cost two edits rather than one, and the second is not in
+this repository. Adding `$0400`-`$0405` to `is_replaceable_hardware_port` let
+the writes through; the transcript then ran three master cycles long per
+colour, 102 per block, because the core's wait-state compensation in
+`AdvanceReplacementTo` tested only `logical_address <= 0x0003`. `IOWrite`
+steals a CPU cycle for the VDC *and* the VCE, so both belong in that test.
+Every write value and every write order was already right when the clock was
+wrong, which is the argument for diffing traces rather than end state.
 
 ## Use on future families
 

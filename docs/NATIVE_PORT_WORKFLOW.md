@@ -325,6 +325,20 @@ a mean of 142 master cycles per admitted call against a mean horizon of 265;
 as a transcript it walks to the loop's own exit and averages 192, and its
 native total went from 19.3M cycles to 33.9M.
 
+### Whether the routine runs masked decides the shadowing cost
+
+The section above prices a long transcript by how many timer periods it spans.
+That is the upper bound, not the cost. `00:EB30` spans up to three periods and
+cost the sound driver nothing: not one entry, not one cycle, measured by
+diffing the whole 298-routine cycle census before and after. Every one of its
+3,599 calls arrives with `I` already set, because a VCE upload has to land
+inside the blanking interval, so there was never an interrupt to shadow.
+
+One `--observe-hook <bank>:<pc> --routine-call-trace` run answers this before
+any code is written: count the `input_status` column and check bit 2. If it is
+set on every call, transcript length costs nothing on this axis and the only
+caps that matter are the write and checkpoint limits.
+
 ### Rank what the deployed registry does not cover, not what is expensive
 
 A `--instruction-profile` taken *with* `--replace-registry` attributes each
@@ -504,15 +518,27 @@ the mask would push the old mask bit. Nothing in the ported set does that.
 | Range | Device | Wait state |
 | --- | --- | --- |
 | `$0000`-`$0003` | VDC base ports | 3 CPU cycles |
+| `$0400`-`$0405` | VCE register file | 3 CPU cycles |
 | `$0800`-`$0809` | PSG register file | none |
 | `$0C00`-`$0C01` | Timer counter and control | none |
 | `$1402`-`$1403` | Interrupt controller | none |
 
-Only the VDC ports steal cycles, so only they take the `- 6` interrupt sample
-offset; PSG, timer and interrupt-controller stores are ordinary stores priced
-at `- 3` like anything else. Confirm the cost against the profile before
-trusting it — `00:FC27 STZ $1403` and `00:FC43 STX $0800` both measure exactly
-15 master cycles, which is the plain five-cycle store.
+The VDC and the VCE steal cycles — those are the two cases where `IOWrite`
+calls `StealCycle` — so only they take the `- 6` interrupt sample offset; PSG,
+timer and interrupt-controller stores are ordinary stores priced at `- 3` like
+anything else. Confirm the cost against the profile before trusting it —
+`00:FC27 STZ $1403` and `00:FC43 STX $0800` both measure exactly 15 master
+cycles, which is the plain five-cycle store, while `00:EB73 STA $0404`
+measures 18.
+
+Widening this list is two edits, not one. The allowlist
+`is_replaceable_hardware_port` in `src/emulation/pce_runtime_beetle.cpp` is in
+this repo and decides what the channel will carry. The wait-state
+compensation is in the fork, in `AdvanceReplacementTo`
+(`patches/0006-huc6280-interruptible-replacement.patch`), and decides whether
+a stealing port is priced correctly. Add a stealing port to the first and not
+the second and the transcript runs three master cycles long per write, with
+every value correct and every one of them late.
 
 Device writes are invisible to a *work-RAM* census, so a routine that drives
 them wants `--bus-write-range` and `--bus-write-trace` in its regression. The
@@ -524,8 +550,7 @@ rather than "the audio changed somewhere in 3,600 frames".
 
 ### A hardware wait cycle belongs to the transcript, not the total
 
-Only the checkpointed path prices a write to the VDC's four logical ports
-correctly. It advances to the boundary *before* the write and lets the
+Only the checkpointed path prices a write to a stealing port correctly. It advances to the boundary *before* the write and lets the
 ordinary HuC6280 bus path charge the wait cycle, so the declared offset is
 where the write really lands. An atomic body pays that cycle twice: the
 transaction's own `body_master_cycles` already contains it and `WrMem` charges
@@ -535,8 +560,8 @@ later interrupt.
 
 The same distinction sets the interrupt-sample offset. Ordinary instructions
 sample one CPU cycle before they end, so `master_cycle_offset - 3` is right
-for them. A port store's last cycle is the stolen wait, which lands *after*
-`LastCycle`, so it samples at `master_cycle_offset - 6`. Getting this wrong by
+for them. A stealing port store's last cycle is the stolen wait, which lands
+*after* `LastCycle`, so it samples at `master_cycle_offset - 6`. Getting this wrong by
 one CPU cycle is not cosmetic: it moved a VDC event, which moved a timer
 interrupt by one instruction 943 frames later, which moved the state census.
 
