@@ -1,6 +1,6 @@
 # Project Progress
 
-Last updated: 2026-08-08
+Last updated: 2026-08-09
 
 ## Current Status
 
@@ -5444,10 +5444,57 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
 
 ## Active Work
 
-Current owner: Claude. Current slice: **the timer sound driver at `00:FC00` is
+Current owner: Claude. Current slice: **the bank-45 music sequencer's
+sample/envelope group is native**, taking the deployed registry to **37.34%**
+of all master cycles (482,613,168 of 1,292,370,213) across 2,253,301 native
+calls and 291 admitted routines.
+
+Bank `45` is the other half of the audio path: the timer driver streams
+samples, the sequencer decides what they are, walking its voices once per frame
+from `45:4015` and programming the PSG register file directly. It was the
+largest emulated block outside the spin loop after the driver landed.
+
+Screening it needed a different instrument, and the instrument is the
+transferable part. Rather than an observer set of sibling routines, the
+whole-ROM instruction profile was read three ways: by bank (46.1M over 1,078
+addresses — flat, hottest address 0.042%, so no inner loop to take), by
+scanning the executed addresses for `JSR`/`BSR` opcodes (sixteen call targets,
+twelve of them leaves — the bank is a set of small subroutines, not a
+monolith), and by walking control flow from each target without following
+calls, which attributes the bank's cycles to routines. That converted an
+intimidating 1,078-address region into a sixteen-row table in about five
+minutes, off an artifact already on disk, and it is what turned this from a
+10,000-line transcript into an incremental slice.
+
+The first slice takes the seven routines the voice walk calls once per voice
+per frame: `45:48B4` (the shared command decoder), `45:4883` and `45:48F6`
+(which inline it), `45:49A2`, `45:49B6`, `45:49F9` (which drives `$0800` and
+`$0804`) and `45:4211`. One shared walk serves all seven; each stops in front
+of its own `RTS` and hands the return back to the core, and any call the walk
+makes is inlined into the same transcript. That is why `48B4` is admitted only
+72 times on its own — the other 25,896 calls to it are made from inside a
+`4883` or `48F6` transcript and never reach the hook.
+
+That is 15,313,683 cycles, 39% of the bank. The remaining 27,687,495 are the
+per-frame tick at `45:4015` (13.8M) and the eight subroutines it reaches that
+this slice does not cover; `45:4142` is the measured next candidate, a
+93-instruction leaf worth 7.4M with no calls out.
+
+Verification went past the state census. The census is the direct oracle for an
+audio port because it hashes the audio, and it is unchanged (`9036a9de...`).
+On top of that the regression compares three artifacts against a
+**pure-assembly run of the same route**: 409,323 work-RAM writes covering every
+voice record, 698,608 PSG writes, and the census. All three are byte-identical,
+so the writes match in value, address, order *and* master-cycle offset, not
+merely in end state. That extra run is the only check that catches a write
+credited to the wrong cycle inside an otherwise correct transcript, and it is
+now the recommended shape for any slice that touches device registers.
+Regression: `dc_rom_music_sequencer_semantic`.
+
+Previous slice: **the timer sound driver at `00:FC00` is
 native**, taking the deployed registry to **36.22%** of all master cycles
 (467,299,485 of 1,290,049,560) across 2,159,816 native calls and 284 admitted
-routines. This is the first slice outside gameplay logic: the scope widened to
+routines. This was the first slice outside gameplay logic: the scope widened to
 sound and video deliberately, so that the emulator dependency can eventually be
 removed entirely rather than only the game-specific parts.
 
@@ -5468,9 +5515,12 @@ Three things were needed, all reusable and all written up in
   interrupt controller `$1402`-`$1403`. Unlike the VDC ports these steal no
   cycles, so a transcript prices their stores like any other instruction.
 - `--bus-write-range` / `--bus-write-trace` were added, because device writes
-  are invisible to a work-RAM census and a wrong value reaching `$0806` would
-  otherwise go unnoticed. The regression asserts all 954,241 PSG, timer and
-  interrupt-acknowledge writes byte-identical to assembly.
+  are invisible to a work-RAM census. The state census would catch a wrong
+  value reaching `$0806` on its own, since it hashes the audio, but only as a
+  changed hash somewhere in 3,600 frames; the bus trace localises it to a
+  single write, value, cycle and instruction. The regression asserts all
+  954,241 PSG, timer and interrupt-acknowledge writes byte-identical to
+  assembly.
 - `CLI` opens the interrupt window one instruction late — the core samples the
   interrupt before `OP_CLEARF` clears the flag — so the `CLI` checkpoint must
   publish the *old* mask. Publishing the new one let a nested timer interrupt
@@ -5485,11 +5535,13 @@ snapshot and cannot observe that write, so the handler would never take its
 `JMP $FC03` chain exit into the sequencer.
 
 Hooked alone the driver is admitted at 254,434 of 254,434 entries. With the
-whole registry deployed it is admitted 132,656 of 254,990, 52.0% — the rest
+whole registry deployed it is admitted 127,426 of 254,990, 50.0% — the rest
 arrive while another checkpointed transcript is suspended, and the core does
 not consult the replacement hook while one is active. **That no-nesting rule,
-not any unported code, is now the largest single lever left in the registry:
-roughly 70,000,000 cycles.** Evidence: Release census `9036a9de...` and Debug
+not any unported code, is the largest single lever left on the percentage:
+104,404,329 cycles.** It is a limit of the hybrid harness rather than of the
+port, and the decision below is to leave it alone. Evidence: Release census
+`9036a9de...` and Debug
 census `a95d0c34...` unchanged, device-write trace `fec8e78f...`, channel-record
 write trace `c4195b4e...`, regression `dc_rom_sound_timer_driver_semantic`.
 
@@ -5500,6 +5552,27 @@ handler, but the census route only executes 168 of them. The track-advance tail
 never exercised, because the route silences an expiring channel at `00:FDE1`
 rather than advancing it. They are not proven by any census. A route that plays
 looping music would exercise them and is the obvious next thing to census.
+
+**Decision: do not "fix" the replacement no-nesting rule.** The driver runs
+emulated on 48% of entries because the core gates the replacement hook on
+`!ReplacementActive` and a timer interrupt usually preempts another suspended
+transcript. Making that nest would mean adding a replacement-frame stack to
+`HuC6280` — emulator scaffolding that exists only for the hybrid transition
+and gets deleted with the emulator. It ports no new instruction: that code is
+already native and already proven. It would raise the headline percentage
+without advancing the goal, so it was deliberately left alone. The native path
+is fully exercised anyway by the isolated hook run, which admits 254,434 of
+254,434 with a byte-identical census.
+
+That prompted a broader look at what removing the emulator actually needs,
+written up in [docs/EMULATOR_ELIMINATION.md](docs/EMULATOR_ELIMINATION.md).
+Two things from it are worth knowing here. The native-share percentage tracks
+only one of three axes — CPU code, device state, and time — and will plateau
+well short of "Beetle is removable", because a native routine today still
+writes into Beetle's PSG and VDC and runs on Beetle's clock. And the
+acceptance test for the endgame already exists: the state census hashes the
+framebuffer and the audio as well as work RAM, so a Beetle-free `PceRuntime`
+is finished when `--record-state-census` still yields `9036a9de...`.
 
 Previous slice: the camera-visibility sweep at
 `00:F4F2` is native, taking the deployed registry to **30.41%** of all master

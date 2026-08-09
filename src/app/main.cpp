@@ -2743,6 +2743,16 @@ parse_logical_address_range(const std::string_view text)
                                        .logical_pc = 0xFC00U,
                                    }
                            && request.all_calls;
+                       const bool proven_music_sequencer =
+                           request.routine.physical_bank == 0x45U
+                           && (request.routine.logical_pc == 0x4211U
+                               || request.routine.logical_pc == 0x4883U
+                               || request.routine.logical_pc == 0x48B4U
+                               || request.routine.logical_pc == 0x48F6U
+                               || request.routine.logical_pc == 0x49A2U
+                               || request.routine.logical_pc == 0x49B6U
+                               || request.routine.logical_pc == 0x49F9U)
+                           && request.all_calls;
                        const bool proven_actor_camera_sweep =
                            request.routine.physical_bank == 0x00U
                            && (request.routine.logical_pc == 0xF4F2U
@@ -2823,6 +2833,7 @@ parse_logical_address_range(const std::string_view text)
                            && !proven_sat_submission_step
                            && !proven_actor_camera_sweep
                            && !proven_sound_timer_driver
+                           && !proven_music_sequencer
                            && !proven_position_integration
                            && !proven_motion_damping
                            && !proven_motion_rotation

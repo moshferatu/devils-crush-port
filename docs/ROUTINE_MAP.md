@@ -411,9 +411,62 @@ this one held the interrupt window open, it chains through `JMP $FC03` to
 `$E003` rather than returning. That read is why the native walk stops at the
 epilogue instead of running to the `RTI`.
 
+## Music sequencer
+
 Bank `45`, at `$4000`-`$4CB8`, is a separate component: the music sequencer,
-which programmes the PSG registers `$0801`-`$0809` directly and drives what
-this handler then streams. It is not part of the driver and is not yet ported.
+which programmes the PSG registers `$0801`-`$0809` directly and decides what
+the timer driver then streams. It is not part of the driver.
+
+Its head is a seven-entry jump table:
+
+```
+4000  JMP $4B12     cold start: clear $D6, silence $0801/$0809, seed $2E3A-$2E3F
+4003  JMP $4015     the per-frame tick
+4006  JMP $4B7B     guarded call into the track loader at $4BCC
+4009  JMP $4B33     stop: clear the voice table, the timer, and $F5/$F7/$F9
+400C  JMP $4B8E
+400F  JMP $4B93
+4012  JMP $4B97     fade request: set $2E42/$2E44, mark all nine voices
+```
+
+The tick at `45:4015` walks nine or ten voices through `$2E34`, and each
+iteration calls into a fixed set of subroutines. Voice state is a set of
+parallel arrays in `$2E00`-`$2FFF` indexed by a voice cursor that steps by ten
+(`4C90` is `ADC #$0A`), with the sixteen-bit quantities split across two
+arrays a fixed distance apart -- `$2F22,X`/`$2F2C,X` is the sweep
+accumulator, `$2EC8,X`/`$2ED2,X` the step counter and its limit.
+
+The subroutines the tick calls, and their cost on the census route:
+
+| Entry | Calls | Master cycles | What it does |
+| --- | ---: | ---: | --- |
+| `4883` | 22,664 | 3,958,542 | Pitch/period update; calls `48B4` |
+| `48F6` | 22,664 | 4,438,275 | Sweep accumulator update; calls `48B4` |
+| `48B4` | 25,968 | 1,771,122 | Sequence-data fetch, the shared command decoder |
+| `49A2` | 22,664 | 1,239,765 | Vibrato accumulator update |
+| `49F9` | 22,664 | 8,577,900 | Voice commit; drives `$0800`/`$0804` |
+| `4142` | 3,599 | 7,404,498 | Per-frame prologue |
+| `457A` | 2,299 | 1,690,857 | Step-limit handler; calls `4522`/`4569`/`46D7` |
+| `46D7` | 2,254 | 1,203,030 | |
+| `4228` | 1,142 | 1,326,999 | |
+| `49B6` | 3,604 | 607,533 | Voice-latch clear |
+| `4211` | 7,198 | 541,458 | Two pending-event gates |
+| `4936` | 548 | 93,495 | |
+| `4569` | 867 | 106,761 | |
+| `4522` | 287 | 30,984 | |
+| `4527` | 120 | 23,082 | |
+| `4BCC` | 66 | 195,549 | Track loader; calls `4527` |
+
+`48B4` is the piece worth reading first, because it defines the data format
+everything else consumes. A byte below `$80` is literal data; `$80`-`$84` are
+commands that re-read the stream relative to the cursor -- `$80` steps back
+one, `$81` subtracts the following byte from the cursor and re-reads there
+(a loop), `$82` restarts at offset zero, and `$83`/`$84` branch on bit two of
+`$2EB4,X` before doing one of the above.
+
+The sample/envelope group -- `4883`, `48F6`, `48B4`, `49A2`, `49B6`, `49F9`
+and `4211` -- now runs natively. The tick at `4015` and the remaining
+subroutines are still emulated.
 
 ## Camera-visibility sweep
 

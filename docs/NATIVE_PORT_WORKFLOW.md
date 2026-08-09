@@ -448,9 +448,13 @@ at `- 3` like anything else. Confirm the cost against the profile before
 trusting it — `00:FC27 STZ $1403` and `00:FC43 STX $0800` both measure exactly
 15 master cycles, which is the plain five-cycle store.
 
-Device writes are invisible to a work-RAM census, so a routine that drives them
-needs `--bus-write-range` and `--bus-write-trace` in its regression. Without
-that channel a wrong value reaching `$0806` would never show up.
+Device writes are invisible to a *work-RAM* census, so a routine that drives
+them wants `--bus-write-range` and `--bus-write-trace` in its regression. The
+state census does catch them indirectly — it hashes the framebuffer and the
+audio as well as work RAM, so a wrong value reaching `$0806` moves
+`audio_sha256` and with it the census hash. What the bus trace adds is
+localisation: which write, which value, which cycle, from which instruction,
+rather than "the audio changed somewhere in 3,600 frames".
 
 ### A hardware wait cycle belongs to the transcript, not the total
 
@@ -475,6 +479,40 @@ registers, return state, relative cycles, and ordered work-RAM writes; the
 work-RAM write observer does not capture hardware-page writes at all. A
 routine whose real output is VDC port traffic can pass every available check
 and still move the state census.
+
+### Read a whole bank by its call graph before reading its instructions
+
+When the candidate is a region rather than a family — a whole bank, or a
+cluster with no obvious parent — the instruction profile alone is the wrong
+lens. Bank `45` profiles as 46.1M cycles over 1,078 addresses with no address
+above 0.042%, which says only "large and flat".
+
+Scanning those executed addresses for `JSR` (`$20`) and `BSR` (`$44`) opcodes
+gives the region's entire call graph in one pass. For bank `45` that was
+sixteen targets, twelve of them leaves. Then walking control flow from each
+target — following `JMP` and both arms of every branch, but *not* following
+calls — attributes the region's cycles to routines rather than addresses.
+
+That is a few minutes of work on an artifact already on disk, and it decides
+the shape of the slice: a set of small leaves is taken incrementally, one
+shared walk with several entry points, while a genuine monolith needs the flat
+whole-routine treatment the sound driver got. Guessing wrong in that direction
+is expensive — the same bank is either a 900-line module or a 10,000-line one.
+
+### Diff against an assembly run, not only against the baseline hash
+
+The state census proves the end state of each frame. It does not prove *when*
+inside a frame a write happened, and a write credited to the wrong cycle can
+still produce a matching census if nothing observes it before the frame ends —
+until some later change makes something observe it.
+
+The stronger check costs one extra run: record the same `--work-ram-write-range`
+/ `--bus-write-range` trace twice, once with the hooks and once without, and
+compare the files. Identical files mean every write matches in value, address,
+order **and** master-cycle offset. The bank-45 slice was verified this way over
+409,323 work-RAM writes and 698,608 PSG writes. Prefer this to asserting a
+hash you obtained from the native run itself, which only proves the native run
+is reproducible.
 
 Profile before selecting a batch. Choosing by family narrative produced a
 registry where 67 of 260 installed routines never execute on the route and 48

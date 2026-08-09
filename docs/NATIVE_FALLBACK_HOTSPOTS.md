@@ -2344,9 +2344,10 @@ and re-maps banks with TAM/TMA between writes."
 Bank `45` is not part of it. `$FC06` holds the table `48 49 4A 4B 4C 4D 4E 4F`,
 so the driver's data banks are `48`-`4F`, mapped at `$C000` by `TAM #$40` and
 only ever read. Bank `45` lives at `$4000`-`$4CB8` and is the music sequencer,
-a separate component that programmes `$0801`-`$0809` directly. It is still
-unported and is now the largest emulated block outside the spin loop, at
-46,078,773 cycles.
+a separate component that programmes `$0801`-`$0809` directly. At the time of
+this screen it was unported, and at 46,078,773 cycles it was the largest
+emulated block outside the spin loop; the section below took the first slice
+of it.
 
 The handler itself runs `00:FC00`–`00:FE48` and is unusually tractable: a flat
 state machine with **no subroutine calls at all**, three PSG channels walked at
@@ -2375,6 +2376,60 @@ Two screening lessons generalise:
   answer — name the register file, confirm from the profile that its stores
   cost no wait cycles, and census them — took a 13.7% block of the machine that
   three earlier passes had written off.
+
+## The music sequencer, and screening a bank instead of a family
+
+Bank `45` was the largest emulated block outside the spin loop once the sound
+driver landed. Screening it needed a different instrument from the usual
+observer set, because the question was not "which of these siblings is the
+next leaf" but "what shape is this bank".
+
+The instrument was the whole-ROM instruction profile, read three ways:
+
+1. **By bank.** `45` is 46,078,773 cycles over 1,078 executed addresses. The
+   flatness is the finding: the hottest single address is 0.042% of the
+   machine, so there is no inner loop to take and no point ranking addresses.
+2. **By call target.** Scanning the executed addresses for `JSR`/`BSR` opcodes
+   gives the bank's entire call graph in one pass — sixteen targets, twelve of
+   them leaves. That converted an intimidating 1,078-address region into a
+   sixteen-row table.
+3. **By reachable set per target.** Walking control flow from each target
+   without following calls attributes the bank's cycles to routines. The five
+   routines the voice walk calls once per voice per frame hold 20.0M of the
+   46.1M.
+
+| Routine | Calls | Master cycles | Calls out |
+| --- | ---: | ---: | --- |
+| `45:4015` per-frame tick | — | 13,801,503 | ten subroutines |
+| `45:49F9` voice commit | 22,664 | 8,577,900 | — |
+| `45:4142` prologue | 3,599 | 7,404,498 | — |
+| `45:48F6` sweep update | 22,664 | 4,438,275 | `48B4` |
+| `45:4883` pitch update | 22,664 | 3,958,542 | `48B4` |
+| `45:48B4` command decoder | 25,968 | 1,771,122 | — |
+| `45:457A` step-limit handler | 2,299 | 1,690,857 | `4522` `4569` `46D7` |
+| `45:4228` | 1,142 | 1,326,999 | — |
+| `45:49A2` vibrato update | 22,664 | 1,239,765 | — |
+| `45:46D7` | 2,254 | 1,203,030 | — |
+
+The first slice took the seven leaves marked native in
+[ROUTINE_MAP.md](ROUTINE_MAP.md#music-sequencer), for 15,313,683 cycles — 39%
+of the bank. `4015`, `4142`, `457A`, `4228` and `46D7` remain the measured
+next candidates, and `4142` in particular is a 93-instruction leaf worth
+7.4M with no calls out.
+
+Two lessons generalise:
+
+- **A call-graph pass is cheap and changes the plan.** Sixteen `JSR` targets
+  in 1,078 addresses meant the bank was a set of small leaves, not a monolith.
+  That was five minutes of work on an artifact already on disk, and it is the
+  difference between an incremental slice and a 10,000-line transcript.
+- **Verify a port against an assembly run of the same route, not just the
+  baseline hash.** The state census proves the end state; running the
+  identical trace ranges with and without the hooks and diffing the artifacts
+  proves value, address, order *and* master-cycle offset for every write. Here
+  that was 409,323 work-RAM writes and 698,608 PSG writes, byte-identical.
+  It costs one extra run and it is the only check that catches a write
+  credited to the wrong cycle inside an otherwise correct transcript.
 
 ## Use on future families
 

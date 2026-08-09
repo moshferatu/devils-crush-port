@@ -71,6 +71,46 @@ replace_native_gameplay_routine_impl(
         }) {
         return detail::replace_sound_timer_driver(entry, work_ram, rom);
     }
+    // One shared walk, seven entry points: the bank-45 music sequencer's
+    // sample/envelope group. Each is a subroutine the per-frame voice walk
+    // calls; the walk inlines any nested call and stops in front of the RTS.
+    if (entry.routine
+            == RoutineKey{
+                .physical_bank = 0x45U,
+                .logical_pc = 0x4211U,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x45U,
+                .logical_pc = 0x4883U,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x45U,
+                .logical_pc = 0x48B4U,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x45U,
+                .logical_pc = 0x48F6U,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x45U,
+                .logical_pc = 0x49A2U,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x45U,
+                .logical_pc = 0x49B6U,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x45U,
+                .logical_pc = 0x49F9U,
+            }) {
+        return detail::replace_music_sequencer(entry, work_ram, rom);
+    }
 
     // One shared walk, four entry points: the camera sweep's initializer and
     // the three addresses `00:F4FC` returns through.

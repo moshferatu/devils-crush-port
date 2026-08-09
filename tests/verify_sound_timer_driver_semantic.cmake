@@ -24,9 +24,10 @@ endif()
 # Two censuses scope this. The work-RAM range covers the driver's own state:
 # the per-channel records at $20D9-$20FA and the track pointers at
 # $2E10-$2E1F. The bus range covers what the driver is actually for — every
-# write to the PSG register file, the timer, and the interrupt acknowledge —
-# because device writes are invisible to a work-RAM census and a wrong value
-# reaching $0806 would otherwise go unseen.
+# write to the PSG register file, the timer, and the interrupt acknowledge.
+# The census would catch a wrong value reaching $0806 on its own, since it
+# hashes the audio as well as work RAM; the bus trace localises it to a
+# single write, value, cycle and instruction instead.
 set(
     expected_census_sha256
     "9036a9de0c3c9917f47bff8c04c136a4824ec12601fb457d260aa2dfe4443490"

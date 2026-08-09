@@ -1211,6 +1211,15 @@ replace_sound_timer_driver(
     std::span<const std::byte> work_ram,
     std::span<const std::byte> rom);
 
+// The bank-45 music sequencer's sample/envelope group. One walk shared by
+// seven subroutine entry points, each stopping in front of its own RTS; a
+// nested call the walk makes is inlined into the same transcript.
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_music_sequencer(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram,
+    std::span<const std::byte> rom);
+
 [[nodiscard]] std::optional<emulation::RoutineReplacement>
 replace_actor_dispatch_vector(
     const emulation::RoutineEntry& entry,
