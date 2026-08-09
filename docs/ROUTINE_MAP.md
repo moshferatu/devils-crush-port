@@ -371,6 +371,22 @@ ascending sweep of all 127 actor records. The main sweep calls `08:40DF`
 only when `$3080,X` has camera bit 7 set and hidden bit 5 clear, then clears
 the unused SAT tail.
 
+The queues it drains at `08:4056` are filled by `01:C606`, which the main
+actor loop calls once per dispatched slot after the handler returns. It reads
+the slot's attribute byte at `$3080` and files the slot index into one of
+three queues, or drops it:
+
+- bit 5 set: not emitted at all.
+- bit 2 set: `$2C3A`, cursor `$2CBC`, filled upward.
+- bit 3 set: `$2BBA`, cursor `$2CBA`, filled upward.
+- neither: the same `$2BBA` queue, cursor `$2CBB`, filled *downward*.
+
+The emitter drains all three downward — the first two from their own cursors,
+the third from a fixed `$7F` — so the first two are emitted in reverse
+registration order and the third, whose cursor counts down, in registration
+order. Bit 0 diverts the slot to a one-shot clear of `$3800` bit 6 and the
+helper at `01:F605` before any queue is chosen.
+
 `08:40DF` is the descriptor renderer:
 
 - `$3900,X` selects one of 69 parallel low/high pointer entries at

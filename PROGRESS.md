@@ -5444,6 +5444,50 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
 
 ## Active Work
 
+Current owner: Claude. Current slice: `01:C523` (actor-loop tail) and
+`08:40C3` (satellite attribute-table tail clear) are now instruction-boundary
+transcripts and run every arrival -- 446,976 and 4,334 hooked on their own --
+taking the deployed registry from 26.15% to 28.22% of all master cycles,
+77.0% of the portable pool. `01:C523` closes the ~8.2M-cycle ceiling the sweep
+slice recorded as structurally emulated: the `01:C510` walk absorbs that tail
+for every slot it skips, but a dispatched slot leaves the transaction at the
+handler, so the increment after the handler returns is a separate arrival.
+`08:40C3` carries a 48-iteration budget because eight VDC port writes an
+iteration reach the core's 512-write cap before `Y` does, and resumes at its
+own loop head; it touches no work RAM, so the state census -- which hashes the
+rendered framebuffer every frame -- is its regression. The Release census
+(`9036a9de...`) and the Debug census (`a95d0c34...`) are byte-identical to
+assembly. What is left of the actor loop is 11,508,888 cycles of pure stack
+traffic: two `BSR`/`JSR` pairs and the two `RTS` instructions the contract
+leaves emulated.
+
+Current owner: Claude. Current slice: the actor dispatch pair, `01:C52C`
+(jump-table vector load) and `01:C606` (sprite-queue registration), are now
+instruction-boundary transcripts and run every arrival -- 171,734 each on the
+3,600-frame state-census route -- taking the deployed registry from 23.60% to
+26.15% of all master cycles, 74.3% of the portable pool. They were found by
+ranking a `--replace-registry` instruction profile with the registry entry
+rows dropped, which is the only reading of that profile that means "still
+emulated". `01:C52C` resumes on the first instruction of whichever handler the
+jump table names, so its `return_instruction` is computed per call rather than
+fixed. The Release census (`9036a9de...`), the Debug census (`a95d0c34...`),
+and both routines' scoped work-RAM write traces are byte-identical to
+assembly. What is left of the actor loop is the six instructions of stack and
+cursor bookkeeping around each dispatch, plus the `RTS` the contract leaves
+emulated.
+
+Current owner: Claude. Current slice: the two bank-01 sweep heads,
+`01:C510` (actor loop) and `01:CB48` (collision sweep), are now
+instruction-boundary transcripts and run every arrival -- 176,861 and 87,968
+on the 3,600-frame state-census route -- taking the deployed registry from
+21.35% to 23.60% of all master cycles, 67.1% of the portable pool. Both had
+looked like partial coverage (136,509 of 321,839 and 89,762 of 260,683);
+counting the declines showed all of them were the atomic interrupt-horizon
+floor, with zero classifier, decimal, counter, or overrun rejections, so
+neither needed new game logic. The Release census (`9036a9de...`), the Debug
+census (`a95d0c34...`), and both routines' scoped work-RAM write traces are
+byte-identical to assembly.
+
 Current owner: Claude. Current slice: semantic `08:40DF@all` replaces the
 satellite sprite attribute-table emitter for all 73,818 calls on the
 3,600-frame state-census route, taking the deployed registry from 13.75% to

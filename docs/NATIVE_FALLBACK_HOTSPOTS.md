@@ -2051,6 +2051,125 @@ declined by the classifier: a zero entry count, a cursor overflow returning
 early at `4106`, and a `$3800,X` bit-five actor merging `$3E00,X` into the
 attribute high byte. None occurs on any observed route.
 
+## Bank-01 sweep heads
+
+`01:C510` (the actor loop) and `01:CB48` (the collision sweep) both appeared
+in the registry as partially covered: 136,509 of 321,839 and 89,762 of 260,683
+arrivals. Counting the declines at each `return std::nullopt` showed the
+coverage gap was not a modelling gap at all.
+
+| Decline reason | `01:C510` |
+| --- | ---: |
+| Interrupt-horizon floor | 185,330 |
+| Decimal mode | 0 |
+| `$4D` counter disagreed with X | 0 |
+| Classifier rejected the snapshot | 0 |
+| Walk would resume where it started | 0 |
+| Body outran the horizon | 0 |
+
+Every decline was the horizon. The mean horizon at the loop head is 265 master
+cycles against a 108-cycle worst-case slot, so the atomic valve rejected more
+than half the arrivals and truncated the rest: the 136,509 it admitted walked
+a mean of 142 cycles each.
+
+Both are now instruction-boundary transcripts built from the same classifiers,
+which run every arrival — 176,861 and 87,968, the arrival counts themselves
+falling because a full walk absorbs the loop-head returns an atomic body handed
+back. Native cycles went from 19,324,932 to 33,899,946 for `01:C510` and to
+33,667,308 for `01:CB48`, and the registry from 21.35% to 23.60% of all master
+cycles.
+
+Two details were load-bearing. `INC $4D`, `INC $64`, and `DEC $60` leave their
+own N and Z standing until the next instruction reloads them, and an interrupt
+can arrive in between, so a transcript has to carry the read-modify-write's
+own flags rather than only the flags at the exit. And `BIT #$40` at `CB4F`
+sets V from the operand under Beetle's `BIT`, which clears N and V and then
+takes them from the operand in immediate mode as well; the atomic model never
+modelled V because nothing downstream read it, but a checkpoint pushes P onto
+the stack when an interrupt lands.
+
+The ceiling for each is the sweep body only. When a walk ends at a dispatch,
+the dispatched slot's own `INC`/`DEC`/`CPX`/`BNE` tail runs after the emulated
+handler returns and before the next arrival, so roughly 8.2M cycles at
+`01:C510` and 4.1M at `01:CB48` stay emulated by construction.
+
+## The actor dispatch pair
+
+That ceiling turned out to be two routines rather than a wall. Ranking the
+still-emulated instructions in a `--replace-registry` profile — every row whose
+`registry_entry` is 0, which is exactly what the deployed registry does not
+cover — put two members of the dispatch path near the top, both entered
+171,734 times on the census route:
+
+| Routine | Cycles still emulated | What it is |
+| --- | ---: | --- |
+| `01:C606` | 20,205,792 | Files the dispatched slot into a sprite queue |
+| `01:C52C` | 12,991,626 | Loads the slot's handler vector and jumps through it |
+
+Neither needed a horizon: both are transcripts, and both now run for every
+arrival, together worth 32,906,541 native cycles and taking the registry from
+23.60% to 26.15% of all master cycles.
+
+`01:C52C` is the more interesting shape. It is five instructions —
+`LDA $3F00,X`, `STA $2F`, `LDA $3F80,X`, `STA $30`, `JMP ($202F)` — and its
+resume address is *computed*: the transcript ends on the first instruction of
+whichever handler the jump table names, in whichever bank `MPR` already maps
+for it. Nothing in the contract requires the resume point to be a fixed
+address, or even in the same routine, which is what makes an indirect jump
+replaceable at all.
+
+`01:C606` needed three details that only show up by disassembling rather than
+reading a profile:
+
+- `INC`/`DEC` on an **absolute** address is seven cycles, not the six the
+  zero-page form in the sweep loops costs. The profile confirms it: 4,427
+  executions of `INC $2CBC` cost 93,855 cycles, which is 21 each and not 18.
+- `LDX $4D` mid-routine discards whatever the dispatched handler left in `X`,
+  so the entry `X` is used only for the first attribute read and the `CPX #$00`
+  sentinel test. Everything after it is about the slot the loop rests on.
+- `BIT #$20`, `#$04`, and `#$08` all take `N` and `V` straight from the
+  operand under Beetle, so all three leave `N` and `V` **clear** whatever the
+  attributes hold. Only `BIT #$40` on the clear path sets `V`.
+
+## Closing the sweep ceiling, and the SAT tail
+
+The next pass took the two largest remaining entries on the same ranking:
+
+| Routine | Cycles still emulated | What it is |
+| --- | ---: | --- |
+| `08:40C3` | 19,086,453 | Zeroes the unused tail of the satellite table |
+| `01:C523` | 21,576,624 | The actor loop's `INC`/`LDX`/`CPX`/`BNE` tail |
+
+`01:C523` is the ceiling the sweep slice recorded as structurally emulated.
+The `01:C510` walk absorbs this tail for every slot it *skips*, but a
+dispatched slot leaves the transaction at the handler, so the increment after
+the handler returns is a separate arrival. Hooking it directly costs four
+instructions and recovers 8,277,384 cycles with the registry deployed — the
+lower figure because `01:C510` already owned the rest. Hooked on its own it
+sees all 446,976 iterations; deployed alongside the walk, 172,448.
+
+`08:40C3` is the sibling of `08:40DF` at the other end of the same submission:
+once every queued actor has been emitted, it zeroes the rest of the 64-entry
+table, four words an iteration, straight through the VDC data ports. Three
+things shaped it:
+
+- It reads no memory and writes the same constant every time, so there is
+  nothing to classify — the whole body is driven by `Y`.
+- Eight writes an iteration hit the core's 512-write transaction cap before
+  `Y` does (`Y` is `$40 - $4E`, up to 64). It carries a 48-iteration budget
+  and resumes at its own loop head, which is a real instruction boundary; 842
+  of the route's 3,492 calls take a second transaction that way.
+- It has no work RAM to trace, so the state census *is* its regression — and
+  a strong one, because the census hashes the rendered framebuffer every
+  frame, and a table tail left uncleared draws stale sprites.
+
+Together these took the registry from 26.15% to 28.22% of all master cycles.
+
+What is left of the actor loop is 11,508,888 cycles of pure stack traffic: the
+`BSR` and `JSR` that reach the dispatch and the queue filer, and the two `RTS`
+instructions the contract deliberately leaves emulated so stack and
+caller-return behaviour stay the machine's.
+
 ## Use on future families
 
 Follow the command and interpretation rules in

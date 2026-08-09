@@ -612,4 +612,148 @@ replace_sprite_emit_run(
     return replacement;
 }
 
+[[nodiscard]] std::optional<RoutineReplacement>
+replace_sat_tail_clear(
+    const RoutineEntry& entry)
+{
+    // The tail of the same SAT submission `08:40DF` fills the head of. Once
+    // every queued actor has been emitted, `$4E` holds the sprite count and
+    // the sweep zeroes the rest of the 64-entry table, four words per
+    // iteration, straight through the VDC data ports. Y is the entry count
+    // left to clear, already computed as $40 - $4E by the caller.
+    //
+    //   40C3 STZ $0002 18   40C6 STZ $0003 18
+    //   40C9 STZ $0002 18   40CC STZ $0003 18
+    //   40CF STZ $0002 18   40D2 STZ $0003 18
+    //   40D5 STZ $0002 18   40D8 STZ $0003 18
+    //   40DB DEY        6   40DC BNE $40C3 6/12
+    //   40DE RTS            (stays emulated)
+    //
+    // There is no snapshot to classify: the loop reads no memory, writes the
+    // same constant every time, and is driven entirely by Y. What it does
+    // need is a budget, because eight writes an iteration reach the core's
+    // 512-write transaction cap before Y does. A run that spends its budget
+    // resumes at the loop head with Y standing, which is a real instruction
+    // boundary, so the next arrival simply continues.
+    constexpr RoutineKey kRoutine{
+        .physical_bank = 0x08U,
+        .logical_pc = 0x40C3U,
+    };
+    constexpr std::uint16_t kReturnPc = 0x40DEU;
+    constexpr std::uint16_t kDecrementPc = 0x40DBU;
+    constexpr std::uint16_t kLoopBranchPc = 0x40DCU;
+    constexpr std::uint16_t kVdcDataLow = 0x0002U;
+    constexpr std::uint16_t kVdcDataHigh = 0x0003U;
+
+    constexpr std::uint32_t kImplied = 6U;
+    constexpr std::uint32_t kPortStore = 18U;
+    constexpr std::uint32_t kBranchTaken = 12U;
+    constexpr std::uint32_t kBranchNotTaken = 6U;
+
+    // Eight writes and ten boundaries an iteration, against the core's 512
+    // and 2,048. Forty-eight leaves margin in both and covers every observed
+    // call in one transaction: Y is $40 - $4E and averages 33.
+    constexpr std::uint16_t kMaximumIterations = 48U;
+
+    if (entry.routine != kRoutine) {
+        return std::nullopt;
+    }
+    if ((entry.registers.status & kUnsupportedFlags) != 0U) {
+        return std::nullopt;
+    }
+    // The VDC data ports are only addressable while the hardware page is
+    // mapped at segment 0, which is also what the core's write validator
+    // requires before it will accept them.
+    if (entry.registers.mpr[0] != 0xFFU) {
+        return std::nullopt;
+    }
+
+    // DEY wraps, so a zero Y at the loop head means a full 256 iterations.
+    const std::uint16_t remaining =
+        entry.registers.y == 0U ? 256U : entry.registers.y;
+    const std::uint16_t iterations =
+        remaining < kMaximumIterations ? remaining : kMaximumIterations;
+
+    auto registers = entry.registers;
+    std::uint32_t cycle = 0U;
+    RoutineReplacement replacement{};
+    replacement.work_ram_writes.reserve(
+        static_cast<std::size_t>(iterations) * 8U);
+    replacement.checkpoints.reserve(
+        static_cast<std::size_t>(iterations) * 10U);
+
+    const auto boundary =
+        [&](const std::uint16_t instruction_pc,
+            const std::uint16_t resume_pc,
+            const std::uint32_t sample_back) {
+            registers.program_counter = resume_pc;
+            replacement.checkpoints.push_back({
+                .interrupt_sample_master_cycle_offset = cycle - sample_back,
+                .master_cycle_offset = cycle,
+                .instruction = {kRoutine.physical_bank, instruction_pc},
+                .registers = registers,
+            });
+        };
+    // A store to a VDC data port samples two CPU cycles early: its last cycle
+    // is the wait the VDC steals after the bus write, not the LastCycle every
+    // other instruction ends on.
+    const auto store =
+        [&](const std::uint16_t instruction_pc,
+            const std::uint16_t resume_pc,
+            const std::uint16_t address) {
+            cycle += kPortStore;
+            replacement.work_ram_writes.push_back({
+                .instruction = {kRoutine.physical_bank, instruction_pc},
+                .logical_address = address,
+                .value = 0U,
+                .master_cycle_offset = cycle,
+            });
+            boundary(instruction_pc, resume_pc, 6U);
+        };
+
+    for (std::uint16_t walked = 0U; walked < iterations; ++walked) {
+        // STZ touches no flag, so the whole word quartet leaves the status
+        // register exactly as the previous branch left it.
+        for (std::uint16_t index = 0U; index < 4U; ++index) {
+            const auto low_pc =
+                static_cast<std::uint16_t>(0x40C3U + index * 6U);
+            const auto high_pc = static_cast<std::uint16_t>(low_pc + 3U);
+            store(low_pc, high_pc, kVdcDataLow);
+            store(
+                high_pc,
+                index == 3U
+                    ? kDecrementPc
+                    : static_cast<std::uint16_t>(high_pc + 3U),
+                kVdcDataHigh);
+        }
+
+        registers.y = static_cast<std::uint8_t>(registers.y - 1U);
+        registers.status = set_nz(registers.status, registers.y);
+        cycle += kImplied;
+        boundary(kDecrementPc, kLoopBranchPc, 3U);
+
+        const bool exhausted = registers.y == 0U;
+        cycle += exhausted ? kBranchNotTaken : kBranchTaken;
+        boundary(
+            kLoopBranchPc,
+            exhausted ? kReturnPc : kRoutine.logical_pc,
+            3U);
+        if (exhausted) {
+            break;
+        }
+    }
+
+    if (replacement.checkpoints.empty()) {
+        return std::nullopt;
+    }
+
+    replacement.return_instruction = {
+        .physical_bank = kRoutine.physical_bank,
+        .logical_pc = registers.program_counter,
+    };
+    replacement.output_registers = registers;
+    replacement.body_master_cycles = cycle;
+    return replacement;
+}
+
 } // namespace devils_crush::app::detail

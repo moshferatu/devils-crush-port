@@ -44,6 +44,34 @@ replace_native_gameplay_routine_impl(
     if (entry.routine
         == RoutineKey{
             .physical_bank = 0x01U,
+            .logical_pc = 0xC52CU,
+        }) {
+        return detail::replace_actor_dispatch_vector(entry, work_ram);
+    }
+    if (entry.routine
+        == RoutineKey{
+            .physical_bank = 0x01U,
+            .logical_pc = 0xC523U,
+        }) {
+        return detail::replace_actor_scan_advance(entry, work_ram);
+    }
+    if (entry.routine
+        == RoutineKey{
+            .physical_bank = 0x08U,
+            .logical_pc = 0x40C3U,
+        }) {
+        return detail::replace_sat_tail_clear(entry);
+    }
+    if (entry.routine
+        == RoutineKey{
+            .physical_bank = 0x01U,
+            .logical_pc = 0xC606U,
+        }) {
+        return detail::replace_actor_queue_registration(entry, work_ram);
+    }
+    if (entry.routine
+        == RoutineKey{
+            .physical_bank = 0x01U,
             .logical_pc = 0xCB48U,
         }) {
         return detail::replace_collision_scan_run(entry, work_ram);

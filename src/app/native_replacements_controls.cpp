@@ -3172,63 +3172,67 @@ replace_actor_scan_run(
     const RoutineEntry& entry,
     const std::span<const std::byte> work_ram)
 {
-    // The main actor loop head. Each arrival either dispatches the slot
-    // through the $3F00/$3F80 jump table or skips it, and only the skip run
-    // is native: a dispatch enters an emulated handler this transaction
-    // cannot call. The run therefore walks idle slots and hands control back
-    // at the dispatch branch, the loop head, or the terminal comparison.
+    // The main actor loop. Each arrival either dispatches the slot through
+    // the $3F00/$3F80 jump table or skips it, and only the skip run is
+    // native: a dispatch enters an emulated handler this transaction cannot
+    // call. The walk hands control back at the dispatch branch or at the
+    // terminal comparison.
+    //
+    // It is declared as an instruction-boundary transcript so it can cross
+    // interrupt horizons rather than be bounded by them. Priced atomically
+    // the horizon here averages 265 master cycles, which declined 185,330 of
+    // 321,839 arrivals outright and truncated the 136,509 it did admit to a
+    // mean of 142 cycles.
+    //
+    //   C510 LDA $3000,X 15   C513 BPL $C523 6/12
+    //   C515 LDA $3080,X 15   C518 BMI $C51E 6/12
+    //   C51A AND #$02     6   C51C BNE $C523 6/12
+    //   C51E BSR $C52C        (the dispatch; stays emulated)
+    //   C523 INC $4D     18   C525 LDX $4D   12
+    //   C527 CPX #$80     6   C529 BNE $C510 6/12
+    //   C52B RTS              (stays emulated)
     constexpr RoutineKey kRoutine{
         .physical_bank = 0x01U,
         .logical_pc = 0xC510U,
     };
+    constexpr std::uint16_t kSlotFlagsPc = 0xC510U;
+    constexpr std::uint16_t kIdleBranchPc = 0xC513U;
+    constexpr std::uint16_t kAttributesPc = 0xC515U;
+    constexpr std::uint16_t kNegativeBranchPc = 0xC518U;
+    constexpr std::uint16_t kMaskPc = 0xC51AU;
+    constexpr std::uint16_t kMaskBranchPc = 0xC51CU;
     constexpr std::uint16_t kDispatchPc = 0xC51EU;
-    constexpr std::uint16_t kLoopHeadPc = 0xC510U;
+    constexpr std::uint16_t kIncrementPc = 0xC523U;
+    constexpr std::uint16_t kReloadPc = 0xC525U;
+    constexpr std::uint16_t kComparePc = 0xC527U;
+    constexpr std::uint16_t kLoopBranchPc = 0xC529U;
     constexpr std::uint16_t kTerminalPc = 0xC52BU;
     constexpr std::uint16_t kCounterAddress = 0x204DU;
+    constexpr std::uint16_t kSlotFlagsBase = 0x1000U;
+    constexpr std::uint16_t kSlotAttributesBase = 0x1080U;
 
-    // Master cycles for the two skip shapes and the three exits, at three
-    // master cycles per CPU cycle with taken branches costing four.
-    constexpr std::uint32_t kInactiveSkipCycles = 75U;   // LDA BPL INC LDX CPX BNE
-    constexpr std::uint32_t kMaskedSkipCycles = 108U;    // + LDA BMI AND BNE
-    constexpr std::uint32_t kInactiveWriteOffset = 45U;  // after INC $4D
-    constexpr std::uint32_t kMaskedWriteOffset = 78U;
-    constexpr std::uint32_t kTerminalBranchSaving = 6U;  // BNE falls through
-    constexpr std::uint32_t kDispatchNegativeCycles = 48U;
-    constexpr std::uint32_t kDispatchMaskedCycles = 54U;
+    constexpr std::uint32_t kImmediate = 6U;
+    constexpr std::uint32_t kZeroPage = 12U;
+    constexpr std::uint32_t kAbsoluteIndexed = 15U;
+    constexpr std::uint32_t kReadModifyWrite = 18U;
+    constexpr std::uint32_t kBranchTaken = 12U;
+    constexpr std::uint32_t kBranchNotTaken = 6U;
 
     if (entry.routine != kRoutine) {
         return std::nullopt;
     }
-    // Decimal mode is never proven for this walk.
-    if ((entry.registers.status & 0x08U) != 0U) {
+    if (work_ram.size() < 0x2000U) {
+        return std::nullopt;
+    }
+    // Neither decimal mode nor the memory-operand T flag is proven for this
+    // walk; T in particular would redirect the AND at $C51A.
+    if ((entry.registers.status & 0x28U) != 0U) {
         return std::nullopt;
     }
     // The loop reloads X from $4D every iteration, so an entry whose X has
     // drifted from the counter is a state this walk was never proven for.
-    if (work_ram.size() <= kCounterAddress - 0x2000U
-        || std::to_integer<std::uint8_t>(
-               work_ram[kCounterAddress - 0x2000U])
-            != entry.registers.x) {
-        return std::nullopt;
-    }
-
-    // Keep the atomic body inside the entry's interrupt horizons. The budget
-    // is the number of cheapest skips that still fit, so a long idle tail
-    // resumes at the loop head instead of being declined outright.
-    const auto horizon = std::min(
-        entry.master_cycles_until_user_event,
-        entry.master_cycles_until_timer_interrupt);
-    // The horizon must cover the worst-case shape of a walked slot plus its
-    // exit before any of this run is admitted. The same floor relaxed on the
-    // sibling collision sweep changed its state census, so it is kept
-    // conservative here too.
-    if (horizon <= kMaskedSkipCycles + kDispatchMaskedCycles) {
-        return std::nullopt;
-    }
-    const auto budget = std::min<std::uint32_t>(
-        DC_ACTOR_SCAN_SLOT_COUNT,
-        (horizon - kDispatchMaskedCycles - 1U) / kMaskedSkipCycles);
-    if (budget == 0U) {
+    if (std::to_integer<std::uint8_t>(work_ram[kCounterAddress - 0x2000U])
+        != entry.registers.x) {
         return std::nullopt;
     }
 
@@ -3237,35 +3241,17 @@ replace_actor_scan_run(
             reinterpret_cast<const std::uint8_t*>(work_ram.data()),
             work_ram.size(),
             entry.registers.x,
-            static_cast<std::uint8_t>(budget),
+            static_cast<std::uint8_t>(DC_ACTOR_SCAN_SLOT_COUNT),
             &run)) {
         return std::nullopt;
     }
-    // A run that walks nothing would resume where it started.
-    if (run.exit == DC_ACTOR_SCAN_BUDGET && run.skipped == 0U) {
+    // Given the whole slot count as its budget the classifier always reaches
+    // a dispatch or the terminal comparison first, because the slot index
+    // hits $80 no later than the skip count does. A budget exit here would
+    // be a modelling error, not a state to run.
+    if (run.exit == DC_ACTOR_SCAN_BUDGET) {
         return std::nullopt;
     }
-
-    std::uint32_t cycle = 0U;
-    std::vector<emulation::ReplacementMemoryWrite> writes;
-    writes.reserve(run.skipped);
-    for (std::uint8_t index = 0U; index < run.skipped; ++index) {
-        const bool masked =
-            run.skips[index] == static_cast<std::uint8_t>(
-                DC_ACTOR_SCAN_SKIP_MASKED);
-        writes.push_back({
-            .instruction = {0x01U, 0xC523U},
-            .logical_address = kCounterAddress,
-            .value = static_cast<std::uint8_t>(entry.registers.x + index + 1U),
-            .master_cycle_offset = cycle
-                + (masked ? kMaskedWriteOffset : kInactiveWriteOffset),
-        });
-        cycle += masked ? kMaskedSkipCycles : kInactiveSkipCycles;
-    }
-
-    auto output = entry.registers;
-    output.accumulator = run.accumulator;
-    output.x = run.slot;
 
     // Only N, Z, and C move here; the loop touches no other flag.
     const auto set_nz = [](std::uint8_t status, const std::uint8_t value) {
@@ -3279,54 +3265,731 @@ replace_actor_scan_run(
         return status;
     };
 
+    auto registers = entry.registers;
+    std::uint32_t cycle = 0U;
+    RoutineReplacement replacement{};
+    // Ten boundaries and one write per masked slot, plus a six-instruction
+    // dispatch prefix: 1,286 checkpoints and 128 writes at the very worst,
+    // inside the core's 2,048 and 512.
+    replacement.checkpoints.reserve(
+        static_cast<std::size_t>(run.skipped) * 10U + 6U);
+    replacement.work_ram_writes.reserve(run.skipped);
+
+    const auto boundary =
+        [&](const std::uint16_t instruction_pc,
+            const std::uint16_t resume_pc) {
+            registers.program_counter = resume_pc;
+            replacement.checkpoints.push_back({
+                // Every instruction in this loop samples the interrupt one
+                // CPU cycle before its own last, which is where the core's
+                // LastCycle sits. None of them touches a hardware port, so
+                // none of them pays the VDC's stolen wait.
+                .interrupt_sample_master_cycle_offset = cycle - 3U,
+                .master_cycle_offset = cycle,
+                .instruction = {kRoutine.physical_bank, instruction_pc},
+                .registers = registers,
+            });
+        };
+    const auto step =
+        [&](const std::uint16_t instruction_pc,
+            const std::uint16_t resume_pc,
+            const std::uint32_t cycles) {
+            cycle += cycles;
+            boundary(instruction_pc, resume_pc);
+        };
+    // LDA $3000,X and LDA $3080,X.
+    const auto load = [&](const std::uint16_t base, const std::uint8_t index) {
+        const auto value = std::to_integer<std::uint8_t>(
+            work_ram[static_cast<std::size_t>(base) + index]);
+        registers.accumulator = value;
+        registers.status = set_nz(registers.status, value);
+        return value;
+    };
+
+    auto slot = entry.registers.x;
+    for (std::uint8_t walked = 0U; walked < run.skipped; ++walked) {
+        const auto flags = load(kSlotFlagsBase, slot);
+        step(kSlotFlagsPc, kIdleBranchPc, kAbsoluteIndexed);
+        if ((flags & 0x80U) == 0U) {
+            step(kIdleBranchPc, kIncrementPc, kBranchTaken);
+        } else {
+            step(kIdleBranchPc, kAttributesPc, kBranchNotTaken);
+            const auto attributes = load(kSlotAttributesBase, slot);
+            step(kAttributesPc, kNegativeBranchPc, kAbsoluteIndexed);
+            step(kNegativeBranchPc, kMaskPc, kBranchNotTaken);
+            registers.accumulator =
+                static_cast<std::uint8_t>(attributes & 0x02U);
+            registers.status =
+                set_nz(registers.status, registers.accumulator);
+            step(kMaskPc, kMaskBranchPc, kImmediate);
+            step(kMaskBranchPc, kIncrementPc, kBranchTaken);
+        }
+
+        // INC $4D leaves its own N and Z standing until LDX $4D reloads
+        // them, and an interrupt can arrive between the two.
+        const auto next = static_cast<std::uint8_t>(slot + 1U);
+        registers.status = set_nz(registers.status, next);
+        cycle += kReadModifyWrite;
+        replacement.work_ram_writes.push_back({
+            .instruction = {kRoutine.physical_bank, kIncrementPc},
+            .logical_address = kCounterAddress,
+            .value = next,
+            .master_cycle_offset = cycle,
+        });
+        boundary(kIncrementPc, kReloadPc);
+        registers.x = next;
+        registers.status = set_nz(registers.status, next);
+        step(kReloadPc, kComparePc, kZeroPage);
+        // CPX #$80 against a slot below $80 borrows, leaving carry clear and
+        // the difference negative.
+        registers.status = set_nz(
+            registers.status, static_cast<std::uint8_t>(next - 0x80U));
+        registers.status = static_cast<std::uint8_t>(
+            next >= 0x80U
+                ? (registers.status | 0x01U)
+                : (registers.status & static_cast<std::uint8_t>(~0x01U)));
+        step(kComparePc, kLoopBranchPc, kImmediate);
+        slot = next;
+        if (slot == DC_ACTOR_SCAN_SLOT_COUNT) {
+            step(kLoopBranchPc, kTerminalPc, kBranchNotTaken);
+        } else {
+            step(kLoopBranchPc, kSlotFlagsPc, kBranchTaken);
+        }
+    }
+
     switch (run.exit) {
     case DC_ACTOR_SCAN_DISPATCH_NEGATIVE:
-        // LDA $3080,X left the attribute byte and its N flag standing.
-        cycle += kDispatchNegativeCycles;
-        output.status = set_nz(output.status, run.accumulator);
-        output.program_counter = kDispatchPc;
+        load(kSlotFlagsBase, slot);
+        step(kSlotFlagsPc, kIdleBranchPc, kAbsoluteIndexed);
+        step(kIdleBranchPc, kAttributesPc, kBranchNotTaken);
+        load(kSlotAttributesBase, slot);
+        step(kAttributesPc, kNegativeBranchPc, kAbsoluteIndexed);
+        step(kNegativeBranchPc, kDispatchPc, kBranchTaken);
         break;
-    case DC_ACTOR_SCAN_DISPATCH_MASKED:
+    case DC_ACTOR_SCAN_DISPATCH_MASKED: {
+        load(kSlotFlagsBase, slot);
+        step(kSlotFlagsPc, kIdleBranchPc, kAbsoluteIndexed);
+        step(kIdleBranchPc, kAttributesPc, kBranchNotTaken);
+        const auto attributes = load(kSlotAttributesBase, slot);
+        step(kAttributesPc, kNegativeBranchPc, kAbsoluteIndexed);
+        step(kNegativeBranchPc, kMaskPc, kBranchNotTaken);
+        registers.accumulator =
+            static_cast<std::uint8_t>(attributes & 0x02U);
+        registers.status = set_nz(registers.status, registers.accumulator);
+        step(kMaskPc, kMaskBranchPc, kImmediate);
         // AND #$02 cleared the accumulator, so the BNE fell through.
-        cycle += kDispatchMaskedCycles;
-        output.status = set_nz(output.status, run.accumulator);
-        output.program_counter = kDispatchPc;
+        step(kMaskBranchPc, kDispatchPc, kBranchNotTaken);
         break;
+    }
     case DC_ACTOR_SCAN_COMPLETE:
-        // The final CPX #$80 matched, so its BNE cost two cycles, not four.
-        cycle -= kTerminalBranchSaving;
-        output.status = set_nz(output.status, 0U);
-        output.status = static_cast<std::uint8_t>(output.status | 0x01U);
-        output.program_counter = kTerminalPc;
-        break;
-    case DC_ACTOR_SCAN_BUDGET:
-        // Resting at the loop head after a taken BNE: CPX #$80 against a
-        // slot below $80 borrows, leaving carry clear and the difference
-        // negative.
-        output.status = set_nz(
-            output.status,
-            static_cast<std::uint8_t>(run.slot - 0x80U));
-        output.status = static_cast<std::uint8_t>(output.status & ~0x01U);
-        output.program_counter = kLoopHeadPc;
         break;
     default:
         return std::nullopt;
     }
 
-    if (cycle >= horizon) {
+    // The transcript and the classifier must agree about where the walk ends
+    // up; a disagreement is a modelling error, not a state to run.
+    if (replacement.checkpoints.empty()
+        || registers.accumulator != run.accumulator
+        || registers.x != run.slot
+        || slot != run.slot
+        || registers.program_counter
+            != (run.exit == DC_ACTOR_SCAN_COMPLETE ? kTerminalPc
+                                                   : kDispatchPc)) {
         return std::nullopt;
     }
 
-    RoutineReplacement replacement{
-        .return_instruction =
-            {
-                .physical_bank = 0x01U,
-                .logical_pc = output.program_counter,
-            },
-        .output_registers = output,
-        .body_master_cycles = cycle,
+    replacement.return_instruction = {
+        .physical_bank = kRoutine.physical_bank,
+        .logical_pc = registers.program_counter,
     };
-    replacement.work_ram_writes = std::move(writes);
+    replacement.output_registers = registers;
+    replacement.body_master_cycles = cycle;
+    return replacement;
+}
+
+[[nodiscard]] std::optional<RoutineReplacement>
+replace_actor_scan_advance(
+    const RoutineEntry& entry,
+    const std::span<const std::byte> work_ram)
+{
+    // The main actor loop's own tail. The `01:C510` walk absorbs this
+    // sequence for every slot it skips, but a dispatched slot leaves the
+    // transaction at the handler, so the increment that follows the handler's
+    // return is a separate arrival. That is the ~8.2M-cycle ceiling the sweep
+    // slice recorded as structurally emulated; this closes it.
+    //
+    //   C523 INC $4D 18   C525 LDX $4D 12
+    //   C527 CPX #$80 6   C529 BNE $C510 6/12
+    //   C52B RTS          (stays emulated)
+    //
+    // There is no snapshot to classify beyond the counter itself: the whole
+    // body is one increment and the loop's terminal comparison.
+    constexpr RoutineKey kRoutine{
+        .physical_bank = 0x01U,
+        .logical_pc = 0xC523U,
+    };
+    constexpr std::uint16_t kIncrementPc = 0xC523U;
+    constexpr std::uint16_t kReloadPc = 0xC525U;
+    constexpr std::uint16_t kComparePc = 0xC527U;
+    constexpr std::uint16_t kLoopBranchPc = 0xC529U;
+    constexpr std::uint16_t kLoopHeadPc = 0xC510U;
+    constexpr std::uint16_t kTerminalPc = 0xC52BU;
+    constexpr std::uint16_t kCounterAddress = 0x204DU;
+
+    constexpr std::uint32_t kImmediate = 6U;
+    constexpr std::uint32_t kZeroPage = 12U;
+    constexpr std::uint32_t kReadModifyWrite = 18U;
+    constexpr std::uint32_t kBranchTaken = 12U;
+    constexpr std::uint32_t kBranchNotTaken = 6U;
+
+    if (entry.routine != kRoutine) {
+        return std::nullopt;
+    }
+    if (work_ram.size() < 0x2000U) {
+        return std::nullopt;
+    }
+    // The memory-operand T flag would redirect the CPX comparison; neither it
+    // nor decimal mode is proven for this tail.
+    if ((entry.registers.status & 0x28U) != 0U) {
+        return std::nullopt;
+    }
+
+    // Only N, Z, and C move here.
+    const auto set_nz = [](std::uint8_t status, const std::uint8_t value) {
+        status = static_cast<std::uint8_t>(
+            status & static_cast<std::uint8_t>(~0x82U));
+        if (value == 0U) {
+            status = static_cast<std::uint8_t>(status | 0x02U);
+        } else if ((value & 0x80U) != 0U) {
+            status = static_cast<std::uint8_t>(status | 0x80U);
+        }
+        return status;
+    };
+
+    auto registers = entry.registers;
+    std::uint32_t cycle = 0U;
+    RoutineReplacement replacement{};
+    replacement.checkpoints.reserve(4U);
+    replacement.work_ram_writes.reserve(1U);
+
+    const auto boundary =
+        [&](const std::uint16_t instruction_pc,
+            const std::uint16_t resume_pc) {
+            registers.program_counter = resume_pc;
+            replacement.checkpoints.push_back({
+                .interrupt_sample_master_cycle_offset = cycle - 3U,
+                .master_cycle_offset = cycle,
+                .instruction = {kRoutine.physical_bank, instruction_pc},
+                .registers = registers,
+            });
+        };
+    const auto step =
+        [&](const std::uint16_t instruction_pc,
+            const std::uint16_t resume_pc,
+            const std::uint32_t cycles) {
+            cycle += cycles;
+            boundary(instruction_pc, resume_pc);
+        };
+
+    // INC $4D leaves its own N and Z standing until LDX $4D reloads them, and
+    // an interrupt can arrive between the two.
+    const auto next = static_cast<std::uint8_t>(
+        std::to_integer<std::uint8_t>(work_ram[kCounterAddress - 0x2000U])
+        + 1U);
+    registers.status = set_nz(registers.status, next);
+    cycle += kReadModifyWrite;
+    replacement.work_ram_writes.push_back({
+        .instruction = {kRoutine.physical_bank, kIncrementPc},
+        .logical_address = kCounterAddress,
+        .value = next,
+        .master_cycle_offset = cycle,
+    });
+    boundary(kIncrementPc, kReloadPc);
+
+    registers.x = next;
+    registers.status = set_nz(registers.status, next);
+    step(kReloadPc, kComparePc, kZeroPage);
+
+    // CPX #$80 against a counter below $80 borrows, leaving carry clear and
+    // the difference negative.
+    registers.status =
+        set_nz(registers.status, static_cast<std::uint8_t>(next - 0x80U));
+    registers.status = static_cast<std::uint8_t>(
+        next >= 0x80U
+            ? (registers.status | 0x01U)
+            : (registers.status & static_cast<std::uint8_t>(~0x01U)));
+    step(kComparePc, kLoopBranchPc, kImmediate);
+
+    if (next == DC_ACTOR_SCAN_SLOT_COUNT) {
+        step(kLoopBranchPc, kTerminalPc, kBranchNotTaken);
+    } else {
+        step(kLoopBranchPc, kLoopHeadPc, kBranchTaken);
+    }
+
+    replacement.return_instruction = {
+        .physical_bank = kRoutine.physical_bank,
+        .logical_pc = registers.program_counter,
+    };
+    replacement.output_registers = registers;
+    replacement.body_master_cycles = cycle;
+    return replacement;
+}
+
+[[nodiscard]] std::optional<RoutineReplacement>
+replace_actor_dispatch_vector(
+    const RoutineEntry& entry,
+    const std::span<const std::byte> work_ram)
+{
+    // The dispatch half of the main actor loop. The loop's BSR lands here
+    // with the slot in X; this copies that slot's handler vector out of the
+    // $3F00/$3F80 jump table into the zero-page indirection at $2F/$30 and
+    // jumps through it. The handler stays emulated, so the transcript ends
+    // on the handler's own first instruction.
+    //
+    //   C52C LDA $3F00,X 15   C52F STA $2F 12
+    //   C531 LDA $3F80,X 15   C534 STA $30 12
+    //   C536 JMP ($202F) 21   (resumes inside the handler)
+    constexpr RoutineKey kRoutine{
+        .physical_bank = 0x01U,
+        .logical_pc = 0xC52CU,
+    };
+    constexpr std::uint16_t kLoadLowPc = 0xC52CU;
+    constexpr std::uint16_t kStoreLowPc = 0xC52FU;
+    constexpr std::uint16_t kLoadHighPc = 0xC531U;
+    constexpr std::uint16_t kStoreHighPc = 0xC534U;
+    constexpr std::uint16_t kJumpPc = 0xC536U;
+    constexpr std::uint16_t kVectorLowAddress = 0x202FU;
+    constexpr std::uint16_t kVectorHighAddress = 0x2030U;
+
+    constexpr std::uint32_t kZeroPage = 12U;
+    constexpr std::uint32_t kAbsoluteIndexed = 15U;
+    constexpr std::uint32_t kIndirectJump = 21U;
+
+    if (entry.routine != kRoutine) {
+        return std::nullopt;
+    }
+    if (work_ram.size() < 0x2000U) {
+        return std::nullopt;
+    }
+    // The memory-operand T flag would redirect both loads; neither it nor
+    // decimal mode is proven for this dispatch.
+    if ((entry.registers.status & 0x28U) != 0U) {
+        return std::nullopt;
+    }
+
+    dc_actor_dispatch_vector vector{};
+    if (!dc_classify_actor_dispatch_vector(
+            reinterpret_cast<const std::uint8_t*>(work_ram.data()),
+            work_ram.size(),
+            entry.registers.x,
+            &vector)) {
+        return std::nullopt;
+    }
+
+    // Only N and Z move here; the two stores and the jump touch no flag.
+    const auto set_nz = [](std::uint8_t status, const std::uint8_t value) {
+        status = static_cast<std::uint8_t>(
+            status & static_cast<std::uint8_t>(~0x82U));
+        if (value == 0U) {
+            status = static_cast<std::uint8_t>(status | 0x02U);
+        } else if ((value & 0x80U) != 0U) {
+            status = static_cast<std::uint8_t>(status | 0x80U);
+        }
+        return status;
+    };
+
+    auto registers = entry.registers;
+    std::uint32_t cycle = 0U;
+    RoutineReplacement replacement{};
+    replacement.checkpoints.reserve(5U);
+    replacement.work_ram_writes.reserve(2U);
+
+    const auto boundary =
+        [&](const std::uint16_t instruction_pc,
+            const std::uint16_t resume_pc) {
+            registers.program_counter = resume_pc;
+            replacement.checkpoints.push_back({
+                .interrupt_sample_master_cycle_offset = cycle - 3U,
+                .master_cycle_offset = cycle,
+                .instruction = {kRoutine.physical_bank, instruction_pc},
+                .registers = registers,
+            });
+        };
+    const auto step =
+        [&](const std::uint16_t instruction_pc,
+            const std::uint16_t resume_pc,
+            const std::uint32_t cycles) {
+            cycle += cycles;
+            boundary(instruction_pc, resume_pc);
+        };
+    const auto store =
+        [&](const std::uint16_t instruction_pc,
+            const std::uint16_t resume_pc,
+            const std::uint16_t logical_address,
+            const std::uint8_t value) {
+            cycle += kZeroPage;
+            replacement.work_ram_writes.push_back({
+                .instruction = {kRoutine.physical_bank, instruction_pc},
+                .logical_address = logical_address,
+                .value = value,
+                .master_cycle_offset = cycle,
+            });
+            boundary(instruction_pc, resume_pc);
+        };
+
+    registers.accumulator = vector.vector_low;
+    registers.status = set_nz(registers.status, vector.vector_low);
+    step(kLoadLowPc, kStoreLowPc, kAbsoluteIndexed);
+    store(kStoreLowPc, kLoadHighPc, kVectorLowAddress, vector.vector_low);
+    registers.accumulator = vector.vector_high;
+    registers.status = set_nz(registers.status, vector.vector_high);
+    step(kLoadHighPc, kStoreHighPc, kAbsoluteIndexed);
+    store(kStoreHighPc, kJumpPc, kVectorHighAddress, vector.vector_high);
+    // JMP ($202F) reads back the pair just written, so the resume address is
+    // the vector itself. The bank is whatever MPR already maps for it: the
+    // jump changes no mapping.
+    step(kJumpPc, vector.handler, kIndirectJump);
+
+    replacement.return_instruction = {
+        .physical_bank = entry.registers.mpr[vector.handler >> 13U],
+        .logical_pc = vector.handler,
+    };
+    replacement.output_registers = registers;
+    replacement.body_master_cycles = cycle;
+    return replacement;
+}
+
+[[nodiscard]] std::optional<RoutineReplacement>
+replace_actor_queue_registration(
+    const RoutineEntry& entry,
+    const std::span<const std::byte> work_ram)
+{
+    // The main actor loop calls this once per dispatched slot, after the
+    // handler has returned. It files the slot into one of the three
+    // sprite-emission queues the bank-08 satellite emitter drains, or drops
+    // it. Declared as an instruction-boundary transcript for the reason the
+    // two bank-01 sweeps were: priced atomically a ~200-cycle body spends
+    // most of its arrivals losing to the interrupt horizon.
+    //
+    //   C606 CPX #$00     6   C608 BEQ $C654 6/12
+    //   C60A LDA $3080,X 15   C60D BPL $C654 6/12
+    //   C60F LDX $4D     12   C611 LDA $3080,X 15
+    //   C614 AND #$01     6   C616 BEQ $C627 6/12
+    //   C618 LDA $3800,X 15   C61B BIT #$40   6
+    //   C61D BEQ $C627  6/12  C61F AND #$BF   6
+    //   C621 STA $3800,X 15   C624 JSR $F605  (stays emulated)
+    //   C627 LDA $3080,X 15   C62A BIT #$20   6
+    //   C62C BNE $C654  6/12  C62E BIT #$04   6
+    //   C630 BEQ $C63E  6/12  C632 LDY $2CBC 15
+    //   C635 INC $2CBC   21   C638 TXA        6
+    //   C639 STA $2C3A,Y 15   C63C BRA $C654 12
+    //   C63E BIT #$08     6   C640 BEQ $C64A 6/12
+    //   C642 LDY $2CBA   15   C645 INC $2CBA 21
+    //   C648 BRA $C650   12   C64A LDY $2CBB 15
+    //   C64D DEC $2CBB   21   C650 TXA        6
+    //   C651 STA $2BBA,Y 15   C654 RTS       (stays emulated)
+    constexpr RoutineKey kRoutine{
+        .physical_bank = 0x01U,
+        .logical_pc = 0xC606U,
+    };
+    constexpr std::uint16_t kEntryComparePc = 0xC606U;
+    constexpr std::uint16_t kIdleBranchPc = 0xC608U;
+    constexpr std::uint16_t kEntryLoadPc = 0xC60AU;
+    constexpr std::uint16_t kInactiveBranchPc = 0xC60DU;
+    constexpr std::uint16_t kCursorLoadPc = 0xC60FU;
+    constexpr std::uint16_t kAttributesPc = 0xC611U;
+    constexpr std::uint16_t kClearMaskPc = 0xC614U;
+    constexpr std::uint16_t kClearBranchPc = 0xC616U;
+    constexpr std::uint16_t kStateLoadPc = 0xC618U;
+    constexpr std::uint16_t kStateTestPc = 0xC61BU;
+    constexpr std::uint16_t kStateBranchPc = 0xC61DU;
+    constexpr std::uint16_t kClearPc = 0xC61FU;
+    constexpr std::uint16_t kStatePc = 0xC621U;
+    constexpr std::uint16_t kHelperPc = 0xC624U;
+    constexpr std::uint16_t kReloadPc = 0xC627U;
+    constexpr std::uint16_t kSuppressTestPc = 0xC62AU;
+    constexpr std::uint16_t kSuppressBranchPc = 0xC62CU;
+    constexpr std::uint16_t kFirstTestPc = 0xC62EU;
+    constexpr std::uint16_t kFirstBranchPc = 0xC630U;
+    constexpr std::uint16_t kFirstCursorPc = 0xC632U;
+    constexpr std::uint16_t kFirstBumpPc = 0xC635U;
+    constexpr std::uint16_t kFirstTransferPc = 0xC638U;
+    constexpr std::uint16_t kFirstStorePc = 0xC639U;
+    constexpr std::uint16_t kFirstExitPc = 0xC63CU;
+    constexpr std::uint16_t kSecondTestPc = 0xC63EU;
+    constexpr std::uint16_t kSecondBranchPc = 0xC640U;
+    constexpr std::uint16_t kSecondCursorPc = 0xC642U;
+    constexpr std::uint16_t kSecondBumpPc = 0xC645U;
+    constexpr std::uint16_t kSecondJoinPc = 0xC648U;
+    constexpr std::uint16_t kThirdCursorPc = 0xC64AU;
+    constexpr std::uint16_t kThirdBumpPc = 0xC64DU;
+    constexpr std::uint16_t kSharedTransferPc = 0xC650U;
+    constexpr std::uint16_t kSharedStorePc = 0xC651U;
+    constexpr std::uint16_t kTerminalPc = 0xC654U;
+
+    constexpr std::uint16_t kSlotStateBase = 0x3800U;
+    constexpr std::uint16_t kFirstQueueBase = 0x2C3AU;
+    constexpr std::uint16_t kSharedQueueBase = 0x2BBAU;
+    constexpr std::uint16_t kFirstCursorAddress = 0x2CBCU;
+    constexpr std::uint16_t kSecondCursorAddress = 0x2CBAU;
+    constexpr std::uint16_t kThirdCursorAddress = 0x2CBBU;
+
+    constexpr std::uint32_t kImmediate = 6U;
+    constexpr std::uint32_t kZeroPage = 12U;
+    constexpr std::uint32_t kAbsoluteIndexed = 15U;
+    // INC and DEC on an absolute address are seven cycles, one more than
+    // the zero-page form the scan loop's own counter uses.
+    constexpr std::uint32_t kAbsoluteReadModifyWrite = 21U;
+    constexpr std::uint32_t kBranchTaken = 12U;
+    constexpr std::uint32_t kBranchNotTaken = 6U;
+
+    if (entry.routine != kRoutine) {
+        return std::nullopt;
+    }
+    if (work_ram.size() < 0x2000U) {
+        return std::nullopt;
+    }
+    // The T flag would redirect the AND and both BIT masks; neither it nor
+    // decimal mode is proven for this routine.
+    if ((entry.registers.status & 0x28U) != 0U) {
+        return std::nullopt;
+    }
+
+    dc_actor_queue_registration registration{};
+    if (!dc_classify_actor_queue_registration(
+            reinterpret_cast<const std::uint8_t*>(work_ram.data()),
+            work_ram.size(),
+            entry.registers.x,
+            &registration)) {
+        return std::nullopt;
+    }
+
+    const auto set_nz = [](std::uint8_t status, const std::uint8_t value) {
+        status = static_cast<std::uint8_t>(
+            status & static_cast<std::uint8_t>(~0x82U));
+        if (value == 0U) {
+            status = static_cast<std::uint8_t>(status | 0x02U);
+        } else if ((value & 0x80U) != 0U) {
+            status = static_cast<std::uint8_t>(status | 0x80U);
+        }
+        return status;
+    };
+
+    auto registers = entry.registers;
+    std::uint32_t cycle = 0U;
+    RoutineReplacement replacement{};
+    // The longest path is twenty-one boundaries and two writes.
+    replacement.checkpoints.reserve(21U);
+    replacement.work_ram_writes.reserve(2U);
+
+    const auto boundary =
+        [&](const std::uint16_t instruction_pc,
+            const std::uint16_t resume_pc) {
+            registers.program_counter = resume_pc;
+            replacement.checkpoints.push_back({
+                .interrupt_sample_master_cycle_offset = cycle - 3U,
+                .master_cycle_offset = cycle,
+                .instruction = {kRoutine.physical_bank, instruction_pc},
+                .registers = registers,
+            });
+        };
+    const auto step =
+        [&](const std::uint16_t instruction_pc,
+            const std::uint16_t resume_pc,
+            const std::uint32_t cycles) {
+            cycle += cycles;
+            boundary(instruction_pc, resume_pc);
+        };
+    const auto write =
+        [&](const std::uint16_t instruction_pc,
+            const std::uint16_t resume_pc,
+            const std::uint32_t cycles,
+            const std::uint16_t logical_address,
+            const std::uint8_t value) {
+            cycle += cycles;
+            replacement.work_ram_writes.push_back({
+                .instruction = {kRoutine.physical_bank, instruction_pc},
+                .logical_address = logical_address,
+                .value = value,
+                .master_cycle_offset = cycle,
+            });
+            boundary(instruction_pc, resume_pc);
+        };
+    const auto load = [&](const std::uint8_t value) {
+        registers.accumulator = value;
+        registers.status = set_nz(registers.status, value);
+    };
+    // BIT against an immediate. Beetle clears N, V, and Z and then takes N
+    // and V straight from the operand, in immediate mode as well as the
+    // addressing modes where the 65C02 does, so only Z reports the test.
+    const auto bit_immediate = [&](const std::uint8_t operand) {
+        registers.status = static_cast<std::uint8_t>(
+            registers.status & static_cast<std::uint8_t>(~0xC2U));
+        if ((registers.accumulator & operand) == 0U) {
+            registers.status =
+                static_cast<std::uint8_t>(registers.status | 0x02U);
+        }
+        registers.status = static_cast<std::uint8_t>(
+            registers.status | (operand & 0xC0U));
+    };
+
+    const auto walk = [&]() -> std::uint16_t {
+        // CPX #$00 against an unsigned slot never borrows, so carry is set
+        // and N and Z simply report X.
+        registers.status = set_nz(registers.status, entry.registers.x);
+        registers.status =
+            static_cast<std::uint8_t>(registers.status | 0x01U);
+        step(kEntryComparePc, kIdleBranchPc, kImmediate);
+        if (registration.exit == DC_ACTOR_QUEUE_IDLE_SLOT) {
+            step(kIdleBranchPc, kTerminalPc, kBranchTaken);
+            return kTerminalPc;
+        }
+        step(kIdleBranchPc, kEntryLoadPc, kBranchNotTaken);
+
+        load(registration.entry_attributes);
+        step(kEntryLoadPc, kInactiveBranchPc, kAbsoluteIndexed);
+        if (registration.exit == DC_ACTOR_QUEUE_INACTIVE) {
+            step(kInactiveBranchPc, kTerminalPc, kBranchTaken);
+            return kTerminalPc;
+        }
+        step(kInactiveBranchPc, kCursorLoadPc, kBranchNotTaken);
+
+        // LDX $4D discards whatever the dispatched handler left in X.
+        registers.x = registration.slot;
+        registers.status = set_nz(registers.status, registration.slot);
+        step(kCursorLoadPc, kAttributesPc, kZeroPage);
+        load(registration.attributes);
+        step(kAttributesPc, kClearMaskPc, kAbsoluteIndexed);
+        load(static_cast<std::uint8_t>(registration.attributes & 0x01U));
+        step(kClearMaskPc, kClearBranchPc, kImmediate);
+        if ((registration.attributes & 0x01U) == 0U) {
+            step(kClearBranchPc, kReloadPc, kBranchTaken);
+        } else {
+            step(kClearBranchPc, kStateLoadPc, kBranchNotTaken);
+            load(registration.clear_state);
+            step(kStateLoadPc, kStateTestPc, kAbsoluteIndexed);
+            bit_immediate(0x40U);
+            step(kStateTestPc, kStateBranchPc, kImmediate);
+            if ((registration.clear_state & 0x40U) == 0U) {
+                step(kStateBranchPc, kReloadPc, kBranchTaken);
+            } else {
+                step(kStateBranchPc, kClearPc, kBranchNotTaken);
+                load(registration.cleared_state);
+                step(kClearPc, kStatePc, kImmediate);
+                write(
+                    kStatePc,
+                    kHelperPc,
+                    kAbsoluteIndexed,
+                    static_cast<std::uint16_t>(
+                        kSlotStateBase + registration.slot),
+                    registration.cleared_state);
+                // The one-shot clear hands off to the emulated helper.
+                return kHelperPc;
+            }
+        }
+
+        load(registration.attributes);
+        step(kReloadPc, kSuppressTestPc, kAbsoluteIndexed);
+        bit_immediate(0x20U);
+        step(kSuppressTestPc, kSuppressBranchPc, kImmediate);
+        if (registration.exit == DC_ACTOR_QUEUE_SUPPRESSED) {
+            step(kSuppressBranchPc, kTerminalPc, kBranchTaken);
+            return kTerminalPc;
+        }
+        step(kSuppressBranchPc, kFirstTestPc, kBranchNotTaken);
+
+        bit_immediate(0x04U);
+        step(kFirstTestPc, kFirstBranchPc, kImmediate);
+        if (registration.exit == DC_ACTOR_QUEUE_FIRST) {
+            step(kFirstBranchPc, kFirstCursorPc, kBranchNotTaken);
+            registers.y = registration.cursor;
+            registers.status = set_nz(registers.status, registration.cursor);
+            step(kFirstCursorPc, kFirstBumpPc, kAbsoluteIndexed);
+            registers.status =
+                set_nz(registers.status, registration.updated_cursor);
+            write(
+                kFirstBumpPc,
+                kFirstTransferPc,
+                kAbsoluteReadModifyWrite,
+                kFirstCursorAddress,
+                registration.updated_cursor);
+            registers.accumulator = registers.x;
+            registers.status = set_nz(registers.status, registers.x);
+            step(kFirstTransferPc, kFirstStorePc, kImmediate);
+            write(
+                kFirstStorePc,
+                kFirstExitPc,
+                kAbsoluteIndexed,
+                static_cast<std::uint16_t>(
+                    kFirstQueueBase + registration.queue_index),
+                registers.accumulator);
+            step(kFirstExitPc, kTerminalPc, kBranchTaken);
+            return kTerminalPc;
+        }
+        step(kFirstBranchPc, kSecondTestPc, kBranchTaken);
+
+        bit_immediate(0x08U);
+        step(kSecondTestPc, kSecondBranchPc, kImmediate);
+        if (registration.exit == DC_ACTOR_QUEUE_SECOND) {
+            step(kSecondBranchPc, kSecondCursorPc, kBranchNotTaken);
+            registers.y = registration.cursor;
+            registers.status = set_nz(registers.status, registration.cursor);
+            step(kSecondCursorPc, kSecondBumpPc, kAbsoluteIndexed);
+            registers.status =
+                set_nz(registers.status, registration.updated_cursor);
+            write(
+                kSecondBumpPc,
+                kSecondJoinPc,
+                kAbsoluteReadModifyWrite,
+                kSecondCursorAddress,
+                registration.updated_cursor);
+            step(kSecondJoinPc, kSharedTransferPc, kBranchTaken);
+        } else {
+            step(kSecondBranchPc, kThirdCursorPc, kBranchTaken);
+            registers.y = registration.cursor;
+            registers.status = set_nz(registers.status, registration.cursor);
+            step(kThirdCursorPc, kThirdBumpPc, kAbsoluteIndexed);
+            registers.status =
+                set_nz(registers.status, registration.updated_cursor);
+            write(
+                kThirdBumpPc,
+                kSharedTransferPc,
+                kAbsoluteReadModifyWrite,
+                kThirdCursorAddress,
+                registration.updated_cursor);
+        }
+
+        registers.accumulator = registers.x;
+        registers.status = set_nz(registers.status, registers.x);
+        step(kSharedTransferPc, kSharedStorePc, kImmediate);
+        write(
+            kSharedStorePc,
+            kTerminalPc,
+            kAbsoluteIndexed,
+            static_cast<std::uint16_t>(
+                kSharedQueueBase + registration.queue_index),
+            registers.accumulator);
+        return kTerminalPc;
+    };
+
+    const auto resume = walk();
+    // The transcript and the classifier must agree about where the routine
+    // ends up; a disagreement is a modelling error, not a state to run.
+    if (replacement.checkpoints.empty()
+        || registers.program_counter != resume
+        || (resume == kHelperPc)
+            != (registration.exit == DC_ACTOR_QUEUE_CLEAR_REQUEST)
+        || (resume != kTerminalPc && resume != kHelperPc)) {
+        return std::nullopt;
+    }
+
+    replacement.return_instruction = {
+        .physical_bank = kRoutine.physical_bank,
+        .logical_pc = resume,
+    };
+    replacement.output_registers = registers;
+    replacement.body_master_cycles = cycle;
     return replacement;
 }
 

@@ -8412,6 +8412,156 @@ void test_actor_scan_run()
         "actor scan rejects an out-of-range slot");
 }
 
+void test_actor_dispatch_vector()
+{
+    std::vector<std::uint8_t> work_ram(0x2000U, 0U);
+    dc_actor_dispatch_vector vector{};
+
+    work_ram[0x1F00U + 0x12U] = 0x9AU;
+    work_ram[0x1F80U + 0x12U] = 0xD3U;
+    check(
+        dc_classify_actor_dispatch_vector(
+            work_ram.data(), work_ram.size(), 0x12U, &vector) == 1,
+        "dispatch vector reads its jump-table pair");
+    check(
+        vector.vector_low == 0x9AU && vector.vector_high == 0xD3U
+            && vector.handler == 0xD39AU,
+        "dispatch vector assembles the handler little-endian");
+
+    // Malformed inputs are refused rather than guessed at.
+    check(
+        dc_classify_actor_dispatch_vector(nullptr, 0x2000U, 0U, &vector) == 0,
+        "dispatch vector rejects a missing snapshot");
+    check(
+        dc_classify_actor_dispatch_vector(
+            work_ram.data(), 0x100U, 0U, &vector) == 0,
+        "dispatch vector rejects a short snapshot");
+}
+
+void test_actor_queue_registration()
+{
+    std::vector<std::uint8_t> work_ram(0x2000U, 0U);
+    const auto reset = [&work_ram]() {
+        std::ranges::fill(work_ram, static_cast<std::uint8_t>(0));
+    };
+    dc_actor_queue_registration registration{};
+
+    // Slot zero is the loop's own sentinel and files nothing.
+    reset();
+    check(
+        dc_classify_actor_queue_registration(
+            work_ram.data(), work_ram.size(), 0U, &registration) == 1,
+        "queue registration classifies the sentinel slot");
+    check(
+        registration.exit == DC_ACTOR_QUEUE_IDLE_SLOT,
+        "sentinel slot returns untouched");
+
+    // A positive attribute byte on the dispatched slot files nothing either,
+    // and the $4D cursor is never consulted.
+    reset();
+    work_ram[0x1080U + 5U] = 0x7FU;
+    check(
+        dc_classify_actor_queue_registration(
+            work_ram.data(), work_ram.size(), 5U, &registration) == 1,
+        "queue registration classifies an inactive slot");
+    check(
+        registration.exit == DC_ACTOR_QUEUE_INACTIVE
+            && registration.slot == 5U,
+        "inactive slot returns before the cursor reload");
+
+    // Attribute bit 0 with state bit 6 set leaves for the emulated helper
+    // after clearing the bit, and files nothing.
+    reset();
+    work_ram[0x004DU] = 9U;
+    work_ram[0x1080U + 5U] = 0x80U;
+    work_ram[0x1080U + 9U] = 0x81U;
+    work_ram[0x1800U + 9U] = 0xC3U;
+    check(
+        dc_classify_actor_queue_registration(
+            work_ram.data(), work_ram.size(), 5U, &registration) == 1,
+        "queue registration classifies a clear request");
+    check(
+        registration.exit == DC_ACTOR_QUEUE_CLEAR_REQUEST
+            && registration.slot == 9U
+            && registration.clear_state == 0xC3U
+            && registration.cleared_state == 0x83U,
+        "clear request drops state bit 6 and stops at the helper");
+
+    // The same bit 0 with state bit 6 already clear falls through to the
+    // queue selection instead.
+    reset();
+    work_ram[0x004DU] = 9U;
+    work_ram[0x1080U + 5U] = 0x80U;
+    work_ram[0x1080U + 9U] = 0xA1U;
+    work_ram[0x1800U + 9U] = 0x03U;
+    check(
+        dc_classify_actor_queue_registration(
+            work_ram.data(), work_ram.size(), 5U, &registration) == 1,
+        "queue registration classifies a satisfied clear request");
+    check(
+        registration.exit == DC_ACTOR_QUEUE_SUPPRESSED,
+        "attribute bit 5 suppresses emission");
+
+    // Bit 2 files into the $2C3A queue and advances its cursor upward.
+    reset();
+    work_ram[0x004DU] = 9U;
+    work_ram[0x1080U + 5U] = 0x80U;
+    work_ram[0x1080U + 9U] = 0x04U;
+    work_ram[0x0CBCU] = 7U;
+    check(
+        dc_classify_actor_queue_registration(
+            work_ram.data(), work_ram.size(), 5U, &registration) == 1,
+        "queue registration classifies the first queue");
+    check(
+        registration.exit == DC_ACTOR_QUEUE_FIRST
+            && registration.cursor == 7U && registration.queue_index == 7U
+            && registration.updated_cursor == 8U,
+        "first queue writes at its cursor and bumps it");
+
+    // Bit 3 files into the shared queue from the ascending cursor.
+    reset();
+    work_ram[0x004DU] = 9U;
+    work_ram[0x1080U + 5U] = 0x80U;
+    work_ram[0x1080U + 9U] = 0x08U;
+    work_ram[0x0CBAU] = 2U;
+    check(
+        dc_classify_actor_queue_registration(
+            work_ram.data(), work_ram.size(), 5U, &registration) == 1,
+        "queue registration classifies the second queue");
+    check(
+        registration.exit == DC_ACTOR_QUEUE_SECOND
+            && registration.queue_index == 2U
+            && registration.updated_cursor == 3U,
+        "second queue writes at its cursor and bumps it");
+
+    // Neither bit files into the same shared queue from the descending
+    // cursor, which is what keeps the emitter's $7F walk in order.
+    reset();
+    work_ram[0x004DU] = 9U;
+    work_ram[0x1080U + 5U] = 0x80U;
+    work_ram[0x1080U + 9U] = 0x00U;
+    work_ram[0x0CBBU] = 0x7FU;
+    check(
+        dc_classify_actor_queue_registration(
+            work_ram.data(), work_ram.size(), 5U, &registration) == 1,
+        "queue registration classifies the third queue");
+    check(
+        registration.exit == DC_ACTOR_QUEUE_THIRD
+            && registration.queue_index == 0x7FU
+            && registration.updated_cursor == 0x7EU,
+        "third queue writes at its cursor and lowers it");
+
+    // Malformed inputs are refused rather than guessed at.
+    check(
+        dc_classify_actor_queue_registration(nullptr, 0x2000U, 1U, &registration)
+            == 0,
+        "queue registration rejects a missing snapshot");
+    check(
+        dc_classify_actor_queue_registration(
+            work_ram.data(), 0x100U, 1U, &registration) == 0,
+        "queue registration rejects a short snapshot");
+}
+
 void test_collision_scan_run()
 {
     std::vector<std::uint8_t> work_ram(0x2000U, 0U);
@@ -9108,6 +9258,8 @@ int main()
     test_save_state_container();
     test_backup_ram_storage();
     test_actor_scan_run();
+    test_actor_dispatch_vector();
+    test_actor_queue_registration();
     test_collision_scan_run();
     test_sprite_emit_run();
     test_dmd_digit_layout();

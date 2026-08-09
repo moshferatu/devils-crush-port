@@ -30,35 +30,54 @@ replace_collision_scan_run(
     // for the vertical scan at CC1A or rejects it, and only the rejections
     // are native: an eligible slot enters CC1A and the emulated response
     // chain beyond it. The run walks rejected slots and hands control back at
-    // the scan call, the sweep head, or the exhausted countdown.
+    // the scan call or at the exhausted countdown.
+    //
+    // It is declared as an instruction-boundary transcript so it can cross
+    // interrupt horizons rather than be bounded by them, which is what the
+    // sibling walk at 01:C510 needed for the same reason.
+    //
+    //   CB48 LDY $64     12   CB4A LDA $3080,Y 15
+    //   CB4D BPL $CB6B  6/12  CB4F BIT #$40     6
+    //   CB51 BNE $CB6B  6/12  CB53 LDA $55     12
+    //   CB55 BEQ $CB5E  6/12  CB5E JSR $CC1A  (stays emulated)
+    //   CB6B INC $64     18   CB6D DEC $60     18
+    //   CB6F BNE $CB48  6/12  CB71 BBS5 $77   (stays emulated)
     constexpr RoutineKey kRoutine{
         .physical_bank = 0x01U,
         .logical_pc = 0xCB48U,
     };
-    constexpr std::uint16_t kCandidatePc = 0xCB5EU;
     constexpr std::uint16_t kSweepHeadPc = 0xCB48U;
+    constexpr std::uint16_t kAttributesPc = 0xCB4AU;
+    constexpr std::uint16_t kPositiveBranchPc = 0xCB4DU;
+    constexpr std::uint16_t kMaskPc = 0xCB4FU;
+    constexpr std::uint16_t kMaskBranchPc = 0xCB51U;
+    constexpr std::uint16_t kGatePc = 0xCB53U;
+    constexpr std::uint16_t kGateBranchPc = 0xCB55U;
+    constexpr std::uint16_t kCandidatePc = 0xCB5EU;
+    constexpr std::uint16_t kSlotIncrementPc = 0xCB6BU;
+    constexpr std::uint16_t kCountdownPc = 0xCB6DU;
+    constexpr std::uint16_t kSweepBranchPc = 0xCB6FU;
     constexpr std::uint16_t kExhaustedPc = 0xCB71U;
     constexpr std::uint16_t kSlotAddress = 0x2064U;
     constexpr std::uint16_t kCountdownAddress = 0x2060U;
     constexpr std::uint16_t kGateAddress = 0x2055U;
+    constexpr std::uint16_t kSlotAttributesBase = 0x1080U;
 
-    // Master cycles for the two rejection shapes and the exits.
-    constexpr std::uint32_t kPositiveSkipCycles = 87U;  // LDY LDA BPL INC DEC BNE
-    constexpr std::uint32_t kMaskedSkipCycles = 99U;    // + BIT BNE
-    constexpr std::uint32_t kPositiveSlotWrite = 57U;
-    constexpr std::uint32_t kPositiveCountdownWrite = 75U;
-    constexpr std::uint32_t kMaskedSlotWrite = 69U;
-    constexpr std::uint32_t kMaskedCountdownWrite = 87U;
-    constexpr std::uint32_t kCandidateCycles = 69U;
-    constexpr std::uint32_t kExhaustedBranchSaving = 6U;
+    constexpr std::uint32_t kImmediate = 6U;
+    constexpr std::uint32_t kZeroPage = 12U;
+    constexpr std::uint32_t kAbsoluteIndexed = 15U;
+    constexpr std::uint32_t kReadModifyWrite = 18U;
+    constexpr std::uint32_t kBranchTaken = 12U;
+    constexpr std::uint32_t kBranchNotTaken = 6U;
 
     if (entry.routine != kRoutine) {
         return std::nullopt;
     }
-    if ((entry.registers.status & 0x08U) != 0U) {
+    if (work_ram.size() < 0x2000U) {
         return std::nullopt;
     }
-    if (work_ram.size() <= kSlotAddress - 0x2000U) {
+    // Neither decimal mode nor the memory-operand T flag is proven here.
+    if ((entry.registers.status & 0x28U) != 0U) {
         return std::nullopt;
     }
 
@@ -69,23 +88,6 @@ replace_collision_scan_run(
     const auto gate = std::to_integer<std::uint8_t>(
         work_ram[kGateAddress - 0x2000U]);
 
-    const auto horizon = std::min(
-        entry.master_cycles_until_user_event,
-        entry.master_cycles_until_timer_interrupt);
-    // The horizon must cover the worst-case shape of a walked slot plus its
-    // exit before any of this run is admitted. Relaxing this floor to a single
-    // slot admits short-horizon runs that measurably change the state census,
-    // so the conservative bound is load-bearing rather than merely cautious.
-    if (horizon <= kMaskedSkipCycles + kCandidateCycles) {
-        return std::nullopt;
-    }
-    const auto budget = std::min<std::uint32_t>(
-        DC_COLLISION_SCAN_MAX_SKIPS,
-        (horizon - kCandidateCycles - 1U) / kMaskedSkipCycles);
-    if (budget == 0U) {
-        return std::nullopt;
-    }
-
     dc_collision_scan_run run{};
     if (!dc_classify_collision_scan_run(
             reinterpret_cast<const std::uint8_t*>(work_ram.data()),
@@ -93,40 +95,15 @@ replace_collision_scan_run(
             slot,
             remaining,
             gate,
-            static_cast<std::uint8_t>(budget),
+            static_cast<std::uint8_t>(DC_COLLISION_SCAN_MAX_SKIPS),
             &run)) {
         return std::nullopt;
     }
-    if (run.exit == DC_COLLISION_SCAN_BUDGET && run.skipped == 0U) {
+    // A countdown longer than the classifier's skip table would stop on the
+    // budget rather than on a shape this transcript can end at.
+    if (run.exit == DC_COLLISION_SCAN_BUDGET) {
         return std::nullopt;
     }
-
-    std::uint32_t cycle = 0U;
-    std::vector<emulation::ReplacementMemoryWrite> writes;
-    writes.reserve(static_cast<std::size_t>(run.skipped) * 2U);
-    for (std::uint8_t index = 0U; index < run.skipped; ++index) {
-        const bool masked =
-            run.skips[index] == static_cast<std::uint8_t>(
-                DC_COLLISION_SCAN_SKIP_MASKED);
-        writes.push_back({
-            .instruction = {0x01U, 0xCB6BU},
-            .logical_address = kSlotAddress,
-            .value = static_cast<std::uint8_t>(slot + index + 1U),
-            .master_cycle_offset = cycle
-                + (masked ? kMaskedSlotWrite : kPositiveSlotWrite),
-        });
-        writes.push_back({
-            .instruction = {0x01U, 0xCB6DU},
-            .logical_address = kCountdownAddress,
-            .value = static_cast<std::uint8_t>(remaining - index - 1U),
-            .master_cycle_offset = cycle
-                + (masked ? kMaskedCountdownWrite : kPositiveCountdownWrite),
-        });
-        cycle += masked ? kMaskedSkipCycles : kPositiveSkipCycles;
-    }
-
-    auto output = entry.registers;
-    output.accumulator = run.accumulator;
 
     const auto set_nz = [](std::uint8_t status, const std::uint8_t value) {
         status = static_cast<std::uint8_t>(
@@ -139,45 +116,149 @@ replace_collision_scan_run(
         return status;
     };
 
+    auto registers = entry.registers;
+    std::uint32_t cycle = 0U;
+    RoutineReplacement replacement{};
+    // Eight boundaries and two writes per masked slot, plus a seven-
+    // instruction candidate prefix: 1,031 checkpoints and 256 writes at the
+    // very worst, inside the core's 2,048 and 512.
+    replacement.checkpoints.reserve(
+        static_cast<std::size_t>(run.skipped) * 8U + 7U);
+    replacement.work_ram_writes.reserve(
+        static_cast<std::size_t>(run.skipped) * 2U);
+
+    const auto boundary =
+        [&](const std::uint16_t instruction_pc,
+            const std::uint16_t resume_pc) {
+            registers.program_counter = resume_pc;
+            replacement.checkpoints.push_back({
+                // Every instruction in this sweep samples the interrupt one
+                // CPU cycle before its own last, which is where the core's
+                // LastCycle sits. None of them touches a hardware port, so
+                // none of them pays the VDC's stolen wait.
+                .interrupt_sample_master_cycle_offset = cycle - 3U,
+                .master_cycle_offset = cycle,
+                .instruction = {kRoutine.physical_bank, instruction_pc},
+                .registers = registers,
+            });
+        };
+    const auto step =
+        [&](const std::uint16_t instruction_pc,
+            const std::uint16_t resume_pc,
+            const std::uint32_t cycles) {
+            cycle += cycles;
+            boundary(instruction_pc, resume_pc);
+        };
+    // LDY $64 followed by LDA $3080,Y.
+    const auto read_slot = [&](const std::uint8_t index) {
+        registers.y = index;
+        registers.status = set_nz(registers.status, index);
+        step(kSweepHeadPc, kAttributesPc, kZeroPage);
+        const auto attributes = std::to_integer<std::uint8_t>(
+            work_ram[static_cast<std::size_t>(kSlotAttributesBase) + index]);
+        registers.accumulator = attributes;
+        registers.status = set_nz(registers.status, attributes);
+        step(kAttributesPc, kPositiveBranchPc, kAbsoluteIndexed);
+        return attributes;
+    };
+    // BIT #$40. Beetle clears N and V and then takes them from the operand,
+    // in immediate mode as well as the addressing modes where the 65C02
+    // does, so this one always leaves N clear and V set whatever the slot
+    // attributes hold; only Z reports the tested bit.
+    const auto bit_mask = [&](const std::uint8_t attributes) {
+        registers.status = static_cast<std::uint8_t>(
+            registers.status & static_cast<std::uint8_t>(~0xC2U));
+        registers.status = static_cast<std::uint8_t>(
+            registers.status | 0x40U);
+        if ((attributes & 0x40U) == 0U) {
+            registers.status = static_cast<std::uint8_t>(
+                registers.status | 0x02U);
+        }
+        step(kMaskPc, kMaskBranchPc, kImmediate);
+    };
+    // INC $64 : DEC $60. Each leaves its own N and Z standing until the next
+    // instruction reloads them, and an interrupt can arrive between them.
+    const auto advance =
+        [&](const std::uint8_t next_slot, const std::uint8_t left) {
+            registers.status = set_nz(registers.status, next_slot);
+            cycle += kReadModifyWrite;
+            replacement.work_ram_writes.push_back({
+                .instruction = {kRoutine.physical_bank, kSlotIncrementPc},
+                .logical_address = kSlotAddress,
+                .value = next_slot,
+                .master_cycle_offset = cycle,
+            });
+            boundary(kSlotIncrementPc, kCountdownPc);
+            registers.status = set_nz(registers.status, left);
+            cycle += kReadModifyWrite;
+            replacement.work_ram_writes.push_back({
+                .instruction = {kRoutine.physical_bank, kCountdownPc},
+                .logical_address = kCountdownAddress,
+                .value = left,
+                .master_cycle_offset = cycle,
+            });
+            boundary(kCountdownPc, kSweepBranchPc);
+        };
+
+    auto current = slot;
+    auto left = remaining;
+    for (std::uint8_t walked = 0U; walked < run.skipped; ++walked) {
+        const auto attributes = read_slot(current);
+        if ((attributes & 0x80U) == 0U) {
+            step(kPositiveBranchPc, kSlotIncrementPc, kBranchTaken);
+        } else {
+            step(kPositiveBranchPc, kMaskPc, kBranchNotTaken);
+            bit_mask(attributes);
+            step(kMaskBranchPc, kSlotIncrementPc, kBranchTaken);
+        }
+        current = static_cast<std::uint8_t>(current + 1U);
+        left = static_cast<std::uint8_t>(left - 1U);
+        advance(current, left);
+        if (left == 0U) {
+            step(kSweepBranchPc, kExhaustedPc, kBranchNotTaken);
+        } else {
+            step(kSweepBranchPc, kSweepHeadPc, kBranchTaken);
+        }
+    }
+
     switch (run.exit) {
-    case DC_COLLISION_SCAN_CANDIDATE:
-        // LDY loaded this slot and LDA $55 left the zero gate standing.
-        cycle += kCandidateCycles;
-        output.y = run.slot;
-        output.status = set_nz(output.status, run.accumulator);
-        output.program_counter = kCandidatePc;
+    case DC_COLLISION_SCAN_CANDIDATE: {
+        const auto attributes = read_slot(current);
+        step(kPositiveBranchPc, kMaskPc, kBranchNotTaken);
+        bit_mask(attributes);
+        // Bit six was clear, so the BNE fell through to the gate.
+        step(kMaskBranchPc, kGatePc, kBranchNotTaken);
+        registers.accumulator = gate;
+        registers.status = set_nz(registers.status, gate);
+        step(kGatePc, kGateBranchPc, kZeroPage);
+        step(kGateBranchPc, kCandidatePc, kBranchTaken);
         break;
+    }
     case DC_COLLISION_SCAN_EXHAUSTED:
-        // DEC $60 reached zero, so its BNE cost two cycles, not four. Y still
-        // holds the slot the last LDY read, one behind the stored counter.
-        cycle -= kExhaustedBranchSaving;
-        output.y = static_cast<std::uint8_t>(run.slot - 1U);
-        output.status = set_nz(output.status, 0U);
-        output.program_counter = kExhaustedPc;
-        break;
-    case DC_COLLISION_SCAN_BUDGET:
-        output.y = static_cast<std::uint8_t>(run.slot - 1U);
-        output.status = set_nz(output.status, run.remaining);
-        output.program_counter = kSweepHeadPc;
         break;
     default:
         return std::nullopt;
     }
 
-    if (cycle >= horizon) {
+    // The transcript and the classifier must agree about where the sweep ends
+    // up; a disagreement is a modelling error, not a state to run.
+    const auto resume_pc = run.exit == DC_COLLISION_SCAN_EXHAUSTED
+        ? kExhaustedPc
+        : kCandidatePc;
+    if (replacement.checkpoints.empty()
+        || registers.accumulator != run.accumulator
+        || current != run.slot
+        || left != run.remaining
+        || registers.program_counter != resume_pc) {
         return std::nullopt;
     }
 
-    RoutineReplacement replacement{
-        .return_instruction =
-            {
-                .physical_bank = 0x01U,
-                .logical_pc = output.program_counter,
-            },
-        .output_registers = output,
-        .body_master_cycles = cycle,
+    replacement.return_instruction = {
+        .physical_bank = kRoutine.physical_bank,
+        .logical_pc = resume_pc,
     };
-    replacement.work_ram_writes = std::move(writes);
+    replacement.output_registers = registers;
+    replacement.body_master_cycles = cycle;
     return replacement;
 }
 

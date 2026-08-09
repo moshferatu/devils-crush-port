@@ -79,6 +79,78 @@ int dc_classify_actor_scan_run(
     uint8_t maximum_skips,
     dc_actor_scan_run* run);
 
+// When the 01:C510 loop dispatches a slot it reaches the handler through the
+// two-byte vector the jump table holds at $3F00,X and $3F80,X. ROM routine
+// 01:C52C copies that vector into the zero-page indirection at $2F/$30 and
+// jumps through it, so the native form is a load, two stores, and a computed
+// resume address rather than a call this transaction could make itself.
+typedef struct dc_actor_dispatch_vector {
+    uint8_t slot;
+    uint8_t vector_low;
+    uint8_t vector_high;
+    uint16_t handler;
+} dc_actor_dispatch_vector;
+
+// Reads the dispatch vector for `slot`. Returns 0 when the snapshot cannot
+// support the read.
+int dc_classify_actor_dispatch_vector(
+    const uint8_t* work_ram,
+    size_t work_ram_size,
+    uint8_t slot,
+    dc_actor_dispatch_vector* vector);
+
+// Once a dispatched handler returns, ROM routine 01:C606 files the slot into
+// one of the three sprite-emission queues that the bank-08 satellite emitter
+// drains at 08:4056. The queue is chosen from the slot's attribute byte at
+// $3080. The emitter drains all three downward — the first two from their
+// own cursors, the third from a fixed $7F — so the first two are emitted in
+// reverse registration order and the third, whose cursor counts down, in
+// registration order.
+typedef enum dc_actor_queue_exit {
+    // CPX #$00 found slot zero, so the routine returned untouched.
+    DC_ACTOR_QUEUE_IDLE_SLOT = 0,
+    // $3080,X was positive for the dispatched slot, so nothing is filed.
+    DC_ACTOR_QUEUE_INACTIVE = 1,
+    // The slot asked for a one-shot clear at $3800 and the routine left for
+    // the emulated helper at 01:F605 without reaching the queues.
+    DC_ACTOR_QUEUE_CLEAR_REQUEST = 2,
+    // Attribute bit 5 suppresses emission entirely.
+    DC_ACTOR_QUEUE_SUPPRESSED = 3,
+    // Attribute bit 2: the $2C3A queue, cursor $2CBC, filled upward.
+    DC_ACTOR_QUEUE_FIRST = 4,
+    // Attribute bit 3: the $2BBA queue, cursor $2CBA, filled upward.
+    DC_ACTOR_QUEUE_SECOND = 5,
+    // Neither bit: the $2BBA queue, cursor $2CBB, filled downward.
+    DC_ACTOR_QUEUE_THIRD = 6
+} dc_actor_queue_exit;
+
+typedef struct dc_actor_queue_registration {
+    // X on entry, and the slot the routine reloads from the $4D cursor.
+    uint8_t entry_slot;
+    uint8_t slot;
+    // $3080,entry_slot, then $3080,slot once the cursor has been reloaded.
+    uint8_t entry_attributes;
+    uint8_t attributes;
+    // Only meaningful on the clear-request path: $3800,slot before and after
+    // bit 6 is cleared.
+    uint8_t clear_state;
+    uint8_t cleared_state;
+    // The cursor the chosen queue reads, the value it is left at, and the
+    // queue index the slot is written to.
+    uint8_t cursor;
+    uint8_t updated_cursor;
+    uint8_t queue_index;
+    dc_actor_queue_exit exit;
+} dc_actor_queue_registration;
+
+// Classifies one 01:C606 call. `entry_slot` is X as the dispatched handler
+// left it. Returns 0 when the snapshot cannot support the classification.
+int dc_classify_actor_queue_registration(
+    const uint8_t* work_ram,
+    size_t work_ram_size,
+    uint8_t entry_slot,
+    dc_actor_queue_registration* registration);
+
 #define DC_ACTOR_SLOT_FIELD_COUNT 32U
 
 typedef struct dc_actor_slot_reset {

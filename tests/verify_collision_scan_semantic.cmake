@@ -12,7 +12,10 @@ endif()
 
 # The native sweep must leave the emulated machine bit-identical to assembly,
 # so both artifacts are the unmodified assembly-only baselines. The write range
-# covers the sweep's countdown at $2060 and its slot cursor at $2064.
+# covers the sweep's countdown at $2060 and its slot cursor at $2064. The sweep
+# is an instruction-boundary transcript and crosses interrupt horizons, so that
+# is the assertion that matters: the interrupts still land where assembly put
+# them.
 set(
     expected_census_sha256
     "9036a9de0c3c9917f47bff8c04c136a4824ec12601fb457d260aa2dfe4443490"
@@ -51,7 +54,7 @@ endif()
 
 foreach(expected_line IN ITEMS
     "State census recording complete: 3600 frames"
-    "Native replacement 01:CB48@all entries: 89762 of 260683"
+    "Native replacement 01:CB48@all entries: 87968 of 87968"
     "Work-RAM write trace complete: 809237 selected writes"
 )
     string(FIND "${recorder_output}" "${expected_line}" line_offset)
@@ -85,7 +88,8 @@ endforeach()
 
 message(
     STATUS
-    "Semantic CB48 collision sweep rejects slots natively across 89,762 of "
-    "260,683 sweep-head entries, with the $2060/$2064 counter writes and the "
-    "whole state census identical to assembly."
+    "Semantic CB48 collision sweep rejects slots natively across all 87,968 "
+    "sweep-head entries as an instruction-boundary transcript, with the "
+    "$2060/$2064 counter writes and the whole state census identical to "
+    "assembly."
 )

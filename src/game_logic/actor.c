@@ -72,6 +72,121 @@ int dc_classify_actor_scan_run(
     return 1;
 }
 
+int dc_classify_actor_dispatch_vector(
+    const uint8_t* const work_ram,
+    const size_t work_ram_size,
+    const uint8_t slot,
+    dc_actor_dispatch_vector* const vector)
+{
+    if (work_ram == NULL || vector == NULL || work_ram_size < 0x2000U) {
+        return 0;
+    }
+
+    /* LDA $3F00,X : STA $2F : LDA $3F80,X : STA $30 : JMP ($202F). */
+    vector->slot = slot;
+    vector->vector_low = work_ram[0x1F00U + (size_t)slot];
+    vector->vector_high = work_ram[0x1F80U + (size_t)slot];
+    vector->handler = (uint16_t)(
+        (uint16_t)vector->vector_low
+        | ((uint16_t)vector->vector_high << 8));
+    return 1;
+}
+
+int dc_classify_actor_queue_registration(
+    const uint8_t* const work_ram,
+    const size_t work_ram_size,
+    const uint8_t entry_slot,
+    dc_actor_queue_registration* const registration)
+{
+    uint8_t attributes;
+    uint8_t slot;
+
+    if (work_ram == NULL || registration == NULL
+        || work_ram_size < 0x2000U) {
+        return 0;
+    }
+
+    registration->entry_slot = entry_slot;
+    registration->slot = entry_slot;
+    registration->entry_attributes = 0U;
+    registration->attributes = 0U;
+    registration->clear_state = 0U;
+    registration->cleared_state = 0U;
+    registration->cursor = 0U;
+    registration->updated_cursor = 0U;
+    registration->queue_index = 0U;
+
+    /* CPX #$00 : BEQ to the RTS. Slot zero is the loop's own sentinel. */
+    if (entry_slot == 0U) {
+        registration->exit = DC_ACTOR_QUEUE_IDLE_SLOT;
+        return 1;
+    }
+
+    /* LDA $3080,X : BPL to the RTS. */
+    registration->entry_attributes =
+        work_ram[0x1080U + (size_t)entry_slot];
+    if ((registration->entry_attributes & 0x80U) == 0U) {
+        registration->exit = DC_ACTOR_QUEUE_INACTIVE;
+        return 1;
+    }
+
+    /* LDX $4D reloads the cursor, so every read below is of the slot the
+       loop rests on rather than the one the handler left in X. */
+    slot = work_ram[0x004DU];
+    attributes = work_ram[0x1080U + (size_t)slot];
+    registration->slot = slot;
+    registration->attributes = attributes;
+
+    /* AND #$01 : BEQ past the clear request. */
+    if ((attributes & 0x01U) != 0U) {
+        /* LDA $3800,X : BIT #$40 : BEQ past the clear request. */
+        const uint8_t state = work_ram[0x1800U + (size_t)slot];
+
+        registration->clear_state = state;
+        if ((state & 0x40U) != 0U) {
+            /* AND #$BF : STA $3800,X : JSR $F605. */
+            registration->cleared_state = (uint8_t)(state & 0xBFU);
+            registration->exit = DC_ACTOR_QUEUE_CLEAR_REQUEST;
+            return 1;
+        }
+    }
+
+    /* LDA $3080,X : BIT #$20 : BNE to the RTS. */
+    if ((attributes & 0x20U) != 0U) {
+        registration->exit = DC_ACTOR_QUEUE_SUPPRESSED;
+        return 1;
+    }
+
+    /* BIT #$04 : the $2C3A queue, filled upward from $2CBC. */
+    if ((attributes & 0x04U) != 0U) {
+        registration->cursor = work_ram[0x0CBCU];
+        registration->updated_cursor =
+            (uint8_t)(registration->cursor + 1U);
+        registration->queue_index = registration->cursor;
+        registration->exit = DC_ACTOR_QUEUE_FIRST;
+        return 1;
+    }
+
+    /* BIT #$08 : the $2BBA queue, filled upward from $2CBA. */
+    if ((attributes & 0x08U) != 0U) {
+        registration->cursor = work_ram[0x0CBAU];
+        registration->updated_cursor =
+            (uint8_t)(registration->cursor + 1U);
+        registration->queue_index = registration->cursor;
+        registration->exit = DC_ACTOR_QUEUE_SECOND;
+        return 1;
+    }
+
+    /* Otherwise the same $2BBA queue, filled downward from $2CBB. The
+       emitter drains this one from a fixed $7F down to the cursor, so a
+       descending cursor is what keeps it in registration order. */
+    registration->cursor = work_ram[0x0CBBU];
+    registration->updated_cursor = (uint8_t)(registration->cursor - 1U);
+    registration->queue_index = registration->cursor;
+    registration->exit = DC_ACTOR_QUEUE_THIRD;
+    return 1;
+}
+
 int dc_classify_actor_camera_activation(
     const uint8_t* const work_ram,
     const size_t work_ram_size,

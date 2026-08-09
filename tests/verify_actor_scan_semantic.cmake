@@ -11,7 +11,10 @@ if(NOT CONFIG STREQUAL "Release")
 endif()
 
 # The native walk must leave the emulated machine bit-identical to assembly,
-# so both artifacts are the unmodified assembly-only baselines.
+# so both artifacts are the unmodified assembly-only baselines. The walk is an
+# instruction-boundary transcript and crosses interrupt horizons, so that is
+# the assertion that matters: the interrupts still land where assembly put
+# them.
 set(
     expected_census_sha256
     "9036a9de0c3c9917f47bff8c04c136a4824ec12601fb457d260aa2dfe4443490"
@@ -50,7 +53,7 @@ endif()
 
 foreach(expected_line IN ITEMS
     "State census recording complete: 3600 frames"
-    "Native replacement 01:C510@all entries: 136509 of 321839"
+    "Native replacement 01:C510@all entries: 176861 of 176861"
     "Work-RAM write trace complete: 450469 selected writes"
 )
     string(FIND "${recorder_output}" "${expected_line}" line_offset)
@@ -84,7 +87,8 @@ endforeach()
 
 message(
     STATUS
-    "Semantic C510 actor scan walks 185,330 idle slots natively across "
-    "136,509 of 321,839 loop-head entries, with the $204D counter writes "
-    "and the whole state census identical to assembly."
+    "Semantic C510 actor scan walks every idle slot natively across all "
+    "176,861 loop-head entries as an instruction-boundary transcript, with "
+    "the $204D counter writes and the whole state census identical to "
+    "assembly."
 )

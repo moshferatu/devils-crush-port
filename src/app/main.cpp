@@ -2682,6 +2682,34 @@ parse_logical_address_range(const std::string_view text)
                                        .logical_pc = 0xC510U,
                                    }
                            && request.all_calls;
+                       const bool proven_actor_scan_advance =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x01U,
+                                       .logical_pc = 0xC523U,
+                                   }
+                           && request.all_calls;
+                       const bool proven_sat_tail_clear =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x08U,
+                                       .logical_pc = 0x40C3U,
+                                   }
+                           && request.all_calls;
+                       const bool proven_actor_dispatch_vector =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x01U,
+                                       .logical_pc = 0xC52CU,
+                                   }
+                           && request.all_calls;
+                       const bool proven_actor_queue_registration =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x01U,
+                                       .logical_pc = 0xC606U,
+                                   }
+                           && request.all_calls;
                        const bool proven_collision_scan_run =
                            request.routine
                                    == RoutineKey{
@@ -2700,6 +2728,10 @@ parse_logical_address_range(const std::string_view text)
                            && !proven_sprite_emit_run
                            && !proven_collision_scan_run
                            && !proven_actor_scan_run
+                           && !proven_actor_dispatch_vector
+                           && !proven_actor_queue_registration
+                           && !proven_actor_scan_advance
+                           && !proven_sat_tail_clear
                            && !proven_position_integration
                            && !proven_motion_damping
                            && !proven_motion_rotation

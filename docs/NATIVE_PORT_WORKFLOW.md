@@ -267,6 +267,58 @@ the job that pays. Checkpointing `08:40DF` took it from 535 calls to all
 73,818 and the registry from 13.75% to 21.35% of all master cycles, because a
 checkpointed transcript crosses the horizons the valve exists to protect.
 
+Measure the decline reasons before rewriting anything. Counting them at each
+`return std::nullopt` in an adapter costs one build and one route, and it is
+the difference between porting an unmodelled state and lifting a valve that
+was never the limit. Both bank-01 sweeps looked like partial coverage in the
+registry — `01:C510` at 136,509 of 321,839 arrivals and `01:CB48` at 89,762 of
+260,683 — and both turned out to decline *entirely* on the horizon floor:
+zero classifier failures, zero decimal or counter mismatches, zero overruns.
+Neither needed new game logic. Each needed its existing classifier re-emitted
+as a transcript, which took them to every arrival and the registry from 21.35%
+to 23.60%.
+
+An atomic body priced against the horizon also truncates the calls it does
+admit, so the loss is larger than the decline count suggests. `01:C510` walked
+a mean of 142 master cycles per admitted call against a mean horizon of 265;
+as a transcript it walks to the loop's own exit and averages 192, and its
+native total went from 19.3M cycles to 33.9M.
+
+### Rank what the deployed registry does not cover, not what is expensive
+
+A `--instruction-profile` taken *with* `--replace-registry` attributes each
+native transaction's whole body to its entry address, so it cannot be read
+directly as remaining work. It can be read as remaining work once the rows
+whose `registry_entry` is 1 are dropped: what is left is exactly the
+instructions the deployed registry still emulates, per address, with the
+counts to cluster them by contiguous range. That ranking is what surfaced
+`01:C606` and `01:C52C`, which no whole-ROM profile highlights because neither
+is a hot address on its own — they are the two halves of a dispatch that runs
+171,734 times.
+
+Two things that ranking will show which are *not* targets, and why:
+
+- The frame-sync spin at `00:E323` is 45% of all master cycles. It is a
+  `CMP`/`BEQ` pair waiting on the VBlank counter, and replacing it would
+  declare "burn N cycles doing nothing". That raises the headline share
+  enormously and ports no game logic, so it stays emulated and stays outside
+  the portable pool the registry measures itself against.
+- The timer handler at `00:FC00` is 44% of what is left. It is reachable —
+  a replacement may hook any instruction address, and `01:C510` and `01:C606`
+  are both entered by a branch — but it is the ROM sound driver, writing PSG
+  registers on the hardware page and re-mapping banks with TAM/TMA between
+  them. The write channel is proven for work RAM and the four base VDC ports,
+  and the plan keeps the original drivers emulated.
+
+### A resume address does not have to be a fixed address
+
+`01:C52C` ends on `JMP ($202F)`, and its transcript resumes on the first
+instruction of whichever handler the jump table names — a different address
+almost every call, in whichever bank `MPR` already maps for it. Nothing in the
+contract requires `return_instruction` to be constant, so an indirect jump is
+replaceable as long as the vector is readable from the snapshot. Compute the
+bank from the entry's own `mpr[]`; the jump changes no mapping.
+
 ### A hardware wait cycle belongs to the transcript, not the total
 
 Only the checkpointed path prices a write to the VDC's four logical ports
