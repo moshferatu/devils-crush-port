@@ -5444,65 +5444,88 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
 
 ## Active Work
 
-Current owner: Claude. Current slice: **the palette upload `00:EB30` is
-native**, taking the deployed registry to **39.10%** of all master cycles
-(505,263,027 of 1,292,370,213) across 2,270,435 native calls and 298 admitted
-routines. It is the first routine in the port to drive a device other than the
-VDC and the PSG.
+Current owner: Claude. Current slice: **the bank-switching call wrappers are
+native**, taking the deployed registry to **39.41%** of all master cycles
+(509,356,164 of 1,292,371,131) across 2,321,732 native calls and 307 admitted
+routines.
 
-`00:EB30` runs once a frame. It walks the thirty-two dirty flags at
-`$2CCC`-`$2CEB`, and for each dirty block points the VCE colour table at
-`$0402`/`$0403` and pushes sixteen colours through `$0404`/`$0405`, keeping its
-shadow-buffer read pointer in `$47`/`$48` and its colour-table address in
-`$49`/`$4A`. On this route it runs that walk 616 times, returns early 2,954
-times, and takes a whole-palette arm 29 times where a single
-`TIA $27B9, $0404, $0400` moves all 1,024 bytes at once. That arm is 1,024
-writes against a replacement channel that carries 512, so the walk declines in
-front of its first store; a further 418 calls never reach the hook because
-another transcript is suspended when they arrive. Admitted 3,152 of 3,181
-entered, 6,870,516 cycles.
+Every cross-bank call in the game goes through one of five small wrappers. The
+caller leaves a physical bank in `$30` and an entry offset in `$2F`; a wrapper
+maps the bank into an MPR slot, jumps through the callee's `$40xx` table, and
+unmaps it on the way out. `$1E`-`$21` are the zero-page shadows of MPR2-MPR5,
+and keeping the shadow and the register in step is what makes the idiom
+re-entrant. Nine entry points share one walk — `00:E200`, `E20D`, `E219`,
+`E241`, `E255`, `E262`, `ECC6`, `ECE2`, `ECF2` — four heads and five return
+addresses, because a wrapper exists to call something and the transcript has to
+stop in front of that call. **Admitted on every one of 52,911 calls**,
+4,849,479 cycles. They carry no game logic at all; they are the game's linkage.
 
-Verification is the two-run diff over three artifacts, all byte-identical to a
-pure-assembly run of the same route: 7,369,685 work-RAM writes, 115,688 VCE
-register writes, and the state census (`9036a9de...`). Regression:
-`dc_rom_palette_shadow_semantic`, now covering all four palette entry points.
+These are the first transcripts in the port to change the bank mapping, and
+that needed no new capability: `CpuRegisters` already carries all eight `MPR`
+slots and a checkpoint already applies them, so `TAM` is an ordinary
+instruction costing fifteen master cycles. Two of the stops are indirect jumps
+(`E26E`, `ECFA`) and the walk stops in front of both rather than resolving
+them, since each reads a vector the same transcript just wrote.
+
+Verification is the two-run diff over 6,389,776 work-RAM writes and the state
+census, both byte-identical to a pure-assembly run of the same route, on the
+first attempt. The whole stack page is in scope rather than a window of it:
+this family is nothing but stack-balanced save and restore, and its pushes land
+wherever the caller left `S` — `$21E2` through `$21FD` here. Regression:
+`dc_rom_bank_call_wrappers_semantic`.
 
 **Findings worth carrying forward.**
 
-*Widening the write channel is two edits, and the second one is in the fork.*
-Adding `$0400`-`$0405` to `is_replaceable_hardware_port` in
-`src/emulation/pce_runtime_beetle.cpp` let the writes through, and the
-transcript then ran three master cycles long per colour — 102 per block,
-accumulating all frame. `AdvanceReplacementTo` in
-`patches/0006-huc6280-interruptible-replacement.patch` advances to the cycle
-*before* a write whose device steals a CPU cycle, so the steal lands inside the
-declared offset, and it tested only `logical_address <= 0x0003`. `IOWrite`
-steals for the VDC *and* the VCE — those are its only two stealing cases — so
-both belong in that test. Every write value and every write order was already
-correct when the clock was wrong, which is the whole argument for diffing
-traces rather than end state. The joypad port at `$1000` does not steal, so the
-VBlank slice needs the first edit and not the second.
+*A device read is a harder blocker than a device write, and it invalidated the
+plan for this region.* `00:E0EB`-`E292` was inventoried as one 15.3M block,
+"VBlank handler and pad reader", with a plan attached that said to widen the
+write channel to reach the joypad at `$1000`. Splitting it by call graph first
+turned it into eight routines, and the largest of them is not portable at all:
+`00:E195` strobes `$1000` and then *reads it back* five times a frame, and
+`00:E058` opens by reading the VDC status register. A replacement callback
+receives work RAM and registers and nothing else, so no allowlist reaches
+either. That is 7.5M of the 15.3M, and it is phase-2 device-model work rather
+than phase-1 transcription. The joypad is now on phase 2's list beside the PSG
+and the VDC. Screen for hardware-page *loads* at the same time as shared state
+and from the same disassembly.
 
-*Whether the routine runs masked decides the shadowing cost, not its length.*
-The previous slice measured that a long transcript shadows the sound driver,
-because the core will not consult the replacement hook while a replacement is
-active. `00:EB30` runs up to 18,585 cycles — more than three timer periods —
-and cost the driver nothing at all: the 298-routine cycle census before and
-after differs by exactly one row, its own. Every one of its 3,599 calls arrives
-with `I` already set, because a VCE upload has to land inside the blanking
-interval, so there was never an interrupt to shadow. Span is the upper bound;
-one `--observe-hook` run and the `input_status` column turn it into a number
-before any code is written.
+*The shadowing bill scales with total native time, not per-call length.* The
+previous slice found that a masked routine costs the sound driver nothing, and
+that stands. This one settles what the cost scales with when the routine is not
+masked. These nine transcripts are 36 to 162 cycles each — a fortieth of
+`00:E9B6` — and there are 52,911 of them; they cost the driver 1,326 entries
+and 756,342 cycles, 15.6% of the slice's own gross and the largest shadowing
+bill any slice has paid. `native cycles / interrupt period` predicts 739
+against 1,326 measured, which is the right way to budget it. The split inside
+the slice is the proof: the three wrappers that run inside the VBlank handler
+cost nothing, and the whole bill comes from the six on the main thread.
 
-*The palette group is now finished for the hybrid* at 18.2M of its 20.6M. What
-is left is unreachable rather than unported: `00:EAA7` at 205,012 cycles per
-call is nine times the checkpoint cap, and both fade drivers call the
-frame-sync spin at `00:E321`.
+Next: what is left in this region is the VBlank body itself, 3.2M across two
+stretches that write the VDC ports at `$0000`-`$0003`, interleaved with `JSR`s
+to `00:EB30`, `00:E195` and `00:ECC6` — two of which are now native, so it is
+the many-entry-points shape and needs no new capability. Then the VRAM tile
+upload `00:E3C0` (7.0M) and the tilemap upload `00:F240` (5.8M), both of which
+write the same ports.
 
-Next: the VBlank handler and pad reader (15.3M) is the largest portable block
-left and needs `$1000` on the write channel; then the VRAM tile upload
-`00:E3C0` (7.0M) and the tilemap upload `00:F240` (5.8M), both of which write
-`$0000`-`$0003`, which the channel already carries.
+Previous slice: **the palette upload `00:EB30` is native**, taking the registry
+to 39.10%. It runs once a frame, walking the thirty-two dirty flags at
+`$2CCC`-`$2CEB` and pushing sixteen colours per dirty block through the VCE at
+`$0404`/`$0405`; admitted 3,152 of 3,181 entered, 6,870,516 cycles. Its
+whole-palette arm stays emulated — one `TIA` moving 1,024 bytes is 1,024
+writes against a 512-write channel — but that arm is 29 calls of 3,599. Two
+findings came with it. Widening the write channel is **two edits, and the
+second one is in the fork**: adding `$0400`-`$0405` to
+`is_replaceable_hardware_port` let the writes through, and the transcript then
+ran three master cycles long per colour because `AdvanceReplacementTo` tested
+only `logical_address <= 0x0003`; `IOWrite` steals a CPU cycle for the VDC
+*and* the VCE, so both belong in that test. Every write value and every write
+order was already right when the clock was wrong, which is the whole argument
+for diffing traces rather than end state. And **whether the routine runs masked
+decides the shadowing cost**: `00:EB30` spans three timer periods and cost the
+driver nothing, because a VCE upload has to land inside the blanking interval,
+so all 3,599 calls arrive with `I` already set. The palette group is finished
+for the hybrid at 18.2M of 20.6M; what is left is unreachable rather than
+unported.
 
 Previous slice: **the palette shadow buffer's three leaf maintainers are
 native** — `00:E9B6`, the block interpolator (672 calls, 6,548,946 cycles);

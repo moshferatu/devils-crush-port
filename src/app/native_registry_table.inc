@@ -7,6 +7,12 @@
 // observed call totals asserted by the named ROM regression; a shortfall means
 // the remaining calls fall back to emulated assembly by design.
 
+DC_ADMITTED_ROUTINE(0x00U, 0xE200U, 1861, 1861, "verify_bank_call_wrappers_semantic")
+DC_ADMITTED_ROUTINE(0x00U, 0xE20DU, 1861, 1861, "verify_bank_call_wrappers_semantic")
+DC_ADMITTED_ROUTINE(0x00U, 0xE219U, 3523, 3523, "verify_bank_call_wrappers_semantic")
+DC_ADMITTED_ROUTINE(0x00U, 0xE241U, 11599, 11599, "verify_bank_call_wrappers_semantic")
+DC_ADMITTED_ROUTINE(0x00U, 0xE255U, 11599, 11599, "verify_bank_call_wrappers_semantic")
+DC_ADMITTED_ROUTINE(0x00U, 0xE262U, 11671, 11671, "verify_bank_call_wrappers_semantic")
 DC_ADMITTED_ROUTINE(0x00U, 0xE569U, 874, 874, "verify_unsigned_byte_multiply_semantic")
 DC_ADMITTED_ROUTINE(0x00U, 0xE624U, 5371, 5371, "verify_unsigned_multiply_round_semantic")
 DC_ADMITTED_ROUTINE(0x00U, 0xE65CU, 3700, 3700, "verify_signed_fixed_multiply_semantic")
@@ -17,6 +23,9 @@ DC_ADMITTED_ROUTINE(0x00U, 0xE93CU, 8969, 8969, "verify_palette_shadow_semantic"
 DC_ADMITTED_ROUTINE(0x00U, 0xE9B6U, 672, 672, "verify_palette_shadow_semantic")
 DC_ADMITTED_ROUTINE(0x00U, 0xEB30U, 3561, 3590, "verify_palette_shadow_semantic")
 DC_ADMITTED_ROUTINE(0x00U, 0xEBA5U, 1121, 1121, "verify_palette_shadow_semantic")
+DC_ADMITTED_ROUTINE(0x00U, 0xECC6U, 3599, 3599, "verify_bank_call_wrappers_semantic")
+DC_ADMITTED_ROUTINE(0x00U, 0xECE2U, 3599, 3599, "verify_bank_call_wrappers_semantic")
+DC_ADMITTED_ROUTINE(0x00U, 0xECF2U, 3599, 3599, "verify_bank_call_wrappers_semantic")
 DC_ADMITTED_ROUTINE(0x00U, 0xF1B4U, 1156, 1156, "verify_position_integration_semantic")
 DC_ADMITTED_ROUTINE(0x00U, 0xF241U, 404, 404, "verify_cached_position_restore_semantic")
 DC_ADMITTED_ROUTINE(0x00U, 0xF4F2U, 519, 519, "verify_actor_camera_sweep_semantic")

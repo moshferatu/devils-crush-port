@@ -339,6 +339,45 @@ any code is written: count the `input_status` column and check bit 2. If it is
 set on every call, transcript length costs nothing on this axis and the only
 caps that matter are the write and checkpoint limits.
 
+### The shadowing bill scales with total native time, not per-call length
+
+The section above prices a *long* transcript. That framing is wrong in the
+other direction too. The bank-wrapper slice is nine transcripts of 36 to 162
+master cycles each — a fortieth of `00:E9B6` — and it cost the sound driver
+1,326 entries and 756,342 cycles, 15.6% of its own 4,849,479-cycle gross and
+the largest shadowing bill any slice has paid. There are 52,911 of them.
+
+A thousand small transcripts shadow the handler exactly as well as one large
+one, because what the driver loses is proportional to how much wall time the
+hook spends unavailable, and that is the sum of the bodies. Estimate it as
+`native cycles / interrupt period` and expect to be within a factor of two.
+Per-call length only tells you whether a *single* call can straddle a period.
+
+Masking still decides which of those cycles are free, and the same slice
+separates the two cleanly: its three wrappers that run inside the VBlank
+handler cost nothing at all, and the whole bill comes from the six that run on
+the main thread.
+
+### A device *read* is a harder blocker than a device write
+
+The write channel can be widened; there is nothing to widen for a read. A
+replacement callback receives the entry's registers and a work-RAM snapshot,
+and that is the whole of its input, so a routine whose result depends on what a
+device register returns cannot be a transcript at any length.
+
+Two examples sit next to each other in bank `00`. `00:E195`, the pad reader,
+strobes `$1000` and reads it back five times a frame; `00:E058`, the VDC
+interrupt handler, opens by reading the VDC status register at `$0000`.
+Together they are 7.5M master cycles that a plan written from the write side
+had counted as portable — the plan for that region said to add `$1000` to
+`is_replaceable_hardware_port`, which would have let the strobes through and
+changed nothing about the reads.
+
+Screen for this at the same time as shared state, and from the same
+disassembly: list every load in the candidate's subtree whose address is on
+the hardware page. If there is one, the routine belongs to phase 2 with its
+device, not to phase 1.
+
 ### Rank what the deployed registry does not cover, not what is expensive
 
 A `--instruction-profile` taken *with* `--replace-registry` attributes each
@@ -433,6 +472,21 @@ touches, not the whole page. Observe the routine first and group the entries by
 stack pointer; `01:C51E` sits at `$FD` for 168,748 of its 171,734 arrivals, so
 `21FC-21FD` traces 1,068,240 writes where `21F0-21FF` traces 3,722,042. Both
 match assembly, but only the narrow one is a reasonable artifact to keep.
+
+### A transcript may change the bank mapping
+
+`CpuRegisters` carries all eight `MPR` slots and the core applies them at every
+checkpoint, so `TAM` is an ordinary instruction to a walk: set
+`registers.mpr[slot]` and charge fifteen master cycles. The bank-switching call
+wrappers do nothing else, and they are five instructions long.
+
+Two details bound it. The core validates each declared write against the
+**entry** MPR, not the checkpoint's, so a transcript that remaps a segment and
+then writes through the new mapping is not expressible today — in practice this
+costs nothing, because the shadows these routines write live in zero page and
+segment 1 never moves. And `output_registers.mpr[return_instruction >> 13]`
+must equal `return_instruction.physical_bank`, which is a real constraint when
+the walk stops somewhere it has just remapped.
 
 ### A resume address does not have to be a fixed address
 

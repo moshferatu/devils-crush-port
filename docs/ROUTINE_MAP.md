@@ -590,6 +590,59 @@ Every call to `EB30` arrives with `I` set — the upload has to land inside the
 blanking interval — which is why an 18,585-cycle transcript here costs the
 sound driver nothing, while `E9B6` at half the length costs it 1,181 entries.
 
+## The VDC interrupt handler and the bank-switching call wrappers
+
+`00:E058` is the VDC interrupt vector and it runs twice a frame. It pushes the
+four registers, reads the VDC status register into `$01`, and branches on bit
+5: clear is the raster interrupt and jumps to `E136`, set is VBlank and
+dispatches on the mode byte at `$54` — 0 to `E0EB`, 3 to `E111`. Both arms
+converge on the epilogue at `E12C`, which reloads the VDC control register
+from `$06` and returns through `RTI`.
+
+The VBlank arm is where the frame's video work is issued. It programmes the
+VDC ports at `$0000`-`$0003`, calls the palette upload `00:EB30`, calls the
+pad reader `00:E195`, bumps the frame counter at `$222A`/`$222B`, and calls
+`00:ECC6` — the wrapper that maps banks `$45`-`$47` and enters the music
+sequencer. On the standard route that is 3,599 VBlank entries and 3,599
+raster entries.
+
+Neither `00:E058` nor `00:E195` can be a transcript, and for the same reason:
+both read a device register. `E058`'s first act is `LDA $0000`, and `E195`
+strobes the joypad at `$1000` and reads it back five times a frame, once per
+multitap port, shifting the low nibble of each read into `$2013,Y` and
+computing newly-pressed bits into `$2018,Y`. A replacement callback sees work
+RAM and registers and nothing else, so both wait on a native device model.
+
+The wrappers around them are ported. There are five, all the same idiom, and
+`$1E`, `$1F`, `$20`, `$21` are the zero-page shadows of MPR2 through MPR5:
+
+| Entry | Calls | Master cycles | What it does |
+| --- | ---: | ---: | --- |
+| `E241` | 11,599 | 1,333,638 | Save MPR2/MPR3, map `$30` into them, `JSR $E262` |
+| `E255` | 11,599 | 1,054,086 | Store the result in `$2A`, restore MPR2/MPR3 |
+| `E262` | 11,671 | 706,284 | Build `$40xx` from `$2F` in `$2CBE`/`$2CBF` and jump |
+| `ECC6` | 3,599 | 583,038 | Save MPR2-MPR4, map banks `$45`-`$47`, `JSR $ECF2` |
+| `ECE2` | 3,599 | 424,491 | Restore MPR2-MPR4 |
+| `E219` | 3,523 | 426,936 | Map the mode's fixed bank pair, indexed by `$55` |
+| `E20D` | 1,861 | 135,192 | Map `$30` into MPR4/MPR5 |
+| `ECF2` | 3,599 | 129,564 | Write `$4003` into `$47`/`$48` and jump through it |
+| `E200` | 1,861 | 123,666 | Read the `$8000` reference table through that slot |
+
+Every callee is entered at `$4000 + mem[$2F]`, so each bank begins with a jump
+table of up to 128 entries — which is why `02:4088`, `08:4030` and `45:4003`
+all sit in the first page of their bank.
+
+All nine run natively, admitted on every call. They are the first transcripts
+in the port to change the bank mapping: `TAM` sets `registers.mpr[slot]` and
+costs fifteen master cycles, and the core applies the slots at every
+checkpoint. Two of the stops are indirect jumps — `E26E` and `ECFA` — and the
+walk stops in front of both rather than resolving them, because each reads a
+vector the same transcript just wrote.
+
+`00:ED5E`, the fifth wrapper, is deliberately absent: it is entered with two of
+its four stack slots already pushed by its caller, so its entry contract is not
+its own.
+
 ## Camera-visibility sweep
 
 Before the actor loop runs, `00:F4F2` walks all 127 slots and calls `00:F4FC`

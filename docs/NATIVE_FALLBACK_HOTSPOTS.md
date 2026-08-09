@@ -2577,6 +2577,47 @@ steals a CPU cycle for the VDC *and* the VCE, so both belong in that test.
 Every write value and every write order was already right when the clock was
 wrong, which is the argument for diffing traces rather than end state.
 
+## The bank-switching call wrappers, and two corrections
+
+`00:E0EB`–`E292` was the next lumped row: 15.3M, "VBlank handler and pad
+reader", with a plan attached that said to widen the write channel to reach
+the joypad at `$1000`. Splitting it by call graph before reading any
+instructions turned one row into eight routines:
+
+| Routine | Master cycles | Outcome |
+| --- | ---: | --- |
+| `00:E195` pad reader | 6,929,670 | Blocked: reads `$1000` |
+| `00:E241`/`E255` banked call | 2,878,650 | Native, every call |
+| `00:E111`–`E13F` VBlank body | 2,412,678 | Unported; writes the VDC ports |
+| `00:E262` trampoline | 953,343 | Native, every call |
+| `00:E140`–`E178` VBlank epilogue | 821,685 | Unported; writes the VDC ports |
+| `00:E058`–`E110` dispatcher | 544,104 | Blocked: reads `$0000` |
+| `00:E219` bank pair | 501,639 | Native, every call |
+| `00:E1FD`/`E20D` asset resolver | 377,085 | Native, every call |
+
+The first correction is that the plan's prescription was aimed at the wrong
+side of the bus. `00:E195` writes `$1000` to strobe the pad and then **reads**
+it back, and `00:E058` opens by reading the VDC status register. A replacement
+callback receives work RAM and registers, so nothing on an allowlist reaches
+either. Almost half the row is phase-2 device-model work, not phase-1
+transcription, and the write channel never came into it.
+
+What went instead was the bank-switching linkage — the three wrappers here plus
+the two at `00:ECC6` — nine entry points, 52,911 calls, 4,849,479 cycles,
+admitted on every call. They are the first transcripts in the port to change
+the bank mapping, which turned out to need no new capability: `CpuRegisters`
+already carries all eight `MPR` slots and a checkpoint already applies them.
+
+The second correction is to the shadowing rule two sections up. These
+transcripts are 36 to 162 master cycles each, and they cost the sound driver
+1,326 entries and 756,342 cycles — 15.6% of the slice's own gross, the largest
+bill any slice has paid. Per-call length is not what the cost scales with;
+total native time is, because what the driver loses is proportional to how long
+the hook is unavailable. `native cycles / interrupt period` predicts 739 here
+against 1,326 measured, which is the right way to budget it. Masking still
+decides which cycles are free: the three wrappers that run inside the VBlank
+handler cost nothing, and the whole bill comes from the six on the main thread.
+
 ## Use on future families
 
 Follow the command and interpretation rules in

@@ -84,7 +84,7 @@ native entry points:
 | `00:FC03`–`FCB3`, `00:FD07`–`FDF1` | 173,243,694 | 13.41% | Sound driver — **already ported** (see below) |
 | bank `45` (`4000`–`4A9B`) | 45,586,602 | 3.53% | Music sequencer — 55% ported; the rest is **blocked**, see below |
 | `00:E93C`–`EBD6` | 20,611,233 | 1.59% | Palette shadow buffer — 18.2M ported; the rest is **blocked**, see below |
-| `00:E0EB`–`E292` | 15,342,522 | 1.19% | VBlank handler and pad reader |
+| `00:E0EB`–`E292` | 15,342,522 | 1.19% | VBlank handler, pad reader and call wrappers — 4.0M ported; 7.5M is **blocked**, see below |
 | `00:E3C0`–`E47C` | 7,031,316 | 0.54% | VRAM tile upload |
 | `00:F240`–`F4FB` | 5,761,776 | 0.45% | Tilemap upload, camera-sweep outer |
 | `03:694A`–`6A37` | 5,274,582 | 0.41% | Gameplay tail |
@@ -174,19 +174,48 @@ Remaining real logic, in rough order of value:
    Still untouched in this item: VRAM tiles `00:E3C0`–`E47C` (7.0M) and
    tilemap `00:F240`–`F452` (5.8M). Both write the VDC ports at `$0000`-`$0003`,
    which the write channel already carries.
-3. **VBlank handler and pad reader** (15.3M), now the largest single portable
-   block left. Needs the write channel widened again to reach the joypad port
-   at `$1000` — the same bounded-register move made for the PSG and then for
-   the VCE. That move is two edits, not one, and the VCE slice is the worked
-   example. The allowlist is `is_replaceable_hardware_port` in
-   `src/emulation/pce_runtime_beetle.cpp`, in this repo. The second edit is in
-   the fork: `AdvanceReplacementTo` in
-   `patches/0006-huc6280-interruptible-replacement.patch` advances to the
-   cycle *before* a write whose device steals a CPU cycle, so the steal lands
-   inside the declared offset. Miss it and the transcript runs three master
-   cycles long per port write, with correct values in the wrong places on the
-   clock. `$1000` does not steal — `IOWrite` only calls `StealCycle` for the
-   VDC and VCE cases — so the joypad needs the first edit and not the second.
+3. **The `00:E0EB`–`E292` region** (15.3M). This was listed as one block, "the
+   VBlank handler and pad reader", and the plan for it was to widen the write
+   channel to reach the joypad port at `$1000`. Both halves of that were
+   wrong, and the correction is the useful part.
+
+   It is not one block. It is an interrupt dispatcher, a VBlank body, a pad
+   reader, an asset resolver and three of the game's five bank-switching call
+   wrappers, and they have nothing in common but an address range — the same
+   mistake the palette row above made. Separated:
+
+   | Routine | Master cycles | State |
+   | --- | ---: | --- |
+   | `00:E195` pad reader | 6,929,670 | **blocked**: reads `$1000` |
+   | `00:E241`/`E255` banked call | 2,878,650 | **native** |
+   | `00:E111`–`E13F` VBlank body | 2,412,678 | writes the VDC ports; unported |
+   | `00:E262` trampoline | 953,343 | **native** |
+   | `00:E140`–`E178` VBlank epilogue | 821,685 | writes the VDC ports; unported |
+   | `00:E058`–`E110` dispatcher and prologue | 544,104 | **blocked**: reads `$0000` |
+   | `00:E219` bank pair | 501,639 | **native** |
+   | `00:E1FD`/`E20D` asset resolver | 377,085 | **native** |
+
+   The widening would not have helped, because the blocker is a device
+   **read**, not a write. `00:E195` strobes `$1000` and then reads it back
+   five times a frame; `00:E058` opens by reading the VDC status register at
+   `$0000`. A replacement callback receives work RAM and registers and nothing
+   else, so no allowlist reaches either one. **A routine that reads a device
+   register cannot be a transcript until that device has a native model**, which
+   makes both of these phase 2 rather than phase 1 — and puts the joypad on
+   phase 2's list beside the PSG and the VDC.
+
+   The bank-switching wrappers went instead, together with the two in the
+   `00:ECC6` family, and they are done: nine entry points, 52,911 calls,
+   4,849,479 cycles, admitted on every call. They carry no game logic — they
+   are the game's linkage — and they were the first transcripts in the port to
+   change the bank mapping. `TAM` is expressible because `CpuRegisters` carries
+   all eight `MPR` slots and a checkpoint applies them.
+
+   What is left in the region is the VBlank body itself, 3.2M across two
+   stretches that write the VDC ports at `$0000`-`$0003`. The channel already
+   carries those, and the body is interleaved with `JSR`s to `00:EB30`,
+   `00:E195` and `00:ECC6` — two of which are now native — so it is the
+   many-entry-points shape, not a new capability.
 4. **Gameplay tails** (~20M spread thin, no single address above 0.14%).
 5. **Boot and reset path.** Off the census route's hot path but required.
 6. **The frame-sync spin loop** (584.8M). Trivial code, but it is where the
@@ -194,6 +223,11 @@ Remaining real logic, in rough order of value:
 
 ### Phase 2 — native device models
 
+- **Joypad.** The smallest of the three and now a phase-1 blocker rather than
+  a nicety: `00:E195` cannot be ported until `$1000` reads can be answered
+  natively. Model the strobe/select protocol against the `InputFrame` the host
+  already supplies to `run_frame`. Acceptance: the pad reader's transcript
+  diffs clean against assembly, which also settles 6.9M of phase 1.
 - **PSG.** Accept `$0800`–`$0809`, model the six channels, DDA output, noise
   and LFO, and produce the `AudioView` float samples. Acceptance:
   `audio_sha256`. This is the larger of the two, because Beetle's PSG

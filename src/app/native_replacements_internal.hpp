@@ -1229,6 +1229,16 @@ replace_palette_shadow(
     std::span<const std::byte> work_ram,
     std::span<const std::byte> rom);
 
+// The bank-switching call wrappers. One walk shared by nine entry points:
+// four heads and the addresses each one's call comes back to. Every transcript
+// stops in front of an instruction the core executes itself -- an RTS, one of
+// the two JSRs, or one of the two indirect jumps.
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_bank_call_wrappers(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram,
+    std::span<const std::byte> rom);
+
 [[nodiscard]] std::optional<emulation::RoutineReplacement>
 replace_actor_dispatch_vector(
     const emulation::RoutineEntry& entry,
