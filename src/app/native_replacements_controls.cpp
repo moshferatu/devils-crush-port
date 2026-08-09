@@ -4188,6 +4188,188 @@ replace_actor_queue_return(
 }
 
 [[nodiscard]] std::optional<RoutineReplacement>
+replace_actor_camera_sweep(
+    const RoutineEntry& entry,
+    const std::span<const std::byte> work_ram)
+{
+    // The loop around the already-native camera-activation test at `00:F4FC`,
+    // which decides for each of the 127 actor slots whether bit 7 of its
+    // attribute byte -- the bit `01:C510` and `08:407C` both gate on -- should
+    // be set for this frame.
+    //
+    //   F4F2 CLX        6   F4F3 JSR $F4FC 21
+    //   F4F6 INX        6   F4F7 CPX #$7F   6
+    //   F4F9 BNE $F4F3 6/12 F4FB RTS        (stays emulated)
+    //
+    // Like the SAT submission driver this is one shared walk over the
+    // addresses control arrives at with no replacement active: the loop's
+    // initializer, and each of the three `RTS` instructions the child returns
+    // through. Every walk ends on the next `JSR`, which the machine executes
+    // and which re-enters the child's own replacement.
+    //
+    // Nothing here reads a memory operand or does arithmetic, so neither
+    // decimal mode nor the T flag can reach this transcript and neither is
+    // guarded against.
+    constexpr std::uint8_t kBank = 0x00U;
+    constexpr std::uint16_t kSweepInitPc = 0xF4F2U;
+    constexpr std::uint16_t kCallPc = 0xF4F3U;
+    constexpr std::uint16_t kAdvancePc = 0xF4F6U;
+    constexpr std::uint16_t kComparePc = 0xF4F7U;
+    constexpr std::uint16_t kLoopBranchPc = 0xF4F9U;
+    constexpr std::uint16_t kTerminalPc = 0xF4FBU;
+    constexpr std::uint16_t kChildPc = 0xF4FCU;
+    // The child's three exits: off-camera clear, inside-camera clear, and the
+    // below-camera set.
+    constexpr std::uint16_t kClearedReturnPc = 0xF523U;
+    constexpr std::uint16_t kInsideReturnPc = 0xF545U;
+    constexpr std::uint16_t kBelowReturnPc = 0xF54EU;
+    constexpr std::uint16_t kPushedReturn = 0xF4F5U;
+    constexpr std::uint8_t kSlotCount = 0x7FU;
+
+    constexpr std::uint32_t kImplied = 6U;
+    constexpr std::uint32_t kImmediate = 6U;
+    constexpr std::uint32_t kBranchTaken = 12U;
+    constexpr std::uint32_t kBranchNotTaken = 6U;
+
+    if (entry.routine.physical_bank != kBank
+        || (entry.routine.logical_pc != kSweepInitPc
+            && entry.routine.logical_pc != kClearedReturnPc
+            && entry.routine.logical_pc != kInsideReturnPc
+            && entry.routine.logical_pc != kBelowReturnPc)) {
+        return std::nullopt;
+    }
+    if (work_ram.size() < 0x2000U) {
+        return std::nullopt;
+    }
+
+    const auto set_nz = [](std::uint8_t status, const std::uint8_t value) {
+        status = static_cast<std::uint8_t>(
+            status & static_cast<std::uint8_t>(~0x82U));
+        if (value == 0U) {
+            status = static_cast<std::uint8_t>(status | 0x02U);
+        } else if ((value & 0x80U) != 0U) {
+            status = static_cast<std::uint8_t>(status | 0x80U);
+        }
+        return status;
+    };
+
+    auto registers = entry.registers;
+    std::uint32_t cycle = 0U;
+    RoutineReplacement replacement{};
+    replacement.checkpoints.reserve(5U);
+    replacement.work_ram_writes.reserve(2U);
+
+    const auto boundary =
+        [&](const std::uint16_t instruction_pc,
+            const std::uint16_t resume_pc) {
+            registers.program_counter = resume_pc;
+            replacement.checkpoints.push_back({
+                .interrupt_sample_master_cycle_offset = cycle - 3U,
+                .master_cycle_offset = cycle,
+                .instruction = {kBank, instruction_pc},
+                .registers = registers,
+            });
+        };
+    const auto step =
+        [&](const std::uint16_t instruction_pc,
+            const std::uint16_t resume_pc,
+            const std::uint32_t cycles) {
+            cycle += cycles;
+            boundary(instruction_pc, resume_pc);
+        };
+
+    auto pc = entry.routine.logical_pc;
+    for (;;) {
+        switch (pc) {
+        case kSweepInitPc:
+            // CLX clears X without touching a flag.
+            registers.x = 0U;
+            step(kSweepInitPc, kCallPc, kImplied);
+            pc = kCallPc;
+            break;
+
+        case kClearedReturnPc:
+        case kInsideReturnPc:
+        case kBelowReturnPc: {
+            // These addresses are only this sweep's returns when the frame
+            // under the stack pointer is the one the loop's JSR pushed.
+            const auto low = std::to_integer<std::uint8_t>(
+                work_ram[0x0100U
+                    + static_cast<std::uint8_t>(
+                        registers.stack_pointer + 1U)]);
+            const auto high = std::to_integer<std::uint8_t>(
+                work_ram[0x0100U
+                    + static_cast<std::uint8_t>(
+                        registers.stack_pointer + 2U)]);
+            if (static_cast<std::uint16_t>(
+                    low | (static_cast<std::uint16_t>(high) << 8U))
+                != kPushedReturn) {
+                return std::nullopt;
+            }
+            registers.stack_pointer =
+                static_cast<std::uint8_t>(registers.stack_pointer + 2U);
+            step(pc, kAdvancePc, kSubroutineReturn);
+            pc = kAdvancePc;
+            break;
+        }
+
+        case kAdvancePc:
+            registers.x = static_cast<std::uint8_t>(registers.x + 1U);
+            registers.status = set_nz(registers.status, registers.x);
+            step(kAdvancePc, kComparePc, kImplied);
+            registers.status = static_cast<std::uint8_t>(
+                registers.x >= kSlotCount
+                    ? (registers.status | 0x01U)
+                    : (registers.status & static_cast<std::uint8_t>(~0x01U)));
+            registers.status = set_nz(
+                registers.status,
+                static_cast<std::uint8_t>(registers.x - kSlotCount));
+            step(kComparePc, kLoopBranchPc, kImmediate);
+            if (registers.x == kSlotCount) {
+                step(kLoopBranchPc, kTerminalPc, kBranchNotTaken);
+                pc = kTerminalPc;
+            } else {
+                step(kLoopBranchPc, kCallPc, kBranchTaken);
+                pc = kCallPc;
+            }
+            break;
+
+        case kCallPc:
+            push_return_address(
+                replacement,
+                registers,
+                {kBank, kCallPc},
+                kPushedReturn,
+                cycle);
+            step(kCallPc, kChildPc, kSubroutineCall);
+            pc = kChildPc;
+            break;
+
+        default:
+            // Unreachable: every pc the walk assigns is a case above.
+            return std::nullopt;
+        }
+
+        if (pc == kChildPc || pc == kTerminalPc) {
+            break;
+        }
+    }
+
+    if (replacement.checkpoints.empty()
+        || registers.program_counter != pc) {
+        return std::nullopt;
+    }
+
+    replacement.return_instruction = {
+        .physical_bank = kBank,
+        .logical_pc = pc,
+    };
+    replacement.output_registers = registers;
+    replacement.body_master_cycles = cycle;
+    return replacement;
+}
+
+[[nodiscard]] std::optional<RoutineReplacement>
 replace_actor_slot_reset(
     const RoutineEntry& entry)
 {

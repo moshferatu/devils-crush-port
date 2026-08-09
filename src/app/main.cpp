@@ -2710,6 +2710,21 @@ parse_logical_address_range(const std::string_view text)
                                        .logical_pc = 0xC606U,
                                    }
                            && request.all_calls;
+                       const bool proven_actor_camera_sweep =
+                           request.routine.physical_bank == 0x00U
+                           && (request.routine.logical_pc == 0xF4F2U
+                               || request.routine.logical_pc == 0xF523U
+                               || request.routine.logical_pc == 0xF545U
+                               || request.routine.logical_pc == 0xF54EU)
+                           && request.all_calls;
+                       const bool proven_sat_submission_step =
+                           request.routine.physical_bank == 0x08U
+                           && (request.routine.logical_pc == 0x4036U
+                               || request.routine.logical_pc == 0x4063U
+                               || request.routine.logical_pc == 0x4075U
+                               || request.routine.logical_pc == 0x4088U
+                               || request.routine.logical_pc == 0x4097U)
+                           && request.all_calls;
                        const bool proven_actor_dispatch_call =
                            request.routine
                                    == RoutineKey{
@@ -2772,6 +2787,8 @@ parse_logical_address_range(const std::string_view text)
                            && !proven_actor_queue_call
                            && !proven_actor_queue_return
                            && !proven_sat_tail_clear
+                           && !proven_sat_submission_step
+                           && !proven_actor_camera_sweep
                            && !proven_position_integration
                            && !proven_motion_damping
                            && !proven_motion_rotation

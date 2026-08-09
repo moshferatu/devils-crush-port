@@ -315,6 +315,40 @@ Two things that ranking will show which are *not* targets, and why:
   64-127 to ROM bank `((x & 0x0F) + 32)`, so `45` is ROM bank `25`, not a
   mirror of a low bank.
 
+### A routine that calls a native child in a loop: one walk, many entry points
+
+A routine whose body is mostly `JSR` into an already-native child cannot be
+replaced as a routine. `08:4036` calls `08:40DF` twenty-one times a frame at
+about 944 cycles each; one transaction covering it would blow past both the
+512-write cap and every interrupt horizon.
+
+Stop thinking of a replacement as covering a routine. The hook fires at every
+instruction where no replacement is active, so what matters is the set of
+addresses control *arrives* at with the machine between transactions: the
+routine's head, and the address after each `JSR` it makes. Write one walk that
+starts at any of them and runs until it reaches the next `JSR` — which the
+machine then executes, re-entering the child's own replacement.
+
+Make it one shared function rather than one transcript per entry, because the
+stopping points chain: falling out of one loop drops into the next, so an
+arrival at one return address can legitimately end at a completely different
+one. A `switch` on the current pc, one case per instruction group, with a stop
+list checked after each case, reads cleanly and handles every entry uniformly.
+
+Two things to get right:
+
+- Shadow any byte the walk both writes and re-reads. Queue cursors that a loop
+  decrements and then reloads are the usual case; reading them from `work_ram`
+  gives the value before the transaction's own writes.
+- Entry counts change when the hooks are deployed together, because one walk
+  absorbs arrivals another would have seen. Record the deployed-together
+  numbers in the regression, not the solo ones.
+- A child's `RTS` is not necessarily *this* loop's return. If the child has
+  other callers, read the frame under the stack pointer and decline when it is
+  not the address the loop's own `JSR` pushed. `00:F4FC` has fourteen such
+  arrivals on the standard route, which is why its sweep is admitted at 66,432
+  of 66,446 rather than at 100%.
+
 ### The stack is work RAM, and a transcript may push and pop
 
 `RoutineReplacement`'s comment says the outer `RTS` "remains emulated,

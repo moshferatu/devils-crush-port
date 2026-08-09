@@ -1704,6 +1704,23 @@ if(TARGET devils_crush)
         )
 
         add_test(
+            NAME dc_rom_actor_camera_sweep_semantic
+            CONFIGURATIONS Release
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/actor-camera-sweep-semantic-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_actor_camera_sweep_semantic.cmake"
+        )
+        set_tests_properties(
+            dc_rom_actor_camera_sweep_semantic
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
             NAME dc_rom_actor_loop_linkage_semantic
             CONFIGURATIONS Release
             COMMAND
@@ -1751,6 +1768,23 @@ if(TARGET devils_crush)
         )
         set_tests_properties(
             dc_rom_sat_tail_clear_semantic
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_sat_submission_semantic
+            CONFIGURATIONS Release
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/sat-submission-semantic-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_sat_submission_semantic.cmake"
+        )
+        set_tests_properties(
+            dc_rom_sat_submission_semantic
             PROPERTIES LABELS rom_required
         )
 

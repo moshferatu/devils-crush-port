@@ -5444,7 +5444,61 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
 
 ## Active Work
 
-Current owner: Claude. Current slice: the main actor loop and the collision
+Current owner: Claude. Current slice: the camera-visibility sweep at
+`00:F4F2` is native, taking the deployed registry to **30.41%** of all master
+cycles and 81.4% of the portable pool. `00:F4FC` -- which decides whether bit 7
+of a slot's attribute byte, the bit both `01:C510` and `08:407C` gate on, is
+set this frame -- has been native for a long time; what was left was the loop
+around it, and it took the same shared-walk treatment as the SAT driver. Four
+entry points: the initializer at `00:F4F2` and the three `RTS` instructions the
+child returns through (`00:F523` off-camera clear, `00:F545` inside-camera
+clear, `00:F54E` below-camera set). One new wrinkle: `00:F4FC` is also called
+from outside this loop, fourteen times on the route, and those arrivals reach
+the same three `RTS` addresses with a different frame under the stack pointer.
+The walk reads the frame and declines rather than assume the caller, which is
+why this is the first of these walks admitted at less than 100% -- 66,432 of
+66,446. Its regression traces the attribute bytes at `$3080-$30FE` as well as
+the stack, because they are the sweep's actual product: 1,125,975 writes
+matching assembly exactly.
+
+Four whole loops are now native instruction for instruction -- the actor loop,
+the collision sweep, the camera sweep, and the SAT submission. Outside the
+frame-sync spin, 94% of what the machine still emulates is the sound driver;
+the entire rest is 17,195,439 cycles, 1.33%, with no single address above
+0.14%. The remaining bank-`00` clusters were screened and are out of scope:
+`00:E93C-EBD6` (20.6M) is VCE palette DMA, `00:E3C0-E47C` (7.0M) and
+`00:F25F-F452` (5.5M) are VRAM/tilemap uploads, and `00:E0EB-E232` (11.4M) is
+the VBlank handler whose pad reader writes the hardware page at `$1000`,
+outside the proven write channel.
+
+Previous slice: the satellite-attribute submission driver
+at `08:4036-40C2` is native, taking the deployed registry to **30.07%** of all
+master cycles and 80.5% of the portable pool. It had been rejected twice
+before, for a real reason: it calls `08:40DF` twenty-one times a frame at ~944
+cycles each, so a whole-routine transaction would blow past both the 512-write
+cap and every interrupt horizon. The way through was to stop treating a
+replacement as covering a routine. The hook fires at every instruction where no
+replacement is active, so what matters is the set of addresses control
+*arrives* at between transactions -- here the head at `08:4036` and the four
+addresses a `JSR $40DF` returns to (`08:4063`, `08:4075`, `08:4088`,
+`08:4097`). One shared walk starts at any of them and runs until the next
+`JSR`, which the machine executes and which re-enters the native emitter. It is
+shared rather than five transcripts because the stopping points chain: draining
+one queue empty falls into the next, so an arrival at `08:4063` can end
+anywhere from `08:4060` to `08:40C3`. Entry counts change accordingly --
+`08:4088` sees 3,492 arrivals alone but 2,567 deployed with the others. Three
+modelling notes: the walk shadows the two queue cursors it both writes and
+re-reads; `PHY` charges its cycles before it pushes, so its write lands at the
+instruction's end, the opposite of the `JSR`/`BSR` convention below; and a
+sprite count of `$40` or more skips the tail clear, which this route never
+produces, so the walk stops at `08:40A6` rather than run an unexercised
+transcript. Bank `08`'s SAT path now runs natively from its first instruction
+to its last, leaving only the four `JSR` instructions and the closing `RTS`.
+Everything still emulated outside the spin loop and the sound driver is
+21,582,381 cycles, 1.67% of the machine, with no single address worth more than
+0.14%.
+
+Previous slice: the main actor loop and the collision
 sweep are now native instruction for instruction. `01:C51E` (`BSR $C52C`),
 `01:C520` (`JSR $C606`), and `01:C654` (the queue filer's `RTS`) close the
 11.4M cycles of pure stack traffic that were the loop's whole remainder, and

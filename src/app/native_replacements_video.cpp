@@ -61,6 +61,19 @@ constexpr std::uint8_t kUnsupportedFlags = 0x28U;
     return result;
 }
 
+// ASL A. Carry takes bit seven before the shift; N and Z follow the result.
+[[nodiscard]] std::uint8_t shift_left(
+    std::uint8_t& status,
+    const std::uint8_t value) noexcept
+{
+    status = static_cast<std::uint8_t>(
+        status & static_cast<std::uint8_t>(~kCarryFlag));
+    status = static_cast<std::uint8_t>(status | (value >> 7U));
+    const auto result = static_cast<std::uint8_t>(value << 1U);
+    status = set_nz(status, result);
+    return result;
+}
+
 [[nodiscard]] std::uint8_t subtract_with_borrow(
     std::uint8_t& status,
     const std::uint8_t accumulator,
@@ -607,6 +620,464 @@ replace_sprite_emit_run(
         return std::nullopt;
     }
 
+    replacement.output_registers = registers;
+    replacement.body_master_cycles = cycle;
+    return replacement;
+}
+
+[[nodiscard]] std::optional<RoutineReplacement>
+replace_sat_submission_step(
+    const RoutineEntry& entry,
+    const std::span<const std::byte> work_ram)
+{
+    // The driver that surrounds `08:40DF` and `08:40C3`. It points the VDC at
+    // the satellite attribute table, drains the three queues `01:C606` fills,
+    // emits the ball's own slot, and falls into the tail clear.
+    //
+    // It cannot be replaced as one routine: a single transaction would have to
+    // subsume every nested `08:40DF` call, twenty-one per frame at ~944 cycles
+    // each. So the transcript is a walk that starts at any of the five
+    // addresses control can arrive at with no replacement active -- the
+    // routine's head, and the four returns from a `JSR $40DF` -- and runs
+    // until it reaches the next `JSR`, which the machine then executes and
+    // which re-enters the native emitter. The walk is shared because the
+    // stopping points chain: draining one queue empty falls straight into the
+    // next, so an arrival at `08:4063` can end anywhere from `08:4060` to
+    // `08:40C3`.
+    //
+    //   4036  point MAWR at $7800 + ($58 << 2), select VWR
+    //   4056  drain $2C3A/$2CBC downward   -> JSR $40DF at 4060
+    //   4068  drain $2BBA/$2CBA downward   -> JSR $40DF at 4072
+    //   407A  emit slot 0 when on camera and not hidden -> JSR at 4085
+    //   4088  drain $2BBA from $7F down to $2CBB -> JSR $40DF at 4094
+    //   409B  re-point MAWR past the emitted entries -> falls into 40C3
+    constexpr std::uint8_t kBank = 0x08U;
+    constexpr std::uint16_t kEntryPc = 0x4036U;
+    constexpr std::uint16_t kFirstReturnPc = 0x4063U;
+    constexpr std::uint16_t kSecondReturnPc = 0x4075U;
+    constexpr std::uint16_t kBallReturnPc = 0x4088U;
+    constexpr std::uint16_t kThirdReturnPc = 0x4097U;
+    constexpr std::uint16_t kTailClearPc = 0x40C3U;
+    constexpr std::uint16_t kSpriteCountGuardPc = 0x40A6U;
+
+    constexpr std::uint16_t kVdcAddress = 0x0000U;
+    constexpr std::uint16_t kVdcDataLow = 0x0002U;
+    constexpr std::uint16_t kVdcDataHigh = 0x0003U;
+    constexpr std::uint16_t kPortShadowAddress = 0x2006U;
+    constexpr std::uint16_t kSpriteCountAddress = 0x204EU;
+    constexpr std::uint16_t kSpriteBaseAddress = 0x2058U;
+    constexpr std::uint16_t kFirstCursorAddress = 0x2CBCU;
+    constexpr std::uint16_t kSecondCursorAddress = 0x2CBAU;
+    constexpr std::uint16_t kThirdCursorAddress = 0x2CBBU;
+    constexpr std::uint16_t kFirstQueueBase = 0x2C3AU;
+    constexpr std::uint16_t kSharedQueueBase = 0x2BBAU;
+    constexpr std::uint16_t kAttributesBase = 0x3080U;
+
+    constexpr std::uint32_t kImplied = 6U;
+    constexpr std::uint32_t kImmediate = 6U;
+    constexpr std::uint32_t kZeroPage = 12U;
+    constexpr std::uint32_t kAbsolute = 15U;
+    constexpr std::uint32_t kAbsoluteIndexed = 15U;
+    constexpr std::uint32_t kAbsoluteReadModifyWrite = 21U;
+    constexpr std::uint32_t kPortStore = 18U;
+    constexpr std::uint32_t kPush = 9U;
+    constexpr std::uint32_t kPull = 12U;
+    constexpr std::uint32_t kBranchTaken = 12U;
+    constexpr std::uint32_t kBranchNotTaken = 6U;
+
+    if (entry.routine.physical_bank != kBank
+        || (entry.routine.logical_pc != kEntryPc
+            && entry.routine.logical_pc != kFirstReturnPc
+            && entry.routine.logical_pc != kSecondReturnPc
+            && entry.routine.logical_pc != kBallReturnPc
+            && entry.routine.logical_pc != kThirdReturnPc)) {
+        return std::nullopt;
+    }
+    if (work_ram.size() < 0x2000U) {
+        return std::nullopt;
+    }
+    if ((entry.registers.status & kUnsupportedFlags) != 0U) {
+        return std::nullopt;
+    }
+    // The VDC ports are only addressable while the hardware page is mapped at
+    // segment 0, which is also what the core's write validator requires.
+    if (entry.registers.mpr[0] != 0xFFU) {
+        return std::nullopt;
+    }
+
+    // The walk re-reads two of the bytes it writes: each queue's cursor is
+    // decremented and then loaded again at the top of its loop. Shadow them
+    // rather than reading stale RAM.
+    auto first_cursor = std::to_integer<std::uint8_t>(
+        work_ram[kFirstCursorAddress - 0x2000U]);
+    auto second_cursor = std::to_integer<std::uint8_t>(
+        work_ram[kSecondCursorAddress - 0x2000U]);
+    const auto third_cursor = std::to_integer<std::uint8_t>(
+        work_ram[kThirdCursorAddress - 0x2000U]);
+    auto sprite_count = std::to_integer<std::uint8_t>(
+        work_ram[kSpriteCountAddress - 0x2000U]);
+
+    auto registers = entry.registers;
+    std::uint32_t cycle = 0U;
+    RoutineReplacement replacement{};
+    // The longest walk is an entry that finds all three queues empty: about
+    // thirty instructions and a dozen writes.
+    replacement.checkpoints.reserve(40U);
+    replacement.work_ram_writes.reserve(16U);
+
+    const auto boundary =
+        [&](const std::uint16_t instruction_pc,
+            const std::uint16_t resume_pc,
+            const std::uint32_t sample_back) {
+            registers.program_counter = resume_pc;
+            replacement.checkpoints.push_back({
+                .interrupt_sample_master_cycle_offset = cycle - sample_back,
+                .master_cycle_offset = cycle,
+                .instruction = {kBank, instruction_pc},
+                .registers = registers,
+            });
+        };
+    const auto step =
+        [&](const std::uint16_t instruction_pc,
+            const std::uint16_t resume_pc,
+            const std::uint32_t cycles) {
+            cycle += cycles;
+            boundary(instruction_pc, resume_pc, 3U);
+        };
+    const auto write =
+        [&](const std::uint16_t instruction_pc,
+            const std::uint16_t resume_pc,
+            const std::uint32_t cycles,
+            const std::uint16_t address,
+            const std::uint8_t value) {
+            cycle += cycles;
+            replacement.work_ram_writes.push_back({
+                .instruction = {kBank, instruction_pc},
+                .logical_address = address,
+                .value = value,
+                .master_cycle_offset = cycle,
+            });
+            // A store to a VDC port samples two CPU cycles early: its last
+            // cycle is the wait the VDC steals after the bus write, not the
+            // LastCycle every other instruction ends on.
+            boundary(
+                instruction_pc,
+                resume_pc,
+                address <= kVdcDataHigh ? 6U : 3U);
+        };
+    // The two identical MAWR setups at 4041 and 40A8: A << 2 becomes the low
+    // half of the word address and $78 the high half.
+    const auto point_write_address =
+        [&](const std::uint16_t base_pc) {
+            const auto shift_low = static_cast<std::uint16_t>(base_pc);
+            const auto shift_high = static_cast<std::uint16_t>(base_pc + 1U);
+            const auto clear_carry = static_cast<std::uint16_t>(base_pc + 2U);
+            const auto add_low = static_cast<std::uint16_t>(base_pc + 3U);
+            const auto store_low = static_cast<std::uint16_t>(base_pc + 5U);
+            const auto clear_accumulator =
+                static_cast<std::uint16_t>(base_pc + 8U);
+            const auto add_high = static_cast<std::uint16_t>(base_pc + 9U);
+            const auto store_high =
+                static_cast<std::uint16_t>(base_pc + 11U);
+            const auto select_data =
+                static_cast<std::uint16_t>(base_pc + 14U);
+            const auto store_shadow =
+                static_cast<std::uint16_t>(base_pc + 16U);
+            const auto store_register =
+                static_cast<std::uint16_t>(base_pc + 18U);
+            const auto after =
+                static_cast<std::uint16_t>(base_pc + 21U);
+
+            registers.accumulator = shift_left(
+                registers.status,
+                registers.accumulator);
+            step(shift_low, shift_high, kImplied);
+            registers.accumulator = shift_left(
+                registers.status,
+                registers.accumulator);
+            step(shift_high, clear_carry, kImplied);
+            registers.status = static_cast<std::uint8_t>(
+                registers.status & static_cast<std::uint8_t>(~kCarryFlag));
+            step(clear_carry, add_low, kImplied);
+            registers.accumulator = add_with_carry(
+                registers.status,
+                registers.accumulator,
+                0x00U);
+            step(add_low, store_low, kImmediate);
+            write(
+                store_low,
+                clear_accumulator,
+                kPortStore,
+                kVdcDataLow,
+                registers.accumulator);
+            registers.accumulator = 0U;
+            step(clear_accumulator, add_high, kImplied);
+            registers.accumulator = add_with_carry(
+                registers.status,
+                registers.accumulator,
+                0x78U);
+            step(add_high, store_high, kImmediate);
+            write(
+                store_high,
+                select_data,
+                kPortStore,
+                kVdcDataHigh,
+                registers.accumulator);
+            registers.accumulator = 0x02U;
+            registers.status = set_nz(registers.status, registers.accumulator);
+            step(select_data, store_shadow, kImmediate);
+            write(
+                store_shadow,
+                store_register,
+                kZeroPage,
+                kPortShadowAddress,
+                registers.accumulator);
+            write(
+                store_register,
+                after,
+                kPortStore,
+                kVdcAddress,
+                registers.accumulator);
+        };
+
+    auto pc = entry.routine.logical_pc;
+    for (;;) {
+        switch (pc) {
+        case 0x4036U:  // LDA #$00 : STA $06 : STA $0000
+            registers.accumulator = 0U;
+            registers.status = set_nz(registers.status, 0U);
+            step(0x4036U, 0x4038U, kImmediate);
+            write(0x4038U, 0x403AU, kZeroPage, kPortShadowAddress, 0U);
+            write(0x403AU, 0x403DU, kPortStore, kVdcAddress, 0U);
+            // LDA $58 : STA $4E
+            registers.accumulator = std::to_integer<std::uint8_t>(
+                work_ram[kSpriteBaseAddress - 0x2000U]);
+            registers.status = set_nz(registers.status, registers.accumulator);
+            step(0x403DU, 0x403FU, kZeroPage);
+            sprite_count = registers.accumulator;
+            write(
+                0x403FU,
+                0x4041U,
+                kZeroPage,
+                kSpriteCountAddress,
+                sprite_count);
+            point_write_address(0x4041U);
+            pc = 0x4056U;
+            break;
+
+        case 0x4056U:  // LDY $2CBC : BEQ $4068
+            registers.y = first_cursor;
+            registers.status = set_nz(registers.status, registers.y);
+            step(0x4056U, 0x4059U, kAbsolute);
+            if (registers.y == 0U) {
+                step(0x4059U, 0x4068U, kBranchTaken);
+                pc = 0x4068U;
+                break;
+            }
+            step(0x4059U, 0x405BU, kBranchNotTaken);
+            // DEY : LDA $2C3A,Y : TAX
+            registers.y = static_cast<std::uint8_t>(registers.y - 1U);
+            registers.status = set_nz(registers.status, registers.y);
+            step(0x405BU, 0x405CU, kImplied);
+            registers.accumulator = std::to_integer<std::uint8_t>(
+                work_ram[kFirstQueueBase - 0x2000U + registers.y]);
+            registers.status = set_nz(registers.status, registers.accumulator);
+            step(0x405CU, 0x405FU, kAbsoluteIndexed);
+            registers.x = registers.accumulator;
+            registers.status = set_nz(registers.status, registers.x);
+            step(0x405FU, 0x4060U, kImplied);
+            pc = 0x4060U;  // JSR $40DF
+            break;
+
+        case 0x4063U:  // DEC $2CBC : BRA $4056
+            first_cursor = static_cast<std::uint8_t>(first_cursor - 1U);
+            registers.status = set_nz(registers.status, first_cursor);
+            write(
+                0x4063U,
+                0x4066U,
+                kAbsoluteReadModifyWrite,
+                kFirstCursorAddress,
+                first_cursor);
+            step(0x4066U, 0x4056U, kBranchTaken);
+            pc = 0x4056U;
+            break;
+
+        case 0x4068U:  // LDY $2CBA : BEQ $407A
+            registers.y = second_cursor;
+            registers.status = set_nz(registers.status, registers.y);
+            step(0x4068U, 0x406BU, kAbsolute);
+            if (registers.y == 0U) {
+                step(0x406BU, 0x407AU, kBranchTaken);
+                pc = 0x407AU;
+                break;
+            }
+            step(0x406BU, 0x406DU, kBranchNotTaken);
+            // DEY : LDA $2BBA,Y : TAX
+            registers.y = static_cast<std::uint8_t>(registers.y - 1U);
+            registers.status = set_nz(registers.status, registers.y);
+            step(0x406DU, 0x406EU, kImplied);
+            registers.accumulator = std::to_integer<std::uint8_t>(
+                work_ram[kSharedQueueBase - 0x2000U + registers.y]);
+            registers.status = set_nz(registers.status, registers.accumulator);
+            step(0x406EU, 0x4071U, kAbsoluteIndexed);
+            registers.x = registers.accumulator;
+            registers.status = set_nz(registers.status, registers.x);
+            step(0x4071U, 0x4072U, kImplied);
+            pc = 0x4072U;  // JSR $40DF
+            break;
+
+        case 0x4075U:  // DEC $2CBA : BRA $4068
+            second_cursor = static_cast<std::uint8_t>(second_cursor - 1U);
+            registers.status = set_nz(registers.status, second_cursor);
+            write(
+                0x4075U,
+                0x4078U,
+                kAbsoluteReadModifyWrite,
+                kSecondCursorAddress,
+                second_cursor);
+            step(0x4078U, 0x4068U, kBranchTaken);
+            pc = 0x4068U;
+            break;
+
+        case 0x407AU: {  // LDX #$00 : LDA $3080,X : BPL/AND #$20/BNE
+            registers.x = 0U;
+            registers.status = set_nz(registers.status, 0U);
+            step(0x407AU, 0x407CU, kImmediate);
+            const auto attributes = std::to_integer<std::uint8_t>(
+                work_ram[kAttributesBase - 0x2000U]);
+            registers.accumulator = attributes;
+            registers.status = set_nz(registers.status, attributes);
+            step(0x407CU, 0x407FU, kAbsoluteIndexed);
+            if ((attributes & 0x80U) == 0U) {
+                step(0x407FU, 0x4088U, kBranchTaken);
+                pc = 0x4088U;
+                break;
+            }
+            step(0x407FU, 0x4081U, kBranchNotTaken);
+            registers.accumulator =
+                static_cast<std::uint8_t>(registers.accumulator & 0x20U);
+            registers.status = set_nz(registers.status, registers.accumulator);
+            step(0x4081U, 0x4083U, kImmediate);
+            if (registers.accumulator != 0U) {
+                step(0x4083U, 0x4088U, kBranchTaken);
+                pc = 0x4088U;
+                break;
+            }
+            step(0x4083U, 0x4085U, kBranchNotTaken);
+            pc = 0x4085U;  // JSR $40DF
+            break;
+        }
+
+        case 0x4088U:  // LDY #$7F
+            registers.y = 0x7FU;
+            registers.status = set_nz(registers.status, registers.y);
+            step(0x4088U, 0x408AU, kImmediate);
+            pc = 0x408AU;
+            break;
+
+        case 0x408AU:  // CPY $2CBB : BEQ $409B
+            registers.status =
+                compare(registers.status, registers.y, third_cursor);
+            step(0x408AU, 0x408DU, kAbsolute);
+            if (registers.y == third_cursor) {
+                step(0x408DU, 0x409BU, kBranchTaken);
+                pc = 0x409BU;
+                break;
+            }
+            step(0x408DU, 0x408FU, kBranchNotTaken);
+            // LDA $2BBA,Y : TAX : PHY
+            registers.accumulator = std::to_integer<std::uint8_t>(
+                work_ram[kSharedQueueBase - 0x2000U + registers.y]);
+            registers.status = set_nz(registers.status, registers.accumulator);
+            step(0x408FU, 0x4092U, kAbsoluteIndexed);
+            registers.x = registers.accumulator;
+            registers.status = set_nz(registers.status, registers.x);
+            step(0x4092U, 0x4093U, kImplied);
+            // PHY writes at $2100|S and then drops S; unlike JSR it charges
+            // its cycles first, so the write lands at the instruction's end.
+            {
+                const auto slot = static_cast<std::uint16_t>(
+                    0x2100U + registers.stack_pointer);
+                registers.stack_pointer = static_cast<std::uint8_t>(
+                    registers.stack_pointer - 1U);
+                write(0x4093U, 0x4094U, kPush, slot, registers.y);
+            }
+            pc = 0x4094U;  // JSR $40DF
+            break;
+
+        case 0x4097U:  // PLY : DEY : BRA $408A
+            registers.stack_pointer =
+                static_cast<std::uint8_t>(registers.stack_pointer + 1U);
+            registers.y = std::to_integer<std::uint8_t>(
+                work_ram[0x0100U + registers.stack_pointer]);
+            registers.status = set_nz(registers.status, registers.y);
+            step(0x4097U, 0x4098U, kPull);
+            registers.y = static_cast<std::uint8_t>(registers.y - 1U);
+            registers.status = set_nz(registers.status, registers.y);
+            step(0x4098U, 0x4099U, kImplied);
+            step(0x4099U, 0x408AU, kBranchTaken);
+            pc = 0x408AU;
+            break;
+
+        case 0x409BU:  // LDA #$00 : STA $06 : STA $0000 : LDA $4E : CMP #$40
+            registers.accumulator = 0U;
+            registers.status = set_nz(registers.status, 0U);
+            step(0x409BU, 0x409DU, kImmediate);
+            write(0x409DU, 0x409FU, kZeroPage, kPortShadowAddress, 0U);
+            write(0x409FU, 0x40A2U, kPortStore, kVdcAddress, 0U);
+            registers.accumulator = sprite_count;
+            registers.status = set_nz(registers.status, sprite_count);
+            step(0x40A2U, 0x40A4U, kZeroPage);
+            registers.status =
+                compare(registers.status, registers.accumulator, 0x40U);
+            step(0x40A4U, kSpriteCountGuardPc, kImmediate);
+            // A count of $40 or more skips the tail clear entirely. The route
+            // never produces one, so the branch and everything past it stay
+            // emulated rather than run an unproven transcript.
+            if (sprite_count >= 0x40U) {
+                pc = kSpriteCountGuardPc;
+                break;
+            }
+            step(kSpriteCountGuardPc, 0x40A8U, kBranchNotTaken);
+            point_write_address(0x40A8U);
+            // SEC : LDA #$40 : SBC $4E : TAY
+            registers.status =
+                static_cast<std::uint8_t>(registers.status | kCarryFlag);
+            step(0x40BDU, 0x40BEU, kImplied);
+            registers.accumulator = 0x40U;
+            registers.status = set_nz(registers.status, registers.accumulator);
+            step(0x40BEU, 0x40C0U, kImmediate);
+            registers.accumulator = subtract_with_borrow(
+                registers.status,
+                registers.accumulator,
+                sprite_count);
+            step(0x40C0U, 0x40C2U, kZeroPage);
+            registers.y = registers.accumulator;
+            registers.status = set_nz(registers.status, registers.y);
+            step(0x40C2U, kTailClearPc, kImplied);
+            pc = kTailClearPc;
+            break;
+
+        default:
+            // Unreachable: every pc the walk assigns is a case above.
+            return std::nullopt;
+        }
+
+        if (pc == 0x4060U || pc == 0x4072U || pc == 0x4085U || pc == 0x4094U
+            || pc == kTailClearPc || pc == kSpriteCountGuardPc) {
+            break;
+        }
+    }
+
+    if (replacement.checkpoints.empty()
+        || registers.program_counter != pc) {
+        return std::nullopt;
+    }
+
+    replacement.return_instruction = {
+        .physical_bank = kBank,
+        .logical_pc = pc,
+    };
     replacement.output_registers = registers;
     replacement.body_master_cycles = cycle;
     return replacement;

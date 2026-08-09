@@ -1198,6 +1198,11 @@ replace_sat_tail_clear(
     const emulation::RoutineEntry& entry);
 
 [[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_sat_submission_step(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram);
+
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
 replace_actor_dispatch_vector(
     const emulation::RoutineEntry& entry,
     std::span<const std::byte> work_ram);
@@ -1217,6 +1222,11 @@ replace_actor_queue_call(
 
 [[nodiscard]] std::optional<emulation::RoutineReplacement>
 replace_actor_queue_return(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram);
+
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_actor_camera_sweep(
     const emulation::RoutineEntry& entry,
     std::span<const std::byte> work_ram);
 

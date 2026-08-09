@@ -2227,6 +2227,112 @@ Together these took the registry from 28.22% to 29.49% of all master cycles,
 and from 77.0% to 80.4% of the portable pool. The main actor loop and the
 collision sweep are now native instruction for instruction.
 
+## One walk, five entry points: the SAT submission driver
+
+With both loops closed, the largest remaining entry outside the spin loop and
+the sound driver was the satellite-attribute driver at `08:4036-40C2`, at
+9,128,259 cycles. It had been rejected twice before, and for a real reason: it
+calls `08:40DF` twenty-one times per frame at about 944 cycles each, so a
+whole-routine transaction would have to subsume every one of them — far past
+both the 512-write cap and any interrupt horizon.
+
+The way through is to stop thinking of a replacement as covering a routine.
+The hook fires at every instruction where no replacement is active, so the
+addresses that matter are the ones control *arrives* at with the machine
+between transactions. For this driver there are five: the head at `08:4036`,
+and the four addresses a `JSR $40DF` returns to (`08:4063`, `08:4075`,
+`08:4088`, `08:4097`). One shared walk starts at any of them and runs until it
+reaches the next `JSR`, which the machine executes and which re-enters the
+native emitter.
+
+The walk is shared rather than five separate transcripts because the stopping
+points chain. Draining one queue empty falls straight into the next, so an
+arrival at `08:4063` can end anywhere from `08:4060` to `08:40C3`:
+
+```
+4036  point MAWR at $7800 + ($58 << 2), select VWR
+4056  drain $2C3A/$2CBC downward           -> JSR $40DF at 4060
+4068  drain $2BBA/$2CBA downward           -> JSR $40DF at 4072
+407A  emit slot 0 when on camera, not hidden -> JSR $40DF at 4085
+4088  drain $2BBA from $7F down to $2CBB   -> JSR $40DF at 4094
+409B  re-point MAWR past the emitted entries, fall into 40C3
+```
+
+Four details shaped it:
+
+- The walk re-reads two bytes it writes — each queue's cursor is decremented
+  and then loaded again at the top of its loop — so those are shadowed rather
+  than read from RAM that the transaction has not committed yet.
+- `PHY` at `08:4093` charges its cycles before it pushes, so its write lands
+  at the instruction's *end*, the opposite of the `JSR`/`BSR` convention
+  established in the previous section. Both appear in this one routine.
+- `$4E` reaching `$40` skips the tail clear. The route never produces one, so
+  the walk stops at `08:40A6` and leaves the branch to assembly rather than
+  running a transcript nothing has exercised.
+- Entry counts change when the hooks are deployed together: `08:4088` is
+  entered 3,492 times alone but 2,567 times alongside the others, because
+  their walks reach it inline through the ball slot's two branches.
+
+The regression scopes its trace to the driver's own work-RAM output — the port
+shadow at `$2006`, the sprite count at `$204E`, and the two cursors at `$2CBA`
+and `$2CBC` — 233,267 writes matching assembly exactly. Its VDC port writes
+have no work-RAM trace, so the census carries them, and it hashes the rendered
+framebuffer every frame.
+
+This took the registry from 29.49% to **30.07%** of all master cycles. The SAT
+path in bank `08` now runs natively from its first instruction to its last;
+only the four `JSR $40DF` instructions and the closing `RTS` are left to the
+machine. Everything still emulated outside the spin loop and the sound driver
+is 21,582,381 cycles, 1.67% of the machine, and no single address in it is
+worth more than 0.14%.
+
+## The camera-visibility sweep, on the same pattern
+
+The technique above generalises, and the next pass simply applied it. The
+ranking's remaining bank-`00` clusters split cleanly into work that is out of
+scope and work that is not:
+
+| Cluster | Cycles | Decision |
+| --- | ---: | --- |
+| `00:E93C-EBD6` | 20,611,233 | VCE palette DMA to `$0402-$0405` — video driver |
+| `00:E0EB-E232` | 11,416,392 | VBlank handler; its pad reader writes `$1000`, outside the proven write channel |
+| `00:E3C0-E47C` | 7,031,316 | VRAM tile upload through the data ports — graphics driver |
+| `00:F25F-F452` | 5,468,121 | Tilemap upload, same |
+| `00:F4F2-F54E` | 4,393,089 | **The camera-visibility sweep** |
+
+`00:F4FC` — which decides whether bit 7 of a slot's attribute byte, the bit
+both `01:C510` and `08:407C` gate on, is set this frame — has been native for a
+long time. What was left was the loop around it:
+
+```
+F4F2 CLX        6   F4F3 JSR $F4FC 21
+F4F6 INX        6   F4F7 CPX #$7F   6
+F4F9 BNE $F4F3 6/12 F4FB RTS        (stays emulated)
+```
+
+Four entry points: the initializer, and the three `RTS` instructions the child
+returns through (`00:F523` off-camera clear, `00:F545` inside-camera clear,
+`00:F54E` below-camera set). One shared walk, ending on the next `JSR`.
+
+The one new wrinkle is that `00:F4FC` is *also* called from outside this loop,
+fourteen times on the route. Those arrivals reach the same three `RTS`
+addresses with a different frame under the stack pointer, so the walk reads the
+frame and declines rather than assume the caller — ten at `00:F523` and four at
+`00:F54E`. That is why this is the first of these walks admitted at less than
+100%: 66,432 of 66,446.
+
+The regression traces the attribute bytes at `$3080-$30FE` as well as the
+stack, because they are the sweep's actual product and prove it visits every
+slot in the right order at the right cycle: 1,125,975 writes matching assembly
+exactly.
+
+This took the registry from 30.07% to **30.41%**, and 80.5% to **81.4%** of the
+portable pool. Four whole loops are now native instruction for instruction —
+the actor loop, the collision sweep, the camera sweep, and the SAT submission.
+Outside the spin loop, 94% of what the machine still emulates is the sound
+driver; the entire rest is 17,195,439 cycles, 1.33%, with no single address
+above 0.14%.
+
 ## Use on future families
 
 Follow the command and interpretation rules in

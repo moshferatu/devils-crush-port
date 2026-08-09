@@ -62,6 +62,59 @@ replace_native_gameplay_routine_impl(
         }) {
         return detail::replace_sat_tail_clear(entry);
     }
+    // One shared walk, four entry points: the camera sweep's initializer and
+    // the three addresses `00:F4FC` returns through.
+    if (entry.routine
+            == RoutineKey{
+                .physical_bank = 0x00U,
+                .logical_pc = 0xF4F2U,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x00U,
+                .logical_pc = 0xF523U,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x00U,
+                .logical_pc = 0xF545U,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x00U,
+                .logical_pc = 0xF54EU,
+            }) {
+        return detail::replace_actor_camera_sweep(entry, work_ram);
+    }
+    // One shared walk, five entry points: the SAT submission driver's head and
+    // the four addresses a `JSR $40DF` returns to.
+    if (entry.routine
+            == RoutineKey{
+                .physical_bank = 0x08U,
+                .logical_pc = 0x4036U,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x08U,
+                .logical_pc = 0x4063U,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x08U,
+                .logical_pc = 0x4075U,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x08U,
+                .logical_pc = 0x4088U,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x08U,
+                .logical_pc = 0x4097U,
+            }) {
+        return detail::replace_sat_submission_step(entry, work_ram);
+    }
     if (entry.routine
         == RoutineKey{
             .physical_bank = 0x01U,

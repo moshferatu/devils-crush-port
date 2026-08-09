@@ -361,6 +361,30 @@ identities for all fixed actors. Subsequent rule mapping has assigned all 59
 initializer identities a bounded gameplay-facing or conservative
 compatibility role.
 
+## Camera-visibility sweep
+
+Before the actor loop runs, `00:F4F2` walks all 127 slots and calls `00:F4FC`
+on each to decide whether the slot is on camera this frame:
+
+```
+F4F2  CLX
+F4F3  JSR $F4FC     per-slot visibility test
+F4F6  INX
+F4F7  CPX #$7F
+F4F9  BNE $F4F3
+F4FB  RTS
+```
+
+`00:F4FC` compares the slot's position at `$3300:$3380,X` against the camera
+anchor `$A9:$AA` biased by `$F0`, and sets or clears bit 7 of `$3080,X`
+accordingly. It has three returns: `00:F523` clears the bit for a slot that is
+not presented at all, `00:F545` clears it for a slot above the camera, and
+`00:F54E` returns after `00:F546` has set it for a slot below. That bit is what
+`01:C510` dispatches on and what `08:407C` checks before emitting slot `$00`.
+
+`00:F4FC` is also called from outside this loop; the sweep's replacement reads
+the frame under the stack pointer to tell the two apart.
+
 ## Main actor loop
 
 `01:C500` sets up the per-frame actor pass and `01:C510` is its head. The loop
@@ -402,11 +426,25 @@ at `01:CBCF`.
 
 Physical bank `$08` owns the normal-table actor-to-SAT presentation path.
 `08:4036` selects VDC register 0, begins at the existing sprite count in
-zero-page `$58`, and points the VDC memory-write address into the 256-word
-staging table at VRAM `$7800-$78FF`. It submits queued slots around one
-ascending sweep of all 127 actor records. The main sweep calls `08:40DF`
-only when `$3080,X` has camera bit 7 set and hidden bit 5 clear, then clears
-the unused SAT tail.
+zero-page `$58` (copied to `$4E`), and points the VDC memory-write address at
+`$7800 + ($4E << 2)` in the 256-word staging table at VRAM `$7800-$78FF`. It
+then submits slots in four stages, each calling `08:40DF`:
+
+| Stage | Source | Cursor | Call site |
+| --- | --- | --- | --- |
+| `08:4056` | `$2C3A,Y` | `$2CBC`, drained to zero | `08:4060` |
+| `08:4068` | `$2BBA,Y` | `$2CBA`, drained to zero | `08:4072` |
+| `08:407A` | slot `$00` | — | `08:4085` |
+| `08:4088` | `$2BBA,Y` | `Y` from `$7F` down to `$2CBB` | `08:4094` |
+
+Slot `$00` is emitted only when `$3080` has camera bit 7 set and hidden bit 5
+clear. The third stage preserves `Y` across its call with `PHY`/`PLY`, since
+`08:40DF` clobbers it. `08:409B` then re-points the write address past the
+entries just emitted and falls into the tail clear at `08:40C3`, unless `$4E`
+has reached `$40`, in which case `08:40A6` skips straight to the `RTS`.
+
+Every instruction of this driver runs natively except the four `JSR $40DF`
+call instructions and the closing `RTS`.
 
 The queues it drains at `08:4056` are filled by `01:C606`, which the main
 actor loop calls once per dispatched slot after the handler returns. It reads
