@@ -361,6 +361,43 @@ identities for all fixed actors. Subsequent rule mapping has assigned all 59
 initializer identities a bounded gameplay-facing or conservative
 compatibility role.
 
+## Main actor loop
+
+`01:C500` sets up the per-frame actor pass and `01:C510` is its head. The loop
+walks slots `$00-$7F` through the cursor at `$204D`:
+
+```
+C510  LDA $3000,X   slot state; positive means idle
+C513  BPL $C523
+C515  LDA $3080,X   attributes
+C518  BMI $C51E     camera bit set: dispatch
+C51A  AND #$02
+C51C  BNE $C523     suppressed
+C51E  BSR $C52C     dispatch: vector out of $3F00/$3F80, JMP ($202F)
+C520  JSR $C606     file the slot into one of the SAT queues
+C523  INC $4D       tail: advance the cursor
+C525  LDX $4D
+C527  CPX #$80
+C529  BNE $C510
+C52B  RTS
+```
+
+`01:C52C` copies the slot's handler vector out of the `$3F00`/`$3F80` jump
+table into `$2F`/`$30` and jumps through it; the handler returns to `01:C520`.
+`01:C606` is the queue filer described under the SAT presentation below, and
+its `RTS` at `01:C654` returns to the tail at `01:C523`.
+
+Every instruction listed here runs natively. The walk at `01:C510` absorbs the
+tail for each slot it skips, so `01:C523` exists as a separate replacement only
+for the arrivals a dispatch hands back.
+
+The collision sweep at `01:CB48` has the same shape: a walk that rejects most
+slots inline, a call out to the vertical scan at `01:CC1A` for the rest, the
+`BCC` at `01:CB61` that resolves the result, and the shared tail at `01:CB6B`
+that advances the cursor at `$2064` and the countdown at `$2060`. A set carry
+means a hit and sets bit 2 of the latch at `$2077` before the emulated helper
+at `01:CBCF`.
+
 ## Fixed-actor SAT presentation
 
 Physical bank `$08` owns the normal-table actor-to-SAT presentation path.

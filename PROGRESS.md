@@ -5444,7 +5444,43 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
 
 ## Active Work
 
-Current owner: Claude. Current slice: `01:C523` (actor-loop tail) and
+Current owner: Claude. Current slice: the main actor loop and the collision
+sweep are now native instruction for instruction. `01:C51E` (`BSR $C52C`),
+`01:C520` (`JSR $C606`), and `01:C654` (the queue filer's `RTS`) close the
+11.4M cycles of pure stack traffic that were the loop's whole remainder, and
+`01:CB61`/`01:CB6B` do for the collision sweep what `01:C523` did for the actor
+loop -- the `01:CB48` walk absorbs the tail for every slot it rejects, but a
+slot that reaches the vertical scan at `01:CC1A` leaves the transaction there,
+so the branch and advance that follow are separate arrivals. All five run every
+arrival: 171,734 each for the linkage trio, 84,735 and 400,892 for the sweep
+tail. The deployed registry moves from 28.22% to 29.49% of all master cycles
+and from 77.0% to 80.4% of the portable pool.
+
+The linkage transcripts settle a question the contract's own comment had left
+looking closed. "The RTS itself remains emulated, preserving stack and
+caller-return behavior" describes the convention for a whole-routine
+replacement, not a limit on transcripts: `output_registers` carries the stack
+pointer, the stack page is ordinary work RAM, and the nested collision
+compositions had been writing `JSR` frames all along. Pricing them needs three
+facts from the core -- `JSR` and `BSR` push before the first `ADDCYC`, so both
+stack bytes carry the instruction's *start* offset where a read-modify-write
+carries its end; `JSR`/`RTS` are 21 master cycles and `BSR` is 24; and
+`RMB`/`SMB` cost 21 rather than the 18 an ordinary zero-page read-modify-write
+costs. The regression scopes its trace to `21FC-21FD`, the stack bytes the loop
+uses at its usual `$FD` stack pointer, so a mismodelled push order, value, or
+timestamp shows up directly in 1,068,240 traced writes; a wider `21F0-21FF`
+trace also matches assembly exactly at 3,722,042 writes but is too large to
+keep. Release census `9036a9de...` and Debug census `a95d0c34...` are unchanged
+from the assembly baselines, for each hook alone and for the whole registry.
+
+Also corrected on the way through: bank `45` is the PSG sound driver, not a
+video bank. It only runs in interrupt context, mapped in by the `TAM #$40` at
+`00:FC10`, and on a 384KB image Mednafen maps physical banks 64-127 to ROM bank
+`((x & 0x0F) + 32)`, so `45` is ROM bank `25` rather than a mirror. Folding its
+46,078,773 cycles in with the timer handler's 249,525,441 makes the sound
+driver 91% of everything still emulated outside the frame-sync spin loop.
+
+Previous slice: `01:C523` (actor-loop tail) and
 `08:40C3` (satellite attribute-table tail clear) are now instruction-boundary
 transcripts and run every arrival -- 446,976 and 4,334 hooked on their own --
 taking the deployed registry from 26.15% to 28.22% of all master cycles,

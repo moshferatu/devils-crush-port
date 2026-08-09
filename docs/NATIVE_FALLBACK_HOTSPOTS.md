@@ -2168,7 +2168,64 @@ Together these took the registry from 26.15% to 28.22% of all master cycles.
 What is left of the actor loop is 11,508,888 cycles of pure stack traffic: the
 `BSR` and `JSR` that reach the dispatch and the queue filer, and the two `RTS`
 instructions the contract deliberately leaves emulated so stack and
-caller-return behaviour stay the machine's.
+caller-return behaviour stay the machine's. The next section takes them.
+
+## The two loops' linkage, and stack traffic as a target
+
+The following pass re-ranked the same way and found that the top five entries
+that are neither the spin loop nor the sound driver were all linkage — calls,
+returns, and the branch that resolves a call's result:
+
+| Routine | Cycles still emulated | What it is |
+| --- | ---: | --- |
+| `01:C51E` | 4,158,384 | `BSR $C52C` into the dispatch half |
+| `01:C520` | 3,637,518 | `JSR $C606` into the queue filer |
+| `01:C654` | 3,639,030 | the queue filer's `RTS` |
+| `01:CB6B` | 4,105,008 | the collision sweep's `INC`/`DEC`/`BNE` tail |
+| `01:CB61` | 1,029,657 | `BCC` on the vertical scan's result |
+
+The last two are the collision sweep's version of what `01:C523` was for the
+actor loop, and they were found the same way. The `01:CB48` walk absorbs the
+tail for every slot it rejects, but a slot that reaches the vertical scan at
+`01:CC1A` leaves the transaction there, so the branch and advance that follow
+are separate arrivals. `01:CB6B` is hooked rather than `01:CB61` alone because
+the hit path at `01:CB68` also falls into it; hooked on its own the advance
+sees all 400,892 iterations.
+
+The first three are the more interesting result, because the earlier note above
+read the contract's "the RTS itself remains emulated, preserving stack and
+caller-return behavior" as a prohibition. It is not one. `output_registers`
+carries the stack pointer, the stack page is ordinary work RAM, and
+`native_replacements_collision.cpp` had been modelling `JSR` frames for the
+nested collision compositions all along. What the comment describes is the
+convention for a *whole-routine* replacement, not a limit on what a transcript
+may contain.
+
+Pricing them needs three facts from `huc6280_ops.inc` and `huc6280.cpp`:
+
+- `JSR` (`$20`) and `BSR` (`$44`) both `PUSH` twice **before** the first
+  `ADDCYC`, so each stack byte carries the instruction's *start* offset, not
+  its end. `RMW_ZP` writes after `LastCycle()`, so an `INC $64` carries its
+  end offset. The two conventions differ and both are observable.
+- `JSR` is 7 CPU cycles and `BSR` is 8 (`ADDCYC(4)` plus a taken `JR`), so 21
+  and 24 master cycles. `RTS` is 7, and pops, so it writes nothing at all.
+- `RMB`/`SMB` are 7 CPU cycles, not the 6 an ordinary zero-page read-modify-
+  write costs: `RMW_ZP_B` adds a cycle that `RMW_ZP` does not.
+
+Each of the three linkage transcripts is one instruction long, and `01:C654`
+reads the frame under the stack pointer to confirm it is the one `01:C520`
+pushed rather than assuming that any arrival at that `RTS` is this loop's.
+
+The regression scopes its write range to `21FC-21FD`, the pair of stack bytes
+the loop uses at its usual `$FD` stack pointer. That is deliberate: a
+mismodelled push order, pushed value, or push timestamp shows up directly in
+1,068,240 traced writes instead of only as downstream divergence. A wider
+`21F0-21FF` trace over the same route also matches assembly exactly, at
+3,722,042 writes, but is too large to keep as an artifact.
+
+Together these took the registry from 28.22% to 29.49% of all master cycles,
+and from 77.0% to 80.4% of the portable pool. The main actor loop and the
+collision sweep are now native instruction for instruction.
 
 ## Use on future families
 

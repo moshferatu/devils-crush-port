@@ -3993,6 +3993,200 @@ replace_actor_queue_registration(
     return replacement;
 }
 
+// The three linkage instructions that hold the main actor loop together. Every
+// other instruction between `01:C510` and `01:C654` is already native, so what
+// is left is the call into the dispatch half, the call into the queue filer,
+// and the queue filer's return. They are pure stack traffic and carry no game
+// state, but they are also the loop's whole remaining cost, so each gets an
+// exact transcript rather than staying emulated for want of a classifier.
+//
+// Mednafen pushes before it charges any cycle for JSR and BSR (huc6280_ops.inc
+// cases $20 and $44 both PUSH twice, then ADDCYC), so both stack writes carry
+// the instruction's *start* offset. RTS pops, which is a read, so it writes
+// nothing at all.
+namespace {
+
+constexpr std::uint32_t kSubroutineCall = 21U;
+constexpr std::uint32_t kBranchSubroutineCall = 24U;
+constexpr std::uint32_t kSubroutineReturn = 21U;
+
+// Push `value` as `instruction` would at `offset`, in hardware order: high
+// byte at $2100|S, low byte at $2100|(S-1), stack pointer down two.
+void push_return_address(
+    RoutineReplacement& replacement,
+    emulation::CpuRegisters& registers,
+    const RoutineKey instruction,
+    const std::uint16_t value,
+    const std::uint32_t offset)
+{
+    replacement.work_ram_writes.push_back({
+        .instruction = instruction,
+        .logical_address = static_cast<std::uint16_t>(
+            0x2100U + registers.stack_pointer),
+        .value = static_cast<std::uint8_t>(value >> 8U),
+        .master_cycle_offset = offset,
+    });
+    replacement.work_ram_writes.push_back({
+        .instruction = instruction,
+        .logical_address = static_cast<std::uint16_t>(
+            0x2100U
+            + static_cast<std::uint8_t>(registers.stack_pointer - 1U)),
+        .value = static_cast<std::uint8_t>(value & 0x00FFU),
+        .master_cycle_offset = offset,
+    });
+    registers.stack_pointer =
+        static_cast<std::uint8_t>(registers.stack_pointer - 2U);
+}
+
+}  // namespace
+
+[[nodiscard]] std::optional<RoutineReplacement>
+replace_actor_dispatch_call(
+    const RoutineEntry& entry)
+{
+    // C51E BSR $C52C 24 — the loop's call into the dispatch half. The target
+    // is already native, so the transcript is the push pair and nothing else.
+    constexpr RoutineKey kRoutine{
+        .physical_bank = 0x01U,
+        .logical_pc = 0xC51EU,
+    };
+    constexpr std::uint16_t kPushedReturn = 0xC51FU;
+    constexpr std::uint16_t kDispatchPc = 0xC52CU;
+
+    if (entry.routine != kRoutine) {
+        return std::nullopt;
+    }
+
+    auto registers = entry.registers;
+    RoutineReplacement replacement{};
+    replacement.work_ram_writes.reserve(2U);
+    push_return_address(
+        replacement,
+        registers,
+        kRoutine,
+        kPushedReturn,
+        0U);
+
+    // BSR touches no flag, so the only register news is the new stack pointer.
+    registers.program_counter = kDispatchPc;
+    replacement.checkpoints.push_back({
+        .interrupt_sample_master_cycle_offset = kBranchSubroutineCall - 3U,
+        .master_cycle_offset = kBranchSubroutineCall,
+        .instruction = kRoutine,
+        .registers = registers,
+    });
+    replacement.return_instruction = {
+        .physical_bank = kRoutine.physical_bank,
+        .logical_pc = kDispatchPc,
+    };
+    replacement.output_registers = registers;
+    replacement.body_master_cycles = kBranchSubroutineCall;
+    return replacement;
+}
+
+[[nodiscard]] std::optional<RoutineReplacement>
+replace_actor_queue_call(
+    const RoutineEntry& entry)
+{
+    // C520 JSR $C606 21 — reached when the dispatched handler returns. The
+    // queue filer it calls is itself native.
+    constexpr RoutineKey kRoutine{
+        .physical_bank = 0x01U,
+        .logical_pc = 0xC520U,
+    };
+    constexpr std::uint16_t kPushedReturn = 0xC522U;
+    constexpr std::uint16_t kQueuePc = 0xC606U;
+
+    if (entry.routine != kRoutine) {
+        return std::nullopt;
+    }
+
+    auto registers = entry.registers;
+    RoutineReplacement replacement{};
+    replacement.work_ram_writes.reserve(2U);
+    push_return_address(
+        replacement,
+        registers,
+        kRoutine,
+        kPushedReturn,
+        0U);
+
+    registers.program_counter = kQueuePc;
+    replacement.checkpoints.push_back({
+        .interrupt_sample_master_cycle_offset = kSubroutineCall - 3U,
+        .master_cycle_offset = kSubroutineCall,
+        .instruction = kRoutine,
+        .registers = registers,
+    });
+    replacement.return_instruction = {
+        .physical_bank = kRoutine.physical_bank,
+        .logical_pc = kQueuePc,
+    };
+    replacement.output_registers = registers;
+    replacement.body_master_cycles = kSubroutineCall;
+    return replacement;
+}
+
+[[nodiscard]] std::optional<RoutineReplacement>
+replace_actor_queue_return(
+    const RoutineEntry& entry,
+    const std::span<const std::byte> work_ram)
+{
+    // C654 RTS 21 — the queue filer's return, and the last emulated
+    // instruction in the loop. Both of the filer's exits reach it, so this is
+    // where the loop hands back to the already-native tail at `01:C523`.
+    //
+    // The return address is read out of the stack rather than assumed: `C654`
+    // is only this loop's return when the frame under the stack pointer is the
+    // one `C520` pushed.
+    constexpr RoutineKey kRoutine{
+        .physical_bank = 0x01U,
+        .logical_pc = 0xC654U,
+    };
+    constexpr std::uint16_t kPushedReturn = 0xC522U;
+    constexpr std::uint16_t kAdvancePc = 0xC523U;
+
+    if (entry.routine != kRoutine || work_ram.size() < 0x2000U) {
+        return std::nullopt;
+    }
+
+    const auto low_offset = static_cast<std::size_t>(
+        0x0100U
+        + static_cast<std::uint8_t>(entry.registers.stack_pointer + 1U));
+    const auto high_offset = static_cast<std::size_t>(
+        0x0100U
+        + static_cast<std::uint8_t>(entry.registers.stack_pointer + 2U));
+    const auto pulled = static_cast<std::uint16_t>(
+        std::to_integer<std::uint8_t>(work_ram[low_offset])
+        | (static_cast<std::uint16_t>(
+               std::to_integer<std::uint8_t>(work_ram[high_offset]))
+           << 8U));
+    if (pulled != kPushedReturn) {
+        return std::nullopt;
+    }
+
+    // RTS touches no flag either; it pops two bytes and resumes past them.
+    auto registers = entry.registers;
+    registers.stack_pointer =
+        static_cast<std::uint8_t>(registers.stack_pointer + 2U);
+    registers.program_counter = kAdvancePc;
+
+    RoutineReplacement replacement{};
+    replacement.checkpoints.push_back({
+        .interrupt_sample_master_cycle_offset = kSubroutineReturn - 3U,
+        .master_cycle_offset = kSubroutineReturn,
+        .instruction = kRoutine,
+        .registers = registers,
+    });
+    replacement.return_instruction = {
+        .physical_bank = kRoutine.physical_bank,
+        .logical_pc = kAdvancePc,
+    };
+    replacement.output_registers = registers;
+    replacement.body_master_cycles = kSubroutineReturn;
+    return replacement;
+}
+
 [[nodiscard]] std::optional<RoutineReplacement>
 replace_actor_slot_reset(
     const RoutineEntry& entry)

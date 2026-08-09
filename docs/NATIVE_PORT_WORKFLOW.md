@@ -303,12 +303,47 @@ Two things that ranking will show which are *not* targets, and why:
   declare "burn N cycles doing nothing". That raises the headline share
   enormously and ports no game logic, so it stays emulated and stays outside
   the portable pool the registry measures itself against.
-- The timer handler at `00:FC00` is 44% of what is left. It is reachable —
-  a replacement may hook any instruction address, and `01:C510` and `01:C606`
-  are both entered by a branch — but it is the ROM sound driver, writing PSG
-  registers on the hardware page and re-mapping banks with TAM/TMA between
+- The timer handler at `00:FC00` and the bank `45` code it maps in are 91% of
+  everything still emulated outside that spin. They are reachable — a
+  replacement may hook any instruction address, and `01:C510` and `01:C606`
+  are both entered by a branch — but they are the ROM sound driver, writing
+  PSG registers on the hardware page and re-mapping banks with TAM/TMA between
   them. The write channel is proven for work RAM and the four base VDC ports,
-  and the plan keeps the original drivers emulated.
+  and the plan keeps the original drivers emulated. Bank `45` is easy to
+  mistake for a video bank: it only ever runs in interrupt context, entered by
+  the `TAM #$40` at `00:FC10`. On a 384KB image Mednafen maps physical banks
+  64-127 to ROM bank `((x & 0x0F) + 32)`, so `45` is ROM bank `25`, not a
+  mirror of a low bank.
+
+### The stack is work RAM, and a transcript may push and pop
+
+`RoutineReplacement`'s comment says the outer `RTS` "remains emulated,
+preserving stack and caller-return behavior". That is the convention for a
+whole-routine replacement — it describes where such a replacement should stop —
+not a limit on what any transcript may contain. `output_registers` carries the
+stack pointer, the stack page is ordinary work RAM at `$2100-$21FF`, and the
+nested collision compositions in `native_replacements_collision.cpp` have been
+writing `JSR` frames since they were written. `01:C51E`, `01:C520`, and
+`01:C654` are the whole of the actor loop's linkage and are nothing but stack
+traffic.
+
+Three details decide whether such a transcript matches:
+
+- `JSR` (`$20`) and `BSR` (`$44`) `PUSH` both bytes **before** the first
+  `ADDCYC`, so each stack write carries the instruction's *start* offset. A
+  read-modify-write is the opposite — `RMW_ZP` writes after `LastCycle()`, so
+  it carries its end offset. Do not assume one convention for both.
+- `JSR` and `RTS` are 7 CPU cycles (21 master); `BSR` is 8 (24), because it
+  adds a taken `JR` to `ADDCYC(4)`. `RTS` pops, which is a read, so it emits
+  no write at all and the census is its only assertion.
+- `RMB`/`SMB` cost 7 CPU cycles rather than the 6 an ordinary zero-page
+  read-modify-write costs: `RMW_ZP_B` adds a cycle that `RMW_ZP` does not.
+
+Scope the regression's write range to the stack bytes the routine actually
+touches, not the whole page. Observe the routine first and group the entries by
+stack pointer; `01:C51E` sits at `$FD` for 168,748 of its 171,734 arrivals, so
+`21FC-21FD` traces 1,068,240 writes where `21F0-21FF` traces 3,722,042. Both
+match assembly, but only the narrow one is a reasonable artifact to keep.
 
 ### A resume address does not have to be a fixed address
 

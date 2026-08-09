@@ -2710,11 +2710,46 @@ parse_logical_address_range(const std::string_view text)
                                        .logical_pc = 0xC606U,
                                    }
                            && request.all_calls;
+                       const bool proven_actor_dispatch_call =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x01U,
+                                       .logical_pc = 0xC51EU,
+                                   }
+                           && request.all_calls;
+                       const bool proven_actor_queue_call =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x01U,
+                                       .logical_pc = 0xC520U,
+                                   }
+                           && request.all_calls;
+                       const bool proven_actor_queue_return =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x01U,
+                                       .logical_pc = 0xC654U,
+                                   }
+                           && request.all_calls;
                        const bool proven_collision_scan_run =
                            request.routine
                                    == RoutineKey{
                                        .physical_bank = 0x01U,
                                        .logical_pc = 0xCB48U,
+                                   }
+                           && request.all_calls;
+                       const bool proven_collision_scan_candidate_branch =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x01U,
+                                       .logical_pc = 0xCB61U,
+                                   }
+                           && request.all_calls;
+                       const bool proven_collision_scan_advance =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x01U,
+                                       .logical_pc = 0xCB6BU,
                                    }
                            && request.all_calls;
                        const bool proven_sprite_emit_run =
@@ -2727,10 +2762,15 @@ parse_logical_address_range(const std::string_view text)
                        return !cached_position_restore
                            && !proven_sprite_emit_run
                            && !proven_collision_scan_run
+                           && !proven_collision_scan_candidate_branch
+                           && !proven_collision_scan_advance
                            && !proven_actor_scan_run
                            && !proven_actor_dispatch_vector
                            && !proven_actor_queue_registration
                            && !proven_actor_scan_advance
+                           && !proven_actor_dispatch_call
+                           && !proven_actor_queue_call
+                           && !proven_actor_queue_return
                            && !proven_sat_tail_clear
                            && !proven_position_integration
                            && !proven_motion_damping

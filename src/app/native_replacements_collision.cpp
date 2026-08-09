@@ -263,6 +263,197 @@ replace_collision_scan_run(
 }
 
 [[nodiscard]] std::optional<RoutineReplacement>
+replace_collision_scan_candidate_branch(
+    const RoutineEntry& entry,
+    const std::span<const std::byte> work_ram)
+{
+    // CB61 BCC $CB6B 6/12 — where the sweep resumes once the vertical scan at
+    // CC1A returns. A clear carry means the slot missed and the sweep goes
+    // straight to its tail; a set carry enters the hit path, whose first
+    // instruction is the latch set. The helper call after it stays emulated,
+    // so the transcript ends there.
+    //
+    //   CB61 BCC $CB6B 6/12   CB63 SMB2 $77 21
+    //   CB65 JSR $CBCF        (stays emulated)
+    constexpr RoutineKey kRoutine{
+        .physical_bank = 0x01U,
+        .logical_pc = 0xCB61U,
+    };
+    constexpr std::uint16_t kMissBranchPc = 0xCB61U;
+    constexpr std::uint16_t kLatchSetPc = 0xCB63U;
+    constexpr std::uint16_t kHelperCallPc = 0xCB65U;
+    constexpr std::uint16_t kSlotIncrementPc = 0xCB6BU;
+    constexpr std::uint16_t kLatchAddress = 0x2077U;
+
+    constexpr std::uint32_t kBranchTaken = 12U;
+    constexpr std::uint32_t kBranchNotTaken = 6U;
+    // RMB/SMB spend one cycle more than an ordinary zero-page read-modify-
+    // write (huc6280.cpp RMW_ZP_B adds a cycle that RMW_ZP does not).
+    constexpr std::uint32_t kBitReadModifyWrite = 21U;
+
+    if (entry.routine != kRoutine || work_ram.size() < 0x2000U) {
+        return std::nullopt;
+    }
+
+    auto registers = entry.registers;
+    RoutineReplacement replacement{};
+    replacement.checkpoints.reserve(2U);
+
+    // Neither instruction touches a flag: BCC only reads carry, and SMB sets a
+    // bit without reporting on the result.
+    if ((registers.status & 0x01U) == 0U) {
+        registers.program_counter = kSlotIncrementPc;
+        replacement.checkpoints.push_back({
+            .interrupt_sample_master_cycle_offset = kBranchTaken - 3U,
+            .master_cycle_offset = kBranchTaken,
+            .instruction = {kRoutine.physical_bank, kMissBranchPc},
+            .registers = registers,
+        });
+        replacement.body_master_cycles = kBranchTaken;
+    } else {
+        registers.program_counter = kLatchSetPc;
+        replacement.checkpoints.push_back({
+            .interrupt_sample_master_cycle_offset = kBranchNotTaken - 3U,
+            .master_cycle_offset = kBranchNotTaken,
+            .instruction = {kRoutine.physical_bank, kMissBranchPc},
+            .registers = registers,
+        });
+        registers.program_counter = kHelperCallPc;
+        replacement.body_master_cycles = kBranchNotTaken + kBitReadModifyWrite;
+        replacement.work_ram_writes.push_back({
+            .instruction = {kRoutine.physical_bank, kLatchSetPc},
+            .logical_address = kLatchAddress,
+            .value = static_cast<std::uint8_t>(
+                std::to_integer<std::uint8_t>(
+                    work_ram[kLatchAddress - 0x2000U])
+                | 0x04U),
+            .master_cycle_offset = replacement.body_master_cycles,
+        });
+        replacement.checkpoints.push_back({
+            .interrupt_sample_master_cycle_offset =
+                replacement.body_master_cycles - 3U,
+            .master_cycle_offset = replacement.body_master_cycles,
+            .instruction = {kRoutine.physical_bank, kLatchSetPc},
+            .registers = registers,
+        });
+    }
+
+    replacement.return_instruction = {
+        .physical_bank = kRoutine.physical_bank,
+        .logical_pc = registers.program_counter,
+    };
+    replacement.output_registers = registers;
+    return replacement;
+}
+
+[[nodiscard]] std::optional<RoutineReplacement>
+replace_collision_scan_advance(
+    const RoutineEntry& entry,
+    const std::span<const std::byte> work_ram)
+{
+    // The collision sweep's own tail, and the counterpart of `01:C523` in the
+    // actor loop. The `01:CB48` walk absorbs this sequence for every slot it
+    // rejects, but a slot that reaches the vertical scan leaves the
+    // transaction at CC1A, so the advance that follows is a separate arrival.
+    // Both the miss branch at CB61 and the hit path's fall-through at CB68
+    // land here.
+    //
+    //   CB6B INC $64 18   CB6D DEC $60 18
+    //   CB6F BNE $CB48 6/12   CB71 BBS2 $77 (stays emulated)
+    constexpr RoutineKey kRoutine{
+        .physical_bank = 0x01U,
+        .logical_pc = 0xCB6BU,
+    };
+    constexpr std::uint16_t kSlotIncrementPc = 0xCB6BU;
+    constexpr std::uint16_t kCountdownPc = 0xCB6DU;
+    constexpr std::uint16_t kSweepBranchPc = 0xCB6FU;
+    constexpr std::uint16_t kSweepHeadPc = 0xCB48U;
+    constexpr std::uint16_t kExhaustedPc = 0xCB71U;
+    constexpr std::uint16_t kSlotAddress = 0x2064U;
+    constexpr std::uint16_t kCountdownAddress = 0x2060U;
+
+    constexpr std::uint32_t kReadModifyWrite = 18U;
+    constexpr std::uint32_t kBranchTaken = 12U;
+    constexpr std::uint32_t kBranchNotTaken = 6U;
+
+    if (entry.routine != kRoutine || work_ram.size() < 0x2000U) {
+        return std::nullopt;
+    }
+    // Neither decimal mode nor the memory-operand T flag is proven here.
+    if ((entry.registers.status & 0x28U) != 0U) {
+        return std::nullopt;
+    }
+
+    const auto set_nz = [](std::uint8_t status, const std::uint8_t value) {
+        status = static_cast<std::uint8_t>(
+            status & static_cast<std::uint8_t>(~0x82U));
+        if (value == 0U) {
+            status = static_cast<std::uint8_t>(status | 0x02U);
+        } else if ((value & 0x80U) != 0U) {
+            status = static_cast<std::uint8_t>(status | 0x80U);
+        }
+        return status;
+    };
+
+    const auto next_slot = static_cast<std::uint8_t>(
+        std::to_integer<std::uint8_t>(work_ram[kSlotAddress - 0x2000U]) + 1U);
+    const auto left = static_cast<std::uint8_t>(
+        std::to_integer<std::uint8_t>(work_ram[kCountdownAddress - 0x2000U])
+        - 1U);
+
+    auto registers = entry.registers;
+    std::uint32_t cycle = 0U;
+    RoutineReplacement replacement{};
+    replacement.checkpoints.reserve(3U);
+    replacement.work_ram_writes.reserve(2U);
+
+    const auto boundary =
+        [&](const std::uint16_t instruction_pc,
+            const std::uint16_t resume_pc) {
+            registers.program_counter = resume_pc;
+            replacement.checkpoints.push_back({
+                .interrupt_sample_master_cycle_offset = cycle - 3U,
+                .master_cycle_offset = cycle,
+                .instruction = {kRoutine.physical_bank, instruction_pc},
+                .registers = registers,
+            });
+        };
+
+    // INC $64 : DEC $60. Each leaves its own N and Z standing until the next
+    // instruction reloads them, and an interrupt can arrive between them.
+    registers.status = set_nz(registers.status, next_slot);
+    cycle += kReadModifyWrite;
+    replacement.work_ram_writes.push_back({
+        .instruction = {kRoutine.physical_bank, kSlotIncrementPc},
+        .logical_address = kSlotAddress,
+        .value = next_slot,
+        .master_cycle_offset = cycle,
+    });
+    boundary(kSlotIncrementPc, kCountdownPc);
+
+    registers.status = set_nz(registers.status, left);
+    cycle += kReadModifyWrite;
+    replacement.work_ram_writes.push_back({
+        .instruction = {kRoutine.physical_bank, kCountdownPc},
+        .logical_address = kCountdownAddress,
+        .value = left,
+        .master_cycle_offset = cycle,
+    });
+    boundary(kCountdownPc, kSweepBranchPc);
+
+    cycle += left == 0U ? kBranchNotTaken : kBranchTaken;
+    boundary(kSweepBranchPc, left == 0U ? kExhaustedPc : kSweepHeadPc);
+
+    replacement.return_instruction = {
+        .physical_bank = kRoutine.physical_bank,
+        .logical_pc = registers.program_counter,
+    };
+    replacement.output_registers = registers;
+    replacement.body_master_cycles = cycle;
+    return replacement;
+}
+
+[[nodiscard]] std::optional<RoutineReplacement>
 replace_collision_table_interpreter(
     const RoutineEntry& entry,
     const std::span<const std::byte> work_ram,
