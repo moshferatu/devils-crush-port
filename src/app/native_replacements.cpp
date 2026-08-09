@@ -128,6 +128,26 @@ replace_native_gameplay_routine_impl(
             }) {
         return detail::replace_music_sequencer(entry, work_ram, rom);
     }
+    // One shared walk, three entry points: the leaves that maintain the
+    // palette shadow buffer at $27B9. None of them calls anything, so each
+    // transcript is a single straight walk to its own RTS.
+    if (entry.routine
+            == RoutineKey{
+                .physical_bank = 0x00U,
+                .logical_pc = 0xE93CU,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x00U,
+                .logical_pc = 0xE9B6U,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x00U,
+                .logical_pc = 0xEBA5U,
+            }) {
+        return detail::replace_palette_shadow(entry, work_ram, rom);
+    }
 
     // One shared walk, four entry points: the camera sweep's initializer and
     // the three addresses `00:F4FC` returns through.

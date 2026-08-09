@@ -527,7 +527,57 @@ and `4211` -- the register programmer `4142`, the portamento stepper `4228`
 and the command interpreter `457A` now run natively; `4569`, `4522`, `46D7`
 and the dispatch handlers are inlined into `457A`'s transcript rather than
 hooked separately. The tick at `4015`, the track loader `4BCC` and `4936`
-are still emulated.
+are still emulated, and the tick will stay that way: its voice loop reaches
+`4148` (`LDA $F5,X`) three times per call, so a transcript for it reads the
+timer driver's channel bank bytes, and its 12,667-cycle body cannot finish
+inside the 5,068-cycle timer period the shared-state guard requires.
+
+## Palette shadow buffer
+
+Gameplay code never writes the VCE. It maintains a shadow palette at
+`$27B9`-`$2BB8` — thirty-two blocks of sixteen colours, two bytes each — plus
+a dirty flag per block at `$2CCC,X` and a "something is dirty" flag at
+`$2CCB`, and one routine drains that once a frame.
+
+A colour is nine bits packed low byte first: bits 0-2 are channel zero, bits
+3-5 channel one, bits 6-8 channel two, with bit 8 in the high byte. Every
+routine below unpacks and repacks it the same way, through the scratch bytes
+`$39`-`$3E`.
+
+| Entry | Calls | Master cycles | What it does |
+| --- | ---: | ---: | --- |
+| `EB30` | 3,599 | 8,636,040 | Drains the dirty blocks to the VCE |
+| `E9B6` | 672 | 6,548,946 | One crossfade step over one block |
+| `EBA5` | 1,121 | 2,629,866 | Stages a source palette into one block |
+| `EAA7` | 8 | 1,640,100 | Steps every channel of every block toward black |
+| `E93C` | 8,969 | 758,370 | Sixteen-bit compare, `$2F/$30` against `$2D/$2E` |
+| `E94D` | 1 | 138,582 | Crossfade driver; twenty-one passes, waits on `E321` |
+| `EA77` | 8 | 1,455 | Fade-to-black driver; same shape |
+
+`EB30` is the only one that touches hardware. It tests `$2BB9` and `$2CCB`,
+and takes one of two paths: a whole-palette `TIA $27B9, $0404, $0400` when
+`$2BB9` is zero, or a walk of the thirty-two dirty flags, writing the VCE
+address to `$0402`/`$0403` and then sixteen colours through `$0404`/`$0405`.
+
+`E9B6` is the interesting one. For each of the sixteen colours it sums the
+target's three channels and compares the total against the step counter at
+`$2CEC`; below the counter the colour is skipped entirely, which is what
+staggers a fade across its twenty-one passes. Otherwise it unpacks the
+shadow colour too, computes the three differences with `SBC` and no clamp,
+and increments exactly one shadow channel — whichever difference is largest,
+decided by `$40` against `$41` and then the winner against `$3F`. Because
+the differences are unsigned, a channel the shadow has overshot wraps high
+and is treated as furthest away, which drives it back.
+
+`EBA5` takes a block index in A, multiplies it by thirty-two into `$2D/$2E`
+against a `$27B9` base, sets `$2CCC,Y` and `$2CCB`, and copies thirty-two
+bytes in from `$2F/$30`. The source is always ROM on this route: `$8000`-
+`$BFFF` through MPR4/MPR5.
+
+`E93C`, `E9B6` and `EBA5` now run natively. `EB30` needs the VCE register
+file on the replacement write channel; `EAA7` is 205,012 cycles per call,
+which is past the checkpoint cap; and both drivers call the frame-sync spin
+at `00:E321`, so no transcript can cover them.
 
 ## Camera-visibility sweep
 

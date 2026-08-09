@@ -2446,10 +2446,44 @@ and jumps to `$40EE`, abandoning `457A`'s own frame — the sequencer's way of
 saying "this voice is finished, resume the caller's caller". A transcript that
 has to stop in front of an `RTS` has no way to say that, so those 45 calls
 decline. The remaining 35 are handlers this route never reaches, left
-untranscribed rather than written blind. Both disappear when `4015` is ported,
-because at that level the escape is ordinary internal control flow.
+untranscribed rather than written blind. Both would disappear if `4015` were
+ported, because at that level the escape is ordinary internal control flow.
 
-Four lessons generalise:
+### Why the tick is where the bank stops
+
+`45:4015` is the obvious next slice and it is not portable. Establishing that
+took two profile queries and no code, which makes it the most useful thing in
+this section.
+
+The tick composes rather than adds: every routine it calls is already native,
+so the new work is about 95 instructions of its own plus `45:4936`. The caps
+are fine — 1,058 instructions and 245 writes per call on average, against
+1,800 checkpoints and 480 writes, with a measured worst frame of 758 writes
+that would decline 9 calls out of 3,599. None of that is the problem.
+
+The problem is the shared-state guard. `4142`'s per-channel loop head at
+`45:4148` is `LDA $F5,X`, and it runs 10,812 times across 3,604 calls — three
+per call, not the twelve the release path at `415A` suggests. So every
+transcript that reaches `4142`, including any transcript for the tick, reads
+the timer driver's channel bank bytes, and the whole body has to finish before
+the next serviceable timer interrupt. The tick's body is 12,667 master cycles.
+The timer period is 5,068 — 254,990 driver entries across 1,292,370,213
+cycles. A transcript builder for `4015` would therefore decline all 3,599
+calls.
+
+The check is two divisions and it belongs before the disassembly, not after
+the transcript:
+
+- **Does the routine read anything another thread of control writes?** Walk
+  its subtree for accesses to the shared bytes and use the *execution counts*,
+  not the static presence of the instruction. `415A` reads `$F5` on 12 calls
+  in 3,604 and would have been easy to dismiss; `4148` reads it on all of
+  them.
+- **If so, is its body shorter than the interrupt period?** `4142` at 2,054
+  cycles is admitted 49.7% of the time, which is close to the 59% a uniform
+  arrival would predict. Anything past the period is admitted never.
+
+Five lessons generalise:
 
 - **A call-graph pass is cheap and changes the plan.** Sixteen `JSR` targets
   in 1,078 addresses meant the bank was a set of small leaves, not a monolith.
@@ -2475,6 +2509,56 @@ Four lessons generalise:
   the stack range, and the census matched either way because the handler
   restores `P` on the way out. `PLP` has to defer the mask and only the mask —
   see [the workflow note](NATIVE_PORT_WORKFLOW.md#plp-defers-the-mask-and-only-the-mask).
+- **Price the blockers before writing the transcript.** Two profile queries
+  showed `45:4015` would be admitted on none of its 3,599 calls, which turned
+  the bank's obvious next slice into a documented stopping point and sent the
+  effort somewhere it paid.
+
+## The palette shadow buffer, and a lumped inventory row
+
+The video inventory listed `00:E93C`–`EBD6` as one 20.6M "VCE palette DMA".
+It is six routines with nothing in common but an address range, and splitting
+them was the whole of the analysis:
+
+| Routine | Calls | Master cycles | Per call | Outcome |
+| --- | ---: | ---: | ---: | --- |
+| `00:EB30` | 3,599 | 8,636,040 | 2,400 | Writes the VCE; blocked on the write channel |
+| `00:E9B6` | 672 | 6,548,946 | 9,768 | Native, 672 of 672 |
+| `00:EBA5` | 1,121 | 2,629,866 | 2,388 | Native, 1,121 of 1,121 |
+| `00:EAA7` | 8 | 1,640,100 | 205,012 | Over the checkpoint cap |
+| `00:E93C` | 8,969 | 758,370 | 106 | Native, 8,969 of 8,969 |
+| `00:E94D`, `00:EA77` | 9 | 140,037 | — | Block on the frame-sync spin |
+
+Three observations worth carrying forward.
+
+**A lumped row hides both the target and the blockers.** Reading the range
+top to bottom would have started at `E93C`, the smallest routine in it, and
+the first hot loop encountered — `E9B6` at 0.51% — sits in the middle. Ranking
+by cycles *within* the cluster took one query and put the three portable
+leaves in front.
+
+**Cycles per call is the screen, applied twice.** `00:EAA7` is 1.6M of cycles
+and unreachable: 205,012 cycles per call is roughly 17,000 instructions, nine
+times the checkpoint cap. `00:E94D` and `00:EA77` are worse — they call the
+frame-sync spin, so a transcript for either spans twenty-one frames. Both are
+visible from the call graph and the per-call figure alone.
+
+**100% admission has a cause, and it is worth naming.** All three ported
+leaves are admitted on every call because they are leaves in the strong
+sense: no `JSR`, no device port, and nothing another thread of control writes.
+There is no horizon to miss and no snapshot to go stale, so the only thing an
+interrupt can do is land on a checkpoint, which is handled. Contrast bank 45,
+where three of ten entries are partial and both reasons trace back to shared
+state or to a stack frame the contract cannot express.
+
+There is a cost on the other side of the ledger, and it is new. A long
+transcript shadows the sound driver for its whole body, because the core will
+not consult the replacement hook while one is active. `00:E9B6` runs 9,745
+cycles and spans about two timer periods, so the interrupts that land inside
+it run the driver emulated. The slice added 9,937,182 native cycles and gave
+back about 694,000 in lost driver entries — 1,181 fewer than before, net
+strongly positive, but the effect scales with transcript length and should be
+checked whenever a slice's per-call body is large.
 
 ## Use on future families
 

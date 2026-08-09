@@ -82,8 +82,8 @@ native entry points:
 | --- | ---: | ---: | --- |
 | `00:E2B7`–`E39C` | 584,758,197 | 45.25% | Frame-sync spin loop |
 | `00:FC03`–`FCB3`, `00:FD07`–`FDF1` | 173,243,694 | 13.41% | Sound driver — **already ported** (see below) |
-| bank `45` (`4000`–`4A9B`) | 45,586,602 | 3.53% | Music sequencer — 55% ported, `4015` tick and two subroutines left |
-| `00:E93C`–`EBD6` | 20,611,233 | 1.59% | VCE palette DMA |
+| bank `45` (`4000`–`4A9B`) | 45,586,602 | 3.53% | Music sequencer — 55% ported; the rest is **blocked**, see below |
+| `00:E93C`–`EBD6` | 20,611,233 | 1.59% | Palette shadow buffer — 10.2M ported, `EB30` upload left |
 | `00:E0EB`–`E292` | 15,342,522 | 1.19% | VBlank handler and pad reader |
 | `00:E3C0`–`E47C` | 7,031,316 | 0.54% | VRAM tile upload |
 | `00:F240`–`F4FB` | 5,761,776 | 0.45% | Tilemap upload, camera-sweep outer |
@@ -104,15 +104,31 @@ own when the CPU does.
 
 Remaining real logic, in rough order of value:
 
-1. **Bank `45` music sequencer** (45.6M, of which 25.0M is done). The last
-   large block of ordinary logic. The PSG write channel and the bus-write
-   census built for the timer driver applied unchanged, as expected. The bank
-   turned out to be sixteen small subroutines rather than a monolith, so it is
-   going in slices: the sample/envelope group, the PSG register programmer
-   `45:4142`, the portamento stepper `45:4228` and the command interpreter
-   `45:457A` are native. What is left is the per-frame tick `45:4015` (13.8M),
-   which calls all of them, plus `45:4936` and the track loader `45:4BCC`. See
+1. **Bank `45` music sequencer** — **finished for the hybrid** at 25.0M of
+   45.6M. The PSG write channel and the bus-write census built for the timer
+   driver applied unchanged, as expected. The bank turned out to be sixteen
+   small subroutines rather than a monolith, so it went in slices: the
+   sample/envelope group, the PSG register programmer `45:4142`, the
+   portamento stepper `45:4228` and the command interpreter `45:457A` are
+   native. See
    [NATIVE_FALLBACK_HOTSPOTS.md](NATIVE_FALLBACK_HOTSPOTS.md#the-music-sequencer-and-screening-a-bank-instead-of-a-family).
+
+   The remaining 20.6M is the per-frame tick `45:4015` (13.8M), which calls
+   all of them, plus `45:4936` and the track loader `45:4BCC`. **`45:4015`
+   cannot be ported while the emulator is here**, and the arithmetic is worth
+   recording because it is cheap to check before writing a transcript and
+   expensive to discover afterwards. Its voice loop reaches `45:4148`,
+   `LDA $F5,X`, three times per call, so any transcript for the tick reads
+   driver state and the shared-state guard below applies to the whole body.
+   The body is 12,667 master cycles; the timer period on this route is 5,068
+   (254,990 driver entries across 1,292,370,213 cycles). It can never finish
+   before the next serviceable timer interrupt, so it would decline 3,599
+   calls out of 3,599. The same guard admits `45:4142` at half its calls
+   because its body is only 2,054 cycles.
+
+   This is the second thing on the list blocked by the hybrid rather than
+   unported, after the sound driver's nesting limit, and it has the same
+   resolution: phase 3 removes the snapshot, so there is nothing to go stale.
 
    `45:4142` also surfaced the first **shared-state** boundary in the port.
    It reads `$F5`/`$F7`/`$F9`, which the timer interrupt handler writes, so a
@@ -129,14 +145,38 @@ Remaining real logic, in rough order of value:
    routine's own stack frame; a transcript that must stop in front of an `RTS`
    cannot represent that, so those calls decline. This is a property of the
    hybrid's leaf-transcript contract, not of the code — porting `45:4015`
-   makes the same escape ordinary internal control flow — and it is another
-   thing that disappears with the emulator rather than needing a fix in it.
-2. **Video upload paths** (33.4M): palette DMA `00:E93C`–`EBD6`, VRAM tiles
-   `00:E3C0`–`E47C`, tilemap `00:F240`–`F452`. These write the VDC ports,
+   would make the same escape ordinary internal control flow, if the tick
+   could be ported at all — and it is another thing that disappears with the
+   emulator rather than needing a fix in it.
+2. **Video upload paths** (33.4M). The palette group is under way. What looked
+   like one 20.6M "VCE palette DMA" in the row above is six routines, and they
+   have to be separated before any of them can be ported:
+
+   | Routine | Master cycles | State |
+   | --- | ---: | --- |
+   | `00:EB30` VCE upload | 8,636,040 | needs `$0400`-`$0405` on the write channel |
+   | `00:E9B6` block interpolator | 6,548,946 | **native** |
+   | `00:EBA5` block stager | 2,629,866 | **native** |
+   | `00:EAA7` block decrement | 1,640,100 | 205,012 cycles per call, over the checkpoint cap |
+   | `00:E93C` sixteen-bit compare | 758,370 | **native** |
+   | `00:E94D`, `00:EA77` fade drivers | 140,037 | call the frame-sync spin at `00:E321` |
+
+   The two fade drivers are not portable for the same structural reason the
+   spin loop is not: a transcript for either would have to span the
+   twenty-one frames they wait through. `00:EB30` is the one worth doing
+   next, and it needs the bounded-register move described in item 3 —
+   the same one made for the PSG, applied to the VCE register file.
+
+   Still untouched in this item: VRAM tiles `00:E3C0`–`E47C` (7.0M) and
+   tilemap `00:F240`–`F452` (5.8M). Both write the VDC ports at `$0000`-`$0003`,
    which the write channel already carries.
-3. **VBlank handler and pad reader** (15.3M). Needs the write channel widened
-   again to reach the joypad port at `$1000` — the same bounded-register move
-   made for the PSG.
+3. **VBlank handler and pad reader** (15.3M), now the largest single portable
+   block left. Needs the write channel widened again to reach the joypad port
+   at `$1000` — the same bounded-register move made for the PSG, and the same
+   one `00:EB30` needs for the VCE at `$0400`-`$0405`. The allowlist is
+   `is_replaceable_hardware_port` in `src/emulation/pce_runtime_beetle.cpp`,
+   in this repo rather than in the fork, so widening it is a two-line change
+   plus whatever wait-state pricing the new ports need in the transcript.
 4. **Gameplay tails** (~20M spread thin, no single address above 0.14%).
 5. **Boot and reset path.** Off the census route's hot path but required.
 6. **The frame-sync spin loop** (584.8M). Trivial code, but it is where the

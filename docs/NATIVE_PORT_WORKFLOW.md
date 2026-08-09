@@ -278,6 +278,47 @@ Neither needed new game logic. Each needed its existing classifier re-emitted
 as a transcript, which took them to every arrival and the registry from 21.35%
 to 23.60%.
 
+### Two divisions decide whether a candidate can be admitted at all
+
+Shared state is a harder constraint than the horizon, and unlike the horizon
+it cannot be lifted by rewriting the adapter. A transcript is computed once
+from a snapshot taken before it runs, so if it reads a byte another thread of
+control writes, every one of those reads has to happen before the next
+serviceable interrupt. In practice the whole body does.
+
+Check it with two numbers, both available from a profile already on disk, and
+check it *before* disassembling anything:
+
+1. **Does the candidate's subtree read shared state, on how many calls?** Use
+   execution counts, not the presence of the instruction. Bank 45's `4142`
+   has a conspicuous `LDA $F5` at `415A` that runs on 12 of 3,604 calls and an
+   inconspicuous `LDA $F5,X` at `4148` that runs on all of them. Reading the
+   first and stopping gives the wrong answer.
+2. **Is the body shorter than the interrupt period?** The period is elapsed
+   cycles divided by interrupt-handler entries — 1,292,370,213 / 254,990 =
+   5,068 on this route. A body well under that is admitted at roughly
+   `1 - body/period`: `4142` at 2,054 cycles predicts 59% and measures 49.7%.
+   A body past the period is admitted never.
+
+That is how `45:4015` was ruled out. It is the bank's obvious next slice, it
+composes entirely from routines already native, and its 12,667-cycle body
+against a 5,068-cycle period means a transcript builder for it would decline
+3,599 calls out of 3,599. Two queries, no code.
+
+### A long transcript shadows the interrupt handler
+
+The core will not consult the replacement hook while a replacement is active,
+so every interrupt that lands inside a transcript runs its handler emulated.
+That cost scales with body length and is invisible in the candidate's own
+numbers. The palette slice added 9,937,182 native cycles and gave back about
+694,000 of them, because `00:E9B6` runs 9,745 cycles per call — roughly two
+timer periods — and cost the sound driver 1,181 native entries.
+
+Net it was strongly positive, and the same will usually be true. But compare
+the candidate's per-call body against the interrupt period before and after,
+and read the change in the handler's own admitted count out of the cycle
+census rather than assuming the delta is the candidate's cycles.
+
 An atomic body priced against the horizon also truncates the calls it does
 admit, so the loss is larger than the decline count suggests. `01:C510` walked
 a mean of 142 master cycles per admitted call against a mean horizon of 265;

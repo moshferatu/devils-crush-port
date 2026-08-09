@@ -1220,6 +1220,15 @@ replace_music_sequencer(
     std::span<const std::byte> work_ram,
     std::span<const std::byte> rom);
 
+// The palette shadow buffer's three leaf maintainers. One walk shared by
+// three entry points, each stopping in front of its own RTS. None of them
+// calls anything, so nothing is inlined.
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_palette_shadow(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram,
+    std::span<const std::byte> rom);
+
 [[nodiscard]] std::optional<emulation::RoutineReplacement>
 replace_actor_dispatch_vector(
     const emulation::RoutineEntry& entry,

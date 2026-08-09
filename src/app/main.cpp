@@ -2756,6 +2756,12 @@ parse_logical_address_range(const std::string_view text)
                                || request.routine.logical_pc == 0x49B6U
                                || request.routine.logical_pc == 0x49F9U)
                            && request.all_calls;
+                       const bool proven_palette_shadow =
+                           request.routine.physical_bank == 0x00U
+                           && (request.routine.logical_pc == 0xE93CU
+                               || request.routine.logical_pc == 0xE9B6U
+                               || request.routine.logical_pc == 0xEBA5U)
+                           && request.all_calls;
                        const bool proven_actor_camera_sweep =
                            request.routine.physical_bank == 0x00U
                            && (request.routine.logical_pc == 0xF4F2U
@@ -2837,6 +2843,7 @@ parse_logical_address_range(const std::string_view text)
                            && !proven_actor_camera_sweep
                            && !proven_sound_timer_driver
                            && !proven_music_sequencer
+                           && !proven_palette_shadow
                            && !proven_position_integration
                            && !proven_motion_damping
                            && !proven_motion_rotation
