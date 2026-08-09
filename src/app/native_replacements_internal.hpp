@@ -1202,6 +1202,15 @@ replace_sat_submission_step(
     const emulation::RoutineEntry& entry,
     std::span<const std::byte> work_ram);
 
+// The timer-interrupt sound driver, entered from the interrupt vector at
+// 00:FC00 and walked to whichever of its two RTI instructions or two chain
+// exits control reaches.
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_sound_timer_driver(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram,
+    std::span<const std::byte> rom);
+
 [[nodiscard]] std::optional<emulation::RoutineReplacement>
 replace_actor_dispatch_vector(
     const emulation::RoutineEntry& entry,

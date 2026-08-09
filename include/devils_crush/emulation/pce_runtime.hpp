@@ -164,8 +164,10 @@ struct RoutineReplacement {
     CpuRegisters output_registers;
     std::uint32_t body_master_cycles = 0;
     // Legacy name: entries may target ordinary work RAM (physical bank F8)
-    // or the four base VDC ports on the PC Engine hardware page (physical
-    // bank FF, logical $0000-$0003). Hardware-page writes are used only for
+    // or a bounded set of device registers on the PC Engine hardware page
+    // (physical bank FF): the VDC base ports $0000-$0003, the PSG register
+    // file $0800-$0809, the timer at $0C00-$0C01, and the interrupt
+    // controller at $1402-$1403. Hardware-page writes are used only for
     // bounded, trace-locked device-register paths.
     std::vector<ReplacementMemoryWrite> work_ram_writes;
     // Optional instruction-boundary transcript. When present, the core

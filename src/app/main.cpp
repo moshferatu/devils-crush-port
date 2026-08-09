@@ -92,6 +92,7 @@ using devils_crush::emulation::EmulatedFrame;
 using devils_crush::emulation::FramebufferView;
 using devils_crush::emulation::HookMode;
 using devils_crush::emulation::InputFrame;
+using devils_crush::emulation::ObservedBusWrite;
 using devils_crush::emulation::ObservedMemoryWrite;
 using devils_crush::emulation::PceRuntime;
 using devils_crush::emulation::RoutineCall;
@@ -198,6 +199,11 @@ struct CommandLine {
     std::vector<WorkRamPatch> work_ram_patches;
     std::vector<LogicalAddressRange> work_ram_write_ranges;
     std::filesystem::path work_ram_write_trace_path;
+    // Device-register writes, selected by logical address on the hardware
+    // page. The sound driver's PSG traffic is invisible to the work-RAM
+    // census, so its ports need a census channel of their own.
+    std::vector<LogicalAddressRange> bus_write_ranges;
+    std::filesystem::path bus_write_trace_path;
     bool replace_registry = false;
     // The interactive host deploys the registry by default so a session runs
     // the ported code; this opts back out to the emulated original.
@@ -682,6 +688,26 @@ parse_logical_address_range(const std::string_view text)
                 return options;
             }
             options.work_ram_write_trace_path = argv[++index];
+        } else if (argument == "--bus-write-range") {
+            if (index + 1 >= argc) {
+                options.error = "--bus-write-range requires START-END.";
+                return options;
+            }
+            const auto range =
+                parse_logical_address_range(argv[++index]);
+            if (!range) {
+                options.error =
+                    "--bus-write-range requires a hexadecimal "
+                    "logical START-END range.";
+                return options;
+            }
+            options.bus_write_ranges.push_back(*range);
+        } else if (argument == "--bus-write-trace") {
+            if (index + 1 >= argc) {
+                options.error = "--bus-write-trace requires a path.";
+                return options;
+            }
+            options.bus_write_trace_path = argv[++index];
         } else if (argument == "--replace-registry") {
             options.replace_registry = true;
         } else if (argument == "--cabinet-overlay-stats") {
@@ -2710,6 +2736,13 @@ parse_logical_address_range(const std::string_view text)
                                        .logical_pc = 0xC606U,
                                    }
                            && request.all_calls;
+                       const bool proven_sound_timer_driver =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x00U,
+                                       .logical_pc = 0xFC00U,
+                                   }
+                           && request.all_calls;
                        const bool proven_actor_camera_sweep =
                            request.routine.physical_bank == 0x00U
                            && (request.routine.logical_pc == 0xF4F2U
@@ -2789,6 +2822,7 @@ parse_logical_address_range(const std::string_view text)
                            && !proven_sat_tail_clear
                            && !proven_sat_submission_step
                            && !proven_actor_camera_sweep
+                           && !proven_sound_timer_driver
                            && !proven_position_integration
                            && !proven_motion_damping
                            && !proven_motion_rotation
@@ -3257,6 +3291,16 @@ parse_logical_address_range(const std::string_view text)
         options.error =
             "--work-ram-write-range and --work-ram-write-trace "
             "must be used together.";
+    } else if ((!options.bus_write_ranges.empty()
+                || !options.bus_write_trace_path.empty())
+               && !recording_selected) {
+        options.error =
+            "Bus write census options require a recording operation.";
+    } else if (options.bus_write_ranges.empty()
+               != options.bus_write_trace_path.empty()) {
+        options.error =
+            "--bus-write-range and --bus-write-trace "
+            "must be used together.";
     }
     return options;
 }
@@ -3319,6 +3363,8 @@ void print_usage()
            "      [--work-ram-patch <frame:address:value>]...\n"
            "      [--work-ram-write-range <start-end>]...\n"
            "      [--work-ram-write-trace <writes.csv>]\n"
+           "      [--bus-write-range <start-end>]...\n"
+           "      [--bus-write-trace <writes.csv>]\n"
            "      [--rom <path>]\n"
         << "  devils-crush --backup-ram-test [output.sav] [--rom <path>]\n"
         << "  devils-crush --help\n\n"
@@ -5775,6 +5821,94 @@ bool write_pcm16_wave_header(
     }
 
     std::cout << "Work-RAM write trace complete: " << writes.size()
+              << " selected writes\nOutput: " << path.string() << '\n';
+    return true;
+}
+
+[[nodiscard]] bool write_bus_write_trace(
+    const std::filesystem::path& path,
+    const std::span<const LogicalAddressRange> ranges,
+    const std::span<const ObservedBusWrite> writes,
+    const std::string_view core_revision)
+{
+    if (ranges.empty()) {
+        return false;
+    }
+
+    std::error_code error;
+    const auto directory = path.parent_path();
+    if (!directory.empty()) {
+        std::filesystem::create_directories(directory, error);
+    }
+    if (error) {
+        std::cerr << "Could not create bus write trace directory: "
+                  << error.message() << '\n';
+        return false;
+    }
+
+    auto temporary_path = path;
+    temporary_path += ".tmp";
+    std::ofstream output(
+        temporary_path,
+        std::ios::binary | std::ios::trunc);
+    if (!output) {
+        std::cerr << "Could not create bus write trace: "
+                  << temporary_path.string() << '\n';
+        return false;
+    }
+
+    output << "# format=devils-crush-bus-write-v1\n"
+           << "# rom_sha256=" << devils_crush::rom::kSupportedSha256
+           << '\n'
+           << "# core_revision=" << core_revision << '\n'
+           << "# range_count=" << ranges.size() << '\n';
+    std::size_t range_index = 0U;
+    for (const auto range : ranges) {
+        output << "# range_" << ++range_index << '='
+               << std::uppercase << std::hex << std::setfill('0')
+               << std::setw(4) << range.first << '-' << std::setw(4)
+               << range.last << '\n';
+    }
+    output
+        << std::dec
+        << "sequence,frame,master_cycle,absolute_master_cycle,"
+           "instruction_physical_bank,instruction_logical_pc,"
+           "physical_bank,logical_address,value\n";
+
+    std::uint64_t sequence = 0U;
+    for (const auto& write : writes) {
+        output << ++sequence << ',' << write.frame_number << ','
+               << write.master_cycle << ','
+               << write.absolute_master_cycle << ','
+               << std::uppercase << std::hex << std::setfill('0')
+               << std::setw(2)
+               << static_cast<unsigned>(
+                      write.instruction.physical_bank)
+               << ',' << std::setw(4)
+               << write.instruction.logical_pc << ',' << std::setw(2)
+               << static_cast<unsigned>(write.physical_bank) << ','
+               << std::setw(4) << write.logical_address << ','
+               << std::setw(2)
+               << static_cast<unsigned>(write.value)
+               << std::dec << '\n';
+    }
+
+    output.close();
+    if (!output) {
+        std::cerr << "Could not finalize bus write trace.\n";
+        return false;
+    }
+    if (!MoveFileExW(
+            temporary_path.c_str(),
+            path.c_str(),
+            MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
+        std::cerr
+            << "Could not commit bus write trace; Windows error "
+            << GetLastError() << ".\n";
+        return false;
+    }
+
+    std::cout << "Bus write trace complete: " << writes.size()
               << " selected writes\nOutput: " << path.string() << '\n';
     return true;
 }
@@ -9954,6 +10088,7 @@ int main(const int argc, char* argv[])
             std::vector<RoutineEntry> observed_entries;
             std::vector<RoutineCall> observed_calls;
             std::vector<ObservedMemoryWrite> observed_work_ram_writes;
+            std::vector<ObservedBusWrite> observed_bus_writes;
             std::vector<RoutineReplayCapture> routine_replays;
             routine_replays.reserve(options.routine_replays.size());
             for (const auto request : options.routine_replays) {
@@ -10236,6 +10371,29 @@ int main(const int argc, char* argv[])
                     << "Could not install work-RAM write observer.\n";
                 return EXIT_FAILURE;
             }
+            if (!options.bus_write_ranges.empty()
+                && !runtime->set_bus_write_observer(
+                    [&observed_bus_writes,
+                      &ranges = options.bus_write_ranges,
+                      &suppress_recording_observers](
+                        const ObservedBusWrite& write) {
+                        if (suppress_recording_observers) {
+                            return;
+                        }
+                        const bool selected = std::any_of(
+                            ranges.begin(),
+                            ranges.end(),
+                            [&write](const LogicalAddressRange range) {
+                                return write.logical_address >= range.first
+                                    && write.logical_address <= range.last;
+                            });
+                        if (selected) {
+                            observed_bus_writes.push_back(write);
+                        }
+                    })) {
+                std::cerr << "Could not install bus write observer.\n";
+                return EXIT_FAILURE;
+            }
 
             if (!options.instruction_profile_path.empty()
                 && !runtime->set_instruction_profiling(true)) {
@@ -10355,6 +10513,14 @@ int main(const int argc, char* argv[])
                     options.work_ram_write_trace_path,
                     options.work_ram_write_ranges,
                     observed_work_ram_writes,
+                    runtime_info.upstream_revision)) {
+                return EXIT_FAILURE;
+            }
+            if (!options.bus_write_trace_path.empty()
+                && !write_bus_write_trace(
+                    options.bus_write_trace_path,
+                    options.bus_write_ranges,
+                    observed_bus_writes,
                     runtime_info.upstream_revision)) {
                 return EXIT_FAILURE;
             }

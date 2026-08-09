@@ -62,6 +62,16 @@ replace_native_gameplay_routine_impl(
         }) {
         return detail::replace_sat_tail_clear(entry);
     }
+    // The timer-interrupt sound driver. One entry point, because the
+    // interrupt vector is the only way in.
+    if (entry.routine
+        == RoutineKey{
+            .physical_bank = 0x00U,
+            .logical_pc = 0xFC00U,
+        }) {
+        return detail::replace_sound_timer_driver(entry, work_ram, rom);
+    }
+
     // One shared walk, four entry points: the camera sweep's initializer and
     // the three addresses `00:F4FC` returns through.
     if (entry.routine

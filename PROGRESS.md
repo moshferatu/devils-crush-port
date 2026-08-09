@@ -5444,7 +5444,64 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
 
 ## Active Work
 
-Current owner: Claude. Current slice: the camera-visibility sweep at
+Current owner: Claude. Current slice: **the timer sound driver at `00:FC00` is
+native**, taking the deployed registry to **36.22%** of all master cycles
+(467,299,485 of 1,290,049,560) across 2,159,816 native calls and 284 admitted
+routines. This is the first slice outside gameplay logic: the scope widened to
+sound and video deliberately, so that the emulator dependency can eventually be
+removed entirely rather than only the game-specific parts.
+
+The handler is the game's PSG sample player. It is a flat state machine over
+`00:FC00`-`00:FE48` with no subroutine calls: three channels walked at X = 4,
+2, 0, each streaming five-bit DDA samples out of a sequence bank mapped into
+MPR6 and pushed through `$0806`. Earlier screening had filed this region as
+"timer IRQ and sound driver (`00:FC00`-`FDFF`, bank `45`)" and rejected it for
+driving hardware registers. Both halves were wrong: bank `45` is the *music
+sequencer*, a separate unported component at `$4000`-`$4CB8`, and the hardware
+registers turned out to be a bounded, cheap channel to open.
+
+Three things were needed, all reusable and all written up in
+[docs/NATIVE_PORT_WORKFLOW.md](docs/NATIVE_PORT_WORKFLOW.md):
+
+- The transaction write channel now carries device registers as well as work
+  RAM: the PSG file `$0800`-`$0809`, the timer `$0C00`-`$0C01`, and the
+  interrupt controller `$1402`-`$1403`. Unlike the VDC ports these steal no
+  cycles, so a transcript prices their stores like any other instruction.
+- `--bus-write-range` / `--bus-write-trace` were added, because device writes
+  are invisible to a work-RAM census and a wrong value reaching `$0806` would
+  otherwise go unnoticed. The regression asserts all 954,241 PSG, timer and
+  interrupt-acknowledge writes byte-identical to assembly.
+- `CLI` opens the interrupt window one instruction late — the core samples the
+  interrupt before `OP_CLEARF` clears the flag — so the `CLI` checkpoint must
+  publish the *old* mask. Publishing the new one let a nested timer interrupt
+  arrive nine master cycles early, which was the entire difference between a
+  matching and a non-matching census.
+
+The walk stops at the epilogue heads `00:FC7C` and `00:FD70` (plus `00:FC8C`
+for a reentrant interrupt) rather than running to the `RTI`. From the `CLI` at
+`00:FC32` the handler is interruptible, and its epilogue reads `$DA`, the rerun
+request a preempting handler sets; a transcript is computed once from one
+snapshot and cannot observe that write, so the handler would never take its
+`JMP $FC03` chain exit into the sequencer.
+
+Hooked alone the driver is admitted at 254,434 of 254,434 entries. With the
+whole registry deployed it is admitted 132,656 of 254,990, 52.0% — the rest
+arrive while another checkpointed transcript is suspended, and the core does
+not consult the replacement hook while one is active. **That no-nesting rule,
+not any unported code, is now the largest single lever left in the registry:
+roughly 70,000,000 cycles.** Evidence: Release census `9036a9de...` and Debug
+census `a95d0c34...` unchanged, device-write trace `fec8e78f...`, channel-record
+write trace `c4195b4e...`, regression `dc_rom_sound_timer_driver_semantic`.
+
+One caveat worth carrying forward: the walk implements every address in the
+handler, but the census route only executes 168 of them. The track-advance tail
+`00:FDF4`-`00:FE48`, the portamento branch at `00:FCB6`, the hold path at
+`00:FCDC` and the two V-flag arms are transcribed from the disassembly and
+never exercised, because the route silences an expiring channel at `00:FDE1`
+rather than advancing it. They are not proven by any census. A route that plays
+looping music would exercise them and is the obvious next thing to census.
+
+Previous slice: the camera-visibility sweep at
 `00:F4F2` is native, taking the deployed registry to **30.41%** of all master
 cycles and 81.4% of the portable pool. `00:F4FC` -- which decides whether bit 7
 of a slot's attribute byte, the bit both `01:C510` and `08:407C` gate on, is

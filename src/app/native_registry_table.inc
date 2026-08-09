@@ -21,6 +21,7 @@ DC_ADMITTED_ROUTINE(0x00U, 0xF523U, 28813, 28823, "verify_actor_camera_sweep_sem
 DC_ADMITTED_ROUTINE(0x00U, 0xF545U, 8525, 8525, "verify_actor_camera_sweep_semantic")
 DC_ADMITTED_ROUTINE(0x00U, 0xF54EU, 28575, 28579, "verify_actor_camera_sweep_semantic")
 DC_ADMITTED_ROUTINE(0x00U, 0xF55CU, 40, 40, "verify_score")
+DC_ADMITTED_ROUTINE(0x00U, 0xFC00U, 254434, 254434, "verify_sound_timer_driver_semantic")
 DC_ADMITTED_ROUTINE(0x01U, 0xC024U, 1, 64, "verify_knight_terminal_release_helper_shared_jump_prefix")
 DC_ADMITTED_ROUTINE(0x01U, 0xC3CBU, 2649, 2649, "verify_nudge_input_gate_semantic")
 DC_ADMITTED_ROUTINE(0x01U, 0xC49EU, 2649, 2649, "verify_session_input_gate_semantic")

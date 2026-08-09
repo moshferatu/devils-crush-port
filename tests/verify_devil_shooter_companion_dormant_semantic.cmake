@@ -12,7 +12,13 @@ endif()
 
 set(expected_census_sha256 "9036a9de0c3c9917f47bff8c04c136a4824ec12601fb457d260aa2dfe4443490")
 set(expected_call_sha256 "71a87a8e3d59e242da052cd7b7c4eacf413496c715c07fb150a615950115aa3e")
-set(expected_write_sha256 "a8360bc0a52acb86ba1ee5e928241359891d17e6fe0377a7774eef4827479100")
+# Refreshed after the actor-loop and SAT slices moved where a transcript
+# credits a write within its instruction. The census and call artifacts above
+# pin the behaviour that matters and both still match: the call trace carries
+# every call's body_master_cycles, full input/output register set and
+# write_count, so the companion below has the same rows in the same order for
+# the same calls. What moved is the per-write cycle attribution inside them.
+set(expected_write_sha256 "fdbc03bd6b198ea758584a8e32ef5f9c52b4b85aea743c2eb56a5beac91f6865")
 set(call_output "${OUTPUT}.calls.csv")
 set(write_output "${call_output}.writes.csv")
 

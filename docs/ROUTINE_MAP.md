@@ -361,6 +361,60 @@ identities for all fixed actors. Subsequent rule mapping has assigned all 59
 initializer identities a bounded gameplay-facing or conservative
 compatibility role.
 
+## Timer sound driver
+
+The `TIMER` vector lands at `00:FC00`, and the handler that follows is the
+sound driver. It is flat — no `JSR` anywhere in it — and runs to `00:FE48`.
+The prologue guards against reentry and opens the interrupt window:
+
+```
+FC26  PHA
+FC27  STZ $1403     acknowledge the timer interrupt
+FC2A  LDA $D9       already inside the handler?
+FC2C  BNE $FC8C     yes: bail without touching a channel
+FC2E  INC $D9
+FC30  STZ $DA       clear the rerun request
+FC32  CLI           the rest of the handler is interruptible
+FC33  PHX / PHY / TMA #$40 / PHA
+FC39  LDX #$04
+```
+
+The body then walks three channels at X = 4, 2, 0, two-byte-strided through
+zero page: `$DD,X`/`$DE,X` is the sequence cursor, `$E3,X` a shift register of
+sample bits, `$E4,X` the channel state, `$E9,X`/`$EA,X` a hold counter,
+`$EF,X`/`$F0,X` a fractional rate accumulator, `$F5,X` the data bank with bit 7
+meaning "not yet mapped", and `$F6,X` per-channel flags. Each iteration selects
+the channel with `STX $0800`, maps the channel's bank in with `TAM #$40`, and
+emits one five-bit DDA sample:
+
+```
+FC58  LDA ($DD,X)   sample byte: two four-bit samples
+FC5A  AND #$F0
+FC5C  LSR A x3      high nibble, scaled
+FC5F  ASL $E3,X     carry out is the extra low bit
+FC61  ADC #$00
+FC63  STA $0806     PSG waveform port
+```
+
+`00:FD10` does the same for the low nibble with `AND #$0F` / `ROL A`. The
+`$EF,X`/`$F0,X` pair resamples: adding advances the cursor slowly, and the
+`SBC` paths at `00:FC97`, `00:FCB6`, `00:FD8B` and `00:FDC2` step it faster.
+When a channel's hold counter runs out, `00:FDDB` either silences it — `STZ
+$0805`, `STZ $F5,X`, and `STZ $0C01` to stop the timer if all three channels
+are now idle — or falls into `00:FDF4`, which advances the track: it maps bank
+`$48` (the table at `$FC06` is `48 49 4A 4B 4C 4D 4E 4F`), reads the next
+eight-byte command through `$2E10,X`, and reloads the channel record.
+
+The epilogue at `00:FC7C` and `00:FD70` unwinds, restores the caller's bank,
+clears `$D9`, and then reads `$DA`: if another handler asked for a rerun while
+this one held the interrupt window open, it chains through `JMP $FC03` to
+`$E003` rather than returning. That read is why the native walk stops at the
+epilogue instead of running to the `RTI`.
+
+Bank `45`, at `$4000`-`$4CB8`, is a separate component: the music sequencer,
+which programmes the PSG registers `$0801`-`$0809` directly and drives what
+this handler then streams. It is not part of the driver and is not yet ported.
+
 ## Camera-visibility sweep
 
 Before the actor loop runs, `00:F4F2` walks all 127 slots and calls `00:F4FC`

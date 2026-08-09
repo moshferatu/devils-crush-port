@@ -37,6 +37,27 @@ constexpr std::size_t kPceVramWordCount = DC_BEETLE_VRAM_WORD_COUNT;
 constexpr std::size_t kPcePaletteEntryCount =
     DC_BEETLE_PALETTE_ENTRY_COUNT;
 
+// Device registers a replacement transcript may drive directly. Each range
+// is a whole register file on the hardware page (physical bank FF) whose
+// writes are ordinary stores with no wait state, so a transcript can price
+// them like any other instruction:
+//   $0000-$0003  VDC base ports (address/data), used by the video paths.
+//   $0800-$0809  PSG register file, used by the timer-interrupt sound
+//                driver, which streams DDA samples through $0806.
+//   $0C00-$0C01  Timer counter and control; the sound driver stops the
+//                timer through $0C01 once every channel falls idle.
+//   $1402-$1403  Interrupt controller mask and acknowledge; the sound
+//                driver acknowledges its own timer interrupt at $1403.
+// Everything else on the hardware page stays with the core.
+[[nodiscard]] constexpr bool is_replaceable_hardware_port(
+    const std::uint16_t logical_address)
+{
+    return logical_address <= 0x0003U
+        || (logical_address >= 0x0800U && logical_address <= 0x0809U)
+        || (logical_address >= 0x0C00U && logical_address <= 0x0C01U)
+        || (logical_address >= 0x1402U && logical_address <= 0x1403U);
+}
+
 struct CoreOption {
     std::string_view key;
     const char* value;
@@ -1086,14 +1107,15 @@ private:
             for (const auto& write : result.work_ram_writes) {
                 const auto segment = write.logical_address >> 13U;
                 const auto physical_bank = state->mpr[segment];
-                const bool bounded_vdc_port =
+                const bool bounded_hardware_port =
                     physical_bank == 0xFFU
-                    && write.logical_address <= 0x0003U;
+                    && is_replaceable_hardware_port(
+                        write.logical_address);
                 if (write.master_cycle_offset < previous_cycle
                     || write.master_cycle_offset
                         > result.body_master_cycles
                     || (physical_bank != 0xF8U
-                        && !bounded_vdc_port)) {
+                        && !bounded_hardware_port)) {
                     throw std::runtime_error(
                         "Replacement hook returned an invalid write.");
                 }

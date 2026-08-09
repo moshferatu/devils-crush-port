@@ -2333,6 +2333,49 @@ Outside the spin loop, 94% of what the machine still emulates is the sound
 driver; the entire rest is 17,195,439 cycles, 1.33%, with no single address
 above 0.14%.
 
+## The sound driver, and what a device-register port costs
+
+The timer interrupt handler was the largest single block left outside the spin
+loop, and the screening notes here had it wrong twice over. They filed it as
+"timer IRQ and sound driver (`00:FC00`–`FDFF`, bank `45`)" and ruled it out
+because it "drives the PSG through hardware-page registers at `$0800`/`$0806`
+and re-maps banks with TAM/TMA between writes."
+
+Bank `45` is not part of it. `$FC06` holds the table `48 49 4A 4B 4C 4D 4E 4F`,
+so the driver's data banks are `48`-`4F`, mapped at `$C000` by `TAM #$40` and
+only ever read. Bank `45` lives at `$4000`-`$4CB8` and is the music sequencer,
+a separate component that programmes `$0801`-`$0809` directly. It is still
+unported and is now the largest emulated block outside the spin loop, at
+46,078,773 cycles.
+
+The handler itself runs `00:FC00`–`00:FE48` and is unusually tractable: a flat
+state machine with **no subroutine calls at all**, three PSG channels walked at
+X = 4, 2, 0, each streaming five-bit DDA samples through `$0806`. The bank
+re-mapping was never an obstacle — `output_registers.mpr[]` and every
+checkpoint carry the full `MPR` set, and the core applies them with `SetMPR`.
+
+What it did cost was the write channel, which now carries the PSG file
+`$0800`-`$0809`, the timer `$0C00`-`$0C01` and the interrupt controller
+`$1402`-`$1403` alongside work RAM and the VDC ports, plus a
+`--bus-write-range`/`--bus-write-trace` census channel, because device writes
+never show up in a work-RAM trace. Both are in
+[NATIVE_PORT_WORKFLOW.md](NATIVE_PORT_WORKFLOW.md).
+
+Two screening lessons generalise:
+
+- **Read the profile's per-address average before believing a total.** The
+  region profiled at 249,675,363 cycles, but 72,383,913 of that sat on the two
+  `RTI` instructions at 305 and 261 master cycles per execution against a real
+  cost of 21. The profiler charges each address the span to the next
+  instruction hook, and an `RTI` that returns into a suspended transcript is
+  charged that transcript's unhooked remainder. The driver's true instruction
+  time is 177,203,574. Every other address in it profiles at a clean 6, 12, 15,
+  18 or 21, which is exactly how the artifact was found.
+- **"It writes hardware registers" is a question, not a verdict.** The bounded
+  answer — name the register file, confirm from the profile that its stores
+  cost no wait cycles, and census them — took a 13.7% block of the machine that
+  three earlier passes had written off.
+
 ## Use on future families
 
 Follow the command and interpretation rules in

@@ -388,6 +388,70 @@ contract requires `return_instruction` to be constant, so an indirect jump is
 replaceable as long as the vector is readable from the snapshot. Compute the
 bank from the entry's own `mpr[]`; the jump changes no mapping.
 
+### A transcript cannot see what preempts it
+
+A transcript is computed once, from one snapshot, and then replayed. That is
+fine while the routine owns its state, and it is wrong the moment the routine
+runs with interrupts enabled and then reads memory that a preempting handler
+writes. Checkpoints let the core deliver the interrupt at the right boundary,
+but they do not re-run the callback: the values the walk baked in are the ones
+that get applied.
+
+The timer sound driver is the worked example. It does `CLI` at `00:FC32` and
+its epilogue reads `$DA`, the rerun request another handler sets while it is
+running. The walk's own `STZ $DA` at `00:FC30` is inside the transcript, so
+`LDA $DA` at `00:FC84` would always read back zero and the handler would never
+take its `JMP $FC03` chain exit. No amount of checkpointing fixes that; the
+walk has to stop before the read, at `00:FC7C` and `00:FD70`, and leave the
+epilogue emulated.
+
+So when a candidate enables interrupts partway through, audit every load after
+that point. A byte the routine only writes is safe. A byte another handler
+writes is a hard boundary for the walk, and the cheapest correct answer is to
+end the transcript in front of it rather than to model the race.
+
+### CLI opens the interrupt window one instruction late
+
+The core samples the interrupt on an instruction's last cycle, and `OP_CLEARF`
+runs that sample *before* it clears the flag:
+
+```c
+#define OP_CLEARF(f, ...) { ADDCYC(1); LastCycle(); P &= ~f; __VA_ARGS__ break; }
+```
+
+So the instruction after a `CLI` still runs masked. A checkpoint publishes
+post-instruction registers, and publishing the post-`CLI` status hands the core
+an unmasked `P` one instruction early. In the sound driver that let a nested
+timer interrupt arrive nine master cycles ahead of the machine — the only
+difference in an otherwise byte-identical 954,241-write census, and enough to
+move the state census off the baseline.
+
+The fix is to publish the old mask on the `CLI` checkpoint and let the clear
+land on the next one. `SEI` has the mirror-image delay for the same reason; if
+a walk ever covers one, it needs the same treatment in the other direction.
+
+### The write channel reaches device registers, not just work RAM
+
+`work_ram_writes` is a legacy name. Entries may target work RAM (physical bank
+`F8`) or a bounded set of device registers on the hardware page (bank `FF`):
+
+| Range | Device | Wait state |
+| --- | --- | --- |
+| `$0000`-`$0003` | VDC base ports | 3 CPU cycles |
+| `$0800`-`$0809` | PSG register file | none |
+| `$0C00`-`$0C01` | Timer counter and control | none |
+| `$1402`-`$1403` | Interrupt controller | none |
+
+Only the VDC ports steal cycles, so only they take the `- 6` interrupt sample
+offset; PSG, timer and interrupt-controller stores are ordinary stores priced
+at `- 3` like anything else. Confirm the cost against the profile before
+trusting it — `00:FC27 STZ $1403` and `00:FC43 STX $0800` both measure exactly
+15 master cycles, which is the plain five-cycle store.
+
+Device writes are invisible to a work-RAM census, so a routine that drives them
+needs `--bus-write-range` and `--bus-write-trace` in its regression. Without
+that channel a wrong value reaching `$0806` would never show up.
+
 ### A hardware wait cycle belongs to the transcript, not the total
 
 Only the checkpointed path prices a write to the VDC's four logical ports
