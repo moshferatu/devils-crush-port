@@ -84,7 +84,7 @@ native entry points:
 | `00:FC03`–`FCB3`, `00:FD07`–`FDF1` | 173,243,694 | 13.41% | Sound driver — **already ported** (see below) |
 | bank `45` (`4000`–`4A9B`) | 45,586,602 | 3.53% | Music sequencer — 55% ported; the rest is **blocked**, see below |
 | `00:E93C`–`EBD6` | 20,611,233 | 1.59% | Palette shadow buffer — 18.2M ported; the rest is **blocked**, see below |
-| `00:E0EB`–`E292` | 15,342,522 | 1.19% | VBlank handler, pad reader and call wrappers — 4.0M ported; 7.5M is **blocked**, see below |
+| `00:E0EB`–`E292` | 15,342,522 | 1.19% | VBlank handler, pad reader and call wrappers — 5.1M ported; 7.7M is **blocked**, see below |
 | `00:E3C0`–`E47C` | 7,031,316 | 0.54% | VRAM tile upload |
 | `00:F240`–`F4FB` | 5,761,776 | 0.45% | Tilemap upload, camera-sweep outer |
 | `03:694A`–`6A37` | 5,274,582 | 0.41% | Gameplay tail |
@@ -188,10 +188,11 @@ Remaining real logic, in rough order of value:
    | --- | ---: | --- |
    | `00:E195` pad reader | 6,929,670 | **blocked**: reads `$1000` |
    | `00:E241`/`E255` banked call | 2,878,650 | **native** |
-   | `00:E111`–`E13F` VBlank body | 2,412,678 | writes the VDC ports; unported |
+   | `00:E111`–`E13F` VBlank body | 2,412,678 | **native** except its `RTI` |
    | `00:E262` trampoline | 953,343 | **native** |
-   | `00:E140`–`E178` VBlank epilogue | 821,685 | writes the VDC ports; unported |
-   | `00:E058`–`E110` dispatcher and prologue | 544,104 | **blocked**: reads `$0000` |
+   | `00:E140`–`E178` VBlank epilogue | 821,685 | **native** |
+   | `00:E058`–`E0EA` dispatcher | 769,938 | **blocked**: reads `$0000` |
+   | `00:E0EB`–`E110` VBlank prologue | 544,104 | **native** |
    | `00:E219` bank pair | 501,639 | **native** |
    | `00:E1FD`/`E20D` asset resolver | 377,085 | **native** |
 
@@ -211,11 +212,27 @@ Remaining real logic, in rough order of value:
    change the bank mapping. `TAM` is expressible because `CpuRegisters` carries
    all eight `MPR` slots and a checkpoint applies them.
 
-   What is left in the region is the VBlank body itself, 3.2M across two
-   stretches that write the VDC ports at `$0000`-`$0003`. The channel already
-   carries those, and the body is interleaved with `JSR`s to `00:EB30`,
-   `00:E195` and `00:ECC6` — two of which are now native — so it is the
-   many-entry-points shape, not a new capability.
+   The VBlank body followed, and needed no new capability either: six entry
+   points around the calls the core keeps, writing the VDC ports the channel
+   already carries. 13,932 calls, admitted on every one.
+
+   It did settle a rule that had only been half-stated. Each walk stops one
+   instruction short of its `RTI`, in front of the `PLP` that restores the
+   interrupted status byte, because the core samples the IRQ at `LastCycle` —
+   which for `PLP` runs before the pop — while a checkpoint carries one register
+   set and samples with it. A transcript covering `PLP` samples with the
+   restored mask instead of the one the instruction ran under, and swallows an
+   interrupt assembly services between the `PLP` and the `RTI`. The sound driver
+   hit the same fault from the other direction with `CLI`. **An instruction that
+   changes `I` cannot be summarised by a checkpoint that publishes its result.**
+
+   That is not a theoretical concern here: the handler is entered with `I` set
+   but does not stay masked, because bank `45` ends three critical sections with
+   an unconditional `CLI` instead of restoring the caller's mask.
+
+   What is left in the region is the dispatcher and the pad reader, both phase
+   2, plus the two `RTI`s and the three `JSR`s the walks stop at — 1.3M of
+   instructions the core executes by design.
 4. **Gameplay tails** (~20M spread thin, no single address above 0.14%).
 5. **Boot and reset path.** Off the census route's hot path but required.
 6. **The frame-sync spin loop** (584.8M). Trivial code, but it is where the

@@ -2588,10 +2588,11 @@ instructions turned one row into eight routines:
 | --- | ---: | --- |
 | `00:E195` pad reader | 6,929,670 | Blocked: reads `$1000` |
 | `00:E241`/`E255` banked call | 2,878,650 | Native, every call |
-| `00:E111`–`E13F` VBlank body | 2,412,678 | Unported; writes the VDC ports |
+| `00:E111`–`E13F` VBlank body | 2,412,678 | Native, every call |
 | `00:E262` trampoline | 953,343 | Native, every call |
-| `00:E140`–`E178` VBlank epilogue | 821,685 | Unported; writes the VDC ports |
-| `00:E058`–`E110` dispatcher | 544,104 | Blocked: reads `$0000` |
+| `00:E140`–`E178` VBlank epilogue | 821,685 | Native, every call |
+| `00:E058`–`E0EA` dispatcher | 769,938 | Blocked: reads `$0000` |
+| `00:E0EB`–`E110` VBlank prologue | 544,104 | Native, every call |
 | `00:E219` bank pair | 501,639 | Native, every call |
 | `00:E1FD`/`E20D` asset resolver | 377,085 | Native, every call |
 
@@ -2617,6 +2618,17 @@ the hook is unavailable. `native cycles / interrupt period` predicts 739 here
 against 1,326 measured, which is the right way to budget it. Masking still
 decides which cycles are free: the three wrappers that run inside the VBlank
 handler cost nothing, and the whole bill comes from the six on the main thread.
+
+The bodies followed in the next slice and closed the row: six entry points
+around the calls the core keeps, 13,932 calls, admitted on every one. Splitting
+the row was the whole of the difficulty — once the dispatcher's `LDA $0000` was
+isolated as its own routine, everything below it was ordinary transcription
+against ports the channel already carried.
+
+Its shadowing bill is the counterweight to the paragraph above: 64 driver
+entries and 36,330 cycles, 2.7% of its 1,350,720-cycle gross against the
+wrappers' 15.6%. The rule holds — the wrappers are six times the native time —
+but it is worth seeing both ends of the range before budgeting a slice on it.
 
 ## Use on future families
 

@@ -643,6 +643,35 @@ vector the same transcript just wrote.
 its four stack slots already pushed by its caller, so its entry contract is not
 its own.
 
+The handler's own body is ported too. `00:E058` is unportable but nothing below
+its `LDA $0000` needs the device again, so the bodies split at the dispatcher's
+jumps and at the calls the core keeps:
+
+| Entry | Calls | Stops at | What it does |
+| --- | ---: | --- | --- |
+| `E0EB` | 2,748 | `E111` `JSR $EB30` | Programme VDC `$08`/`$07`/`$05` from the shadows at `$02`, clear the raster-compare bit |
+| `E117` | 3,599 | `E120` or `E134` | Bump the frame counter at `$00`; on `$D9` set, write `$DA` and skip the music call |
+| `E123` | 3,212 | `E134` | Restore MPR6 from the stack and join the epilogue |
+| `E136` | 3,599 | `E134` | Raster arm: on `$54` of 0 or 2 reprogramme the split from `$0B`/`$0C`, then tick `$222A`/`$222B` |
+| `E179` | 387 | `E180` `JSR $ECC6` | The secondary handler's prologue |
+| `E183` | 387 | `E193` | Its epilogue: restore MPR6, rewrite `$0000` twice, unwind |
+
+`E179` is reached only on the frames where `$D9` suppresses the VBlank arm's own
+music call, which is why its 387 entries match `E128`'s exactly.
+
+Each walk stops one instruction short of its `RTI`, in front of the `PLP` at
+`E134` or `E193`. That is not the usual "let the core execute the return": the
+core samples the IRQ at `LastCycle`, which for `PLP` runs before the pop, so a
+transcript covering it would sample with the restored mask rather than the one
+the instruction ran under and swallow an interrupt assembly services between the
+`PLP` and the `RTI`.
+
+The handler is entered masked and does not stay masked. Bank `45` ends three
+critical sections with an unconditional `CLI` instead of restoring the caller's
+mask — `45:4872`, `45:49F2` and `45:47EE` — so the music tick below `ECC6`
+returns with interrupts enabled. Counting interrupt entries against the stack
+page in an assembly trace puts 78 inside these six walks, all at or after `E123`.
+
 ## Camera-visibility sweep
 
 Before the actor loop runs, `00:F4F2` walks all 127 slots and calls `00:F4FC`

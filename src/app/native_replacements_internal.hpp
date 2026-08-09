@@ -1239,6 +1239,17 @@ replace_bank_call_wrappers(
     std::span<const std::byte> work_ram,
     std::span<const std::byte> rom);
 
+// The VDC interrupt handler's body. One walk shared by six entry points: the
+// two arms 00:E058 dispatches to, the two addresses the VBlank arm's calls come
+// back to, and the secondary handler's prologue and epilogue. Every transcript
+// stops in front of a call or an RTI the core executes itself. The dispatcher
+// at 00:E058 is not here: it decides on a byte read from the VDC status
+// register, which no replacement can see.
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_vblank_handler(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram);
+
 [[nodiscard]] std::optional<emulation::RoutineReplacement>
 replace_actor_dispatch_vector(
     const emulation::RoutineEntry& entry,

@@ -204,6 +204,41 @@ replace_native_gameplay_routine_impl(
             }) {
         return detail::replace_bank_call_wrappers(entry, work_ram, rom);
     }
+    // One shared walk, six entry points: the VDC interrupt handler's body.
+    // Each transcript stops in front of the call it makes or the RTI that ends
+    // the handler.
+    if (entry.routine
+            == RoutineKey{
+                .physical_bank = 0x00U,
+                .logical_pc = 0xE0EBU,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x00U,
+                .logical_pc = 0xE117U,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x00U,
+                .logical_pc = 0xE123U,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x00U,
+                .logical_pc = 0xE136U,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x00U,
+                .logical_pc = 0xE179U,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x00U,
+                .logical_pc = 0xE183U,
+            }) {
+        return detail::replace_vblank_handler(entry, work_ram);
+    }
 
     // One shared walk, four entry points: the camera sweep's initializer and
     // the three addresses `00:F4FC` returns through.

@@ -5444,68 +5444,76 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
 
 ## Active Work
 
-Current owner: Claude. Current slice: **the bank-switching call wrappers are
-native**, taking the deployed registry to **39.41%** of all master cycles
-(509,356,164 of 1,292,371,131) across 2,321,732 native calls and 307 admitted
+Current owner: Claude. Current slice: **the VDC interrupt handler's body is
+native**, taking the deployed registry to **39.51%** of all master cycles
+(510,670,554 of 1,292,371,131) across 2,332,369 native calls and 313 admitted
 routines.
 
-Every cross-bank call in the game goes through one of five small wrappers. The
-caller leaves a physical bank in `$30` and an entry offset in `$2F`; a wrapper
-maps the bank into an MPR slot, jumps through the callee's `$40xx` table, and
-unmaps it on the way out. `$1E`-`$21` are the zero-page shadows of MPR2-MPR5,
-and keeping the shadow and the register in step is what makes the idiom
-re-entrant. Nine entry points share one walk — `00:E200`, `E20D`, `E219`,
-`E241`, `E255`, `E262`, `ECC6`, `ECE2`, `ECF2` — four heads and five return
-addresses, because a wrapper exists to call something and the transcript has to
-stop in front of that call. **Admitted on every one of 52,911 calls**,
-4,849,479 cycles. They carry no game logic at all; they are the game's linkage.
+`00:E058` is the display interrupt. It reads the VDC status register at `$0000`
+into `$01` and dispatches on it: the VBlank bit sends it to `00:E0EB`,
+everything else to `00:E136`. That head is not portable — its whole decision is
+a byte from a device register — but nothing downstream of the read needs the
+device again, so the bodies are. Six entry points share one walk: the two arms
+the dispatcher jumps to, the two addresses the VBlank arm's calls come back to
+(`00:E117`, `00:E123`), and the secondary handler's prologue and epilogue
+(`00:E179`, `00:E183`). **Admitted on every one of 13,932 calls** when hooked
+alone; 10,701 of them with the whole registry deployed, the rest arriving while
+a main-thread transcript is suspended. 1,350,720 cycles gross.
 
-These are the first transcripts in the port to change the bank mapping, and
-that needed no new capability: `CpuRegisters` already carries all eight `MPR`
-slots and a checkpoint already applies them, so `TAM` is an ordinary
-instruction costing fifteen master cycles. Two of the stops are indirect jumps
-(`E26E`, `ECFA`) and the walk stops in front of both rather than resolving
-them, since each reads a vector the same transcript just wrote.
-
-Verification is the two-run diff over 6,389,776 work-RAM writes and the state
-census, both byte-identical to a pure-assembly run of the same route, on the
-first attempt. The whole stack page is in scope rather than a window of it:
-this family is nothing but stack-balanced save and restore, and its pushes land
-wherever the caller left `S` — `$21E2` through `$21FD` here. Regression:
-`dc_rom_bank_call_wrappers_semantic`.
+Verification is the two-run diff against pure assembly over three artifacts:
+4,989,037 work-RAM writes including the whole stack page, 2,036,234 writes to
+the VDC's three base ports censused with `--bus-write-range`, and the state
+census. Regression: `dc_rom_vblank_handler_semantic`.
 
 **Findings worth carrying forward.**
 
-*A device read is a harder blocker than a device write, and it invalidated the
-plan for this region.* `00:E0EB`-`E292` was inventoried as one 15.3M block,
-"VBlank handler and pad reader", with a plan attached that said to widen the
-write channel to reach the joypad at `$1000`. Splitting it by call graph first
-turned it into eight routines, and the largest of them is not portable at all:
-`00:E195` strobes `$1000` and then *reads it back* five times a frame, and
-`00:E058` opens by reading the VDC status register. A replacement callback
-receives work RAM and registers and nothing else, so no allowlist reaches
-either. That is 7.5M of the 15.3M, and it is phase-2 device-model work rather
-than phase-1 transcription. The joypad is now on phase 2's list beside the PSG
-and the VDC. Screen for hardware-page *loads* at the same time as shared state
-and from the same disassembly.
+*An instruction that changes `I` cannot be summarised by a checkpoint that
+publishes its result.* The first draft covered the `PLP` that restores the
+interrupted status byte, one instruction short of the `RTI`. It diverged, and
+the stack page showed exactly how: assembly services a timer interrupt between
+that `PLP` and the `RTI`, and the transcript swallowed it. The core samples the
+IRQ at `LastCycle`, which for `PLP` runs *before* the pop, while a checkpoint
+carries one register set and samples with it — so the transcript sampled with
+the restored mask instead of the one the instruction ran under. The sound driver
+hit the same fault from the other direction with `CLI` and fixed it by
+publishing the old mask on the `CLI` checkpoint and letting the clear land on
+the next. Here there is no next checkpoint, so the walk stops in front of the
+`PLP` and the core executes it: twelve master cycles a call against a fault that
+would otherwise have to be caught by diff every time. The general rule is now in
+the workflow doc.
 
-*The shadowing bill scales with total native time, not per-call length.* The
-previous slice found that a masked routine costs the sound driver nothing, and
-that stands. This one settles what the cost scales with when the routine is not
-masked. These nine transcripts are 36 to 162 cycles each — a fortieth of
-`00:E9B6` — and there are 52,911 of them; they cost the driver 1,326 entries
-and 756,342 cycles, 15.6% of the slice's own gross and the largest shadowing
-bill any slice has paid. `native cycles / interrupt period` predicts 739
-against 1,326 measured, which is the right way to budget it. The split inside
-the slice is the proof: the three wrappers that run inside the VBlank handler
-cost nothing, and the whole bill comes from the six on the main thread.
+*Do not assume a handler stays masked because the interrupt sequence set `I`.*
+This one is entered masked and does not stay that way. Bank `45` ends three of
+its critical sections with an unconditional `CLI` rather than restoring the
+caller's mask — `45:4872`, `45:49F2`, `45:47EE`, 376 executions between them —
+so the music tick below `00:ECC6` hands the handler back with interrupts
+enabled. Counting interrupt entries against the stack page in an assembly trace
+puts 78 of them inside these six walks, every one at or after `00:E123` and none
+before a `JSR $ECC6`. That is also why the shadowing bill is small — 64 driver
+entries and 36,330 cycles, 2.7% of gross against the wrapper slice's 15.6% —
+because the unmasked stretch is the short one.
 
-Next: what is left in this region is the VBlank body itself, 3.2M across two
-stretches that write the VDC ports at `$0000`-`$0003`, interleaved with `JSR`s
-to `00:EB30`, `00:E195` and `00:ECC6` — two of which are now native, so it is
-the many-entry-points shape and needs no new capability. Then the VRAM tile
-upload `00:E3C0` (7.0M) and the tilemap upload `00:F240` (5.8M), both of which
-write the same ports.
+Next: `00:E0EB`-`E292` is finished for phase 1. What remains in it is the
+dispatcher `00:E058` (0.8M) and the pad reader `00:E195` (6.9M), both blocked on
+a device *read* and therefore phase-2 work with the VDC and the joypad. The
+next phase-1 targets are the VRAM tile upload `00:E3C0` (7.0M) and the tilemap
+upload `00:F240` (5.8M), both of which write the same VDC ports this slice just
+proved, and neither of which reads one.
+
+Previous slice: **the bank-switching call wrappers are native**, taking the
+registry to 39.41%. Every cross-bank call in the game goes through one of five
+small wrappers: the caller leaves a physical bank in `$30` and an entry offset
+in `$2F`, and a wrapper maps the bank into an MPR slot, jumps through the
+callee's `$40xx` table, and unmaps it on the way out. Nine entry points shared
+one walk, admitted on every one of 52,911 calls, 4,849,479 cycles. They were the
+first transcripts in the port to change the bank mapping, which needed no new
+capability. Two findings came with it. **A device read is a harder blocker than
+a device write**: the plan for this region said to widen the write channel to
+reach the joypad at `$1000`, and the blocker was the read side, which no
+allowlist reaches — 7.5M of the row is phase 2. And **the shadowing bill scales
+with total native time, not per-call length**: 52,911 transcripts of 36 to 162
+cycles cost the driver 1,326 entries and 756,342 cycles, 15.6% of gross and the
+largest bill any slice has paid.
 
 Previous slice: **the palette upload `00:EB30` is native**, taking the registry
 to 39.10%. It runs once a frame, walking the thirty-two dirty flags at

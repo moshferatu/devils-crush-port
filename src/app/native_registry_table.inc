@@ -7,6 +7,12 @@
 // observed call totals asserted by the named ROM regression; a shortfall means
 // the remaining calls fall back to emulated assembly by design.
 
+DC_ADMITTED_ROUTINE(0x00U, 0xE0EBU, 2748, 2748, "verify_vblank_handler_semantic")
+DC_ADMITTED_ROUTINE(0x00U, 0xE117U, 3599, 3599, "verify_vblank_handler_semantic")
+DC_ADMITTED_ROUTINE(0x00U, 0xE123U, 3212, 3212, "verify_vblank_handler_semantic")
+DC_ADMITTED_ROUTINE(0x00U, 0xE136U, 3599, 3599, "verify_vblank_handler_semantic")
+DC_ADMITTED_ROUTINE(0x00U, 0xE179U, 387, 387, "verify_vblank_handler_semantic")
+DC_ADMITTED_ROUTINE(0x00U, 0xE183U, 387, 387, "verify_vblank_handler_semantic")
 DC_ADMITTED_ROUTINE(0x00U, 0xE200U, 1861, 1861, "verify_bank_call_wrappers_semantic")
 DC_ADMITTED_ROUTINE(0x00U, 0xE20DU, 1861, 1861, "verify_bank_call_wrappers_semantic")
 DC_ADMITTED_ROUTINE(0x00U, 0xE219U, 3523, 3523, "verify_bank_call_wrappers_semantic")

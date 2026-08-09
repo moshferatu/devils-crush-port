@@ -378,6 +378,38 @@ disassembly: list every load in the candidate's subtree whose address is on
 the hardware page. If there is one, the routine belongs to phase 2 with its
 device, not to phase 1.
 
+### An instruction that changes `I` cannot be summarised by a checkpoint
+
+A checkpoint carries one register set. The core applies it, samples the
+interrupt with it, and then advances — so the mask a checkpoint publishes is the
+mask its instruction *ended* with. The machine samples earlier than that: the
+IRQ decision is taken at `LastCycle`, and for the two instructions that matter
+`LastCycle` runs before the register effect.
+
+Both halves of this have now been paid for.
+
+- `CLI` in the sound driver: a checkpoint publishing the post-`CLI` status
+  opened the window one instruction early, and a nested timer interrupt arrived
+  nine master cycles ahead of the machine. Fix: publish the old mask and let the
+  clear land on the next checkpoint.
+- `PLP` in the VDC interrupt handler: the core's `PLP` calls `LastCycle()`
+  before `P = POP()`, so a transcript covering it samples with the *restored*
+  mask. Assembly services a timer interrupt between that `PLP` and the `RTI`
+  after it; the transcript swallowed it. Fix: stop the walk in front of the
+  `PLP` and let the core execute it. Twelve master cycles a call, against a
+  fault the two-run diff would otherwise have to catch every time.
+
+The general form: if an instruction changes `I`, either delay the published
+change by one checkpoint or do not cover the instruction. Do not assume a body
+is masked throughout because an interrupt sequence sets `I` on the way in —
+check. The VBlank handler is entered masked and does not stay that way, because
+bank `45` ends three critical sections with an unconditional `CLI` rather than
+restoring the caller's mask.
+
+The stack page is what makes this class of fault visible. A swallowed interrupt
+moves where its handler pushes, so an assembly-diff that includes `$2100`-`$21FF`
+fails loudly; an end-state census may not.
+
 ### Rank what the deployed registry does not cover, not what is expensive
 
 A `--instruction-profile` taken *with* `--replace-registry` attributes each
