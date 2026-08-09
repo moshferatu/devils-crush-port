@@ -430,6 +430,31 @@ The fix is to publish the old mask on the `CLI` checkpoint and let the clear
 land on the next one. `SEI` has the mirror-image delay for the same reason; if
 a walk ever covers one, it needs the same treatment in the other direction.
 
+### PLP defers the mask, and only the mask
+
+`PLP` has the same shape — `ADDCYC(3); LastCycle(); P = POP();` — so the same
+reasoning says to publish the caller's status and let the pop land on the next
+checkpoint. That is right about the mask and wrong about everything else.
+
+The two flags are used for different things. `IFlagSample` decides *whether*
+the interrupt is taken, and the core sampled it before the pop, so it has to
+be the old mask. But if the interrupt is taken, the core pushes `P` — and by
+then the pop has happened, so the pushed byte is the popped flags. Deferring
+the whole byte publishes the pre-pop status, and an interrupt landing on that
+exact instruction pushes the wrong `P` onto the stack.
+
+In the command interpreter this hit `46AE`, a `PLP` that restores a carry the
+handler set eighty instructions earlier: the timer interrupt landed there
+twice in 3,600 frames and pushed `$00` where the machine pushes `$41`. The
+census still matched, because the interrupt handler restores `P` on the way
+out and nothing read the stack byte in between.
+
+`ReplacementCheckpoint` carries one status, so the correct split is: publish
+the popped flags with the *old* mask bit, and apply the popped mask on the
+next checkpoint. That is exact for `SEI`/`CLI`, where only the mask changes,
+and leaves a single residual — an interrupt taken on a `PLP` that also changes
+the mask would push the old mask bit. Nothing in the ported set does that.
+
 ### The write channel reaches device registers, not just work RAM
 
 `work_ram_writes` is a legacy name. Entries may target work RAM (physical bank
@@ -480,6 +505,23 @@ work-RAM write observer does not capture hardware-page writes at all. A
 routine whose real output is VDC port traffic can pass every available check
 and still move the state census.
 
+### JSR writes its return address before it charges its cycles
+
+Nearly every store lands on its instruction's final cycle, because the core's
+addressing macros are `GetXX(EA); ADDCYC(n); LastCycle(); WrMem(EA, r)`. A
+transcript can price a write by the checkpoint that follows it and be right.
+
+`JSR` is the exception. Its body is `PUSH(PC >> 8); PUSH(PC); PC = ...;
+ADDCYC(6); LastCycle();` — the two stack writes happen *before* any cycle is
+charged, so they land on the instruction's **first** cycle, 21 master cycles
+earlier than the same-shaped `PHP` two lines away (`ADDCYC(2); LastCycle();
+PUSH(...)`, which does land at the end).
+
+Check the operand order in `huc6280_ops.inc` for anything that writes outside
+the `ST_*`/`RMW_*` macros rather than assuming. Getting it wrong is invisible
+to the state census and to a device-write trace; it shows up only as a
+constant cycle skew in a work-RAM trace that includes the stack.
+
 ### Read a whole bank by its call graph before reading its instructions
 
 When the candidate is a region rather than a family — a whole bank, or a
@@ -509,10 +551,22 @@ until some later change makes something observe it.
 The stronger check costs one extra run: record the same `--work-ram-write-range`
 / `--bus-write-range` trace twice, once with the hooks and once without, and
 compare the files. Identical files mean every write matches in value, address,
-order **and** master-cycle offset. The bank-45 slice was verified this way over
-409,323 work-RAM writes and 698,608 PSG writes. Prefer this to asserting a
-hash you obtained from the native run itself, which only proves the native run
-is reproducible.
+order **and** master-cycle offset. Prefer this to asserting a hash you obtained
+from the native run itself, which only proves the native run is reproducible.
+
+**Include the stack in the range.** The first bank-45 slice passed the census,
+the device-write trace and both configurations while crediting a `JSR`'s two
+return-address bytes 21 cycles late. Adding `$21E0`-`$21FF` to the range
+surfaced it immediately, as a constant +21 skew from frame 148 onward. The
+same range later caught the `PLP` status fault above, on the strength of two
+differing bytes in 5.5 million writes. Both faults are stack-only by
+construction: an interrupt frame and a return address are written nowhere
+else, so a trace that omits the stack cannot see either.
+
+**Widen the range to whatever the new code writes.** The sample trigger at
+`45:4776` writes nine bytes of the timer driver's per-channel zero page, none
+of which the previous slice's ranges covered. A range chosen for the last
+slice silently stops proving anything about the next one.
 
 Profile before selecting a batch. Choosing by family narrative produced a
 registry where 67 of 260 installed routines never execute on the route and 48

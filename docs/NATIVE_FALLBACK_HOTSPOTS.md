@@ -2402,22 +2402,54 @@ The instrument was the whole-ROM instruction profile, read three ways:
 | --- | ---: | ---: | --- |
 | `45:4015` per-frame tick | — | 13,801,503 | ten subroutines |
 | `45:49F9` voice commit | 22,664 | 8,577,900 | — |
-| `45:4142` prologue | 3,599 | 7,404,498 | — |
+| `45:4142` PSG register programmer | 3,599 | 7,404,498 | — |
 | `45:48F6` sweep update | 22,664 | 4,438,275 | `48B4` |
 | `45:4883` pitch update | 22,664 | 3,958,542 | `48B4` |
 | `45:48B4` command decoder | 25,968 | 1,771,122 | — |
-| `45:457A` step-limit handler | 2,299 | 1,690,857 | `4522` `4569` `46D7` |
-| `45:4228` | 1,142 | 1,326,999 | — |
+| `45:457A` command interpreter | 2,299 | 1,690,857 | `4522` `4569` `46D7` |
+| `45:4228` portamento stepper | 1,142 | 1,326,999 | — |
 | `45:49A2` vibrato update | 22,664 | 1,239,765 | — |
-| `45:46D7` | 2,254 | 1,203,030 | — |
+| `45:46D7` note to period | 2,254 | 1,203,030 | — |
 
-The first slice took the seven leaves marked native in
-[ROUTINE_MAP.md](ROUTINE_MAP.md#music-sequencer), for 15,313,683 cycles — 39%
-of the bank. `4015`, `4142`, `457A`, `4228` and `46D7` remain the measured
-next candidates, and `4142` in particular is a 93-instruction leaf worth
-7.4M with no calls out.
+The first slice took the seven leaves of the sample/envelope group; the second
+took `4142`, the PSG register programmer; the third took `4228` and `457A`,
+which between them pull in `4569`, `4522`, `46D7` and the dispatch handlers.
+That leaves the per-frame tick `4015`, the track loader `4BCC` and `4936`.
 
-Two lessons generalise:
+The third slice is the one that shows what the call-graph table above is
+actually for. `4228` and `457A` look unrelated in the profile and share the
+whole of `$4705`-`$4882` — the note-to-period conversion and the sample
+trigger — reached by a `JMP` from one and a `JSR` from the other. Taking
+`4228` first built that tail against a small entry point, and the profile
+then showed that `4228` never reaches the sample trigger on this route, so
+`457A` had to follow immediately or two hundred lines of transcript would
+have shipped unexercised. It is worth checking, after every slice, which of
+the code you just wrote the route actually ran.
+
+`4142` is admitted at 1,792 of 3,604 rather than in full, and the reason is
+worth carrying to any routine that shares state with an interrupt handler.
+`$F5`/`$F7`/`$F9` are the timer driver's per-channel bank bytes — the only
+bytes in this bank's working set another thread of control writes. A
+transcript is computed once from a snapshot taken before it runs, so a walk
+that reads them is only correct if no timer interrupt is delivered while it
+runs. The walk declines unless the interrupt mask is already set at entry
+(`4142` brackets each voice in `PHP`/`SEI`/`PLP`, so a masked entry stays
+masked throughout — 1,326 of the 3,604) or the body finishes inside
+`master_cycles_until_timer_interrupt`. Applying the same rule to the already
+shipped `49F9` dropped it from 22,664 to 22,622: forty-two calls that had been
+admitted on a read that was not provably fresh.
+
+`457A` is admitted at 2,219 of 2,299 for a different reason, and one worth
+recording separately: a routine can contain control flow a leaf transcript
+cannot express. Its `$82`/`$92` command handler pops four bytes off the stack
+and jumps to `$40EE`, abandoning `457A`'s own frame — the sequencer's way of
+saying "this voice is finished, resume the caller's caller". A transcript that
+has to stop in front of an `RTS` has no way to say that, so those 45 calls
+decline. The remaining 35 are handlers this route never reaches, left
+untranscribed rather than written blind. Both disappear when `4015` is ported,
+because at that level the escape is ordinary internal control flow.
+
+Four lessons generalise:
 
 - **A call-graph pass is cheap and changes the plan.** Sixteen `JSR` targets
   in 1,078 addresses meant the bank was a set of small leaves, not a monolith.
@@ -2426,10 +2458,23 @@ Two lessons generalise:
 - **Verify a port against an assembly run of the same route, not just the
   baseline hash.** The state census proves the end state; running the
   identical trace ranges with and without the hooks and diffing the artifacts
-  proves value, address, order *and* master-cycle offset for every write. Here
-  that was 409,323 work-RAM writes and 698,608 PSG writes, byte-identical.
-  It costs one extra run and it is the only check that catches a write
-  credited to the wrong cycle inside an otherwise correct transcript.
+  proves value, address, order *and* master-cycle offset for every write. It
+  costs one extra run and it is the only check that catches a write credited
+  to the wrong cycle inside an otherwise correct transcript.
+- **Put the stack in the trace range.** The first bank-45 slice passed the
+  census, the device-write trace and both configurations while crediting two
+  `JSR` return-address bytes 21 cycles late — the core pushes them *before*
+  `ADDCYC(6)`, unlike every other store, which lands on its instruction's
+  final cycle. Widening the work-RAM range to `$21E0`-`$21FF` found it on
+  frame 148 of 3,600, as a constant +21 skew in every subsequent write. A
+  narrow "just the routine's own state" range would never have.
+- **The same range catches interrupt frames, which is how a status flag gets
+  checked.** The third slice's `PLP` at `46AE` published the caller's flags at
+  its checkpoint, so an interrupt landing on that exact instruction pushed the
+  pre-pop status. Two bytes differed out of 5,458,568 writes, both of them in
+  the stack range, and the census matched either way because the handler
+  restores `P` on the way out. `PLP` has to defer the mask and only the mask —
+  see [the workflow note](NATIVE_PORT_WORKFLOW.md#plp-defers-the-mask-and-only-the-mask).
 
 ## Use on future families
 

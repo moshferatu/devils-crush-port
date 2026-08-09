@@ -2745,7 +2745,10 @@ parse_logical_address_range(const std::string_view text)
                            && request.all_calls;
                        const bool proven_music_sequencer =
                            request.routine.physical_bank == 0x45U
-                           && (request.routine.logical_pc == 0x4211U
+                           && (request.routine.logical_pc == 0x4142U
+                               || request.routine.logical_pc == 0x4211U
+                               || request.routine.logical_pc == 0x4228U
+                               || request.routine.logical_pc == 0x457AU
                                || request.routine.logical_pc == 0x4883U
                                || request.routine.logical_pc == 0x48B4U
                                || request.routine.logical_pc == 0x48F6U

@@ -5444,10 +5444,11 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
 
 ## Active Work
 
-Current owner: Claude. Current slice: **the bank-45 music sequencer's
-sample/envelope group is native**, taking the deployed registry to **37.34%**
-of all master cycles (482,613,168 of 1,292,370,213) across 2,253,301 native
-calls and 291 admitted routines.
+Current owner: Claude. Current slice: **the bank-45 music sequencer's command
+interpreter, portamento stepper, sample/envelope group and PSG register
+programmer are native**, taking the deployed registry to **37.85%** of all
+master cycles (489,149,301 of 1,292,370,213) across 2,257,771 native calls and
+294 admitted routines. The bank is 25,047,771 of 45,586,602 cycles native, 55%.
 
 Bank `45` is the other half of the audio path: the timer driver streams
 samples, the sequencer decides what they are, walking its voices once per frame
@@ -5466,30 +5467,106 @@ intimidating 1,078-address region into a sixteen-row table in about five
 minutes, off an artifact already on disk, and it is what turned this from a
 10,000-line transcript into an incremental slice.
 
-The first slice takes the seven routines the voice walk calls once per voice
-per frame: `45:48B4` (the shared command decoder), `45:4883` and `45:48F6`
-(which inline it), `45:49A2`, `45:49B6`, `45:49F9` (which drives `$0800` and
-`$0804`) and `45:4211`. One shared walk serves all seven; each stops in front
-of its own `RTS` and hands the return back to the core, and any call the walk
-makes is inlined into the same transcript. That is why `48B4` is admitted only
-72 times on its own — the other 25,896 calls to it are made from inside a
-`4883` or `48F6` transcript and never reach the hook.
+Ten routines are native. Seven are the sample/envelope group the voice walk
+calls once per voice per frame: `45:48B4` (the shared command decoder),
+`45:4883` and `45:48F6` (which inline it), `45:49A2`, `45:49B6`, `45:49F9`
+(which drives `$0800` and `$0804`) and `45:4211`. The eighth is `45:4142`, the
+PSG register programmer: it walks the six channels pushing period, amplitude,
+balance and noise out to the register file, uploads a 32-byte waveform through
+`$0806` when a voice's waveform changes, and programs the LFO at
+`$0808`/`$0809`. The last two are `45:4228`, the portamento stepper, and
+`45:457A`, the command interpreter — the only part of the bank that reads the
+music data itself. One shared walk serves all ten; each stops in front of its
+own `RTS` and hands the return back to the core, and any call the walk makes is
+inlined into the same transcript. That is why `48B4` is admitted only 72 times
+on its own — the other 25,896 calls to it are made from inside a `4883` or
+`48F6` transcript and never reach the hook — and why `4569`, `4522`, `46D7`
+and the forty command handlers are not separate entries at all.
 
-That is 15,313,683 cycles, 39% of the bank. The remaining 27,687,495 are the
-per-frame tick at `45:4015` (13.8M) and the eight subroutines it reaches that
-this slice does not cover; `45:4142` is the measured next candidate, a
-93-instruction leaf worth 7.4M with no calls out.
+`457A` is where the bank stops being arithmetic. It scans the voice's stream
+through `$D0`/`$D1`; a byte under `$80` is a note, `$C0`-`$DD` copies an
+instrument record out of `$5AA9`, and `$80`-`$BF` is a command dispatched
+through a table of `address - 1` values at `$42BA` by pushing the address and
+executing `RTS` — so the handler runs with the caller's return address still
+on the stack and its own `RTS` continues the scan. Reaching a note falls into
+`4622`, which calls `46D7` to convert it to a period, and for a percussion
+voice whose note lands in the sample table that ends at `4776`: remap MPR6 to
+the sample's bank, copy the eight-byte header into the timer driver's
+per-channel zero page, silence the PSG channel, and start the timer. `4228`
+shares that whole tail, reached by a `JMP` rather than a `JSR`.
 
-Verification went past the state census. The census is the direct oracle for an
-audio port because it hashes the audio, and it is unchanged (`9036a9de...`).
-On top of that the regression compares three artifacts against a
-**pure-assembly run of the same route**: 409,323 work-RAM writes covering every
-voice record, 698,608 PSG writes, and the census. All three are byte-identical,
-so the writes match in value, address, order *and* master-cycle offset, not
-merely in end state. That extra run is the only check that catches a write
-credited to the wrong cycle inside an otherwise correct transcript, and it is
-now the recommended shape for any slice that touches device registers.
-Regression: `dc_rom_music_sequencer_semantic`.
+The remaining 20,538,831 cycles are the per-frame tick at `45:4015` (13.8M),
+which calls everything above, plus `45:4936` and the track loader `45:4BCC`.
+
+**Findings worth carrying forward.**
+
+*A transcript that shares state with an interrupt handler needs a freshness
+guard.* `$F5`/`$F7`/`$F9` are the timer driver's per-channel bank bytes — the
+only bytes in this bank's working set another thread of control writes. The
+driver sets one when it maps a channel's data bank and clears it when the
+channel falls idle; `4142` reads all three (and clears one to release a
+channel), and `49F9` reaches them through `$20F5,Y`. A transcript is computed
+once from a snapshot taken before it runs, so those reads are only sound if no
+timer interrupt is delivered while it runs. The walk declines unless the
+interrupt mask is already set at entry — `4142` brackets each voice in
+`PHP`/`SEI`/`PLP`, so a masked entry stays masked for the whole body — or the
+body finishes inside `master_cycles_until_timer_interrupt`. That is a
+correctness boundary, not a horizon heuristic. It admits `4142` at 1,792 of
+3,604, and applying it to the already-shipped `49F9` dropped that from 22,664
+to 22,622: forty-two calls that had been admitted on a read that was not
+provably fresh. Expect more of this as the port moves closer to the interrupt
+handlers; phase 3 of the elimination roadmap dissolves it, because native time
+and interrupts leave no snapshot to go stale.
+
+*`JSR` writes its return address before it charges its cycles.* Nearly every
+store lands on its instruction's final cycle, because the core's addressing
+macros are `GetXX(EA); ADDCYC(n); LastCycle(); WrMem(...)`. `JSR` is
+`PUSH; PUSH; ADDCYC(6); LastCycle()`, so its two stack writes land on the
+instruction's **first** cycle — 21 master cycles earlier than the same-shaped
+`PHP` two lines away in the same file. The first slice got this wrong and
+nothing caught it: the state census passed, the device-write trace passed, and
+both Release and Debug passed. What caught it was widening the work-RAM trace
+range to include the stack at `$21E0`-`$21FF` and diffing against a
+pure-assembly run, which showed a constant +21 cycle skew in every write from
+frame 148 of 3,600 onward.
+
+*`PLP` defers the mask, and only the mask.* `CLI` and `SEI` both apply their
+flag after the core has sampled the interrupt, so their checkpoint publishes
+the old mask and the change lands on the next one. `PLP` has the same shape —
+`ADDCYC(3); LastCycle(); P = POP()` — and the obvious generalisation, defer
+the whole popped byte, is wrong. The sample decides *whether* the interrupt is
+taken and needs the old mask; but if it is taken, the core pushes `P` after
+the pop, so the checkpoint has to carry the popped flags already. The
+interpreter's `PLP` at `46AE` restores a carry set eighty instructions
+earlier, and the timer interrupt landed on it twice in 3,600 frames, pushing
+`$00` where the machine pushes `$41`. The correct split is to publish the
+popped flags with the *old* mask bit.
+
+*A leaf transcript cannot express every routine.* `457A`'s `$82`/`$92` command
+pops four bytes and jumps to `$40EE`, discarding the routine's own frame. A
+transcript that must stop in front of an `RTS` has no way to say that, so
+those 45 calls decline; 35 more decline on command handlers this route never
+reaches, which were left untranscribed rather than written blind. Both go away
+when `45:4015` is ported, because at that level the escape is ordinary
+internal control flow — it is a property of the hybrid's contract, not of the
+code.
+
+That comparison is now the standard shape for this kind of slice, and the
+stack belongs in the range — it has now caught both of the cycle-level faults
+above, on the strength of a handful of bytes each. The regression compares
+three artifacts against a **pure-assembly run of the same route**: 5,458,568
+work-RAM writes covering every voice record, the zero-page command pointer,
+the driver's per-channel state and the stack; 699,251 PSG and timer writes;
+and the census (`9036a9de...`). All byte-identical. The trace range was
+widened for this slice as well as the hook list, because the sample trigger
+writes nine driver bytes the previous ranges did not cover. Regression:
+`dc_rom_music_sequencer_semantic`.
+
+The other thing this slice is worth remembering for: after landing `4228`,
+the instruction profile showed it never reaches the sample trigger on this
+route, so about two hundred lines of the shared tail were still unexercised.
+`457A` had to follow immediately rather than shipping unverified code. Check
+what the route actually ran, not only that it matched.
 
 Previous slice: **the timer sound driver at `00:FC00` is
 native**, taking the deployed registry to **36.22%** of all master cycles
@@ -5535,11 +5612,11 @@ snapshot and cannot observe that write, so the handler would never take its
 `JMP $FC03` chain exit into the sequencer.
 
 Hooked alone the driver is admitted at 254,434 of 254,434 entries. With the
-whole registry deployed it is admitted 127,426 of 254,990, 50.0% — the rest
+whole registry deployed it is admitted 127,455 of 254,990, 50.0% — the rest
 arrive while another checkpointed transcript is suspended, and the core does
 not consult the replacement hook while one is active. **That no-nesting rule,
 not any unported code, is the largest single lever left on the percentage:
-104,404,329 cycles.** It is a limit of the hybrid harness rather than of the
+104,378,772 cycles.** It is a limit of the hybrid harness rather than of the
 port, and the decision below is to leave it alone. Evidence: Release census
 `9036a9de...` and Debug
 census `a95d0c34...` unchanged, device-write trace `fec8e78f...`, channel-record

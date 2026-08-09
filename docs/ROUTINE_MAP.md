@@ -445,10 +445,10 @@ The subroutines the tick calls, and their cost on the census route:
 | `48B4` | 25,968 | 1,771,122 | Sequence-data fetch, the shared command decoder |
 | `49A2` | 22,664 | 1,239,765 | Vibrato accumulator update |
 | `49F9` | 22,664 | 8,577,900 | Voice commit; drives `$0800`/`$0804` |
-| `4142` | 3,599 | 7,404,498 | Per-frame prologue |
-| `457A` | 2,299 | 1,690,857 | Step-limit handler; calls `4522`/`4569`/`46D7` |
-| `46D7` | 2,254 | 1,203,030 | |
-| `4228` | 1,142 | 1,326,999 | |
+| `4142` | 3,599 | 7,404,498 | PSG register programmer |
+| `457A` | 2,299 | 1,690,857 | Command interpreter; calls `4522`/`4569`/`46D7` |
+| `46D7` | 2,254 | 1,203,030 | Note to period, and the sample trigger at `4776` |
+| `4228` | 1,142 | 1,326,999 | Portamento/sweep stepper; shares `46D7`'s tail |
 | `49B6` | 3,604 | 607,533 | Voice-latch clear |
 | `4211` | 7,198 | 541,458 | Two pending-event gates |
 | `4936` | 548 | 93,495 | |
@@ -464,9 +464,70 @@ one, `$81` subtracts the following byte from the cursor and re-reads there
 (a loop), `$82` restarts at offset zero, and `$83`/`$84` branch on bit two of
 `$2EB4,X` before doing one of the above.
 
+`45:4142` is the other half worth reading. It walks the six PSG channels in
+X, bracketing each in `PHP`/`SEI` ... `PLP`, and pushes the voice's latched
+state out to the register file: `$0802`/`$0803` period, `$0804` amplitude,
+`$0805` balance, `$0807` noise. A voice whose latched amplitude `$2E22,X` is
+zero is silenced instead. When `$2E2E,X` names a waveform other than the one
+already loaded (`$2E3A,X`) or `$FF`, it computes `$4E59 + index * 32` through
+`$D2`/`$D3` and uploads 32 bytes through `$0806`. The tail programs the LFO
+at `$0808`/`$0809`, writing `$0809` twice when `$2E41`'s high bit marks a
+pending reset.
+
+It also owns the handshake with the timer driver. `$F5`, `$F7` and `$F9` are
+the driver's per-channel bank bytes; `4142` clears one at `4151` to release a
+channel, and at `415A`-`4165` reads all three and stops the timer through
+`$0C01` when every channel has fallen idle. That read-modify is why each
+iteration runs under `SEI`.
+
+`45:457A` is the third piece worth reading: the command interpreter, and the
+only part of the bank that reads the music data itself. It points `$D0`/`$D1`
+at the voice's cursor and scans forward. A byte under `$80` is a note; `$C0`
+-`$DD` selects an instrument, copying eight bytes of the record at `$5AA9` into
+the voice's arrays; and `$80`-`$BF` is a command, dispatched through the table
+at `$42BA` by the four-instruction trampoline at `45:4569`:
+
+```
+4569  ASL A         command to table index
+456A  TAX
+456B  LDA $42BB,X   push the handler's address, high byte first
+456E  PHA
+456F  LDA $42BA,X
+4572  PHA
+4573  LDX $2E34     restore the voice cursor
+4576  INY
+4577  LDA ($D0),Y   the command's operand, in A for the handler
+4579  RTS           ... which returns *to* the handler
+```
+
+The table holds `address - 1`, so the `RTS` at `4579` jumps rather than
+returns, and the handler runs with `4598`'s own return address still on the
+stack: its `RTS` lands back at `459B` and the scan continues. Forty entries are
+populated, at `$430E`-`$4522`, and most are three or four instructions --
+set the level, adjust the volume with a clamp, arm the sweep, retarget the
+cursor. Two are worth noting: `$82`/`$92` maps to `4356`, which pops four
+bytes and jumps to `$40EE`, abandoning `457A`'s frame entirely; and `$9A`,
+`$9B` and `$A3` all map to `451F`, which falls into the balance ramp at
+`4522`.
+
+Once the scan reaches a note it falls into `4622`, which stores the note and
+its duration and calls `46D7` to turn it into a period. `46D7` handles the
+melodic case with a table lookup at `$4CB7`, and for a percussion voice
+(`$2E46,X` negative) looks the note up in an instrument range table first.
+If that lookup lands in the sample table at `$5B41`, the tail at `4776`
+hands the channel over to the timer driver: it remaps MPR6 to the sample's
+bank, copies the eight-byte header into the driver's per-channel zero page
+(`$DD`/`$DE`/`$E4`/`$E9`/`$EA`/`$EF`/`$F0`/`$F5`/`$F6`, all indexed by
+channel), silences the PSG channel while it does, and starts the timer at
+`$0C01` if no channel was streaming yet. That is the sequencer's only write
+into driver state, and the mirror image of the handshake `4142` owns.
+
 The sample/envelope group -- `4883`, `48F6`, `48B4`, `49A2`, `49B6`, `49F9`
-and `4211` -- now runs natively. The tick at `4015` and the remaining
-subroutines are still emulated.
+and `4211` -- the register programmer `4142`, the portamento stepper `4228`
+and the command interpreter `457A` now run natively; `4569`, `4522`, `46D7`
+and the dispatch handlers are inlined into `457A`'s transcript rather than
+hooked separately. The tick at `4015`, the track loader `4BCC` and `4936`
+are still emulated.
 
 ## Camera-visibility sweep
 

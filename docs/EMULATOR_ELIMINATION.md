@@ -82,7 +82,7 @@ native entry points:
 | --- | ---: | ---: | --- |
 | `00:E2B7`–`E39C` | 584,758,197 | 45.25% | Frame-sync spin loop |
 | `00:FC03`–`FCB3`, `00:FD07`–`FDF1` | 173,243,694 | 13.41% | Sound driver — **already ported** (see below) |
-| bank `45` (`4000`–`4A9B`) | 45,583,803 | 3.53% | Music sequencer — 39% ported, `4015` tick and eight subroutines left |
+| bank `45` (`4000`–`4A9B`) | 45,586,602 | 3.53% | Music sequencer — 55% ported, `4015` tick and two subroutines left |
 | `00:E93C`–`EBD6` | 20,611,233 | 1.59% | VCE palette DMA |
 | `00:E0EB`–`E292` | 15,342,522 | 1.19% | VBlank handler and pad reader |
 | `00:E3C0`–`E47C` | 7,031,316 | 0.54% | VRAM tile upload |
@@ -104,14 +104,33 @@ own when the CPU does.
 
 Remaining real logic, in rough order of value:
 
-1. **Bank `45` music sequencer** (45.6M, of which 15.3M is done). The last
+1. **Bank `45` music sequencer** (45.6M, of which 25.0M is done). The last
    large block of ordinary logic. The PSG write channel and the bus-write
    census built for the timer driver applied unchanged, as expected. The bank
    turned out to be sixteen small subroutines rather than a monolith, so it is
-   going in slices: the sample/envelope group is native, and the per-frame
-   tick at `45:4015` (13.8M), the prologue `45:4142` (7.4M) and the
-   step-limit handler `45:457A` (1.7M) are next. See
+   going in slices: the sample/envelope group, the PSG register programmer
+   `45:4142`, the portamento stepper `45:4228` and the command interpreter
+   `45:457A` are native. What is left is the per-frame tick `45:4015` (13.8M),
+   which calls all of them, plus `45:4936` and the track loader `45:4BCC`. See
    [NATIVE_FALLBACK_HOTSPOTS.md](NATIVE_FALLBACK_HOTSPOTS.md#the-music-sequencer-and-screening-a-bank-instead-of-a-family).
+
+   `45:4142` also surfaced the first **shared-state** boundary in the port.
+   It reads `$F5`/`$F7`/`$F9`, which the timer interrupt handler writes, so a
+   transcript computed from one snapshot can act on a stale value. The walk
+   declines unless interrupts are provably masked for its whole body. `457A`
+   reaches the same state from the other side: its sample trigger at `45:4776`
+   *writes* the driver's whole per-channel zero page. Expect more of this as
+   the remaining code moves closer to the interrupt handlers, and note that
+   phase 3 dissolves it: with native time and interrupts there is no snapshot
+   to go stale.
+
+   `45:457A` also found the first **inexpressible** control flow. Its
+   `$82`/`$92` command pops four bytes and jumps to `$40EE`, discarding the
+   routine's own stack frame; a transcript that must stop in front of an `RTS`
+   cannot represent that, so those calls decline. This is a property of the
+   hybrid's leaf-transcript contract, not of the code — porting `45:4015`
+   makes the same escape ordinary internal control flow — and it is another
+   thing that disappears with the emulator rather than needing a fix in it.
 2. **Video upload paths** (33.4M): palette DMA `00:E93C`–`EBD6`, VRAM tiles
    `00:E3C0`–`E47C`, tilemap `00:F240`–`F452`. These write the VDC ports,
    which the write channel already carries.

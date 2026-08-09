@@ -71,13 +71,30 @@ replace_native_gameplay_routine_impl(
         }) {
         return detail::replace_sound_timer_driver(entry, work_ram, rom);
     }
-    // One shared walk, seven entry points: the bank-45 music sequencer's
-    // sample/envelope group. Each is a subroutine the per-frame voice walk
-    // calls; the walk inlines any nested call and stops in front of the RTS.
+    // One shared walk, ten entry points: the bank-45 music sequencer's
+    // sample/envelope group, its PSG register programmer, its portamento
+    // stepper and its command interpreter. Each is a subroutine the
+    // per-frame voice walk calls; the walk inlines any nested call and stops
+    // in front of the RTS.
     if (entry.routine
             == RoutineKey{
                 .physical_bank = 0x45U,
+                .logical_pc = 0x4142U,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x45U,
                 .logical_pc = 0x4211U,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x45U,
+                .logical_pc = 0x4228U,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x45U,
+                .logical_pc = 0x457AU,
             }
         || entry.routine
             == RoutineKey{
