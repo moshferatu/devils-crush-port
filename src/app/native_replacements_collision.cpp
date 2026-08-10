@@ -583,6 +583,12 @@ replace_collision_table_interpreter(
     if (entry.routine != kRoutine) {
         return std::nullopt;
     }
+    // The transcript owns every path it can finish inside the transaction caps.
+    // What follows is the older result-computing replacement, which still holds
+    // the handful of calls whose record loop runs past the write cap.
+    if (auto walk = replace_collision_table_walk(entry, work_ram, rom)) {
+        return walk;
+    }
     const auto selector_address = static_cast<std::uint16_t>(
         0x6A38U
         + (static_cast<std::uint16_t>(

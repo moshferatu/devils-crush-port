@@ -1336,6 +1336,17 @@ replace_sorcerer_tick(
     std::span<const std::byte> work_ram,
     std::span<const std::byte> rom);
 
+// Three arithmetic leaves in physical bank 01, sharing one walk because they
+// share a shape rather than a purpose: the path-length accumulator at 01:C8F3,
+// the range-squared guard at 01:C969 and the direction-octant classifier at
+// 01:DAF8. The classifier reads its answer table out of the bank's own ROM
+// page, so the walk needs the ROM.
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_actor_geometry_leaf(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram,
+    std::span<const std::byte> rom);
+
 // The sweep composes the vertical scanner at 01:CC1A rather than stopping in
 // front of the call, so it needs the ROM the scanner reads through.
 [[nodiscard]] std::optional<emulation::RoutineReplacement>
@@ -1346,6 +1357,15 @@ replace_collision_scan_run(
 
 [[nodiscard]] std::optional<emulation::RoutineReplacement>
 replace_sprite_emit_run(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram,
+    std::span<const std::byte> rom);
+
+// 03:6966 as an instruction-boundary transcript. The semantic replacement below
+// calls this first and keeps its own paths for the calls this one refuses, so
+// every caller of the interpreter gets the transcript without knowing about it.
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_collision_table_walk(
     const emulation::RoutineEntry& entry,
     std::span<const std::byte> work_ram,
     std::span<const std::byte> rom);

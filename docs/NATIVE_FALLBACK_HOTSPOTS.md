@@ -590,7 +590,8 @@ jumps through the fixed-bank trampoline at logical `$C06F` into physical
 The child is itself a mixed 489--2,133-cycle, 41,651-write state routine, so
 the outer routine is not a compact RNG/appearance leaf. Keep both entries in
 assembly until `01:DAF8` has an independently classified state boundary and
-an instruction-timed transcript.
+an instruction-timed transcript. (`01:DAF8` has the transcript now — see the
+end of this document. `02:5EEC` remains assembly.)
 
 | Routine | Registry status | Calls | Total master cycles | Writes | Weighted cost |
 | --- | --- | ---: | ---: | ---: | ---: |
@@ -737,6 +738,13 @@ Keep the pair assembly-backed until a naturally observed child branch can be
 isolated with an instruction-timed transcript. This re-screen supersedes
 neither the prior measurements nor their rejection; it confirms the decision
 against the current native registry.
+
+**Superseded.** `01:DAF8` is native as of the bank-01 geometry slice, admitted
+on all 2,139 calls. The reasoning above is sound for the method it was written
+under and wrong for the one that replaced it; see
+[A rejection that did not survive the method](#a-rejection-that-did-not-survive-the-method)
+below. `02:5EEC` is still assembly, and composing its child is now an ordinary
+option rather than a blocked one.
 
 ## Devil-Shooter companion dormant leaves
 
@@ -2858,6 +2866,54 @@ to be careful is measurable: `03:6966` is an atomic body rather than a
 checkpointed transcript, and it already declines 2,850 of its own 34,259
 entries at an interrupt horizon. Splicing it into a longer parent puts that
 uncheckpointed stretch inside the parent.
+
+## Ranking by routine, not by region
+
+The three largest single routines on the census route with no native entry
+anywhere inside them were `01:C8F3` (1,743,819 cycles with its neighbours),
+`01:DAF8` (1,508,400) and `01:C969`. None of them appeared in the inventory in
+[EMULATOR_ELIMINATION.md](EMULATOR_ELIMINATION.md), because that table groups
+by adjacent address range and each of these sits alone. A region-ranked view
+had the phase looking thinner than it was.
+
+**Rank the profile two ways.** Cluster addresses into regions to find families,
+and sort routines individually to find isolated ones. The clustering step wants
+a gap threshold; `0x20` separated these three cleanly from their neighbours,
+where `0x40` merged them into ranges dominated by already-native code and hid
+them completely.
+
+They have nothing in common but a shape — straight-line integer arithmetic over
+work RAM and zero page, ending in an `RTS`, with no call, no device register
+and no bank change — and that was enough to make them one walk. 3,066,105 gross
+and `+2,439,807` net across 7,472 calls, admitted on every one.
+
+The screen found no foreign writer at all: of 358 instructions that write any
+address the three read, exactly four ever write inside a call window, and all
+four are `01:C8F3`'s own stores. The Sorcerer tick had one in-window writer and
+it was its own callee. These have none, because they have no callee — which is
+what the screen should say about a leaf, and is worth knowing as the shape to
+expect when the answer is "nothing shared".
+
+### A rejection that did not survive the method
+
+`01:DAF8` is in this document twice already, rejected both times. The wording
+was that its "cycle, write, and result populations remain mixed rather than
+exposing a stable state-derived return", and that the pair should stay
+assembly-backed "until a naturally observed child branch can be isolated".
+
+That was the right answer for the method in use then. Replay-based screening
+had to find a return value the replacement could *predict* from the entry
+state, so a routine with two exits and a wide cycle distribution was genuinely
+unusable. An instruction-boundary transcript predicts nothing — it executes the
+branches the data selects and stops in front of whichever `RTS` it reaches — so
+a mixed population is not an obstacle, it is two exits and a `case` label for
+each. The calls divide 1,459 through `01:DB9D` and 680 through `01:DB81`.
+
+**Re-read old rejections when the method changes.** This one had been standing
+since before transcripts existed, and it was blocking 1.5M cycles the whole
+time. The rejections that stay valid are the ones that name a *structural*
+reason — a device read, a call the transcript cannot contain, a body longer
+than the caps — not the ones that name a property of the data.
 
 ## Use on future families
 

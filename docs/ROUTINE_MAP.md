@@ -8768,3 +8768,100 @@ framebuffer census hashes while reproducing identical semantic artifacts:
   `9c0fda84b35afa075465975fc8efb0320c9fc441bedd42d93b067e016b2dd426`
 - Selected-state SHA-256:
   `99cf6ab9fed4cfa976510fda30f77c20671e8f2134fc3b2842e3d90fd81d32d8`
+
+## Bank-01 arithmetic leaves
+
+Three routines in physical bank 01 that share no caller, no subsystem and no
+data, and are grouped here because they are the bank's pure-arithmetic leaves:
+each is straight-line integer work over work RAM and zero page, ends in an
+`RTS`, and makes no call, touches no device register and changes no bank. All
+three are instruction-boundary transcripts, admitted on every call.
+
+| Address | Calls | Native cycles | Caller | What it computes |
+| --- | ---: | ---: | --- | --- |
+| `01:C8F3` | 2,340 | 1,507,932 | `01:C765` | Path-length accumulator |
+| `01:DAF8` | 2,139 | 1,450,425 | `02:5EEC` via `$C06F` | Direction octant |
+| `01:C969` | 2,993 | 107,748 | `01:C75E` | Range-squared guard |
+
+`01:C8F3` reads the actor's two signed sixteen-bit per-frame velocity
+components — `$3400,X`/`$3480,X` horizontal and `$3500,X`/`$3580,X` vertical —
+negates each in place if its high byte is negative, adds the two magnitudes,
+and shifts the sum left four times into a twenty-four-bit intermediate across
+`$2F`, `$30` and `$2D`. That is added to the running total held little-endian
+in `$3E00,X`, `$3A00,X` and `$3980,X`, whose top byte saturates: at 4 or more,
+`01:C965` zeroes it. X is slot zero on every call this route makes.
+
+`01:DAF8` is the Giant Skeleton's direction lookup, reached from `02:5EEC`
+through the fixed-bank trampoline at logical `$C06F`. It subtracts actor X's
+position from actor Y's on both axes — `$3180`/`$3200` horizontal, `$3300`/
+`$3380` vertical — saturating each signed difference to a byte in `$43` and
+`$42` and recording the two signs in bits 1 and 0 of `$45`. It orders the pair
+so `$43` holds the larger, noting the swap as bit 2, then splits the octant
+three ways: 3x the smaller against 2x the larger sets bit 4, and 12x the
+smaller against the same sets bit 3. The five bits index a thirty-two-entry
+table at `$DB9E` in the bank's own ROM page. Two exits: 1,459 calls return
+through `01:DB9D` and 680 through `01:DB81`.
+
+`01:C969` guards the range-squared helper on the sixteen-bit counter at
+`$2D00`/`$2D01`. That counter is zero on all 2,993 entries this route makes, so
+the body from `01:C976` — which calls `00:E5EC` twice, once per axis, and sums
+the results — never runs. The transcript covers the three-instruction guard and stops in
+front of the `RTS` at `01:C971`; the taken arm at `01:C972` is handed back to
+the core rather than transcribed from a path the route has never taken.
+
+Shared state was measured on exact call windows from observers on all three
+heads. Of the 358 instructions that write any address these routines read,
+exactly four ever write inside a window, and all four are `01:C8F3`'s own
+stores at `01:C94E`, `01:C956`, `01:C95E` and `01:C965`. There is no foreign
+writer and no callee. Regression: `dc_rom_actor_geometry_semantic`.
+
+What remains emulated in the three is 158,955 master cycles, of which 158,472
+is the four `RTS` instructions the transcripts stop in front of.
+
+## Collision-table interpreter, instruction by instruction
+
+`03:6966` is documented above by its call sites and its returns. This section
+records what transcribing it established about the routine itself, which the
+earlier result-computing replacement did not have to know.
+
+**The selector and the phase.** `A` is doubled and indexes the sixteen-bit
+pointer array at `$6A38`; the pointer lands in `$2F`/`$30` and names the
+actor's table. `$3880,X` is then loaded into Y and its sign decides the shape
+of the call. With bit 7 set — which is every call but 27 on the census route —
+the low seven bits are a phase counter. `03:697A` toggles bit 0 of it, and the
+`PHP`/`PLP` pair around the store at `03:697F` is there so the toggle's zero
+flag survives the store: a phase that came back to zero returns immediately
+through `03:6988` with carry clear, and a phase that did not falls through to
+the step. So a path advances on one call in two. With bit 7 clear, Y is a
+repeat count and `03:6989` runs the step that many times through `JSR $6995`,
+stopping early if a step reports contact. That loop executes ten times on the
+whole route.
+
+**The two cursors.** `$3E00,X` indexes the table and `$3E80,X` indexes the
+motion record the current table entry names. A table byte of `$FF` is the
+terminator: the routine sets carry and returns through `03:69A1`, which is what
+the caller reads as "this path is finished". `$FE` is a rewind — both cursors
+are zeroed and the first entry is re-read, which is how a looping path repeats.
+Bit 7 of a table entry marks the record as reversed and is stashed in bit 0 of
+`$35`, the only use of zero page `$35` in the routine.
+
+**The record.** The low seven bits of the table entry index a second
+sixteen-bit array at `$6C3A`, giving the record pointer in `$2D`/`$2E`. A
+record byte of `$C0` is that record's terminator: `03:69CB` advances the table
+cursor, zeroes the record cursor and branches back to `03:6995` to start over
+on the next entry, which is the routine's only loop outside the repeat count.
+A byte with bit 7 set carries a sprite frame in its low seven bits — stored to
+`$3A80,X`, with `$3D00,X`'s bit 7 set or cleared from the reverse flag in `$35`
+— and the step itself is the byte after it. Bits 6 and 5 of the step byte are
+the horizontal component and bits 4 and 3 the vertical, each pair meaning "one
+unit positive", "one unit negative" or "none", applied to the sixteen-bit pairs
+`$3180,X`/`$3200,X` and `$3300,X`/`$3380,X` with an explicit borrow.
+
+Every read is work RAM, zero page or this bank's own ROM through `$2F`/`$30`
+and `$2D`/`$2E`. There is no device register, no call out of the bank and no
+bank change, which is what makes the whole routine transcribable. Verification
+is a two-run write diff over both position pairs, both cursors, the frame and
+mirror bytes, the two zero-page pointers and the stack page: 6,563,673 writes,
+byte-identical hooked and unhooked. Regression:
+`dc_rom_collision_table_semantic`, and `dc_rom_collision_consumer_semantic` for
+the composition at `03:7F57` that depends on it.

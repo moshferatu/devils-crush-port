@@ -352,7 +352,7 @@ one, because what the driver loses is proportional to how much wall time the
 hook spends unavailable, and that is the sum of the bodies. Per-call length
 only tells you whether a *single* call can straddle a period.
 
-What that does not give you is the ratio to the digit, but five slices in it
+What that does not give you is the ratio to the digit, but seven slices in it
 does give you a usable estimate:
 
 | Slice | Gross native | Shadowing bill | Share of gross |
@@ -361,16 +361,22 @@ does give you a usable estimate:
 | Tilemap upload | 5,180,931 | 937,827 | 18.1% |
 | Collision frame | 4,091,373 | 859,038 | 21.0% |
 | Composing the scanner | 3,524,010 | 695,061 | 19.7% |
-| Actor tick | 3,156,294 | 560,934 | 17.8% |
+| Sorcerer tick | 3,156,294 | 560,934 | 17.8% |
+| Bank-01 geometry leaves | 3,066,105 | 626,298 | 20.4% |
+| Collision-table interpreter | 2,942,940 | 578,541 | 19.7% |
 
 The spread looks arbitrary until the per-event numbers are pulled out of it.
-Those are almost identical every time: the driver costs **574 to 577 native
-cycles per displaced entry**, and **one entry is displaced for every 2,900 to
+Those are almost identical every time: the driver costs **568 to 577 native
+cycles per displaced entry**, and **one entry is displaced for every 2,775 to
 3,300 master cycles** a transcript holds the core. So the bill is close to
 `gross / 3,000 × 575`, which is about 19%, and the slice-to-slice variation is
-small next to that.
+small next to that. Both ends of the displacement band belong to the extremes
+of transcript length: the 9,700-cycle palette interpolator sits at 3,300 and
+the three 700-cycle geometry leaves at 2,775, so short transcripts cost a
+little more per cycle transcribed than long ones. Not enough to change a
+decision, but the direction is consistent.
 
-Two things keep it an estimate rather than a formula. The five points span
+Two things keep it an estimate rather than a formula. The seven points span
 three percentage points either side of 19%, which is a hundred thousand cycles
 on a typical slice. And the displacement rate is 1.7 times the naive figure:
 the timer fires every 5,068 master cycles, so a transcript covering N cycles
@@ -471,6 +477,28 @@ Two things that ranking will show which are *not* targets, and why:
   the `TAM #$40` at `00:FC10`. On a 384KB image Mednafen maps physical banks
   64-127 to ROM bank `((x & 0x0F) + 32)`, so `45` is ROM bank `25`, not a
   mirror of a low bank.
+
+### The size of a replacement is not the size of the routine
+
+`03:6966` sat on the "next slice" line for several rounds because converting it
+from an atomic body to a checkpointed transcript was priced as a rewrite of a
+2,200-line replacement. The routine it replaces is 0xD2 bytes and about a
+hundred instructions, and the walk that transcribes all of it is shorter than
+the code it replaced.
+
+The 2,200 lines were never the routine's complexity. They are what it cost to
+*predict* the routine's result from its entry state, which is what the
+replay-and-match method required: a resolver for the record format, a case for
+each header shape, and a proof matrix pinning the paths that had been observed.
+A transcript predicts nothing, so none of that is load-bearing for it.
+
+So when a replacement looks too expensive to redo, price the **routine** —
+disassemble it, count the instructions, and check what it touches. If the
+answer is work RAM, its own bank's ROM and a stack page, the walk is a day's
+work no matter how large the file in front of it is. The same reasoning applies
+to the rejection log: a rejection that names a property of the data is worth
+re-reading whenever the method changes, and so is an estimate that was made
+against a different method's artifacts.
 
 ### A routine that calls a native child in a loop: one walk, many entry points
 
@@ -908,6 +936,16 @@ else, so a trace that omits the stack cannot see either.
 `45:4776` writes nine bytes of the timer driver's per-channel zero page, none
 of which the previous slice's ranges covered. A range chosen for the last
 slice silently stops proving anything about the next one.
+
+**Name zero page by its effective address.** The filter compares the write's
+logical address, and the HuC6280 addresses zero page through MPR1, so `STA $2F`
+writes `$202F`. A range written as `002F-0030` therefore selects nothing at
+all, and the run still succeeds, still prints a write count and still produces
+a stable hash — it is simply not looking at zero page. Two of the five ranges
+in the bank-01 geometry regression were dead this way; corrected to
+`202D-2030` and `2042-2045` the same trace goes from 128,629 writes to
+2,277,424 and still matches assembly byte for byte. When a range is added,
+check that the write count moves.
 
 Profile before selecting a batch. Choosing by family narrative produced a
 registry where 67 of 260 installed routines never execute on the route and 48

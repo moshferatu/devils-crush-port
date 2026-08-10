@@ -6,6 +6,13 @@ foreach(required_variable IN ITEMS APP ROM OUTPUT)
     endif()
 endforeach()
 
+# 03:6966 is transcribed instruction by instruction, so every path it can take
+# carries checkpoints and none of them is refused at an interrupt horizon. The
+# three artifacts below are unchanged from the revision that ran 18,806 of these
+# calls natively and 842 in assembly: the call trace and its 180,389 writes come
+# from the observer, which sees what actually happened, so their staying
+# byte-identical while the replaced population grows to all 19,648 is the
+# statement that the transcript is the routine.
 set(
     expected_gameplay_sha256
     "1f6d46ac99798bbac1ecab97702d9e10076b9766796cc64d22d9662efce0b353"
@@ -49,7 +56,7 @@ endif()
 
 foreach(expected_line IN ITEMS
     "Gameplay recording complete: 1800 frames"
-    "Native replacement 03:6966@all entries: 18806 of 19648"
+    "Native replacement 03:6966@all entries: 19648 of 19648"
     "Routine call trace complete: 19648 calls, 180389 writes"
 )
     string(FIND "${recorder_output}" "${expected_line}" line_offset)
@@ -98,5 +105,5 @@ endforeach()
 
 message(
     STATUS
-    "Semantic 6966 replacement covers 18,806 calls with checkpointed bounded-axis records."
+    "Semantic 6966 replacement covers all 19,648 calls as instruction transcripts."
 )

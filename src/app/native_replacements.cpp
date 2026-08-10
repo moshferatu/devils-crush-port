@@ -469,6 +469,26 @@ replace_native_gameplay_routine_impl(
         return detail::replace_sorcerer_tick(entry, work_ram, rom);
     }
 
+    // Three bank-01 arithmetic leaves: the path-length accumulator, the
+    // range-squared guard and the direction-octant classifier.
+    if (entry.routine
+            == RoutineKey{
+                .physical_bank = 0x01U,
+                .logical_pc = 0xC8F3U,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x01U,
+                .logical_pc = 0xC969U,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x01U,
+                .logical_pc = 0xDAF8U,
+            }) {
+        return detail::replace_actor_geometry_leaf(entry, work_ram, rom);
+    }
+
     // One shared walk, four entry points: the camera sweep's initializer and
     // the three addresses `00:F4FC` returns through.
     if (entry.routine

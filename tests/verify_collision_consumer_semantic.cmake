@@ -20,6 +20,11 @@ else()
     message(FATAL_ERROR "Unsupported collision-consumer configuration: ${CONFIG}")
 endif()
 
+# This composition gates on its child at 03:6966 producing checkpoints, so it
+# gained 749 calls the moment the child was transcribed rather than computed.
+# The call trace and its writes come from the observer and are unchanged, which
+# is what says the 749 behave as they did in assembly. The five that remain are
+# the consumer's own paths, not the child's.
 set(
     expected_call_sha256
     "3ab64128aab89d056216f79d0d3f041e186eb109048aefe82785e2875f41ec4f"
@@ -59,7 +64,7 @@ endif()
 
 foreach(expected_line IN ITEMS
     "State census recording complete: 3600 frames"
-    "Native replacement 03:7F57@all entries: 20113 of 20867"
+    "Native replacement 03:7F57@all entries: 20862 of 20867"
     "Routine call trace complete: 20867 calls, 362060 writes"
 )
     string(FIND "${recorder_output}" "${expected_line}" line_offset)
@@ -94,5 +99,5 @@ endforeach()
 
 message(
     STATUS
-    "Semantic 7F57 no-hit composition covers 20,113 calls with checkpointed children."
+    "Semantic 7F57 no-hit composition covers 20,862 calls with checkpointed children."
 )

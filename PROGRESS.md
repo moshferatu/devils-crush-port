@@ -5444,75 +5444,125 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
 
 ## Active Work
 
-Current owner: Claude. Current slice: **the Sorcerer tick is native**, taking
-the deployed registry to **41.02%** of all master cycles (530,161,950 of
-1,292,371,131) across 2,333,873 native calls and 353 admitted routines.
+Current owner: Claude. Current slice: **the collision-table interpreter is a
+transcript**, taking the deployed registry to **41.38%** of all master cycles
+(534,842,424 of 1,292,371,131) across 2,341,586 native calls.
 
-`02:586F`-`02:5903` was the largest block of unported gameplay left on the
-census route and the only block of its size with no native entry anywhere
-inside it. It is the Sorcerer's per-frame tick -- the deployment and staging
-heads at `02:57F8` and `02:5808` were already native, and this is the three
-states that follow, for the eight Sorcerers in slots `$17`-`$1E`. One routine
-in three pieces, split by the two calls it makes to the collision-table
-interpreter at `03:6966`: the staggered deployment delay on the sixteen-bit
-countdown in `$3B00,X`/`$3B80,X`, the arrival state that reseeds the table
-cursors when the interpreter reports its terminator, and orbit, where all eight
-sit for the rest of the route. Five entry points, admitted on every call,
-3,156,294 cycles gross across 41,144 entries and `+2,595,360` net.
+`03:6966` is the busiest single entry on the route. It was already replaced and
+the replacement was already correct; what it could not do was produce an
+instruction-boundary transcript on every path. It emitted checkpoints for
+headerless one-step records with bounded axes and returned an atomic body for
+everything else, and an atomic body is refused whenever it would span a user
+event or a serviceable timer interrupt. That cost 2,850 of its 34,259 entries
+and 4.7M emulated cycles, and it was also what stopped it composing: both
+composition sites in the tree gate on the child carrying checkpoints.
 
-`02:5896` is hookable on its own but is deliberately not an entry point: the
-walk from `02:5893` branches into it, so registering it would leave a routine
-the deployed registry never enters, and the CLI treats a hook that is never
-entered as an error.
+Rewritten as a walk it is admitted on every call, **and no call anywhere on the
+route is now declined at an interrupt horizon** -- 3,599 to zero. The consumer
+at `03:7F57` gained 749 calls and 886,317 cycles without being touched, because
+its composition was already written and was waiting on a child with
+checkpoints. Gross 2,942,940, net `+2,240,667`.
 
-**The screen was the cleanest the in-window ranking has produced.** Ninety-nine
-instructions across seven banks write the addresses this family reads. Exactly
-one of them ever writes inside one of the family's call windows -- `03:69D9`,
-the interpreter's own event store, which is this family's callee -- and the
-other ninety-eight land inside a window on 0.0% of their executions. Not "close
-to zero": zero. Two slices ago the same method gave eighteen callees at
-99.3-100% and three hundred others at 0.00%. That is now the expected shape of
-the answer, and a middle band is the signal that something needs looking at.
-The corollary is worth stating: a window that contains a call contains its
-callee's writes, so a callee scoring high is evidence the window is drawn
-correctly. What matters is that nothing else is in there.
+**The size of a replacement is not the size of the routine.** This sat on the
+"next slice" line for several rounds because converting it was priced as a
+rewrite of a 2,200-line replacement. The routine is 0xD2 bytes and about a
+hundred instructions, and the walk came out shorter than the code it fronts.
+The 2,200 lines were what it cost to *predict* the result from the entry state,
+which is what the older method required; a transcript predicts nothing, so none
+of that was load-bearing. Price the routine, not the file in front of it.
 
-**The shadowing bill now looks like a constant.** 560,934, 17.8% of gross --
-the lowest of the last four slices, and low enough to see the mechanism through
-the noise. Five measurements exist: 15.6%, 18.1%, 21.0%, 19.7%, 17.8%.
-Underneath them the per-event numbers barely move. The driver costs 574 to 577
-native cycles per displaced entry every time, and one entry is displaced for
-every 2,900 to 3,300 master cycles a transcript holds the core, so the bill is
-close to `gross / 3,000 x 575` -- about 19%. Two caveats keep it an estimate.
-The spread is three points either side, a hundred thousand cycles on a slice
-this size. And the displacement rate is 1.7 times the naive figure: the timer
-fires every 5,068 master cycles, so a transcript covering N cycles should
-overlap N/5,068 of them, not N/3,000. Part of that is the shadow window being
-wider than the transcript, but that accounts for about a fifth of the excess.
-The rest is unexplained. Use the rule to decide whether a region is worth
-starting; keep measuring the bill with `--registry-exclude` before reporting
-what a slice delivered.
+What the routine needs from the machine: work RAM, zero page, its own bank's
+ROM through two zero-page pointers, and a stack page for one `PHP`, one `PHY`
+and a `JSR` into itself. No device register, no call out of the bank, no bank
+change. Its only non-linear control flow is its own -- a `BRA` back to the top
+of the step when a record hits its `$C0` terminator, and a `JSR`/`RTS` repeat
+loop that runs ten times on the whole route.
 
-Verification is the two-run diff against pure assembly: 240,657 work-RAM writes
-covering the family's whole output -- `$2D10`, `$3080,X`, `$3880,X`, `$3980,X`,
-the cooldown pair, `$3C00,X` and the table cursors -- byte-identical hooked and
-unhooked, plus the state census. This family writes no device port. Regression:
-`dc_rom_sorcerer_tick_semantic`.
+The bill was 578,541, 19.7% of gross, and again two routines pay all of it: the
+timer driver lost 1,015 entries and 576,291 cycles (568 apiece) and `00:E136`
+lost six and 2,250. Seven measurements now -- 15.6%, 18.1%, 21.0%, 19.7%,
+17.8%, 20.4%, 19.7% -- and the per-entry band widens only to 568-577.
 
-Next: the region is 4,055,142 cycles down to 910,530, and about 87% of that
-remainder is the leaf-contract call tax -- two `JSR`s to the interpreter, two to
-the bank-01 wrapper at `$C018`, and three `RTS` instructions. Composing the
-interpreter would reach it and would also reach the 5,274,582 still emulated at
-`03:694A`-`6A37`, but `03:6966` is an atomic body rather than a checkpointed
-transcript and already declines 2,850 of its own 34,259 entries at an interrupt
-horizon; splicing it into a longer parent puts that uncheckpointed stretch
-inside the parent. Turning the interpreter into a transcript first is the
-larger and more valuable move, and it is a rewrite of a 2,600-line semantic
-replacement rather than a new walk. Otherwise the remaining phase-1 groups are
-the palette shadow buffer at `00:E94C`-`EBD6` (3.8M) and the sequencer's note
-handlers at `45:4517`-`4A9B` (3.2M). The pad reader `00:E195` (6.9M) and the
+Verification is the two-run diff over every address the routine writes: both
+position pairs, both cursors, the frame and mirror bytes, the zero-page
+pointers and the stack page. 6,563,673 writes byte-identical hooked and
+unhooked, which is what covers the `JSR` pushes -- those land before the call
+is paid for rather than at the end of the instruction, and five calls out of
+54,149 would have caught a wrong offset. The state census equals the assembly
+baseline, and both semantic regressions hash exactly as before while the
+replaced population grows, because those artifacts come from the observer.
+Regressions: `dc_rom_collision_table_semantic`,
+`dc_rom_collision_consumer_semantic`.
+
+**Two of the five write ranges in the geometry regression were dead.** The
+filter compares the write's effective address and the HuC6280 addresses zero
+page through MPR1, so `STA $2F` writes `$202F` and a range written `002F-0030`
+selects nothing -- while the run still succeeds, still prints a count and still
+produces a stable hash. Corrected to `202D-2030` and `2042-2045` that trace
+goes from 128,629 writes to 2,277,424 and still matches assembly byte for byte.
+When a range is added, check the write count moves. `verify_giant_door_hit_prefix`
+and `verify_giant_door_completion_prefix` still carry `002F-0030` and are worth
+the same correction; their live ranges assert the routine's real output, so
+they are not wrong today, only narrower than they read.
+
+Next: composing `03:6966` into the Sorcerer tick is now possible rather than
+done -- `02:586F`-`5903` is unchanged at 910,530 and the tick still stops in
+front of each `JSR $6966`. That is the cheapest remaining item and the pattern
+is the one the sweep used on the scanner: stage the work RAM, splice the
+child's checkpoints and writes at the cycle the call landed on, transcribe the
+`RTS`. The largest genuinely unported group is the palette shadow buffer at
+`00:E94C`-`EBD6` (3.8M, mostly the two fade drivers that wait on the frame-sync
+spin and the 8-call block decrement that needs chunking), then the sequencer's
+note handlers at `45:483B`-`4A9B` (2.8M, six native entries already with the
+remainder as leaf-contract tax), then `03:6001`-`6078` (1.8M, no native entry
+inside it, but `03:6054` is one of the two withheld routines and that needs
+understanding first). What the interpreter leaves behind is 3,022,725, of which
+764,982 is two `RTS` instructions and 2,236,563 is the core handing the rest of
+a routine back to the emulator after an interrupt lands on a checkpoint -- a
+harness property, not unported code. The pad reader `00:E195` (6.9M) and the
 interrupt dispatcher `00:E058` stay blocked on device *reads* and are phase-2
 work with the joypad and the VDC.
+
+Previous slice: **three bank-01 arithmetic leaves are native**, taking the
+registry to **41.21%**. `01:C8F3` the path-length accumulator, `01:DAF8` the
+direction-octant classifier and `01:C969` the range-squared guard whose body
+this route never runs: the three largest single routines left with no native
+entry anywhere inside them, and none of them had an inventory row because that
+table groups by adjacent address range and each sits alone. Not one routine and
+not one subsystem -- they went in as one walk because they share a shape:
+straight-line integer arithmetic over work RAM and zero page, ending in an
+`RTS`, with no call, no device register and no bank change. 3,066,105 gross,
+`+2,439,807` net, admitted on every one of 7,472 entries, and no foreign writer
+in any call window at all.
+
+Two things it established. **Rank the profile by routine as well as by region**
+-- a region-ranked view had the phase looking thinner than it was and these
+three were invisible in it, and the clustering gap matters: `0x20` separated
+them cleanly, `0x40` merged them into ranges dominated by already-native code.
+And **`01:DAF8` had been screened and rejected twice**, on the grounds that its
+cycle, write and result populations were mixed rather than exposing a stable
+state-derived return. That was correct for the method in use then, which had to
+predict a return value from the entry state. A transcript predicts nothing, so
+a mixed population is just two exits. Re-read old rejections when the method
+changes: the ones that stay valid name a structural reason -- a device read, a
+call the transcript cannot contain, a body over the caps -- and the ones worth
+revisiting name a property of the data. Regression:
+`dc_rom_actor_geometry_semantic`.
+
+Previous slice: **the Sorcerer tick is native**, taking the registry to
+**41.02%**. `02:586F`-`02:5903` was the largest block of unported gameplay left
+with no native entry inside it -- the Sorcerer's per-frame tick for the eight
+slots in `$17`-`$1E`, one routine in three pieces split by its two calls to the
+collision-table interpreter: the staggered deployment delay, the arrival state
+that reseeds the table cursors when the interpreter reports its terminator, and
+orbit. Five entry points, admitted on every call, 3,156,294 gross and
+`+2,595,360` net. Its screen was the cleanest the in-window ranking has
+produced -- of ninety-nine writers, exactly one lands inside a call window and
+it is the family's own callee, the other ninety-eight at 0.00%. A middle band
+is the signal that something needs looking at, and a callee scoring high is
+evidence the window is drawn correctly. This was also the slice that turned the
+shadowing bill from something measured afterwards into something estimable
+beforehand. Regression: `dc_rom_sorcerer_tick_semantic`.
 
 Previous slice: **the sweep composes the collision scanner**, taking the
 registry to 40.82%. `01:CB48` stopped stopping in front of `JSR $CC1A`: it

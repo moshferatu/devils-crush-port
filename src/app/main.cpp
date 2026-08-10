@@ -2836,6 +2836,12 @@ parse_logical_address_range(const std::string_view text)
                                || request.routine.logical_pc == 0x58C2U
                                || request.routine.logical_pc == 0x58DDU)
                            && request.all_calls;
+                       const bool proven_actor_geometry_leaf =
+                           request.routine.physical_bank == 0x01U
+                           && (request.routine.logical_pc == 0xC8F3U
+                               || request.routine.logical_pc == 0xC969U
+                               || request.routine.logical_pc == 0xDAF8U)
+                           && request.all_calls;
                        const bool proven_actor_camera_sweep =
                            request.routine.physical_bank == 0x00U
                            && (request.routine.logical_pc == 0xF4F2U
@@ -2924,6 +2930,7 @@ parse_logical_address_range(const std::string_view text)
                            && !proven_tilemap_upload
                            && !proven_collision_tail
                            && !proven_sorcerer_tick
+                           && !proven_actor_geometry_leaf
                            && !proven_position_integration
                            && !proven_motion_damping
                            && !proven_motion_rotation

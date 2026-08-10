@@ -82,12 +82,12 @@ table rather than appearing at its old size:
 | Region | Master cycles | Share | What it is |
 | --- | ---: | ---: | --- |
 | `00:E2B7`–`E39C` | 584,758,197 | 45.25% | Frame-sync spin loop |
-| `00:FC03`–`FCB3`, `00:FD07`–`FDF1` | 191,160,861 | 14.79% | Sound driver — **already ported**; these are the entries the no-nesting rule blocks (see below) |
+| `00:FC03`–`FCB3`, `00:FD07`–`FDF1` | 192,690,993 | 14.91% | Sound driver — **already ported**; these are the entries the no-nesting rule blocks (see below) |
 | bank `45` (`4000`–`4A9B`) | 21,152,865 | 1.64% | Music sequencer — the per-frame tick and two helpers the snapshot rule **blocks**, see below |
-| `00:E0EB`–`E292` | 10,872,921 | 0.84% | Pad reader and interrupt dispatcher, both **blocked** on a device read; the handler bodies and call wrappers are native |
-| `03:694A`–`6A37` | 5,274,582 | 0.41% | Gameplay tail |
+| `00:E0EB`–`E292` | 10,888,014 | 0.84% | Pad reader and interrupt dispatcher, both **blocked** on a device read; the handler bodies and call wrappers are native |
+| `03:694A`–`6A37` | 3,022,725 | 0.23% | Collision-table interpreter — **already ported**; two `RTS` instructions and the resumption after an interrupt lands on a checkpoint, see below |
 | `00:E93C`–`EBD6` | 3,780,738 | 0.29% | Palette shadow buffer — the two fade drivers and the block decrement, **blocked**, see below |
-| `02:586F`–`5903` | 910,530 | 0.07% | Actor tick — **already ported**; what is left is the two interpreter calls, the two bank-wrapper calls and three `RTS` instructions |
+| `02:586F`–`5903` | 910,530 | 0.07% | Sorcerer tick — **already ported**; what is left is the two interpreter calls, the two bank-wrapper calls and three `RTS` instructions |
 | `01:CA84`–`CC04` | 621,648 | 0.05% | Collision frame — **already ported**, and the call into the scanner is now composed rather than emulated, see below |
 
 Earlier revisions of this table mixed two conventions: five rows counted only
@@ -130,12 +130,41 @@ The Sorcerer row is the same shape one slice later. `02:586F`–`5903` was
 4,055,142 with no native entry anywhere inside it and is 910,530, and about 87%
 of that remainder is again the leaf contract: two calls to the collision-table
 interpreter at `03:6966`, two to the bank-01 wrapper at `$C018`, and three
-`RTS` instructions. The interpreter is the obvious thing to compose next, and
-the reason not to rush it is in the row above it — `03:694A`–`6A37` is 5,274,582
-because the interpreter is an atomic body rather than a checkpointed transcript,
-so it already declines 2,850 of its own 34,259 entries at an interrupt horizon.
-Splicing it into a longer parent would put that uncheckpointed stretch inside
-the parent as well.
+`RTS` instructions. The interpreter was the obvious thing to compose next, and
+the reason not to rush it was in the row above it — `03:694A`–`6A37` was
+5,274,582 because the interpreter was an atomic body rather than a checkpointed
+transcript, so it declined 2,850 of its own 34,259 entries at an interrupt
+horizon. Splicing it into a longer parent would have put that uncheckpointed
+stretch inside the parent as well.
+
+That is fixed: `03:6966` is now transcribed instruction by instruction, its row
+is 3,022,725, and no call anywhere on the route is refused at an interrupt
+horizon. The Sorcerer row has not moved, and that is worth being precise about
+— composing the interpreter into the tick is now *possible* rather than *done*.
+The tick's transcript still stops in front of each `JSR $6966` and the two calls
+still cost it two entries and two returns. What changed is that the child now
+carries checkpoints, so splicing it in no longer imports an atomic stretch. The
+consumer at `03:7F57` shows what that is worth without any new code at all: its
+composition was already written and gated on the child having checkpoints, and
+it picked up 749 calls and 886,317 cycles the moment the child had them.
+
+The interpreter's own remainder is worth separating. 764,982 of the 3,022,725
+is the two `RTS` instructions the transcripts stop in front of, which is the
+leaf contract and is priced in. The other 2,236,563 is resumption: when an
+interrupt lands on a checkpoint the core delivers it and hands the rest of the
+routine back to the emulator rather than re-entering the transcript afterwards.
+That is a harness property, not unported code, and it belongs in the same
+category as the two blocked rows below.
+
+Two rows never made it into the table at all, and that is the point of
+recording them here. `01:C8C2`–`C971` was 1,743,819 cycles and `01:DAF8`–`DB9D`
+was 1,508,400 — the two largest single routines on the route with no native
+entry anywhere inside them, both below the threshold this table uses. They are
+113,355 and 45,600 now, and 158,472 of that combined remainder is the four
+`RTS` instructions the transcripts stop in front of. The lesson is about the
+table rather than the routines: a row that groups by address range hides
+anything that is large but not adjacent to anything else large. Rank by routine
+as well as by region before deciding a phase is finished.
 
 The sound-driver row is not unported work. That code is native, proven and
 byte-exact; it runs emulated on 48% of entries only because the replacement
@@ -358,12 +387,42 @@ Remaining real logic, in rough order of value:
    ninety-nine instructions that write any address the family reads, exactly
    one ever writes inside one of its call windows, and that one is its own
    callee. The other ninety-eight are at 0.0%.
-7. **Gameplay tails** (~20M spread thin, no single address above 0.14%). The
-   largest is `03:694A`–`6A37` (5.3M), the collision-table interpreter's tail,
-   which needs the interpreter itself turned into a checkpointed transcript
-   before it can be reached.
-8. **Boot and reset path.** Off the census route's hot path but required.
-9. **The frame-sync spin loop** (584.8M). Trivial code, but it is where the
+7. **Three bank-01 arithmetic leaves** (3.3M) — **done**. `01:C8F3`, the
+   path-length accumulator; `01:DAF8`, the direction-octant classifier; and
+   `01:C969`, the range-squared guard whose body this route never runs. Not one
+   routine and not one subsystem — they went in as a single walk because they
+   share a shape: straight-line integer arithmetic over work RAM and zero page,
+   ending in an `RTS`, with no call, no device register and no bank change.
+   3,066,105 gross and `+2,439,807` net, admitted on every call, and no foreign
+   writer in any call window.
+
+   `01:DAF8` had been screened and rejected twice, because its cycle, write and
+   result populations were mixed rather than exposing a stable state-derived
+   return. That was correct for the method in use then, which had to predict a
+   return value from the entry state. A transcript predicts nothing, so a mixed
+   population is just two exits. **Re-read old rejections when the method
+   changes**; this one had been standing for several slices.
+8. **The collision-table interpreter as a transcript** (4.7M declined, 2.9M
+   gross) — **done**. `03:6966` was already replaced and already correct; what
+   it lacked was an instruction-boundary transcript on every path, so 2,850 of
+   its 34,259 entries were refused at an interrupt horizon and neither
+   composition site could take it. Rewriting it as a walk removed every horizon
+   decline on the route — 3,599 to zero — and gave the consumer at `03:7F57`
+   749 calls it had been written to accept and could not.
+
+   It sat unstarted for several slices because the existing replacement is
+   about 2,200 lines and rewriting it looked like the price. **The size of a
+   replacement is not the size of the routine.** `03:6966` is 0xD2 bytes and
+   about a hundred instructions; the 2,200 lines were what it cost to predict
+   the result from the entry state, which is what the older method required. A
+   transcript predicts nothing, so the walk came out shorter than the code it
+   fronts. Check the routine before pricing the rewrite.
+9. **Gameplay tails** (~17M spread thin, no single address above 0.14%). What
+   is left of the interpreter's region is mostly resumption rather than
+   unported code; the largest genuinely unported group is now the palette
+   shadow buffer at `00:E94C`–`EBD6` (3.8M).
+10. **Boot and reset path.** Off the census route's hot path but required.
+11. **The frame-sync spin loop** (584.8M). Trivial code, but it is where the
    native frame boundary ends up living — do it with phase 3, not before.
 
 ### Phase 2 — native device models
