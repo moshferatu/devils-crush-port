@@ -75,21 +75,31 @@ Two consequences worth noting:
 ## Inventory: what still executes as emulated 6280
 
 From a whole-ROM `--instruction-profile` of the deployed route
-(1,292,378,139 master cycles). Clusters of contiguous addresses that are not
-native entry points:
+(1,292,378,139 master cycles), counting only addresses the profile does *not*
+mark as a native entry — so a region that is fully ported drops out of the
+table rather than appearing at its old size:
 
 | Region | Master cycles | Share | What it is |
 | --- | ---: | ---: | --- |
 | `00:E2B7`–`E39C` | 584,758,197 | 45.25% | Frame-sync spin loop |
-| `00:FC03`–`FCB3`, `00:FD07`–`FDF1` | 173,243,694 | 13.41% | Sound driver — **already ported** (see below) |
-| bank `45` (`4000`–`4A9B`) | 45,586,602 | 3.53% | Music sequencer — 55% ported; the rest is **blocked**, see below |
-| `00:E93C`–`EBD6` | 20,611,233 | 1.59% | Palette shadow buffer — 18.2M ported; the rest is **blocked**, see below |
-| `00:E0EB`–`E292` | 15,342,522 | 1.19% | VBlank handler, pad reader and call wrappers — 5.1M ported; 7.7M is **blocked**, see below |
-| `00:E3C0`–`E47C` | 7,031,316 | 0.54% | VRAM tile upload |
+| `00:FC03`–`FCB3`, `00:FD07`–`FDF1` | 180,168,168 | 13.94% | Sound driver — **already ported**; these are the entries the no-nesting rule blocks (see below) |
+| bank `45` (`4000`–`4A9B`) | 21,119,886 | 1.63% | Music sequencer — the per-frame tick and two helpers the snapshot rule **blocks**, see below |
+| `00:E0EB`–`E292` | 10,745,280 | 0.83% | Pad reader and interrupt dispatcher, both **blocked** on a device read; the handler bodies and call wrappers are native |
 | `00:F240`–`F4FB` | 5,761,776 | 0.45% | Tilemap upload, camera-sweep outer |
 | `03:694A`–`6A37` | 5,274,582 | 0.41% | Gameplay tail |
 | `02:586F`–`5903` | 4,055,142 | 0.31% | Gameplay tail |
 | `01:CA84`–`CC04` | 3,974,346 | 0.31% | Collision tail |
+| `00:E93C`–`EBD6` | 3,772,896 | 0.29% | Palette shadow buffer — the two fade drivers and the block decrement, **blocked**, see below |
+
+Earlier revisions of this table mixed two conventions: five rows counted only
+emulated addresses and four counted the whole range including native entries,
+which made ported regions look like remaining work. Every row above is now the
+emulated count.
+
+`00:E3C0`–`E47C`, the VRAM and VCE upload paths, has left the table. It was
+7,031,316 cycles one slice ago and is 10,779 now — the loop-closing branches
+the chunked transcripts hand back to the core, plus a one-call stub at
+`00:E3E7` that jumps into the frame-sync region.
 
 The sound-driver row is not unported work. That code is native, proven and
 byte-exact; it runs emulated on 48% of entries only because the replacement
@@ -171,9 +181,20 @@ Remaining real logic, in rough order of value:
 
    The palette group is therefore finished for the hybrid at 18.2M of 20.6M.
 
-   Still untouched in this item: VRAM tiles `00:E3C0`–`E47C` (7.0M) and
-   tilemap `00:F240`–`F452` (5.8M). Both write the VDC ports at `$0000`-`$0003`,
-   which the write channel already carries.
+   The VRAM and VCE upload paths at `00:E3C0`–`E47C` (7.0M) are now native
+   too, and they needed a technique rather than a channel widening. The
+   generic word-stream decoder at `00:E41F` is 167,000 master cycles a call:
+   3,400 port writes and 12,400 instructions against a channel of 512 writes
+   and 2,048 checkpoints, so no transcript can hold one call. It **chunks**.
+   Each routine gets a second entry point at the head of its loop, and a
+   transcript ends in front of the backward branch that closes the loop; the
+   core executes that branch, lands on the loop head and calls the replacement
+   again. Nothing in the core changed to allow it — the hook already fires on
+   any fetch at a registered address, and a replacement already ends by handing
+   one instruction back. That removes the routine-length ceiling from the rest
+   of phase 1, and it is the answer to `00:EAA7` in the table above as well.
+
+   Still untouched in this item: the tilemap upload `00:F240`–`F452` (5.8M).
 3. **The `00:E0EB`–`E292` region** (15.3M). This was listed as one block, "the
    VBlank handler and pad reader", and the plan for it was to widen the write
    channel to reach the joypad port at `$1000`. Both halves of that were

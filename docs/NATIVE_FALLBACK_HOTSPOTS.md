@@ -2630,6 +2630,63 @@ entries and 36,330 cycles, 2.7% of its 1,350,720-cycle gross against the
 wrappers' 15.6%. The rule holds — the wrappers are six times the native time —
 but it is worth seeing both ends of the range before budgeting a slice on it.
 
+## The graphics upload paths, and lifting the routine-length ceiling
+
+`00:E3C0`–`E47C` was the next row, and screening it took one pass: every load
+in it is immediate, zero page, or through the source pointer at `$2F`/`$30`.
+Nothing reads a device register, so the whole 7.0M was phase-1 work rather
+than half of it. Three routines — a VRAM clear, a VCE colour-table clear, and
+the generic word-stream decoder at `00:E41F` that is 6.9M of the 7.0M.
+
+The decoder was the first thing in the port too large to be a transcript at
+all. One call is 167,000 master cycles: 3,400 port writes and 12,400
+instructions against a channel of 512 writes and 2,048 checkpoints. That is
+not a screening result, it is an arithmetic one, and it is worth doing before
+reading any instructions — `00:EAA7` was set aside two slices ago for exactly
+this reason and stayed set aside.
+
+The answer is to chunk, and it needed nothing new in the core. Give the
+routine a second entry point at the head of its loop, and stop the transcript
+in front of the backward branch that closes the loop rather than at an `RTS`.
+The core executes that branch, lands on the loop head, and calls the
+replacement again. The hook already fires on any fetch at a registered
+address; a replacement already ends by handing one instruction back. Two
+properties make it safe:
+
+- **Progress.** Every chunk must transcribe at least one iteration, or the
+  core re-enters at the same address with the same state for ever. Deciding
+  where to stop by budget instead of by count is what guarantees it: read the
+  next record's size before committing to it, and take it whole if it fits.
+  The first record of a chunk is always taken, so a chunk can never be empty.
+- **Cost.** The leak is the branch itself. Here it is eighteen master cycles a
+  chunk — the `BRA` plus the `CLY` behind it — across about 350 chunks, or
+  5,868 cycles of the 6.9M.
+
+The 41 decoder calls become 41 head transcripts and 326 continuations,
+admitted on every one. The routine-length ceiling is now a budgeting question
+rather than a limit, which changes what is worth screening in the rest of
+phase 1.
+
+The other precondition was shared state, and it is the one worth copying. The
+decoder reads `$2F`/`$30`, which is the game's general-purpose source pointer,
+written from some 340 sites across eight banks. A snapshot-based transcript is
+only sound if nothing writes it underneath, and with a pointer that widely
+shared the presumption has to be that something does. Measuring it is cheap:
+bracket each call in an assembly write trace between a store only its header
+makes and its last data-port write, and count foreign writers inside the
+windows. All 23,300 writes to `$2D`-`$30`, `$37` and `$38` inside the 41
+windows come from the decoder itself. Do this before writing the walk, not
+after the census diverges.
+
+The shadowing bill runs the opposite way to the two slices above. These are
+main-thread transcripts averaging 18,000 cycles — more than three timer
+periods — so the interrupts landing inside them cannot reach their own hooks:
+6,908,844 native cycles cost 317,196 elsewhere across 956 entries, 4.6% of
+gross, and the loss is on the interrupt side (130,122 in the sound driver,
+165,123 in the music sequencer) rather than in the driver alone. Four slices
+in, the rule is stable: the bill tracks total native time, and which side of
+the interrupt the transcripts run on decides who pays it.
+
 ## Use on future families
 
 Follow the command and interpretation rules in

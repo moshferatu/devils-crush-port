@@ -1250,6 +1250,19 @@ replace_vblank_handler(
     const emulation::RoutineEntry& entry,
     std::span<const std::byte> work_ram);
 
+// The graphics driver's three port-streaming loops: the VRAM clear at 00:E3C0,
+// the VCE clear at 00:E3FC and the generic word-stream decoder at 00:E41F. One
+// walk shared by six entry points -- each routine's head and the head of the
+// loop its transcripts chunk inside, because a single decoder call is 3,400
+// port writes against a 512-write channel. Every transcript stops either in
+// front of an RTS or in front of the backward branch that closes a loop, and
+// the core executes that branch and re-enters here for the next chunk.
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_vram_upload(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram,
+    std::span<const std::byte> rom);
+
 [[nodiscard]] std::optional<emulation::RoutineReplacement>
 replace_actor_dispatch_vector(
     const emulation::RoutineEntry& entry,

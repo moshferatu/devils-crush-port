@@ -857,6 +857,36 @@ exactly and reproduce SHA-256
 A ROM-free fixture independently guards literal, repeated, and bounded-output
 behavior.
 
+`00:E41F` is also native as a CPU transcript now, together with the two clears
+that share its idiom, and the region `00:E3C0`-`E47C` is closed apart from a
+one-call stub at `00:E3E7` that jumps into the frame-sync loop. It is the first
+family in the port whose transcripts are **chunked**: one call is 167,000
+master cycles and 3,400 port writes against a 512-write channel, so each
+routine has a second entry point at the head of its loop and a transcript stops
+in front of the backward branch that closes it.
+
+| Entry | What it is | Calls | Master cycles |
+| --- | --- | ---: | ---: |
+| `00:E3C0` | Clear 512 VRAM words from `$7800`, through `$0002`/`$0003` | 2 | 20,736 |
+| `00:E3D7` | that clear's loop head | 4 | 25,524 |
+| `00:E3FC` | Clear the 1,024-entry VCE colour table through `$0404`/`$0405` | 4 | 37,704 |
+| `00:E403` | that clear's loop head | 16 | 128,136 |
+| `00:E41F` | The decoder's head: program MAWR from `$2D`/`$2E`, select VWR | 41 | 813,204 |
+| `00:E439` | The stream-record loop head, where every continuation resumes | 326 | 5,883,540 |
+
+The 41 calls decode 7,480 records and 57,648 words on the census route, in
+literal records of at most 127 words and repeat records of at most 127 — the
+`$80` command that would mean 256 never occurs. Sources resolve through MPR4
+and MPR5 for the most part, with pointer high bytes spanning `$80`-`$BF`, and
+the walk resolves each byte through the live `MPR` rather than assuming the
+slot, because a stream that runs past `$BFFF` continues through MPR6.
+
+`$2F`/`$30` is shared with the rest of the game — 340 instructions across eight
+banks write it — so the transcripts depend on nothing writing it under them.
+Measured on an assembly write trace, bracketing each call between its header's
+`$06` store at `00:E422` and its last data-port write: all 23,300 writes to
+`$2D`-`$30`, `$37` and `$38` inside those windows are the decoder's own.
+
 The complete `$F6A6/$F6D0` selector family is now decoded. Its 42 appearance
 entries collapse to these nine unique pointers:
 

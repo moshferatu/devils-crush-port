@@ -155,6 +155,7 @@ if(DC_BUILD_APP)
         src/app/native_replacements_sound.cpp
         src/app/native_replacements_vblank.cpp
         src/app/native_replacements_video.cpp
+        src/app/native_replacements_vram.cpp
     )
 
     target_link_libraries(

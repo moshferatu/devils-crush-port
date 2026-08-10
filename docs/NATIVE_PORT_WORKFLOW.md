@@ -529,6 +529,43 @@ contract requires `return_instruction` to be constant, so an indirect jump is
 replaceable as long as the vector is readable from the snapshot. Compute the
 bank from the entry's own `mpr[]`; the jump changes no mapping.
 
+### A routine too large for one transcript can chunk at a loop's backward branch
+
+The channel is 512 writes and 2,048 checkpoints. A routine that needs more than
+either is not thereby unportable: it can be transcribed a piece at a time.
+
+Give it a second entry point at the head of the loop that makes it large, and
+end the transcript in front of the backward branch that closes that loop
+instead of at an `RTS`. The core executes the branch itself, lands on the loop
+head, and calls the replacement again for the next piece. Registers carry the
+loop state across the boundary because `output_registers` are the machine's
+registers — a chunk that stops mid-record resumes with the same `X`, `Y` and
+pointer the assembly would have had. Nothing in the core needs changing: the
+hook fires on any fetch at a registered address, and a replacement already ends
+by handing one instruction back.
+
+Two properties have to hold, and only one of them is obvious.
+
+- **Every chunk must make progress.** A chunk that transcribes nothing leaves
+  the core at the same address in the same state, and the next call produces
+  the same empty chunk for ever. Decide where to stop by budget rather than by
+  a fixed count, and make the first unit of work in a chunk unconditional: read
+  the next unit's size, take it whole if it fits in what is left of both
+  channels, otherwise stop — but always take the first one. If a single unit
+  cannot fit in an empty chunk, decline the whole transcript and let the
+  assembly run that unit; the hook fires again on the next iteration.
+- **The leak is the branch.** Each chunk boundary leaves the closing branch,
+  and whatever sits between it and the loop head, to the emulator. For the VRAM
+  decoder at `00:E41F` that is a `BRA` and a `CLY` — eighteen master cycles
+  across about 350 chunks on the census route, 0.09% of the 6.9M the family
+  covers. Budget the chunk large enough that this stays noise.
+
+`00:E41F` is the worked example: 167,000 master cycles, 3,400 port writes and
+12,400 instructions in a single call, transcribed as one head chunk and about
+eight continuations. Before this, routine length was a hard ceiling and
+candidates like `00:EAA7` were set aside for exceeding it. It is now a
+budgeting question.
+
 ### A transcript cannot see what preempts it
 
 A transcript is computed once, from one snapshot, and then replayed. That is
@@ -550,6 +587,17 @@ So when a candidate enables interrupts partway through, audit every load after
 that point. A byte the routine only writes is safe. A byte another handler
 writes is a hard boundary for the walk, and the cheapest correct answer is to
 end the transcript in front of it rather than to model the race.
+
+Audit by measurement, not by reading the call graph, whenever the state is
+widely shared. `$2F`/`$30` is the game's general-purpose source pointer and the
+VRAM decoder reads it every stream record; 340 instructions across eight banks
+write it, so no amount of reading proves which of them can run underneath. The
+cheap answer is a two-column question against an assembly write trace: bracket
+each call between a store only that routine's own header makes and its last
+output write, then list every writer of the shared cells inside those windows.
+For the decoder that returned 23,300 writes, all of them its own. One run,
+before the walk is written, and it settles the question the census would
+otherwise raise as an unexplained hash.
 
 ### CLI opens the interrupt window one instruction late
 

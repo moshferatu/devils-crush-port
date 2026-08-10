@@ -5444,61 +5444,88 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
 
 ## Active Work
 
-Current owner: Claude. Current slice: **the VDC interrupt handler's body is
-native**, taking the deployed registry to **39.51%** of all master cycles
-(510,670,554 of 1,292,371,131) across 2,332,369 native calls and 313 admitted
+Current owner: Claude. Current slice: **the VRAM and VCE upload paths are
+native**, taking the deployed registry to **40.02%** of all master cycles
+(517,262,202 of 1,292,371,131) across 2,331,807 native calls and 319 admitted
 routines.
 
-`00:E058` is the display interrupt. It reads the VDC status register at `$0000`
-into `$01` and dispatches on it: the VBlank bit sends it to `00:E0EB`,
-everything else to `00:E136`. That head is not portable — its whole decision is
-a byte from a device register — but nothing downstream of the read needs the
-device again, so the bodies are. Six entry points share one walk: the two arms
-the dispatcher jumps to, the two addresses the VBlank arm's calls come back to
-(`00:E117`, `00:E123`), and the secondary handler's prologue and epilogue
-(`00:E179`, `00:E183`). **Admitted on every one of 13,932 calls** when hooked
-alone; 10,701 of them with the whole registry deployed, the rest arriving while
-a main-thread transcript is suspended. 1,350,720 cycles gross.
+`00:E3C0`-`E47C` is one idiom three times over: point a VDC or VCE write pointer
+at a base address, then push words through the data ports until a counter runs
+out. Nothing in it reads a device register, so unlike the interrupt dispatcher
+above it the whole 7.0M row was phase-1 work rather than half of it. Three
+routines -- a VRAM clear at `00:E3C0`, a VCE colour-table clear at `00:E3FC`,
+and the generic word-stream decoder at `00:E41F` that is 6.9M of the 7.0M. Six
+entry points, admitted on every call, 6,908,844 cycles gross and `+6,591,648`
+net. The region is closed apart from a one-call stub at `00:E3E7` that jumps
+into the frame-sync loop: 7,031,316 emulated cycles one slice ago, 10,779 now.
 
 Verification is the two-run diff against pure assembly over three artifacts:
-4,989,037 work-RAM writes including the whole stack page, 2,036,234 writes to
-the VDC's three base ports censused with `--bus-write-range`, and the state
-census. Regression: `dc_rom_vblank_handler_semantic`.
+6,036,242 work-RAM writes covering the decoder's shared zero page and the whole
+stack page, 2,151,922 writes to the VDC and VCE register files censused with
+`--bus-write-range`, and the state census. Regression:
+`dc_rom_vram_upload_semantic`.
 
 **Findings worth carrying forward.**
 
-*An instruction that changes `I` cannot be summarised by a checkpoint that
-publishes its result.* The first draft covered the `PLP` that restores the
-interrupted status byte, one instruction short of the `RTI`. It diverged, and
-the stack page showed exactly how: assembly services a timer interrupt between
-that `PLP` and the `RTI`, and the transcript swallowed it. The core samples the
-IRQ at `LastCycle`, which for `PLP` runs *before* the pop, while a checkpoint
-carries one register set and samples with it — so the transcript sampled with
-the restored mask instead of the one the instruction ran under. The sound driver
-hit the same fault from the other direction with `CLI` and fixed it by
-publishing the old mask on the `CLI` checkpoint and letting the clear land on
-the next. Here there is no next checkpoint, so the walk stops in front of the
-`PLP` and the core executes it: twelve master cycles a call against a fault that
-would otherwise have to be caught by diff every time. The general rule is now in
-the workflow doc.
+*A routine too large for one transcript can chunk at a loop's backward branch.*
+One decoder call is 167,000 master cycles, 3,400 port writes and 12,400
+instructions against a channel of 512 writes and 2,048 checkpoints, so no
+transcript can hold a call. Give the routine a second entry point at the head of
+its loop and stop the transcript in front of the branch that closes the loop
+rather than at an `RTS`: the core executes that branch, lands on the loop head
+and calls the replacement again, and the loop state crosses the boundary for
+free because `output_registers` *are* the machine's registers. Nothing in the
+core changed -- the hook already fires on any fetch at a registered address, and
+a replacement already ends by handing one instruction back. Two properties make
+it safe. Every chunk must transcribe at least one unit of work, or the core
+re-enters at the same address in the same state for ever; that is why `00:E479`
+sizes the next stream record before committing to it and always takes the first
+one. And the leak is the branch itself: eighteen master cycles a chunk, 5,868
+across the route. Routine length was a hard ceiling before this -- `00:EAA7` was
+set aside two slices ago for exceeding it -- and is now a budgeting question.
 
-*Do not assume a handler stays masked because the interrupt sequence set `I`.*
-This one is entered masked and does not stay that way. Bank `45` ends three of
-its critical sections with an unconditional `CLI` rather than restoring the
-caller's mask — `45:4872`, `45:49F2`, `45:47EE`, 376 executions between them —
-so the music tick below `00:ECC6` hands the handler back with interrupts
-enabled. Counting interrupt entries against the stack page in an assembly trace
-puts 78 of them inside these six walks, every one at or after `00:E123` and none
-before a `JSR $ECC6`. That is also why the shadowing bill is small — 64 driver
-entries and 36,330 cycles, 2.7% of gross against the wrapper slice's 15.6% —
-because the unmasked stretch is the short one.
+*Measure shared state rather than reading the call graph for it.* The decoder
+reads `$2F`/`$30`, the game's general-purpose source pointer, which 340
+instructions across eight banks write. No amount of reading proves which of them
+can run underneath a transcript. Bracketing each of the 41 calls in an assembly
+write trace between its header's `$06` store at `00:E422` and its last data-port
+write, all 23,300 writes to `$2D`-`$30`, `$37` and `$38` inside those windows are
+the decoder's own, and none come from interrupt context. One run, before the
+walk was written, instead of an unexplained census hash afterwards.
 
-Next: `00:E0EB`-`E292` is finished for phase 1. What remains in it is the
-dispatcher `00:E058` (0.8M) and the pad reader `00:E195` (6.9M), both blocked on
-a device *read* and therefore phase-2 work with the VDC and the joypad. The
-next phase-1 targets are the VRAM tile upload `00:E3C0` (7.0M) and the tilemap
-upload `00:F240` (5.8M), both of which write the same VDC ports this slice just
-proved, and neither of which reads one.
+The shadowing bill runs the other way to the last two slices. These are
+main-thread transcripts averaging 18,000 cycles, more than three timer periods,
+so the interrupts landing inside them cannot reach their own hooks: 317,196
+cycles across 956 entries, 4.6% of gross, and the loss is on the interrupt side
+-- 130,122 in the sound driver, 165,123 in the music sequencer. One transcript
+of 367 is abandoned partway through a record by the core's checkpoint register
+guard and the assembly finishes it; the fallback is by design and the census is
+unaffected.
+
+Next: the tilemap upload `00:F240`-`F452` (5.8M) is the last coherent video row
+and writes the same ports this slice just proved. After it the largest phase-1
+groups are the gameplay tails at `03:694A` (5.3M) and `02:586F` (4.1M) and the
+collision tail `01:CA84` (4.0M). The pad reader `00:E195` (6.9M) and the
+interrupt dispatcher `00:E058` (0.8M) stay blocked on device *reads* and are
+phase-2 work with the joypad and the VDC. Chunking also reopens `00:EAA7`
+(1.6M), which was set aside only for being 205,012 cycles a call.
+
+Previous slice: **the VDC interrupt handler's body is native**, taking the
+registry to 39.51%. `00:E058` reads the VDC status register and dispatches on
+it, so the head is phase-2 work, but nothing downstream of that read needs the
+device again. Six entry points shared one walk -- the two arms the dispatcher
+jumps to, the two addresses the VBlank arm's calls come back to, and the
+secondary handler's prologue and epilogue -- admitted on every one of 13,932
+calls, 1,350,720 cycles. Two findings came with it. **An instruction that
+changes `I` cannot be summarised by a checkpoint that publishes its result**:
+the first draft covered the `PLP` one instruction short of the `RTI`, and
+swallowed a timer interrupt that assembly services between the two, because the
+core samples the IRQ at `LastCycle` -- before `PLP` pops -- while a checkpoint
+carries one register set. The walk stops in front of the `PLP` instead. And **do
+not assume a handler stays masked because the interrupt sequence set `I`**: bank
+`45` ends three critical sections with an unconditional `CLI`, so 78 of the
+route's interrupt entries land inside these six walks, all at or after
+`00:E123`.
 
 Previous slice: **the bank-switching call wrappers are native**, taking the
 registry to 39.41%. Every cross-bank call in the game goes through one of five

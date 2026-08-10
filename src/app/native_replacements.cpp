@@ -240,6 +240,43 @@ replace_native_gameplay_routine_impl(
         return detail::replace_vblank_handler(entry, work_ram);
     }
 
+    // One shared walk, six entry points: the graphics driver's port-streaming
+    // loops. Each transcript stops in front of an RTS or in front of the
+    // backward branch that closes a loop, which is where a chunk hands the
+    // stream back to the core.
+    if (entry.routine
+            == RoutineKey{
+                .physical_bank = 0x00U,
+                .logical_pc = 0xE3C0U,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x00U,
+                .logical_pc = 0xE3D7U,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x00U,
+                .logical_pc = 0xE3FCU,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x00U,
+                .logical_pc = 0xE403U,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x00U,
+                .logical_pc = 0xE41FU,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x00U,
+                .logical_pc = 0xE439U,
+            }) {
+        return detail::replace_vram_upload(entry, work_ram, rom);
+    }
+
     // One shared walk, four entry points: the camera sweep's initializer and
     // the three addresses `00:F4FC` returns through.
     if (entry.routine
