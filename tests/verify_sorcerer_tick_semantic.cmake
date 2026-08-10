@@ -32,6 +32,18 @@ endif()
 # after one of the interpreter calls. 02:5896 is hookable on its own but is not
 # an entry here, because the 02:5893 walk branches into it.
 #
+# Both interpreter calls are now run in line rather than handed back, so the
+# three addresses on the far side of them are entered only when an interrupt
+# lands inside the composed transcript and the core resumes the remainder in
+# assembly: 02:5893 falls from 1,800 entries to 272 and 02:58DD from 18,152 to
+# 4,628. They stay registered because that resumption is a real arrival.
+#
+# $21F7-$21FB is the stack depth the two `JSR $6966` instructions push their
+# return address to, and it is in the ranges for the composition's sake: a `JSR`
+# pushes both halves before it pays for its own six cycles, so a push recorded
+# at the end of the instruction would still leave every other write in this
+# trace correct. Nothing else here would catch that.
+#
 # Shared state was measured on exact windows from observers on all six heads
 # rather than inferred from the writes. Of the ninety-nine instructions that
 # write any address this family reads, exactly one ever writes inside a window
@@ -47,7 +59,7 @@ set(
 )
 set(
     expected_write_sha256
-    "8c0eb2c8076848e60e42d81b24fabb4c429202a44d2232dd9b64f59e77aec6b5"
+    "4783c934c0c808778f77f2201dc2d9deacf85a5aef420a9e4e8288704f8ed851"
 )
 
 set(write_output "${OUTPUT}.writes.csv")
@@ -67,6 +79,8 @@ execute_process(
         "02:58C2@all"
         --replace-hook
         "02:58DD@all"
+        --work-ram-write-range
+        "21F7-21FB"
         --work-ram-write-range
         "2D10-2D10"
         --work-ram-write-range
@@ -101,10 +115,10 @@ foreach(expected_line IN ITEMS
     "State census recording complete: 3600 frames"
     "Native replacement 02:586F@all entries: 1240 of 1240"
     "Native replacement 02:5886@all entries: 1800 of 1800"
-    "Native replacement 02:5893@all entries: 1800 of 1800"
+    "Native replacement 02:5893@all entries: 272 of 272"
     "Native replacement 02:58C2@all entries: 18152 of 18152"
-    "Native replacement 02:58DD@all entries: 18152 of 18152"
-    "Work-RAM write trace complete: 240657 selected writes"
+    "Native replacement 02:58DD@all entries: 4628 of 4628"
+    "Work-RAM write trace complete: 1940085 selected writes"
 )
     string(FIND "${recorder_output}" "${expected_line}" line_offset)
     if(line_offset EQUAL -1)
@@ -138,6 +152,6 @@ endforeach()
 message(
     STATUS
     "Semantic Sorcerer tick runs all five entry points natively across "
-    "41,144 admitted entries, with the family's whole output and the state "
-    "census identical to assembly."
+    "26,092 admitted entries, both interpreter calls composed in line, with "
+    "the family's whole output and the state census identical to assembly."
 )

@@ -352,7 +352,7 @@ one, because what the driver loses is proportional to how much wall time the
 hook spends unavailable, and that is the sum of the bodies. Per-call length
 only tells you whether a *single* call can straddle a period.
 
-What that does not give you is the ratio to the digit, but seven slices in it
+What that does not give you is the ratio to the digit, but eight slices in it
 does give you a usable estimate:
 
 | Slice | Gross native | Shadowing bill | Share of gross |
@@ -364,6 +364,7 @@ does give you a usable estimate:
 | Sorcerer tick | 3,156,294 | 560,934 | 17.8% |
 | Bank-01 geometry leaves | 3,066,105 | 626,298 | 20.4% |
 | Collision-table interpreter | 2,942,940 | 578,541 | 19.7% |
+| Interpreter into the Sorcerer tick | 1,538,439 | 242,907 | 15.8% |
 
 The spread looks arbitrary until the per-event numbers are pulled out of it.
 Those are almost identical every time: the driver costs **568 to 577 native
@@ -376,7 +377,17 @@ the three 700-cycle geometry leaves at 2,775, so short transcripts cost a
 little more per cycle transcribed than long ones. Not enough to change a
 decision, but the direction is consistent.
 
-Two things keep it an estimate rather than a formula. The seven points span
+The last row is worth a caveat, because the obvious reading of it is wrong. It
+is the first slice on which the route's *total* hook entries fell — 2,367,401 to
+2,332,709 — since composing a call deletes the two boundaries around it rather
+than adding a new one. It is tempting to conclude that composing is therefore
+systematically cheaper than replacing. It is not: the other composing slice in
+the table, the scanner, billed 19.7% and came in slightly *above* what the rule
+predicts. 15.8% is the second-lowest of eight and sits inside the existing
+spread, next to a slice that composed nothing at all. Whatever drives the three
+points of variation, it is not this.
+
+Two things keep it an estimate rather than a formula. The eight points span
 three percentage points either side of 19%, which is a hundred thousand cycles
 on a typical slice. And the displacement rate is 1.7 times the naive figure:
 the timer fires every 5,068 master cycles, so a transcript covering N cycles

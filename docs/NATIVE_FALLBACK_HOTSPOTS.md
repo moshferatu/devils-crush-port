@@ -262,6 +262,20 @@ discarded rather than widening native coverage with an inexact composition.
 Keep both parents assembly-backed until a nested-call timing adapter is
 proven by an original parent transcript.
 
+**Superseded, and the reason is worth reading before trusting the paragraph
+above.** That rejection is correct about the replacement it was written against
+and wrong about the routine. `03:6966` was an atomic body then, so its result
+did depend on the entry time and the interrupt horizon, and a parent could not
+reproduce that. It is an instruction-boundary transcript now: it admits 54,149
+of 54,149 calls, it declines nothing at a horizon, and a parent that splices it
+does not have to reproduce any temporal context at all, because the child emits
+the same checkpoints and the same writes wherever it is called from. The
+Sorcerer tick composes it at two sites and the consumer at `03:7F57` at one, all
+three verified against assembly. The "nested-call timing adapter" this section
+asks for turned out not to be a thing that needs building. Screen the Spider
+parents again on the current child; nothing in the recorded objection survives
+it.
+
 ## Small-Soldier source-gate pilot
 
 An initial Walled-Star observer set exposed `03:6366`, but that address is an

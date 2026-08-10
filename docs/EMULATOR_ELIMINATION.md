@@ -82,12 +82,12 @@ table rather than appearing at its old size:
 | Region | Master cycles | Share | What it is |
 | --- | ---: | ---: | --- |
 | `00:E2B7`–`E39C` | 584,758,197 | 45.25% | Frame-sync spin loop |
-| `00:FC03`–`FCB3`, `00:FD07`–`FDF1` | 192,690,993 | 14.91% | Sound driver — **already ported**; these are the entries the no-nesting rule blocks (see below) |
+| `00:FC03`–`FCB3`, `00:FD07`–`FDF1` | 193,007,589 | 14.93% | Sound driver — **already ported**; these are the entries the no-nesting rule blocks (see below) |
 | bank `45` (`4000`–`4A9B`) | 21,152,865 | 1.64% | Music sequencer — the per-frame tick and two helpers the snapshot rule **blocks**, see below |
 | `00:E0EB`–`E292` | 10,888,014 | 0.84% | Pad reader and interrupt dispatcher, both **blocked** on a device read; the handler bodies and call wrappers are native |
-| `03:694A`–`6A37` | 3,022,725 | 0.23% | Collision-table interpreter — **already ported**; two `RTS` instructions and the resumption after an interrupt lands on a checkpoint, see below |
+| `03:694A`–`6A37` | 2,700,153 | 0.21% | Collision-table interpreter — **already ported**; the `RTS` instructions and the resumption after an interrupt lands on a checkpoint, see below |
 | `00:E93C`–`EBD6` | 3,780,738 | 0.29% | Palette shadow buffer — the two fade drivers and the block decrement, **blocked**, see below |
-| `02:586F`–`5903` | 910,530 | 0.07% | Sorcerer tick — **already ported**; what is left is the two interpreter calls, the two bank-wrapper calls and three `RTS` instructions |
+| `02:586F`–`5903` | 501,195 | 0.04% | Sorcerer tick — **already ported**, and both interpreter calls are now composed in line; what is left is the two bank-wrapper calls, three `RTS` instructions and resumption |
 | `01:CA84`–`CC04` | 621,648 | 0.05% | Collision frame — **already ported**, and the call into the scanner is now composed rather than emulated, see below |
 
 Earlier revisions of this table mixed two conventions: five rows counted only
@@ -137,24 +137,33 @@ transcript, so it declined 2,850 of its own 34,259 entries at an interrupt
 horizon. Splicing it into a longer parent would have put that uncheckpointed
 stretch inside the parent as well.
 
-That is fixed: `03:6966` is now transcribed instruction by instruction, its row
-is 3,022,725, and no call anywhere on the route is refused at an interrupt
-horizon. The Sorcerer row has not moved, and that is worth being precise about
-— composing the interpreter into the tick is now *possible* rather than *done*.
-The tick's transcript still stops in front of each `JSR $6966` and the two calls
-still cost it two entries and two returns. What changed is that the child now
-carries checkpoints, so splicing it in no longer imports an atomic stretch. The
-consumer at `03:7F57` shows what that is worth without any new code at all: its
+That is fixed: `03:6966` is now transcribed instruction by instruction, and no
+call anywhere on the route is refused at an interrupt horizon. The consumer at
+`03:7F57` showed what that was worth without any new code at all — its
 composition was already written and gated on the child having checkpoints, and
 it picked up 749 calls and 886,317 cycles the moment the child had them.
 
-The interpreter's own remainder is worth separating. 764,982 of the 3,022,725
-is the two `RTS` instructions the transcripts stop in front of, which is the
-leaf contract and is priced in. The other 2,236,563 is resumption: when an
-interrupt lands on a checkpoint the core delivers it and hands the rest of the
-routine back to the emulator rather than re-entering the transcript afterwards.
-That is a harness property, not unported code, and it belongs in the same
-category as the two blocked rows below.
+The tick took a slice of its own, and it is done: both `JSR $6966` calls are
+run in line. The Sorcerer row is 501,195 and the interpreter row 2,700,153. The
+two rows are the clearest illustration in this table of what composition is and
+is not. What actually stopped being emulated is small — the two `JSR`
+instructions and the interpreter's `RTS`, 731,907 cycles between them. The other
+806,532 of the 1,538,439 gross is three replacements becoming one, which costs
+the machine nothing directly but removes two hook boundaries per call. The route
+went from 2,367,401 hook entries to 2,332,709, and because the shadowing bill is
+paid per displaced entry, that made this the cheapest slice yet measured
+relative to its gross: 15.8%.
+
+The interpreter's own remainder is worth separating, and composition separates
+it cleanly. 442,977 of the 2,700,153 is the `RTS` instructions the transcripts
+still stop in front of, which is the leaf contract and is priced in — it was
+765,549 before the tick composed and the difference is exactly the returns that
+composition absorbed. The other 2,257,176 is resumption: when an interrupt lands
+on a checkpoint the core delivers it and hands the rest of the routine back to
+the emulator rather than re-entering the transcript afterwards. That figure is
+identical before and after, to the cycle, which is the demonstration that
+composing does not touch it. It is a harness property, not unported code, and it
+belongs in the same category as the two blocked rows below.
 
 Two rows never made it into the table at all, and that is the point of
 recording them here. `01:C8C2`–`C971` was 1,743,819 cycles and `01:DAF8`–`DB9D`
@@ -417,12 +426,26 @@ Remaining real logic, in rough order of value:
    the result from the entry state, which is what the older method required. A
    transcript predicts nothing, so the walk came out shorter than the code it
    fronts. Check the routine before pricing the rewrite.
-9. **Gameplay tails** (~17M spread thin, no single address above 0.14%). What
+9. **The interpreter composed into the Sorcerer tick** (1.5M gross) — **done**.
+   The slice above made composing possible; this is the composing. Both
+   `JSR $6966` sites in the tick are run in line: push the return address, hand
+   the staged work RAM to the interpreter's own walk, splice its checkpoints and
+   writes at the cycle the call landed on, transcribe the `RTS`. `+1,295,532`
+   net, and the registry passed 41.48%.
+
+   The thing it settled is that **most of the gross is not code that stopped
+   being emulated**: only 731,907 of the 1,538,439 is the two `JSR`s and the
+   `RTS`. The rest is three replacements becoming one. Composition buys
+   boundaries, not instructions, and this is the first slice on which the
+   route's total hook entries went *down* — 2,367,401 to 2,332,709. That did
+   not make it systematically cheap, though: the bill was 15.8%, low but inside
+   the existing spread, and the other composing slice on record billed 19.7%.
+10. **Gameplay tails** (~17M spread thin, no single address above 0.14%). What
    is left of the interpreter's region is mostly resumption rather than
    unported code; the largest genuinely unported group is now the palette
    shadow buffer at `00:E94C`–`EBD6` (3.8M).
-10. **Boot and reset path.** Off the census route's hot path but required.
-11. **The frame-sync spin loop** (584.8M). Trivial code, but it is where the
+11. **Boot and reset path.** Off the census route's hot path but required.
+12. **The frame-sync spin loop** (584.8M). Trivial code, but it is where the
    native frame boundary ends up living — do it with phase 3, not before.
 
 ### Phase 2 — native device models

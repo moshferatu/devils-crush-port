@@ -49,10 +49,23 @@ using emulation::RoutineReplacement;
 //
 // Five entry points. Two are routine heads the core arrives at directly, and
 // three -- 02:5893, 02:58C2 and 02:58DD -- are the addresses it arrives at
-// after one of the two interpreter calls, because a transcript stops in front
-// of a call. 02:5896 is hookable on its own and is not an entry here: the walk
-// from 02:5893 takes its own branch into it, so registering it would leave a
-// routine the deployed registry never enters.
+// after one of the two interpreter calls. 02:5896 is hookable on its own and is
+// not an entry here: the walk from 02:5893 takes its own branch into it, so
+// registering it would leave a routine the deployed registry never enters.
+//
+// Both interpreter calls are composed rather than handed back. A transcript
+// normally stops in front of a call, because the callee is another routine's
+// business and the core has to go and emulate it; this callee is itself a
+// transcript, so the call is run in line instead. That is worth 1.5M master
+// cycles for two reasons and neither of them is the call: the `JSR` and the
+// `RTS` stop being emulated, and the three walks either side of them stop being
+// three separate replacements with a hook boundary between each.
+//
+// So 02:5893 and 02:58DD are entered far less than they were -- 272 rather than
+// 1,800, and 4,628 rather than 18,152 -- and what is left is not a decline. It
+// is the core resuming: when an interrupt lands on a checkpoint inside the
+// composed window it delivers there and runs the remainder in assembly, which
+// arrives at exactly these addresses. They stay registered for that reason.
 //
 // The family reads `$2D05`, `$2D10`, `$3780,X`, `$3800,X`, `$3A80,X` and the
 // cooldown pair, and writes `$3080,X`, `$3880,X`, `$3980,X`, `$3C00,X`,
@@ -85,6 +98,21 @@ constexpr std::uint32_t kAbsoluteIndexed = 15U;
 constexpr std::uint32_t kAbsoluteReadModifyWrite = 21U;
 constexpr std::uint32_t kBranchTaken = 12U;
 constexpr std::uint32_t kBranchNotTaken = 6U;
+constexpr std::uint32_t kJumpToSubroutine = 21U;
+constexpr std::uint32_t kReturnFromSubroutine = 21U;
+
+// The transaction caps the core enforces are 2,048 checkpoints and 512 writes.
+// A composed call brings the interpreter's whole transcript across, and the
+// interpreter refuses itself above 1,024 and 480, so the two together cannot
+// reach either ceiling; these are the ceiling, not a budget.
+constexpr std::size_t kMaximumCheckpoints = 2048U;
+constexpr std::size_t kMaximumWrites = 512U;
+
+// The interpreter the two `JSR`s below reach, and the page it is reached
+// through. `$6966` is an MPR3 address, so the call is only the routine this
+// walk knows if MPR3 still holds physical bank 03.
+constexpr std::uint8_t kInterpreterBank = 0x03U;
+constexpr std::uint16_t kInterpreterEntry = 0x6966U;
 
 [[nodiscard]] std::uint8_t set_nz(
     const std::uint8_t status,
@@ -120,6 +148,14 @@ constexpr std::uint32_t kBranchNotTaken = 6U;
         || logical_pc == 0x58E8U || logical_pc == 0x5903U;
 }
 
+// Two of those stops are calls this walk can run rather than hand back. They
+// remain stops for the calls the interpreter refuses, which is what keeps the
+// three addresses on the far side of them worth registering.
+[[nodiscard]] constexpr bool is_interpreter_call(const std::uint16_t logical_pc)
+{
+    return logical_pc == 0x5890U || logical_pc == 0x58DAU;
+}
+
 } // namespace
 
 std::optional<RoutineReplacement> replace_sorcerer_tick(
@@ -139,9 +175,12 @@ std::optional<RoutineReplacement> replace_sorcerer_tick(
         return std::nullopt;
     }
 
-    std::uint8_t ram[0x2000];
+    // The shadow is kept in the same representation the hook is handed, so the
+    // interpreter's own walk can be run against it directly when one of the two
+    // calls below is composed rather than stopped in front of.
+    std::byte ram[0x2000];
     for (std::size_t index = 0U; index < 0x2000U; ++index) {
-        ram[index] = std::to_integer<std::uint8_t>(work_ram[index]);
+        ram[index] = work_ram[index];
     }
 
     RoutineReplacement replacement;
@@ -155,7 +194,7 @@ std::optional<RoutineReplacement> replace_sorcerer_tick(
                 overflow = true;
                 return 0U;
             }
-            return ram[address - kWorkRamBase];
+            return std::to_integer<std::uint8_t>(ram[address - kWorkRamBase]);
         };
 
     // The four-entry table at 02:593C sits in this bank's own ROM page, so it
@@ -167,7 +206,7 @@ std::optional<RoutineReplacement> replace_sorcerer_tick(
             const std::uint16_t address) -> std::uint8_t {
             const auto bank = registers.mpr[address >> 13U];
             if (bank == 0xF8U) {
-                return ram[address & 0x1FFFU];
+                return std::to_integer<std::uint8_t>(ram[address & 0x1FFFU]);
             }
             if (bank >= 0x80U || rom.size() != 0x60000U) {
                 overflow = true;
@@ -199,8 +238,12 @@ std::optional<RoutineReplacement> replace_sorcerer_tick(
 
     // An instruction samples the interrupt one CPU cycle before its own last,
     // which is where the core's LastCycle sits.
-    const auto append_checkpoint =
+    // A composed call ends on the interpreter's own `RTS`, which is an
+    // instruction in bank 03 rather than in this one, so the bank a checkpoint
+    // names is a parameter and not a constant.
+    const auto append_checkpoint_in =
         [&replacement, &registers, &cycle, &commit_pending_writes](
+            const std::uint8_t bank,
             const std::uint16_t instruction_pc,
             const std::uint16_t resume_pc,
             const std::uint32_t instruction_cycles) {
@@ -210,9 +253,17 @@ std::optional<RoutineReplacement> replace_sorcerer_tick(
             replacement.checkpoints.push_back({
                 .interrupt_sample_master_cycle_offset = cycle - 3U,
                 .master_cycle_offset = cycle,
-                .instruction = {kBank, instruction_pc},
+                .instruction = {bank, instruction_pc},
                 .registers = registers,
             });
+        };
+    const auto append_checkpoint =
+        [&append_checkpoint_in](
+            const std::uint16_t instruction_pc,
+            const std::uint16_t resume_pc,
+            const std::uint32_t instruction_cycles) {
+            append_checkpoint_in(
+                kBank, instruction_pc, resume_pc, instruction_cycles);
         };
 
     const auto store =
@@ -224,7 +275,7 @@ std::optional<RoutineReplacement> replace_sorcerer_tick(
                 overflow = true;
                 return;
             }
-            ram[address - kWorkRamBase] = value;
+            ram[address - kWorkRamBase] = static_cast<std::byte>(value);
             replacement.work_ram_writes.push_back({
                 .instruction = {kBank, instruction_pc},
                 .logical_address = address,
@@ -333,9 +384,146 @@ std::optional<RoutineReplacement> replace_sorcerer_tick(
             registers.status = set_nz(registers.status, value);
         };
 
+    // `JSR $6966` at 02:5890 and 02:58DA. A transcript normally stops in front
+    // of a call, because what the callee does is the callee's business and the
+    // core has to go and emulate it. This callee is itself a transcript, so the
+    // call can be run in line instead: push the return address, hand the staged
+    // work RAM to the interpreter's own walk, splice what it produced at the
+    // cycle the call landed on, and transcribe the `RTS` that comes back.
+    //
+    // Nothing here is a shortcut around the interpreter. The child produces the
+    // same checkpoints and the same writes it produces when the core calls it
+    // directly; all this does is stop the walk from having to hand control back
+    // in the middle of a routine and be re-entered on the other side.
+    const auto compose_interpreter_call =
+        [&](const std::uint16_t call_pc) {
+            const auto resume_pc = static_cast<std::uint16_t>(call_pc + 3U);
+            if (registers.mpr[kInterpreterEntry >> 13U] != kInterpreterBank) {
+                return false;
+            }
+
+            // `JSR` pushes both halves of the return address before it pays for
+            // itself, so the two writes carry the cycle the call started on and
+            // not the one it ends on.
+            const auto return_address = static_cast<std::uint16_t>(call_pc + 2U);
+            const auto high_slot = static_cast<std::uint16_t>(
+                0x2100U + registers.stack_pointer);
+            const auto low_slot = static_cast<std::uint16_t>(
+                0x2100U
+                + static_cast<std::uint8_t>(registers.stack_pointer - 1U));
+            const auto write_mark = replacement.work_ram_writes.size();
+            const auto committed_mark = committed_writes;
+            const auto saved_high = read_ram(high_slot);
+            const auto saved_low = read_ram(low_slot);
+            const auto saved_registers = registers;
+
+            store(call_pc, high_slot,
+                static_cast<std::uint8_t>(return_address >> 8U));
+            store(call_pc, low_slot,
+                static_cast<std::uint8_t>(return_address));
+            commit_pending_writes(cycle);
+            registers.stack_pointer =
+                static_cast<std::uint8_t>(registers.stack_pointer - 2U);
+
+            // Rolling the pushes back leaves the walk exactly where it was, so
+            // a child that declines costs nothing but the attempt and the call
+            // stops the walk the way it always did.
+            const auto abandon = [&]() {
+                replacement.work_ram_writes.resize(write_mark);
+                committed_writes = committed_mark;
+                registers = saved_registers;
+                ram[high_slot - kWorkRamBase] =
+                    static_cast<std::byte>(saved_high);
+                ram[low_slot - kWorkRamBase] =
+                    static_cast<std::byte>(saved_low);
+                return false;
+            };
+            if (overflow) {
+                return abandon();
+            }
+
+            const RoutineEntry call_entry{
+                .routine = {
+                    .physical_bank = kInterpreterBank,
+                    .logical_pc = kInterpreterEntry,
+                },
+                .registers = registers,
+            };
+            const auto child = replace_collision_table_interpreter(
+                call_entry, std::span<const std::byte>{ram}, rom);
+            // An atomic body would leave a stretch of this transcript with no
+            // checkpoint in it, which is the thing the whole slice was about.
+            if (!child || child->checkpoints.empty()
+                || child->return_instruction.physical_bank != kInterpreterBank
+                || replacement.checkpoints.size() + child->checkpoints.size()
+                    >= kMaximumCheckpoints
+                || replacement.work_ram_writes.size()
+                        + child->work_ram_writes.size()
+                    >= kMaximumWrites) {
+                return abandon();
+            }
+
+            append_checkpoint_in(
+                kBank, call_pc, kInterpreterEntry, kJumpToSubroutine);
+
+            const auto call_cycle = cycle;
+            for (auto write : child->work_ram_writes) {
+                if (write.logical_address < kWorkRamBase
+                    || write.logical_address >= kWorkRamEnd) {
+                    overflow = true;
+                    return false;
+                }
+                ram[write.logical_address - kWorkRamBase] =
+                    static_cast<std::byte>(write.value);
+                write.master_cycle_offset += call_cycle;
+                replacement.work_ram_writes.push_back(write);
+            }
+            for (auto checkpoint : child->checkpoints) {
+                checkpoint.interrupt_sample_master_cycle_offset += call_cycle;
+                checkpoint.master_cycle_offset += call_cycle;
+                replacement.checkpoints.push_back(checkpoint);
+            }
+            // The child's writes already carry their final offsets.
+            committed_writes = replacement.work_ram_writes.size();
+            cycle = call_cycle + child->body_master_cycles;
+            registers = child->output_registers;
+
+            // The interpreter's four `RTS` instructions are where its walk
+            // stops, so the return is this walk's to transcribe. Read the
+            // address back off the stack rather than assuming it survived.
+            const auto low = read_ram(static_cast<std::uint16_t>(
+                0x2100U
+                + static_cast<std::uint8_t>(registers.stack_pointer + 1U)));
+            const auto high = read_ram(static_cast<std::uint16_t>(
+                0x2100U
+                + static_cast<std::uint8_t>(registers.stack_pointer + 2U)));
+            const auto returned = static_cast<std::uint16_t>(
+                (low | static_cast<std::uint16_t>(high) << 8U) + 1U);
+            if (overflow || returned != resume_pc) {
+                overflow = true;
+                return false;
+            }
+            registers.stack_pointer =
+                static_cast<std::uint8_t>(registers.stack_pointer + 2U);
+            append_checkpoint_in(
+                kInterpreterBank, child->return_instruction.logical_pc,
+                resume_pc, kReturnFromSubroutine);
+            return true;
+        };
+
     auto pc = entry.routine.logical_pc;
-    while (!is_stop_instruction(pc) && !overflow
-        && replacement.checkpoints.size() < 64U) {
+    bool stopped = false;
+    while (!stopped && !overflow
+        && replacement.checkpoints.size() < kMaximumCheckpoints
+        && replacement.work_ram_writes.size() < kMaximumWrites) {
+        if (is_stop_instruction(pc)) {
+            if (!is_interpreter_call(pc) || !compose_interpreter_call(pc)) {
+                stopped = true;
+                continue;
+            }
+            pc = static_cast<std::uint16_t>(pc + 3U);
+            continue;
+        }
         switch (pc) {
         case 0x586FU:  // LDA $3B00,X
             load_accumulator(read_ram(slot(0x3B00U)));
@@ -567,7 +755,9 @@ std::optional<RoutineReplacement> replace_sorcerer_tick(
     }
 
     if (overflow || !is_stop_instruction(pc)
-        || replacement.checkpoints.empty()) {
+        || replacement.checkpoints.empty()
+        || replacement.checkpoints.size() >= kMaximumCheckpoints
+        || replacement.work_ram_writes.size() >= kMaximumWrites) {
         return std::nullopt;
     }
 

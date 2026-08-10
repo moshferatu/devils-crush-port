@@ -5444,84 +5444,110 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
 
 ## Active Work
 
-Current owner: Claude. Current slice: **the collision-table interpreter is a
-transcript**, taking the deployed registry to **41.38%** of all master cycles
-(534,842,424 of 1,292,371,131) across 2,341,586 native calls.
+Current owner: Claude. Current slice: **the collision-table interpreter is
+composed into the Sorcerer tick**, taking the deployed registry to **41.48%** of
+all master cycles (536,137,956 of 1,292,371,131).
 
-`03:6966` is the busiest single entry on the route. It was already replaced and
-the replacement was already correct; what it could not do was produce an
-instruction-boundary transcript on every path. It emitted checkpoints for
-headerless one-step records with bounded axes and returned an atomic body for
-everything else, and an atomic body is refused whenever it would span a user
-event or a serviceable timer interrupt. That cost 2,850 of its 34,259 entries
-and 4.7M emulated cycles, and it was also what stopped it composing: both
-composition sites in the tree gate on the child carrying checkpoints.
+Making `03:6966` a transcript last slice did not compose it anywhere; it made
+composing possible. The consumer at `03:7F57` had been waiting on exactly that
+and took its 749 calls for free. The Sorcerer tick is the other site and is the
+one that had to be written. It calls the interpreter at `02:5890` and `02:58DA`,
+and a transcript stops in front of a call -- which is why three of the tick's
+five entry points exist at all. Composing runs the call in line: push the return
+address, hand the staged work RAM to the interpreter's own walk, splice the
+checkpoints and writes it produced at the cycle the call landed on, transcribe
+the `RTS` that comes back. About a hundred and thirty lines.
 
-Rewritten as a walk it is admitted on every call, **and no call anywhere on the
-route is now declined at an interrupt horizon** -- 3,599 to zero. The consumer
-at `03:7F57` gained 749 calls and 886,317 cycles without being touched, because
-its composition was already written and was waiting on a child with
-checkpoints. Gross 2,942,940, net `+2,240,667`.
+`03:6966` falls from 33,513 entries to 14,307, `02:58DD` from 18,152 to 4,628
+and `02:5893` from 1,800 to 272. Gross 1,538,439, bill 242,907 (15.8%), net
+`+1,295,532`. The tick region is 910,530 down to 501,195 and the interpreter's
+own remainder 3,022,725 down to 2,700,153.
 
-**The size of a replacement is not the size of the routine.** This sat on the
-"next slice" line for several rounds because converting it was priced as a
-rewrite of a 2,200-line replacement. The routine is 0xD2 bytes and about a
-hundred instructions, and the walk came out shorter than the code it fronts.
-The 2,200 lines were what it cost to *predict* the result from the entry state,
-which is what the older method required; a transcript predicts nothing, so none
-of that was load-bearing. Price the routine, not the file in front of it.
+**Most of the gross is not code that stopped being emulated.** Only 731,907 of
+it is: the two `JSR` instructions and the interpreter's `RTS`. The other 806,532
+is three replacements becoming one. Composition buys boundaries rather than
+instructions, and this is the first slice on which the route's total hook
+entries went *down* -- 2,367,401 to 2,332,709. It would be easy to conclude from
+that the bill is low *because* it composes, and the conclusion does not hold:
+the other composing slice on record, the scanner, billed 19.7% and came in
+slightly above what `gross / 3,000 x 575` predicts. 15.8% is the second-lowest
+of eight and sits inside the existing spread, next to a slice that composed
+nothing.
 
-What the routine needs from the machine: work RAM, zero page, its own bank's
-ROM through two zero-page pointers, and a stack page for one `PHP`, one `PHY`
-and a `JSR` into itself. No device register, no call out of the bank, no bank
-change. Its only non-linear control flow is its own -- a `BRA` back to the top
-of the step when a record hits its `$C0` terminator, and a `JSR`/`RTS` repeat
-loop that runs ten times on the whole route.
+**What is left at the composed-away entries is resumption, not decline.** When
+an interrupt lands on a checkpoint inside the composed window the core delivers
+it there and runs the remainder in assembly, which arrives at exactly `02:5893`,
+`02:58DD` and `03:6966`. Of the 19,952 calls the tick makes, at most 79 could be
+a refusal rather than a resumption and the trace cannot tell those apart,
+because both leave the same footprint. The entries stay registered for that
+reason. The clean confirmation is in the interpreter's own region: its
+resumption share is 2,257,176 before the composition and 2,257,176 after, to the
+cycle, and the entire 322,572 reduction is `RTS` instructions.
 
-The bill was 578,541, 19.7% of gross, and again two routines pay all of it: the
-timer driver lost 1,015 entries and 576,291 cycles (568 apiece) and `00:E136`
-lost six and 2,250. Seven measurements now -- 15.6%, 18.1%, 21.0%, 19.7%,
-17.8%, 20.4%, 19.7% -- and the per-entry band widens only to 568-577.
+Verification is the two-run diff over the family's output widened by the stack
+depth the two calls push to, `$21F7`-`$21FB`: 1,940,085 writes byte-identical
+hooked and unhooked in value, address, order and master-cycle offset. That band
+is in the range set specifically for the pushes -- a `JSR` pushes both halves of
+the return address before it pays for its own six cycles, and a push recorded at
+the end of the instruction would leave every other write in the trace correct,
+so nothing else here would catch it. The state census equals the assembly
+baseline. Regression: `dc_rom_sorcerer_tick_semantic`.
 
-Verification is the two-run diff over every address the routine writes: both
-position pairs, both cursors, the frame and mirror bytes, the zero-page
-pointers and the stack page. 6,563,673 writes byte-identical hooked and
-unhooked, which is what covers the `JSR` pushes -- those land before the call
-is paid for rather than at the end of the instruction, and five calls out of
-54,149 would have caught a wrong offset. The state census equals the assembly
-baseline, and both semantic regressions hash exactly as before while the
-replaced population grows, because those artifacts come from the observer.
-Regressions: `dc_rom_collision_table_semantic`,
-`dc_rom_collision_consumer_semantic`.
+One process note. The baseline half of the diff was measured by reverting the
+source, rebuilding and re-running, and the first attempt at restoring it did not
+rebuild at all: `Copy-Item` preserves the source file's timestamp, so MSBuild
+saw the restored file as older than the object built from the baseline and
+skipped it. The differential that followed was two runs of the same binary and
+agreed perfectly. **After restoring a file from a copy, check that the compiler
+actually recompiled it** -- or set `LastWriteTime` first. A differential that
+passes without exercising the change is worse than one that fails.
 
-**Two of the five write ranges in the geometry regression were dead.** The
-filter compares the write's effective address and the HuC6280 addresses zero
-page through MPR1, so `STA $2F` writes `$202F` and a range written `002F-0030`
-selects nothing -- while the run still succeeds, still prints a count and still
-produces a stable hash. Corrected to `202D-2030` and `2042-2045` that trace
-goes from 128,629 writes to 2,277,424 and still matches assembly byte for byte.
-When a range is added, check the write count moves. `verify_giant_door_hit_prefix`
-and `verify_giant_door_completion_prefix` still carry `002F-0030` and are worth
-the same correction; their live ranges assert the routine's real output, so
-they are not wrong today, only narrower than they read.
-
-Next: composing `03:6966` into the Sorcerer tick is now possible rather than
-done -- `02:586F`-`5903` is unchanged at 910,530 and the tick still stops in
-front of each `JSR $6966`. That is the cheapest remaining item and the pattern
-is the one the sweep used on the scanner: stage the work RAM, splice the
-child's checkpoints and writes at the cycle the call landed on, transcribe the
-`RTS`. The largest genuinely unported group is the palette shadow buffer at
+Next: the largest genuinely unported group is the palette shadow buffer at
 `00:E94C`-`EBD6` (3.8M, mostly the two fade drivers that wait on the frame-sync
 spin and the 8-call block decrement that needs chunking), then the sequencer's
 note handlers at `45:483B`-`4A9B` (2.8M, six native entries already with the
 remainder as leaf-contract tax), then `03:6001`-`6078` (1.8M, no native entry
 inside it, but `03:6054` is one of the two withheld routines and that needs
-understanding first). What the interpreter leaves behind is 3,022,725, of which
-764,982 is two `RTS` instructions and 2,236,563 is the core handing the rest of
-a routine back to the emulator after an interrupt lands on a checkpoint -- a
-harness property, not unported code. The pad reader `00:E195` (6.9M) and the
-interrupt dispatcher `00:E058` stay blocked on device *reads* and are phase-2
-work with the joypad and the VDC.
+understanding first). Two stale rejections are worth re-reading before any of
+them, both of them arguments against composing `03:6966` that were correct about
+the old atomic replacement and are not correct about the routine. `03:73A6`
+still pins its interpreter child to the single 165-cycle path with a
+`body_master_cycles != 165` gate that predates the child being a transcript; it
+is entered zero times on this route, so the gate costs nothing today and would
+cost something on any route that reaches it. And the Spider collision parents
+are held assembly-backed in `NATIVE_FALLBACK_HOTSPOTS.md` on the grounds that
+`03:6966`'s transcript "depends on the precise nested entry time and interrupt
+horizon" and that composing it would need a nested-call timing adapter. It does
+not, and there is no adapter -- the tick composes it at two sites with no
+temporal context reproduced anywhere. That section now carries a note saying so;
+the parents themselves have not been re-screened. The pad reader `00:E195`
+(6.9M) and the interrupt dispatcher `00:E058` stay blocked on device *reads* and
+are phase-2 work with the joypad and the VDC.
+
+Still open from the interpreter slice: `verify_giant_door_hit_prefix` and
+`verify_giant_door_completion_prefix` carry a dead `002F-0030` write range. The
+filter compares the write's effective address and the HuC6280 addresses zero
+page through MPR1, so `STA $2F` writes `$202F` and `002F-0030` selects nothing
+-- while the run still succeeds, still prints a count and still produces a
+stable hash. Their live ranges assert the routine's real output, so they are not
+wrong today, only narrower than they read. When a range is added, check the
+write count moves.
+
+Previous slice: **the collision-table interpreter is a transcript**, taking the
+registry to **41.38%**. `03:6966` was already replaced and already correct; what
+it could not do was produce an instruction-boundary transcript on every path, so
+2,850 of its 34,259 entries were refused at an interrupt horizon and neither
+composition site in the tree could take it. Rewritten as a walk it is admitted
+on every call, **no call anywhere on the route is declined at an interrupt
+horizon** -- 3,599 to zero -- and `03:7F57` gained 749 calls without being
+touched. Gross 2,942,940, net `+2,240,667`. **The size of a replacement is not
+the size of the routine**: this sat on the "next slice" line for several rounds
+because converting it was priced as a rewrite of a 2,200-line replacement, and
+the routine is 0xD2 bytes and about a hundred instructions. The 2,200 lines were
+what it cost to *predict* the result from the entry state, which a transcript
+never does. Price the routine, not the file in front of it. It also found two
+dead write ranges in the geometry regression, described below. Regressions:
+`dc_rom_collision_table_semantic`, `dc_rom_collision_consumer_semantic`.
 
 Previous slice: **three bank-01 arithmetic leaves are native**, taking the
 registry to **41.21%**. `01:C8F3` the path-length accumulator, `01:DAF8` the
