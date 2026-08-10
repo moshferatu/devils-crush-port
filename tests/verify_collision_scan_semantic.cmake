@@ -11,18 +11,22 @@ if(NOT CONFIG STREQUAL "Release")
 endif()
 
 # The native sweep must leave the emulated machine bit-identical to assembly,
-# so both artifacts are the unmodified assembly-only baselines. The write range
-# covers the sweep's countdown at $2060 and its slot cursor at $2064. The sweep
-# is an instruction-boundary transcript and crosses interrupt horizons, so that
-# is the assertion that matters: the interrupts still land where assembly put
-# them.
+# so both artifacts are the unmodified assembly-only baselines. The sweep now
+# composes the vertical scanner at 01:CC1A instead of stopping in front of the
+# call, so the ranges cover the whole composed transaction and not just the
+# sweep's own counters: the scanner's difference scratch at $202D-$2030 and its
+# magnitude pair at $2042-$2043, the sweep's countdown at $2060 and slot cursor
+# at $2064, and the stack page, where the transcribed JSR and RTS push and pull
+# the return address. The sweep is an instruction-boundary transcript and
+# crosses interrupt horizons, so that is the assertion that matters: the
+# interrupts still land where assembly put them.
 set(
     expected_census_sha256
     "9036a9de0c3c9917f47bff8c04c136a4824ec12601fb457d260aa2dfe4443490"
 )
 set(
     expected_write_sha256
-    "6d622ed384e9ad196f4d9a8ef0dedae3e212e7f64361e0514daf9f88a7195360"
+    "fedf42e41fe23107ee48268173b872ad84cf7159ea4c7ea8106c5341dfbbfbbb"
 )
 
 set(write_output "${OUTPUT}.writes.csv")
@@ -35,7 +39,13 @@ execute_process(
         --replace-hook
         "01:CB48@all"
         --work-ram-write-range
+        "202D-2030"
+        --work-ram-write-range
+        "2042-2043"
+        --work-ram-write-range
         "2060-2064"
+        --work-ram-write-range
+        "2100-21FF"
         --work-ram-write-trace
         "${write_output}"
         --rom
@@ -55,7 +65,7 @@ endif()
 foreach(expected_line IN ITEMS
     "State census recording complete: 3600 frames"
     "Native replacement 01:CB48@all entries: 87968 of 87968"
-    "Work-RAM write trace complete: 809237 selected writes"
+    "Work-RAM write trace complete: 7147218 selected writes"
 )
     string(FIND "${recorder_output}" "${expected_line}" line_offset)
     if(line_offset EQUAL -1)
@@ -88,8 +98,9 @@ endforeach()
 
 message(
     STATUS
-    "Semantic CB48 collision sweep rejects slots natively across all 87,968 "
-    "sweep-head entries as an instruction-boundary transcript, with the "
-    "$2060/$2064 counter writes and the whole state census identical to "
-    "assembly."
+    "Semantic CB48 collision sweep rejects slots and composes the vertical "
+    "scanner at 01:CC1A natively across all 87,968 sweep-head entries as an "
+    "instruction-boundary transcript, with the scanner scratch, the "
+    "$2060/$2064 counter writes, the stack page, and the whole state census "
+    "identical to assembly."
 )

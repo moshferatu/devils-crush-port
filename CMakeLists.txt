@@ -147,11 +147,13 @@ if(DC_BUILD_APP)
         src/app/native_replacements.cpp
         src/app/native_replacements_banking.cpp
         src/app/native_replacements_collision.cpp
+        src/app/native_replacements_collision_tail.cpp
         src/app/native_replacements_controls.cpp
         src/app/native_replacements_music.cpp
         src/app/native_replacements_palette.cpp
         src/app/native_replacements_physics.cpp
         src/app/native_replacements_rules.cpp
+        src/app/native_replacements_sorcerer_tick.cpp
         src/app/native_replacements_sound.cpp
         src/app/native_replacements_tilemap.cpp
         src/app/native_replacements_vblank.cpp

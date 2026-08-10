@@ -339,21 +339,52 @@ any code is written: count the `input_status` column and check bit 2. If it is
 set on every call, transcript length costs nothing on this axis and the only
 caps that matter are the write and checkpoint limits.
 
-### The shadowing bill scales with total native time, not per-call length
+### Total native time sets the shadowing bill's scale, but does not fix it
 
 The section above prices a *long* transcript. That framing is wrong in the
 other direction too. The bank-wrapper slice is nine transcripts of 36 to 162
 master cycles each — a fortieth of `00:E9B6` — and it cost the sound driver
-1,326 entries and 756,342 cycles, 15.6% of its own 4,849,479-cycle gross and
-the largest shadowing bill any slice has paid. There are 52,911 of them.
+1,326 entries and 756,342 cycles, 15.6% of its own 4,849,479-cycle gross. There
+are 52,911 of them.
 
 A thousand small transcripts shadow the handler exactly as well as one large
 one, because what the driver loses is proportional to how much wall time the
-hook spends unavailable, and that is the sum of the bodies. Estimate it as
-`native cycles / interrupt period` and expect to be within a factor of two.
-Per-call length only tells you whether a *single* call can straddle a period.
+hook spends unavailable, and that is the sum of the bodies. Per-call length
+only tells you whether a *single* call can straddle a period.
 
-Masking still decides which of those cycles are free, and the same slice
+What that does not give you is the ratio to the digit, but five slices in it
+does give you a usable estimate:
+
+| Slice | Gross native | Shadowing bill | Share of gross |
+| --- | ---: | ---: | ---: |
+| Bank wrappers | 4,849,479 | 756,342 | 15.6% |
+| Tilemap upload | 5,180,931 | 937,827 | 18.1% |
+| Collision frame | 4,091,373 | 859,038 | 21.0% |
+| Composing the scanner | 3,524,010 | 695,061 | 19.7% |
+| Actor tick | 3,156,294 | 560,934 | 17.8% |
+
+The spread looks arbitrary until the per-event numbers are pulled out of it.
+Those are almost identical every time: the driver costs **574 to 577 native
+cycles per displaced entry**, and **one entry is displaced for every 2,900 to
+3,300 master cycles** a transcript holds the core. So the bill is close to
+`gross / 3,000 × 575`, which is about 19%, and the slice-to-slice variation is
+small next to that.
+
+Two things keep it an estimate rather than a formula. The five points span
+three percentage points either side of 19%, which is a hundred thousand cycles
+on a typical slice. And the displacement rate is 1.7 times the naive figure:
+the timer fires every 5,068 master cycles, so a transcript covering N cycles
+should overlap N/5,068 of them, not N/3,000. Part of that is the shadow window
+being wider than the transcript — a driver entry that lands inside one runs
+emulated while the transcript stays suspended, so its own ~575 cycles are
+shadowed too — but that accounts for a fifth of the excess, not all of it. The
+rest is unexplained.
+
+So: use `gross / 3,000 × 575` to decide whether a region is worth starting, and
+**measure the bill with a `--registry-exclude` run against the same route**
+before reporting what the slice delivered.
+
+Masking still decides which of those cycles are free, and the wrapper slice
 separates the two cleanly: its three wrappers that run inside the VBlank
 handler cost nothing at all, and the whole bill comes from the six that run on
 the main thread.
@@ -474,6 +505,56 @@ Two things to get right:
   not the address the loop's own `JSR` pushed. `00:F4FC` has fourteen such
   arrivals on the standard route, which is why its sweep is admitted at 66,432
   of 66,446 rather than at 100%.
+
+### The call boundary costs 42 master cycles, and it can dominate a region
+
+The entry-point pattern above has a price that is easy to leave unstated: every
+`JSR` a walk stops in front of, and every `RTS` that comes back, stays
+emulated. That is 21 master cycles each, 42 for the pair.
+
+In a loop that calls out once per iteration, this becomes the whole remainder.
+The collision sweep `01:CB48` calls `01:CC1A` at `01:CB5E` 84,735 times on the
+census route. Both routines are native, and the loop between them is native
+instruction for instruction, but `01:CB5E` and its matching `RTS` at `01:CC40`
+were 3,592,728 master cycles — 0.28% of the entire route, and more than the
+logic the sweep surrounds. Before deciding a region is finished, profile the
+call instructions separately; a family whose entry-point count is high relative
+to its cycle count is paying this tax rather than doing work.
+
+The way out is **composition**: instead of stopping in front of the `JSR`,
+transcribe it — push the return address, charge its 21 cycles — and keep
+walking into the callee, then walk its `RTS` back. `01:CC1A` already did this
+one level down with `01:CCD5`, staging the child's entry, calling the child's
+replacement function and splicing its checkpoints; `01:CB48` now does the same
+to `01:CC1A`. Four things are worth knowing before doing it again.
+
+**Stage the parent's own writes.** The child is a replacement function like any
+other and reads work RAM as it finds it. Copy the snapshot, apply every write
+the parent has emitted so far, and pass that — the sweep had already bumped its
+cursor and countdown by the time it reached the call.
+
+**Make it an attempt, not a requirement.** A callee can decline, and it can
+also return from somewhere the parent cannot resume from: `01:CC1A` leaves from
+the middle of itself at `CCD2` or `CCD4` on a hit, where there is no `RTS` to
+transcribe. Snapshot the checkpoint and write counts before composing and
+truncate back to them if the child's `return_instruction` is not the one the
+parent expects. 83,905 of the scanner's 85,715 calls compose; the other 1,810
+end in front of the call exactly as before, and the callee stays installed for
+them.
+
+**Check the caps at the join.** Both vectors are bounded by the core's 2,048
+checkpoints and 512 writes, and the parent's worst case is now its own plus the
+child's.
+
+**Expect to pay for the extra length.** This is the part that does not show up
+in the arithmetic. The gross gain was exactly the tax — 83,905 × 42 = 3,524,010
+— but a composed walk is a longer transcript, and a longer transcript is
+suspended across more timer interrupts, each of which arrives while a
+replacement is active and so runs the sound driver emulated. `00:FC00` lost
+1,184 admitted entries and 683,271 native cycles; sixteen other routines lost
+11,790 between them. Net `+2,828,949`, a bill of 19.7%. Composition is worth it
+around a short body, where the tax is a large fraction of the region. Around a
+long body the 42 cycles are noise and the shadowing is not.
 
 ### The stack is work RAM, and a transcript may push and pop
 
@@ -609,6 +690,19 @@ reported hundreds of imaginary intruders. Take the boundaries from an
 every call — and intersect the write trace against those. That gave 2,649 exact
 windows and a clean answer: 92,978 owned writes, and nothing else but interrupt
 frames below the stack pointer.
+
+Once you have exact windows, the *in-window share* of each foreign writer tells
+you which ones are dangerous, and it separates them without ambiguity. A
+routine the walk calls runs only inside the windows, so it scores near 100%; an
+asynchronous writer is uncorrelated with them, so it scores near zero. The
+collision frame reads `$2D`–`$30`, the game's general-purpose pointer scratch,
+which three hundred instructions across seven banks write. Ranked by in-window
+share the list has no middle: eighteen arithmetic instructions at
+`00:E56E`–`00:E847` at 99.3%–100%, and every other writer at exactly 0.00%. The
+first group are callees reached through the family's own `JSR`s, which can only
+run where the walk has already stopped; the second never overlaps at all.
+A gap that clean is the answer. A writer landing at 40% would be the thing to
+worry about, and none has appeared yet.
 
 ### An instruction the core builds from two `LastCycle`s cannot be a checkpoint
 

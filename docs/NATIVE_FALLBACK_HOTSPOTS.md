@@ -2726,7 +2726,7 @@ Take the boundaries from an `--observe-hook` call trace instead. Across 2,649
 exact windows, 92,978 writes are the routine's own and the only others are
 interrupt frames below the live stack pointer.
 
-The shadowing bill is the largest any slice has paid: 5,180,931 native cycles
+The shadowing bill was the largest any slice had paid: 5,180,931 native cycles
 cost 937,827 elsewhere across 1,717 entries, 18.1% of gross, 923,088 of it the
 sound driver's. Net `+4,243,104`. That beats the bank wrappers' 15.6% on a fifth
 less native time, so the rule above needs a correction rather than a fifth
@@ -2737,6 +2737,127 @@ anything arriving inside those is shadowed in turn. Expect the bill to run
 higher than the transcript's own share of the route whenever the transcripts are
 main-thread and unmasked, and measure it with a `--registry-exclude` run rather
 than predicting it.
+
+## The collision frame, and the price of a call
+
+`01:CA84`–`CDF7` is the code around `01:CC1A`, which the ranking had shown as a
+"collision tail" row ever since the scanner itself went native. Screening gave
+the same three answers again — no device reads, every load immediate, zero page,
+absolute or through a pointer resolvable from the live MPRs — so all 8.4M was
+phase-1 work, and the walk needed nothing the previous four slices had not
+already built. Nineteen entry points, admitted on every call, `+3,232,335` net.
+
+Two things in it are worth carrying forward.
+
+The first is what the ranking was hiding. `01:CD74`, the playfield-tile probe,
+had no row of its own because it sits outside the `CA84`–`CC04` span the
+inventory had been quoting, yet it was 2,643,867 cycles — two thirds of the
+family and a pure leaf that makes no calls at all. It is the largest single
+piece of logic phase 1 has ported through one entry point, and it was invisible
+because the inventory row had been drawn around the wrong addresses. When a row
+looks small for what it is called, re-derive its span from the profile before
+believing it.
+
+The second is what stays behind. Eleven of the nineteen entry points exist only
+because a transcript stops in front of a call, and the calls themselves are not
+free: `01:CB5E` is `JSR $CC1A` and `01:CC40` is the `RTS` that returns from it,
+and the sweep crossed that boundary 84,735 times for 3,592,728 master cycles.
+Both sides are native. The loop between them is native instruction for
+instruction. Those cycles were 42 per crossing of pure contract overhead, and
+they were larger than the logic they surrounded — the `CA84`–`CC04` row fell
+from 3,974,346 to 2,399,445, and 1,795,419 of what was left was that one `JSR`.
+The next slice composed it away; see below.
+
+Shared state was measured on exact windows again, and the analysis is worth
+reusing verbatim: rank each foreign writer by the fraction of its executions
+that land inside a window. Callees score near 100% because they only run there;
+asynchronous writers score near zero because they are uncorrelated. For this
+family the split was absolute — eighteen arithmetic instructions at
+`00:E56E`–`00:E847` between 99.3% and 100%, and every one of the three hundred
+other writers of the same addresses at exactly 0.00%. That is a stronger
+statement than "the writers I found were the routine's own", and it costs
+nothing extra once the windows exist.
+
+The shadowing bill is the largest in proportion so far: 4,091,373 native cycles
+cost 859,038 across 1,548 entries, 21.0% of gross, 815,580 of it the sound
+driver's. That is a *higher* rate than the tilemap's 18.1% on a fifth less
+native time, which is the second consecutive slice to move the ratio the wrong
+way. Total native time sets the scale and nothing more; the ratio is a
+measurement, not a prediction.
+
+## Composing a call, and what it costs the driver
+
+The call boundary the section above named is gone. `01:CB48` no longer stops in
+front of `JSR $CC1A`: it transcribes the call, splices the scanner's own
+transcript in where the core would have run it, transcribes the `RTS`, and
+hands control back at `01:CB61` with the scan answered. `01:CB5E` falls from
+1,795,419 master cycles to 17,622 and `01:CC40` from 1,797,309 to 19,776, and
+`01:CB48` becomes the largest single native address on the route at 7.96% of
+all master cycles.
+
+Screening had nothing to do this time — the callee was already ported, proven
+and byte-exact, and composition changed neither what it computes nor what it
+writes. The two things it did need are worth remembering. The child reads work
+RAM as it finds it, so it has to be handed a staged copy carrying the parent's
+own writes; and it can return from somewhere the parent cannot resume from, so
+the composition has to be an attempt that rolls back. 83,905 of the scanner's
+85,715 calls compose. The 1,810 that do not are the hit path, which leaves the
+scanner at `CCD2` or `CCD4` with no `RTS` to transcribe, and for those the walk
+truncates its own vectors back and ends in front of the call exactly as before.
+
+The bill is the interesting half. Gross was exactly the tax — 83,905 × 42 =
+3,524,010, the one figure in this document that was safe to predict, because a
+`JSR` and an `RTS` cost 21 each whatever surrounds them. What was not
+predictable is that a composed walk is a *longer* transcript, so it is
+suspended across more timer interrupts, and every driver entry that arrives
+while a replacement is active runs emulated. `00:FC00` lost 1,184 admitted
+entries and 683,271 native cycles; sixteen other routines lost 11,790 between
+them; 695,061 in all, 19.7% of gross, against the collision frame's 21.0%. Net
+`+2,828,949`.
+
+Four to one is a good trade, but the ratio is a property of this call, not of
+composition. It holds because the call sits in a loop whose body is short, so
+42 cycles was a large share of the region. Around a long body the tax is noise
+and the extra shadowing is not, which is the same lesson as the paragraph above
+it: measure the bill, do not carry it forward.
+
+## The Sorcerer tick, and the cleanest screen yet
+
+`02:586F`-`02:5903` in bank 02 is the Sorcerer's per-frame tick, the largest
+block of unported gameplay left on the route and the only block of its size
+with no native entry anywhere inside it. One routine in three pieces, split by
+the two calls it makes to the collision-table interpreter at `03:6966`: the
+staggered deployment delay on the sixteen-bit countdown in `$3B00,X`/`$3B80,X`,
+the arrival state that reseeds the table cursors when the interpreter reports
+its terminator, and orbit, which reads a four-entry difficulty table out of the
+bank's own ROM page and copies the interpreter's event record from `$3A80,X` to
+`$3980,X`. Five entry points, admitted on every call, 3,156,294 gross and
+`+2,595,360` net.
+
+The screening is what to take from it. Ninety-nine instructions across seven
+banks write the addresses this family reads. Ranking them by the fraction of
+their executions that land inside one of the family's exact call windows put
+**one** of them above zero — `03:69D9`, the interpreter's own event store,
+which is the family's callee — and the other ninety-eight at 0.0%. Not "close
+to zero", and not "the writers I found were the routine's own": zero, for every
+writer that is not the callee. Two slices ago the same method produced a split
+with eighteen callees at 99.3-100% and three hundred others at 0.00%. That is
+now the expected shape of the answer, and a middle band is the signal that
+something needs looking at.
+
+There is a corollary worth stating. A window that contains a call contains its
+callee's writes too, so a callee scoring high is not evidence of a problem —
+it is evidence the window is drawn correctly. What matters is that nothing
+*else* is in there.
+
+The region is 4,055,142 down to 910,530, and about 87% of that remainder is the
+same leaf-contract tax the collision frame ran into: two calls to the
+interpreter, two to the bank-01 wrapper at `$C018`, and three `RTS`
+instructions. Composing the interpreter is the obvious next move and the reason
+to be careful is measurable: `03:6966` is an atomic body rather than a
+checkpointed transcript, and it already declines 2,850 of its own 34,259
+entries at an interrupt horizon. Splicing it into a longer parent puts that
+uncheckpointed stretch inside the parent.
 
 ## Use on future families
 

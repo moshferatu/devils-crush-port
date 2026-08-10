@@ -727,11 +727,84 @@ tail for each slot it skips, so `01:C523` exists as a separate replacement only
 for the arrivals a dispatch hands back.
 
 The collision sweep at `01:CB48` has the same shape: a walk that rejects most
-slots inline, a call out to the vertical scan at `01:CC1A` for the rest, the
-`BCC` at `01:CB61` that resolves the result, and the shared tail at `01:CB6B`
-that advances the cursor at `$2064` and the countdown at `$2060`. A set carry
-means a hit and sets bit 2 of the latch at `$2077` before the emulated helper
-at `01:CBCF`.
+slots inline, the vertical scan at `01:CC1A` for the rest, the `BCC` at
+`01:CB61` that resolves the result, and the shared tail at `01:CB6B` that
+advances the cursor at `$2064` and the countdown at `$2060`. A set carry means
+a hit and sets bit 2 of the latch at `$2077` before the helper at `01:CBCF`.
+The call out to the scan is composed into the walk rather than handed to the
+core; see the end of the next section.
+
+### The collision frame around the sweep
+
+The code on either side of that sweep is native too, as of the collision-frame
+slice. Five routines in physical bank `01`, none of which reads a device
+register:
+
+| Entry | What it is | Calls | Native cycles |
+| --- | --- | ---: | ---: |
+| `01:CD74` | Playfield-tile probe | 3,233 | 2,531,280 |
+| `01:CB2A` | Sweep setup, falling into `01:CB48` | 3,233 | 455,853 |
+| `01:CA84` | Ball/table gate head | 2,649 | 291,759 |
+| `01:CAA1` | After the first `JSR $E93C` | 2,315 | 221,076 |
+| `01:CB11` | After the sixth `JSR $E93C` | 2,121 | 132,687 |
+| `01:CB8A` | The `BBR`'s clear arm | 2,934 | 105,624 |
+| `01:CB04` | After the fifth `JSR $E93C` | 2,121 | 89,082 |
+| `01:CBCF` | Confirmed-contact dispatcher | 270 | 48,054 |
+| `01:CBB6` | After `JSR $E219` | 980 | 44,100 |
+| `01:CB79` | After `JSR $CD74` | 3,233 | 36,888 |
+| `01:CB74` | The `BBS`'s fall-through arm | 2,986 | 35,832 |
+| `01:CBAB` | Single-slot probe head | 980 | 32,340 |
+| `01:CAB6` | After the second `JSR $E93C` | 194 | 24,444 |
+| `01:CBC2` | After `JSR $CC1A` | 980 | 17,526 |
+| `01:CB81` | The `BBR`'s set arm | 299 | 10,764 |
+| `01:CAD3` | After the third `JSR $E93C` | 194 | 9,012 |
+| `01:CAED` | After the fifth `JSR $E93C`, upper arm | 42 | 2,400 |
+| `01:CAE0` | After the fourth `JSR $E93C` | 50 | 2,196 |
+| `01:CBCA` | After `JSR $CBCF` | 19 | 456 |
+
+`01:CD74` is the playfield-tile probe and the largest of them by far. It takes
+the ball position in `$65`/`$66`/`$67`, splits the horizontal byte into a tile
+column (`>> 3`) and a column within the tile (`& 7`), does the same to the
+vertical position less `$20`, and forms `row * 32 + column`. That offset is
+biased by the two table pointers at `$C8`/`$C9` and `$C6`/`$C7` into two
+parallel maps: `($2D)` yields the tile id, `($2F)` its attribute. The attribute
+times eight, biased by `$90`/`$91`, addresses an eight-byte solidity mask; row
+`$5F` of that mask ANDed with the one-bit column mask at `$CF2B,Y` decides the
+result. Solid publishes the tile id in `$78` and returns carry set at
+`01:CDF7`; empty clears carry at `01:CDF1`. It makes no calls at all.
+
+`01:CA84` is the ball/table gate: it returns immediately unless `$3C80` is zero,
+then runs six 16-bit range tests through the compare helper at `00:E93C` and
+writes `$3D00,X` with bit 7 set or clear. Its seven `JSR $E93C` return addresses
+are why it needs eight entry points.
+
+`01:CBAB` is a one-shot version of the sweep for a slot the caller already
+knows, and `01:CBCF` is the confirmed-contact dispatcher described under the
+normal-table collision closure route below. Its `PHA`/`PHA`/`RTS` tail jump at
+`01:CBF1`–`01:CBF9` is ordinary for a transcript: the two pushes are transcribed
+and the core executes the `RTS`, which jumps through the vector exactly as it
+would have.
+
+Two instructions in the region are deliberately left to the core. `01:CB7E` is
+a `BBR` and `01:CB71` a `BBS`, and the tilemap slice established that neither
+can be a checkpoint — they are `LD_ZP` wrapping `JR`, so the machine crosses
+them in four clock steps where a checkpoint crosses in two, and the core tests
+`next_event` on those steps. `01:CB74`, `01:CB81` and `01:CB8A` are entry points
+precisely because the core resolves those branches itself.
+
+What was left emulated in the region was almost entirely the call boundary: the
+`JSR $CC1A` at `01:CB5E` and its `RTS` at `01:CC40`, crossed 84,735 times for
+3,592,728 master cycles even though both sides are native — 42 cycles per
+crossing, because a transcript cannot contain a call.
+
+The sweep now contains it. `01:CB48` transcribes the `JSR`, runs the scanner's
+own replacement on a work RAM staged with its own writes, splices the result at
+the cycle the call landed on, transcribes the `RTS`, and carries on to
+`01:CB61`. The two instructions are 17,622 and 19,776 cycles now, and what is
+left of them is the hit path: the scanner leaves from `01:CCD2` or `01:CCD4`
+when a contact is confirmed, and a parent cannot transcribe a return that does
+not happen, so those 1,810 calls still cross the boundary and `01:CC1A` stays
+installed for them.
 
 ## Fixed-actor SAT presentation
 
@@ -3294,6 +3367,17 @@ displayed points), invokes group/color and impact helpers, then either
 re-enters deployment at `02:5808` or leaves the actor in its completed state.
 The controller's zero-live-count branch selects the next group mode and color
 cycle before redeploying all eight.
+
+The three states themselves are native as of the Sorcerer-tick slice.
+`02:586F` (deployment delay), `02:5886` (arrival) and `02:58C2` (orbit) are
+instruction-boundary transcripts, together with `02:5893` and `02:58DD`, the
+two addresses the core arrives at after this family's calls to the
+collision-table interpreter at `03:6966`. Five entry points, admitted on every
+call, 3,156,294 master cycles gross. The reset block at `02:5896` is not an
+entry point: the walk from `02:5893` takes its own branch into it. What is left
+emulated in `02:586F`-`02:5903` is 910,530 cycles, about 87% of it the two
+interpreter calls, the two calls to the bank-01 wrapper at `$C018`, and the
+three `RTS` instructions the walks stop in front of.
 
 The bounded capture contains 23,859 calls and 346,654 scoped writes.
 Normalized first samples cover controller idle `02:57AD` (69 cycles, zero

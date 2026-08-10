@@ -2806,6 +2806,36 @@ parse_logical_address_range(const std::string_view text)
                                || request.routine.logical_pc == 0xF426U
                                || request.routine.logical_pc == 0xF42AU)
                            && request.all_calls;
+                       const bool proven_collision_tail =
+                           request.routine.physical_bank == 0x01U
+                           && (request.routine.logical_pc == 0xCA84U
+                               || request.routine.logical_pc == 0xCAA1U
+                               || request.routine.logical_pc == 0xCAB6U
+                               || request.routine.logical_pc == 0xCAD3U
+                               || request.routine.logical_pc == 0xCAE0U
+                               || request.routine.logical_pc == 0xCAEDU
+                               || request.routine.logical_pc == 0xCB04U
+                               || request.routine.logical_pc == 0xCB11U
+                               || request.routine.logical_pc == 0xCB2AU
+                               || request.routine.logical_pc == 0xCB74U
+                               || request.routine.logical_pc == 0xCB79U
+                               || request.routine.logical_pc == 0xCB81U
+                               || request.routine.logical_pc == 0xCB8AU
+                               || request.routine.logical_pc == 0xCBABU
+                               || request.routine.logical_pc == 0xCBB6U
+                               || request.routine.logical_pc == 0xCBC2U
+                               || request.routine.logical_pc == 0xCBCAU
+                               || request.routine.logical_pc == 0xCBCFU
+                               || request.routine.logical_pc == 0xCD74U)
+                           && request.all_calls;
+                       const bool proven_sorcerer_tick =
+                           request.routine.physical_bank == 0x02U
+                           && (request.routine.logical_pc == 0x586FU
+                               || request.routine.logical_pc == 0x5886U
+                               || request.routine.logical_pc == 0x5893U
+                               || request.routine.logical_pc == 0x58C2U
+                               || request.routine.logical_pc == 0x58DDU)
+                           && request.all_calls;
                        const bool proven_actor_camera_sweep =
                            request.routine.physical_bank == 0x00U
                            && (request.routine.logical_pc == 0xF4F2U
@@ -2892,6 +2922,8 @@ parse_logical_address_range(const std::string_view text)
                            && !proven_vblank_handler
                            && !proven_vram_upload
                            && !proven_tilemap_upload
+                           && !proven_collision_tail
+                           && !proven_sorcerer_tick
                            && !proven_position_integration
                            && !proven_motion_damping
                            && !proven_motion_rotation

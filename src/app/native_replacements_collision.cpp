@@ -24,13 +24,15 @@ using emulation::RoutineReplacement;
 [[nodiscard]] std::optional<RoutineReplacement>
 replace_collision_scan_run(
     const RoutineEntry& entry,
-    const std::span<const std::byte> work_ram)
+    const std::span<const std::byte> work_ram,
+    const std::span<const std::byte> rom)
 {
     // The collision sweep's head. Each arrival either finds a slot eligible
-    // for the vertical scan at CC1A or rejects it, and only the rejections
-    // are native: an eligible slot enters CC1A and the emulated response
-    // chain beyond it. The run walks rejected slots and hands control back at
-    // the scan call or at the exhausted countdown.
+    // for the vertical scan at CC1A or rejects it. The run walks rejected
+    // slots, and an eligible slot no longer ends the transcript: the call to
+    // the scanner is transcribed and the scanner's own transcript is spliced
+    // in where the core would have run it, so the walk hands control back at
+    // 01:CB61 with the scan already answered, or at the exhausted countdown.
     //
     // It is declared as an instruction-boundary transcript so it can cross
     // interrupt horizons rather than be bounded by them, which is what the
@@ -39,7 +41,8 @@ replace_collision_scan_run(
     //   CB48 LDY $64     12   CB4A LDA $3080,Y 15
     //   CB4D BPL $CB6B  6/12  CB4F BIT #$40     6
     //   CB51 BNE $CB6B  6/12  CB53 LDA $55     12
-    //   CB55 BEQ $CB5E  6/12  CB5E JSR $CC1A  (stays emulated)
+    //   CB55 BEQ $CB5E  6/12  CB5E JSR $CC1A   21 (composed)
+    //   CC40 RTS         21 (composed)  CB61 BCC $CB6B (stays emulated)
     //   CB6B INC $64     18   CB6D DEC $60     18
     //   CB6F BNE $CB48  6/12  CB71 BBS5 $77   (stays emulated)
     constexpr RoutineKey kRoutine{
@@ -54,6 +57,9 @@ replace_collision_scan_run(
     constexpr std::uint16_t kGatePc = 0xCB53U;
     constexpr std::uint16_t kGateBranchPc = 0xCB55U;
     constexpr std::uint16_t kCandidatePc = 0xCB5EU;
+    constexpr std::uint16_t kScannerPc = 0xCC1AU;
+    constexpr std::uint16_t kScannerReturnPc = 0xCC40U;
+    constexpr std::uint16_t kResultBranchPc = 0xCB61U;
     constexpr std::uint16_t kSlotIncrementPc = 0xCB6BU;
     constexpr std::uint16_t kCountdownPc = 0xCB6DU;
     constexpr std::uint16_t kSweepBranchPc = 0xCB6FU;
@@ -62,6 +68,8 @@ replace_collision_scan_run(
     constexpr std::uint16_t kCountdownAddress = 0x2060U;
     constexpr std::uint16_t kGateAddress = 0x2055U;
     constexpr std::uint16_t kSlotAttributesBase = 0x1080U;
+    constexpr std::uint16_t kWorkRamBase = 0x2000U;
+    constexpr std::uint16_t kStackBase = 0x2100U;
 
     constexpr std::uint32_t kImmediate = 6U;
     constexpr std::uint32_t kZeroPage = 12U;
@@ -69,6 +77,10 @@ replace_collision_scan_run(
     constexpr std::uint32_t kReadModifyWrite = 18U;
     constexpr std::uint32_t kBranchTaken = 12U;
     constexpr std::uint32_t kBranchNotTaken = 6U;
+    // JSR and RTS cost the same, and this pair is the whole reason the walk
+    // reaches past the call rather than stopping in front of it.
+    constexpr std::uint32_t kSubroutineCall = 21U;
+    constexpr std::uint32_t kSubroutineReturn = 21U;
 
     if (entry.routine != kRoutine) {
         return std::nullopt;
@@ -253,9 +265,114 @@ replace_collision_scan_run(
         return std::nullopt;
     }
 
+    // 01:CB5E is `JSR $CC1A` and 01:CC40 is the `RTS` that answers it. Left to
+    // the core they cost 21 master cycles each, which on this route is more
+    // than the sweep body they bracket: the pair alone is 0.28% of the whole
+    // run. Transcribing the call, splicing the scanner's own transcript in
+    // where the core would have run it, and transcribing the return removes
+    // both. The scanner declines some states and returns from the middle of
+    // itself on a hit, so this is an attempt, not a requirement -- when it
+    // does not compose the walk still ends in front of the call as before.
+    if (run.exit == DC_COLLISION_SCAN_CANDIDATE) {
+        const auto composed_checkpoints = replacement.checkpoints.size();
+        const auto composed_writes = replacement.work_ram_writes.size();
+        const auto composed_cycle = cycle;
+        const auto composed_registers = registers;
+
+        // The scanner reads work RAM, and the slots this walk has already
+        // stepped over updated the cursor and the countdown, so it must see
+        // the sweep's own writes rather than the snapshot it started from.
+        std::vector<std::byte> staged(work_ram.begin(), work_ram.end());
+        const auto stage = [&staged](const ReplacementMemoryWrite& write) {
+            const auto offset =
+                static_cast<std::size_t>(write.logical_address - kWorkRamBase);
+            if (write.logical_address >= kWorkRamBase
+                && offset < staged.size()) {
+                staged[offset] = static_cast<std::byte>(write.value);
+            }
+        };
+        for (const auto& write : replacement.work_ram_writes) {
+            stage(write);
+        }
+
+        // JSR pushes the address of its own last byte, so the return lands on
+        // the branch at CB61 that reads the scanner's carry.
+        const auto push =
+            [&](const std::uint8_t depth, const std::uint8_t value) {
+                const ReplacementMemoryWrite write{
+                    .instruction = {kRoutine.physical_bank, kCandidatePc},
+                    .logical_address = static_cast<std::uint16_t>(
+                        kStackBase
+                        + static_cast<std::uint8_t>(
+                            registers.stack_pointer - depth)),
+                    .value = value,
+                    .master_cycle_offset = cycle,
+                };
+                replacement.work_ram_writes.push_back(write);
+                stage(write);
+            };
+        push(0U, static_cast<std::uint8_t>((kCandidatePc + 2U) >> 8U));
+        push(1U, static_cast<std::uint8_t>((kCandidatePc + 2U) & 0xFFU));
+        registers.stack_pointer =
+            static_cast<std::uint8_t>(registers.stack_pointer - 2U);
+        step(kCandidatePc, kScannerPc, kSubroutineCall);
+
+        RoutineEntry scanner_entry{
+            .routine = {
+                .physical_bank = kRoutine.physical_bank,
+                .logical_pc = kScannerPc,
+            },
+            .registers = registers,
+        };
+        scanner_entry.registers.program_counter = kScannerPc;
+        const auto scanner =
+            replace_collision_scan_vertical_reject(scanner_entry, staged, rom);
+
+        // A hit leaves the scanner from the middle of itself, at CCD2 or
+        // CCD4, and there is no return to transcribe from there.
+        const bool composable = scanner.has_value()
+            && !scanner->checkpoints.empty()
+            && scanner->return_instruction
+                == RoutineKey{
+                    .physical_bank = kRoutine.physical_bank,
+                    .logical_pc = kScannerReturnPc,
+                }
+            && scanner->output_registers.stack_pointer
+                == registers.stack_pointer
+            && replacement.checkpoints.size() + scanner->checkpoints.size()
+                    + 1U
+                <= 1600U
+            && replacement.work_ram_writes.size()
+                    + scanner->work_ram_writes.size()
+                <= 448U;
+        if (composable) {
+            const auto scanner_offset = cycle;
+            for (auto write : scanner->work_ram_writes) {
+                write.master_cycle_offset += scanner_offset;
+                replacement.work_ram_writes.push_back(write);
+            }
+            for (auto scanner_checkpoint : scanner->checkpoints) {
+                scanner_checkpoint.interrupt_sample_master_cycle_offset +=
+                    scanner_offset;
+                scanner_checkpoint.master_cycle_offset += scanner_offset;
+                replacement.checkpoints.push_back(scanner_checkpoint);
+            }
+            cycle += scanner->body_master_cycles;
+            registers = scanner->output_registers;
+            registers.stack_pointer =
+                static_cast<std::uint8_t>(registers.stack_pointer + 2U);
+            step(kScannerReturnPc, kResultBranchPc, kSubroutineReturn);
+        } else {
+            replacement.checkpoints.resize(composed_checkpoints);
+            replacement.work_ram_writes.resize(composed_writes);
+            cycle = composed_cycle;
+            registers = composed_registers;
+        }
+    }
+
     replacement.return_instruction = {
         .physical_bank = kRoutine.physical_bank,
-        .logical_pc = resume_pc,
+        .logical_pc = registers.program_counter,
     };
     replacement.output_registers = registers;
     replacement.body_master_cycles = cycle;

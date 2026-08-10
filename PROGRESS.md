@@ -5444,77 +5444,126 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
 
 ## Active Work
 
-Current owner: Claude. Current slice: **the background tilemap upload is
-native**, taking the deployed registry to **40.35%** of all master cycles
-(521,505,306 of 1,292,371,131) across 2,351,585 native calls and 329 admitted
-routines.
+Current owner: Claude. Current slice: **the Sorcerer tick is native**, taking
+the deployed registry to **41.02%** of all master cycles (530,161,950 of
+1,292,371,131) across 2,333,873 native calls and 353 admitted routines.
 
-`00:F261`-`F4F1` is the other half of the graphics driver's port work and the
-last coherent video row in the inventory. Where `00:E41F` streams a prepared
-word list into VRAM, this decides which row of the scrolling tile table has just
-come into view and pushes it. Two routines: `00:F3E7`, which programs a VRAM
-address into the VDC and writes 32 words -- each a tile index from an MPR-mapped
-source with an attribute nibble from a work-RAM array folded in -- and `00:F261`,
-which decides whether the camera has crossed a tile boundary, resolves the
-source through the already-native bank helper at `00:E1FD`, calls the writer once
-or twice, and folds the movement back into the camera. Nothing reads a device
-register, so the whole 5.7M row was phase-1 work. Ten entry points, admitted on
-every call, 5,180,931 cycles gross and `+4,243,104` net; the region falls from
-5,667,996 emulated cycles to 476,079.
+`02:586F`-`02:5903` was the largest block of unported gameplay left on the
+census route and the only block of its size with no native entry anywhere
+inside it. It is the Sorcerer's per-frame tick -- the deployment and staging
+heads at `02:57F8` and `02:5808` were already native, and this is the three
+states that follow, for the eight Sorcerers in slots `$17`-`$1E`. One routine
+in three pieces, split by the two calls it makes to the collision-table
+interpreter at `03:6966`: the staggered deployment delay on the sixteen-bit
+countdown in `$3B00,X`/`$3B80,X`, the arrival state that reseeds the table
+cursors when the interpreter reports its terminator, and orbit, where all eight
+sit for the rest of the route. Five entry points, admitted on every call,
+3,156,294 cycles gross across 41,144 entries and `+2,595,360` net.
 
-Verification is the two-run diff against pure assembly over three artifacts:
-6,977,084 work-RAM writes covering the driver's shared zero page and the whole
-stack page, 2,036,234 VDC register writes censused with `--bus-write-range`, and
-the state census. Regression: `dc_rom_tilemap_upload_semantic`.
+`02:5896` is hookable on its own but is deliberately not an entry point: the
+walk from `02:5893` branches into it, so registering it would leave a routine
+the deployed registry never enters, and the CLI treats a hook that is never
+entered as an error.
 
-**Findings worth carrying forward.**
+**The screen was the cleanest the in-window ranking has produced.** Ninety-nine
+instructions across seven banks write the addresses this family reads. Exactly
+one of them ever writes inside one of the family's call windows -- `03:69D9`,
+the interpreter's own event store, which is this family's callee -- and the
+other ninety-eight land inside a window on 0.0% of their executions. Not "close
+to zero": zero. Two slices ago the same method gave eighteen callees at
+99.3-100% and three hundred others at 0.00%. That is now the expected shape of
+the answer, and a middle band is the signal that something needs looking at.
+The corollary is worth stating: a window that contains a call contains its
+callee's writes, so a callee scoring high is evidence the window is drawn
+correctly. What matters is that nothing else is in there.
 
-*An instruction the core builds from two `LastCycle`s cannot be a checkpoint.* A
-checkpoint expresses one shape -- advance to the interrupt sample, sample,
-advance to the end -- and it fits every opcode whose core macro is
-`GetXX(EA); ADDCYC(n); LastCycle()`. `BBR` and `BBS` do not: they are `LD_ZP`
-wrapping `JR`, so the core samples twice and crosses the instruction in four
-clock steps where a checkpoint crosses it in two. The interrupt outcome at the
-boundary is identical either way, which is what makes this hard to find by
-reasoning about interrupts. The damage is that those steps are where `ADDCYC`
-tests `next_event`, so a coarser step runs the video `EventHandler` at a later
-timestamp; that shifted a VDC event far enough to move a timer interrupt one
-instruction early four times in 3,600 frames. Two of the four landed in assembly
-*downstream* of the walk, in frames where every write inside the transcript
-matched -- the tell that a walk is perturbing the core's event phase rather than
-its own output. There is no way to split the difference, because an extra
-checkpoint would also invent an interrupt opportunity the machine does not have.
-`00:F423` goes back to the core, which turns 539 transcripts into 17,248 and
-leaves 365,664 cycles emulated, 77% of the region's remainder.
+**The shadowing bill now looks like a constant.** 560,934, 17.8% of gross --
+the lowest of the last four slices, and low enough to see the mechanism through
+the noise. Five measurements exist: 15.6%, 18.1%, 21.0%, 19.7%, 17.8%.
+Underneath them the per-event numbers barely move. The driver costs 574 to 577
+native cycles per displaced entry every time, and one entry is displaced for
+every 2,900 to 3,300 master cycles a transcript holds the core, so the bill is
+close to `gross / 3,000 x 575` -- about 19%. Two caveats keep it an estimate.
+The spread is three points either side, a hundred thousand cycles on a slice
+this size. And the displacement rate is 1.7 times the naive figure: the timer
+fires every 5,068 master cycles, so a transcript covering N cycles should
+overlap N/5,068 of them, not N/3,000. Part of that is the shadow window being
+wider than the transcript, but that accounts for about a fifth of the excess.
+The rest is unexplained. Use the rule to decide whether a region is worth
+starting; keep measuring the bill with `--registry-exclude` before reporting
+what a slice delivered.
 
-*Bracket shared-state windows on real call boundaries.* The previous slice
-measured its windows by finding a store only the routine's header makes and
-running to its last output write. That works when the only way in is a call to
-the head, and it fails here: `00:F43D`, `00:F48D` and `00:F4DF` are also reached
-independently, so the inferred windows ran thirty times too long and reported
-hundreds of imaginary intruders. Take the boundaries from an `--observe-hook`
-call trace instead, which gives the entry and return cycle of every call. Across
-2,649 exact windows, 92,978 writes are the routine's own and the only others are
-interrupt frames below the live stack pointer.
+Verification is the two-run diff against pure assembly: 240,657 work-RAM writes
+covering the family's whole output -- `$2D10`, `$3080,X`, `$3880,X`, `$3980,X`,
+the cooldown pair, `$3C00,X` and the table cursors -- byte-identical hooked and
+unhooked, plus the state census. This family writes no device port. Regression:
+`dc_rom_sorcerer_tick_semantic`.
 
-The shadowing bill is the largest any slice has paid: 937,827 cycles across
-1,717 entries, 18.1% of gross, 923,088 of it the sound driver's. That beats the
-bank wrappers' 15.6% on a fifth less native time, so it corrects rather than
-confirms the rule that slice drew. Total native time sets the scale, but the
-shadow window is wider than the transcript -- a driver entry landing inside one
-runs emulated while the transcript stays suspended, so its 563 cycles are
-shadowed too, and anything arriving inside those in turn. Measure it with a
-`--registry-exclude` run rather than predicting it.
+Next: the region is 4,055,142 cycles down to 910,530, and about 87% of that
+remainder is the leaf-contract call tax -- two `JSR`s to the interpreter, two to
+the bank-01 wrapper at `$C018`, and three `RTS` instructions. Composing the
+interpreter would reach it and would also reach the 5,274,582 still emulated at
+`03:694A`-`6A37`, but `03:6966` is an atomic body rather than a checkpointed
+transcript and already declines 2,850 of its own 34,259 entries at an interrupt
+horizon; splicing it into a longer parent puts that uncheckpointed stretch
+inside the parent. Turning the interpreter into a transcript first is the
+larger and more valuable move, and it is a rewrite of a 2,600-line semantic
+replacement rather than a new walk. Otherwise the remaining phase-1 groups are
+the palette shadow buffer at `00:E94C`-`EBD6` (3.8M) and the sequencer's note
+handlers at `45:4517`-`4A9B` (3.2M). The pad reader `00:E195` (6.9M) and the
+interrupt dispatcher `00:E058` stay blocked on device *reads* and are phase-2
+work with the joypad and the VDC.
 
-Next: phase 1's video work is finished -- every graphics path that does not read
-a device register is now native. What is left in that item is structural: the
-two palette fade drivers wait on the frame-sync loop, and `00:EB30`'s
-whole-palette `TIA` arm overruns the write channel. The largest phase-1 groups
-now are the gameplay tails at `03:694A` (5.3M) and `02:586F` (4.1M) and the
-collision tail `01:CA84` (5.8M, `CA84`-`CC40`). The pad reader `00:E195` (6.9M)
-and the interrupt dispatcher `00:E058` stay blocked on device *reads* and are
-phase-2 work with the joypad and the VDC. Chunking still reopens `00:EAA7`
-(1.6M), which was set aside only for being 205,012 cycles a call.
+Previous slice: **the sweep composes the collision scanner**, taking the
+registry to 40.82%. `01:CB48` stopped stopping in front of `JSR $CC1A`: it
+transcribes the call, runs the scanner's own replacement on a staged work RAM,
+splices its checkpoints and writes at the cycle the call landed on, transcribes
+the `RTS` at `01:CC40`, and hands back at `01:CB61`. 83,905 of the scanner's
+85,715 calls compose, at 42 master cycles each -- 3,524,010 gross, exactly the
+tax, the one figure that was safe to predict. `01:CB5E` fell from 1,795,419
+cycles to 17,622 and `01:CC40` from 1,797,309 to 19,776, and `01:CB48` became
+the largest single native address on the route at 7.96%. The 1,810 calls that
+do not compose are the hit path, which leaves the scanner from the middle of
+itself at `CCD2` or `CCD4` with no `RTS` to transcribe, so the walk truncates
+its own vectors back and ends in front of the call as before. Two things a
+future composition needs: hand the child a staged work RAM carrying the
+parent's writes, and treat the splice as an attempt that rolls back.
+
+Previous slice: **the collision frame is native**, taking the registry to
+40.60%. `01:CA84`-`CDF7` is the code on either side of the overlap scanner
+`01:CC1A`: the playfield-tile probe `01:CD74`, the ball/table gate `01:CA84`,
+the sweep setup and tail around `01:CB48`, the single-slot probe `01:CBAB` and
+the confirmed-contact dispatcher `01:CBCF`. Nineteen entry points, admitted on
+every call, `+3,232,335` net. It found that **the inventory row had been drawn
+around the wrong addresses**: `01:CD74` was 2,643,867 cycles, two thirds of the
+family, and had no row of its own because it sits outside the `CA84`-`CC04`
+span the inventory quoted -- when a row looks small for what it is called,
+re-derive its span from the profile. It also produced the sharper shared-state
+test now in the workflow: rank each foreign writer by the fraction of its
+executions landing inside an exact call window, and callees separate from
+preemptors with no judgement call. For this family the split was absolute --
+eighteen arithmetic instructions at `00:E56E`-`00:E847` between 99.3% and 100%,
+every other writer at exactly 0.00%. Its shadowing bill was 21.0% of gross,
+higher than the tilemap's 18.1% on a fifth *less* native time, which settled
+that total native time sets the bill's scale and nothing more.
+
+Previous slice: **the background tilemap upload is native**, taking the
+registry to 40.35%. `00:F261`-`F4F1` is the other half of the graphics driver's
+port work: where `00:E41F` streams a prepared word list into VRAM, this decides
+which row of the scrolling tile table has come into view and pushes it. Ten
+entry points, admitted on every call, `+4,243,104` net. It found that **an
+instruction the core builds from two `LastCycle`s cannot be a checkpoint**:
+`BBR` and `BBS` are `LD_ZP` wrapping `JR`, so the machine crosses them in four
+clock steps where a checkpoint crosses in two, and those steps are where the
+core tests `next_event`. A coarser step ran the video `EventHandler` late,
+shifting a VDC event far enough to move a timer interrupt one instruction early
+four times in 3,600 frames -- twice in assembly *downstream* of the walk, which
+is the tell that a walk is perturbing the core's event phase rather than its
+own output. `00:F423` goes back to the core at a cost of 365,664 cycles. It
+also established that shared-state windows must be bracketed on **real call
+boundaries** from an `--observe-hook` trace, not inferred from the writes: the
+VRAM slice's trick works only when the sole way into a region is a call to its
+head, and inferring windows here ran them thirty times too long.
 
 Previous slice: **the VRAM and VCE upload paths are native**, taking the registry
 to 40.02%. `00:E3C0`-`E47C` is one idiom three times over -- point a VDC or VCE

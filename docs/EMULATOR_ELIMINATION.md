@@ -82,13 +82,13 @@ table rather than appearing at its old size:
 | Region | Master cycles | Share | What it is |
 | --- | ---: | ---: | --- |
 | `00:E2B7`–`E39C` | 584,758,197 | 45.25% | Frame-sync spin loop |
-| `00:FC03`–`FCB3`, `00:FD07`–`FDF1` | 181,264,110 | 14.03% | Sound driver — **already ported**; these are the entries the no-nesting rule blocks (see below) |
-| bank `45` (`4000`–`4A9B`) | 21,130,809 | 1.64% | Music sequencer — the per-frame tick and two helpers the snapshot rule **blocks**, see below |
-| `00:E0EB`–`E292` | 10,747,206 | 0.83% | Pad reader and interrupt dispatcher, both **blocked** on a device read; the handler bodies and call wrappers are native |
+| `00:FC03`–`FCB3`, `00:FD07`–`FDF1` | 191,160,861 | 14.79% | Sound driver — **already ported**; these are the entries the no-nesting rule blocks (see below) |
+| bank `45` (`4000`–`4A9B`) | 21,152,865 | 1.64% | Music sequencer — the per-frame tick and two helpers the snapshot rule **blocks**, see below |
+| `00:E0EB`–`E292` | 10,872,921 | 0.84% | Pad reader and interrupt dispatcher, both **blocked** on a device read; the handler bodies and call wrappers are native |
 | `03:694A`–`6A37` | 5,274,582 | 0.41% | Gameplay tail |
-| `02:586F`–`5903` | 4,055,142 | 0.31% | Gameplay tail |
-| `01:CA84`–`CC04` | 3,974,346 | 0.31% | Collision tail |
-| `00:E93C`–`EBD6` | 3,772,923 | 0.29% | Palette shadow buffer — the two fade drivers and the block decrement, **blocked**, see below |
+| `00:E93C`–`EBD6` | 3,780,738 | 0.29% | Palette shadow buffer — the two fade drivers and the block decrement, **blocked**, see below |
+| `02:586F`–`5903` | 910,530 | 0.07% | Actor tick — **already ported**; what is left is the two interpreter calls, the two bank-wrapper calls and three `RTS` instructions |
+| `01:CA84`–`CC04` | 621,648 | 0.05% | Collision frame — **already ported**, and the call into the scanner is now composed rather than emulated, see below |
 
 Earlier revisions of this table mixed two conventions: five rows counted only
 emulated addresses and four counted the whole range including native entries,
@@ -106,9 +106,36 @@ checkpoint expresses one. That costs 365,664 cycles, and the section on it in
 [NATIVE_REGISTRY.md](NATIVE_REGISTRY.md) explains why paying it is the only
 faithful option.
 
-The first two rows both grew slightly. Neither is unported code appearing: a
-longer native run shadows more of the sound driver and the sequencer, which is
-the accounting the no-nesting note below describes.
+The collision row is the same story told louder, and it now has an ending.
+`01:CA84`–`CC04` was 3,974,346 two slices ago and is 621,648; `01:CD74`–`CE4D`
+— the playfield-tile probe, which never had a row of its own — fell from
+2,643,867 to 89,427. The step between those two figures was the call boundary.
+Porting the frame left the row at 2,399,445, of which 1,795,419 was a single
+`JSR $CC1A` at `01:CB5E` and a further 1,797,309 was its `RTS` at `01:CC40`:
+42 master cycles paid 84,735 times, with both sides native and the loop between
+them native instruction for instruction, because **a transcript cannot contain
+a call**. The sweep now composes the callee instead of stopping in front of it,
+and those two instructions are 17,622 and 19,776.
+
+The sound-driver row grew by 8.2M, and almost none of that is driver work. 7.5M
+of it lands on `00:FC8D`, the driver's `RTI`, which the profile charges with
+whatever the timer interrupted — and what it interrupts is now a longer
+transcript, so more already-native cycles replay with no hook in between. The
+part that is a real loss is 683,271: the 1,184 driver entries that arrive while
+the composed sweep is suspended and run emulated because the core will not nest
+a replacement. That is the whole reason 3,524,010 gross became `+2,828,949`
+net, and it is the no-nesting note below rather than anything unported.
+
+The Sorcerer row is the same shape one slice later. `02:586F`–`5903` was
+4,055,142 with no native entry anywhere inside it and is 910,530, and about 87%
+of that remainder is again the leaf contract: two calls to the collision-table
+interpreter at `03:6966`, two to the bank-01 wrapper at `$C018`, and three
+`RTS` instructions. The interpreter is the obvious thing to compose next, and
+the reason not to rush it is in the row above it — `03:694A`–`6A37` is 5,274,582
+because the interpreter is an atomic body rather than a checkpointed transcript,
+so it already declines 2,850 of its own 34,259 entries at an interrupt horizon.
+Splicing it into a longer parent would put that uncheckpointed stretch inside
+the parent as well.
 
 The sound-driver row is not unported work. That code is native, proven and
 byte-exact; it runs emulated on 48% of entries only because the replacement
@@ -279,9 +306,64 @@ Remaining real logic, in rough order of value:
    What is left in the region is the dispatcher and the pad reader, both phase
    2, plus the two `RTI`s and the three `JSR`s the walks stop at — 1.3M of
    instructions the core executes by design.
-4. **Gameplay tails** (~20M spread thin, no single address above 0.14%).
-5. **Boot and reset path.** Off the census route's hot path but required.
-6. **The frame-sync spin loop** (584.8M). Trivial code, but it is where the
+4. **The collision frame** (8.4M) — **done**. `01:CA84`–`CDF7` is the code
+   around the overlap scanner `01:CC1A`, which has been native since the
+   twenty-sixth replacement: the playfield-tile probe `01:CD74` (2.6M), the
+   ball/table gate `01:CA84`, the sweep setup and tail around `01:CB48`, the
+   single-slot probe `01:CBAB` and the contact dispatcher `01:CBCF`. Nineteen
+   entry points, admitted on every call, `+3,232,335` net.
+
+   Nothing here needed a new technique. `01:CD74` is a pure leaf — no calls at
+   all — and it is the largest single piece of logic phase 1 has ported in one
+   entry point. The contact dispatcher ends in the `PHA`/`PHA`/`RTS` tail jump
+   the collision boundary route documents, which turned out to be ordinary for
+   a transcript: the pushes are transcribed and the core executes the `RTS`,
+   which jumps exactly where it would have.
+
+   What it did settle is what the leaf-transcript contract costs. Eleven of the
+   nineteen entry points exist only because a transcript stops in front of a
+   call, and the `JSR`/`RTS` pair at `01:CB5E`/`01:CC40` was 3.6M cycles on its
+   own — the first place where the call tax was larger than the logic it
+   surrounds. The slice below spends it.
+
+   Shared state was measured the way the workflow now prescribes, on exact
+   windows from observers rather than inferred from writes, and the result was
+   unusually clean: the eighteen arithmetic instructions at `00:E56E`–`00:E847`
+   that write this family's zero page land inside a window on 99.3%–100% of
+   their executions — the signature of a callee — and every one of the three
+   hundred other instructions that writes the same addresses anywhere on the
+   route lands inside a window on exactly 0.00% of them.
+5. **The sweep's call into the scanner** (3.5M) — **done**. `01:CB48` no longer
+   stops in front of `JSR $CC1A`. It transcribes the call, splices the
+   scanner's own transcript in where the core would have run it, transcribes
+   the `RTS`, and hands back at `01:CB61` with the scan answered — the pattern
+   `01:CC1A` already used one level down for `01:CCD5`. 83,905 of the scanner's
+   85,715 calls compose; the 1,810 that do not are the hit path, which leaves
+   the scanner from the middle of itself and has no `RTS` to transcribe, so
+   `01:CC1A` stays installed and the walk rolls its attempt back.
+
+   The gross gain is exactly the tax — 83,905 × 42 = 3,524,010 — and the bill
+   is 695,061, 19.7% of it, almost all of it the sound driver losing 1,184
+   admitted entries to a transcript that is now longer. Net `+2,828,949`.
+   `01:CB48` is now the largest single native address on the route at 7.96% of
+   all master cycles.
+6. **The Sorcerer tick** (4.1M) — **done**. `02:586F`–`5903` was the largest
+   block of unported gameplay left on the route and the only block of its size
+   with no native entry inside it: the staggered deployment delay, the arrival
+   state that reseeds the collision-table cursors, and orbit, where all eight
+   Sorcerers sit for the rest of the route. Five entry points, admitted on
+   every call, 3,156,294 gross and `+2,595,360` net.
+
+   Its screening was the cleanest the in-window ranking has produced. Of the
+   ninety-nine instructions that write any address the family reads, exactly
+   one ever writes inside one of its call windows, and that one is its own
+   callee. The other ninety-eight are at 0.0%.
+7. **Gameplay tails** (~20M spread thin, no single address above 0.14%). The
+   largest is `03:694A`–`6A37` (5.3M), the collision-table interpreter's tail,
+   which needs the interpreter itself turned into a checkpointed transcript
+   before it can be reached.
+8. **Boot and reset path.** Off the census route's hot path but required.
+9. **The frame-sync spin loop** (584.8M). Trivial code, but it is where the
    native frame boundary ends up living — do it with phase 3, not before.
 
 ### Phase 2 — native device models

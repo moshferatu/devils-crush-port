@@ -1275,6 +1275,18 @@ replace_tilemap_upload(
     std::span<const std::byte> work_ram,
     std::span<const std::byte> rom);
 
+// The frame around the collision scanner: the playfield-tile probe at 01:CD74,
+// the ball/table gate at 01:CA84, the sweep setup at 01:CB2A and its tail, the
+// single-slot probe at 01:CBAB and the contact dispatcher at 01:CBCF. One walk
+// shared by nineteen entry points -- four routine heads, the probe, eleven
+// addresses the core arrives at after a call this family makes, and the two
+// arms of the BBR at 01:CB7E, which a checkpoint cannot express.
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_collision_tail(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram,
+    std::span<const std::byte> rom);
+
 [[nodiscard]] std::optional<emulation::RoutineReplacement>
 replace_actor_dispatch_vector(
     const emulation::RoutineEntry& entry,
@@ -1313,10 +1325,24 @@ replace_collision_scan_advance(
     const emulation::RoutineEntry& entry,
     std::span<const std::byte> work_ram);
 
+// The Sorcerer tick in physical bank 02: the staggered deployment delay at
+// 02:586F, the arrival state at 02:5886 and its reset, and orbit at 02:58C2
+// with the return from its interpreter call at 02:58DD. One walk shared by
+// five entry points -- two routine heads and three addresses the core arrives
+// at after a call this family makes.
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_sorcerer_tick(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram,
+    std::span<const std::byte> rom);
+
+// The sweep composes the vertical scanner at 01:CC1A rather than stopping in
+// front of the call, so it needs the ROM the scanner reads through.
 [[nodiscard]] std::optional<emulation::RoutineReplacement>
 replace_collision_scan_run(
     const emulation::RoutineEntry& entry,
-    std::span<const std::byte> work_ram);
+    std::span<const std::byte> work_ram,
+    std::span<const std::byte> rom);
 
 [[nodiscard]] std::optional<emulation::RoutineReplacement>
 replace_sprite_emit_run(

@@ -334,6 +334,141 @@ replace_native_gameplay_routine_impl(
         return detail::replace_tilemap_upload(entry, work_ram, rom);
     }
 
+    // One shared walk, nineteen entry points: the frame around the collision
+    // scanner. Four are routine heads -- the ball/table gate at 01:CA84, the
+    // sweep setup at 01:CB2A, the single-slot probe at 01:CBAB and the contact
+    // dispatcher at 01:CBCF -- one is the playfield-tile probe at 01:CD74, and
+    // the rest are addresses the core arrives at after a call this family makes
+    // or after the BBR at 01:CB7E, which it resolves itself.
+    if (entry.routine
+            == RoutineKey{
+                .physical_bank = 0x01U,
+                .logical_pc = 0xCA84U,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x01U,
+                .logical_pc = 0xCAA1U,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x01U,
+                .logical_pc = 0xCAB6U,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x01U,
+                .logical_pc = 0xCAD3U,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x01U,
+                .logical_pc = 0xCAE0U,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x01U,
+                .logical_pc = 0xCAEDU,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x01U,
+                .logical_pc = 0xCB04U,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x01U,
+                .logical_pc = 0xCB11U,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x01U,
+                .logical_pc = 0xCB2AU,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x01U,
+                .logical_pc = 0xCB74U,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x01U,
+                .logical_pc = 0xCB79U,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x01U,
+                .logical_pc = 0xCB81U,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x01U,
+                .logical_pc = 0xCB8AU,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x01U,
+                .logical_pc = 0xCBABU,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x01U,
+                .logical_pc = 0xCBB6U,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x01U,
+                .logical_pc = 0xCBC2U,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x01U,
+                .logical_pc = 0xCBCAU,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x01U,
+                .logical_pc = 0xCBCFU,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x01U,
+                .logical_pc = 0xCD74U,
+            }) {
+        return detail::replace_collision_tail(entry, work_ram, rom);
+    }
+    // The Sorcerer tick: the deployment delay at 02:586F, the arrival state at
+    // 02:5886 and orbit at 02:58C2, plus the two addresses the core arrives at
+    // after this family's calls to the collision-table interpreter at
+    // 03:6966.
+    if (entry.routine
+            == RoutineKey{
+                .physical_bank = 0x02U,
+                .logical_pc = 0x586FU,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x02U,
+                .logical_pc = 0x5886U,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x02U,
+                .logical_pc = 0x5893U,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x02U,
+                .logical_pc = 0x58C2U,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x02U,
+                .logical_pc = 0x58DDU,
+            }) {
+        return detail::replace_sorcerer_tick(entry, work_ram, rom);
+    }
+
     // One shared walk, four entry points: the camera sweep's initializer and
     // the three addresses `00:F4FC` returns through.
     if (entry.routine
@@ -420,7 +555,7 @@ replace_native_gameplay_routine_impl(
             .physical_bank = 0x01U,
             .logical_pc = 0xCB48U,
         }) {
-        return detail::replace_collision_scan_run(entry, work_ram);
+        return detail::replace_collision_scan_run(entry, work_ram, rom);
     }
     if (entry.routine
         == RoutineKey{
