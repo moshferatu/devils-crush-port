@@ -82,24 +82,33 @@ table rather than appearing at its old size:
 | Region | Master cycles | Share | What it is |
 | --- | ---: | ---: | --- |
 | `00:E2B7`–`E39C` | 584,758,197 | 45.25% | Frame-sync spin loop |
-| `00:FC03`–`FCB3`, `00:FD07`–`FDF1` | 180,168,168 | 13.94% | Sound driver — **already ported**; these are the entries the no-nesting rule blocks (see below) |
-| bank `45` (`4000`–`4A9B`) | 21,119,886 | 1.63% | Music sequencer — the per-frame tick and two helpers the snapshot rule **blocks**, see below |
-| `00:E0EB`–`E292` | 10,745,280 | 0.83% | Pad reader and interrupt dispatcher, both **blocked** on a device read; the handler bodies and call wrappers are native |
-| `00:F240`–`F4FB` | 5,761,776 | 0.45% | Tilemap upload, camera-sweep outer |
+| `00:FC03`–`FCB3`, `00:FD07`–`FDF1` | 181,264,110 | 14.03% | Sound driver — **already ported**; these are the entries the no-nesting rule blocks (see below) |
+| bank `45` (`4000`–`4A9B`) | 21,130,809 | 1.64% | Music sequencer — the per-frame tick and two helpers the snapshot rule **blocks**, see below |
+| `00:E0EB`–`E292` | 10,747,206 | 0.83% | Pad reader and interrupt dispatcher, both **blocked** on a device read; the handler bodies and call wrappers are native |
 | `03:694A`–`6A37` | 5,274,582 | 0.41% | Gameplay tail |
 | `02:586F`–`5903` | 4,055,142 | 0.31% | Gameplay tail |
 | `01:CA84`–`CC04` | 3,974,346 | 0.31% | Collision tail |
-| `00:E93C`–`EBD6` | 3,772,896 | 0.29% | Palette shadow buffer — the two fade drivers and the block decrement, **blocked**, see below |
+| `00:E93C`–`EBD6` | 3,772,923 | 0.29% | Palette shadow buffer — the two fade drivers and the block decrement, **blocked**, see below |
 
 Earlier revisions of this table mixed two conventions: five rows counted only
 emulated addresses and four counted the whole range including native entries,
 which made ported regions look like remaining work. Every row above is now the
 emulated count.
 
-`00:E3C0`–`E47C`, the VRAM and VCE upload paths, has left the table. It was
-7,031,316 cycles one slice ago and is 10,779 now — the loop-closing branches
-the chunked transcripts hand back to the core, plus a one-call stub at
-`00:E3E7` that jumps into the frame-sync region.
+Two rows have left the table. `00:E3C0`–`E47C`, the VRAM and VCE upload paths,
+was 7,031,316 cycles two slices ago and is 10,779 now — the loop-closing
+branches the chunked transcripts hand back to the core, plus a one-call stub at
+`00:E3E7` that jumps into the frame-sync region. `00:F240`–`F4FB`, the tilemap
+upload and the camera sweep's outer loop, was 5,761,776 and is 569,859. Most of
+what is left there is one instruction: the `BBR` at `00:F423`, which the core
+has to execute itself because it is assembled from two `LastCycle`s and a
+checkpoint expresses one. That costs 365,664 cycles, and the section on it in
+[NATIVE_REGISTRY.md](NATIVE_REGISTRY.md) explains why paying it is the only
+faithful option.
+
+The first two rows both grew slightly. Neither is unported code appearing: a
+longer native run shadows more of the sound driver and the sequencer, which is
+the accounting the no-nesting note below describes.
 
 The sound-driver row is not unported work. That code is native, proven and
 byte-exact; it runs emulated on 48% of entries only because the replacement
@@ -194,7 +203,23 @@ Remaining real logic, in rough order of value:
    one instruction back. That removes the routine-length ceiling from the rest
    of phase 1, and it is the answer to `00:EAA7` in the table above as well.
 
-   Still untouched in this item: the tilemap upload `00:F240`–`F452` (5.8M).
+   The tilemap upload at `00:F261`–`F4F1` (5.7M) is native as well, and it
+   closes this item: every video path that does not read a device register is
+   now ported. It needed no new technique — ten ordinary entry points, six of
+   them the return addresses of calls the transcripts stop in front of — but it
+   did find a limit of the checkpoint contract. `BBR` is not one instruction in
+   the core, it is `LD_ZP` wrapping `JR`, so it samples the interrupt twice and
+   crosses in four clock steps where a checkpoint crosses in two. The coarser
+   step ran the video `EventHandler` late, which moved a timer interrupt one
+   instruction early four times in 3,600 frames — twice in assembly downstream
+   of the walk, which is how it became clear the perturbation outlives the
+   transcript. `00:F423` therefore goes back to the core, at a cost of 365,664
+   cycles. Anything else in the ROM built from two `LastCycle`s has the same
+   constraint; `BBR`/`BBS` are the only such opcodes.
+
+   What is left in this item is not CPU work: the two fade drivers wait on the
+   frame-sync loop, and `00:EB30`'s whole-palette `TIA` arm overruns the write
+   channel. Both are phase-2 or phase-3 problems.
 3. **The `00:E0EB`–`E292` region** (15.3M). This was listed as one block, "the
    VBlank handler and pad reader", and the plan for it was to widen the write
    channel to reach the joypad port at `$1000`. Both halves of that were

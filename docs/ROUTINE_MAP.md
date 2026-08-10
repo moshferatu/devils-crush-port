@@ -887,6 +887,62 @@ Measured on an assembly write trace, bracketing each call between its header's
 `$06` store at `00:E422` and its last data-port write: all 23,300 writes to
 `$2D`-`$30`, `$37` and `$38` inside those windows are the decoder's own.
 
+### Background tilemap upload
+
+Physical bank `$00`, logical `$F261`-`$F4F1`, is the other half of the graphics
+driver's port work: where `$E41F` streams a prepared word list, this decides
+which row of the scrolling tile table has just come into view and pushes it. It
+is two routines.
+
+`$F3E7` is the row writer. `$2D:$2E` is a VRAM word address, `$2F:$30` an
+MPR-mapped tile-index source and `$2B:$2C` a work-RAM attribute array based at
+`$2259`. It programs MAWR, selects VWR, and walks `Y` from `$00` to `$3E` in
+twos writing 32 words: the low byte is a tile index straight from the source,
+the high byte the next index with the tile's attribute nibble folded into its
+top four bits. `Y` halved is the word index and halved again the attribute byte,
+which packs two of them; `BBR0 $27` at `$F423` picks the nibble by parity. It
+returns early when `$2F:$30` still equals the `$A4:$A5` of the previous upload,
+which never happens on the census route.
+
+`$F261` is the scroll driver. It subtracts the camera position `$A9:$AA` from
+the scroll limits at `$3300`/`$3380`, and the difference decides whether a row
+has come into view below the camera, above it, or neither. Either arm resolves
+the tile source through `$E1FD` — which maps the reference's high byte into
+MPR4/MPR5 exactly as the sprite-stream path above does — builds the three
+addresses by shifting the tile row left three times through `$2E`, and calls the
+writer once, or twice when the movement spanned two rows. The tails at `$F43D`
+and `$F48D` fold the movement into `$0A:$0C` and `$A8:$AA`, and `$F4DF`
+publishes its negation in `$35:$36` for the camera-visibility sweep, which
+`$F261` then falls through into at `$F4F2`.
+
+All ten entry points are native, admitted on every call:
+
+| Entry | What it is | Calls | Master cycles |
+| --- | --- | ---: | ---: |
+| `00:F261` | Scroll driver head; stops at `$F28F`, `$F2A8` or `$F35C` | 2,649 | 619,371 |
+| `00:F2AB` | After `JSR $E1FD`, the downward arm | 286 | 137,280 |
+| `00:F301` | After the first `JSR $F3E7` | 286 | 140,214 |
+| `00:F330` | After the second `JSR $F3E7` | 5 | 2,250 |
+| `00:F35F` | After `JSR $E1FD`, the upward arm | 232 | 114,144 |
+| `00:F3B5` | After the third `JSR $F3E7` | 232 | 111,216 |
+| `00:F3E4` | After the fourth `JSR $F3E7` | 16 | 7,488 |
+| `00:F3E7` | Row writer head, to the first `BBR` | 539 | 176,253 |
+| `00:F426` | `BBR`'s odd-nibble arm, and the rest of the iteration | 8,624 | 2,009,931 |
+| `00:F42A` | `BBR`'s even-nibble arm, and the rest of the iteration | 8,624 | 1,862,784 |
+
+Six of those are just the return addresses of the driver's calls, because a
+transcript stops in front of one. `$F426` and `$F42A` are there for a different
+reason: `BBR` is `LD_ZP` wrapping `JR` in the core, so it samples the interrupt
+twice, and a checkpoint carries one sample and one clock jump. Handing `$F423`
+back keeps the core's event phase exact and leaves 365,664 of the region's
+476,079 still-emulated cycles.
+
+`$2B`-`$30` and `$A2`-`$AA` are shared with the rest of the game. Measured
+against 2,649 exact call windows from a `00:F261` observer, 92,978 writes inside
+them are the routine's own; the rest are interrupt frames below the live stack
+pointer, plus four stores to `$20` from the VDC handler's bank wrapper, which
+this region writes only inside the `$E1FD` it stops in front of and never reads.
+
 The complete `$F6A6/$F6D0` selector family is now decoded. Its 42 appearance
 entries collapse to these nine unique pointers:
 

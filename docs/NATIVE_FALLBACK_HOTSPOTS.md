@@ -2684,8 +2684,59 @@ periods — so the interrupts landing inside them cannot reach their own hooks:
 6,908,844 native cycles cost 317,196 elsewhere across 956 entries, 4.6% of
 gross, and the loss is on the interrupt side (130,122 in the sound driver,
 165,123 in the music sequencer) rather than in the driver alone. Four slices
-in, the rule is stable: the bill tracks total native time, and which side of
+in, the rule looked stable: the bill tracks total native time, and which side of
 the interrupt the transcripts run on decides who pays it.
+
+## The tilemap upload, and the limit of the checkpoint shape
+
+`00:F261`–`F4F1` is the other half of the same driver and the last coherent
+video row in the ranking. Screening was the same three questions and gave the
+same three answers — no device reads anywhere in the region, every load
+immediate, zero page, absolute or through one of three pointers, and every
+pointer resolvable from the live MPRs — so the whole 5.7M was phase-1 work.
+
+It also needed none of the previous slice's machinery. The row writer at
+`00:F3E7` is 32 words a call, 168 writes and about 660 checkpoints against a
+channel of 512 and 2,048, so nothing chunks. What it needed was entry points:
+the driver makes six calls, a transcript stops in front of a call, so six of
+the ten entries are just return addresses. Two of those calls land on
+`00:E20D`/`00:E200`, native since the wrapper slice, so stopping there re-enters
+that module rather than transcribing eleven instructions twice.
+
+The finding is the other two entries, and it is a limit of the contract rather
+than of the code. A checkpoint expresses one shape — advance to the sample,
+sample, advance to the end — and it fits every instruction whose core macro is
+`GetXX(EA); ADDCYC(n); LastCycle(); …`. `BBR` is `LD_ZP` wrapping `JR`: it
+samples twice and crosses in four clock steps. The interrupt outcome at the
+instruction boundary is the same either way, so this does not show up as an
+interrupt-timing bug in the walk. It shows up because those steps are where the
+core tests `next_event`, and running the video `EventHandler` one step later
+shifted a VDC event enough to move a timer interrupt by one instruction, four
+times in 3,600 frames. Two of the four were in assembly *downstream* of the
+walk. The fix is to hand `00:F423` to the core and register the two addresses
+its arms arrive at, which is why the loop has 17,248 entries rather than 539,
+and why 365,664 cycles — 77% of what is still emulated in the region — stay
+emulated.
+
+Shared state was measured again, and the previous slice's bracketing trick had
+to be replaced. It works when the only way into a region is a call to its head;
+it fails here because `00:F43D`, `00:F48D` and `00:F4DF` are also reached
+independently, and a window inferred from the writes ran thirty times too long.
+Take the boundaries from an `--observe-hook` call trace instead. Across 2,649
+exact windows, 92,978 writes are the routine's own and the only others are
+interrupt frames below the live stack pointer.
+
+The shadowing bill is the largest any slice has paid: 5,180,931 native cycles
+cost 937,827 elsewhere across 1,717 entries, 18.1% of gross, 923,088 of it the
+sound driver's. Net `+4,243,104`. That beats the bank wrappers' 15.6% on a fifth
+less native time, so the rule above needs a correction rather than a fifth
+confirmation. Total native time sets the scale, but the shadow window is wider
+than the transcript: a driver entry that lands inside one runs emulated *while
+the transcript stays suspended*, so its 563 cycles are shadowed as well, and
+anything arriving inside those is shadowed in turn. Expect the bill to run
+higher than the transcript's own share of the route whenever the transcripts are
+main-thread and unmasked, and measure it with a `--registry-exclude` run rather
+than predicting it.
 
 ## Use on future families
 

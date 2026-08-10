@@ -5444,71 +5444,92 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
 
 ## Active Work
 
-Current owner: Claude. Current slice: **the VRAM and VCE upload paths are
-native**, taking the deployed registry to **40.02%** of all master cycles
-(517,262,202 of 1,292,371,131) across 2,331,807 native calls and 319 admitted
+Current owner: Claude. Current slice: **the background tilemap upload is
+native**, taking the deployed registry to **40.35%** of all master cycles
+(521,505,306 of 1,292,371,131) across 2,351,585 native calls and 329 admitted
 routines.
 
-`00:E3C0`-`E47C` is one idiom three times over: point a VDC or VCE write pointer
-at a base address, then push words through the data ports until a counter runs
-out. Nothing in it reads a device register, so unlike the interrupt dispatcher
-above it the whole 7.0M row was phase-1 work rather than half of it. Three
-routines -- a VRAM clear at `00:E3C0`, a VCE colour-table clear at `00:E3FC`,
-and the generic word-stream decoder at `00:E41F` that is 6.9M of the 7.0M. Six
-entry points, admitted on every call, 6,908,844 cycles gross and `+6,591,648`
-net. The region is closed apart from a one-call stub at `00:E3E7` that jumps
-into the frame-sync loop: 7,031,316 emulated cycles one slice ago, 10,779 now.
+`00:F261`-`F4F1` is the other half of the graphics driver's port work and the
+last coherent video row in the inventory. Where `00:E41F` streams a prepared
+word list into VRAM, this decides which row of the scrolling tile table has just
+come into view and pushes it. Two routines: `00:F3E7`, which programs a VRAM
+address into the VDC and writes 32 words -- each a tile index from an MPR-mapped
+source with an attribute nibble from a work-RAM array folded in -- and `00:F261`,
+which decides whether the camera has crossed a tile boundary, resolves the
+source through the already-native bank helper at `00:E1FD`, calls the writer once
+or twice, and folds the movement back into the camera. Nothing reads a device
+register, so the whole 5.7M row was phase-1 work. Ten entry points, admitted on
+every call, 5,180,931 cycles gross and `+4,243,104` net; the region falls from
+5,667,996 emulated cycles to 476,079.
 
 Verification is the two-run diff against pure assembly over three artifacts:
-6,036,242 work-RAM writes covering the decoder's shared zero page and the whole
-stack page, 2,151,922 writes to the VDC and VCE register files censused with
-`--bus-write-range`, and the state census. Regression:
-`dc_rom_vram_upload_semantic`.
+6,977,084 work-RAM writes covering the driver's shared zero page and the whole
+stack page, 2,036,234 VDC register writes censused with `--bus-write-range`, and
+the state census. Regression: `dc_rom_tilemap_upload_semantic`.
 
 **Findings worth carrying forward.**
 
-*A routine too large for one transcript can chunk at a loop's backward branch.*
-One decoder call is 167,000 master cycles, 3,400 port writes and 12,400
-instructions against a channel of 512 writes and 2,048 checkpoints, so no
-transcript can hold a call. Give the routine a second entry point at the head of
-its loop and stop the transcript in front of the branch that closes the loop
-rather than at an `RTS`: the core executes that branch, lands on the loop head
-and calls the replacement again, and the loop state crosses the boundary for
-free because `output_registers` *are* the machine's registers. Nothing in the
-core changed -- the hook already fires on any fetch at a registered address, and
-a replacement already ends by handing one instruction back. Two properties make
-it safe. Every chunk must transcribe at least one unit of work, or the core
-re-enters at the same address in the same state for ever; that is why `00:E479`
-sizes the next stream record before committing to it and always takes the first
-one. And the leak is the branch itself: eighteen master cycles a chunk, 5,868
-across the route. Routine length was a hard ceiling before this -- `00:EAA7` was
-set aside two slices ago for exceeding it -- and is now a budgeting question.
+*An instruction the core builds from two `LastCycle`s cannot be a checkpoint.* A
+checkpoint expresses one shape -- advance to the interrupt sample, sample,
+advance to the end -- and it fits every opcode whose core macro is
+`GetXX(EA); ADDCYC(n); LastCycle()`. `BBR` and `BBS` do not: they are `LD_ZP`
+wrapping `JR`, so the core samples twice and crosses the instruction in four
+clock steps where a checkpoint crosses it in two. The interrupt outcome at the
+boundary is identical either way, which is what makes this hard to find by
+reasoning about interrupts. The damage is that those steps are where `ADDCYC`
+tests `next_event`, so a coarser step runs the video `EventHandler` at a later
+timestamp; that shifted a VDC event far enough to move a timer interrupt one
+instruction early four times in 3,600 frames. Two of the four landed in assembly
+*downstream* of the walk, in frames where every write inside the transcript
+matched -- the tell that a walk is perturbing the core's event phase rather than
+its own output. There is no way to split the difference, because an extra
+checkpoint would also invent an interrupt opportunity the machine does not have.
+`00:F423` goes back to the core, which turns 539 transcripts into 17,248 and
+leaves 365,664 cycles emulated, 77% of the region's remainder.
 
-*Measure shared state rather than reading the call graph for it.* The decoder
-reads `$2F`/`$30`, the game's general-purpose source pointer, which 340
-instructions across eight banks write. No amount of reading proves which of them
-can run underneath a transcript. Bracketing each of the 41 calls in an assembly
-write trace between its header's `$06` store at `00:E422` and its last data-port
-write, all 23,300 writes to `$2D`-`$30`, `$37` and `$38` inside those windows are
-the decoder's own, and none come from interrupt context. One run, before the
-walk was written, instead of an unexplained census hash afterwards.
+*Bracket shared-state windows on real call boundaries.* The previous slice
+measured its windows by finding a store only the routine's header makes and
+running to its last output write. That works when the only way in is a call to
+the head, and it fails here: `00:F43D`, `00:F48D` and `00:F4DF` are also reached
+independently, so the inferred windows ran thirty times too long and reported
+hundreds of imaginary intruders. Take the boundaries from an `--observe-hook`
+call trace instead, which gives the entry and return cycle of every call. Across
+2,649 exact windows, 92,978 writes are the routine's own and the only others are
+interrupt frames below the live stack pointer.
 
-The shadowing bill runs the other way to the last two slices. These are
-main-thread transcripts averaging 18,000 cycles, more than three timer periods,
-so the interrupts landing inside them cannot reach their own hooks: 317,196
-cycles across 956 entries, 4.6% of gross, and the loss is on the interrupt side
--- 130,122 in the sound driver, 165,123 in the music sequencer. One transcript
-of 367 is abandoned partway through a record by the core's checkpoint register
-guard and the assembly finishes it; the fallback is by design and the census is
-unaffected.
+The shadowing bill is the largest any slice has paid: 937,827 cycles across
+1,717 entries, 18.1% of gross, 923,088 of it the sound driver's. That beats the
+bank wrappers' 15.6% on a fifth less native time, so it corrects rather than
+confirms the rule that slice drew. Total native time sets the scale, but the
+shadow window is wider than the transcript -- a driver entry landing inside one
+runs emulated while the transcript stays suspended, so its 563 cycles are
+shadowed too, and anything arriving inside those in turn. Measure it with a
+`--registry-exclude` run rather than predicting it.
 
-Next: the tilemap upload `00:F240`-`F452` (5.8M) is the last coherent video row
-and writes the same ports this slice just proved. After it the largest phase-1
-groups are the gameplay tails at `03:694A` (5.3M) and `02:586F` (4.1M) and the
-collision tail `01:CA84` (4.0M). The pad reader `00:E195` (6.9M) and the
-interrupt dispatcher `00:E058` (0.8M) stay blocked on device *reads* and are
-phase-2 work with the joypad and the VDC. Chunking also reopens `00:EAA7`
+Next: phase 1's video work is finished -- every graphics path that does not read
+a device register is now native. What is left in that item is structural: the
+two palette fade drivers wait on the frame-sync loop, and `00:EB30`'s
+whole-palette `TIA` arm overruns the write channel. The largest phase-1 groups
+now are the gameplay tails at `03:694A` (5.3M) and `02:586F` (4.1M) and the
+collision tail `01:CA84` (5.8M, `CA84`-`CC40`). The pad reader `00:E195` (6.9M)
+and the interrupt dispatcher `00:E058` stay blocked on device *reads* and are
+phase-2 work with the joypad and the VDC. Chunking still reopens `00:EAA7`
 (1.6M), which was set aside only for being 205,012 cycles a call.
+
+Previous slice: **the VRAM and VCE upload paths are native**, taking the registry
+to 40.02%. `00:E3C0`-`E47C` is one idiom three times over -- point a VDC or VCE
+write pointer at a base address, then push words through the data ports until a
+counter runs out -- and nothing in it reads a device register, so the whole 7.0M
+row was phase-1 work. Six entry points, admitted on every call, `+6,591,648` net.
+It was the first family whose transcripts **chunk**: one decoder call is 167,000
+master cycles and 3,400 port writes against a 512-write channel, so each routine
+takes a second entry point at the head of its loop and a transcript ends in front
+of the backward branch that closes it. The core executes that branch, lands on
+the loop head and calls the replacement again; nothing in the core changed to
+allow it. Two properties make it safe: every chunk must transcribe at least one
+unit of work, or the core re-enters identically for ever, and the leak is the
+branch itself. That slice also established measuring shared state rather than
+reading the call graph for it.
 
 Previous slice: **the VDC interrupt handler's body is native**, taking the
 registry to 39.51%. `00:E058` reads the VDC status register and dispatches on

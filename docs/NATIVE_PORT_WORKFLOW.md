@@ -599,6 +599,53 @@ For the decoder that returned 23,300 writes, all of them its own. One run,
 before the walk is written, and it settles the question the census would
 otherwise raise as an unexplained hash.
 
+The bracket has to be a real call boundary, not a plausible one. That trick
+works for the decoder because the only way into `00:E41F` is a call to it. It
+does not work for the tilemap upload, whose tails at `00:F43D`, `00:F48D` and
+`00:F4DF` are also reached from elsewhere, so a window inferred from "the first
+write to the last write of an owned address" ran thirty times too long and
+reported hundreds of imaginary intruders. Take the boundaries from an
+`--observe-hook` call trace instead — it gives the entry and return cycle of
+every call — and intersect the write trace against those. That gave 2,649 exact
+windows and a clean answer: 92,978 owned writes, and nothing else but interrupt
+frames below the stack pointer.
+
+### An instruction the core builds from two `LastCycle`s cannot be a checkpoint
+
+A checkpoint expresses one shape: advance to the interrupt sample, sample,
+advance to the end. Nearly every opcode fits, because the addressing macros are
+`GetXX(EA); ADDCYC(n); LastCycle(); …` — one cycle jump, one sample, one more
+jump. `BBR` and `BBS` do not. They are `LD_ZP` wrapping `JR`, so the core reads
+the zero-page byte and samples, then branches and samples again: four clock
+steps, not two.
+
+The second sample is the one that survives to the instruction boundary, so the
+interrupt outcome *at that boundary* is identical either way — which is what
+makes this hard to find by reasoning about interrupts. The damage is elsewhere.
+Those steps are where `ADDCYC` tests `next_event`, and `HappySync` runs the
+video `EventHandler` at whichever step first crosses zero. A coarser step runs
+it at a later timestamp, and that shifted a VDC event far enough to move a timer
+interrupt by one instruction four times in 3,600 frames.
+
+Two of those four landed in assembly code *downstream* of the walk, in a frame
+where every write inside the transcript matched. That is the tell worth
+remembering: when a transcript's own artifacts are byte-exact and the divergence
+is somewhere else entirely, the walk is perturbing the core's event phase, not
+its own output.
+
+There is no way to split the difference. An extra checkpoint inside the `BBR`
+would reproduce the clock steps, but the core takes an interrupt at every
+checkpoint boundary, so it would also invent an interrupt opportunity the
+machine does not have and push the wrong return address. The only faithful
+expression is to stop in front of the instruction and register the addresses
+its two arms arrive at. In the tilemap loop that turned 539 transcripts into
+17,248 and left 365,664 cycles emulated — 77% of everything still emulated in
+the region — and it is the price of exactness.
+
+When screening a candidate, grep its opcodes for `$0F`–`$7F` and `$8F`–`$FF`
+with the low nibble `F`. Those are the only opcodes in the instruction set with
+this shape.
+
 ### CLI opens the interrupt window one instruction late
 
 The core samples the interrupt on an instruction's last cycle, and `OP_CLEARF`

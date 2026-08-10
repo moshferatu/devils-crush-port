@@ -1263,6 +1263,18 @@ replace_vram_upload(
     std::span<const std::byte> work_ram,
     std::span<const std::byte> rom);
 
+// The background tilemap upload: the row writer at 00:F3E7 and the scroll
+// driver at 00:F261 that decides which row has come into view and calls it. One
+// walk shared by eight entry points -- the two routine heads and the six return
+// addresses of the calls the driver makes, because a transcript stops in front
+// of a call. Two of those calls land on the already-native bank helper at
+// 00:E20D, and the walk ends by handing 00:F4F2 to the camera sweep.
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_tilemap_upload(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram,
+    std::span<const std::byte> rom);
+
 [[nodiscard]] std::optional<emulation::RoutineReplacement>
 replace_actor_dispatch_vector(
     const emulation::RoutineEntry& entry,

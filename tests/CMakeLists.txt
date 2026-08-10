@@ -1823,6 +1823,23 @@ if(TARGET devils_crush)
         )
 
         add_test(
+            NAME dc_rom_tilemap_upload_semantic
+            CONFIGURATIONS Release
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/tilemap-upload-semantic-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_tilemap_upload_semantic.cmake"
+        )
+        set_tests_properties(
+            dc_rom_tilemap_upload_semantic
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
             NAME dc_rom_actor_loop_linkage_semantic
             CONFIGURATIONS Release
             COMMAND

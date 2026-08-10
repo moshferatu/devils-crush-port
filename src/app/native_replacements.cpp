@@ -277,6 +277,63 @@ replace_native_gameplay_routine_impl(
         return detail::replace_vram_upload(entry, work_ram, rom);
     }
 
+    // One shared walk, eight entry points: the tilemap row writer at 00:F3E7
+    // and the scroll driver that calls it. Each transcript stops in front of an
+    // RTS, in front of one of the driver's six calls, or at 00:F4F2, where the
+    // driver falls into the camera sweep.
+    if (entry.routine
+            == RoutineKey{
+                .physical_bank = 0x00U,
+                .logical_pc = 0xF261U,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x00U,
+                .logical_pc = 0xF2ABU,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x00U,
+                .logical_pc = 0xF301U,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x00U,
+                .logical_pc = 0xF330U,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x00U,
+                .logical_pc = 0xF35FU,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x00U,
+                .logical_pc = 0xF3B5U,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x00U,
+                .logical_pc = 0xF3E4U,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x00U,
+                .logical_pc = 0xF3E7U,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x00U,
+                .logical_pc = 0xF426U,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x00U,
+                .logical_pc = 0xF42AU,
+            }) {
+        return detail::replace_tilemap_upload(entry, work_ram, rom);
+    }
+
     // One shared walk, four entry points: the camera sweep's initializer and
     // the three addresses `00:F4FC` returns through.
     if (entry.routine
