@@ -91,29 +91,72 @@ constexpr std::uint16_t kStackBase = 0x2100U;
 {
     return logical_pc == 0xE0EBU || logical_pc == 0xE117U
         || logical_pc == 0xE123U || logical_pc == 0xE136U
-        || logical_pc == 0xE179U || logical_pc == 0xE183U;
+        || logical_pc == 0xE179U || logical_pc == 0xE183U
+        || logical_pc == 0xE195U;
 }
 
 // Where each walk stops. Three are the calls the handler exists to make -- the
-// palette upload, the pad reader and the bank wrapper. The other two are the
-// PLP that restores the interrupted status byte, one instruction short of each
-// RTI, for the reason in the note above. The core executes all five.
+// palette upload, the pad reader and the bank wrapper. Two are the PLP that
+// restores the interrupted status byte, one instruction short of each RTI, for
+// the reason in the note above. The last is the pad reader's own RTS. The core
+// executes all six.
 [[nodiscard]] constexpr bool is_stop_instruction(const std::uint16_t logical_pc)
 {
     return logical_pc == 0xE111U || logical_pc == 0xE120U
         || logical_pc == 0xE134U || logical_pc == 0xE180U
-        || logical_pc == 0xE193U;
+        || logical_pc == 0xE193U || logical_pc == 0xE1F7U;
+}
+
+// The joypad at $1000, which is the one device this module reads rather than
+// only writes.
+//
+// A replacement callback cannot read a device register, and that is why the
+// pad reader sat unported while the rest of the handler around it went native.
+// The way out is not to read it: the byte the core would return is a pure
+// function of the frame's pad state, which the entry now carries, and of the
+// two latch lines the routine itself drives. Both are things the walk knows.
+//
+// INPUT_Read answers with the selected pad's four button lines in bits 0-3,
+// active low, over a fixed high nibble: bit 7 set because no CD unit is
+// attached, bits 4 and 5 always set, and bit 6 -- the region bit -- left
+// clear. The byte is therefore $B0 | nibble. SEL picks which nibble: set
+// reads the four directions, clear reads I, II, SELECT and RUN.
+//
+// Only bits 0-3 survive into memory, because the routine masks the byte both
+// times it reads. The high bits still have to be right: every instruction here
+// carries a checkpoint, and a checkpoint publishes the status register, so an
+// interrupt landing on the load would restore an N flag derived from the whole
+// byte.
+constexpr std::uint16_t kJoypadPort = 0x1000U;
+
+[[nodiscard]] std::uint8_t joypad_read(
+    const std::uint16_t buttons,
+    const bool select)
+{
+    const auto nibble = static_cast<std::uint8_t>(
+        select ? (buttons >> 4U) & 0x0FU : buttons & 0x0FU);
+    return static_cast<std::uint8_t>(
+        0xB0U | static_cast<std::uint8_t>(0x0FU ^ nibble));
 }
 
 } // namespace
 
 std::optional<RoutineReplacement> replace_vblank_handler(
     const RoutineEntry& entry,
-    const std::span<const std::byte> work_ram)
+    const std::span<const std::byte> work_ram,
+    const std::span<const std::byte> rom)
 {
     if (entry.routine.physical_bank != kBank
         || !is_owned_entry(entry.routine.logical_pc)
         || work_ram.size() < 0x2000U) {
+        return std::nullopt;
+    }
+    // The eight lines a two-button pad sends all live in bits 0-7. A
+    // six-button pad announces itself in bit 12 and makes the port answer
+    // from a second set of lines; nothing here models that, so refuse rather
+    // than answer for a pad this walk does not understand.
+    if ((entry.input.player_one & 0xFF00U) != 0U
+        || (entry.input.player_two & 0xFF00U) != 0U) {
         return std::nullopt;
     }
     // Neither decimal mode nor the memory-operand T flag is something the
@@ -241,6 +284,62 @@ std::optional<RoutineReplacement> replace_vblank_handler(
         return static_cast<std::uint16_t>(kWorkRamBase + address);
     };
 
+    // The pad-enable table at $E1F8 -- one bit per port, $01 $02 $04 $08 $10 --
+    // read through whichever bank MPR7 holds, which is bank 0 for the whole of
+    // the interrupt handler.
+    const auto read_rom =
+        [&registers, rom, &overflow](
+            const std::uint16_t address) -> std::uint8_t {
+            const auto bank = registers.mpr[address >> 13U];
+            const auto offset = static_cast<std::size_t>(
+                (bank < 0x40U ? (bank & 0x1FU) : ((bank & 0x0FU) + 0x20U)))
+                    * 0x2000U
+                + (address & 0x1FFFU);
+            if (bank >= 0x80U || offset >= rom.size()) {
+                overflow = true;
+                return 0U;
+            }
+            return std::to_integer<std::uint8_t>(rom[offset]);
+        };
+
+    // The multitap's read cursor and the two latch lines, moved exactly the
+    // way MultiTapWrite moves them: CLR rising while SEL is high returns the
+    // cursor to the first pad, and SEL rising while CLR is and stays low steps
+    // it on by one. The walk has to track them because the routine drives both
+    // from $1000 and the cursor decides which pad a read answers for.
+    //
+    // Nothing needs to be assumed about the state the port was left in. The
+    // store at E198 clears CLR whatever it held, so the store at E19D always
+    // sees CLR low and always resets the cursor -- and from there the loop
+    // steps it once per pass, so the cursor is the loop counter.
+    std::uint8_t pad_cursor = 0U;
+    bool pad_select = false;
+    bool pad_clear = false;
+    const auto write_joypad =
+        [&pad_cursor, &pad_select, &pad_clear](const std::uint8_t value) {
+            const bool select = (value & 0x01U) != 0U;
+            const bool clear = (value & 0x02U) != 0U;
+            if (select && !pad_clear && clear) {
+                pad_cursor = 0U;
+            } else if (!pad_clear && !clear && !pad_select && select
+                && pad_cursor < 0xFFU) {
+                ++pad_cursor;
+            }
+            pad_select = select;
+            pad_clear = clear;
+        };
+    // Ports three, four and five have no controller, and a port past the fifth
+    // reads as nothing at all rather than as an idle pad.
+    const auto read_joypad = [&entry, &pad_cursor, &pad_select]() {
+        if (pad_cursor > 4U) {
+            return static_cast<std::uint8_t>(0xB0U);
+        }
+        const std::uint16_t buttons = pad_cursor == 0U
+            ? entry.input.player_one
+            : (pad_cursor == 1U ? entry.input.player_two : 0U);
+        return joypad_read(buttons, pad_select);
+    };
+
     const auto load_accumulator = [&registers](const std::uint8_t value) {
         registers.accumulator = value;
         registers.status = set_nz(registers.status, value);
@@ -253,6 +352,23 @@ std::optional<RoutineReplacement> replace_vblank_handler(
             ? static_cast<std::uint8_t>(registers.status | kCarry)
             : static_cast<std::uint8_t>(
                 registers.status & static_cast<std::uint8_t>(~kCarry));
+    };
+    const auto compare_index_y = [&registers](const std::uint8_t value) {
+        const auto difference = static_cast<std::uint8_t>(registers.y - value);
+        registers.status = set_nz(registers.status, difference);
+        registers.status = registers.y >= value
+            ? static_cast<std::uint8_t>(registers.status | kCarry)
+            : static_cast<std::uint8_t>(
+                registers.status & static_cast<std::uint8_t>(~kCarry));
+    };
+    const auto shift_accumulator_left = [&registers]() {
+        const auto value = registers.accumulator;
+        registers.accumulator = static_cast<std::uint8_t>(value << 1U);
+        registers.status = (value & 0x80U) != 0U
+            ? static_cast<std::uint8_t>(registers.status | kCarry)
+            : static_cast<std::uint8_t>(
+                registers.status & static_cast<std::uint8_t>(~kCarry));
+        registers.status = set_nz(registers.status, registers.accumulator);
     };
     // INC on memory: the incremented byte sets N and Z and is written back on
     // the instruction's last cycle, exactly as a store is.
@@ -781,6 +897,356 @@ std::optional<RoutineReplacement> replace_vblank_handler(
             append_checkpoint(0xE192U, 0xE193U, 12U);
             pc = 0xE193U;
             break;
+
+        // ---- 00:E195  the pad reader --------------------------------------
+        // Five ports are polled in one loop. Each pass reads the selected pad
+        // twice -- directions with SEL high, buttons with SEL low -- folds the
+        // two nibbles into one byte, inverts it so a pressed line reads as a
+        // one, and writes the frame's state to $2013,Y, the previous frame's
+        // to $200E,Y and the newly-pressed edges to $2018,Y. The layout the
+        // fold produces is the Button enum exactly: I, II, SELECT and RUN in
+        // the low nibble, UP, RIGHT, DOWN and LEFT in the high one.
+        case 0xE195U:  // CLY
+            registers.y = 0U;
+            registers.status = set_nz(registers.status, 0U);
+            append_checkpoint(0xE195U, 0xE196U, 6U);
+            pc = 0xE196U;
+            break;
+
+        case 0xE196U:  // LDA #$01
+            load_accumulator(0x01U);
+            append_checkpoint(0xE196U, 0xE198U, 6U);
+            pc = 0xE198U;
+            break;
+
+        case 0xE198U:  // STA $1000 -- SEL high, CLR low
+            write_joypad(registers.accumulator);
+            store_port(0xE198U, kJoypadPort, registers.accumulator);
+            append_checkpoint(0xE198U, 0xE19BU, 15U);
+            pc = 0xE19BU;
+            break;
+
+        case 0xE19BU:  // LDA #$03
+            load_accumulator(0x03U);
+            append_checkpoint(0xE19BU, 0xE19DU, 6U);
+            pc = 0xE19DU;
+            break;
+
+        case 0xE19DU:  // STA $1000 -- CLR rises, cursor back to the first pad
+            write_joypad(registers.accumulator);
+            store_port(0xE19DU, kJoypadPort, registers.accumulator);
+            append_checkpoint(0xE19DU, 0xE1A0U, 15U);
+            pc = 0xE1A0U;
+            break;
+
+        case 0xE1A0U:  // LDA #$01 -- loop head
+            load_accumulator(0x01U);
+            append_checkpoint(0xE1A0U, 0xE1A2U, 6U);
+            pc = 0xE1A2U;
+            break;
+
+        case 0xE1A2U:  // STA $1000 -- SEL rises, stepping the cursor on
+            write_joypad(registers.accumulator);
+            store_port(0xE1A2U, kJoypadPort, registers.accumulator);
+            append_checkpoint(0xE1A2U, 0xE1A5U, 15U);
+            pc = 0xE1A5U;
+            break;
+
+        // A push and a pull with a NOP behind them. Nothing is being saved:
+        // the three instructions are twenty-seven master cycles of settling
+        // time for the line the store above just moved, and they have to be
+        // transcribed rather than skipped because the push writes the stack.
+        case 0xE1A5U:  // PHA
+            push(0xE1A5U, registers.accumulator);
+            append_checkpoint(0xE1A5U, 0xE1A6U, 9U);
+            pc = 0xE1A6U;
+            break;
+
+        case 0xE1A6U:  // PLA
+            load_accumulator(pop());
+            append_checkpoint(0xE1A6U, 0xE1A7U, 12U);
+            pc = 0xE1A7U;
+            break;
+
+        case 0xE1A7U:  // NOP
+            append_checkpoint(0xE1A7U, 0xE1A8U, 6U);
+            pc = 0xE1A8U;
+            break;
+
+        case 0xE1A8U:  // LDA $2013,Y
+            load_accumulator(read_ram(
+                static_cast<std::uint16_t>(0x2013U + registers.y)));
+            append_checkpoint(0xE1A8U, 0xE1ABU, 15U);
+            pc = 0xE1ABU;
+            break;
+
+        case 0xE1ABU:  // STA $200E,Y -- last frame's state
+            store(
+                0xE1ABU,
+                static_cast<std::uint16_t>(0x200EU + registers.y),
+                registers.accumulator);
+            append_checkpoint(0xE1ABU, 0xE1AEU, 15U);
+            pc = 0xE1AEU;
+            break;
+
+        case 0xE1AEU:  // LDA $1000 -- the four directions
+            load_accumulator(read_joypad());
+            append_checkpoint(0xE1AEU, 0xE1B1U, 15U);
+            pc = 0xE1B1U;
+            break;
+
+        case 0xE1B1U:  // ASL A
+            shift_accumulator_left();
+            append_checkpoint(0xE1B1U, 0xE1B2U, 6U);
+            pc = 0xE1B2U;
+            break;
+
+        case 0xE1B2U:  // ASL A
+            shift_accumulator_left();
+            append_checkpoint(0xE1B2U, 0xE1B3U, 6U);
+            pc = 0xE1B3U;
+            break;
+
+        case 0xE1B3U:  // ASL A
+            shift_accumulator_left();
+            append_checkpoint(0xE1B3U, 0xE1B4U, 6U);
+            pc = 0xE1B4U;
+            break;
+
+        case 0xE1B4U:  // ASL A -- the nibble is now the high one
+            shift_accumulator_left();
+            append_checkpoint(0xE1B4U, 0xE1B5U, 6U);
+            pc = 0xE1B5U;
+            break;
+
+        case 0xE1B5U:  // STA $2013,Y
+            store(
+                0xE1B5U,
+                static_cast<std::uint16_t>(0x2013U + registers.y),
+                registers.accumulator);
+            append_checkpoint(0xE1B5U, 0xE1B8U, 15U);
+            pc = 0xE1B8U;
+            break;
+
+        case 0xE1B8U:  // STZ $1000 -- SEL falls, selecting the buttons
+            write_joypad(0x00U);
+            store_port(0xE1B8U, kJoypadPort, 0x00U);
+            append_checkpoint(0xE1B8U, 0xE1BBU, 15U);
+            pc = 0xE1BBU;
+            break;
+
+        case 0xE1BBU:  // PHA
+            push(0xE1BBU, registers.accumulator);
+            append_checkpoint(0xE1BBU, 0xE1BCU, 9U);
+            pc = 0xE1BCU;
+            break;
+
+        case 0xE1BCU:  // PLA
+            load_accumulator(pop());
+            append_checkpoint(0xE1BCU, 0xE1BDU, 12U);
+            pc = 0xE1BDU;
+            break;
+
+        case 0xE1BDU:  // NOP
+            append_checkpoint(0xE1BDU, 0xE1BEU, 6U);
+            pc = 0xE1BEU;
+            break;
+
+        case 0xE1BEU:  // LDA $1000 -- I, II, SELECT and RUN
+            load_accumulator(read_joypad());
+            append_checkpoint(0xE1BEU, 0xE1C1U, 15U);
+            pc = 0xE1C1U;
+            break;
+
+        case 0xE1C1U:  // AND #$0F
+            load_accumulator(
+                static_cast<std::uint8_t>(registers.accumulator & 0x0FU));
+            append_checkpoint(0xE1C1U, 0xE1C3U, 6U);
+            pc = 0xE1C3U;
+            break;
+
+        case 0xE1C3U:  // ORA $2013,Y -- fold the directions back in
+            load_accumulator(static_cast<std::uint8_t>(
+                registers.accumulator
+                | read_ram(
+                    static_cast<std::uint16_t>(0x2013U + registers.y))));
+            append_checkpoint(0xE1C3U, 0xE1C6U, 15U);
+            pc = 0xE1C6U;
+            break;
+
+        case 0xE1C6U:  // EOR #$FF -- the port is active low
+            load_accumulator(
+                static_cast<std::uint8_t>(registers.accumulator ^ 0xFFU));
+            append_checkpoint(0xE1C6U, 0xE1C8U, 6U);
+            pc = 0xE1C8U;
+            break;
+
+        case 0xE1C8U:  // STA $2013,Y -- what is held now
+            store(
+                0xE1C8U,
+                static_cast<std::uint16_t>(0x2013U + registers.y),
+                registers.accumulator);
+            append_checkpoint(0xE1C8U, 0xE1CBU, 15U);
+            pc = 0xE1CBU;
+            break;
+
+        case 0xE1CBU:  // EOR $200E,Y -- what changed
+            load_accumulator(static_cast<std::uint8_t>(
+                registers.accumulator
+                ^ read_ram(
+                    static_cast<std::uint16_t>(0x200EU + registers.y))));
+            append_checkpoint(0xE1CBU, 0xE1CEU, 15U);
+            pc = 0xE1CEU;
+            break;
+
+        case 0xE1CEU:  // AND $2013,Y -- and of that, what is down
+            load_accumulator(static_cast<std::uint8_t>(
+                registers.accumulator
+                & read_ram(
+                    static_cast<std::uint16_t>(0x2013U + registers.y))));
+            append_checkpoint(0xE1CEU, 0xE1D1U, 15U);
+            pc = 0xE1D1U;
+            break;
+
+        case 0xE1D1U:  // STA $2018,Y -- this frame's presses
+            store(
+                0xE1D1U,
+                static_cast<std::uint16_t>(0x2018U + registers.y),
+                registers.accumulator);
+            append_checkpoint(0xE1D1U, 0xE1D4U, 15U);
+            pc = 0xE1D4U;
+            break;
+
+        case 0xE1D4U:  // INY
+            registers.y = static_cast<std::uint8_t>(registers.y + 1U);
+            registers.status = set_nz(registers.status, registers.y);
+            append_checkpoint(0xE1D4U, 0xE1D5U, 6U);
+            pc = 0xE1D5U;
+            break;
+
+        case 0xE1D5U:  // CPY #$05
+            compare_index_y(0x05U);
+            append_checkpoint(0xE1D5U, 0xE1D7U, 6U);
+            pc = 0xE1D7U;
+            break;
+
+        case 0xE1D7U: {  // BCC $E1A0
+            const bool taken = (registers.status & kCarry) == 0U;
+            const auto target =
+                static_cast<std::uint16_t>(taken ? 0xE1A0U : 0xE1D9U);
+            append_checkpoint(0xE1D7U, target, taken ? 12U : 6U);
+            pc = target;
+            break;
+        }
+
+        // The second pass is the soft-reset check: for each port the game has
+        // enabled in $0D, a frame whose new press is SELECT alone ($04) while
+        // SELECT and RUN together are what is held ($0C) leaves through $E032.
+        case 0xE1D9U:  // CLY
+            registers.y = 0U;
+            registers.status = set_nz(registers.status, 0U);
+            append_checkpoint(0xE1D9U, 0xE1DAU, 6U);
+            pc = 0xE1DAU;
+            break;
+
+        case 0xE1DAU:  // LDA $0D
+            load_accumulator(read_ram(zp(0x0DU)));
+            append_checkpoint(0xE1DAU, 0xE1DCU, 12U);
+            pc = 0xE1DCU;
+            break;
+
+        case 0xE1DCU:  // AND $E1F8,Y -- is this port enabled
+            load_accumulator(static_cast<std::uint8_t>(
+                registers.accumulator
+                & read_rom(
+                    static_cast<std::uint16_t>(0xE1F8U + registers.y))));
+            append_checkpoint(0xE1DCU, 0xE1DFU, 15U);
+            pc = 0xE1DFU;
+            break;
+
+        case 0xE1DFU: {  // BEQ $E1F2
+            const bool taken = (registers.status & kZero) != 0U;
+            const auto target =
+                static_cast<std::uint16_t>(taken ? 0xE1F2U : 0xE1E1U);
+            append_checkpoint(0xE1DFU, target, taken ? 12U : 6U);
+            pc = target;
+            break;
+        }
+
+        case 0xE1E1U:  // LDA $2018,Y
+            load_accumulator(read_ram(
+                static_cast<std::uint16_t>(0x2018U + registers.y)));
+            append_checkpoint(0xE1E1U, 0xE1E4U, 15U);
+            pc = 0xE1E4U;
+            break;
+
+        case 0xE1E4U:  // CMP #$04
+            compare_accumulator(0x04U);
+            append_checkpoint(0xE1E4U, 0xE1E6U, 6U);
+            pc = 0xE1E6U;
+            break;
+
+        case 0xE1E6U: {  // BNE $E1F2
+            const bool taken = (registers.status & kZero) == 0U;
+            const auto target =
+                static_cast<std::uint16_t>(taken ? 0xE1F2U : 0xE1E8U);
+            append_checkpoint(0xE1E6U, target, taken ? 12U : 6U);
+            pc = target;
+            break;
+        }
+
+        case 0xE1E8U:  // LDA $2013,Y
+            load_accumulator(read_ram(
+                static_cast<std::uint16_t>(0x2013U + registers.y)));
+            append_checkpoint(0xE1E8U, 0xE1EBU, 15U);
+            pc = 0xE1EBU;
+            break;
+
+        case 0xE1EBU:  // CMP #$0C
+            compare_accumulator(0x0CU);
+            append_checkpoint(0xE1EBU, 0xE1EDU, 6U);
+            pc = 0xE1EDU;
+            break;
+
+        case 0xE1EDU: {  // BNE $E1F2
+            const bool taken = (registers.status & kZero) == 0U;
+            const auto target =
+                static_cast<std::uint16_t>(taken ? 0xE1F2U : 0xE1EFU);
+            append_checkpoint(0xE1EDU, target, taken ? 12U : 6U);
+            pc = target;
+            break;
+        }
+
+        // $E1EF is a JMP out of the routine, abandoning the frame the handler
+        // was in the middle of. A transcript that has to stop in front of an
+        // RTS cannot express leaving through somewhere else, so this hands the
+        // whole call back rather than guessing. It is never reached on the
+        // recorded route: SELECT and RUN together with nothing else held is
+        // the soft reset.
+        case 0xE1EFU:  // JMP $E032
+            return std::nullopt;
+
+        case 0xE1F2U:  // INY
+            registers.y = static_cast<std::uint8_t>(registers.y + 1U);
+            registers.status = set_nz(registers.status, registers.y);
+            append_checkpoint(0xE1F2U, 0xE1F3U, 6U);
+            pc = 0xE1F3U;
+            break;
+
+        case 0xE1F3U:  // CPY #$05
+            compare_index_y(0x05U);
+            append_checkpoint(0xE1F3U, 0xE1F5U, 6U);
+            pc = 0xE1F5U;
+            break;
+
+        case 0xE1F5U: {  // BCC $E1DA
+            const bool taken = (registers.status & kCarry) == 0U;
+            const auto target =
+                static_cast<std::uint16_t>(taken ? 0xE1DAU : 0xE1F7U);
+            append_checkpoint(0xE1F5U, target, taken ? 12U : 6U);
+            pc = target;
+            break;
+        }
 
         default:
             return std::nullopt;

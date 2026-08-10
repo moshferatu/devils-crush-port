@@ -123,17 +123,40 @@ a state it was not proven against, so those calls run the original assembly.
 
 ### Withheld routines
 
-Admission is necessary but not sufficient. `02:57E9` and `03:6054` each pass an
-`@all` regression, yet deploying either one alone moves the state census off
-the assembly-only baseline, and each one's own regression expects the moved
-hash rather than the baseline. Their evidence locks the divergence in instead
-of catching it, so `kWithheldRoutines` in `src/app/main.cpp` holds both back
-from every composed deployment — live play and cycle measurement alike. The
-deployment summary names them on every run.
+Admission is necessary but not sufficient. A routine belongs in
+`kWithheldRoutines` in `src/app/main.cpp` when it passes an `@all` regression
+but deploying it alone moves the state census off the assembly-only baseline,
+*and* its own regression expects the moved hash rather than the baseline. Its
+evidence then locks the divergence in instead of catching it, so the list holds
+it back from every composed deployment — live play and cycle measurement alike.
+The deployment summary reports the list on every run.
 
-Their own regressions still drive them through `--replace-hook`, which is where
-the divergence should be characterized. A withheld routine becomes deployable
-once its regression expects the baseline census; remove it from the list then.
+**The list is currently empty**, and the mechanism stays for the next routine
+that needs it. Both former entries, `02:57E9` and `03:6054`, turned out to be
+replacement faults rather than properties of the routines, and both were the
+same shape: a boundary charged the wrong number of master cycles, with the
+error taken back off a later instruction so that the body total came out right.
+
+- `03:6054` charged `ADC $26` 9 instead of 12 and gave the three back on the
+  taken branch at `606E`, which put both of its writes three cycles early.
+- `02:57E9` charged `CMP $3980,X` 18 instead of 15 the same way, and separately
+  published the caller's N and Z at the boundary after `LDA $2D40` instead of
+  the load's.
+
+Two things are worth carrying from that. **A correct body total is why a state
+census can tell you something is wrong and never where** — the routine ends at
+the right cycle, so only what happens *inside* it is misplaced, and the census
+only samples frame ends. And **the fault does not have to be a write**:
+`02:57E9` writes nothing at all, so no write trace could have shown its flag
+fault. It is visible only as the status an interrupt stacks when it lands on
+that boundary, which is why the routine's own call trace — which records entry
+and exit registers — is the artifact that caught it.
+
+The method that localised both was the same: a write trace scoped to the
+addresses the routine touches plus the stack, diffed against a pure-assembly
+run of the same route, which put `03:6054`'s fault on two rows out of 4.38
+million. See "Diff against an assembly run, not only against the baseline
+hash".
 
 Check any new `@all` admission against the baseline before trusting it. A
 regression that blesses whatever hash the recorder produced proves the routine
@@ -218,9 +241,9 @@ span by the frame count to sanity-check it: the state-census route yields
 covers effectively the whole recording.
 
 That recording is faithful by default: `--replace-registry` alone reproduces
-the assembly-only baseline `9036a9de...`, because the state-diverging routines
-above are withheld. A composed run that changes the census therefore indicates
-a new problem rather than a known one.
+the assembly-only baseline `9036a9de...`, and now does so with **every admitted
+routine deployed** rather than with two held back. A composed run that changes
+the census therefore indicates a new problem rather than a known one.
 
 `--registry-slice FIRST:COUNT` deploys a contiguous slice and
 `--registry-exclude BANK:PC` holds one address back. Together they bisect a
@@ -284,26 +307,66 @@ Shared state is a harder constraint than the horizon, and unlike the horizon
 it cannot be lifted by rewriting the adapter. A transcript is computed once
 from a snapshot taken before it runs, so if it reads a byte another thread of
 control writes, every one of those reads has to happen before the next
-serviceable interrupt. In practice the whole body does.
+serviceable interrupt.
 
-Check it with two numbers, both available from a profile already on disk, and
-check it *before* disassembling anything:
+Check it with two numbers, both available from a profile already on disk:
 
-1. **Does the candidate's subtree read shared state, on how many calls?** Use
-   execution counts, not the presence of the instruction. Bank 45's `4142`
-   has a conspicuous `LDA $F5` at `415A` that runs on 12 of 3,604 calls and an
-   inconspicuous `LDA $F5,X` at `4148` that runs on all of them. Reading the
-   first and stopping gives the wrong answer.
+1. **Does the candidate's subtree read shared state, on how many calls, and
+   *where*?** Use execution counts, not the presence of the instruction. Bank
+   45's `4142` has a conspicuous `LDA $F5` at `415A` that runs on 12 of 3,604
+   calls and an inconspicuous `LDA $F5,X` at `4148` that runs on all of them.
+   Reading the first and stopping gives the wrong answer.
 2. **Is the body shorter than the interrupt period?** The period is elapsed
    cycles divided by interrupt-handler entries — 1,292,370,213 / 254,990 =
    5,068 on this route. A body well under that is admitted at roughly
    `1 - body/period`: `4142` at 2,054 cycles predicts 59% and measures 49.7%.
-   A body past the period is admitted never.
 
-That is how `45:4015` was ruled out. It is the bank's obvious next slice, it
-composes entirely from routines already native, and its 12,667-cycle body
-against a 5,068-cycle period means a transcript builder for it would decline
-3,599 calls out of 3,599. Two queries, no code.
+**Both numbers are properties of a transcript, not of a routine, and this
+section got that wrong for four slices.** It closed by ruling out `45:4015` on
+its 12,667-cycle body against the 5,068-cycle period — "two queries, no code".
+The queries were right and the body was the wrong one. The tick's body is a
+loop, so it chunks at the loop head like any other, and the unit that has to
+fit the period is one iteration: 1,137 composed master cycles, predicting
+about 78% admission rather than zero. Ask "is the *chunk* shorter than the
+period", and if the answer is no, ask where the loop head is before concluding
+anything.
+
+**The distinction that makes this work is between a cap and a deadline.** The
+channel limits — 2,048 checkpoints, 512 writes — are caps, and a cap is met by
+writing less. The shared-state rule is a deadline: the reads have to happen
+before the next serviceable interrupt, and a deadline is met by doing less
+*before it*. Chunking meets both, but only the second explains why it rescues a
+routine the caps never bothered. `45:4015` fits 1,058 checkpoints and 245 writes
+into an average call and was never near a cap; it was refused on every call by
+the deadline. Cutting the walk at the loop head so each chunk lands inside the
+horizon it was handed took it from 0 of 3,599 to 24,667 of 32,391 iterations
+running inside a transcript.
+
+Two costs come with it, both visible in that ratio. A chunk boundary is by
+construction the moment the horizon is nearly spent, so the entry immediately
+after one often cannot fit an iteration either and hands it back — which is why
+`4015` and `4044` are admitted on about half their arrivals rather than the 78%
+the division predicts. And the walk has to decide to stop *before* running the
+iteration, so the margin is the iteration's cost rounded up, not its average.
+
+The "and *where*" in the first check is the other half of the same lesson, and
+the tick is a warning rather than a success here. The recorded rejection said
+the voice loop reaches `4148`, `LDA $F5,X`; it does not reach it at all, since
+the bank's only `JSR $4142` is at `4138`, *past* the `JMP $4044` at `40FF` that
+closes the loop. But the conclusion was right anyway, because the loop reads
+driver state somewhere else entirely — the amplitude commit at `49D2`, reached
+by both `49B6` and `49F9`, on every iteration. Nobody had looked there. A count
+tells you how often a shared read happens; only the control flow tells you which
+side of a prospective chunk boundary it is on, and that is what decides whether
+the constraint lands on every chunk or on one. So this check is cheap but it is
+not "before disassembling anything" — it is before writing a *transcript*, and
+it needs the loop bounds. **Find which read imposes the deadline before
+believing any story about it**, including a story that reaches the right answer.
+
+Where a shared read really does sit behind a `JSR` to an already-native callee,
+it costs nothing: stop in front of the call and the callee is entered on its own
+with the guard it already carries. That is what the tick does with `4142` at
+`4138`, and it is why the tail carries no deadline even though `4142` does.
 
 ### A long transcript shadows the interrupt handler
 
@@ -367,6 +430,7 @@ game does, which is the qualifier the last row below exists to add:
 | Collision-table interpreter | 2,942,940 | 578,541 | 19.7% |
 | Interpreter into the Sorcerer tick | 1,538,439 | 242,907 | 15.8% |
 | Fade-to-black stepper (chunked) | 1,640,100 | 1,224 | **0.07%** |
+| Music sequencer tick (chunked) | 14,664,984 | 1,647,495 | 11.2% |
 
 The spread looks arbitrary until the per-event numbers are pulled out of it.
 Those are almost identical every time: the driver costs **568 to 577 native
@@ -482,6 +546,65 @@ counts to cluster them by contiguous range. That ranking is what surfaced
 is a hot address on its own — they are the two halves of a dispatch that runs
 171,734 times.
 
+**The ranking is exact, and it is worth checking that it closes.** Checkpoint
+replay does *not* sample the instruction hook, so a native run's profile is not
+the assembly profile with the cycles moved around: it drops from 8,977
+addresses and 108.5M executions to 6,726 and 65.0M. Every row that is not an
+entry point therefore carries only what is still being emulated at that
+address. Add the entry rows, the spin loop and the rest back together and the
+elapsed total comes back, which is what makes the residue trustworthy — on the
+43.33% registry the only thing the split hides is 1,654,222 cycles of declined
+arrivals sitting inside entry rows, spread too thin to rank.
+
+#### Take the cost from the assembly run and the weight from the ratio
+
+Two corrections turn that ranking from suggestive into exact. Both were found
+by trusting it too far first, and the second one retired three entries from
+this file's own next-target list.
+
+**Price each address from the assembly-only profile.** The profiler charges
+every sample the span to the next sample, and a native body produces no
+samples, so a native body's cycles land on the last instruction sampled before
+it. That is normally the entry point, but it is *any* instruction that precedes
+a native call — the `RTI` at `00:FC8D` returns into a suspended transcript and
+carried 99,636,684 cycles of other routines' work. Excluding known offenders by
+hand does not scale and does not find the ones you have not noticed. Instead
+run the same route with no replacements at all, where nothing can be absorbed,
+and take each address's true cost from there:
+
+```
+cost = native_run_executions × (assembly_cycles ÷ assembly_executions)
+```
+
+Every leak goes at once, and the books close within 0.13% of elapsed.
+
+**Rank by the execution ratio, not by cycles.** A busy address is not evidence
+of unported code. Compare the same address's executions in both runs:
+
+| | assembly | with the registry | |
+| --- | ---: | ---: | --- |
+| `03:6967` | 54,149 | 119 | 99.8% ported; the rest is resumption |
+| `00:E1A0` | 17,995 | 17,995 | genuinely unported |
+
+A ratio near 1 on a non-entry address means the code is still emulated. A ratio
+near 0 means the routine is ported and what you are looking at is one of the
+hybrid's own overheads, which no amount of porting removes:
+
+- **Call and return boundaries.** A transcript stops in front of its `RTS` and
+  is reached through a `JSR`, so every native call pays 21 master cycles at
+  each end. This is 13.3M on the route, and it is what `08:40DE`-`41AB` with
+  `08:4085`-`4094` really was — recorded here as a 2.8M target, actually four
+  `JSR $40DF`s and an `RTS` around a routine that was already native.
+- **Resumption after an interrupt.** An interrupt landing inside a transcript
+  rewinds to a checkpoint and interprets the rest of the body, so a fully
+  admitted routine still shows interpreted executions, climbing monotonically
+  along its fall-through path as later instructions become reachable from more
+  checkpoints. That climb is the signature; straight-line code cannot otherwise
+  have different counts on consecutive instructions. 11.2M on the route.
+
+Both disappear with the emulator rather than before it. Rank without them and
+what is left is the actual porting queue.
+
 Two things that ranking will show which are *not* targets, and why:
 
 - The frame-sync spin at `00:E323` is 45% of all master cycles. It is a
@@ -500,6 +623,40 @@ Two things that ranking will show which are *not* targets, and why:
   the `TAM #$40` at `00:FC10`. On a 384KB image Mednafen maps physical banks
   64-127 to ROM bank `((x & 0x0F) + 32)`, so `45` is ROM bank `25`, not a
   mirror of a low bank.
+
+### A device read is not automatically a wall
+
+The standing rule was that a replacement callback receives work RAM and
+registers, so a routine that reads a device register cannot be a transcript.
+That rule is about the callback. It is not about the value, and the two come
+apart whenever the value is something the walk can compute.
+
+The pad reader at `00:E195` was recorded as unportable for four slices on this
+rule, at 6.9M master cycles — the largest genuinely unported routine on the
+route. What it reads back from `$1000` depends on exactly two things: the
+frame's pad state, and the `SEL`/`CLR` latch lines, which the routine itself
+drives through the same port. The latch is the walk's own bookkeeping. The pad
+state is real outside input, and the fix for that is to hand it to the walk
+rather than to let the walk guess: `RoutineEntry` carries it, taken from the
+same field the core answers reads from, so the predicted value and the value
+assembly would have read are one object instead of two kept in step.
+
+Contrast the dispatcher at `00:E058`, one instruction earlier in the same
+handler, which reads the VDC status register. That reports what the display is
+doing — device state with its own clock, which no walk can reconstruct. It
+stays emulated, and correctly so.
+
+So when a rejection says "it reads a device", ask which one and what the answer
+depends on:
+
+- **Outside input, plus lines the routine set itself** — portable now. Model
+  the port, emit the writes so the device is left where assembly would leave
+  it, and pin both against an assembly trace.
+- **State the device evolves on its own** — genuinely phase 2, and it needs a
+  native model of that device before anything downstream can move.
+
+Widening the write channel is the small part; it took one address. The
+substantive question is always which of those two kinds of read it is.
 
 ### The size of a replacement is not the size of the routine
 
@@ -708,6 +865,37 @@ stepper's loop is a fixed seventeen writes and fifty-seven checkpoints, so it
 decides on the counters alone and needs no lookahead at all. **Uniform loop
 bodies chunk for free; variable ones cost you a lookahead.** Screen for that
 when picking where to cut.
+
+#### Chunk for a deadline as readily as for a cap
+
+The channel budgets are what this started as, and they are the less common
+reason to cut. A deadline chunks the same way and the arithmetic that says a
+routine cannot meet one is the same arithmetic that says where to cut it. Both
+bank-45 chunk heads came from a rejection of exactly this form: *this body is
+N cycles, the timer period is 5,068, therefore every call declines.* Each time
+the numbers were right and the conclusion was about one transcript. `45:4015`
+is 12,667 cycles and chunks at `4044`; `45:4142` averages 2,055 and chunks at
+`4143`. Being only twice the period rather than three times it is not a reason
+to leave the second one alone — it is a reason it declines half the time
+instead of always.
+
+Two things to get right when the reason is a deadline rather than a budget.
+
+- **Cut where the hardware already yields.** A chunk boundary is a point the
+  core may take an interrupt at, so prefer one ROM itself leaves open. `4142`
+  brackets each channel in `PHP`/`SEI` … `PLP`, and its own `PLP` at `41F1`
+  runs before the closing `JMP` — so the top of an iteration is somewhere an
+  interrupt could land anyway, and stopping there invents nothing.
+- **The margin is a performance knob, not a correctness one.** The guard at the
+  stop is what enforces the deadline; the margin only decides whether the
+  transcript stops in time to satisfy it or overruns and is thrown away whole.
+  That means it can be tuned by measurement — but prefer a bound the
+  instruction sequence gives you over one the route happens to satisfy.
+  `4142`'s iterations are 390 cycles plain and 2,190 with a waveform upload,
+  and a margin of 500 measured 166,605 cycles better than the safe 2,304
+  precisely because it gambles on the 186-in-19,062 case. Its worst case is
+  different in kind: not a wrong answer, but a routine that quietly stops being
+  admitted on data this route never produced.
 
 ### A transcript cannot see what preempts it
 
@@ -986,6 +1174,52 @@ registry where 67 of 260 installed routines never execute on the route and 48
 more never accept a call, while four addresses carry 79% of the native share.
 Use this tool to pick the neighbourhood and
 `Analyze-NativeFallbackHotspots.ps1` to profile the chosen family in detail.
+
+### A guard that has never been crossed proves nothing about what is behind it
+
+A composition site that gates on the *shape* of its child — a specific body
+length, a specific return address, a specific path — is not only leaving
+admissions on the table. It is suppressing exactly the calls that would
+exercise the code behind it, so whatever is wrong there stays untested for as
+long as the guard stands.
+
+`03:73A6` pinned its collision child to the single 165-cycle one-pass
+transcript, on a recorded fear that a longer record could take an interrupt at
+the interpreter's return boundary. That fear expired when the interpreter
+became an instruction-boundary transcript. Lifting the gate raised admission
+from 64 of 129 to 128 of 129 and moved both the census and the write trace —
+and the fault was not in the child at all. The parent's own tail had no
+checkpoint for the boundary the hit gate's `RTS` at `73FD` lands on, so an
+interrupt arriving there was deferred to the next checkpoint and stacked
+`73CC` where ROM stacks `73CA`. The defect was already present in the 64 calls
+the gate admitted. None of them happened to take an interrupt there.
+
+Two habits follow. **When a guard is lifted, watch the artifacts, not the
+admission count** — a rise in admissions with unchanged hashes is the result;
+a rise with moved hashes means the guard was load-bearing for a reason its
+comment did not name. And **when composing, take the child's return
+instruction from the child**. The interpreter has four `RTS` instructions and
+only the 165-cycle transcript always reached the first of them; the parent had
+`0x6988` written in, which is correct exactly as long as the gate holds.
+
+The rest of the tree was swept for the same pattern — a composition site
+gating on a child's body length, checkpoint count, write count or return
+address rather than on the caps. Six sites, one fault:
+
+| Site | Gate | Finding |
+| --- | --- | --- |
+| `03:73A6` | child body `!= 165` | The fault above. Lifted; admission 64 → 128 of 129. |
+| `03:7F57` | table child returns `6988`/`6A37` | Inert. Lifting it leaves admission at 20,862 of 20,867 and all three artifacts identical, because no call on the route returns through `6994` or `69A1`. Kept, because those two are unexercised — not because the code needs it. Both post-`RTS` boundaries already take the address from the child. |
+| `03:7F57` | response child returns `7FD1` | Tautological. `replace_collision_response` sets `7FD1` on every path. |
+| `01:C7F9` | child body `!= 102`, writes `!= 3` | Semantic, not conservatism: the one call it refuses is the countdown reaching zero, which starts a different routine's state transition. 254 of 255. |
+| `01:C804`, `01:C812`, `03:7420` | child body `!= 159` | Refuse nothing anywhere measured — each admits 1 of 1 on its own fixture — and all three are entered zero times on the 3,600-frame route, so lifting them would be an unverifiable change. |
+| `01:CC98`'s parent | child returns `CCD2`/`CCD4` | Propagates `mask->return_instruction` rather than hardcoding, so the gate restricts the set without the tail depending on it. |
+
+The distinction that separates the one fault from the five non-faults is not
+how tight the gate is. It is whether the code *behind* the gate reads the
+child's shape from the child or has it written in. `03:73A6` had `0x6988`
+written in; every other site takes the address from the transcript it spliced.
+**A shape gate is only dangerous when something downstream assumes the shape.**
 
 ## Commands
 

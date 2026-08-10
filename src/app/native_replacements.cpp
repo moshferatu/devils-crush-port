@@ -71,15 +71,41 @@ replace_native_gameplay_routine_impl(
         }) {
         return detail::replace_sound_timer_driver(entry, work_ram, rom);
     }
-    // One shared walk, ten entry points: the bank-45 music sequencer's
+    // One shared walk, fifteen entry points: the bank-45 music sequencer's
     // sample/envelope group, its PSG register programmer, its portamento
     // stepper and its command interpreter. Each is a subroutine the
     // per-frame voice walk calls; the walk inlines any nested call and stops
-    // in front of the RTS.
+    // in front of the RTS. Two of the fifteen are not calls at all -- `4044`
+    // and `4143` are loop heads, where a chunked transcript resumes.
     if (entry.routine
             == RoutineKey{
                 .physical_bank = 0x45U,
+                .logical_pc = 0x4015U,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x45U,
+                .logical_pc = 0x4044U,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x45U,
+                .logical_pc = 0x409CU,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x45U,
+                .logical_pc = 0x413BU,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x45U,
                 .logical_pc = 0x4142U,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x45U,
+                .logical_pc = 0x4143U,
             }
         || entry.routine
             == RoutineKey{
@@ -247,8 +273,13 @@ replace_native_gameplay_routine_impl(
             == RoutineKey{
                 .physical_bank = 0x00U,
                 .logical_pc = 0xE183U,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x00U,
+                .logical_pc = 0xE195U,
             }) {
-        return detail::replace_vblank_handler(entry, work_ram);
+        return detail::replace_vblank_handler(entry, work_ram, rom);
     }
 
     // One shared walk, six entry points: the graphics driver's port-streaming

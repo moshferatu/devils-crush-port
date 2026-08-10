@@ -12,9 +12,9 @@ endif()
 
 set(call_output "${OUTPUT}.calls.csv")
 set(write_output "${call_output}.writes.csv")
-set(expected_census_sha256 "7c99d041007e2a735b2bf8e6c7c870615c15bb0e79dee9330f1414da2187853c")
-set(expected_call_sha256 "9d3beee15ee6ada8ea7b15b414745437e71876b1ef5be14e5f184c188b7ddf76")
-set(expected_write_sha256 "a0d6ad02b991511ecfde741d752b4c11b5da61afe9a27cdd02d90b397a4c2f2e")
+set(expected_census_sha256 "9036a9de0c3c9917f47bff8c04c136a4824ec12601fb457d260aa2dfe4443490")
+set(expected_call_sha256 "321b4bd8cb2a97a52df64aaeb297701c4be8763f9b6d32b4dd1809de4d97ac25")
+set(expected_write_sha256 "013bcb36825aeb972e5d31d8a3b832578799124686721294a12726bbea97dbb0")
 
 execute_process(
     COMMAND "${APP}"

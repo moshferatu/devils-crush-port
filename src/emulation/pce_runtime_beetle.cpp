@@ -50,6 +50,14 @@ constexpr std::size_t kPcePaletteEntryCount =
 //                driver, which streams DDA samples through $0806.
 //   $0C00-$0C01  Timer counter and control; the sound driver stops the
 //                timer through $0C01 once every channel falls idle.
+//   $1000        The joypad port. Writes are the two latch lines, SEL and
+//                CLR, which choose the nibble a read answers with and step
+//                the multitap's cursor. The pad reader at 00:E195 drives
+//                them. Scanning the ROM for absolute stores to $1000 finds
+//                eight; four are its own and the other four are never
+//                executed, three of them in banks the game never enters at
+//                all. So a transcript that emits the same four writes
+//                leaves the port in the state assembly would have left it.
 //   $1402-$1403  Interrupt controller mask and acknowledge; the sound
 //                driver acknowledges its own timer interrupt at $1403.
 // Everything else on the hardware page stays with the core.
@@ -60,6 +68,7 @@ constexpr std::size_t kPcePaletteEntryCount =
         || (logical_address >= 0x0400U && logical_address <= 0x0405U)
         || (logical_address >= 0x0800U && logical_address <= 0x0809U)
         || (logical_address >= 0x0C00U && logical_address <= 0x0C01U)
+        || logical_address == 0x1000U
         || (logical_address >= 0x1402U && logical_address <= 0x1403U);
 }
 
@@ -917,6 +926,7 @@ private:
                 .logical_pc = state.logical_pc,
             },
             .registers = cpu_registers(state),
+            .input = current_input_,
             .frame_number = frame_number_ + 1U,
             .master_cycle = state.master_cycle,
             .absolute_master_cycle = state.absolute_master_cycle,

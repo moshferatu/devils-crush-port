@@ -82,11 +82,12 @@ table rather than appearing at its old size:
 | Region | Master cycles | Share | What it is |
 | --- | ---: | ---: | --- |
 | `00:E2B7`–`E39C` | 584,758,197 | 45.25% | Frame-sync spin loop |
-| `00:FC03`–`FCB3`, `00:FD07`–`FDF1` | 193,007,589 | 14.93% | Sound driver — **already ported**; these are the entries the no-nesting rule blocks (see below) |
-| bank `45` (`4000`–`4A9B`) | 21,152,865 | 1.64% | Music sequencer — the per-frame tick and two helpers the snapshot rule **blocks**, see below |
-| `00:E0EB`–`E292` | 10,888,014 | 0.84% | Pad reader and interrupt dispatcher, both **blocked** on a device read; the handler bodies and call wrappers are native |
+| `00:FC03`–`FC8D`, `00:FD07`–`FD81` | 110,519,836 | 8.55% | Sound driver — **already ported**; these are the entries the no-nesting rule blocks (see below) |
+| bank `45` (`4000`–`4A9B`) | 6,498,444 | 0.50% | Music sequencer — the tick is **native**, chunked at its voice loop, and so is the PSG programmer `45:4142`, chunked at its channel loop; what is left is `45:4936`, the track loader `45:4BCC` and the chunk boundaries |
+| `00:E128`–`E290` | 1,221,328 | 0.09% | Interrupt epilogue and the dispatcher at `00:E058`, still **blocked** on the VDC status read; the handler bodies, the call wrappers and now the pad reader are native |
+| `01:C0FE`–`C1B5` | 1,238,877 | 0.10% | The top-level frame loop itself — glue between calls rather than a routine |
 | `03:694A`–`6A37` | 2,700,153 | 0.21% | Collision-table interpreter — **already ported**; the `RTS` instructions and the resumption after an interrupt lands on a checkpoint, see below |
-| `00:E93C`–`EBD6` | 2,159,505 | 0.17% | Palette shadow buffer — the two fade drivers and the whole-palette `TIA` arm, **blocked**, see below |
+| `00:E93C`–`EBD6` | 2,142,114 | 0.17% | Palette shadow buffer — the two fade drivers and the whole-palette `TIA` arm, **blocked**, see below |
 | `02:586F`–`5903` | 501,195 | 0.04% | Sorcerer tick — **already ported**, and both interpreter calls are now composed in line; what is left is the two bank-wrapper calls, three `RTS` instructions and resumption |
 | `01:CA84`–`CC04` | 621,648 | 0.05% | Collision frame — **already ported**, and the call into the scanner is now composed rather than emulated, see below |
 
@@ -94,6 +95,27 @@ Earlier revisions of this table mixed two conventions: five rows counted only
 emulated addresses and four counted the whole range including native entries,
 which made ported regions look like remaining work. Every row above is now the
 emulated count.
+
+The sound-driver row also used to be 193,007,589, and that was wrong by most of
+its size. A native body's cycles are charged to the last instruction the
+profile sampled before it, which is normally the routine's own entry point —
+except where a handler returns *into* a suspended transcript. The `RTI` at
+`00:FC8D` does exactly that, and was carrying 99,636,684 cycles of other
+routines' native work into the driver's total. It is excluded above. With that
+correction the whole table balances against the elapsed count: the rows, the
+entry rows and the spin loop add back to 1,292,371,131, leaving 1,654,222 of
+declined arrivals hidden inside entry rows and nowhere else.
+
+`00:FC8D` turned out not to be a special case but the visible instance of a
+general one — *any* instruction that precedes a native call absorbs it — so
+the rows above are no longer priced from the native run's cycle column at all.
+Each address is priced at its executions in the native run times its cost in
+an assembly-only run of the same route, where nothing is replaced and so
+nothing can be absorbed. That also separates two things the old table conflated
+with unported code: the `JSR` and `RTS` at each end of every native call
+(13,250,544 route-wide) and interpretation resumed after an interrupt landed
+inside a transcript (11,238,411). Neither is work anyone can port; both go when
+the emulator does. See `docs/NATIVE_PORT_WORKFLOW.md` for the method.
 
 Two rows have left the table. `00:E3C0`–`E47C`, the VRAM and VCE upload paths,
 was 7,031,316 cycles two slices ago and is 10,779 now — the loop-closing
@@ -188,8 +210,8 @@ own when the CPU does.
 
 Remaining real logic, in rough order of value:
 
-1. **Bank `45` music sequencer** — **finished for the hybrid** at 25.0M of
-   45.6M. The PSG write channel and the bus-write census built for the timer
+1. **Bank `45` music sequencer** — **finished for the hybrid** at 39.5M of
+   46.1M. The PSG write channel and the bus-write census built for the timer
    driver applied unchanged, as expected. The bank turned out to be sixteen
    small subroutines rather than a monolith, so it went in slices: the
    sample/envelope group, the PSG register programmer `45:4142`, the
@@ -197,22 +219,62 @@ Remaining real logic, in rough order of value:
    native. See
    [NATIVE_FALLBACK_HOTSPOTS.md](NATIVE_FALLBACK_HOTSPOTS.md#the-music-sequencer-and-screening-a-bank-instead-of-a-family).
 
-   The remaining 20.6M is the per-frame tick `45:4015` (13.8M), which calls
-   all of them, plus `45:4936` and the track loader `45:4BCC`. **`45:4015`
-   cannot be ported while the emulator is here**, and the arithmetic is worth
-   recording because it is cheap to check before writing a transcript and
-   expensive to discover afterwards. Its voice loop reaches `45:4148`,
-   `LDA $F5,X`, three times per call, so any transcript for the tick reads
-   driver state and the shared-state guard below applies to the whole body.
-   The body is 12,667 master cycles; the timer period on this route is 5,068
-   (254,990 driver entries across 1,292,370,213 cycles). It can never finish
-   before the next serviceable timer interrupt, so it would decline 3,599
-   calls out of 3,599. The same guard admits `45:4142` at half its calls
-   because its body is only 2,054 cycles.
+   The per-frame tick `45:4015` (13.8M), which calls all of them, is native as
+   of the chunking slice; what is left of the bank is 6.6M, most of it
+   `45:4936`, the track loader `45:4BCC` and the chunk boundaries themselves.
 
-   This is the second thing on the list blocked by the hybrid rather than
-   unported, after the sound driver's nesting limit, and it has the same
-   resolution: phase 3 removes the snapshot, so there is nothing to go stale.
+   **This entry said `45:4015` cannot be ported while the emulator is here,
+   and that was wrong on both of its two grounds.** It is recorded here as it
+   was found, because the way it was wrong is the most reusable thing in this
+   file. The claim was: the tick's voice loop reaches `45:4148`, `LDA $F5,X`,
+   so a transcript for the tick reads timer-driver state and the shared-state
+   guard applies to the whole body; the body is 12,667 master cycles against a
+   5,068-cycle timer period, so it can never finish before the next
+   serviceable interrupt and would decline 3,599 calls out of 3,599.
+
+   The second ground is the `00:EAA7` error again: **the body that has to fit
+   is a transcript's, and a transcript is a free choice.** The tick's body is
+   a loop. `45:4044` is its head, `45:40FF` is a `JMP $4044` that closes it,
+   and the profile counts the shape exactly — 32,391 iterations across 3,599
+   calls, 28,792 of them continuing and 3,599 exiting. Chunked at `45:4044`
+   the unit that must fit the period is one voice iteration, and that is
+   **1,137 master cycles composed** (12,728,115 of the tick's own plus
+   24,091,110 of already-native callees, over 32,391 iterations), not 12,667.
+   Against a 5,068-cycle period the same arithmetic that predicted zero
+   admissions predicts about 78%.
+
+   The first ground is a plain factual error, though not the one that
+   mattered. **The voice loop does not reach `45:4148`.** `JSR $4142` occurs
+   exactly once in the bank, at `45:4138` — *after* `45:40FF` closes the loop
+   — so it runs once per call in the tail, and `4148`'s 10,812 executions are
+   three per call of `4142`, not three per call of the tick. Every branch in
+   `4044`-`4101` targets an address inside the loop or the exit at `4102`. The
+   walk accordingly stops in front of `45:4138` and leaves `4142` to be
+   entered on its own, as it already is, with its own guard.
+
+   **But the conclusion that rejection drew was right for a reason it never
+   identified, and the port had to find it the hard way.** The tick does read
+   driver state on every voice iteration — not through `4142` but through the
+   amplitude commit at `45:49D2`, which reads `$20F5,Y` and which both `49B6`
+   and `49F9` run. So the guard genuinely applies to any transcript that runs
+   the loop even once, and a whole-call transcript at 12,667 cycles against a
+   5,068-cycle period is refused every time, exactly as the arithmetic said.
+
+   That is what makes this the useful entry rather than a correction. **The
+   guard is a deadline, not a cap**, and the answer to a deadline is to do
+   less before it. Chunked at `4044`, the walk stops at the loop's closing
+   jump once one more iteration would not fit inside the horizon it was
+   handed; the core takes the jump and the interrupt, and the next chunk
+   starts against a fresh horizon. 24,667 of the route's 32,391 voice
+   iterations now run inside a transcript, and the tick is native at
+   `+13,017,489` cycles.
+
+   Two lessons, and the second is the one to carry. Run the two divisions on
+   the **chunk**, not the routine. And when the arithmetic says a body cannot
+   fit, find out *which* read imposes the deadline before believing any story
+   about it: the recorded story named an instruction the loop never executes,
+   which is how a correct conclusion sat for four slices on a reason that
+   would not have survived being checked.
 
    `45:4142` also surfaced the first **shared-state** boundary in the port.
    It reads `$F5`/`$F7`/`$F9`, which the timer interrupt handler writes, so a
@@ -302,7 +364,7 @@ Remaining real logic, in rough order of value:
 
    | Routine | Master cycles | State |
    | --- | ---: | --- |
-   | `00:E195` pad reader | 6,929,670 | **blocked**: reads `$1000` |
+   | `00:E195` pad reader | 6,929,670 | **native** — see below |
    | `00:E241`/`E255` banked call | 2,878,650 | **native** |
    | `00:E111`–`E13F` VBlank body | 2,412,678 | **native** except its `RTI` |
    | `00:E262` trampoline | 953,343 | **native** |
@@ -312,14 +374,29 @@ Remaining real logic, in rough order of value:
    | `00:E219` bank pair | 501,639 | **native** |
    | `00:E1FD`/`E20D` asset resolver | 377,085 | **native** |
 
-   The widening would not have helped, because the blocker is a device
-   **read**, not a write. `00:E195` strobes `$1000` and then reads it back
-   five times a frame; `00:E058` opens by reading the VDC status register at
-   `$0000`. A replacement callback receives work RAM and registers and nothing
-   else, so no allowlist reaches either one. **A routine that reads a device
-   register cannot be a transcript until that device has a native model**, which
-   makes both of these phase 2 rather than phase 1 — and puts the joypad on
-   phase 2's list beside the PSG and the VDC.
+   The widening would not have helped on its own, because the blocker is a
+   device **read**, not a write. `00:E195` strobes `$1000` and then reads it
+   back five times a frame; `00:E058` opens by reading the VDC status register
+   at `$0000`. A replacement callback receives work RAM and registers and
+   nothing else, so no allowlist reaches either one.
+
+   This document then drew the wrong general rule from that — "a routine that
+   reads a device register cannot be a transcript until that device has a
+   native model" — and left the pad reader sitting as the largest unported
+   routine on the route for four slices. The rule holds for the callback and
+   not for the value. `00:E195` is native now, `+6,013,791`, admitted on every
+   call. What the joypad answers is a function of the frame's pad state and of
+   the `SEL`/`CLR` latch lines the routine drives itself, so the walk models
+   the port rather than reading it; `RoutineEntry` carries the pad state,
+   taken from the same field the core answers reads from, and `$1000` joined
+   the write channel so the four latch stores leave the port where assembly
+   would have left it.
+
+   The corrected rule distinguishes two kinds of read. **A read whose answer
+   depends only on outside input and on lines the routine itself set is
+   portable now.** A read whose answer depends on state the device evolves on
+   its own is not: `00:E058` reads what the display is doing, and stays phase
+   2 beside the PSG and the VDC. The joypad has come off that list.
 
    The bank-switching wrappers went instead, together with the two in the
    `00:ECC6` family, and they are done: nine entry points, 52,911 calls,
@@ -330,7 +407,9 @@ Remaining real logic, in rough order of value:
 
    The VBlank body followed, and needed no new capability either: six entry
    points around the calls the core keeps, writing the VDC ports the channel
-   already carries. 13,932 calls, admitted on every one.
+   already carries. 13,932 calls, admitted on every one. The pad reader made
+   it seven and 17,531, and was the one addition here that did need a new
+   capability — the pad state on `RoutineEntry`.
 
    It did settle a rule that had only been half-stated. Each walk stops one
    instruction short of its `RTI`, in front of the `PLP` that restores the
@@ -346,9 +425,9 @@ Remaining real logic, in rough order of value:
    but does not stay masked, because bank `45` ends three critical sections with
    an unconditional `CLI` instead of restoring the caller's mask.
 
-   What is left in the region is the dispatcher and the pad reader, both phase
-   2, plus the two `RTI`s and the three `JSR`s the walks stop at — 1.3M of
-   instructions the core executes by design.
+   What is left in the region is the dispatcher, which is phase 2, plus the
+   two `RTI`s and the three `JSR`s the walks stop at — 1.2M of instructions
+   the core executes by design.
 4. **The collision frame** (8.4M) — **done**. `01:CA84`–`CDF7` is the code
    around the overlap scanner `01:CC1A`, which has been native since the
    twenty-sixth replacement: the playfield-tile probe `01:CD74` (2.6M), the
@@ -464,22 +543,73 @@ Remaining real logic, in rough order of value:
    Halving the chunk budget lowers the reported total by 9,231 without
    changing a byte of the state census. Every native share in these documents
    is high by some small amount of this kind.
-11. **Gameplay tails** (~17M spread thin, no single address above 0.14%). What
-   is left of the interpreter's region is mostly resumption rather than
-   unported code; the largest genuinely unported groups are now the
-   sequencer's note handlers at `45:483B`–`4A9B` (2.8M) and `03:6001`–`6078`
-   (1.8M).
-12. **Boot and reset path.** Off the census route's hot path but required.
-13. **The frame-sync spin loop** (584.8M). Trivial code, but it is where the
+11. **The two withheld routines** (1.1M gross) — **done**, and the value is
+   not the cycles. `02:57E9` and `03:6054` each passed an `@all` regression but
+   moved the state census, and each one's own regression asserted the moved
+   hash, so `kWithheldRoutines` held both out of every composed deployment.
+   Both were replacement faults, not properties of the routines, and both were
+   the same shape: a boundary charged the wrong number of master cycles with
+   the error taken back off a later instruction, so the body total stayed
+   right. `03:6054` charged `ADC $26` 9 instead of 12; `02:57E9` charged
+   `CMP $3980,X` 18 instead of 15 and also published the caller's N and Z at
+   the boundary after `LDA $2D40`.
+
+   **The withheld list is now empty and the deployed registry is 362 of 362.**
+   That is what the number is for: 42.69% is now the whole registry against the
+   assembly census rather than all but two of it. Gross 1,143,930, bill 198,927
+   (17.4%), net `+945,003`, 42.62% → **42.69%**.
+
+   The general lesson is about what each artifact can see. A correct body total
+   is why a state census could tell that something was wrong and never where —
+   the routine ends at the right cycle, so only the inside is misplaced. And
+   `02:57E9` writes nothing at all, so no write trace could have found its flag
+   fault; it exists only as the status an interrupt stacks.
+12. **The PSG register programmer `45:4142`** (4.1M gross) — **done**. It had
+   sat at 1,792 of 3,604 arrivals for four slices under the driver-state guard,
+   on the arithmetic that a whole call averages 2,055 master cycles against a
+   5,068-cycle timer period. That is the same argument `45:4015` was rejected
+   on one level up, and it fails the same way: `4142` is a loop, `4143` is its
+   head, `41F7` closes it with a `JMP $4143`, and it chunks exactly as the tick
+   does. 15,972 of the route's 19,062 channel iterations now run inside a
+   transcript. Net `+2,271,558`, 42.69% → **42.87%**, with the census, the
+   5,458,568-write work-RAM trace and the 699,251-write PSG trace all still
+   byte-identical to assembly.
+
+   The lesson is about the shape of the rejection rather than the routine.
+   Twice now a "this cannot be ported" note has been an arithmetic comparison
+   between a whole body and the timer period, and twice the body was a loop. A
+   ratio of two rather than three is not a reason to leave the second one
+   alone; it is the reason it declined half the time instead of always.
+13. **The pad reader `00:E195`** (6.9M gross, `+6,013,791` net) — **done**. The
+   largest genuinely unported routine on the route, and it was blocked by a
+   rule this document had over-generalised rather than by anything about the
+   routine. See item 3 above for the corrected rule.
+14. **Gameplay tails** (14.7M spread thin, 1.14% of the machine). **Porting by
+   hotspot is finished.** Once boundary instructions and interrupt resumption
+   are separated out — see `docs/NATIVE_PORT_WORKFLOW.md` — nothing genuinely
+   unported is above 1.3M, and the largest item, `01:C0FE`–`C1B5` (1.24M), is
+   the top-level frame loop's own glue rather than a routine. Below it:
+   `01:C655`–`C770` (1.02M), `00:E128`–`E176` (968K), `01:DC95`–`DCD5` (856K),
+   `00:F08E`–`F1B0` (812K), `01:C4DE`–`C50E` (779K), `00:E01F`–`E07B` (770K),
+   `09:60C7`–`6127` (690K). Each is about 0.06% of the route. Three entries
+   that used to head this list — `08:40DE`–`41AB` with `08:4085`–`4094` at
+   "2.8M", `01:C5C8`–`C770` at "1.6M", `03:6001`–`6053` at "883K" — were
+   boundary instructions and resumption around routines that were already
+   native.
+15. **Boot and reset path.** Off the census route's hot path but required.
+16. **The frame-sync spin loop** (584.8M). Trivial code, but it is where the
    native frame boundary ends up living — do it with phase 3, not before.
 
 ### Phase 2 — native device models
 
-- **Joypad.** The smallest of the three and now a phase-1 blocker rather than
-  a nicety: `00:E195` cannot be ported until `$1000` reads can be answered
-  natively. Model the strobe/select protocol against the `InputFrame` the host
-  already supplies to `run_frame`. Acceptance: the pad reader's transcript
-  diffs clean against assembly, which also settles 6.9M of phase 1.
+- **Joypad.** Largely **done**, and it turned out not to need a device model at
+  all. `00:E195` models the strobe/select protocol inside its own walk against
+  the `InputFrame` the host already supplies to `run_frame`, now carried on
+  `RoutineEntry`; the transcript diffs clean against assembly in the pad bytes
+  and in the `$1000` writes themselves, and it settled 6.9M of phase 1. What
+  remains for this phase is owning the port rather than mirroring it — reading
+  the host's input directly instead of through the core's `current_input_`,
+  which happens when the frame loop goes native.
 - **PSG.** Accept `$0800`–`$0809`, model the six channels, DDA output, noise
   and LFO, and produce the `AudioView` float samples. Acceptance:
   `audio_sha256`. This is the larger of the two, because Beetle's PSG

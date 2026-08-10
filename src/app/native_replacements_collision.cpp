@@ -3198,6 +3198,15 @@ replace_collision_consumer_no_hit(
         table_entry,
         work_ram,
         rom);
+    // The interpreter has four `RTS` instructions -- $6988, $6994, $69A1 and
+    // $6A37 -- and this route only ever reaches the two named here. Lifting the
+    // restriction changes nothing measurable: admission stays at 20,862 of
+    // 20,867 and all three artifacts hash identically, because no call returns
+    // through the other two. It stays because the other two are unexercised,
+    // not because the code behind it is specific to these -- both post-`RTS`
+    // boundaries below take the address from the child. That is what `03:73A6`
+    // failed to do, and the gate that hid it there was a body-length gate,
+    // which this is not.
     if (!table
         || table->return_instruction.physical_bank != 0x03U
         || (table->return_instruction.logical_pc != 0x6988U

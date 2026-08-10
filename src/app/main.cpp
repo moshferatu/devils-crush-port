@@ -2745,7 +2745,12 @@ parse_logical_address_range(const std::string_view text)
                            && request.all_calls;
                        const bool proven_music_sequencer =
                            request.routine.physical_bank == 0x45U
-                           && (request.routine.logical_pc == 0x4142U
+                           && (request.routine.logical_pc == 0x4015U
+                               || request.routine.logical_pc == 0x4044U
+                               || request.routine.logical_pc == 0x409CU
+                               || request.routine.logical_pc == 0x413BU
+                               || request.routine.logical_pc == 0x4142U
+                               || request.routine.logical_pc == 0x4143U
                                || request.routine.logical_pc == 0x4211U
                                || request.routine.logical_pc == 0x4228U
                                || request.routine.logical_pc == 0x457AU
@@ -2784,7 +2789,8 @@ parse_logical_address_range(const std::string_view text)
                                || request.routine.logical_pc == 0xE123U
                                || request.routine.logical_pc == 0xE136U
                                || request.routine.logical_pc == 0xE179U
-                               || request.routine.logical_pc == 0xE183U)
+                               || request.routine.logical_pc == 0xE183U
+                               || request.routine.logical_pc == 0xE195U)
                            && request.all_calls;
                        const bool proven_vram_upload =
                            request.routine.physical_bank == 0x00U
@@ -6203,21 +6209,31 @@ struct NativeRegistryDeployment {
 
 // Admitted routines that are nonetheless withheld from a composed deployment.
 //
-// Both of these pass an @all regression, but each one alone moves the state
-// census off the assembly-only baseline 9036a9de..., and each one's own
-// regression blesses the moved hash rather than the baseline. Whatever they
-// change is therefore locked in by their evidence instead of caught by it, so
-// they are not eligible for live play or for a faithful cycle measurement.
-// Their own regressions still exercise them through --replace-hook, which is
-// how they should be studied until the divergence is understood.
-constexpr std::array kWithheldRoutines{
-    // Excluding 03:6054 leaves exactly the census that
-    // verify_sorcerer_color_gate_semantic expects.
-    RoutineKey{.physical_bank = 0x02U, .logical_pc = 0x57E9U},
-    // Excluding 02:57E9 leaves exactly the census that
-    // verify_tower_insect_animation_semantic expects.
-    RoutineKey{.physical_bank = 0x03U, .logical_pc = 0x6054U},
-};
+// This is empty, and the mechanism stays for the next routine that needs it.
+// A routine belongs here when it passes an @all regression but moves the state
+// census off the assembly-only baseline 9036a9de..., and its own regression
+// blesses the moved hash rather than the baseline: what it changes is then
+// locked in by its evidence instead of caught by it, so it is not eligible for
+// live play or for a faithful cycle measurement.
+//
+// Both former entries turned out to be replacement faults rather than
+// properties of the routines, and both were the same shape -- a boundary
+// charged the wrong number of cycles, with the error taken back off a later
+// instruction so the body total stayed right. A correct total is why the state
+// census could see that something was wrong and never where.
+//
+//   03:6054  `ADC $26` charged 9 master cycles instead of 12, putting both
+//            remaining writes three cycles early; the taken branch at 606E was
+//            charged 15 to absorb it. One write-trace diff against assembly,
+//            scoped to the four addresses the routine touches plus the stack,
+//            localised it to two rows.
+//   02:57E9  `CMP $3980,X` charged 18 instead of 15, with the taken branch
+//            charged 9 to absorb it -- and the checkpoint after `LDA $2D40`
+//            published the caller's N and Z instead of the load's. This
+//            routine writes nothing at all, so no write trace could have shown
+//            the second fault; it is visible only as the status an interrupt
+//            stacks when it lands on that boundary.
+constexpr std::array<RoutineKey, 0U> kWithheldRoutines{};
 
 // Installs every admitted routine that is neither withheld nor already claimed
 // by an explicit hook. The recording paths and the interactive host share this
@@ -6340,15 +6356,19 @@ void print_native_registry_summary(
         native_cycles += row.native_master_cycles;
     }
     const auto elapsed = deployment.span.elapsed();
-    if (!kWithheldRoutines.empty()) {
+    if (kWithheldRoutines.empty()) {
+        std::cout << "Registry hold-backs: none; every admitted routine is "
+                     "deployed.\n";
+    } else {
         std::cout << "Registry hold-backs: ";
         for (std::size_t index = 0U; index < kWithheldRoutines.size();
              ++index) {
             std::cout << (index == 0U ? "" : ", ")
                       << format_routine_key(kWithheldRoutines[index]);
         }
-        std::cout << " withheld; each moves the state census off the "
-                     "assembly baseline.\n";
+        std::cout << " withheld; "
+                  << (kWithheldRoutines.size() == 1U ? "it moves" : "each moves")
+                  << " the state census off the assembly baseline.\n";
     }
     std::cout << "Registry deployment: " << deployed << " of "
               << deployment.rows.size() << " admitted routines installed, "

@@ -10,7 +10,7 @@ and cycle role are understood.
 
 | Routine | Observations | Status | Evidence |
 | --- | ---: | --- | --- |
-| `00:E195` | Canonical: 599, frames 2-600. Gameplay: 1,799, frames 2-1,800. | Controller poll | Reads the PCE controller I/O register, selects controller nibbles, and updates the controller state arrays in work RAM. Beetle and Mesen agree exactly in both recordings. |
+| `00:E195` | Canonical: 599, frames 2-600. Gameplay: 1,799, frames 2-1,800. | Controller poll | Reads the PCE controller I/O register, selects controller nibbles, and updates the controller state arrays in work RAM. Beetle and Mesen agree exactly in both recordings. Native since the pad-reader slice. |
 
 ## Canonical screen-flow candidates
 
@@ -445,7 +445,7 @@ The subroutines the tick calls, and their cost on the census route:
 | `48B4` | 25,968 | 1,771,122 | Sequence-data fetch, the shared command decoder |
 | `49A2` | 22,664 | 1,239,765 | Vibrato accumulator update |
 | `49F9` | 22,664 | 8,577,900 | Voice commit; drives `$0800`/`$0804` |
-| `4142` | 3,599 | 7,404,498 | PSG register programmer |
+| `4142` | 3,599 | 7,404,498 | PSG register programmer, chunked at `4143` |
 | `457A` | 2,299 | 1,690,857 | Command interpreter; calls `4522`/`4569`/`46D7` |
 | `46D7` | 2,254 | 1,203,030 | Note to period, and the sample trigger at `4776` |
 | `4228` | 1,142 | 1,326,999 | Portamento/sweep stepper; shares `46D7`'s tail |
@@ -479,6 +479,14 @@ the driver's per-channel bank bytes; `4142` clears one at `4151` to release a
 channel, and at `415A`-`4165` reads all three and stops the timer through
 `$0C01` when every channel has fallen idle. That read-modify is why each
 iteration runs under `SEI`.
+
+The channel walk is a loop with `4143` at its head and `41F7` closing it with a
+`JMP $4143`, which is where the port chunks it. `4143` is a registry entry in
+its own right for that reason, and the reason it is a legal boundary is in the
+bracket: the `PLP` at `41F1` restores the caller's mask before control reaches
+`41F7`, so the top of an iteration is a point the hardware may take an
+interrupt at anyway. Iterations are 390 master cycles plain and 2,190 for one
+that uploads a waveform, against a 5,068-cycle timer period.
 
 `45:457A` is the third piece worth reading: the command interpreter, and the
 only part of the bank that reads the music data itself. It points `$D0`/`$D1`
@@ -606,12 +614,21 @@ pad reader `00:E195`, bumps the frame counter at `$222A`/`$222B`, and calls
 sequencer. On the standard route that is 3,599 VBlank entries and 3,599
 raster entries.
 
-Neither `00:E058` nor `00:E195` can be a transcript, and for the same reason:
-both read a device register. `E058`'s first act is `LDA $0000`, and `E195`
-strobes the joypad at `$1000` and reads it back five times a frame, once per
-multitap port, shifting the low nibble of each read into `$2013,Y` and
-computing newly-pressed bits into `$2018,Y`. A replacement callback sees work
-RAM and registers and nothing else, so both wait on a native device model.
+`00:E058` cannot be a transcript: its first act is `LDA $0000`, the VDC status
+register, which reports what the display is doing. That waits on a native
+device model.
+
+`00:E195` was listed here beside it for the same reason, and the reason did not
+hold. It strobes the joypad at `$1000` and reads it back five times a frame,
+once per multitap port, shifting the low nibble of each read into `$2013,Y` and
+computing newly-pressed bits into `$2018,Y` — but what comes back is a function
+of the frame's pad state and of the `SEL`/`CLR` lines it drives itself, both of
+which a walk can know. The port returns `$B0` over the selected pad's four
+lines, active low; the store at `E198` clears `CLR` whatever it held, so the
+store at `E19D` always resets the multitap cursor, and the loop steps the
+cursor once per pass, which makes it the loop counter. `E195` is native and
+admitted on every call. The distinction that survives is between a read whose
+answer is outside input and a read whose answer is device state.
 
 The wrappers around them are ported. There are five, all the same idiom, and
 `$1E`, `$1F`, `$20`, `$21` are the zero-page shadows of MPR2 through MPR5:
@@ -655,6 +672,7 @@ jumps and at the calls the core keeps:
 | `E136` | 3,599 | `E134` | Raster arm: on `$54` of 0 or 2 reprogramme the split from `$0B`/`$0C`, then tick `$222A`/`$222B` |
 | `E179` | 387 | `E180` `JSR $ECC6` | The secondary handler's prologue |
 | `E183` | 387 | `E193` | Its epilogue: restore MPR6, rewrite `$0000` twice, unwind |
+| `E195` | 3,599 | `E1F7` `RTS` | Poll all five ports; publish held state at `$2013,Y`, last frame's at `$200E,Y`, edges at `$2018,Y` |
 
 `E179` is reached only on the frames where `$D9` suppresses the VBlank arm's own
 music call, which is why its 387 entries match `E128`'s exactly.
@@ -4692,11 +4710,16 @@ Collision, multi-pass, remaining interrupt-bearing movement records, and the hit
 assembly-owned. The waiting branch's two JSR stack writes occur at cycle 42,
 matching the original transcript.
 
-Semantic `03:73A6@all` now promotes that compatible subset: all 64
-collision-free, one-pass, no-hit calls on the controlled 129-call route run
-natively, including the checkpointed `73D8` and `73AF` timer-IRQ boundaries.
-Collision/multi-pass and hit records return `nullopt` and remain assembly-
-owned.
+Semantic `03:73A6@all` now runs 128 of the controlled route's 129 calls
+natively, including the checkpointed `73D8`, `73AF` and `73FD` timer-IRQ
+boundaries. The multi-pass restriction above is gone: the parent no longer
+pins its collision child to the single 165-cycle path, because the interpreter
+checkpoints every instruction it walks and the parent takes the child's own
+return instruction — `$6988`, `$6994`, `$69A1` or `$6A37` — rather than
+assuming `$6988`. The `73FD` boundary was added at the same time; without it
+an interrupt landing on the hit gate's return stacked `73CC` instead of
+`73CA`. The one remaining decline is the call whose interpreter returns carry
+set and branches to `73CD`, which is untranscribed.
 
 The collision helper at `03:73D8` decrements the four-hit counter.
 Nonterminal hits emit command `$26` and submit 50 stored units (5,000

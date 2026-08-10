@@ -5825,12 +5825,25 @@ replace_knight_movement_parent(
         .registers = checkpoint,
     };
     auto collision = replace_collision_table_interpreter(collision_entry, staged, rom);
-    // The one-pass collision-free child has a complete 165-cycle transcript.
-    // Longer records can take an IRQ at the interpreter return boundary; keep
-    // those records in assembly until that enclosing interrupt boundary is
-    // composed here.
+    // This used to require the child to be exactly the 165-cycle one-pass
+    // collision-free transcript, on the grounds that a longer record could take
+    // an IRQ at the interpreter return boundary. That was true of an atomic
+    // child. The interpreter is an instruction-boundary transcript now: it
+    // checkpoints every instruction it walks, so a longer child brings more
+    // boundaries across rather than fewer, and there is no stretch of this
+    // transcript an interrupt cannot land in. What the length gate was really
+    // standing in for is the two things below -- the child's own return
+    // instruction, which the 165-cycle transcript always reached at $6988 and a
+    // longer one need not, and the transaction caps.
+    constexpr std::size_t kMaximumCheckpoints = 2048U;
+    constexpr std::size_t kMaximumWrites = 512U;
     if (!collision || collision->checkpoints.empty()
-        || collision->body_master_cycles != 165U) {
+        || collision->return_instruction.physical_bank != 0x03U
+        || replacement.checkpoints.size() + collision->checkpoints.size()
+            >= kMaximumCheckpoints
+        || replacement.work_ram_writes.size()
+                + collision->work_ram_writes.size()
+            >= kMaximumWrites) {
         return std::nullopt;
     }
     for (const auto& write : collision->work_ram_writes) {
@@ -5847,10 +5860,14 @@ replace_knight_movement_parent(
     checkpoint = collision->output_registers;
     checkpoint.stack_pointer = static_cast<std::uint8_t>(checkpoint.stack_pointer + 2U);
     const auto collision_end = kCollisionOffset + collision->body_master_cycles;
-    // The collision child's return instruction is an RTS at 6988. Its 21
-    // master cycles expose caller PC 73AF before the parent's carry branch;
-    // checkpoint both boundaries so an IRQ stacks the same return PC as ROM.
-    append_checkpoint(0x6988U, 0x73AFU, collision_end + 21U, checkpoint);
+    // The collision child stops in front of its own RTS, which is this walk's
+    // to transcribe. The interpreter has four of them -- $6988, $6994, $69A1
+    // and $6A37 -- so take the address from the child rather than assuming the
+    // one the 165-cycle transcript always reached. Its 21 master cycles expose
+    // caller PC 73AF before the parent's carry branch; checkpoint both
+    // boundaries so an IRQ stacks the same return PC as ROM.
+    append_checkpoint(collision->return_instruction.logical_pc, 0x73AFU,
+        collision_end + 21U, checkpoint);
     append_checkpoint(0x73AFU, 0x73B1U, collision_end + 27U, checkpoint);
 
     const auto timer = static_cast<std::uint8_t>(parent.timer - 1U);
@@ -5983,6 +6000,11 @@ replace_knight_movement_parent(
     const auto hit_end = hit_gate_offset + hit_gate->body_master_cycles;
     checkpoint.stack_pointer = static_cast<std::uint8_t>(checkpoint.stack_pointer + 2U);
     append_checkpoint(0x73CAU, 0x73CCU, hit_end + 12U, checkpoint);
+    // The boundary the hit gate's own `RTS` lands on. Nothing reached it while
+    // only the 165-cycle child was admitted, so its absence was invisible; an
+    // interrupt that arrives here has to stack 73CA, and without a checkpoint
+    // for it the core defers to the one after the branch and stacks 73CC.
+    append_checkpoint(0x73FDU, 0x73CAU, hit_end + 24U, checkpoint);
     checkpoint.program_counter = 0x73CCU;
     // An IRQ after the carry-clear branch resumes at the outer RTS, but the
     // original handler attributes its stacked return to the branch at 73CA.
@@ -6269,24 +6291,30 @@ replace_tower_insect_animation(
     checkpoint.status = static_cast<std::uint8_t>(checkpoint.status & 0xFEU);
     append_checkpoint(replacement, 0x6061U, 0x6062U, 66U, checkpoint);
 
+    // `ADC $26` is zero page and costs 12, the same as the `STA $26` at 605A
+    // that this walk already charges 12. It was charged 9, which put every
+    // boundary from here to 606B three master cycles early -- including both
+    // remaining writes -- and the taken branch at 606E was charged 15 to
+    // absorb it. The two errors cancel in the body total, so the routine ended
+    // at the right cycle and only the writes inside it were misplaced.
     checkpoint.accumulator = lookup_index;
     checkpoint.status = set_adc(
         checkpoint.status, masked_phase, doubled_cadence);
-    append_checkpoint(replacement, 0x6062U, 0x6064U, 75U, checkpoint);
+    append_checkpoint(replacement, 0x6062U, 0x6064U, 78U, checkpoint);
 
     checkpoint.y = lookup_index;
-    append_checkpoint(replacement, 0x6064U, 0x6065U, 81U, checkpoint);
+    append_checkpoint(replacement, 0x6064U, 0x6065U, 84U, checkpoint);
 
     checkpoint.accumulator = animation.frame;
     checkpoint.status = set_nz(checkpoint.status, checkpoint.accumulator);
-    append_checkpoint(replacement, 0x6065U, 0x6068U, 96U, checkpoint);
+    append_checkpoint(replacement, 0x6065U, 0x6068U, 99U, checkpoint);
     add_write(
         replacement,
         0x6068U,
         static_cast<std::uint16_t>(0x3980U + animation.slot),
         animation.frame,
-        111U);
-    append_checkpoint(replacement, 0x6068U, 0x606BU, 111U, checkpoint);
+        114U);
+    append_checkpoint(replacement, 0x6068U, 0x606BU, 114U, checkpoint);
 
     checkpoint.status = set_nz(
         checkpoint.status, animation.decremented_timer);
@@ -6295,8 +6323,8 @@ replace_tower_insect_animation(
         0x606BU,
         static_cast<std::uint16_t>(0x3A00U + animation.slot),
         animation.decremented_timer,
-        132U);
-    append_checkpoint(replacement, 0x606BU, 0x606EU, 132U, checkpoint);
+        135U);
+    append_checkpoint(replacement, 0x606BU, 0x606EU, 135U, checkpoint);
 
     if (animation.path == DC_TOWER_INSECT_ANIMATION_WAITING) {
         checkpoint.program_counter = 0x6078U;
@@ -7542,9 +7570,23 @@ replace_sorcerer_color_gate(
         };
     auto checkpoint = entry.registers;
     checkpoint.accumulator = gate.shared_color;
+    // `LDA $2D40` sets N and Z. Publishing the caller's flags here instead put
+    // the wrong status on the stack for any interrupt that landed on this
+    // boundary -- and this routine writes nothing, so a write trace could
+    // never have shown it.
+    checkpoint.status = static_cast<std::uint8_t>(checkpoint.status & 0x7DU);
+    if (gate.shared_color == 0U) {
+        checkpoint.status = static_cast<std::uint8_t>(checkpoint.status | 0x02U);
+    } else if ((gate.shared_color & 0x80U) != 0U) {
+        checkpoint.status = static_cast<std::uint8_t>(checkpoint.status | 0x80U);
+    }
     append_checkpoint(0x57E9U, 0x57ECU, 15U, checkpoint);
     checkpoint.status = output.status;
-    append_checkpoint(0x57ECU, 0x57EFU, 33U, checkpoint);
+    // `CMP $3980,X` is absolute-indexed and costs 15, not 18. The extra three
+    // cycles were taken back off the taken branch below, which charged 9
+    // instead of 12, so the 42-cycle body was right and only this boundary
+    // moved.
+    append_checkpoint(0x57ECU, 0x57EFU, 30U, checkpoint);
     append_checkpoint(0x57EFU, 0x57F7U, 42U, output);
     return replacement;
 }

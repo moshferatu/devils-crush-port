@@ -1239,16 +1239,20 @@ replace_bank_call_wrappers(
     std::span<const std::byte> work_ram,
     std::span<const std::byte> rom);
 
-// The VDC interrupt handler's body. One walk shared by six entry points: the
+// The VDC interrupt handler's body. One walk shared by seven entry points: the
 // two arms 00:E058 dispatches to, the two addresses the VBlank arm's calls come
-// back to, and the secondary handler's prologue and epilogue. Every transcript
-// stops in front of a call or an RTI the core executes itself. The dispatcher
-// at 00:E058 is not here: it decides on a byte read from the VDC status
-// register, which no replacement can see.
+// back to, the secondary handler's prologue and epilogue, and the pad reader at
+// 00:E195 that the VBlank arm calls. Every transcript stops in front of a call,
+// an RTS or an RTI the core executes itself. The dispatcher at 00:E058 is not
+// here: it decides on a byte read from the VDC status register, which no
+// replacement can see. The pad reader is the exception that proves the rule --
+// it reads a device too, but the joypad's answer is a function of the frame's
+// pad state, which the entry carries, so the walk can compute it.
 [[nodiscard]] std::optional<emulation::RoutineReplacement>
 replace_vblank_handler(
     const emulation::RoutineEntry& entry,
-    std::span<const std::byte> work_ram);
+    std::span<const std::byte> work_ram,
+    std::span<const std::byte> rom);
 
 // The graphics driver's three port-streaming loops: the VRAM clear at 00:E3C0,
 // the VCE clear at 00:E3FC and the generic word-stream decoder at 00:E41F. One

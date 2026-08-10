@@ -272,9 +272,41 @@ does not have to reproduce any temporal context at all, because the child emits
 the same checkpoints and the same writes wherever it is called from. The
 Sorcerer tick composes it at two sites and the consumer at `03:7F57` at one, all
 three verified against assembly. The "nested-call timing adapter" this section
-asks for turned out not to be a thing that needs building. Screen the Spider
-parents again on the current child; nothing in the recorded objection survives
-it.
+asks for turned out not to be a thing that needs building.
+
+**Re-screened.** Nothing in the recorded objection survives, and the parents are
+smaller than the table above makes them look. Each is nine instructions:
+
+```
+6490  LDA #$2A        651F  LDA #$2C
+6492  LDY $3C80,X     6521  LDY $3C80,X
+6495  BEQ $6499       6524  BEQ $6528
+6497  LDA #$2B        6526  LDA #$2D
+6499  JSR $6966       6528  JSR $6966
+649C  JSR $65A4       652B  JSR $65A4
+649F  LDA $3800,X     652E  LDA $3800,X
+64A2  BMI $64A5       6531  BMI $6534
+64A4  RTS             6533  RTS
+```
+
+Both children are 100% transcripts on the route — `03:6966` admits 14,307 of
+14,307 with zero horizon declines and `03:65A4` all 5,441 — so there is no
+temporal context to reproduce and the splice is the one the Sorcerer tick
+already performs, twice. Front's `BMI` tail at `64A5` is taken 3 times in
+3,600 frames and can simply end the walk; Side's at `6534` is never taken.
+
+What the re-screen also establishes is that the prize is small. The 1.85M and
+1.97M in the table are inclusive of the children, which are already native.
+The parents' own bodies are 312,084 and 330,060 master cycles, 642,144
+together, **0.05% of the route**, and the two `RTS` instructions handed back
+take about 115,000 of that off again. There is no caller to compose them into
+either: the addresses `$6490` and `$651F` do not occur anywhere in the 384KB
+ROM image, so both are reached by computed dispatch and porting them removes
+no call boundary above.
+
+So the objection is dead and the slice is worth roughly 0.04% net. Priced, not
+deferred: it is available whenever completeness matters more than share, which
+is the position the port ends in.
 
 ## Small-Soldier source-gate pilot
 
@@ -1704,6 +1736,32 @@ collision-free, one-pass, no-hit calls exercised by the controlled 129-call
 route, including its `73D8` and collision-return `73AF` timer-IRQ boundaries.
 Collision/multi-pass and hit records still return to assembly automatically.
 
+> **Superseded, and the gate it describes was hiding a defect rather than
+> avoiding one.** "The complete compatible subset" was 64 of 129 because the
+> parent required the interpreter's transcript to be exactly the 165-cycle
+> one-pass collision-free path. That requirement was recorded as protection
+> against a longer child taking an interrupt at the return boundary, which
+> stopped being a hazard when the interpreter became an instruction-boundary
+> transcript — it checkpoints every instruction it walks, so a longer child
+> brings more boundaries across, not fewer.
+>
+> Lifting the gate raised admission to 128 of 129 and moved both the state
+> census and the write trace. The cause was not the child at all: the parent's
+> own tail had no checkpoint for the boundary the hit gate's `RTS` at `73FD`
+> lands on. An interrupt arriving there was deferred to the next checkpoint,
+> the one after the branch at `73CA`, and stacked `73CC` where ROM stacks
+> `73CA`. That defect was already in the 64 admitted calls; none of them
+> happened to take an interrupt at that boundary, so no artifact ever saw it.
+> The gate was keeping the walk inside the one child length whose calls never
+> crossed it.
+>
+> With the missing boundary transcribed, `03:73A6@all` admits 128 of 129 with
+> the state census, call trace and write trace all identical to assembly. The
+> one decline is call 129, where the interpreter returns carry set and the
+> parent branches to `73CD`; that path is untranscribed, not blocked. **A
+> guard that has never been crossed is not evidence that what is behind it
+> works.**
+
 ## Tower Guard open-entrance collision screen
 
 The Tower Guard's documented open selector was independently tested by setting
@@ -2505,6 +2563,53 @@ the transcript:
   cycles is admitted 49.7% of the time, which is close to the 59% a uniform
   arrival would predict. Anything past the period is admitted never.
 
+**Superseded on both grounds, and this one is worth reading in full, because
+the section above is the most confident wrong answer in this document.** The
+chunking re-screen took it apart:
+
+- **The body is the wrong body.** `45:4015`'s body is a loop. `45:4044` is the
+  head, `45:40FF` is a `JMP $4044` that closes it, and the profile gives the
+  shape exactly: 32,391 iterations over 3,599 calls, 28,792 continuing, 3,599
+  exiting — one clean exit per call. Chunked at the head, the unit that must
+  fit the timer period is one voice iteration at **1,137 composed master
+  cycles** (12,728,115 of the tick's own instructions plus 24,091,110 of
+  already-native callees, over 32,391 iterations). The arithmetic that
+  predicted 0 of 3,599 predicts about 78% of 32,391.
+- **The voice loop does not reach `4148`.** `JSR $4142` occurs exactly once in
+  the bank, at `45:4138`, which is *past* the loop's closing jump. `4148`'s
+  10,812 executions are three per call of `4142` — once per tick, in the tail
+  — not three per iteration of the voice loop. Every branch in `4044`-`4101`
+  targets an address inside the loop or the exit at `4102`. The walk
+  accordingly stops in front of `4138` and leaves `4142` to be entered on its
+  own, exactly as it is today, with its own guard.
+
+**The second bullet reached the right conclusion by the wrong route, and the
+port found out the hard way.** The re-screen that produced it concluded the
+loop chunks read no driver state at all. They do: the amplitude commit at
+`45:49D2` reads `$20F5,Y`, and both `49B6` and `49F9` run it, so every voice
+iteration touches driver state. The recorded rejection was therefore right that
+the tick is subject to the guard, and wrong only about which instruction
+imposes it — a distinction that would have stayed invisible if the port had not
+been attempted.
+
+That makes the section's conclusion wrong for a subtler reason than "it used
+the wrong body", and the correction is the useful part. **The guard is a
+deadline, not a cap.** Length is not the problem and chunking does not solve it
+by making transcripts shorter in the abstract; it solves it by making each
+chunk land inside the horizon it was handed. The walk stops at the loop's
+closing jump once one more iteration would not fit before the next serviceable
+timer interrupt, the core takes the jump and the interrupt, and the next chunk
+starts against a fresh horizon. 24,667 of the route's 32,391 iterations now run
+inside a transcript, and the tick is native at `+13,017,489`.
+
+What makes this worth its length is that the section was *methodologically*
+right — check the blockers before writing the transcript, use execution counts,
+two queries and no code — and still produced a stopping point that cost four
+slices, because the queries were run against the routine when the contract only
+ever constrained a transcript, and because the read they were justified by was
+never located. A cheap check aimed at the wrong quantity is not cheaper than no
+check.
+
 Five lessons generalise:
 
 - **A call-graph pass is cheap and changes the plan.** Sixteen `JSR` targets
@@ -2531,10 +2636,12 @@ Five lessons generalise:
   the stack range, and the census matched either way because the handler
   restores `P` on the way out. `PLP` has to defer the mask and only the mask —
   see [the workflow note](NATIVE_PORT_WORKFLOW.md#plp-defers-the-mask-and-only-the-mask).
-- **Price the blockers before writing the transcript.** Two profile queries
-  showed `45:4015` would be admitted on none of its 3,599 calls, which turned
-  the bank's obvious next slice into a documented stopping point and sent the
-  effort somewhere it paid.
+- **Price the blockers before writing the transcript — against the transcript
+  you would actually write.** Two profile queries showed `45:4015` would be
+  admitted on none of its 3,599 calls, which turned the bank's obvious next
+  slice into a documented stopping point and sent the effort somewhere it
+  paid. The effort did pay, and the stopping point was still an artifact of
+  pricing a routine the contract never constrains. Price the chunk.
 
 ## The palette shadow buffer, and a lumped inventory row
 
@@ -2939,6 +3046,22 @@ since before transcripts existed, and it was blocking 1.5M cycles the whole
 time. The rejections that stay valid are the ones that name a *structural*
 reason — a device read, a call the transcript cannot contain, a body longer
 than the caps — not the ones that name a property of the data.
+
+> **The last item in that list is wrong, and it was wrong when it was written.**
+> "A body longer than the caps" is not a structural reason, because the caps
+> bound a transcript and a routine whose body is a loop can be as many
+> transcripts as it needs. That clause is the sentence that kept `00:EAA7`
+> rejected for three slices and `45:4015` for four, and both are the same
+> mistake this section was written to warn about — measuring a length against a
+> cap and reading the answer as a property of the code. The structural
+> rejections are the ones where **no cut point exists**: a device read, a call
+> the transcript cannot contain, a wait on another routine's loop (the two
+> fade drivers at `00:E94D` and `00:EA77`, which spin for twenty-one frames),
+> or a single instruction that overruns a channel by itself — `00:EB30`'s
+> whole-palette `TIA` moves 512 bytes in one opcode, and a checkpoint can only
+> cut at an instruction boundary, so there is nowhere to put the cut. Length
+> is a budgeting question. Ask where the loop head is before calling it
+> anything else.
 
 ## Use on future families
 

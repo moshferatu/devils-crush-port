@@ -16,9 +16,9 @@ endif()
 # callback cannot read -- but nothing downstream of the read needs the device
 # again, so the bodies are.
 #
-# Six entry points share one walk: the two arms the dispatcher jumps to, the two
-# addresses the VBlank arm's calls come back to, and the secondary handler's
-# prologue and epilogue.
+# Seven entry points share one walk: the two arms the dispatcher jumps to, the
+# two addresses the VBlank arm's calls come back to, the secondary handler's
+# prologue and epilogue, and the pad reader one of those calls goes to.
 #
 #   00:E0EB  VBlank prologue: program VDC registers $08/$07/$05 from the RAM
 #            shadows, then stop at the JSR $EB30
@@ -29,8 +29,26 @@ endif()
 #            raster modes 0 and 2, then bump the 16-bit tick at $222A
 #   00:E179  the secondary handler's prologue, down to its JSR $ECC6
 #   00:E183  its epilogue: restore MPR6, rewrite $0000 twice and unwind
+#   00:E195  the pad reader: poll all five ports and publish the held state at
+#            $2013,Y, the previous frame's at $200E,Y and the edges at $2018,Y
 #
-# All six are admitted on every call.
+# All seven are admitted on every call.
+#
+# `00:E195` is the one routine in the port that reads a device rather than only
+# writing one, and it was left out for four slices on the rule that a
+# replacement callback cannot see a device register. The rule is about the
+# callback, not about the value. What the joypad answers is a function of two
+# things the walk does know: the pad state for the frame, which the entry now
+# carries because it is the same object the core answers from, and the SEL and
+# CLR latch lines, which this routine drives itself through $1000. So the walk
+# models the port instead of reading it -- $B0 over the selected pad's four
+# lines, active low, with the multitap's cursor stepped by the same rule
+# MultiTapWrite uses -- and the four writes to $1000 go out on the write
+# channel so the port is left where assembly would have left it.
+#
+# That is what the $1000 bus range and the $200E-$201C work-RAM range below are
+# for. The port writes pin the latch sequence and the pad bytes pin what the
+# model computed, both against assembly, for all 3,599 calls.
 #
 # Each walk stops one instruction short of its RTI, in front of the PLP that
 # restores the interrupted status byte, and that is the point this regression
@@ -38,7 +56,7 @@ endif()
 # I set, but bank 45 ends three critical sections with an unconditional CLI
 # instead of restoring the caller's mask, so the music tick below 00:ECC6 hands
 # the handler back with interrupts enabled. 78 of the route's interrupt entries
-# land inside these six walks. PLP is the only instruction here that
+# land inside these walks. PLP is the only instruction here that
 # changes I, and the core samples the IRQ at LastCycle -- before PLP pops -- so a
 # transcript that covered it would sample with the restored flag and swallow an
 # interrupt assembly services between the PLP and the RTI. Nothing in the state
@@ -58,11 +76,11 @@ set(
 )
 set(
     expected_write_sha256
-    "89b2547bd06104b8fdf32da5b3a8a469d62851a8f7d75c9dda134ff64a21e34e"
+    "69dc205455c9073c163bf02b846317d234522cadecc4eb9182e24a0495ca92cd"
 )
 set(
     expected_bus_sha256
-    "1221e1687b256ca6621bd2088de29a1ceed4c0ad0d05d7c75d9107df825d7005"
+    "adc3b5cca8ec8244b0cd31067a9b53e585fed631d390534e0c0fecf5617e1a70"
 )
 
 set(write_output "${OUTPUT}.writes.csv")
@@ -85,8 +103,12 @@ execute_process(
         "00:E179@all"
         --replace-hook
         "00:E183@all"
+        --replace-hook
+        "00:E195@all"
         --work-ram-write-range
         "2000-2002"
+        --work-ram-write-range
+        "200E-201C"
         --work-ram-write-range
         "20D9-20DA"
         --work-ram-write-range
@@ -97,6 +119,8 @@ execute_process(
         "${write_output}"
         --bus-write-range
         "0000-0003"
+        --bus-write-range
+        "1000-1000"
         --bus-write-trace
         "${bus_output}"
         --rom
@@ -121,8 +145,9 @@ foreach(expected_line IN ITEMS
     "Native replacement 00:E136@all entries: 3599 of 3599"
     "Native replacement 00:E179@all entries: 387 of 387"
     "Native replacement 00:E183@all entries: 387 of 387"
-    "Work-RAM write trace complete: 4989037 selected writes"
-    "Bus write trace complete: 2036234 selected writes"
+    "Native replacement 00:E195@all entries: 3599 of 3599"
+    "Work-RAM write trace complete: 5061032 selected writes"
+    "Bus write trace complete: 2079422 selected writes"
 )
     string(FIND "${recorder_output}" "${expected_line}" line_offset)
     if(line_offset EQUAL -1)
@@ -157,8 +182,10 @@ endforeach()
 
 message(
     STATUS
-    "Semantic VDC interrupt handler runs all six entry points natively across "
-    "13,932 admitted entries as instruction-boundary transcripts, with the "
+    "Semantic VDC interrupt handler runs all seven entry points natively across "
+    "17,531 admitted entries as instruction-boundary transcripts, with the "
     "frame counter, the raster tick, the zero-page shadows, the whole stack "
-    "page, every VDC register write and the state census identical to assembly."
+    "page, the five pads' held and newly-pressed state, every VDC register "
+    "write, every joypad latch write and the state census identical to "
+    "assembly."
 )

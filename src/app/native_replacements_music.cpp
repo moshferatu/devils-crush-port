@@ -20,14 +20,23 @@ using emulation::RoutineReplacement;
 // maintaining the per-voice records in $2E00-$2FFF.
 //
 // Unlike the driver it is not flat. Its per-frame tick at 45:4015 walks the
-// voices and calls sixteen subroutines, so the port is incremental: each entry
-// below is a subroutine registered on its own, and the walk inlines any
-// nested call it makes. The tick itself, and the eight subroutines it reaches
-// that are not listed here, stay emulated for now.
+// voices and calls sixteen subroutines, so the port was incremental: each
+// entry below is a subroutine registered on its own, and the walk inlines any
+// nested call it makes.
 //
-// This slice ports the sample/envelope group -- the routines the voice walk
-// calls once per voice per frame, which is where the bank's time actually
-// goes:
+// The tick is now here too, and with it the bank's top level. It was recorded
+// as unportable for four slices, on two grounds that both turned out to be
+// wrong -- see the block at case 0x4015U below. In short: the body that has to
+// fit the timer period is a transcript's, and the tick's body is a loop that
+// chunks at 4044 like any other; and the voice loop never reads the driver's
+// channel bank bytes, because the bank's only JSR $4142 is at 4138, past the
+// loop's closing jump. Since every routine the loop calls is already a case in
+// this same switch, composing them is ordinary control flow rather than the
+// spliced child transcripts the Sorcerer tick needs.
+//
+// The earlier slices ported the sample/envelope group -- the routines the
+// voice walk calls once per voice per frame, which is where the bank's time
+// actually goes:
 //
 //   45:48B4  sequence-data fetch, the shared command decoder
 //   45:4883  pitch/period update           (inlines 48B4)
@@ -42,7 +51,12 @@ using emulation::RoutineReplacement;
 //            tail at $4705-$4882 with the command interpreter at 45:457A
 //
 // Together they are 31.7M of the bank's 46.1M master cycles on the census
-// route.
+// route, and the tick's own instructions are a further 13.8M.
+//
+//   45:4015  the per-frame tick, entered once a frame from outside the bank
+//   45:4044  the head of its voice loop, and the chunk head
+//   45:409C  where it resumes after 45:4936, which is not transcribed here
+//   45:413B  where it resumes after 45:4142
 constexpr std::uint8_t kBank = 0x45U;
 
 constexpr std::uint8_t kCarry = 0x01U;
@@ -80,6 +94,66 @@ constexpr std::uint16_t kTimerControl = 0x0C01U;
 constexpr std::uint16_t kDriverChannelBankFirst = 0x20F5U;
 constexpr std::uint16_t kDriverChannelBankLast = 0x20FAU;
 
+// Where a 45:4015 chunk stops.
+//
+// The two channel budgets are the lesser reason. The walk below refuses itself
+// past 1,800 checkpoints and 480 writes, inside the core's 2,048 and 512, and
+// these leave a whole voice iteration of headroom under both.
+//
+// The reason that actually decides the tick is the interrupt horizon. Every
+// voice iteration commits its amplitude through 49D2, which reads the timer
+// driver's channel bank byte at $20F5,Y, so `reads_driver_state` is set on
+// essentially every transcript that runs the loop even once -- the guard the
+// bank has carried since 4142 was ported. A whole call is about 12,667 master
+// cycles against a timer period of 5,068, so an unchunked tick transcript is
+// refused by that guard on every call, which is exactly the arithmetic the
+// docs recorded as proof the routine could not be ported at all. It is proof
+// about one transcript. Cutting the walk so that each chunk lands inside the
+// horizon it was handed is the whole slice: the walk stops at the loop's
+// closing jump once one more iteration would not fit before the next
+// serviceable timer interrupt, the core takes the jump and the interrupt, and
+// the next chunk starts against a fresh horizon.
+//
+// One iteration measured 1,137 composed master cycles on this route; the
+// margin here is rounded up from that, because the stop has to be decided
+// before the iteration runs rather than after.
+constexpr std::size_t kChunkCheckpoints = 1200U;
+constexpr std::size_t kChunkWrites = 340U;
+constexpr std::uint32_t kIterationMasterCycles = 1600U;
+
+// Where a 45:4142 chunk stops.
+//
+// The same guard refuses this routine for the same reason, and it was left
+// refusing half its arrivals on the grounds that a whole call averages 2,055
+// master cycles against the same 5,068-cycle timer period. That is again an
+// argument about one transcript. 4142 is a loop too -- 4143 is its head, 41F7
+// closes it with a JMP $4143, and one channel is 370 composed master cycles on
+// average -- so it chunks exactly as the tick does.
+//
+// The margin has to cover the worst iteration rather than the average, because
+// the stop is decided before the iteration runs, and it is worth being exact
+// about which one. Iterations here come in two sizes. A plain one is 390 master
+// cycles; one whose voice changed waveform runs 41A3 through 41E1 as well,
+// uploading 32 bytes through $0806 in an eight-pass loop, and only 186 of the
+// route's 19,062 iterations take it.
+//
+// The longest path from 4143 back to 41F7 is 2,190: the channel-release arm at
+// 4151-4165, then the waveform upload, then the commit at 41E3. Not stopping
+// costs the JMP as well, and the iteration that finally leaves the loop pays
+// for the taken branch at 41F5 and the two LFO ports at 41FA-420D, which is 78
+// more. 2,280 is therefore a bound the instruction sequence gives rather than
+// one this route happens to satisfy, and it still leaves more than half the
+// 5,068-cycle timer period usable; 2,304 rounds it clear.
+//
+// A tighter margin was measured rather than assumed. At 500 -- enough for the
+// plain path only -- chunks run longer and 4143 is entered half as often, but
+// an iteration that turns out to want a waveform overruns the horizon and the
+// guard below refuses that whole chunk instead of shortening it. That cost 55
+// of 4142's calls and was worth +166,605 master cycles, 0.013% of the route,
+// for a constant whose worst case is that a tune with heavy waveform switching
+// stops being admitted at all. Not taken.
+constexpr std::uint32_t kChannelIterationMasterCycles = 2304U;
+
 [[nodiscard]] std::uint8_t set_nz(
     const std::uint8_t status,
     const std::uint8_t value)
@@ -99,7 +173,12 @@ constexpr std::uint16_t kDriverChannelBankLast = 0x20FAU;
 // these.
 [[nodiscard]] constexpr bool is_owned_entry(const std::uint16_t logical_pc)
 {
-    return logical_pc == 0x4142U
+    return logical_pc == 0x4015U
+        || logical_pc == 0x4044U
+        || logical_pc == 0x409CU
+        || logical_pc == 0x413BU
+        || logical_pc == 0x4142U
+        || logical_pc == 0x4143U
         || logical_pc == 0x4211U
         || logical_pc == 0x4228U
         || logical_pc == 0x457AU
@@ -117,7 +196,8 @@ constexpr std::uint16_t kDriverChannelBankLast = 0x20FAU;
 // it, because the matching JSR was one of its own.
 [[nodiscard]] constexpr bool is_return_instruction(const std::uint16_t pc)
 {
-    return pc == 0x4210U
+    return pc == 0x4141U
+        || pc == 0x4210U
         || pc == 0x4227U
         || pc == 0x4243U || pc == 0x4270U || pc == 0x429EU
         || pc == 0x42B2U || pc == 0x42B9U
@@ -469,9 +549,38 @@ std::optional<RoutineReplacement> replace_music_sequencer(
             return std::nullopt;
         }
 
+        // The tick's two extra stops, both at the outermost level, are calls
+        // this module does not run: 4936 at 4099, which is not transcribed
+        // here at all, and 4142 at 4138, which is transcribed but deliberately
+        // handed back so that it is entered on its own and keeps the
+        // driver-state guard it already carries rather than imposing it on the
+        // whole tick.
+        //
+        // The other two are chunk boundaries -- the JMP $4044 that closes the
+        // tick's voice loop and the JMP $4143 that closes 4142's channel loop
+        // -- taken by the core once a chunk has filled either channel far
+        // enough that one more iteration might not fit, or once the horizon it
+        // was handed no longer has an iteration left in it. One iteration is
+        // reached on every pass of either loop, so neither needs lookahead.
+        const auto tick_stop = pc == 0x4099U || pc == 0x4138U
+            || (pc == 0x40FFU
+                && (replacement.checkpoints.size() >= kChunkCheckpoints
+                    || replacement.work_ram_writes.size() >= kChunkWrites
+                    || (reads_driver_state
+                        && (entry.registers.status & kInterruptDisable) == 0U
+                        && cycle + kIterationMasterCycles
+                            >= entry.master_cycles_until_timer_interrupt)))
+            || (pc == 0x41F7U
+                && (replacement.checkpoints.size() >= kChunkCheckpoints
+                    || replacement.work_ram_writes.size() >= kChunkWrites
+                    || (reads_driver_state
+                        && (entry.registers.status & kInterruptDisable) == 0U
+                        && cycle + kChannelIterationMasterCycles
+                            >= entry.master_cycles_until_timer_interrupt)));
+
         // A return at the outermost level ends the transcript in front of the
         // RTS, which the core then executes itself.
-        if (depth == 0U && is_return_instruction(pc)) {
+        if (depth == 0U && (is_return_instruction(pc) || tick_stop)) {
             // The driver-state guard. Entering with the interrupt mask
             // already set is the strong case: `4142` brackets each voice in
             // PHP/SEI/PLP, so a masked entry stays masked for the whole body
@@ -491,11 +600,773 @@ std::optional<RoutineReplacement> replace_music_sequencer(
         }
 
         switch (pc) {
+        // ---- 45:4015  the per-frame tick --------------------------------
+        // The sequencer's top level, called once a frame from outside this
+        // bank. It marks itself in progress in $D6, runs the pending-event
+        // gate at 4211 and the tempo divider at 49B6, walks the nine voice
+        // slots from $2E34 = 8 downwards, then steps the fade at 410B and
+        // programs the PSG file through 4142.
+        //
+        // 4044 is the head of the voice loop and the chunk head. This routine
+        // was recorded as unportable for four slices on the arithmetic that
+        // its 12,667-cycle body cannot finish inside the 5,068-cycle timer
+        // period. That is true of the routine and says nothing about a
+        // transcript: the body is a loop, 40FF closes it with a JMP $4044,
+        // and one iteration is 1,137 composed master cycles.
+        //
+        // The other half of that rejection was simply wrong, and it is the
+        // half that mattered. The voice loop does not read the driver's
+        // channel bank bytes: the only JSR $4142 in the bank is at 4138,
+        // *past* the loop's closing jump, and 4148's executions are three per
+        // call of 4142 rather than three per iteration. The walk stops in
+        // front of 4138 and leaves 4142 to be entered on its own with the
+        // guard it already carries, so no chunk here reads driver state
+        // except through the sample trigger inside 457A and 4228, which carry
+        // that guard themselves.
+        //
+        // Every other call in the loop is composed, which is free here in a
+        // way it was not for the Sorcerer tick: the callees are cases in this
+        // same switch, so a JSR is a push and a jump rather than a spliced
+        // child transcript.
+        case 0x4015U:  // LDA $D6
+            load_accumulator(read_ram(zp(0xD6U)));
+            append_checkpoint(0x4015U, 0x4017U, 12U);
+            pc = 0x4017U;
+            break;
+
+        // The core runs the immediate form of BIT through the same macro as
+        // the memory forms -- `case 0x89: LD_IM(BIT)` -- so it clears N and V
+        // and takes them from the operand rather than moving Z alone the way a
+        // 65C02 does. All three of the tick's immediate BITs have a zero in
+        // both of those bits, so each one clears N and V as well as setting Z.
+        case 0x4017U:  // BIT #$04
+            bit_test(0x04U);
+            append_checkpoint(0x4017U, 0x4019U, 6U);
+            pc = 0x4019U;
+            break;
+
+        // Taken on every call on this route: the fall-through at 401B is the
+        // already-in-progress arm and has never executed.
+        case 0x4019U:  // BEQ $401C
+            pc = branch(
+                0x4019U, 0x401CU, 0x401BU,
+                (registers.status & kZero) != 0U);
+            break;
+
+        case 0x401CU:  // ORA #$04
+            load_accumulator(
+                static_cast<std::uint8_t>(registers.accumulator | 0x04U));
+            append_checkpoint(0x401CU, 0x401EU, 6U);
+            pc = 0x401EU;
+            break;
+
+        case 0x401EU:  // STA $D6
+            store(0x401EU, zp(0xD6U), registers.accumulator);
+            append_checkpoint(0x401EU, 0x4020U, 12U);
+            pc = 0x4020U;
+            break;
+
+        case 0x4020U:  // BIT #$01
+            bit_test(0x01U);
+            append_checkpoint(0x4020U, 0x4022U, 6U);
+            pc = 0x4022U;
+            break;
+
+        case 0x4022U:  // BEQ $402F
+            pc = branch(
+                0x4022U, 0x402FU, 0x4024U,
+                (registers.status & kZero) != 0U);
+            break;
+
+        case 0x402FU:  // JSR $4211 -- the pending-event gate
+            push(0x402FU, 0x40U);
+            push(0x402FU, 0x31U);
+            commit_pending_writes(cycle);
+            ++depth;
+            append_checkpoint(0x402FU, 0x4211U, 21U);
+            pc = 0x4211U;
+            break;
+
+        case 0x4032U:  // JSR $49B6 -- the tempo divider
+            push(0x4032U, 0x40U);
+            push(0x4032U, 0x34U);
+            commit_pending_writes(cycle);
+            ++depth;
+            append_checkpoint(0x4032U, 0x49B6U, 21U);
+            pc = 0x49B6U;
+            break;
+
+        case 0x4035U:  // LDY #$08 -- nine voice slots, 8 down to 0
+            registers.y = 0x08U;
+            registers.status = set_nz(registers.status, 0x08U);
+            append_checkpoint(0x4035U, 0x4037U, 6U);
+            pc = 0x4037U;
+            break;
+
+        case 0x4037U:  // LDA $D6
+            load_accumulator(read_ram(zp(0xD6U)));
+            append_checkpoint(0x4037U, 0x4039U, 12U);
+            pc = 0x4039U;
+            break;
+
+        case 0x4039U:  // AND #$02
+            load_accumulator(
+                static_cast<std::uint8_t>(registers.accumulator & 0x02U));
+            append_checkpoint(0x4039U, 0x403BU, 6U);
+            pc = 0x403BU;
+            break;
+
+        case 0x403BU:  // ORA $2E4F
+            load_accumulator(
+                static_cast<std::uint8_t>(
+                    registers.accumulator | read_ram(0x2E4FU)));
+            append_checkpoint(0x403BU, 0x403EU, 15U);
+            pc = 0x403EU;
+            break;
+
+        case 0x403EU:  // BEQ $4041
+            pc = branch(
+                0x403EU, 0x4041U, 0x4040U,
+                (registers.status & kZero) != 0U);
+            break;
+
+        case 0x4041U:  // STY $2E34 -- seed the slot cursor
+            store(0x4041U, 0x2E34U, registers.y);
+            append_checkpoint(0x4041U, 0x4044U, 15U);
+            pc = 0x4044U;
+            break;
+
+        // ---- 45:4044  the voice loop, and the chunk head ----------------
+        case 0x4044U: {  // LDX $2E34
+            const auto value = read_ram(0x2E34U);
+            registers.x = value;
+            registers.status = set_nz(registers.status, value);
+            append_checkpoint(0x4044U, 0x4047U, 15U);
+            pc = 0x4047U;
+            break;
+        }
+
+        case 0x4047U:  // LDA $2E46,X -- the slot's state byte
+            load_accumulator(read_ram(indexed_x(0x2E46U)));
+            append_checkpoint(0x4047U, 0x404AU, 15U);
+            pc = 0x404AU;
+            break;
+
+        case 0x404AU:  // BNE $404F
+            pc = branch(
+                0x404AU, 0x404FU, 0x404CU,
+                (registers.status & kZero) == 0U);
+            break;
+
+        case 0x404CU:  // JMP $40EE -- an idle slot skips to the cursor step
+            append_checkpoint(0x404CU, 0x40EEU, 12U);
+            pc = 0x40EEU;
+            break;
+
+        case 0x404FU:  // TAY
+            registers.y = registers.accumulator;
+            registers.status = set_nz(registers.status, registers.y);
+            append_checkpoint(0x404FU, 0x4050U, 6U);
+            pc = 0x4050U;
+            break;
+
+        case 0x4050U:  // LDA $2EBE,X
+            load_accumulator(read_ram(indexed_x(0x2EBEU)));
+            append_checkpoint(0x4050U, 0x4053U, 15U);
+            pc = 0x4053U;
+            break;
+
+        case 0x4053U:  // AND #$7F -- drop the retrigger flag
+            load_accumulator(
+                static_cast<std::uint8_t>(registers.accumulator & 0x7FU));
+            append_checkpoint(0x4053U, 0x4055U, 6U);
+            pc = 0x4055U;
+            break;
+
+        case 0x4055U:  // STA $2EBE,X
+            store(0x4055U, indexed_x(0x2EBEU), registers.accumulator);
+            append_checkpoint(0x4055U, 0x4058U, 15U);
+            pc = 0x4058U;
+            break;
+
+        case 0x4058U:  // LDA $2E78,X -- the gate-length step
+            load_accumulator(read_ram(indexed_x(0x2E78U)));
+            append_checkpoint(0x4058U, 0x405BU, 15U);
+            pc = 0x405BU;
+            break;
+
+        case 0x405BU:  // BEQ $4066
+            pc = branch(
+                0x405BU, 0x4066U, 0x405DU,
+                (registers.status & kZero) != 0U);
+            break;
+
+        case 0x405DU:  // CLC
+            registers.status = static_cast<std::uint8_t>(
+                registers.status & static_cast<std::uint8_t>(~kCarry));
+            append_checkpoint(0x405DU, 0x405EU, 6U);
+            pc = 0x405EU;
+            break;
+
+        case 0x405EU:  // ADC $2EDC,X
+            add_with_carry(read_ram(indexed_x(0x2EDCU)));
+            append_checkpoint(0x405EU, 0x4061U, 15U);
+            pc = 0x4061U;
+            break;
+
+        case 0x4061U:  // STA $2EDC,X
+            store(0x4061U, indexed_x(0x2EDCU), registers.accumulator);
+            append_checkpoint(0x4061U, 0x4064U, 15U);
+            pc = 0x4064U;
+            break;
+
+        // No carry out of the gate accumulator means the note is still
+        // sounding, so the release test below is skipped entirely.
+        case 0x4064U:  // BCC $408F
+            pc = branch(
+                0x4064U, 0x408FU, 0x4066U,
+                (registers.status & kCarry) == 0U);
+            break;
+
+        case 0x4066U:  // LDA $2EB4,X -- the voice's mode byte
+            load_accumulator(read_ram(indexed_x(0x2EB4U)));
+            append_checkpoint(0x4066U, 0x4069U, 15U);
+            pc = 0x4069U;
+            break;
+
+        case 0x4069U:  // AND #$04
+            load_accumulator(
+                static_cast<std::uint8_t>(registers.accumulator & 0x04U));
+            append_checkpoint(0x4069U, 0x406BU, 6U);
+            pc = 0x406BU;
+            break;
+
+        case 0x406BU:  // BEQ $4081
+            pc = branch(
+                0x406BU, 0x4081U, 0x406DU,
+                (registers.status & kZero) != 0U);
+            break;
+
+        case 0x406DU:  // LDA $2F18,X
+            load_accumulator(read_ram(indexed_x(0x2F18U)));
+            append_checkpoint(0x406DU, 0x4070U, 15U);
+            pc = 0x4070U;
+            break;
+
+        // Taken on every execution on this route; the fall-through at 4072 is
+        // a path the census has never produced and is left to assembly.
+        case 0x4070U:  // BEQ $4081
+            pc = branch(
+                0x4070U, 0x4081U, 0x4072U,
+                (registers.status & kZero) != 0U);
+            break;
+
+        case 0x4081U: {  // INC $2EC8,X -- the note-length counter
+            const auto address = indexed_x(0x2EC8U);
+            const auto value =
+                static_cast<std::uint8_t>(read_ram(address) + 1U);
+            store(0x4081U, address, value);
+            registers.status = set_nz(registers.status, value);
+            append_checkpoint(0x4081U, 0x4084U, 21U);
+            pc = 0x4084U;
+            break;
+        }
+
+        case 0x4084U:  // LDA $2EC8,X
+            load_accumulator(read_ram(indexed_x(0x2EC8U)));
+            append_checkpoint(0x4084U, 0x4087U, 15U);
+            pc = 0x4087U;
+            break;
+
+        case 0x4087U:  // CMP $2ED2,X -- reached the note's length?
+            compare(registers.accumulator, read_ram(indexed_x(0x2ED2U)));
+            append_checkpoint(0x4087U, 0x408AU, 15U);
+            pc = 0x408AU;
+            break;
+
+        case 0x408AU:  // BNE $408F
+            pc = branch(
+                0x408AU, 0x408FU, 0x408CU,
+                (registers.status & kZero) == 0U);
+            break;
+
+        case 0x408CU:  // JSR $457A -- pull the next command
+            push(0x408CU, 0x40U);
+            push(0x408CU, 0x8EU);
+            commit_pending_writes(cycle);
+            ++depth;
+            append_checkpoint(0x408CU, 0x457AU, 21U);
+            pc = 0x457AU;
+            break;
+
+        case 0x408FU:  // JSR $4883 -- the pitch update
+            push(0x408FU, 0x40U);
+            push(0x408FU, 0x91U);
+            commit_pending_writes(cycle);
+            ++depth;
+            append_checkpoint(0x408FU, 0x4883U, 21U);
+            pc = 0x4883U;
+            break;
+
+        case 0x4092U:  // LDA $2EBE,X
+            load_accumulator(read_ram(indexed_x(0x2EBEU)));
+            append_checkpoint(0x4092U, 0x4095U, 15U);
+            pc = 0x4095U;
+            break;
+
+        case 0x4095U:  // AND #$01
+            load_accumulator(
+                static_cast<std::uint8_t>(registers.accumulator & 0x01U));
+            append_checkpoint(0x4095U, 0x4097U, 6U);
+            pc = 0x4097U;
+            break;
+
+        case 0x4097U:  // BEQ $409C
+            pc = branch(
+                0x4097U, 0x409CU, 0x4099U,
+                (registers.status & kZero) != 0U);
+            break;
+
+        case 0x409CU:  // JSR $48F6 -- the sweep update
+            push(0x409CU, 0x40U);
+            push(0x409CU, 0x9EU);
+            commit_pending_writes(cycle);
+            ++depth;
+            append_checkpoint(0x409CU, 0x48F6U, 21U);
+            pc = 0x48F6U;
+            break;
+
+        case 0x409FU:  // JSR $49A2 -- the vibrato update
+            push(0x409FU, 0x40U);
+            push(0x409FU, 0xA1U);
+            commit_pending_writes(cycle);
+            ++depth;
+            append_checkpoint(0x409FU, 0x49A2U, 21U);
+            pc = 0x49A2U;
+            break;
+
+        case 0x40A2U:  // LDA $2EB4,X
+            load_accumulator(read_ram(indexed_x(0x2EB4U)));
+            append_checkpoint(0x40A2U, 0x40A5U, 15U);
+            pc = 0x40A5U;
+            break;
+
+        case 0x40A5U:  // BPL $40AA
+            pc = branch(
+                0x40A5U, 0x40AAU, 0x40A7U,
+                (registers.status & kNegative) == 0U);
+            break;
+
+        case 0x40A7U:  // JSR $4228 -- the portamento stepper
+            push(0x40A7U, 0x40U);
+            push(0x40A7U, 0xA9U);
+            commit_pending_writes(cycle);
+            ++depth;
+            append_checkpoint(0x40A7U, 0x4228U, 21U);
+            pc = 0x4228U;
+            break;
+
+        case 0x40AAU:  // JSR $49F9 -- commit the voice to the register file
+            push(0x40AAU, 0x40U);
+            push(0x40AAU, 0xACU);
+            commit_pending_writes(cycle);
+            ++depth;
+            append_checkpoint(0x40AAU, 0x49F9U, 21U);
+            pc = 0x49F9U;
+            break;
+
+        case 0x40ADU:  // LDA $D6
+            load_accumulator(read_ram(zp(0xD6U)));
+            append_checkpoint(0x40ADU, 0x40AFU, 12U);
+            pc = 0x40AFU;
+            break;
+
+        case 0x40AFU:  // AND #$3F
+            load_accumulator(
+                static_cast<std::uint8_t>(registers.accumulator & 0x3FU));
+            append_checkpoint(0x40AFU, 0x40B1U, 6U);
+            pc = 0x40B1U;
+            break;
+
+        case 0x40B1U:  // STA $D6
+            store(0x40B1U, zp(0xD6U), registers.accumulator);
+            append_checkpoint(0x40B1U, 0x40B3U, 12U);
+            pc = 0x40B3U;
+            break;
+
+        case 0x40B3U:  // LDA $2EB4,X
+            load_accumulator(read_ram(indexed_x(0x2EB4U)));
+            append_checkpoint(0x40B3U, 0x40B6U, 15U);
+            pc = 0x40B6U;
+            break;
+
+        case 0x40B6U:  // AND #$20 -- is this voice on a timed release?
+            load_accumulator(
+                static_cast<std::uint8_t>(registers.accumulator & 0x20U));
+            append_checkpoint(0x40B6U, 0x40B8U, 6U);
+            pc = 0x40B8U;
+            break;
+
+        case 0x40B8U:  // BEQ $40EE
+            pc = branch(
+                0x40B8U, 0x40EEU, 0x40BAU,
+                (registers.status & kZero) != 0U);
+            break;
+
+        case 0x40BAU:  // LDA $2F36,X -- the release step
+            load_accumulator(read_ram(indexed_x(0x2F36U)));
+            append_checkpoint(0x40BAU, 0x40BDU, 15U);
+            pc = 0x40BDU;
+            break;
+
+        case 0x40BDU:  // CLC
+            registers.status = static_cast<std::uint8_t>(
+                registers.status & static_cast<std::uint8_t>(~kCarry));
+            append_checkpoint(0x40BDU, 0x40BEU, 6U);
+            pc = 0x40BEU;
+            break;
+
+        case 0x40BEU:  // ADC $2F40,X
+            add_with_carry(read_ram(indexed_x(0x2F40U)));
+            append_checkpoint(0x40BEU, 0x40C1U, 15U);
+            pc = 0x40C1U;
+            break;
+
+        case 0x40C1U:  // STA $2F40,X
+            store(0x40C1U, indexed_x(0x2F40U), registers.accumulator);
+            append_checkpoint(0x40C1U, 0x40C4U, 15U);
+            pc = 0x40C4U;
+            break;
+
+        case 0x40C4U:  // BCC $40EE
+            pc = branch(
+                0x40C4U, 0x40EEU, 0x40C6U,
+                (registers.status & kCarry) == 0U);
+            break;
+
+        case 0x40C6U:  // LDA $2E50,X -- the release cursor
+            load_accumulator(read_ram(indexed_x(0x2E50U)));
+            append_checkpoint(0x40C6U, 0x40C9U, 15U);
+            pc = 0x40C9U;
+            break;
+
+        case 0x40C9U:  // CMP $2F4A,X
+            compare(registers.accumulator, read_ram(indexed_x(0x2F4AU)));
+            append_checkpoint(0x40C9U, 0x40CCU, 15U);
+            pc = 0x40CCU;
+            break;
+
+        case 0x40CCU:  // BNE $40D8
+            pc = branch(
+                0x40CCU, 0x40D8U, 0x40CEU,
+                (registers.status & kZero) == 0U);
+            break;
+
+        case 0x40CEU:  // LDA $2EB4,X -- the cursor has arrived; latch it
+            load_accumulator(read_ram(indexed_x(0x2EB4U)));
+            append_checkpoint(0x40CEU, 0x40D1U, 15U);
+            pc = 0x40D1U;
+            break;
+
+        case 0x40D1U:  // ORA #$02
+            load_accumulator(
+                static_cast<std::uint8_t>(registers.accumulator | 0x02U));
+            append_checkpoint(0x40D1U, 0x40D3U, 6U);
+            pc = 0x40D3U;
+            break;
+
+        case 0x40D3U:  // STA $2EB4,X
+            store(0x40D3U, indexed_x(0x2EB4U), registers.accumulator);
+            append_checkpoint(0x40D3U, 0x40D6U, 15U);
+            pc = 0x40D6U;
+            break;
+
+        // The ORA above always leaves bit 1 set, so this is an unconditional
+        // jump written as a branch; the fall-through at 40D8 is unreachable
+        // from here and is only entered through the BNE at 40CC.
+        case 0x40D6U:  // BNE $40EE
+            pc = branch(
+                0x40D6U, 0x40EEU, 0x40D8U,
+                (registers.status & kZero) == 0U);
+            break;
+
+        case 0x40D8U: {  // LDY $2E50,X
+            const auto value = read_ram(indexed_x(0x2E50U));
+            registers.y = value;
+            registers.status = set_nz(registers.status, value);
+            append_checkpoint(0x40D8U, 0x40DBU, 15U);
+            pc = 0x40DBU;
+            break;
+        }
+
+        case 0x40DBU:  // LDA $2EB4,X
+            load_accumulator(read_ram(indexed_x(0x2EB4U)));
+            append_checkpoint(0x40DBU, 0x40DEU, 15U);
+            pc = 0x40DEU;
+            break;
+
+        case 0x40DEU:  // AND #$FD -- clear the arrival latch
+            load_accumulator(
+                static_cast<std::uint8_t>(registers.accumulator & 0xFDU));
+            append_checkpoint(0x40DEU, 0x40E0U, 6U);
+            pc = 0x40E0U;
+            break;
+
+        case 0x40E0U:  // STA $2EB4,X
+            store(0x40E0U, indexed_x(0x2EB4U), registers.accumulator);
+            append_checkpoint(0x40E0U, 0x40E3U, 15U);
+            pc = 0x40E3U;
+            break;
+
+        case 0x40E3U:  // DEY
+            registers.y = static_cast<std::uint8_t>(registers.y - 1U);
+            registers.status = set_nz(registers.status, registers.y);
+            append_checkpoint(0x40E3U, 0x40E4U, 6U);
+            pc = 0x40E4U;
+            break;
+
+        // Tests bit 4 of the mode byte still in A, not of Y: the two INYs
+        // below step the cursor by two instead of one for a looped release.
+        case 0x40E4U:  // AND #$10
+            load_accumulator(
+                static_cast<std::uint8_t>(registers.accumulator & 0x10U));
+            append_checkpoint(0x40E4U, 0x40E6U, 6U);
+            pc = 0x40E6U;
+            break;
+
+        case 0x40E6U:  // BNE $40EA
+            pc = branch(
+                0x40E6U, 0x40EAU, 0x40E8U,
+                (registers.status & kZero) == 0U);
+            break;
+
+        case 0x40E8U:  // INY
+            registers.y = static_cast<std::uint8_t>(registers.y + 1U);
+            registers.status = set_nz(registers.status, registers.y);
+            append_checkpoint(0x40E8U, 0x40E9U, 6U);
+            pc = 0x40E9U;
+            break;
+
+        case 0x40E9U:  // INY
+            registers.y = static_cast<std::uint8_t>(registers.y + 1U);
+            registers.status = set_nz(registers.status, registers.y);
+            append_checkpoint(0x40E9U, 0x40EAU, 6U);
+            pc = 0x40EAU;
+            break;
+
+        case 0x40EAU:  // TYA
+            load_accumulator(registers.y);
+            append_checkpoint(0x40EAU, 0x40EBU, 6U);
+            pc = 0x40EBU;
+            break;
+
+        case 0x40EBU:  // STA $2E50,X
+            store(0x40EBU, indexed_x(0x2E50U), registers.accumulator);
+            append_checkpoint(0x40EBU, 0x40EEU, 15U);
+            pc = 0x40EEU;
+            break;
+
+        // ---- the cursor step that closes the loop ------------------------
+        case 0x40EEU:  // LDA $2E46,X
+            load_accumulator(read_ram(indexed_x(0x2E46U)));
+            append_checkpoint(0x40EEU, 0x40F1U, 15U);
+            pc = 0x40F1U;
+            break;
+
+        case 0x40F1U:  // BIT #$20 -- bit 5 of the state byte ends the walk
+            bit_test(0x20U);
+            append_checkpoint(0x40F1U, 0x40F3U, 6U);
+            pc = 0x40F3U;
+            break;
+
+        case 0x40F3U:  // BNE $4102
+            pc = branch(
+                0x40F3U, 0x4102U, 0x40F5U,
+                (registers.status & kZero) == 0U);
+            break;
+
+        case 0x40F5U:  // DEX
+            registers.x = static_cast<std::uint8_t>(registers.x - 1U);
+            registers.status = set_nz(registers.status, registers.x);
+            append_checkpoint(0x40F5U, 0x40F6U, 6U);
+            pc = 0x40F6U;
+            break;
+
+        case 0x40F6U:  // STX $2E34
+            store(0x40F6U, 0x2E34U, registers.x);
+            append_checkpoint(0x40F6U, 0x40F9U, 15U);
+            pc = 0x40F9U;
+            break;
+
+        case 0x40F9U:  // BMI $4102 -- past slot 0
+            pc = branch(
+                0x40F9U, 0x4102U, 0x40FBU,
+                (registers.status & kNegative) != 0U);
+            break;
+
+        case 0x40FBU:  // CPX #$08
+            compare(registers.x, 0x08U);
+            append_checkpoint(0x40FBU, 0x40FDU, 6U);
+            pc = 0x40FDU;
+            break;
+
+        case 0x40FDU:  // BEQ $4102 -- wrapped back to the seed
+            pc = branch(
+                0x40FDU, 0x4102U, 0x40FFU,
+                (registers.status & kZero) != 0U);
+            break;
+
+        // The loop's closing jump, and the chunk boundary. Reached on every
+        // iteration, so where a chunk ends needs no lookahead: the walk stops
+        // here when either channel is close to full, the core executes the
+        // jump, lands on 4044 and calls back for the next chunk. The cost of
+        // a chunk is this one instruction, twelve master cycles.
+        case 0x40FFU:  // JMP $4044
+            append_checkpoint(0x40FFU, 0x4044U, 12U);
+            pc = 0x4044U;
+            break;
+
+        // ---- the tail ---------------------------------------------------
+        case 0x4102U:  // JSR $4211 -- the pending-event gate again
+            push(0x4102U, 0x41U);
+            push(0x4102U, 0x04U);
+            commit_pending_writes(cycle);
+            ++depth;
+            append_checkpoint(0x4102U, 0x4211U, 21U);
+            pc = 0x4211U;
+            break;
+
+        case 0x4105U:  // LDA $D6
+            load_accumulator(read_ram(zp(0xD6U)));
+            append_checkpoint(0x4105U, 0x4107U, 12U);
+            pc = 0x4107U;
+            break;
+
+        case 0x4107U:  // AND #$20 -- is a fade running?
+            load_accumulator(
+                static_cast<std::uint8_t>(registers.accumulator & 0x20U));
+            append_checkpoint(0x4107U, 0x4109U, 6U);
+            pc = 0x4109U;
+            break;
+
+        case 0x4109U:  // BEQ $4138
+            pc = branch(
+                0x4109U, 0x4138U, 0x410BU,
+                (registers.status & kZero) != 0U);
+            break;
+
+        case 0x410BU:  // LDA $2E42 -- the fade step
+            load_accumulator(read_ram(0x2E42U));
+            append_checkpoint(0x410BU, 0x410EU, 15U);
+            pc = 0x410EU;
+            break;
+
+        case 0x410EU:  // CLC
+            registers.status = static_cast<std::uint8_t>(
+                registers.status & static_cast<std::uint8_t>(~kCarry));
+            append_checkpoint(0x410EU, 0x410FU, 6U);
+            pc = 0x410FU;
+            break;
+
+        case 0x410FU:  // ADC $2E43
+            add_with_carry(read_ram(0x2E43U));
+            append_checkpoint(0x410FU, 0x4112U, 15U);
+            pc = 0x4112U;
+            break;
+
+        case 0x4112U:  // STA $2E43
+            store(0x4112U, 0x2E43U, registers.accumulator);
+            append_checkpoint(0x4112U, 0x4115U, 15U);
+            pc = 0x4115U;
+            break;
+
+        case 0x4115U:  // BCC $4138
+            pc = branch(
+                0x4115U, 0x4138U, 0x4117U,
+                (registers.status & kCarry) == 0U);
+            break;
+
+        case 0x4117U:  // LDA $2E44 -- the fade level
+            load_accumulator(read_ram(0x2E44U));
+            append_checkpoint(0x4117U, 0x411AU, 15U);
+            pc = 0x411AU;
+            break;
+
+        case 0x411AU:  // CMP $2E45 -- reached the target?
+            compare(registers.accumulator, read_ram(0x2E45U));
+            append_checkpoint(0x411AU, 0x411DU, 15U);
+            pc = 0x411DU;
+            break;
+
+        case 0x411DU:  // BEQ $4138
+            pc = branch(
+                0x411DU, 0x4138U, 0x411FU,
+                (registers.status & kZero) != 0U);
+            break;
+
+        case 0x411FU:  // LDA $D6
+            load_accumulator(read_ram(zp(0xD6U)));
+            append_checkpoint(0x411FU, 0x4121U, 12U);
+            pc = 0x4121U;
+            break;
+
+        case 0x4121U:  // AND #$10 -- fading up or down
+            load_accumulator(
+                static_cast<std::uint8_t>(registers.accumulator & 0x10U));
+            append_checkpoint(0x4121U, 0x4123U, 6U);
+            pc = 0x4123U;
+            break;
+
+        // Taken on all four executions on this route. The fade-up arm at
+        // 4125 has never run and is left to assembly.
+        case 0x4123U:  // BNE $4135
+            pc = branch(
+                0x4123U, 0x4135U, 0x4125U,
+                (registers.status & kZero) == 0U);
+            break;
+
+        case 0x4135U: {  // DEC $2E44
+            const auto value =
+                static_cast<std::uint8_t>(read_ram(0x2E44U) - 1U);
+            store(0x4135U, 0x2E44U, value);
+            registers.status = set_nz(registers.status, value);
+            append_checkpoint(0x4135U, 0x4138U, 21U);
+            pc = 0x4138U;
+            break;
+        }
+
+        case 0x413BU:  // LDA $D6
+            load_accumulator(read_ram(zp(0xD6U)));
+            append_checkpoint(0x413BU, 0x413DU, 12U);
+            pc = 0x413DU;
+            break;
+
+        case 0x413DU:  // AND #$FB -- clear the in-progress bit
+            load_accumulator(
+                static_cast<std::uint8_t>(registers.accumulator & 0xFBU));
+            append_checkpoint(0x413DU, 0x413FU, 6U);
+            pc = 0x413FU;
+            break;
+
+        case 0x413FU:  // STA $D6
+            store(0x413FU, zp(0xD6U), registers.accumulator);
+            append_checkpoint(0x413FU, 0x4141U, 12U);
+            pc = 0x4141U;
+            break;
+
         // ---- 45:4142  PSG register programmer ---------------------------
         // Walks the six PSG channels in X, pushing each voice's latched
         // state out to the register file. Each iteration is bracketed by
         // PHP/SEI ... PLP, so the driver cannot preempt the read-modify of
         // $F5/$F7/$F9 in the middle; the tail programs the two LFO ports.
+        //
+        // 4143 is the loop head and the chunk head, and it is an entry point
+        // in its own right for the same reason 4044 is. The bracket is what
+        // makes it a legal one: ROM's own PLP at 41F1 has already restored the
+        // caller's mask by the time control reaches 41F7, so the top of an
+        // iteration is a place the hardware may take an interrupt anyway.
+        // Stopping there hands the core a boundary ROM already exposes rather
+        // than inventing one.
         case 0x4142U:  // CLX
             registers.x = 0x00U;
             append_checkpoint(0x4142U, 0x4143U, 6U);

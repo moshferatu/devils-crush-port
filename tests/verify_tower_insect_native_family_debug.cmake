@@ -12,9 +12,12 @@ endif()
 
 set(call_output "${OUTPUT}.calls.csv")
 set(write_output "${call_output}.writes.csv")
-set(expected_census_sha256 "f70fbc86ce325a15ddaecfd1da91436ec948071b5ae7d7b1914dd99d9092d5ab")
-set(expected_call_sha256 "720c8054e465d28fa2412faedcdd638e45733e4714b7ede9d9e969b0e4f45c99")
-set(expected_write_sha256 "801152c295a289d32a9fd2dd1e1a6567331da555f983cf224e3757514aa44842")
+# This regression runs the Debug binary, whose assembly-only census is
+# a95d0c34..., the same baseline verify_collision_consumer_semantic uses for
+# Debug. The call and write traces are identical to the Release ones.
+set(expected_census_sha256 "a95d0c343108b107d7ec1aa3c20915540d91bb08817704776531e5696ea9b5e2")
+set(expected_call_sha256 "48ca8436bb293f964fb7a2f89ff441d31a6280615a6011f7b64e7685f0b41de2")
+set(expected_write_sha256 "f169bf28c1f265139e016007c85b225cb883793850e4a609b01cb1cb2313898b")
 
 execute_process(
     COMMAND "${APP}"

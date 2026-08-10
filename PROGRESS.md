@@ -1,6 +1,6 @@
 # Project Progress
 
-Last updated: 2026-08-09
+Last updated: 2026-08-10
 
 ## Current Status
 
@@ -5444,88 +5444,343 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
 
 ## Active Work
 
-Current owner: Claude. Current slice: **the fade-to-black stepper is chunked**,
-taking the deployed registry to **41.61%** of all master cycles (537,789,252 of
-1,292,371,131).
+Current owner: Claude. Current slice: **the pad reader `00:E195` goes native**.
+It is admitted on every one of its 3,599 arrivals, the registry is **364 of 364
+admitted routines installed**, and `--replace-registry` still reproduces the
+assembly-only census `9036a9de...`. Native share 42.87% -> **43.33%**
+(560,037,093 of 1,292,371,131), net `+6,013,791` — the largest single-routine
+gain since the sequencer tick, and no other routine on the route moved by a
+cycle.
 
-`00:EAA7` had been written off twice -- in this file's own inventory and in
-`NATIVE_REGISTRY.md` -- as 205,012 master cycles a call and so past the
-checkpoint cap however the transcript was arranged. The sentence was true and
-the conclusion was not. **The cap bounds a transcript, not a routine.** The VRAM
-decoder had shown what to do about it two slices earlier and the note in
-`NATIVE_PORT_WORKFLOW.md` even said so: chunking "is the answer to `00:EAA7` in
-the table above as well". Nobody went back for it.
+`00:E195` was the largest genuinely unported routine left, and it had been
+recorded as unportable for four slices on a rule this project had
+over-generalised: a replacement callback receives work RAM and registers, so a
+routine that reads a device register cannot be a transcript. **That is true of
+the callback and false of the routine.** What the joypad answers with is a
+function of two things a walk can know — the frame's pad state, and the `SEL`
+and `CLR` latch lines, which the routine drives itself through `$1000`.
 
-The stepper walks all thirty-two blocks of the shadow buffer in one call, takes
-a step off every channel that is not already black, and tallies the ones that
-were into `$35`/`$36` so `00:EA77` knows when the fade is done. 512 colours is
-5,300 work-RAM writes against a channel of 512. `00:EAB0`, the head of its
-colour loop, becomes a second registered address; the walk stops in front of the
-`JMP $EAB0` that closes the loop once a channel is nearly full, and the core
-takes the jump and calls back. Eight calls, 101 transcripts, thirteen to a call.
-The palette region falls from 3,812,025 emulated cycles to 2,159,505.
+The latch half needs nothing new. `INPUT_Read` returns `$B0` over the selected
+pad's four lines, active low; the store at `E198` clears `CLR` whatever it
+held, so the store at `E19D` always resets the multitap cursor, and the loop
+steps it once per pass. The cursor is therefore the loop counter, and nothing
+has to be assumed about the state the port was left in.
 
-**The shadowing bill is 1,224 cycles, and the reason it is that low is worth
-carrying forward.** `00:E136` loses eight entries and nothing else on the route
-moves at all. `gross / 3,000 x 575` predicts 314,000. The bill is the cost of
-displacing *other* native routines, and the stepper runs during screen fades,
-when the game is deliberately doing nothing else -- there is nothing in the
-shadow to displace. Idle-time work is nearly free to port. This is the ninth
-bill measurement and it does not belong in the same distribution as the other
-eight; the workflow table now says so rather than averaging it in.
+The pad state is genuinely new input, and the way it arrives matters. It is
+carried on `RoutineEntry`, populated from the core's own `current_input_`,
+rather than plumbed through the app: there are twenty `run_frame` call sites,
+and a setter threaded through them is a thing that can be missed at one of
+them, which would answer live play with stale input and never show up in a
+deterministic test. Taking it from the field the core answers reads from makes
+the predicted value and the read value one object.
 
-**The slice also found a flaw in the project's headline metric.** The registry
-line moved `+1,651,296` on a routine that costs 1,640,100 in assembly. The
-census adds a transcript's declared `body_master_cycles` when the replacement is
-*offered* (`src/app/main.cpp`, in the registry deployment callback), before the
-core discovers that an interrupt will truncate it -- so a truncated transcript
-is credited with work it never did. The clean demonstration: halving the chunk
-budget to give 196 chunks instead of 101, same route, byte-identical state
-census, *lowers* the reported total by 9,231, because shorter chunks lose less
-to each truncation. The excess over the routine's true cost falls from 13,704 to
-5,613. Every native share this project has quoted is high by some small amount
-of this kind. It is bounded by transcript length times interrupt rate and it has
-not been corrected anywhere; the 440-write budget was kept because it is the
-better engineering choice -- fewer hook entries -- and not because it reports a
-larger number. If it is ever worth fixing, the fix is to credit the cycles the
-core actually advanced rather than the ones the walk declared.
+`$1000` joined the replaceable-port list for the four latch stores, so the port
+is left where assembly would leave it. That is an app-side allowlist, not the
+pinned core, which has no address validator at all. Scanning the ROM for
+absolute stores to `$1000` finds eight: four are this routine's and the other
+four are never executed, three of them in banks the game never enters.
 
-Verification is the two-run diff over the three artifacts the palette regression
-already asserted -- 7,369,685 work-RAM writes, 115,688 VCE register writes and
-the state census -- and **all three hashes are unchanged**. That is the
-verification rather than a gap in it: the ranges already covered every byte the
-stepper touches, so the artifact carries 42,770 writes from inside the routine,
-and they were byte-identical to assembly before it was ported and still are, in
-value, address, order and master-cycle offset. The assembly side was re-run
-first-hand this slice rather than inherited from the recorded hash. Regression:
-`dc_rom_palette_shadow_semantic`.
+Verification is the pad bytes at `$200E`-`$201C` and the `$1000` writes
+themselves, plus everything the family already covered, all byte-identical to a
+pure-assembly run of the same route in value, address, order and master-cycle
+offset. 12 tests pass.
 
-One measurement note. The instruction profile and the cycle census disagree by
-13,704 on this routine, and chasing that disagreement is what turned up the
-over-credit above. The profile also moved 32,751 cycles of the region onto
-`00:E135`, an address whose execution count did not change -- more of the same
-misattribution already recorded. Neither instrument is trustworthy at the
-thousand-cycle level near a replacement boundary; the state census and the write
-trace are, because they compare against assembly rather than counting.
+The rule that survives distinguishes two kinds of read. **Outside input, plus
+lines the routine set itself, is portable now.** State the device evolves on its
+own is not — `00:E058`, one instruction earlier in the same handler, reads the
+VDC status register and stays phase 2. The joypad has come off phase 2's list.
 
-Next: the palette group is finished for the hybrid at 18.5M of 20.6M, with only
-the two fade drivers (they wait on the frame-sync spin) and `00:EB30`'s
-whole-palette `TIA` arm left, both phase-2 or phase-3. The largest genuinely
-unported groups are now the sequencer's note handlers at `45:483B`-`4A9B` (2.8M,
-six native entries already with the remainder as leaf-contract tax) and
-`03:6001`-`6078` (1.8M, no native entry inside it, but `03:6054` is one of the
-two withheld routines and that needs understanding first). **Before either, re-read
-the rejections with the chunking screen in hand.** `00:EAA7` sat rejected for
-three slices on a cycles-per-call argument that chunking had already answered,
-and that argument was applied to other candidates in the same sweep; the screen
-belongs on the loop body, not on the call. `03:73A6` still pins its interpreter
-child to the single 165-cycle path with a `body_master_cycles != 165` gate that
-predates the child being a transcript -- entered zero times on this route, so it
-costs nothing today and would cost something on any route that reaches it. The
-Spider collision parents in `NATIVE_FALLBACK_HOTSPOTS.md` are still held on an
-objection that no longer holds and have still not been re-screened. The pad
-reader `00:E195` (6.9M) and the interrupt dispatcher `00:E058` stay blocked on
-device *reads* and are phase-2 work with the joypad and the VDC.
+### The instrument, corrected twice more
+
+Choosing this target was the harder half, and the ranking method needed two
+fixes before it pointed anywhere true. Both are now in
+`docs/NATIVE_PORT_WORKFLOW.md`.
+
+**Price addresses from the assembly-only run.** The profiler charges each
+sample the span to the next sample, and a native body produces no samples, so
+whatever instruction precedes a native call absorbs it. `00:FC8D` was known
+about; it was not special, just visible. Excluding offenders by hand cannot
+find the ones you have not noticed. Instead price each address at its
+native-run executions times its cost in a run with nothing replaced — every
+leak goes at once, and the books close to within 0.13% of elapsed.
+
+**Rank by the execution ratio, not by cycles.** `03:6967` runs 54,149 times
+under assembly and 119 times under the registry: 99.8% ported, and its "1.2M"
+is interpretation resumed after an interrupt landed on a checkpoint inside the
+transcript. `00:E1A0` ran 17,995 times in both, which is what unported looks
+like. Two overheads masquerade as hotspots and neither is portable work: the
+`JSR` and `RTS` at each end of every native call (13,250,544 route-wide) and
+resumption (11,238,411).
+
+That retired three entries from this file's own next list. `08:40DE`-`41AB`
+with `08:4085`-`4094`, written down here last slice as the 2.8M next target, is
+four `JSR $40DF`s and an `RTS` around a routine that was already native.
+`01:C5C8`-`C770` at "1.6M" is 1.02M, and `03:6001`-`6053` at "883K" is 439K.
+
+### Next
+
+**Porting by hotspot is finished.** Excluding the spin loop, 149,738,866 cycles
+are still interpreted, and they decompose cleanly:
+
+- **110,519,836** — sound-driver entries the no-nesting rule blocks. Not
+  unported code; recovering it means letting a replacement nest, which is
+  emulator scaffolding that gets deleted with the emulator. Deliberately not
+  done. It is worth knowing the price, though: it is 8.55% of the route, and
+  taking it would put the native share near 51%.
+- **13,250,544** — the `JSR` into and `RTS` out of every native call.
+- **11,238,411** — interpretation resumed after an interrupt landed inside a
+  transcript.
+- **14,730,075** — everything genuinely unported, 1.14% of the machine.
+
+Only the last is portable, and nothing in it is above 1.3M. The largest,
+`01:C0FE`-`C1B5` (1.24M), is the top-level frame loop's own glue between calls
+rather than a routine — it waits on `00:E321`, and it goes native when the
+frame boundary does. Below it: `01:C655`-`C770` (1.02M), `00:E128`-`E176`
+(968K), `01:DC95`-`DCD5` (856K), `00:F08E`-`F1B0` (812K), `01:C4DE`-`C50E`
+(779K), `00:E01F`-`E07B` (770K), `09:60C7`-`6127` (690K). Each is worth about
+0.06% of the route, so a slice there costs what a slice costs and buys a tenth
+of what this one did.
+
+The honest read is that further percentage comes from the phases in
+`docs/EMULATOR_ELIMINATION.md` — device state and time — rather than from more
+transcripts. Phase 2's joypad item is now largely settled; the PSG and the VDC
+are not.
+
+### Previous: the PSG register programmer `45:4142` chunks at its channel loop It is admitted on 3,216 of 3,604 arrivals rather
+than 1,792, a new entry point `45:4143` takes 3,788 more, the registry is
+**363 of 363 admitted routines installed**, and `--replace-registry` still
+reproduces the assembly-only census `9036a9de...`. Native share 42.69% ->
+**42.87%** (554,023,302 of 1,292,371,131), net `+2,271,558`.
+
+`4142` reads the timer driver's per-channel bank bytes, so the walk declines
+unless the interrupt mask is already set at entry or the body finishes before
+the next serviceable timer interrupt. It had sat at half admission under that
+guard for four slices, recorded as arithmetic: a whole call averages 2,055
+master cycles against a 5,068-cycle timer period, so about half of them do not
+fit.
+
+**That is the same rejection `45:4015` carried, made one level down, and it
+fails the same way.** The tick was 12,667 cycles against 5,068 and was called
+unportable until it was chunked at `4044`. `4142` is a loop too -- `4143` is
+its head and `41F7` closes it with a `JMP $4143` -- so it chunks identically.
+15,972 of the route's 19,062 channel iterations now run inside a transcript.
+A ratio of two rather than three was never a reason to leave the second one
+alone; it is the reason it declined half the time instead of always.
+
+The boundary is one ROM already exposes rather than one the port invents. Each
+iteration runs under `PHP`/`SEI` ... `PLP`, and the `PLP` at `41F1` restores
+the caller's mask *before* control reaches `41F7`, so the top of an iteration
+is somewhere the hardware may take an interrupt anyway.
+
+The chunk margin is a bound taken from the instruction sequence rather than
+from this route. Iterations come in two sizes -- 390 master cycles plain, 2,190
+for one that uploads a 32-byte waveform through `$0806` at `41A3`-`41E1`, which
+only 186 of the 19,062 take -- and 2,304 covers the longer one plus the closing
+jump and the LFO tail. A margin of 500 was measured as well and is better by
+166,605 cycles, 0.013%; it was not taken. When a cheap-looking iteration turns
+out to want a waveform, the guard refuses the whole chunk rather than
+shortening it, so that constant's worst case is a tune with heavy waveform
+switching that quietly stops being admitted. **The margin is a performance
+knob, not a correctness one -- the guard at the stop is what enforces the
+deadline -- which is exactly why it can be chosen for robustness.**
+
+Verification: census, the 5,458,568-write work-RAM trace and the 699,251-write
+PSG/timer bus trace are all byte-identical to a pure-assembly run of the same
+route, at every margin measured.
+
+### The instrument this slice found, which is worth more than the slice
+
+The target came from re-ranking what is left, and the ranking turned out to be
+exact rather than indicative. Run the deployed registry under
+`--instruction-profile`: **checkpoint replay does not sample the instruction
+hook**, so the profile drops from 8,977 addresses and 108.5M executions to
+6,726 and 65.0M, and every row that is not a registry entry point carries only
+what is still emulated at that address. The books close on it -- entry rows
+plus spin loop plus the rest returns the elapsed total, and the only residue
+the split hides is 1,347,363 cycles of declined arrivals inside entry rows.
+
+One artifact has to be excluded by hand. A native body's cycles land on the
+last instruction sampled before it, normally the entry point itself; the
+exception is a handler that returns *into* a suspended transcript. The `RTI` at
+`00:FC8D` was carrying 99,636,684 cycles of other routines' native work, and
+`docs/EMULATOR_ELIMINATION.md` had been quoting it as sound-driver work: that
+row was 193,007,589 and is 107,174,790.
+
+The corrected ranking also retired this file's own "next" list. `45:483B`-`4A9B`
+was named here as 2.8M of unported note handlers; it is 870K, and most of what
+remained in bank 45 was `4142`'s refused half instead.
+
+The "next" list this section ended with was itself wrong, and the pad-reader
+slice above says how: it ranked boundary instructions and interrupt resumption
+as unported code. It is superseded by the paragraph at the end of Active Work.
+
+Previous slices, most recent first.
+
+### Previous: the withheld list emptied
+
+Both `02:57E9` and `03:6054` were deployed, taking the registry to 362 of 362
+admitted routines with `--replace-registry` still reproducing the assembly-only
+census `9036a9de...`. Native share 42.62% -> 42.69% (551,751,744).
+
+Those two had passed an `@all` regression each and still moved the state
+census, and each one's own regression asserted the moved hash rather than the
+baseline, so their evidence locked the divergence in instead of catching it.
+`kWithheldRoutines` in `src/app/main.cpp` held them out of every composed
+deployment -- live play and cycle measurement alike -- until the divergence was
+understood.
+
+**Both were replacement faults, not properties of the routines, and both were
+the same shape.** A boundary was charged the wrong number of master cycles and
+the error was taken back off a later instruction, so the body total came out
+right and the routine finished at the correct cycle.
+
+- `03:6054` charged `ADC $26` 9 master cycles instead of 12 and gave the three
+  back on the taken branch at `606E`. Both of its remaining writes -- the frame
+  byte at `6068` and the timer decrement at `606B` -- landed three cycles
+  early. The accumulated shift moved an interrupt at frame 969 and the runs
+  diverged structurally from there.
+- `02:57E9` charged `CMP $3980,X` 18 instead of 15 the same way, with the taken
+  branch charged 9. It also published the *caller's* N and Z at the boundary
+  after `LDA $2D40` rather than the load's.
+
+Gross 1,143,930, bill 198,927 (17.4%, on `00:FC00` and `00:E136`), net
+`+945,003`.
+
+**What each artifact can and cannot see is the part worth keeping.** A correct
+body total is exactly why the state census could tell that something was wrong
+and never where: the routine ends at the right cycle, so only what happens
+*inside* it is misplaced, and the census only samples frame ends. And the fault
+does not have to be a write -- `02:57E9` writes nothing at all, so no write
+trace could have found its flag fault. It exists only as the status an
+interrupt stacks when it lands on that boundary.
+
+The method that localised `03:6054` in one run: a work-RAM write trace scoped
+to the four addresses the routine touches (`2026`, `3980-39FF`, `3A00-3AFF`,
+`3C80-3CFF`) plus the stack `21E0-21FF`, diffed against a pure-assembly run of
+the same route. 4,381,628 writes, and the first difference was two rows at
+frame 958, both `-3`. Everything after frame 969 was cascade.
+
+Verification: both routines reproduce the assembly census, call trace and
+write trace exactly. `03:6054` was additionally checked with a full
+4,381,628-write trace that is byte-identical to assembly. The two tower-insect
+regressions and the Sorcerer colour gate now assert the baseline census
+(`9036a9de...` in Release, `a95d0c34...` for the Debug family fixture) instead
+of the moved hashes they used to bless.
+
+### Previous: `03:73A6`'s 165-cycle gate -- a guard that was hiding a fault
+
+The Knight movement parent composes two children, the collision-table
+interpreter `03:6966` and the hit gate `03:73D8`, and it required the
+interpreter's transcript to be *exactly* the 165-cycle one-pass collision-free
+one. The recorded reason: a longer record could take an interrupt at the
+interpreter's return boundary. That reason expired when the interpreter became
+an instruction-boundary transcript -- it checkpoints every instruction it
+walks, so a longer child brings more boundaries across, not fewer.
+
+Lifting the gate raised admission from 64 of 129 to 128 of 129 **and moved both
+the state census and the write trace**. The cause was not the child. The
+parent's own tail had no checkpoint for the boundary the hit gate's `RTS` at
+`73FD` lands on, so an interrupt arriving there was deferred to the next
+checkpoint -- the one after the branch at `73CA` -- and stacked `73CC` where
+ROM stacks `73CA`. That defect was already in the 64 calls the gate admitted;
+none of them happened to take an interrupt at that boundary, so no artifact
+ever saw it.
+
+Two changes make it right. The parent now takes the child's own return
+instruction rather than assuming `$6988` -- the interpreter has four `RTS`
+instructions, `$6988`, `$6994`, `$69A1` and `$6A37`, and only the 165-cycle
+transcript always reached the first -- and it transcribes the `73FD` boundary.
+At 128 of 129 the state census, call trace and write trace are all identical to
+assembly. The remaining decline is call 129, whose interpreter returns carry
+set and branches to `73CD`; that path is untranscribed, not blocked.
+
+**A guard that has never been crossed is not evidence that what is behind it
+works.** The gate read as conservatism about the child and was in fact the only
+thing keeping the walk inside the one shape whose calls never exercised the
+missing boundary. When a guard is lifted, the thing to watch is not whether
+admission rises but whether the artifacts move.
+
+`03:73A6` is entered zero times on the 3,600-frame route, so this changes no
+headline: the deployed registry is still 550,806,741 of 1,292,371,131
+(**42.62%**), the census still hashes `9036a9de...`, and the per-routine native
+cycle census is byte-identical to before the change. Regressions:
+`dc_rom_knight_movement_parent_semantic` and its five ordinal fixtures, plus
+`dc_rom_knight_hit_gate_semantic`, `dc_rom_knight_waiting_parent_semantic`,
+`dc_rom_knight_release_transition`, `dc_rom_collision_table_semantic`,
+`dc_rom_sorcerer_tick_semantic` and `dc_rom_spider_appearance_semantic`.
+
+### Previous: the Spider collision parents -- objection dead, prize small
+
+`03:6490` (Front) and `03:651F` (Side) were held back by a recorded objection
+that a parent wrapper "must reproduce that temporal context as well as the
+selector, two stack frames, and appearance call". Nothing in it survives: both
+children are complete transcripts on this route -- `03:6966` admits 14,307 of
+14,307 with zero horizon declines, `03:65A4` all 5,441 -- so there is no
+temporal context to reproduce, and the splice is the one the Sorcerer tick
+already performs twice.
+
+They are also nine instructions each: `LDA #sel / LDY $3C80,X / BEQ / LDA
+#sel2 / JSR $6966 / JSR $65A4 / LDA $3800,X / BMI / RTS`. Front's `BMI` tail at
+`64A5` is taken 3 times in 3,600 frames and can simply end the walk; Side's at
+`6534` is never taken.
+
+What the re-screen adds is the price. The 1.85M and 1.97M recorded for them are
+*inclusive* of the children, which are already native. Their own bodies are
+312,084 and 330,060 master cycles -- 642,144 together, **0.05% of the route**
+-- and handing back the two `RTS` instructions takes about 115,000 of that off
+again. There is no caller to compose them into either: `$6490` and `$651F` do
+not occur anywhere in the 384KB ROM image, so both are reached by computed
+dispatch and porting them removes no call boundary above. Net worth about
+0.04%. Priced rather than deferred: available whenever completeness matters
+more than share, which is the position this port ends in.
+
+### Previous: the sweep the `73A6` finding implied
+
+Every composition site in the tree was then checked for the same pattern -- a
+gate on the child's body length, checkpoint count, write count or return
+address rather than on the caps. Six sites, one fault, and the fault was the
+one already fixed.
+
+- `03:7F57`'s restriction of the interpreter child to the `6988`/`6A37`
+  returns is **inert**. Lifting it leaves admission at 20,862 of 20,867 and all
+  three artifacts hashing identically, because no call on this route returns
+  through `6994` or `69A1`. Reverted rather than kept: the two excluded
+  returns are unexercised, so admitting them would be a change no artifact
+  covers. The code behind it is already general -- both post-`RTS` boundaries
+  take the address from the child.
+- `03:7F57`'s second gate, on the response child returning `7FD1`, is
+  **tautological**: `replace_collision_response` sets `7FD1` on every path.
+- `01:C7F9`'s `body != 102 || writes != 3` is **semantic, not conservatism**.
+  The one call it refuses out of 255 is the countdown reaching zero, which
+  starts a different routine's state transition.
+- `01:C804`, `01:C812` and `03:7420` all pin their coroutine-scheduler child
+  to 159 cycles. All three admit 1 of 1 on their own fixtures and are entered
+  **zero times** on the 3,600-frame route, so lifting them would be an
+  unverifiable change in both directions.
+- `01:CC98`'s parent restricts the mask child's return to `CCD2`/`CCD4` but
+  propagates `mask->return_instruction` rather than hardcoding it.
+
+**The distinction that separates the one fault from the five non-faults is not
+how tight the gate is. It is whether the code behind the gate reads the child's
+shape from the child or has it written in.** `03:73A6` had `0x6988` written in;
+every other site takes the address from the transcript it spliced. A shape gate
+is only dangerous when something downstream assumes the shape.
+
+That sweep's own "next" pointed at `03:6054`, which is the slice above.
+
+One thing the sweep turned up in passing and did not chase: six routines in the
+`01:C5AD`-`01:C5C7` prefix group are installed and admit **0 of 4,387** entries
+apiece on the route -- about 26,000 refused entries, the largest such cluster in
+the registry. They are single-instruction prefix fixtures, so this is dead
+weight rather than a fault, but it is the concrete form of the warning in
+`NATIVE_PORT_WORKFLOW.md` that a registry chosen by family narrative installs
+routines that never accept a call.
+
+Also worth a look, and not chased here: the module models `BIT #imm` at `46B4`
+and `46E6` with `bit_test`, which matches this core. That is correct for the
+core and would be wrong against real 65C02 hardware, along with the three the
+tick adds. If a phase-3 native CPU ever replaces Beetle rather than matching
+it, these five sites are where that difference lands.
 
 Still open from the interpreter slice: `verify_giant_door_hit_prefix` and
 `verify_giant_door_completion_prefix` carry a dead `002F-0030` write range. The
@@ -5535,6 +5790,61 @@ page through MPR1, so `STA $2F` writes `$202F` and `002F-0030` selects nothing
 stable hash. Their live ranges assert the routine's real output, so they are not
 wrong today, only narrower than they read. When a range is added, check the
 write count moves.
+
+Previous slice: **the music sequencer's per-frame tick is chunked**, taking the
+deployed registry from 41.61% to **42.62%** (550,806,741 of 1,292,371,131) --
+the largest single slice the port has taken. `45:4015` had been recorded as
+unportable for four slices on arithmetic that was entirely correct: a
+12,667-cycle body cannot finish inside a 5,068-cycle timer period. The body
+that has to fit is a transcript's, and the tick's body is a loop, so it chunks
+at the loop head `45:4044`. The distinction worth keeping is that the
+driver-state rule is a **deadline, not a cap**: a cap is met by writing less, a
+deadline by doing less before it. 24,667 of the route's 32,391 voice iterations
+now run inside a transcript; gross 14,664,984, bill 1,647,495 (11.2%, entirely
+`00:FC00`, no other routine on the route moved a cycle), net `+13,017,489`.
+Bank 45 went from 24,827,955 native to 39,492,939 of 46,078,773. Composition
+was free because every callee is a case in the same switch, so 83,417 calls
+that used to reach a hook are now inlined. Two calls are handed back
+deliberately: `45:4936`, which is not transcribed, and `45:4142`, which keeps
+its own driver-state guard rather than imposing it on the tick.
+
+That slice also corrected its own re-screen -- the voice loop *does* read
+driver state, through the amplitude commit at `45:49D2`, which both `49B6` and
+`49F9` run -- and found a defect worth recording: all three immediate `BIT`
+instructions had been modelled with 65C02 semantics (Z only), where this core
+runs `case 0x89: LD_IM(BIT)` through the same macro as the memory forms and so
+takes N and V from the operand. It surfaced as a V flag in a status byte pushed
+by `4143 PHP`, one routine away from the mistake; the state census and work-RAM
+write trace caught it, the PSG bus trace did not.
+
+Previous slice: **the rejection re-screen**. Four rejections re-read against the
+chunking screen; `00:EAA7` had already been collected, `45:4015` was found
+portable (and is the slice above), and the two fade drivers at `00:E94D` and
+`00:EA77` plus `00:EB30`'s whole-palette `TIA` still stand. The `TIA` is the
+clean example of a structural rejection: 512 bytes in a single opcode, and a
+checkpoint can only cut at an instruction boundary, so no cut point exists. The
+screen also corrected a clause in `NATIVE_FALLBACK_HOTSPOTS.md` that listed "a
+body longer than the caps" as a rejection that *stays valid*, which is the
+sentence that held both `00:EAA7` and `45:4015`.
+
+Previous slice: **the fade-to-black stepper is chunked**, taking the deployed
+registry to **41.61%** (537,789,252 of 1,292,371,131). `00:EAA7` walks all
+thirty-two blocks of the shadow buffer in one call, which is 5,300 work-RAM
+writes against a channel of 512; `00:EAB0`, the head of its colour loop, became
+a second registered address and eight calls became 101 transcripts. The
+shadowing bill was **1,224 cycles** against a rule predicting 314,000, because
+the bill is the cost of displacing other native routines and the stepper runs
+during screen fades when the game is deliberately doing nothing else --
+idle-time work is nearly free to port, and that measurement does not belong in
+the same distribution as the other eight. The slice also found that **the census
+over-credits truncated transcripts**: it adds a transcript's declared
+`body_master_cycles` when the replacement is *offered*, before the core
+discovers an interrupt will cut it short, which is why the registry line moved
+1,651,296 on a routine costing 1,640,100. Halving the chunk budget to 196
+chunks lowers the reported total by 9,231 without changing a byte of the state
+census. Every native share quoted in these documents is high by some small
+amount of this kind. Regression: `dc_rom_palette_shadow_semantic`, all three
+hashes unchanged, the artifact carrying 42,770 writes from inside the routine.
 
 Previous slice: **the collision-table interpreter is composed into the Sorcerer
 tick**, taking the registry to **41.48%**. Making `03:6966` a transcript did not

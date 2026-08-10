@@ -31,6 +31,8 @@ enum class Button : std::uint16_t {
 struct InputFrame {
     std::uint16_t player_one = 0;
     std::uint16_t player_two = 0;
+
+    [[nodiscard]] bool operator==(const InputFrame&) const = default;
 };
 
 struct FramebufferView {
@@ -119,6 +121,13 @@ struct CpuRegisters {
 struct RoutineEntry {
     RoutineKey routine;
     CpuRegisters registers;
+    // The pad state the core is answering $1000 reads from for this frame.
+    // It is machine state a replacement cannot otherwise see -- the joypad
+    // is a device, not memory -- and the pad reader at 00:E195 is the one
+    // routine whose result is a pure function of it. Handing it over here
+    // rather than through the app keeps the value the transcript predicts
+    // and the value the core would have returned the same object.
+    InputFrame input;
     std::uint64_t frame_number = 0;
     std::uint32_t master_cycle = 0;
     std::uint64_t absolute_master_cycle = 0;

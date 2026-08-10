@@ -15,7 +15,29 @@ endif()
 # what they are, programming the PSG register file and maintaining the
 # per-voice records in $2E00-$2FFF.
 #
-# Ten subroutine entry points share one walk. `48B4` is the command decoder
+# Fifteen entry points share one walk: the per-frame tick at `4015`, which
+# is the bank's top level, and the subroutines it calls.
+#
+# The tick was recorded as unportable for four slices, on the arithmetic that
+# its 12,667-cycle body cannot finish inside the 5,068-cycle timer period. The
+# arithmetic is right and it is about a transcript, not a routine. The tick's
+# body is a loop; `4044` is its head and `40FF` closes it with a `JMP $4044`,
+# so the walk stops there once one more voice iteration would not fit inside
+# the horizon it was handed, the core takes the jump and the interrupt, and the
+# next chunk starts against a fresh one. 24,667 of the route's 32,391 voice
+# iterations now run inside a transcript.
+#
+# Two entry points exist because the walk stops in front of a call: `409C` is
+# where it resumes after `4936`, which is not transcribed here at all, and
+# `413B` after `4142`. `4142` is transcribed and is still handed back
+# deliberately, so that it is entered on its own and keeps the driver-state
+# guard it already carries instead of imposing it on the whole tick.
+#
+# Composing the rest is ordinary control flow rather than a spliced child
+# transcript, because every callee is a case in the same switch. That is why
+# the subroutine counts below fell so far -- 83,417 of their calls are now
+# inlined into a tick transcript. `4883` is 4,321 rather than 22,664 for the
+# same reason `48B4` was always 72. `48B4` is the command decoder
 # `4883` and `48F6` call, so it is hooked in its own right but only sees the
 # calls made from emulated code: the 25,896 calls made from inside a `4883`
 # or `48F6` transcript are inlined into that transcript instead, which is why
@@ -24,15 +46,35 @@ endif()
 # balance programmer `4522`, the note-to-period conversion `46D7`, and the
 # handlers themselves -- so none of those is a separate entry.
 #
-# Three entry points are admitted at less than 100%.
+# The entry points admitted at less than 100% are these.
 #
 #   - `4142` reads the timer driver's channel bank bytes at $F5/$F7/$F9, and
-#     `49F9` reaches $20F5,Y through its amplitude commit. Those bytes are
+#     the amplitude commit at `49D2` reaches $20F5,Y -- which both `49B6` and
+#     `49F9` run, so every voice iteration touches it. Those bytes are
 #     written by another thread of control, and a transcript reads them from a
 #     snapshot taken before it runs, so the walk declines unless either the
 #     interrupt mask is already set at entry -- `4142` brackets each voice in
 #     PHP/SEI/PLP, so a masked entry stays masked throughout -- or the body
 #     finishes before the next serviceable timer interrupt.
+#
+#     This guard is the whole reason the tick chunks. It is not a cap on
+#     transcript length; it is a deadline, and the only way to meet a deadline
+#     is to do less before it. `4015` and `4044` are admitted on roughly half
+#     their arrivals because a chunk boundary is by construction the moment
+#     the horizon is nearly spent, so the entry immediately after one often
+#     cannot fit an iteration either and hands that one back to assembly.
+#
+#     `4142` used to be admitted on half its arrivals for the same reason,
+#     and was left there on the same kind of arithmetic the tick had been:
+#     a whole call averages 2,055 master cycles against a 5,068-cycle timer
+#     period, so about half of them do not fit. That is an argument about one
+#     transcript, not about the routine. `4142` is a loop as well -- `4143` is
+#     its head and `41F7` closes it with a `JMP $4143` -- so it chunks the same
+#     way, and `4143` is the fifteenth entry point. It is a legal boundary
+#     rather than an invented one: ROM's own `PLP` at `41F1` has already
+#     restored the caller's mask before control reaches `41F7`, so the top of
+#     an iteration is somewhere the hardware may take an interrupt anyway.
+#     `4142` is now 3,216 of 3,604 and `4143` takes 3,788 more.
 #   - `457A` declines its $82/$92 command, which pops four bytes and jumps to
 #     $40EE, abandoning the routine's own frame; a leaf transcript that has to
 #     stop in front of an RTS cannot express that. It also declines the
@@ -75,7 +117,17 @@ execute_process(
         --record-state-census
         "${OUTPUT}"
         --replace-hook
+        "45:4015@all"
+        --replace-hook
+        "45:4044@all"
+        --replace-hook
+        "45:409C@all"
+        --replace-hook
+        "45:413B@all"
+        --replace-hook
         "45:4142@all"
+        --replace-hook
+        "45:4143@all"
         --replace-hook
         "45:4211@all"
         --replace-hook
@@ -126,16 +178,21 @@ endif()
 
 foreach(expected_line IN ITEMS
     "State census recording complete: 3600 frames"
-    "Native replacement 45:4142@all entries: 1792 of 3604"
-    "Native replacement 45:4211@all entries: 7198 of 7198"
-    "Native replacement 45:4228@all entries: 1142 of 1142"
+    "Native replacement 45:4015@all entries: 1933 of 3599"
+    "Native replacement 45:4044@all entries: 1208 of 7724"
+    "Native replacement 45:409C@all entries: 1509 of 4892"
+    "Native replacement 45:413B@all entries: 3599 of 3599"
+    "Native replacement 45:4142@all entries: 3216 of 3604"
+    "Native replacement 45:4143@all entries: 3788 of 6386"
+    "Native replacement 45:4211@all entries: 1783 of 1783"
+    "Native replacement 45:4228@all entries: 1065 of 1065"
     "Native replacement 45:457A@all entries: 2219 of 2299"
-    "Native replacement 45:4883@all entries: 22664 of 22664"
+    "Native replacement 45:4883@all entries: 4321 of 4321"
     "Native replacement 45:48B4@all entries: 72 of 72"
-    "Native replacement 45:48F6@all entries: 22664 of 22664"
-    "Native replacement 45:49A2@all entries: 22664 of 22664"
-    "Native replacement 45:49B6@all entries: 3604 of 3604"
-    "Native replacement 45:49F9@all entries: 22622 of 22664"
+    "Native replacement 45:48F6@all entries: 3398 of 3398"
+    "Native replacement 45:49A2@all entries: 3463 of 3463"
+    "Native replacement 45:49B6@all entries: 1671 of 1671"
+    "Native replacement 45:49F9@all entries: 3476 of 3482"
     "Work-RAM write trace complete: 5458568 selected writes"
     "Bus write trace complete: 699251 selected writes"
 )
@@ -172,10 +229,12 @@ endforeach()
 
 message(
     STATUS
-    "Semantic bank-45 music sequencer runs its command interpreter, "
-    "sample/envelope group, portamento stepper and PSG register programmer "
-    "natively across 106,641 admitted entries as instruction-boundary "
-    "transcripts, with its voice records, the zero-page command pointer, the "
-    "timer driver's per-channel state, the stack, all 699,251 PSG and timer "
-    "writes, and the whole state census identical to assembly."
+    "Semantic bank-45 music sequencer runs its per-frame tick, command "
+    "interpreter, sample/envelope group, portamento stepper and PSG register "
+    "programmer natively across 36,721 admitted entries as instruction-boundary "
+    "transcripts, the tick chunked at its voice loop and the PSG programmer at "
+    "its channel loop so each chunk lands "
+    "inside the timer horizon, with its voice records, the zero-page command "
+    "pointer, the timer driver's per-channel state, the stack, all 699,251 PSG "
+    "and timer writes, and the whole state census identical to assembly."
 )

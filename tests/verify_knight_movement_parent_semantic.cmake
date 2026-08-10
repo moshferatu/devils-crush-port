@@ -1,5 +1,26 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 
+# The Knight's per-frame movement parent. It is not reached by the ordinary
+# 3,600-frame route at all, so this regression drives it with fifteen work-RAM
+# patches that put two Knights into their movement phase, and observes the 129
+# calls that produces.
+#
+# `73A6` composes two children: the collision-table interpreter at `03:6966`
+# and the hit gate at `03:73D8`. It used to require the interpreter's transcript
+# to be exactly the 165-cycle one-pass collision-free one, on the theory that a
+# longer record could take an interrupt at the return boundary. That gate held
+# admission to 64 of 129 and was hiding a real defect rather than avoiding one:
+# the walk had no checkpoint for the boundary the hit gate's own `RTS` at
+# `73FD` lands on, so an interrupt arriving there was deferred to the boundary
+# after the branch at `73CA` and stacked `73CC` where ROM stacks `73CA`. No
+# admitted call happened to take an interrupt there, so nothing saw it. Lifting
+# the gate without the checkpoint moved both the census and the write trace;
+# with it, all three artifacts are identical to assembly at 128 of 129.
+#
+# The one remaining decline is call 129, where the interpreter returns carry
+# set and the parent branches to `73CD`. That is an untranscribed path, not a
+# horizon or a cap.
+
 foreach(required_variable IN ITEMS APP CONFIG ROM OUTPUT ORDINAL)
     if(NOT DEFINED ${required_variable} OR "${${required_variable}}" STREQUAL "")
         message(FATAL_ERROR "${required_variable} is required.")
@@ -18,7 +39,7 @@ set(expected_write_sha256 "bc5d40c4259a012696a3576188271060d601c660c362f97bca719
 set(call_output "${OUTPUT}.calls.csv")
 set(write_output "${call_output}.writes.csv")
 if(ORDINAL STREQUAL "all")
-    set(expected_native_line "Native replacement 03:73A6@all entries: 64 of 129")
+    set(expected_native_line "Native replacement 03:73A6@all entries: 128 of 129")
 else()
     set(expected_native_line "Native replacement 03:73A6@${ORDINAL} entries: 1")
 endif()
