@@ -352,8 +352,9 @@ one, because what the driver loses is proportional to how much wall time the
 hook spends unavailable, and that is the sum of the bodies. Per-call length
 only tells you whether a *single* call can straddle a period.
 
-What that does not give you is the ratio to the digit, but eight slices in it
-does give you a usable estimate:
+What that does not give you is the ratio to the digit, but nine slices in it
+does give you a usable estimate — for work that runs while the rest of the
+game does, which is the qualifier the last row below exists to add:
 
 | Slice | Gross native | Shadowing bill | Share of gross |
 | --- | ---: | ---: | ---: |
@@ -365,6 +366,7 @@ does give you a usable estimate:
 | Bank-01 geometry leaves | 3,066,105 | 626,298 | 20.4% |
 | Collision-table interpreter | 2,942,940 | 578,541 | 19.7% |
 | Interpreter into the Sorcerer tick | 1,538,439 | 242,907 | 15.8% |
+| Fade-to-black stepper (chunked) | 1,640,100 | 1,224 | **0.07%** |
 
 The spread looks arbitrary until the per-event numbers are pulled out of it.
 Those are almost identical every time: the driver costs **568 to 577 native
@@ -387,7 +389,17 @@ predicts. 15.8% is the second-lowest of eight and sits inside the existing
 spread, next to a slice that composed nothing at all. Whatever drives the three
 points of variation, it is not this.
 
-Two things keep it an estimate rather than a formula. The eight points span
+**The last row is the exception that names the mechanism.** `00:EAA7` bills
+1,224 cycles where the rule predicts 314,000 — it displaces eight entries of
+`00:E136` on the whole route and nothing else. The bill is the cost of
+*displacing other native routines*, and the stepper only runs during screen
+fades, when the game is deliberately doing nothing else: there is nothing in
+the shadow to displace. So the estimate applies to work that competes with
+the sound driver and the actor loop, and idle-time work — fades, wipes,
+attract-mode transitions — is close to free to port. Check what else is
+running before budgeting a region, not just how long its transcripts are.
+
+Two things keep it an estimate rather than a formula. The first eight points span
 three percentage points either side of 19%, which is a hundred thousand cycles
 on a typical slice. And the displacement rate is 1.7 times the naive figure:
 the timer fires every 5,068 master cycles, so a transcript covering N cycles
@@ -684,7 +696,18 @@ Two properties have to hold, and only one of them is obvious.
 12,400 instructions in a single call, transcribed as one head chunk and about
 eight continuations. Before this, routine length was a hard ceiling and
 candidates like `00:EAA7` were set aside for exceeding it. It is now a
-budgeting question.
+budgeting question, and `00:EAA7` was duly collected two slices later: 205,012
+cycles a call, 101 transcripts, 1,640,100 cycles moved.
+
+The stepper is the easier of the two worked examples and the difference is
+worth naming. The decoder needs a lookahead — its stream records vary in
+length, so it reads the next record's command byte at `00:E479` and stops if
+that record would not fit in what is left of either channel, so that a
+transcript never abandons work it has already transcribed. A colour in the
+stepper's loop is a fixed seventeen writes and fifty-seven checkpoints, so it
+decides on the counters alone and needs no lookahead at all. **Uniform loop
+bodies chunk for free; variable ones cost you a lookahead.** Screen for that
+when picking where to cut.
 
 ### A transcript cannot see what preempts it
 

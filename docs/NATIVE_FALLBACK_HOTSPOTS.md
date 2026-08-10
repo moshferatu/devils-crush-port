@@ -2547,7 +2547,7 @@ them was the whole of the analysis:
 | `00:EB30` | 3,599 | 8,636,040 | 2,400 | Native, 3,152 of 3,181 entered |
 | `00:E9B6` | 672 | 6,548,946 | 9,768 | Native, 672 of 672 |
 | `00:EBA5` | 1,121 | 2,629,866 | 2,388 | Native, 1,121 of 1,121 |
-| `00:EAA7` | 8 | 1,640,100 | 205,012 | Over the checkpoint cap |
+| `00:EAA7` | 8 | 1,640,100 | 205,012 | Over the checkpoint cap — **superseded**, now native by chunking |
 | `00:E93C` | 8,969 | 758,370 | 106 | Native, 8,969 of 8,969 |
 | `00:E94D`, `00:EA77` | 9 | 140,037 | — | Block on the frame-sync spin |
 
@@ -2564,6 +2564,17 @@ and unreachable: 205,012 cycles per call is roughly 17,000 instructions, nine
 times the checkpoint cap. `00:E94D` and `00:EA77` are worse — they call the
 frame-sync spin, so a transcript for either spans twenty-one frames. Both are
 visible from the call graph and the per-call figure alone.
+
+> **Half of that paragraph was superseded, and the half that survived is the
+> useful one.** `00:EAA7` is native as of the chunking slice. Cycles per call
+> screens out a *transcript*, and a routine whose body is a loop can be more
+> than one transcript: the walk stops in front of the branch that closes the
+> loop, the core takes it, and the loop head — a second registered address —
+> gets the next chunk. Eight calls became 101 transcripts and 1,640,100
+> cycles moved. So the screen is real but it rejects the wrong thing: apply
+> it to the loop body, not to the call. `00:E94D` and `00:EA77` are still
+> correctly rejected, and for the other reason in that paragraph rather than
+> this one — they wait on the spin loop, which no amount of chunking shortens.
 
 **100% admission has a cause, and it is worth naming.** The three ported
 leaves are admitted on every call because they are leaves in the strong
@@ -2665,7 +2676,7 @@ all. One call is 167,000 master cycles: 3,400 port writes and 12,400
 instructions against a channel of 512 writes and 2,048 checkpoints. That is
 not a screening result, it is an arithmetic one, and it is worth doing before
 reading any instructions — `00:EAA7` was set aside two slices ago for exactly
-this reason and stayed set aside.
+this reason, and chunking is what eventually collected it.
 
 The answer is to chunk, and it needed nothing new in the core. Give the
 routine a second entry point at the head of its loop, and stop the transcript

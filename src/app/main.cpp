@@ -2760,6 +2760,8 @@ parse_logical_address_range(const std::string_view text)
                            request.routine.physical_bank == 0x00U
                            && (request.routine.logical_pc == 0xE93CU
                                || request.routine.logical_pc == 0xE9B6U
+                               || request.routine.logical_pc == 0xEAA7U
+                               || request.routine.logical_pc == 0xEAB0U
                                || request.routine.logical_pc == 0xEB30U
                                || request.routine.logical_pc == 0xEBA5U)
                            && request.all_calls;

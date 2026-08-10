@@ -86,7 +86,7 @@ table rather than appearing at its old size:
 | bank `45` (`4000`–`4A9B`) | 21,152,865 | 1.64% | Music sequencer — the per-frame tick and two helpers the snapshot rule **blocks**, see below |
 | `00:E0EB`–`E292` | 10,888,014 | 0.84% | Pad reader and interrupt dispatcher, both **blocked** on a device read; the handler bodies and call wrappers are native |
 | `03:694A`–`6A37` | 2,700,153 | 0.21% | Collision-table interpreter — **already ported**; the `RTS` instructions and the resumption after an interrupt lands on a checkpoint, see below |
-| `00:E93C`–`EBD6` | 3,780,738 | 0.29% | Palette shadow buffer — the two fade drivers and the block decrement, **blocked**, see below |
+| `00:E93C`–`EBD6` | 2,159,505 | 0.17% | Palette shadow buffer — the two fade drivers and the whole-palette `TIA` arm, **blocked**, see below |
 | `02:586F`–`5903` | 501,195 | 0.04% | Sorcerer tick — **already ported**, and both interpreter calls are now composed in line; what is left is the two bank-wrapper calls, three `RTS` instructions and resumption |
 | `01:CA84`–`CC04` | 621,648 | 0.05% | Collision frame — **already ported**, and the call into the scanner is now composed rather than emulated, see below |
 
@@ -241,7 +241,7 @@ Remaining real logic, in rough order of value:
    | `00:EB30` VCE upload | 8,636,040 | **native** except the 29-call `TIA` arm |
    | `00:E9B6` block interpolator | 6,548,946 | **native** |
    | `00:EBA5` block stager | 2,629,866 | **native** |
-   | `00:EAA7` block decrement | 1,640,100 | 205,012 cycles per call, over the checkpoint cap |
+   | `00:EAA7` block decrement | 1,640,100 | **native**, in thirteen chunks a call |
    | `00:E93C` sixteen-bit compare | 758,370 | **native** |
    | `00:E94D`, `00:EA77` fade drivers | 140,037 | call the frame-sync spin at `00:E321` |
 
@@ -266,7 +266,11 @@ Remaining real logic, in rough order of value:
    again. Nothing in the core changed to allow it — the hook already fires on
    any fetch at a registered address, and a replacement already ends by handing
    one instruction back. That removes the routine-length ceiling from the rest
-   of phase 1, and it is the answer to `00:EAA7` in the table above as well.
+   of phase 1, and it was the answer to `00:EAA7` in the table above as
+   well: that row said "205,012 cycles per call, over the checkpoint cap"
+   for three slices, and the cap bounds a transcript rather than a routine.
+   `00:EAA7` is now native at 1,640,100 of its 1,640,100, chunking at
+   `00:EAB0`, the head of its colour loop.
 
    The tilemap upload at `00:F261`–`F4F1` (5.7M) is native as well, and it
    closes this item: every video path that does not read a device register is
@@ -284,7 +288,8 @@ Remaining real logic, in rough order of value:
 
    What is left in this item is not CPU work: the two fade drivers wait on the
    frame-sync loop, and `00:EB30`'s whole-palette `TIA` arm overruns the write
-   channel. Both are phase-2 or phase-3 problems.
+   channel. Both are phase-2 or phase-3 problems. The palette group is
+   18.5M of 20.6M.
 3. **The `00:E0EB`–`E292` region** (15.3M). This was listed as one block, "the
    VBlank handler and pad reader", and the plan for it was to widen the write
    channel to reach the joypad port at `$1000`. Both halves of that were
@@ -440,12 +445,32 @@ Remaining real logic, in rough order of value:
    route's total hook entries went *down* — 2,367,401 to 2,332,709. That did
    not make it systematically cheap, though: the bill was 15.8%, low but inside
    the existing spread, and the other composing slice on record billed 19.7%.
-10. **Gameplay tails** (~17M spread thin, no single address above 0.14%). What
+10. **The fade-to-black stepper chunked** (1.6M gross) — **done**. `00:EAA7`
+   had been set aside twice as past the checkpoint cap however the transcript
+   was arranged, which was a true sentence about a transcript and a false one
+   about the routine. Chunking it at `00:EAB0` makes eight calls into 101
+   transcripts and moves all but 1,284 of its 1,640,100 cycles native. The
+   registry passed 41.61%.
+
+   Two things came out of it worth more than the cycles. The **shadowing bill
+   was 1,224 cycles**, against a rule of thumb that predicted 314,000, because
+   the bill is the cost of displacing other native routines and the stepper
+   runs during screen fades when nothing else is running — so idle-time work
+   is nearly free to port and does not belong in the same distribution as the
+   other eight measurements. And the **census over-credits truncated
+   transcripts**: it adds a transcript's declared body when the replacement is
+   offered, before the core discovers an interrupt will cut it short, which is
+   why the registry line moved 1,651,296 on a routine that costs 1,640,100.
+   Halving the chunk budget lowers the reported total by 9,231 without
+   changing a byte of the state census. Every native share in these documents
+   is high by some small amount of this kind.
+11. **Gameplay tails** (~17M spread thin, no single address above 0.14%). What
    is left of the interpreter's region is mostly resumption rather than
-   unported code; the largest genuinely unported group is now the palette
-   shadow buffer at `00:E94C`–`EBD6` (3.8M).
-11. **Boot and reset path.** Off the census route's hot path but required.
-12. **The frame-sync spin loop** (584.8M). Trivial code, but it is where the
+   unported code; the largest genuinely unported groups are now the
+   sequencer's note handlers at `45:483B`–`4A9B` (2.8M) and `03:6001`–`6078`
+   (1.8M).
+12. **Boot and reset path.** Off the census route's hot path but required.
+13. **The frame-sync spin loop** (584.8M). Trivial code, but it is where the
    native frame boundary ends up living — do it with phase 3, not before.
 
 ### Phase 2 — native device models

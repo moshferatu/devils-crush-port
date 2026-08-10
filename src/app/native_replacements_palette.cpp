@@ -19,9 +19,10 @@ using emulation::RoutineReplacement;
 // nine-bit GRB here, marks the ones that changed in $2CCC-$2CEB, and lets
 // 00:EB30 push the dirty blocks out to the VCE ports once a frame.
 //
-// Four entry points are ported here. Three are leaves in the strong sense --
-// no JSR, no device port, no state another thread of control writes -- which
-// is what makes them the right first step into the video paths:
+// Five entry points are ported here, reached through six registered
+// addresses. Three are leaves in the strong sense -- no JSR, no device port,
+// no state another thread of control writes -- which is what makes them the
+// right first step into the video paths:
 //
 //   00:E93C  the sixteen-bit compare ($2F/$30 against $2D/$2E) the fade
 //            drivers use to decide whether a source pointer has run past its
@@ -42,12 +43,21 @@ using emulation::RoutineReplacement;
 // 512, so the walk declines in front of it. Twenty-nine of 3,599 calls take
 // that arm.
 //
-// Together they are 18.2M of the census route's 1,292M master cycles. The two
-// drivers above them -- the crossfade at 00:E94D and the fade-to-black at
-// 00:EA77 -- are not portable in the hybrid: both call the frame-sync spin at
-// 00:E321, so a transcript for either would have to span twenty-one frames.
-// 00:EAA7, the fade-to-black stepper, is 205,012 master cycles per call, which
-// is past the checkpoint cap however the transcript is arranged.
+// The fifth is 00:EAA7, the fade-to-black stepper, and it is the first routine
+// here that a single transcript cannot hold. Where the interpolator crossfades
+// one block, the stepper walks all thirty-two in one call: 512 colours, 5,300
+// work-RAM writes and 205,012 master cycles against a channel that carries 512
+// writes. It chunks, the technique the VRAM decoder introduced. 00:EAB0, the
+// head of its colour loop, is a second entry point; a transcript stops in
+// front of the JMP $EAB0 that closes the loop once a channel is close to full,
+// and the core takes the jump and calls back. Thirteen chunks cover a call,
+// and each costs the twelve master cycles of the jump the core executes.
+//
+// The two drivers above the shadow buffer -- the crossfade at 00:E94D and the
+// fade-to-black at 00:EA77 -- are still not portable in the hybrid: both call
+// the frame-sync spin at 00:E321, so a transcript for either would have to
+// span twenty-one frames. That is a wait rather than work, and it is a
+// phase-2 problem, not a length problem chunking can solve.
 constexpr std::uint8_t kBank = 0x00U;
 
 constexpr std::uint8_t kCarry = 0x01U;
@@ -61,6 +71,14 @@ constexpr std::uint8_t kNegative = 0x80U;
 // the whole 8KB so it can read back its own stores.
 constexpr std::uint16_t kWorkRamBase = 0x2000U;
 constexpr std::uint16_t kWorkRamEnd = 0x4000U;
+
+// Where a 00:EAA7 chunk stops. One colour costs at most seventeen writes and
+// fifty-seven checkpoints, and the block tail past it another two and ten, so
+// a walk that decides to continue at these counts still lands inside the hard
+// limits the loop below enforces -- 480 writes and 1,800 checkpoints, which
+// are themselves inside the core's 512 and 2,048.
+constexpr std::size_t kWriteBudget = 440U;
+constexpr std::size_t kCheckpointBudget = 1700U;
 
 [[nodiscard]] std::uint8_t set_nz(
     const std::uint8_t status,
@@ -82,6 +100,7 @@ constexpr std::uint16_t kWorkRamEnd = 0x4000U;
 [[nodiscard]] constexpr bool is_owned_entry(const std::uint16_t logical_pc)
 {
     return logical_pc == 0xE93CU || logical_pc == 0xE9B6U
+        || logical_pc == 0xEAA7U || logical_pc == 0xEAB0U
         || logical_pc == 0xEB30U || logical_pc == 0xEBA5U;
 }
 
@@ -92,8 +111,8 @@ constexpr std::uint16_t kWorkRamEnd = 0x4000U;
     const std::uint16_t logical_pc)
 {
     return logical_pc == 0xE94CU || logical_pc == 0xEA76U
-        || logical_pc == 0xEB3AU || logical_pc == 0xEBA4U
-        || logical_pc == 0xEBD6U;
+        || logical_pc == 0xEB2FU || logical_pc == 0xEB3AU
+        || logical_pc == 0xEBA4U || logical_pc == 0xEBD6U;
 }
 
 } // namespace
@@ -386,13 +405,32 @@ std::optional<RoutineReplacement> replace_palette_shadow(
             return std::nullopt;
         }
 
+        const auto finish = [&](const std::uint16_t stop_pc) {
+            registers.program_counter = stop_pc;
+            replacement.return_instruction = {kBank, stop_pc};
+            replacement.output_registers = registers;
+            replacement.body_master_cycles = cycle;
+        };
+
         // The transcript ends in front of the RTS, which the core then
         // executes itself.
         if (is_return_instruction(pc)) {
-            registers.program_counter = pc;
-            replacement.return_instruction = {kBank, pc};
-            replacement.output_registers = registers;
-            replacement.body_master_cycles = cycle;
+            finish(pc);
+            return replacement;
+        }
+        // 00:EAA7 chunks. One call steps all 512 colours of the shadow buffer
+        // and that is 5,300 work-RAM writes against a channel of 512, so no
+        // transcript can hold one. The walk stops in front of the JMP $EAB0
+        // that closes the colour loop once either channel is close to full;
+        // the core executes the jump, lands on 00:EAB0 and calls back for the
+        // next chunk. The cost of a chunk is that one jump, twelve master
+        // cycles, and the loop head is reached on every colour, so where a
+        // chunk ends needs no lookahead -- unlike the VRAM decoder, whose
+        // records vary in length, a colour is a fixed seventeen writes.
+        if (pc == 0xEB1AU
+            && (replacement.work_ram_writes.size() >= kWriteBudget
+                || replacement.checkpoints.size() >= kCheckpointBudget)) {
+            finish(pc);
             return replacement;
         }
 
@@ -1251,6 +1289,516 @@ std::optional<RoutineReplacement> replace_palette_shadow(
         case 0xEA73U:  // JMP $E9B7
             append_checkpoint(0xEA73U, 0xE9B7U, 12U);
             pc = 0xE9B7U;
+            break;
+
+        // ---- 00:EAA7  fade-to-black stepper ------------------------------
+        // The same unpack-step-repack idiom as the interpolator above, run
+        // over the whole shadow buffer rather than one block: X counts the
+        // thirty-two blocks down, Y walks sixteen colours inside each, and
+        // every channel that is not already zero loses one step. The
+        // sixteen-bit counter at $35/$36 tallies the colours that were black
+        // before the step, which is how 00:EA77 knows the fade has finished.
+        case 0xEAA7U:  // LDA #$B9
+            load_accumulator(0xB9U);
+            append_checkpoint(0xEAA7U, 0xEAA9U, 6U);
+            pc = 0xEAA9U;
+            break;
+
+        case 0xEAA9U:  // STA $2F
+            store(0xEAA9U, zp(0x2FU), registers.accumulator);
+            append_checkpoint(0xEAA9U, 0xEAABU, 12U);
+            pc = 0xEAABU;
+            break;
+
+        case 0xEAABU:  // LDA #$27
+            load_accumulator(0x27U);
+            append_checkpoint(0xEAABU, 0xEAADU, 6U);
+            pc = 0xEAADU;
+            break;
+
+        case 0xEAADU:  // STA $30 -- the block pointer starts at $27B9
+            store(0xEAADU, zp(0x30U), registers.accumulator);
+            append_checkpoint(0xEAADU, 0xEAAFU, 12U);
+            pc = 0xEAAFU;
+            break;
+
+        case 0xEAAFU:  // CLY -- no flags
+            registers.y = 0x00U;
+            append_checkpoint(0xEAAFU, 0xEAB0U, 6U);
+            pc = 0xEAB0U;
+            break;
+
+        case 0xEAB0U:  // LDA ($2F),Y
+            load_accumulator(read_mapped(indirect_y(0x2FU)));
+            append_checkpoint(0xEAB0U, 0xEAB2U, 21U);
+            pc = 0xEAB2U;
+            break;
+
+        case 0xEAB2U:  // AND #$07
+            load_accumulator(
+                static_cast<std::uint8_t>(registers.accumulator & 0x07U));
+            append_checkpoint(0xEAB2U, 0xEAB4U, 6U);
+            pc = 0xEAB4U;
+            break;
+
+        case 0xEAB4U:  // STA $3C -- channel zero
+            store(0xEAB4U, zp(0x3CU), registers.accumulator);
+            append_checkpoint(0xEAB4U, 0xEAB6U, 12U);
+            pc = 0xEAB6U;
+            break;
+
+        case 0xEAB6U:  // LDA ($2F),Y
+            load_accumulator(read_mapped(indirect_y(0x2FU)));
+            append_checkpoint(0xEAB6U, 0xEAB8U, 21U);
+            pc = 0xEAB8U;
+            break;
+
+        case 0xEAB8U:  // STA $3E -- the low byte, kept for channel two
+            store(0xEAB8U, zp(0x3EU), registers.accumulator);
+            append_checkpoint(0xEAB8U, 0xEABAU, 12U);
+            pc = 0xEABAU;
+            break;
+
+        case 0xEABAU:  // LSR A
+            shift_right_accumulator();
+            append_checkpoint(0xEABAU, 0xEABBU, 6U);
+            pc = 0xEABBU;
+            break;
+
+        case 0xEABBU:  // LSR A
+            shift_right_accumulator();
+            append_checkpoint(0xEABBU, 0xEABCU, 6U);
+            pc = 0xEABCU;
+            break;
+
+        case 0xEABCU:  // LSR A
+            shift_right_accumulator();
+            append_checkpoint(0xEABCU, 0xEABDU, 6U);
+            pc = 0xEABDU;
+            break;
+
+        case 0xEABDU:  // AND #$07
+            load_accumulator(
+                static_cast<std::uint8_t>(registers.accumulator & 0x07U));
+            append_checkpoint(0xEABDU, 0xEABFU, 6U);
+            pc = 0xEABFU;
+            break;
+
+        case 0xEABFU:  // STA $3D -- channel one
+            store(0xEABFU, zp(0x3DU), registers.accumulator);
+            append_checkpoint(0xEABFU, 0xEAC1U, 12U);
+            pc = 0xEAC1U;
+            break;
+
+        case 0xEAC1U:  // INY -- point at the colour's high byte
+            registers.y = static_cast<std::uint8_t>(registers.y + 1U);
+            registers.status = set_nz(registers.status, registers.y);
+            append_checkpoint(0xEAC1U, 0xEAC2U, 6U);
+            pc = 0xEAC2U;
+            break;
+
+        case 0xEAC2U:  // LDA ($2F),Y
+            load_accumulator(read_mapped(indirect_y(0x2FU)));
+            append_checkpoint(0xEAC2U, 0xEAC4U, 21U);
+            pc = 0xEAC4U;
+            break;
+
+        case 0xEAC4U:  // LSR A -- the colour's bit 8 into carry
+            shift_right_accumulator();
+            append_checkpoint(0xEAC4U, 0xEAC5U, 6U);
+            pc = 0xEAC5U;
+            break;
+
+        // $3E holds the low byte; rotating bit 8 in and shifting five more
+        // places leaves channel two in its bottom three bits.
+        case 0xEAC5U: {  // ROR $3E
+            const auto operand = read_ram(zp(0x3EU));
+            const auto rotated = static_cast<std::uint8_t>(
+                static_cast<std::uint8_t>(operand >> 1U)
+                | static_cast<std::uint8_t>((registers.status & kCarry) << 7U));
+            store(0xEAC5U, zp(0x3EU), rotated);
+            registers.status = set_nz(
+                static_cast<std::uint8_t>(
+                    (registers.status & static_cast<std::uint8_t>(~kCarry))
+                    | static_cast<std::uint8_t>(operand & kCarry)),
+                rotated);
+            append_checkpoint(0xEAC5U, 0xEAC7U, 18U);
+            pc = 0xEAC7U;
+            break;
+        }
+
+        case 0xEAC7U:
+        case 0xEAC9U:
+        case 0xEACBU:
+        case 0xEACDU:
+        case 0xEACFU: {  // LSR $3E
+            const auto operand = read_ram(zp(0x3EU));
+            const auto shifted = static_cast<std::uint8_t>(operand >> 1U);
+            store(pc, zp(0x3EU), shifted);
+            registers.status = set_nz(
+                static_cast<std::uint8_t>(
+                    (registers.status & static_cast<std::uint8_t>(~kCarry))
+                    | static_cast<std::uint8_t>(operand & kCarry)),
+                shifted);
+            const auto next = static_cast<std::uint16_t>(pc + 2U);
+            append_checkpoint(pc, next, 18U);
+            pc = next;
+            break;
+        }
+
+        case 0xEAD1U:  // CLC
+            registers.status = static_cast<std::uint8_t>(
+                registers.status & static_cast<std::uint8_t>(~kCarry));
+            append_checkpoint(0xEAD1U, 0xEAD2U, 6U);
+            pc = 0xEAD2U;
+            break;
+
+        case 0xEAD2U:  // LDA $3C
+            load_accumulator(read_ram(zp(0x3CU)));
+            append_checkpoint(0xEAD2U, 0xEAD4U, 12U);
+            pc = 0xEAD4U;
+            break;
+
+        case 0xEAD4U:  // ADC $3D
+            add_with_carry(read_ram(zp(0x3DU)));
+            append_checkpoint(0xEAD4U, 0xEAD6U, 12U);
+            pc = 0xEAD6U;
+            break;
+
+        case 0xEAD6U:  // CLC
+            registers.status = static_cast<std::uint8_t>(
+                registers.status & static_cast<std::uint8_t>(~kCarry));
+            append_checkpoint(0xEAD6U, 0xEAD7U, 6U);
+            pc = 0xEAD7U;
+            break;
+
+        case 0xEAD7U:  // ADC $3E -- the three channels sum to at most 21
+            add_with_carry(read_ram(zp(0x3EU)));
+            append_checkpoint(0xEAD7U, 0xEAD9U, 12U);
+            pc = 0xEAD9U;
+            break;
+
+        case 0xEAD9U:  // BEQ $EB0D -- already black
+            pc = branch(
+                0xEAD9U,
+                0xEB0DU,
+                0xEADBU,
+                (registers.status & kZero) != 0U);
+            break;
+
+        case 0xEADBU:  // LDA $3C
+            load_accumulator(read_ram(zp(0x3CU)));
+            append_checkpoint(0xEADBU, 0xEADDU, 12U);
+            pc = 0xEADDU;
+            break;
+
+        case 0xEADDU:  // BEQ $EAE1
+            pc = branch(
+                0xEADDU,
+                0xEAE1U,
+                0xEADFU,
+                (registers.status & kZero) != 0U);
+            break;
+
+        case 0xEADFU: {  // DEC $3C
+            const auto stepped = static_cast<std::uint8_t>(
+                read_ram(zp(0x3CU)) - 1U);
+            store(0xEADFU, zp(0x3CU), stepped);
+            registers.status = set_nz(registers.status, stepped);
+            append_checkpoint(0xEADFU, 0xEAE1U, 18U);
+            pc = 0xEAE1U;
+            break;
+        }
+
+        case 0xEAE1U:  // LDA $3D
+            load_accumulator(read_ram(zp(0x3DU)));
+            append_checkpoint(0xEAE1U, 0xEAE3U, 12U);
+            pc = 0xEAE3U;
+            break;
+
+        case 0xEAE3U:  // BEQ $EAE7
+            pc = branch(
+                0xEAE3U,
+                0xEAE7U,
+                0xEAE5U,
+                (registers.status & kZero) != 0U);
+            break;
+
+        case 0xEAE5U: {  // DEC $3D
+            const auto stepped = static_cast<std::uint8_t>(
+                read_ram(zp(0x3DU)) - 1U);
+            store(0xEAE5U, zp(0x3DU), stepped);
+            registers.status = set_nz(registers.status, stepped);
+            append_checkpoint(0xEAE5U, 0xEAE7U, 18U);
+            pc = 0xEAE7U;
+            break;
+        }
+
+        case 0xEAE7U:  // LDA $3E
+            load_accumulator(read_ram(zp(0x3EU)));
+            append_checkpoint(0xEAE7U, 0xEAE9U, 12U);
+            pc = 0xEAE9U;
+            break;
+
+        case 0xEAE9U:  // BEQ $EAED
+            pc = branch(
+                0xEAE9U,
+                0xEAEDU,
+                0xEAEBU,
+                (registers.status & kZero) != 0U);
+            break;
+
+        case 0xEAEBU: {  // DEC $3E
+            const auto stepped = static_cast<std::uint8_t>(
+                read_ram(zp(0x3EU)) - 1U);
+            store(0xEAEBU, zp(0x3EU), stepped);
+            registers.status = set_nz(registers.status, stepped);
+            append_checkpoint(0xEAEBU, 0xEAEDU, 18U);
+            pc = 0xEAEDU;
+            break;
+        }
+
+        // Repack. Channel two is shifted six places, so only the last of the
+        // six ASLs can carry, and the single ROL $2C captures that bit as the
+        // colour's bit 8 -- the same construction as 00:EA59 above.
+        case 0xEAEDU:  // STZ $2C
+            store(0xEAEDU, zp(0x2CU), 0x00U);
+            append_checkpoint(0xEAEDU, 0xEAEFU, 12U);
+            pc = 0xEAEFU;
+            break;
+
+        case 0xEAEFU:  // LDA $3E
+            load_accumulator(read_ram(zp(0x3EU)));
+            append_checkpoint(0xEAEFU, 0xEAF1U, 12U);
+            pc = 0xEAF1U;
+            break;
+
+        case 0xEAF1U:
+        case 0xEAF2U:
+        case 0xEAF3U:
+        case 0xEAF4U:
+        case 0xEAF5U:
+        case 0xEAF6U: {  // ASL A
+            shift_left_accumulator();
+            const auto next = static_cast<std::uint16_t>(pc + 1U);
+            append_checkpoint(pc, next, 6U);
+            pc = next;
+            break;
+        }
+
+        case 0xEAF7U: {  // ROL $2C
+            const auto operand = read_ram(zp(0x2CU));
+            const auto rotated = static_cast<std::uint8_t>(
+                static_cast<std::uint8_t>(operand << 1U)
+                | static_cast<std::uint8_t>(registers.status & kCarry));
+            store(0xEAF7U, zp(0x2CU), rotated);
+            registers.status = set_nz(
+                static_cast<std::uint8_t>(
+                    (registers.status & static_cast<std::uint8_t>(~kCarry))
+                    | static_cast<std::uint8_t>((operand >> 7U) & kCarry)),
+                rotated);
+            append_checkpoint(0xEAF7U, 0xEAF9U, 18U);
+            pc = 0xEAF9U;
+            break;
+        }
+
+        case 0xEAF9U:  // STA $3E -- channel two's contribution to the low byte
+            store(0xEAF9U, zp(0x3EU), registers.accumulator);
+            append_checkpoint(0xEAF9U, 0xEAFBU, 12U);
+            pc = 0xEAFBU;
+            break;
+
+        case 0xEAFBU:  // LDA $2C
+            load_accumulator(read_ram(zp(0x2CU)));
+            append_checkpoint(0xEAFBU, 0xEAFDU, 12U);
+            pc = 0xEAFDU;
+            break;
+
+        case 0xEAFDU:  // STA ($2F),Y -- the high byte, bit 8 alone
+            store(0xEAFDU, indirect_y(0x2FU), registers.accumulator);
+            append_checkpoint(0xEAFDU, 0xEAFFU, 21U);
+            pc = 0xEAFFU;
+            break;
+
+        case 0xEAFFU:  // DEY -- back to the low byte
+            registers.y = static_cast<std::uint8_t>(registers.y - 1U);
+            registers.status = set_nz(registers.status, registers.y);
+            append_checkpoint(0xEAFFU, 0xEB00U, 6U);
+            pc = 0xEB00U;
+            break;
+
+        case 0xEB00U:  // LDA $3D
+            load_accumulator(read_ram(zp(0x3DU)));
+            append_checkpoint(0xEB00U, 0xEB02U, 12U);
+            pc = 0xEB02U;
+            break;
+
+        case 0xEB02U:
+        case 0xEB03U:
+        case 0xEB04U: {  // ASL A
+            shift_left_accumulator();
+            const auto next = static_cast<std::uint16_t>(pc + 1U);
+            append_checkpoint(pc, next, 6U);
+            pc = next;
+            break;
+        }
+
+        case 0xEB05U:  // ORA $3C
+            load_accumulator(
+                static_cast<std::uint8_t>(
+                    registers.accumulator | read_ram(zp(0x3CU))));
+            append_checkpoint(0xEB05U, 0xEB07U, 12U);
+            pc = 0xEB07U;
+            break;
+
+        case 0xEB07U:  // ORA $3E
+            load_accumulator(
+                static_cast<std::uint8_t>(
+                    registers.accumulator | read_ram(zp(0x3EU))));
+            append_checkpoint(0xEB07U, 0xEB09U, 12U);
+            pc = 0xEB09U;
+            break;
+
+        case 0xEB09U:  // STA ($2F),Y
+            store(0xEB09U, indirect_y(0x2FU), registers.accumulator);
+            append_checkpoint(0xEB09U, 0xEB0BU, 21U);
+            pc = 0xEB0BU;
+            break;
+
+        case 0xEB0BU:  // BRA $EB14
+            append_checkpoint(0xEB0BU, 0xEB14U, 12U);
+            pc = 0xEB14U;
+            break;
+
+        // The already-black arm, which 3,890 of the route's 4,096 colours
+        // take. $35/$36 is a sixteen-bit tally the driver compares against
+        // 512 to decide the fade is over.
+        case 0xEB0DU: {  // INC $35
+            const auto stepped = static_cast<std::uint8_t>(
+                read_ram(zp(0x35U)) + 1U);
+            store(0xEB0DU, zp(0x35U), stepped);
+            registers.status = set_nz(registers.status, stepped);
+            append_checkpoint(0xEB0DU, 0xEB0FU, 18U);
+            pc = 0xEB0FU;
+            break;
+        }
+
+        case 0xEB0FU:  // BNE $EB13
+            pc = branch(
+                0xEB0FU,
+                0xEB13U,
+                0xEB11U,
+                (registers.status & kZero) == 0U);
+            break;
+
+        case 0xEB11U: {  // INC $36
+            const auto stepped = static_cast<std::uint8_t>(
+                read_ram(zp(0x36U)) + 1U);
+            store(0xEB11U, zp(0x36U), stepped);
+            registers.status = set_nz(registers.status, stepped);
+            append_checkpoint(0xEB11U, 0xEB13U, 18U);
+            pc = 0xEB13U;
+            break;
+        }
+
+        case 0xEB13U:  // DEY
+            registers.y = static_cast<std::uint8_t>(registers.y - 1U);
+            registers.status = set_nz(registers.status, registers.y);
+            append_checkpoint(0xEB13U, 0xEB14U, 6U);
+            pc = 0xEB14U;
+            break;
+
+        case 0xEB14U:
+        case 0xEB15U:  // INY
+            registers.y = static_cast<std::uint8_t>(registers.y + 1U);
+            registers.status = set_nz(registers.status, registers.y);
+            {
+                const auto next = static_cast<std::uint16_t>(pc + 1U);
+                append_checkpoint(pc, next, 6U);
+                pc = next;
+            }
+            break;
+
+        case 0xEB16U:  // CPY #$20 -- sixteen colours, two bytes each
+            compare(registers.y, 0x20U);
+            append_checkpoint(0xEB16U, 0xEB18U, 6U);
+            pc = 0xEB18U;
+            break;
+
+        case 0xEB18U:  // BEQ $EB1D
+            pc = branch(
+                0xEB18U,
+                0xEB1DU,
+                0xEB1AU,
+                (registers.status & kZero) != 0U);
+            break;
+
+        case 0xEB1AU:  // JMP $EAB0 -- the colour loop, and the chunk boundary
+            append_checkpoint(0xEB1AU, 0xEAB0U, 12U);
+            pc = 0xEAB0U;
+            break;
+
+        case 0xEB1DU:  // CLC
+            registers.status = static_cast<std::uint8_t>(
+                registers.status & static_cast<std::uint8_t>(~kCarry));
+            append_checkpoint(0xEB1DU, 0xEB1EU, 6U);
+            pc = 0xEB1EU;
+            break;
+
+        case 0xEB1EU:  // LDA $2F
+            load_accumulator(read_ram(zp(0x2FU)));
+            append_checkpoint(0xEB1EU, 0xEB20U, 12U);
+            pc = 0xEB20U;
+            break;
+
+        case 0xEB20U:  // ADC #$20 -- the next block, thirty-two bytes on
+            add_with_carry(0x20U);
+            append_checkpoint(0xEB20U, 0xEB22U, 6U);
+            pc = 0xEB22U;
+            break;
+
+        case 0xEB22U:  // STA $2F
+            store(0xEB22U, zp(0x2FU), registers.accumulator);
+            append_checkpoint(0xEB22U, 0xEB24U, 12U);
+            pc = 0xEB24U;
+            break;
+
+        case 0xEB24U:  // CLA -- no flags, so the carry above survives
+            registers.accumulator = 0x00U;
+            append_checkpoint(0xEB24U, 0xEB25U, 6U);
+            pc = 0xEB25U;
+            break;
+
+        case 0xEB25U:  // ADC $30
+            add_with_carry(read_ram(zp(0x30U)));
+            append_checkpoint(0xEB25U, 0xEB27U, 12U);
+            pc = 0xEB27U;
+            break;
+
+        case 0xEB27U:  // STA $30
+            store(0xEB27U, zp(0x30U), registers.accumulator);
+            append_checkpoint(0xEB27U, 0xEB29U, 12U);
+            pc = 0xEB29U;
+            break;
+
+        case 0xEB29U:  // DEX
+            registers.x = static_cast<std::uint8_t>(registers.x - 1U);
+            registers.status = set_nz(registers.status, registers.x);
+            append_checkpoint(0xEB29U, 0xEB2AU, 6U);
+            pc = 0xEB2AU;
+            break;
+
+        case 0xEB2AU:  // BEQ $EB2F
+            pc = branch(
+                0xEB2AU,
+                0xEB2FU,
+                0xEB2CU,
+                (registers.status & kZero) != 0U);
+            break;
+
+        case 0xEB2CU:  // JMP $EAAF
+            append_checkpoint(0xEB2CU, 0xEAAFU, 12U);
+            pc = 0xEAAFU;
             break;
 
         // ---- 00:EB30  VCE upload ----------------------------------------

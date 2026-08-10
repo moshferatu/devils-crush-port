@@ -15,11 +15,12 @@ endif()
 # marks the changed ones in $2CCC-$2CEB, and 00:EB30 pushes the dirty blocks out
 # once a frame.
 #
-# Four entry points share one walk, and none of them calls anything, so each is
-# a single straight transcript to its own RTS.
+# Five entry points share one walk, and none of them calls anything, so each is
+# a straight transcript to its own RTS.
 #
 #   00:E93C  the sixteen-bit compare the fade drivers branch on
 #   00:E9B6  the block interpolator, one crossfade step over sixteen colours
+#   00:EAA7  the fade-to-black stepper, one step over all thirty-two blocks
 #   00:EB30  the upload: the colour-table address through $0402/$0403 and
 #            sixteen colours per dirty block through $0404/$0405
 #   00:EBA5  the block stager, a 32-byte copy plus the dirty flags
@@ -29,11 +30,20 @@ endif()
 # is 1,024 writes against a replacement channel that carries 512, so the walk
 # declines in front of the first store rather than truncating the upload.
 #
-# The two fade drivers above the shadow buffer are deliberately absent. Both
-# 00:E94D and 00:EA77 call the frame-sync spin at 00:E321, so a transcript for
-# either would have to span twenty-one frames; and 00:EAA7, the fade-to-black
-# stepper, is 205,012 master cycles per call, past the checkpoint cap however it
-# is arranged.
+# 00:EAA7 is the one that does not fit in a transcript either, and unlike the
+# TIA arm it is only too long: 512 colours a call, 5,300 work-RAM writes and
+# 205,012 master cycles. It chunks. 00:EAB0, the head of its colour loop, is a
+# sixth registered address; a transcript stops in front of the JMP $EAB0 that
+# closes the loop once a channel is nearly full and the core takes the jump and
+# calls back. Eight calls become 101 entries, so the two counts below are the
+# check that the chunk boundary has not moved -- 93 at 00:EAB0 is thirteen
+# chunks a call, and a different budget would change it without changing any
+# artifact hash.
+#
+# The two fade drivers above the shadow buffer are still deliberately absent.
+# Both 00:E94D and 00:EA77 call the frame-sync spin at 00:E321, so a transcript
+# for either would have to span twenty-one frames. That is a wait, not a
+# length, and chunking does not reach it.
 #
 # Five work-RAM ranges and the VCE register file scope this, and all three
 # artifacts are compared against what a pure-assembly run of the same route
@@ -45,6 +55,14 @@ endif()
 # is in the sequencer's regression: nothing in this slice pushes, so every stack
 # write in the trace belongs to surrounding code, and any cycle these
 # transcripts misprice moves those writes.
+#
+# All three hashes are the ones the four-entry-point version of this test
+# asserted, and that is the point of the slice's verification rather than an
+# oversight. The ranges above already covered every byte 00:EAA7 touches --
+# $2C, $2F/$30, $35/$36 and $3C-$3E in the zero-page range, and its stores
+# through ($2F),Y in the shadow buffer -- so the artifact carries 42,770 writes
+# from inside the routine. They were byte-identical to assembly before it was
+# ported and they still are.
 set(
     expected_census_sha256
     "9036a9de0c3c9917f47bff8c04c136a4824ec12601fb457d260aa2dfe4443490"
@@ -70,6 +88,10 @@ execute_process(
         "00:E93C@all"
         --replace-hook
         "00:E9B6@all"
+        --replace-hook
+        "00:EAA7@all"
+        --replace-hook
+        "00:EAB0@all"
         --replace-hook
         "00:EB30@all"
         --replace-hook
@@ -108,6 +130,8 @@ foreach(expected_line IN ITEMS
     "State census recording complete: 3600 frames"
     "Native replacement 00:E93C@all entries: 8969 of 8969"
     "Native replacement 00:E9B6@all entries: 672 of 672"
+    "Native replacement 00:EAA7@all entries: 8 of 8"
+    "Native replacement 00:EAB0@all entries: 93 of 93"
     "Native replacement 00:EB30@all entries: 3561 of 3590"
     "Native replacement 00:EBA5@all entries: 1121 of 1121"
     "Work-RAM write trace complete: 7369685 selected writes"
@@ -147,8 +171,9 @@ endforeach()
 message(
     STATUS
     "Semantic palette shadow buffer runs its block interpolator, block stager, "
-    "sixteen-bit compare and VCE upload natively across 14,323 admitted "
-    "entries as instruction-boundary transcripts, with the shadow buffer, its "
-    "dirty flags, the zero-page scratch, the stack, every VCE register write "
-    "and the whole state census identical to assembly."
+    "sixteen-bit compare, fade-to-black stepper and VCE upload natively across "
+    "14,424 admitted entries as instruction-boundary transcripts -- the "
+    "stepper in thirteen chunks a call -- with the shadow buffer, its dirty "
+    "flags, the zero-page scratch, the stack, every VCE register write and the "
+    "whole state census identical to assembly."
 )
