@@ -1,0 +1,94 @@
+diff --git a/mednafen/pce/huc6280.cpp b/mednafen/pce/huc6280.cpp
+--- a/mednafen/pce/huc6280.cpp
++++ b/mednafen/pce/huc6280.cpp
+@@ -554,6 +554,21 @@ void HuC6280::TimerSync(void)
+ 	timer_lastts = timestamp;
+ }
+ 
++void HuC6280::DcObserveIrq(DcIrqObservation* const out) const
++{
++	out->timestamp = timestamp;
++	out->timer_lastts = timer_lastts;
++	out->timer_div = timer_div;
++	out->timer_value = timer_value;
++	out->timer_load = timer_load;
++	out->timer_status = timer_status;
++	out->timer_inreload = timer_inreload;
++	out->irq_low = IRQlow;
++	out->irq_mask = IRQMask;
++	out->irq_sample = IRQSample;
++	out->next_event = next_event;
++}
++
+ // Only the used prefix of each array is live, and an interrupt handler's own
+ // transcript is typically a fraction of the parent's, so saving and restoring
+ // by count keeps nesting proportional to the transcripts involved rather than
+diff --git a/mednafen/pce/huc6280.h b/mednafen/pce/huc6280.h
+--- a/mednafen/pce/huc6280.h
++++ b/mednafen/pce/huc6280.h
+@@ -65,6 +65,65 @@ public:
+ 	uint8 IRQStatusRead(unsigned int address, bool peek = false);
+ 	void IRQStatusWrite(unsigned int address, uint8 V);
+ 
++	// Downstream observation of the timer and interrupt controller. Both
++	// register files are already public, because the machine's I/O page
++	// handler reaches them from outside; everything behind them is not, and
++	// a differential test that could only compare register reads would be
++	// unable to see the divider's phase at all.
++	//
++	// Nothing here changes behaviour except `DcSetIFlag`, which says so.
++	struct DcIrqObservation
++	{
++		uint32 timestamp;
++		int32 timer_lastts;
++		int32 timer_div;
++		int32 timer_value;
++		int32 timer_load;
++		uint8 timer_status;
++		bool timer_inreload;
++		uint32 irq_low;
++		uint8 irq_mask;
++		int32 irq_sample;
++		int32 next_event;
++	};
++
++	void DcObserveIrq(DcIrqObservation* out) const;
++
++	// The horizon a native routine transcript declares itself against, and
++	// therefore part of this device's surface even though nothing outside
++	// the processor calls it.
++	uint32 DcTimerInterruptHorizon(void) const
++	{
++		return GetMasterCyclesUntilTimerInterrupt();
++	}
++
++	// That horizon is gated on the I flag, and no public entry point
++	// reaches the status register. This sets it and refreshes the cache
++	// that shadows it. It is the one thing here that writes processor
++	// state; a test that wants the gate closed has no other way to close
++	// it, and closing it is half of what the horizon means.
++	void DcSetIFlag(const bool set)
++	{
++		if(set)
++			P |= I_FLAG;
++		else
++			P &= ~I_FLAG;
++
++		REDOPIMCACHE();
++	}
++
++	// What `RunSub` does to the interrupt controller when it takes the
++	// reset vector: the mask opens to all three lines and the request is
++	// released. Nothing else ever opens the mask, so a device driven
++	// without an executing processor stays behind a closed one forever
++	// unless it can ask for this.
++	void DcAcknowledgeReset(void)
++	{
++		IRQMask = 7;
++		IRQSample &= ~IQRESET;
++		IRQlow &= ~IQRESET;
++	}
++
+ 	int StateAction(StateMem *sm, const unsigned load, const bool data_only);
+ 
+ 	NO_INLINE void RunSub(void);

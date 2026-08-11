@@ -54,6 +54,22 @@ this repository.
   controller's two hooks find their encoder through, so only one may exist at
   a time and none may exist while a real machine is running. It is deleted
   with the emulator.
+- `include/dc_beetle_reference_irq.h` and `src/dc_beetle_reference_irq.cpp`:
+  the emulator's own timer and interrupt controller, for the tests only, and
+  a step further than the encoder's shim. This device is not an object at
+  all -- it is a dozen fields inside `HuC6280` and four methods the machine's
+  I/O page handler calls from outside -- so there is nothing to lift out.
+  This supplies the processor those fields live in, initialised and never
+  executed, and drives it by stealing master cycles. That substitution is
+  exact rather than convenient: the timer's whole relationship with time is
+  one phase against the processor's clock, and that clock advances whether
+  or not instructions are running. Stealing cycles also runs `HappySync`
+  whenever the divider comes due, so the emulator catches its timer up at
+  the moments a real machine would, which is what makes comparing it against
+  a single catch-up worth doing. It claims the emulator's own processor, so
+  only one may exist at a time, none may exist while a real machine is
+  running, and it must not share a process with a live reference encoder.
+  It is deleted with the emulator.
 
 ## Patch series
 
@@ -252,6 +268,31 @@ this repository.
       repairs have run over them. Roughly a kilobyte, so it travels on a
       stack rather than the heap the controller's 128 KiB needed.
     - Changes nothing when no model is registered.
+12. `patches/0012-huc6280-irq-reference-observation.patch`
+    - Observation only, for the timer and interrupt controller. Both register
+      files are already public, because the machine's I/O page handler
+      reaches them from outside; everything behind them is private, and the
+      one field a differential test most needs is the divider's phase, which
+      no register exposes.
+    - `DcIrqObservation` and `DcObserveIrq` read out the timer's five fields,
+      the request register, the mask, the processor's latched sample of the
+      masked pending set, and the next-event horizon.
+    - `DcTimerInterruptHorizon` exposes
+      `GetMasterCyclesUntilTimerInterrupt`, which `0003` added and which
+      every native transcript declares itself against. It is part of this
+      device's surface even though nothing outside the processor calls it.
+    - `DcSetIFlag` is the one entry point here that writes processor state.
+      That horizon is gated on the I flag and no public entry point reaches
+      the status register, so a test that wants the gate closed has no other
+      way to close it -- and closing it is half of what the horizon means.
+    - `DcAcknowledgeReset` is what `RunSub` does to the controller when it
+      takes the reset vector: the mask opens to all three lines and the
+      request is released. Nothing else ever opens the mask, so a device
+      driven without an executing processor stays behind a closed one
+      forever without this.
+    - Adds no data members, so the processor object's layout and the
+      `MDFN_ALIGN(128)` assertion in `Init` are untouched. Changes nothing
+      for any caller that does not use these.
 
 All local files and patches are GPL-3.0-or-later. Upstream per-file notices
 and licenses remain authoritative for upstream sources.

@@ -1,6 +1,6 @@
 # Project Progress
 
-Last updated: 2026-08-10
+Last updated: 2026-08-11
 
 ## Current Status
 
@@ -5496,15 +5496,114 @@ does not.
 
 ### Next
 
-**The video interrupt and the frame boundary.** Both video chips are now
-native, and the picture is drawn entirely by this port's own code -- but the
-machine around them is still the emulator's, and the next seam is where the
-video devices meet time. Phase 3's list starts here: the timer reload and
-interrupt generation at `$0C00`/`$0C01`, the interrupt mask and acknowledge at
-`$1402`/`$1403`, and the raster interrupt the controller already raises but
-the emulator's processor still latches.
+**Install the timer and interrupt controller.** The model is written and
+proved; what is left is a fork patch in the shape of `0008`/`0009`/`0011`
+that routes `HuC6280::Power`, `Reset`, `TimerSync`, the `$0C00`/`$0C01` and
+`$1402`/`$1403` register files, `IRQBegin`/`IRQEnd`, `CalcNextEvent`,
+`GetMasterCyclesUntilTimerInterrupt` and the savestate into
+`devils_crush::cpu::HuC6280Irq`, and a `framebuffer_sha256` census over the
+route to show nothing moved.
 
-Three things about that seam are already visible from this slice.
+That seam is narrower than the encoder's in one way and harder in another.
+No framebuffer crosses it, there are no outward edges at all, and the state
+is under fifty bytes. But every one of the video seams was reached from the
+machine's *edge* -- `pce.cpp`'s I/O page handler, or `VCE::Sync` as the
+processor's event handler -- and this one is reached from inside
+`HuC6280::RunSub` and `ADDCYC`, on the hottest path in the emulator. Two
+questions follow from that and are worth deciding rather than defaulting.
+
+Whether `CalcNextEvent` may take the divider from a model at all, or whether
+the dormant object has to keep a shadow copy the model writes through. It is
+called from `ADDCYC`, which is every instruction; an indirect call there is
+not free, and the horizon is one integer.
+
+And where the sampling boundary falls. `IRQSample` and `IFlagSample` are the
+processor's latched copy of the masked pending set, taken at `LastCycle`; the
+model deliberately does not hold them, and the vector-selection rule in
+`RunSub` -- with its asymmetric `(IRQlow & IQTIMER & IRQMask) && !IFlagSample`
+-- stays with the processor. The install has to leave that split intact,
+which means the model publishes a level and the emulator's processor keeps
+deciding what to do about it. That is also the property that lets the model
+be installed now rather than after the processor.
+
+The acceptance is the same four the video slices used: model installed,
+model handed back, and the same for the other three devices alongside it.
+
+### Previous: the timer and interrupt controller is modelled
+
+`devils_crush::cpu::HuC6280Irq` holds the two register files at
+`$0C00`/`$0C01` and `$1402`/`$1403`, the three request lines behind them, and
+the divider that turns the master clock into the only interrupt this machine
+generates for itself. It is not installed; `dc_irq_device` is what proves it.
+
+**This is the first device model that is purely reactive.** The sound chip
+answered, the video controller answered, the colour encoder owned the
+schedule; this one has no hooks at all. Its inputs are a line assertion and a
+timestamp to catch up to; its outputs are a masked pending set the processor
+reads and a divider the processor folds into its own horizon. Nothing calls
+out of it, which makes it the smallest seam in the port so far.
+
+**It is also the first device that was never an object.** The PSG, the VDC
+and the VCE are classes in the emulator; this is a dozen private fields
+inside `HuC6280` and four public methods the machine's I/O page handler calls
+from outside. There is nothing to lift out. So the reference arm is the
+processor those fields live in, initialised and never executed, driven by
+stolen master cycles -- the shim shape the encoder's slice invented as a
+compromise, which here is exact. The timer's entire relationship with time is
+one phase against the processor's clock, and that clock advances whether or
+not instructions run.
+
+That bought a stronger comparison than a mirror. Stealing cycles runs the
+processor's own `HappySync` whenever the divider comes due, so the emulator
+catches its timer up at the moments a real machine would -- sometimes several
+times inside one call -- while the model catches up once at the end. The two
+arms reach the same state by different routes. It is not a formality: the
+tick that carries a reload is one clock short and the tick before it is one
+clock long, so a catch-up landing inside that pair has to come out where one
+stepping through it does.
+
+The device is small enough that the test is closer to an enumeration than a
+sample. All 128 reload values are driven to their underflow and checked
+against the tick they should land on. All eight mask values are written and
+read back inverted. Both acknowledge paths are taken -- a read of `$1402`
+acknowledges the timer as a side effect of reporting the mask, and a write to
+`$1403` does it deliberately. The counter is read in the one-clock window
+where it holds -1 and reads back as `$FF`. Then a 200,000-step walk over
+every entry point compares every field of both arms after every step:
+**209,374 comparisons, no disagreement.**
+
+**Seven deliberate mutations of the model were each detected, and the
+seventh only by the walk.** Dropping the I/O bus latch from a status read
+survived every named check, because each one masked those bits off before
+comparing. The previous slice's shuttle test passed while the defect it
+guarded was present; this is the discipline that answers it, and the
+mutation harness lives in the scratchpad rather than the repository -- it is
+a check on the test, run once when the test is written.
+
+Three things are deliberately outside the model. The interrupt is not
+*taken* here: which vector wins, when the line is sampled, and how the I flag
+gates it are decided at instruction boundaries, and this device has no notion
+of an instruction. The I/O bus latch is not held here either -- reads of both
+register files merge device bits with the last byte the processor drove onto
+a bus shared with the sound chip and the controller port -- so it is passed
+in, which is what keeps those two reads pure. And the reset request is an
+input like any other; all the device does is hold it and, on acknowledge,
+open the mask, which is the only thing that ever initialises the mask.
+
+Two upstream oddities are reproduced rather than corrected, both recorded in
+the model. `HuC6280::Reset` leaves the divider at 1024 rather than at a whole
+3,072-clock tick, so the first tick after a reset is a third of a period
+short. And `HuC6280::Reset` *assigns* the request register rather than adding
+to it, so a video interrupt in flight across a reset is dropped.
+
+Patch `0012` is observation only: a state read-out, the interrupt horizon
+`0003` added, an I-flag setter, and the mask-opening the reset vector
+performs. It adds no data members, so the processor object's layout and the
+`MDFN_ALIGN(128)` assertion in `Init` are untouched.
+
+### Previous: the video interrupt and the frame boundary
+
+Three things about that seam were already visible from the encoder's slice.
 
 The encoder already reaches four machine edges, and two of them are the whole
 of what a processor seam would have to take over: `HuCPU::StealCycles` and
@@ -5526,7 +5625,7 @@ stop, then repairs the line widths -- so "the spin loop becomes the native
 frame boundary" is a change to who calls whom, not a change to what the video
 devices do.
 
-Two smaller things this slice leaves open, both recorded rather than fixed.
+Two smaller things the encoder's slice left open, both still open.
 `floored_chunks` is still zero over 3,600 frames, so the schedule's
 already-due path has never run on a route; only `dc_vce_device` reaches it.
 And `dc_beetle_vce_cd_event` routes to `PCECD_Run` unconditionally, matching

@@ -128,6 +128,28 @@ if(TARGET DevilsCrush::BeetlePce)
     add_test(NAME dc_vce_device COMMAND dc_vce_device_tests)
 endif()
 
+# The native timer and interrupt controller against the emulator's own, both
+# driven by one stolen-cycle stimulus. Needs no ROM. The device is small
+# enough that the stimulus can reach all of it, so this is less a sample than
+# an enumeration: every reload value the counter can hold, a stop and restart
+# mid-period, a catch-up long enough to cross a whole timer period, a mask
+# closed over a pending request, and both acknowledge paths.
+if(TARGET DevilsCrush::BeetlePce)
+    add_executable(dc_irq_device_tests irq_device_tests.cpp)
+
+    target_link_libraries(
+        dc_irq_device_tests
+        PRIVATE
+            DevilsCrush::Core
+            DevilsCrush::BeetlePce
+    )
+
+    target_compile_features(dc_irq_device_tests PRIVATE cxx_std_20)
+    dc_enable_strict_warnings(dc_irq_device_tests)
+
+    add_test(NAME dc_irq_device COMMAND dc_irq_device_tests)
+endif()
+
 add_test(
     NAME dc_coverage_manifest
     COMMAND

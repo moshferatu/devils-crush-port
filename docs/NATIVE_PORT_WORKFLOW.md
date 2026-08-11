@@ -1681,6 +1681,58 @@ upstream fault, and the reasoning had to be thrown away rather than patched.
 **An elegant argument resting on an unverified premise is worth less than the
 one run that tests the premise.**
 
+### Mutate the model, or the test only proves it compiles
+
+The previous slice shipped a shuttle test that passed while the defect it was
+written to guard was present. The fix there was to make the test harder. The
+lesson generalises past that: **a differential test that has only ever been
+run against a correct model has not been shown to be able to fail.**
+
+So the timer and interrupt controller's test was accepted only after seven
+deliberate mutations of the model were each shown to break it — the short
+reload tick removed, the divider started at the wrong value, an acknowledge
+dropped, the mid-reload horizon off by one tick, the reload byte widened to
+eight bits, the underflow moved from below zero to zero, and the I/O bus
+latch dropped from a status read.
+
+Six of the seven were caught by a named check. The seventh — the bus latch —
+was caught **only** by the 200,000-step walk, because every named check
+around the status register masked those bits off before comparing. That is
+the argument for keeping a broad differential walk alongside the specific
+checks even when the specific checks look exhaustive: the named checks encode
+what I thought to ask, and the walk encodes what I did not.
+
+The mechanism is cheap enough to be routine. A script rewrites one line of
+the model, builds the single test target, runs it, records whether it failed,
+and restores the file; six mutations cost about a minute. It belongs in the
+scratchpad rather than the repository — it is a check on the test, run once
+when the test is written, not a thing to keep running.
+
+### A device that was never an object
+
+The three device models before this one were classes in the emulator with
+clear edges, and each reference arm was some version of "construct the
+emulator's class". The timer and interrupt controller is not a class. It is a
+dozen private fields inside `HuC6280` and four public methods the machine's
+I/O page handler calls from outside, and there is nothing to construct.
+
+The shim that worked is the one the encoder's slice invented for a different
+reason: **run the emulator's processor without executing it.** For the
+encoder that was a compromise — the encoder reaches the processor by name, so
+the smallest machine it runs in is a processor. For this device it is exact,
+because the device's entire relationship with time is one phase against the
+processor's clock and that clock advances whether or not instructions do. A
+stolen cycle and an executed instruction are indistinguishable to it.
+
+There is a second, better property that came free. Stealing cycles runs the
+processor's own `HappySync`, so the emulator catches its timer up at the
+moments a real machine would — sometimes several times inside one call —
+while the model catches up once at the end. The two arms therefore reach the
+same state by genuinely different routes, which is a stronger comparison than
+two objects being stepped in lockstep. **When a reference arm can be driven
+through the machine's own scheduling rather than around it, the test stops
+being a mirror and starts being an experiment.**
+
 ## Commands
 
 Assuming the full host preset has been configured and `DC_ROM_PATH` is

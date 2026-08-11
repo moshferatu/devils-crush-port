@@ -13,16 +13,19 @@ Removing the emulator needs work on three fronts. The metric tracks one.
 | Axis | What it means | Tracked by native share |
 | --- | --- | --- |
 | **CPU code** | Every routine runs as native C/C++ instead of emulated 6280 | Yes |
-| **Device state** | The VDC and PSG are native models, not Beetle's | No |
+| **Device state** | The PSG, VDC and VCE are native models, not Beetle's | No |
 | **Time** | Interrupt scheduling and cycle pacing are native | No |
 
-The gap matters concretely, and the sound path is the example that has now
-been closed. `replace_sound_timer_driver` emits a write to `$0806` and the
-core applies it with `WrMem` — but what it reaches is
+The gap matters concretely, and the sound and video paths are the examples
+that have now been closed. `replace_sound_timer_driver` emits a write to
+`$0806` and the core applies it with `WrMem` — but what it reaches is
 [`src/audio/pce_psg.cpp`](../src/audio/pce_psg.cpp), a native device model,
-not Beetle's PSG. The VDC is still Beetle's, and every VDC port write still
-lands there. At a hypothetical 100% native cycle share the emulator would
-still be present, still own the video device, and still own the clock.
+not Beetle's PSG; a write to `$0000` reaches
+[`src/video/pce_vdc.cpp`](../src/video/pce_vdc.cpp) and one to `$0400`
+reaches [`src/video/pce_vce.cpp`](../src/video/pce_vce.cpp), which also draws
+the picture. The clock is still Beetle's, and so is every interrupt. At a
+hypothetical 100% native cycle share the emulator would still be present and
+still own time.
 
 So the percentage will plateau well short of "removable". Track the phases
 below, not the number.
@@ -918,8 +921,67 @@ Remaining real logic, in rough order of value:
 
 ### Phase 3 — time and interrupts
 
-- Timer reload and IRQ generation (`$0C00`/`$0C01`), interrupt mask and
-  acknowledge (`$1402`/`$1403`).
+- **Timer reload and IRQ generation (`$0C00`/`$0C01`), interrupt mask and
+  acknowledge (`$1402`/`$1403`) — modelled and proved, not yet installed.**
+  `devils_crush::cpu::HuC6280Irq` holds the two register files, the three
+  request lines behind them, and the divider that turns the master clock into
+  the only interrupt this machine generates for itself.
+
+  This is the first device model that is purely reactive. The sound chip
+  answered, the video controller answered, the colour encoder owned the
+  schedule; this one has no hooks at all. Its inputs are a line assertion and
+  a timestamp to catch up to; its outputs are a masked pending set the
+  processor reads and a divider the processor folds into its own horizon.
+  Nothing calls out of it.
+
+  It is also the first device that was never an object in the emulator. The
+  PSG, the VDC and the VCE are classes; this is a dozen fields inside
+  `HuC6280` and four methods the machine's I/O page handler calls from
+  outside. So `dc_irq_device`'s reference arm is the processor those fields
+  live in, initialised and never executed, driven by stolen master cycles.
+  That substitution is exact rather than convenient: the timer's whole
+  relationship with time is one phase against the processor's clock, and the
+  clock advances whether or not instructions run.
+
+  The device is small enough that the test is closer to an enumeration than
+  a sample. All 128 reload values are driven to their underflow and checked
+  against the tick they should land on; all eight mask values are written and
+  read back inverted; both acknowledge paths are taken; the counter is read
+  in the one-clock window where it holds −1. Then a 200,000-step walk over
+  every entry point compares every field of both arms after every step —
+  209,374 comparisons, no disagreement.
+
+  Stealing cycles runs the processor's own `HappySync` whenever the divider
+  comes due, so the emulator catches its timer up at the moments a real
+  machine would, sometimes several times inside one call, while the model
+  catches up once at the end. Proving those agree is most of what the test is
+  for and it is not a formality: the tick carrying a reload is one clock
+  short and the tick before it is one clock long, so a catch-up landing
+  inside that pair has to come out where one stepping through it does.
+
+  Seven deliberate mutations of the model were each detected, and the one
+  that dropped the I/O bus latch from a status read was caught *only* by the
+  walk — the named checks all masked it off. That is the answer to the
+  question the previous slice raised by writing a shuttle test that passed
+  while the defect it was meant to guard was present.
+
+  Three things are deliberately outside the model. The interrupt is not
+  *taken* here: which vector wins, when the line is sampled and how the I
+  flag gates it are decided at instruction boundaries, and this device has no
+  notion of an instruction. That split is what makes the model installable
+  now, with the emulator's processor still latching. The I/O bus latch is not
+  held here either — reads of both register files merge device bits with the
+  last byte the processor drove onto a bus shared with the sound chip and the
+  controller port — so it is passed in, which is also what keeps those two
+  reads pure. And the reset request is an input like any other, held until
+  the processor takes the vector.
+
+  What remains before it can be installed is a `dc_beetle_irq_model` in the
+  shape of `0008`/`0009`/`0011` and a census over the route. That seam is
+  narrower than the encoder's: no framebuffer crosses it and there are no
+  outward edges at all, but it is reached from inside `HuC6280::RunSub` and
+  `ADDCYC` rather than from the machine's edge, which is the opposite
+  problem.
 - VDC/VBlank interrupt timing against the raster.
 - Cycle pacing. Native transcripts currently declare `body_master_cycles` so
   Beetle can schedule around them; something must still model time to the
