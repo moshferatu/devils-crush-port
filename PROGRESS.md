@@ -5496,26 +5496,103 @@ does not.
 
 ### Next
 
-**Install the native VDC.** The device is written and proved; what is left is
-a fork patch in the shape of `0008` that routes the emulator's VDC port
-accesses and clocks into `devils_crush::video::PceVdc`, and a
-`framebuffer_sha256` census over the route to show the picture did not move.
-Two things make this harder than the sound patch was. The VDC is read back —
-`00:E058` opens by reading the status register — so the patch has to route
-reads as well as writes, where the PSG needed only a write path. And the
-wait-state hook is load-bearing: the emulator's `VCE::WS_Hook` charges the CPU
-and refuses when its per-frame budget runs out, so the installed model has to
-be given a hook that does the same or the machine hangs rather than fails.
+**A native colour encoder, or a native frame.** The video display controller
+is installed and the picture did not move, so the emulator's remaining hold on
+the image is `VCE`: the dot-clock divider, the two blanking counters, the
+512-entry palette with its two cached expansions, the scanline bookkeeping,
+and the framebuffer the pixels are written into. It is a much smaller device
+than the VDC — no memory of its own beyond the palette, and its whole
+behaviour is the schedule already read closely enough to reproduce twice.
 
-The model deliberately has no savestate surface yet. `PcePsg` grew
-`capture_state`/`apply_state` in the slice that installed it, because that is
-the slice where the savestate format becomes a constraint and where a test can
-prove the round trip. Adding the same to `PceVdc` now would be an untested API
-guessing at what the patch needs.
+Take it the same way: a device model with the schedule inside it, a
+differential test that drives it and the emulator's own `VCE` from one CPU-side
+stimulus, then a patch that routes `PCE_Power`, the `$0400`-`$0405` register
+file, `RunPartial` and the frame boundary. The acceptance is again that the
+census does not move, and again that is not enough on its own — the model has
+to be asked what it did.
 
-The same liveness caveat as the PSG slice applies and should be checked the
-same way: a VDC model that never installs matches `framebuffer_sha256`
-perfectly. Prove installation from the model's own side, not from the hash.
+One thing to settle first. `VCE` owns `VDC vdc[2]` by value, so a native
+encoder and a native controller have to be joined to each other rather than
+each joined to the emulator. That is the first place in this project where two
+native devices talk without the emulator between them, and it is worth
+designing on purpose rather than discovering.
+
+### Previous: the video chip is installed
+
+Patch `0009` routes every entry point `VCE` has into `vdc[0]` — reset, the
+three clocking calls, both port directions, the interrupt poll, the register
+read the encoder does for its own scanline bookkeeping, the two debugging
+controls, and the two peeks the project's frame snapshot uses — into
+`devils_crush::video::PceVdc`. The emulator's own device receives nothing and
+survives only as the shape its savestate format is written through.
+
+The schedule deliberately stayed where it was. The dot-clock divider, the two
+blanking counters, the palette and the framebuffer are still the emulator's,
+and it drives the model with exactly the interleaving of clocks and blanking
+edges it drives its own chip with. That is what makes this a device seam
+rather than a video seam, and it is why the differential test written against
+`VCE::SyncSub` was the right test for it.
+
+Three arms, and all three produce byte-identical censuses over 3,600 frames:
+both models installed, the video device handed back, and both handed back.
+The hash is the one the sound slice pinned —
+`9036a9de0c3c9917f47bff8c04c136a4824ec12601fb457d260aa2dfe4443490` — because a
+video device that draws the same picture changes nothing a census can see. The
+third arm is the one that earns the other two: without it a matching hash
+would prove only that the two models agree with each other.
+
+**What the route actually asks of the chip is a small fraction of it**, and
+this is the most useful thing the slice measured. Over 3,600 frames the model
+drew 3,599 fields and 946,808 scanlines and fetched 2,890,075 sprites, of
+which 760,562 were the second half of a wide one. It also recorded:
+
+- **zero 16-colour sprite fetches.** The game never uses the mode.
+- **zero sprite overflows.** Never a seventeenth sprite on a line.
+- **zero sprite-zero collisions.** The collision interrupt never fires.
+- **zero words moved by the video-memory transfer engine.** Devil's Crush
+  moves its sprite attribute table 3,599 times and nothing else; the block
+  transfer that copies within video memory is never used at all.
+- **zero forced completions** out of 11,008 stalls. The encoder's per-frame
+  budget of 455 × 64 stolen cycles is never exhausted, so the path where a
+  blocked port access has to finish its own transfer is never taken.
+- **twenty words read back out of video memory**, against 974,757 written.
+
+Every one of those is a path `dc_vdc_device` drives with synthetic stimulus
+against the emulator's own device, and none of them could have been proved
+here. A census cannot fail for a path the route never takes. The two tests are
+not redundant and neither is sufficient: the census proves the model is right
+about this game, the differential test proves it is right about the chip.
+
+Two smaller things worth keeping:
+
+- **`next_event` is a dead parameter.** `VDC::Read` and `VDC::Write` take the
+  scheduling horizon by reference and neither body reads or assigns it. The
+  model is given the same pointer and leaves it alone, because writing a
+  horizon there would be a departure from the reference rather than a fidelity
+  to it. The differential test never compared it, and correctly so — there was
+  nothing to compare.
+- **The savestate is 128 KiB and the character cache is not in it.** The cache
+  is derived from video memory, so carrying it would let a restored device
+  disagree with its own memory; both the emulator's loader and the model
+  rebuild it instead. The shuttle is heap-allocated on the fork side rather
+  than left on a stack.
+
+The two edges the device reaches back through are exported by the fork rather
+than invented by the model. `dc_beetle_vdc_irq_change` re-derives the CPU's
+interrupt level from every chip's latched status, discarding the direction
+argument exactly as `VCE::IRQChangeCheck` does — which is what lets one chip be
+native while the other is not. `dc_beetle_vdc_wait_state` charges the CPU and
+refuses when the budget runs out, and that refusal is load-bearing: the device
+stalls by asking until it is told no, so a hook that always agreed would hang
+the machine rather than fail it.
+
+One repair to the build that was overdue. `cmake/BeetlePce.cmake` checks, when
+a patch will not apply, whether it is already applied by looking for two
+markers — but the marker branches stopped at `0006` and everything after fell
+into a shared `else` that looked for `0007`'s markers. Patch `0008` was
+therefore being checked against `0007`'s evidence, and would have been
+declared already-applied when it was not. Each of `0007`, `0008` and `0009`
+now has its own branch and its own two markers.
 
 ### Previous: the video chip is ours
 

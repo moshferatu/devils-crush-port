@@ -803,10 +803,38 @@ Remaining real logic, in rough order of value:
   its budget. None of that stimulus comes from the ROM, which is the point:
   the census can only prove what the game asks for.
 
-  What remains for this device is installation — a fork patch in the shape of
-  `0008`, and the `framebuffer_sha256` census over the route. The liveness
-  caveat applies there exactly as it did to the PSG: a VDC model that never
-  installs matches the census perfectly.
+  **The model is installed.** Patch `0009` routes every entry point `VCE` has
+  into `vdc[0]` — reset, the three clocking calls, both port directions, the
+  interrupt poll, the register read the encoder does for its own bookkeeping,
+  the two debugging controls, and the two peeks the frame snapshot uses. The
+  emulator's device receives nothing and survives only as the shape its
+  savestate format is written through. Three arms produce byte-identical
+  3,600-frame censuses — both models installed, the video device handed back,
+  and both handed back — and the third is what earns the other two, because
+  without it a matching hash would prove only that the two models agree with
+  each other.
+
+  The liveness caveat was answered from the model's own side, and the answer
+  is the most useful measurement in the slice. **The route asks for a small
+  fraction of the chip.** Over 3,600 frames: zero 16-colour sprite fetches,
+  zero sprite overflows, zero sprite-zero collisions, zero words moved by the
+  video-memory transfer engine — the game moves its sprite attribute table
+  3,599 times and never copies within video memory at all — zero forced
+  completions out of 11,008 stalls, and twenty words read back out of video
+  memory against 974,757 written. Every one of those is a path
+  `dc_vdc_device` drives synthetically against the emulator's own device. The
+  two tests are not redundant and neither is sufficient: the census proves the
+  model is right about this game, the differential test proves it is right
+  about the chip. This is the split this section predicted, now measured.
+
+  What remains of the image is `VCE` itself: the dot-clock divider, the two
+  blanking counters, the palette with its cached expansions, the scanline
+  bookkeeping and the framebuffer. It is a much smaller device than the one
+  above, and its whole behaviour is the schedule already reproduced twice —
+  once in the test's driver, once by leaving it in place under the installed
+  model. The one thing to design rather than discover is that `VCE` owns its
+  controllers by value, so a native encoder and a native controller must be
+  joined to each other rather than each to the emulator.
 
 ### Phase 3 — time and interrupts
 

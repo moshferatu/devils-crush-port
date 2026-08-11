@@ -38,14 +38,17 @@ set(
 
 set(emulated_output "${OUTPUT}.emulated.csv")
 
-# The native model is the default, so the first arm passes no flag at all.
+# Both arms hand the video display controller back to the emulator, so this
+# stays the test it was written to be: one device model, changed on its own,
+# against the machine it replaced. The combination where both models are
+# installed is the native arm of `dc_rom_native_vdc`.
 foreach(arm IN ITEMS native emulated)
     if(arm STREQUAL "native")
         set(arm_output "${OUTPUT}")
-        set(arm_flags)
+        set(arm_flags "--emulated-vdc")
     else()
         set(arm_output "${emulated_output}")
-        set(arm_flags "--emulated-psg")
+        set(arm_flags "--emulated-psg;--emulated-vdc")
     endif()
 
     execute_process(

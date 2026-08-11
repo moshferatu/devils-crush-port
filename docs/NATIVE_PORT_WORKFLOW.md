@@ -1402,6 +1402,22 @@ Such a test lives exactly as long as the emulator does, which is the right
 lifetime: it is the record that the model was right while there was still
 something to be right against.
 
+**The VDC settled the question with much larger numbers.** Installing the
+native video device and asking it what 3,600 frames reached: zero 16-colour
+sprite fetches, zero sprite overflows, zero sprite-zero collisions, zero words
+moved by the video-memory transfer engine — the game moves its sprite
+attribute table 3,599 times and never copies within video memory once — zero
+forced completions out of 11,008 stalls, and twenty words read back out of
+video memory against 974,757 written. The census that passed with a
+byte-identical hash was silent about every one of those, and a model that got
+any of them wrong would have passed it just as cleanly.
+
+So the division of labour is not a hedge, it is the design: **the census
+proves the model is right about this game; the differential test proves it is
+right about the chip.** Neither is sufficient and they are not redundant. Plan
+both for any device from the start, and let the coverage counters — not
+judgement — decide which paths the synthetic test has to carry.
+
 ### Build the shim before planning around the dependency
 
 The PSG slice ended by recording what the VDC would cost: that unlike the
@@ -1495,6 +1511,24 @@ first question is whether it is a real behaviour change** — and the way to
 settle it is to perturb the copy that is not redundant and confirm that one is
 caught.
 
+### An "already applied?" fallback must not share evidence with another patch
+
+The fork applies its patch series with `git apply`, and when a patch will not
+apply it checks whether the source is *already* patched by looking for two
+markers. The branch that picks the markers was a chain of `if(name MATCHES
+"^000N-")` arms ending in a bare `else()` — and the `else()` held `0007`'s
+markers. When `0008` was added, nobody moved it out of the fallback, so `0008`
+was being checked against `0007`'s evidence: it would have been declared
+already-applied whenever `0007` was, including when it had not been applied at
+all. The build would then have compiled a core silently missing a patch.
+
+Nothing failed, because both patches were always applied together. That is the
+shape of the trap: **a fallback that happens to be right for the last patch
+added is wrong for the next one, and stays wrong quietly.** Give every patch
+its own branch and its own markers, taken from files that patch alone touches,
+and let the fallback be the newest one only because it is about to stop being
+the newest.
+
 ## Commands
 
 Assuming the full host preset has been configured and `DC_ROM_PATH` is
@@ -1554,6 +1588,24 @@ every ROM test writes its own artifact paths, and the backup RAM and cabinet
 configuration are only touched by the windowed host, not by the recording path
 these tests use. Treat a lone failure in this family as unconfirmed until it is
 seen twice, and capture the output when it is.
+
+**A second one was captured, and it is not a divergence at all.**
+`dc_rom_palette_shadow_semantic` failed once under `ctest -j 6` on 2026-08-10
+with `Could not commit work-RAM write trace; Windows error 32` — a sharing
+violation on the artifact's atomic replace, raised *after* the 3,600-frame
+census had completed and every native replacement had matched its expected
+entry count. Nothing about the emulated run differed; the process could not
+replace its own output file. It passed on its own immediately afterwards.
+
+The lesson is to **read the failure before ranking the suspects.** This landed
+in the middle of a slice that had just replaced the video device, which is the
+most attractive possible explanation and the wrong one — the message names an
+I/O error on a file, not a mismatch in anything. Windows error 32 under `-j 6`
+means something outside the test held the file for the moment of the replace,
+which on this machine means a scanner or the indexer. A test whose only
+failure mode is "could not write its artifact" should be read as
+infrastructure until the numbers themselves disagree, and it is worth
+suspecting the same cause for the unexplained failure above.
 
 ## Future acceleration work
 

@@ -3,6 +3,7 @@
 #pragma once
 
 #include "devils_crush/audio/pce_psg.hpp"
+#include "devils_crush/video/pce_vdc.hpp"
 
 #include <array>
 #include <cstddef>
@@ -402,6 +403,28 @@ public:
     // game asks the chip for, and this is how much of it that was.
     [[nodiscard]] virtual std::optional<audio::PcePsg::Coverage>
     native_psg_coverage() const = 0;
+
+    // Replaces the emulator's video display controller with the native device
+    // model in `devils_crush::video`. The colour encoder keeps the schedule --
+    // the dot-clock divider, the two blanking counters, the palette and the
+    // framebuffer are still the emulator's -- and only the chip that answers
+    // its clocks and its port accesses changes.
+    //
+    // This is a wider seam than the sound one. The device is read back, so
+    // reads route as well as writes; it stalls the CPU, so the model is given
+    // the encoder's cycle budget to stall against; and its state is 128 KiB
+    // that a savestate has to carry, so installing it before a state is
+    // written and after one is read are the same operation.
+    //
+    // May be set before or after a ROM loads, but not mid-frame. Installing
+    // it does not reset it: the model takes its initial state from the
+    // machine's next power-on or state load, which is why the host installs
+    // before the ROM.
+    [[nodiscard]] virtual bool set_native_vdc(bool enabled) = 0;
+    [[nodiscard]] virtual bool native_vdc_enabled() const noexcept = 0;
+
+    [[nodiscard]] virtual std::optional<video::PceVdc::Coverage>
+    native_vdc_coverage() const = 0;
 
     // Savestates are opaque Beetle payloads plus the host frame counter.
     // Persistent storage must additionally bind them to the ROM and core

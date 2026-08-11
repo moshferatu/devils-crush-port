@@ -133,5 +133,35 @@ this repository.
      the other.
    - Changes nothing when no model is registered.
 
+9. `patches/0009-vdc-device-model.patch`
+   - Lets a project-owned video display controller replace the emulator's
+     first one. Every entry point `VCE` has into `vdc[0]` consults the
+     registered model first: reset, the three clocking calls, both port
+     directions, the interrupt poll, the register read the encoder does for
+     its own scanline bookkeeping, the two debugging controls, and the two
+     read-only peeks the project's frame snapshot uses.
+   - Routes reads as well as writes, which the sound patch did not have to.
+     The game opens by reading the status register, so a write-only route
+     would answer from a device that had never been written to.
+   - Leaves the schedule in the emulator. The dot-clock divider, the two
+     blanking counters, the palette, the framebuffer and the SuperGrafx
+     compositor are untouched; only the chip that answers changes. The
+     second chip of a SuperGrafx is never routed.
+   - Exports the two edges the device reaches back through, rather than
+     letting a model invent them. `dc_beetle_vdc_irq_change` re-derives the
+     CPU's interrupt level from every chip's latched status the way
+     `VCE::IRQChangeCheck` does, and `dc_beetle_vdc_wait_state` charges the
+     CPU and refuses when the per-frame budget of `455 * 64` stolen cycles
+     is spent. The refusal is load-bearing: the device stalls by asking
+     until it is told no, so a hook that always agreed would hang the
+     machine rather than fail it.
+   - Adds a plain field export and import to the emulator's VDC so its
+     savestate format still reads and writes the model's values, on the same
+     terms as the sound patch. The state is 128 KiB, so it is heap-allocated
+     for the shuttle rather than left on a stack. The character cache is not
+     carried in either direction: it is derived from video memory, and both
+     the emulator's loader and the model rebuild it.
+   - Changes nothing when no model is registered.
+
 All local files and patches are GPL-3.0-or-later. Upstream per-file notices
 and licenses remain authoritative for upstream sources.

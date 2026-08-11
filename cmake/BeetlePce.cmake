@@ -44,6 +44,7 @@ function(dc_provide_beetle_pce)
         "${beetle_fork_root}/patches/0006-huc6280-interruptible-replacement.patch"
         "${beetle_fork_root}/patches/0007-huc6280-nested-replacement.patch"
         "${beetle_fork_root}/patches/0008-psg-device-model.patch"
+        "${beetle_fork_root}/patches/0009-vdc-device-model.patch"
     )
 
     find_package(Git REQUIRED)
@@ -88,6 +89,26 @@ function(dc_provide_beetle_pce)
                 READ
                 "${beetle_root}/mednafen/pce/vce.h"
                 beetle_video_header
+            )
+            file(
+                READ
+                "${beetle_root}/mednafen/pce/vce.cpp"
+                beetle_video_source
+            )
+            file(
+                READ
+                "${beetle_root}/mednafen/hw_video/huc6270/vdc.h"
+                beetle_vdc_header
+            )
+            file(
+                READ
+                "${beetle_root}/mednafen/hw_sound/pce_psg/pce_psg.h"
+                beetle_psg_header
+            )
+            file(
+                READ
+                "${beetle_root}/mednafen/pce/pce.cpp"
+                beetle_machine_source
             )
             get_filename_component(
                 beetle_patch_name
@@ -172,7 +193,7 @@ function(dc_provide_beetle_pce)
                     "ReplacementCheckpoints"
                     beetle_patch_marker_two
                 )
-            else()
+            elseif(beetle_patch_name MATCHES "^0007-")
                 string(
                     FIND
                     "${beetle_cpu_source}"
@@ -183,6 +204,32 @@ function(dc_provide_beetle_pce)
                     FIND
                     "${beetle_cpu_header}"
                     "ReplacementSuspended"
+                    beetle_patch_marker_two
+                )
+            elseif(beetle_patch_name MATCHES "^0008-")
+                string(
+                    FIND
+                    "${beetle_psg_header}"
+                    "DcExportState"
+                    beetle_patch_marker_one
+                )
+                string(
+                    FIND
+                    "${beetle_machine_source}"
+                    "dc_beetle_set_psg_device"
+                    beetle_patch_marker_two
+                )
+            else()
+                string(
+                    FIND
+                    "${beetle_vdc_header}"
+                    "DcExportState"
+                    beetle_patch_marker_one
+                )
+                string(
+                    FIND
+                    "${beetle_video_source}"
+                    "dc_beetle_active_vdc_model"
                     beetle_patch_marker_two
                 )
             endif()

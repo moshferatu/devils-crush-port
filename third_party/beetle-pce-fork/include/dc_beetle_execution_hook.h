@@ -165,6 +165,155 @@ typedef struct dc_beetle_psg_model {
     void (*apply_state)(void* user_data, const dc_beetle_psg_state* state);
 } dc_beetle_psg_model;
 
+#define DC_BEETLE_VDC_VRAM_WORD_COUNT 65536
+#define DC_BEETLE_VDC_SAT_WORD_COUNT 256
+#define DC_BEETLE_VDC_SPRITE_LIST_LENGTH 128
+
+typedef struct dc_beetle_vdc_sprite_state {
+    uint32_t x;
+    uint32_t flags;
+    uint8_t palette_index;
+    uint16_t pattern_data[4];
+} dc_beetle_vdc_sprite_state;
+
+// Every VDC field the emulator's savestate carries, in its order. Excludes
+// the character cache, which the emulator rebuilds from video memory on load
+// and a model must rebuild too, and excludes the memory size and the two
+// debugging controls, which belong to whoever built the device.
+//
+// This is 128 KiB of video memory and change, so it is passed by pointer and
+// allocated by the caller rather than left on a stack.
+typedef struct dc_beetle_vdc_state {
+    uint16_t vram[DC_BEETLE_VDC_VRAM_WORD_COUNT];
+    uint16_t sat[DC_BEETLE_VDC_SAT_WORD_COUNT];
+    dc_beetle_vdc_sprite_state sprite_list[DC_BEETLE_VDC_SPRITE_LIST_LENGTH];
+
+    uint8_t select;
+    uint16_t mawr;
+    uint16_t marr;
+    uint16_t cr;
+    uint16_t cr_cache;
+    uint16_t rcr;
+    uint16_t bxr;
+    uint16_t byr;
+    uint16_t mwr;
+    uint16_t hsr;
+    uint16_t hdr;
+    uint16_t vsr;
+    uint16_t vdr;
+    uint16_t vcr;
+    uint16_t dcr;
+    uint16_t sour;
+    uint16_t desr;
+    uint16_t lenr;
+    uint16_t dvssr;
+    uint8_t status;
+
+    uint16_t pending_read_addr;
+    uint16_t read_buffer;
+    uint8_t write_latch;
+    uint16_t pending_write_addr;
+    uint16_t pending_write_latch;
+    uint8_t pending_read;
+    uint8_t pending_write;
+
+    int32_t sat_dma_counter;
+    int32_t vdma_cycle_counter;
+    uint16_t dma_read_buffer;
+    uint8_t dma_read_write;
+    uint8_t dma_running;
+    uint8_t dma_pending;
+    uint8_t satb_pending;
+    uint8_t burst_mode;
+
+    uint32_t rcr_count;
+    uint32_t bg_y_offset;
+    uint32_t bg_x_offset;
+    uint32_t bg_y_moo;
+
+    uint32_t hsw_cache;
+    uint32_t hds_cache;
+    uint32_t hdw_cache;
+    uint32_t hde_cache;
+    uint32_t vds_cache;
+    uint32_t vsw_cache;
+    uint32_t vdw_cache;
+    uint32_t vcr_cache;
+    uint16_t mwr_cache;
+
+    uint8_t need_rcr_inc;
+    uint8_t need_vblank_irq_test;
+    uint8_t need_sat_dma_test;
+    uint8_t need_bg_y_inc;
+
+    int32_t h_phase;
+    int32_t v_phase;
+    int32_t h_phase_counter;
+    int32_t v_phase_counter;
+
+    int32_t sprite_cg_fetch_counter;
+    int32_t mystery_counter;
+    uint8_t mystery_phase;
+    int32_t active_sprites;
+
+    uint8_t in_exhsync;
+    uint8_t in_exvsync;
+} dc_beetle_vdc_state;
+
+// A replacement for the emulator's video display controller. While one is
+// installed the emulator's own `vdc[0]` is dormant: it receives no port
+// accesses, no clocks and no reset, and is kept only as the shape its
+// savestate format is written through. The second chip of a SuperGrafx is
+// never routed, so a machine with two of them keeps the emulator's for the
+// one the model does not answer for.
+//
+// The device is driven, not timestamped. `run` advances it by dot clocks and
+// returns the next event horizon; `hsync` and `vsync` are called when the
+// colour encoder's blanking counters expire, and also return a horizon. The
+// schedule stays in the emulator, which is what makes this a device seam
+// rather than a video seam.
+//
+// The two edges the device reaches back through -- the interrupt line and
+// the wait-state stall -- are not part of this structure. They run into
+// machine state a model does not have, so the boundary exports them as
+// functions for the model to call instead: `dc_beetle_vdc_irq_change` and
+// `dc_beetle_vdc_wait_state`.
+typedef struct dc_beetle_vdc_model {
+    void* user_data;
+    // `vram_size` is in 16-bit words and is 32768 on a stock PC Engine.
+    void (*configure)(void* user_data, uint32_t vram_size);
+    int32_t (*reset)(void* user_data);
+    int32_t (*run)(
+        void* user_data,
+        int32_t clocks,
+        uint16_t* pixels,
+        int skip);
+    int32_t (*hsync)(void* user_data, int in_hblank);
+    int32_t (*vsync)(void* user_data, int in_vblank);
+    // `next_event` is the emulator's scheduling horizon, passed because
+    // `VDC::Read` and `VDC::Write` take it -- but neither of those bodies
+    // reads or assigns it, so a model that writes through this pointer is
+    // departing from the reference rather than matching it.
+    void (*write)(
+        void* user_data,
+        uint32_t address,
+        uint8_t value,
+        int32_t* next_event);
+    uint8_t (*read)(
+        void* user_data,
+        uint32_t address,
+        int32_t* next_event,
+        int peek);
+    int (*peek_irq)(void* user_data);
+    uint32_t (*get_register)(void* user_data, unsigned id);
+    uint16_t (*peek_vram)(void* user_data, uint16_t address);
+    uint16_t (*peek_sat)(void* user_data, uint8_t address);
+    void (*set_layer_enable_mask)(void* user_data, uint64_t mask);
+    void (*set_unlimited_sprites)(void* user_data, int unlimited);
+    void (*capture_state)(void* user_data, dc_beetle_vdc_state* state);
+    void (*apply_state)(void* user_data, const dc_beetle_vdc_state* state);
+} dc_beetle_vdc_model;
+
 #define DC_BEETLE_VRAM_WORD_COUNT 32768
 #define DC_BEETLE_SAT_WORD_COUNT 256
 #define DC_BEETLE_PALETTE_ENTRY_COUNT 512
@@ -203,6 +352,7 @@ extern uint32_t dc_beetle_replacement_nest_overflows;
 extern uint32_t dc_beetle_replacement_max_depth;
 
 extern const dc_beetle_psg_model* dc_beetle_active_psg_model;
+extern const dc_beetle_vdc_model* dc_beetle_active_vdc_model;
 
 void dc_beetle_reset_replacement_nesting_counters(void);
 
@@ -225,6 +375,29 @@ void dc_beetle_clear_replacement_hook(void);
 void dc_beetle_set_psg_model(const dc_beetle_psg_model* model);
 void dc_beetle_clear_psg_model(void);
 void dc_beetle_set_psg_device(int32_t* left, int32_t* right, int revision);
+
+// The same for the video device. `dc_beetle_set_vdc_device` is called by the
+// emulator when it builds its colour encoder, and reports the memory size the
+// encoder chose; the boundary remembers it and configures whichever model is
+// current, so a model may be installed before or after a ROM is loaded.
+//
+// Installing a model does not reset it. The emulator resets its video device
+// at power-on and after a state load, and a model installed between those has
+// to be given a machine that reaches one of them -- which the host does by
+// installing before the ROM.
+void dc_beetle_set_vdc_model(const dc_beetle_vdc_model* model);
+void dc_beetle_clear_vdc_model(void);
+void dc_beetle_set_vdc_device(uint32_t vram_size);
+
+// The two edges an installed model reaches back through, as the emulator's
+// own video device reaches them. The first re-derives the CPU's interrupt
+// level from every video device's latched status; the argument is the
+// direction of the change and is discarded, exactly as the emulator discards
+// it. The second charges the CPU for a stall and returns zero when the
+// per-frame budget of stolen cycles is spent -- a model that treats that
+// refusal as advisory will hang the machine rather than fail it.
+void dc_beetle_vdc_irq_change(int raised);
+int dc_beetle_vdc_wait_state(int32_t cycles);
 
 // Copies the base PC Engine VDC/VCE state without retaining emulator-owned
 // pointers. The destination capacities must cover the fixed counts above.

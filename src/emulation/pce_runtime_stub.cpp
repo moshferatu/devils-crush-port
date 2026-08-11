@@ -167,6 +167,22 @@ public:
         return std::nullopt;
     }
 
+    [[nodiscard]] bool set_native_vdc(bool) override
+    {
+        return false;
+    }
+
+    [[nodiscard]] bool native_vdc_enabled() const noexcept override
+    {
+        return false;
+    }
+
+    [[nodiscard]] std::optional<video::PceVdc::Coverage> native_vdc_coverage()
+        const override
+    {
+        return std::nullopt;
+    }
+
     [[nodiscard]] bool set_bus_write_observer(
         BusWriteCallback) override
     {

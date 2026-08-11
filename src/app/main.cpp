@@ -213,6 +213,12 @@ struct CommandLine {
     // Reports which of the device model's paths a recorded route exercised,
     // which is the measure of what a census-based acceptance actually proves.
     bool report_psg_coverage = false;
+    // The same for the video display controller, on the same terms: the
+    // native device is the default, and this hands the chip back so a
+    // difference in the framebuffer hash has something to be measured
+    // against.
+    bool emulated_vdc = false;
+    bool report_vdc_coverage = false;
     // The interactive host deploys the registry by default so a session runs
     // the ported code; this opts back out to the emulated original.
     bool emulate_only = false;
@@ -720,6 +726,10 @@ parse_logical_address_range(const std::string_view text)
             options.emulated_psg = true;
         } else if (argument == "--report-psg-coverage") {
             options.report_psg_coverage = true;
+        } else if (argument == "--emulated-vdc") {
+            options.emulated_vdc = true;
+        } else if (argument == "--report-vdc-coverage") {
+            options.report_vdc_coverage = true;
         } else if (argument == "--replace-registry") {
             options.replace_registry = true;
         } else if (argument == "--cabinet-overlay-stats") {
@@ -3503,7 +3513,10 @@ void print_usage()
            "  --emulated-psg hands it back to the emulator, which is what a\n"
            "  difference in the audio hash is measured against, and\n"
            "  --report-psg-coverage prints which of its paths a recorded\n"
-           "  route exercised.\n\n"
+           "  route exercised. The video display controller is a native\n"
+           "  device model on the same terms; --emulated-vdc hands the chip\n"
+           "  back, and --report-vdc-coverage prints what the route asked\n"
+           "  of it.\n\n"
         << "Controls (defaults; see input.* in portable-data/cabinet.ini):\n"
         << "  Left Shift / Left    Left flipper (PCE d-pad left)\n"
         << "  Right / Right Shift  Right flipper (PCE d-pad right)\n"
@@ -6084,6 +6097,44 @@ void report_psg_coverage(
               << ", shift-register clocks: " << coverage->lfsr_clocks
               << ", sample-latch writes: "
               << coverage->sample_latch_writes << '\n';
+}
+
+// The same for the video display controller. Its paths sit further from
+// what a pinball table asks for than the sound chip's do -- a route may
+// never overflow a line, never collide sprite zero, and never fetch a
+// 16-colour sprite -- so these counts are what separates "the model is
+// right" from "the model is right about this route".
+void report_vdc_coverage(
+    const devils_crush::emulation::PceRuntime& runtime)
+{
+    const auto coverage = runtime.native_vdc_coverage();
+    if (!coverage) {
+        std::cout << "The emulator owned the video display controller; no "
+                     "native paths to report.\n";
+        return;
+    }
+
+    std::cout << "Video display controller paths:\n"
+              << "  fields " << coverage->fields << ", scanlines "
+              << coverage->scanlines << " (background "
+              << coverage->background_lines << ", sprites "
+              << coverage->sprite_lines << ", burst "
+              << coverage->burst_lines << ")\n"
+              << "  sprites " << coverage->sprites_fetched << " fetched, "
+              << coverage->wide_sprite_halves << " wide halves, "
+              << coverage->narrow_colour_fetches << " 16-colour\n"
+              << "  overflows " << coverage->sprite_overflows
+              << ", sprite-zero hits " << coverage->sprite_zero_hits << '\n'
+              << "  transfers: " << coverage->vram_dma_words << " words, "
+              << coverage->sat_dma_transfers << " tables\n"
+              << "  video memory through the port: " << coverage->port_writes
+              << " words written, " << coverage->port_reads << " read\n"
+              << "  stalls: " << coverage->wait_state_requests
+              << " requested, " << coverage->forced_completions
+              << " forced to completion\n"
+              << "  interrupts: " << coverage->raster_compares
+              << " raster compares, " << coverage->vertical_blanks
+              << " vertical blanks\n";
 }
 
 [[nodiscard]] bool write_instruction_profile(
@@ -10174,6 +10225,15 @@ int main(const int argc, char* argv[])
             return EXIT_FAILURE;
         }
 
+        // Installed before the ROM for a different reason: the model takes
+        // its whole state from the machine's power-on, and the machine
+        // powers on once, while loading.
+        if (!options.emulated_vdc && !runtime->set_native_vdc(true)) {
+            std::cerr << "Could not install the native video display "
+                         "controller.\n";
+            return EXIT_FAILURE;
+        }
+
         const auto load_result = runtime->load_rom(options.rom_path);
         if (!load_result.loaded) {
             std::cerr << load_result.message << '\n';
@@ -10732,6 +10792,9 @@ int main(const int argc, char* argv[])
             }
             if (options.report_psg_coverage) {
                 report_psg_coverage(*runtime);
+            }
+            if (options.report_vdc_coverage) {
+                report_vdc_coverage(*runtime);
             }
             if (!routine_replays.empty()) {
                 const int replay_result = verify_routine_replays(

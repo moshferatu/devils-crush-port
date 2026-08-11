@@ -810,7 +810,7 @@ void PceVdc::fetch_sprite_data() noexcept
                 pattern = static_cast<std::uint16_t>(pattern | 1U);
             }
 
-            SpriteEntry& entry =
+            SpriteState& entry =
                 sprite_list_[static_cast<std::size_t>(active_sprites_)];
             entry.flags = flags;
 
@@ -886,7 +886,7 @@ void PceVdc::draw_sprites(
 
     // Back to front: the first sprite in the table wins, so it is drawn last.
     for (int i = active_sprites_ - 1; i >= 0; --i) {
-        const SpriteEntry& entry =
+        const SpriteState& entry =
             sprite_list_[static_cast<std::size_t>(i)];
         const std::int32_t pos =
             static_cast<std::int32_t>(entry.x - 0x20 + start);
@@ -1406,6 +1406,179 @@ void PceVdc::set_register(
         break;
     default:
         break;
+    }
+}
+
+void PceVdc::capture_state(State& state) const noexcept
+{
+    state.vram = VRAM_;
+    state.sat = SAT_;
+    state.sprite_list = sprite_list_;
+
+    state.select = select_;
+    state.mawr = MAWR_;
+    state.marr = MARR_;
+    state.cr = CR_;
+    state.cr_cache = CR_cache_;
+    state.rcr = RCR_;
+    state.bxr = BXR_;
+    state.byr = BYR_;
+    state.mwr = MWR_;
+    state.hsr = HSR_;
+    state.hdr = HDR_;
+    state.vsr = VSR_;
+    state.vdr = VDR_;
+    state.vcr = VCR_;
+    state.dcr = DCR_;
+    state.sour = SOUR_;
+    state.desr = DESR_;
+    state.lenr = LENR_;
+    state.dvssr = DVSSR_;
+    state.status = status_;
+
+    state.pending_read = pending_read_;
+    state.pending_read_addr = pending_read_addr_;
+    state.read_buffer = read_buffer_;
+    state.write_latch = write_latch_;
+    state.pending_write = pending_write_;
+    state.pending_write_addr = pending_write_addr_;
+    state.pending_write_latch = pending_write_latch_;
+
+    state.sat_dma_counter = sat_dma_counter_;
+    state.vdma_cycle_counter = vdma_cycle_counter_;
+    state.dma_read_buffer = dma_read_buffer_;
+    state.dma_read_write = dma_read_write_;
+    state.dma_running = dma_running_;
+    state.dma_pending = dma_pending_;
+    state.satb_pending = satb_pending_;
+    state.burst_mode = burst_mode_;
+
+    state.rcr_count = rcr_count_;
+    state.bg_y_offset = bg_y_offset_;
+    state.bg_x_offset = bg_x_offset_;
+    state.bg_y_moo = bg_y_moo_;
+
+    state.hsw_cache = hsw_cache_;
+    state.hds_cache = hds_cache_;
+    state.hdw_cache = hdw_cache_;
+    state.hde_cache = hde_cache_;
+    state.vds_cache = vds_cache_;
+    state.vsw_cache = vsw_cache_;
+    state.vdw_cache = vdw_cache_;
+    state.vcr_cache = vcr_cache_;
+    state.mwr_cache = mwr_cache_;
+
+    state.need_rcr_inc = need_rcr_inc_;
+    state.need_vblank_irq_test = need_vblank_irq_test_;
+    state.need_sat_dma_test = need_sat_dma_test_;
+    state.need_bg_y_inc = need_bg_y_inc_;
+
+    state.h_phase = h_phase_;
+    state.v_phase = v_phase_;
+    state.h_phase_counter = h_phase_counter_;
+    state.v_phase_counter = v_phase_counter_;
+
+    state.sprite_cg_fetch_counter = sprite_cg_fetch_counter_;
+    state.mystery_counter = mystery_counter_;
+    state.mystery_phase = mystery_phase_;
+    state.active_sprites = active_sprites_;
+
+    state.in_exhsync = in_exhsync_;
+    state.in_exvsync = in_exvsync_;
+}
+
+void PceVdc::apply_state(const State& state) noexcept
+{
+    VRAM_ = state.vram;
+    SAT_ = state.sat;
+    sprite_list_ = state.sprite_list;
+
+    select_ = state.select;
+    MAWR_ = state.mawr;
+    MARR_ = state.marr;
+    CR_ = state.cr;
+    CR_cache_ = state.cr_cache;
+    RCR_ = state.rcr;
+    BXR_ = state.bxr;
+    BYR_ = state.byr;
+    MWR_ = state.mwr;
+    HSR_ = state.hsr;
+    HDR_ = state.hdr;
+    VSR_ = state.vsr;
+    VDR_ = state.vdr;
+    VCR_ = state.vcr;
+    DCR_ = state.dcr;
+    SOUR_ = state.sour;
+    DESR_ = state.desr;
+    LENR_ = state.lenr;
+    DVSSR_ = state.dvssr;
+    status_ = state.status;
+
+    pending_read_ = state.pending_read;
+    pending_read_addr_ = state.pending_read_addr;
+    read_buffer_ = state.read_buffer;
+    write_latch_ = state.write_latch;
+    pending_write_ = state.pending_write;
+    pending_write_addr_ = state.pending_write_addr;
+    pending_write_latch_ = state.pending_write_latch;
+
+    sat_dma_counter_ = state.sat_dma_counter;
+    // A savestate may hold any value here, but the transfer engine treats it
+    // as a single bit of phase.
+    vdma_cycle_counter_ = state.vdma_cycle_counter & 0x1;
+    dma_read_buffer_ = state.dma_read_buffer;
+    dma_read_write_ = state.dma_read_write;
+    dma_running_ = state.dma_running;
+    dma_pending_ = state.dma_pending;
+    satb_pending_ = state.satb_pending;
+    burst_mode_ = state.burst_mode;
+
+    rcr_count_ = state.rcr_count;
+    bg_y_offset_ = state.bg_y_offset;
+    bg_x_offset_ = state.bg_x_offset;
+    bg_y_moo_ = state.bg_y_moo;
+
+    // The latched register fields, narrowed to the widths the registers
+    // themselves have. The phase machine indexes tables with these.
+    hsw_cache_ = state.hsw_cache & 0x1F;
+    hds_cache_ = state.hds_cache & 0x7F;
+    hdw_cache_ = state.hdw_cache & 0x7F;
+    hde_cache_ = state.hde_cache & 0x7F;
+    vsw_cache_ = state.vsw_cache & 0x1F;
+    vds_cache_ = state.vds_cache & 0xFF;
+    vdw_cache_ = state.vdw_cache & 0x1FF;
+    vcr_cache_ = state.vcr_cache & 0xFF;
+    mwr_cache_ = state.mwr_cache;
+
+    need_rcr_inc_ = state.need_rcr_inc;
+    need_vblank_irq_test_ = state.need_vblank_irq_test;
+    need_sat_dma_test_ = state.need_sat_dma_test;
+    need_bg_y_inc_ = state.need_bg_y_inc;
+
+    h_phase_ = state.h_phase;
+    v_phase_ = state.v_phase;
+    // A horizontal phase counter of zero would never expire, and one longer
+    // than the widest programmable phase would outlast the line.
+    h_phase_counter_ = state.h_phase_counter;
+    if (h_phase_counter_ < 1) {
+        h_phase_counter_ = 1;
+    } else if (h_phase_counter_ > (0x7F + 1) * 8) {
+        h_phase_counter_ = (0x7F + 1) * 8;
+    }
+    v_phase_counter_ = state.v_phase_counter;
+
+    sprite_cg_fetch_counter_ = state.sprite_cg_fetch_counter;
+    mystery_counter_ = state.mystery_counter;
+    mystery_phase_ = state.mystery_phase;
+    active_sprites_ = state.active_sprites;
+
+    in_exhsync_ = state.in_exhsync;
+    in_exvsync_ = state.in_exvsync;
+
+    // The character cache is not carried, so that a restored device cannot
+    // disagree with its own memory.
+    for (std::uint32_t address = 0; address < vram_size_; ++address) {
+        fix_tile_cache(static_cast<std::uint16_t>(address));
     }
 }
 

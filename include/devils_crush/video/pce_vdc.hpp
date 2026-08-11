@@ -148,6 +148,102 @@ public:
         std::uint64_t vertical_blanks = 0;
     };
 
+    // One sprite as the line assembler holds it, after the attribute table
+    // has been read and the pattern words fetched.
+    struct SpriteState {
+        std::uint32_t x = 0;
+        std::uint32_t flags = 0;
+        std::uint8_t palette_index = 0;
+        std::array<std::uint16_t, 4> pattern_data{};
+    };
+
+    // Every field the emulator's savestate carries for this device, in its
+    // order, so a state written by either arm loads in the other.
+    //
+    // Three things are deliberately absent. The character cache, because it
+    // is derived from video memory and rebuilt on apply -- carrying it would
+    // let a state disagree with itself. The two pixel-position counters,
+    // because the emulator does not carry them either and a run always
+    // begins at a phase boundary. And the three configuration values --
+    // memory size, layer mask, sprite limit -- because they belong to
+    // whoever built the device, not to the moment being restored.
+    struct State {
+        std::array<std::uint16_t, kVramWords> vram{};
+        std::array<std::uint16_t, kSatWords> sat{};
+        std::array<SpriteState, kSpriteListSize> sprite_list{};
+
+        std::uint8_t select = 0;
+        std::uint16_t mawr = 0;
+        std::uint16_t marr = 0;
+        std::uint16_t cr = 0;
+        std::uint16_t cr_cache = 0;
+        std::uint16_t rcr = 0;
+        std::uint16_t bxr = 0;
+        std::uint16_t byr = 0;
+        std::uint16_t mwr = 0;
+        std::uint16_t hsr = 0;
+        std::uint16_t hdr = 0;
+        std::uint16_t vsr = 0;
+        std::uint16_t vdr = 0;
+        std::uint16_t vcr = 0;
+        std::uint16_t dcr = 0;
+        std::uint16_t sour = 0;
+        std::uint16_t desr = 0;
+        std::uint16_t lenr = 0;
+        std::uint16_t dvssr = 0;
+        std::uint8_t status = 0;
+
+        std::uint16_t pending_read_addr = 0;
+        std::uint16_t read_buffer = 0;
+        std::uint8_t write_latch = 0;
+        std::uint16_t pending_write_addr = 0;
+        std::uint16_t pending_write_latch = 0;
+        bool pending_read = false;
+        bool pending_write = false;
+
+        std::int32_t sat_dma_counter = 0;
+        std::int32_t vdma_cycle_counter = 0;
+        std::uint16_t dma_read_buffer = 0;
+        bool dma_read_write = false;
+        bool dma_running = false;
+        bool dma_pending = false;
+        bool satb_pending = false;
+        bool burst_mode = false;
+
+        std::uint32_t rcr_count = 0;
+        std::uint32_t bg_y_offset = 0;
+        std::uint32_t bg_x_offset = 0;
+        std::uint32_t bg_y_moo = 0;
+
+        std::uint32_t hsw_cache = 0;
+        std::uint32_t hds_cache = 0;
+        std::uint32_t hdw_cache = 0;
+        std::uint32_t hde_cache = 0;
+        std::uint32_t vds_cache = 0;
+        std::uint32_t vsw_cache = 0;
+        std::uint32_t vdw_cache = 0;
+        std::uint32_t vcr_cache = 0;
+        std::uint16_t mwr_cache = 0;
+
+        bool need_rcr_inc = false;
+        bool need_vblank_irq_test = false;
+        bool need_sat_dma_test = false;
+        bool need_bg_y_inc = false;
+
+        std::int32_t h_phase = 0;
+        std::int32_t v_phase = 0;
+        std::int32_t h_phase_counter = 1;
+        std::int32_t v_phase_counter = 1;
+
+        std::int32_t sprite_cg_fetch_counter = 0;
+        std::int32_t mystery_counter = 0;
+        bool mystery_phase = false;
+        std::int32_t active_sprites = 0;
+
+        bool in_exhsync = false;
+        bool in_exvsync = false;
+    };
+
     PceVdc() noexcept;
 
     // The size is in 16-bit words and must be a power of two no larger than
@@ -205,6 +301,14 @@ public:
         return coverage_;
     }
 
+    // The state is large enough that returning it by value would be a copy
+    // worth avoiding, so it is filled in place.
+    void capture_state(State& state) const noexcept;
+    // Applies a captured state and repairs the values a savestate is allowed
+    // to hold but the device is not, exactly as the emulator's own loader
+    // does, then rebuilds the character cache from the restored memory.
+    void apply_state(const State& state) noexcept;
+
 private:
     enum HorizontalPhase : int {
         kHphaseHds = 0,
@@ -223,13 +327,6 @@ private:
         kVphaseVcr,
         kVphaseVsw,
         kVphaseCount,
-    };
-
-    struct SpriteEntry {
-        std::uint32_t x = 0;
-        std::uint32_t flags = 0;
-        std::uint8_t palette_index = 0;
-        std::array<std::uint16_t, 4> pattern_data{};
     };
 
     using TileRow = std::array<std::uint8_t, 8>;
@@ -385,7 +482,7 @@ private:
     std::array<std::uint16_t, kVramWords> VRAM_{};
     std::array<Tile, kTileCount> tile_cache_{};
     std::array<std::uint16_t, kLineBufferSize> linebuf_{};
-    std::array<SpriteEntry, kSpriteListSize> sprite_list_{};
+    std::array<SpriteState, kSpriteListSize> sprite_list_{};
 };
 
 }  // namespace devils_crush::video

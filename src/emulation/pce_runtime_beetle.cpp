@@ -3,6 +3,7 @@
 #include "devils_crush/emulation/pce_runtime.hpp"
 
 #include "devils_crush/audio/pce_psg.hpp"
+#include "devils_crush/video/pce_vdc.hpp"
 
 #include <dc_beetle_execution_hook.h>
 #include <libretro.h>
@@ -198,6 +199,8 @@ public:
         assert_owner_thread();
         dc_beetle_clear_psg_model();
         native_psg_.reset();
+        dc_beetle_clear_vdc_model();
+        native_vdc_.reset();
         shutdown_core();
         BeetlePceRuntime* expected = this;
         (void)active_runtime.compare_exchange_strong(
@@ -711,6 +714,65 @@ public:
         return native_psg_->coverage();
     }
 
+    // The same seam for the video device, with one difference that matters:
+    // the model reaches back into the machine. Its interrupt line and its
+    // CPU stall are the colour encoder's to answer, so the model is given the
+    // fork's two exported edges rather than anything of this runtime's -- a
+    // wait-state hook that always agreed would hang the machine, because the
+    // device stalls by asking until it is refused.
+    [[nodiscard]] bool set_native_vdc(const bool enabled) override
+    {
+        assert_owner_thread();
+        if (!enabled) {
+            dc_beetle_clear_vdc_model();
+            native_vdc_.reset();
+            return true;
+        }
+        if (native_vdc_) {
+            return true;
+        }
+
+        native_vdc_ = std::make_unique<video::PceVdc>();
+        native_vdc_->set_irq_hook(&vdc_irq_hook, nullptr);
+        native_vdc_->set_wait_state_hook(&vdc_wait_state_hook, nullptr);
+        native_vdc_model_ = {
+            .user_data = native_vdc_.get(),
+            .configure = &vdc_configure,
+            .reset = &vdc_reset,
+            .run = &vdc_run,
+            .hsync = &vdc_hsync,
+            .vsync = &vdc_vsync,
+            .write = &vdc_write,
+            .read = &vdc_read,
+            .peek_irq = &vdc_peek_irq,
+            .get_register = &vdc_get_register,
+            .peek_vram = &vdc_peek_vram,
+            .peek_sat = &vdc_peek_sat,
+            .set_layer_enable_mask = &vdc_set_layer_enable_mask,
+            .set_unlimited_sprites = &vdc_set_unlimited_sprites,
+            .capture_state = &vdc_capture_state,
+            .apply_state = &vdc_apply_state,
+        };
+        dc_beetle_set_vdc_model(&native_vdc_model_);
+        return true;
+    }
+
+    [[nodiscard]] bool native_vdc_enabled() const noexcept override
+    {
+        assert_owner_thread();
+        return native_vdc_ != nullptr;
+    }
+
+    [[nodiscard]] std::optional<video::PceVdc::Coverage> native_vdc_coverage()
+        const override
+    {
+        assert_owner_thread();
+        if (native_vdc_ == nullptr) {
+            return std::nullopt;
+        }
+        return native_vdc_->coverage();
+    }
+
     [[nodiscard]] std::vector<InstructionProfileEntry>
     export_instruction_profile() const override
     {
@@ -969,6 +1031,319 @@ private:
         psg_model(user_data).apply_state(restored);
     }
 
+    static video::PceVdc& vdc_model(void* const user_data) noexcept
+    {
+        return *static_cast<video::PceVdc*>(user_data);
+    }
+
+    // The two edges back into the machine. Neither carries this runtime's
+    // identity, because neither is answered here: the fork routes them to the
+    // colour encoder, which is where the CPU's interrupt level and the
+    // per-frame budget of stolen cycles live.
+    static void vdc_irq_hook(void*, const bool raised)
+    {
+        dc_beetle_vdc_irq_change(raised ? 1 : 0);
+    }
+
+    static bool vdc_wait_state_hook(void*, const std::int32_t cycles)
+    {
+        return dc_beetle_vdc_wait_state(cycles) != 0;
+    }
+
+    static void vdc_configure(
+        void* const user_data,
+        const std::uint32_t vram_size)
+    {
+        vdc_model(user_data).set_vram_size(vram_size);
+    }
+
+    static std::int32_t vdc_reset(void* const user_data)
+    {
+        return vdc_model(user_data).reset();
+    }
+
+    static std::int32_t vdc_run(
+        void* const user_data,
+        const std::int32_t clocks,
+        std::uint16_t* const pixels,
+        const int skip)
+    {
+        return vdc_model(user_data).run(clocks, pixels, skip != 0);
+    }
+
+    static std::int32_t vdc_hsync(void* const user_data, const int in_hblank)
+    {
+        return vdc_model(user_data).hsync(in_hblank != 0);
+    }
+
+    static std::int32_t vdc_vsync(void* const user_data, const int in_vblank)
+    {
+        return vdc_model(user_data).vsync(in_vblank != 0);
+    }
+
+    // `next_event` is left alone, because the emulator's own device leaves it
+    // alone: it is a parameter of `VDC::Read` and `VDC::Write` that neither
+    // body reads or assigns. Writing a horizon here would be a difference
+    // from the reference, not a fidelity to it.
+    static void vdc_write(
+        void* const user_data,
+        const std::uint32_t address,
+        const std::uint8_t value,
+        std::int32_t*)
+    {
+        vdc_model(user_data).write(address, value);
+    }
+
+    static std::uint8_t vdc_read(
+        void* const user_data,
+        const std::uint32_t address,
+        std::int32_t*,
+        const int peek)
+    {
+        return vdc_model(user_data).read(address, peek != 0);
+    }
+
+    static int vdc_peek_irq(void* const user_data)
+    {
+        return vdc_model(user_data).peek_irq() ? 1 : 0;
+    }
+
+    static std::uint32_t vdc_get_register(
+        void* const user_data,
+        const unsigned id)
+    {
+        return vdc_model(user_data).get_register(
+            static_cast<video::PceVdc::Register>(id));
+    }
+
+    static std::uint16_t vdc_peek_vram(
+        void* const user_data,
+        const std::uint16_t address)
+    {
+        return vdc_model(user_data).peek_vram(address);
+    }
+
+    static std::uint16_t vdc_peek_sat(
+        void* const user_data,
+        const std::uint8_t address)
+    {
+        return vdc_model(user_data).peek_sat(address);
+    }
+
+    static void vdc_set_layer_enable_mask(
+        void* const user_data,
+        const std::uint64_t mask)
+    {
+        vdc_model(user_data).set_layer_enable_mask(mask);
+    }
+
+    static void vdc_set_unlimited_sprites(
+        void* const user_data,
+        const int unlimited)
+    {
+        vdc_model(user_data).set_unlimited_sprites(unlimited != 0);
+    }
+
+    static void vdc_capture_state(
+        void* const user_data,
+        dc_beetle_vdc_state* const state)
+    {
+        video::PceVdc::State captured;
+        vdc_model(user_data).capture_state(captured);
+
+        std::memcpy(
+            state->vram,
+            captured.vram.data(),
+            sizeof(state->vram));
+        std::memcpy(state->sat, captured.sat.data(), sizeof(state->sat));
+
+        for (std::size_t index = 0U;
+             index < captured.sprite_list.size();
+             ++index) {
+            const auto& source = captured.sprite_list[index];
+            auto& target = state->sprite_list[index];
+
+            target.x = source.x;
+            target.flags = source.flags;
+            target.palette_index = source.palette_index;
+            for (std::size_t plane = 0U; plane < 4U; ++plane) {
+                target.pattern_data[plane] = source.pattern_data[plane];
+            }
+        }
+
+        state->select = captured.select;
+        state->mawr = captured.mawr;
+        state->marr = captured.marr;
+        state->cr = captured.cr;
+        state->cr_cache = captured.cr_cache;
+        state->rcr = captured.rcr;
+        state->bxr = captured.bxr;
+        state->byr = captured.byr;
+        state->mwr = captured.mwr;
+        state->hsr = captured.hsr;
+        state->hdr = captured.hdr;
+        state->vsr = captured.vsr;
+        state->vdr = captured.vdr;
+        state->vcr = captured.vcr;
+        state->dcr = captured.dcr;
+        state->sour = captured.sour;
+        state->desr = captured.desr;
+        state->lenr = captured.lenr;
+        state->dvssr = captured.dvssr;
+        state->status = captured.status;
+
+        state->pending_read = captured.pending_read ? 1U : 0U;
+        state->pending_read_addr = captured.pending_read_addr;
+        state->read_buffer = captured.read_buffer;
+        state->write_latch = captured.write_latch;
+        state->pending_write = captured.pending_write ? 1U : 0U;
+        state->pending_write_addr = captured.pending_write_addr;
+        state->pending_write_latch = captured.pending_write_latch;
+
+        state->sat_dma_counter = captured.sat_dma_counter;
+        state->vdma_cycle_counter = captured.vdma_cycle_counter;
+        state->dma_read_buffer = captured.dma_read_buffer;
+        state->dma_read_write = captured.dma_read_write ? 1U : 0U;
+        state->dma_running = captured.dma_running ? 1U : 0U;
+        state->dma_pending = captured.dma_pending ? 1U : 0U;
+        state->satb_pending = captured.satb_pending ? 1U : 0U;
+        state->burst_mode = captured.burst_mode ? 1U : 0U;
+
+        state->rcr_count = captured.rcr_count;
+        state->bg_y_offset = captured.bg_y_offset;
+        state->bg_x_offset = captured.bg_x_offset;
+        state->bg_y_moo = captured.bg_y_moo;
+
+        state->hsw_cache = captured.hsw_cache;
+        state->hds_cache = captured.hds_cache;
+        state->hdw_cache = captured.hdw_cache;
+        state->hde_cache = captured.hde_cache;
+        state->vds_cache = captured.vds_cache;
+        state->vsw_cache = captured.vsw_cache;
+        state->vdw_cache = captured.vdw_cache;
+        state->vcr_cache = captured.vcr_cache;
+        state->mwr_cache = captured.mwr_cache;
+
+        state->need_rcr_inc = captured.need_rcr_inc ? 1U : 0U;
+        state->need_vblank_irq_test =
+            captured.need_vblank_irq_test ? 1U : 0U;
+        state->need_sat_dma_test = captured.need_sat_dma_test ? 1U : 0U;
+        state->need_bg_y_inc = captured.need_bg_y_inc ? 1U : 0U;
+
+        state->h_phase = captured.h_phase;
+        state->v_phase = captured.v_phase;
+        state->h_phase_counter = captured.h_phase_counter;
+        state->v_phase_counter = captured.v_phase_counter;
+
+        state->sprite_cg_fetch_counter = captured.sprite_cg_fetch_counter;
+        state->mystery_counter = captured.mystery_counter;
+        state->mystery_phase = captured.mystery_phase ? 1U : 0U;
+        state->active_sprites = captured.active_sprites;
+
+        state->in_exhsync = captured.in_exhsync ? 1U : 0U;
+        state->in_exvsync = captured.in_exvsync ? 1U : 0U;
+    }
+
+    static void vdc_apply_state(
+        void* const user_data,
+        const dc_beetle_vdc_state* const state)
+    {
+        auto restored = std::make_unique<video::PceVdc::State>();
+
+        std::memcpy(
+            restored->vram.data(),
+            state->vram,
+            sizeof(state->vram));
+        std::memcpy(restored->sat.data(), state->sat, sizeof(state->sat));
+
+        for (std::size_t index = 0U;
+             index < restored->sprite_list.size();
+             ++index) {
+            const auto& source = state->sprite_list[index];
+            auto& target = restored->sprite_list[index];
+
+            target.x = source.x;
+            target.flags = source.flags;
+            target.palette_index = source.palette_index;
+            for (std::size_t plane = 0U; plane < 4U; ++plane) {
+                target.pattern_data[plane] = source.pattern_data[plane];
+            }
+        }
+
+        restored->select = state->select;
+        restored->mawr = state->mawr;
+        restored->marr = state->marr;
+        restored->cr = state->cr;
+        restored->cr_cache = state->cr_cache;
+        restored->rcr = state->rcr;
+        restored->bxr = state->bxr;
+        restored->byr = state->byr;
+        restored->mwr = state->mwr;
+        restored->hsr = state->hsr;
+        restored->hdr = state->hdr;
+        restored->vsr = state->vsr;
+        restored->vdr = state->vdr;
+        restored->vcr = state->vcr;
+        restored->dcr = state->dcr;
+        restored->sour = state->sour;
+        restored->desr = state->desr;
+        restored->lenr = state->lenr;
+        restored->dvssr = state->dvssr;
+        restored->status = state->status;
+
+        restored->pending_read = state->pending_read != 0U;
+        restored->pending_read_addr = state->pending_read_addr;
+        restored->read_buffer = state->read_buffer;
+        restored->write_latch = state->write_latch;
+        restored->pending_write = state->pending_write != 0U;
+        restored->pending_write_addr = state->pending_write_addr;
+        restored->pending_write_latch = state->pending_write_latch;
+
+        restored->sat_dma_counter = state->sat_dma_counter;
+        restored->vdma_cycle_counter = state->vdma_cycle_counter;
+        restored->dma_read_buffer = state->dma_read_buffer;
+        restored->dma_read_write = state->dma_read_write != 0U;
+        restored->dma_running = state->dma_running != 0U;
+        restored->dma_pending = state->dma_pending != 0U;
+        restored->satb_pending = state->satb_pending != 0U;
+        restored->burst_mode = state->burst_mode != 0U;
+
+        restored->rcr_count = state->rcr_count;
+        restored->bg_y_offset = state->bg_y_offset;
+        restored->bg_x_offset = state->bg_x_offset;
+        restored->bg_y_moo = state->bg_y_moo;
+
+        restored->hsw_cache = state->hsw_cache;
+        restored->hds_cache = state->hds_cache;
+        restored->hdw_cache = state->hdw_cache;
+        restored->hde_cache = state->hde_cache;
+        restored->vds_cache = state->vds_cache;
+        restored->vsw_cache = state->vsw_cache;
+        restored->vdw_cache = state->vdw_cache;
+        restored->vcr_cache = state->vcr_cache;
+        restored->mwr_cache = state->mwr_cache;
+
+        restored->need_rcr_inc = state->need_rcr_inc != 0U;
+        restored->need_vblank_irq_test = state->need_vblank_irq_test != 0U;
+        restored->need_sat_dma_test = state->need_sat_dma_test != 0U;
+        restored->need_bg_y_inc = state->need_bg_y_inc != 0U;
+
+        restored->h_phase = state->h_phase;
+        restored->v_phase = state->v_phase;
+        restored->h_phase_counter = state->h_phase_counter;
+        restored->v_phase_counter = state->v_phase_counter;
+
+        restored->sprite_cg_fetch_counter = state->sprite_cg_fetch_counter;
+        restored->mystery_counter = state->mystery_counter;
+        restored->mystery_phase = state->mystery_phase != 0U;
+        restored->active_sprites = state->active_sprites;
+
+        restored->in_exhsync = state->in_exhsync != 0U;
+        restored->in_exvsync = state->in_exvsync != 0U;
+
+        vdc_model(user_data).apply_state(*restored);
+    }
+
     void install_callbacks()
     {
         retro_set_environment(&environment_callback);
@@ -979,10 +1354,11 @@ private:
         retro_set_input_state(&input_state_callback);
     }
 
-    // Deliberately leaves the native sound generator installed. Loading a ROM
-    // shuts the core down first, so tearing the model down here would uninstall
-    // it between the caller's request and the load that needs it. The device
-    // choice belongs to the host for as long as the runtime lives.
+    // Deliberately leaves the native device models -- sound and video --
+    // installed. Loading a ROM shuts the core down first, so tearing them down
+    // here would uninstall them between the caller's request and the load that
+    // needs them. The device choice belongs to the host for as long as the
+    // runtime lives.
     void shutdown_core() noexcept
     {
         clear_execution_hooks();
@@ -1797,6 +2173,8 @@ private:
     // Both outlive every frame the model is installed for.
     std::unique_ptr<audio::PcePsg> native_psg_;
     dc_beetle_psg_model native_psg_model_{};
+    std::unique_ptr<video::PceVdc> native_vdc_;
+    dc_beetle_vdc_model native_vdc_model_{};
     // Counters are indexed directly by physical bank and logical PC. A bank's
     // 1 MiB page is allocated on first execution, so only the handful of banks
     // the game actually runs from is resident.

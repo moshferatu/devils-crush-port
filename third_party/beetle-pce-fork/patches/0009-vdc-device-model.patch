@@ -1,0 +1,542 @@
+diff --git a/mednafen/hw_video/huc6270/vdc.cpp b/mednafen/hw_video/huc6270/vdc.cpp
+--- a/mednafen/hw_video/huc6270/vdc.cpp
++++ b/mednafen/hw_video/huc6270/vdc.cpp
+@@ -1525,6 +1525,190 @@ void VDC::StateExtra(MDFN::LEPacker &sl_packer, bool load)
+ 	}
+ }
+ 
++// Devil's Crush downstream device-model boundary. Plain field moves, with no
++// repair of out-of-range values: on save the model's own state is already
++// valid, and on load StateAction has already applied the emulator's repairs
++// before these values are read back out.
++//
++// VRAM is moved whole rather than to VRAM_Size, because the array is whole
++// and the addressing masks make the tail unreachable either way. The tile
++// cache is not moved at all: it is derived from VRAM, and a model that
++// carried it could restore a cache that disagreed with its own memory.
++void VDC::DcExportState(dc_beetle_vdc_state* state) const
++{
++	memcpy(state->vram, VRAM, sizeof(state->vram));
++	memcpy(state->sat, SAT, sizeof(state->sat));
++
++	for(int i = 0; i < DC_BEETLE_VDC_SPRITE_LIST_LENGTH; i++)
++	{
++		state->sprite_list[i].x = SpriteList[i].x;
++		state->sprite_list[i].flags = SpriteList[i].flags;
++		state->sprite_list[i].palette_index = SpriteList[i].palette_index;
++		for(int pd = 0; pd < 4; pd++)
++			state->sprite_list[i].pattern_data[pd] = SpriteList[i].pattern_data[pd];
++	}
++
++	state->select = select;
++	state->mawr = MAWR;
++	state->marr = MARR;
++	state->cr = CR;
++	state->cr_cache = CR_cache;
++	state->rcr = RCR;
++	state->bxr = BXR;
++	state->byr = BYR;
++	state->mwr = MWR;
++	state->hsr = HSR;
++	state->hdr = HDR;
++	state->vsr = VSR;
++	state->vdr = VDR;
++	state->vcr = VCR;
++	state->dcr = DCR;
++	state->sour = SOUR;
++	state->desr = DESR;
++	state->lenr = LENR;
++	state->dvssr = DVSSR;
++	state->status = status;
++
++	state->pending_read = pending_read;
++	state->pending_read_addr = pending_read_addr;
++	state->read_buffer = read_buffer;
++	state->write_latch = write_latch;
++	state->pending_write = pending_write;
++	state->pending_write_addr = pending_write_addr;
++	state->pending_write_latch = pending_write_latch;
++
++	state->sat_dma_counter = sat_dma_counter;
++	state->vdma_cycle_counter = VDMA_CycleCounter;
++	state->dma_read_buffer = DMAReadBuffer;
++	state->dma_read_write = DMAReadWrite;
++	state->dma_running = DMARunning;
++	state->dma_pending = DMAPending;
++	state->satb_pending = SATBPending;
++	state->burst_mode = burst_mode;
++
++	state->rcr_count = RCRCount;
++	state->bg_y_offset = BG_YOffset;
++	state->bg_x_offset = BG_XOffset;
++	state->bg_y_moo = BG_YMoo;
++
++	state->hsw_cache = HSW_cache;
++	state->hds_cache = HDS_cache;
++	state->hdw_cache = HDW_cache;
++	state->hde_cache = HDE_cache;
++	state->vds_cache = VDS_cache;
++	state->vsw_cache = VSW_cache;
++	state->vdw_cache = VDW_cache;
++	state->vcr_cache = VCR_cache;
++	state->mwr_cache = MWR_cache;
++
++	state->need_rcr_inc = NeedRCRInc;
++	state->need_vblank_irq_test = NeedVBIRQTest;
++	state->need_sat_dma_test = NeedSATDMATest;
++	state->need_bg_y_inc = NeedBGYInc;
++
++	state->h_phase = HPhase;
++	state->v_phase = VPhase;
++	state->h_phase_counter = HPhaseCounter;
++	state->v_phase_counter = VPhaseCounter;
++
++	state->sprite_cg_fetch_counter = sprite_cg_fetch_counter;
++	state->mystery_counter = mystery_counter;
++	state->mystery_phase = mystery_phase;
++	state->active_sprites = active_sprites;
++
++	state->in_exhsync = in_exhsync;
++	state->in_exvsync = in_exvsync;
++}
++
++void VDC::DcImportState(const dc_beetle_vdc_state* state)
++{
++	memcpy(VRAM, state->vram, sizeof(state->vram));
++	memcpy(SAT, state->sat, sizeof(state->sat));
++
++	for(int i = 0; i < DC_BEETLE_VDC_SPRITE_LIST_LENGTH; i++)
++	{
++		SpriteList[i].x = state->sprite_list[i].x;
++		SpriteList[i].flags = state->sprite_list[i].flags;
++		SpriteList[i].palette_index = state->sprite_list[i].palette_index;
++		for(int pd = 0; pd < 4; pd++)
++			SpriteList[i].pattern_data[pd] = state->sprite_list[i].pattern_data[pd];
++	}
++
++	select = state->select;
++	MAWR = state->mawr;
++	MARR = state->marr;
++	CR = state->cr;
++	CR_cache = state->cr_cache;
++	RCR = state->rcr;
++	BXR = state->bxr;
++	BYR = state->byr;
++	MWR = state->mwr;
++	HSR = state->hsr;
++	HDR = state->hdr;
++	VSR = state->vsr;
++	VDR = state->vdr;
++	VCR = state->vcr;
++	DCR = state->dcr;
++	SOUR = state->sour;
++	DESR = state->desr;
++	LENR = state->lenr;
++	DVSSR = state->dvssr;
++	status = state->status;
++
++	pending_read = state->pending_read != 0;
++	pending_read_addr = state->pending_read_addr;
++	read_buffer = state->read_buffer;
++	write_latch = state->write_latch;
++	pending_write = state->pending_write != 0;
++	pending_write_addr = state->pending_write_addr;
++	pending_write_latch = state->pending_write_latch;
++
++	sat_dma_counter = state->sat_dma_counter;
++	VDMA_CycleCounter = state->vdma_cycle_counter;
++	DMAReadBuffer = state->dma_read_buffer;
++	DMAReadWrite = state->dma_read_write != 0;
++	DMARunning = state->dma_running != 0;
++	DMAPending = state->dma_pending != 0;
++	SATBPending = state->satb_pending != 0;
++	burst_mode = state->burst_mode != 0;
++
++	RCRCount = state->rcr_count;
++	BG_YOffset = state->bg_y_offset;
++	BG_XOffset = state->bg_x_offset;
++	BG_YMoo = state->bg_y_moo;
++
++	HSW_cache = state->hsw_cache;
++	HDS_cache = state->hds_cache;
++	HDW_cache = state->hdw_cache;
++	HDE_cache = state->hde_cache;
++	VDS_cache = state->vds_cache;
++	VSW_cache = state->vsw_cache;
++	VDW_cache = state->vdw_cache;
++	VCR_cache = state->vcr_cache;
++	MWR_cache = state->mwr_cache;
++
++	NeedRCRInc = state->need_rcr_inc != 0;
++	NeedVBIRQTest = state->need_vblank_irq_test != 0;
++	NeedSATDMATest = state->need_sat_dma_test != 0;
++	NeedBGYInc = state->need_bg_y_inc != 0;
++
++	HPhase = state->h_phase;
++	VPhase = state->v_phase;
++	HPhaseCounter = state->h_phase_counter;
++	VPhaseCounter = state->v_phase_counter;
++
++	sprite_cg_fetch_counter = state->sprite_cg_fetch_counter;
++	mystery_counter = state->mystery_counter;
++	mystery_phase = state->mystery_phase != 0;
++	active_sprites = state->active_sprites;
++
++	in_exhsync = state->in_exhsync != 0;
++	in_exvsync = state->in_exvsync != 0;
++
++	for(int x = 0; x < VRAM_Size; x++)
++		FixTileCache(x);
++}
++
+ int VDC::StateAction(StateMem *sm, const unsigned load, const bool data_only, const char *sname)
+ {
+ 	MDFN::LEPacker sl_packer;
+diff --git a/mednafen/hw_video/huc6270/vdc.h b/mednafen/hw_video/huc6270/vdc.h
+--- a/mednafen/hw_video/huc6270/vdc.h
++++ b/mednafen/hw_video/huc6270/vdc.h
+@@ -2,6 +2,7 @@
+ #define __PCE_VDC_H
+ 
+ #include <mednafen/lepacker.h>
++#include <dc_beetle_execution_hook.h>
+ 
+ #define VDC_PIXEL_OUT_MASK	0x01FF
+ 
+@@ -275,6 +276,15 @@ public:
+ 	void StateExtra(MDFN::LEPacker &sl_packer, bool load);
+ 	int StateAction(StateMem *sm, const unsigned load, const bool data_only, const char *sname);
+ 
++	// Devil's Crush downstream device-model boundary. When a native VDC model
++	// is installed this object receives no port accesses, no clocks and no
++	// reset; these move the serialized fields in and out of it so StateAction
++	// still reads and writes the same savestate format from the model's
++	// values. The character cache is not carried -- StateAction rebuilds it
++	// from VRAM on load, and so must the model.
++	void DcExportState(dc_beetle_vdc_state* state) const;
++	void DcImportState(const dc_beetle_vdc_state* state);
++
+ 	// Peek(VRAM/SAT) and Poke(VRAM/SAT) work in 16-bit VRAM word units.
+ 	INLINE uint16 PeekVRAM(uint16 Address)
+ 	{
+diff --git a/mednafen/pce/vce.cpp b/mednafen/pce/vce.cpp
+--- a/mednafen/pce/vce.cpp
++++ b/mednafen/pce/vce.cpp
+@@ -31,10 +31,97 @@
+ #include "pcecd.h"
+ #include <math.h>
+ #include <mednafen/settings.h>
++#include <dc_beetle_execution_hook.h>
+ 
+ 
+ vce_resolution_t vce_resolution;
+ 
++// Devil's Crush downstream device-model boundary. A registered model owns the
++// first video display controller entirely: `vdc[0]` receives no port accesses,
++// no clocks and no reset while one is installed, and survives only as the
++// shape its savestate format is written through. The second chip of a
++// SuperGrafx is never routed, so `chip` is part of every decision below.
++//
++// The schedule stays here. The model is asked to run, and told when the
++// blanking counters flip, exactly where the emulator's own device is; what
++// changes is only which object answers.
++#define DC_VDC_OWNED(chip) \
++	(MDFN_UNLIKELY(dc_beetle_active_vdc_model != NULL) && (chip) == 0)
++
++static INLINE int32 DcVDC_Reset(VDC& chip_vdc, const unsigned chip)
++{
++	if(DC_VDC_OWNED(chip))
++		return dc_beetle_active_vdc_model->reset(dc_beetle_active_vdc_model->user_data);
++	return chip_vdc.Reset();
++}
++
++static INLINE int32 DcVDC_Run(VDC& chip_vdc, const unsigned chip, int32 clocks, uint16* pixels, bool skip)
++{
++	if(DC_VDC_OWNED(chip))
++		return dc_beetle_active_vdc_model->run(dc_beetle_active_vdc_model->user_data, clocks, pixels, skip);
++	return chip_vdc.Run(clocks, pixels, skip);
++}
++
++static INLINE int32 DcVDC_HSync(VDC& chip_vdc, const unsigned chip, bool in_hblank)
++{
++	if(DC_VDC_OWNED(chip))
++		return dc_beetle_active_vdc_model->hsync(dc_beetle_active_vdc_model->user_data, in_hblank);
++	return chip_vdc.HSync(in_hblank);
++}
++
++static INLINE int32 DcVDC_VSync(VDC& chip_vdc, const unsigned chip, bool in_vblank)
++{
++	if(DC_VDC_OWNED(chip))
++		return dc_beetle_active_vdc_model->vsync(dc_beetle_active_vdc_model->user_data, in_vblank);
++	return chip_vdc.VSync(in_vblank);
++}
++
++static INLINE uint8 DcVDC_Read(VDC& chip_vdc, const unsigned chip, uint32 A, int32& next_event, bool peek)
++{
++	if(DC_VDC_OWNED(chip))
++		return dc_beetle_active_vdc_model->read(dc_beetle_active_vdc_model->user_data, A, &next_event, peek);
++	return chip_vdc.Read(A, next_event, peek);
++}
++
++static INLINE void DcVDC_Write(VDC& chip_vdc, const unsigned chip, uint32 A, uint8 V, int32& next_event)
++{
++	if(DC_VDC_OWNED(chip))
++		dc_beetle_active_vdc_model->write(dc_beetle_active_vdc_model->user_data, A, V, &next_event);
++	else
++		chip_vdc.Write(A, V, next_event);
++}
++
++static INLINE bool DcVDC_PeekIRQ(VDC& chip_vdc, const unsigned chip)
++{
++	if(DC_VDC_OWNED(chip))
++		return dc_beetle_active_vdc_model->peek_irq(dc_beetle_active_vdc_model->user_data) != 0;
++	return chip_vdc.PeekIRQ();
++}
++
++static INLINE uint32 DcVDC_GetRegister(VDC& chip_vdc, const unsigned chip, const unsigned id)
++{
++	if(DC_VDC_OWNED(chip))
++		return dc_beetle_active_vdc_model->get_register(dc_beetle_active_vdc_model->user_data, id);
++	return chip_vdc.GetRegister(id);
++}
++
++static INLINE void DcVDC_SetLayerEnableMask(VDC& chip_vdc, const unsigned chip, uint64 mask)
++{
++	if(DC_VDC_OWNED(chip))
++		dc_beetle_active_vdc_model->set_layer_enable_mask(dc_beetle_active_vdc_model->user_data, mask);
++	else
++		chip_vdc.SetLayerEnableMask(mask);
++}
++
++static INLINE void DcVDC_SetUnlimitedSprites(VDC& chip_vdc, const unsigned chip, bool unlimited)
++{
++	if(DC_VDC_OWNED(chip))
++		dc_beetle_active_vdc_model->set_unlimited_sprites(dc_beetle_active_vdc_model->user_data, unlimited);
++	else
++		chip_vdc.SetUnlimitedSprites(unlimited);
++}
++
++
+ static bool hires;
+ static int scanline_start, scanline_end=242;
+ 
+@@ -115,8 +202,8 @@ void VCE::write_scanline_info()
+ 	}
+ 
+ 
+-	HSR = vdc[0].GetRegister(VDC::GSREG_HSR);
+-	HDR = vdc[0].GetRegister(VDC::GSREG_HDR);
++	HSR = DcVDC_GetRegister(vdc[0], 0, VDC::GSREG_HSR);
++	HDR = DcVDC_GetRegister(vdc[0], 0, VDC::GSREG_HDR);
+ 
+ 	HSW = (HSR >> 0) & 0x1f;
+ 	HDS = (HSR >> 8) & 0x7f;
+@@ -160,7 +247,7 @@ void VCE::IRQChangeCheck(void)
+ 	bool irqtmp = 0;
+ 
+ 	for(chip = 0; chip < chip_count; chip++)
+-	irqtmp |= vdc[chip].PeekIRQ();
++	irqtmp |= DcVDC_PeekIRQ(vdc[chip], chip);
+ 
+ 	if(irqtmp)
+ 		HuCPU.IRQBegin(HuC6280::IQIRQ1);
+@@ -192,9 +279,15 @@ VCE::VCE(const bool want_sgfx, const uint32 vram_size)
+ 		vdc[chip].SetVRAMSize(vram_size);
+ 		vdc[chip].SetIRQHook(IRQChange_Hook);
+ 		vdc[chip].SetWSHook(WS_Hook_);
+-		vdc[chip].SetLayerEnableMask(0x3);
+ 	}
+ 
++	// The size the encoder chose reaches a model here, whether it was
++	// installed before this machine existed or is installed later.
++	dc_beetle_set_vdc_device(vram_size);
++
++	for(chip = 0; chip < chip_count; chip++)
++		DcVDC_SetLayerEnableMask(vdc[chip], chip, 0x3);
++
+ 	SetVDCUnlimitedSprites(false);
+ 
+ 	memset(surf_clut, 0, sizeof(surf_clut));
+@@ -206,7 +299,7 @@ void VCE::SetVDCUnlimitedSprites(const bool nospritelimit)
+ {
+ 	unsigned chip;
+ 	for(chip = 0; chip < chip_count; chip++)
+-		vdc[chip].SetUnlimitedSprites(nospritelimit);
++		DcVDC_SetUnlimitedSprites(vdc[chip], chip, nospritelimit);
+ }
+ 
+ VCE::~VCE()
+@@ -251,7 +344,7 @@ void VCE::Reset(const int32 timestamp)
+ 	vblank_counter   = 4095 + 30;
+ 
+ 	for(chip = 0; chip < chip_count; chip++)
+-		child_event[chip] = vdc[chip].Reset();
++		child_event[chip] = DcVDC_Reset(vdc[chip], chip);
+ 
+ 	// SuperGrafx VPC init
+ 	priority[0] = 0x11;
+@@ -417,9 +510,9 @@ void INLINE VCE::SyncSub(int32 clocks)
+ 			if((scanline < 14 + scanline_start) || (scanline > 14 + scanline_end))
+ 				skipline = true;
+ 
+-			child_event[0] = vdc[0].Run(div_clocks, pixel_buffer[0], skipline);
++			child_event[0] = DcVDC_Run(vdc[0], 0, div_clocks, pixel_buffer[0], skipline);
+ 			if(TA_SuperGrafx)
+-				child_event[1] = vdc[1].Run(div_clocks, pixel_buffer[1], skipline);
++				child_event[1] = DcVDC_Run(vdc[1], 1, div_clocks, pixel_buffer[1], skipline);
+ 
+ 			if(!skipline)
+ 			{
+@@ -599,9 +692,9 @@ void INLINE VCE::SyncSub(int32 clocks)
+ 			}
+ 			hblank_counter = hblank ? 237 : 1128;
+ 
+-			child_event[0] = vdc[0].HSync(hblank);
++			child_event[0] = DcVDC_HSync(vdc[0], 0, hblank);
+ 			if(TA_SuperGrafx)
+-				child_event[1] = vdc[1].HSync(hblank);
++				child_event[1] = DcVDC_HSync(vdc[1], 1, hblank);
+ 		}
+ 
+ 		vblank_counter -= chunk_clocks;
+@@ -615,9 +708,9 @@ void INLINE VCE::SyncSub(int32 clocks)
+ 				NeedSLReset = true;
+ 			}
+ 
+-			child_event[0] = vdc[0].VSync(vblank);
++			child_event[0] = DcVDC_VSync(vdc[0], 0, vblank);
+ 			if(TA_SuperGrafx)
+-				child_event[1] = vdc[1].VSync(vblank);
++				child_event[1] = DcVDC_VSync(vdc[1], 1, vblank);
+ 		}
+ 	}
+ }
+@@ -837,7 +930,7 @@ uint8 VCE::ReadVDC(uint32 A)
+ 
+ 	if(!sgfx)
+ 	{
+-		ret = vdc[0].Read(A, child_event[0], 0);
++		ret = DcVDC_Read(vdc[0], 0, A, child_event[0], 0);
+ 	}
+ 	else
+ 	{
+@@ -863,7 +956,7 @@ uint8 VCE::ReadVDC(uint32 A)
+ 		else
+ 		{
+ 			chip = (A & 0x10) >> 4;
+-			ret = vdc[chip].Read(A & 0x3, child_event[chip], 0);
++			ret = DcVDC_Read(vdc[chip], chip, A & 0x3, child_event[chip], 0);
+ 		}
+ 	}
+ 
+@@ -878,7 +971,7 @@ void VCE::WriteVDC(uint32 A, uint8 V)
+ 
+ 	if(!sgfx)
+ 	{
+-		vdc[0].Write(A & 0x1FFF, V, child_event[0]);
++		DcVDC_Write(vdc[0], 0, A & 0x1FFF, V, child_event[0]);
+ 	}
+ 	else
+ 	{
+@@ -905,7 +998,7 @@ void VCE::WriteVDC(uint32 A, uint8 V)
+ 		else
+ 		{
+ 			chip = (A & 0x10) >> 4;
+-			vdc[chip].Write(A & 0x3, V, child_event[chip]);
++			DcVDC_Write(vdc[chip], chip, A & 0x3, V, child_event[chip]);
+ 		}
+ 	}
+ 
+@@ -918,12 +1011,12 @@ void VCE::WriteVDC_ST(uint32 A, uint8 V)
+ 
+ 	if(!sgfx)
+ 	{
+-		vdc[0].Write(A, V, child_event[0]);
++		DcVDC_Write(vdc[0], 0, A, V, child_event[0]);
+ 	}
+ 	else
+ 	{
+ 		int chip = st_mode & 1;
+-		vdc[chip].Write(A, V, child_event[chip]);
++		DcVDC_Write(vdc[chip], chip, A, V, child_event[chip]);
+ 	}
+ 
+ 	HuCPU.SetEvent(CalcNextEvent());
+@@ -933,7 +1026,7 @@ void VCE::SetLayerEnableMask(uint64 mask)
+ {
+ 	for(unsigned chip = 0; chip < chip_count; chip++)
+ 	{
+-		vdc[chip].SetLayerEnableMask((mask >> (chip * 2)) & 0x3);
++		DcVDC_SetLayerEnableMask(vdc[chip], chip, (mask >> (chip * 2)) & 0x3);
+ 	}
+ }
+ 
+@@ -1016,8 +1109,33 @@ int VCE::StateAction(StateMem *sm, const unsigned load, const bool data_only)
+ 			FixPCache(x);
+ 	}
+ 
++	// The savestate shuttle, on the same terms as the sound device's: the
++	// model's values are moved into the dormant object before it is
++	// written, and back out of it after it is read. The state is 128 KiB,
++	// so it is allocated rather than left on a stack; a failed allocation
++	// leaves the dormant object's own values in the state, which is a
++	// wrong savestate rather than a crash.
++	dc_beetle_vdc_state* model_state = NULL;
++
++	if(dc_beetle_active_vdc_model != NULL)
++		model_state = (dc_beetle_vdc_state*)malloc(sizeof(dc_beetle_vdc_state));
++
++	if(model_state != NULL && !load)
++	{
++		dc_beetle_active_vdc_model->capture_state(dc_beetle_active_vdc_model->user_data, model_state);
++		vdc[0].DcImportState(model_state);
++	}
++
+ 	for(unsigned chip = 0; chip < chip_count; chip++)
+ 		ret &= vdc[chip].StateAction(sm, load, data_only, chip ? "VDCB" : "VDC");
++
++	if(model_state != NULL && load)
++	{
++		vdc[0].DcExportState(model_state);
++		dc_beetle_active_vdc_model->apply_state(dc_beetle_active_vdc_model->user_data, model_state);
++	}
++
++	free(model_state);
+ 	
+ 	return ret;
+ }
+diff --git a/mednafen/pce/vce.h b/mednafen/pce/vce.h
+--- a/mednafen/pce/vce.h
++++ b/mednafen/pce/vce.h
+@@ -20,6 +20,7 @@
+ 
+ #include "huc6280.h"
+ #include <mednafen/hw_video/huc6270/vdc.h>
++#include <dc_beetle_execution_hook.h>
+ 
+ typedef struct
+ {
+@@ -90,10 +91,14 @@ public:
+ 	// the caller copies state on the emulation thread between frames.
+ 	uint16 DebugPeekVRAM(const uint16 address)
+ 	{
++		if(MDFN_UNLIKELY(dc_beetle_active_vdc_model != NULL))
++			return dc_beetle_active_vdc_model->peek_vram(dc_beetle_active_vdc_model->user_data, address);
+ 		return vdc[0].PeekVRAM(address);
+ 	}
+ 	uint16 DebugPeekSAT(const uint8 address)
+ 	{
++		if(MDFN_UNLIKELY(dc_beetle_active_vdc_model != NULL))
++			return dc_beetle_active_vdc_model->peek_sat(dc_beetle_active_vdc_model->user_data, address);
+ 		return vdc[0].PeekSAT(address);
+ 	}
+ 	uint16 DebugPeekPalette(const uint16 address)
+@@ -102,6 +107,8 @@ public:
+ 	}
+ 	uint32 DebugGetVDCRegister(const unsigned id)
+ 	{
++		if(MDFN_UNLIKELY(dc_beetle_active_vdc_model != NULL))
++			return dc_beetle_active_vdc_model->get_register(dc_beetle_active_vdc_model->user_data, id);
+ 		return vdc[0].GetRegister(id);
+ 	}
+ 
