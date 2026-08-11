@@ -273,6 +273,21 @@ ranks them by cycles, and marks the ones the registry already enters. Exclude
 the frame-sync spin loop — `00:E323`/`00:E325` is 45% of all master cycles and
 is the game waiting on the VBlank counter, not work to port.
 
+`tools/Disassemble-Rom.py` reads a candidate back, addressed the same way the
+profile prints it, so a ranked `bank:pc` can be turned into instructions
+without a separate emulator debugger:
+
+```powershell
+python tools\Disassemble-Rom.py "path\to\Devil's Crush.pce" 00:E321-E32B
+python tools\Disassemble-Rom.py "path\to\Devil's Crush.pce" 45:4142 --count 40
+```
+
+It knows the cartridge's bank mapping, which is not arithmetic on the bank
+number — a 384 KB HuCard mirrors banks `$40`–`$7F` onto its last 128 KB, so
+`45:4142` is ROM offset `$4A142` — and refuses a size whose mapping it does
+not know rather than decoding the wrong bytes. It tracks no data, so a span
+that starts mid-instruction prints nonsense until it resynchronises.
+
 ### Cycle share is not the whole selection criterion
 
 A candidate also has to fit its interrupt horizon, and the profile does not

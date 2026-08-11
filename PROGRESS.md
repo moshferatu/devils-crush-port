@@ -5496,38 +5496,97 @@ does not.
 
 ### Next
 
-**The frame boundary.** Phase 3 has two items left and both are about the
-machine rather than the processor: VDC/VBlank interrupt timing against the
-raster, and the spin loop becoming the native frame boundary. They are one
-piece of work rather than two, because what joins them is `pce.cpp` -- the
-frame loop, `PCE_Event`, and `PCE_TimestampBase`, which is now the emulator's
-last structural contribution to running this game.
+**Fast-forward the spin loop.** The measurements below settled both of the
+questions this was waiting on, and they changed the plan: there is no seventh
+seam to build, and the one structural item phase 3 has left is a capability
+rather than a device.
 
-The shape to argue about is not the seam this time. Six of those are settled,
-and the sixth just proved that the answer depends on what a seam does to
-memory rather than on how often it runs. The question here is *what the
-device is*. Everything modelled so far had a boundary the emulator had
-already drawn -- a class, a register file, a dozen private fields. The frame
-loop is a `while` in a free function that calls the encoder, drains the
-sound, hands a surface to the frontend and rebases the clock; there is no
-object to make dormant and no obvious line to cut. Finding that line is the
-slice.
+At `00:E323` with `$00 == $4B`, the machine is provably idle -- the loop reads
+one byte and writes nothing, and across every wait on the census route that
+byte was written by exactly one instruction, the `INC $00` in the VBlank body.
+Proving that for *any* route rather than this one is part of the slice, since
+an indexed store could reach `$00` from anywhere. So the clock can be
+advanced by whole 24-cycle iterations to the scheduler's next horizon instead
+of executing them, and the horizon is an hblank or a vblank: a few hundred a
+frame against 6,798 iterations. The prize is 45.2% of the route.
 
-Two things worth settling before writing any of it. **Whether the census can
-still be the acceptance.** The route is 3,600 frames measured *at* the frame
-boundary, so a model that changed where a frame begins would move the census
-by construction rather than by fault, and the hash would stop being evidence
-about anything. **And what the spin loop actually waits for.** The game's own
-frame pacing is a wait on a work-RAM byte the VBlank handler writes; a native
-frame boundary that ends a frame at a different instruction than the
-emulator's would still produce the same pixels but a different instruction
-count, and nothing in the current acceptance would notice.
+Three things to get right. **The phase.** Both instructions cost 24 master
+cycles between them, so a fast-forward has to leave the processor about to
+execute the same one of the two it would have been about to execute; landing
+on the wrong one shifts everything after by 12 cycles and the census will say
+so. **The predicate.** "This loop is idle" is a claim about the game and
+belongs in native code; "advance to the horizon" is a claim about the machine
+and belongs in the fork. **And where it hooks.** A routine replacement cannot
+express this -- a transcript declares its cost when it is offered, and this
+one's cost depends on where the next VBlank IRQ lands.
+
+Then the pad -- but as ownership rather than as a port. `00:E195` already
+models the strobe protocol natively; what `INPUT_Frame` and `INPUT_AdjustTS`
+still do is drive the emulator's `PCE_Input_Device` objects, and the step
+phase 2's joypad entry has been waiting on is reading the host's input
+directly instead of through the core's `current_input_`.
 
 Two smaller things carried forward and still undone. The timer interrupt
 horizon is never queried by a census route -- it exists for native routine
 transcripts -- so `dc_rom_native_irq` cannot fail for it; the replacement
 tests drive it, but nothing prints what they drove. And
 `dc_beetle_vce_cd_event` has still never come due.
+
+### Previous: the frame boundary, read rather than built
+
+This slice produced no code. It was the survey `### Next` asked for before
+writing any, and the survey said not to write it.
+
+**There is no device at the frame boundary.** Read against this machine -- a
+plain 384 KB HuCard, no CD, no SuperGrafx, no MCGenjin -- `Emulate()` has
+almost nothing of its own left. The PSG rebase goes to the sound model; the
+encoder owns `StartFrame`, `RunPartial`, `ResetTS`, `EndFrame` and the
+`frame_done` that decides where a frame ends; `SyncAndResetTimestamp` goes to
+the scheduler; `HuC_Update` and `HuC_ResetTS` dereference `mcg`, which is
+only ever constructed for the MCGenjin mapper and is null here; every ADPCM,
+CDDA and `PCECD_` call is behind a null buffer or `PCE_IsCD`. What is left is
+`PCE_TimestampBase`, read only by the debugger and the boundary observation.
+`PCE_Event`, which `### Next` named as part of the work, does not exist -- the
+symbol is nowhere in the tree.
+
+**VDC/VBlank timing against the raster was already done.** The bullet had
+outlived itself: `PceVdc::do_vblank_irq_test` has been running off the
+encoder's schedule since `0009` and `0011` landed, and the item survived
+because it was written before them.
+
+**Both open questions are now answered.** *Can the census still be the
+acceptance?* Yes, and for a better reason than expected -- the census frame is
+not the game's frame and never was. `run_frame` returns when the encoder
+reports `frame_done` at raster line `14 + max(240, slend + 1)`, which is
+already native, while the game's frame ends at the spin loop's exit. The two
+drift: over 3,600 raster frames the loop exits 3,567 times, **73 frames
+containing no exit and 40 containing two**. Work on the spin loop happens
+inside a census frame and cannot move the sample point. *What does the spin
+loop wait for?* `$0000`, the counter `00:E117` increments in VBlank, compared
+against `$004B`, the value the previous wait consumed. Across the 3,567 waits
+`$0000` was written 3,455 times and always by that one instruction, and
+`$004B` 3,567 times and always by the loop's own `STA <$4B`; no other
+instruction reached either. It exits on difference rather than on a tick, so a
+late
+wait swallows every tick that arrived: 3,557 waits of 3,566 consumed one, six
+consumed two, one each consumed three, four and seventeen, and 109 calls never
+spun at all.
+
+**The cost, measured.** `00:E323` and `00:E325` execute 24,248,940 times each
+and account for 584,249,394 master cycles; the whole of `00:E321`-`E32B` is
+584,453,517, **45.2% of the route's 1,292,378,139**. An iteration is 24
+master cycles -- four CPU cycles apiece in fast mode. The profile runs 0.4%
+over that, and the excess is explained rather than noise: 95,646 interrupts
+are taken inside the loop, and the 6280 charges its eight-cycle entry
+sequence to whichever instruction the boundary fell after.
+
+The inventory table and the phase 3 list in `docs/EMULATOR_ELIMINATION.md`
+now say all of this. The table's `00:E2B7`-`E39C` row reproduces exactly, so
+it stays; what it had never said is that the region is not a loop. `00:E2B7`
+is the colour encoder's initialiser, and `E2CB`-`E320` is a dispatch table of
+twelve `LDA #imm` / `BRA` pairs feeding two helpers that set and clear bits in
+the VDC control register through the shadow at `$02` -- 304,680 cycles between
+all of them, against 584,453,517 for the wait at `E321`.
 
 ### Previous: the instruction boundary is installed
 

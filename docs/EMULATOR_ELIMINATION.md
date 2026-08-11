@@ -103,7 +103,7 @@ table rather than appearing at its old size:
 
 | Region | Master cycles | Share | What it is |
 | --- | ---: | ---: | --- |
-| `00:E2B7`–`E39C` | 584,758,197 | 45.25% | Frame-sync spin loop |
+| `00:E2B7`–`E39C` | 584,758,197 | 45.25% | Frame-sync spin loop. The loop itself is `00:E321`–`E32B` (584,453,517) and all but 204,123 of *that* is the two-instruction wait at `00:E323`/`00:E325`, executed 24,248,940 times apiece at 24 master cycles a turn. The rest of the region is the colour encoder's initialiser and the two bit-set/bit-clear helpers around it; see phase 3 |
 | `00:FC03`–`FC8D` | 6,830,889 | 0.53% | Sound driver — body **and epilogue** now native on every arrival. Three deliberate refusals account for 6,810,810 of this: the `RTI` at `FC8D` (5,292,108), the `SEI` at `FC81` (1,509,498), and the chain exit `FC89` with the `FC03` trampoline it lands on (9,204). The remaining 20,079 is the body itself running emulated on the few dozen arrivals a route where the walk declines |
 | `00:FD07`–`FD81` | 82,117 | 0.01% | The driver's second arm, likewise, with its own `RTI` (57,771) and `SEI` (16,548) |
 | bank `45` (`4000`–`4A9B`) | 5,266,590 | 0.41% | Music sequencer — the tick is **native**, chunked at its voice loop, and so is the PSG programmer `45:4142`, chunked at its channel loop; what is left is `45:4936`, the track loader `45:4BCC` and the chunk boundaries |
@@ -1174,14 +1174,102 @@ Remaining real logic, in rough order of value:
   `REDOPIMCACHE`, which repairs the processor's copy of the I flag rather
   than the boundary's latched one. That shuttle is now the fourth arm of
   `dc_rom_device_state_shuttle`.
-- VDC/VBlank interrupt timing against the raster.
+- **VDC/VBlank interrupt timing against the raster — native, and this
+  bullet had outlived itself.** `PceVdc::do_vblank_irq_test` runs off
+  `need_vblank_irq_test_`, set when the vertical phase leaves the display
+  window and consumed at the same point in the raster the emulator consumes
+  it at; the encoder's schedule is what drives it, and that encoder is
+  `PceVce`. Nothing was left to port here after `0009` and `0011` landed —
+  the item survived because it was written before them.
 - Cycle pacing. Native transcripts currently declare `body_master_cycles` so
   Beetle can schedule around them; something must still model time to the
   same precision, because the game's behaviour depends on where the timer
   interrupt lands relative to the frame. The scheduler above is now that
   model — what remains is that the transcripts still declare their cost to it
   rather than being executed by it.
-- The spin loop becomes the native frame boundary.
+- **The spin loop becomes the native frame boundary.** Read, measured, and
+  now the only structural item phase 3 has left. The loop is
+  `00:E321`–`E32B`, five instructions, of which two are the loop:
+
+  ```
+  E321  LDA <$4B      ; the frame number the previous wait consumed
+  E323  CMP <$00      ; $00 is the counter 00:E117 increments in VBlank
+  E325  BEQ $E323     ; spin until they differ
+  E327  LDA <$00
+  E329  STA <$4B      ; swallow however many ticks arrived
+  E32B  RTS
+  ```
+
+  It waits on one byte of work RAM, `$0000`. Traced across all 3,567 waits
+  on the census route, that byte was written 3,455 times and always by one
+  instruction — `00:E117`, the `INC $00` in the VBlank body — and `$004B`
+  3,567 times and always by the `STA <$4B` above; nothing else reached
+  either. The loop body reads `$00` and writes nothing. So the exit
+  condition cannot change except through an interrupt, which is the premise
+  everything below rests on — established for this route, and something a
+  fast-forward would have to establish in general, since an indexed store
+  could reach zero page from anywhere.
+
+  The cost is the largest single number in the profile: `00:E323` and
+  `00:E325` execute **24,248,940 times each** over 3,600 frames and account
+  for **584,249,394 master cycles, 45.2% of the route**. An iteration is 24
+  master cycles: both instructions are four CPU cycles and the processor is
+  in fast mode, three master cycles to the cycle. The profile runs about
+  0.4% over that, and the excess is accounted for rather than noise —
+  **95,646 interrupts are taken inside the loop** over the route, and the
+  6280 charges its eight-cycle entry sequence to whichever instruction the
+  boundary fell after. So the wait is quantised to 24 cycles everywhere
+  except at the boundaries a fast-forward would stop at anyway.
+
+  What it waits *for* is not one frame. `CMP`/`BEQ` exits on *difference*,
+  not on a tick, and `$4B` is then set to whatever `$00` has reached, so a
+  wait that started late swallows every tick that arrived. Of 3,566 waits,
+  3,557 consumed one tick, six consumed two, and one each consumed three,
+  four and seventeen; 109 of the 3,567 calls exited without spinning at all
+  because the previous frame's work had already overrun. The game drops
+  frames on this route, rarely, and the loop is how.
+
+  It cannot be a routine replacement. A transcript declares its cost when
+  it is offered, and this one's cost is not known then — it depends on
+  where the next VBlank IRQ lands, which depends on the raster. The shape
+  that does work is available now that the scheduler and the boundary are
+  both native: at `E323` with `$00 == $4B`, nothing can change before the
+  next scheduled event, so the clock can advance by whole iterations to the
+  scheduler's horizon instead of executing them. The horizon is an hblank
+  or a vblank, a few hundred per frame against 6,798 iterations, and the
+  phase matters — a fast-forward has to leave the processor about to
+  execute the same one of the two instructions it would have been about to
+  execute.
+- **There is no device at the frame boundary, and that is the finding.**
+  The plan called for one more seam around `Emulate()` in `pce.cpp`. Read
+  against this machine — a plain 384 KB HuCard, no CD, no SuperGrafx, no
+  MCGenjin — that function has almost nothing of its own left. `PSG_Update`
+  and `PSG_ResetTS` go to the sound model; `StartFrame`, `RunPartial`,
+  `ResetTS` and `EndFrame` go to the encoder, including the `frame_done`
+  that decides where a frame ends; `SyncAndResetTimestamp` goes to the
+  scheduler; `HuC_Update` and `HuC_ResetTS` dereference `mcg`, which is
+  only ever constructed for the MCGenjin mapper and is null here; every
+  ADPCM, CDDA and `PCECD_` call is behind a null buffer or `PCE_IsCD`. What
+  is left is `PCE_TimestampBase`, which only the debugger and the boundary
+  observation read.
+
+  So the frame loop is not an object that was missed. It is a rebase
+  protocol over five models that are already native, plus two things that
+  merely happen to be called from the same function. One is **the pad**
+  (`INPUT_Frame`, `INPUT_AdjustTS`), still driving the emulator's
+  `PCE_Input_Device` objects — which is not a new port so much as the
+  ownership step the joypad entry under phase 2 already names: `00:E195`
+  models the strobe protocol natively but reads through the core's
+  `current_input_` rather than owning the port. The other is **the sound
+  output chain**
+  (`OwlBuffer::Integrate`, `HRRes->Resample`), which sits downstream of the
+  native PSG because `dc_beetle_set_psg_device` hands the model the
+  emulator's own blip buffers to synthesize into — and that one is not a
+  gap, it is the resampling decision under *Open questions*, which keeps it
+  in the path until phase 4 so `audio_sha256` stays a live oracle.
+
+  The frame loop then becomes native by subtraction, which is the phase 4
+  pattern rather than a seventh seam.
 
 ### Phase 4 — delete the CPU
 
@@ -1200,6 +1288,21 @@ hook machinery, the write channel, the replacement frame stack and most of
   installed is that precise — four census arms, unmoved hash — but it is
   only half the answer: it decides *when* the machine stops, and the emulator
   still decides how many cycles each instruction took to get there.
+- **Can the census survive a native frame boundary?** Decided: yes, and for
+  a better reason than expected. The worry was circularity — the route is
+  3,600 frames measured *at* the frame boundary, so a model that moved the
+  boundary would move the hash by construction and the hash would stop
+  being evidence. It turns out the census frame is not the game's frame and
+  never was. `run_frame` is one `retro_run`, which returns when the encoder
+  reports `frame_done` at raster line `14 + max(240, slend + 1)`, and that
+  boundary is already native — it is `PceVce`'s. The game's own frame
+  boundary is the spin loop's exit, and the two drift against each other:
+  over 3,600 raster frames the loop exits 3,567 times, with **73 frames
+  containing no exit and 40 containing two**. So work on the spin loop
+  happens *inside* a census frame and cannot move the sample point. What
+  would break the oracle is redefining `run_frame` to end where the game
+  thinks a frame ends — so that is the thing not to do, and the raster
+  boundary stays the census boundary through phase 4.
 - **Route coverage.** One 3,600-frame route is a strong oracle but not a
   complete one, and the PSG slice showed that adding routes is not always the
   remedy. The LFO fires zero times on the census route, and it would fire zero
