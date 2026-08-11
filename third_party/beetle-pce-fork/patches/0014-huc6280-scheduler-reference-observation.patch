@@ -1,0 +1,71 @@
+diff --git a/mednafen/pce/huc6280.cpp b/mednafen/pce/huc6280.cpp
+--- a/mednafen/pce/huc6280.cpp
++++ b/mednafen/pce/huc6280.cpp
+@@ -615,6 +615,18 @@ void HuC6280::DcObserveIrq(DcIrqObservation* const out) const
+ 	out->next_event = next_event;
+ }
+ 
++void HuC6280::DcObserveScheduler(DcSchedulerObservation* const out) const
++{
++	out->timestamp = timestamp;
++	out->timestamp_frac = timestamp_frac;
++	out->overclock_rate = overclock_rate;
++	out->next_event = next_event;
++	out->next_user_event = next_user_event;
++	out->runrunrun = runrunrun;
++	out->speed = speed;
++	out->speed_shift_cache = speed_shift_cache;
++}
++
+ // Only the used prefix of each array is live, and an interrupt handler's own
+ // transcript is typically a fraction of the parent's, so saving and restoring
+ // by count keeps nesting proportional to the transcripts involved rather than
+diff --git a/mednafen/pce/huc6280.h b/mednafen/pce/huc6280.h
+--- a/mednafen/pce/huc6280.h
++++ b/mednafen/pce/huc6280.h
+@@ -138,6 +138,45 @@ public:
+ 		IRQlow &= ~IQRESET;
+ 	}
+ 
++	// Downstream observation of the processor's clock and event
++	// scheduler. Everything this device holds is private and only two of
++	// its fields have a public entry point that moves them, so a
++	// differential test that could only steal cycles would be unable to
++	// see the horizon it was aiming at.
++	//
++	// The two setters below change behaviour and say so. Neither is
++	// reachable without executing an instruction -- `speed` is written by
++	// CSL and CSH, and the loop flag by `Run`, which runs -- and a
++	// scheduler driven without a processor has no other way to reach
++	// them.
++	struct DcSchedulerObservation
++	{
++		uint32 timestamp;
++		uint32 timestamp_frac;
++		uint32 overclock_rate;
++		int32 next_event;
++		int32 next_user_event;
++		int32 runrunrun;
++		uint8 speed;
++		uint8 speed_shift_cache;
++	};
++
++	void DcObserveScheduler(DcSchedulerObservation* out) const;
++
++	void DcSetSpeed(const uint8 v)
++	{
++		speed = v;
++		REDOSPEEDCACHE();
++	}
++
++	// What `Run` does to the loop flag, without the loop. One for a
++	// normal run, minus one for a single step so a block move is not cut
++	// short, zero for stopped.
++	void DcSetRunFlag(const int32 flag)
++	{
++		runrunrun = flag;
++	}
++
+ 	int StateAction(StateMem *sm, const unsigned load, const bool data_only);
+ 
+ 	NO_INLINE void RunSub(void);

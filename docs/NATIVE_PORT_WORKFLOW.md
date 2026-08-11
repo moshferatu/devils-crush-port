@@ -1775,6 +1775,44 @@ needs both: an enumeration against the reference for what the device can do,
 and a census for what the game actually asks of it.** Printing the counts in
 the census keeps the boundary between them visible instead of implied.
 
+### When the device's answer is *when*, compare the sequence, not the state
+
+Every device model before the scheduler had an answer to compare: a sample, a
+pixel, a register, a divider. The scheduler's output is almost entirely a
+*decision about when* — when the timer catches up, when the user event
+handler is called, when the processor stops. Its state after a long drive is
+a handful of small integers, and a wrong scheduler reaches the same handful
+by a different road all the time: call the handler one advance late and then
+once more to catch up, and the clock, both horizons and the rate all end up
+identical.
+
+So both arms fold the timestamp of every handler call into an order-sensitive
+digest, and the digest is compared alongside the state after every single
+operation. **A model whose product is timing has to be compared on the
+timeline, not at the end of it.** The equivalent for the video chips was the
+framebuffer hash, which is a sequence comparison wearing a state comparison's
+clothes; for a device that produces no artifact at all, the sequence has to
+be manufactured on purpose.
+
+The corollary is cheap and worth taking: the digest costs four multiplies per
+call and localises a failure to an operation, because the comparison that
+detects it is the one immediately after the operation that caused it.
+
+### What a device is *not* reset by is a fact about it
+
+`HuC6280::Reset` and `HuC6280::Power` between them clear the whole processor
+and the whole interrupt controller, and touch not one field of the clock.
+Only `Init` does. That reads like an oversight until you notice the machine
+calls `Init` for every ROM it loads, and that a reset which zeroed the
+timestamp would rebase every device's phase underneath it mid-frame.
+
+The model reproduces the asymmetry — an `init` and no `reset` — and the
+differential test spends a section *demonstrating* it rather than asserting
+it in a comment: drive the clock forward, reset, power, and check that
+nothing moved. **A behaviour you decided not to implement deserves a test
+that shows the reference does not have it either**, because the alternative
+is a reader six months later "fixing" the omission.
+
 ## Commands
 
 Assuming the full host preset has been configured and `DC_ROM_PATH` is
@@ -1852,6 +1890,14 @@ which on this machine means a scanner or the indexer. A test whose only
 failure mode is "could not write its artifact" should be read as
 infrastructure until the numbers themselves disagree, and it is worth
 suspecting the same cause for the unexplained failure above.
+
+**It happened a third time on 2026-08-11**, in
+`dc_rom_actor_camera_sweep_semantic` under `ctest -j 6`, with the identical
+message and the same shape: the 3,600-frame census completed and every
+replacement reported its entry count, and only the atomic replace failed. It
+passed on its own immediately afterwards. Two different tests with the same
+signature is enough to stop reading it as a property of either — the artifact
+commit itself is what is racing something outside the suite.
 
 ## Future acceleration work
 

@@ -1,6 +1,6 @@
 # Project Progress
 
-Last updated: 2026-08-12
+Last updated: 2026-08-13
 
 ## Current Status
 
@@ -5496,25 +5496,42 @@ does not.
 
 ### Next
 
-**The processor's clock.** Four devices are native and the machine's whole
-interrupt register file is native, but the emulator still owns time itself:
-`timestamp`, `next_event`, `next_user_event`, `ADDCYC` and `HappySync`. Every
-model in the port takes its timestamps from that clock, and the last two
-things Beetle does for this game that nothing has replaced are advancing it
-and deciding, at an instruction boundary, that an interrupt has arrived.
+**Install the clock and event scheduler.** The model is written and proved;
+what is left is a fork patch in the shape of `0011`/`0013` that routes
+`HuC6280::Init`, `ADDCYC` and `ADDCYC_MASTER`, `HappySync`, `CalcNextEvent`,
+`SetEvent`, `SetEventHandler`, `SyncAndResetTimestamp`, `Timestamp`,
+`StealCycle`/`StealCycles`/`StealMasterCycles`, `SetOverclock`, `Run`,
+`Exit`, the CSL and CSH opcodes, the stall pricing in
+`ApplyReplacementCheckpoint`, and the four scheduler entries in the savestate
+into `devils_crush::cpu::HuC6280Scheduler`, plus a `framebuffer_sha256`
+census over the route to show nothing moved.
 
-The natural next slice is the smaller half of that pair: **the scheduler.**
-The encoder's reference shim already demonstrated that everything the video
-side asks the processor for is a counter it advances or a flag it sets, and
-the timer's shim demonstrated the same for the timer. What remains behind
-`HuC6280` that is genuinely *scheduling* rather than *execution* is
-`timestamp`, the two event horizons, the event handler, `StealCycles`,
-`Exit`, and `SyncAndResetTimestamp` -- perhaps a hundred lines. Separating it
-from the execution surface is what would let the four device models run on a
-native clock while the emulator still executes instructions.
+Two questions are worth deciding rather than defaulting, and they are the
+same two the timer's install faced, in harder form.
 
-The larger half is the sampling boundary this slice deliberately left alone.
-`IRQSample` and `IFlagSample` are latched at `LastCycle`, and the
+**Where the mirror goes, if there is one.** This device is hotter than the
+timer was: `ADDCYC` runs on every instruction and reads `timestamp`,
+`next_event`, `next_user_event`, `timestamp_frac`, `overclock_rate` and
+`speed_shift_cache`, and it *writes* four of them. The timer's answer --
+mirror the reads, dispatch the writes -- does not transfer, because here the
+writes are the hot path. The likely answer is the opposite one: `ADDCYC`
+stays in the processor and dispatches nothing, and the *model's* fields
+become the ones the processor reads and writes directly, through a pointer
+rather than a call. That is a different kind of seam from the four before it
+and it should be recognised as such before it is built rather than after.
+
+**Whether `Timestamp()` can be a call.** Twenty-odd call sites across
+`pce.cpp`, `vce.cpp` and `huc.cpp` read it, all of them at a device boundary
+the machine was already crossing, so those are free. The ones inside
+`HuC6280` are not.
+
+Also worth doing while the patch is open: the two entry points `0014` added
+for the test, `DcSetSpeed` and `DcSetRunFlag`, become redundant the moment
+the model owns those fields, and should be removed with the same patch that
+makes them so.
+
+After that, what is left of the emulator for this game is the *taking* of an
+interrupt. `IRQSample` and `IFlagSample` are latched at `LastCycle`, and the
 vector-selection rule in `RunSub` -- with its asymmetric
 `(IRQlow & IQTIMER & IRQMask) && !IFlagSample` -- is the last thing standing
 between a native controller and a native interrupt. That one cannot move
@@ -5522,11 +5539,76 @@ before the processor does, because it *is* the processor: it is a decision
 made at an instruction boundary by something that knows what an instruction
 is. It belongs to Phase 4, not Phase 3.
 
-Two smaller things are worth doing before either. The timer interrupt horizon
-is never queried by a census route -- it exists for native routine
+Two smaller things carried forward and still undone. The timer interrupt
+horizon is never queried by a census route -- it exists for native routine
 transcripts -- so `dc_rom_native_irq` cannot fail for it; the replacement
-tests drive it, but nothing prints what they drove. And `dc_beetle_vce_cd_event`
-has still never come due.
+tests drive it, but nothing prints what they drove. And
+`dc_beetle_vce_cd_event` has still never come due.
+
+### Previous: the clock and event scheduler is modelled
+
+`devils_crush::cpu::HuC6280Scheduler` holds the master-cycle timestamp every
+device in this machine measures itself against, the two horizons that decide
+when the processor stops to let something else happen, the overclock divider,
+the rate a cycle is priced at, and the loop flag that ends a frame. It is not
+installed; `dc_scheduler_device` is what proves it -- **120,043 comparisons
+against the emulator's own scheduler, no disagreement.**
+
+**It is the smaller half of what is left inside `HuC6280`.** The other half
+is execution, and the two are worth separating because only one of them is a
+device. A cycle costing three master clocks or twelve, an event handler
+coming due, a frame boundary wrapping the clock: none of that needs to know
+what an instruction is. Taking an interrupt does, and is not here.
+
+**Three things about the device were surprising enough to write down.**
+
+*Reset and power do not touch it.* Between them those two clear the whole
+processor and the whole interrupt controller and leave every field here
+exactly as it was; only `Init`, which the machine runs for every ROM it
+loads, puts the clock back to zero. So the model has an `init` and no
+`reset`, and the test spends a section demonstrating that rather than
+asserting it in a comment.
+
+*The horizons are relative and the clock is absolute.* `next_event` and
+`next_user_event` count down in master clocks while the timestamp counts up,
+which is why the frame boundary can wrap the timestamp to a small remainder
+without touching either horizon -- and why a savestate carries the horizons,
+the rate and the loop flag but not the clock, the overclock rate, or its
+remainder.
+
+*How long a cycle is belongs here.* `speed` is written by the CSL and CSH
+opcodes, which makes it look like a processor register, but nothing reads it
+except the conversion from processor cycles to master clocks. So the model
+holds it and offers `advance` in cycles beside `advance_master` in master
+clocks, which is the pair `ADDCYC` and `ADDCYC_MASTER` already are.
+
+**The test compares three things, and only the first is obvious.** The state,
+after every single operation, including the derived shift the rate is used
+through -- a model that held the rate right and shadowed it wrong would price
+every cycle wrongly and be invisible in `speed` alone. The *ordered sequence
+of moments* the user event handler was called at, folded by both arms into
+the same digest: a scheduler that ended a long drive with the right clock but
+had called the handler at a different set of moments would be wrong in
+exactly the way a frame of video is sensitive to, and nothing in the end
+state would say so. And the near horizon's choice between two devices, which
+the drive makes both of them win.
+
+**The timer underneath the native arm is a dependency, not a comparison.**
+The reference arm's horizon is bounded by the emulator's own timer, catching
+up inside `HappySync` at the moments a real machine would. The native arm is
+bounded by a `HuC6280Irq` composed underneath it through the scheduler's
+hooks -- which is the composition a native machine will use, and which is
+sound to rely on here because `dc_irq_device` has already proved those two
+equal field for field. Any difference this test sees is therefore the
+scheduler's.
+
+Patch `0014` is observation only: `DcObserveScheduler` reads the seven
+private fields plus the derived shift, and `DcSetSpeed`/`DcSetRunFlag` reach
+the two that no public entry point can move without executing an instruction.
+Everything else the scheduler does was already public, which is why the patch
+is seventy lines. `CalcNextEvent` needed no entry point at all: `SetEvent`
+handed the horizon it already holds is the same two statements with the first
+one a no-op.
 
 ### Previous: the timer and interrupt controller is installed
 

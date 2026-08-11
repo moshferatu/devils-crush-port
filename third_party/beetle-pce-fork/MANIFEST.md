@@ -70,6 +70,23 @@ this repository.
   only one may exist at a time, none may exist while a real machine is
   running, and it must not share a process with a live reference encoder.
   It is deleted with the emulator.
+- `include/dc_beetle_reference_scheduler.h` and
+  `src/dc_beetle_reference_scheduler.cpp`: the emulator's own clock and event
+  scheduler, for the tests only. The timer's shim drove the processor's clock
+  in order to watch a device hanging off it; this one watches the clock, and
+  the substitution it relies on is the same and slightly stronger -- the
+  scheduler does not know what an instruction is, so a stolen cycle and an
+  executed one move it identically, and everything it does happens inside
+  `StealCycles`. Two of its fields have no public entry point at all, `speed`
+  being written by CSL and CSH and the loop flag by `Run`, and both are
+  reached through the setters `0014` adds. Unlike the other three shims this
+  one installs the *user event handler* as well, because when the handler is
+  called and with what timestamp is half of what is being tested: the
+  installed handler returns a configurable interval and folds every call into
+  an order-sensitive digest. It claims the emulator's own processor, so only
+  one may exist at a time, none may exist while a real machine is running,
+  and it must not share a process with a live reference encoder or a live
+  reference timer. It is deleted with the emulator.
 - `dc_beetle_irq_state`, `dc_beetle_irq_level` and `dc_beetle_irq_model` in
   `include/dc_beetle_execution_hook.h`: the fourth device-model boundary,
   installed by `0013`. `dc_beetle_irq_level` is the one piece of it that has
@@ -338,6 +355,34 @@ this repository.
       values out before serializing, seven back in after the emulator's own
       load-time repairs have run over them.
     - Changes nothing when no model is registered.
+14. `patches/0014-huc6280-scheduler-reference-observation.patch`
+    - Observation only, for the processor's clock and event scheduler.
+      Installs nothing and routes nothing: every addition is a new method
+      and no existing line changes.
+    - `DcSchedulerObservation` and `DcObserveScheduler` read out the
+      timestamp, the overclock remainder and rate, both event horizons, the
+      loop flag, the clock rate and the shift that shadows it. All of it is
+      private. The shift is included even though it is derived, because it
+      is the value the conversion from cycles to master clocks actually
+      uses, and a model that held the rate right and shadowed it wrong would
+      otherwise be invisible.
+    - `DcSetSpeed` and `DcSetRunFlag` are the two entry points here that
+      write processor state, and they exist because neither field is
+      reachable without executing an instruction: `speed` is written by the
+      CSL and CSH opcodes, and the loop flag by `Run`, which runs. A
+      scheduler driven by stolen cycles has no other way to reach them.
+      `DcSetSpeed` refreshes `speed_shift_cache` for the same reason
+      `DcSetIFlag` refreshes `PIMaskCache`.
+    - Everything else the scheduler does is already public, which is worth
+      recording because it is why this patch is so small: `StealCycles`,
+      `StealMasterCycles`, `SetEvent`, `SetEventHandler`, `TimerSync`,
+      `SyncAndResetTimestamp`, `SetOverclock`, `Timestamp` and `Exit` are
+      all reachable from outside. `CalcNextEvent` is not, and needs no entry
+      point either: `SetEvent` handed the horizon it already holds is the
+      same two statements with the first one a no-op.
+    - Adds no data members, so the processor object's layout and the
+      `MDFN_ALIGN(128)` assertion in `Init` are untouched. Changes nothing
+      for any caller that does not use these.
 
 All local files and patches are GPL-3.0-or-later. Upstream per-file notices
 and licenses remain authoritative for upstream sources.

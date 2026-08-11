@@ -27,10 +27,16 @@ the picture. A write to `$0C01` reaches
 [`src/cpu/huc6280_irq.cpp`](../src/cpu/huc6280_irq.cpp), which decides when
 the timer interrupt is asserted.
 
-What is still Beetle's is the clock and the *taking* of an interrupt. The
-native controller publishes a level; the emulator's processor samples it at an
-instruction boundary and picks a vector. At a hypothetical 100% native cycle
-share the emulator would still be present and still own that.
+What is still Beetle's is the *taking* of an interrupt. The native controller
+publishes a level; the emulator's processor samples it at an instruction
+boundary and picks a vector. At a hypothetical 100% native cycle share the
+emulator would still be present and still own that.
+
+The clock has now been modelled but not installed.
+[`src/cpu/huc6280_scheduler.cpp`](../src/cpu/huc6280_scheduler.cpp) holds the
+master-cycle timestamp, both event horizons, the rate a cycle is priced at
+and the loop flag, and `dc_scheduler_device` proves it against the
+emulator's. Installing it is the next slice.
 
 So the percentage will plateau well short of "removable". Track the phases
 below, not the number.
@@ -1003,6 +1009,49 @@ Remaining real logic, in rough order of value:
   beyond that: the counter is never read back, the mask is never written or
   read, and the status register is never read. The game opens the mask once by
   taking the reset vector and never narrows it again.
+- **The clock and the event scheduler — modelled, not yet installed.**
+  `devils_crush::cpu::HuC6280Scheduler` holds the master-cycle timestamp
+  every device in this machine measures itself against, the two horizons
+  that decide when the processor stops to let something else happen, the
+  overclock divider, the rate a cycle is priced at, and the loop flag that
+  ends a frame. `dc_scheduler_device` is what proves it; nothing installs it
+  yet.
+
+  It is the smaller half of what is left inside `HuC6280`. The other half is
+  execution, and the two are worth separating because only one of them is a
+  device: a cycle costing three master clocks or twelve, an event handler
+  coming due, a frame boundary wrapping the clock — none of that needs to
+  know what an instruction is. Taking an interrupt does.
+
+  Three things about it were surprising enough to be worth writing down.
+  **Reset and power do not touch it.** Between them those two clear the whole
+  processor and the whole interrupt controller and leave every scheduler
+  field exactly as it was; only `Init`, run for every ROM the machine loads,
+  puts the clock back to zero. So the model has an `init` and no `reset`, and
+  that asymmetry is the emulator's rather than a simplification. **The
+  horizons are relative and the clock is absolute** — which is why the frame
+  boundary can wrap the timestamp to a small remainder without touching
+  either horizon, and why a savestate carries the horizons but not the clock.
+  And **how long a cycle is belongs here**: `speed` is written by the CSL and
+  CSH opcodes, which makes it look like a processor register, but nothing
+  reads it except the conversion from cycles to master clocks.
+
+  The differential test compares three things after every operation, and only
+  the first is obvious. The state, including the derived shift the rate is
+  used through, because a model that held the rate right and shadowed it
+  wrong would price every cycle wrongly and be invisible in `speed` alone.
+  The *ordered sequence of moments* the user event handler was called at,
+  folded into a digest by both arms — a scheduler that ended a long drive
+  with the right clock but had called the handler at a different set of
+  moments would be wrong in exactly the way a frame of video is sensitive to.
+  And the near horizon's choice between two devices. 120,043 comparisons, no
+  disagreement.
+
+  The timer underneath the native arm is a `HuC6280Irq` composed through the
+  scheduler's hooks, which is the composition a native machine will use and
+  is sound to rely on because `dc_irq_device` already proves that model equal
+  to the emulator's field for field. Any difference this test sees is
+  therefore the scheduler's.
 - VDC/VBlank interrupt timing against the raster.
 - Cycle pacing. Native transcripts currently declare `body_master_cycles` so
   Beetle can schedule around them; something must still model time to the

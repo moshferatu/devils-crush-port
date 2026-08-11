@@ -49,6 +49,7 @@ function(dc_provide_beetle_pce)
         "${beetle_fork_root}/patches/0011-vce-device-model.patch"
         "${beetle_fork_root}/patches/0012-huc6280-irq-reference-observation.patch"
         "${beetle_fork_root}/patches/0013-huc6280-irq-device-model.patch"
+        "${beetle_fork_root}/patches/0014-huc6280-scheduler-reference-observation.patch"
     )
 
     find_package(Git REQUIRED)
@@ -275,7 +276,7 @@ function(dc_provide_beetle_pce)
                     "HuC6280::DcObserveIrq"
                     beetle_patch_marker_two
                 )
-            else()
+            elseif(beetle_patch_name MATCHES "^0013-")
                 string(
                     FIND
                     "${beetle_cpu_header}"
@@ -286,6 +287,19 @@ function(dc_provide_beetle_pce)
                     FIND
                     "${beetle_cpu_source}"
                     "dc_beetle_active_irq_model"
+                    beetle_patch_marker_two
+                )
+            else()
+                string(
+                    FIND
+                    "${beetle_cpu_header}"
+                    "DcSchedulerObservation"
+                    beetle_patch_marker_one
+                )
+                string(
+                    FIND
+                    "${beetle_cpu_source}"
+                    "HuC6280::DcObserveScheduler"
                     beetle_patch_marker_two
                 )
             endif()
@@ -307,6 +321,7 @@ function(dc_provide_beetle_pce)
         "${beetle_fork_root}/src/dc_beetle_execution_hook.cpp"
         "${beetle_fork_root}/src/dc_beetle_reference_irq.cpp"
         "${beetle_fork_root}/src/dc_beetle_reference_psg.cpp"
+        "${beetle_fork_root}/src/dc_beetle_reference_scheduler.cpp"
         "${beetle_fork_root}/src/dc_beetle_reference_vce.cpp"
         "${beetle_fork_root}/src/dc_beetle_reference_vdc.cpp"
         "${beetle_root}/libretro.cpp"

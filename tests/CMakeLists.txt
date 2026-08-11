@@ -150,6 +150,28 @@ if(TARGET DevilsCrush::BeetlePce)
     add_test(NAME dc_irq_device COMMAND dc_irq_device_tests)
 endif()
 
+# The native clock and event scheduler against the emulator's own, both
+# driven by one stimulus. Needs no ROM. Compares three things after every
+# operation: the clock and both horizons, the whole ordered sequence of
+# moments the user event handler was called at, and the near horizon's
+# choice between two devices. The timer underneath the native arm is the
+# model `dc_irq_device` proves, so any difference here is the scheduler's.
+if(TARGET DevilsCrush::BeetlePce)
+    add_executable(dc_scheduler_device_tests scheduler_device_tests.cpp)
+
+    target_link_libraries(
+        dc_scheduler_device_tests
+        PRIVATE
+            DevilsCrush::Core
+            DevilsCrush::BeetlePce
+    )
+
+    target_compile_features(dc_scheduler_device_tests PRIVATE cxx_std_20)
+    dc_enable_strict_warnings(dc_scheduler_device_tests)
+
+    add_test(NAME dc_scheduler_device COMMAND dc_scheduler_device_tests)
+endif()
+
 add_test(
     NAME dc_coverage_manifest
     COMMAND
