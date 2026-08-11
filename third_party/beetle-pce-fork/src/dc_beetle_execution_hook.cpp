@@ -19,6 +19,7 @@ static int dc_beetle_psg_revision = DC_BEETLE_PSG_REVISION_HUC6280;
 const dc_beetle_vdc_model* dc_beetle_active_vdc_model = nullptr;
 static uint32_t dc_beetle_vdc_vram_size = 0;
 const dc_beetle_vce_model* dc_beetle_active_vce_model = nullptr;
+const dc_beetle_irq_model* dc_beetle_active_irq_model = nullptr;
 uint32_t dc_beetle_replacement_nested_installs = 0;
 uint32_t dc_beetle_replacement_nest_overflows = 0;
 uint32_t dc_beetle_replacement_max_depth = 0;
@@ -145,6 +146,22 @@ void dc_beetle_set_vce_model(const dc_beetle_vce_model* const model)
 void dc_beetle_clear_vce_model(void)
 {
     dc_beetle_active_vce_model = nullptr;
+}
+
+void dc_beetle_set_irq_model(const dc_beetle_irq_model* const model)
+{
+    dc_beetle_active_irq_model = model;
+}
+
+// Clearing leaves the processor holding the mirror -- a correct divider,
+// request register and mask -- but not the counter, the reload byte, the
+// enable bit or the phase, which have no mirror and stay with the model. So
+// this hands the device back to a machine that will reach its own power-on,
+// and not to one in flight. Every caller so far either clears before a ROM
+// loads or clears while shutting down.
+void dc_beetle_clear_irq_model(void)
+{
+    dc_beetle_active_irq_model = nullptr;
 }
 
 // The emulator's own device passes the direction of the change and the

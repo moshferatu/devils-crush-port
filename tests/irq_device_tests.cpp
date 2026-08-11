@@ -181,6 +181,16 @@ void compare(Pair& pair, const char* const where, const bool horizon_fresh)
     }
 }
 
+void init(Pair& pair)
+{
+    dc_beetle_reference_irq_init(pair.ref);
+    pair.native.init();
+    // `HuC6280::Init` rebases the processor's clock, which is the only
+    // reason this is not just another write to the device.
+    pair.ts = 0;
+    compare(pair, "init", true);
+}
+
 void power(Pair& pair)
 {
     dc_beetle_reference_irq_power(pair.ref);
@@ -383,6 +393,42 @@ int main(void)
         check(
             pair.native.requests() == HuC6280Irq::kReset,
             "and reset drops any request already in flight");
+
+        bring_up(pair);
+    }
+
+    section("the machine builds itself again");
+    {
+        // Every ROM the machine loads runs `Init` on a processor that has
+        // already been running. It is not a reset: it puts the divider back
+        // to zero and the phase back to the origin of a clock that has just
+        // been rebased, and leaves the request register and the mask alone.
+        // A device that ignored it would measure its first catch-up on the
+        // new machine against the old machine's timestamp.
+        start_timer(pair, 40);
+        advance(pair, kTick * 3 + 17);
+        begin_request(pair, HuC6280Irq::kIrq2);
+
+        init(pair);
+        check(
+            pair.native.divider() == 0 && pair.native.last_timestamp() == 0,
+            "init leaves the divider at zero and the phase at the origin");
+        check(
+            !pair.native.running() && pair.native.counter() == 0
+                && pair.native.reload() == 0,
+            "and the timer stopped, unloaded and uncounted");
+        check(
+            pair.native.requests() == HuC6280Irq::kIrq2
+                && pair.native.mask() == 0x7,
+            "while the request register and the mask survive it");
+
+        // And a divider left at zero crosses its tick on the very next
+        // clock, which is one short of a whole period rather than a whole
+        // one -- the same arithmetic every other tick uses.
+        advance(pair, 1);
+        check(
+            pair.native.divider() == kTick - 1,
+            "a divider left at zero crosses its tick on the next clock");
 
         bring_up(pair);
     }

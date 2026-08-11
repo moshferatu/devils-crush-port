@@ -70,6 +70,12 @@ this repository.
   only one may exist at a time, none may exist while a real machine is
   running, and it must not share a process with a live reference encoder.
   It is deleted with the emulator.
+- `dc_beetle_irq_state`, `dc_beetle_irq_level` and `dc_beetle_irq_model` in
+  `include/dc_beetle_execution_hook.h`: the fourth device-model boundary,
+  installed by `0013`. `dc_beetle_irq_level` is the one piece of it that has
+  no counterpart in the other three -- the three values the processor mirrors
+  from the model, read back after every dispatch, because they are on the
+  emulator's hottest path and cannot be fetched through a call.
 
 ## Patch series
 
@@ -293,6 +299,45 @@ this repository.
     - Adds no data members, so the processor object's layout and the
       `MDFN_ALIGN(128)` assertion in `Init` are untouched. Changes nothing
       for any caller that does not use these.
+13. `patches/0013-huc6280-irq-device-model.patch`
+    - Routes the HuC6280's timer and interrupt controller to a registered
+      `dc_beetle_irq_model`. The fourth device seam and the only one inside
+      the processor rather than beside it: there is no device object to make
+      dormant, only a dozen private fields.
+    - `Init`, `Reset`, `Power`, `TimerSync`, `SyncAndResetTimestamp`, both
+      register files, `IRQBegin`/`IRQEnd`, the reset-vector acknowledge in
+      `RunSub`, `GetMasterCyclesUntilTimerInterrupt` and the savestate all
+      dispatch when a model is installed.
+    - `timer_div`, `IRQlow` and `IRQMask` become a read-only mirror of the
+      model, refreshed by `DcIrqPublish` after every dispatch that can move
+      them. That is the one design decision in this patch that is not
+      mechanical routing. `CalcNextEvent` is reached from `ADDCYC`, and the
+      interrupt test at the top of `RunSub` runs once per instruction; both
+      read those three values, and an indirect call at either point would
+      cost more than the whole device does. Every *write* still goes through
+      the model, so nothing reads a value the model does not hold, and
+      `CalcNextEvent` itself is left untouched.
+    - The sampling boundary stays where it was. `IRQSample`, `IFlagSample`,
+      `LastCycle` and the vector-selection rule in `RunSub` -- with its
+      asymmetric `(IRQlow & IQTIMER & IRQMask) && !IFlagSample` -- are the
+      processor's, because they are decided at instruction boundaries and
+      this device has no notion of an instruction. The model publishes a
+      level; the processor decides what to do about it. That split is what
+      lets the controller be native while the processor is still Beetle's.
+    - `Reset` routes but keeps `IRQSample = IQRESET` here, since that is the
+      processor's copy. `Power`'s `IRQlow = 0` routes to `end_request` of
+      every line even though the `Reset()` below assigns the register
+      outright and makes it invisible -- a mirror written by anything other
+      than a dispatch is a mirror a reader has to reason about.
+    - The reset-vector acknowledge opens the mask and releases the line
+      together, where the emulator releases the line seven cycles later after
+      the vector fetch. The reset line is not one of the three the status
+      register reports and nothing in between can observe it.
+    - The savestate shuttle is inside `HuC6280::StateAction` rather than in a
+      dormant object, because the fields are the processor's own. Seven
+      values out before serializing, seven back in after the emulator's own
+      load-time repairs have run over them.
+    - Changes nothing when no model is registered.
 
 All local files and patches are GPL-3.0-or-later. Upstream per-file notices
 and licenses remain authoritative for upstream sources.

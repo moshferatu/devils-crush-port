@@ -199,6 +199,22 @@ public:
         return std::nullopt;
     }
 
+    [[nodiscard]] bool set_native_irq(bool) override
+    {
+        return false;
+    }
+
+    [[nodiscard]] bool native_irq_enabled() const noexcept override
+    {
+        return false;
+    }
+
+    [[nodiscard]] std::optional<cpu::HuC6280Irq::Coverage>
+    native_irq_coverage() const override
+    {
+        return std::nullopt;
+    }
+
     [[nodiscard]] bool set_bus_write_observer(
         BusWriteCallback) override
     {

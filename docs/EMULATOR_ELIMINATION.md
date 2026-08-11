@@ -13,8 +13,8 @@ Removing the emulator needs work on three fronts. The metric tracks one.
 | Axis | What it means | Tracked by native share |
 | --- | --- | --- |
 | **CPU code** | Every routine runs as native C/C++ instead of emulated 6280 | Yes |
-| **Device state** | The PSG, VDC and VCE are native models, not Beetle's | No |
-| **Time** | Interrupt scheduling and cycle pacing are native | No |
+| **Device state** | The PSG, VDC, VCE and the timer/IRQ controller are native models, not Beetle's | No |
+| **Time** | Interrupt scheduling and cycle pacing are native | Partly |
 
 The gap matters concretely, and the sound and video paths are the examples
 that have now been closed. `replace_sound_timer_driver` emits a write to
@@ -23,9 +23,14 @@ that have now been closed. `replace_sound_timer_driver` emits a write to
 not Beetle's PSG; a write to `$0000` reaches
 [`src/video/pce_vdc.cpp`](../src/video/pce_vdc.cpp) and one to `$0400`
 reaches [`src/video/pce_vce.cpp`](../src/video/pce_vce.cpp), which also draws
-the picture. The clock is still Beetle's, and so is every interrupt. At a
-hypothetical 100% native cycle share the emulator would still be present and
-still own time.
+the picture. A write to `$0C01` reaches
+[`src/cpu/huc6280_irq.cpp`](../src/cpu/huc6280_irq.cpp), which decides when
+the timer interrupt is asserted.
+
+What is still Beetle's is the clock and the *taking* of an interrupt. The
+native controller publishes a level; the emulator's processor samples it at an
+instruction boundary and picks a vector. At a hypothetical 100% native cycle
+share the emulator would still be present and still own that.
 
 So the percentage will plateau well short of "removable". Track the phases
 below, not the number.
@@ -922,10 +927,12 @@ Remaining real logic, in rough order of value:
 ### Phase 3 — time and interrupts
 
 - **Timer reload and IRQ generation (`$0C00`/`$0C01`), interrupt mask and
-  acknowledge (`$1402`/`$1403`) — modelled and proved, not yet installed.**
+  acknowledge (`$1402`/`$1403`) — native.**
   `devils_crush::cpu::HuC6280Irq` holds the two register files, the three
   request lines behind them, and the divider that turns the master clock into
-  the only interrupt this machine generates for itself.
+  the only interrupt this machine generates for itself. Installed by
+  `0013-huc6280-irq-device-model.patch`; `dc_rom_native_irq` is what says the
+  route did not move.
 
   This is the first device model that is purely reactive. The sound chip
   answered, the video controller answered, the colour encoder owned the
@@ -976,12 +983,26 @@ Remaining real logic, in rough order of value:
   reads pure. And the reset request is an input like any other, held until
   the processor takes the vector.
 
-  What remains before it can be installed is a `dc_beetle_irq_model` in the
-  shape of `0008`/`0009`/`0011` and a census over the route. That seam is
-  narrower than the encoder's: no framebuffer crosses it and there are no
-  outward edges at all, but it is reached from inside `HuC6280::RunSub` and
-  `ADDCYC` rather than from the machine's edge, which is the opposite
-  problem.
+  The install answered the one question the seam actually posed. Every other
+  device model was reached from the machine's *edge* — the I/O page handler,
+  or the event handler the processor calls. This one is read from `ADDCYC`
+  and from the top of `RunSub`'s instruction loop, so a vtable call at either
+  point would have cost more than the whole device does. The answer is that
+  the processor keeps a **read-only mirror** of the three values it reads that
+  often — `timer_div`, `IRQlow` and `IRQMask` — refreshed by one `publish`
+  call after every dispatch that can move them. Every write still goes through
+  the model, and `CalcNextEvent` is left exactly as it was. The other four
+  fields have no mirror, which is why handing the device back is only safe
+  before a machine that will reach its own power-on.
+
+  The census over the 3,600-frame route reproduces the hash the sound slice
+  pinned, in all four arms, including the one where the model runs alone
+  against the emulator's own sound and video chips. Over that route the device
+  is asked for 8,862,034 catch-ups, 679,115 ticks, 258,549 timer underflows
+  and reloads, and 254,990 acknowledges — and for none of its register file
+  beyond that: the counter is never read back, the mask is never written or
+  read, and the status register is never read. The game opens the mask once by
+  taking the reset vector and never narrows it again.
 - VDC/VBlank interrupt timing against the raster.
 - Cycle pacing. Native transcripts currently declare `body_master_cycles` so
   Beetle can schedule around them; something must still model time to the

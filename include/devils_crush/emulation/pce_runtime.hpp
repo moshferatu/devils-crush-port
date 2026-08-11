@@ -3,6 +3,7 @@
 #pragma once
 
 #include "devils_crush/audio/pce_psg.hpp"
+#include "devils_crush/cpu/huc6280_irq.hpp"
 #include "devils_crush/video/pce_vce.hpp"
 #include "devils_crush/video/pce_vdc.hpp"
 
@@ -452,6 +453,29 @@ public:
 
     [[nodiscard]] virtual std::optional<video::PceVce::Coverage>
     native_vce_coverage() const = 0;
+
+    // Replaces the HuC6280's timer and interrupt controller with the native
+    // device model in `devils_crush::cpu`. The narrowest seam of the four and
+    // the only one inside the processor rather than beside it: there is no
+    // device object to make dormant, only a dozen private fields.
+    //
+    // The model owns the divider, the counter, the request register and the
+    // mask, and the processor keeps a read-only mirror of the three of those
+    // it reads once per instruction. What stays with the processor is the
+    // *taking* of an interrupt -- which vector wins, when the line is sampled,
+    // and how the I flag gates it -- because those are decided at instruction
+    // boundaries and this device has no notion of an instruction. That split
+    // is what lets the controller be native while the processor is not.
+    //
+    // May be set before or after a ROM loads, but not mid-frame, and handing
+    // it back is only safe before a machine that will reach its own power-on:
+    // the mirror carries three of the device's values back to the emulator
+    // and the other four have no mirror to carry.
+    [[nodiscard]] virtual bool set_native_irq(bool enabled) = 0;
+    [[nodiscard]] virtual bool native_irq_enabled() const noexcept = 0;
+
+    [[nodiscard]] virtual std::optional<cpu::HuC6280Irq::Coverage>
+    native_irq_coverage() const = 0;
 
     // Savestates are opaque Beetle payloads plus the host frame counter.
     // Persistent storage must additionally bind them to the ROM and core

@@ -66,6 +66,13 @@ typedef struct dc_beetle_reference_irq_observation {
 dc_beetle_reference_irq* dc_beetle_reference_irq_create(void);
 void dc_beetle_reference_irq_destroy(dc_beetle_reference_irq* irq);
 
+// `HuC6280::Init`, which the machine runs for every ROM it loads and which
+// `dc_beetle_reference_irq_create` has already run once. It is not a reset:
+// it leaves the divider at zero rather than at a partial period and leaves
+// the request register and the mask alone. It does rebase the processor's
+// clock, so the timestamp after it is zero.
+void dc_beetle_reference_irq_init(dc_beetle_reference_irq* irq);
+
 // `HuC6280::Power` and `HuC6280::Reset`, both of which the machine calls.
 // Neither rebases the processor's clock, so a test that wants the timer's
 // phase to start at zero asks for that separately.

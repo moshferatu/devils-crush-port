@@ -12,16 +12,18 @@ if(NOT CONFIG STREQUAL "Release")
 endif()
 
 # The savestate shuttle, which is the one part of a device-model install that
-# the census cannot reach. A recorded route never saves or loads a state, so
-# both video models could carry a broken shuttle and every census would still
-# match.
+# the census cannot reach. A recorded route never saves or loads a state, so a
+# model could carry a broken shuttle and every census would still match.
 #
 # The shuttle exists because a model owns state the emulator's savestate
 # format is written through. On save the model's values are moved into the
 # dormant emulator object before it is serialized; on load they are read back
 # out of it afterwards, once the emulator's own repairs have run over them.
-# Two of them now: 128 KiB of video memory and register file for the
-# controller, and the palette and schedule for the colour encoder.
+# Three of them now: 128 KiB of video memory and register file for the
+# controller, the palette and schedule for the colour encoder, and the seven
+# fields of the processor's timer and interrupt controller. The last of those
+# has no dormant object of its own -- the emulator keeps it as private fields
+# of `HuC6280` -- so its shuttle writes through the processor itself.
 #
 # A routine replay is the cheapest thing in this host that exercises both
 # directions for real. It records a route, serializes at the frame before a
@@ -53,9 +55,16 @@ set(
     03:7F57
     03:6966
 )
-set(shuttle_arms native emulated)
+#
+# Three arms. `emulated` hands the two video devices back and keeps the timer
+# and interrupt controller; `emulated_irq` is the other way round. Between them
+# every model's shuttle is exercised in one arm and absent from another, which
+# is what attributes a restored machine that differs to the device whose
+# shuttle lost it.
+set(shuttle_arms native emulated emulated_irq)
 set(arm_flags_native "")
 set(arm_flags_emulated "--emulated-vce;--emulated-vdc")
+set(arm_flags_emulated_irq "--emulated-irq")
 
 foreach(arm IN LISTS shuttle_arms)
     set(arm_flags "${arm_flags_${arm}}")
@@ -114,8 +123,8 @@ foreach(arm IN LISTS shuttle_arms)
     set(replay_detail_${arm} "${arm_detail}")
 endforeach()
 
-# Verifying in both arms is not enough on its own: the replay compares each
-# arm against itself, so two different machines could each be self-consistent.
+# Verifying in each arm is not enough on its own: the replay compares an arm
+# against itself, so three different machines could each be self-consistent.
 # The frame, the body cycle count and the write count have to be the same
 # ones, which is what says the restored machine is the same machine.
 if(NOT replay_detail_native STREQUAL replay_detail_emulated)
@@ -127,9 +136,19 @@ if(NOT replay_detail_native STREQUAL replay_detail_emulated)
         "  emulated\n${replay_detail_emulated}"
     )
 endif()
+if(NOT replay_detail_native STREQUAL replay_detail_emulated_irq)
+    message(
+        FATAL_ERROR
+        "The restored calls differ between the native and emulated timer and "
+        "interrupt controller.\n"
+        "  native\n${replay_detail_native}"
+        "  emulated\n${replay_detail_emulated_irq}"
+    )
+endif()
 
 message(
     STATUS
-    "Video device savestate shuttle verified over eight round trips:\n"
+    "Device savestate shuttle verified over eight round trips in each of "
+    "three arms:\n"
     "${replay_detail_native}"
 )

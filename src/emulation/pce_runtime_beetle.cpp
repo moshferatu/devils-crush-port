@@ -3,6 +3,7 @@
 #include "devils_crush/emulation/pce_runtime.hpp"
 
 #include "devils_crush/audio/pce_psg.hpp"
+#include "devils_crush/cpu/huc6280_irq.hpp"
 #include "devils_crush/video/pce_vce.hpp"
 #include "devils_crush/video/pce_vdc.hpp"
 
@@ -275,6 +276,8 @@ public:
         native_vdc_.reset();
         dc_beetle_clear_vce_model();
         native_vce_.reset();
+        dc_beetle_clear_irq_model();
+        native_irq_.reset();
         shutdown_core();
         BeetlePceRuntime* expected = this;
         (void)active_runtime.compare_exchange_strong(
@@ -925,6 +928,64 @@ public:
             return std::nullopt;
         }
         return native_vce_->coverage();
+    }
+
+    // The timer and interrupt controller. The narrowest seam in the port and
+    // the only one inside the processor: no framebuffer crosses it, no sound
+    // buffer, no machine edge at all. The model answers and publishes a
+    // level; the emulator's processor still decides which vector wins and
+    // when the line is sampled, because those are instruction-boundary
+    // decisions and this device has no notion of an instruction.
+    [[nodiscard]] bool set_native_irq(const bool enabled) override
+    {
+        assert_owner_thread();
+        if (!enabled) {
+            dc_beetle_clear_irq_model();
+            native_irq_.reset();
+            return true;
+        }
+        if (native_irq_) {
+            return true;
+        }
+
+        native_irq_ = std::make_unique<cpu::HuC6280Irq>();
+        native_irq_model_ = {
+            .user_data = native_irq_.get(),
+            .init = &irq_init,
+            .reset = &irq_reset,
+            .reset_timestamp = &irq_reset_timestamp,
+            .acknowledge_reset = &irq_acknowledge_reset,
+            .begin_request = &irq_begin_request,
+            .end_request = &irq_end_request,
+            .sync = &irq_sync,
+            .publish = &irq_publish,
+            .read_timer = &irq_read_timer,
+            .write_timer = &irq_write_timer,
+            .read_status = &irq_read_status,
+            .peek_status = &irq_peek_status,
+            .write_status = &irq_write_status,
+            .timer_horizon = &irq_timer_horizon,
+            .capture_state = &irq_capture_state,
+            .apply_state = &irq_apply_state,
+        };
+        dc_beetle_set_irq_model(&native_irq_model_);
+        return true;
+    }
+
+    [[nodiscard]] bool native_irq_enabled() const noexcept override
+    {
+        assert_owner_thread();
+        return native_irq_ != nullptr;
+    }
+
+    [[nodiscard]] std::optional<cpu::HuC6280Irq::Coverage>
+    native_irq_coverage() const override
+    {
+        assert_owner_thread();
+        if (native_irq_ == nullptr) {
+            return std::nullopt;
+        }
+        return native_irq_->coverage();
     }
 
     [[nodiscard]] std::vector<InstructionProfileEntry>
@@ -1779,6 +1840,153 @@ private:
         vce_model(user_data).apply_state(restored);
     }
 
+    static cpu::HuC6280Irq& irq_model(void* const user_data) noexcept
+    {
+        return *static_cast<cpu::HuC6280Irq*>(user_data);
+    }
+
+    // No machine edges at all. This is the first device model in the port
+    // that reaches nothing outside itself: the processor asks it questions
+    // and reads its answers back, and the interrupt it raises is a level the
+    // processor samples rather than a call the device makes.
+    static void irq_init(void* const user_data)
+    {
+        irq_model(user_data).init();
+    }
+
+    static void irq_reset(void* const user_data)
+    {
+        irq_model(user_data).reset();
+    }
+
+    static void irq_reset_timestamp(
+        void* const user_data,
+        const std::int32_t base)
+    {
+        irq_model(user_data).reset_timestamp(base);
+    }
+
+    static void irq_acknowledge_reset(void* const user_data)
+    {
+        irq_model(user_data).acknowledge_reset();
+    }
+
+    static void irq_begin_request(
+        void* const user_data,
+        const std::uint32_t lines)
+    {
+        irq_model(user_data).begin_request(lines);
+    }
+
+    static void irq_end_request(
+        void* const user_data,
+        const std::uint32_t lines)
+    {
+        irq_model(user_data).end_request(lines);
+    }
+
+    static void irq_sync(
+        void* const user_data,
+        const std::int32_t timestamp)
+    {
+        irq_model(user_data).sync(timestamp);
+    }
+
+    // The mirror refresh, and by a long way the most frequently called of
+    // these: every dispatch that can move the device ends here.
+    static void irq_publish(
+        void* const user_data,
+        dc_beetle_irq_level* const level)
+    {
+        const cpu::HuC6280Irq& device = irq_model(user_data);
+
+        level->next_event = device.next_event();
+        level->requests = device.requests();
+        level->mask = device.mask();
+    }
+
+    static std::uint8_t irq_read_timer(
+        void* const user_data,
+        const std::uint8_t io_data_buffer)
+    {
+        return irq_model(user_data).read_timer(io_data_buffer);
+    }
+
+    static void irq_write_timer(
+        void* const user_data,
+        const std::uint32_t address,
+        const std::uint8_t value)
+    {
+        irq_model(user_data).write_timer(address, value);
+    }
+
+    static std::uint8_t irq_read_status(
+        void* const user_data,
+        const std::uint32_t address,
+        const std::uint8_t io_data_buffer)
+    {
+        return irq_model(user_data).read_status(address, io_data_buffer);
+    }
+
+    static std::uint8_t irq_peek_status(
+        void* const user_data,
+        const std::uint32_t address,
+        const std::uint8_t io_data_buffer)
+    {
+        return irq_model(user_data).peek_status(address, io_data_buffer);
+    }
+
+    static void irq_write_status(
+        void* const user_data,
+        const std::uint32_t address,
+        const std::uint8_t value)
+    {
+        irq_model(user_data).write_status(address, value);
+    }
+
+    static std::uint32_t irq_timer_horizon(
+        void* const user_data,
+        const std::int32_t timestamp,
+        const int i_flag)
+    {
+        return irq_model(user_data).master_cycles_until_timer_interrupt(
+            timestamp,
+            i_flag != 0);
+    }
+
+    static void irq_capture_state(
+        void* const user_data,
+        dc_beetle_irq_state* const state)
+    {
+        cpu::HuC6280Irq::State captured;
+        irq_model(user_data).capture_state(captured);
+
+        state->irq_low = captured.irq_low;
+        state->irq_mask = captured.irq_mask;
+        state->timer_inreload = captured.timer_inreload ? 1U : 0U;
+        state->timer_status = captured.timer_status;
+        state->timer_value = captured.timer_value;
+        state->timer_load = captured.timer_load;
+        state->timer_div = captured.timer_div;
+    }
+
+    static void irq_apply_state(
+        void* const user_data,
+        const dc_beetle_irq_state* const state)
+    {
+        cpu::HuC6280Irq::State restored;
+
+        restored.irq_low = state->irq_low;
+        restored.irq_mask = state->irq_mask;
+        restored.timer_inreload = state->timer_inreload != 0U;
+        restored.timer_status = state->timer_status;
+        restored.timer_value = state->timer_value;
+        restored.timer_load = state->timer_load;
+        restored.timer_div = state->timer_div;
+
+        irq_model(user_data).apply_state(restored);
+    }
+
     void install_callbacks()
     {
         retro_set_environment(&environment_callback);
@@ -2612,6 +2820,8 @@ private:
     dc_beetle_vdc_model native_vdc_model_{};
     std::unique_ptr<video::PceVce> native_vce_;
     dc_beetle_vce_model native_vce_model_{};
+    std::unique_ptr<cpu::HuC6280Irq> native_irq_;
+    dc_beetle_irq_model native_irq_model_{};
     // The controller the encoder clocks, whichever one that turns out to be.
     // Stateless, so it outlives every install and uninstall of either model.
     BeetleVdcDevice beetle_vdc_bridge_;

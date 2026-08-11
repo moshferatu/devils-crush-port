@@ -17,6 +17,16 @@ void HuC6280Irq::count_line_changes(
     }
 }
 
+void HuC6280Irq::init() noexcept
+{
+    timer_lastts_ = 0;
+    timer_inreload_ = false;
+    timer_status_ = 0;
+    timer_value_ = 0;
+    timer_load_ = 0;
+    timer_div_ = 0;
+}
+
 void HuC6280Irq::power() noexcept
 {
     irq_low_ = 0;

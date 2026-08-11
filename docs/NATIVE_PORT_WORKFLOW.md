@@ -1733,6 +1733,48 @@ two objects being stepped in lockstep. **When a reference arm can be driven
 through the machine's own scheduling rather than around it, the test stops
 being a mirror and starts being an experiment.**
 
+### A seam on the hot path is a mirror, not a call
+
+Every device model before this one was installed at the machine's *edge*: the
+I/O page handler, or the event handler the processor calls into. An indirect
+call there is free, because the machine was already crossing a boundary at
+that point.
+
+The timer and interrupt controller is not at an edge. `CalcNextEvent` reads
+its divider from `ADDCYC`, which runs on every instruction, and the interrupt
+test at the top of `RunSub`'s loop reads its request register and mask just as
+often. Routing those three reads through a vtable would have put a load, a
+call and a return on the emulator's hottest path to fetch three integers — for
+a device whose whole state is under fifty bytes.
+
+What works is to split reads from writes. **Every write goes through the
+model; the three values read once per instruction are mirrored in the
+processor and refreshed by one call after every dispatch that can move them.**
+`CalcNextEvent` is then left byte-for-byte as it was. The mirror is safe
+because the set of things that can move those values is exactly the set of
+dispatches, so a single `publish` at the end of each is total.
+
+The cost is a rule rather than a risk: the mirror carries three of the
+device's values back to the emulator and the other four have nothing to carry
+them, so **handing the device back is only safe before a machine that will
+reach its own power-on.** That is worth writing down at the boundary, because
+it is the one property this seam has that the three before it did not.
+
+### Route coverage says as much by what it never reaches
+
+The census over 3,600 frames drives this device 8.8 million times, and it
+never once reads the counter back, writes the interrupt mask, or reads the
+status register. The game opens the mask by taking the reset vector and never
+narrows it again; it acknowledges the timer by writing `$1403` rather than by
+reading `$1402`, and there is no compact disc unit so IRQ2 is never asserted.
+
+That is not a gap in the model — `dc_irq_device` enumerates all of it against
+the emulator's own controller — but it is a gap in what a *census* can prove,
+and the two tests only add up if the division is stated. **A device model
+needs both: an enumeration against the reference for what the device can do,
+and a census for what the game actually asks of it.** Printing the counts in
+the census keeps the boundary between them visible instead of implied.
+
 ## Commands
 
 Assuming the full host preset has been configured and `DC_ROM_PATH` is

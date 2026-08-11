@@ -1877,6 +1877,29 @@ if(TARGET devils_crush)
             PROPERTIES LABELS rom_required
         )
 
+        # The fourth device seam, and the only one inside the processor. Four
+        # arms again, but the third one carries more weight here than its
+        # counterpart did for the video pair: a controller reached from
+        # `ADDCYC` and from the processor's instruction loop has to be shown
+        # answering the emulator's own sound and video chips correctly, not
+        # only three native models that were installed alongside it.
+        add_test(
+            NAME dc_rom_native_irq
+            CONFIGURATIONS Release
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/native-irq-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_native_irq.cmake"
+        )
+        set_tests_properties(
+            dc_rom_native_irq
+            PROPERTIES LABELS rom_required
+        )
+
         add_test(
             NAME dc_rom_video_state_shuttle
             CONFIGURATIONS Release

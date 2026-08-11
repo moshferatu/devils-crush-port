@@ -67,6 +67,14 @@ void dc_beetle_reference_irq_destroy(dc_beetle_reference_irq* const self)
     delete self;
 }
 
+void dc_beetle_reference_irq_init(dc_beetle_reference_irq* const self)
+{
+    (void)self;
+
+    HuCPU.Init(false);
+    arm_processor();
+}
+
 void dc_beetle_reference_irq_power(dc_beetle_reference_irq* const self)
 {
     (void)self;

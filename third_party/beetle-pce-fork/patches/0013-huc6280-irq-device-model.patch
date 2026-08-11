@@ -1,0 +1,337 @@
+diff --git a/mednafen/pce/huc6280.cpp b/mednafen/pce/huc6280.cpp
+--- a/mednafen/pce/huc6280.cpp
++++ b/mednafen/pce/huc6280.cpp
+@@ -420,12 +420,25 @@ void HuC6280::Reset(void)
+ 	ReplacementCheckpointIndex = 0;
+ 	ReplacementCheckpointCount = 0;
+ 	ReplacementDepth = 0;
++	in_block_move = 0;
++
++	// Devil's Crush downstream device-model boundary. `IRQSample` is the
++	// processor's latched copy and stays here; everything else this function
++	// touches for the timer and the interrupt controller belongs to an
++	// installed model.
++	if(MDFN_UNLIKELY(dc_beetle_active_irq_model != NULL))
++	{
++		dc_beetle_active_irq_model->reset(dc_beetle_active_irq_model->user_data);
++		IRQSample = IQRESET;
++		DcIrqPublish();
++		return;
++	}
++
+ 	timer_inreload = false;
+ 	timer_div = 1024;
+ 	timer_load = 0;
+ 	timer_value = 0;
+ 	timer_status = 0;
+-	in_block_move = 0;
+ 
+ 	IRQSample = IQRESET;
+ 	IRQlow = IQRESET;
+@@ -468,6 +481,17 @@ void HuC6280::Init(const bool emulate_wai)
+ 	timer_load = 0;
+ 	timer_div = 0;
+ 
++	// Devil's Crush downstream device-model boundary. The machine runs this
++	// for every ROM it loads, and it is the only thing that puts the timer's
++	// phase back to the origin of a clock it has just rebased. A model that
++	// never saw it would measure its first catch-up on the new machine
++	// against the old machine's timestamp.
++	if(MDFN_UNLIKELY(dc_beetle_active_irq_model != NULL))
++	{
++		dc_beetle_active_irq_model->init(dc_beetle_active_irq_model->user_data);
++		DcIrqPublish();
++	}
++
+ 	in_block_move = 0;
+ 
+ 	LastLogicalReadAddr = 0;
+@@ -498,7 +522,18 @@ void HuC6280::Power(void)
+ {
+ 	IODataBuffer = 0xFF;
+ 
+-	IRQlow = 0;
++	// Devil's Crush downstream device-model boundary. The `Reset()` at the
++	// end of this function assigns the request register outright, so this
++	// clear is invisible either way -- but it is routed rather than skipped,
++	// because a mirror written by anything other than a dispatch is a mirror
++	// a reader has to reason about.
++	if(MDFN_UNLIKELY(dc_beetle_active_irq_model != NULL))
++	{
++		dc_beetle_active_irq_model->end_request(dc_beetle_active_irq_model->user_data, ~(uint32)0);
++		DcIrqPublish();
++	}
++	else
++		IRQlow = 0;
+ 
+ 	PC = 0;
+ 	A = 0;
+@@ -521,6 +556,17 @@ void HuC6280::Power(void)
+ // used in HappySync(), TimerRead(), and TimerWrite().
+ void HuC6280::TimerSync(void)
+ {
++	// Devil's Crush downstream device-model boundary. This is the whole of
++	// the device's relationship with time, and like the loop it replaces it
++	// does not recompute the horizon -- every caller does that for itself.
++	if(MDFN_UNLIKELY(dc_beetle_active_irq_model != NULL))
++	{
++		dc_beetle_active_irq_model->sync(dc_beetle_active_irq_model->user_data, (int32)timestamp);
++		timer_lastts = timestamp;
++		DcIrqPublish();
++		return;
++	}
++
+ 	int32 clocks = timestamp - timer_lastts;
+ 
+ 	timer_div -= clocks;
+@@ -774,7 +820,20 @@ NO_INLINE void HuC6280::RunSub(void)
+ 				speed = 0;
+ 				REDOSPEEDCACHE();
+ 
+-				IRQMask = 7;
++				// Devil's Crush downstream device-model boundary. The model
++				// opens the mask and releases the reset line together, where
++				// the emulator releases the line seven cycles later, after
++				// the vector fetch. The reset line is not one of the three
++				// the status register reports and nothing between the two
++				// points can observe it, so the pair is indivisible here.
++				if(MDFN_UNLIKELY(dc_beetle_active_irq_model != NULL))
++				{
++					dc_beetle_active_irq_model->acknowledge_reset(dc_beetle_active_irq_model->user_data);
++					DcIrqPublish();
++				}
++				else
++					IRQMask = 7;
++
+ 				SetMPR(7, 0);
+ 				PC=RdMem(0xFFFE);
+ 				PC|=RdMem(0xFFFF)<<8;
+@@ -1061,6 +1120,12 @@ uint8 HuC6280::TimerRead(unsigned int address, bool peek)
+ 		CalcNextEvent();
+ 	}
+ 
++	// Devil's Crush downstream device-model boundary. Nothing here changes
++	// the device, so there is nothing to publish: the counter's low seven
++	// bits and the bus latch's top one.
++	if(MDFN_UNLIKELY(dc_beetle_active_irq_model != NULL))
++		return dc_beetle_active_irq_model->read_timer(dc_beetle_active_irq_model->user_data, IODataBuffer);
++
+ 	return(timer_value | (IODataBuffer & 0x80));
+ }
+ 
+@@ -1068,19 +1133,30 @@ void HuC6280::TimerWrite(unsigned int address, uint8 V)
+ {
+ 	TimerSync();
+ 
+-	switch(address & 1)
++	// Devil's Crush downstream device-model boundary. The synchronize before
++	// and the horizon after are the caller's either way, exactly as they are
++	// for the emulator's own register file.
++	if(MDFN_UNLIKELY(dc_beetle_active_irq_model != NULL))
++	{
++		dc_beetle_active_irq_model->write_timer(dc_beetle_active_irq_model->user_data, address, V);
++		DcIrqPublish();
++	}
++	else
+ 	{
+-		case 0: timer_load = (V & 0x7F); break;
+-		case 1: if(V & 1) // Enable counter
++		switch(address & 1)
+ 		{
+-			if(timer_status == 0)
++			case 0: timer_load = (V & 0x7F); break;
++			case 1: if(V & 1) // Enable counter
+ 			{
+-				timer_div = 1024 * 3;
+-				timer_value = timer_load;
++				if(timer_status == 0)
++				{
++					timer_div = 1024 * 3;
++					timer_value = timer_load;
++				}
+ 			}
++			timer_status = V & 1;
++			break;
+ 		}
+-		timer_status = V & 1;
+-		break;
+ 	}
+ 
+ 	CalcNextEvent();
+@@ -1089,6 +1165,24 @@ void HuC6280::TimerWrite(unsigned int address, uint8 V)
+ 
+ uint8 HuC6280::IRQStatusRead(unsigned int address, bool peek)
+ {
++	// Devil's Crush downstream device-model boundary. A read of $1402
++	// acknowledges the timer as a side effect of reporting the mask, so the
++	// two entry points are not the same call with a flag: the peek cannot
++	// move the device and the read publishes because it can.
++	if(MDFN_UNLIKELY(dc_beetle_active_irq_model != NULL))
++	{
++		if(peek)
++			return dc_beetle_active_irq_model->peek_status(dc_beetle_active_irq_model->user_data, address, IODataBuffer);
++
++		{
++			const uint8 ret = dc_beetle_active_irq_model->read_status(dc_beetle_active_irq_model->user_data, address, IODataBuffer);
++
++			DcIrqPublish();
++
++			return ret;
++		}
++	}
++
+ 	if(!(address & 2)) 
+ 		return(IODataBuffer);
+ 
+@@ -1113,6 +1207,15 @@ uint8 HuC6280::IRQStatusRead(unsigned int address, bool peek)
+ 
+ void HuC6280::IRQStatusWrite(unsigned int address, uint8 V)
+ {
++	// Devil's Crush downstream device-model boundary. The mask write and the
++	// deliberate acknowledge are both here, and both move the mirror.
++	if(MDFN_UNLIKELY(dc_beetle_active_irq_model != NULL))
++	{
++		dc_beetle_active_irq_model->write_status(dc_beetle_active_irq_model->user_data, address, V);
++		DcIrqPublish();
++		return;
++	}
++
+ 	if(!(address & 2))
+ 		return;
+ 
+@@ -1192,6 +1295,26 @@ int HuC6280::StateAction(StateMem *sm, const unsigned load, const bool data_only
+ 		SFEND
+ 	};
+ 
++	// Devil's Crush downstream device-model boundary. An installed model owns
++	// the seven fields below; they are moved into the processor's own copies
++	// on the way out and back into the model on the way in, so the savestate
++	// format stays the emulator's whichever device answered. `timer_lastts`
++	// is not among them because the emulator does not serialize it either.
++	if(MDFN_UNLIKELY(dc_beetle_active_irq_model != NULL) && !load)
++	{
++		dc_beetle_irq_state model_state;
++
++		dc_beetle_active_irq_model->capture_state(dc_beetle_active_irq_model->user_data, &model_state);
++
++		IRQlow = model_state.irq_low;
++		IRQMask = model_state.irq_mask;
++		timer_inreload = model_state.timer_inreload != 0;
++		timer_status = model_state.timer_status;
++		timer_value = model_state.timer_value;
++		timer_load = model_state.timer_load;
++		timer_div = model_state.timer_div;
++	}
++
+ 	int ret = MDFNSS_StateAction(sm, load, data_only, StateRegs, "CPU", false);
+ 
+ 	if(load)
+@@ -1244,6 +1367,24 @@ int HuC6280::StateAction(StateMem *sm, const unsigned load, const bool data_only
+ 		FlushMPRCache();
+ 		REDOSPEEDCACHE();
+ 		REDOPIMCACHE();
++
++		// After the repairs above, so a model receives the same values the
++		// emulator's own device would have kept.
++		if(MDFN_UNLIKELY(dc_beetle_active_irq_model != NULL))
++		{
++			dc_beetle_irq_state model_state;
++
++			model_state.irq_low = IRQlow;
++			model_state.irq_mask = IRQMask;
++			model_state.timer_inreload = timer_inreload ? 1 : 0;
++			model_state.timer_status = timer_status;
++			model_state.timer_value = timer_value;
++			model_state.timer_load = timer_load;
++			model_state.timer_div = timer_div;
++
++			dc_beetle_active_irq_model->apply_state(dc_beetle_active_irq_model->user_data, &model_state);
++			DcIrqPublish();
++		}
+ 	}
+ 	
+ 	return ret;
+@@ -1255,6 +1396,12 @@ uint32 HuC6280::GetMasterCyclesUntilTimerInterrupt(void) const
+ 	int64 remaining;
+ 	int64 horizon;
+ 
++	// Devil's Crush downstream device-model boundary. The one entry point of
++	// this device that reads processor state, which is why the I flag crosses
++	// as an argument rather than being reached for.
++	if(MDFN_UNLIKELY(dc_beetle_active_irq_model != NULL))
++		return dc_beetle_active_irq_model->timer_horizon(dc_beetle_active_irq_model->user_data, (int32)timestamp, (P & I_FLAG) ? 1 : 0);
++
+ 	if((P & I_FLAG) || !(IRQMask & IQTIMER))
+ 		return no_interrupt;
+ 	if(IRQlow & IQTIMER)
+diff --git a/mednafen/pce/huc6280.h b/mednafen/pce/huc6280.h
+--- a/mednafen/pce/huc6280.h
++++ b/mednafen/pce/huc6280.h
+@@ -39,11 +39,25 @@ public:
+ 
+ 	void INLINE IRQBegin(int w)
+ 	{
++		if(MDFN_UNLIKELY(dc_beetle_active_irq_model != NULL))
++		{
++			dc_beetle_active_irq_model->begin_request(dc_beetle_active_irq_model->user_data, (uint32)w);
++			DcIrqPublish();
++			return;
++		}
++
+ 		IRQlow |= w;
+ 	}
+ 
+ 	void INLINE IRQEnd(int w)
+ 	{
++		if(MDFN_UNLIKELY(dc_beetle_active_irq_model != NULL))
++		{
++			dc_beetle_active_irq_model->end_request(dc_beetle_active_irq_model->user_data, (uint32)w);
++			DcIrqPublish();
++			return;
++		}
++
+ 		IRQlow &= ~w;
+ 	}
+ 
+@@ -139,6 +153,9 @@ public:
+ 	{
+ 		TimerSync();
+ 
++		if(MDFN_UNLIKELY(dc_beetle_active_irq_model != NULL))
++			dc_beetle_active_irq_model->reset_timestamp(dc_beetle_active_irq_model->user_data, (int32)ts_base);
++
+ 		timer_lastts = ts_base;
+ 		timestamp = ts_base;
+ 	}
+@@ -325,6 +342,31 @@ private:
+ 
+ 	void HappySync(void);
+ 
++	// Devil's Crush downstream device-model boundary. While a model is
++	// installed it owns the timer and the request register outright, and
++	// `timer_div`, `IRQlow` and `IRQMask` become a read-only mirror of it,
++	// refreshed here after every dispatch that can move them.
++	//
++	// The mirror is what makes this seam affordable rather than a convenience.
++	// `CalcNextEvent` below runs from `ADDCYC`, and the interrupt test at the
++	// top of `RunSub` runs once per instruction; both read those three values
++	// and neither can afford an indirect call. Every write to them goes
++	// through the model, so nothing ever reads a value the model does not
++	// hold.
++	void INLINE DcIrqPublish(void)
++	{
++		dc_beetle_irq_level level;
++
++		dc_beetle_active_irq_model->publish(dc_beetle_active_irq_model->user_data, &level);
++
++		timer_div = level.next_event;
++		IRQlow = level.requests;
++		IRQMask = level.mask;
++	}
++
++	// Unchanged by the boundary above, which is the whole point of it: an
++	// installed model reaches the processor's horizon through a field this
++	// already reads rather than through a call this would have to make.
+ 	void INLINE CalcNextEvent(void)
+ 	{
+ 		next_event = timer_div;

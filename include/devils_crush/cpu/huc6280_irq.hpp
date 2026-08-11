@@ -124,6 +124,15 @@ public:
 
     HuC6280Irq() noexcept;
 
+    // `HuC6280::Init`, which the machine runs once when it builds itself and
+    // again for every ROM it loads. It is not a reset: it leaves the divider
+    // at zero rather than at a partial period, does not touch the request
+    // register or the mask, and is the only thing that ever puts the phase
+    // back to the start of a clock. A device that skipped it would measure
+    // its first catch-up on a new machine against the last timestamp of the
+    // previous one.
+    void init() noexcept;
+
     // `HuC6280::Power`, which for this device is `reset` and nothing else:
     // it clears the request register first, but reset then assigns the
     // register outright, so the clear is invisible. Both are kept because

@@ -224,6 +224,12 @@ struct CommandLine {
     // separates a difference the encoder caused from one the controller did.
     bool emulated_vce = false;
     bool report_vce_coverage = false;
+    // And for the processor's timer and interrupt controller, which is the
+    // narrowest of the four seams and the only one inside the processor. The
+    // arm that hands it back while the three devices beside it stay native is
+    // what makes a difference in the census attributable to this device.
+    bool emulated_irq = false;
+    bool report_irq_coverage = false;
     // The interactive host deploys the registry by default so a session runs
     // the ported code; this opts back out to the emulated original.
     bool emulate_only = false;
@@ -739,6 +745,10 @@ parse_logical_address_range(const std::string_view text)
             options.emulated_vce = true;
         } else if (argument == "--report-vce-coverage") {
             options.report_vce_coverage = true;
+        } else if (argument == "--emulated-irq") {
+            options.emulated_irq = true;
+        } else if (argument == "--report-irq-coverage") {
+            options.report_irq_coverage = true;
         } else if (argument == "--replace-registry") {
             options.replace_registry = true;
         } else if (argument == "--cabinet-overlay-stats") {
@@ -3527,7 +3537,11 @@ void print_usage()
            "  back, and --report-vdc-coverage prints what the route asked\n"
            "  of it. The colour encoder is a third, and owns the video\n"
            "  schedule and the framebuffer; --emulated-vce hands it back,\n"
-           "  and --report-vce-coverage prints what the route asked of it.\n\n"
+           "  and --report-vce-coverage prints what the route asked of it.\n"
+           "  The processor's timer and interrupt controller is a fourth,\n"
+           "  and the only one inside the processor rather than beside it;\n"
+           "  --emulated-irq hands it back, and --report-irq-coverage\n"
+           "  prints what the route asked of it.\n\n"
         << "Controls (defaults; see input.* in portable-data/cabinet.ini):\n"
         << "  Left Shift / Left    Left flipper (PCE d-pad left)\n"
         << "  Right / Right Shift  Right flipper (PCE d-pad right)\n"
@@ -6192,6 +6206,47 @@ void report_vce_coverage(
               << coverage->irq_lowers << " lowered\n"
               << "  exits " << coverage->cpu_exits
               << ", compact disc events " << coverage->cd_events << '\n';
+}
+
+// And the timer and interrupt controller's. This device is small enough that
+// a route drives nearly all of it -- the gaps are in the other direction from
+// the video chips': the game leans on the timer constantly and touches the
+// mask barely at all.
+void report_irq_coverage(
+    const devils_crush::emulation::PceRuntime& runtime)
+{
+    const auto coverage = runtime.native_irq_coverage();
+    if (!coverage) {
+        std::cout << "The emulator owned the timer and interrupt controller; "
+                     "no native paths to report.\n";
+        return;
+    }
+
+    std::cout << "Timer and interrupt controller paths:\n"
+              << "  syncs " << coverage->syncs << ", ticks "
+              << coverage->ticks << " (" << coverage->multi_tick_syncs
+              << " spanning more than one)\n"
+              << "  timer: " << coverage->timer_underflows << " underflows, "
+              << coverage->timer_reloads << " reloads, "
+              << coverage->timer_starts << " starts, "
+              << coverage->timer_stops << " stops\n"
+              << "  timer file: " << coverage->counter_reads
+              << " counter reads, " << coverage->reload_writes
+              << " reload writes, " << coverage->control_writes
+              << " control writes\n"
+              << "  interrupt file: " << coverage->mask_reads
+              << " mask reads, " << coverage->mask_writes
+              << " mask writes, " << coverage->status_reads
+              << " status reads\n"
+              << "  acknowledges: " << coverage->acknowledge_reads
+              << " by read, " << coverage->acknowledge_writes
+              << " by write\n"
+              << "  lines raised: " << coverage->requests_raised[0]
+              << " irq2, " << coverage->requests_raised[1] << " irq1, "
+              << coverage->requests_raised[2] << " timer\n"
+              << "  horizon: " << coverage->horizon_queries << " queries, "
+              << coverage->horizon_never << " never, "
+              << coverage->horizon_now << " already due\n";
 }
 
 [[nodiscard]] bool write_instruction_profile(
@@ -10300,6 +10355,17 @@ int main(const int argc, char* argv[])
             return EXIT_FAILURE;
         }
 
+        // Before the ROM for a sharper version of the same reason: the
+        // processor mirrors three of this device's values, and the mirror is
+        // only refreshed by a dispatch. Installing after the machine had
+        // powered on would leave the emulator holding a divider and a
+        // request register the model never wrote.
+        if (!options.emulated_irq && !runtime->set_native_irq(true)) {
+            std::cerr << "Could not install the native timer and interrupt "
+                         "controller.\n";
+            return EXIT_FAILURE;
+        }
+
         const auto load_result = runtime->load_rom(options.rom_path);
         if (!load_result.loaded) {
             std::cerr << load_result.message << '\n';
@@ -10864,6 +10930,9 @@ int main(const int argc, char* argv[])
             }
             if (options.report_vce_coverage) {
                 report_vce_coverage(*runtime);
+            }
+            if (options.report_irq_coverage) {
+                report_irq_coverage(*runtime);
             }
             if (!routine_replays.empty()) {
                 const int replay_result = verify_routine_replays(

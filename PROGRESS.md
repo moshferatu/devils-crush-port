@@ -1,6 +1,6 @@
 # Project Progress
 
-Last updated: 2026-08-11
+Last updated: 2026-08-12
 
 ## Current Status
 
@@ -5496,38 +5496,108 @@ does not.
 
 ### Next
 
-**Install the timer and interrupt controller.** The model is written and
-proved; what is left is a fork patch in the shape of `0008`/`0009`/`0011`
-that routes `HuC6280::Power`, `Reset`, `TimerSync`, the `$0C00`/`$0C01` and
-`$1402`/`$1403` register files, `IRQBegin`/`IRQEnd`, `CalcNextEvent`,
-`GetMasterCyclesUntilTimerInterrupt` and the savestate into
-`devils_crush::cpu::HuC6280Irq`, and a `framebuffer_sha256` census over the
-route to show nothing moved.
+**The processor's clock.** Four devices are native and the machine's whole
+interrupt register file is native, but the emulator still owns time itself:
+`timestamp`, `next_event`, `next_user_event`, `ADDCYC` and `HappySync`. Every
+model in the port takes its timestamps from that clock, and the last two
+things Beetle does for this game that nothing has replaced are advancing it
+and deciding, at an instruction boundary, that an interrupt has arrived.
 
-That seam is narrower than the encoder's in one way and harder in another.
-No framebuffer crosses it, there are no outward edges at all, and the state
-is under fifty bytes. But every one of the video seams was reached from the
-machine's *edge* -- `pce.cpp`'s I/O page handler, or `VCE::Sync` as the
-processor's event handler -- and this one is reached from inside
-`HuC6280::RunSub` and `ADDCYC`, on the hottest path in the emulator. Two
-questions follow from that and are worth deciding rather than defaulting.
+The natural next slice is the smaller half of that pair: **the scheduler.**
+The encoder's reference shim already demonstrated that everything the video
+side asks the processor for is a counter it advances or a flag it sets, and
+the timer's shim demonstrated the same for the timer. What remains behind
+`HuC6280` that is genuinely *scheduling* rather than *execution* is
+`timestamp`, the two event horizons, the event handler, `StealCycles`,
+`Exit`, and `SyncAndResetTimestamp` -- perhaps a hundred lines. Separating it
+from the execution surface is what would let the four device models run on a
+native clock while the emulator still executes instructions.
 
-Whether `CalcNextEvent` may take the divider from a model at all, or whether
-the dormant object has to keep a shadow copy the model writes through. It is
-called from `ADDCYC`, which is every instruction; an indirect call there is
-not free, and the horizon is one integer.
+The larger half is the sampling boundary this slice deliberately left alone.
+`IRQSample` and `IFlagSample` are latched at `LastCycle`, and the
+vector-selection rule in `RunSub` -- with its asymmetric
+`(IRQlow & IQTIMER & IRQMask) && !IFlagSample` -- is the last thing standing
+between a native controller and a native interrupt. That one cannot move
+before the processor does, because it *is* the processor: it is a decision
+made at an instruction boundary by something that knows what an instruction
+is. It belongs to Phase 4, not Phase 3.
 
-And where the sampling boundary falls. `IRQSample` and `IFlagSample` are the
-processor's latched copy of the masked pending set, taken at `LastCycle`; the
-model deliberately does not hold them, and the vector-selection rule in
-`RunSub` -- with its asymmetric `(IRQlow & IQTIMER & IRQMask) && !IFlagSample`
--- stays with the processor. The install has to leave that split intact,
-which means the model publishes a level and the emulator's processor keeps
-deciding what to do about it. That is also the property that lets the model
-be installed now rather than after the processor.
+Two smaller things are worth doing before either. The timer interrupt horizon
+is never queried by a census route -- it exists for native routine
+transcripts -- so `dc_rom_native_irq` cannot fail for it; the replacement
+tests drive it, but nothing prints what they drove. And `dc_beetle_vce_cd_event`
+has still never come due.
 
-The acceptance is the same four the video slices used: model installed,
-model handed back, and the same for the other three devices alongside it.
+### Previous: the timer and interrupt controller is installed
+
+`devils_crush::cpu::HuC6280Irq` now owns the machine's timer and its
+interrupt register file. Patch `0013` routes `Init`, `Reset`, `Power`,
+`TimerSync`, `SyncAndResetTimestamp`, both register files, `IRQBegin`/
+`IRQEnd`, the reset-vector acknowledge in `RunSub`,
+`GetMasterCyclesUntilTimerInterrupt` and the savestate into it. **The census
+does not move: all four arms of `dc_rom_native_irq` reproduce
+`9036a9de...3490` over 3,600 frames.**
+
+**The one design decision was where to put the reads.** Every device model
+before this one was installed at the machine's *edge* -- the I/O page
+handler, or the event handler the processor calls into -- where an indirect
+call is free because the machine was already crossing a boundary. This device
+is not at an edge. `CalcNextEvent` reads its divider from `ADDCYC`, which
+runs on every instruction, and the interrupt test at the top of `RunSub`
+reads its request register and mask just as often.
+
+So the seam splits reads from writes. Every write goes through the model; the
+three values read once per instruction -- `timer_div`, `IRQlow`, `IRQMask` --
+are mirrored in the processor and refreshed by one `publish` call after every
+dispatch that can move them. `CalcNextEvent` is left byte-for-byte as it was.
+The mirror is total because the set of things that can move those values is
+exactly the set of dispatches. Its cost is a rule rather than a risk: the
+other four fields have no mirror, so handing the device back is only safe
+before a machine that will reach its own power-on.
+
+**The sampling boundary is intact, which is the point.** `IRQSample`,
+`IFlagSample`, `LastCycle` and the vector-selection rule stay with the
+processor, because they are decided at instruction boundaries and this device
+has no notion of an instruction. The model publishes a level; the emulator's
+processor decides what to do about it. That is what let this be installed now
+rather than after the processor -- and a model that published the right level
+at the wrong moment would have moved every interrupt in the route by an
+instruction, which is exactly what the census would have caught.
+
+**Four arms, and the third one means something new.** `native` is all four
+device models; `emulated_irq` hands this one back and keeps the other three;
+`emulated_all` hands back all four. The third is `native_irq_alone`: this
+model installed against the emulator's *own* sound and video chips. The three
+models beside it are all reached through the machine's I/O page or its event
+handler, and this one is reached from inside the processor -- so running it
+alone is what shows that what it publishes is what the emulator's own chips
+were being answered with, not merely that four native models agree with each
+other.
+
+The state shuttle grew a third arm too. `dc_rom_video_state_shuttle` now
+replays eight routines across a save and restore with the video models
+handed back, with this one handed back, and with all of them native, and
+requires the restored calls to be identical in all three.
+
+**What the route asks for, and what it does not.** Over 3,600 frames the
+device is asked for 8,862,034 catch-ups, 679,115 ticks (146,122 of them
+spanning more than one), 258,549 timer underflows and the same number of
+reloads, 254,990 acknowledges by write, and 7,198 video-interrupt
+assertions -- the last of which is the one place in the census where two
+native device models are visibly talking to each other through the processor.
+And it is asked for none of the rest of the register file: the counter is
+never read back, the mask is never written or read, the status register is
+never read, IRQ2 is never asserted, and the timer horizon is never queried
+because a census route installs no native transcripts. Those paths are what
+`dc_irq_device` enumerates against the emulator's own controller. The two
+tests only add up if the division is stated, so the census prints its counts.
+
+One thing the install added to the model: `init()`. `HuC6280::Init` runs for
+every ROM the machine loads, and it is not a reset -- it puts the divider back
+to zero and the phase back to the origin of a clock it has just rebased, and
+leaves the request register and the mask alone. A device that never saw it
+would measure its first catch-up on a new machine against the old machine's
+timestamp.
 
 ### Previous: the timer and interrupt controller is modelled
 

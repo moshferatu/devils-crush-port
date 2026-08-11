@@ -458,6 +458,96 @@ typedef struct dc_beetle_vce_model {
     void (*apply_state)(void* user_data, const dc_beetle_vce_state* state);
 } dc_beetle_vce_model;
 
+// Every field the processor's savestate carries for its timer and interrupt
+// controller, in its order. `timer_lastts` is absent because the emulator does
+// not serialize it either -- it is a phase against a processor clock that is
+// rebased rather than saved.
+typedef struct dc_beetle_irq_state {
+    uint32_t irq_low;
+    uint8_t irq_mask;
+    uint8_t timer_inreload;
+    uint8_t timer_status;
+    int32_t timer_value;
+    int32_t timer_load;
+    int32_t timer_div;
+} dc_beetle_irq_state;
+
+// The three values the processor mirrors from an installed model.
+typedef struct dc_beetle_irq_level {
+    // Master clocks until the divider's next tick, which is this device's
+    // whole contribution to the processor's next-event horizon.
+    int32_t next_event;
+    // The request lines asserted, and the mask they are filtered through.
+    uint32_t requests;
+    uint8_t mask;
+} dc_beetle_irq_level;
+
+// A replacement for the HuC6280's timer and interrupt controller: the two
+// register files at $0C00-$0C01 and $1402-$1403, the three request lines
+// behind them, and the divider that turns the master clock into the only
+// interrupt this machine generates for itself.
+//
+// This is the narrowest seam of the four and the only one inside the processor
+// rather than beside it. There is no device object to make dormant, because
+// the emulator keeps these as private fields of `HuC6280`; while a model is
+// installed those fields are a read-only mirror of it, refreshed through
+// `publish` after every dispatch that can move them, and the savestate is
+// still written through them.
+//
+// The mirror is not an optimization of convenience. `CalcNextEvent` runs from
+// `ADDCYC`, and the interrupt test at the top of `RunSub` runs once per
+// instruction; an indirect call at either point would cost more than this
+// whole device does.
+//
+// What deliberately stays with the processor is the *taking* of an interrupt.
+// `IRQSample`, `IFlagSample` and the vector-selection rule are decided at
+// instruction boundaries, and this device has no notion of an instruction. It
+// publishes a level; the processor decides what to do about it. That split is
+// what lets a model be installed while the processor is still the emulator's.
+typedef struct dc_beetle_irq_model {
+    void* user_data;
+    // `HuC6280::Init`, which the machine runs for every ROM it loads. Not a
+    // reset: it rebases the phase and zeroes the divider, and leaves the
+    // request register and the mask alone.
+    void (*init)(void* user_data);
+    void (*reset)(void* user_data);
+    void (*reset_timestamp)(void* user_data, int32_t base);
+    // The processor took the reset vector: the request is released and the
+    // mask opens to all three lines. Nothing else ever opens it.
+    void (*acknowledge_reset)(void* user_data);
+    void (*begin_request)(void* user_data, uint32_t lines);
+    void (*end_request)(void* user_data, uint32_t lines);
+    // Catches the device up to a master-clock timestamp. Like the emulator's
+    // own `TimerSync` it does not recompute the horizon; the caller does.
+    void (*sync)(void* user_data, int32_t timestamp);
+    void (*publish)(void* user_data, dc_beetle_irq_level* level);
+    // The register files. `io_data_buffer` is the last byte the processor
+    // drove onto the I/O bus; bit 7 of it survives a counter read and the top
+    // five bits survive a status read. The device does not own that latch --
+    // it is shared with the sound chip and the controller port -- so it is
+    // passed in, which is also what keeps both reads pure.
+    uint8_t (*read_timer)(void* user_data, uint8_t io_data_buffer);
+    void (*write_timer)(void* user_data, uint32_t address, uint8_t value);
+    uint8_t (*read_status)(
+        void* user_data,
+        uint32_t address,
+        uint8_t io_data_buffer);
+    uint8_t (*peek_status)(
+        void* user_data,
+        uint32_t address,
+        uint8_t io_data_buffer);
+    void (*write_status)(void* user_data, uint32_t address, uint8_t value);
+    // Master clocks until a timer interrupt the processor would service. The
+    // I flag is the processor's and is passed in for the same reason the bus
+    // latch is.
+    uint32_t (*timer_horizon)(
+        void* user_data,
+        int32_t timestamp,
+        int i_flag);
+    void (*capture_state)(void* user_data, dc_beetle_irq_state* state);
+    void (*apply_state)(void* user_data, const dc_beetle_irq_state* state);
+} dc_beetle_irq_model;
+
 // Beetle PCE is single-instance and thread-confined. Registration and callback
 // dispatch must occur on that same owning thread.
 extern dc_beetle_instruction_hook dc_beetle_active_instruction_hook;
@@ -482,6 +572,7 @@ extern uint32_t dc_beetle_replacement_max_depth;
 extern const dc_beetle_psg_model* dc_beetle_active_psg_model;
 extern const dc_beetle_vdc_model* dc_beetle_active_vdc_model;
 extern const dc_beetle_vce_model* dc_beetle_active_vce_model;
+extern const dc_beetle_irq_model* dc_beetle_active_irq_model;
 
 void dc_beetle_reset_replacement_nesting_counters(void);
 
@@ -571,6 +662,15 @@ int dc_beetle_vce_vdc_peek_irq(void);
 uint32_t dc_beetle_vce_vdc_get_register(unsigned id);
 void dc_beetle_vce_vdc_set_layer_enable_mask(uint64_t mask);
 void dc_beetle_vce_vdc_set_unlimited_sprites(int unlimited);
+
+// Installing a timer and interrupt controller does not reset it either, and
+// for this one that matters more than it does for the video devices: the
+// processor mirrors three of its values, and the mirror is only refreshed by a
+// dispatch. So a model must be installed before a machine that will reach its
+// own power-on -- which is the same rule as the others, arrived at from the
+// other direction.
+void dc_beetle_set_irq_model(const dc_beetle_irq_model* model);
+void dc_beetle_clear_irq_model(void);
 
 // Copies the base PC Engine VDC/VCE state without retaining emulator-owned
 // pointers. The destination capacities must cover the fixed counts above.
