@@ -45,6 +45,7 @@ function(dc_provide_beetle_pce)
         "${beetle_fork_root}/patches/0007-huc6280-nested-replacement.patch"
         "${beetle_fork_root}/patches/0008-psg-device-model.patch"
         "${beetle_fork_root}/patches/0009-vdc-device-model.patch"
+        "${beetle_fork_root}/patches/0010-vce-reference-observation.patch"
     )
 
     find_package(Git REQUIRED)
@@ -219,7 +220,7 @@ function(dc_provide_beetle_pce)
                     "dc_beetle_set_psg_device"
                     beetle_patch_marker_two
                 )
-            else()
+            elseif(beetle_patch_name MATCHES "^0009-")
                 string(
                     FIND
                     "${beetle_vdc_header}"
@@ -230,6 +231,19 @@ function(dc_provide_beetle_pce)
                     FIND
                     "${beetle_video_source}"
                     "dc_beetle_active_vdc_model"
+                    beetle_patch_marker_two
+                )
+            else()
+                string(
+                    FIND
+                    "${beetle_video_header}"
+                    "DcObservation"
+                    beetle_patch_marker_one
+                )
+                string(
+                    FIND
+                    "${beetle_video_source}"
+                    "VCE::DcObserve"
                     beetle_patch_marker_two
                 )
             endif()
@@ -250,6 +264,7 @@ function(dc_provide_beetle_pce)
         beetle_cxx_sources
         "${beetle_fork_root}/src/dc_beetle_execution_hook.cpp"
         "${beetle_fork_root}/src/dc_beetle_reference_psg.cpp"
+        "${beetle_fork_root}/src/dc_beetle_reference_vce.cpp"
         "${beetle_fork_root}/src/dc_beetle_reference_vdc.cpp"
         "${beetle_root}/libretro.cpp"
         "${beetle_root}/mednafen/pce/huc6280.cpp"

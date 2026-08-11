@@ -827,14 +827,48 @@ Remaining real logic, in rough order of value:
   model is right about this game, the differential test proves it is right
   about the chip. This is the split this section predicted, now measured.
 
-  What remains of the image is `VCE` itself: the dot-clock divider, the two
-  blanking counters, the palette with its cached expansions, the scanline
-  bookkeeping and the framebuffer. It is a much smaller device than the one
-  above, and its whole behaviour is the schedule already reproduced twice —
-  once in the test's driver, once by leaving it in place under the installed
-  model. The one thing to design rather than discover is that `VCE` owns its
-  controllers by value, so a native encoder and a native controller must be
-  joined to each other rather than each to the emulator.
+- **Colour encoder (`VCE`) — model written and proved, not yet installed.**
+  `devils_crush::video::PceVce` is the dot-clock divider, the two blanking
+  counters, the 512-entry palette with its cached expansion, the scanline
+  bookkeeping, and the schedule that drives the controller and writes the
+  picture into a framebuffer.
+
+  The question this section left open — `VCE` owns its controllers by value,
+  so a native encoder and a native controller have to be joined to each other
+  — has a smaller answer than expected. `VdcDevice` is eight methods, exactly
+  the ones `VCE` calls, with a wrapper putting the native controller behind
+  it. The interface exists so the encoder can be tested *without* the native
+  controller, which matters more than the joining does: a device that can
+  only be installed in a pair can only be exonerated in a pair.
+
+  The encoder could not be lifted out the way the controller was. `VDC`
+  touches no emulator global; `VCE` reaches the processor by name to steal
+  cycles, drive an interrupt line, request an early stop, and take its
+  timestamps. So `dc_vce_device`'s reference arm is not a bare device but the
+  smallest machine one runs in — the emulator's own `HuC6280`, initialised
+  and never executed, moved forward by stolen master cycles. Everything the
+  encoder asks the processor for is a counter it advances or a flag it sets,
+  which is why that works, and it makes the processor's clock the test's
+  clock: a stall becomes the two arms' clocks parting company rather than a
+  number nobody checks.
+
+  Seventy-five checks over fourteen schedule fields, the next-event horizon,
+  the processor clock, the interrupt line, 512 palette entries, 1,024 colour
+  cache entries, every pixel of a 2048×264 framebuffer, 263 line widths, and
+  the controller inside each encoder. It reaches four things the game never
+  asks for: three of the four dot rates, a rate changed mid-field, black and
+  white, the 263-line field, and the upscaled pixel path. It also reaches the
+  one path the 3,600-frame route never did — a stall refused because the
+  frame's budget of 455 × 64 stolen cycles ran out, which is the only thing
+  that ends a stall loop.
+
+  Two things are deliberately outside the model. What a nine-bit palette
+  entry looks like on a screen is the display's decision, so the model is
+  handed the two expansions ready made. And frame geometry — where the
+  picture sits in the line, the multi-resolution rescale, the display
+  rectangle — is computed from what the encoder recorded rather than by it.
+  Both stay with the frontend until something native owns the display, and
+  both are one function wide.
 
 ### Phase 3 — time and interrupts
 

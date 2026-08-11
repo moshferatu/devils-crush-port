@@ -5496,26 +5496,107 @@ does not.
 
 ### Next
 
-**A native colour encoder, or a native frame.** The video display controller
-is installed and the picture did not move, so the emulator's remaining hold on
-the image is `VCE`: the dot-clock divider, the two blanking counters, the
-512-entry palette with its two cached expansions, the scanline bookkeeping,
-and the framebuffer the pixels are written into. It is a much smaller device
-than the VDC — no memory of its own beyond the palette, and its whole
-behaviour is the schedule already read closely enough to reproduce twice.
+**Install the colour encoder.** The model is written and proved; what is left
+is a fork patch in the shape of `0009` that routes `PCE_Power`, the
+`$0400`-`$0405` register file, the three controller-facing entry points,
+`RunPartial`, `StartFrame` and the frame boundary into
+`devils_crush::video::PceVce`, and a `framebuffer_sha256` census over the
+route to show the picture did not move.
 
-Take it the same way: a device model with the schedule inside it, a
-differential test that drives it and the emulator's own `VCE` from one CPU-side
-stimulus, then a patch that routes `PCE_Power`, the `$0400`-`$0405` register
-file, `RunPartial` and the frame boundary. The acceptance is again that the
-census does not move, and again that is not enough on its own — the model has
-to be asked what it did.
+Three things make it a wider seam than the controller's was.
 
-One thing to settle first. `VCE` owns `VDC vdc[2]` by value, so a native
-encoder and a native controller have to be joined to each other rather than
-each joined to the emulator. That is the first place in this project where two
-native devices talk without the emulator between them, and it is worth
-designing on purpose rather than discovering.
+The model draws. Installing it means the emulator's framebuffer pointer,
+pitch and line-width array cross the boundary every frame, and the routing
+patch has to hand over `MDFN_Surface::pixels` as a `PceVce::Pixel*` — which
+is `bpp_t`, and is 16 bits only because this build selects RGB565. A static
+assertion at the boundary is cheaper than discovering it.
+
+The model reaches the processor. Four edges have to be exported the way
+`dc_beetle_vdc_irq_change` and `dc_beetle_vdc_wait_state` were: the interrupt
+line, `HuCPU::StealCycles`, `HuCPU::Exit`, and the compact disc event. The
+first two already have exported edges from `0009` that do the same work;
+whether the patch reuses them or gives the encoder its own is worth deciding
+rather than defaulting.
+
+And the frontend keeps three things the model deliberately does not have.
+`vce_resolution` and the `scanline_info` array, which the routing patch has
+to fill from `ScanlineInfoHook`; `EndFrame`'s multi-resolution rescale and
+display rectangle; and `SetPixelFormat`'s expansion of a nine-bit palette
+entry into a screen colour, which stays where it is until something native
+owns the display.
+
+The arms to run afterwards are the same four the controller's slice used: both
+models installed, the encoder handed back, the controller handed back, and
+both handed back. The last is what earns the others.
+
+### Previous: the encoder is written and proved
+
+`devils_crush::video::PceVce` is the HuC6260: the 512-entry palette, the
+dot-clock divider, the two blanking counters, the scanline bookkeeping, and
+the schedule that drives the controller and turns what it emits into a
+picture. It is not installed. This slice wrote it and proved it, on the same
+two-step rhythm the controller took.
+
+**The first design question was the one recorded last slice**, and it had a
+smaller answer than expected. `VCE` owns `VDC vdc[2]` by value, so a native
+encoder needs a controller — and needs it to be either native or the
+emulator's, because an encoder that could only be installed together with a
+controller could never be tested on its own. That is `VdcDevice`: eight
+methods, exactly the ones `VCE` calls, with `PceVdcDevice` wrapping the
+native controller behind it. A wrapper rather than a base class, because the
+controller is already installed and correct, and widening two of its
+signatures to satisfy an interface would be a change to a working device made
+for the benefit of one that did not yet exist.
+
+**The encoder could not be lifted out of the emulator the way the controller
+was.** `VDC` touches no emulator global; `VCE` reaches the processor by name
+four times over. So the reference arm is not a device on its own but the
+smallest machine one will run in: the emulator's own `HuC6280`, initialised
+and never executed, moved forward by stolen master cycles instead of by
+instructions. Everything `VCE` asks the processor for turns out to be a
+counter it advances or a flag it sets, so that is enough — and it makes the
+processor's clock the test's clock, which means a stall shows up as the two
+arms' clocks parting company rather than as a number nobody checks.
+
+`dc_vce_device` drives both from one stimulus and compares fourteen fields of
+the schedule, the next-event horizon, the processor's clock, the interrupt
+line, all 512 palette entries, all 1024 colour cache entries, every pixel of
+a 2048×264 framebuffer, all 263 line widths, and the controller inside each
+encoder, on every touch. Seventy-five checks, and it passed on the first run
+after two wiring mistakes of my own.
+
+**It reaches four things the game never asks for.** Devil's Crush runs at one
+dot rate, in colour, on a 262-line field, without the upscaled pixel path.
+The test drives all four rates including a change made mid-field — which
+zeroes the clock divider, under a comment in the emulator calling the fix
+wrong — plus black and white, the 263-line field, the upscaled path, the
+horizontal overscan, a narrowed visible range, and a block transfer stalled
+by port accesses until the frame's budget of 455 × 64 stolen cycles runs out.
+That last one matters: over 3,600 frames of the route the controller's
+coverage recorded **zero** forced completions, and here it is 1 refusal out of
+215 stalls. The refusal path is the only thing that ends a stall loop, and
+until now nothing had ever taken it.
+
+**Two things are outside the model on purpose.** What a nine-bit palette entry
+looks like on a screen is the display's decision, not the chip's, so the model
+is handed the two 512-entry expansions ready made and merges them with palette
+memory itself. And frame geometry — where the picture sits in the 1365-clock
+line, how a multi-resolution frame is rescaled, which rectangle to show — is
+computed from what the encoder recorded rather than by it, so the model reports
+each change of horizontal timing through a hook and leaves the recording to
+whoever wants it. Both seams are one function wide.
+
+One departure from the reference is deliberate and recorded in the header.
+`VCE::SyncSub` decides whether to draw a line from the visible range alone and
+never consults `skipframe`, so a frame started with no framebuffer writes
+through a null pointer for any scanline inside that range. The model checks
+the pointer. The two agree everywhere the emulator survives, and nothing in
+this port starts a frame that way.
+
+`0010` is the fourth patch in the series that installs nothing. Every addition
+is a new method and no existing line changes; it exists because the encoder's
+schedule is entirely private and a differential test that could only compare
+pixels would report "the picture moved" for any of a dozen causes.
 
 ### Previous: the video chip is installed
 

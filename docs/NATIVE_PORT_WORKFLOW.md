@@ -1529,6 +1529,68 @@ its own branch and its own markers, taken from files that patch alone touches,
 and let the fallback be the newest one only because it is about to stop being
 the newest.
 
+### When the device cannot be lifted out, lift the machine down
+
+The previous lesson says to build the shim before planning around the
+dependency, and the VDC's shim rewarded that: the device turned out to be
+standalone and the shim was a naming wrapper. `VCE` is not standalone, and it
+is not close. It steals processor cycles for a stalled port access, drives an
+interrupt line, asks the processor to stop early at two scanlines, and takes
+its own timestamps from `HuCPU.Timestamp()` inside every one of its register
+entry points. Reading the class's includes and member list — the ten minutes
+the previous lesson recommends — says so immediately.
+
+The reflex at that point is to conclude the device needs a differently shaped
+test, or to reimplement the entry points without their machine coupling so
+they can be called in isolation. Both are wrong, and the second is worse than
+wrong: a reference arm that reimplements any part of the thing it is the
+oracle for has stopped being an oracle for that part.
+
+**The shim's job is not to remove the device from the machine. It is to supply
+the smallest machine the device will run in.** Here that is the emulator's own
+`HuC6280`, initialised and never executed, moved forward by
+`StealMasterCycles` instead of by instructions. Everything `VCE` asks the
+processor for turns out to be a counter it advances or a flag it sets, so an
+un-run processor answers all of it correctly. Nothing is reimplemented; the
+reference arm runs the emulator's code for every line under test.
+
+The payoff was larger than the cost. Because the processor's clock is the
+encoder's clock, it becomes the *test's* clock too — and a stalled port access,
+which is otherwise an invisible side effect on a counter nobody compares,
+shows up as the two arms' clocks parting company by different amounts. The
+edge that is hardest to observe became the one that is impossible to miss.
+
+Two small things are worth stealing from the shape of it. Keep the machine
+from acting on its own — the processor's event handler was pointed at
+something inert and its next event armed far away, so no code path could
+re-enter the device behind the test's back. And leave the pieces that
+genuinely cannot be reached alone rather than approximating them: one repair
+inside `RunPartial` needs a running processor, so it is checked against a
+stated expectation and *labelled as not compared against the emulator*, which
+is worth more than a comparison against something the shim made up.
+
+### A device installable only in a pair is exonerable only in a pair
+
+`VCE` owns `VDC vdc[2]` by value, so a native encoder needs a controller, and
+the obvious move is to give it the native one. That is one line and it is a
+trap: the encoder would then only ever run beside the native controller, so
+every arm of every test would move both devices at once, and a divergence
+could not be attributed to either.
+
+The fix is an interface — eight methods, exactly the ones the encoder calls —
+with the native controller behind a wrapper on one side and the emulator's
+chip reachable on the other. It costs one indirection on a call that already
+crosses a scheduling boundary. **The reason to build it is not to join the two
+native devices; joining them needs no interface. It is so the encoder can be
+installed with the controller handed back**, which is the arm that says the
+encoder alone did or did not move the picture.
+
+The same argument settled the second question. The interface could have been a
+base class of the controller, saving the wrapper — but the controller is
+already installed and correct, and two of its signatures would have had to
+widen to match. **Do not change a device that is currently right to suit one
+that does not exist yet.** A wrapper is the cheaper apology.
+
 ## Commands
 
 Assuming the full host preset has been configured and `DC_ROM_PATH` is

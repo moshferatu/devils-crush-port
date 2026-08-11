@@ -1,0 +1,98 @@
+diff --git a/mednafen/pce/vce.cpp b/mednafen/pce/vce.cpp
+--- a/mednafen/pce/vce.cpp
++++ b/mednafen/pce/vce.cpp
+@@ -1030,6 +1030,50 @@ void VCE::SetLayerEnableMask(uint64 mask)
+ 	}
+ }
+ 
++void VCE::DcObserve(DcObservation* const out) const
++{
++	out->clock_divider  = clock_divider;
++	out->child_event[0] = child_event[0];
++	out->child_event[1] = child_event[1];
++	out->cd_event       = cd_event;
++	out->scanline       = scanline;
++	out->pixel_offset   = pixel_offset;
++	out->hblank_counter = hblank_counter;
++	out->vblank_counter = vblank_counter;
++	out->ws_counter     = ws_counter;
++	out->ctaddress      = ctaddress;
++	out->cr             = CR;
++	out->hblank         = hblank;
++	out->vblank         = vblank;
++	out->need_sl_reset  = NeedSLReset;
++	out->frame_done     = FrameDone;
++}
++
++int32 VCE::DcSyncReal(const int32 timestamp)
++{
++	return SyncReal(timestamp);
++}
++
++int32 VCE::DcCalcNextEvent(void)
++{
++	return CalcNextEvent();
++}
++
++void VCE::DcResetWaitStates(void)
++{
++	ws_counter = 0;
++}
++
++uint32 VCE::DcSurfClut(const unsigned index, const unsigned entry) const
++{
++	return surf_clut[index & 1][entry & 0x1FF];
++}
++
++uint32 VCE::DcColorTableCache(const unsigned entry) const
++{
++	return color_table_cache[entry & 0x3FF];
++}
++
+ int VCE::StateAction(StateMem *sm, const unsigned load, const bool data_only)
+ {
+ 	SFORMAT VCE_StateRegs[] =
+diff --git a/mednafen/pce/vce.h b/mednafen/pce/vce.h
+--- a/mednafen/pce/vce.h
++++ b/mednafen/pce/vce.h
+@@ -114,6 +114,40 @@ public:
+ 
+ 	int32 SyncReal(const int32 timestamp);
+ 	
++	// Devil's Crush downstream reference-observation boundary. The encoder's
++	// schedule is entirely private, and a differential test that could only
++	// compare pixels would report "the picture moved" for any of a dozen
++	// causes. These read that state and change none of it; the two that do
++	// change something reproduce what `RunPartial` does to the stall budget
++	// and what the register file's callers do with the next event, both of
++	// which a test driving this device without a processor has to do itself.
++	struct DcObservation
++	{
++		int32 clock_divider;
++		int32 child_event[2];
++		int32 cd_event;
++		int32 scanline;
++		int32 pixel_offset;
++		int32 hblank_counter;
++		int32 vblank_counter;
++		int32 ws_counter;
++		uint16 ctaddress;
++		uint8 cr;
++		bool hblank;
++		bool vblank;
++		bool need_sl_reset;
++		bool frame_done;
++	};
++
++	void DcObserve(DcObservation* out) const;
++	// `SyncReal` is inlined into the one caller `vce.cpp` has and emits no
++	// out-of-line body, so a caller outside the file needs this.
++	int32 DcSyncReal(const int32 timestamp);
++	int32 DcCalcNextEvent(void);
++	void DcResetWaitStates(void);
++	uint32 DcSurfClut(unsigned index, unsigned entry) const;
++	uint32 DcColorTableCache(unsigned entry) const;
++
+ 	//
+ 	//
+ 	//

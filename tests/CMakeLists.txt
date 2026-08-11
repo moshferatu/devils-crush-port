@@ -107,6 +107,27 @@ if(TARGET DevilsCrush::BeetlePce)
     add_test(NAME dc_vdc_device COMMAND dc_vdc_device_tests)
 endif()
 
+# The native colour encoder against the emulator's own, each holding a
+# controller, driven from one processor-side stimulus. Needs no ROM: the
+# stimulus reaches what the game never asks for -- three of the four dot
+# rates, a rate changed mid-field, black and white, a 263-line field, the
+# upscaled pixel path, and the horizontal overscan.
+if(TARGET DevilsCrush::BeetlePce)
+    add_executable(dc_vce_device_tests vce_device_tests.cpp)
+
+    target_link_libraries(
+        dc_vce_device_tests
+        PRIVATE
+            DevilsCrush::Core
+            DevilsCrush::BeetlePce
+    )
+
+    target_compile_features(dc_vce_device_tests PRIVATE cxx_std_20)
+    dc_enable_strict_warnings(dc_vce_device_tests)
+
+    add_test(NAME dc_vce_device COMMAND dc_vce_device_tests)
+endif()
+
 add_test(
     NAME dc_coverage_manifest
     COMMAND

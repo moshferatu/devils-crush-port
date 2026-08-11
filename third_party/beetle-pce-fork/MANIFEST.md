@@ -41,6 +41,19 @@ this repository.
   the hook says no — so this reproduces `VCE`'s per-frame budget of 455 * 64
   stolen cycles, without which the device hangs the first time a port access
   lands during a block transfer. It is deleted with the emulator.
+- `include/dc_beetle_reference_vce.h` and `src/dc_beetle_reference_vce.cpp`:
+  the emulator's own `VCE`, for the tests only, and the one of the three that
+  is not a lifetime shim. The encoder does need the machine around it: it
+  steals processor cycles for a stalled port access, drives an interrupt
+  line, asks the processor to stop early at two scanlines, and takes its own
+  timestamps from it. So this supplies the smallest machine it will run in --
+  the emulator's own processor object, initialised and never executed, moved
+  forward by stolen master cycles instead of by instructions. That is enough
+  because everything `VCE` asks the processor for is a counter it advances or
+  a flag it sets. It claims the emulator's `vce` global, which the
+  controller's two hooks find their encoder through, so only one may exist at
+  a time and none may exist while a real machine is running. It is deleted
+  with the emulator.
 
 ## Patch series
 
@@ -162,6 +175,32 @@ this repository.
      carried in either direction: it is derived from video memory, and both
      the emulator's loader and the model rebuild it.
    - Changes nothing when no model is registered.
+
+10. `patches/0010-vce-reference-observation.patch`
+    - Opens the colour encoder to a test that has to drive it without a
+      processor. Unlike the two device patches, it installs nothing and
+      routes nothing: every addition is a new method, and no existing line
+      changes.
+    - `DcObserve` reads the encoder's schedule -- the clock divider, both
+      controller horizons, the compact disc event, the scanline, the pixel
+      cursor, both blanking counters and their phases, the stall budget, the
+      palette address, the control register, the pending field restart, and
+      whether the frame is done. All of it is private, and a differential
+      test that could only compare pixels would report "the picture moved"
+      for any of a dozen causes.
+    - `DcSurfClut` and `DcColorTableCache` read the two expansions of a
+      nine-bit palette entry and the merge of them with palette memory.
+      What an entry looks like is the display's decision rather than the
+      chip's, so a native model is handed these rather than deriving them:
+      the comparison is then about the encoder and not about colour
+      arithmetic.
+    - `DcSyncReal` is an out-of-line body for `SyncReal`, which is declared
+      `INLINE` and inlined into the single caller `vce.cpp` has, so no
+      caller outside that file can link against it.
+    - `DcCalcNextEvent` and `DcResetWaitStates` reproduce what the register
+      file's callers and `VCE::RunPartial` do around the device, for a
+      caller that has no processor to do them for it.
+    - Changes nothing at runtime. Nothing in the emulator calls any of it.
 
 All local files and patches are GPL-3.0-or-later. Upstream per-file notices
 and licenses remain authoritative for upstream sources.
