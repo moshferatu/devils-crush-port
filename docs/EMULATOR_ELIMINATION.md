@@ -1093,6 +1093,51 @@ Remaining real logic, in rough order of value:
   Engine and from `StealMasterCycles`, which nothing in a census route calls.
   And the overclock divider never swallows an advance, because the host runs
   at the machine's own rate of one and the remainder is then always zero.
+- **The instruction boundary — modelled, not yet installed.**
+  `devils_crush::cpu::HuC6280InterruptBoundary` holds the two values latched
+  at the end of an instruction and the rule that decides, at the start of the
+  next one, whether the next thing to happen is an instruction or an
+  interrupt. Patch `0016` lifts both out of `LastCycle` and `RunSub` into
+  named entry points the emulator itself calls; `dc_interrupt_boundary` is
+  what proves the model equal to them.
+
+  **This one is a rule, not a device, and the difference shows up in how it
+  is proved.** Every model before it was checked by driving a stimulus and
+  comparing what came out, and every one of them carried the same unstated
+  weakness: a stimulus reaches what it reaches. This device's inputs can be
+  counted — six bits of request register, three of mask, one I flag, and two
+  latched values — so the test enumerates them instead. Every latch the
+  machine can take, 1,024 of them, and every decision the boundary can be
+  left able to make, 65,536 of them. No disagreement, and no argument
+  afterwards about whether the stimulus was representative.
+
+  Its seam is a third answer to a question that has now had two. The
+  controller is read on the hot path, so it became a mirror; the scheduler is
+  written on the hot path, so it became a block of memory. This is neither:
+  it is a *call* whose inputs are five values the processor already holds and
+  whose output is a small enumeration. Recognising that as a third answer
+  rather than forcing it into one of the first two is most of the design.
+
+  Three asymmetries in the rule are the reason it was worth separating from
+  the processor at all, and each is a thing a from-scratch 6280 would
+  plausibly get wrong. **The reset line is never sampled** — the mask is
+  three bits wide, so `requests & mask` cannot produce it however the lines
+  are driven; only `Reset` puts it in the latch and only taking the vector
+  removes it, which makes a reset a state the boundary is left in rather than
+  an interrupt that won. **The timer line is tested live where IRQ1 and IRQ2
+  are tested latched**, so a timer request raised after the latch is taken at
+  once while an IRQ1 raised in the same window waits for the next boundary —
+  and, read backwards, a latched timer whose line has since gone away is not
+  taken at all. **The I flag is consulted twice, in two different tenses**: it
+  closes the latch when set, and then gates the timer branch again through
+  the value latched rather than the current one.
+
+  What the model does not do is take the vector. Eight cycles, two dummy
+  reads, three pushes, a flag update and a two-byte fetch are the processor's
+  work against the processor's own stack and memory map, and they stay in
+  `RunSub`. That split is what lets the rule be proved exhaustively instead
+  of differentially: the claim is about forty lines of decision, not about a
+  processor.
 - VDC/VBlank interrupt timing against the raster.
 - Cycle pacing. Native transcripts currently declare `body_master_cycles` so
   Beetle can schedule around them; something must still model time to the

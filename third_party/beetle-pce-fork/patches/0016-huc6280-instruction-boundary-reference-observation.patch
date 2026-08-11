@@ -1,0 +1,255 @@
+diff --git a/mednafen/pce/huc6280.cpp b/mednafen/pce/huc6280.cpp
+--- a/mednafen/pce/huc6280.cpp
++++ b/mednafen/pce/huc6280.cpp
+@@ -37,8 +37,7 @@
+ void INLINE HuC6280::LastCycle(void)
+ {
+ 	/*assert(((P & I_FLAG) ? 0 : (uint32)~0) == PIMaskCache);*/
+-	IRQSample = (IRQlow & IRQMask) & PIMaskCache;
+-	IFlagSample = P & I_FLAG;
++	DcSampleInterrupt();
+ 	ADDCYC(1);
+ }
+ 
+@@ -624,6 +623,14 @@ void HuC6280::DcObserveIrq(DcIrqObservation* const out) const
+ 	out->next_event = DcSched().next_event;
+ }
+ 
++void HuC6280::DcObserveBoundary(DcBoundaryObservation* const out) const
++{
++	out->irq_low = IRQlow;
++	out->irq_mask = IRQMask;
++	out->irq_sample = IRQSample;
++	out->i_flag_sample = IFlagSample;
++}
++
+ void HuC6280::DcObserveScheduler(DcSchedulerObservation* const out) const
+ {
+ 	out->timestamp = DcSched().timestamp;
+@@ -787,8 +794,7 @@ void HuC6280::ApplyReplacementCheckpoint(void)
+ 	for(unsigned i = 0; i < 8; i++)
+ 		SetMPR(i, checkpoint.mpr[i]);
+ 
+-	IRQSample = (IRQlow & IRQMask) & PIMaskCache;
+-	IFlagSample = P & I_FLAG;
++	DcSampleInterrupt();
+ 
+ 	AdvanceReplacementTo(checkpoint.master_cycle_offset, &checkpoint);
+ 	HookInstructionPC = checkpoint.instruction_logical_pc;
+@@ -818,6 +824,11 @@ void HuC6280::HappySync(void)
+ NO_INLINE void HuC6280::RunSub(void)
+ {
+ 	uint32 old_PC;
++	// Devil's Crush downstream observation. Declared out here beside
++	// `old_PC` rather than where it is assigned, because a block move
++	// resumes by jumping into the middle of the loop below and may not
++	// jump over an initialization.
++	DcInterruptDecision dc_decision;
+ 
+ 	if(in_block_move)
+ 	{
+@@ -834,9 +845,16 @@ NO_INLINE void HuC6280::RunSub(void)
+ 
+ 	do
+ 	{
+-		if(IRQSample | IRQlow)
++		// Devil's Crush downstream observation. The decision this loop
++		// makes between two instructions is `DcSelectInterrupt` and
++		// nothing else; everything below is the acting on it, which stays
++		// here because it is the processor's stack, the processor's flags
++		// and the processor's memory map.
++		dc_decision = DcSelectInterrupt();
++
++		if(MDFN_UNLIKELY(dc_decision != DC_INTERRUPT_INSTRUCTION))
+ 		{
+-			if(MDFN_UNLIKELY(IRQSample & IQRESET))
++			if(MDFN_UNLIKELY(dc_decision == DC_INTERRUPT_RESET))
+ 			{
+ 				DcSpeedChange(0);
+ 
+@@ -859,54 +877,44 @@ NO_INLINE void HuC6280::RunSub(void)
+ 				PC|=RdMem(0xFFFF)<<8;
+ 				P=I_FLAG;
+ 				REDOPIMCACHE();
+-				IRQSample &= ~IQRESET;
++				DcAcknowledgeInterruptSample();
+ 				IRQlow &= ~IQRESET;
+ 
+ 				continue;
+ 			}
+ 			else
+ 			{
+-				uint32 tmpa = 0;
++				const uint32 tmpa = DcInterruptVector(dc_decision);
+ 
+-				if((IRQlow & IQTIMER & IRQMask) && !IFlagSample) //IRQSample & IQTIMER)
+-					tmpa = 0xFFFA;
+-				else if(IRQSample & IQIRQ1)
+-					tmpa = 0xFFF8;
+-				else if(IRQSample & IQIRQ2)
+-					tmpa = 0xFFF6;
++				// Total: 8 cycles(7 ADDCYC(1), 1 LASTCYCLE)
+ 
+-				if(tmpa)
+-				{
+-					// Total: 8 cycles(7 ADDCYC(1), 1 LASTCYCLE)
+-
+-					ADDCYC(1);	// Cycle 1
+-					RdMem(PC);	//	Dummy read
++				ADDCYC(1);	// Cycle 1
++				RdMem(PC);	//	Dummy read
+ 
+-					ADDCYC(1);	// Cycle 2
+-					RdMem(PC + 1); //	Dummy read
++				ADDCYC(1);	// Cycle 2
++				RdMem(PC + 1); //	Dummy read
+ 
+-					ADDCYC(1);	// Cycle 3
+-					PUSH(PC>>8); //	Push PCH
++				ADDCYC(1);	// Cycle 3
++				PUSH(PC>>8); //	Push PCH
+ 
+-					ADDCYC(1);	// Cycle 4
+-					PUSH(PC); //	Push PCL
++				ADDCYC(1);	// Cycle 4
++				PUSH(PC); //	Push PCL
+ 
+-					ADDCYC(1);	// Cycle 5
+-					PUSH((P & ~B_FLAG)); //	Push P
+-					P |= I_FLAG;
+-					REDOPIMCACHE();
+-					P &= ~(T_FLAG | D_FLAG);
++				ADDCYC(1);	// Cycle 5
++				PUSH((P & ~B_FLAG)); //	Push P
++				P |= I_FLAG;
++				REDOPIMCACHE();
++				P &= ~(T_FLAG | D_FLAG);
+ 
+-					ADDCYC(1);	// Cycle 6
+-					PC=RdMem(tmpa);	// Fetch vector PCL
++				ADDCYC(1);	// Cycle 6
++				PC=RdMem(tmpa);	// Fetch vector PCL
+ 
+-					ADDCYC(1);	// Cycle 7
+-					PC|=RdMem(tmpa + 1) << 8; // Fect vector PCH
++				ADDCYC(1);	// Cycle 7
++				PC|=RdMem(tmpa + 1) << 8; // Fect vector PCH
+ 
+-					LastCycle();	// Cycle 8(internal operation?)
++				LastCycle();	// Cycle 8(internal operation?)
+ 
+-					continue;
+-				}
++				continue;
+ 			}
+ 		}
+ 		if(ReplacementActive && ReplacementCheckpointIndex > 0)
+diff --git a/mednafen/pce/huc6280.h b/mednafen/pce/huc6280.h
+--- a/mednafen/pce/huc6280.h
++++ b/mednafen/pce/huc6280.h
+@@ -134,10 +134,104 @@ public:
+ 	void DcAcknowledgeReset(void)
+ 	{
+ 		IRQMask = 7;
+-		IRQSample &= ~IQRESET;
++		DcAcknowledgeInterruptSample();
+ 		IRQlow &= ~IQRESET;
+ 	}
+ 
++	// Devil's Crush downstream observation. The decision an instruction
++	// boundary makes, named and lifted out of the loop that acts on it.
++	//
++	// The lifting is the whole of this patch's behaviour. `LastCycle`
++	// latches through `DcSampleInterrupt` and `RunSub` asks
++	// `DcSelectInterrupt` and then does what the answer says, so a
++	// differential test drives the machine's own rule rather than a copy of
++	// it that could drift away from it later.
++	enum DcInterruptDecision
++	{
++		DC_INTERRUPT_INSTRUCTION = 0,
++		DC_INTERRUPT_RESET = 1,
++		DC_INTERRUPT_TIMER = 2,
++		DC_INTERRUPT_IRQ1 = 3,
++		DC_INTERRUPT_IRQ2 = 4
++	};
++
++	// `LastCycle` without the cycle. The cycle is the processor's; these two
++	// assignments are the boundary's, and they are the only place the mask
++	// and the I flag are consulted in the past tense.
++	void INLINE DcSampleInterrupt(void)
++	{
++		IRQSample = (IRQlow & IRQMask) & PIMaskCache;
++		IFlagSample = P & I_FLAG;
++	}
++
++	// The reset line leaves the latch when the vector is taken. Only the
++	// latch: the request register and the mask are dealt with separately by
++	// both callers, because on one of the two paths they belong to an
++	// installed model rather than to this class.
++	void INLINE DcAcknowledgeInterruptSample(void)
++	{
++		IRQSample &= ~IQRESET;
++	}
++
++	DcInterruptDecision INLINE DcSelectInterrupt(void) const
++	{
++		if(!(IRQSample | IRQlow))
++			return DC_INTERRUPT_INSTRUCTION;
++
++		if(MDFN_UNLIKELY(IRQSample & IQRESET))
++			return DC_INTERRUPT_RESET;
++
++		if((IRQlow & IQTIMER & IRQMask) && !IFlagSample) //IRQSample & IQTIMER)
++			return DC_INTERRUPT_TIMER;
++
++		if(IRQSample & IQIRQ1)
++			return DC_INTERRUPT_IRQ1;
++
++		if(IRQSample & IQIRQ2)
++			return DC_INTERRUPT_IRQ2;
++
++		return DC_INTERRUPT_INSTRUCTION;
++	}
++
++	static uint32 DcInterruptVector(const DcInterruptDecision decision)
++	{
++		switch(decision)
++		{
++			case DC_INTERRUPT_RESET: return 0xFFFE;
++			case DC_INTERRUPT_TIMER: return 0xFFFA;
++			case DC_INTERRUPT_IRQ1: return 0xFFF8;
++			case DC_INTERRUPT_IRQ2: return 0xFFF6;
++			default: return 0;
++		}
++	}
++
++	// What an observer needs to see, and the two ways a test reaches the
++	// inputs. The setters write the request register and the mask directly,
++	// which is a mirror of an installed interrupt controller when one
++	// exists -- so like every other observation entry point here, they are
++	// for a device driven without a machine and not for a machine.
++	struct DcBoundaryObservation
++	{
++		uint32 irq_low;
++		uint8 irq_mask;
++		int32 irq_sample;
++		int32 i_flag_sample;
++	};
++
++	void DcObserveBoundary(DcBoundaryObservation* out) const;
++
++	void DcSetBoundaryLines(const uint32 low, const uint8 mask)
++	{
++		IRQlow = low;
++		IRQMask = mask;
++	}
++
++	void DcSetBoundarySample(const int32 sample, const int32 i_flag)
++	{
++		IRQSample = sample;
++		IFlagSample = i_flag;
++	}
++
+ 	// Downstream observation of the processor's clock and event
+ 	// scheduler. Most of this could now be read straight out of
+ 	// `dc_beetle_active_scheduler_registers`; what the call adds is that it

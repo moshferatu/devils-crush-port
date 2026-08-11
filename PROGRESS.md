@@ -5496,42 +5496,36 @@ does not.
 
 ### Next
 
-**The instruction boundary: sampling and vector selection.** With the clock
-installed, what is left inside `HuC6280` divides cleanly in two, and only one
-half is a device. The half that is not is execution -- fetching an opcode,
-running it, charging it. The half that is, is the decision made *between* two
-instructions: `IRQSample` and `IFlagSample` latched in `LastCycle`, the
-`PIMaskCache` shadow of the I flag, and the vector-selection rule at the top
-of `RunSub` with its asymmetric `(IRQlow & IQTIMER & IRQMask) && !IFlagSample`
--- roughly forty lines that decide, once per instruction, whether the next
-thing to happen is the next instruction or an interrupt.
+**Install the instruction boundary.** The model is written and proved; what
+is left is a fork patch in the shape of `0013`/`0015` that routes
+`DcSampleInterrupt` and `DcSelectInterrupt` -- and therefore `LastCycle`, the
+top of `RunSub`, the acknowledge that takes the reset line out of the latch,
+the two entries `ApplyReplacementCheckpoint` re-latches, and the two savestate
+fields -- into `devils_crush::cpu::HuC6280InterruptBoundary`, plus a
+`framebuffer_sha256` census over the route to show nothing moved.
 
-It is worth modelling on its own because it is the last thing standing between
-a native controller, a native clock and a native *interrupt*. `HuC6280Irq`
-publishes a level and `HuC6280Scheduler` says when the machine stops; nothing
-native yet decides what to do about either. It is also the piece most likely
-to be got subtly wrong by a from-scratch processor written later, because the
-rule is not the obvious one: the timer line is tested against the mask *and*
-the I flag sample, the other two lines are tested against the mask only, and
-the reset line is tested against neither.
+Two questions to decide rather than default, and they are the same two shapes
+the last two slices argued about.
 
-Two things to decide before building, and the second is the one that matters.
+**Whether the dispatch can be a plain call.** The seam runs twice per
+instruction, which is more often than the interrupt controller's reads and
+about as often as the scheduler's writes -- and neither of those could afford
+a dispatch. But this one is different in a way that may rescue it: its inputs
+are five values the processor already holds in registers and its output is a
+single small integer, so the call has no memory traffic behind it at all. If
+that is not enough, the fallback is not a mirror and not a shared block but
+the `MDFN_UNLIKELY` gate the emulator already has -- `(IRQSample | IRQlow)`
+is false on nearly every instruction, and a seam that only dispatches when
+that gate opens costs one load and one branch on the path that matters.
+Measure before choosing; the census route makes 221 million of these.
 
-**Whether it can be a device model at all.** Every seam so far replaced
-something with a state boundary around it. This one reads `P`, writes `PC`,
-pushes three bytes onto the machine's stack and charges seven cycles. A model
-that owned only the *decision* -- given a level, a mask, an I flag sample and
-a set of latched lines, which vector wins -- would be a pure function with no
-state, provable exhaustively rather than differentially, and would leave the
-pushing and the fetching where they are. That is probably the right shape, and
-it is a different shape again from the five before it.
-
-**Where it sits on the hot path.** This runs once per instruction, so the
-question the scheduler slice answered applies again: reads or writes? Here it
-is neither -- it is a *call* whose inputs are five values the processor
-already holds and whose output is a small enumeration. That suggests a third
-answer to a question that has now had two, and recognising it as a third
-rather than forcing it into one of the first two is the point.
+**Where the two latched values live.** They are read by the rule and written
+by the sample, both of which would be inside the model -- so unlike the clock,
+nothing outside needs to see them, and the model can simply own them. The one
+thing that does need them is the savestate, which is a capture-and-apply pair
+rather than a block. Confirm that `ApplyReplacementCheckpoint` re-latching
+through the model is right, since it is the one caller that re-samples without
+finishing an instruction.
 
 After that, Phase 3 has two items left and both are about the machine rather
 than the processor. VDC/VBlank interrupt timing against the raster, and the
@@ -5545,6 +5539,66 @@ transcripts -- so `dc_rom_native_irq` cannot fail for it; the replacement
 tests drive it, but nothing prints what they drove. `dc_beetle_vce_cd_event`
 has still never come due. And `dc_rom_video_state_shuttle` now verifies three
 device shuttles rather than two video ones, and its name has not caught up.
+
+### Previous: the instruction boundary is modelled
+
+`devils_crush::cpu::HuC6280InterruptBoundary` holds the two values a HuC6280
+latches at the end of an instruction and the rule that decides, at the start
+of the next one, whether the next thing to happen is an instruction or an
+interrupt. It is not installed; `dc_interrupt_boundary` is what proves it --
+and it proves it by **enumeration rather than stimulus: 1,024 latches and
+65,536 decisions, every input the boundary has, no disagreement.**
+
+**This is the first model in the series that is a rule rather than a device,
+and the proof changed shape because of it.** Every differential test before
+this one drove something and compared what came out, and every one of them
+carried the same weakness unstated: a stimulus reaches what it reaches. This
+device's inputs can be counted -- six bits of request register, three of mask,
+one I flag, two latched values -- so the test tries all of them. There is no
+coverage argument left to make afterwards.
+
+**Patch `0016` lifts rather than adds, which is a first for an observation
+patch.** `DcSampleInterrupt` is the two assignments at the top of `LastCycle`
+and `DcSelectInterrupt` is the vector cascade at the top of `RunSub`, each
+moved into a named method its original caller now calls. Copying the rule into
+an entry point beside the original would have left the test comparing a native
+model against a fork-side transcription with the real `RunSub` unexamined
+between them; two copies of a rule drift, silently, invisibly to exactly the
+test meant to catch it. The census route reproducing `9036a9de...3490` is what
+says the lift changed nothing.
+
+**Three asymmetries are the reason this piece was worth separating at all,**
+and each is asserted by name as well as by enumeration, because a summary of
+65,536 agreements says nothing about which facts a later rewrite must keep.
+
+*The reset line is never sampled.* The mask is three bits wide, so
+`requests & mask` cannot produce it however the lines are driven. Only `Reset`
+puts it in the latch and only taking the vector removes it -- so a reset is a
+state the boundary is left in, not an interrupt that won.
+
+*The timer line is tested live where IRQ1 and IRQ2 are tested latched.* A
+timer request raised after the latch is taken at once; an IRQ1 raised in the
+same window waits for the next boundary. Read backwards, a latched timer whose
+line has since gone away is not taken at all. The enumeration reaches the
+first of those 2,048 times, which is why the count is printed rather than
+described.
+
+*The I flag is consulted twice, in two different tenses.* It closes the latch
+when set -- a sample behind a raised flag latches nothing whatever the lines
+are doing -- and then gates the timer branch again through the value latched
+rather than the current one.
+
+**What the model does not do is take the vector.** Eight cycles, two dummy
+reads, three pushes, a flag update and a two-byte fetch are the processor's
+work against the processor's own stack and memory map, and they stay in
+`RunSub`. That split is what lets the rule be proved exhaustively instead of
+differentially: the claim is about forty lines of decision, not about a
+processor.
+
+The test was checked the way the model was. Rewriting the timer branch to read
+the latch instead of the live line -- the single most plausible way to get
+this wrong -- fails 16,384 of the 65,536 comparisons and three of the named
+checks besides.
 
 ### Previous: the clock and event scheduler is installed
 

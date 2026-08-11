@@ -172,6 +172,30 @@ if(TARGET DevilsCrush::BeetlePce)
     add_test(NAME dc_scheduler_device COMMAND dc_scheduler_device_tests)
 endif()
 
+# The native instruction boundary against the emulator's own. Needs no ROM,
+# and needs no stimulus either: the device is a rule over four small inputs,
+# so this enumerates them rather than sampling them. Every latch the machine
+# can take and every decision the boundary can be left able to make, which is
+# 66,560 comparisons and the whole of the input space.
+if(TARGET DevilsCrush::BeetlePce)
+    add_executable(dc_interrupt_boundary_tests interrupt_boundary_tests.cpp)
+
+    target_link_libraries(
+        dc_interrupt_boundary_tests
+        PRIVATE
+            DevilsCrush::Core
+            DevilsCrush::BeetlePce
+    )
+
+    target_compile_features(dc_interrupt_boundary_tests PRIVATE cxx_std_20)
+    dc_enable_strict_warnings(dc_interrupt_boundary_tests)
+
+    add_test(
+        NAME dc_interrupt_boundary
+        COMMAND dc_interrupt_boundary_tests
+    )
+endif()
+
 add_test(
     NAME dc_coverage_manifest
     COMMAND

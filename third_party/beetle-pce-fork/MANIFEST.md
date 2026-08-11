@@ -88,6 +88,21 @@ this repository.
   one may exist at a time, none may exist while a real machine is running,
   and it must not share a process with a live reference encoder or a live
   reference timer. It is deleted with the emulator.
+- `include/dc_beetle_reference_boundary.h` and
+  `src/dc_beetle_reference_boundary.cpp`: the emulator's own instruction
+  boundary, for the tests only, and the thinnest shim in the series by a
+  wide margin. The four before it had to *drive* something -- a clock, a
+  timer, an encoder handed a scanline -- because the device only revealed
+  itself while running. This one is asked. The boundary holds two latched
+  values and otherwise computes, so the whole of it is reachable by writing
+  four inputs and reading one answer, and the test behind it is an
+  enumeration rather than a stimulus. It holds no state of its own at all;
+  the handle exists so the one-at-a-time rule has something to enforce
+  itself with. It claims the emulator's processor -- its request register,
+  its mask, its status register and the two latched values -- so only one
+  may exist at a time, none may exist while a real machine is running, and
+  it must not share a process with a live reference timer, which owns the
+  same registers. It is deleted with the emulator.
 - `dc_beetle_irq_state`, `dc_beetle_irq_level` and `dc_beetle_irq_model` in
   `include/dc_beetle_execution_hook.h`: the fourth device-model boundary,
   installed by `0013`. `dc_beetle_irq_level` is the one piece of it that has
@@ -444,6 +459,33 @@ this repository.
     - Removes eight data members and adds none, so the processor object's
       layout and the `MDFN_ALIGN(128)` assertion in `Init` only get easier to
       satisfy. Changes nothing when no model is registered.
+16. `patches/0016-huc6280-instruction-boundary-reference-observation.patch`
+    - Observation only, for the decision made between two instructions.
+      Installs nothing and routes nothing to any model.
+    - Unlike the three observation patches before it, this one does not only
+      add: it *lifts*. `DcSampleInterrupt` is the two assignments at the top
+      of `LastCycle` and `DcSelectInterrupt` is the vector-selection rule at
+      the top of `RunSub`, each moved into a named method that its original
+      caller now calls. There is therefore no second copy of the rule for a
+      differential test to compare against -- what it drives is the code the
+      game runs.
+    - `DcInterruptDecision` names the five answers and `DcInterruptVector`
+      maps them to `0xFFFE`, `0xFFFA`, `0xFFF8` and `0xFFF6`. `RunSub` keeps
+      every cycle, push and fetch it had; only the deciding moved.
+    - The decision is assigned to a variable declared beside `old_PC` rather
+      than where it is used. That is not style: a block move resumes by
+      `goto` into the middle of the loop, and a jump may not cross an
+      initialization.
+    - `DcAcknowledgeInterruptSample` is the one line that takes the reset
+      line back out of the latch, shared by `RunSub` and `DcAcknowledgeReset`
+      instead of written twice.
+    - `DcBoundaryObservation` and `DcObserveBoundary` read out the request
+      register, the mask and both latched values; `DcSetBoundaryLines` and
+      `DcSetBoundarySample` write the four inputs directly, so a test can
+      enumerate states no machine could be driven into -- including the ones
+      only a savestate can produce.
+    - Adds no data members. Changes nothing for any caller that does not use
+      these.
 
 All local files and patches are GPL-3.0-or-later. Upstream per-file notices
 and licenses remain authoritative for upstream sources.

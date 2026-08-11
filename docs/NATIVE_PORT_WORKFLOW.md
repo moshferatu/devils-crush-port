@@ -1852,6 +1852,59 @@ replace the clock underneath a running machine.
 Two seams, two opposite answers, one question that chose between them: on the
 hot path, is the traffic reads or writes?
 
+### When the inputs can be counted, enumerate instead of driving
+
+Every differential test in this series drove a stimulus and compared what came
+out, and every one of them carried the same weakness unstated: **a stimulus
+reaches what it reaches.** The timer's test drove 200,000 steps; the
+scheduler's drove a route; both then had to argue that what they drove was
+representative. That argument is the weakest part of each of them.
+
+The instruction boundary did not need it. Its inputs are six bits of request
+register, three bits of mask, one I flag and two latched values — so the test
+enumerates all of them: 1,024 latches and 65,536 decisions, each against the
+emulator's own rule. There is no coverage question left afterwards, because
+there is no input that was not tried.
+
+Before reaching for a stimulus, count the inputs. If the count fits in a
+double loop, the stimulus is the weaker test *and* the more expensive one to
+write. Two things make it fit surprisingly often: modelling the *decision*
+separately from the acting on it, and offering the rule as a pure static
+function beside the stateful wrapper the machine calls, so a test can drive
+states no machine could be driven into — including the ones only a savestate
+can produce.
+
+Enumeration does not replace the named checks. The three asymmetries in this
+rule are each asserted by name as well, because a summary of 65,536 agreements
+says nothing about *which* facts a later rewrite must preserve, and the whole
+point of modelling this piece separately was that its rule is not the obvious
+one.
+
+### Lift the rule out of the machine rather than copying it out
+
+An observation patch usually only adds. This one moved code: the two
+assignments at the top of `LastCycle` and the vector-selection cascade at the
+top of `RunSub` became named methods that their original callers now call.
+
+That is worth the churn in a hot function. A differential test is only as
+good as its claim that the other arm is the machine — and if the patch had
+*copied* the rule into an entry point beside the original, the test would
+have been comparing a native model against a fork-side transcription, with
+the real `RunSub` unexamined between them. Two copies of a rule drift; the
+drift is silent, and it is invisible to precisely the test that exists to
+catch it.
+
+The cost is that a lift can be a semantic change by accident. Two guards
+here: the census route must reproduce its hash afterwards, which is what says
+the machine still runs the same, and the lift should keep the original's
+structure rather than tidying it — the vestigial comment beside the timer's
+test is left in place because it is evidence about the rule.
+
+One compiler-level trap is worth naming, because it will recur in this loop: a
+block move resumes by `goto` into the middle of `RunSub`'s do-loop, and a jump
+may not cross an initialization. A `const` local at the top of that loop body
+does not compile; the declaration has to sit outside it, beside `old_PC`.
+
 ## Commands
 
 Assuming the full host preset has been configured and `DC_ROM_PATH` is
