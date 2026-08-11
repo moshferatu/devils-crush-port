@@ -827,19 +827,46 @@ Remaining real logic, in rough order of value:
   model is right about this game, the differential test proves it is right
   about the chip. This is the split this section predicted, now measured.
 
-- **Colour encoder (`VCE`) — model written and proved, not yet installed.**
-  `devils_crush::video::PceVce` is the dot-clock divider, the two blanking
-  counters, the 512-entry palette with its cached expansion, the scanline
-  bookkeeping, and the schedule that drives the controller and writes the
-  picture into a framebuffer.
+- **Colour encoder (`VCE`) — done.** `devils_crush::video::PceVce` is the
+  dot-clock divider, the two blanking counters, the 512-entry palette with its
+  cached expansion, the scanline bookkeeping, and the schedule that drives the
+  controller and writes the picture into a framebuffer. It is installed behind
+  patch `0011`, which routes `PCE_Power`, the `$0400`-`$0405` register file,
+  the three controller-facing entry points, `RunPartial`, `StartFrame`, the
+  frame boundary and the savestate through
+  `dc_beetle_active_vce_model`.
+
+  **This is the first device that owns time rather than answering it.** The
+  emulator's processor now runs until the model says to stop: `Sync` is the
+  entire seam, and behind it the master clock divides, the blanking counters
+  flip, the scanline advances and the picture is drawn. It is also the first
+  that draws — the frontend's framebuffer, pitch and line-width array cross
+  the boundary every frame, guarded by a `static_assert` that `bpp_t` is still
+  sixteen bits wide.
+
+  `dc_rom_native_vce` runs four arms over the 3,600-frame route and all four
+  reproduce `9036a9de…`, the hash the sound slice pinned: both models
+  installed, the controller handed back, the encoder handed back, and all
+  three device models handed back. The census carries a framebuffer hash per
+  frame, so a single wrong pixel on a single frame would fail it. The route
+  drew 294,840,000 pixels through the model.
 
   The question this section left open — `VCE` owns its controllers by value,
   so a native encoder and a native controller have to be joined to each other
   — has a smaller answer than expected. `VdcDevice` is eight methods, exactly
   the ones `VCE` calls, with a wrapper putting the native controller behind
-  it. The interface exists so the encoder can be tested *without* the native
-  controller, which matters more than the joining does: a device that can
-  only be installed in a pair can only be exonerated in a pair.
+  it. The interface exists so the encoder can be tested and *installed*
+  without the native controller, which matters more than the joining does: a
+  device that can only be installed in a pair can only be exonerated in a
+  pair.
+
+  Which controller the encoder clocks is decided in one place, the fork's own
+  `DcVDC_*` dispatch, exported as `dc_beetle_vce_vdc_*`. The host's bridge is
+  stateless and always forwards there, so all four combinations work without
+  anyone enumerating them and the two models may be installed in either order.
+  The controller's two edges back — its stall and its interrupt — gained the
+  same dispatch rather than a second pair, because a controller must not have
+  to know which encoder is clocking it.
 
   The encoder could not be lifted out the way the controller was. `VDC`
   touches no emulator global; `VCE` reaches the processor by name to steal
@@ -862,13 +889,32 @@ Remaining real logic, in rough order of value:
   frame's budget of 455 × 64 stolen cycles ran out, which is the only thing
   that ends a stall loop.
 
-  Two things are deliberately outside the model. What a nine-bit palette
-  entry looks like on a screen is the display's decision, so the model is
-  handed the two expansions ready made. And frame geometry — where the
-  picture sits in the line, the multi-resolution rescale, the display
-  rectangle — is computed from what the encoder recorded rather than by it.
-  Both stay with the frontend until something native owns the display, and
-  both are one function wide.
+  Two things are deliberately outside the model, and both stayed behind when
+  it was installed. What a nine-bit palette entry looks like on a screen is
+  the display's decision, so the model is handed the two expansions ready made
+  by `SetPixelFormat`. And frame geometry — where the picture sits in the
+  line, the multi-resolution rescale in `EndFrame`, the display rectangle — is
+  computed from what the encoder *recorded* rather than by it, so the model
+  reports each change of horizontal timing and `write_scanline_info` became
+  that report's destination rather than its author. Both stay with the
+  frontend until something native owns the display, and both are one function
+  wide.
+
+  The savestate shuttle has its own test, `dc_rom_video_state_shuttle`,
+  because the census cannot reach it: a recorded route never saves or loads a
+  state, so both video models could carry a broken shuttle and every arm would
+  still match. A routine replay serializes, restores and re-runs a call over
+  eight round trips, and the two arms must reproduce the *same* calls.
+
+  Installing it broke four ROM tests, and the two faults behind that are worth
+  keeping. One was the install's: on a state load the emulator's own loader
+  reported a change of horizontal timing to the frontend and so did the model,
+  and `write_scanline_info` now returns early when a model is installed. The
+  other was upstream's — the frontend's sixteen-entry `scanline_info` sits
+  behind an unbounded counter, and ten savestate loads without a field between
+  them overrun it. That reproduces with every device model handed back, so the
+  overrunning path is the emulator's; the routing patch only moved the statics
+  it was landing in, and so turned a silent overwrite into a crash.
 
 ### Phase 3 — time and interrupts
 

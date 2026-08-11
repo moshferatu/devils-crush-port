@@ -1839,6 +1839,40 @@ if(TARGET devils_crush)
         )
 
         add_test(
+            NAME dc_rom_native_vce
+            CONFIGURATIONS Release
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/native-vce-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_native_vce.cmake"
+        )
+        set_tests_properties(
+            dc_rom_native_vce
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_video_state_shuttle
+            CONFIGURATIONS Release
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/video-state-shuttle-v1"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_video_state_shuttle.cmake"
+        )
+        set_tests_properties(
+            dc_rom_video_state_shuttle
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
             NAME dc_rom_sound_timer_driver_semantic
             CONFIGURATIONS Release
             COMMAND

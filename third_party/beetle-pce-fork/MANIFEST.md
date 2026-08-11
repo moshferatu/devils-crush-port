@@ -202,5 +202,56 @@ this repository.
       caller that has no processor to do them for it.
     - Changes nothing at runtime. Nothing in the emulator calls any of it.
 
+11. `patches/0011-vce-device-model.patch`
+    - Routes every entry point the machine has into the colour encoder to a
+      registered `dc_beetle_vce_model`: power-on, the `$0400`-`$0405`
+      register file, the three controller-facing entry points, the timestamp
+      rebase, the layer and sprite-limit controls, the horizontal overscan,
+      the palette expansion, `RunPartial`, `StartFrame`, `EndFrame`'s last
+      scanline report, the savestate, and `Sync` -- which is the processor's
+      event handler and so the one place the whole schedule is entered from.
+    - `DcOwned()` carries the `!sgfx` test, so a SuperGrafx keeps its
+      encoder entire. Its second controller and the priority unit that
+      composites the two are not modelled.
+    - The framebuffer crosses the boundary. `StartFrame` hands over
+      `MDFN_Surface::pixels`, the pitch and the line-width array, under a
+      `static_assert` that `bpp_t` is still sixteen bits wide -- which it is
+      only because this build selects RGB565.
+    - `write_scanline_info` is split. Its body moved to
+      `DcWriteScanlineInfo`, which takes the six values it used to read,
+      because with a model installed every one of them belongs to the model.
+      The frontend keeps the resolution bookkeeping those values feed, the
+      multi-resolution rescale in `EndFrame`, and the display rectangle. The
+      original returns early when a model is installed: the emulator's own
+      loader calls `SetVCECR` on the dormant object, and a report from there
+      would be a second and wrong entry beside the model's.
+    - One repair that is not routing. `scanline_info` holds 16 entries behind
+      a counter upstream never bounded, safe only while a field restart
+      arrives before a seventeenth report; a host that loads ten savestates
+      without a full field between them overruns it. That reproduces with
+      every device model handed back, so the path is the emulator's -- this
+      patch only moved the statics the overrun was landing in, which is what
+      turned it from silent into fatal. The write is now bounded and the
+      resolution summary still updated, so a dropped entry costs the rescale
+      one boundary rather than the frontend its geometry.
+    - `dc_beetle_vce_vdc_*` export the `DcVDC_*` dispatch `0009` introduced,
+      so an installed encoder finds the native controller when one is
+      registered and the emulator's chip when none is. One decision point
+      serves both encoders, and the two models may be installed in either
+      order or one without the other.
+    - `VCE::IRQChangeCheck` and `VCE::WS_Hook` route to the model as well.
+      Those are reached from the emulator's *own* controller, so this is
+      what makes the arm with a native encoder and an emulated controller
+      work rather than a defensive check.
+    - `dc_beetle_vce_irq`, `dc_beetle_vce_steal_cycles`,
+      `dc_beetle_vce_exit` and `dc_beetle_vce_cd_event` are the four machine
+      edges an installed model reaches back through. Each is one line of
+      what the emulator's own encoder does in the same place.
+    - `DcExportVceState` and `DcImportVceState` are the savestate shuttle:
+      plain field moves, read back after the emulator's own load-time
+      repairs have run over them. Roughly a kilobyte, so it travels on a
+      stack rather than the heap the controller's 128 KiB needed.
+    - Changes nothing when no model is registered.
+
 All local files and patches are GPL-3.0-or-later. Upstream per-file notices
 and licenses remain authoritative for upstream sources.

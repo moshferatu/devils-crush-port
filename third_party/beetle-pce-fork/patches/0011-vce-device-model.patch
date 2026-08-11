@@ -1,0 +1,718 @@
+diff --git a/mednafen/pce/vce.cpp b/mednafen/pce/vce.cpp
+--- a/mednafen/pce/vce.cpp
++++ b/mednafen/pce/vce.cpp
+@@ -122,6 +122,21 @@ static INLINE void DcVDC_SetUnlimitedSprites(VDC& chip_vdc, const unsigned chip,
+ }
+ 
+ 
++// Devil's Crush downstream device-model boundary, second layer. Where the
++// first hands the controller to a model and keeps the schedule, this one
++// hands the schedule away too, and with it the palette, the blanking
++// counters and the framebuffer. What is left here is the display's business
++// rather than the chip's: the resolution bookkeeping below, the multi-
++// resolution rescale in `EndFrame`, and the expansion of a nine-bit palette
++// entry into a screen colour in `SetPixelFormat`.
++//
++// `DcOwned()` carries the `!sgfx` test, so every routed entry point below
++// leaves a SuperGrafx entirely alone.
++#define DC_VCE_MODEL (dc_beetle_active_vce_model)
++#define DC_VCE_SELF (dc_beetle_active_vce_model->user_data)
++
++extern VCE *vce;
++
+ static bool hires;
+ static int scanline_start, scanline_end=242;
+ 
+@@ -151,6 +166,13 @@ static void IRQChange_Hook(bool newstatus)
+ 
+ bool VCE::WS_Hook(int32 vdc_cycles)
+ {
++	// Reached from the emulator's own controller, which stalls against
++	// whichever encoder is clocking it. That is a real arm rather than a
++	// defensive one: it is how the encoder runs with the controller handed
++	// back.
++	if(DcOwned())
++		return DC_VCE_MODEL->wait_state(DC_VCE_SELF, vdc_cycles) != 0;
++
+ 	bool ret = true;
+ 	int32 to_steal;
+ 
+@@ -191,39 +213,75 @@ static bool WS_Hook_(int32 vdc_cycles)
+ void VCE::write_scanline_info()
+ {
+ 	int HSR, HDR;
+-	int HSW, HDS, HDW, HDE;
++	dc_beetle_vce_scanline_info info;
++
++	// With a model installed, every value below is a stale copy this object
++	// holds only so a savestate has somewhere to be written through, and the
++	// model reports its own changes. Reporting from here as well would file a
++	// second, wrong entry -- which is not hypothetical: the emulator's own
++	// loader calls `SetVCECR` on this object, and the model's `apply_state`
++	// reports the same change a moment later.
++	if(DcOwned())
++		return;
+ 
++	HSR = DcVDC_GetRegister(vdc[0], 0, VDC::GSREG_HSR);
++	HDR = DcVDC_GetRegister(vdc[0], 0, VDC::GSREG_HDR);
++
++	info.pulse = (HSR >> 0) & 0x1f;
++	info.start = (HSR >> 8) & 0x7f;
++	info.width = (HDR >> 0) & 0x7f;
++	info.end = (HDR >> 8) & 0x7f;
++
++	info.rate = dot_clock;
++	info.line = scanline;
++	info.restart = NeedSLReset;
++
++	DcWriteScanlineInfo(&info);
++}
+ 
+-	if(NeedSLReset || scanline_info_count == 0)
++// Devil's Crush downstream device-model boundary. The body above with its six
++// inputs supplied rather than read: an installed encoder owns every one of
++// them, and reports a change through this instead of being read for it.
++void VCE::DcWriteScanlineInfo(const dc_beetle_vce_scanline_info* const info)
++{
++	if(info->restart || scanline_info_count == 0)
+ 	{
+ 		scanline_info_count = 0;
+ 
+ 		memset(&vce_resolution, 0, sizeof(vce_resolution));
+ 	}
+ 
+-
+-	HSR = DcVDC_GetRegister(vdc[0], 0, VDC::GSREG_HSR);
+-	HDR = DcVDC_GetRegister(vdc[0], 0, VDC::GSREG_HDR);
+-
+-	HSW = (HSR >> 0) & 0x1f;
+-	HDS = (HSR >> 8) & 0x7f;
+-	HDW = (HDR >> 0) & 0x7f;
+-	HDE = (HDR >> 8) & 0x7f;
+-
+-	
+-	scanline_info[scanline_info_count].pulse = HSW;
+-	scanline_info[scanline_info_count].start = HDS;
+-	scanline_info[scanline_info_count].width = HDW;
+-	scanline_info[scanline_info_count].end = HDE;
+-
+-	scanline_info[scanline_info_count].rate = dot_clock;
+-	scanline_info[scanline_info_count].line = scanline;
+-	scanline_info_count++;
++	// A downstream repair of an upstream fault, not part of the routing.
++	// `scanline_info` holds 16 entries and this counter has never been
++	// bounded. Upstream is safe only while the field restart above arrives
++	// before a seventeenth report does -- a promise about how the machine is
++	// driven rather than about the code -- and a host that loads a savestate
++	// ten times without a full field between the loads breaks it, because
++	// `SetVCECR` reports on every load. This project has such a host.
++	//
++	// It is reached with no device model installed at all, so the path that
++	// overruns is the emulator's own. What the routing above changed is only
++	// which memory the overrun lands in, and so whether it is silent: it had
++	// been quietly overwriting the statics behind the array and now takes
++	// `EndFrame`'s loop with it. The resolution summary below is still
++	// updated for a dropped entry, so the cost of the bound is one boundary
++	// in the rescale rather than the frontend's geometry.
++	if(scanline_info_count < (int)(sizeof(scanline_info) / sizeof(scanline_info[0])))
++	{
++		scanline_info[scanline_info_count].pulse = info->pulse;
++		scanline_info[scanline_info_count].start = info->start;
++		scanline_info[scanline_info_count].width = info->width;
++		scanline_info[scanline_info_count].end = info->end;
++
++		scanline_info[scanline_info_count].rate = info->rate;
++		scanline_info[scanline_info_count].line = info->line;
++		scanline_info_count++;
++	}
+ 
+ 
+-	if((dot_clock > vce_resolution.max_rate) || (vce_resolution.width == 0))
++	if((info->rate > vce_resolution.max_rate) || (vce_resolution.width == 0))
+ 	{
+-		switch(dot_clock)
++		switch(info->rate)
+ 		{
+ 			case 0: vce_resolution.res_256 = 1; break;
+ 			case 1: vce_resolution.res_352 = 1; break;
+@@ -231,18 +289,26 @@ void VCE::write_scanline_info()
+ 			case 3: vce_resolution.res_512 = 1; break;
+ 		}
+ 
+-		vce_resolution.max_rate = dot_clock;
++		vce_resolution.max_rate = (uint8)info->rate;
+ 
+-		vce_resolution.start = HDS;
+-		vce_resolution.width = HDW;
+-		
+-		vce_resolution.pulse = HSW;
+-		vce_resolution.end = HDE;
++		vce_resolution.start = (uint16)info->start;
++		vce_resolution.width = (uint16)info->width;
++
++		vce_resolution.pulse = (uint16)info->pulse;
++		vce_resolution.end = (uint16)info->end;
+ 	}
+ }
+ 
+ void VCE::IRQChangeCheck(void)
+ {
++	// Reached from the emulator's own controller, the same way `WS_Hook` is,
++	// and for the same reason.
++	if(DcOwned())
++	{
++		DC_VCE_MODEL->irq_change_check(DC_VCE_SELF);
++		return;
++	}
++
+ 	unsigned chip;
+ 	bool irqtmp = 0;
+ 
+@@ -257,7 +323,12 @@ void VCE::IRQChangeCheck(void)
+ 
+ void VCE::SetShowHorizOS(bool show)
+ {
++	// Kept here as well as handed over, because `EndFrame`'s rescale reads it
++	// and that stayed behind.
+ 	ShowHorizOS = show;
++
++	if(DcOwned())
++		DC_VCE_MODEL->set_show_horizontal_overscan(DC_VCE_SELF, show ? 1 : 0);
+ }
+ 
+ 
+@@ -297,6 +368,12 @@ VCE::VCE(const bool want_sgfx, const uint32 vram_size)
+ 
+ void VCE::SetVDCUnlimitedSprites(const bool nospritelimit)
+ {
++	if(DcOwned())
++	{
++		DC_VCE_MODEL->set_unlimited_sprites(DC_VCE_SELF, nospritelimit ? 1 : 0);
++		return;
++	}
++
+ 	unsigned chip;
+ 	for(chip = 0; chip < chip_count; chip++)
+ 		DcVDC_SetUnlimitedSprites(vdc[chip], chip, nospritelimit);
+@@ -309,6 +386,16 @@ VCE::~VCE()
+ 
+ void VCE::Reset(const int32 timestamp)
+ {
++	// The model owns the controller's reset too -- it holds it through the
++	// same bridge the schedule uses -- so resetting here as well would reset
++	// the chip twice. The emulator ignores the timestamp it is given and
++	// rebases to zero; so does the model, which is why it takes none.
++	if(DcOwned())
++	{
++		DC_VCE_MODEL->reset(DC_VCE_SELF);
++		return;
++	}
++
+ 	uint16_t i;
+ 	unsigned chip;
+ 	last_ts          = 0;
+@@ -405,12 +492,38 @@ void VCE::StartFrame(MDFN_Surface *surface, MDFN_Rect *DisplayRect, int32 *LineW
+ 	}
+ 
+ 	skipframe = skip;
++
++	// The frontend's framebuffer crosses here. `fb` is `bpp_t*`, which this
++	// build makes 16 bits wide by selecting RGB565, and the model's pixel type
++	// is fixed at that width -- so the assertion is what turns a change of
++	// pixel format from a silently wrong picture into a build failure.
++	if(DcOwned())
++	{
++		static_assert(sizeof(bpp_t) == sizeof(uint16), "The encoder model draws 16-bit pixels.");
++
++		DC_VCE_MODEL->set_disabled_layer_colour(DC_VCE_SELF, MAKECOLOR(0x00, 0xFE, 0x00, 0));
++		DC_VCE_MODEL->start_frame(DC_VCE_SELF, (uint16*)fb, pitch32, LW, skip ? 1 : 0, hires ? 1 : 0, scanline_start, scanline_end);
++	}
+ }
+ 
+ bool VCE::RunPartial(void)
+ {
+ 	HuCPU.SetEventHandler(Sync);
+ 
++	if(DcOwned())
++	{
++		if(!PCE_IsCD)
++			DC_VCE_MODEL->set_cd_event(DC_VCE_SELF, 0x3FFFFFFF, 0);
++
++		DC_VCE_MODEL->start_partial(DC_VCE_SELF);
++		HuCPU.Run();
++		DC_VCE_MODEL->finish_partial(DC_VCE_SELF);
++
++		Update(HuCPU.Timestamp());
++
++		return DC_VCE_MODEL->frame_done(DC_VCE_SELF) != 0;
++	}
++
+ 	if(!PCE_IsCD)
+ 		cd_event = 0x3FFFFFFF;
+ 
+@@ -752,7 +865,13 @@ int32 INLINE VCE::SyncReal(const int32 timestamp)
+ 
+ static int32 MDFN_FASTCALL NO_INLINE Sync(const int32 timestamp)
+ {
+-	extern VCE *vce; //HORRIBLE
++	// The processor's event handler, and so the one place the whole schedule
++	// is entered from. With a model installed this is the entire seam: the
++	// dot-clock divider, the blanking counters, the scanline bookkeeping and
++	// the drawing are all on the other side of it.
++	if(vce->DcOwned())
++		return DC_VCE_MODEL->sync(DC_VCE_SELF, timestamp);
++
+ 	return vce->SyncReal(timestamp);
+ }
+ 
+@@ -762,6 +881,19 @@ static int32 MDFN_FASTCALL NO_INLINE Sync(const int32 timestamp)
+ // cd_event and the value to HuCPU.SetEvent by (HuCPU.timestamp - last_ts)
+ void VCE::SetCDEvent(const int32 cycles)
+ {
++	if(DcOwned())
++	{
++		// The bias is measured against the model's last sync, because the
++		// model is what `Sync` advances.
++		const int32 model_behind = HuCPU.Timestamp() - DC_VCE_MODEL->last_timestamp(DC_VCE_SELF);
++
++		assert(model_behind >= 0);
++
++		DC_VCE_MODEL->set_cd_event(DC_VCE_SELF, cycles, model_behind);
++		HuCPU.SetEvent(DC_VCE_MODEL->calc_next_event(DC_VCE_SELF) - model_behind);
++		return;
++	}
++
+ 	const int32 time_behind = HuCPU.Timestamp() - last_ts;
+ 
+ 	assert(time_behind >= 0);
+@@ -855,6 +987,13 @@ void VCE::SetPixelFormat(const uint8* CustomColorMap, const uint32 CustomColorMa
+ 	// because they loop 512 times ;)
+ 	for(x = 0; x < 512; x++)
+ 		FixPCache(x);
++
++	// What a nine-bit palette entry looks like on a screen is the display's
++	// decision, not the chip's, and it is made here from a pixel format this
++	// object was handed. The model is given the answer rather than the
++	// question, and merges it with its own palette memory.
++	if(DcOwned())
++		DC_VCE_MODEL->set_surface_palette(DC_VCE_SELF, surf_clut[0], surf_clut[1]);
+ }
+ 
+ uint8 VCE::Read(uint32 A)
+@@ -863,6 +1002,13 @@ uint8 VCE::Read(uint32 A)
+ 
+ 	Sync(HuCPU.Timestamp());
+ 
++	if(DcOwned())
++	{
++		ret = DC_VCE_MODEL->read(DC_VCE_SELF, A);
++		HuCPU.SetEvent(DC_VCE_MODEL->calc_next_event(DC_VCE_SELF));
++		return(ret);
++	}
++
+ 	switch(A & 0x7)
+ 	{
+ 	case 4:
+@@ -886,6 +1032,13 @@ void VCE::Write(uint32 A, uint8 V)
+ {
+ 	Sync(HuCPU.Timestamp());
+ 
++	if(DcOwned())
++	{
++		DC_VCE_MODEL->write(DC_VCE_SELF, A, V);
++		HuCPU.SetEvent(DC_VCE_MODEL->calc_next_event(DC_VCE_SELF));
++		return;
++	}
++
+ 	switch(A&0x7)
+ 	{
+ 	case 0:
+@@ -928,6 +1081,13 @@ uint8 VCE::ReadVDC(uint32 A)
+ 
+ 	Sync(HuCPU.Timestamp());
+ 
++	if(DcOwned())
++	{
++		ret = DC_VCE_MODEL->read_vdc(DC_VCE_SELF, A);
++		HuCPU.SetEvent(DC_VCE_MODEL->calc_next_event(DC_VCE_SELF));
++		return(ret);
++	}
++
+ 	if(!sgfx)
+ 	{
+ 		ret = DcVDC_Read(vdc[0], 0, A, child_event[0], 0);
+@@ -969,6 +1129,13 @@ void VCE::WriteVDC(uint32 A, uint8 V)
+ {
+ 	Sync(HuCPU.Timestamp());
+ 
++	if(DcOwned())
++	{
++		DC_VCE_MODEL->write_vdc(DC_VCE_SELF, A, V);
++		HuCPU.SetEvent(DC_VCE_MODEL->calc_next_event(DC_VCE_SELF));
++		return;
++	}
++
+ 	if(!sgfx)
+ 	{
+ 		DcVDC_Write(vdc[0], 0, A & 0x1FFF, V, child_event[0]);
+@@ -1009,6 +1176,13 @@ void VCE::WriteVDC_ST(uint32 A, uint8 V)
+ {
+ 	Sync(HuCPU.Timestamp());
+ 
++	if(DcOwned())
++	{
++		DC_VCE_MODEL->write_vdc_st(DC_VCE_SELF, A, V);
++		HuCPU.SetEvent(DC_VCE_MODEL->calc_next_event(DC_VCE_SELF));
++		return;
++	}
++
+ 	if(!sgfx)
+ 	{
+ 		DcVDC_Write(vdc[0], 0, A, V, child_event[0]);
+@@ -1024,6 +1198,12 @@ void VCE::WriteVDC_ST(uint32 A, uint8 V)
+ 
+ void VCE::SetLayerEnableMask(uint64 mask)
+ {
++	if(DcOwned())
++	{
++		DC_VCE_MODEL->set_layer_enable_mask(DC_VCE_SELF, mask);
++		return;
++	}
++
+ 	for(unsigned chip = 0; chip < chip_count; chip++)
+ 	{
+ 		DcVDC_SetLayerEnableMask(vdc[chip], chip, (mask >> (chip * 2)) & 0x3);
+@@ -1074,6 +1254,203 @@ uint32 VCE::DcColorTableCache(const unsigned entry) const
+ 	return color_table_cache[entry & 0x3FF];
+ }
+ 
++// Devil's Crush downstream device-model boundary. Plain field moves, with no
++// repair of out-of-range values: on save the model's own state is already
++// valid, and on load StateAction has already applied the emulator's repairs
++// before these values are read back out.
++//
++// The derived companions of the control register -- the dot-clock ratio, the
++// line count, the black-and-white bit -- are not moved, because they are not
++// serialized. On save nothing reads them from this object; on load the
++// emulator's own `SetVCECR(CR)` has already rebuilt them here, and the model
++// rebuilds its own from the same byte.
++void VCE::DcExportVceState(dc_beetle_vce_state* const state) const
++{
++	memcpy(state->color_table, color_table, sizeof(state->color_table));
++
++	state->ws_counter = ws_counter;
++	state->clock_divider = clock_divider;
++	state->child_event[0] = child_event[0];
++	state->child_event[1] = child_event[1];
++	state->scanline = scanline;
++	state->pixel_offset = pixel_offset;
++	state->hblank_counter = hblank_counter;
++	state->vblank_counter = vblank_counter;
++	state->ctaddress = ctaddress;
++	state->cr = CR;
++	state->hblank = hblank;
++	state->vblank = vblank;
++	state->need_sl_reset = NeedSLReset;
++}
++
++void VCE::DcImportVceState(const dc_beetle_vce_state* const state)
++{
++	memcpy(color_table, state->color_table, sizeof(color_table));
++
++	ws_counter = state->ws_counter;
++	clock_divider = state->clock_divider;
++	child_event[0] = state->child_event[0];
++	child_event[1] = state->child_event[1];
++	scanline = state->scanline;
++	pixel_offset = state->pixel_offset;
++	hblank_counter = state->hblank_counter;
++	vblank_counter = state->vblank_counter;
++	ctaddress = state->ctaddress;
++	CR = state->cr;
++	hblank = state->hblank != 0;
++	vblank = state->vblank != 0;
++	NeedSLReset = state->need_sl_reset != 0;
++}
++
++int32 VCE::DcVdcReset(void)
++{
++	return DcVDC_Reset(vdc[0], 0);
++}
++
++int32 VCE::DcVdcRun(int32 clocks, uint16* pixels, bool skip)
++{
++	return DcVDC_Run(vdc[0], 0, clocks, pixels, skip);
++}
++
++int32 VCE::DcVdcHSync(bool in_hblank)
++{
++	return DcVDC_HSync(vdc[0], 0, in_hblank);
++}
++
++int32 VCE::DcVdcVSync(bool in_vblank)
++{
++	return DcVDC_VSync(vdc[0], 0, in_vblank);
++}
++
++void VCE::DcVdcWrite(uint32 A, uint8 V)
++{
++	DcVDC_Write(vdc[0], 0, A, V, child_event[0]);
++}
++
++uint8 VCE::DcVdcRead(uint32 A, bool peek)
++{
++	return DcVDC_Read(vdc[0], 0, A, child_event[0], peek);
++}
++
++bool VCE::DcVdcPeekIRQ(void)
++{
++	return DcVDC_PeekIRQ(vdc[0], 0);
++}
++
++uint32 VCE::DcVdcGetRegister(const unsigned id)
++{
++	return DcVDC_GetRegister(vdc[0], 0, id);
++}
++
++void VCE::DcVdcSetLayerEnableMask(uint64 mask)
++{
++	DcVDC_SetLayerEnableMask(vdc[0], 0, mask);
++}
++
++void VCE::DcVdcSetUnlimitedSprites(bool unlimited)
++{
++	DcVDC_SetUnlimitedSprites(vdc[0], 0, unlimited);
++}
++
++extern "C" {
++
++// The four machine edges an installed encoder reaches back through. Each is
++// one line of what the emulator's own encoder does in the same place; there
++// is no state here, which is the point -- an encoder model owns everything
++// except the machine it is bolted to.
++void dc_beetle_vce_irq(const int raised)
++{
++	if(raised)
++		HuCPU.IRQBegin(HuC6280::IQIRQ1);
++	else
++		HuCPU.IRQEnd(HuC6280::IQIRQ1);
++}
++
++void dc_beetle_vce_steal_cycles(const int32_t cycles)
++{
++	HuCPU.StealCycles(cycles);
++}
++
++void dc_beetle_vce_exit(void)
++{
++	HuCPU.Exit();
++}
++
++int32_t dc_beetle_vce_cd_event(const uint32_t timestamp)
++{
++	return PCECD_Run(timestamp);
++}
++
++void dc_beetle_vce_report_scanline_info(const dc_beetle_vce_scanline_info* const info)
++{
++	if(vce != NULL)
++		vce->DcWriteScanlineInfo(info);
++}
++
++// The controller as an installed encoder reaches it. Every one of these
++// dispatches through the same `DcVDC_*` the schedule here uses, so a native
++// encoder finds the native controller when one is installed and the
++// emulator's chip when none is -- and the two models can be installed in
++// either order, or one without the other.
++//
++// A null encoder means no machine has been built yet. The values returned
++// then are the ones the schedule would find least surprising: an event
++// horizon of one clock, a read of the open bus.
++int32_t dc_beetle_vce_vdc_reset(void)
++{
++	return (vce != NULL) ? vce->DcVdcReset() : 1;
++}
++
++int32_t dc_beetle_vce_vdc_run(const int32_t clocks, uint16_t* const pixels, const int skip)
++{
++	return (vce != NULL) ? vce->DcVdcRun(clocks, pixels, skip != 0) : 1;
++}
++
++int32_t dc_beetle_vce_vdc_hsync(const int in_hblank)
++{
++	return (vce != NULL) ? vce->DcVdcHSync(in_hblank != 0) : 1;
++}
++
++int32_t dc_beetle_vce_vdc_vsync(const int in_vblank)
++{
++	return (vce != NULL) ? vce->DcVdcVSync(in_vblank != 0) : 1;
++}
++
++void dc_beetle_vce_vdc_write(const uint32_t address, const uint8_t value)
++{
++	if(vce != NULL)
++		vce->DcVdcWrite(address, value);
++}
++
++uint8_t dc_beetle_vce_vdc_read(const uint32_t address, const int peek)
++{
++	return (vce != NULL) ? vce->DcVdcRead(address, peek != 0) : 0xFF;
++}
++
++int dc_beetle_vce_vdc_peek_irq(void)
++{
++	return (vce != NULL && vce->DcVdcPeekIRQ()) ? 1 : 0;
++}
++
++uint32_t dc_beetle_vce_vdc_get_register(const unsigned id)
++{
++	return (vce != NULL) ? vce->DcVdcGetRegister(id) : 0;
++}
++
++void dc_beetle_vce_vdc_set_layer_enable_mask(const uint64_t mask)
++{
++	if(vce != NULL)
++		vce->DcVdcSetLayerEnableMask(mask);
++}
++
++void dc_beetle_vce_vdc_set_unlimited_sprites(const int unlimited)
++{
++	if(vce != NULL)
++		vce->DcVdcSetUnlimitedSprites(unlimited != 0);
++}
++
++} // extern "C"
++
+ int VCE::StateAction(StateMem *sm, const unsigned load, const bool data_only)
+ {
+ 	SFORMAT VCE_StateRegs[] =
+@@ -1097,6 +1474,22 @@ int VCE::StateAction(StateMem *sm, const unsigned load, const bool data_only)
+ 		SFEND
+ 	};
+ 
++	// The encoder's savestate shuttle, on the same terms as the controller's:
++	// the model's values are moved into the dormant object before it is
++	// written, and back out of it after it is read. Roughly a kilobyte, so it
++	// travels on the stack. Read back after the emulator's own load-time
++	// repairs below, so the model is handed values the emulator would have
++	// accepted -- and repairs them again itself, because a model that trusted
++	// its loader would be a model that could not be loaded alone.
++	dc_beetle_vce_state vce_model_state;
++	const bool vce_shuttle = DcOwned();
++
++	if(vce_shuttle && !load)
++	{
++		DC_VCE_MODEL->capture_state(DC_VCE_SELF, &vce_model_state);
++		DcImportVceState(&vce_model_state);
++	}
++
+ 	int ret = MDFNSS_StateAction(sm, load, data_only, VCE_StateRegs, "VCE", false);
+ 
+ 	if(sgfx)
+@@ -1153,6 +1546,12 @@ int VCE::StateAction(StateMem *sm, const unsigned load, const bool data_only)
+ 			FixPCache(x);
+ 	}
+ 
++	if(vce_shuttle && load)
++	{
++		DcExportVceState(&vce_model_state);
++		DC_VCE_MODEL->apply_state(DC_VCE_SELF, &vce_model_state);
++	}
++
+ 	// The savestate shuttle, on the same terms as the sound device's: the
+ 	// model's values are moved into the dormant object before it is
+ 	// written, and back out of it after it is read. The state is 128 KiB,
+@@ -1189,7 +1588,13 @@ void VCE::EndFrame(MDFN_Rect *DisplayRect)
+ 	bool scale_hires = hires;
+ 	bool scale_lores = MDFN_GetSettingUI("pce.scaling") == 1;
+ 
+-	write_scanline_info();
++	// The last line of the frame, which the rescale below needs the geometry
++	// of. With a model installed the six values are the model's, so it is
++	// asked to report rather than read.
++	if(DcOwned())
++		DC_VCE_MODEL->report_scanline_info(DC_VCE_SELF);
++	else
++		write_scanline_info();
+ 
+ 	if(!scale_hires && (vce_resolution.res_256 + vce_resolution.res_352 + vce_resolution.res_512) > 1)
+ 	{
+diff --git a/mednafen/pce/vce.h b/mednafen/pce/vce.h
+--- a/mednafen/pce/vce.h
++++ b/mednafen/pce/vce.h
+@@ -63,11 +63,15 @@ public:
+ 
+ 	void INLINE ResetTS(int ts_base)
+ 	{
++		if(DcOwned())
++			dc_beetle_active_vce_model->reset_timestamp(dc_beetle_active_vce_model->user_data, ts_base);
+ 		last_ts = ts_base;
+ 	}
+ 
+ 	int INLINE GetScanlineNo(void)
+ 	{
++		if(DcOwned())
++			return dc_beetle_active_vce_model->scanline(dc_beetle_active_vce_model->user_data);
+ 		return(scanline);
+ 	}
+ 
+@@ -103,6 +107,8 @@ public:
+ 	}
+ 	uint16 DebugPeekPalette(const uint16 address)
+ 	{
++		if(DcOwned())
++			return dc_beetle_active_vce_model->peek_palette(dc_beetle_active_vce_model->user_data, address);
+ 		return color_table[address & 0x1FF];
+ 	}
+ 	uint32 DebugGetVDCRegister(const unsigned id)
+@@ -139,6 +145,50 @@ public:
+ 		bool frame_done;
+ 	};
+ 
++	// Devil's Crush downstream device-model boundary. While an encoder model
++	// is installed this object owns nothing: it is clocked by nobody, its
++	// register file answers nobody, it resets to nothing and starts no frame.
++	// It is kept for two things -- the savestate format written through its
++	// fields, and the frontend's resolution bookkeeping, which belongs to the
++	// display rather than to the chip and stays here.
++	//
++	// The SuperGrafx is never routed, so the second controller's presence is
++	// part of the question this answers.
++	bool INLINE DcOwned(void) const
++	{
++		return MDFN_UNLIKELY(dc_beetle_active_vce_model != NULL) && !sgfx;
++	}
++
++	// The savestate shuttle. Plain field moves with no repair: on save the
++	// model's state is already valid, and on load the emulator's own repairs
++	// have run over these fields before they are read back out.
++	void DcExportVceState(dc_beetle_vce_state* state) const;
++	void DcImportVceState(const dc_beetle_vce_state* state);
++
++	// Where an installed encoder's report of a horizontal timing change lands.
++	// This is the body of `write_scanline_info` with its six inputs supplied
++	// rather than read, because with a model installed every one of them
++	// belongs to the model.
++	void DcWriteScanlineInfo(const dc_beetle_vce_scanline_info* info);
++
++	// The controller as an installed encoder reaches it, on chip zero. Each
++	// dispatches to a native controller model or to this object's own chip,
++	// exactly as the schedule here does, so the encoder never learns which.
++	//
++	// `child_event[0]` is handed to the two register entry points because
++	// `VDC::Read` and `VDC::Write` take it -- and neither reads nor assigns
++	// it, so the model's own horizon is the one that matters.
++	int32 DcVdcReset(void);
++	int32 DcVdcRun(int32 clocks, uint16* pixels, bool skip);
++	int32 DcVdcHSync(bool in_hblank);
++	int32 DcVdcVSync(bool in_vblank);
++	void DcVdcWrite(uint32 A, uint8 V);
++	uint8 DcVdcRead(uint32 A, bool peek);
++	bool DcVdcPeekIRQ(void);
++	uint32 DcVdcGetRegister(unsigned id);
++	void DcVdcSetLayerEnableMask(uint64 mask);
++	void DcVdcSetUnlimitedSprites(bool unlimited);
++
+ 	void DcObserve(DcObservation* out) const;
+ 	// `SyncReal` is inlined into the one caller `vce.cpp` has and emits no
+ 	// out-of-line body, so a caller outside the file needs this.

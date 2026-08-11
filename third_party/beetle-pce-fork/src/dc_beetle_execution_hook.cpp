@@ -18,6 +18,7 @@ static int32_t* dc_beetle_psg_output_buffers[2] = {nullptr, nullptr};
 static int dc_beetle_psg_revision = DC_BEETLE_PSG_REVISION_HUC6280;
 const dc_beetle_vdc_model* dc_beetle_active_vdc_model = nullptr;
 static uint32_t dc_beetle_vdc_vram_size = 0;
+const dc_beetle_vce_model* dc_beetle_active_vce_model = nullptr;
 uint32_t dc_beetle_replacement_nested_installs = 0;
 uint32_t dc_beetle_replacement_nest_overflows = 0;
 uint32_t dc_beetle_replacement_max_depth = 0;
@@ -136,12 +137,33 @@ void dc_beetle_set_vdc_device(const uint32_t vram_size)
     }
 }
 
-// The emulator's own device passes the direction of the change and `VCE`
-// throws it away, re-deriving the level from every chip's latched status.
-// Reproducing that rather than trusting the argument is what lets one chip be
-// native while the other is not.
+void dc_beetle_set_vce_model(const dc_beetle_vce_model* const model)
+{
+    dc_beetle_active_vce_model = model;
+}
+
+void dc_beetle_clear_vce_model(void)
+{
+    dc_beetle_active_vce_model = nullptr;
+}
+
+// The emulator's own device passes the direction of the change and the
+// encoder throws it away, re-deriving the level from every chip's latched
+// status. Reproducing that rather than trusting the argument is what lets one
+// chip be native while the other is not.
+//
+// Both of these reach whichever encoder owns the machine. A native controller
+// beside a native encoder must interrupt and stall the encoder that is
+// actually clocking it -- and since this is the same decision the encoder
+// makes about which controller to clock, only in the other direction, it is
+// made in the same place rather than in the caller.
 void dc_beetle_vdc_irq_change(int)
 {
+    if (dc_beetle_active_vce_model != nullptr) {
+        dc_beetle_active_vce_model->irq_change_check(
+            dc_beetle_active_vce_model->user_data);
+        return;
+    }
     if (vce != nullptr) {
         vce->IRQChangeCheck();
     }
@@ -149,6 +171,11 @@ void dc_beetle_vdc_irq_change(int)
 
 int dc_beetle_vdc_wait_state(const int32_t cycles)
 {
+    if (dc_beetle_active_vce_model != nullptr) {
+        return dc_beetle_active_vce_model->wait_state(
+            dc_beetle_active_vce_model->user_data,
+            cycles);
+    }
     // No encoder means no cycle budget to charge against, and a model that
     // kept asking would never return.
     if (vce == nullptr) {

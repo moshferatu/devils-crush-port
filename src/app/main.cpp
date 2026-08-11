@@ -219,6 +219,11 @@ struct CommandLine {
     // against.
     bool emulated_vdc = false;
     bool report_vdc_coverage = false;
+    // And the same for the colour encoder, which owns the video schedule and
+    // draws. Handing it back with the controller still native is what
+    // separates a difference the encoder caused from one the controller did.
+    bool emulated_vce = false;
+    bool report_vce_coverage = false;
     // The interactive host deploys the registry by default so a session runs
     // the ported code; this opts back out to the emulated original.
     bool emulate_only = false;
@@ -730,6 +735,10 @@ parse_logical_address_range(const std::string_view text)
             options.emulated_vdc = true;
         } else if (argument == "--report-vdc-coverage") {
             options.report_vdc_coverage = true;
+        } else if (argument == "--emulated-vce") {
+            options.emulated_vce = true;
+        } else if (argument == "--report-vce-coverage") {
+            options.report_vce_coverage = true;
         } else if (argument == "--replace-registry") {
             options.replace_registry = true;
         } else if (argument == "--cabinet-overlay-stats") {
@@ -3516,7 +3525,9 @@ void print_usage()
            "  route exercised. The video display controller is a native\n"
            "  device model on the same terms; --emulated-vdc hands the chip\n"
            "  back, and --report-vdc-coverage prints what the route asked\n"
-           "  of it.\n\n"
+           "  of it. The colour encoder is a third, and owns the video\n"
+           "  schedule and the framebuffer; --emulated-vce hands it back,\n"
+           "  and --report-vce-coverage prints what the route asked of it.\n\n"
         << "Controls (defaults; see input.* in portable-data/cabinet.ini):\n"
         << "  Left Shift / Left    Left flipper (PCE d-pad left)\n"
         << "  Right / Right Shift  Right flipper (PCE d-pad right)\n"
@@ -6135,6 +6146,52 @@ void report_vdc_coverage(
               << "  interrupts: " << coverage->raster_compares
               << " raster compares, " << coverage->vertical_blanks
               << " vertical blanks\n";
+}
+
+// And the colour encoder's, where the interesting gaps are not about drawing
+// but about rates and stalls. A pinball table runs at one dot rate, in
+// colour, on a 262-line field, and never exhausts a frame's budget of stolen
+// cycles -- so most of what this device can do, a route like this one asks
+// for none of.
+void report_vce_coverage(
+    const devils_crush::emulation::PceRuntime& runtime)
+{
+    const auto coverage = runtime.native_vce_coverage();
+    if (!coverage) {
+        std::cout << "The emulator owned the colour encoder; no native paths "
+                     "to report.\n";
+        return;
+    }
+
+    std::cout << "Colour encoder paths:\n"
+              << "  frames " << coverage->frames << ", partials "
+              << coverage->partials << ", completed "
+              << coverage->frames_completed << '\n'
+              << "  scanlines " << coverage->scanlines << ", restarts "
+              << coverage->field_restarts << ", vertical blanks "
+              << coverage->vertical_blanks << '\n'
+              << "  chunks " << coverage->chunks << " ("
+              << coverage->floored_chunks << " floored), dot clocks "
+              << coverage->dot_clocks << '\n'
+              << "  pixels " << coverage->pixels << ", off-screen runs "
+              << coverage->off_screen_runs << '\n'
+              << "  rates: " << coverage->lines_at_rate[0] << ' '
+              << coverage->lines_at_rate[1] << ' '
+              << coverage->lines_at_rate[2] << ' '
+              << coverage->lines_at_rate[3] << '\n'
+              << "  register changes: " << coverage->dot_clock_changes
+              << " dot clock, " << coverage->monochrome_changes
+              << " monochrome, " << coverage->line_count_changes
+              << " line count\n"
+              << "  palette: " << coverage->palette_writes << " written, "
+              << coverage->palette_reads << " read\n"
+              << "  stalls: " << coverage->wait_state_requests
+              << " requested, " << coverage->wait_state_refusals
+              << " refused, " << coverage->stolen_cycles << " cycles\n"
+              << "  interrupts: " << coverage->irq_raises << " raised, "
+              << coverage->irq_lowers << " lowered\n"
+              << "  exits " << coverage->cpu_exits
+              << ", compact disc events " << coverage->cd_events << '\n';
 }
 
 [[nodiscard]] bool write_instruction_profile(
@@ -10234,6 +10291,15 @@ int main(const int argc, char* argv[])
             return EXIT_FAILURE;
         }
 
+        // And before the ROM for the same reason. Installed after the
+        // controller only for reading order: the boundary decides which
+        // controller the encoder clocks on every call, so either order lands
+        // in the same place.
+        if (!options.emulated_vce && !runtime->set_native_vce(true)) {
+            std::cerr << "Could not install the native colour encoder.\n";
+            return EXIT_FAILURE;
+        }
+
         const auto load_result = runtime->load_rom(options.rom_path);
         if (!load_result.loaded) {
             std::cerr << load_result.message << '\n';
@@ -10795,6 +10861,9 @@ int main(const int argc, char* argv[])
             }
             if (options.report_vdc_coverage) {
                 report_vdc_coverage(*runtime);
+            }
+            if (options.report_vce_coverage) {
+                report_vce_coverage(*runtime);
             }
             if (!routine_replays.empty()) {
                 const int replay_result = verify_routine_replays(

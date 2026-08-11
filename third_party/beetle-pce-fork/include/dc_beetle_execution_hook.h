@@ -330,6 +330,134 @@ typedef struct dc_beetle_video_snapshot {
     uint16_t background_y_scroll;
 } dc_beetle_video_snapshot;
 
+// The colour encoder's savestate fields, in the order the emulator writes
+// them. Roughly a kilobyte, so unlike the controller's this one travels on a
+// stack. The colour cache is absent because it is derived from these values
+// and the surface expansion, and a state that carried it could restore a
+// cache disagreeing with the palette it came from.
+typedef struct dc_beetle_vce_state {
+    uint16_t color_table[DC_BEETLE_PALETTE_ENTRY_COUNT];
+    int32_t ws_counter;
+    int32_t clock_divider;
+    // Both entries, because the emulator serializes both even on a machine
+    // with one controller and the format has to load in either arm.
+    int32_t child_event[2];
+    int32_t scanline;
+    int32_t pixel_offset;
+    int32_t hblank_counter;
+    int32_t vblank_counter;
+    uint16_t ctaddress;
+    uint8_t cr;
+    uint8_t hblank;
+    uint8_t vblank;
+    uint8_t need_sl_reset;
+} dc_beetle_vce_state;
+
+// One change of horizontal timing, as an installed encoder saw it. The
+// frontend keeps the resolution bookkeeping this feeds: which display
+// rectangle to show, and whether a frame mixed two dot rates and has to be
+// rescaled. A model reports the change; what is made of it stays here.
+typedef struct dc_beetle_vce_scanline_info {
+    // The four fields of the controller's HSR and HDR registers, in units of
+    // eight pixels.
+    int pulse;
+    int start;
+    int width;
+    int end;
+    // The dot rate in force, and the line it changed on.
+    int rate;
+    // Non-zero when the encoder is about to restart the field, which is when
+    // the recorder discards what it has.
+    int line;
+    int restart;
+} dc_beetle_vce_scanline_info;
+
+// A replacement for the emulator's colour encoder. While one is installed the
+// emulator's own `VCE` owns nothing: it receives no clocks, no port accesses,
+// no reset and no frame, and survives as the shape its savestate format is
+// written through and as the place the frontend's resolution bookkeeping
+// lives. The SuperGrafx is never routed, so a machine with two controllers
+// keeps the emulator's encoder entire.
+//
+// This is a wider seam than the controller's, because the encoder owns time
+// and draws. `sync` is the whole schedule: it advances the device to a
+// master-clock timestamp, drives the controller, and returns the next event
+// horizon the processor should stop at. `start_frame` hands over the
+// frontend's framebuffer, its pitch and its line-width array for the model to
+// write into directly.
+//
+// Four edges reach back out, exported as functions rather than carried here
+// because they run into machine state a model does not have: the interrupt
+// line, the cycles a stalled port access steals from the processor, the
+// request that the processor stop early, and the compact disc unit's next
+// event. A fifth, `dc_beetle_vce_report_scanline_info`, is not a machine edge
+// but a frontend one.
+//
+// The controller the encoder clocks is not part of this structure either. It
+// is reached through `dc_beetle_vce_vdc_*`, which dispatch to a native
+// controller model or to the emulator's own chip -- so an encoder may be
+// installed with the controller handed back, which is the arm that makes a
+// divergence attributable to one device rather than to the pair.
+typedef struct dc_beetle_vce_model {
+    void* user_data;
+    void (*reset)(void* user_data);
+    void (*reset_timestamp)(void* user_data, int32_t base);
+    // `framebuffer` and `line_widths` are the frontend's, and are null when
+    // `skip` is set. `awesome_mode` is the upscaled pixel path.
+    void (*start_frame)(
+        void* user_data,
+        uint16_t* framebuffer,
+        int32_t pitch,
+        int32_t* line_widths,
+        int skip,
+        int awesome_mode,
+        int scanline_start,
+        int scanline_end);
+    void (*start_partial)(void* user_data);
+    void (*finish_partial)(void* user_data);
+    int (*frame_done)(void* user_data);
+    int32_t (*sync)(void* user_data, int32_t timestamp);
+    int32_t (*calc_next_event)(void* user_data);
+    // The timestamp the last `sync` measured to. The emulator biases the
+    // compact disc event by how far the processor has run past it.
+    int32_t (*last_timestamp)(void* user_data);
+    void (*set_cd_event)(
+        void* user_data,
+        int32_t cycles,
+        int32_t time_behind);
+    // The encoder's own register file at $0400-$0405. Neither call
+    // synchronizes or publishes an event horizon; the caller does both around
+    // them, exactly as the emulator's own bodies are wrapped.
+    void (*write)(void* user_data, uint32_t address, uint8_t value);
+    uint8_t (*read)(void* user_data, uint32_t address);
+    // The controller's register file, reached through the encoder because the
+    // encoder holds the controller's event horizon.
+    void (*write_vdc)(void* user_data, uint32_t address, uint8_t value);
+    uint8_t (*read_vdc)(void* user_data, uint32_t address);
+    void (*write_vdc_st)(void* user_data, uint32_t address, uint8_t value);
+    void (*irq_change_check)(void* user_data);
+    int (*wait_state)(void* user_data, int32_t vdc_cycles);
+    // The two 512-entry expansions of a nine-bit palette entry into a screen
+    // colour, normal and greyscale. What those colours are is the display's
+    // decision and stays in the emulator; the model only merges them with
+    // palette memory.
+    void (*set_surface_palette)(
+        void* user_data,
+        const uint32_t* normal,
+        const uint32_t* grey);
+    void (*set_disabled_layer_colour)(void* user_data, uint32_t colour);
+    void (*set_show_horizontal_overscan)(void* user_data, int show);
+    void (*set_layer_enable_mask)(void* user_data, uint64_t mask);
+    void (*set_unlimited_sprites)(void* user_data, int unlimited);
+    // Fires the scanline-info edge with the timing in force, for a frontend
+    // that wants the last line of a finished frame.
+    void (*report_scanline_info)(void* user_data);
+    int32_t (*scanline)(void* user_data);
+    uint16_t (*peek_palette)(void* user_data, uint16_t address);
+    void (*capture_state)(void* user_data, dc_beetle_vce_state* state);
+    void (*apply_state)(void* user_data, const dc_beetle_vce_state* state);
+} dc_beetle_vce_model;
+
 // Beetle PCE is single-instance and thread-confined. Registration and callback
 // dispatch must occur on that same owning thread.
 extern dc_beetle_instruction_hook dc_beetle_active_instruction_hook;
@@ -353,6 +481,7 @@ extern uint32_t dc_beetle_replacement_max_depth;
 
 extern const dc_beetle_psg_model* dc_beetle_active_psg_model;
 extern const dc_beetle_vdc_model* dc_beetle_active_vdc_model;
+extern const dc_beetle_vce_model* dc_beetle_active_vce_model;
 
 void dc_beetle_reset_replacement_nesting_counters(void);
 
@@ -396,8 +525,52 @@ void dc_beetle_set_vdc_device(uint32_t vram_size);
 // it. The second charges the CPU for a stall and returns zero when the
 // per-frame budget of stolen cycles is spent -- a model that treats that
 // refusal as advisory will hang the machine rather than fail it.
+//
+// Both reach whichever encoder is current. That is the whole reason they were
+// exported as functions rather than wired to the emulator's encoder directly:
+// a native controller beside a native encoder has to stall and interrupt the
+// encoder that is actually clocking it, and neither the controller nor the
+// host has to know which one that is.
 void dc_beetle_vdc_irq_change(int raised);
 int dc_beetle_vdc_wait_state(int32_t cycles);
+
+// Installing an encoder model does not reset it, on the same terms as the
+// controller's: the machine resets its encoder at power-on and after a state
+// load, and a model installed between those has to be given a machine that
+// reaches one of them.
+void dc_beetle_set_vce_model(const dc_beetle_vce_model* model);
+void dc_beetle_clear_vce_model(void);
+
+// The four machine edges an installed encoder reaches back through. The first
+// sets the processor's interrupt line; the second charges it for a stall the
+// encoder has already decided is affordable, so there is nothing to return;
+// the third asks it to stop running early at a scanline boundary; the fourth
+// runs the compact disc unit up to a timestamp and returns its next event.
+void dc_beetle_vce_irq(int raised);
+void dc_beetle_vce_steal_cycles(int32_t cycles);
+void dc_beetle_vce_exit(void);
+int32_t dc_beetle_vce_cd_event(uint32_t timestamp);
+
+// The frontend edge. The emulator keeps the resolution bookkeeping and the
+// display rectangle, and this is where an installed encoder feeds them.
+void dc_beetle_vce_report_scanline_info(
+    const dc_beetle_vce_scanline_info* info);
+
+// The controller as an installed encoder reaches it. Each of these dispatches
+// exactly as the emulator's own encoder does -- to a native controller model
+// when one is installed, and to the emulator's first chip when none is. One
+// decision point serves both encoders, so installing the two models in either
+// order lands in the same place.
+int32_t dc_beetle_vce_vdc_reset(void);
+int32_t dc_beetle_vce_vdc_run(int32_t clocks, uint16_t* pixels, int skip);
+int32_t dc_beetle_vce_vdc_hsync(int in_hblank);
+int32_t dc_beetle_vce_vdc_vsync(int in_vblank);
+void dc_beetle_vce_vdc_write(uint32_t address, uint8_t value);
+uint8_t dc_beetle_vce_vdc_read(uint32_t address, int peek);
+int dc_beetle_vce_vdc_peek_irq(void);
+uint32_t dc_beetle_vce_vdc_get_register(unsigned id);
+void dc_beetle_vce_vdc_set_layer_enable_mask(uint64_t mask);
+void dc_beetle_vce_vdc_set_unlimited_sprites(int unlimited);
 
 // Copies the base PC Engine VDC/VCE state without retaining emulator-owned
 // pointers. The destination capacities must cover the fixed counts above.

@@ -183,6 +183,22 @@ public:
         return std::nullopt;
     }
 
+    [[nodiscard]] bool set_native_vce(bool) override
+    {
+        return false;
+    }
+
+    [[nodiscard]] bool native_vce_enabled() const noexcept override
+    {
+        return false;
+    }
+
+    [[nodiscard]] std::optional<video::PceVce::Coverage> native_vce_coverage()
+        const override
+    {
+        return std::nullopt;
+    }
+
     [[nodiscard]] bool set_bus_write_observer(
         BusWriteCallback) override
     {

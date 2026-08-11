@@ -46,6 +46,7 @@ function(dc_provide_beetle_pce)
         "${beetle_fork_root}/patches/0008-psg-device-model.patch"
         "${beetle_fork_root}/patches/0009-vdc-device-model.patch"
         "${beetle_fork_root}/patches/0010-vce-reference-observation.patch"
+        "${beetle_fork_root}/patches/0011-vce-device-model.patch"
     )
 
     find_package(Git REQUIRED)
@@ -233,7 +234,7 @@ function(dc_provide_beetle_pce)
                     "dc_beetle_active_vdc_model"
                     beetle_patch_marker_two
                 )
-            else()
+            elseif(beetle_patch_name MATCHES "^0010-")
                 string(
                     FIND
                     "${beetle_video_header}"
@@ -244,6 +245,19 @@ function(dc_provide_beetle_pce)
                     FIND
                     "${beetle_video_source}"
                     "VCE::DcObserve"
+                    beetle_patch_marker_two
+                )
+            else()
+                string(
+                    FIND
+                    "${beetle_video_header}"
+                    "DcOwned"
+                    beetle_patch_marker_one
+                )
+                string(
+                    FIND
+                    "${beetle_video_source}"
+                    "dc_beetle_vce_vdc_reset"
                     beetle_patch_marker_two
                 )
             endif()

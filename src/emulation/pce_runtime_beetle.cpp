@@ -3,6 +3,7 @@
 #include "devils_crush/emulation/pce_runtime.hpp"
 
 #include "devils_crush/audio/pce_psg.hpp"
+#include "devils_crush/video/pce_vce.hpp"
 #include "devils_crush/video/pce_vdc.hpp"
 
 #include <dc_beetle_execution_hook.h>
@@ -74,6 +75,77 @@ constexpr std::size_t kPcePaletteEntryCount =
         || logical_address == 0x1000U
         || (logical_address >= 0x1402U && logical_address <= 0x1403U);
 }
+
+// The controller as the native colour encoder reaches it. Every call goes
+// through the fork's exported bridge, which dispatches to the native
+// controller model when one is installed and to the emulator's own chip when
+// none is -- so this one object serves both arms, and the two models can be
+// installed in either order or one without the other.
+//
+// The alternative was for the host to hand the encoder a `PceVdcDevice` when
+// the native controller happens to be installed. That would put the same
+// decision in two places, and the two would have to agree about installation
+// order as well as about the answer.
+class BeetleVdcDevice final : public video::VdcDevice {
+public:
+    std::int32_t reset() noexcept override
+    {
+        return dc_beetle_vce_vdc_reset();
+    }
+
+    std::int32_t run(
+        const std::int32_t clocks,
+        std::uint16_t* const pixels,
+        const bool skip) noexcept override
+    {
+        return dc_beetle_vce_vdc_run(clocks, pixels, skip ? 1 : 0);
+    }
+
+    std::int32_t hsync(const bool in_hblank) noexcept override
+    {
+        return dc_beetle_vce_vdc_hsync(in_hblank ? 1 : 0);
+    }
+
+    std::int32_t vsync(const bool in_vblank) noexcept override
+    {
+        return dc_beetle_vce_vdc_vsync(in_vblank ? 1 : 0);
+    }
+
+    void write(
+        const std::uint32_t address,
+        const std::uint8_t value) noexcept override
+    {
+        dc_beetle_vce_vdc_write(address, value);
+    }
+
+    std::uint8_t read(
+        const std::uint32_t address,
+        const bool peek) noexcept override
+    {
+        return dc_beetle_vce_vdc_read(address, peek ? 1 : 0);
+    }
+
+    [[nodiscard]] bool peek_irq() const noexcept override
+    {
+        return dc_beetle_vce_vdc_peek_irq() != 0;
+    }
+
+    [[nodiscard]] std::uint32_t get_register(
+        const unsigned id) const noexcept override
+    {
+        return dc_beetle_vce_vdc_get_register(id);
+    }
+
+    void set_layer_enable_mask(const std::uint64_t mask) noexcept override
+    {
+        dc_beetle_vce_vdc_set_layer_enable_mask(mask);
+    }
+
+    void set_unlimited_sprites(const bool unlimited) noexcept override
+    {
+        dc_beetle_vce_vdc_set_unlimited_sprites(unlimited ? 1 : 0);
+    }
+};
 
 struct CoreOption {
     std::string_view key;
@@ -201,6 +273,8 @@ public:
         native_psg_.reset();
         dc_beetle_clear_vdc_model();
         native_vdc_.reset();
+        dc_beetle_clear_vce_model();
+        native_vce_.reset();
         shutdown_core();
         BeetlePceRuntime* expected = this;
         (void)active_runtime.compare_exchange_strong(
@@ -773,6 +847,86 @@ public:
         return native_vdc_->coverage();
     }
 
+    // The colour encoder. A wider seam than either device before it: this
+    // model owns the schedule, so the emulator's processor stops where the
+    // model says, and it draws, so the frontend's framebuffer crosses the
+    // boundary every frame.
+    //
+    // Four hooks reach back into the machine and one reaches the frontend.
+    // All five are the fork's exported edges rather than anything of this
+    // runtime's, for the same reason the controller's two were: they run
+    // into state a device model does not have, and inventing an answer here
+    // would be inventing the machine.
+    [[nodiscard]] bool set_native_vce(const bool enabled) override
+    {
+        assert_owner_thread();
+        if (!enabled) {
+            dc_beetle_clear_vce_model();
+            native_vce_.reset();
+            return true;
+        }
+        if (native_vce_) {
+            return true;
+        }
+
+        native_vce_ = std::make_unique<video::PceVce>();
+        native_vce_->set_vdc(&beetle_vdc_bridge_);
+        native_vce_->set_irq_hook(&vce_irq_hook, nullptr);
+        native_vce_->set_steal_cycles_hook(&vce_steal_cycles_hook, nullptr);
+        native_vce_->set_exit_hook(&vce_exit_hook, nullptr);
+        native_vce_->set_scanline_info_hook(&vce_scanline_info_hook, nullptr);
+        native_vce_->set_cd_event_hook(&vce_cd_event_hook, nullptr);
+        native_vce_model_ = {
+            .user_data = native_vce_.get(),
+            .reset = &vce_reset,
+            .reset_timestamp = &vce_reset_timestamp,
+            .start_frame = &vce_start_frame,
+            .start_partial = &vce_start_partial,
+            .finish_partial = &vce_finish_partial,
+            .frame_done = &vce_frame_done,
+            .sync = &vce_sync,
+            .calc_next_event = &vce_calc_next_event,
+            .last_timestamp = &vce_last_timestamp,
+            .set_cd_event = &vce_set_cd_event,
+            .write = &vce_write,
+            .read = &vce_read,
+            .write_vdc = &vce_write_vdc,
+            .read_vdc = &vce_read_vdc,
+            .write_vdc_st = &vce_write_vdc_st,
+            .irq_change_check = &vce_irq_change_check,
+            .wait_state = &vce_wait_state,
+            .set_surface_palette = &vce_set_surface_palette,
+            .set_disabled_layer_colour = &vce_set_disabled_layer_colour,
+            .set_show_horizontal_overscan =
+                &vce_set_show_horizontal_overscan,
+            .set_layer_enable_mask = &vce_set_layer_enable_mask,
+            .set_unlimited_sprites = &vce_set_unlimited_sprites,
+            .report_scanline_info = &vce_report_scanline_info,
+            .scanline = &vce_scanline,
+            .peek_palette = &vce_peek_palette,
+            .capture_state = &vce_capture_state,
+            .apply_state = &vce_apply_state,
+        };
+        dc_beetle_set_vce_model(&native_vce_model_);
+        return true;
+    }
+
+    [[nodiscard]] bool native_vce_enabled() const noexcept override
+    {
+        assert_owner_thread();
+        return native_vce_ != nullptr;
+    }
+
+    [[nodiscard]] std::optional<video::PceVce::Coverage> native_vce_coverage()
+        const override
+    {
+        assert_owner_thread();
+        if (native_vce_ == nullptr) {
+            return std::nullopt;
+        }
+        return native_vce_->coverage();
+    }
+
     [[nodiscard]] std::vector<InstructionProfileEntry>
     export_instruction_profile() const override
     {
@@ -1342,6 +1496,287 @@ private:
         restored->in_exvsync = state->in_exvsync != 0U;
 
         vdc_model(user_data).apply_state(*restored);
+    }
+
+    static video::PceVce& vce_model(void* const user_data) noexcept
+    {
+        return *static_cast<video::PceVce*>(user_data);
+    }
+
+    // The four machine edges and the frontend one. None carries a context:
+    // the fork's exported functions reach the single machine this process
+    // has, which is the same reason the controller's two carry none.
+    static void vce_irq_hook(void*, const bool raised)
+    {
+        dc_beetle_vce_irq(raised ? 1 : 0);
+    }
+
+    static void vce_steal_cycles_hook(void*, const std::int32_t cycles)
+    {
+        dc_beetle_vce_steal_cycles(cycles);
+    }
+
+    static void vce_exit_hook(void*)
+    {
+        dc_beetle_vce_exit();
+    }
+
+    static std::int32_t vce_cd_event_hook(
+        void*,
+        const std::uint32_t timestamp)
+    {
+        return dc_beetle_vce_cd_event(timestamp);
+    }
+
+    static void vce_scanline_info_hook(
+        void*,
+        const video::PceVce::ScanlineInfo& info)
+    {
+        const dc_beetle_vce_scanline_info reported{
+            .pulse = info.pulse,
+            .start = info.start,
+            .width = info.width,
+            .end = info.end,
+            .rate = info.rate,
+            .line = info.line,
+            .restart = info.restart ? 1 : 0,
+        };
+        dc_beetle_vce_report_scanline_info(&reported);
+    }
+
+    static void vce_reset(void* const user_data)
+    {
+        vce_model(user_data).reset();
+    }
+
+    static void vce_reset_timestamp(
+        void* const user_data,
+        const std::int32_t base)
+    {
+        vce_model(user_data).reset_timestamp(base);
+    }
+
+    // The framebuffer crosses here. `pixels` is the emulator's `bpp_t*`,
+    // which this build makes 16 bits wide, and the fork asserts that at the
+    // call site rather than trusting it.
+    static void vce_start_frame(
+        void* const user_data,
+        std::uint16_t* const framebuffer,
+        const std::int32_t pitch,
+        std::int32_t* const line_widths,
+        const int skip,
+        const int awesome_mode,
+        const int scanline_start,
+        const int scanline_end)
+    {
+        vce_model(user_data).start_frame(
+            framebuffer,
+            pitch,
+            line_widths,
+            skip != 0,
+            awesome_mode != 0,
+            scanline_start,
+            scanline_end);
+    }
+
+    static void vce_start_partial(void* const user_data)
+    {
+        vce_model(user_data).start_partial();
+    }
+
+    static void vce_finish_partial(void* const user_data)
+    {
+        vce_model(user_data).finish_partial();
+    }
+
+    static int vce_frame_done(void* const user_data)
+    {
+        return vce_model(user_data).frame_done() ? 1 : 0;
+    }
+
+    static std::int32_t vce_sync(
+        void* const user_data,
+        const std::int32_t timestamp)
+    {
+        return vce_model(user_data).sync(timestamp);
+    }
+
+    static std::int32_t vce_calc_next_event(void* const user_data)
+    {
+        return vce_model(user_data).calc_next_event();
+    }
+
+    static std::int32_t vce_last_timestamp(void* const user_data)
+    {
+        return vce_model(user_data).last_timestamp();
+    }
+
+    static void vce_set_cd_event(
+        void* const user_data,
+        const std::int32_t cycles,
+        const std::int32_t time_behind)
+    {
+        vce_model(user_data).set_cd_event(cycles, time_behind);
+    }
+
+    static void vce_write(
+        void* const user_data,
+        const std::uint32_t address,
+        const std::uint8_t value)
+    {
+        vce_model(user_data).write(address, value);
+    }
+
+    static std::uint8_t vce_read(
+        void* const user_data,
+        const std::uint32_t address)
+    {
+        return vce_model(user_data).read(address);
+    }
+
+    static void vce_write_vdc(
+        void* const user_data,
+        const std::uint32_t address,
+        const std::uint8_t value)
+    {
+        vce_model(user_data).write_vdc(address, value);
+    }
+
+    static std::uint8_t vce_read_vdc(
+        void* const user_data,
+        const std::uint32_t address)
+    {
+        return vce_model(user_data).read_vdc(address);
+    }
+
+    static void vce_write_vdc_st(
+        void* const user_data,
+        const std::uint32_t address,
+        const std::uint8_t value)
+    {
+        vce_model(user_data).write_vdc_st(address, value);
+    }
+
+    static void vce_irq_change_check(void* const user_data)
+    {
+        vce_model(user_data).irq_change_check();
+    }
+
+    static int vce_wait_state(
+        void* const user_data,
+        const std::int32_t vdc_cycles)
+    {
+        return vce_model(user_data).wait_state(vdc_cycles) ? 1 : 0;
+    }
+
+    static void vce_set_surface_palette(
+        void* const user_data,
+        const std::uint32_t* const normal,
+        const std::uint32_t* const grey)
+    {
+        vce_model(user_data).set_surface_palette(normal, grey);
+    }
+
+    static void vce_set_disabled_layer_colour(
+        void* const user_data,
+        const std::uint32_t colour)
+    {
+        vce_model(user_data).set_disabled_layer_colour(colour);
+    }
+
+    static void vce_set_show_horizontal_overscan(
+        void* const user_data,
+        const int show)
+    {
+        vce_model(user_data).set_show_horizontal_overscan(show != 0);
+    }
+
+    static void vce_set_layer_enable_mask(
+        void* const user_data,
+        const std::uint64_t mask)
+    {
+        vce_model(user_data).set_layer_enable_mask(mask);
+    }
+
+    static void vce_set_unlimited_sprites(
+        void* const user_data,
+        const int unlimited)
+    {
+        vce_model(user_data).set_unlimited_sprites(unlimited != 0);
+    }
+
+    static void vce_report_scanline_info(void* const user_data)
+    {
+        vce_model(user_data).report_scanline_info();
+    }
+
+    static std::int32_t vce_scanline(void* const user_data)
+    {
+        return vce_model(user_data).scanline();
+    }
+
+    static std::uint16_t vce_peek_palette(
+        void* const user_data,
+        const std::uint16_t address)
+    {
+        return vce_model(user_data).peek_palette(address);
+    }
+
+    static void vce_capture_state(
+        void* const user_data,
+        dc_beetle_vce_state* const state)
+    {
+        video::PceVce::State captured;
+        vce_model(user_data).capture_state(captured);
+
+        for (std::size_t entry = 0U;
+             entry < captured.color_table.size();
+             ++entry) {
+            state->color_table[entry] = captured.color_table[entry];
+        }
+
+        state->ws_counter = captured.ws_counter;
+        state->clock_divider = captured.clock_divider;
+        state->child_event[0] = captured.child_event[0];
+        state->child_event[1] = captured.child_event[1];
+        state->scanline = captured.scanline;
+        state->pixel_offset = captured.pixel_offset;
+        state->hblank_counter = captured.hblank_counter;
+        state->vblank_counter = captured.vblank_counter;
+        state->ctaddress = captured.ctaddress;
+        state->cr = captured.cr;
+        state->hblank = captured.hblank ? 1U : 0U;
+        state->vblank = captured.vblank ? 1U : 0U;
+        state->need_sl_reset = captured.need_sl_reset ? 1U : 0U;
+    }
+
+    static void vce_apply_state(
+        void* const user_data,
+        const dc_beetle_vce_state* const state)
+    {
+        video::PceVce::State restored;
+
+        for (std::size_t entry = 0U;
+             entry < restored.color_table.size();
+             ++entry) {
+            restored.color_table[entry] = state->color_table[entry];
+        }
+
+        restored.ws_counter = state->ws_counter;
+        restored.clock_divider = state->clock_divider;
+        restored.child_event[0] = state->child_event[0];
+        restored.child_event[1] = state->child_event[1];
+        restored.scanline = state->scanline;
+        restored.pixel_offset = state->pixel_offset;
+        restored.hblank_counter = state->hblank_counter;
+        restored.vblank_counter = state->vblank_counter;
+        restored.ctaddress = state->ctaddress;
+        restored.cr = state->cr;
+        restored.hblank = state->hblank != 0U;
+        restored.vblank = state->vblank != 0U;
+        restored.need_sl_reset = state->need_sl_reset != 0U;
+
+        vce_model(user_data).apply_state(restored);
     }
 
     void install_callbacks()
@@ -2175,6 +2610,11 @@ private:
     dc_beetle_psg_model native_psg_model_{};
     std::unique_ptr<video::PceVdc> native_vdc_;
     dc_beetle_vdc_model native_vdc_model_{};
+    std::unique_ptr<video::PceVce> native_vce_;
+    dc_beetle_vce_model native_vce_model_{};
+    // The controller the encoder clocks, whichever one that turns out to be.
+    // Stateless, so it outlives every install and uninstall of either model.
+    BeetleVdcDevice beetle_vdc_bridge_;
     // Counters are indexed directly by physical bank and logical PC. A bank's
     // 1 MiB page is allocated on first execution, so only the handful of banks
     // the game actually runs from is resident.

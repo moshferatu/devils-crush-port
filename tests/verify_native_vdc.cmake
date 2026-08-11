@@ -17,10 +17,12 @@ endif()
 # six interrupt sources, and the raster phase machine that decides when any of
 # it happens.
 #
-# The colour encoder is still the emulator's. It keeps the dot-clock divider,
-# the two blanking counters, the palette and the framebuffer, and it drives
-# the model with the same interleaving of clocks and blanking edges it drives
-# its own chip with. What changed is which chip answers.
+# The colour encoder is the emulator's in every arm here, and is handed back
+# explicitly rather than by default now that a native one exists. It keeps the
+# dot-clock divider, the two blanking counters, the palette and the
+# framebuffer, and it drives the model with the same interleaving of clocks
+# and blanking edges it drives its own chip with. What changed is which chip
+# answers. The arm where both are native belongs to `dc_rom_native_vce`.
 #
 # The acceptance is that the census does not move at all -- and the value it
 # must not move from is the one the sound slice pinned, because a video device
@@ -37,9 +39,9 @@ set(
 # most: without it the pinned hash would only prove that the two models agree
 # with each other, not that they still agree with the machine they replaced.
 set(arm_names native emulated_vdc emulated_both)
-set(arm_flags_native "--report-vdc-coverage")
-set(arm_flags_emulated_vdc "--emulated-vdc")
-set(arm_flags_emulated_both "--emulated-vdc;--emulated-psg")
+set(arm_flags_native "--report-vdc-coverage;--emulated-vce")
+set(arm_flags_emulated_vdc "--emulated-vdc;--emulated-vce")
+set(arm_flags_emulated_both "--emulated-vdc;--emulated-psg;--emulated-vce")
 
 foreach(arm IN LISTS arm_names)
     if(arm STREQUAL "native")

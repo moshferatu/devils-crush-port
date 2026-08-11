@@ -3,6 +3,7 @@
 #pragma once
 
 #include "devils_crush/audio/pce_psg.hpp"
+#include "devils_crush/video/pce_vce.hpp"
 #include "devils_crush/video/pce_vdc.hpp"
 
 #include <array>
@@ -425,6 +426,32 @@ public:
 
     [[nodiscard]] virtual std::optional<video::PceVdc::Coverage>
     native_vdc_coverage() const = 0;
+
+    // Replaces the emulator's colour encoder with the native device model in
+    // `devils_crush::video`. Wider again than the controller's seam, in two
+    // ways that matter.
+    //
+    // The model owns the schedule. It decides how the master clock divides
+    // into dot clocks, when the blanking counters flip, when a scanline
+    // advances, and where the emulator's processor is allowed to stop -- so
+    // installing it moves the machine's video timing across the boundary, not
+    // just a chip's answers.
+    //
+    // And it draws. The frontend's framebuffer, its pitch and its line-width
+    // array are handed over every frame and written directly. What a nine-bit
+    // palette entry looks like on a screen, how a multi-resolution frame is
+    // rescaled, and which rectangle to show stay with the emulator, because
+    // those are the display's decisions rather than the chip's.
+    //
+    // Independent of the controller. Either may be installed without the
+    // other: the encoder finds a native controller when one is registered and
+    // the emulator's chip when none is. Handing one back while keeping the
+    // other is what makes a difference in the picture attributable.
+    [[nodiscard]] virtual bool set_native_vce(bool enabled) = 0;
+    [[nodiscard]] virtual bool native_vce_enabled() const noexcept = 0;
+
+    [[nodiscard]] virtual std::optional<video::PceVce::Coverage>
+    native_vce_coverage() const = 0;
 
     // Savestates are opaque Beetle payloads plus the host frame counter.
     // Persistent storage must additionally bind them to the ROM and core

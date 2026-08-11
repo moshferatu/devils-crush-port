@@ -5496,38 +5496,160 @@ does not.
 
 ### Next
 
-**Install the colour encoder.** The model is written and proved; what is left
-is a fork patch in the shape of `0009` that routes `PCE_Power`, the
-`$0400`-`$0405` register file, the three controller-facing entry points,
-`RunPartial`, `StartFrame` and the frame boundary into
-`devils_crush::video::PceVce`, and a `framebuffer_sha256` census over the
-route to show the picture did not move.
+**The video interrupt and the frame boundary.** Both video chips are now
+native, and the picture is drawn entirely by this port's own code -- but the
+machine around them is still the emulator's, and the next seam is where the
+video devices meet time. Phase 3's list starts here: the timer reload and
+interrupt generation at `$0C00`/`$0C01`, the interrupt mask and acknowledge at
+`$1402`/`$1403`, and the raster interrupt the controller already raises but
+the emulator's processor still latches.
 
-Three things make it a wider seam than the controller's was.
+Three things about that seam are already visible from this slice.
 
-The model draws. Installing it means the emulator's framebuffer pointer,
-pitch and line-width array cross the boundary every frame, and the routing
-patch has to hand over `MDFN_Surface::pixels` as a `PceVce::Pixel*` — which
-is `bpp_t`, and is 16 bits only because this build selects RGB565. A static
-assertion at the boundary is cheaper than discovering it.
+The encoder already reaches four machine edges, and two of them are the whole
+of what a processor seam would have to take over: `HuCPU::StealCycles` and
+`HuCPU::Exit`. Everything the encoder asks its processor for turns out to be
+a counter it advances or a flag it sets -- which the reference shim proved by
+running an un-executed processor and answering all of it. That is a strong
+hint about how small the processor's *scheduling* surface is compared to its
+execution surface, and the two should be separated before either is ported.
 
-The model reaches the processor. Four edges have to be exported the way
-`dc_beetle_vdc_irq_change` and `dc_beetle_vdc_wait_state` were: the interrupt
-line, `HuCPU::StealCycles`, `HuCPU::Exit`, and the compact disc event. The
-first two already have exported edges from `0009` that do the same work;
-whether the patch reuses them or gives the encoder its own is worth deciding
-rather than defaulting.
+The interrupt line is already re-derived rather than edge-driven.
+`irq_change_check` polls the controller's latched status and publishes a
+level, exactly as `VCE::IRQChangeCheck` does, so a native interrupt controller
+would receive a level rather than a pulse. That is the easier of the two
+shapes to model and it is already the one in use.
 
-And the frontend keeps three things the model deliberately does not have.
-`vce_resolution` and the `scanline_info` array, which the routing patch has
-to fill from `ScanlineInfoHook`; `EndFrame`'s multi-resolution rescale and
-display rectangle; and `SetPixelFormat`'s expansion of a nine-bit palette
-entry into a screen colour, which stays where it is until something native
-owns the display.
+And the frame boundary is still `HuCPU.Run()` returning. `RunPartial` starts
+the frame's stall budget, runs the processor until the encoder asks it to
+stop, then repairs the line widths -- so "the spin loop becomes the native
+frame boundary" is a change to who calls whom, not a change to what the video
+devices do.
 
-The arms to run afterwards are the same four the controller's slice used: both
-models installed, the encoder handed back, the controller handed back, and
-both handed back. The last is what earns the others.
+Two smaller things this slice leaves open, both recorded rather than fixed.
+`floored_chunks` is still zero over 3,600 frames, so the schedule's
+already-due path has never run on a route; only `dc_vce_device` reaches it.
+And `dc_beetle_vce_cd_event` routes to `PCECD_Run` unconditionally, matching
+the emulator, but the compact disc event has never come due in any measurement
+-- the counter is printed so the gap stays visible rather than assumed away.
+
+### Previous: the colour encoder is installed
+
+Patch `0011` routes every entry point the machine has into the colour encoder
+-- power-on, the `$0400`-`$0405` register file, the three controller-facing
+entry points, `RunPartial`, `StartFrame`, the frame boundary and the savestate
+-- into `devils_crush::video::PceVce`. Both video chips are now this port's.
+
+**This is the first device that owns time rather than answering it.** The
+sound chip and the video controller were both driven: something else decided
+when they ran and for how long. The encoder decides. `Sync` -- the processor's
+event handler, and the one place the schedule is entered from -- is the entire
+seam, and behind it the master clock divides into dot clocks at one of four
+rates, the two blanking counters flip, the scanline advances, the controller
+is clocked, and the picture is written. The emulator's processor now runs
+until the model says to stop.
+
+It is also the first device that **draws**. The frontend's framebuffer, its
+pitch and its 263-entry line-width array cross the boundary every frame and
+are written directly. `bpp_t` is sixteen bits wide only because this build
+selects RGB565, so the handover carries a `static_assert` -- a changed pixel
+format should be a build failure rather than a silently wrong picture.
+
+**Four arms, all reproducing `9036a9de...`**, the hash the sound slice pinned
+and the controller slice reproduced: both video models installed, the
+controller handed back, the encoder handed back, and all three device models
+handed back. The census carries a framebuffer hash per frame, so a single
+wrong pixel on a single frame fails it; the route drew 294,840,000 pixels
+through the model. The last arm is what earns the other three -- without it a
+matching hash would only show the models agree with each other.
+
+**The open question about which controller the encoder clocks had one right
+answer and several plausible wrong ones.** The host owns both objects, so it
+could hand the encoder a native-controller bridge when the native controller
+happens to be installed. That would be a *second* copy of a decision the fork
+has already been making since `0009`, and the two would have to agree about
+installation order as well as about the answer. So the fork exports its own
+`DcVDC_*` dispatch as `dc_beetle_vce_vdc_*` and the host's bridge is one
+stateless object that always forwards there. All four combinations then work
+without anyone enumerating them.
+
+That leaves `PceVdcDevice` — the wrapper the previous slice built to put the
+native controller behind the interface — used by `dc_vce_device` and by
+nothing in the host. That is the right outcome rather than a leftover: the
+differential test is the one place the two native devices are joined with no
+emulator between them at all, and it is exactly where they should be joined
+that way. In the running host the emulator still owns the machine, so the
+join goes through the machine.
+
+The same question came back inverted. A native controller stalls and
+interrupts through `dc_beetle_vdc_wait_state` and `dc_beetle_vdc_irq_change`,
+which reached the emulator's encoder by name; with a native encoder they have
+to reach that one. The `### Next` note had asked whether to reuse those two
+edges or give the encoder its own. Reusing them turned out not to be an
+economy but the only correct answer: a controller must not have to know which
+encoder is clocking it. `VCE::IRQChangeCheck` and `VCE::WS_Hook` gained the
+same dispatch, which is what makes the encoder-native/controller-emulated arm
+work at all.
+
+**Three things stayed behind, and all three are the display's business rather
+than the chip's.** What a nine-bit palette entry looks like on a screen is
+computed by `SetPixelFormat` and handed to the model ready made. The
+multi-resolution rescale and the display rectangle in `EndFrame` are computed
+from what the encoder recorded. And the resolution bookkeeping the frontend
+reads is fed by the model reporting each change of horizontal timing --
+`write_scanline_info` became that report's destination rather than its author,
+which is the whole of that seam.
+
+**The census cannot reach a savestate, and both video models have one.** A
+recorded route never saves or loads, so both shuttles could have dropped half
+their fields and every arm of every census would still have matched. That gap
+had been open since the controller was installed. `dc_rom_video_state_shuttle`
+closes it with the cheapest instrument that is not blind to it: a routine
+replay serializes at the frame before a chosen call, restores into it, and
+re-runs the call, so a lost field produces different work RAM or a different
+write transcript. Two arms over eight save-and-restore cycles, and they must
+reproduce the *same* calls -- same frame, same body cycles, same write count
+-- because a replay compares each arm only against itself and two different
+machines can each be self-consistent.
+
+Eight rather than one, and the count is load-bearing. The first version of
+that test replayed once, passed, and was reported as guarding the shuttle
+while the install still carried a defect that needed six. It was rewritten
+and then checked the only way such a claim can be checked: with the fix
+removed, it fails; with the fix in, it passes.
+
+**Installing the encoder broke four ROM tests, and only one of the two faults
+behind it was mine.** Both were found by the four tests that use six or more
+routine replays, none of which is about video.
+
+Mine was a double report. On a state load the emulator's own loader calls
+`SetVCECR` on the dormant object, which reported a change of horizontal timing
+to the frontend, and the model's `apply_state` reported the same change a
+moment later. A model that owns a device must not leave the dormant object
+able to speak for it; `write_scanline_info` now returns early when a model is
+installed.
+
+The other was upstream's, and it is the more useful one. The frontend's
+`scanline_info` array holds sixteen entries behind a counter that has never
+been bounded, safe only while a field restart arrives before a seventeenth
+report -- and a host that loads ten savestates without a full field between
+them breaks that. **The overrun reproduces with every device model handed
+back**, so the code that overruns is the emulator's. What the routing patch
+changed was only which statics sit behind the array, and so whether the
+corruption crashed or was quietly absorbed. A patch that adds functions and
+file-scope declarations to a translation unit is not inert with respect to
+memory even when it is inert with respect to behaviour.
+
+That took a wrong turn worth recording. Having found the double report first,
+I bounded the array, then reverted the bound on the argument that it masked
+the double report and removed the alarm that had caught it. The argument was
+built on the assumption that the overrun was mine; the one run with everything
+handed back showed it was not, and the reasoning had to be discarded rather
+than adjusted. The bound is back, as the fix for a real upstream fault.
+
+`dc_rom_native_psg` and `dc_rom_native_vdc` now hand the encoder back
+explicitly. Their arms were written to isolate one device, and with a native
+encoder installed by default they would quietly have stopped doing that.
 
 ### Previous: the encoder is written and proved
 

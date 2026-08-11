@@ -38,17 +38,18 @@ set(
 
 set(emulated_output "${OUTPUT}.emulated.csv")
 
-# Both arms hand the video display controller back to the emulator, so this
-# stays the test it was written to be: one device model, changed on its own,
-# against the machine it replaced. The combination where both models are
-# installed is the native arm of `dc_rom_native_vdc`.
+# Both arms hand the whole video side -- controller and colour encoder --
+# back to the emulator, so this stays the test it was written to be: one
+# device model, changed on its own, against the machine it replaced. The
+# combinations where several models are installed together are the native
+# arms of `dc_rom_native_vdc` and `dc_rom_native_vce`.
 foreach(arm IN ITEMS native emulated)
     if(arm STREQUAL "native")
         set(arm_output "${OUTPUT}")
-        set(arm_flags "--emulated-vdc")
+        set(arm_flags "--emulated-vdc;--emulated-vce")
     else()
         set(arm_output "${emulated_output}")
-        set(arm_flags "--emulated-psg;--emulated-vdc")
+        set(arm_flags "--emulated-psg;--emulated-vdc;--emulated-vce")
     endif()
 
     execute_process(

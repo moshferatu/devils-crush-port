@@ -297,6 +297,12 @@ public:
     void report_scanline_info() noexcept;
 
     [[nodiscard]] std::int32_t scanline() const noexcept { return scanline_; }
+    // The timestamp the last `sync` measured to. A machine arming the compact
+    // disc event has to bias it by how far its processor has run past this.
+    [[nodiscard]] std::int32_t last_timestamp() const noexcept
+    {
+        return last_ts_;
+    }
     [[nodiscard]] unsigned dot_clock() const noexcept { return dot_clock_; }
     [[nodiscard]] bool show_horizontal_overscan() const noexcept
     {

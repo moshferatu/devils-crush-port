@@ -1591,6 +1591,96 @@ already installed and correct, and two of its signatures would have had to
 widen to match. **Do not change a device that is currently right to suit one
 that does not exist yet.** A wrapper is the cheaper apology.
 
+### Two models, one place that decides which
+
+Installing the encoder created a question the earlier device seams never
+raised: with two native video devices that talk to each other, who decides
+whether the encoder clocks the native controller or the emulator's chip?
+
+The tempting answer is the host, which owns both objects: hand the encoder a
+native-controller bridge when the native controller is installed, and an
+emulator bridge otherwise. It is a few lines and it is wrong. The fork already
+makes that decision — `DcVDC_*` has dispatched on `dc_beetle_active_vdc_model`
+since the controller was installed — so the host's version would be a *second*
+copy of it, and the two would have to agree not only about the answer but
+about installation order, since either model can be registered first.
+
+So the fork exports its existing dispatch as `dc_beetle_vce_vdc_*`, and the
+host's bridge is one stateless object that always forwards there. **One
+decision point, made where the evidence already lives.** All four combinations
+then work without anyone enumerating them, and installing the two models in
+either order lands in the same place.
+
+The same question came back in the other direction and had the same answer. A
+native controller stalls and interrupts through `dc_beetle_vdc_wait_state` and
+`dc_beetle_vdc_irq_change`, which reached the emulator's encoder by name. With
+a native encoder they must reach *that* one instead — so those two functions
+gained the same dispatch rather than the controller gaining a second pair of
+edges. The `### Next` note had asked whether to reuse them or give the encoder
+its own; reusing them turned out not to be an economy but the only correct
+answer, because a controller must not have to know which encoder is clocking
+it.
+
+### The census cannot reach the savestate
+
+Two device models now carry state the emulator's savestate format is written
+through, and each has a shuttle that moves it into the dormant object before a
+save and back out after a load. Both shuttles had no test.
+
+Not through neglect — through a gap in what a census can see. **A recorded
+route never saves or loads a state**, so every arm of every census would match
+with a shuttle that dropped half its fields. The acceptance that has carried
+this port since the sound slice is structurally blind to this one thing.
+
+The cheapest instrument that is not blind to it was already in the host: a
+routine replay serializes at the frame before a chosen call, deserializes back
+into it, and re-runs the call, so a shuttle that lost a field restores a
+machine that produces different work RAM or a different write transcript.
+`dc_rom_video_state_shuttle` runs that in two arms and requires the restored
+call to be the *same* call — same frame, same body cycles, same write count —
+because a replay compares each arm only against itself, and two different
+machines can each be self-consistent.
+
+**When an acceptance has been reliable for several slices, ask what shape of
+bug it cannot have a symptom for.**
+
+### A routing patch moves memory, and silent corruption stops being silent
+
+Installing the encoder broke four ROM tests with an access violation. Two
+faults were behind it, and only one of them was mine.
+
+The first was: on a state load the emulator's own loader calls `SetVCECR` on
+the dormant object, which reported a change of horizontal timing to the
+frontend — and the model's `apply_state` reported the same change a moment
+later. Two entries per load where there should be one. A model that owns a
+device must not leave the dormant object able to speak for it, and
+`write_scanline_info` now returns early when a model is installed.
+
+The second was upstream's, and it is the more useful lesson. The frontend's
+`scanline_info` array holds sixteen entries behind an unbounded counter, safe
+only while a field restart arrives before a seventeenth report. A host that
+loads ten savestates without a full field between them breaks that promise.
+**The overrun reproduces with every device model handed back**, so the code
+that overruns is the emulator's — what the patch changed was only which
+statics sit behind the array, and therefore whether the corruption crashed or
+was quietly absorbed.
+
+Two things to take from that. **A patch that adds functions and file-scope
+declarations to a translation unit is not inert with respect to memory, even
+when it is inert with respect to behaviour** — it relocates everything after
+it, so a pre-existing overrun can change from harmless to fatal, or the
+reverse. And when a new seam produces a crash, **check the fully-handed-back
+arm before believing the seam caused it**; here that one run separated a bug
+worth fixing carefully from a bug that was already there.
+
+The wrong turn is also worth recording. I diagnosed the double-report first,
+bounded the array, then reverted the bound on the argument that it masked the
+double-report and removed the alarm. That argument was built on the assumption
+that the overrun was mine. It was not, the bound was the fix for a real
+upstream fault, and the reasoning had to be thrown away rather than patched.
+**An elegant argument resting on an unverified premise is worth less than the
+one run that tests the premise.**
+
 ## Commands
 
 Assuming the full host preset has been configured and `DC_ROM_PATH` is
