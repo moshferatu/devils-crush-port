@@ -32,6 +32,13 @@
 // because `dc_irq_device` has already proved those two equal field for
 // field. Any difference this test sees is therefore the scheduler's.
 //
+// One thing is checked on the native arm that has no reference counterpart
+// at all: that the register block the model hands out does not move, and is
+// the storage the accessors read rather than a copy of it. That is not a
+// property the emulator has an opinion about -- it is the contract the
+// install seam rests on, because a machine takes the block's address once
+// and reads its clock out of it from then on.
+//
 // Two things are deliberately not compared. An overclock rate of zero,
 // because the emulator divides by it and the setting it comes from cannot
 // produce it; the model's refusal is checked on the native arm alone. And
@@ -774,6 +781,37 @@ int main()
                 && restored.master_clocks_per_cycle()
                     == HuC6280Scheduler::kMasterClocksPerFastCycle,
             "a rate outside its one bit is masked back into it on load");
+    }
+
+    section("the block a machine points at");
+    {
+        // The seam this model is installed through is its storage rather
+        // than its interface: a machine takes the address of this block once
+        // and reads the clock, the near horizon and the loop flag out of it
+        // for as long as the model is installed. Two things have to hold for
+        // that to be safe, and neither is visible from the interface alone.
+        const auto& block = pair.native.registers();
+
+        check(
+            &pair.native.registers() == &block,
+            "the block does not move, so a machine may hold its address");
+
+        const std::uint32_t before = block.timestamp;
+        advance(pair, 4);
+
+        check(
+            block.timestamp == pair.native.timestamp()
+                && block.timestamp != before,
+            "and it is the storage the accessors read, not a copy of it");
+        check(
+            block.next_event == pair.native.next_event()
+                && block.next_user_event == pair.native.next_user_event()
+                && block.run_flag == pair.native.run_flag()
+                && block.speed == pair.native.speed()
+                && (HuC6280Scheduler::kMasterClocksPerFastCycle
+                       << block.speed_shift)
+                    == pair.native.master_clocks_per_cycle(),
+            "for every field a machine reads without asking");
     }
 
     section("a rate of zero is refused rather than reproduced");

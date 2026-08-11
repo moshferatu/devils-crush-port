@@ -4,6 +4,7 @@
 
 #include "devils_crush/audio/pce_psg.hpp"
 #include "devils_crush/cpu/huc6280_irq.hpp"
+#include "devils_crush/cpu/huc6280_scheduler.hpp"
 #include "devils_crush/video/pce_vce.hpp"
 #include "devils_crush/video/pce_vdc.hpp"
 
@@ -278,6 +279,8 @@ public:
         native_vce_.reset();
         dc_beetle_clear_irq_model();
         native_irq_.reset();
+        dc_beetle_clear_scheduler_model();
+        native_scheduler_.reset();
         shutdown_core();
         BeetlePceRuntime* expected = this;
         (void)active_runtime.compare_exchange_strong(
@@ -986,6 +989,73 @@ public:
             return std::nullopt;
         }
         return native_irq_->coverage();
+    }
+
+    // The clock and event scheduler. The one seam whose install moves memory
+    // rather than redirecting calls: the model's register block becomes the
+    // block the processor reads its clock, its near horizon and its loop flag
+    // out of. Everything that *changes* those is still a call.
+    //
+    // The four hooks below are what the scheduler stops for. Three of them
+    // are the timer, and they are wired to the fork's own edges rather than
+    // straight to `native_irq_`: the scheduler must stop for whichever timer
+    // the machine has, and a native scheduler beside an emulated controller
+    // is a combination the census arms actually run.
+    [[nodiscard]] bool set_native_scheduler(const bool enabled) override
+    {
+        assert_owner_thread();
+        if (!enabled) {
+            dc_beetle_clear_scheduler_model();
+            native_scheduler_.reset();
+            return true;
+        }
+        if (native_scheduler_) {
+            return true;
+        }
+
+        native_scheduler_ = std::make_unique<cpu::HuC6280Scheduler>();
+        native_scheduler_->set_timer_sync_hook(&scheduler_sync_timer, nullptr);
+        native_scheduler_->set_timer_horizon_hook(
+            &scheduler_timer_horizon,
+            nullptr);
+        native_scheduler_->set_timer_rebase_hook(
+            &scheduler_rebase_timer,
+            nullptr);
+        native_scheduler_->set_user_event_hook(
+            &scheduler_user_event,
+            nullptr);
+        native_scheduler_model_ = {
+            .user_data = native_scheduler_.get(),
+            .registers = scheduler_registers(*native_scheduler_),
+            .init = &scheduler_init,
+            .advance = &scheduler_advance,
+            .advance_master = &scheduler_advance_master,
+            .recalculate = &scheduler_recalculate,
+            .set_event = &scheduler_set_event,
+            .sync_and_reset_timestamp = &scheduler_sync_and_reset_timestamp,
+            .set_overclock = &scheduler_set_overclock,
+            .set_speed = &scheduler_set_speed,
+            .run = &scheduler_run,
+            .exit = &scheduler_exit,
+        };
+        dc_beetle_set_scheduler_model(&native_scheduler_model_);
+        return true;
+    }
+
+    [[nodiscard]] bool native_scheduler_enabled() const noexcept override
+    {
+        assert_owner_thread();
+        return native_scheduler_ != nullptr;
+    }
+
+    [[nodiscard]] std::optional<cpu::HuC6280Scheduler::Coverage>
+    native_scheduler_coverage() const override
+    {
+        assert_owner_thread();
+        if (native_scheduler_ == nullptr) {
+            return std::nullopt;
+        }
+        return native_scheduler_->coverage();
     }
 
     [[nodiscard]] std::vector<InstructionProfileEntry>
@@ -1987,6 +2057,131 @@ private:
         irq_model(user_data).apply_state(restored);
     }
 
+    static cpu::HuC6280Scheduler& scheduler_model(void* const user_data)
+        noexcept
+    {
+        return *static_cast<cpu::HuC6280Scheduler*>(user_data);
+    }
+
+    // The one place in the port where a native model's storage is handed to
+    // the emulator rather than copied into it, so the two declarations of the
+    // block have to agree field for field. They are declared apart on purpose:
+    // the model is meant to outlive the emulator, and a model that included
+    // the fork's header to name its own state would not.
+    [[nodiscard]] static dc_beetle_scheduler_registers* scheduler_registers(
+        cpu::HuC6280Scheduler& model) noexcept
+    {
+        using Native = cpu::HuC6280Scheduler::Registers;
+        using Fork = dc_beetle_scheduler_registers;
+
+        static_assert(sizeof(Native) == sizeof(Fork));
+        static_assert(alignof(Native) == alignof(Fork));
+        static_assert(offsetof(Native, timestamp)
+            == offsetof(Fork, timestamp));
+        static_assert(offsetof(Native, timestamp_fraction)
+            == offsetof(Fork, timestamp_fraction));
+        static_assert(offsetof(Native, overclock_rate)
+            == offsetof(Fork, overclock_rate));
+        static_assert(offsetof(Native, next_event)
+            == offsetof(Fork, next_event));
+        static_assert(offsetof(Native, next_user_event)
+            == offsetof(Fork, next_user_event));
+        static_assert(offsetof(Native, run_flag) == offsetof(Fork, run_flag));
+        static_assert(offsetof(Native, speed) == offsetof(Fork, speed));
+        static_assert(offsetof(Native, speed_shift)
+            == offsetof(Fork, speed_shift));
+
+        return reinterpret_cast<Fork*>(&model.registers());
+    }
+
+    // The three edges the scheduler stops for the timer at, and the one it
+    // stops for the machine's event handler at. All four reach the fork's own
+    // dispatch rather than this runtime's native controller, so that a native
+    // scheduler stops for whichever timer the machine actually has.
+    static void scheduler_sync_timer(void*, std::int32_t)
+    {
+        dc_beetle_scheduler_sync_timer();
+    }
+
+    static std::int32_t scheduler_timer_horizon(void*)
+    {
+        return dc_beetle_scheduler_timer_horizon();
+    }
+
+    static void scheduler_rebase_timer(void*, const std::int32_t base)
+    {
+        dc_beetle_scheduler_rebase_timer(base);
+    }
+
+    static std::int32_t scheduler_user_event(
+        void*,
+        const std::int32_t timestamp)
+    {
+        return dc_beetle_scheduler_user_event(timestamp);
+    }
+
+    static void scheduler_init(void* const user_data)
+    {
+        scheduler_model(user_data).init();
+    }
+
+    static void scheduler_advance(
+        void* const user_data,
+        const std::int32_t cycles)
+    {
+        scheduler_model(user_data).advance(cycles);
+    }
+
+    static void scheduler_advance_master(
+        void* const user_data,
+        const std::int32_t master_clocks)
+    {
+        scheduler_model(user_data).advance_master(master_clocks);
+    }
+
+    static void scheduler_recalculate(void* const user_data)
+    {
+        scheduler_model(user_data).recalculate();
+    }
+
+    static void scheduler_set_event(
+        void* const user_data,
+        const std::int32_t cycles)
+    {
+        scheduler_model(user_data).set_event(cycles);
+    }
+
+    static void scheduler_sync_and_reset_timestamp(
+        void* const user_data,
+        const std::int32_t base)
+    {
+        scheduler_model(user_data).sync_and_reset_timestamp(base);
+    }
+
+    static void scheduler_set_overclock(
+        void* const user_data,
+        const std::uint32_t rate)
+    {
+        scheduler_model(user_data).set_overclock(rate);
+    }
+
+    static void scheduler_set_speed(
+        void* const user_data,
+        const std::uint8_t speed)
+    {
+        scheduler_model(user_data).set_speed(speed);
+    }
+
+    static void scheduler_run(void* const user_data, const int step_mode)
+    {
+        scheduler_model(user_data).run(step_mode != 0);
+    }
+
+    static void scheduler_exit(void* const user_data)
+    {
+        scheduler_model(user_data).exit();
+    }
+
     void install_callbacks()
     {
         retro_set_environment(&environment_callback);
@@ -2822,6 +3017,8 @@ private:
     dc_beetle_vce_model native_vce_model_{};
     std::unique_ptr<cpu::HuC6280Irq> native_irq_;
     dc_beetle_irq_model native_irq_model_{};
+    std::unique_ptr<cpu::HuC6280Scheduler> native_scheduler_;
+    dc_beetle_scheduler_model native_scheduler_model_{};
     // The controller the encoder clocks, whichever one that turns out to be.
     // Stateless, so it outlives every install and uninstall of either model.
     BeetleVdcDevice beetle_vdc_bridge_;

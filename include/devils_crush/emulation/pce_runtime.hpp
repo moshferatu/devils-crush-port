@@ -4,6 +4,7 @@
 
 #include "devils_crush/audio/pce_psg.hpp"
 #include "devils_crush/cpu/huc6280_irq.hpp"
+#include "devils_crush/cpu/huc6280_scheduler.hpp"
 #include "devils_crush/video/pce_vce.hpp"
 #include "devils_crush/video/pce_vdc.hpp"
 
@@ -476,6 +477,28 @@ public:
 
     [[nodiscard]] virtual std::optional<cpu::HuC6280Irq::Coverage>
     native_irq_coverage() const = 0;
+
+    // Replaces the HuC6280's clock and event scheduler with the native device
+    // model in `devils_crush::cpu`. The fifth seam and the first whose shape
+    // is a block of memory rather than a call table: the model hands the
+    // processor its register block and the processor reads the clock, the
+    // near horizon and the loop flag straight out of it, because all three are
+    // read from inside the instruction loop.
+    //
+    // Every *change* to that block is still a call on the model -- the two
+    // advances above all, which is where everything the machine does to time
+    // arrives. What stays with the processor is execution: fetching an opcode
+    // and deciding at an instruction boundary that an interrupt has arrived.
+    //
+    // Must be set before a ROM loads. This is stricter than the four before
+    // it, and for a reason those did not have: installing moves where the
+    // machine's clock lives, so a machine already running would find its clock
+    // replaced underneath it rather than merely its device handed over.
+    [[nodiscard]] virtual bool set_native_scheduler(bool enabled) = 0;
+    [[nodiscard]] virtual bool native_scheduler_enabled() const noexcept = 0;
+
+    [[nodiscard]] virtual std::optional<cpu::HuC6280Scheduler::Coverage>
+    native_scheduler_coverage() const = 0;
 
     // Savestates are opaque Beetle payloads plus the host frame counter.
     // Persistent storage must additionally bind them to the ROM and core

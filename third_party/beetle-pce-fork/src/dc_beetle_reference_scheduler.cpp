@@ -35,6 +35,20 @@ void absorb(dc_beetle_reference_scheduler* const self, const int32 timestamp)
     }
 }
 
+// The rate, and the shift the emulator shadows it with. Two of the processor's
+// scheduler fields have no public entry point that moves them without
+// executing an instruction -- `speed` is written by CSL and CSH, the loop flag
+// by `Run`, which runs -- so a scheduler driven without a processor reaches
+// them the way a native machine will, by writing the block the processor is
+// using. The derivation is duplicated here rather than called, which is the
+// price of not carrying a test-only setter in the fork.
+void set_speed(const uint8_t speed)
+{
+    dc_beetle_active_scheduler_registers->speed = speed;
+    dc_beetle_active_scheduler_registers->speed_shift =
+        (uint8_t)((speed ^ 1) << 1);
+}
+
 int32 MDFN_FASTCALL reference_event_handler(const int32 timestamp)
 {
     dc_beetle_reference_scheduler* const self = g_active;
@@ -68,8 +82,8 @@ dc_beetle_reference_scheduler* dc_beetle_reference_scheduler_create(void)
     // The two fields `Init` leaves alone. A test that started from whatever
     // the last thing in this process left behind would be comparing two
     // arms that had not agreed on where they began.
-    HuCPU.DcSetSpeed(0);
-    HuCPU.DcSetRunFlag(0);
+    set_speed(0);
+    dc_beetle_active_scheduler_registers->run_flag = 0;
 
     return self;
 }
@@ -186,7 +200,7 @@ void dc_beetle_reference_scheduler_set_speed(
 {
     (void)self;
 
-    HuCPU.DcSetSpeed((uint8)speed);
+    set_speed(speed);
 }
 
 void dc_beetle_reference_scheduler_run(
@@ -195,7 +209,7 @@ void dc_beetle_reference_scheduler_run(
 {
     (void)self;
 
-    HuCPU.DcSetRunFlag(step_mode ? -1 : 1);
+    dc_beetle_active_scheduler_registers->run_flag = step_mode ? -1 : 1;
 }
 
 void dc_beetle_reference_scheduler_exit(

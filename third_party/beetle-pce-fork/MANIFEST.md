@@ -79,7 +79,8 @@ this repository.
   executed one move it identically, and everything it does happens inside
   `StealCycles`. Two of its fields have no public entry point at all, `speed`
   being written by CSL and CSH and the loop flag by `Run`, and both are
-  reached through the setters `0014` adds. Unlike the other three shims this
+  reached by writing the register block `0015` makes public -- which is how a
+  native machine reaches them too. Unlike the other three shims this
   one installs the *user event handler* as well, because when the handler is
   called and with what timestamp is half of what is being tested: the
   installed handler returns a configurable interval and folds every call into
@@ -93,6 +94,21 @@ this repository.
   no counterpart in the other three -- the three values the processor mirrors
   from the model, read back after every dispatch, because they are on the
   emulator's hottest path and cannot be fetched through a call.
+- `dc_beetle_scheduler_registers` and `dc_beetle_scheduler_model` in
+  `include/dc_beetle_execution_hook.h`, with
+  `dc_beetle_active_scheduler_registers` beside them: the fifth device-model
+  boundary, installed by `0015`. The registers block is what makes this one
+  unlike the four before it -- it is the device's whole state, owned by the
+  model and pointed at by the processor, so that the clock, the near horizon
+  and the loop flag can be read from inside the instruction loop without a
+  dispatch. The pointer is never null; with no model installed it addresses
+  this boundary's own storage.
+- `dc_beetle_scheduler_sync_timer`, `dc_beetle_scheduler_timer_horizon`,
+  `dc_beetle_scheduler_rebase_timer` and `dc_beetle_scheduler_user_event` in
+  `src/dc_beetle_execution_hook.cpp`: the four machine edges an installed
+  scheduler stops at. Three are the timer and reach whichever controller the
+  machine has; the fourth is the user event handler, called at the moment its
+  horizon came due rather than the moment the scheduler noticed.
 
 ## Patch series
 
@@ -383,6 +399,51 @@ this repository.
     - Adds no data members, so the processor object's layout and the
       `MDFN_ALIGN(128)` assertion in `Init` are untouched. Changes nothing
       for any caller that does not use these.
+15. `patches/0015-huc6280-scheduler-device-model.patch`
+    - Routes the HuC6280's clock and event scheduler to a registered
+      `dc_beetle_scheduler_model`. The fifth device seam, and the first whose
+      shape is a block of memory rather than a call table.
+    - The clock, its remainder, the overclock rate, both event horizons, the
+      loop flag, the clock rate and the shift that shadows it stop being
+      members of `HuC6280` and become the eight fields of a
+      `dc_beetle_scheduler_registers` block that `DcSched()` points at. With
+      no model registered that block is the boundary's own storage, so the
+      uninstalled machine is the emulator's own scheduler and nothing else.
+    - That is the one design decision here that is not mechanical routing,
+      and it is the opposite of `0013`'s. The controller could be mirrored
+      because the processor only *reads* the three values on its hot path;
+      this device is *written* on its hot path, so a mirror would have to be
+      refreshed from inside `ADDCYC`. Worse, the handler an advance stops for
+      reads the clock back and re-arms its own horizon while that advance is
+      still on the stack -- a mirror would be stale exactly there. Sharing
+      the storage removes the question: reads are loads, writes are calls.
+    - `Init`, `ADDCYC` and `ADDCYC_MASTER`, `CalcNextEvent`, `SetEvent`,
+      `SyncAndResetTimestamp`, `SetOverclock`, `Run`, `Exit` and the CSL and
+      CSH opcodes dispatch when a model is installed. `Timestamp`, the near
+      horizon read by the `WAI` opcode, the loop condition in `RunSub`, the
+      block-move loop check and the replacement machinery's stall pricing do
+      not: they read the block.
+    - `Reset` and `Power` are absent from that list because they touch this
+      device in neither arm. Between them they clear the whole processor and
+      the whole interrupt controller and leave every field here exactly as it
+      was; only `Init` puts the clock back to zero.
+    - The savestate needs no shuttle, which no other seam has managed. The
+      four entries this device owns are written straight through the block by
+      `SFVARN`, so the format stays the emulator's without a capture-and-apply
+      pair to keep in step with it; the load-time repair `speed &= 0x01`
+      followed by `REDOSPEEDCACHE` writes the model's own fields in place.
+    - `DcTimerHorizon`, `DcRebaseTimer` and `DcUserEvent` are the edges an
+      installed scheduler stops at, each a line lifted out of the function
+      that used to contain it and left where it was. A native scheduler
+      therefore stops for whichever timer the machine has -- a native
+      controller when `0013`'s model is installed, this processor's own
+      register file when it is not.
+    - Removes `DcSetSpeed` and `DcSetRunFlag`, which `0014` added for the
+      reference shim. Both are redundant once the block is public: the shim
+      writes the two fields the same way a native machine will.
+    - Removes eight data members and adds none, so the processor object's
+      layout and the `MDFN_ALIGN(128)` assertion in `Init` only get easier to
+      satisfy. Changes nothing when no model is registered.
 
 All local files and patches are GPL-3.0-or-later. Upstream per-file notices
 and licenses remain authoritative for upstream sources.

@@ -51,6 +51,18 @@ namespace devils_crush::cpu {
 // when its own horizon comes due and answers with the next one. Both cross
 // as hooks rather than as objects, because a machine that installs a native
 // timer and an emulated encoder has to be able to say so.
+//
+// Its upward edge is a block of memory rather than a set of getters, and
+// that is deliberate. Every device before this one answered questions the
+// machine asked at its own edge; this one holds values the machine reads
+// from inside its instruction loop -- the clock, on every memory write and
+// every replacement offer; the near horizon, in the one opcode that waits;
+// the run flag, in the loop condition itself. A getter per read would put
+// an indirect call in all three. So `registers()` hands out the storage,
+// the machine reads it directly, and every *change* to it is still a call
+// on this object. Read as a load, write as a call: that rule is what makes
+// the seam both cheap and honest, and it is the reason this model needs no
+// mirror on the other side and no capture-and-apply pair for a savestate.
 class HuC6280Scheduler {
 public:
     // The two rates the machine runs at, as the `speed` field holds them.
@@ -131,6 +143,13 @@ public:
     // built rather than emulator state, the remainder is always zero at the
     // rate the machine ships with, and the clock is rebased to a small
     // remainder at each frame boundary rather than persisted.
+    //
+    // The installed machine does not use this pair. Because the register
+    // block below is the processor's own storage, the emulator's savestate
+    // reads and writes these four in place and needs no shuttle -- the only
+    // one of the five device models for which that is true. What `State`
+    // is for is stating the format in one place, and proving in a test that
+    // a round trip through it carries everything the format carries.
     struct State {
         std::int32_t run_flag = 0;
         std::uint8_t speed = kSlow;
@@ -138,7 +157,34 @@ public:
         std::int32_t next_user_event = 0;
     };
 
+    // The whole of the device's state, in one block, so that a machine can
+    // read it without asking. The field order and widths are the emulator's
+    // own, because the block is meant to be pointed at from a processor that
+    // still writes its savestate through those names.
+    //
+    // Nothing outside this class may write these. The invariant that makes
+    // that worth stating is `speed_shift`: it is derived from `speed` and
+    // has no independent meaning, so a writer that moved one without the
+    // other would price every processor cycle wrongly while `speed` still
+    // read correctly.
+    struct Registers {
+        std::uint32_t timestamp = 0;
+        std::uint32_t timestamp_fraction = 0;
+        std::uint32_t overclock_rate = 1;
+        std::int32_t next_event = 0;
+        std::int32_t next_user_event = 0;
+        std::int32_t run_flag = 0;
+        std::uint8_t speed = kSlow;
+        std::uint8_t speed_shift = 2;
+    };
+
     HuC6280Scheduler() noexcept = default;
+
+    [[nodiscard]] Registers& registers() noexcept { return registers_; }
+    [[nodiscard]] const Registers& registers() const noexcept
+    {
+        return registers_;
+    }
 
     // `HuC6280::Init`. The clock, its remainder and both horizons go to
     // zero and the overclock rate goes back to one. The rate, the run flag
@@ -161,18 +207,21 @@ public:
     void set_overclock(std::uint32_t rate) noexcept;
     [[nodiscard]] std::uint32_t overclock() const noexcept
     {
-        return overclock_rate_;
+        return registers_.overclock_rate;
     }
 
     // The clock rate, as CSL and CSH set it.
     void set_speed(std::uint8_t speed) noexcept;
-    [[nodiscard]] std::uint8_t speed() const noexcept { return speed_; }
+    [[nodiscard]] std::uint8_t speed() const noexcept
+    {
+        return registers_.speed;
+    }
     // Master clocks in one processor cycle at the current rate. The
     // replacement machinery prices a stalled bus write with this, which is
     // the one place outside `advance` that asks.
     [[nodiscard]] std::int32_t master_clocks_per_cycle() const noexcept
     {
-        return kMasterClocksPerFastCycle << speed_shift_;
+        return kMasterClocksPerFastCycle << registers_.speed_shift;
     }
 
     // `ADDCYC` and `ADDCYC_MASTER`: move the clock forward, bring both
@@ -213,26 +262,32 @@ public:
     void exit() noexcept;
     [[nodiscard]] std::int32_t run_flag() const noexcept
     {
-        return run_flag_;
+        return registers_.run_flag;
     }
-    [[nodiscard]] bool running() const noexcept { return run_flag_ > 0; }
-    [[nodiscard]] bool stopped() const noexcept { return run_flag_ == 0; }
+    [[nodiscard]] bool running() const noexcept
+    {
+        return registers_.run_flag > 0;
+    }
+    [[nodiscard]] bool stopped() const noexcept
+    {
+        return registers_.run_flag == 0;
+    }
 
     [[nodiscard]] std::uint32_t timestamp() const noexcept
     {
-        return timestamp_;
+        return registers_.timestamp;
     }
     [[nodiscard]] std::uint32_t timestamp_fraction() const noexcept
     {
-        return timestamp_frac_;
+        return registers_.timestamp_fraction;
     }
     [[nodiscard]] std::int32_t next_event() const noexcept
     {
-        return next_event_;
+        return registers_.next_event;
     }
     [[nodiscard]] std::int32_t next_user_event() const noexcept
     {
-        return next_user_event_;
+        return registers_.next_user_event;
     }
 
     [[nodiscard]] const Coverage& coverage() const noexcept
@@ -257,17 +312,7 @@ private:
     void step(std::int32_t master_clocks) noexcept;
     [[nodiscard]] std::int32_t timer_horizon() const noexcept;
 
-    std::uint32_t timestamp_ = 0;
-    std::uint32_t timestamp_frac_ = 0;
-    std::int32_t next_event_ = 0;
-    std::int32_t next_user_event_ = 0;
-    std::uint32_t overclock_rate_ = 1;
-    std::int32_t run_flag_ = 0;
-    std::uint8_t speed_ = kSlow;
-    // `speed_shift_cache`: what the rate means in the one place it is used.
-    // Derived from `speed_` and never set independently, which is the whole
-    // reason the emulator's copy is a cache rather than state.
-    std::int32_t speed_shift_ = 2;
+    Registers registers_{};
 
     TimerSyncHook timer_sync_hook_ = nullptr;
     void* timer_sync_context_ = nullptr;

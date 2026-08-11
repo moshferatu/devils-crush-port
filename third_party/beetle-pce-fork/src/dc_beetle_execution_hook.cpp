@@ -20,6 +20,24 @@ const dc_beetle_vdc_model* dc_beetle_active_vdc_model = nullptr;
 static uint32_t dc_beetle_vdc_vram_size = 0;
 const dc_beetle_vce_model* dc_beetle_active_vce_model = nullptr;
 const dc_beetle_irq_model* dc_beetle_active_irq_model = nullptr;
+const dc_beetle_scheduler_model* dc_beetle_active_scheduler_model = nullptr;
+// Where the processor's clock lives when no model has taken it over. A
+// constant initializer rather than a constructor, so the pointer below is
+// valid before anything in this program has run: the processor reads through
+// it from its own constructor onwards and has no null case to test.
+//
+// Zero throughout, including the two fields that have no sensible zero. That
+// is not an oversight but the state these fields were in when they were
+// members of a zero-initialized processor: the rate is set to one by
+// `HuC6280::Init`, which the processor's own constructor runs, and the shift
+// is set from the rate by the reset vector before the first cycle it prices.
+// A block that arrived pre-corrected would be a different machine between
+// those two moments, which is exactly the window a device shim drives in.
+static dc_beetle_scheduler_registers dc_beetle_scheduler_own_registers = {
+    0, 0, 0, 0, 0, 0, 0, 0
+};
+dc_beetle_scheduler_registers* dc_beetle_active_scheduler_registers =
+    &dc_beetle_scheduler_own_registers;
 uint32_t dc_beetle_replacement_nested_installs = 0;
 uint32_t dc_beetle_replacement_nest_overflows = 0;
 uint32_t dc_beetle_replacement_max_depth = 0;
@@ -162,6 +180,69 @@ void dc_beetle_set_irq_model(const dc_beetle_irq_model* const model)
 void dc_beetle_clear_irq_model(void)
 {
     dc_beetle_active_irq_model = nullptr;
+}
+
+// Installing a scheduler is the one install that moves memory rather than
+// merely redirecting calls, so the two assignments below have to happen
+// together: a processor reading the old block while dispatching to the new
+// model would advance one clock and test another.
+//
+// Nothing is copied across. The model brings whatever it holds, and the
+// `HuC6280::Init` that a ROM load runs is what puts a freshly installed model
+// and a machine about to be built on the same footing. That is the same
+// before-the-ROM rule the other four models state, arrived at from the one
+// direction where breaking it would not merely lose a device's state but
+// would move the machine's clock underneath it.
+void dc_beetle_set_scheduler_model(
+    const dc_beetle_scheduler_model* const model)
+{
+    if (model == nullptr || model->registers == nullptr) {
+        dc_beetle_clear_scheduler_model();
+        return;
+    }
+
+    dc_beetle_active_scheduler_registers = model->registers;
+    dc_beetle_active_scheduler_model = model;
+}
+
+void dc_beetle_clear_scheduler_model(void)
+{
+    dc_beetle_active_scheduler_model = nullptr;
+    dc_beetle_active_scheduler_registers = &dc_beetle_scheduler_own_registers;
+}
+
+// The timer, as an installed scheduler reaches it. Each of these is the line
+// the emulator's own `HappySync`, `CalcNextEvent` and `SyncAndResetTimestamp`
+// would have run, left where it is so that it still dispatches to a native
+// controller when one is installed and to the processor's own register file
+// when none is.
+//
+// The catch-up and the horizon are two calls rather than one call returning a
+// value because they are asked at different moments: a register write can move
+// the divider between the catch-up that precedes it and the horizon that
+// follows.
+void dc_beetle_scheduler_sync_timer(void)
+{
+    HuCPU.TimerSync();
+}
+
+int32_t dc_beetle_scheduler_timer_horizon(void)
+{
+    return HuCPU.DcTimerHorizon();
+}
+
+void dc_beetle_scheduler_rebase_timer(const int32_t base)
+{
+    HuCPU.DcRebaseTimer(base);
+}
+
+// The user event handler. The scheduler calls this at the moment the horizon
+// came due, not at the moment it noticed -- the two differ by however far the
+// last advance overshot, and every device downstream of the encoder measures
+// itself against the answer.
+int32_t dc_beetle_scheduler_user_event(const int32_t timestamp)
+{
+    return HuCPU.DcUserEvent(timestamp);
 }
 
 // The emulator's own device passes the direction of the change and the

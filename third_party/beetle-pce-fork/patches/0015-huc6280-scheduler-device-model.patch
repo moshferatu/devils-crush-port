@@ -1,0 +1,632 @@
+diff --git a/mednafen/pce/huc6280.cpp b/mednafen/pce/huc6280.cpp
+--- a/mednafen/pce/huc6280.cpp
++++ b/mednafen/pce/huc6280.cpp
+@@ -244,8 +244,8 @@ TPREFIX; {					\
+ 
+ // Note: CSL/CSH's speed timing changes take effect for the last CPU cycle of CSL/CSH.  Be cautious
+ // not to change the order here:
+-#define CSL	{ ADDCYC(2); speed = 0; REDOSPEEDCACHE(); LastCycle(); }
+-#define CSH	{ ADDCYC(2); speed = 1; REDOSPEEDCACHE(); LastCycle(); }
++#define CSL	{ ADDCYC(2); DcSpeedChange(0); LastCycle(); }
++#define CSH	{ ADDCYC(2); DcSpeedChange(1); LastCycle(); }
+ 
+ #define RMB(bitto)	x &= ~(1 << (bitto & 7))
+ #define SMB(bitto)	x |= 1 << (bitto & 7)
+@@ -388,7 +388,7 @@ TPREFIX; {					\
+ 
+ 
+ #define BMT_PREFIX(pork) in_block_move = IBM_##pork;
+-#define BMT_LOOPCHECK(pork) if(!runrunrun) { TimerSync(); return; } continue_the_##pork:
++#define BMT_LOOPCHECK(pork) if(!DcSched().run_flag) { TimerSync(); return; } continue_the_##pork:
+ 
+ #define BMT_TDD BMT_PREFIX(TDD); do { ADDCYC(6); WrMem(bmt_dest, RdMem(bmt_src)); bmt_src--; bmt_dest--; BMT_LOOPCHECK(TDD); bmt_length--; } while(bmt_length);
+ #define BMT_TAI BMT_PREFIX(TAI); {bmt_alternate = 0; do { ADDCYC(6); WrMem(bmt_dest, RdMem(bmt_src + bmt_alternate)); bmt_dest++; bmt_alternate ^= 1; BMT_LOOPCHECK(TAI); bmt_length--; } while(bmt_length); }
+@@ -467,12 +467,21 @@ void HuC6280::Init(const bool emulate_wai)
+ 
+ 	EmulateWAI = emulate_wai;
+ 
+-	timestamp = 0;
+-	timestamp_frac = 0;
+-	next_user_event = 0;
+-	next_event = 0;
++	// Devil's Crush downstream device-model boundary. The machine runs this
++	// for every ROM it loads, and it is the only thing that touches this
++	// device outside of running: neither `Reset` nor `Power` moves a single
++	// field of it.
++	if(MDFN_UNLIKELY(dc_beetle_active_scheduler_model != NULL))
++		dc_beetle_active_scheduler_model->init(dc_beetle_active_scheduler_model->user_data);
++	else
++	{
++		DcSched().timestamp = 0;
++		DcSched().timestamp_fraction = 0;
++		DcSched().next_user_event = 0;
++		DcSched().next_event = 0;
+ 
+-	overclock_rate = 1;
++		DcSched().overclock_rate = 1;
++	}
+ 
+ 	timer_lastts = 0;
+ 	timer_inreload = 0;
+@@ -561,13 +570,13 @@ void HuC6280::TimerSync(void)
+ 	// does not recompute the horizon -- every caller does that for itself.
+ 	if(MDFN_UNLIKELY(dc_beetle_active_irq_model != NULL))
+ 	{
+-		dc_beetle_active_irq_model->sync(dc_beetle_active_irq_model->user_data, (int32)timestamp);
+-		timer_lastts = timestamp;
++		dc_beetle_active_irq_model->sync(dc_beetle_active_irq_model->user_data, (int32)DcSched().timestamp);
++		timer_lastts = DcSched().timestamp;
+ 		DcIrqPublish();
+ 		return;
+ 	}
+ 
+-	int32 clocks = timestamp - timer_lastts;
++	int32 clocks = DcSched().timestamp - timer_lastts;
+ 
+ 	timer_div -= clocks;
+ 
+@@ -597,12 +606,12 @@ void HuC6280::TimerSync(void)
+ 		timer_div += reload_div;
+ 	}
+ 
+-	timer_lastts = timestamp;
++	timer_lastts = DcSched().timestamp;
+ }
+ 
+ void HuC6280::DcObserveIrq(DcIrqObservation* const out) const
+ {
+-	out->timestamp = timestamp;
++	out->timestamp = DcSched().timestamp;
+ 	out->timer_lastts = timer_lastts;
+ 	out->timer_div = timer_div;
+ 	out->timer_value = timer_value;
+@@ -612,19 +621,19 @@ void HuC6280::DcObserveIrq(DcIrqObservation* const out) const
+ 	out->irq_low = IRQlow;
+ 	out->irq_mask = IRQMask;
+ 	out->irq_sample = IRQSample;
+-	out->next_event = next_event;
++	out->next_event = DcSched().next_event;
+ }
+ 
+ void HuC6280::DcObserveScheduler(DcSchedulerObservation* const out) const
+ {
+-	out->timestamp = timestamp;
+-	out->timestamp_frac = timestamp_frac;
+-	out->overclock_rate = overclock_rate;
+-	out->next_event = next_event;
+-	out->next_user_event = next_user_event;
+-	out->runrunrun = runrunrun;
+-	out->speed = speed;
+-	out->speed_shift_cache = speed_shift_cache;
++	out->timestamp = DcSched().timestamp;
++	out->timestamp_frac = DcSched().timestamp_fraction;
++	out->overclock_rate = DcSched().overclock_rate;
++	out->next_event = DcSched().next_event;
++	out->next_user_event = DcSched().next_user_event;
++	out->runrunrun = DcSched().run_flag;
++	out->speed = DcSched().speed;
++	out->speed_shift_cache = DcSched().speed_shift;
+ }
+ 
+ // Only the used prefix of each array is live, and an interrupt handler's own
+@@ -727,7 +736,7 @@ void HuC6280::AdvanceReplacementTo(
+ 				|| (write.logical_address >= 0x0400
+ 					&& write.logical_address <= 0x0405));
+ 		const uint32 port_wait =
+-			bounded_stalling_port ? (3U << speed_shift_cache) : 0U;
++			bounded_stalling_port ? (3U << DcSched().speed_shift) : 0U;
+ 		if(write.master_cycle_offset < port_wait)
+ 		{
+ 			ReplacementActive = false;
+@@ -800,8 +809,8 @@ void HuC6280::HappySync(void)
+ {
+ 	TimerSync();
+ 
+-	if(next_user_event <= 0)
+-		next_user_event = EventHandler(timestamp);
++	if(DcSched().next_user_event <= 0)
++		DcSched().next_user_event = EventHandler(DcSched().timestamp);
+ 
+ 	CalcNextEvent();
+ }
+@@ -829,8 +838,7 @@ NO_INLINE void HuC6280::RunSub(void)
+ 		{
+ 			if(MDFN_UNLIKELY(IRQSample & IQRESET))
+ 			{
+-				speed = 0;
+-				REDOSPEEDCACHE();
++				DcSpeedChange(0);
+ 
+ 				// Devil's Crush downstream device-model boundary. The model
+ 				// opens the mask and releases the reset line together, where
+@@ -947,9 +955,9 @@ NO_INLINE void HuC6280::RunSub(void)
+ 					MPR[0], MPR[1], MPR[2], MPR[3],
+ 					MPR[4], MPR[5], MPR[6], MPR[7]
+ 				},
+-				timestamp,
+-				PCE_TimestampBase + timestamp,
+-				(uint32)next_user_event,
++				DcSched().timestamp,
++				PCE_TimestampBase + DcSched().timestamp,
++				(uint32)DcSched().next_user_event,
+ 				GetMasterCyclesUntilTimerInterrupt()
+ 			};
+ 
+@@ -979,9 +987,9 @@ NO_INLINE void HuC6280::RunSub(void)
+ 					MPR[0], MPR[1], MPR[2], MPR[3],
+ 					MPR[4], MPR[5], MPR[6], MPR[7]
+ 				},
+-				timestamp,
+-				PCE_TimestampBase + timestamp,
+-				(uint32)next_user_event,
++				DcSched().timestamp,
++				PCE_TimestampBase + DcSched().timestamp,
++				(uint32)DcSched().next_user_event,
+ 				GetMasterCyclesUntilTimerInterrupt()
+ 			};
+ 			dc_beetle_replacement_result replacement = {};
+@@ -1111,15 +1119,22 @@ NO_INLINE void HuC6280::RunSub(void)
+ 
+ 		P &= ~T_FLAG;
+ 		skip_T_flag_clear:;	// goto'd by the SET code
+-	} while(MDFN_LIKELY(runrunrun > 0));
++	} while(MDFN_LIKELY(DcSched().run_flag > 0));
+ }
+ 
+ void HuC6280::Run(const bool StepMode)
+ {
+-	if(StepMode)
+-		runrunrun = -1;        // Needed so a BMT isn't interrupted.
++	// Devil's Crush downstream device-model boundary. The flag is the
++	// scheduler's and the loop is the processor's, which is the whole of the
++	// split between the two: minus one for a single step so a block move is
++	// not cut short, one for a normal run, and zero when something asks the
++	// machine to stop.
++	if(MDFN_UNLIKELY(dc_beetle_active_scheduler_model != NULL))
++		dc_beetle_active_scheduler_model->run(dc_beetle_active_scheduler_model->user_data, StepMode ? 1 : 0);
++	else if(StepMode)
++		DcSched().run_flag = -1;
+ 	else
+-		runrunrun = 1;
++		DcSched().run_flag = 1;
+ 
+ 	RunSub();
+ }
+@@ -1247,7 +1262,13 @@ int HuC6280::StateAction(StateMem *sm, const unsigned load, const bool data_only
+ 
+ 	SFORMAT StateRegs[]=
+ 	{
+-		SFVAR(runrunrun),	// For the benefit of save states while in step mode in the debugger.
++		// Devil's Crush downstream device-model boundary. The four entries
++		// this device owns are written straight through the block it lives
++		// in, whichever device that is, so the format stays the emulator's
++		// without a capture-and-apply pair to keep in step with it. The
++		// names are spelled out because the storage moved and the format
++		// did not.
++		SFVARN(DcSched().run_flag, "runrunrun"),	// For the benefit of save states while in step mode in the debugger.
+ 
+ 		SFVARN(tmp_PC, "PC"),
+ 		SFVARN(A, "A"),
+@@ -1286,7 +1307,7 @@ int HuC6280::StateAction(StateMem *sm, const unsigned load, const bool data_only
+ 		SFVARN(IRQlow, "IRQlow"),
+ 		SFVARN(IRQMask, "IRQMask"),
+ 		SFARRAYN(MPR, 8, "MPR"),
+-		SFVARN(speed, "speed"),
++		SFVARN(DcSched().speed, "speed"),
+ 
+ 		SFVARN(timer_inreload, "timer_inreload"),
+ 		SFVARN(timer_status, "timer_status"),
+@@ -1300,8 +1321,8 @@ int HuC6280::StateAction(StateMem *sm, const unsigned load, const bool data_only
+ 		SFVARN(bmt_length, "IBM_LENGTH"),
+ 		SFVARN(bmt_alternate, "IBM_ALTERNATE"),
+ 
+-		SFVARN(next_event, "next_event"),
+-		SFVARN(next_user_event, "next_user_event"),
++		SFVARN(DcSched().next_event, "next_event"),
++		SFVARN(DcSched().next_user_event, "next_user_event"),
+ 
+ 		SFVAR(IODataBuffer),
+ 		SFEND
+@@ -1331,7 +1352,7 @@ int HuC6280::StateAction(StateMem *sm, const unsigned load, const bool data_only
+ 
+ 	if(load)
+ 	{
+-		speed &= 0x01;
++		DcSched().speed &= 0x01;
+ 		if(timer_div < 1)
+ 			timer_div = 1;
+ 		if(ReplacementWriteCount > DC_BEETLE_MAX_REPLACEMENT_WRITES
+@@ -1412,7 +1433,7 @@ uint32 HuC6280::GetMasterCyclesUntilTimerInterrupt(void) const
+ 	// this device that reads processor state, which is why the I flag crosses
+ 	// as an argument rather than being reached for.
+ 	if(MDFN_UNLIKELY(dc_beetle_active_irq_model != NULL))
+-		return dc_beetle_active_irq_model->timer_horizon(dc_beetle_active_irq_model->user_data, (int32)timestamp, (P & I_FLAG) ? 1 : 0);
++		return dc_beetle_active_irq_model->timer_horizon(dc_beetle_active_irq_model->user_data, (int32)DcSched().timestamp, (P & I_FLAG) ? 1 : 0);
+ 
+ 	if((P & I_FLAG) || !(IRQMask & IQTIMER))
+ 		return no_interrupt;
+@@ -1421,7 +1442,7 @@ uint32 HuC6280::GetMasterCyclesUntilTimerInterrupt(void) const
+ 	if(!timer_status)
+ 		return no_interrupt;
+ 
+-	remaining = (int64)timer_div - ((int64)timestamp - timer_lastts);
++	remaining = (int64)timer_div - ((int64)DcSched().timestamp - timer_lastts);
+ 	if(remaining < 0)
+ 		remaining = 0;
+ 	if(timer_inreload)
+diff --git a/mednafen/pce/huc6280.h b/mednafen/pce/huc6280.h
+--- a/mednafen/pce/huc6280.h
++++ b/mednafen/pce/huc6280.h
+@@ -139,16 +139,10 @@ public:
+ 	}
+ 
+ 	// Downstream observation of the processor's clock and event
+-	// scheduler. Everything this device holds is private and only two of
+-	// its fields have a public entry point that moves them, so a
+-	// differential test that could only steal cycles would be unable to
+-	// see the horizon it was aiming at.
+-	//
+-	// The two setters below change behaviour and say so. Neither is
+-	// reachable without executing an instruction -- `speed` is written by
+-	// CSL and CSH, and the loop flag by `Run`, which runs -- and a
+-	// scheduler driven without a processor has no other way to reach
+-	// them.
++	// scheduler. Most of this could now be read straight out of
++	// `dc_beetle_active_scheduler_registers`; what the call adds is that it
++	// reads the block the processor is actually using, so an observer never
++	// has to know whether a model has taken it over.
+ 	struct DcSchedulerObservation
+ 	{
+ 		uint32 timestamp;
+@@ -163,18 +157,36 @@ public:
+ 
+ 	void DcObserveScheduler(DcSchedulerObservation* out) const;
+ 
+-	void DcSetSpeed(const uint8 v)
++	// Devil's Crush downstream device-model boundary. The three edges an
++	// installed scheduler reaches the timer through. Each is a line lifted
++	// out of the function that used to contain it and left where it is, so
++	// that a native scheduler still stops for a native controller when one
++	// is installed and for this processor's own register file when none is.
++	//
++	// The catch-up is `TimerSync` above and needs nothing new. The horizon
++	// and the rebase are the other two thirds of what `CalcNextEvent` and
++	// `SyncAndResetTimestamp` used to do inline.
++	int32 DcTimerHorizon(void) const
+ 	{
+-		speed = v;
+-		REDOSPEEDCACHE();
++		return timer_div;
++	}
++
++	void DcRebaseTimer(const int32 base)
++	{
++		if(MDFN_UNLIKELY(dc_beetle_active_irq_model != NULL))
++			dc_beetle_active_irq_model->reset_timestamp(dc_beetle_active_irq_model->user_data, base);
++
++		timer_lastts = base;
+ 	}
+ 
+-	// What `Run` does to the loop flag, without the loop. One for a
+-	// normal run, minus one for a single step so a block move is not cut
+-	// short, zero for stopped.
+-	void DcSetRunFlag(const int32 flag)
++	// And the one edge it reaches the machine's event handler through, which
++	// is the colour encoder in this machine and the compact disc unit behind
++	// it. The timestamp is the moment the horizon came due rather than the
++	// moment the scheduler noticed, and the two differ by whatever the last
++	// advance overshot by.
++	int32 DcUserEvent(const int32 ts)
+ 	{
+-		runrunrun = flag;
++		return EventHandler(ts);
+ 	}
+ 
+ 	int StateAction(StateMem *sm, const unsigned load, const bool data_only);
+@@ -185,18 +197,32 @@ public:
+ 
+ 	void INLINE Exit(void)
+ 	{
+-		runrunrun = 0;
++		if(MDFN_UNLIKELY(dc_beetle_active_scheduler_model != NULL))
++		{
++			dc_beetle_active_scheduler_model->exit(dc_beetle_active_scheduler_model->user_data);
++			return;
++		}
++
++		DcSched().run_flag = 0;
+ 	}
+ 
+ 	void INLINE SyncAndResetTimestamp(uint32 ts_base = 0)
+ 	{
++		// Devil's Crush downstream device-model boundary. The frame
++		// boundary. Neither horizon appears here in either arm, because
++		// both are distances rather than moments and wrapping the clock
++		// leaves a distance alone.
++		if(MDFN_UNLIKELY(dc_beetle_active_scheduler_model != NULL))
++		{
++			dc_beetle_active_scheduler_model->sync_and_reset_timestamp(dc_beetle_active_scheduler_model->user_data, (int32)ts_base);
++			return;
++		}
++
+ 		TimerSync();
+ 
+-		if(MDFN_UNLIKELY(dc_beetle_active_irq_model != NULL))
+-			dc_beetle_active_irq_model->reset_timestamp(dc_beetle_active_irq_model->user_data, (int32)ts_base);
++		DcRebaseTimer((int32)ts_base);
+ 
+-		timer_lastts = ts_base;
+-		timestamp = ts_base;
++		DcSched().timestamp = ts_base;
+ 	}
+ 
+ 	bool INLINE InBlockMove(void)
+@@ -210,7 +236,13 @@ public:
+ 
+ 	void NO_INLINE SetEvent(const int32 cycles)
+ 	{
+-		next_user_event = cycles;
++		if(MDFN_UNLIKELY(dc_beetle_active_scheduler_model != NULL))
++		{
++			dc_beetle_active_scheduler_model->set_event(dc_beetle_active_scheduler_model->user_data, cycles);
++			return;
++		}
++
++		DcSched().next_user_event = cycles;
+ 		CalcNextEvent();
+ 	}
+ 
+@@ -219,9 +251,13 @@ public:
+ 		EventHandler = new_EventHandler;
+ 	}
+ 
++	// Devil's Crush downstream device-model boundary. A load rather than a
++	// dispatch, whichever device owns the clock, which is the whole reason
++	// this seam is a block of memory: twenty-odd machine-edge callers ask
++	// this, and so does every memory write and every replacement offer.
+ 	uint32 INLINE Timestamp(void)
+ 	{
+-		return(timestamp);
++		return(DcSched().timestamp);
+ 	}
+ 
+ 	void INLINE SetFastRead(unsigned int i, uint8 *ptr)
+@@ -263,7 +299,13 @@ public:
+ 	
+ 	void INLINE SetOverclock(uint32 rate)
+ 	{
+-		overclock_rate = rate;
++		if(MDFN_UNLIKELY(dc_beetle_active_scheduler_model != NULL))
++		{
++			dc_beetle_active_scheduler_model->set_overclock(dc_beetle_active_scheduler_model->user_data, rate);
++			return;
++		}
++
++		DcSched().overclock_rate = rate;
+ 	}
+ 
+ private:
+@@ -312,8 +354,8 @@ private:
+ 				V,
+ 				HookInstructionPC,
+ 				HookInstructionPhysicalBank,
+-				timestamp,
+-				PCE_TimestampBase + timestamp
++				DcSched().timestamp,
++				PCE_TimestampBase + DcSched().timestamp
+ 			};
+ 			dc_beetle_active_memory_write_hook(
+ 				&write,
+@@ -335,53 +377,112 @@ private:
+ 
+ 	void INLINE REDOSPEEDCACHE(void)
+ 	{
+-		speed_shift_cache = (speed ^ 1) << 1;
++		DcSched().speed_shift = (uint8)((DcSched().speed ^ 1) << 1);
+ 	}
+ 
+ 	void LastCycle(void);
+ 
+ 	void INLINE Overclock(int &cycles)
+ 	{
+-		timestamp_frac += cycles;
+-		if(timestamp_frac >= overclock_rate)
++		DcSched().timestamp_fraction += cycles;
++		if(DcSched().timestamp_fraction >= DcSched().overclock_rate)
+ 		{
+-			cycles = timestamp_frac / overclock_rate;
+-			timestamp_frac %= overclock_rate;
++			cycles = DcSched().timestamp_fraction / DcSched().overclock_rate;
++			DcSched().timestamp_fraction %= DcSched().overclock_rate;
+ 		}
+ 		else
+ 			cycles = 0;
+ 	}
+ 
++	// Devil's Crush downstream device-model boundary. These two are the only
++	// entries on this seam that run more than a few thousand times a frame,
++	// and they are the reason the rest of it is a block of memory rather than
++	// more of the same: everything the machine does to time arrives here, so
++	// this is the one place where a dispatch has to earn itself.
++	//
++	// It earns itself because there is nothing left to keep coherent. The
++	// handler an advance stops for reads the clock back and re-arms its own
++	// horizon while this call is still on the stack, and it does so in the
++	// same block the model is working in.
+ 	void INLINE ADDCYC(int x)
+ 	{
+-		int master = (x * 3) << speed_shift_cache;
+-		
++		if(MDFN_UNLIKELY(dc_beetle_active_scheduler_model != NULL))
++		{
++			dc_beetle_active_scheduler_model->advance(dc_beetle_active_scheduler_model->user_data, x);
++			return;
++		}
++
++		int master = (x * 3) << DcSched().speed_shift;
++
+ 		Overclock(master);
+ 
+-		timestamp += master;
+-		next_event -= master;
+-		next_user_event -= master;
++		DcSched().timestamp += master;
++		DcSched().next_event -= master;
++		DcSched().next_user_event -= master;
+ 
+-		if(next_event <= 0)
++		if(DcSched().next_event <= 0)
+ 			HappySync();
+ 	}
+ 
+ 	void INLINE ADDCYC_MASTER(int master)
+ 	{
++		if(MDFN_UNLIKELY(dc_beetle_active_scheduler_model != NULL))
++		{
++			dc_beetle_active_scheduler_model->advance_master(dc_beetle_active_scheduler_model->user_data, master);
++			return;
++		}
++
+ 		Overclock(master);
+ 
+-		timestamp += master;
+-		next_event -= master;
+-		next_user_event -= master;
++		DcSched().timestamp += master;
++		DcSched().next_event -= master;
++		DcSched().next_user_event -= master;
+ 
+-		if(next_event <= 0)
++		if(DcSched().next_event <= 0)
+ 			HappySync();
+ 	}
+ 
+ 
+ 	void HappySync(void);
+ 
+-	// Devil's Crush downstream device-model boundary. While a model is
++	// Devil's Crush downstream device-model boundary. Where the processor's
++	// clock and event scheduler lives: this boundary's own storage until a
++	// model takes it over, and the model's own storage afterwards.
++	//
++	// This is the one seam of the five whose shape is a pointer rather than
++	// a call table, and the reason is where it is read from. The four before
++	// it replaced devices the machine reached at its own edge, where a
++	// dispatch per operation costs nothing. This one is read from inside the
++	// instruction loop: the clock on every memory write and every
++	// replacement offer, the near horizon in the one opcode that waits, the
++	// run flag in the loop condition itself.
++	//
++	// So reads are loads and only writes are calls. Nothing outside the
++	// model assigns through this except `StateAction`, which writes the
++	// emulator's own savestate format straight through it -- which is why
++	// this is the first of the five models with no mirror to refresh and no
++	// capture-and-apply pair to keep in step with that format.
++	dc_beetle_scheduler_registers& DcSched(void) const
++	{
++		return *dc_beetle_active_scheduler_registers;
++	}
++
++	// The rate and the shift that shadows it move together or not at all,
++	// which is the one invariant that block has. CSL, CSH and the reset
++	// vector are its only writers.
++	void INLINE DcSpeedChange(const uint8 v)
++	{
++		if(MDFN_UNLIKELY(dc_beetle_active_scheduler_model != NULL))
++		{
++			dc_beetle_active_scheduler_model->set_speed(dc_beetle_active_scheduler_model->user_data, v);
++			return;
++		}
++
++		DcSched().speed = v;
++		REDOSPEEDCACHE();
++	}
++
++	// While a model is
+ 	// installed it owns the timer and the request register outright, and
+ 	// `timer_div`, `IRQlow` and `IRQMask` become a read-only mirror of it,
+ 	// refreshed here after every dispatch that can move them.
+@@ -403,15 +504,23 @@ private:
+ 		IRQMask = level.mask;
+ 	}
+ 
+-	// Unchanged by the boundary above, which is the whole point of it: an
+-	// installed model reaches the processor's horizon through a field this
+-	// already reads rather than through a call this would have to make.
++	// The interrupt controller's half of this is unchanged by its own
++	// boundary above, which is the whole point of that mirror: a model
++	// reaches the divider through a field this already reads. The
++	// scheduler's half is a dispatch, because the scheduler owns the answer
++	// rather than an input to it.
+ 	void INLINE CalcNextEvent(void)
+ 	{
+-		next_event = timer_div;
++		if(MDFN_UNLIKELY(dc_beetle_active_scheduler_model != NULL))
++		{
++			dc_beetle_active_scheduler_model->recalculate(dc_beetle_active_scheduler_model->user_data);
++			return;
++		}
+ 
+-		if(next_event > next_user_event)
+-			next_event = next_user_event;
++		DcSched().next_event = timer_div;
++
++		if(DcSched().next_event > DcSched().next_user_event)
++			DcSched().next_event = DcSched().next_user_event;
+ 	}
+ 
+ 	void X_ZN(const uint8);
+@@ -427,16 +536,14 @@ private:
+ 	void BBSi(const uint8 val, const unsigned int bitto);
+ 
+ private:
+-	uint32 timestamp;
+-	uint32 timestamp_frac;
+-	int32 next_event;	// Next event, period.  Timer, user, ALIENS ARE INVADING SAVE ME HELP
+-	int32 next_user_event;
++	// Devil's Crush downstream device-model boundary. The clock, its
++	// remainder, both horizons and the overclock rate were here. They live
++	// in the block `DcSched` points at now, so that a model can own them
++	// without this class holding a second copy of anything.
+ 	int32 timer_lastts;
+ 	ehfunc EventHandler;
+-	
+-	uint32 overclock_rate;
+ 
+-	uint32 PC;		// Program Counter(16-bit, but as a 32-bit variable for performance reasons)
++	uint32 PC;
+ 	uint8 A;		// Accumulator
+ 	uint8 X;		// X Index register
+ 	uint8 Y;		// Y Indes register
+@@ -460,8 +567,6 @@ private:
+ 	uint8 MPR[9];		// 8, + 1 for PC overflow from $ffff to $10000
+ 
+ 	uint8 lastop;
+-	uint8 speed;
+-	uint8 speed_shift_cache;
+ 
+ 	uint8 IODataBuffer;
+ 
+@@ -470,8 +575,6 @@ private:
+ 	int32 timer_value, timer_load;
+ 	int32 timer_div;
+ 
+-	int32 runrunrun;	// Don't change to bool(main possibles values are -1, 0, 1).
+-
+ 	enum
+ 	{
+ 		IBM_TIA = 1,
+diff --git a/mednafen/pce/huc6280_ops.inc b/mednafen/pce/huc6280_ops.inc
+--- a/mednafen/pce/huc6280_ops.inc
++++ b/mednafen/pce/huc6280_ops.inc
+@@ -524,8 +524,8 @@ case 0x23:	// ST2
+ case 0xCB:
+ 	if(EmulateWAI)
+ 	{
+-	 if(next_event > 1)
+-	  ADDCYC_MASTER(next_event - 1);
++	 if(DcSched().next_event > 1)
++	  ADDCYC_MASTER(DcSched().next_event - 1);
+ 	 LastCycle();
+ 	 break;
+ 	}

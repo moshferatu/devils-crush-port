@@ -1813,6 +1813,45 @@ nothing moved. **A behaviour you decided not to implement deserves a test
 that shows the reference does not have it either**, because the alternative
 is a reader six months later "fixing" the omission.
 
+### When the hot path *writes*, the seam is the storage, not a mirror
+
+"A seam on the hot path is a mirror, not a call", above — mirror the reads,
+dispatch the writes — held for the interrupt controller because the processor
+only *reads* its three hot values. It does not transfer to the clock, and
+noticing that before building rather than after was worth the hour it took.
+
+`ADDCYC` runs on every instruction and it *writes* four scheduler fields.
+Mirroring would mean refreshing the mirror from inside `ADDCYC`, which is the
+whole cost the mirror existed to avoid. And there is a correctness problem
+underneath the performance one: the handler an advance stops for reads the
+clock back and re-arms its own horizon *while that advance is still on the
+stack*, so a mirror would be stale at exactly the moment the machine depends
+on it most.
+
+So the seam inverted. **The model owns the storage and the machine points at
+it; reads become loads and only writes stay calls.** `HuC6280` no longer has
+a `timestamp` member — it has a pointer to the block the model holds, which
+addresses the boundary's own storage when nothing is installed. The block is
+laid out in the emulator's own field order, so nothing is translated in
+either direction.
+
+Three things fell out of that, and they are the reason to reach for this
+shape rather than merely tolerate it. There is no publish, so there is no set
+of dispatches to keep total. There is no capture-and-apply pair for the
+savestate, because `SFVARN` writes the emulator's own format straight through
+the model's fields — the first of five models to need no shuttle at all. And
+the reference shim lost two entry points the fork had been carrying purely
+for it: with the block public, a test writes the two fields no opcode-free
+driver could reach the same way a native machine will.
+
+The cost is one rule, sharper than the mirror's: **installing moves where the
+machine's clock lives, so it has to happen before the machine is built.** A
+model swapped in mid-frame would not merely lose a device's state — it would
+replace the clock underneath a running machine.
+
+Two seams, two opposite answers, one question that chose between them: on the
+hot path, is the traffic reads or writes?
+
 ## Commands
 
 Assuming the full host preset has been configured and `DC_ROM_PATH` is

@@ -1,6 +1,6 @@
 # Project Progress
 
-Last updated: 2026-08-13
+Last updated: 2026-08-11
 
 ## Current Status
 
@@ -5496,54 +5496,126 @@ does not.
 
 ### Next
 
-**Install the clock and event scheduler.** The model is written and proved;
-what is left is a fork patch in the shape of `0011`/`0013` that routes
-`HuC6280::Init`, `ADDCYC` and `ADDCYC_MASTER`, `HappySync`, `CalcNextEvent`,
-`SetEvent`, `SetEventHandler`, `SyncAndResetTimestamp`, `Timestamp`,
-`StealCycle`/`StealCycles`/`StealMasterCycles`, `SetOverclock`, `Run`,
-`Exit`, the CSL and CSH opcodes, the stall pricing in
-`ApplyReplacementCheckpoint`, and the four scheduler entries in the savestate
-into `devils_crush::cpu::HuC6280Scheduler`, plus a `framebuffer_sha256`
-census over the route to show nothing moved.
+**The instruction boundary: sampling and vector selection.** With the clock
+installed, what is left inside `HuC6280` divides cleanly in two, and only one
+half is a device. The half that is not is execution -- fetching an opcode,
+running it, charging it. The half that is, is the decision made *between* two
+instructions: `IRQSample` and `IFlagSample` latched in `LastCycle`, the
+`PIMaskCache` shadow of the I flag, and the vector-selection rule at the top
+of `RunSub` with its asymmetric `(IRQlow & IQTIMER & IRQMask) && !IFlagSample`
+-- roughly forty lines that decide, once per instruction, whether the next
+thing to happen is the next instruction or an interrupt.
 
-Two questions are worth deciding rather than defaulting, and they are the
-same two the timer's install faced, in harder form.
+It is worth modelling on its own because it is the last thing standing between
+a native controller, a native clock and a native *interrupt*. `HuC6280Irq`
+publishes a level and `HuC6280Scheduler` says when the machine stops; nothing
+native yet decides what to do about either. It is also the piece most likely
+to be got subtly wrong by a from-scratch processor written later, because the
+rule is not the obvious one: the timer line is tested against the mask *and*
+the I flag sample, the other two lines are tested against the mask only, and
+the reset line is tested against neither.
 
-**Where the mirror goes, if there is one.** This device is hotter than the
-timer was: `ADDCYC` runs on every instruction and reads `timestamp`,
-`next_event`, `next_user_event`, `timestamp_frac`, `overclock_rate` and
-`speed_shift_cache`, and it *writes* four of them. The timer's answer --
-mirror the reads, dispatch the writes -- does not transfer, because here the
-writes are the hot path. The likely answer is the opposite one: `ADDCYC`
-stays in the processor and dispatches nothing, and the *model's* fields
-become the ones the processor reads and writes directly, through a pointer
-rather than a call. That is a different kind of seam from the four before it
-and it should be recognised as such before it is built rather than after.
+Two things to decide before building, and the second is the one that matters.
 
-**Whether `Timestamp()` can be a call.** Twenty-odd call sites across
-`pce.cpp`, `vce.cpp` and `huc.cpp` read it, all of them at a device boundary
-the machine was already crossing, so those are free. The ones inside
-`HuC6280` are not.
+**Whether it can be a device model at all.** Every seam so far replaced
+something with a state boundary around it. This one reads `P`, writes `PC`,
+pushes three bytes onto the machine's stack and charges seven cycles. A model
+that owned only the *decision* -- given a level, a mask, an I flag sample and
+a set of latched lines, which vector wins -- would be a pure function with no
+state, provable exhaustively rather than differentially, and would leave the
+pushing and the fetching where they are. That is probably the right shape, and
+it is a different shape again from the five before it.
 
-Also worth doing while the patch is open: the two entry points `0014` added
-for the test, `DcSetSpeed` and `DcSetRunFlag`, become redundant the moment
-the model owns those fields, and should be removed with the same patch that
-makes them so.
+**Where it sits on the hot path.** This runs once per instruction, so the
+question the scheduler slice answered applies again: reads or writes? Here it
+is neither -- it is a *call* whose inputs are five values the processor
+already holds and whose output is a small enumeration. That suggests a third
+answer to a question that has now had two, and recognising it as a third
+rather than forcing it into one of the first two is the point.
 
-After that, what is left of the emulator for this game is the *taking* of an
-interrupt. `IRQSample` and `IFlagSample` are latched at `LastCycle`, and the
-vector-selection rule in `RunSub` -- with its asymmetric
-`(IRQlow & IQTIMER & IRQMask) && !IFlagSample` -- is the last thing standing
-between a native controller and a native interrupt. That one cannot move
-before the processor does, because it *is* the processor: it is a decision
-made at an instruction boundary by something that knows what an instruction
-is. It belongs to Phase 4, not Phase 3.
+After that, Phase 3 has two items left and both are about the machine rather
+than the processor. VDC/VBlank interrupt timing against the raster, and the
+spin loop becoming the native frame boundary -- at which point `PCE_Event`,
+`PCE_TimestampBase` and the frame loop in `pce.cpp` are the emulator's last
+structural contribution.
 
-Two smaller things carried forward and still undone. The timer interrupt
+Three smaller things carried forward and still undone. The timer interrupt
 horizon is never queried by a census route -- it exists for native routine
 transcripts -- so `dc_rom_native_irq` cannot fail for it; the replacement
-tests drive it, but nothing prints what they drove. And
-`dc_beetle_vce_cd_event` has still never come due.
+tests drive it, but nothing prints what they drove. `dc_beetle_vce_cd_event`
+has still never come due. And `dc_rom_video_state_shuttle` now verifies three
+device shuttles rather than two video ones, and its name has not caught up.
+
+### Previous: the clock and event scheduler is installed
+
+`devils_crush::cpu::HuC6280Scheduler` now owns the machine's clock. Patch
+`0015` routes `Init`, `ADDCYC` and `ADDCYC_MASTER`, `CalcNextEvent`,
+`SetEvent`, `SyncAndResetTimestamp`, `SetOverclock`, `Run`, `Exit` and the CSL
+and CSH opcodes into it, and `dc_rom_native_scheduler` is what says the route
+did not move: **four arms, 3,600 frames each, all reproducing
+`9036a9de…`** -- the hash the sound slice pinned and every slice since has
+reproduced.
+
+**This seam is a block of memory, and it is the only one of the five that
+is.** Every model before it replaced a device the machine reached at its own
+edge, where a dispatch per operation costs nothing. This one holds values the
+processor reads from inside its instruction loop: the clock on every memory
+write and every replacement offer, the near horizon in the one opcode that
+waits, the run flag in the loop condition itself. So `HuC6280` no longer has a
+`timestamp` member -- it has a pointer to the eight-field block the model
+holds, which addresses the boundary's own storage while nothing is installed.
+Reads are loads; only writes are calls.
+
+**The controller's mirror could not have worked here, and that is the lesson.**
+`0013` mirrors three values because the processor only *reads* them on its hot
+path. This device is *written* on its hot path, so a mirror would have to be
+refreshed from inside `ADDCYC` -- the whole cost the mirror existed to avoid.
+And underneath the performance problem is a correctness one: the handler an
+advance stops for reads the clock back and re-arms its own horizon while that
+advance is still on the stack, which is exactly where a mirror would be stale.
+Sharing the storage removes the question instead of answering it. Two seams,
+two opposite answers, one question that chose between them: on the hot path,
+is the traffic reads or writes?
+
+**Three things fell out of the shape rather than being designed in.** There is
+no publish, so there is no set of dispatches to keep total. There is no
+capture-and-apply pair, because `SFVARN` writes the emulator's own savestate
+format straight through the model's own fields -- the first of five models to
+need no shuttle at all. And the fork stopped carrying two entry points it had
+been holding purely for a test: with the block public, the reference shim
+writes `speed` and the loop flag the same way a native machine will, so `0015`
+removes the `DcSetSpeed` and `DcSetRunFlag` that `0014` added.
+
+**One initial value was load-bearing and nearly got improved.** The block
+starts at zero throughout, including an overclock rate of zero and a
+cycle-pricing shift that disagrees with the rate beside it. Both are wrong in
+the abstract and both are exactly what those fields held when they were
+members of a zero-initialized processor: the rate is set to one by
+`HuC6280::Init`, which the processor's own constructor runs, and the shift is
+set from the rate by the reset vector before the first cycle it prices. A
+block that arrived pre-corrected made `dc_vce_device` fail immediately, which
+is the window a device shim drives in and no route ever does.
+
+**What the route asks of it dwarfs every device before it.** 221,493,523
+advances in processor cycles, 1,292,378,151 master clocks of travel, the near
+horizon reached 8,854,191 times with the user event due for 8,375,409 of them,
+and the horizon going to the timer 770,847 times and to the encoder 10,250,327.
+The clock rate changes five times in an hour of play, which is the one thing
+about this device a route could plausibly have missed -- so the census asserts
+both rates were used rather than merely counting advances.
+
+The strongest of the four arms is the third. A native clock running alone
+underneath the emulator's own sound, video and interrupt controller has
+nowhere to hide: every other device in the machine measures itself against
+this clock, so a scheduler wrong by one master clock anywhere would move every
+device relative to every other rather than changing one device's output.
+
+Two paths the route never takes are enumerated by `dc_scheduler_device`
+instead. `advance_master` is never reached -- the machine's only master-clock
+advances come from the `WAI` opcode this core does not emulate for the PC
+Engine and from `StealMasterCycles`, which nothing in a census route calls --
+and the overclock divider never swallows an advance, because the host runs at
+the machine's own rate of one and the remainder is then always zero.
 
 ### Previous: the clock and event scheduler is modelled
 

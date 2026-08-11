@@ -548,6 +548,78 @@ typedef struct dc_beetle_irq_model {
     void (*apply_state)(void* user_data, const dc_beetle_irq_state* state);
 } dc_beetle_irq_model;
 
+// The processor's clock and event scheduler, as one block of memory.
+//
+// This is the fifth seam and the first one whose shape is a pointer rather
+// than a call table. The four before it replaced devices the machine reached
+// at its own edge, and a vtable entry per operation cost nothing there. This
+// device is read from inside the instruction loop: the clock on every memory
+// write and every replacement offer, the near horizon in the one opcode that
+// waits, the run flag in the loop condition itself. So an installed model
+// hands over the storage and the processor reads it directly.
+//
+// The rule that keeps that honest is that reads are loads and *writes are
+// calls*. Nothing outside the model assigns to these fields except the
+// savestate, which is the emulator's own format written straight through
+// them -- which is also why this is the first model with no capture-and-apply
+// pair. `speed_shift` is the one field with an invariant worth stating: it
+// is derived from `speed`, so the two only ever move together.
+//
+// Field order and widths are the emulator's own private fields, so that the
+// block can be pointed at without translating anything.
+typedef struct dc_beetle_scheduler_registers {
+    uint32_t timestamp;
+    uint32_t timestamp_fraction;
+    uint32_t overclock_rate;
+    int32_t next_event;
+    int32_t next_user_event;
+    int32_t run_flag;
+    uint8_t speed;
+    uint8_t speed_shift;
+} dc_beetle_scheduler_registers;
+
+// A replacement for the HuC6280's clock and event scheduler: the master-cycle
+// timestamp every device in this machine measures itself against, the two
+// horizons that decide when the processor stops to let something else happen,
+// the overclock divider, the rate a processor cycle is priced at, and the loop
+// flag that ends a frame.
+//
+// What deliberately stays with the processor is execution. Fetching an opcode
+// and deciding at an instruction boundary that an interrupt has arrived need
+// to know what an instruction is; a cycle costing three master clocks or
+// twelve, an event handler coming due, and a frame boundary wrapping the clock
+// do not. That split is what lets this be installed while the processor is
+// still the emulator's.
+//
+// `registers` is the block above, owned by the model and pointed at by the
+// processor for as long as the model is installed.
+typedef struct dc_beetle_scheduler_model {
+    void* user_data;
+    dc_beetle_scheduler_registers* registers;
+    // `HuC6280::Init`, which the machine runs for every ROM it loads. Not a
+    // reset: neither `Reset` nor `Power` touches this device at all.
+    void (*init)(void* user_data);
+    // `ADDCYC` and `ADDCYC_MASTER`. Everything the machine does to time goes
+    // through one of these two, which is why they are the only entries here
+    // that are called more than a few thousand times a frame.
+    void (*advance)(void* user_data, int32_t cycles);
+    void (*advance_master)(void* user_data, int32_t master_clocks);
+    // `CalcNextEvent` and `SetEvent`: recompute the near horizon, and declare
+    // when the user event next wants to be called.
+    void (*recalculate)(void* user_data);
+    void (*set_event)(void* user_data, int32_t cycles);
+    // `SyncAndResetTimestamp`: the frame boundary. Neither horizon moves,
+    // because both are distances rather than moments.
+    void (*sync_and_reset_timestamp)(void* user_data, int32_t base);
+    void (*set_overclock)(void* user_data, uint32_t rate);
+    // The CSL and CSH opcodes, and the reset vector's return to the slow rate.
+    void (*set_speed)(void* user_data, uint8_t speed);
+    // The loop flag, which `Run` sets and `Exit` clears. The loop itself is
+    // execution and stays with the processor.
+    void (*run)(void* user_data, int step_mode);
+    void (*exit)(void* user_data);
+} dc_beetle_scheduler_model;
+
 // Beetle PCE is single-instance and thread-confined. Registration and callback
 // dispatch must occur on that same owning thread.
 extern dc_beetle_instruction_hook dc_beetle_active_instruction_hook;
@@ -573,6 +645,13 @@ extern const dc_beetle_psg_model* dc_beetle_active_psg_model;
 extern const dc_beetle_vdc_model* dc_beetle_active_vdc_model;
 extern const dc_beetle_vce_model* dc_beetle_active_vce_model;
 extern const dc_beetle_irq_model* dc_beetle_active_irq_model;
+extern const dc_beetle_scheduler_model* dc_beetle_active_scheduler_model;
+
+// Where the processor's clock and event scheduler currently lives. Never null:
+// with no model installed it points at storage this boundary owns, which is
+// then the emulator's own scheduler state and nothing else's. Reading through
+// it is what the processor does instead of holding those fields itself.
+extern dc_beetle_scheduler_registers* dc_beetle_active_scheduler_registers;
 
 void dc_beetle_reset_replacement_nesting_counters(void);
 
@@ -671,6 +750,33 @@ void dc_beetle_vce_vdc_set_unlimited_sprites(int unlimited);
 // other direction.
 void dc_beetle_set_irq_model(const dc_beetle_irq_model* model);
 void dc_beetle_clear_irq_model(void);
+
+// Installing a scheduler moves where the processor's clock lives, so it must
+// happen while the machine is stopped -- before a ROM is loaded, which is the
+// same rule the other four models arrive at. Whatever the previous owner held
+// stays with it: the model that takes over brings its own values, and the
+// `HuC6280::Init` that follows a ROM load is what puts both on the same
+// footing.
+void dc_beetle_set_scheduler_model(const dc_beetle_scheduler_model* model);
+void dc_beetle_clear_scheduler_model(void);
+
+// The four machine edges an installed scheduler reaches back through, and the
+// reason they are edges rather than an object: the scheduler stops for two
+// devices, and which of them is native is not its business.
+//
+// The first three are the timer's. It is caught up to the clock's current
+// moment, asked how far away its next tick is, and told when the clock has
+// been rebased at a frame boundary. Each dispatches exactly as the emulator's
+// own `HuC6280` does, to a native controller model when one is installed and
+// to the processor's own register file when none is.
+//
+// The fourth is the user event handler -- the colour encoder, in this machine
+// -- called at the moment its own horizon came due and answering with master
+// clocks until the next one.
+void dc_beetle_scheduler_sync_timer(void);
+int32_t dc_beetle_scheduler_timer_horizon(void);
+void dc_beetle_scheduler_rebase_timer(int32_t base);
+int32_t dc_beetle_scheduler_user_event(int32_t timestamp);
 
 // Copies the base PC Engine VDC/VCE state without retaining emulator-owned
 // pointers. The destination capacities must cover the fixed counts above.

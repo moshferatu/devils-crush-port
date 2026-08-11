@@ -1922,6 +1922,31 @@ if(TARGET devils_crush)
             PROPERTIES LABELS rom_required
         )
 
+        # The fifth device seam, and the one every other device in the machine
+        # measures itself against. Four arms again, and the third of them --
+        # a native clock under the emulator's own sound, video and interrupt
+        # controller -- is the strongest of the twenty this series has run: a
+        # scheduler wrong by a single master clock anywhere would not merely
+        # change one device's output, it would move every device in the
+        # machine relative to every other, and there is nowhere in a 3,600
+        # frame census for that to hide.
+        add_test(
+            NAME dc_rom_native_scheduler
+            CONFIGURATIONS Release
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/native-scheduler-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_native_scheduler.cmake"
+        )
+        set_tests_properties(
+            dc_rom_native_scheduler
+            PROPERTIES LABELS rom_required
+        )
+
         add_test(
             NAME dc_rom_video_state_shuttle
             CONFIGURATIONS Release

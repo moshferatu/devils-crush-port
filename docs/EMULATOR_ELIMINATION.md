@@ -14,7 +14,7 @@ Removing the emulator needs work on three fronts. The metric tracks one.
 | --- | --- | --- |
 | **CPU code** | Every routine runs as native C/C++ instead of emulated 6280 | Yes |
 | **Device state** | The PSG, VDC, VCE and the timer/IRQ controller are native models, not Beetle's | No |
-| **Time** | Interrupt scheduling and cycle pacing are native | Partly |
+| **Time** | Interrupt scheduling and cycle pacing are native | No — and the metric never saw it move |
 
 The gap matters concretely, and the sound and video paths are the examples
 that have now been closed. `replace_sound_timer_driver` emits a write to
@@ -27,16 +27,19 @@ the picture. A write to `$0C01` reaches
 [`src/cpu/huc6280_irq.cpp`](../src/cpu/huc6280_irq.cpp), which decides when
 the timer interrupt is asserted.
 
-What is still Beetle's is the *taking* of an interrupt. The native controller
-publishes a level; the emulator's processor samples it at an instruction
-boundary and picks a vector. At a hypothetical 100% native cycle share the
-emulator would still be present and still own that.
-
-The clock has now been modelled but not installed.
+And time itself is now native.
 [`src/cpu/huc6280_scheduler.cpp`](../src/cpu/huc6280_scheduler.cpp) holds the
-master-cycle timestamp, both event horizons, the rate a cycle is priced at
-and the loop flag, and `dc_scheduler_device` proves it against the
-emulator's. Installing it is the next slice.
+master-cycle timestamp every device in this machine measures itself against,
+both event horizons, the overclock divider, the rate a processor cycle is
+priced at and the loop flag that ends a frame. The emulator does not keep a
+copy: the model's register block *is* the machine's, and `HuC6280` reads its
+clock out of it.
+
+What is still Beetle's is the *taking* of an interrupt, and the fetching of an
+opcode. The native controller publishes a level and the native scheduler says
+when; the emulator's processor samples the level at an instruction boundary
+and picks a vector. At a hypothetical 100% native cycle share the emulator
+would still be present and still own that.
 
 So the percentage will plateau well short of "removable". Track the phases
 below, not the number.
@@ -1009,13 +1012,44 @@ Remaining real logic, in rough order of value:
   beyond that: the counter is never read back, the mask is never written or
   read, and the status register is never read. The game opens the mask once by
   taking the reset vector and never narrows it again.
-- **The clock and the event scheduler — modelled, not yet installed.**
-  `devils_crush::cpu::HuC6280Scheduler` holds the master-cycle timestamp
-  every device in this machine measures itself against, the two horizons
-  that decide when the processor stops to let something else happen, the
-  overclock divider, the rate a cycle is priced at, and the loop flag that
-  ends a frame. `dc_scheduler_device` is what proves it; nothing installs it
-  yet.
+- **The clock and the event scheduler.** `devils_crush::cpu::HuC6280Scheduler`
+  holds the master-cycle timestamp every device in this machine measures
+  itself against, the two horizons that decide when the processor stops to
+  let something else happen, the overclock divider, the rate a cycle is
+  priced at, and the loop flag that ends a frame. `dc_scheduler_device`
+  proves it against the emulator's own; patch `0015` installs it.
+
+  **This seam is a block of memory, not a call table**, and it is the only
+  one of the five that is. Every model before it replaced a device the
+  machine reached at its own edge, where a dispatch per operation costs
+  nothing. This one holds values the processor reads from inside its
+  instruction loop: the clock on every memory write and every replacement
+  offer, the near horizon in the one opcode that waits, the run flag in the
+  loop condition itself. So the model hands `HuC6280` its register block and
+  the processor reads it directly, while every *change* to it is still a call
+  on the model. Reads are loads, writes are calls.
+
+  The controller's mirror could not have worked here, and the reason is worth
+  keeping. `0013` mirrors three values because the processor only *reads*
+  them on its hot path; this device is *written* on its hot path, so a mirror
+  would have to be refreshed from inside `ADDCYC` — and worse, the handler an
+  advance stops for reads the clock back and re-arms its own horizon while
+  that advance is still on the stack, which is exactly where a mirror would
+  be stale. Sharing the storage removes the question rather than answering
+  it. It also removes two things every other model needed: there is no
+  publish, and there is no capture-and-apply pair, because the savestate
+  writes the emulator's own format straight through the model's fields.
+
+  The census over the 3,600-frame route reproduces the same hash in all four
+  arms — including the one where a native clock runs alone underneath the
+  emulator's own sound, video and interrupt controller, which is the
+  strongest arm this series has run: every other device in the machine
+  measures itself against this clock, so a scheduler wrong by one master
+  clock anywhere would move every device relative to every other. Over that
+  route the model is advanced 221,493,523 times in processor cycles, moves
+  the clock 1,292,378,151 master clocks, reaches the near horizon 8,854,191
+  times and finds the user event due for 8,375,409 of them, and changes the
+  clock rate five times in an hour of play.
 
   It is the smaller half of what is left inside `HuC6280`. The other half is
   execution, and the two are worth separating because only one of them is a
@@ -1052,12 +1086,20 @@ Remaining real logic, in rough order of value:
   is sound to rely on because `dc_irq_device` already proves that model equal
   to the emulator's field for field. Any difference this test sees is
   therefore the scheduler's.
+
+  Two paths the route never takes are enumerated by that test instead.
+  `advance_master` is never reached, because the machine's only master-clock
+  advances come from the `WAI` opcode this core does not emulate for the PC
+  Engine and from `StealMasterCycles`, which nothing in a census route calls.
+  And the overclock divider never swallows an advance, because the host runs
+  at the machine's own rate of one and the remainder is then always zero.
 - VDC/VBlank interrupt timing against the raster.
 - Cycle pacing. Native transcripts currently declare `body_master_cycles` so
   Beetle can schedule around them; something must still model time to the
   same precision, because the game's behaviour depends on where the timer
-  interrupt lands relative to the frame. This is the least obvious phase and
-  the one most likely to be underestimated.
+  interrupt lands relative to the frame. The scheduler above is now that
+  model — what remains is that the transcripts still declare their cost to it
+  rather than being executed by it.
 - The spin loop becomes the native frame boundary.
 
 ### Phase 4 — delete the CPU
@@ -1073,7 +1115,10 @@ hook machinery, the write channel, the replacement frame stack and most of
 - **Cycle model fidelity.** Phase 3 is the real risk. The census is
   cycle-sensitive: the `CLI` delayed-effect bug found in the sound driver
   moved a nested interrupt by nine master cycles and changed the census hash.
-  A native time model has to be at least that precise.
+  A native time model has to be at least that precise. The scheduler now
+  installed is that precise — four census arms, unmoved hash — but it is
+  only half the answer: it decides *when* the machine stops, and the emulator
+  still decides how many cycles each instruction took to get there.
 - **Route coverage.** One 3,600-frame route is a strong oracle but not a
   complete one, and the PSG slice showed that adding routes is not always the
   remedy. The LFO fires zero times on the census route, and it would fire zero

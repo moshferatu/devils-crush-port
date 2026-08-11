@@ -215,6 +215,22 @@ public:
         return std::nullopt;
     }
 
+    [[nodiscard]] bool set_native_scheduler(bool) override
+    {
+        return false;
+    }
+
+    [[nodiscard]] bool native_scheduler_enabled() const noexcept override
+    {
+        return false;
+    }
+
+    [[nodiscard]] std::optional<cpu::HuC6280Scheduler::Coverage>
+    native_scheduler_coverage() const override
+    {
+        return std::nullopt;
+    }
+
     [[nodiscard]] bool set_bus_write_observer(
         BusWriteCallback) override
     {

@@ -230,6 +230,10 @@ struct CommandLine {
     // what makes a difference in the census attributable to this device.
     bool emulated_irq = false;
     bool report_irq_coverage = false;
+    // And for the processor's clock and event scheduler, the fifth seam and
+    // the first whose shape is a block of memory rather than a call table.
+    bool emulated_scheduler = false;
+    bool report_scheduler_coverage = false;
     // The interactive host deploys the registry by default so a session runs
     // the ported code; this opts back out to the emulated original.
     bool emulate_only = false;
@@ -749,6 +753,10 @@ parse_logical_address_range(const std::string_view text)
             options.emulated_irq = true;
         } else if (argument == "--report-irq-coverage") {
             options.report_irq_coverage = true;
+        } else if (argument == "--emulated-scheduler") {
+            options.emulated_scheduler = true;
+        } else if (argument == "--report-scheduler-coverage") {
+            options.report_scheduler_coverage = true;
         } else if (argument == "--replace-registry") {
             options.replace_registry = true;
         } else if (argument == "--cabinet-overlay-stats") {
@@ -3541,7 +3549,11 @@ void print_usage()
            "  The processor's timer and interrupt controller is a fourth,\n"
            "  and the only one inside the processor rather than beside it;\n"
            "  --emulated-irq hands it back, and --report-irq-coverage\n"
-           "  prints what the route asked of it.\n\n"
+           "  prints what the route asked of it. The processor's clock and\n"
+           "  event scheduler is a fifth, and the machine's clock lives\n"
+           "  inside it; --emulated-scheduler hands it back, and\n"
+           "  --report-scheduler-coverage prints what the route asked of\n"
+           "  it.\n\n"
         << "Controls (defaults; see input.* in portable-data/cabinet.ini):\n"
         << "  Left Shift / Left    Left flipper (PCE d-pad left)\n"
         << "  Right / Right Shift  Right flipper (PCE d-pad right)\n"
@@ -6247,6 +6259,40 @@ void report_irq_coverage(
               << "  horizon: " << coverage->horizon_queries << " queries, "
               << coverage->horizon_never << " never, "
               << coverage->horizon_now << " already due\n";
+}
+
+// And the clock and event scheduler's. Unlike every device before it, almost
+// everything here is driven once per instruction, so the counts are enormous
+// and the interesting numbers are the ratios: how rarely an advance reaches a
+// horizon at all, and which of the two devices behind that horizon won.
+void report_scheduler_coverage(
+    const devils_crush::emulation::PceRuntime& runtime)
+{
+    const auto coverage = runtime.native_scheduler_coverage();
+    if (!coverage) {
+        std::cout << "The emulator owned the clock and event scheduler; no "
+                     "native paths to report.\n";
+        return;
+    }
+
+    std::cout << "Clock and event scheduler paths:\n"
+              << "  advances: " << coverage->advances << " in cycles ("
+              << coverage->slow_cycles << " slow, " << coverage->fast_cycles
+              << " fast), " << coverage->master_advances
+              << " in master clocks\n"
+              << "  clock moved " << coverage->master_clocks
+              << " master clocks, " << coverage->stalled_advances
+              << " advances stalled\n"
+              << "  horizon reached " << coverage->horizon_reached
+              << " times, user event due " << coverage->user_events
+              << " of those\n"
+              << "  recomputed " << coverage->recalculations
+              << " times: timer nearer " << coverage->timer_nearer
+              << ", user nearer " << coverage->user_nearer << '\n'
+              << "  set events " << coverage->set_events << ", rebases "
+              << coverage->rebases << ", runs " << coverage->runs
+              << ", exits " << coverage->exits << ", rate changes "
+              << coverage->speed_changes << '\n';
 }
 
 [[nodiscard]] bool write_instruction_profile(
@@ -10366,6 +10412,17 @@ int main(const int argc, char* argv[])
             return EXIT_FAILURE;
         }
 
+        // Before the ROM for a sharper reason still. Installing this one moves
+        // where the machine's clock lives, so a machine already running would
+        // find its clock replaced underneath it rather than merely one of its
+        // devices handed over.
+        if (!options.emulated_scheduler
+            && !runtime->set_native_scheduler(true)) {
+            std::cerr << "Could not install the native clock and event "
+                         "scheduler.\n";
+            return EXIT_FAILURE;
+        }
+
         const auto load_result = runtime->load_rom(options.rom_path);
         if (!load_result.loaded) {
             std::cerr << load_result.message << '\n';
@@ -10933,6 +10990,9 @@ int main(const int argc, char* argv[])
             }
             if (options.report_irq_coverage) {
                 report_irq_coverage(*runtime);
+            }
+            if (options.report_scheduler_coverage) {
+                report_scheduler_coverage(*runtime);
             }
             if (!routine_replays.empty()) {
                 const int replay_result = verify_routine_replays(
