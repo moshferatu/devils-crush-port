@@ -18,6 +18,29 @@ this repository.
   patched HuC6280 core and the host adapter.
 - `src/dc_beetle_execution_hook.cpp`: single-instance callback registration
   owned by the downstream fork.
+- `include/dc_beetle_reference_psg.h` and `src/dc_beetle_reference_psg.cpp`:
+  the emulator's own `PCE_PSG` as a bare reference device, for the tests only.
+  `PCE_PSG` needs nothing from the rest of the machine, so this is a lifetime
+  and naming shim rather than a hook — nothing in the core calls it, and
+  installing a native model does not affect a device created through it. It
+  exists because the game never asks the chip for the LFO, for noise on
+  channel 4, or for more than seven emissions in its accumulating mode, so
+  those paths of the native model have no oracle in any recording of the game.
+  Driving both devices from the same synthetic register stream gives them one.
+  It is deleted with the emulator.
+- `include/dc_beetle_reference_vdc.h` and `src/dc_beetle_reference_vdc.cpp`:
+  the emulator's own `VDC` as a bare reference device, on the same terms and
+  for the same reason. The VDC was expected to resist this, because the game
+  reads it back and a reference device was assumed to need the machine around
+  it; it does not. `vdc.cpp` touches no emulator global, the device owns its
+  VRAM, sprite attribute table, registers and raster phase, and its reads are
+  methods on it. Two differences from the PSG shim are recorded in the header.
+  Its outward edges are two function-pointer hooks with no user data, so only
+  one reference device may exist at a time. And the wait-state hook's refusal
+  is load-bearing rather than advisory — the device stalls by looping until
+  the hook says no — so this reproduces `VCE`'s per-frame budget of 455 * 64
+  stolen cycles, without which the device hangs the first time a port access
+  lands during a block transfer. It is deleted with the emulator.
 
 ## Patch series
 
@@ -78,6 +101,37 @@ this repository.
      2,048 so composed parents such as the four-multiply flipper projection
      can retain every original interrupt-sampling boundary. The independent
      write capacity remains 512.
+7. `patches/0007-huc6280-nested-replacement.patch`
+   - Lets a replacement be installed while another is suspended at a
+     checkpoint. A suspended transcript is saved to a fixed frame stack so the
+     interrupt handler that preempted it can carry a transcript of its own,
+     and is made current again when the inner one completes or is abandoned.
+   - Consults the replacement callback on every instruction reached, rather
+     than only when no transcript is active. A transcript's own resume points
+     restart the instruction loop before the callback, so the instructions
+     newly exposed to it are exactly the interrupt handlers'.
+   - Declines a replacement instead of exceeding the fixed depth, and counts
+     nested installs, refusals, and the depth high-water mark through the
+     project-owned C boundary. The refusal count is what lets a host that
+     credits a native call at offer time detect an overstated native share.
+   - Serializes the frame stack and validates every saved frame's counts
+     against their capacities on load.
+
+8. `patches/0008-psg-device-model.patch`
+   - Lets a project-owned sound generator replace the emulator's. Every one
+     of the five entry points the PSG has -- the register write at `$0800`,
+     the frame-boundary update, the timestamp rebase, and power -- consults
+     the registered model first, and the emulator's own PSG receives nothing
+     while one is installed.
+   - Reports the device the emulator resolved from its settings: the two
+     output buffers it built and which of the two chip revisions it chose.
+     The revision scales every accumulated sample by two, so a model left to
+     infer it from the same settings a second time is a different device.
+   - Adds a plain field export and import to the emulator's PSG so its
+     savestate format still reads and writes the model's values. The
+     serialized set is unchanged, so a state written by either arm loads in
+     the other.
+   - Changes nothing when no model is registered.
 
 All local files and patches are GPL-3.0-or-later. Upstream per-file notices
 and licenses remain authoritative for upstream sources.

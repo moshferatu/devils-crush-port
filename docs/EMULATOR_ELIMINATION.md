@@ -16,12 +16,13 @@ Removing the emulator needs work on three fronts. The metric tracks one.
 | **Device state** | The VDC and PSG are native models, not Beetle's | No |
 | **Time** | Interrupt scheduling and cycle pacing are native | No |
 
-The gap matters concretely. Today a "native" routine still drives emulated
-hardware: `replace_sound_timer_driver` emits a write to `$0806`, the core
-applies it with `WrMem`, and it lands in **Beetle's** PSG, which synthesises
-the audio. Same for every VDC port write. At a hypothetical 100% native
-cycle share the emulator would still be present, still own all device state,
-and still own the clock.
+The gap matters concretely, and the sound path is the example that has now
+been closed. `replace_sound_timer_driver` emits a write to `$0806` and the
+core applies it with `WrMem` — but what it reaches is
+[`src/audio/pce_psg.cpp`](../src/audio/pce_psg.cpp), a native device model,
+not Beetle's PSG. The VDC is still Beetle's, and every VDC port write still
+lands there. At a hypothetical 100% native cycle share the emulator would
+still be present, still own the video device, and still own the clock.
 
 So the percentage will plateau well short of "removable". Track the phases
 below, not the number.
@@ -66,7 +67,11 @@ Two consequences worth noting:
 
 - Device models are directly verifiable. A native PSG is correct when
   `audio_sha256` matches; a native VDC when `framebuffer_sha256` matches. No
-  new test harness is required for phase 2.
+  new test harness is required for phase 2 — but the census answers "is the
+  output the same", not "did my code produce it", and for a device swap those
+  come apart. A model that fails to install matches the oracle perfectly. The
+  PSG slice hit exactly that and had to prove liveness separately; see
+  [NATIVE_PORT_WORKFLOW.md](NATIVE_PORT_WORKFLOW.md).
 - The oracle covers one route. Code the census route never executes is not
   proven by it — see the unexercised arms of the sound driver noted in
   `native_replacements_sound.cpp`. Broader routes are worth adding before
@@ -82,12 +87,13 @@ table rather than appearing at its old size:
 | Region | Master cycles | Share | What it is |
 | --- | ---: | ---: | --- |
 | `00:E2B7`–`E39C` | 584,758,197 | 45.25% | Frame-sync spin loop |
-| `00:FC03`–`FC8D`, `00:FD07`–`FD81` | 110,519,836 | 8.55% | Sound driver — **already ported**; these are the entries the no-nesting rule blocks (see below) |
-| bank `45` (`4000`–`4A9B`) | 6,498,444 | 0.50% | Music sequencer — the tick is **native**, chunked at its voice loop, and so is the PSG programmer `45:4142`, chunked at its channel loop; what is left is `45:4936`, the track loader `45:4BCC` and the chunk boundaries |
-| `00:E128`–`E290` | 1,221,328 | 0.09% | Interrupt epilogue and the dispatcher at `00:E058`, still **blocked** on the VDC status read; the handler bodies, the call wrappers and now the pad reader are native |
-| `01:C0FE`–`C1B5` | 1,238,877 | 0.10% | The top-level frame loop itself — glue between calls rather than a routine |
-| `03:694A`–`6A37` | 2,700,153 | 0.21% | Collision-table interpreter — **already ported**; the `RTS` instructions and the resumption after an interrupt lands on a checkpoint, see below |
-| `00:E93C`–`EBD6` | 2,142,114 | 0.17% | Palette shadow buffer — the two fade drivers and the whole-palette `TIA` arm, **blocked**, see below |
+| `00:FC03`–`FC8D` | 6,830,889 | 0.53% | Sound driver — body **and epilogue** now native on every arrival. Three deliberate refusals account for 6,810,810 of this: the `RTI` at `FC8D` (5,292,108), the `SEI` at `FC81` (1,509,498), and the chain exit `FC89` with the `FC03` trampoline it lands on (9,204). The remaining 20,079 is the body itself running emulated on the few dozen arrivals a route where the walk declines |
+| `00:FD07`–`FD81` | 82,117 | 0.01% | The driver's second arm, likewise, with its own `RTI` (57,771) and `SEI` (16,548) |
+| bank `45` (`4000`–`4A9B`) | 5,266,590 | 0.41% | Music sequencer — the tick is **native**, chunked at its voice loop, and so is the PSG programmer `45:4142`, chunked at its channel loop; what is left is `45:4936`, the track loader `45:4BCC` and the chunk boundaries |
+| `00:E128`–`E290` | 1,289,166 | 0.10% | Interrupt epilogue and the dispatcher at `00:E058`, still **blocked** on the VDC status read; the handler bodies, the call wrappers and the pad reader are native |
+| `01:C0FE`–`C1B5` | 1,407,828 | 0.11% | The top-level frame loop itself — glue between calls rather than a routine |
+| `03:694A`–`6A37` | 2,721,348 | 0.21% | Collision-table interpreter — **already ported**; the `RTS` instructions and the resumption after an interrupt lands on a checkpoint, see below |
+| `00:E93C`–`EBD6` | 1,079,359 | 0.08% | Palette shadow buffer — the two fade drivers and the whole-palette `TIA` arm, **blocked**, see below |
 | `02:586F`–`5903` | 501,195 | 0.04% | Sorcerer tick — **already ported**, and both interpreter calls are now composed in line; what is left is the two bank-wrapper calls, three `RTS` instructions and resumption |
 | `01:CA84`–`CC04` | 621,648 | 0.05% | Collision frame — **already ported**, and the call into the scanner is now composed rather than emulated, see below |
 
@@ -96,26 +102,42 @@ emulated addresses and four counted the whole range including native entries,
 which made ported regions look like remaining work. Every row above is now the
 emulated count.
 
-The sound-driver row also used to be 193,007,589, and that was wrong by most of
-its size. A native body's cycles are charged to the last instruction the
-profile sampled before it, which is normally the routine's own entry point —
-except where a handler returns *into* a suspended transcript. The `RTI` at
-`00:FC8D` does exactly that, and was carrying 99,636,684 cycles of other
-routines' native work into the driver's total. It is excluded above. With that
-correction the whole table balances against the elapsed count: the rows, the
-entry rows and the spin loop add back to 1,292,371,131, leaving 1,654,222 of
-declined arrivals hidden inside entry rows and nowhere else.
+The sound-driver row has been wrong twice, in the same direction both times,
+and the corrections are the reason it read 31,738,295 rather than the
+193,007,589 it started at. Porting the epilogue then took it to 6,830,889.
 
-`00:FC8D` turned out not to be a special case but the visible instance of a
-general one — *any* instruction that precedes a native call absorbs it — so
-the rows above are no longer priced from the native run's cycle column at all.
-Each address is priced at its executions in the native run times its cost in
-an assembly-only run of the same route, where nothing is replaced and so
-nothing can be absorbed. That also separates two things the old table conflated
-with unported code: the `JSR` and `RTS` at each end of every native call
-(13,250,544 route-wide) and interpretation resumed after an interrupt landed
-inside a transcript (11,238,411). Neither is work anyone can port; both go when
-the emulator does. See `docs/NATIVE_PORT_WORKFLOW.md` for the method.
+A native body's cycles are charged to the last instruction the profile sampled
+before it, which is normally the routine's own entry point — except where a
+handler returns *into* a suspended transcript. The `RTI` at `00:FC8D` does
+exactly that, and was carrying 99,636,684 cycles of other routines' native work
+into the driver's total. `00:FC8D` turned out not to be a special case but the
+visible instance of a general one — *any* instruction that precedes a native
+call absorbs it — so the rows above are not priced from the native run's cycle
+column at all. Each address is priced at its executions in the native run times
+its cost in an assembly-only run of the same route, where nothing is replaced
+and so nothing can be absorbed.
+
+That left 110,519,836, recorded here as driver entries the no-nesting rule
+blocked. It was still too large by more than half, for two reasons that only
+separated once the rule was gone. **A registry entry point is sampled but never
+executed**: the instruction hook runs before the replacement hook, so every
+native call leaves one sample on an instruction the core then skips, and
+pricing those from assembly invents 37,655,643 cycles route-wide. And what
+remained after that was not one thing but two — arrivals the rule really did
+block, and a genuinely unported epilogue that had no way to show itself while
+the whole driver read as blocked. Nesting recovered 85,778,658 cycles across
+the driver, the VDC handler chain and the sequencer, and the epilogue slice
+then took 25,180,701 of what nesting had exposed. Both driver rows above now
+total 6,913,006, and 6,880,569 of that is deliberate refusal rather than
+unwritten work: two `RTI`s (5,349,879), two `SEI`s (1,526,046) and two
+`JMP $FC03` chain exits (4,644). The rest is the `FC03` trampoline and the few
+dozen arrivals a route on which the walk declines and the body runs emulated.
+
+Pricing this way also separates the hybrid's own overhead from unported code:
+the `JSR` and `RTS` at each end of every native call, and interpretation
+resumed after an interrupt landed inside a transcript (8,581,961 route-wide).
+Neither is work anyone can port; both go when the emulator does. See
+`docs/NATIVE_PORT_WORKFLOW.md` for the method.
 
 Two rows have left the table. `00:E3C0`–`E47C`, the VRAM and VCE upload paths,
 was 7,031,316 cycles two slices ago and is 10,779 now — the loop-closing
@@ -139,14 +161,15 @@ them native instruction for instruction, because **a transcript cannot contain
 a call**. The sweep now composes the callee instead of stopping in front of it,
 and those two instructions are 17,622 and 19,776.
 
-The sound-driver row grew by 8.2M, and almost none of that is driver work. 7.5M
-of it lands on `00:FC8D`, the driver's `RTI`, which the profile charges with
-whatever the timer interrupted — and what it interrupts is now a longer
-transcript, so more already-native cycles replay with no hook in between. The
-part that is a real loss is 683,271: the 1,184 driver entries that arrive while
-the composed sweep is suspended and run emulated because the core will not nest
-a replacement. That is the whole reason 3,524,010 gross became `+2,828,949`
-net, and it is the no-nesting note below rather than anything unported.
+The sound-driver row grew by 8.2M at the time, and almost none of that was
+driver work. 7.5M of it landed on `00:FC8D`, the driver's `RTI`, which the
+profile charges with whatever the timer interrupted — and what it interrupted
+was now a longer transcript, so more already-native cycles replayed with no hook
+in between. The part that was a real loss is 683,271: the 1,184 driver entries
+that arrived while the composed sweep was suspended and ran emulated because the
+core would not nest a replacement. That is the whole reason 3,524,010 gross
+became `+2,828,949` net. **That tax no longer exists**: replacements nest, and a
+long transcript costs the driver nothing.
 
 The Sorcerer row is the same shape one slice later. `02:586F`–`5903` was
 4,055,142 with no native entry anywhere inside it and is 910,530, and about 87%
@@ -396,7 +419,7 @@ Remaining real logic, in rough order of value:
    depends only on outside input and on lines the routine itself set is
    portable now.** A read whose answer depends on state the device evolves on
    its own is not: `00:E058` reads what the display is doing, and stays phase
-   2 beside the PSG and the VDC. The joypad has come off that list.
+   2 beside the VDC. The joypad has come off that list, and so has the PSG.
 
    The bank-switching wrappers went instead, together with the two in the
    `00:ECC6` family, and they are done: nine entry points, 52,911 calls,
@@ -584,20 +607,64 @@ Remaining real logic, in rough order of value:
    largest genuinely unported routine on the route, and it was blocked by a
    rule this document had over-generalised rather than by anything about the
    routine. See item 3 above for the corrected rule.
-14. **Gameplay tails** (14.7M spread thin, 1.14% of the machine). **Porting by
-   hotspot is finished.** Once boundary instructions and interrupt resumption
-   are separated out — see `docs/NATIVE_PORT_WORKFLOW.md` — nothing genuinely
-   unported is above 1.3M, and the largest item, `01:C0FE`–`C1B5` (1.24M), is
-   the top-level frame loop's own glue rather than a routine. Below it:
-   `01:C655`–`C770` (1.02M), `00:E128`–`E176` (968K), `01:DC95`–`DCD5` (856K),
-   `00:F08E`–`F1B0` (812K), `01:C4DE`–`C50E` (779K), `00:E01F`–`E07B` (770K),
-   `09:60C7`–`6127` (690K). Each is about 0.06% of the route. Three entries
-   that used to head this list — `08:40DE`–`41AB` with `08:4085`–`4094` at
-   "2.8M", `01:C5C8`–`C770` at "1.6M", `03:6001`–`6053` at "883K" — were
-   boundary instructions and resumption around routines that were already
-   native.
-15. **Boot and reset path.** Off the census route's hot path but required.
-16. **The frame-sync spin loop** (584.8M). Trivial code, but it is where the
+14. **Nested replacements** (85,778,658 net, 43.33% → 49.97%) — **done**, and
+   this document argued against doing it. The core gated the replacement hook
+   on `!ReplacementActive`, so a transcript suspended at a checkpoint hid the
+   interrupt handler that preempted it: the sound driver reached 113,164 of
+   254,990 arrivals and the VDC handler chain missed two frames in three. The
+   argument for leaving it alone was that a replacement-frame stack is
+   emulator scaffolding that ports nothing and is deleted in phase 4. Both
+   halves of that are true and it was still the wrong call. Suspension is
+   machine state, not a lock — the handler is 65C02 code like any other, and
+   the interrupted transcript is ordinary saved state while its own transcript
+   runs. Leaving it unfixed also taxed every future slice: a longer transcript
+   shadowed more of the driver, so each port gave part of its gain back (see
+   the collision-sweep and Sorcerer notes above). `patches/0007` is 256 lines,
+   the census is unchanged at `9036a9de…`, and the measured depth is 3 of a
+   permitted 4. What it bought beyond the cycles was visibility: the driver's
+   epilogue had been indistinguishable from blocked arrivals.
+15. **The sound driver's epilogue `00:FC7C`–`FC8C`** (25,180,701 net, 49.97%
+   → 51.92%) — **done**. Nine instructions, and the largest remaining target
+   by an order of magnitude once nesting made it visible. The blocker was
+   never length: both copies of the epilogue end by reading `$DA`, the rerun
+   request `00:E12A` writes from inside the video handler that preempts this
+   one, so the value the branch turns on can arrive *after* the snapshot a
+   transcript would have to predict it from. The chain exit is taken 387 times
+   on this route, so guessing it was not an option. The fix is to make the
+   epilogue two transcripts and re-enter the walk for the second, which is the
+   `00:EAB0` chunking pattern used against staleness rather than length.
+   *Where* they meet is the finding, and it cost a day: the obvious split is
+   at the read, and it is wrong, because the `SEI` two instructions earlier
+   is an instruction the checkpoint format cannot express. A checkpoint
+   carries one status byte and the core derives both the `P` an interrupt
+   pushes and the `IFlagSample` its timer dispatch tests from it; `SEI` is the
+   one instruction where those must differ, since it retires with `I` set but
+   sampled the mask before setting it. Publishing the open mask corrupts the
+   pushed `P` — the census caught it in frame 951, with `PC=$FC82, P=$02` on
+   the stack, an `I` clear that the `RTI` would have restored. Publishing the
+   true `P` shuts a boundary the hardware leaves open. So the `SEI` stays
+   emulated (1,526,046, 5.7% of the slice) and the transcripts meet either
+   side of it, entering at `00:FC82` and `00:FD76`. This is the second such
+   instruction after `BBR` at `00:F423`; both were found by the census, and in
+   both cases the fix was to hand the instruction back rather than widen a
+   format that phase 4 deletes. The `RTI`s at `00:FC8D` and `00:FD81` are left
+   (5,349,879) — returning from an interrupt is the frame boundary's work,
+   item 17 — as are the two `JMP $FC03` chain exits (4,644). The driver is now
+   the largest native address on the route at 12.25% of all master cycles, and
+   94.8% of everything outside the idle spin loop runs natively.
+16. **Gameplay tails** (32.2M, 2.49% of the machine, of which 6.9M is the
+   driver residue item 15 leaves deliberately). Once entry points, boundary
+   instructions and interrupt resumption are separated out —
+   see `docs/NATIVE_PORT_WORKFLOW.md` — nothing genuinely unported is above
+   1.6M. In order: `08:41AB` (1.56M), `01:C700`–`C77F` (1.22M),
+   `08:4080`–`40FF` (1.20M), `01:DC80`–`DCFF` (950K), `00:E200`–`E27F` (894K),
+   `03:6000`–`607F` (857K), `01:C100`–`C17F` (839K), `00:E000`–`E07F` (775K).
+   Three entries that used to head this list — `08:40DE`–`41AB` with
+   `08:4085`–`4094` at "2.8M", `01:C5C8`–`C770` at "1.6M", `03:6001`–`6053` at
+   "883K" — were boundary instructions and resumption around routines that
+   were already native.
+17. **Boot and reset path.** Off the census route's hot path but required.
+18. **The frame-sync spin loop** (584.8M). Trivial code, but it is where the
    native frame boundary ends up living — do it with phase 3, not before.
 
 ### Phase 2 — native device models
@@ -610,16 +677,136 @@ Remaining real logic, in rough order of value:
   remains for this phase is owning the port rather than mirroring it — reading
   the host's input directly instead of through the core's `current_input_`,
   which happens when the frame loop goes native.
-- **PSG.** Accept `$0800`–`$0809`, model the six channels, DDA output, noise
-  and LFO, and produce the `AudioView` float samples. Acceptance:
-  `audio_sha256`. This is the larger of the two, because Beetle's PSG
-  includes resampling to 44.1kHz that has to be matched bit-for-bit.
+- **PSG.** **Done.** [`src/audio/pce_psg.cpp`](../src/audio/pce_psg.cpp)
+  accepts `$0800`–`$0809`, models the six channels, direct digital audio,
+  the LFO and the noise LFSR, and drives the two band-limited delta buffers.
+  It is the device only — it owns no CPU state and reaches nothing outside
+  itself. Installed through the fork's C boundary by patch `0008`, so the
+  emulator's PSG receives no writes, no time and no reset while it is
+  running; the emulator keeps the object solely as the shape its savestate
+  format is written through.
+
+  Acceptance was the census unchanged, `9036a9de…`, over all 3,600 frames,
+  and it also holds at the device output itself: a temporary harness ran both
+  PSGs side by side from the same starting buffers and compared every one of
+  the ~60,000 buffer positions per frame per channel, finding zero
+  differences across the route. `tests/verify_native_psg.cmake` pins the
+  census in both arms.
+
+  What that proof does **not** cover was measured rather than guessed. The
+  model counts its own paths, so `--report-psg-coverage` reproduces this from
+  any recorded route:
+
+  | Path | Emits on the census route | Covered by the census |
+  | --- | --- | --- |
+  | Waveform / direct digital audio (`Normal`) | 7,048,794, all six channels | Thoroughly |
+  | Silent channel (`Off`) | 470,150, all six channels | Thoroughly |
+  | Noise LFSR | 824,410, **channel 5 only** | Channel 5 only; channel 4 never enters noise mode |
+  | Accumulating output | **7**, across channels 0, 3 and 5 | Effectively not at all |
+  | LFO | **0** updates, **0** recursions | Not at all |
+
+  The LFO result is not an accident of this route. The sequencer at `45:4142`
+  writes `$0809` from `$2E41`, and every write in the ROM that names that byte
+  writes a zero to it: the cold start's `STZ $2E41` at `45:4AB19`, and the
+  sequencer's own `STA $2E41` at `45:4A20A`, which stores the value it just
+  masked its high bit out of. Nothing gives the byte a value. That was checked
+  across every absolute and absolute-indexed store in the cartridge whose
+  target can reach `$2E40`/`$2E41`; a bulk block transfer over work RAM is not
+  excluded by that search, but the sequencer reloads the register from the
+  byte every frame and the route shows `$00` on all 3,605 of them. **So a
+  censused route that plays looping music — the plan's answer here — would
+  report the same zero.**
+
+  What settles them is
+  [`tests/psg_device_tests.cpp`](../tests/psg_device_tests.cpp), which drives
+  this model and the emulator's own `PCE_PSG` from the same synthetic register
+  stream and compares both the output buffers and the entire device state
+  after each scenario. The emulator's PSG needs nothing from the rest of the
+  machine — buffers and a revision to construct, a timestamp per call — so it
+  is reachable as a bare reference device through
+  `dc_beetle_reference_psg.*` in the fork. Nine scenarios plus three seeded
+  random streams, each run against both chip revisions, cover the LFO at all
+  three depths and both of the ways the mixer turns it back off, noise on
+  channels 4 and 5 across all 32 periods, the accumulating mode on all six
+  channels either side of the cutoff, the volume walk, direct digital audio,
+  power, and the frame rebase. The test asserts the path counters it needed
+  are non-zero, so a scenario that stopped reaching a path fails rather than
+  passing quietly.
+
+  That test is worth exactly what it can catch, so it was checked the same way
+  the device was: perturbing the LFO shift by one fails the oscillator
+  scenario and all three random streams, and perturbing the accumulating
+  mode's midpoint by one fails the accumulating scenario on the HuC6280A and
+  only there — which is the revision that subtracts it.
+
+  This is also the shape of the answer for the VDC. Where the game exercises a
+  device, the census proves it; where the game does not, the emulator itself
+  is the oracle, for as long as it is still here.
+
+  The scope shrank once the boundary was drawn in the right place. The plan
+  said this was the larger of the two devices because Beetle's PSG "includes
+  resampling to 44.1 kHz that has to be matched bit-for-bit" — but the
+  resampler is not part of the PC Engine. The chip produces deltas at the
+  master clock divided by twelve; turning those into 44.1 kHz is something a
+  host does, and Mednafen's `OwlResampler` is one host's answer with its own
+  SIMD-dependent float arithmetic. Modelling it as part of the machine would
+  have meant porting 770 lines of someone else's signal processing to
+  reproduce a number that is not a property of the hardware. The device stops
+  at the delta buffers; the resampler stays borrowed until phase 4 deletes
+  the emulator, and `audio_sha256` is re-baselined once, deliberately, at
+  that point.
 - **VDC.** Accept the VDC register file, maintain VRAM, the post-DMA SAT,
   palette and scroll, and produce a `VideoMemorySnapshot`. Acceptance:
   `framebuffer_sha256`. Much of this is already done: `src/render/` decodes a
   snapshot into pixels natively today. What is missing is the state machine
   that *maintains* the snapshot in response to port writes, plus the raster
   timing that decides when each line is sampled.
+
+  The reference device this needs already exists, and building it first
+  corrected the plan. This section assumed the VDC could not be lifted out the
+  way the PSG was, because the game reads it back — `00:E058` opens by reading
+  the status register — and that a reference device would therefore need the
+  machine around it. It does not. `vdc.cpp` touches no emulator global; the
+  class owns its VRAM, sprite attribute table, register file and raster phase;
+  and its only outward edges are two function-pointer hooks. Read-back is a
+  method on the device, so two devices can be asked the same question and
+  compared. `dc_beetle_reference_vdc.*` is the same shim `PCE_PSG` got, and
+  `tests/vdc_reference_device_tests.cpp` drives a bare device through a field.
+
+  What the VDC does need, and the PSG did not, is a **clock schedule**. `VCE`
+  decides how `run`, `hsync` and `vsync` interleave, and the picture depends on
+  it: the same register writes that draw 57,347 pixels on the 5 MHz dot clock
+  draw 76,413 on the 7 MHz one. That schedule is the substance of the slice,
+  more than the pixel decoding is, and the test's `Driver` is a working copy of
+  it to build against.
+
+  It also has one genuine coupling back to the machine, where the PSG had
+  none: the device stalls the CPU by looping until its wait-state hook
+  *refuses*, so the refusal is load-bearing rather than advisory. The
+  emulator's escape is a per-frame budget of 455 × 64 stolen cycles, after
+  which the device completes the blocking transfer itself. A native model owes
+  the same answer, because the CPU's timing depends on it — which makes this a
+  phase 3 obligation as much as a phase 2 one.
+
+  **The model is built.** `src/video/pce_vdc.cpp` is a HuC6270: the register
+  file, 64K words of video memory with its character cache, the horizontal and
+  vertical phase machines, both transfer engines, the background and sprite
+  renderers, the interrupt sources, and the stall. It reaches nothing outside
+  itself, and unlike the emulator's device its two hooks carry a context
+  pointer, so more than one may exist at a time.
+  `tests/vdc_device_tests.cpp` drives it and the reference device side by side
+  on one copy of `VCE::SyncSub`, comparing every pixel, every register, every
+  word of video memory and the sprite attribute table, the interrupt line and
+  its hook traffic, and the stall count — over 29 fields, 2.6 million pixels,
+  reaching sprite overflow, sprite-zero collision, 16-colour sprites, both
+  transfer directions, all four address increments, and a stall that exhausts
+  its budget. None of that stimulus comes from the ROM, which is the point:
+  the census can only prove what the game asks for.
+
+  What remains for this device is installation — a fork patch in the shape of
+  `0008`, and the `framebuffer_sha256` census over the route. The liveness
+  caveat applies there exactly as it did to the PSG: a VDC model that never
+  installs matches the census perfectly.
 
 ### Phase 3 — time and interrupts
 
@@ -638,8 +825,8 @@ Remaining real logic, in rough order of value:
 Once every routine is native and phases 2–3 hold, there is no 6280 to
 emulate. Bank mapping (`MPR`, `TAM`/`TMA`) collapses into ordinary ROM
 addressing in native code. `RoutineReplacement`, `ReplacementCheckpoint`, the
-hook machinery, the write channel, the replacement-nesting limitation and
-most of `PceRuntime` all go away together.
+hook machinery, the write channel, the replacement frame stack and most of
+`PceRuntime` all go away together.
 
 ## Open questions
 
@@ -648,10 +835,21 @@ most of `PceRuntime` all go away together.
   moved a nested interrupt by nine master cycles and changed the census hash.
   A native time model has to be at least that precise.
 - **Route coverage.** One 3,600-frame route is a strong oracle but not a
-  complete one. Additional censused routes — particularly one that plays
-  looping music, which the current route never does — should exist before
-  phase 2 is declared correct.
-- **Audio resampling.** Matching `audio_sha256` means matching Beetle's
-  resampler exactly, or changing the oracle. Worth deciding early which.
+  complete one, and the PSG slice showed that adding routes is not always the
+  remedy. The LFO fires zero times on the census route, and it would fire zero
+  times on every other route as well, because the game never writes a non-zero
+  LFO control byte. Where a device path is unreachable from the game, a second
+  route buys nothing and a differential test against the emulator's own device
+  buys everything — see `tests/psg_device_tests.cpp` and the coverage table
+  under phase 2. Additional censused routes are still worth having for the
+  parts of the machine the game *does* drive differently; they are just not
+  the tool for this.
+- **Audio resampling.** Decided: neither. The resampler is host-side, not
+  part of the PC Engine, so the native device stops at the delta buffers and
+  the emulator's resampler stays in the path until phase 4 removes it. That
+  keeps `audio_sha256` a live oracle for the whole hybrid period at the cost
+  of one deliberate re-baseline at the end. What still has to be decided is
+  what replaces it — a windowed-sinc of our own is easy; sounding the same as
+  the recordings people have of this game is the part worth thinking about.
 - **Savestates.** `serialize`/`deserialize` are part of the contract and
   currently wrap Beetle's format.

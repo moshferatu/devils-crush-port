@@ -38,6 +38,7 @@ include(CompilerWarnings)
 add_library(
     dc_core
     STATIC
+    src/audio/pce_psg.cpp
     src/cabinet/cabinet_state.cpp
     src/cabinet/display_config.cpp
     src/cabinet/dmd_layout.cpp
@@ -49,6 +50,7 @@ add_library(
     src/render/sharp_pixel_scaler.cpp
     src/render/table_palette_cache.cpp
     src/render/title_logo.cpp
+    src/video/pce_vdc.cpp
 )
 
 add_library(DevilsCrush::Core ALIAS dc_core)
@@ -129,6 +131,7 @@ if(DC_FETCH_BEETLE)
         dc_emulation
         PRIVATE
             DevilsCrush::BeetlePce
+            DevilsCrush::Core
     )
     target_compile_definitions(
         dc_emulation

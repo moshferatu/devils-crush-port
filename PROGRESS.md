@@ -5444,7 +5444,378 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
 
 ## Active Work
 
-Current owner: Claude. Current slice: **the pad reader `00:E195` goes native**.
+Current owner: Claude. Current slice: **the parts of the sound chip the game
+never plays**. The census proved the PSG device model on everything Devil's
+Crush asks the chip to do, which is most of the chip and not all of it. The
+model now counts its own paths, so `--report-psg-coverage` says exactly how
+much: over the census route the waveform path emits 7,048,794 times and the
+silent path 470,150, both across all six channels; the noise LFSR emits
+824,410 times but **only on channel 5**; the accumulating output mode emits
+**seven** times in an hour of frames; and the LFO runs **zero** times.
+
+The plan's remedy for that was a second censused route, one that plays looping
+music. It was the wrong instrument, and the ROM says so. The sequencer at
+`45:4142` writes `$0809` from `$2E41`, and every write in the cartridge that
+names that byte writes a zero into it: the cold start's `STZ $2E41` at
+`45:4AB19`, and the sequencer's own `STA $2E41` at `45:4A20A`, which stores
+back the value it has just masked the high bit out of. Nothing gives the byte
+a value. (That is every absolute and absolute-indexed store whose target can
+reach `$2E40`/`$2E41`; it does not rule out a bulk block transfer across work
+RAM, but the sequencer reloads the register from that byte every frame and
+the route reads `$00` on all 3,605 of them.) Another route would report the
+same zero. A route is an oracle for what the game does; it is silent about
+what the hardware does.
+
+The oracle for the rest is the emulator's own device, driven directly.
+`PCE_PSG` needs nothing from the machine around it — two buffers and a
+revision to construct, a timestamp per call — so
+`third_party/beetle-pce-fork/src/dc_beetle_reference_psg.cpp` exposes it as a
+bare reference device and `tests/psg_device_tests.cpp` runs both chips from the
+same synthetic register stream. After every scenario it compares not only the
+two output buffers, position by position, but the entire device state: every
+counter, waveform entry, sample latch, shift register and attenuation. Nine
+scenarios and three seeded random streams, each against both chip revisions,
+reach the LFO at all three depths and both ways the mixer turns it back off,
+noise on channels 4 and 5 across all 32 periods, the accumulating mode on all
+six channels either side of the cutoff, the volume walk, direct digital audio,
+power and the frame rebase. It passed on the first run, both revisions.
+
+A test is worth what it can catch, so it was checked the way the device was.
+Perturbing the LFO shift by one fails the oscillator scenario *and* all three
+random streams. Perturbing the accumulating mode's midpoint by one fails the
+accumulating scenario on the HuC6280A and nowhere else — which is the revision
+that subtracts it. And because agreement is only worth its coverage, the test
+asserts its own path counters are non-zero, so a scenario that quietly stopped
+reaching a path fails instead of passing.
+
+This test lives exactly as long as the emulator does. What it leaves behind is
+the record that the model was right while there was still something to be
+right against — and the shape of the answer for the VDC, where the same split
+will apply: the census for what the game drives, the emulator for what it
+does not.
+
+### Next
+
+**Install the native VDC.** The device is written and proved; what is left is
+a fork patch in the shape of `0008` that routes the emulator's VDC port
+accesses and clocks into `devils_crush::video::PceVdc`, and a
+`framebuffer_sha256` census over the route to show the picture did not move.
+Two things make this harder than the sound patch was. The VDC is read back —
+`00:E058` opens by reading the status register — so the patch has to route
+reads as well as writes, where the PSG needed only a write path. And the
+wait-state hook is load-bearing: the emulator's `VCE::WS_Hook` charges the CPU
+and refuses when its per-frame budget runs out, so the installed model has to
+be given a hook that does the same or the machine hangs rather than fails.
+
+The model deliberately has no savestate surface yet. `PcePsg` grew
+`capture_state`/`apply_state` in the slice that installed it, because that is
+the slice where the savestate format becomes a constraint and where a test can
+prove the round trip. Adding the same to `PceVdc` now would be an untested API
+guessing at what the patch needs.
+
+The same liveness caveat as the PSG slice applies and should be checked the
+same way: a VDC model that never installs matches `framebuffer_sha256`
+perfectly. Prove installation from the model's own side, not from the hash.
+
+### Previous: the video chip is ours
+
+`src/video/pce_vdc.cpp` is a HuC6270 — the register file, 64K words of video
+memory with the character cache that shadows it, the horizontal and vertical
+phase machines, the video-memory and sprite-table transfer engines, the
+background and sprite renderers, six interrupt sources, and the stall a port
+access takes when it arrives while memory is busy. It reaches nothing outside
+itself. Its two hooks carry a context pointer, which the emulator's do not,
+so unlike `VDC` more than one of it can exist at a time.
+
+`tests/vdc_device_tests.cpp` runs it against the emulator's own device on one
+copy of `VCE::SyncSub`, comparing after every port access and every chunk of
+clocks: every pixel, all nineteen registers, the interrupt line and both hook
+counts, the stall budget, and — between sections — all 65,536 words of video
+memory and all 256 of the sprite attribute table. Twenty-nine fields, 2.6
+million pixels, no ROM. The stimulus deliberately reaches what the game does
+not: sprite overflow, sprite-zero collision, 16-colour sprites, wide and
+flipped and tall sprites together, all four address increments, both transfer
+directions, a transfer short enough that its own completion is the event
+horizon, and a stall that exhausts the 455 × 64 budget.
+
+**Nothing was learned from the test passing. Everything was learned from
+making it fail.** It passed on the first run, complete, and that was worth
+nothing: thirty-eight deliberate one-line breaks to the model were then tried,
+and on the first sweep **twelve of them survived** — the model was wrong in
+twelve ways the test could not see. Each survivor was a hole in the stimulus,
+not in the comparison, and the holes were more interesting than the model:
+
+- **A uniform tile map hides every map-indexing mistake.** The map was filled
+  with one character, so a renderer fetching the wrong entry drew the same
+  picture. Replaced with a varying fill — and the first varying fill was no
+  better, because it was arithmetic and repeated every 1,024 entries, while
+  the rows a wrong height mask picks are exactly a power of two apart. It
+  takes a *hash* to break that.
+- **A register latched at vertical sync takes two fields, not one.** Vertical
+  sync falls near the end of this driver's field, so writing the map shape and
+  asserting on the next field tests the previous shape twice and the new one
+  never. Every shape now gets a field to be latched in and a field to be drawn
+  in.
+- **A walk across a line has to be aperiodic and long.** The window between
+  the per-line latch of the layer enables and the drawing is a fixed 96 clocks
+  wide, so alternating the value every clock presents the same value at both
+  ends and tests nothing. And a walk one line long covers one display period,
+  which — when that line drew with the layer off — covered nothing at all.
+- **A section can be in the wrong part of the field entirely.** The mid-line
+  walk began where the previous section stopped, which is the vertical front
+  porch, where nothing is drawn.
+- **The device's own program can make a code path unreachable.** The usual
+  vertical program totals 263 lines inside a 262-line field, so the vertical
+  phase machine never completes a cycle — vertical sync re-syncs it first,
+  every field — and its re-latch of the map shape is dead code. Reaching it
+  needs a program short enough to wrap three times in a field.
+
+Two of the thirty-eight are *correctly* uncaught, and saying so matters as
+much as fixing the rest: in the background renderer `palette_index` and
+`pal_or` decode the same four bits, so ORing them makes either one redundant
+and dropping a bit from one is not a behaviour change at all. Perturbing the
+copy that is *not* redundant is caught.
+
+The lesson generalises past this device. A differential test's comparison is
+the easy half and was right the first time; the stimulus is the hard half, and
+its adequacy is not observable from a passing run. The only instrument that
+measures it is breaking the thing under test on purpose, and the number worth
+recording is not 38 caught but **12 initially missed**.
+
+Two liveness assertions are kept in the test as a result: that the mid-line
+walk ran while both layers were being drawn, and that each of fifteen named
+paths through the model was reached at all. The first of those is what
+discovered a mask typo — `(hash >> 26) & 0xC0` on a six-bit value is always
+zero — that had been quietly writing "both layers off" at every clock.
+
+### Previous: the sound chip is ours
+
+The first
+piece of phase 2 — device state — and the first slice in this project that
+moves the native share by exactly zero, on purpose. `src/audio/pce_psg.cpp` is
+a HuC6280 programmable sound generator: six channels of 32-entry five-bit
+waveform, direct digital audio, the LFO that modulates channel 0 out of
+channel 1, and the 18-bit noise LFSR on channels 4 and 5, clocked at the master
+clock divided by three and driving two band-limited delta buffers at one
+position per twelve. It owns no CPU state and reaches nothing outside itself.
+Patch `0008` installs it through the fork's C boundary, and while it is
+installed the emulator's PSG receives no writes, no time and no reset — it
+survives only as the shape its savestate format is written through, so a state
+written by either arm still loads in the other.
+
+The census does not move: `9036a9de...` over all 3,600 frames, work RAM,
+framebuffer and audio alike. It also holds one level below that, where the
+device actually is. A temporary harness ran both PSGs side by side inside
+`Emulate`, seeded from the same buffers at the top of each iteration and fed
+the same writes, and compared every buffer position of every frame on both
+channels: zero differences across the route. That is the statement worth
+making — not that the audio hash survived resampling, but that the two devices
+emit the same deltas at the same positions.
+
+Two things are worth carrying forward from how it went wrong. The model
+matched the census on its very first run *while never being called at all* —
+`load_rom` shuts the core down first, and the model was being torn down in
+`shutdown_core` between the install and the load. A missing device model and a
+correct one produce identical bytes, so a device swap needs a liveness proof
+separate from its correctness proof; the one that works is a deliberately
+gross wrong answer. And the real bug, once liveness was established, was that
+the model assumed a HuC6280 while the host pins `pce_psgrevision` to
+`HuC6280A` — which centres waveform amplitudes and halves every accumulated
+sample. The fix was not to read the setting twice but to have the emulator
+report the device it built; the revision now travels with the output buffers.
+
+The resampler stays borrowed, and that is a boundary rather than an omission.
+The chip produces deltas at the master clock divided by twelve; turning those
+into 44.1 kHz is something a host does, and Mednafen's `OwlResampler` is one
+host's answer with its own SIMD-dependent float arithmetic. Modelling it as
+part of the PC Engine would have meant porting 770 lines of someone else's
+signal processing to reproduce a number that is not a property of the
+hardware. `tests/verify_native_psg.cmake` pins the census in both arms.
+
+### Previous: the sound driver's epilogue runs natively
+
+Native share 49.97% -> **51.92%** (670,996,452 of 1,292,371,731),
+net `+25,180,701`, with the registry now **366 of 366 admitted routines
+installed** and `--replace-registry` still reproducing the assembly-only census
+`9036a9de...`. Outside the idle spin loop, **94.8%** of the machine now runs
+natively, and `00:FC00` is the largest single native address on the route at
+12.25% of all master cycles.
+
+Both copies of the epilogue — `00:FC7C` for the channel walk, `00:FD70` for the
+track-advance tail — end by reading `$DA` and branching into a `JMP $FC03`
+chain back through the sequencer. A transcript is computed once from the
+snapshot taken on entry, and `$DA` is written by `00:E12A` inside the video
+handler that preempts this one through `FC32`'s deliberate `CLI`, so the value
+the branch turns on can arrive after the snapshot that would have to predict
+it. That is not theoretical: `00:E12A` fires 387 times on the route and the two
+chain exits are taken 387 times between them.
+
+The fix is to make the epilogue two transcripts and re-enter the walk for the
+second, so it gets a fresh snapshot — the `00:EAB0` chunking pattern applied to
+staleness rather than to length.
+
+**Where the two meet is the finding, and the obvious answer is wrong.**
+Splitting at the read, `00:FC84`, puts the `SEI` at `00:FC81` inside the first
+transcript, and `SEI` is an instruction the checkpoint format cannot express. A
+checkpoint carries one status byte, and `ApplyReplacementCheckpoint` derives two
+things from it: the `P` an interrupt taken at that boundary pushes, and the
+`IFlagSample` the core's timer dispatch actually tests. Every other instruction
+in the ROM wants the same answer from both. `SEI` retires with `I` set, so a
+correct `P` has the bit — but its `LastCycle()` sampled the mask before
+`P |= I_FLAG`, so the boundary after it is still open and a correct
+`IFlagSample` does not.
+
+Publishing the open mask was tried first, by symmetry with the `CLI` deferral
+the walk already models at `FC32`; `docs/NATIVE_PORT_WORKFLOW.md` explicitly
+predicted that would work. The census caught it in frame 951 — every write
+correct in value and order and 117 master cycles late, with a timer interrupt
+taken at the `SEI` boundary that assembly does not take. `--work-ram-write-range
+2100-21FF` showed why: the handler pushed `PC=$FC82, P=$02`, an `I` clear its
+`RTI` would have restored, silently reopening the window the driver had just
+closed. Publishing the true `P` instead is no better — it shuts a boundary the
+hardware leaves open. Neither byte is the machine.
+
+The two directions are not symmetric, and that is the transferable part.
+Deferring a mask *clear* suppresses the interrupt at that boundary, so nothing
+is pushed and nothing can be pushed wrong. Deferring a mask *set* permits it.
+`CLI` is safe to defer for exactly the reason `SEI` is not.
+
+So the `SEI` stays emulated and the transcripts meet either side of it,
+entering at `00:FC82` and `00:FD76`. It costs 1,526,046 of the 26.7M the
+epilogue was worth, 5.7%, and buys an exact answer for the rest. This is the
+second instruction the format cannot express after `BBR` at `00:F423`; both
+were found by the census rather than by reading the core, and in both cases the
+fix was to hand the instruction back rather than widen a format phase 4
+deletes.
+
+Left deliberately: the `RTI`s at `00:FC8D` and `00:FD81` (5,349,879), because
+returning from an interrupt is the frame boundary's work, and the two
+`JMP $FC03` chain exits (4,644).
+
+Verification is the two-run diff against pure assembly over three artifacts,
+all byte-identical: the state census `9036a9de...`, 1,604,764 work-RAM writes
+over the driver's channel records and track pointers, and 954,241 PSG, timer
+and interrupt-acknowledge bus writes — each write carrying its own master-cycle
+stamp, so the epilogue's stack, mapping and timing match write for write and
+cycle for cycle. `00:FC82@all` is admitted 251,531 of 251,531 and `00:FD76@all`
+2,758 of 2,758, which is every arrival that got past the reentry guard at
+`FC2C`. Eleven affected tests pass, including the registry manifests and the
+whole-registry census.
+
+One measurement note: reported elapsed rose 600 cycles, from 1,292,371,131 to
+1,292,371,731. That figure is the span between the first and last registry
+entry (`NativeCycleSpan` in `src/app/main.cpp`), not the length of the run, so
+adding two entry points widened the window slightly at one end. The census hash
+is what says the machine is unchanged.
+
+### Where the remaining emulated cycles are
+
+**Porting by hotspot is finished, and this time the claim is instrumented.**
+It was made once before, withdrawn one slice later when the driver's epilogue
+turned out to have been hiding inside an over-attributed nesting bill, and it
+is worth being explicit about what is different now rather than just repeating
+it.
+
+Outside the spin loop, 37,125,885 cycles are still interpreted by the census's
+own arithmetic. Priced per address they decompose as:
+
+- **32,197,371** — genuinely unported, 2.49% of the machine. The largest single
+  item in it is the 6,880,569 the sound driver now leaves on purpose: two
+  `RTI`s (5,349,879), two `SEI`s (1,526,046) and two chain exits (4,644).
+  Nothing else is above 1.6M: `08:41AB` (1.56M), `01:C700`-`C77F` (1.22M),
+  `08:4080`-`40FF` (1.20M), `01:DC80`-`DCFF` (950K), `00:E200`-`E27F` (894K),
+  `03:6000`-`607F` (857K), `01:C100`-`C17F` (839K), `00:E000`-`E07F` (775K).
+- **8,581,961** — interpretation resumed after an interrupt landed inside a
+  transcript. Not portable work; it goes with the emulator.
+
+Three things make the claim checkable this time. Every block above 1.6M has
+been taken. The largest thing still emulated is a deliberate refusal with a
+written reason rather than an unexplored region. And the ranking instrument's
+own error is now 3,653,447 cycles against a 37.1M remainder — it was the same
+3,653,445 against 62.3M a slice ago, so it is a fixed cost on untouched
+addresses rather than a proportional one, and at 9.8% it is approaching the
+point where the instrument can no longer resolve the next slice for you.
+
+So further percentage comes from the phases in `docs/EMULATOR_ELIMINATION.md`
+— device state and time — not from more transcripts. The PSG was taken next
+and settled that reading: it is now a native device model and the native share
+did not move by a single cycle, because the metric counts who executes
+instructions and a sound chip does not execute any. From here the number and
+the goal have visibly parted company, and the phases are the thing to read.
+
+### Previous: a replacement may be installed inside a suspended replacement
+
+Native share 43.33% -> **49.97%**
+(645,815,751 of 1,292,371,131), net `+85,778,658` across 27 routines, with the
+registry still **364 of 364 admitted routines installed** and
+`--replace-registry` still reproducing the assembly-only census `9036a9de...`.
+No routine lost a call or a cycle. Fourteen times the gain of any previous
+slice, and not one line of game logic was written.
+
+The core gated the replacement hook on `!ReplacementActive`. A transcript
+suspended at a checkpoint therefore hid the interrupt handler that preempted
+it: the timer handler reached 113,164 of 254,990 arrivals, `00:E136` ran
+natively on 1,180 frames of 3,599, and the pad reader on 3,159. **This project
+decided twice to leave that alone**, on the grounds that a replacement-frame
+stack is emulator scaffolding that ports nothing and gets deleted in phase 4.
+Both halves of that are true and the conclusion was still wrong, for a reason
+the ledger states plainly: the rule taxed every slice. A longer transcript
+shadows more interrupts, so each port handed part of its own gain back to the
+driver — 683,271 cycles from the collision sweep, 756,342 from the wrapper
+group, 694,000 from the palette leaves. The scaffolding argument prices the
+work; it does not price the interest.
+
+A suspension is machine state, not a lock. The handler is 65C02 code like
+anything else, and the transcript it interrupted is ordinary saved state: the
+core pushes it to a frame stack, lets the handler's own transcript become
+current, and pops it back when the inner one completes or is abandoned. Six
+fields and two arrays per frame, saved and restored by used prefix rather than
+by capacity, so a small handler transcript costs a small copy. The whole change
+is `third_party/beetle-pce-fork/patches/0007-huc6280-nested-replacement.patch`,
+256 lines.
+
+Three details carry the correctness.
+
+- **The hook is now consulted on every instruction, not only when idle.** That
+  sounds like it should expose a transcript to itself, and it does not: a
+  transcript's own resume points are taken by the checkpoint-resume block at
+  the top of `RunSub`, which restarts the loop before the hook is reached. The
+  instructions newly visible to the hook are exactly the interrupt handlers'.
+- **A body with no checkpoints needs no frame.** It runs to completion inside
+  one loop iteration and touches no frame state, so it nests for free. Only
+  checkpointed transcripts push.
+- **`AdvanceReplacementTo` must not unwind.** It holds a reference into the
+  current frame's checkpoint array, so its two bail-outs still just clear the
+  active flag; `ApplyReplacementCheckpoint` pops once, after the last use of
+  that reference, for both the completed and the abandoned case.
+
+The depth is fixed at 4 and the core declines rather than exceed it, so
+overflow would cost a native call and never correctness. It has to be visible
+anyway, because the host credits a native call when it *offers* one: a refusal
+would inflate the reported share silently. `ReplacementNesting` carries the
+counts out through `PceRuntime`, and the route reports 147,985 nested installs,
+**0 refused**, and a high-water mark of **3** — a foreground transcript, the
+timer handler it interrupted, and the VDC handler that arrived through the
+driver's own `CLI`. Four is the hardware bound with a level spare.
+
+Verification: the 3,600-frame census is byte-identical (`9036a9de...`), elapsed
+master cycles are unchanged to the cycle, and the whole 389-test suite passes.
+Two tests needed their expected counts raised because the routines they cover
+are now admitted more often — `00:FC00@all` 254,434 -> **254,990 of 254,990**
+and `00:EB30@all` 3,561/3,590 -> **3,570 of 3,599** — with every artifact hash
+in both unchanged.
+
+One instrument correction came out of this slice and is now in the workflow
+doc: **a registry entry point is sampled but never executed.** The instruction
+hook runs before the replacement hook, so every native call leaves a sample on
+an instruction the core skips, and pricing those from assembly invents
+37,655,643 cycles route-wide. Dropping `registry_entry = 1` rows is what makes
+the books close. That phantom is most of why the nesting bill was recorded as
+110,519,836 when the truth was 46M of blocked arrivals and 26M of unwritten
+epilogue — and the epilogue is what the slice above went on to take.
+
+### Previous: the pad reader `00:E195` goes native
+
 It is admitted on every one of its 3,599 arrivals, the registry is **364 of 364
 admitted routines installed**, and `--replace-registry` still reproduces the
 assembly-only census `9036a9de...`. Native share 42.87% -> **43.33%**
@@ -5517,34 +5888,12 @@ with `08:4085`-`4094`, written down here last slice as the 2.8M next target, is
 four `JSR $40DF`s and an `RTS` around a routine that was already native.
 `01:C5C8`-`C770` at "1.6M" is 1.02M, and `03:6001`-`6053` at "883K" is 439K.
 
-### Next
-
-**Porting by hotspot is finished.** Excluding the spin loop, 149,738,866 cycles
-are still interpreted, and they decompose cleanly:
-
-- **110,519,836** — sound-driver entries the no-nesting rule blocks. Not
-  unported code; recovering it means letting a replacement nest, which is
-  emulator scaffolding that gets deleted with the emulator. Deliberately not
-  done. It is worth knowing the price, though: it is 8.55% of the route, and
-  taking it would put the native share near 51%.
-- **13,250,544** — the `JSR` into and `RTS` out of every native call.
-- **11,238,411** — interpretation resumed after an interrupt landed inside a
-  transcript.
-- **14,730,075** — everything genuinely unported, 1.14% of the machine.
-
-Only the last is portable, and nothing in it is above 1.3M. The largest,
-`01:C0FE`-`C1B5` (1.24M), is the top-level frame loop's own glue between calls
-rather than a routine — it waits on `00:E321`, and it goes native when the
-frame boundary does. Below it: `01:C655`-`C770` (1.02M), `00:E128`-`E176`
-(968K), `01:DC95`-`DCD5` (856K), `00:F08E`-`F1B0` (812K), `01:C4DE`-`C50E`
-(779K), `00:E01F`-`E07B` (770K), `09:60C7`-`6127` (690K). Each is worth about
-0.06% of the route, so a slice there costs what a slice costs and buys a tenth
-of what this one did.
-
-The honest read is that further percentage comes from the phases in
-`docs/EMULATOR_ELIMINATION.md` — device state and time — rather than from more
-transcripts. Phase 2's joypad item is now largely settled; the PSG and the VDC
-are not.
+That slice's own "Next" section concluded that porting by hotspot was finished,
+priced the no-nesting rule at 110,519,836, and recommended against paying it.
+Both figures were wrong and the recommendation was wrong; see the current slice
+above for what the number actually was and why the rule was worth removing. The
+tail entries it listed — `01:C0FE`-`C1B5`, `01:C655`-`C770`, `00:E128`-`E176`
+and the rest — were priced with entry rows included and have been re-ranked.
 
 ### Previous: the PSG register programmer `45:4142` chunks at its channel loop It is admitted on 3,216 of 3,604 arrivals rather
 than 1,792, a new entry point `45:4143` takes 3,788 more, the registry is
@@ -6252,6 +6601,15 @@ already native and already proven. It would raise the headline percentage
 without advancing the goal, so it was deliberately left alone. The native path
 is fully exercised anyway by the isolated hook run, which admits 254,434 of
 254,434 with a byte-identical census.
+
+**Reversed.** See the current slice at the top of this file. The reasoning
+above is sound about what a frame stack *is* and wrong about what leaving it
+out costs: the rule was not a fixed toll but a compounding one, taken out of
+every subsequent slice in proportion to its transcript length. The measured
+price was also wrong in both directions — 37.7M of it was a profiling phantom,
+and a 26M genuinely unported epilogue was hiding inside the rest, invisible for
+as long as the whole driver read as blocked. Fixing it moved the share to
+49.97% and made the next real target visible.
 
 That prompted a broader look at what removing the emulator actually needs,
 written up in [docs/EMULATOR_ELIMINATION.md](docs/EMULATOR_ELIMINATION.md).

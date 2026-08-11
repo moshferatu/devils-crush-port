@@ -31,20 +31,50 @@ using emulation::RoutineReplacement;
 // corrupting state -- but the unexercised arms have not been census-checked.
 constexpr std::uint8_t kBank = 0x00U;
 constexpr std::uint16_t kEntryPc = 0xFC00U;
-// The walk stops at the two epilogue heads rather than running to the RTI.
-// From FC32's CLI onwards the handler is interruptible, and its epilogue
-// reads $DA -- the rerun request a preempting handler sets. A transcript is
-// computed once, from one snapshot, so it cannot observe that write; the
-// handler would never take its JMP $FC03 chain exit into the sequencer.
-// Leaving the epilogue emulated keeps that read live.
-constexpr std::uint16_t kFirstReturnPc = 0xFC7CU;
-constexpr std::uint16_t kSecondReturnPc = 0xFD70U;
-// A timer interrupt that arrives while the handler is already running bails
-// out through FC8C without touching a channel, so that is a third exit.
-constexpr std::uint16_t kReentrantReturnPc = 0xFC8CU;
+// The handler ends in one of two byte-identical epilogues -- FC7C for the
+// channel walk, FD70 for the track-advance tail -- and both unwind the same
+// way before reading $DA, the rerun request a preempting handler leaves:
+//
+//   PLA / TAM #$40 / PLY / PLX  |  SEI |  STZ $D9 / LDA $DA / BEQ / PLA
+//
+// That read is why the walk cannot simply run on to the RTI. A transcript is
+// computed once, from the snapshot taken on entry, and $DA is written by
+// 00:E12A inside the video handler -- which preempts this one, because FC32's
+// CLI opens the window on purpose. Deciding the BEQ from the entry snapshot
+// would take the wrong arm on every arrival where the request landed
+// mid-body: 380 of 251,531 over the census route, each one a JMP $FC03 chain
+// into the sequencer that the transcript would have skipped. So the epilogue
+// is two transcripts, and the second is entered late enough for its snapshot
+// to contain the write.
+//
+// The split falls on the SEI because that instruction is the one a checkpoint
+// cannot describe. A checkpoint carries a single status byte, and the core
+// derives two different things from it: the machine's P, which an interrupt
+// taken at that boundary pushes, and IFlagSample, which decides whether the
+// timer may interrupt there at all. Every other instruction wants the same
+// answer from both. SEI does not -- P has I set the moment it retires, but
+// its LastCycle sampled the mask beforehand, so the boundary is still open.
+// Publishing the open mask corrupts the pushed P; publishing the true P
+// closes a window the hardware leaves open. Neither is the machine, so the
+// SEI stays emulated, and the two transcripts meet on either side of it. It
+// costs 1,526,046 master cycles of the 26.7M the epilogue is worth.
+constexpr std::uint16_t kFirstMaskPc = 0xFC81U;
+constexpr std::uint16_t kSecondMaskPc = 0xFD75U;
+constexpr std::uint16_t kFirstResumePc = 0xFC82U;
+constexpr std::uint16_t kSecondResumePc = 0xFD76U;
+// Both halves stop in front of an instruction the driver does not own: the
+// RTI that ends the interrupt, or the JMP that chains into the sequencer. A
+// timer interrupt arriving while the handler is already running takes neither
+// -- it bails out of FC2C through FC8C without touching a channel, and joins
+// the same RTI.
+constexpr std::uint16_t kFirstReturnPc = 0xFC8DU;
+constexpr std::uint16_t kSecondReturnPc = 0xFD81U;
+constexpr std::uint16_t kFirstChainPc = 0xFC89U;
+constexpr std::uint16_t kSecondChainPc = 0xFD7DU;
 
 constexpr std::uint8_t kCarry = 0x01U;
 constexpr std::uint8_t kZero = 0x02U;
+constexpr std::uint8_t kInterrupt = 0x04U;
 constexpr std::uint8_t kDecimal = 0x08U;
 constexpr std::uint8_t kMemory = 0x20U;
 constexpr std::uint8_t kOverflow = 0x40U;
@@ -99,7 +129,9 @@ std::optional<RoutineReplacement> replace_sound_timer_driver(
     const std::span<const std::byte> rom)
 {
     if (entry.routine.physical_bank != kBank
-        || entry.routine.logical_pc != kEntryPc
+        || (entry.routine.logical_pc != kEntryPc
+            && entry.routine.logical_pc != kFirstResumePc
+            && entry.routine.logical_pc != kSecondResumePc)
         || work_ram.size() < 0x2000U) {
         return std::nullopt;
     }
@@ -158,7 +190,9 @@ std::optional<RoutineReplacement> replace_sound_timer_driver(
     // CLI clears the interrupt mask only after the core has already sampled
     // the interrupt for that instruction, so the first instruction after a
     // CLI still runs masked. The checkpoint for CLI therefore publishes the
-    // old mask and the clear lands on the following checkpoint.
+    // old mask and the clear lands on the following checkpoint. The mirror
+    // case, SEI, is not modelled here: see kFirstMaskPc above for why it is
+    // left emulated instead.
     bool interrupt_enable_pending = false;
     const auto append_checkpoint =
         [&replacement,
@@ -185,7 +219,7 @@ std::optional<RoutineReplacement> replace_sound_timer_driver(
             if (interrupt_enable_pending) {
                 registers.status = static_cast<std::uint8_t>(
                     registers.status
-                    & static_cast<std::uint8_t>(~0x04U));
+                    & static_cast<std::uint8_t>(~kInterrupt));
                 interrupt_enable_pending = false;
             }
         };
@@ -244,7 +278,7 @@ std::optional<RoutineReplacement> replace_sound_timer_driver(
             | static_cast<std::uint16_t>(zp(channel(kSequenceHigh))) << 8U);
     };
 
-    auto pc = kEntryPc;
+    auto pc = entry.routine.logical_pc;
     for (;;) {
         if (overflow
             || replacement.checkpoints.size() > 2000U
@@ -791,6 +825,82 @@ std::optional<RoutineReplacement> replace_sound_timer_driver(
             pc = next;
             break;
         }
+
+        case 0xFC7CU:  // PLA
+            registers.accumulator = pull();
+            registers.status = set_nz(
+                registers.status, registers.accumulator);
+            append_checkpoint(0xFC7CU, 0xFC7DU, 12U);
+            pc = 0xFC7DU;
+            break;
+
+        // Restores the caller's MPR6, the value FC36's TMA pushed on the way
+        // in. output_registers carries the whole register file, mapping
+        // included, so a transcript can hand the bank back the way the
+        // assembly does.
+        case 0xFC7DU:  // TAM #$40
+            registers.mpr[6] = registers.accumulator;
+            append_checkpoint(0xFC7DU, 0xFC7FU, 15U);
+            pc = 0xFC7FU;
+            break;
+
+        case 0xFC7FU:  // PLY
+            registers.y = pull();
+            registers.status = set_nz(registers.status, registers.y);
+            append_checkpoint(0xFC7FU, 0xFC80U, 12U);
+            pc = 0xFC80U;
+            break;
+
+        case 0xFC80U:  // PLX
+            registers.x = pull();
+            registers.status = set_nz(registers.status, registers.x);
+            append_checkpoint(0xFC80U, kFirstMaskPc, 12U);
+            pc = kFirstMaskPc;
+            break;
+
+        // The head of the second transcript. The first one stopped in front
+        // of the SEI at FC81; the core emulates that, then re-enters here,
+        // so everything below runs against a snapshot taken after any
+        // preempting handler has finished writing $DA.
+        case 0xFC82U:  // STZ $D9
+            store(0xFC82U, logical(kHandlerBusy), 0U);
+            append_checkpoint(0xFC82U, 0xFC84U, 12U);
+            pc = 0xFC84U;
+            break;
+
+        case 0xFC84U:  // LDA $DA
+            registers.accumulator = zp(kHandlerRerun);
+            registers.status = set_nz(
+                registers.status, registers.accumulator);
+            append_checkpoint(0xFC84U, 0xFC86U, 12U);
+            pc = 0xFC86U;
+            break;
+
+        case 0xFC86U: {  // BEQ $FC8C
+            const bool taken = (registers.status & kZero) != 0U;
+            const auto next = taken
+                ? static_cast<std::uint16_t>(0xFC8CU)
+                : static_cast<std::uint16_t>(0xFC88U);
+            append_checkpoint(0xFC86U, next, taken ? 12U : 6U);
+            pc = next;
+            break;
+        }
+
+        case 0xFC88U:  // PLA
+            registers.accumulator = pull();
+            registers.status = set_nz(
+                registers.status, registers.accumulator);
+            append_checkpoint(0xFC88U, 0xFC89U, 12U);
+            pc = 0xFC89U;
+            break;
+
+        case 0xFC8CU:  // PLA
+            registers.accumulator = pull();
+            registers.status = set_nz(
+                registers.status, registers.accumulator);
+            append_checkpoint(0xFC8CU, 0xFC8DU, 12U);
+            pc = 0xFC8DU;
+            break;
 
         case 0xFC8EU:  // TYA
             registers.accumulator = registers.y;
@@ -1719,6 +1829,77 @@ std::optional<RoutineReplacement> replace_sound_timer_driver(
             pc = 0xFC3BU;
             break;
 
+        // The track-advance tail's epilogue. It is the same twelve bytes as
+        // FC7C's, assembled a second time rather than branched to, and it
+        // splits at the same instruction for the same reason.
+        case 0xFD70U:  // PLA
+            registers.accumulator = pull();
+            registers.status = set_nz(
+                registers.status, registers.accumulator);
+            append_checkpoint(0xFD70U, 0xFD71U, 12U);
+            pc = 0xFD71U;
+            break;
+
+        case 0xFD71U:  // TAM #$40
+            registers.mpr[6] = registers.accumulator;
+            append_checkpoint(0xFD71U, 0xFD73U, 15U);
+            pc = 0xFD73U;
+            break;
+
+        case 0xFD73U:  // PLY
+            registers.y = pull();
+            registers.status = set_nz(registers.status, registers.y);
+            append_checkpoint(0xFD73U, 0xFD74U, 12U);
+            pc = 0xFD74U;
+            break;
+
+        case 0xFD74U:  // PLX
+            registers.x = pull();
+            registers.status = set_nz(registers.status, registers.x);
+            append_checkpoint(0xFD74U, kSecondMaskPc, 12U);
+            pc = kSecondMaskPc;
+            break;
+
+        case 0xFD76U:  // STZ $D9
+            store(0xFD76U, logical(kHandlerBusy), 0U);
+            append_checkpoint(0xFD76U, 0xFD78U, 12U);
+            pc = 0xFD78U;
+            break;
+
+        case 0xFD78U:  // LDA $DA
+            registers.accumulator = zp(kHandlerRerun);
+            registers.status = set_nz(
+                registers.status, registers.accumulator);
+            append_checkpoint(0xFD78U, 0xFD7AU, 12U);
+            pc = 0xFD7AU;
+            break;
+
+        case 0xFD7AU: {  // BEQ $FD80
+            const bool taken = (registers.status & kZero) != 0U;
+            const auto next = taken
+                ? static_cast<std::uint16_t>(0xFD80U)
+                : static_cast<std::uint16_t>(0xFD7CU);
+            append_checkpoint(0xFD7AU, next, taken ? 12U : 6U);
+            pc = next;
+            break;
+        }
+
+        case 0xFD7CU:  // PLA
+            registers.accumulator = pull();
+            registers.status = set_nz(
+                registers.status, registers.accumulator);
+            append_checkpoint(0xFD7CU, 0xFD7DU, 12U);
+            pc = 0xFD7DU;
+            break;
+
+        case 0xFD80U:  // PLA
+            registers.accumulator = pull();
+            registers.status = set_nz(
+                registers.status, registers.accumulator);
+            append_checkpoint(0xFD80U, 0xFD81U, 12U);
+            pc = 0xFD81U;
+            break;
+
         case 0xFD82U:  // TYA
             registers.accumulator = registers.y;
             registers.status = set_nz(
@@ -2315,7 +2496,8 @@ std::optional<RoutineReplacement> replace_sound_timer_driver(
         }
 
         if (pc == kFirstReturnPc || pc == kSecondReturnPc
-            || pc == kReentrantReturnPc) {
+            || pc == kFirstChainPc || pc == kSecondChainPc
+            || pc == kFirstMaskPc || pc == kSecondMaskPc) {
             break;
         }
     }

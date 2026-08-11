@@ -44,6 +44,69 @@ dc_enable_strict_warnings(dc_title_logo_tests)
 
 add_test(NAME dc_core_tests COMMAND dc_core_tests)
 
+# The native sound generator against the emulator's own device, driven
+# directly. Needs no ROM: the stimulus is synthetic, which is the point --
+# it reaches the parts of the chip the game never asks for.
+if(TARGET DevilsCrush::BeetlePce)
+    add_executable(dc_psg_device_tests psg_device_tests.cpp)
+
+    target_link_libraries(
+        dc_psg_device_tests
+        PRIVATE
+            DevilsCrush::Core
+            DevilsCrush::BeetlePce
+    )
+
+    target_compile_features(dc_psg_device_tests PRIVATE cxx_std_20)
+    dc_enable_strict_warnings(dc_psg_device_tests)
+
+    add_test(NAME dc_psg_device COMMAND dc_psg_device_tests)
+endif()
+
+# Whether the emulator's video device can be driven without the emulator,
+# which decides whether the VDC slice can be built the way the PSG slice
+# was. Also pins the clock schedule a native VDC will have to reproduce.
+if(TARGET DevilsCrush::BeetlePce)
+    add_executable(
+        dc_vdc_reference_device_tests
+        vdc_reference_device_tests.cpp
+    )
+
+    target_link_libraries(
+        dc_vdc_reference_device_tests
+        PRIVATE
+            DevilsCrush::BeetlePce
+    )
+
+    target_compile_features(dc_vdc_reference_device_tests PRIVATE cxx_std_20)
+    dc_enable_strict_warnings(dc_vdc_reference_device_tests)
+
+    add_test(
+        NAME dc_vdc_reference_device
+        COMMAND dc_vdc_reference_device_tests
+    )
+endif()
+
+# The native video device against the emulator's own, driven side by side on
+# one schedule. Needs no ROM, which is the point: the stimulus reaches the
+# parts of the chip the game never asks for -- sprite overflow, 16-colour
+# sprites, a backwards block transfer, a stall that runs out of budget.
+if(TARGET DevilsCrush::BeetlePce)
+    add_executable(dc_vdc_device_tests vdc_device_tests.cpp)
+
+    target_link_libraries(
+        dc_vdc_device_tests
+        PRIVATE
+            DevilsCrush::Core
+            DevilsCrush::BeetlePce
+    )
+
+    target_compile_features(dc_vdc_device_tests PRIVATE cxx_std_20)
+    dc_enable_strict_warnings(dc_vdc_device_tests)
+
+    add_test(NAME dc_vdc_device COMMAND dc_vdc_device_tests)
+endif()
+
 add_test(
     NAME dc_coverage_manifest
     COMMAND
@@ -1717,6 +1780,23 @@ if(TARGET devils_crush)
         )
         set_tests_properties(
             dc_rom_actor_camera_sweep_semantic
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_native_psg
+            CONFIGURATIONS Release
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/native-psg-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_native_psg.cmake"
+        )
+        set_tests_properties(
+            dc_rom_native_psg
             PROPERTIES LABELS rom_required
         )
 

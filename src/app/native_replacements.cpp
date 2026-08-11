@@ -62,13 +62,27 @@ replace_native_gameplay_routine_impl(
         }) {
         return detail::replace_sat_tail_clear(entry);
     }
-    // The timer-interrupt sound driver. One entry point, because the
-    // interrupt vector is the only way in.
+    // The timer-interrupt sound driver. The interrupt vector is the only way
+    // into the handler, so FC00 is its one real entry point. FC82 and FD76
+    // are the instruction after each epilogue's SEI: the walk stops in front
+    // of that SEI and is re-entered here, because the rerun request the
+    // epilogue then reads can be written by a handler that preempted the
+    // body, and only a fresh snapshot sees it.
     if (entry.routine
-        == RoutineKey{
-            .physical_bank = 0x00U,
-            .logical_pc = 0xFC00U,
-        }) {
+            == RoutineKey{
+                .physical_bank = 0x00U,
+                .logical_pc = 0xFC00U,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x00U,
+                .logical_pc = 0xFC82U,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x00U,
+                .logical_pc = 0xFD76U,
+            }) {
         return detail::replace_sound_timer_driver(entry, work_ram, rom);
     }
     // One shared walk, fifteen entry points: the bank-45 music sequencer's

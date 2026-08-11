@@ -95,6 +95,7 @@ using devils_crush::emulation::InputFrame;
 using devils_crush::emulation::ObservedBusWrite;
 using devils_crush::emulation::ObservedMemoryWrite;
 using devils_crush::emulation::PceRuntime;
+using devils_crush::emulation::ReplacementNesting;
 using devils_crush::emulation::RoutineCall;
 using devils_crush::emulation::RoutineEntry;
 using devils_crush::emulation::RoutineKey;
@@ -205,6 +206,13 @@ struct CommandLine {
     std::vector<LogicalAddressRange> bus_write_ranges;
     std::filesystem::path bus_write_trace_path;
     bool replace_registry = false;
+    // The sound generator is a native device model by default. This opts back
+    // out to the emulator's, which is what a difference in the audio hash is
+    // measured against.
+    bool emulated_psg = false;
+    // Reports which of the device model's paths a recorded route exercised,
+    // which is the measure of what a census-based acceptance actually proves.
+    bool report_psg_coverage = false;
     // The interactive host deploys the registry by default so a session runs
     // the ported code; this opts back out to the emulated original.
     bool emulate_only = false;
@@ -708,6 +716,10 @@ parse_logical_address_range(const std::string_view text)
                 return options;
             }
             options.bus_write_trace_path = argv[++index];
+        } else if (argument == "--emulated-psg") {
+            options.emulated_psg = true;
+        } else if (argument == "--report-psg-coverage") {
+            options.report_psg_coverage = true;
         } else if (argument == "--replace-registry") {
             options.replace_registry = true;
         } else if (argument == "--cabinet-overlay-stats") {
@@ -2737,11 +2749,10 @@ parse_logical_address_range(const std::string_view text)
                                    }
                            && request.all_calls;
                        const bool proven_sound_timer_driver =
-                           request.routine
-                                   == RoutineKey{
-                                       .physical_bank = 0x00U,
-                                       .logical_pc = 0xFC00U,
-                                   }
+                           request.routine.physical_bank == 0x00U
+                           && (request.routine.logical_pc == 0xFC00U
+                               || request.routine.logical_pc == 0xFC82U
+                               || request.routine.logical_pc == 0xFD76U)
                            && request.all_calls;
                        const bool proven_music_sequencer =
                            request.routine.physical_bank == 0x45U
@@ -3487,7 +3498,12 @@ void print_usage()
         << "Native code:\n"
         << "  The interactive host deploys every admitted native routine by\n"
            "  default and reports its share of the session on exit. Pass\n"
-           "  --emulate-only to run the untouched emulated original instead.\n\n"
+           "  --emulate-only to run the untouched emulated original instead.\n"
+           "  The sound generator is a native device model in every mode;\n"
+           "  --emulated-psg hands it back to the emulator, which is what a\n"
+           "  difference in the audio hash is measured against, and\n"
+           "  --report-psg-coverage prints which of its paths a recorded\n"
+           "  route exercised.\n\n"
         << "Controls (defaults; see input.* in portable-data/cabinet.ini):\n"
         << "  Left Shift / Left    Left flipper (PCE d-pad left)\n"
         << "  Right / Right Shift  Right flipper (PCE d-pad right)\n"
@@ -6029,6 +6045,47 @@ bool write_pcm16_wave_header(
     return true;
 }
 
+// How much of the sound generator a route actually asked for. The device is
+// accepted against a census, and a census can only prove the paths the game
+// takes; printing the counts is what keeps the difference between "the model
+// is right" and "the model is right about what this route does" visible.
+void report_psg_coverage(
+    const devils_crush::emulation::PceRuntime& runtime)
+{
+    const auto coverage = runtime.native_psg_coverage();
+    if (!coverage) {
+        std::cout << "The emulator owned the sound generator; no native "
+                     "paths to report.\n";
+        return;
+    }
+
+    const auto line =
+        [](const std::string_view name,
+           const devils_crush::audio::PcePsg::PathCoverage& path) {
+            std::cout << "  " << name << ": " << path.total << " (";
+            for (std::size_t channel = 0U;
+                 channel < path.by_channel.size();
+                 ++channel) {
+                std::cout << (channel != 0U ? ", " : "")
+                          << path.by_channel[channel];
+            }
+            std::cout << ")\n";
+        };
+
+    std::cout << "Sound generator paths, total and per channel:\n";
+    line("silent    ", coverage->silent);
+    line("waveform  ", coverage->waveform);
+    line("noise     ", coverage->noise);
+    line("accumulate", coverage->accumulated);
+    std::cout << "  LFO updates: " << coverage->lfo_updates
+              << ", modulator recursions: " << coverage->lfo_recursions
+              << "\n  whole-period steps: "
+              << coverage->accumulate_fast_paths
+              << ", shift-register clocks: " << coverage->lfsr_clocks
+              << ", sample-latch writes: "
+              << coverage->sample_latch_writes << '\n';
+}
+
 [[nodiscard]] bool write_instruction_profile(
     const std::filesystem::path& path,
     const std::span<const devils_crush::emulation::InstructionProfileEntry>
@@ -6335,7 +6392,8 @@ constexpr std::array<RoutineKey, 0U> kWithheldRoutines{};
 }
 
 void print_native_registry_summary(
-    const NativeRegistryDeployment& deployment)
+    const NativeRegistryDeployment& deployment,
+    const ReplacementNesting nesting)
 {
     const auto deployed = static_cast<std::size_t>(std::count_if(
         deployment.rows.begin(),
@@ -6385,6 +6443,13 @@ void print_native_registry_summary(
                   << "%)" << std::defaultfloat;
     }
     std::cout << '\n';
+    // The cycle line above credits every call this process offered. An
+    // overflow is a call the runtime then refused, so a nonzero count is the
+    // one condition under which that line overstates the share.
+    std::cout << "Registry nesting: " << nesting.nested
+              << " transcripts installed inside a suspended transcript, "
+              << nesting.deepest << " deep at the most ("
+              << nesting.overflowed << " refused for depth)\n";
 }
 
 // Per-frame census of which table tiles' VRAM pattern words change, split by
@@ -8188,7 +8253,9 @@ int run_windows_host(
         seeded_actors.report();
     }
     if (native_registry != nullptr) {
-        print_native_registry_summary(registry_deployment);
+        print_native_registry_summary(
+            registry_deployment,
+            runtime.replacement_nesting());
         if (!native_registry->native_cycle_census_path.empty()
             && !write_native_cycle_census(
                 native_registry->native_cycle_census_path,
@@ -10100,6 +10167,13 @@ int main(const int argc, char* argv[])
         std::cout << "Runtime:  " << runtime_info.name << '\n'
                   << "Revision: " << runtime_info.upstream_revision << '\n';
 
+        // Installed before the ROM loads so the emulator hands the model its
+        // output buffers as it builds them.
+        if (!options.emulated_psg && !runtime->set_native_psg(true)) {
+            std::cerr << "Could not install the native sound generator.\n";
+            return EXIT_FAILURE;
+        }
+
         const auto load_result = runtime->load_rom(options.rom_path);
         if (!load_result.loaded) {
             std::cerr << load_result.message << '\n';
@@ -10594,7 +10668,9 @@ int main(const int argc, char* argv[])
                 return EXIT_FAILURE;
             }
             if (options.replace_registry) {
-                print_native_registry_summary(registry_deployment);
+                print_native_registry_summary(
+                    registry_deployment,
+                    runtime->replacement_nesting());
             }
             if (!options.native_cycle_census_path.empty()
                 && !write_native_cycle_census(
@@ -10653,6 +10729,9 @@ int main(const int argc, char* argv[])
                     observed_bus_writes,
                     runtime_info.upstream_revision)) {
                 return EXIT_FAILURE;
+            }
+            if (options.report_psg_coverage) {
+                report_psg_coverage(*runtime);
             }
             if (!routine_replays.empty()) {
                 const int replay_result = verify_routine_replays(

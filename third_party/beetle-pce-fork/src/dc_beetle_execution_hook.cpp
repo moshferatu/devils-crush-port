@@ -13,6 +13,19 @@ dc_beetle_memory_write_hook dc_beetle_active_memory_write_hook = nullptr;
 void* dc_beetle_active_memory_write_hook_user_data = nullptr;
 dc_beetle_replacement_hook dc_beetle_active_replacement_hook = nullptr;
 void* dc_beetle_active_replacement_hook_user_data = nullptr;
+const dc_beetle_psg_model* dc_beetle_active_psg_model = nullptr;
+static int32_t* dc_beetle_psg_output_buffers[2] = {nullptr, nullptr};
+static int dc_beetle_psg_revision = DC_BEETLE_PSG_REVISION_HUC6280;
+uint32_t dc_beetle_replacement_nested_installs = 0;
+uint32_t dc_beetle_replacement_nest_overflows = 0;
+uint32_t dc_beetle_replacement_max_depth = 0;
+
+void dc_beetle_reset_replacement_nesting_counters(void)
+{
+    dc_beetle_replacement_nested_installs = 0;
+    dc_beetle_replacement_nest_overflows = 0;
+    dc_beetle_replacement_max_depth = 0;
+}
 
 void dc_beetle_set_instruction_hook(
     const dc_beetle_instruction_hook hook,
@@ -54,6 +67,44 @@ void dc_beetle_clear_replacement_hook(void)
 {
     dc_beetle_active_replacement_hook = nullptr;
     dc_beetle_active_replacement_hook_user_data = nullptr;
+}
+
+void dc_beetle_set_psg_model(const dc_beetle_psg_model* const model)
+{
+    dc_beetle_active_psg_model = model;
+
+    if (model != nullptr && model->configure != nullptr
+        && dc_beetle_psg_output_buffers[0] != nullptr) {
+        model->configure(
+            model->user_data,
+            dc_beetle_psg_output_buffers[0],
+            dc_beetle_psg_output_buffers[1],
+            dc_beetle_psg_revision);
+    }
+}
+
+void dc_beetle_clear_psg_model(void)
+{
+    dc_beetle_active_psg_model = nullptr;
+}
+
+void dc_beetle_set_psg_device(
+    int32_t* const left,
+    int32_t* const right,
+    const int revision)
+{
+    dc_beetle_psg_output_buffers[0] = left;
+    dc_beetle_psg_output_buffers[1] = right;
+    dc_beetle_psg_revision = revision;
+
+    if (dc_beetle_active_psg_model != nullptr
+        && dc_beetle_active_psg_model->configure != nullptr) {
+        dc_beetle_active_psg_model->configure(
+            dc_beetle_active_psg_model->user_data,
+            left,
+            right,
+            revision);
+    }
 }
 
 int dc_beetle_copy_video_snapshot(

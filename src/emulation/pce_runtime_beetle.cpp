@@ -2,6 +2,8 @@
 
 #include "devils_crush/emulation/pce_runtime.hpp"
 
+#include "devils_crush/audio/pce_psg.hpp"
+
 #include <dc_beetle_execution_hook.h>
 #include <libretro.h>
 
@@ -194,6 +196,8 @@ public:
     ~BeetlePceRuntime() override
     {
         assert_owner_thread();
+        dc_beetle_clear_psg_model();
+        native_psg_.reset();
         shutdown_core();
         BeetlePceRuntime* expected = this;
         (void)active_runtime.compare_exchange_strong(
@@ -528,6 +532,17 @@ public:
         return execution_hooks_.size();
     }
 
+    [[nodiscard]] ReplacementNesting replacement_nesting()
+        const noexcept override
+    {
+        assert_owner_thread();
+        return {
+            .nested = dc_beetle_replacement_nested_installs,
+            .overflowed = dc_beetle_replacement_nest_overflows,
+            .deepest = dc_beetle_replacement_max_depth,
+        };
+    }
+
     [[nodiscard]] bool install_routine_call_observer(
         RoutineCallObserver observer) override
     {
@@ -643,6 +658,57 @@ public:
     {
         assert_owner_thread();
         return instruction_profile_ != nullptr;
+    }
+
+    // The model is registered through the fork's C boundary, which owns the
+    // decision of whether the emulator's PSG or this one receives writes and
+    // time. The emulator's PSG object stays alive either way: while the model
+    // is installed it is dormant, and its only remaining job is to be the
+    // shape the savestate format is written through.
+    [[nodiscard]] bool set_native_psg(const bool enabled) override
+    {
+        assert_owner_thread();
+        if (!enabled) {
+            dc_beetle_clear_psg_model();
+            native_psg_.reset();
+            return true;
+        }
+        if (native_psg_) {
+            return true;
+        }
+
+        native_psg_ = std::make_unique<audio::PcePsg>(
+            nullptr,
+            nullptr,
+            audio::PcePsg::Revision::HuC6280);
+        native_psg_model_ = {
+            .user_data = native_psg_.get(),
+            .configure = &psg_configure,
+            .power = &psg_power,
+            .write = &psg_write,
+            .update = &psg_update,
+            .reset_timestamp = &psg_reset_timestamp,
+            .capture_state = &psg_capture_state,
+            .apply_state = &psg_apply_state,
+        };
+        dc_beetle_set_psg_model(&native_psg_model_);
+        return true;
+    }
+
+    [[nodiscard]] bool native_psg_enabled() const noexcept override
+    {
+        assert_owner_thread();
+        return native_psg_ != nullptr;
+    }
+
+    [[nodiscard]] std::optional<audio::PcePsg::Coverage> native_psg_coverage()
+        const override
+    {
+        assert_owner_thread();
+        if (native_psg_ == nullptr) {
+            return std::nullopt;
+        }
+        return native_psg_->coverage();
     }
 
     [[nodiscard]] std::vector<InstructionProfileEntry>
@@ -771,6 +837,138 @@ private:
         assert(owner_thread_ == std::this_thread::get_id());
     }
 
+    // The fork's boundary is C, so the model reaches it as free functions
+    // carrying the instance in `user_data`.
+    static audio::PcePsg& psg_model(void* const user_data) noexcept
+    {
+        return *static_cast<audio::PcePsg*>(user_data);
+    }
+
+    static void psg_configure(
+        void* const user_data,
+        std::int32_t* const left,
+        std::int32_t* const right,
+        const int revision)
+    {
+        psg_model(user_data).configure(
+            left,
+            right,
+            revision == DC_BEETLE_PSG_REVISION_HUC6280A
+                ? audio::PcePsg::Revision::HuC6280A
+                : audio::PcePsg::Revision::HuC6280);
+    }
+
+    static void psg_power(
+        void* const user_data,
+        const std::int32_t timestamp)
+    {
+        psg_model(user_data).power(timestamp);
+    }
+
+    static void psg_write(
+        void* const user_data,
+        const std::int32_t timestamp,
+        const std::uint8_t address,
+        const std::uint8_t value)
+    {
+        psg_model(user_data).write(timestamp, address, value);
+    }
+
+    static void psg_update(
+        void* const user_data,
+        const std::int32_t timestamp)
+    {
+        psg_model(user_data).update(timestamp);
+    }
+
+    static void psg_reset_timestamp(
+        void* const user_data,
+        const std::int32_t base)
+    {
+        psg_model(user_data).reset_timestamp(base);
+    }
+
+    static void psg_capture_state(
+        void* const user_data,
+        dc_beetle_psg_state* const state)
+    {
+        const auto captured = psg_model(user_data).capture_state();
+
+        for (std::size_t index = 0U;
+             index < captured.channels.size();
+             ++index) {
+            const auto& source = captured.channels[index];
+            auto& target = state->channels[index];
+
+            target.counter = source.counter;
+            target.frequency = source.frequency;
+            target.control = source.control;
+            target.balance = source.balance;
+            std::memcpy(
+                target.waveform,
+                source.waveform.data(),
+                source.waveform.size());
+            target.waveform_index = source.waveform_index;
+            target.dda = source.dda;
+            target.noisectrl = source.noisectrl;
+            target.noisecount = source.noisecount;
+            target.lfsr = source.lfsr;
+            target.vl[0] = source.vl[0];
+            target.vl[1] = source.vl[1];
+        }
+
+        state->select = captured.select;
+        state->global_balance = captured.global_balance;
+        state->lfo_frequency = captured.lfo_frequency;
+        state->lfo_control = captured.lfo_control;
+        state->volume_update_counter = captured.volume_update_counter;
+        state->volume_update_which = captured.volume_update_which;
+        state->volume_update_latch = captured.volume_update_latch;
+        state->volume_update_pending =
+            captured.volume_update_pending ? 1U : 0U;
+    }
+
+    static void psg_apply_state(
+        void* const user_data,
+        const dc_beetle_psg_state* const state)
+    {
+        audio::PcePsg::State restored;
+
+        for (std::size_t index = 0U;
+             index < restored.channels.size();
+             ++index) {
+            const auto& source = state->channels[index];
+            auto& target = restored.channels[index];
+
+            target.counter = source.counter;
+            target.frequency = source.frequency;
+            target.control = source.control;
+            target.balance = source.balance;
+            std::memcpy(
+                target.waveform.data(),
+                source.waveform,
+                target.waveform.size());
+            target.waveform_index = source.waveform_index;
+            target.dda = source.dda;
+            target.noisectrl = source.noisectrl;
+            target.noisecount = source.noisecount;
+            target.lfsr = source.lfsr;
+            target.vl[0] = source.vl[0];
+            target.vl[1] = source.vl[1];
+        }
+
+        restored.select = state->select;
+        restored.global_balance = state->global_balance;
+        restored.lfo_frequency = state->lfo_frequency;
+        restored.lfo_control = state->lfo_control;
+        restored.volume_update_counter = state->volume_update_counter;
+        restored.volume_update_which = state->volume_update_which;
+        restored.volume_update_latch = state->volume_update_latch;
+        restored.volume_update_pending = state->volume_update_pending != 0U;
+
+        psg_model(user_data).apply_state(restored);
+    }
+
     void install_callbacks()
     {
         retro_set_environment(&environment_callback);
@@ -781,6 +979,10 @@ private:
         retro_set_input_state(&input_state_callback);
     }
 
+    // Deliberately leaves the native sound generator installed. Loading a ROM
+    // shuts the core down first, so tearing the model down here would uninstall
+    // it between the caller's request and the load that needs it. The device
+    // choice belongs to the host for as long as the runtime lives.
     void shutdown_core() noexcept
     {
         clear_execution_hooks();
@@ -1591,6 +1793,10 @@ private:
     retro_system_av_info av_info_{};
     std::vector<std::uint32_t> framebuffer_pixels_;
     std::vector<float> audio_samples_;
+    // The native sound device, and the C vtable the fork holds a pointer to.
+    // Both outlive every frame the model is installed for.
+    std::unique_ptr<audio::PcePsg> native_psg_;
+    dc_beetle_psg_model native_psg_model_{};
     // Counters are indexed directly by physical bank and logical PC. A bank's
     // 1 MiB page is allocated on first execution, so only the handful of banks
     // the game actually runs from is resident.

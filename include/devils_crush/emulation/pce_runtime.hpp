@@ -2,6 +2,8 @@
 
 #pragma once
 
+#include "devils_crush/audio/pce_psg.hpp"
+
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -261,6 +263,23 @@ struct RoutineCallObserver {
     RoutineCallCallback callback;
 };
 
+// How the runtime handled replacements offered while another replacement was
+// still in progress. A transcript is suspended for as long as an interrupt
+// asserted inside it is being serviced, and the handler is ordinary code that
+// may have a replacement of its own: `nested` counts those. `overflowed`
+// counts replacements the runtime refused because too many transcripts were
+// already suspended; the original assembly runs instead, so the recording stays
+// exact, but a caller that credits a native call when it offers one is then
+// reporting a native share slightly larger than the one it measured.
+struct ReplacementNesting {
+    std::uint64_t nested = 0;
+    std::uint64_t overflowed = 0;
+    // High-water mark of simultaneously suspended transcripts.
+    std::uint64_t deepest = 0;
+
+    [[nodiscard]] bool operator==(const ReplacementNesting&) const = default;
+};
+
 class PceRuntime {
 public:
     virtual ~PceRuntime() = default;
@@ -319,6 +338,10 @@ public:
     [[nodiscard]] virtual std::size_t execution_hook_count()
         const noexcept = 0;
 
+    // Counted from the start of the process, across every hook installation.
+    [[nodiscard]] virtual ReplacementNesting replacement_nesting()
+        const noexcept = 0;
+
     // A call observer begins at one exact routine entry and completes before
     // its outer RTS executes. It captures pre-return registers, the return
     // target, body master cycles (excluding RTS), and ordered writes to the
@@ -362,6 +385,23 @@ public:
     virtual void clear_bus_write_observer() noexcept = 0;
     [[nodiscard]] virtual bool has_bus_write_observer()
         const noexcept = 0;
+
+    // Replaces the emulator's programmable sound generator with the native
+    // device model in `devils_crush::audio`. The model computes the same
+    // band-limited deltas from the same register writes and the same clock,
+    // so the audio a frame yields does not change -- what changes is who
+    // owns the device. The emulator retains only sample-rate conversion,
+    // which is a property of the host rather than of the PC Engine.
+    //
+    // May be set before or after a ROM loads, but not mid-frame.
+    [[nodiscard]] virtual bool set_native_psg(bool enabled) = 0;
+    [[nodiscard]] virtual bool native_psg_enabled() const noexcept = 0;
+
+    // Which of the model's output paths the run just executed, or nothing
+    // when the emulator owned the device. A route exercises only what the
+    // game asks the chip for, and this is how much of it that was.
+    [[nodiscard]] virtual std::optional<audio::PcePsg::Coverage>
+    native_psg_coverage() const = 0;
 
     // Savestates are opaque Beetle payloads plus the host frame counter.
     // Persistent storage must additionally bind them to the ROM and core

@@ -94,6 +94,12 @@ public:
         return 0U;
     }
 
+    [[nodiscard]] ReplacementNesting replacement_nesting()
+        const noexcept override
+    {
+        return {};
+    }
+
     [[nodiscard]] bool install_routine_call_observer(
         RoutineCallObserver) override
     {
@@ -143,6 +149,22 @@ public:
     export_instruction_profile() const override
     {
         return {};
+    }
+
+    [[nodiscard]] bool set_native_psg(bool) override
+    {
+        return false;
+    }
+
+    [[nodiscard]] bool native_psg_enabled() const noexcept override
+    {
+        return false;
+    }
+
+    [[nodiscard]] std::optional<audio::PcePsg::Coverage> native_psg_coverage()
+        const override
+    {
+        return std::nullopt;
     }
 
     [[nodiscard]] bool set_bus_write_observer(

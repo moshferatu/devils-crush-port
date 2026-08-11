@@ -42,6 +42,8 @@ function(dc_provide_beetle_pce)
         "${beetle_fork_root}/patches/0004-vdc-video-snapshot.patch"
         "${beetle_fork_root}/patches/0005-vdc-sprite-snapshot.patch"
         "${beetle_fork_root}/patches/0006-huc6280-interruptible-replacement.patch"
+        "${beetle_fork_root}/patches/0007-huc6280-nested-replacement.patch"
+        "${beetle_fork_root}/patches/0008-psg-device-model.patch"
     )
 
     find_package(Git REQUIRED)
@@ -157,7 +159,7 @@ function(dc_provide_beetle_pce)
                     "return vdc[0].PeekSAT"
                     beetle_patch_marker_two
                 )
-            else()
+            elseif(beetle_patch_name MATCHES "^0006-")
                 string(
                     FIND
                     "${beetle_cpu_source}"
@@ -168,6 +170,19 @@ function(dc_provide_beetle_pce)
                     FIND
                     "${beetle_cpu_header}"
                     "ReplacementCheckpoints"
+                    beetle_patch_marker_two
+                )
+            else()
+                string(
+                    FIND
+                    "${beetle_cpu_source}"
+                    "PushReplacementFrame"
+                    beetle_patch_marker_one
+                )
+                string(
+                    FIND
+                    "${beetle_cpu_header}"
+                    "ReplacementSuspended"
                     beetle_patch_marker_two
                 )
             endif()
@@ -187,6 +202,8 @@ function(dc_provide_beetle_pce)
     set(
         beetle_cxx_sources
         "${beetle_fork_root}/src/dc_beetle_execution_hook.cpp"
+        "${beetle_fork_root}/src/dc_beetle_reference_psg.cpp"
+        "${beetle_fork_root}/src/dc_beetle_reference_vdc.cpp"
         "${beetle_root}/libretro.cpp"
         "${beetle_root}/mednafen/pce/huc6280.cpp"
         "${beetle_root}/mednafen/pce/huc.cpp"

@@ -2691,9 +2691,11 @@ interrupt can do is land on a checkpoint, which is handled. Contrast bank 45,
 where three of ten entries are partial and both reasons trace back to shared
 state or to a stack frame the contract cannot express.
 
-There is a cost on the other side of the ledger, and it is new. A long
-transcript shadows the sound driver for its whole body, because the core will
-not consult the replacement hook while one is active. `00:E9B6` runs 9,745
+There is a cost on the other side of the ledger, and it is new. (It is also
+gone: replacements nest as of fork patch `0007`, and a long transcript now
+costs the driver nothing. The record below is what the rule was worth.) A long
+transcript shadowed the sound driver for its whole body, because the core would
+not consult the replacement hook while one was active. `00:E9B6` runs 9,745
 cycles and spans about two timer periods, so the interrupts that land inside
 it run the driver emulated. The first three leaves added 9,937,182 native
 cycles and gave back about 694,000 in lost driver entries — 1,181 fewer than

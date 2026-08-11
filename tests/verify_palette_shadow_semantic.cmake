@@ -132,7 +132,10 @@ foreach(expected_line IN ITEMS
     "Native replacement 00:E9B6@all entries: 672 of 672"
     "Native replacement 00:EAA7@all entries: 8 of 8"
     "Native replacement 00:EAB0@all entries: 93 of 93"
-    "Native replacement 00:EB30@all entries: 3561 of 3590"
+    # 3,561 of 3,590 before replacements could nest: nine of this group's own
+    # calls arrive inside a suspended sibling, and the core would not install a
+    # second transcript. Now every arrival is transcribed.
+    "Native replacement 00:EB30@all entries: 3570 of 3599"
     "Native replacement 00:EBA5@all entries: 1121 of 1121"
     "Work-RAM write trace complete: 7369685 selected writes"
     "Bus write trace complete: 115688 selected writes"

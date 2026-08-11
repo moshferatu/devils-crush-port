@@ -408,8 +408,11 @@ eight-byte command through `$2E10,X`, and reloads the channel record.
 The epilogue at `00:FC7C` and `00:FD70` unwinds, restores the caller's bank,
 clears `$D9`, and then reads `$DA`: if another handler asked for a rerun while
 this one held the interrupt window open, it chains through `JMP $FC03` to
-`$E003` rather than returning. That read is why the native walk stops at the
-epilogue instead of running to the `RTI`.
+`$E003` rather than returning. That read is why the native walk covers the
+epilogue as two transcripts rather than one — it stops in front of each copy's
+`SEI` and is re-entered at `00:FC82` and `00:FD76`, so the rerun test runs
+against a snapshot taken after any preempting handler has written `$DA`. The
+`SEI` itself, and the closing `RTI`, stay emulated.
 
 ## Music sequencer
 

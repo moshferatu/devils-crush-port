@@ -2359,9 +2359,11 @@ The game's 2 KiB battery-backed RAM is loaded from and atomically saved to
 `portable-data/devils-crush.sav`.
 
 Quick states intentionally bind to this exact ROM and Beetle revision rather
-than attempting unsafe cross-version migration. Beetle restores emulated PSG
-state and audio timing but not its frontend resampler history, so the host
-clears already queued audio when loading a state.
+than attempting unsafe cross-version migration. A state carries the sound
+generator's registers and channel state — the native device model writes them
+through the emulator's savestate format unchanged, so a state is portable
+between the native and emulated sound paths — but not the frontend resampler
+history, so the host clears already queued audio when loading a state.
 
 Audio remains synchronized to emulation rather than monitor refresh. The host
 limits stale queued audio to 150 ms, drops an overrun after a long stall, and

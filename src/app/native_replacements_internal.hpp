@@ -1204,7 +1204,9 @@ replace_sat_submission_step(
 
 // The timer-interrupt sound driver, entered from the interrupt vector at
 // 00:FC00 and walked to whichever of its two RTI instructions or two chain
-// exits control reaches.
+// exits control reaches. One walk, three entry points: the vector, and the
+// instruction after each epilogue's SEI, which is re-entered separately so
+// the rerun test below it reads a snapshot taken after the body ran.
 [[nodiscard]] std::optional<emulation::RoutineReplacement>
 replace_sound_timer_driver(
     const emulation::RoutineEntry& entry,

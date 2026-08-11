@@ -1,0 +1,225 @@
+diff --git a/mednafen/hw_sound/pce_psg/pce_psg.cpp b/mednafen/hw_sound/pce_psg/pce_psg.cpp
+--- a/mednafen/hw_sound/pce_psg/pce_psg.cpp
++++ b/mednafen/hw_sound/pce_psg/pce_psg.cpp
+@@ -752,6 +752,72 @@ void PCE_PSG::Power(const int32 timestamp)
+ 	vol_update_which = 0;
+ }
+ 
++// Devil's Crush downstream device-model boundary. Plain field moves, with no
++// repair of out-of-range values: on save the model's own state is already
++// valid, and on load StateAction has already applied the emulator's repairs
++// before these values are read back out.
++void PCE_PSG::DcExportState(dc_beetle_psg_state* state) const
++{
++	for(int ch = 0; ch < 6; ch++)
++	{
++		const psg_channel* pt = &channel[ch];
++		dc_beetle_psg_channel_state* out = &state->channels[ch];
++
++		out->counter = pt->counter;
++		out->frequency = pt->frequency;
++		out->control = pt->control;
++		out->balance = pt->balance;
++		memcpy(out->waveform, pt->waveform, 32);
++		out->waveform_index = pt->waveform_index;
++		out->dda = pt->dda;
++		out->noisectrl = pt->noisectrl;
++		out->noisecount = pt->noisecount;
++		out->lfsr = pt->lfsr;
++		out->vl[0] = pt->vl[0];
++		out->vl[1] = pt->vl[1];
++	}
++
++	state->select = select;
++	state->global_balance = globalbalance;
++	state->lfo_frequency = lfofreq;
++	state->lfo_control = lfoctrl;
++	state->volume_update_counter = vol_update_counter;
++	state->volume_update_which = vol_update_which;
++	state->volume_update_latch = vol_update_vllatch;
++	state->volume_update_pending = vol_pending ? 1 : 0;
++}
++
++void PCE_PSG::DcImportState(const dc_beetle_psg_state* state)
++{
++	for(int ch = 0; ch < 6; ch++)
++	{
++		psg_channel* pt = &channel[ch];
++		const dc_beetle_psg_channel_state* in = &state->channels[ch];
++
++		pt->counter = in->counter;
++		pt->frequency = in->frequency;
++		pt->control = in->control;
++		pt->balance = in->balance;
++		memcpy(pt->waveform, in->waveform, 32);
++		pt->waveform_index = in->waveform_index;
++		pt->dda = in->dda;
++		pt->noisectrl = in->noisectrl;
++		pt->noisecount = in->noisecount;
++		pt->lfsr = in->lfsr;
++		pt->vl[0] = in->vl[0];
++		pt->vl[1] = in->vl[1];
++	}
++
++	select = state->select;
++	globalbalance = state->global_balance;
++	lfofreq = state->lfo_frequency;
++	lfoctrl = state->lfo_control;
++	vol_update_counter = state->volume_update_counter;
++	vol_update_which = state->volume_update_which;
++	vol_update_vllatch = state->volume_update_latch;
++	vol_pending = state->volume_update_pending != 0;
++}
++
+ int PCE_PSG::StateAction(StateMem *sm, const unsigned load, const bool data_only)
+ {
+ 	int ret = 1;
+diff --git a/mednafen/hw_sound/pce_psg/pce_psg.h b/mednafen/hw_sound/pce_psg/pce_psg.h
+--- a/mednafen/hw_sound/pce_psg/pce_psg.h
++++ b/mednafen/hw_sound/pce_psg/pce_psg.h
+@@ -21,6 +21,8 @@
+ #ifndef _PCE_PSG_H
+ #define _PCE_PSG_H
+ 
++#include <dc_beetle_execution_hook.h>
++
+ class PCE_PSG;
+ 
+ struct psg_channel
+@@ -131,6 +133,13 @@ public:
+ 
+ 	int StateAction(StateMem *sm, const unsigned load, const bool data_only);
+ 
++	// Devil's Crush downstream device-model boundary. When a native PSG model
++	// is installed this object receives no writes and no time; these move the
++	// serialized fields in and out of it so StateAction still reads and writes
++	// the same savestate format from the model's values.
++	void DcExportState(dc_beetle_psg_state* state) const;
++	void DcImportState(const dc_beetle_psg_state* state);
++
+ 	void Power(const int32 timestamp) MDFN_COLD;
+ 	void Write(int32 timestamp, uint8 A, uint8 V);
+ 
+diff --git a/mednafen/pce/pce.cpp b/mednafen/pce/pce.cpp
+--- a/mednafen/pce/pce.cpp
++++ b/mednafen/pce/pce.cpp
+@@ -29,6 +29,7 @@
+ #include "../cdrom/cdromif.h"
+ #include "../FileStream.h"
+ #include "../sound/OwlResampler.h"
++#include <dc_beetle_execution_hook.h>
+ 
+ static std::vector<CDIF*> *cdifs = NULL;
+ 
+@@ -49,6 +50,42 @@ static bool SetSoundRate(double rate);
+ 
+ static void Cleanup(void);
+ 
++// Devil's Crush downstream device-model boundary. A registered model owns the
++// PSG entirely: the object above receives no writes, no time and no reset
++// while one is installed, and survives only so StateAction keeps reading and
++// writing the emulator's savestate format.
++static INLINE void PSG_Write(int32 timestamp, uint8 A, uint8 V)
++{
++	if(MDFN_UNLIKELY(dc_beetle_active_psg_model != NULL))
++		dc_beetle_active_psg_model->write(dc_beetle_active_psg_model->user_data, timestamp, A, V);
++	else
++		psg->Write(timestamp, A, V);
++}
++
++static INLINE void PSG_Update(int32 timestamp)
++{
++	if(MDFN_UNLIKELY(dc_beetle_active_psg_model != NULL))
++		dc_beetle_active_psg_model->update(dc_beetle_active_psg_model->user_data, timestamp);
++	else
++		psg->Update(timestamp);
++}
++
++static INLINE void PSG_ResetTS(int32 ts_base)
++{
++	if(MDFN_UNLIKELY(dc_beetle_active_psg_model != NULL))
++		dc_beetle_active_psg_model->reset_timestamp(dc_beetle_active_psg_model->user_data, ts_base);
++	else
++		psg->ResetTS(ts_base);
++}
++
++static void PSG_Power(int32 timestamp)
++{
++	if(dc_beetle_active_psg_model != NULL)
++		dc_beetle_active_psg_model->power(dc_beetle_active_psg_model->user_data, timestamp);
++	else
++		psg->Power(timestamp);
++}
++
+ bool PCE_ACEnabled;
+ uint64 PCE_TimestampBase;	// Only used with the debugger for the time being.
+ 
+@@ -181,7 +218,7 @@ static DECLFW(IOWrite)
+ 
+ 		case 0x0800:
+ 			HuCPU.SetIODataBuffer(V); 
+-			psg->Write(HuCPU.Timestamp() / 3, A & 0x1FFF, V);
++			PSG_Write(HuCPU.Timestamp() / 3, A & 0x1FFF, V);
+ 			break;
+ 
+ 		case 0x0c00:
+@@ -356,6 +393,8 @@ static MDFN_COLD int LoadCommon(void)
+ 
+ 	psg->SetVolume(1.0);
+ 
++	dc_beetle_set_psg_device(HRBufs[0]->Buf(), HRBufs[1]->Buf(), psgrevision);
++
+ 	if(PCE_IsCD)
+ 		SetCDSettings();
+ 
+@@ -481,6 +520,8 @@ static MDFN_COLD void Cleanup(void)
+ 
+ 	HuC_Kill();
+ 
++	dc_beetle_set_psg_device(NULL, NULL, DC_BEETLE_PSG_REVISION_HUC6280);
++
+ 	if(vce)
+ 	{
+ 		delete vce;
+@@ -565,8 +606,8 @@ void Emulate(EmulateSpecStruct *espec)
+ 
+ 		INPUT_AdjustTS((int32)end_timestamp_mod12 - (int32)end_timestamp);	// Careful with this!
+ 
+-		psg->Update(end_timestamp / 3);
+-		psg->ResetTS(end_timestamp_mod12 / 3);
++		PSG_Update(end_timestamp / 3);
++		PSG_ResetTS(end_timestamp_mod12 / 3);
+ 
+ 		HuC_Update(end_timestamp);
+ 		HuC_ResetTS(end_timestamp_mod12);
+@@ -648,7 +689,21 @@ int StateAction(StateMem *sm, int load, int data_only)
+ 
+ 	ret &= HuCPU.StateAction(sm, load, data_only);
+ 	ret &= vce->StateAction(sm, load, data_only);
++	if(dc_beetle_active_psg_model != NULL && !load)
++	{
++		dc_beetle_psg_state model_state;
++		dc_beetle_active_psg_model->capture_state(dc_beetle_active_psg_model->user_data, &model_state);
++		psg->DcImportState(&model_state);
++	}
++
+ 	ret &= psg->StateAction(sm, load, data_only);
++
++	if(dc_beetle_active_psg_model != NULL && load)
++	{
++		dc_beetle_psg_state model_state;
++		psg->DcExportState(&model_state);
++		dc_beetle_active_psg_model->apply_state(dc_beetle_active_psg_model->user_data, &model_state);
++	}
+ 	ret &= INPUT_StateAction(sm, load, data_only);
+ 	ret &= HuC_StateAction(sm, load, data_only);
+ 	
+@@ -664,7 +719,7 @@ void PCE_Power(void)
+ 	const int32 timestamp = HuCPU.Timestamp();
+ 
+ 	vce->Reset(timestamp);
+-	psg->Power(timestamp / 3);
++	PSG_Power(timestamp / 3);
+ 
+ 	HuC_Power();
+ 

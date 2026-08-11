@@ -368,19 +368,27 @@ it costs nothing: stop in front of the call and the callee is entered on its own
 with the guard it already carries. That is what the tick does with `4142` at
 `4138`, and it is why the tail carries no deadline even though `4142` does.
 
-### A long transcript shadows the interrupt handler
+### A long transcript used to shadow the interrupt handler
 
-The core will not consult the replacement hook while a replacement is active,
-so every interrupt that lands inside a transcript runs its handler emulated.
-That cost scales with body length and is invisible in the candidate's own
+**This tax no longer exists**, and the section is kept because the reasoning
+recurs and because it is the clearest record of what the no-nesting rule cost.
+
+The core would not consult the replacement hook while a replacement was active,
+so every interrupt that landed inside a transcript ran its handler emulated.
+The cost scaled with body length and was invisible in the candidate's own
 numbers. The palette slice added 9,937,182 native cycles and gave back about
 694,000 of them, because `00:E9B6` runs 9,745 cycles per call — roughly two
-timer periods — and cost the sound driver 1,181 native entries.
+timer periods — and cost the sound driver 1,181 native entries. The collision
+sweep paid 683,271 and the wrapper group 756,342, which was 15.6% of its own
+gross.
 
-Net it was strongly positive, and the same will usually be true. But compare
-the candidate's per-call body against the interrupt period before and after,
-and read the change in the handler's own admitted count out of the cycle
-census rather than assuming the delta is the candidate's cycles.
+Every slice paid it, and the toll grew as the transcripts grew: that
+compounding, not the size of any one bill, is what eventually made the rule
+worth removing rather than working around. Replacements nest now (fork patch
+`0007`), a suspended transcript is pushed to a frame stack, and a candidate's
+length costs the handler nothing. What survives is the habit: read a slice's
+effect out of the whole cycle census before and after, not out of the
+candidate's own row.
 
 An atomic body priced against the horizon also truncates the calls it does
 admit, so the loss is larger than the decline count suggests. `01:C510` walked
@@ -389,6 +397,9 @@ as a transcript it walks to the loop's own exit and averages 192, and its
 native total went from 19.3M cycles to 33.9M.
 
 ### Whether the routine runs masked decides the shadowing cost
+
+This mattered while shadowing did, and the technique it teaches — ask the
+observer instead of reasoning about the body — is worth keeping.
 
 The section above prices a long transcript by how many timer periods it spans.
 That is the upper bound, not the cost. `00:EB30` spans up to three periods and
@@ -549,18 +560,17 @@ is a hot address on its own — they are the two halves of a dispatch that runs
 **The ranking is exact, and it is worth checking that it closes.** Checkpoint
 replay does *not* sample the instruction hook, so a native run's profile is not
 the assembly profile with the cycles moved around: it drops from 8,977
-addresses and 108.5M executions to 6,726 and 65.0M. Every row that is not an
+addresses and 108.5M executions to 6,397 and 55.8M. Every row that is not an
 entry point therefore carries only what is still being emulated at that
-address. Add the entry rows, the spin loop and the rest back together and the
-elapsed total comes back, which is what makes the residue trustworthy — on the
-43.33% registry the only thing the split hides is 1,654,222 cycles of declined
-arrivals sitting inside entry rows, spread too thin to rank.
+address. Add the native total, the spin loop and the rest back together and the
+elapsed total comes back within a few per cent, which is what makes the residue
+trustworthy.
 
 #### Take the cost from the assembly run and the weight from the ratio
 
-Two corrections turn that ranking from suggestive into exact. Both were found
-by trusting it too far first, and the second one retired three entries from
-this file's own next-target list.
+Three corrections turn that ranking from suggestive into usable. All three were
+found by trusting it too far first; one retired three entries from this file's
+own next-target list, and one hid an eight-figure target for four slices.
 
 **Price each address from the assembly-only profile.** The profiler charges
 every sample the span to the next sample, and a native body produces no
@@ -576,7 +586,19 @@ and take each address's true cost from there:
 cost = native_run_executions × (assembly_cycles ÷ assembly_executions)
 ```
 
-Every leak goes at once, and the books close within 0.13% of elapsed.
+Every leak goes at once.
+
+**Drop the entry rows; they are phantoms, not cheap calls.** The instruction
+hook runs *before* the replacement hook, so a replaced routine's entry address
+is sampled once per call for an instruction the core then skips. Priced from
+assembly that is 37,655,643 cycles route-wide — 36% of everything the profile
+would otherwise call "still emulated", and enough on its own to have made the
+sound driver's blocked arrivals look twice their real size for four slices.
+Excluding `registry_entry = 1` rows is what makes the books close: native plus
+spin loop plus what is left comes back to elapsed within 5.9%, and the
+remaining overshoot is the method's own — each address is priced at one average
+cost, so an address whose branch splits differently under the two runs is
+charged the blend.
 
 **Rank by the execution ratio, not by cycles.** A busy address is not evidence
 of unported code. Compare the same address's executions in both runs:
@@ -600,29 +622,49 @@ hybrid's own overheads, which no amount of porting removes:
   admitted routine still shows interpreted executions, climbing monotonically
   along its fall-through path as later instructions become reachable from more
   checkpoints. That climb is the signature; straight-line code cannot otherwise
-  have different counts on consecutive instructions. 11.2M on the route.
+  have different counts on consecutive instructions. 8.6M on the route.
 
 Both disappear with the emulator rather than before it. Rank without them and
 what is left is the actual porting queue.
 
-Two things that ranking will show which are *not* targets, and why:
+One thing that ranking will show which is *not* a target: the frame-sync spin at
+`00:E323` is 45% of all master cycles. It is a `CMP`/`BEQ` pair waiting on the
+VBlank counter, and replacing it would declare "burn N cycles doing nothing".
+That raises the headline share enormously and ports no game logic, so it stays
+emulated until the native frame boundary takes it.
 
-- The frame-sync spin at `00:E323` is 45% of all master cycles. It is a
-  `CMP`/`BEQ` pair waiting on the VBlank counter, and replacing it would
-  declare "burn N cycles doing nothing". That raises the headline share
-  enormously and ports no game logic, so it stays emulated and stays outside
-  the portable pool the registry measures itself against.
-- The timer handler at `00:FC00` and the bank `45` code it maps in are 91% of
-  everything still emulated outside that spin. They are reachable — a
-  replacement may hook any instruction address, and `01:C510` and `01:C606`
-  are both entered by a branch — but they are the ROM sound driver, writing
-  PSG registers on the hardware page and re-mapping banks with TAM/TMA between
-  them. The write channel is proven for work RAM and the four base VDC ports,
-  and the plan keeps the original drivers emulated. Bank `45` is easy to
-  mistake for a video bank: it only ever runs in interrupt context, entered by
-  the `TAM #$40` at `00:FC10`. On a 384KB image Mednafen maps physical banks
-  64-127 to ROM bank `((x & 0x0F) + 32)`, so `45` is ROM bank `25`, not a
-  mirror of a low bank.
+This section used to name a second non-target: the timer handler at `00:FC00`
+and the bank `45` code it maps in, on the grounds that they are the ROM sound
+driver writing PSG registers on the hardware page and re-mapping banks with
+TAM/TMA between them. That was wrong in the end — both are native now, the
+write channel took the PSG page, and the epilogue that was the last emulated
+part of the driver has since been taken too. Bank `45` is still easy to mistake for a
+video bank: it only ever runs in interrupt context, entered by the `TAM #$40`
+at `00:FC10`. On a 384KB image Mednafen maps physical banks 64-127 to ROM bank
+`((x & 0x0F) + 32)`, so `45` is ROM bank `25`, not a mirror of a low bank.
+
+#### A suspended transcript does not hide the code that interrupted it
+
+For a long time the core would not consult the replacement hook while a
+checkpointed transcript was suspended, and the ranking could not see past that.
+An interrupt taken inside any transcript ran its handler emulated, so the sound
+driver and the whole VDC handler chain appeared partly unported no matter how
+completely they had been walked — and the appearance got worse with every slice,
+because a longer transcript shadows more interrupts.
+
+A suspension is machine state, not a lock. The handler is 65C02 code like any
+other, and the transcript it interrupted is ordinary saved state; the core now
+pushes it to a frame stack and lets the handler carry a transcript of its own.
+Two consequences for how you read a profile:
+
+- **A routine that is admitted on every call when hooked alone, but not under
+  the deployed registry, is telling you about the harness, not the routine.**
+  Compare the two runs before concluding anything about coverage.
+- **A block that reads as uniformly blocked can be hiding real work.** The
+  driver's 110M looked like one thing and was three: 37.7M of phantom entry-row
+  samples, 46M the rule really did block, and 26.4M of epilogue nobody had
+  walked. Only the first two went away when the rule did; the third had to be
+  ported, and was, in the slice after.
 
 ### A device read is not automatically a wall
 
@@ -910,14 +952,27 @@ The timer sound driver is the worked example. It does `CLI` at `00:FC32` and
 its epilogue reads `$DA`, the rerun request another handler sets while it is
 running. The walk's own `STZ $DA` at `00:FC30` is inside the transcript, so
 `LDA $DA` at `00:FC84` would always read back zero and the handler would never
-take its `JMP $FC03` chain exit. No amount of checkpointing fixes that; the
-walk has to stop before the read, at `00:FC7C` and `00:FD70`, and leave the
-epilogue emulated.
+take its `JMP $FC03` chain exit. That is not a small effect: `00:E12A` writes
+`$DA` 387 times on the census route and the chain is taken 387 times, so a
+transcript predicting the branch would be wrong every time it mattered.
 
 So when a candidate enables interrupts partway through, audit every load after
 that point. A byte the routine only writes is safe. A byte another handler
-writes is a hard boundary for the walk, and the cheapest correct answer is to
-end the transcript in front of it rather than to model the race.
+writes is a hard boundary for the walk.
+
+Ending in front of it is the cheap answer, and for a long time it was the only
+one on offer here. The better one is to end in front of it *and start again
+after it*: register the address the walk stopped at as an entry point of its
+own, so the core re-enters and the callback is asked a second time, against a
+snapshot taken after the preempting handler has run. That is the same
+mechanism as chunking a transcript that is too long — `00:EAB0` in the palette
+stepper — applied to staleness rather than to length, and it is what finally
+took the driver's epilogue. Reach for it whenever the load is a hard boundary
+but the code after it is worth having.
+
+One caveat, learned the expensive way: pick the re-entry point by what the
+core can express, not by where the stale read is. See "an instruction a
+checkpoint cannot express" below.
 
 Audit by measurement, not by reading the call graph, whenever the state is
 widely shared. `$2F`/`$30` is the game's general-purpose source pointer and the
@@ -1007,8 +1062,8 @@ difference in an otherwise byte-identical 954,241-write census, and enough to
 move the state census off the baseline.
 
 The fix is to publish the old mask on the `CLI` checkpoint and let the clear
-land on the next one. `SEI` has the mirror-image delay for the same reason; if
-a walk ever covers one, it needs the same treatment in the other direction.
+land on the next one. `SEI` has the mirror-image delay for the same reason —
+but *not* the mirror-image fix, and this file used to say it did. See below.
 
 ### PLP defers the mask, and only the mask
 
@@ -1031,9 +1086,46 @@ out and nothing read the stack byte in between.
 
 `ReplacementCheckpoint` carries one status, so the correct split is: publish
 the popped flags with the *old* mask bit, and apply the popped mask on the
-next checkpoint. That is exact for `SEI`/`CLI`, where only the mask changes,
-and leaves a single residual — an interrupt taken on a `PLP` that also changes
-the mask would push the old mask bit. Nothing in the ported set does that.
+next checkpoint. That leaves a single residual — an interrupt taken on a `PLP`
+that also changes the mask would push the old mask bit. Nothing in the ported
+set does that.
+
+### Deferring a mask *clear* is safe; deferring a mask *set* is not
+
+This file used to close the section above by saying the deferral is "exact for
+`SEI`/`CLI`, where only the mask changes". That is right for `CLI` and wrong
+for `SEI`, and the driver epilogue is where it was caught.
+
+The two are not mirror images, because the residual the `PLP` note identifies
+— an interrupt taken on this instruction pushes the wrong mask bit — is only
+reachable in one direction. Deferring a `CLI`'s clear publishes `I` set, which
+*suppresses* the interrupt at that boundary; nothing is pushed, so nothing can
+be pushed wrong. Deferring an `SEI`'s set publishes `I` clear, which *permits*
+it — and then the core pushes the checkpoint's status, so the handler stacks
+an `I` the machine had already set, and the `RTI` restores an open window the
+routine had just closed.
+
+The census caught it in one frame of 3,600. The epilogue's writes were
+byte-identical in value and order and 117 master cycles late, and the stack
+trace showed a timer interrupt taken at the `SEI` boundary with `PC=$FC82,
+P=$02` pushed. `--work-ram-write-range 2100-21FF` is how you read that: an
+interrupt entry appears as three descending pushes at one timestamp, and the
+`P` byte tells you which flags the core thought it had.
+
+There is no publishable byte. `IFlagSample` needs the old mask and the pushed
+`P` needs the new one, and a checkpoint carries one status for both. So `SEI`
+joins `BBR` as an instruction the format cannot express, and takes the same
+remedy: stop in front of it, register the address after it, and let the core
+run the instruction itself. In the driver epilogue that costs 1,526,046 cycles
+of a 26.7M slice.
+
+The two exceptions are worth holding together, because they are found
+differently. `BBR` is a *timing* defect — the transcript's own artifacts are
+exact and the divergence is downstream. `SEI` is a *state* defect — the
+divergence is right there in the transcript's own cycle stamps, and the stack
+page names the instruction. If a walk's writes are correct in value and order
+but uniformly late from some point onward, look for an interrupt the machine
+did not take, and look at the mask first.
 
 ### The write channel reaches device registers, not just work RAM
 
@@ -1221,6 +1313,188 @@ child's shape from the child or has it written in. `03:73A6` had `0x6988`
 written in; every other site takes the address from the transcript it spliced.
 **A shape gate is only dangerous when something downstream assumes the shape.**
 
+### A replaced *device* can pass the oracle by not running at all
+
+Every lesson above is about transcripts, where a native body that never
+installs shows up immediately: the entry counter reads zero. A device model
+has no entry counter. It is installed by a pointer somewhere in the emulator,
+and if that pointer is null the emulator quietly does the work itself and
+produces exactly the output the census expects.
+
+The native PSG matched `9036a9de…` on its first run. It was not being called.
+`load_rom` shuts the core down before loading, the model was being torn down
+in `shutdown_core`, and the install happened before the load — so the model
+was created and destroyed between the request and the frame that needed it.
+The census could not tell, because a correct emulator and an absent model
+give the same bytes.
+
+**A device swap needs a liveness proof separate from its correctness proof,
+and the cheapest one is a deliberate wrong answer.** Double every delta the
+model emits, rebuild, and confirm the census *moves*. If it does not, the code
+is not in the path and any match is meaningless. Two attempts were needed here
+even for that: the first perturbation changed the constant an idle channel
+emits, which is a one-sample impulse of magnitude 1 against samples of ~10,000
+and vanished into the resampler's rounding. A liveness perturbation has to be
+gross.
+
+Once liveness was established the real bug appeared, and it was the kind a
+hash cannot localise: the model was built as a HuC6280 while the host pins
+`pce_psgrevision` to `HuC6280A`, which centres waveform amplitudes and halves
+every accumulated sample. **The remedy is not to read the setting in two
+places but to have the emulator report the device it built.** Patch `0008`
+passes the revision alongside the output buffers, so there is one decision and
+the model cannot drift from it.
+
+For localising the difference, the analogue of "diff against an assembly run"
+is to run both devices at once. A temporary harness inside `Emulate` gave the
+emulator's PSG its own buffers, seeded them from the live ones at the top of
+each iteration, fed both the same writes, and compared every buffer position
+after the frame's update. That reported the first divergent position, channel
+and timestamp — and the ratio at that position, exactly 2, named the bug
+outright. One caveat learned the hard way: seed the shadow buffers at the top
+of the *inner* loop, not before it. `Emulate` may run its body more than once
+per frame, and a harness seeded once per call reports a wall of false
+mismatches from the second iteration onward, because the live buffer has been
+integrated and resampled in between and the shadow has not.
+
+### A route is an oracle for the game, not for the device
+
+The census route proves what the game asks a device to do. That is not the
+same as what the device does, and the gap is not always small: the native PSG
+matched the emulator on every frame of the route while its LFO had never run
+once, its noise source had only ever run on one of its two channels, and its
+accumulating output mode had fired seven times in an hour of frames.
+
+**Measure the gap; do not argue about it.** The model counts its own paths and
+`--report-psg-coverage` prints them for any recorded route, which costs an
+increment next to work that was already being done and turns "probably fine"
+into a table. Do the same for the next device — the counters are the cheapest
+part of the slice and the only part that says what the acceptance test is
+worth.
+
+**Then check whether another route would close it.** For the PSG it would not.
+The sequencer writes `$0809` from `$2E41`, and every store in the ROM that
+names that byte writes a zero to it, so the plan's answer — "a censused route
+that plays looping music" — would have reported the same zero the current one
+does. Fifteen minutes of scanning the cartridge for stores to one address
+saved recording a route to prove nothing. When a path looks uncovered, find
+out whether the game *can* reach it before designing a route that supposedly
+does.
+
+**Where it cannot, the emulator is the oracle — drive it directly.** Beetle's
+`PCE_PSG` needs nothing from the machine around it, so a small `extern "C"`
+shim in the fork exposes it as a bare reference device and
+`tests/psg_device_tests.cpp` runs both chips from the same synthetic register
+stream. Three things make that test worth its runtime:
+
+- Compare **state, not just output**. The buffers only show what has already
+  been emitted; comparing every counter, latch and shift register catches a
+  divergence at the edge it happens on rather than at the next one that emits.
+- Assert the **coverage counters** the scenarios were written for. Agreement
+  is only worth what it covers, and a scenario that quietly stops reaching a
+  path should fail rather than pass.
+- **Perturb the model** and confirm the test fails, path by path, exactly as
+  with the census. A wrong LFO shift should fail the oscillator scenario; a
+  wrong accumulating midpoint should fail on the revision that subtracts it
+  and no other.
+
+Such a test lives exactly as long as the emulator does, which is the right
+lifetime: it is the record that the model was right while there was still
+something to be right against.
+
+### Build the shim before planning around the dependency
+
+The PSG slice ended by recording what the VDC would cost: that unlike the
+sound chip, the video chip is read back by the game, so a reference device
+would need the machine around it, and that this was the part to design first.
+It was designed first — by writing it, in an afternoon — and the premise was
+wrong. `VDC` is standalone in the same way `PCE_PSG` is, its reads are methods
+on the device rather than queries against the machine, and the shim came out
+the same size as the sound chip's.
+
+The lesson is not that the estimate was pessimistic. It is that the question
+"can this be lifted out?" is answered by the class's includes and its member
+list, and both are ten minutes of reading; a claim about coupling that has not
+been checked against them is a guess, and one that had already been written
+into two documents and was about to shape a slice. **When a plan turns on
+whether a dependency can be isolated, isolate it and see, before designing
+around the answer.**
+
+Building it early pays twice, because the shim is where the real couplings
+show up rather than the imagined ones. Two appeared that no amount of planning
+had predicted:
+
+- The device needed a **clock schedule**, not a timestamp. `VCE` decides how
+  `run`, `hsync` and `vsync` interleave, and the picture depends on it — the
+  same register writes draw 57,347 pixels on one dot clock and 76,413 on
+  another. Copying that schedule into the test's driver is most of what a
+  native VDC will have to reproduce, and it exists now, working, to build
+  against.
+- The wait-state hook's **refusal is load-bearing**. The device stalls by
+  looping until the hook says no, so a shim whose hook always agreed would
+  hang rather than fail — and it would hang only on the first port access
+  during a block transfer, which the first draft of the test never made. That
+  edge is worth reaching deliberately: assert the stall count, not just that
+  the transfer finished.
+
+### A differential test's comparison is easy; its stimulus is not
+
+The native VDC was compared against the emulator's own device on one clock
+schedule — every pixel, every register, all of video memory, the interrupt
+line, the stall budget — and it passed on the first run, complete. That was
+worth nothing. Thirty-eight deliberate one-line breaks to the model were then
+tried, and **twelve survived**. The model was wrong in twelve ways the test
+could not see, and every one of them was a hole in the stimulus rather than in
+the comparison.
+
+The comparison was right the first time because it is the easy half: compare
+everything, after everything. The stimulus is the hard half, and **its
+adequacy is not observable from a passing run**. The only instrument that
+measures it is breaking the thing under test on purpose, and the number worth
+recording afterwards is not how many were caught but how many were missed
+first.
+
+The holes generalise past this device, and are worth checking for by name:
+
+- **Uniform stimulus hides indexing.** A tile map filled with one character
+  makes every wrong-map-entry fetch draw the identical picture. This is the
+  same shape as a test that writes the same byte to every address.
+- **Periodic stimulus is barely better than uniform.** The first varying fill
+  repeated every 1,024 entries, and the rows a wrong height mask selects are
+  exactly a power of two apart, so it caught nothing. The window between a
+  per-line latch and its use is a fixed 96 clocks, so a value alternating
+  every clock presents the same value at both ends. Both were fixed by hashing
+  the index rather than deriving it arithmetically. **If the thing being
+  tested has a natural period, any stimulus sharing a factor with it is
+  blind.**
+- **Latching costs a cycle of the outer loop.** A register latched at vertical
+  sync, in a driver whose vertical sync falls near the *end* of a field, does
+  not affect the next field — it affects the one after. Writing a setting and
+  asserting on the next field tests the previous setting twice and the new one
+  never.
+- **A section starts where the last one stopped, which is rarely where you
+  want it.** A walk meant to land mid-display began in the vertical front
+  porch, where nothing is drawn.
+- **The device's own program can make a path unreachable.** The usual vertical
+  program totals 263 lines inside a 262-line field, so the phase machine never
+  completes a cycle and one of its two latch sites is dead code. Reaching it
+  required programming a field the device could actually wrap inside.
+
+The defence that works is a **liveness assertion per section**, not only per
+run: assert that the thing the section is about was in use while the section
+ran. Asserting "the walk ran while both layers were being drawn" is what
+exposed `(hash >> 26) & 0xC0` — always zero on a six-bit value — quietly
+writing *both layers off* at every clock for the entire section.
+
+One more discipline is worth the words. Of the thirty-eight breaks, two were
+*correctly* uncaught: two expressions in the background renderer decode the
+same four bits and are then ORed together, so dropping a bit from one is not a
+behaviour change. Chasing those would have meant contorting the stimulus to
+detect a difference that does not exist. **When a perturbation survives, the
+first question is whether it is a real behaviour change** — and the way to
+settle it is to perturb the copy that is not redundant and confirm that one is
+caught.
+
 ## Commands
 
 Assuming the full host preset has been configured and `DC_ROM_PATH` is
@@ -1242,6 +1516,44 @@ ctest --test-dir out\build\windows-vs2022 -C Debug --output-on-failure -R '^dc_r
 
 Run Debug and Release builds sequentially: multi-config CMake generation and
 build output are shared. Do not run their builds concurrently.
+
+Always pass `--output-on-failure`, including on the full suite. `ctest` keeps
+only the most recent run in `Testing/Temporary/LastTest.log`, so re-running a
+failed test on its own destroys the record of why it failed — which is exactly
+the moment the record is wanted. Redirect the full-suite run to a file as
+well; a background run whose output is filtered down to a summary keeps the
+exit code and loses the reason.
+
+**While a suite is running, do not touch the build tree.** Not a build, not
+another `ctest`, not even `ctest -N`. Both do damage:
+
+- A concurrent `cmake --build` tries to relink `devils-crush.exe` out from
+  under the tests running it. The link fails — which looks harmless, because
+  the binary survives — but tests that were mid-run against it can fail, and
+  the failure looks like a real regression.
+- A concurrent `ctest`, *including a listing with `-N` that runs nothing at
+  all*, rewrites `Testing/Temporary/LastTest.log`. The suite that is still
+  running keeps appending to a file whose header now says a different run,
+  and the failure records are gone.
+
+This was learned by doing both at once: a full-suite run reported two failures
+in `dc_rom_bonus_layout` and `dc_rom_bonus_scored_results`, and by the time
+they were investigated there was no record of why, because a `ctest -N` five
+minutes earlier had clobbered the log. Both passed in isolation, and a clean
+run with nothing else touching the tree was 393/393. The failures were almost
+certainly caused by the concurrent build, but "almost certainly" is the cost of
+having contaminated the run — the whole point of the discipline above is not
+to have to say it.
+
+One intermittent failure is known and unexplained.
+`dc_rom_knight_terminal_release_helper_post_return_actor_attribute_store_prefix`
+failed once under `ctest -j 6` on 2026-08-10 and passed in the two full runs
+either side of it, and on its own. The message was lost to the overwrite
+above, so what diverged is not known. The obvious shared state was ruled out:
+every ROM test writes its own artifact paths, and the backup RAM and cabinet
+configuration are only touched by the windowed host, not by the recording path
+these tests use. Treat a lone failure in this family as unconfirmed until it is
+seen twice, and capture the output when it is.
 
 ## Future acceleration work
 
