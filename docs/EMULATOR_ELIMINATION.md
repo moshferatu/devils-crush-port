@@ -917,11 +917,14 @@ Remaining real logic, in rough order of value:
   frontend until something native owns the display, and both are one function
   wide.
 
-  The savestate shuttle has its own test, `dc_rom_video_state_shuttle`,
+  The savestate shuttle has its own test, `dc_rom_device_state_shuttle`,
   because the census cannot reach it: a recorded route never saves or loads a
   state, so both video models could carry a broken shuttle and every arm would
   still match. A routine replay serializes, restores and re-runs a call over
-  eight round trips, and the two arms must reproduce the *same* calls.
+  eight round trips, and the arms must reproduce the *same* calls. It now
+  covers four models — the two video devices, the interrupt controller and
+  the instruction boundary — and deliberately not the scheduler, which writes
+  the emulator's format straight through its own storage.
 
   Installing it broke four ROM tests, and the two faults behind that are worth
   keeping. One was the install's: on a state load the emulator's own loader
@@ -1093,13 +1096,14 @@ Remaining real logic, in rough order of value:
   Engine and from `StealMasterCycles`, which nothing in a census route calls.
   And the overclock divider never swallows an advance, because the host runs
   at the machine's own rate of one and the remainder is then always zero.
-- **The instruction boundary — modelled, not yet installed.**
+- **The decision between two instructions — native.**
   `devils_crush::cpu::HuC6280InterruptBoundary` holds the two values latched
   at the end of an instruction and the rule that decides, at the start of the
   next one, whether the next thing to happen is an instruction or an
   interrupt. Patch `0016` lifts both out of `LastCycle` and `RunSub` into
-  named entry points the emulator itself calls; `dc_interrupt_boundary` is
-  what proves the model equal to them.
+  named entry points the emulator itself calls and `0017` routes those to the
+  model; `dc_interrupt_boundary` is what proves the model equal to them and
+  `dc_rom_native_boundary` is what says the route did not move.
 
   **This one is a rule, not a device, and the difference shows up in how it
   is proved.** Every model before it was checked by driving a stimulus and
@@ -1117,6 +1121,29 @@ Remaining real logic, in rough order of value:
   it is a *call* whose inputs are five values the processor already holds and
   whose output is a small enumeration. Recognising that as a third answer
   rather than forcing it into one of the first two is most of the design.
+
+  **The call was measured rather than assumed, and it costs about a sixth of
+  the route.** Over the census the boundary latches 108,763,180 times and
+  decides 108,732,259 times, so installing it adds roughly 217 million
+  indirect calls; a 3,600-frame recording takes 6.4 s with the model
+  installed against 5.4 s with it handed back. The alternative was to keep
+  the emulator's own `(IRQSample | IRQlow)` gate inline and dispatch only
+  when it opens — but that gate *is* the rule's first clause, so buying it
+  back would mean a second copy of the rule in the fork, which is precisely
+  what `0016` was shaped to prevent. It would also only remove one of the two
+  calls, since the latch is taken unconditionally. A route that still runs at
+  nine times real time is not worth that trade, and the cost is transitional
+  in any case: it exists only while the processor on the other side of the
+  call is the emulator's.
+
+  What the route says about the rule is narrower than the enumeration but
+  points at the same asymmetry. Of 254,990 timer vectors, **63,135 were taken
+  on a line the latch did not hold** — so the difference between testing the
+  live request register and testing the sample is not a curiosity of the
+  emulator's source, it is a quarter of the timer interrupts in an hour of
+  this game. IRQ1 is taken 7,198 times, IRQ2 never: it belongs to the compact
+  disc unit, which this cartridge does not have. The reset line is signalled
+  twice — power-on and the ROM load behind it — and acknowledged once.
 
   Three asymmetries in the rule are the reason it was worth separating from
   the processor at all, and each is a thing a from-scratch 6280 would
@@ -1138,6 +1165,15 @@ Remaining real logic, in rough order of value:
   `RunSub`. That split is what lets the rule be proved exhaustively instead
   of differentially: the claim is about forty lines of decision, not about a
   processor.
+
+  Its savestate is a capture-and-apply pair rather than the scheduler's
+  written-through block, because the two latched values are the model's own
+  storage and the format is the emulator's. `StateAction` is the one caller
+  that reaches the latch without an instruction having ended — a state load
+  *restores* a boundary, it does not take one — and the apply runs after
+  `REDOPIMCACHE`, which repairs the processor's copy of the I flag rather
+  than the boundary's latched one. That shuttle is now the fourth arm of
+  `dc_rom_device_state_shuttle`.
 - VDC/VBlank interrupt timing against the raster.
 - Cycle pacing. Native transcripts currently declare `body_master_cycles` so
   Beetle can schedule around them; something must still model time to the

@@ -1971,20 +1971,45 @@ if(TARGET devils_crush)
             PROPERTIES LABELS rom_required
         )
 
+        # The sixth device seam, and the first that is a rule rather than a
+        # device. Four arms again. The third of them -- a native boundary
+        # under the emulator's own five devices -- is what a rule can be held
+        # to that a device cannot: this one decides, 108 million times over
+        # the route, whether the next thing to happen is the next
+        # instruction, so a machine that still reproduces the census frame
+        # for frame took every one of those decisions the way the processor
+        # would have.
         add_test(
-            NAME dc_rom_video_state_shuttle
+            NAME dc_rom_native_boundary
             CONFIGURATIONS Release
             COMMAND
                 "${CMAKE_COMMAND}"
                 "-DAPP=$<TARGET_FILE:devils_crush>"
                 "-DCONFIG=$<CONFIG>"
                 "-DROM=${DC_ROM_PATH}"
-                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/video-state-shuttle-v1"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/native-boundary-v1.csv"
                 "-P"
-                "${CMAKE_CURRENT_SOURCE_DIR}/verify_video_state_shuttle.cmake"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_native_boundary.cmake"
         )
         set_tests_properties(
-            dc_rom_video_state_shuttle
+            dc_rom_native_boundary
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_device_state_shuttle
+            CONFIGURATIONS Release
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/device-state-shuttle-v1"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_device_state_shuttle.cmake"
+        )
+        set_tests_properties(
+            dc_rom_device_state_shuttle
             PROPERTIES LABELS rom_required
         )
 

@@ -5496,49 +5496,91 @@ does not.
 
 ### Next
 
-**Install the instruction boundary.** The model is written and proved; what
-is left is a fork patch in the shape of `0013`/`0015` that routes
-`DcSampleInterrupt` and `DcSelectInterrupt` -- and therefore `LastCycle`, the
-top of `RunSub`, the acknowledge that takes the reset line out of the latch,
-the two entries `ApplyReplacementCheckpoint` re-latches, and the two savestate
-fields -- into `devils_crush::cpu::HuC6280InterruptBoundary`, plus a
-`framebuffer_sha256` census over the route to show nothing moved.
+**The frame boundary.** Phase 3 has two items left and both are about the
+machine rather than the processor: VDC/VBlank interrupt timing against the
+raster, and the spin loop becoming the native frame boundary. They are one
+piece of work rather than two, because what joins them is `pce.cpp` -- the
+frame loop, `PCE_Event`, and `PCE_TimestampBase`, which is now the emulator's
+last structural contribution to running this game.
 
-Two questions to decide rather than default, and they are the same two shapes
-the last two slices argued about.
+The shape to argue about is not the seam this time. Six of those are settled,
+and the sixth just proved that the answer depends on what a seam does to
+memory rather than on how often it runs. The question here is *what the
+device is*. Everything modelled so far had a boundary the emulator had
+already drawn -- a class, a register file, a dozen private fields. The frame
+loop is a `while` in a free function that calls the encoder, drains the
+sound, hands a surface to the frontend and rebases the clock; there is no
+object to make dormant and no obvious line to cut. Finding that line is the
+slice.
 
-**Whether the dispatch can be a plain call.** The seam runs twice per
-instruction, which is more often than the interrupt controller's reads and
-about as often as the scheduler's writes -- and neither of those could afford
-a dispatch. But this one is different in a way that may rescue it: its inputs
-are five values the processor already holds in registers and its output is a
-single small integer, so the call has no memory traffic behind it at all. If
-that is not enough, the fallback is not a mirror and not a shared block but
-the `MDFN_UNLIKELY` gate the emulator already has -- `(IRQSample | IRQlow)`
-is false on nearly every instruction, and a seam that only dispatches when
-that gate opens costs one load and one branch on the path that matters.
-Measure before choosing; the census route makes 221 million of these.
+Two things worth settling before writing any of it. **Whether the census can
+still be the acceptance.** The route is 3,600 frames measured *at* the frame
+boundary, so a model that changed where a frame begins would move the census
+by construction rather than by fault, and the hash would stop being evidence
+about anything. **And what the spin loop actually waits for.** The game's own
+frame pacing is a wait on a work-RAM byte the VBlank handler writes; a native
+frame boundary that ends a frame at a different instruction than the
+emulator's would still produce the same pixels but a different instruction
+count, and nothing in the current acceptance would notice.
 
-**Where the two latched values live.** They are read by the rule and written
-by the sample, both of which would be inside the model -- so unlike the clock,
-nothing outside needs to see them, and the model can simply own them. The one
-thing that does need them is the savestate, which is a capture-and-apply pair
-rather than a block. Confirm that `ApplyReplacementCheckpoint` re-latching
-through the model is right, since it is the one caller that re-samples without
-finishing an instruction.
-
-After that, Phase 3 has two items left and both are about the machine rather
-than the processor. VDC/VBlank interrupt timing against the raster, and the
-spin loop becoming the native frame boundary -- at which point `PCE_Event`,
-`PCE_TimestampBase` and the frame loop in `pce.cpp` are the emulator's last
-structural contribution.
-
-Three smaller things carried forward and still undone. The timer interrupt
+Two smaller things carried forward and still undone. The timer interrupt
 horizon is never queried by a census route -- it exists for native routine
 transcripts -- so `dc_rom_native_irq` cannot fail for it; the replacement
-tests drive it, but nothing prints what they drove. `dc_beetle_vce_cd_event`
-has still never come due. And `dc_rom_video_state_shuttle` now verifies three
-device shuttles rather than two video ones, and its name has not caught up.
+tests drive it, but nothing prints what they drove. And
+`dc_beetle_vce_cd_event` has still never come due.
+
+### Previous: the instruction boundary is installed
+
+`devils_crush::cpu::HuC6280InterruptBoundary` now makes the decision this
+machine takes between two instructions. Patch `0017` routes
+`DcSampleInterrupt`, `DcSelectInterrupt`, the reset acknowledge and the reset
+signal into it, and `dc_rom_native_boundary` is what says the route did not
+move: **four arms, 3,600 frames each, all reproducing `9036a9de…`** -- the
+hash the sound slice pinned and every slice since has reproduced.
+
+**The seam is a plain call table, which is the third answer this port has
+given to the same question and the first one it measured.** The interrupt
+controller is *read* from inside the instruction loop and became a mirror;
+the scheduler is *written* from inside it and became a block of memory. This
+one runs more often than either -- twice per instruction -- and a call is
+still right, because its inputs are values the processor already holds in
+registers and its output is a small integer, so nothing has to be kept
+coherent with anything.
+
+**The cost is a number rather than an argument: about a sixth of the route.**
+The census latches 108,763,180 times and decides 108,732,259 times, so the
+install adds roughly 217 million indirect calls, and a 3,600-frame recording
+takes 6.4 s with the model installed against 5.4 s with it handed back. The
+alternative was to keep the emulator's `(IRQSample | IRQlow)` gate inline and
+dispatch only when it opens -- but that gate *is* the rule's first clause, so
+buying the time back means a second copy of the rule in the fork, which is
+exactly what `0016`'s lift exists to prevent. It would also have removed only
+one of the two calls, since the latch is taken unconditionally.
+
+**The route has something to say about the rule, and it is about the one
+asymmetry.** Of 254,990 timer vectors, **63,135 were taken on a line the
+latch did not hold** -- so testing the live request register rather than the
+sample is not a curiosity of the emulator's source, it is a quarter of the
+timer interrupts in an hour of this game. IRQ1 is taken 7,198 times and IRQ2
+never, because IRQ2 belongs to a compact disc unit this cartridge does not
+have. The reset line is signalled twice, for the power-on and the ROM load
+behind it, and acknowledged once.
+
+**Its savestate is a capture-and-apply pair, not the scheduler's
+written-through block,** because the two latched values are the model's own
+storage while the format stays the emulator's. `StateAction` is the one
+caller that reaches the latch without an instruction having ended -- a load
+*restores* a boundary rather than taking one -- and the apply runs after
+`REDOPIMCACHE`, which repairs the processor's copy of the I flag and not the
+boundary's latched one. That is the fourth arm of
+`dc_rom_device_state_shuttle`, which is also the name that test should have
+had two slices ago.
+
+The census arm was checked the way the model was. Rewriting the timer branch
+to read the latch instead of the live line -- the single most plausible way to
+get this rule wrong -- moves the census to `df0ad987…`, so
+`dc_rom_native_boundary` is failing for the rule and not merely for the
+install.
 
 ### Previous: the instruction boundary is modelled
 
@@ -5782,7 +5824,7 @@ alone is what shows that what it publishes is what the emulator's own chips
 were being answered with, not merely that four native models agree with each
 other.
 
-The state shuttle grew a third arm too. `dc_rom_video_state_shuttle` now
+The state shuttle grew a third arm too. `dc_rom_device_state_shuttle` now
 replays eight routines across a save and restore with the video models
 handed back, with this one handed back, and with all of them native, and
 requires the restored calls to be identical in all three.
@@ -5980,7 +6022,7 @@ which is the whole of that seam.
 **The census cannot reach a savestate, and both video models have one.** A
 recorded route never saves or loads, so both shuttles could have dropped half
 their fields and every arm of every census would still have matched. That gap
-had been open since the controller was installed. `dc_rom_video_state_shuttle`
+had been open since the controller was installed. `dc_rom_device_state_shuttle`
 closes it with the cheapest instrument that is not blind to it: a routine
 replay serializes at the frame before a chosen call, restores into it, and
 re-runs the call, so a lost field produces different work RAM or a different

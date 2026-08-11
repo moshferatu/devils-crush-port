@@ -620,6 +620,80 @@ typedef struct dc_beetle_scheduler_model {
     void (*exit)(void* user_data);
 } dc_beetle_scheduler_model;
 
+// What the boundary decided. A machine asks once per instruction and gets
+// `INSTRUCTION` for all but a handful of them.
+//
+// The values are the enumeration `HuC6280::DcInterruptDecision` spells out,
+// and the processor's copy is defined in terms of these rather than beside
+// them, so that the two cannot drift apart by a renumbering.
+enum {
+    DC_BEETLE_BOUNDARY_INSTRUCTION = 0,
+    DC_BEETLE_BOUNDARY_RESET = 1,
+    DC_BEETLE_BOUNDARY_TIMER = 2,
+    DC_BEETLE_BOUNDARY_IRQ1 = 3,
+    DC_BEETLE_BOUNDARY_IRQ2 = 4
+};
+
+// The two values a HuC6280 latches at the end of an instruction, in the order
+// and the encoding its savestate carries them. `i_flag_sample` is `P & I_FLAG`
+// or zero, because that is the only thing the emulator ever writes there.
+typedef struct dc_beetle_boundary_state {
+    int32_t i_flag_sample;
+    int32_t irq_sample;
+} dc_beetle_boundary_state;
+
+// A replacement for the decision a HuC6280 makes between two instructions:
+// whether the next thing to happen is the next instruction or an interrupt.
+//
+// This is the sixth seam and the first that is a rule rather than a device.
+// The five before it each replaced something with a state boundary around it
+// -- a set of channels, two chips, a timer, a clock. This one holds two
+// latched values and otherwise computes, so there is nothing here to keep
+// coherent with anything and no mirror to refresh: the processor hands over
+// the four inputs it already has in registers and takes back a small integer.
+//
+// That is also the whole argument for the shape. The interrupt controller is
+// *read* from inside the instruction loop and became a mirror; the scheduler
+// is *written* from inside it and became a block of memory. This one is
+// neither. It runs twice per instruction, which is more often than either,
+// but with no memory traffic behind it at all -- so a call is what it costs
+// and a call is what it is.
+//
+// What deliberately stays with the processor is the *taking* of a vector:
+// eight cycles of dummy reads, three pushes, a flag update and a two-byte
+// fetch, all of it against the processor's own stack and memory map. This
+// model says which vector; the machine does the taking.
+typedef struct dc_beetle_boundary_model {
+    void* user_data;
+    // `HuC6280::Reset`: the latch becomes the reset line alone. It is the
+    // only thing that ever puts that line there, and the latched I flag is
+    // deliberately untouched, exactly as the emulator leaves it.
+    void (*reset)(void* user_data);
+    // `LastCycle`, without the cycle. The request register and the mask
+    // belong to the interrupt controller and the I flag to the processor, so
+    // all three cross as arguments rather than being reached for -- which is
+    // also what lets a native boundary sit above an emulated controller.
+    void (*sample)(
+        void* user_data,
+        uint32_t requests,
+        uint8_t mask,
+        int i_flag_set);
+    // The top of `RunSub`, returning one of the values above. The lines are
+    // passed again because the rule reads them in the present tense as well
+    // as the past: a timer request raised since the latch wins immediately
+    // where an IRQ1 or IRQ2 request raised in the same window waits.
+    int (*select)(void* user_data, uint32_t requests, uint8_t mask);
+    uint16_t (*vector)(void* user_data, int decision);
+    // The reset line leaves the latch when the machine takes the vector.
+    // Only the latch: the request itself and the mask belong to the
+    // interrupt controller, which the same machine tells separately.
+    void (*acknowledge_reset)(void* user_data);
+    void (*capture_state)(void* user_data, dc_beetle_boundary_state* state);
+    void (*apply_state)(
+        void* user_data,
+        const dc_beetle_boundary_state* state);
+} dc_beetle_boundary_model;
+
 // Beetle PCE is single-instance and thread-confined. Registration and callback
 // dispatch must occur on that same owning thread.
 extern dc_beetle_instruction_hook dc_beetle_active_instruction_hook;
@@ -646,6 +720,7 @@ extern const dc_beetle_vdc_model* dc_beetle_active_vdc_model;
 extern const dc_beetle_vce_model* dc_beetle_active_vce_model;
 extern const dc_beetle_irq_model* dc_beetle_active_irq_model;
 extern const dc_beetle_scheduler_model* dc_beetle_active_scheduler_model;
+extern const dc_beetle_boundary_model* dc_beetle_active_boundary_model;
 
 // Where the processor's clock and event scheduler currently lives. Never null:
 // with no model installed it points at storage this boundary owns, which is
@@ -759,6 +834,16 @@ void dc_beetle_clear_irq_model(void);
 // footing.
 void dc_beetle_set_scheduler_model(const dc_beetle_scheduler_model* model);
 void dc_beetle_clear_scheduler_model(void);
+
+// Installing an instruction boundary is the least demanding of the six, and
+// for the reason the seam is a call: there is no storage to hand over and no
+// mirror to leave behind, so the only thing an install loses is whatever the
+// previous owner had latched. That still means before a ROM loads, because
+// the reset vector a machine takes at power-on is the one thing that puts a
+// reset into the latch -- a model installed after it would be a boundary that
+// had never seen a reset.
+void dc_beetle_set_boundary_model(const dc_beetle_boundary_model* model);
+void dc_beetle_clear_boundary_model(void);
 
 // The four machine edges an installed scheduler reaches back through, and the
 // reason they are edges rather than an object: the scheduler stops for two

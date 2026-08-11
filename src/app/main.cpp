@@ -234,6 +234,10 @@ struct CommandLine {
     // the first whose shape is a block of memory rather than a call table.
     bool emulated_scheduler = false;
     bool report_scheduler_coverage = false;
+    // And for the decision the processor makes between two instructions, the
+    // sixth seam and the first that is a rule rather than a device.
+    bool emulated_boundary = false;
+    bool report_boundary_coverage = false;
     // The interactive host deploys the registry by default so a session runs
     // the ported code; this opts back out to the emulated original.
     bool emulate_only = false;
@@ -757,6 +761,10 @@ parse_logical_address_range(const std::string_view text)
             options.emulated_scheduler = true;
         } else if (argument == "--report-scheduler-coverage") {
             options.report_scheduler_coverage = true;
+        } else if (argument == "--emulated-boundary") {
+            options.emulated_boundary = true;
+        } else if (argument == "--report-boundary-coverage") {
+            options.report_boundary_coverage = true;
         } else if (argument == "--replace-registry") {
             options.replace_registry = true;
         } else if (argument == "--cabinet-overlay-stats") {
@@ -3553,6 +3561,10 @@ void print_usage()
            "  event scheduler is a fifth, and the machine's clock lives\n"
            "  inside it; --emulated-scheduler hands it back, and\n"
            "  --report-scheduler-coverage prints what the route asked of\n"
+           "  it. The decision the processor makes between two\n"
+           "  instructions is a sixth, and is a rule rather than a device;\n"
+           "  --emulated-boundary hands it back, and\n"
+           "  --report-boundary-coverage prints what the route asked of\n"
            "  it.\n\n"
         << "Controls (defaults; see input.* in portable-data/cabinet.ini):\n"
         << "  Left Shift / Left    Left flipper (PCE d-pad left)\n"
@@ -6293,6 +6305,36 @@ void report_scheduler_coverage(
               << coverage->rebases << ", runs " << coverage->runs
               << ", exits " << coverage->exits << ", rate changes "
               << coverage->speed_changes << '\n';
+}
+
+// And the instruction boundary's. Two counters per instruction and a tail of
+// everything else, so the shape to read here is the ratio: how rarely a
+// boundary that woke at all admitted a vector, and how often the timer won on
+// a line the latch did not hold -- the one asymmetry in this rule a route can
+// be asked about rather than argued about.
+void report_boundary_coverage(
+    const devils_crush::emulation::PceRuntime& runtime)
+{
+    const auto coverage = runtime.native_boundary_coverage();
+    if (!coverage) {
+        std::cout << "The emulator owned the instruction boundary; no native "
+                     "paths to report.\n";
+        return;
+    }
+
+    std::cout << "Instruction boundary paths:\n"
+              << "  samples: " << coverage->samples << " ("
+              << coverage->pending_samples << " latched a line, "
+              << coverage->masked_samples << " behind the I flag)\n"
+              << "  decisions: " << coverage->decisions << ", instruction "
+              << coverage->instructions << " (" << coverage->declined
+              << " woken and declined)\n"
+              << "  vectors: " << coverage->resets << " reset, "
+              << coverage->timers << " timer (" << coverage->late_timers
+              << " on a line the latch did not hold), " << coverage->irq1s
+              << " irq1, " << coverage->irq2s << " irq2\n"
+              << "  resets: " << coverage->reset_signals << " signalled, "
+              << coverage->reset_acknowledgements << " acknowledged\n";
 }
 
 [[nodiscard]] bool write_instruction_profile(
@@ -10423,6 +10465,18 @@ int main(const int argc, char* argv[])
             return EXIT_FAILURE;
         }
 
+        // Before the ROM for the narrowest reason of the six. This model
+        // hands over no storage and leaves no mirror, so nothing would be
+        // stranded by a late install -- except the one thing that matters:
+        // the reset vector a machine takes at power-on is the only event
+        // that ever puts a reset into the latch.
+        if (!options.emulated_boundary
+            && !runtime->set_native_boundary(true)) {
+            std::cerr << "Could not install the native instruction "
+                         "boundary.\n";
+            return EXIT_FAILURE;
+        }
+
         const auto load_result = runtime->load_rom(options.rom_path);
         if (!load_result.loaded) {
             std::cerr << load_result.message << '\n';
@@ -10993,6 +11047,9 @@ int main(const int argc, char* argv[])
             }
             if (options.report_scheduler_coverage) {
                 report_scheduler_coverage(*runtime);
+            }
+            if (options.report_boundary_coverage) {
+                report_boundary_coverage(*runtime);
             }
             if (!routine_replays.empty()) {
                 const int replay_result = verify_routine_replays(

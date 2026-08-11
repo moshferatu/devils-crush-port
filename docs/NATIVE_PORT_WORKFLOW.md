@@ -1636,8 +1636,9 @@ The cheapest instrument that is not blind to it was already in the host: a
 routine replay serializes at the frame before a chosen call, deserializes back
 into it, and re-runs the call, so a shuttle that lost a field restores a
 machine that produces different work RAM or a different write transcript.
-`dc_rom_video_state_shuttle` runs that in two arms and requires the restored
-call to be the *same* call — same frame, same body cycles, same write count —
+`dc_rom_device_state_shuttle` runs that in four arms and requires the
+restored call to be the *same* call — same frame, same body cycles, same
+write count —
 because a replay compares each arm only against itself, and two different
 machines can each be self-consistent.
 
@@ -1904,6 +1905,36 @@ One compiler-level trap is worth naming, because it will recur in this loop: a
 block move resumes by `goto` into the middle of `RunSub`'s do-loop, and a jump
 may not cross an initialization. A `const` local at the top of that loop body
 does not compile; the declaration has to sit outside it, beside `old_PC`.
+
+### "The hot path cannot afford a call" is a measurement, not a rule
+
+Two seams in a row concluded that a dispatch inside the instruction loop was
+unaffordable, and both were right — but for reasons about *memory*, not about
+frequency. The interrupt controller's three values are read once per
+instruction and became a mirror; the scheduler's clock is written from
+`ADDCYC` and became shared storage. Frequency was never the whole argument.
+
+The instruction boundary runs more often than either — twice per instruction,
+217 million times over a 3,600-frame route — and a plain call table turned out
+to be the right shape anyway. Its inputs are values the processor already
+holds in registers and its output is a small integer, so the call carries no
+memory traffic and nothing on either side has to be kept coherent with
+anything. Measured: 6.4 s per recording installed against 5.4 s handed back.
+About a sixth, on a route that runs at nine times real time.
+
+Two things make that a decision rather than a shrug. **Measure the arm you
+would ship against the arm without it**, which the `--emulated-<device>` flag
+every seam already has makes a two-command experiment. And **price the
+alternative in correctness, not only in time**: the cheaper shape here was to
+keep the emulator's `(IRQSample | IRQlow)` gate inline and dispatch only when
+it opens, but that gate is the rule's own first clause, so buying the time
+back would have put a second copy of the rule in the fork — the exact thing
+the lift above exists to prevent. It would also have removed only one of the
+two calls, because the latch is taken unconditionally.
+
+The general form: a seam's cost is what it does to memory and to coherence,
+and its price is a number you can go and get. Do not infer either from how
+often the seam runs.
 
 ## Commands
 

@@ -1,0 +1,236 @@
+diff --git a/mednafen/pce/huc6280.cpp b/mednafen/pce/huc6280.cpp
+--- a/mednafen/pce/huc6280.cpp
++++ b/mednafen/pce/huc6280.cpp
+@@ -421,14 +421,14 @@ void HuC6280::Reset(void)
+ 	ReplacementDepth = 0;
+ 	in_block_move = 0;
+ 
+-	// Devil's Crush downstream device-model boundary. `IRQSample` is the
+-	// processor's latched copy and stays here; everything else this function
+-	// touches for the timer and the interrupt controller belongs to an
+-	// installed model.
++	// Devil's Crush downstream device-model boundary. Two devices meet here
++	// and neither owns the other's half: the request register, the mask and
++	// the timer belong to an installed interrupt controller, and the latch
++	// this puts the reset line into belongs to an installed boundary.
+ 	if(MDFN_UNLIKELY(dc_beetle_active_irq_model != NULL))
+ 	{
+ 		dc_beetle_active_irq_model->reset(dc_beetle_active_irq_model->user_data);
+-		IRQSample = IQRESET;
++		DcResetInterruptSample();
+ 		DcIrqPublish();
+ 		return;
+ 	}
+@@ -439,7 +439,7 @@ void HuC6280::Reset(void)
+ 	timer_value = 0;
+ 	timer_status = 0;
+ 
+-	IRQSample = IQRESET;
++	DcResetInterruptSample();
+ 	IRQlow = IQRESET;
+ }
+   
+@@ -629,6 +629,20 @@ void HuC6280::DcObserveBoundary(DcBoundaryObservation* const out) const
+ 	out->irq_mask = IRQMask;
+ 	out->irq_sample = IRQSample;
+ 	out->i_flag_sample = IFlagSample;
++
++	// Devil's Crush downstream device-model boundary. The two fields above
++	// are stale while a model is installed, because nothing refreshes them:
++	// this seam is a call rather than a mirror precisely so that there is
++	// only ever one copy of them, and it is the model's.
++	if(MDFN_UNLIKELY(dc_beetle_active_boundary_model != NULL))
++	{
++		dc_beetle_boundary_state state;
++
++		dc_beetle_active_boundary_model->capture_state(dc_beetle_active_boundary_model->user_data, &state);
++
++		out->irq_sample = state.irq_sample;
++		out->i_flag_sample = state.i_flag_sample;
++	}
+ }
+ 
+ void HuC6280::DcObserveScheduler(DcSchedulerObservation* const out) const
+@@ -1336,6 +1350,24 @@ int HuC6280::StateAction(StateMem *sm, const unsigned load, const bool data_only
+ 		SFEND
+ 	};
+ 
++	// Devil's Crush downstream device-model boundary. The two entries an
++	// installed instruction boundary owns, on the same terms: out through
++	// the processor's own copies and back in through the model, so that the
++	// format stays the emulator's whichever side of the seam answered.
++	//
++	// This is the one caller that reaches the latch without an instruction
++	// having ended, which is why it is a capture-and-apply pair rather than
++	// a re-sample: a state load restores a boundary, it does not take one.
++	if(MDFN_UNLIKELY(dc_beetle_active_boundary_model != NULL) && !load)
++	{
++		dc_beetle_boundary_state model_state;
++
++		dc_beetle_active_boundary_model->capture_state(dc_beetle_active_boundary_model->user_data, &model_state);
++
++		IFlagSample = model_state.i_flag_sample;
++		IRQSample = model_state.irq_sample;
++	}
++
+ 	// Devil's Crush downstream device-model boundary. An installed model owns
+ 	// the seven fields below; they are moved into the processor's own copies
+ 	// on the way out and back into the model on the way in, so the savestate
+@@ -1409,6 +1441,19 @@ int HuC6280::StateAction(StateMem *sm, const unsigned load, const bool data_only
+ 		REDOSPEEDCACHE();
+ 		REDOPIMCACHE();
+ 
++		// After `REDOPIMCACHE` above, which is the processor's own copy of
++		// the I flag rather than the boundary's latched one -- the two are
++		// separate fields for the reason the rule consults both.
++		if(MDFN_UNLIKELY(dc_beetle_active_boundary_model != NULL))
++		{
++			dc_beetle_boundary_state model_state;
++
++			model_state.i_flag_sample = IFlagSample;
++			model_state.irq_sample = IRQSample;
++
++			dc_beetle_active_boundary_model->apply_state(dc_beetle_active_boundary_model->user_data, &model_state);
++		}
++
+ 		// After the repairs above, so a model receives the same values the
+ 		// emulator's own device would have kept.
+ 		if(MDFN_UNLIKELY(dc_beetle_active_irq_model != NULL))
+diff --git a/mednafen/pce/huc6280.h b/mednafen/pce/huc6280.h
+--- a/mednafen/pce/huc6280.h
++++ b/mednafen/pce/huc6280.h
+@@ -138,43 +138,87 @@ public:
+ 		IRQlow &= ~IQRESET;
+ 	}
+ 
+-	// Devil's Crush downstream observation. The decision an instruction
+-	// boundary makes, named and lifted out of the loop that acts on it.
++	// Devil's Crush downstream device-model boundary. The decision an
++	// instruction boundary makes, named and lifted out of the loop that acts
++	// on it, and then handed to a model that can answer instead.
+ 	//
+-	// The lifting is the whole of this patch's behaviour. `LastCycle`
+-	// latches through `DcSampleInterrupt` and `RunSub` asks
+-	// `DcSelectInterrupt` and then does what the answer says, so a
+-	// differential test drives the machine's own rule rather than a copy of
+-	// it that could drift away from it later.
++	// The lifting came first and is the reason this seam has no second copy
++	// of the rule anywhere: `LastCycle` latches through `DcSampleInterrupt`
++	// and `RunSub` asks `DcSelectInterrupt`, so the same two entry points a
++	// differential test drove are the two an installed model replaces.
++	//
++	// The values are the downstream boundary's own, spelled that way rather
++	// than beside it, so that the enumeration crossing the seam cannot drift
++	// apart from the one on either side of it.
+ 	enum DcInterruptDecision
+ 	{
+-		DC_INTERRUPT_INSTRUCTION = 0,
+-		DC_INTERRUPT_RESET = 1,
+-		DC_INTERRUPT_TIMER = 2,
+-		DC_INTERRUPT_IRQ1 = 3,
+-		DC_INTERRUPT_IRQ2 = 4
++		DC_INTERRUPT_INSTRUCTION = DC_BEETLE_BOUNDARY_INSTRUCTION,
++		DC_INTERRUPT_RESET = DC_BEETLE_BOUNDARY_RESET,
++		DC_INTERRUPT_TIMER = DC_BEETLE_BOUNDARY_TIMER,
++		DC_INTERRUPT_IRQ1 = DC_BEETLE_BOUNDARY_IRQ1,
++		DC_INTERRUPT_IRQ2 = DC_BEETLE_BOUNDARY_IRQ2
+ 	};
+ 
+ 	// `LastCycle` without the cycle. The cycle is the processor's; these two
+ 	// assignments are the boundary's, and they are the only place the mask
+ 	// and the I flag are consulted in the past tense.
++	//
++	// A model is handed the request register, the mask and the I flag rather
++	// than reaching for them, because the first two belong to the interrupt
++	// controller and the third to the processor -- which is what lets a
++	// native boundary sit above an emulated controller, and is the same
++	// reason the timer horizon takes the I flag as an argument.
+ 	void INLINE DcSampleInterrupt(void)
+ 	{
++		if(MDFN_UNLIKELY(dc_beetle_active_boundary_model != NULL))
++		{
++			dc_beetle_active_boundary_model->sample(dc_beetle_active_boundary_model->user_data, IRQlow, IRQMask, (P & I_FLAG) ? 1 : 0);
++			return;
++		}
++
+ 		IRQSample = (IRQlow & IRQMask) & PIMaskCache;
+ 		IFlagSample = P & I_FLAG;
+ 	}
+ 
++	// `Reset` puts the reset line into the latch, and nothing else in this
++	// machine ever does: the mask is three bits wide, so no way of driving
++	// the lines can sample it.
++	void INLINE DcResetInterruptSample(void)
++	{
++		if(MDFN_UNLIKELY(dc_beetle_active_boundary_model != NULL))
++		{
++			dc_beetle_active_boundary_model->reset(dc_beetle_active_boundary_model->user_data);
++			return;
++		}
++
++		IRQSample = IQRESET;
++	}
++
+ 	// The reset line leaves the latch when the vector is taken. Only the
+ 	// latch: the request register and the mask are dealt with separately by
+ 	// both callers, because on one of the two paths they belong to an
+ 	// installed model rather than to this class.
+ 	void INLINE DcAcknowledgeInterruptSample(void)
+ 	{
++		if(MDFN_UNLIKELY(dc_beetle_active_boundary_model != NULL))
++		{
++			dc_beetle_active_boundary_model->acknowledge_reset(dc_beetle_active_boundary_model->user_data);
++			return;
++		}
++
+ 		IRQSample &= ~IQRESET;
+ 	}
+ 
++	// The one dispatch in this class on a path taken once per instruction
++	// with nothing rare about it, and the reason it can be a dispatch at all
++	// is what it does not touch: four values already in registers go out, a
++	// small integer comes back, and no memory the processor cares about is
++	// read or written in between.
+ 	DcInterruptDecision INLINE DcSelectInterrupt(void) const
+ 	{
++		if(MDFN_UNLIKELY(dc_beetle_active_boundary_model != NULL))
++			return (DcInterruptDecision)dc_beetle_active_boundary_model->select(dc_beetle_active_boundary_model->user_data, IRQlow, IRQMask);
++
+ 		if(!(IRQSample | IRQlow))
+ 			return DC_INTERRUPT_INSTRUCTION;
+ 
+@@ -193,8 +237,15 @@ public:
+ 		return DC_INTERRUPT_INSTRUCTION;
+ 	}
+ 
+-	static uint32 DcInterruptVector(const DcInterruptDecision decision)
++	// Where each vector is fetched from. Part of the rule rather than of the
++	// machine's memory map, so it goes with the rest of the rule: a model
++	// that decided differently about which line won would have to answer for
++	// the address as well.
++	uint32 DcInterruptVector(const DcInterruptDecision decision) const
+ 	{
++		if(MDFN_UNLIKELY(dc_beetle_active_boundary_model != NULL))
++			return dc_beetle_active_boundary_model->vector(dc_beetle_active_boundary_model->user_data, decision);
++
+ 		switch(decision)
+ 		{
+ 			case DC_INTERRUPT_RESET: return 0xFFFE;
+@@ -228,6 +279,17 @@ public:
+ 
+ 	void DcSetBoundarySample(const int32 sample, const int32 i_flag)
+ 	{
++		if(MDFN_UNLIKELY(dc_beetle_active_boundary_model != NULL))
++		{
++			dc_beetle_boundary_state state;
++
++			state.i_flag_sample = i_flag;
++			state.irq_sample = sample;
++
++			dc_beetle_active_boundary_model->apply_state(dc_beetle_active_boundary_model->user_data, &state);
++			return;
++		}
++
+ 		IRQSample = sample;
+ 		IFlagSample = i_flag;
+ 	}

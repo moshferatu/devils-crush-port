@@ -19,11 +19,17 @@ endif()
 # format is written through. On save the model's values are moved into the
 # dormant emulator object before it is serialized; on load they are read back
 # out of it afterwards, once the emulator's own repairs have run over them.
-# Three of them now: 128 KiB of video memory and register file for the
-# controller, the palette and schedule for the colour encoder, and the seven
-# fields of the processor's timer and interrupt controller. The last of those
-# has no dormant object of its own -- the emulator keeps it as private fields
-# of `HuC6280` -- so its shuttle writes through the processor itself.
+# Four of them now: 128 KiB of video memory and register file for the
+# controller, the palette and schedule for the colour encoder, the seven
+# fields of the processor's timer and interrupt controller, and the two values
+# the instruction boundary latches. The last two have no dormant object of
+# their own -- the emulator keeps both as private fields of `HuC6280` -- so
+# their shuttles write through the processor itself.
+#
+# The clock and event scheduler is deliberately absent, and its absence is
+# what the pattern is measured against: it hands the processor its register
+# block outright, so the emulator's savestate format is written straight
+# through the model's own storage and there is no shuttle to lose anything.
 #
 # A routine replay is the cheapest thing in this host that exercises both
 # directions for real. It records a route, serializes at the frame before a
@@ -56,15 +62,16 @@ set(
     03:6966
 )
 #
-# Three arms. `emulated` hands the two video devices back and keeps the timer
-# and interrupt controller; `emulated_irq` is the other way round. Between them
-# every model's shuttle is exercised in one arm and absent from another, which
-# is what attributes a restored machine that differs to the device whose
-# shuttle lost it.
-set(shuttle_arms native emulated emulated_irq)
+# Four arms. `emulated` hands the two video devices back and keeps the two
+# inside the processor; `emulated_irq` and `emulated_boundary` each hand back
+# one of those two. Between them every model's shuttle is exercised in some
+# arms and absent from another, which is what attributes a restored machine
+# that differs to the device whose shuttle lost it.
+set(shuttle_arms native emulated emulated_irq emulated_boundary)
 set(arm_flags_native "")
 set(arm_flags_emulated "--emulated-vce;--emulated-vdc")
 set(arm_flags_emulated_irq "--emulated-irq")
+set(arm_flags_emulated_boundary "--emulated-boundary")
 
 foreach(arm IN LISTS shuttle_arms)
     set(arm_flags "${arm_flags_${arm}}")
@@ -145,10 +152,19 @@ if(NOT replay_detail_native STREQUAL replay_detail_emulated_irq)
         "  emulated\n${replay_detail_emulated_irq}"
     )
 endif()
+if(NOT replay_detail_native STREQUAL replay_detail_emulated_boundary)
+    message(
+        FATAL_ERROR
+        "The restored calls differ between the native and emulated "
+        "instruction boundary.\n"
+        "  native\n${replay_detail_native}"
+        "  emulated\n${replay_detail_emulated_boundary}"
+    )
+endif()
 
 message(
     STATUS
     "Device savestate shuttle verified over eight round trips in each of "
-    "three arms:\n"
+    "four arms:\n"
     "${replay_detail_native}"
 )

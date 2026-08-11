@@ -231,6 +231,22 @@ public:
         return std::nullopt;
     }
 
+    [[nodiscard]] bool set_native_boundary(bool) override
+    {
+        return false;
+    }
+
+    [[nodiscard]] bool native_boundary_enabled() const noexcept override
+    {
+        return false;
+    }
+
+    [[nodiscard]] std::optional<cpu::HuC6280InterruptBoundary::Coverage>
+    native_boundary_coverage() const override
+    {
+        return std::nullopt;
+    }
+
     [[nodiscard]] bool set_bus_write_observer(
         BusWriteCallback) override
     {

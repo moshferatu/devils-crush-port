@@ -124,6 +124,17 @@ this repository.
   scheduler stops at. Three are the timer and reach whichever controller the
   machine has; the fourth is the user event handler, called at the moment its
   horizon came due rather than the moment the scheduler noticed.
+- `dc_beetle_boundary_state`, `dc_beetle_boundary_model` and the
+  `DC_BEETLE_BOUNDARY_*` decision values in
+  `include/dc_beetle_execution_hook.h`: the sixth device-model boundary,
+  installed by `0017`. This one is a plain call table with no shared block
+  and no mirror, which is the whole of what makes it the sixth shape: the
+  interrupt controller is *read* from the instruction loop and became a
+  mirror, the scheduler is *written* from it and became a block of memory,
+  and this runs twice per instruction with no memory traffic behind it at
+  all. The processor hands over the request register, the mask and its own I
+  flag and takes back a small integer. `HuC6280::DcInterruptDecision` is
+  defined in terms of the values here rather than beside them.
 
 ## Patch series
 
@@ -486,6 +497,46 @@ this repository.
       only a savestate can produce.
     - Adds no data members. Changes nothing for any caller that does not use
       these.
+17. `patches/0017-huc6280-instruction-boundary-device-model.patch`
+    - The sixth device-model boundary, and the first that replaces a rule
+      rather than a device. Routes the four entry points `0016` lifted --
+      `DcSampleInterrupt`, `DcSelectInterrupt`, `DcAcknowledgeInterruptSample`
+      and the new `DcResetInterruptSample` -- to
+      `dc_beetle_active_boundary_model` when one is registered, and leaves
+      the emulator's own code in the `else` arm untouched.
+    - `DcSelectInterrupt` is the one dispatch in this fork on a path taken
+      once per instruction with nothing rare about it. It is affordable for
+      the reason the other two hot seams were not: its inputs are four values
+      the processor already holds in registers and its output is a small
+      integer, so no memory either side cares about is touched in between.
+      The rejected alternative was to keep the emulator's own
+      `(IRQSample | IRQlow)` gate inline and dispatch only when it opens --
+      cheaper, but it would put a copy of the rule's first clause back in the
+      fork, which is exactly what `0016` was shaped to avoid.
+    - `DcInterruptVector` stops being `static` and dispatches too. The map
+      from a decision to an address is part of the rule and not of the
+      machine's memory map: a model that decided differently about which line
+      won would have to answer for the address as well.
+    - `Reset`'s two `IRQSample = IQRESET` assignments become
+      `DcResetInterruptSample`. The one in the interrupt controller's arm is
+      the only place in the processor where two installed models meet: the
+      request register, the mask and the timer belong to `0013`'s controller
+      and the latch belongs to this one.
+    - The savestate is a capture-and-apply pair, unlike `0015`'s block. The
+      two entries are captured into `IFlagSample` and `IRQSample` before the
+      format is written and applied back after `REDOPIMCACHE` has run -- the
+      processor's own copy of the I flag, not the boundary's latched one,
+      which is why they are separate fields at all. `StateAction` is the one
+      caller that reaches the latch without an instruction having ended,
+      which is why it restores a boundary rather than taking one.
+    - `DcObserveBoundary` reads the two latched values back through the model
+      when one is registered. There is no mirror to refresh, so the
+      processor's own two fields are stale for as long as a model is
+      installed, and an observer that read them directly would be wrong.
+    - `DcSetBoundarySample`, which `0016` added for the reference shim,
+      applies through the model instead when one is installed. `HuC6280` gains
+      no data members and loses none. Changes nothing when no model is
+      registered.
 
 All local files and patches are GPL-3.0-or-later. Upstream per-file notices
 and licenses remain authoritative for upstream sources.

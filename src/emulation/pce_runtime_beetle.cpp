@@ -3,6 +3,7 @@
 #include "devils_crush/emulation/pce_runtime.hpp"
 
 #include "devils_crush/audio/pce_psg.hpp"
+#include "devils_crush/cpu/huc6280_interrupt_boundary.hpp"
 #include "devils_crush/cpu/huc6280_irq.hpp"
 #include "devils_crush/cpu/huc6280_scheduler.hpp"
 #include "devils_crush/video/pce_vce.hpp"
@@ -281,6 +282,8 @@ public:
         native_irq_.reset();
         dc_beetle_clear_scheduler_model();
         native_scheduler_.reset();
+        dc_beetle_clear_boundary_model();
+        native_boundary_.reset();
         shutdown_core();
         BeetlePceRuntime* expected = this;
         (void)active_runtime.compare_exchange_strong(
@@ -1056,6 +1059,53 @@ public:
             return std::nullopt;
         }
         return native_scheduler_->coverage();
+    }
+
+    // The instruction boundary. The one seam of the six that hands over no
+    // storage at all: the model holds the two latched values, the processor
+    // passes in the four inputs it already has, and nothing is mirrored back.
+    [[nodiscard]] bool set_native_boundary(const bool enabled) override
+    {
+        assert_owner_thread();
+        if (!enabled) {
+            dc_beetle_clear_boundary_model();
+            native_boundary_.reset();
+            return true;
+        }
+        if (native_boundary_) {
+            return true;
+        }
+
+        native_boundary_ =
+            std::make_unique<cpu::HuC6280InterruptBoundary>();
+        native_boundary_model_ = {
+            .user_data = native_boundary_.get(),
+            .reset = &boundary_reset,
+            .sample = &boundary_sample,
+            .select = &boundary_select,
+            .vector = &boundary_vector,
+            .acknowledge_reset = &boundary_acknowledge_reset,
+            .capture_state = &boundary_capture_state,
+            .apply_state = &boundary_apply_state,
+        };
+        dc_beetle_set_boundary_model(&native_boundary_model_);
+        return true;
+    }
+
+    [[nodiscard]] bool native_boundary_enabled() const noexcept override
+    {
+        assert_owner_thread();
+        return native_boundary_ != nullptr;
+    }
+
+    [[nodiscard]] std::optional<cpu::HuC6280InterruptBoundary::Coverage>
+    native_boundary_coverage() const override
+    {
+        assert_owner_thread();
+        if (native_boundary_ == nullptr) {
+            return std::nullopt;
+        }
+        return native_boundary_->coverage();
     }
 
     [[nodiscard]] std::vector<InstructionProfileEntry>
@@ -2182,6 +2232,83 @@ private:
         scheduler_model(user_data).exit();
     }
 
+    static cpu::HuC6280InterruptBoundary& boundary_model(
+        void* const user_data) noexcept
+    {
+        return *static_cast<cpu::HuC6280InterruptBoundary*>(user_data);
+    }
+
+    // The lines as the fork holds them, which is also how the model names
+    // them. Two values rather than a struct across the seam, because the
+    // processor holds them in two registers and building a struct to take
+    // them apart again is the one cost this dispatch cannot afford.
+    [[nodiscard]] static cpu::HuC6280InterruptBoundary::Lines boundary_lines(
+        const std::uint32_t requests,
+        const std::uint8_t mask) noexcept
+    {
+        return cpu::HuC6280InterruptBoundary::Lines{requests, mask};
+    }
+
+    static void boundary_reset(void* const user_data)
+    {
+        boundary_model(user_data).reset();
+    }
+
+    static void boundary_sample(
+        void* const user_data,
+        const std::uint32_t requests,
+        const std::uint8_t mask,
+        const int i_flag_set)
+    {
+        boundary_model(user_data).sample(
+            boundary_lines(requests, mask),
+            i_flag_set != 0);
+    }
+
+    static int boundary_select(
+        void* const user_data,
+        const std::uint32_t requests,
+        const std::uint8_t mask)
+    {
+        return static_cast<int>(
+            boundary_model(user_data).select(boundary_lines(requests, mask)));
+    }
+
+    static std::uint16_t boundary_vector(void*, const int decision)
+    {
+        using Decision = cpu::HuC6280InterruptBoundary::Decision;
+        return cpu::HuC6280InterruptBoundary::vector(
+            static_cast<Decision>(decision));
+    }
+
+    static void boundary_acknowledge_reset(void* const user_data)
+    {
+        boundary_model(user_data).acknowledge_reset();
+    }
+
+    static void boundary_capture_state(
+        void* const user_data,
+        dc_beetle_boundary_state* const state)
+    {
+        cpu::HuC6280InterruptBoundary::State captured;
+        boundary_model(user_data).capture_state(captured);
+
+        state->i_flag_sample = captured.i_flag_sample;
+        state->irq_sample = captured.irq_sample;
+    }
+
+    static void boundary_apply_state(
+        void* const user_data,
+        const dc_beetle_boundary_state* const state)
+    {
+        cpu::HuC6280InterruptBoundary::State restored;
+
+        restored.i_flag_sample = state->i_flag_sample;
+        restored.irq_sample = state->irq_sample;
+
+        boundary_model(user_data).apply_state(restored);
+    }
+
     void install_callbacks()
     {
         retro_set_environment(&environment_callback);
@@ -3019,6 +3146,8 @@ private:
     dc_beetle_irq_model native_irq_model_{};
     std::unique_ptr<cpu::HuC6280Scheduler> native_scheduler_;
     dc_beetle_scheduler_model native_scheduler_model_{};
+    std::unique_ptr<cpu::HuC6280InterruptBoundary> native_boundary_;
+    dc_beetle_boundary_model native_boundary_model_{};
     // The controller the encoder clocks, whichever one that turns out to be.
     // Stateless, so it outlives every install and uninstall of either model.
     BeetleVdcDevice beetle_vdc_bridge_;

@@ -3,6 +3,7 @@
 #pragma once
 
 #include "devils_crush/audio/pce_psg.hpp"
+#include "devils_crush/cpu/huc6280_interrupt_boundary.hpp"
 #include "devils_crush/cpu/huc6280_irq.hpp"
 #include "devils_crush/cpu/huc6280_scheduler.hpp"
 #include "devils_crush/video/pce_vce.hpp"
@@ -499,6 +500,28 @@ public:
 
     [[nodiscard]] virtual std::optional<cpu::HuC6280Scheduler::Coverage>
     native_scheduler_coverage() const = 0;
+
+    // Replaces the decision the HuC6280 makes between two instructions with
+    // the native model in `devils_crush::cpu`. The sixth seam and the first
+    // that is a rule rather than a device: the model holds the two values a
+    // processor latches at the end of an instruction and otherwise computes.
+    //
+    // So this is the one install that hands over no storage and leaves no
+    // mirror. The processor passes in the request register, the mask and its
+    // own I flag -- values it already holds -- and takes back which of the
+    // four vectors won, or that the next thing is simply the next
+    // instruction. What stays with the processor is the *taking*: eight
+    // cycles against its own stack, flags and memory map.
+    //
+    // Must be set before a ROM loads, for the narrowest reason of the six:
+    // the reset vector a machine takes at power-on is the only thing that
+    // ever puts a reset into the latch.
+    [[nodiscard]] virtual bool set_native_boundary(bool enabled) = 0;
+    [[nodiscard]] virtual bool native_boundary_enabled() const noexcept = 0;
+
+    [[nodiscard]] virtual
+    std::optional<cpu::HuC6280InterruptBoundary::Coverage>
+    native_boundary_coverage() const = 0;
 
     // Savestates are opaque Beetle payloads plus the host frame counter.
     // Persistent storage must additionally bind them to the ROM and core

@@ -52,6 +52,7 @@ function(dc_provide_beetle_pce)
         "${beetle_fork_root}/patches/0014-huc6280-scheduler-reference-observation.patch"
         "${beetle_fork_root}/patches/0015-huc6280-scheduler-device-model.patch"
         "${beetle_fork_root}/patches/0016-huc6280-instruction-boundary-reference-observation.patch"
+        "${beetle_fork_root}/patches/0017-huc6280-instruction-boundary-device-model.patch"
     )
 
     find_package(Git REQUIRED)
@@ -317,7 +318,7 @@ function(dc_provide_beetle_pce)
                     "DcSpeedChange"
                     beetle_patch_marker_two
                 )
-            else()
+            elseif(beetle_patch_name MATCHES "^0016-")
                 string(
                     FIND
                     "${beetle_cpu_header}"
@@ -328,6 +329,19 @@ function(dc_provide_beetle_pce)
                     FIND
                     "${beetle_cpu_source}"
                     "HuC6280::DcObserveBoundary"
+                    beetle_patch_marker_two
+                )
+            else()
+                string(
+                    FIND
+                    "${beetle_cpu_header}"
+                    "dc_beetle_active_boundary_model"
+                    beetle_patch_marker_one
+                )
+                string(
+                    FIND
+                    "${beetle_cpu_source}"
+                    "DcResetInterruptSample"
                     beetle_patch_marker_two
                 )
             endif()

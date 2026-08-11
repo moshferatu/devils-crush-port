@@ -21,6 +21,7 @@ static uint32_t dc_beetle_vdc_vram_size = 0;
 const dc_beetle_vce_model* dc_beetle_active_vce_model = nullptr;
 const dc_beetle_irq_model* dc_beetle_active_irq_model = nullptr;
 const dc_beetle_scheduler_model* dc_beetle_active_scheduler_model = nullptr;
+const dc_beetle_boundary_model* dc_beetle_active_boundary_model = nullptr;
 // Where the processor's clock lives when no model has taken it over. A
 // constant initializer rather than a constructor, so the pointer below is
 // valid before anything in this program has run: the processor reads through
@@ -209,6 +210,21 @@ void dc_beetle_clear_scheduler_model(void)
 {
     dc_beetle_active_scheduler_model = nullptr;
     dc_beetle_active_scheduler_registers = &dc_beetle_scheduler_own_registers;
+}
+
+// The simplest install of the six: one pointer, nothing copied, nothing left
+// behind. A boundary handed back keeps whatever it had latched and the
+// processor's own two fields hold whatever they last held, which is only
+// consistent for a machine that will reach its own power-on -- the same rule
+// the other five arrive at, and here for the narrowest reason of all.
+void dc_beetle_set_boundary_model(const dc_beetle_boundary_model* const model)
+{
+    dc_beetle_active_boundary_model = model;
+}
+
+void dc_beetle_clear_boundary_model(void)
+{
+    dc_beetle_active_boundary_model = nullptr;
 }
 
 // The timer, as an installed scheduler reaches it. Each of these is the line

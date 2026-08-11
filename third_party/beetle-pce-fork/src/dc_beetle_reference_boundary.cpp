@@ -108,7 +108,7 @@ int dc_beetle_reference_boundary_select(
 
 uint32_t dc_beetle_reference_boundary_vector(const int decision)
 {
-    return (uint32_t)HuC6280::DcInterruptVector(
+    return (uint32_t)HuCPU.DcInterruptVector(
         (HuC6280::DcInterruptDecision)decision);
 }
 
