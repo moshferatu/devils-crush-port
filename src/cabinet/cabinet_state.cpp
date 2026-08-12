@@ -10,6 +10,12 @@ namespace {
 constexpr std::size_t kWorkRamSize = 8192U;
 constexpr std::size_t kSessionFlagsOffset = 0x0053U;
 constexpr std::size_t kScoreSlotOffset = 0x0251U;
+// `$2054` says which screen the cartridge is drawing. Over an untouched
+// attract loop it reads 3 on the title and attract screens, 0 while the table
+// is on screen, and 4 on the High Scores screen; it is the difference between
+// a session existing and a session being what the player is looking at.
+constexpr std::size_t kScreenSelectorOffset = 0x0054U;
+constexpr std::uint8_t kTableScreen = 0x00U;
 constexpr std::size_t kTableAttributeFirst = 0x0259U;
 constexpr std::size_t kTableAttributeEnd = 0x0859U;
 constexpr std::size_t kBallsInSessionOffset = 0x0D52U;
@@ -57,6 +63,8 @@ std::optional<CabinetState> decode_cabinet_state(
                read_byte(work_ram, kScoreHighBase + score_slot))
            << 16U);
     const auto session_flags = read_byte(work_ram, kSessionFlagsOffset);
+    const auto screen_selector =
+        read_byte(work_ram, kScreenSelectorOffset);
     const auto balls_in_session =
         read_byte(work_ram, kBallsInSessionOffset);
     const bool bonus_stage =
@@ -70,10 +78,16 @@ std::optional<CabinetState> decode_cabinet_state(
             return value != std::byte{0};
         });
 
+    // A live session is not the same thing as a table on screen. The screens
+    // the cartridge can raise over a running session -- High Scores above
+    // all -- leave the ball count and the table attributes exactly as they
+    // were, and rewrite pattern VRAM for their own glyphs. Reconstructing the
+    // table from the ROM tilemap and that VRAM then draws the table's shape
+    // filled with the menu's letters. `$2054` is what separates the two.
     return CabinetState{
         .playfield =
             table_attributes_ready && balls_in_session != 0U
-                && !bonus_stage
+                && !bonus_stage && screen_selector == kTableScreen
             ? PlayfieldView::table_background
             : PlayfieldView::emulated_framebuffer,
         .stored_score = stored_score,
@@ -82,6 +96,7 @@ std::optional<CabinetState> decode_cabinet_state(
         .score_slot = score_slot,
         .balls_in_session = balls_in_session,
         .bonus_stage = bonus_stage,
+        .screen_selector = screen_selector,
     };
 }
 

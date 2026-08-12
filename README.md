@@ -77,6 +77,30 @@ work each flipper is configurable too — see
 [docs/CABINET_PREVIEW.md](docs/CABINET_PREVIEW.md#controls) for the full
 mapping and the measurements behind it.
 
+## Saved data
+
+Everything the host keeps between runs lives in `portable-data/` beside the
+executable:
+
+| File | What it holds |
+| --- | --- |
+| `devils-crush.sav` | The cartridge's backup RAM, including the five numbered save slots the game writes from its own save screen |
+| `devils-crush.hiscore` | The high-score table |
+| `devils-crush.state` | The F5/F9 quick state |
+| `cabinet.ini` | Display assignment and key bindings |
+
+High scores save themselves. The cartridge only ever kept its table by
+spending one of five save slots on it by hand — pause, Select for High Scores,
+Button I, pick a slot — because a HuCard had two kilobytes of battery-backed
+RAM to spend carefully. A PC does not, so the host writes the table whenever
+it changes and puts it back at boot, and the five original save slots are left
+for the games they were meant for. Delete `devils-crush.hiscore` to go back to
+the ROM's own five 1,000,000-point `AAA` entries. `--high-score-check` prints
+what the ROM boots with, what a stored table restores as, and where the
+automatic write lands; see
+[docs/CABINET_PREVIEW.md](docs/CABINET_PREVIEW.md#keeping-the-high-score-table)
+for the table's layout in work RAM and the measurements behind this.
+
 ## Deploying to a cabinet
 
 `tools/Publish-Cabinet.ps1` builds the `windows-cabinet` preset and stages a

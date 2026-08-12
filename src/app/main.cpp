@@ -6,6 +6,7 @@
 #include "devils_crush/cabinet/cabinet_state.hpp"
 #include "devils_crush/cabinet/display_config.hpp"
 #include "devils_crush/cabinet/dmd_layout.hpp"
+#include "devils_crush/core/high_score_table.hpp"
 #include "devils_crush/core/rom_image.hpp"
 #include "devils_crush/core/save_state.hpp"
 #include "devils_crush/emulation/pce_runtime.hpp"
@@ -35,6 +36,7 @@
 #include <iomanip>
 #include <iostream>
 #include <limits>
+#include <map>
 #include <optional>
 #include <set>
 #include <span>
@@ -83,6 +85,12 @@ const std::filesystem::path kStateCensusRecordingPath =
     std::filesystem::path("portable-data") / "state-census-v1.csv";
 const std::filesystem::path kBackupRamTestPath =
     std::filesystem::path("portable-data") / "backup-ram-test.sav";
+const std::filesystem::path kHighScorePath =
+    std::filesystem::path("portable-data") / "devils-crush.hiscore";
+// Somewhere for --high-score-check to write, so it can prove the save half
+// without ever touching the table a player has actually earned.
+const std::filesystem::path kHighScoreCheckPath =
+    std::filesystem::path("portable-data") / "high-score-check.hiscore";
 constexpr std::uintmax_t kMaximumSaveStateFileSize =
     64U * 1024U * 1024U + 4096U;
 
@@ -250,6 +258,8 @@ struct CommandLine {
     bool cabinet_nudge_probe = false;
     bool cabinet_launch_check = false;
     bool cabinet_launch_flipper_probe = false;
+    bool high_score_check = false;
+    std::filesystem::path cabinet_view_probe_directory;
     bool cabinet_seed_check = false;
     bool cabinet_palette_check = false;
     bool cabinet_attribute_check = false;
@@ -822,6 +832,14 @@ parse_logical_address_range(const std::string_view text)
             options.cabinet_launch_check = true;
         } else if (argument == "--cabinet-launch-flipper-probe") {
             options.cabinet_launch_flipper_probe = true;
+        } else if (argument == "--high-score-check") {
+            options.high_score_check = true;
+        } else if (argument == "--cabinet-view-probe") {
+            if (index + 1 >= argc) {
+                options.error = "--cabinet-view-probe requires a directory.";
+                return options;
+            }
+            options.cabinet_view_probe_directory = argv[++index];
         } else if (argument == "--cabinet-seed-check") {
             options.cabinet_seed_check = true;
         } else if (argument == "--cabinet-palette-check") {
@@ -3542,7 +3560,22 @@ void print_usage()
            "      [--bus-write-trace <writes.csv>]\n"
            "      [--rom <path>]\n"
         << "  devils-crush --backup-ram-test [output.sav] [--rom <path>]\n"
+        << "  devils-crush --high-score-check [--rom <path>]\n"
+        << "  devils-crush --cabinet-view-probe <directory> "
+           "[--rom <path>]\n"
         << "  devils-crush --help\n\n"
+        << "Saved data (all under portable-data/):\n"
+        << "  devils-crush.sav      The cartridge's backup RAM, holding the\n"
+           "                        five numbered save slots the game writes\n"
+           "                        when a player uses its own save screen.\n"
+        << "  devils-crush.hiscore  The high-score table, written whenever\n"
+           "                        it changes and put back at boot. The\n"
+           "                        cartridge only kept the table by\n"
+           "                        spending a save slot on it by hand;\n"
+           "                        nothing here has to be saved\n"
+           "                        deliberately. Delete the file to go back\n"
+           "                        to the ROM's own five 1,000,000-point\n"
+           "                        AAA entries.\n\n"
         << "Native code:\n"
         << "  The interactive host deploys every admitted native routine by\n"
            "  default and reports its share of the session on exit. Pass\n"
@@ -4305,6 +4338,64 @@ void destroy_auxiliary_window(AuxiliaryWindow& output)
         return false;
     }
     return true;
+}
+
+// Windows will not hand the foreground to a process that has not just been
+// given input by the player, so a host started from a cabinet front end can
+// come up drawing the playfield while the launcher still owns the keyboard:
+// the table is on screen and the flippers do nothing. `SDL_ShowWindow` alone
+// is subject to that rule. `SDL_HINT_FORCE_RAISEWINDOW` turns the raise into
+// the thread-input sequence that gets around it. The DMD and backglass are
+// left where they are; they are created `SDL_WINDOW_NOT_FOCUSABLE` because
+// the playfield is the window that plays.
+void focus_playfield_window(SDL_Window* const window)
+{
+    if (!SDL_SetHint(SDL_HINT_FORCE_RAISEWINDOW, "1")) {
+        (void)report_sdl_error("SDL_SetHint (forceful raise) failed");
+    }
+    if (!SDL_RaiseWindow(window)) {
+        (void)report_sdl_error("SDL_RaiseWindow (playfield) failed");
+    }
+}
+
+// The claim made at start-up can still lose a race: a cabinet front end that
+// puts its own window back up a moment after launching the game takes the
+// keyboard with it, and having won the foreground once is no help. So it is
+// re-made, four times a second, for the first five seconds the window is up,
+// and only while something else is holding the focus. Nobody launches a
+// pinball table and deliberately switches away inside five seconds; after that
+// nothing here touches the foreground again, so a player who alt-tabs out
+// later is left alone.
+//
+// Wall clock, not a frame count: the host loop runs several times faster than
+// the display while the emulator warms up, so counting iterations would close
+// the window in well under a second.
+inline constexpr std::uint64_t kStartupFocusWindowMs = 5000U;
+inline constexpr std::uint64_t kStartupFocusIntervalMs = 250U;
+
+struct StartupFocusClaim {
+    // Zero once the window has closed, and for runs nobody is watching.
+    std::uint64_t deadline_ms = 0U;
+    std::uint64_t next_attempt_ms = 0U;
+};
+
+void claim_startup_focus(SDL_Window* const window, StartupFocusClaim& claim)
+{
+    if (claim.deadline_ms == 0U) {
+        return;
+    }
+    const std::uint64_t now = SDL_GetTicks();
+    if (now >= claim.deadline_ms) {
+        claim.deadline_ms = 0U;
+        return;
+    }
+    if (now < claim.next_attempt_ms) {
+        return;
+    }
+    claim.next_attempt_ms = now + kStartupFocusIntervalMs;
+    if ((SDL_GetWindowFlags(window) & SDL_WINDOW_INPUT_FOCUS) == 0U) {
+        focus_playfield_window(window);
+    }
 }
 
 enum class AssignmentRole {
@@ -7961,6 +8052,163 @@ void restore_flipper_input(
     });
 }
 
+// Keeps the high-score table across runs without the player saving it.
+//
+// The cartridge only ever commits the table to backup RAM as part of the
+// pause -> High Scores -> save-slot sequence, and only into one of five
+// numbered slots, because a HuCard's two kilobytes of battery-backed RAM were
+// worth spending deliberately. `08:5C4E` shows what a slot holds: `TII
+// $2D78,$2200,$002A` puts all 42 bytes of the block back, so a Data Load
+// restores whichever table was current when that slot was written, and a
+// player who never saves keeps the ROM defaults forever. None of that budget
+// exists on a PC, so the ranked columns travel with the machine instead.
+//
+// The file is the host's, not the cartridge's: it sits beside the backup RAM
+// in `portable-data` and leaves all five original save slots for the games
+// they were meant for.
+struct HighScoreAutosave {
+    std::filesystem::path path;
+    // What the file held when the host started, or nothing if there was no
+    // readable file. Read once, because the hook that consumes it runs from
+    // inside a frame.
+    std::optional<devils_crush::core::HighScoreTable> stored;
+    devils_crush::core::HighScoreTable last{};
+    // `01:C107` has run, so the block holds a table rather than the zeroes the
+    // work-RAM clear before it leaves behind.
+    bool table_seen = false;
+    bool pending = false;
+    bool reported_failure = false;
+    int settled_samples = 0;
+};
+
+[[nodiscard]] HighScoreAutosave open_high_score_autosave(
+    const std::filesystem::path& path)
+{
+    HighScoreAutosave autosave;
+    autosave.path = path;
+    const auto result = devils_crush::backup::load_exact(
+        path, devils_crush::core::kHighScoreFileSize);
+    if (result.status == devils_crush::backup::LoadStatus::not_found) {
+        return autosave;
+    }
+    if (result.loaded()) {
+        autosave.stored =
+            devils_crush::core::decode_high_score_table(result.bytes);
+    }
+    if (!autosave.stored) {
+        // Loud, because the alternative is a player silently starting the
+        // session on the ROM defaults and only noticing days later.
+        std::cerr << "Ignoring an unreadable high-score table at "
+                  << path.string() << "; this run starts from the "
+                  << "cartridge defaults.\n";
+    }
+    return autosave;
+}
+
+void store_high_scores(HighScoreAutosave& autosave)
+{
+    const auto result = devils_crush::backup::save_atomic(
+        autosave.path,
+        devils_crush::core::encode_high_score_table(autosave.last));
+    if (result.saved) {
+        autosave.pending = false;
+        autosave.settled_samples = 0;
+        autosave.reported_failure = false;
+        return;
+    }
+    // The write stays pending so the flush at shutdown tries once more, and
+    // the complaint is made once rather than twice a second.
+    if (!autosave.reported_failure) {
+        std::cerr << "Could not save the high-score table: " << result.message
+                  << '\n';
+        autosave.reported_failure = true;
+    }
+}
+
+// `01:C107` is the boot-time `TII $FAF4,$2200,$002A` that lays the ROM's
+// default table over the block, and the work-RAM write census over the census
+// route finds no other instruction writing the ranked columns. Hooking
+// `01:C10E`, the instruction after it, therefore lands at the one moment when
+// overwriting the whole table is safe: the defaults are in place, and nothing
+// has read them yet.
+void restore_high_scores(
+    devils_crush::emulation::PceRuntime& runtime,
+    HighScoreAutosave& autosave)
+{
+    autosave.table_seen = true;
+    if (!autosave.stored) {
+        return;
+    }
+    auto work_ram = runtime.export_work_ram();
+    if (!devils_crush::core::write_high_score_table(
+            work_ram, *autosave.stored)) {
+        return;
+    }
+    if (!runtime.import_work_ram(work_ram)) {
+        return;
+    }
+    // The poll compares against this, so a restore must not read back as a
+    // change and rewrite the file it just came from.
+    autosave.last = *autosave.stored;
+    autosave.pending = false;
+    autosave.settled_samples = 0;
+}
+
+[[nodiscard]] bool install_high_score_restore(
+    devils_crush::emulation::PceRuntime& runtime,
+    HighScoreAutosave& autosave)
+{
+    return runtime.install_execution_hook({
+        .routine =
+            RoutineKey{.physical_bank = 0x01U, .logical_pc = 0xC10EU},
+        .mode = HookMode::observe,
+        .callback =
+            [&runtime, &autosave](const RoutineEntry&) {
+                restore_high_scores(runtime, autosave);
+            },
+    });
+}
+
+// Sampling twice a second is far finer than the table can change -- it only
+// moves on the sort at a game over and on the letters of a name being entered
+// -- and settling for a second before writing keeps a name being scrolled from
+// costing one file write per letter.
+void poll_high_scores(
+    devils_crush::emulation::PceRuntime& runtime,
+    HighScoreAutosave& autosave,
+    const int frame_number)
+{
+    constexpr int kSampleInterval = 30;
+    constexpr int kSettledSamples = 2;
+
+    if (!autosave.table_seen || frame_number % kSampleInterval != 0) {
+        return;
+    }
+    const auto table =
+        devils_crush::core::read_high_score_table(runtime.export_work_ram());
+    if (!table) {
+        return;
+    }
+    if (*table != autosave.last) {
+        autosave.last = *table;
+        autosave.pending = true;
+        autosave.settled_samples = 0;
+        return;
+    }
+    if (!autosave.pending || ++autosave.settled_samples < kSettledSamples) {
+        return;
+    }
+    store_high_scores(autosave);
+}
+
+void flush_high_scores(HighScoreAutosave& autosave)
+{
+    if (!autosave.table_seen || !autosave.pending) {
+        return;
+    }
+    store_high_scores(autosave);
+}
+
 int run_windows_host(
     PceRuntime& runtime,
     const std::filesystem::path& rom_path,
@@ -8097,6 +8345,14 @@ int run_windows_host(
         SDL_Quit();
         return EXIT_FAILURE;
     }
+    // Only for a run somebody is sitting in front of. The frame-limited runs
+    // the tests make would otherwise pull the foreground off whatever the
+    // machine was doing, several times over a suite.
+    StartupFocusClaim focus_claim;
+    if (frame_limit <= 0) {
+        focus_playfield_window(window);
+        focus_claim.deadline_ms = SDL_GetTicks() + kStartupFocusWindowMs;
+    }
 
     SDL_Gamepad* gamepad = open_first_gamepad();
     SourceTexture source;
@@ -8199,7 +8455,14 @@ int run_windows_host(
         running = false;
         host_ok = false;
     }
+    HighScoreAutosave high_scores = open_high_score_autosave(kHighScorePath);
+    if (host_ok && !install_high_score_restore(runtime, high_scores)) {
+        std::cerr << "Could not carry the high-score table across runs.\n";
+        running = false;
+        host_ok = false;
+    }
     while (running && host_ok) {
+        claim_startup_focus(window, focus_claim);
         SDL_Event event;
         while (SDL_PollEvent(&event)) {
             if (event.type == SDL_EVENT_QUIT) {
@@ -8409,6 +8672,7 @@ int run_windows_host(
                 ball_in_launcher,
                 cabinet_config.input.flippers));
             ++emulated_frames;
+            poll_high_scores(runtime, high_scores, emulated_frames);
             if (!cabinet_mode) {
                 host_ok =
                     consume_emulated_frame(renderer, frame, source, audio);
@@ -8603,6 +8867,9 @@ int run_windows_host(
         }
     }
 
+    // Before the hooks go, so a table that changed inside the last second of
+    // the session is still written.
+    flush_high_scores(high_scores);
     // The hooks capture the deployment and the replacement ROM, both of which
     // die with this frame, so they must go before either does.
     runtime.clear_execution_hooks();
@@ -9659,6 +9926,523 @@ struct NudgePassResult {
 // applying the same rule the host applies: while `$53` bit 3 marks the Devil
 // Shooter session the key sends button I, and otherwise it sends its ordinary
 // pad input.
+// Measures both halves of the automatic high-score table without needing a
+// game over: that a boot leaves the cartridge's own defaults in the block, and
+// that the `01:C10E` hook can put a stored table there instead while leaving
+// the two live player columns exactly as the boot left them.
+[[nodiscard]] int run_high_score_check(
+    devils_crush::emulation::PceRuntime& runtime)
+{
+    using devils_crush::core::HighScoreTable;
+    using devils_crush::core::kHighScoreRankCount;
+    using devils_crush::core::kHighScoreRowOffsets;
+
+    // `01:C107` runs partway through the first frame; a handful more costs
+    // nothing and keeps the check from depending on where exactly.
+    constexpr int kBootFrames = 8;
+
+    const auto boot = [&runtime](HighScoreAutosave* const autosave)
+        -> std::vector<std::byte> {
+        runtime.clear_execution_hooks();
+        runtime.reset();
+        if (autosave != nullptr
+            && !install_high_score_restore(runtime, *autosave)) {
+            return {};
+        }
+        for (int frame = 0; frame < kBootFrames; ++frame) {
+            static_cast<void>(runtime.run_frame({}));
+        }
+        return runtime.export_work_ram();
+    };
+    const auto report = [](const std::string_view label,
+                           const HighScoreTable& table) {
+        std::cout << label << '\n';
+        for (std::size_t rank = 0; rank < kHighScoreRankCount; ++rank) {
+            std::cout
+                << "  " << rank + 1U << "  " << std::setw(10)
+                << static_cast<std::uint64_t>(
+                       devils_crush::core::high_score_at(table, rank))
+                    * 100U
+                << "  ";
+            for (std::size_t row = 3U; row < 6U; ++row) {
+                const auto glyph =
+                    table.bytes[row * kHighScoreRankCount + rank];
+                std::cout
+                    << (glyph >= 0x20U && glyph < 0x7FU
+                            ? static_cast<char>(glyph)
+                            : '.');
+            }
+            std::cout << '\n';
+        }
+    };
+    // The two columns of every row that hold the players' live values rather
+    // than a ranked entry. Restoring must not disturb one of them.
+    const auto live_bytes = [](const std::span<const std::byte> work_ram) {
+        std::vector<std::uint8_t> values;
+        for (const auto row : kHighScoreRowOffsets) {
+            values.push_back(std::to_integer<std::uint8_t>(
+                work_ram[row + kHighScoreRankCount]));
+            values.push_back(std::to_integer<std::uint8_t>(
+                work_ram[row + kHighScoreRankCount + 1U]));
+        }
+        return values;
+    };
+
+    const auto plain = boot(nullptr);
+    const auto plain_table = devils_crush::core::read_high_score_table(plain);
+    if (!plain_table) {
+        std::cerr << "The boot pass produced no work RAM.\n";
+        return EXIT_FAILURE;
+    }
+    report("cartridge defaults after a boot:", *plain_table);
+
+    HighScoreTable stored;
+    for (std::size_t rank = 0; rank < kHighScoreRankCount; ++rank) {
+        // Descending, the way the sort at `09:6B6F` leaves the table, and
+        // distinct from the defaults in every one of the thirty bytes.
+        const auto units = static_cast<std::uint32_t>(
+            0x123456U - rank * 0x011111U);
+        stored.bytes[rank] = static_cast<std::uint8_t>(units & 0xFFU);
+        stored.bytes[kHighScoreRankCount + rank] =
+            static_cast<std::uint8_t>((units >> 8U) & 0xFFU);
+        stored.bytes[2U * kHighScoreRankCount + rank] =
+            static_cast<std::uint8_t>((units >> 16U) & 0xFFU);
+        for (std::size_t row = 3U; row < 6U; ++row) {
+            stored.bytes[row * kHighScoreRankCount + rank] =
+                static_cast<std::uint8_t>('A' + rank * 3U + (row - 3U));
+        }
+    }
+    // Through the file format as well, so the check covers what a real run
+    // would have read off disk rather than an in-memory shortcut.
+    const auto encoded = devils_crush::core::encode_high_score_table(stored);
+    const auto decoded = devils_crush::core::decode_high_score_table(encoded);
+    if (!decoded || *decoded != stored) {
+        std::cerr << "The high-score file format did not round trip.\n";
+        return EXIT_FAILURE;
+    }
+
+    HighScoreAutosave autosave;
+    autosave.path = kHighScoreCheckPath;
+    autosave.stored = *decoded;
+    const auto restored = boot(&autosave);
+    runtime.clear_execution_hooks();
+    const auto restored_table =
+        devils_crush::core::read_high_score_table(restored);
+    if (!restored_table) {
+        std::cerr << "The restore pass produced no work RAM.\n";
+        return EXIT_FAILURE;
+    }
+    report("stored table after a boot:", *restored_table);
+
+    // The save half, driven the way a session drives it: the table changes
+    // under the poll, and the poll waits for it to settle before writing.
+    std::error_code remove_error;
+    static_cast<void>(
+        std::filesystem::remove(kHighScoreCheckPath, remove_error));
+    auto earned = stored;
+    earned.bytes[0] = static_cast<std::uint8_t>(earned.bytes[0] ^ 0xFFU);
+    earned.bytes[3U * kHighScoreRankCount] = static_cast<std::uint8_t>('Z');
+    auto earned_work_ram = restored;
+    if (!devils_crush::core::write_high_score_table(earned_work_ram, earned)
+        || !runtime.import_work_ram(earned_work_ram)) {
+        std::cerr << "The earned table could not be staged.\n";
+        return EXIT_FAILURE;
+    }
+    int wrote_at = 0;
+    for (int frame = 30; frame <= 120 && wrote_at == 0; frame += 30) {
+        poll_high_scores(runtime, autosave, frame);
+        if (std::filesystem::exists(kHighScoreCheckPath)) {
+            wrote_at = frame;
+        }
+    }
+    // Reopened the way the next run opens it, rather than decoded directly,
+    // so the check covers the startup path as well as the write.
+    const auto reopened = open_high_score_autosave(kHighScoreCheckPath);
+    const auto& written_table = reopened.stored;
+    remove_error.clear();
+    static_cast<void>(
+        std::filesystem::remove(kHighScoreCheckPath, remove_error));
+
+    const bool hook_ran = autosave.table_seen;
+    const bool table_restored = *restored_table == stored;
+    const bool live_untouched = live_bytes(plain) == live_bytes(restored);
+    const bool no_write_pending = !autosave.pending;
+    // Two samples of no further change, so a name being scrolled through
+    // costs one write rather than one per letter.
+    const bool settled_before_writing = wrote_at == 90;
+    const bool table_saved = written_table && *written_table == earned;
+    std::cout << "  boot hook entered:        "
+              << (hook_ran ? "yes" : "no") << '\n'
+              << "  stored table installed:   "
+              << (table_restored ? "yes" : "no") << '\n'
+              << "  live columns unchanged:   "
+              << (live_untouched ? "yes" : "no") << '\n'
+              << "  restore left nothing due: "
+              << (no_write_pending ? "yes" : "no") << '\n'
+              << "  changed table written at: frame " << wrote_at
+              << (settled_before_writing ? " (settled)" : " (unexpected)")
+              << '\n'
+              << "  written table matches:    "
+              << (table_saved ? "yes" : "no") << '\n';
+    return hook_ran && table_restored && live_untouched && no_write_pending
+            && settled_before_writing && table_saved
+        ? EXIT_SUCCESS
+        : EXIT_FAILURE;
+}
+
+// The route a --cabinet-view-probe pass drives.
+enum class ViewProbeRoute {
+    // Nothing is ever pressed, which is what a cabinet nobody has touched
+    // does: title, attract demo, title again.
+    attract,
+    // The census route into a live table, and then the sequence a player
+    // walks to look at the high scores -- Run to pause, Select to open them.
+    pause_menu,
+    // The 3,600-frame state-census route, unaltered. This is the route every
+    // reconstruction measurement in the project is made against, so whatever
+    // gates the table view has to leave all of its table frames alone.
+    census,
+};
+
+[[nodiscard]] InputFrame view_probe_input(
+    const ViewProbeRoute route,
+    const int frame_number)
+{
+    constexpr int kPauseFrom = 1530;
+    constexpr int kPauseUntil = 1545;
+    constexpr int kSelectFrom = 1600;
+    constexpr int kSelectUntil = 1615;
+
+    if (route == ViewProbeRoute::attract) {
+        return {};
+    }
+    if (route == ViewProbeRoute::census) {
+        return state_census_input_for_frame(frame_number);
+    }
+    if (frame_number < kPauseFrom) {
+        return state_census_input_for_frame(frame_number);
+    }
+    InputFrame input;
+    if (frame_number < kPauseUntil) {
+        input.player_one = static_cast<std::uint16_t>(Button::run);
+    } else if (frame_number >= kSelectFrom && frame_number < kSelectUntil) {
+        input.player_one = static_cast<std::uint16_t>(Button::select);
+    }
+    return input;
+}
+
+// Reproduces what a cabinet shows when the picture is wrong, without
+// guessing which screen is at fault.
+//
+// Cabinet mode draws a reconstructed table whenever `decode_cabinet_state`
+// says the playfield is the table background, and the emulator's own
+// framebuffer otherwise. If that decision is ever wrong the cabinet paints a
+// table over whatever the game has actually put on screen, so this measures
+// the decision against the picture: for every frame classified as the table
+// background it crops the reconstruction to the camera window the way
+// `--cabinet-oracle` does and counts the pixels that disagree with hardware.
+// A handful of per cent is ordinary sprite error. Most of the frame
+// disagreeing means the cabinet is not showing the game.
+//
+// It also watches `09:69B2` and `09:69FA`, the cartridge's high-score
+// renderers, so a disagreeing span can be tied to that screen or ruled out.
+[[nodiscard]] int run_cabinet_view_probe(
+    devils_crush::emulation::PceRuntime& runtime,
+    const std::filesystem::path& rom_path,
+    const std::filesystem::path& output_directory)
+{
+    constexpr int kAttractFrames = 9000;
+    constexpr int kPauseMenuFrames = 1900;
+    constexpr std::size_t kBadFramePercent = 25U;
+    constexpr int kMaximumDumps = 4;
+
+    const auto rom = read_rom_bytes(rom_path);
+    if (!rom) {
+        return EXIT_FAILURE;
+    }
+    std::error_code directory_error;
+    std::filesystem::create_directories(output_directory, directory_error);
+
+    // The oracle's tolerance: hardware and the reconstruction quantise colour
+    // differently, so compare at the precision both agree on.
+    const auto quantize = [](const std::uint32_t argb) {
+        const auto channel = [&](const unsigned shift) {
+            return ((argb >> shift) & 0xFFU) * 7U + 127U;
+        };
+        return std::tuple{
+            channel(16U) / 255U, channel(8U) / 255U, channel(0U) / 255U};
+    };
+    const auto save_emulated = [&output_directory](
+                                   const EmulatedFrame& frame,
+                                   const std::string& stem) {
+        if (frame.framebuffer.pixels.empty()) {
+            return;
+        }
+        devils_crush::render::ArgbImage hardware;
+        hardware.width = frame.framebuffer.width;
+        hardware.height = frame.framebuffer.height;
+        hardware.pixels.resize(
+            static_cast<std::size_t>(hardware.width)
+            * static_cast<std::size_t>(hardware.height));
+        for (int row = 0; row < hardware.height; ++row) {
+            for (int column = 0; column < hardware.width; ++column) {
+                hardware.pixels[
+                    static_cast<std::size_t>(row) * hardware.width + column] =
+                    frame.framebuffer.pixels[
+                        static_cast<std::size_t>(row)
+                            * frame.framebuffer.pitch_pixels
+                        + column];
+            }
+        }
+        static_cast<void>(save_playfield_png(
+            hardware, output_directory / (stem + "-emulated.bmp")));
+    };
+
+    // Carries this frame's work RAM into the next iteration on every exit
+    // path, so the frame before a break can be dumped beside it.
+    struct WorkRamKeeper {
+        std::vector<std::byte>& previous;
+        const std::vector<std::byte>& current;
+
+        ~WorkRamKeeper()
+        {
+            previous = current;
+        }
+    };
+
+    struct RouteSpec {
+        ViewProbeRoute route;
+        int frames;
+        const char* name;
+    };
+    static constexpr std::array routes{
+        RouteSpec{ViewProbeRoute::attract, kAttractFrames, "attract"},
+        RouteSpec{
+            ViewProbeRoute::pause_menu, kPauseMenuFrames, "pause-menu"},
+        RouteSpec{
+            ViewProbeRoute::census, kStateCensusRecordingFrames, "census"},
+    };
+
+    bool reproduced = false;
+    for (const auto& spec : routes) {
+        runtime.clear_execution_hooks();
+        runtime.reset();
+        bool rendered = false;
+        // Bank `$09` is mapped at `$6000`, not `$C000`: its own calls go to
+        // `$7F37` and `$76DF`, and the twelve-byte backup-RAM entry names it
+        // hands the library live at `$771A` and `$7726`, which are bank
+        // offsets `$1F37`, `$16DF`, `$171A` and `$1726` read through MPR3.
+        constexpr std::array<std::uint16_t, 2> render_sites{
+            std::uint16_t{0x69B2U}, std::uint16_t{0x69FAU}};
+        for (const std::uint16_t site : render_sites) {
+            if (!runtime.install_execution_hook({
+                    .routine =
+                        RoutineKey{
+                            .physical_bank = 0x09U, .logical_pc = site},
+                    .mode = HookMode::observe,
+                    .callback =
+                        [&rendered](const RoutineEntry&) {
+                            rendered = true;
+                        },
+                })) {
+                std::cerr << "Could not watch the high-score renderer.\n";
+                return EXIT_FAILURE;
+            }
+        }
+
+        devils_crush::render::PersistentActorSpriteCache actors;
+        devils_crush::render::TablePaletteCache palette;
+        std::optional<devils_crush::cabinet::PlayfieldView> last_view;
+        std::vector<std::string> timeline;
+        int render_frames = 0;
+        int bad_frames = 0;
+        int bad_span_start = 0;
+        int last_bad_frame = 0;
+        int dumps = 0;
+        std::vector<std::string> bad_spans;
+        const auto close_span = [&bad_spans, &bad_span_start,
+                                 &last_bad_frame]() {
+            if (bad_span_start == 0) {
+                return;
+            }
+            bad_spans.push_back(std::format(
+                "  frames {}-{} ({} frames)",
+                bad_span_start,
+                last_bad_frame,
+                last_bad_frame - bad_span_start + 1));
+            bad_span_start = 0;
+        };
+
+        std::vector<std::byte> previous_work_ram;
+        // `$2054` reads 0 on the table, 3 on the title and attract screens
+        // and 4 on the High Scores screen; this counts what it actually held
+        // on every frame the current rule drew as the table.
+        std::map<std::uint8_t, int> screen_selector_frames;
+        std::cout << "=== " << spec.name << " ===\n";
+        for (int frame_number = 1; frame_number <= spec.frames;
+             ++frame_number) {
+            rendered = false;
+            const auto frame =
+                runtime.run_frame(view_probe_input(spec.route, frame_number));
+            const auto work_ram = runtime.export_work_ram();
+            const WorkRamKeeper keeper{previous_work_ram, work_ram};
+            const auto state =
+                devils_crush::cabinet::decode_cabinet_state(work_ram);
+            if (!state) {
+                continue;
+            }
+            render_frames += rendered ? 1 : 0;
+            const bool as_table = state->playfield
+                == devils_crush::cabinet::PlayfieldView::table_background;
+            if (!last_view || *last_view != state->playfield) {
+                timeline.push_back(std::format(
+                    "  frame {:>5}  {:<20} balls {:>3}  session ${:02X}",
+                    frame_number,
+                    as_table ? "table background" : "emulator framebuffer",
+                    state->balls_in_session,
+                    std::to_integer<std::uint8_t>(work_ram[0x0053U])));
+                last_view = state->playfield;
+            }
+            if (as_table) {
+                ++screen_selector_frames[
+                    std::to_integer<std::uint8_t>(work_ram[0x0054U])];
+            }
+            const auto video = runtime.export_video_memory();
+            if (!as_table || !video || frame.framebuffer.width < 256
+                || frame.framebuffer.height < 238) {
+                close_span();
+                continue;
+            }
+            const auto table = decode_cabinet_table(
+                *rom, work_ram, *video, actors, palette, CabinetLayers::all,
+                false, nullptr, nullptr);
+            if (!table) {
+                close_span();
+                continue;
+            }
+
+            const auto camera_y = static_cast<std::int16_t>(
+                static_cast<std::uint16_t>(
+                    std::to_integer<std::uint8_t>(work_ram[0x0BU]))
+                | (static_cast<std::uint16_t>(
+                       std::to_integer<std::uint8_t>(work_ram[0x0CU]))
+                   << 8U));
+            const int work_ram_viewport = 480 + static_cast<int>(camera_y);
+            auto viewport_top_row =
+                static_cast<int>(video->background_y_scroll) - 32;
+            while (viewport_top_row + 128 < work_ram_viewport) {
+                viewport_top_row += 256;
+            }
+            while (viewport_top_row - 128 > work_ram_viewport) {
+                viewport_top_row -= 256;
+            }
+            std::size_t compared = 0;
+            std::size_t mismatched = 0;
+            for (int framebuffer_y = 30; framebuffer_y < 238;
+                 ++framebuffer_y) {
+                const int table_row = viewport_top_row + framebuffer_y - 30
+                    - devils_crush::cabinet::kTableWorldTop;
+                if (table_row < 0 || table_row >= table->image.height) {
+                    continue;
+                }
+                for (int x = 0; x < 256; ++x) {
+                    const auto native = table->image.pixels[
+                        static_cast<std::size_t>(table_row)
+                            * static_cast<std::size_t>(table->image.width)
+                        + static_cast<std::size_t>(x)];
+                    const auto emulated = frame.framebuffer.pixels[
+                        static_cast<std::size_t>(framebuffer_y)
+                            * static_cast<std::size_t>(
+                                frame.framebuffer.pitch_pixels)
+                        + static_cast<std::size_t>(x)];
+                    ++compared;
+                    if (quantize(native) != quantize(emulated)) {
+                        ++mismatched;
+                    }
+                }
+            }
+            if (compared == 0U
+                || mismatched * 100U < compared * kBadFramePercent) {
+                close_span();
+                continue;
+            }
+            ++bad_frames;
+            reproduced = true;
+            if (bad_span_start == 0) {
+                bad_span_start = frame_number;
+                // The frame the picture went wrong on and the last frame it
+                // was right on, so the state that distinguishes them can be
+                // found by subtraction rather than by guesswork.
+                const auto write_bytes =
+                    [&output_directory](
+                        const std::string& stem,
+                        const std::span<const std::byte> bytes) {
+                        std::ofstream out(
+                            output_directory / (stem + ".bin"),
+                            std::ios::binary | std::ios::trunc);
+                        out.write(
+                            reinterpret_cast<const char*>(bytes.data()),
+                            static_cast<std::streamsize>(bytes.size()));
+                    };
+                write_bytes(
+                    std::format("{}-{:05}-workram", spec.name, frame_number),
+                    work_ram);
+                if (!previous_work_ram.empty()) {
+                    write_bytes(
+                        std::format(
+                            "{}-{:05}-workram",
+                            spec.name,
+                            frame_number - 1),
+                        previous_work_ram);
+                }
+                std::cout << std::format(
+                    "  video at frame {}: MWR ${:04X} BXR ${:04X} "
+                    "BYR ${:04X}\n",
+                    frame_number,
+                    video->memory_width_register,
+                    video->background_x_scroll,
+                    video->background_y_scroll);
+            }
+            last_bad_frame = frame_number;
+            if (dumps < kMaximumDumps
+                && (frame_number == bad_span_start
+                    || frame_number == bad_span_start + 30)) {
+                ++dumps;
+                const auto stem = std::format(
+                    "{}-{:05}-{}pc",
+                    spec.name,
+                    frame_number,
+                    mismatched * 100U / compared);
+                save_emulated(frame, stem);
+                static_cast<void>(save_playfield_png(
+                    table->image,
+                    output_directory / (stem + "-cabinet.bmp")));
+            }
+        }
+        close_span();
+        runtime.clear_execution_hooks();
+
+        for (const auto& line : timeline) {
+            std::cout << line << '\n';
+        }
+        std::cout << "  high-score renderer entered on " << render_frames
+                  << " frames\n"
+                  << "  frames drawn as the table that disagree with "
+                  << "hardware by " << kBadFramePercent << "% or more: "
+                  << bad_frames << '\n';
+        for (const auto& span : bad_spans) {
+            std::cout << span << '\n';
+        }
+        std::cout << "  $2054 over those frames:";
+        for (const auto& [value, count] : screen_selector_frames) {
+            std::cout << std::format(" ${:02X}={}", value, count);
+        }
+        std::cout << "\n  picture pairs written: " << dumps << '\n';
+    }
+    std::cout << "pictures are under " << output_directory.string() << '\n';
+    return reproduced ? EXIT_SUCCESS : EXIT_FAILURE;
+}
+
 [[nodiscard]] int run_launch_check(
     devils_crush::emulation::PceRuntime& runtime,
     const Button ordinary_input,
@@ -10896,6 +11680,15 @@ int main(const int argc, char* argv[])
                 }
             }
             return EXIT_SUCCESS;
+        }
+        if (options.high_score_check) {
+            return run_high_score_check(*runtime);
+        }
+        if (!options.cabinet_view_probe_directory.empty()) {
+            return run_cabinet_view_probe(
+                *runtime,
+                options.rom_path,
+                options.cabinet_view_probe_directory);
         }
         if (options.cabinet_launch_check) {
             std::cout << "=== launch keys ===\n";

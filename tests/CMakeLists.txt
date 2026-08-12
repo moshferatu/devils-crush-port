@@ -681,6 +681,15 @@ if(TARGET devils_crush)
         )
 
         add_test(
+            NAME dc_rom_high_score
+            COMMAND devils_crush --high-score-check --rom "${DC_ROM_PATH}"
+        )
+        set_tests_properties(
+            dc_rom_high_score
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
             NAME dc_rom_gameplay
             COMMAND
                 "${CMAKE_COMMAND}"

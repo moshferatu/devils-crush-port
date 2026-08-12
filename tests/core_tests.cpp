@@ -2,6 +2,7 @@
 
 #include "devils_crush/app/native_registry.hpp"
 #include "devils_crush/core/backup_ram.hpp"
+#include "devils_crush/core/high_score_table.hpp"
 #include "devils_crush/cabinet/cabinet_state.hpp"
 #include "devils_crush/cabinet/display_config.hpp"
 #include "devils_crush/cabinet/dmd_layout.hpp"
@@ -6841,7 +6842,34 @@ void test_cabinet_state()
             && bonus->bonus_stage,
         "bonus session restores the emulated playfield");
 
+    // The High Scores screen leaves the ball count and the table attributes
+    // exactly as a live session left them and changes only `$2054`, so that
+    // byte alone has to keep the reconstruction off the screen.
     work_ram[0x0053U] = std::byte{0};
+    work_ram[0x0054U] = std::byte{4};
+    const auto high_scores = decode_cabinet_state(work_ram);
+    check(
+        high_scores
+            && high_scores->playfield
+                == PlayfieldView::emulated_framebuffer
+            && high_scores->balls_in_session == 3U
+            && high_scores->screen_selector == 4U,
+        "a screen raised over a live session keeps the emulated playfield");
+
+    work_ram[0x0054U] = std::byte{3};
+    check(
+        decode_cabinet_state(work_ram)
+            && decode_cabinet_state(work_ram)->playfield
+                == PlayfieldView::emulated_framebuffer,
+        "the title and attract screens keep the emulated playfield");
+
+    work_ram[0x0054U] = std::byte{0};
+    check(
+        decode_cabinet_state(work_ram)
+            && decode_cabinet_state(work_ram)->playfield
+                == PlayfieldView::table_background,
+        "the table screen selects the reconstruction again");
+
     work_ram[0x0D52U] = std::byte{0};
     const auto no_balls = decode_cabinet_state(work_ram);
     check(
@@ -8326,6 +8354,104 @@ void test_backup_ram_storage()
         "backup RAM test file is removed");
 }
 
+void test_high_score_table()
+{
+    using devils_crush::core::HighScoreTable;
+    using devils_crush::core::kHighScoreRankCount;
+    using devils_crush::core::kHighScoreRowCount;
+    using devils_crush::core::kHighScoreRowOffsets;
+
+    std::vector<std::byte> work_ram(0x2000U);
+    // The cartridge's own defaults, as `01:C107` lays them down: five entries
+    // of ten thousand stored units named AAA, with both live player columns
+    // zeroed.
+    for (std::size_t rank = 0; rank < 7U; ++rank) {
+        const bool ranked = rank < kHighScoreRankCount;
+        work_ram[kHighScoreRowOffsets[0] + rank] =
+            static_cast<std::byte>(ranked ? 0x10U : 0x00U);
+        work_ram[kHighScoreRowOffsets[1] + rank] =
+            static_cast<std::byte>(ranked ? 0x27U : 0x00U);
+        for (std::size_t row = 3U; row < kHighScoreRowCount; ++row) {
+            work_ram[kHighScoreRowOffsets[row] + rank] =
+                static_cast<std::byte>(ranked ? 0x41U : 0x00U);
+        }
+    }
+
+    const auto defaults =
+        devils_crush::core::read_high_score_table(work_ram);
+    check(defaults.has_value(), "the default high-score table is read");
+    check(
+        devils_crush::core::high_score_at(*defaults, 0) == 10'000U,
+        "a default entry holds ten thousand stored units");
+    check(
+        devils_crush::core::high_score_at(*defaults, kHighScoreRankCount)
+            == 0U,
+        "a rank past the table reads as zero rather than out of bounds");
+    check(
+        defaults->bytes[3U * kHighScoreRankCount] == 0x41U,
+        "the first name character of the first entry is read");
+    check(
+        !devils_crush::core::read_high_score_table(
+            std::span<const std::byte>(work_ram).first(0x1FFFU)),
+        "a short work-RAM image is refused");
+
+    HighScoreTable replacement;
+    for (std::size_t index = 0; index < replacement.bytes.size(); ++index) {
+        replacement.bytes[index] =
+            static_cast<std::uint8_t>((index * 7U + 3U) & 0xFFU);
+    }
+    check(
+        devils_crush::core::write_high_score_table(work_ram, replacement),
+        "a high-score table is written into work RAM");
+    check(
+        devils_crush::core::read_high_score_table(work_ram) == replacement,
+        "a high-score table round trips through work RAM");
+    // The two live player columns of every row belong to a session, so
+    // restoring a table must leave them exactly as the game left them.
+    bool live_untouched = true;
+    for (const auto row : kHighScoreRowOffsets) {
+        for (std::size_t column = kHighScoreRankCount; column < 7U; ++column) {
+            live_untouched = live_untouched
+                && work_ram[row + column] == std::byte{0};
+        }
+    }
+    check(live_untouched, "writing a table leaves the live columns alone");
+    check(
+        !devils_crush::core::write_high_score_table(
+            std::span<std::byte>(work_ram).first(0x1FFFU), replacement),
+        "a short work-RAM image is not written");
+
+    const auto encoded =
+        devils_crush::core::encode_high_score_table(replacement);
+    check(
+        encoded.size() == devils_crush::core::kHighScoreFileSize,
+        "an encoded high-score table has the documented size");
+    check(
+        devils_crush::core::decode_high_score_table(encoded) == replacement,
+        "an encoded high-score table round trips");
+
+    auto corrupt = encoded;
+    corrupt.front() ^= std::byte{0xFF};
+    check(
+        !devils_crush::core::decode_high_score_table(corrupt),
+        "a high-score file with the wrong magic is refused");
+    corrupt = encoded;
+    corrupt[4] = std::byte{0xFFU};
+    check(
+        !devils_crush::core::decode_high_score_table(corrupt),
+        "a high-score file with an unknown version is refused");
+    corrupt = encoded;
+    corrupt[5] = std::byte{0x04U};
+    check(
+        !devils_crush::core::decode_high_score_table(corrupt),
+        "a high-score file ranking a different count is refused");
+    corrupt = encoded;
+    corrupt.pop_back();
+    check(
+        !devils_crush::core::decode_high_score_table(corrupt),
+        "a truncated high-score file is refused");
+}
+
 void test_actor_scan_run()
 {
     std::vector<std::uint8_t> work_ram(0x2000U, 0U);
@@ -9257,6 +9383,7 @@ int main()
     test_pce_sprite_overlay();
     test_save_state_container();
     test_backup_ram_storage();
+    test_high_score_table();
     test_actor_scan_run();
     test_actor_dispatch_vector();
     test_actor_queue_registration();

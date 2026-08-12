@@ -38,6 +38,11 @@ struct CabinetState {
     std::uint8_t score_slot = 0;
     std::uint8_t balls_in_session = 0;
     bool bonus_stage = false;
+    // `$2054`, the cartridge's own screen selector: 0 is the table, 3 the
+    // title and attract screens, 4 the High Scores screen. Only 0 may be
+    // reconstructed; everything else has to come from the emulator, because
+    // the other screens repurpose the pattern VRAM the reconstruction reads.
+    std::uint8_t screen_selector = 0;
 };
 
 struct TableActorState {

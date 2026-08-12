@@ -82,12 +82,15 @@ change lands inside the camera window.
 The table is decoded only after:
 
 - at least one packed table-attribute byte is initialized;
-- the live-ball count at `$2D52` is nonzero; and
-- session bit `$53.4` does not request a bonus stage.
+- the live-ball count at `$2D52` is nonzero;
+- session bit `$53.4` does not request a bonus stage; and
+- the cartridge's screen selector at `$2054` reads 0, the table.
 
 Menus, session-end presentation, and bonus stages therefore fall back to the
 emulated framebuffer. This reuses original presentation and gives bonus
-stages the required full playfield window without a second simulation.
+stages the required full playfield window without a second simulation. The
+last of those four conditions is the one that took a defect to find; see
+[Screens raised over a live session](#screens-raised-over-a-live-session).
 
 The playfield now copies Beetle's internal post-DMA HuC6270 SAT and decodes
 the live camera viewport's sprite patterns, palettes, dimensions, flips, and
@@ -465,6 +468,34 @@ left on the playfield is only something to look at, and a cabinet has no way
 to move it off. `SDL_HideCursor` is application-wide, so one call covers the
 DMD and backglass windows too, and `SDL_Quit` restores it on exit.
 
+### Taking the keyboard at start-up
+
+The playfield window claims the foreground itself. Showing a window is not
+enough on Windows: the foreground belongs to whoever the system thinks the
+player is using, and a cabinet front end that puts its own window back up a
+moment after launching the game keeps the keyboard with it. The table is then
+on screen and the flippers do nothing, which is exactly the failure a player
+sees.
+
+So the host raises the playfield with `SDL_HINT_FORCE_RAISEWINDOW` set, which
+is SDL's thread-input sequence for getting past that rule, and re-makes the
+claim four times a second for the first five seconds the window is up -- but
+only while something else holds the focus. That window is wall clock rather
+than a frame count, because the host loop runs several times faster than the
+display while the emulator warms up: 180 iterations of it measured under
+eight tenths of a second.
+After five seconds nothing here touches the foreground again, so alt-tabbing
+away later behaves normally. Frame-limited runs never claim at all, so a test
+suite cannot pull the foreground off the machine.
+
+Measured against a stand-in front end -- a second process raising its own
+window about a second after the playfield appears. Before the change the
+front end held the foreground at the end of all three runs; after it, the
+playfield had it back 0.8 seconds after the front end launched, and still at
+the end, three runs out of three.
+The DMD and backglass are left alone; they are created
+`SDL_WINDOW_NOT_FOCUSABLE`.
+
 ## Display assignment and persistence
 
 Press F12 in cabinet mode to pause emulation and enter display assignment.
@@ -765,6 +796,134 @@ it, so the state census still hashes to
 deliberately not hooked: the 3,600-frame census route never executes it, and
 an unmeasured second site would be a claim rather than a change.
 
+### Screens raised over a live session
+
+Opening the High Scores screen used to corrupt the cabinet playfield: the
+table's shape stayed on screen with most of its artwork replaced by the
+letters of the words "Number 1". The same picture appeared at the end of the
+attract demo, which is the other place the cartridge raises that screen.
+
+Neither was a rendering fault. Cabinet mode substitutes a reconstructed table
+for the emulator's picture whenever `decode_cabinet_state` says the playfield
+is the table background, and the rule it used -- table attributes initialised,
+ball count non-zero, no bonus stage -- is a test for *a session existing*, not
+for *a table being on screen*. The High Scores screen leaves the ball count
+and the attribute plane exactly as the session left them, so the rule stayed
+true. Meanwhile the screen rewrote pattern VRAM with its own font. The
+reconstruction composes the table from the ROM tilemap and resolves each
+tile's pixels from live VRAM, so every table tile drew whatever glyph now sat
+in its VRAM slot -- which is why the corruption reads as text.
+
+`--cabinet-view-probe <directory>` measures it without needing to know which
+screen is at fault. It runs three routes, and for every frame the rule draws
+as the table it crops the reconstruction to the camera window the way
+`--cabinet-oracle` does and counts the pixels that disagree with hardware.
+Ordinary sprite error is a few per cent; most of the frame disagreeing means
+the cabinet is not showing the game. It writes both pictures for the frames
+that fail, so the two can be put side by side.
+
+`$2054` is the cartridge's own screen selector -- 0 the table, 3 the title and
+attract screens, 4 the High Scores screen -- and adding it to the rule
+separates the two exactly:
+
+| route | table frames | disagreeing by 25%+ | `$2054` seen |
+| --- | ---: | ---: | --- |
+| attract, before | 6,104 | 363, frames 5,212-5,574 | `$00` 5,741, `$04` 363 |
+| attract, after | 5,741 | 0 | `$00` only |
+| census, either way | 2,728 | 3 isolated frames | `$00` only |
+
+The 363 disagreeing frames and the 363 frames at `$04` are the same frames,
+and the two high-score renderers at `09:69B2` and `09:69FA` run inside that
+span. Six seconds of wrong picture per attract loop, and for as long as a
+player left the screen open.
+
+The census route is the one every reconstruction measurement in this document
+is made against, and it keeps all 2,728 of its table frames: the new condition
+costs nothing where the reconstruction was already right. Its three isolated
+disagreeing frames -- 1,451, 2,251 and 3,051 -- are a separate, pre-existing
+artefact of the camera crop on scroll-wrap frames, not a wrong screen; the
+picture dumped for each is an ordinary table.
+
+### Keeping the high-score table
+
+The cartridge keeps its high-score table in work RAM at `$2200`, as six
+parallel rows of seven bytes:
+
+| Row | Holds | Row | Holds |
+| --- | --- | --- | --- |
+| `$2200` | score, low byte | `$2215` | name, first character |
+| `$2207` | score, middle byte | `$221C` | name, second character |
+| `$220E` | score, high byte | `$2223` | name, third character |
+
+Columns 0-4 of a row are the five ranked entries; columns 5 and 6 are the two
+players' live values. The selection sort at `09:6B6F` runs X over 0-5 and Y
+over X+1-6 and swaps all six rows together, which is the entire ranking
+mechanism: a finished player's score walks into the ranked columns and the
+loser falls out the far end. `01:C107` lays the ROM's defaults over all 42
+bytes at boot — five entries of ten thousand stored units, which the panel
+shows as 1,000,000, all named `AAA`.
+
+Nothing else writes the ranked columns. A work-RAM write census over the
+3,600-frame route with `--work-ram-write-range 2200-2229` records 210 writes
+into the block: 42 from the work-RAM clear at `01:C100`, 42 from `01:C107`,
+and 126 that all land on columns 5 and 6 as the two players' scores
+accumulate.
+
+What the cartridge does *not* do is keep the table. Its only persistence is
+the save screen the player reaches by pausing, opening High Scores with
+Select, and pressing Button I on a numbered slot. That path packs the whole
+42-byte block into a backup-RAM record — `09:649B` is `TII $2200,$2D78,$002A`,
+and the Data Load path at `08:5C4E` is the same transfer backwards — and the
+records live in two ordinary backup-RAM files, `DCRASH1` and `DCRASH2`, of
+five 48-byte records each. Spending one of five slots, by hand, to keep a
+score table was a reasonable trade against a HuCard's two kilobytes of
+battery-backed RAM. It is not a trade a PC has to make.
+
+So the host keeps the table itself. `portable-data/devils-crush.hiscore` holds
+the thirty ranked bytes behind a magic, a format byte and a rank count; it is
+written atomically whenever the table changes and read back at boot. The
+restore hangs on `01:C10E`, the instruction after the boot-time transfer,
+which is the one moment when overwriting the whole table is safe — the
+defaults are in place and nothing has read them yet. Only the ranked columns
+are carried. Columns 5 and 6 belong to a session rather than to the machine,
+and restoring a stale live score into them would be visible.
+
+The save side samples twice a second and waits for two quiet samples before
+writing, so scrolling through the letters of a name costs one file write
+rather than one per letter, and a table that changed inside the last second of
+a session is still flushed on the way out. The five original save slots are
+left entirely alone: this is a separate host file, so a player who does use
+the cartridge's own save screen still has all five.
+
+`--high-score-check` measures both halves against the ROM without needing a
+game over:
+
+```
+cartridge defaults after a boot:
+  1     1000000  AAA
+  ...
+stored table after a boot:
+  1   119304600  ABC
+  ...
+  boot hook entered:        yes
+  stored table installed:   yes
+  live columns unchanged:   yes
+  restore left nothing due: yes
+  changed table written at: frame 90 (settled)
+  written table matches:    yes
+```
+
+Like the flipper gate, this is host code that no recording route installs, so
+the state census still hashes to
+`9036a9de0c3c9917f47bff8c04c136a4824ec12601fb457d260aa2dfe4443490`.
+
+One interaction is worth knowing rather than hiding: the cartridge's own Data
+Load puts back all 42 bytes of the block, ranked columns included. Loading an
+old save therefore replaces the current table with whichever one that slot was
+written with, and the host then saves what the game now holds. That is the
+cartridge's behaviour, not something the host adds, and it only happens when a
+player deliberately loads a save.
+
 ## Deploying to a cabinet
 
 The cabinet is a separate machine from the workstation the port is developed
@@ -805,8 +964,9 @@ untouched.
 
 Every path the host reads or writes at run time is relative to the working
 directory: `portable-data/cabinet.ini`, `portable-data/devils-crush.sav`,
-`portable-data/devils-crush.state`. Run the executable from inside the staged
-folder and that directory is created there on first use.
+`portable-data/devils-crush.hiscore`, `portable-data/devils-crush.state`. Run
+the executable from inside the staged folder and that directory is created
+there on first use.
 
 Syncing it back would be actively wrong. Display assignment records SDL display
 names and window rectangles for the machine that wrote it, so a workstation

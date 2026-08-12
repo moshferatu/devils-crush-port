@@ -43,6 +43,7 @@ add_library(
     src/cabinet/display_config.cpp
     src/cabinet/dmd_layout.cpp
     src/core/backup_ram.cpp
+    src/core/high_score_table.cpp
     src/cpu/huc6280_interrupt_boundary.cpp
     src/cpu/huc6280_irq.cpp
     src/cpu/huc6280_scheduler.cpp
