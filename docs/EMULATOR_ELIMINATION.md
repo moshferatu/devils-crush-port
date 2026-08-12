@@ -99,15 +99,23 @@ Two consequences worth noting:
 From a whole-ROM `--instruction-profile` of the deployed route
 (1,292,378,139 master cycles), counting only addresses the profile does *not*
 mark as a native entry — so a region that is fully ported drops out of the
-table rather than appearing at its old size:
+table rather than appearing at its old size.
+
+**Read the first row differently from the rest.** Master cycles measure where
+the machine's *time* goes, not where its *work* is, and those two part company
+exactly once: the frame-sync wait is 45% of the time and none of the work. It
+cannot drop out of this table however much is ported, because the cycles are
+the game waiting for the raster and something has to account for them. Every
+other row is a porting target; that one is a measurement of idleness. The host
+prints both denominators for the same reason — see *Two shares* below.
 
 | Region | Master cycles | Share | What it is |
 | --- | ---: | ---: | --- |
-| `00:E2B7`–`E39C` | 584,758,197 | 45.25% | Frame-sync spin loop. The loop itself is `00:E321`–`E32B` (584,453,517) and all but 204,123 of *that* is the two-instruction wait at `00:E323`/`00:E325`, executed 24,248,940 times apiece at 24 master cycles a turn. The rest of the region is the colour encoder's initialiser and the two bit-set/bit-clear helpers around it; see phase 3 |
+| `00:E2B7`–`E39C` | 584,758,197 | 45.25% | **Waiting, not work.** The frame-sync spin: the loop is `00:E321`–`E32B` (584,453,517) and all but 204,123 of *that* is the two-instruction wait at `00:E323`/`00:E325`. This row is the one entry in the table that is not a porting target and never was — the game is waiting for the raster, and there is no computation in the waiting to move. It is **done** as far as this document is concerned: phase 3 advances the machine through it rather than executing it, so 21,077,517 of the 24,248,940 turns are no longer interpreted. The cycles remain, because the wait is real machine time; what is gone is the cost of simulating it. The rest of the region is the colour encoder's initialiser and the two bit-set/bit-clear helpers around it |
 | `00:FC03`–`FC8D` | 6,830,889 | 0.53% | Sound driver — body **and epilogue** now native on every arrival. Three deliberate refusals account for 6,810,810 of this: the `RTI` at `FC8D` (5,292,108), the `SEI` at `FC81` (1,509,498), and the chain exit `FC89` with the `FC03` trampoline it lands on (9,204). The remaining 20,079 is the body itself running emulated on the few dozen arrivals a route where the walk declines |
 | `00:FD07`–`FD81` | 82,117 | 0.01% | The driver's second arm, likewise, with its own `RTI` (57,771) and `SEI` (16,548) |
 | bank `45` (`4000`–`4A9B`) | 5,266,590 | 0.41% | Music sequencer — the tick is **native**, chunked at its voice loop, and so is the PSG programmer `45:4142`, chunked at its channel loop; what is left is `45:4936`, the track loader `45:4BCC` and the chunk boundaries |
-| `00:E128`–`E290` | 1,289,166 | 0.10% | Interrupt epilogue and the dispatcher at `00:E058`, still **blocked** on the VDC status read; the handler bodies, the call wrappers and the pad reader are native |
+| `00:E128`–`E290` | 1,289,166 | 0.10% | Interrupt epilogue and the two `RTI`s. The dispatcher at `00:E058` used to be listed here as blocked; both its halves are native now and what is left of it is the single `LDA $0000`, 129,564 cycles, whose read is the interrupt acknowledge. The handler bodies, the call wrappers and the pad reader are native |
 | `01:C0FE`–`C1B5` | 1,407,828 | 0.11% | The top-level frame loop itself — glue between calls rather than a routine |
 | `03:694A`–`6A37` | 2,721,348 | 0.21% | Collision-table interpreter — **already ported**; the `RTS` instructions and the resumption after an interrupt lands on a checkpoint, see below |
 | `00:E93C`–`EBD6` | 1,079,359 | 0.08% | Palette shadow buffer — the two fade drivers and the whole-palette `TIA` arm, **blocked**, see below |
@@ -243,6 +251,51 @@ hook is gated on `!ReplacementActive` and a timer interrupt usually preempts
 another suspended transcript. **Do not fix that in the emulator.** It is a
 limitation of the hybrid harness, it ports nothing, and it disappears on its
 own when the CPU does.
+
+## Two shares
+
+`--replace-registry` prints the native cycle share twice, and the second line
+is the one to watch:
+
+```
+Registry cycles: 671636826 native of 1292371731 elapsed master cycles (51.97%)
+Registry cycles outside the frame-sync wait: 671636826 native of 710482755
+  (94.53%); the machine waited at 00:E323 for 581888976 master cycles
+  (45.02% of the route)
+Instructions interpreted: 66315525
+```
+
+The first line is true and nearly useless as a progress signal. Its
+denominator is 45% frame-sync wait, and no amount of porting can move that
+part, so the figure is pinned near half however much of the game goes native.
+Watching it would suggest the port had stalled at exactly the point it stopped
+having anything left to stall on.
+
+The second line divides by the cycles in which the machine had something to
+do. It is the figure this document has always quoted informally as "outside
+the idle spin loop", now measured by the machine rather than worked out by
+hand — every turn of the loop, skipped or executed, priced at the rate the
+processor was running. It is only available while the fast-forward is
+installed, because that is what counts the wait; `--emulated-idle` prints a
+line saying so rather than guessing.
+
+It has a denominator too, and the denominator is itself a measurement. Two
+values for the wait appear in these documents — 584,249,394 and 581,888,976 —
+so the cycles outside it are quoted both as 708,122,337 and as 710,482,755,
+and the same share reads as 94.8% under the first and 94.53% under the second.
+Nothing regressed between those readings — the port gained 640,374 native
+cycles across them — the denominator simply grew by more than the numerator
+did. **Compare native cycles when comparing two runs**; a percentage is a
+reading of one run, and two percentages measured against different
+denominators do not subtract.
+
+The third line is there because the first two cannot show it. Fast-forwarding
+the wait removes *instructions* without removing the *cycles* they would have
+taken, so it moves neither share: the route interprets 66,315,525 instructions
+where it used to interpret 108,470,069, and both cycle shares are unchanged to
+the byte. That is the correct outcome and worth stating plainly, because the
+opposite expectation — that eliminating 45% of the cycles should move the
+coverage — is the natural one and it is wrong.
 
 ## Phases
 
@@ -409,7 +462,7 @@ Remaining real logic, in rough order of value:
    | `00:E111`–`E13F` VBlank body | 2,412,678 | **native** except its `RTI` |
    | `00:E262` trampoline | 953,343 | **native** |
    | `00:E140`–`E178` VBlank epilogue | 821,685 | **native** |
-   | `00:E058`–`E0EA` dispatcher | 769,938 | **blocked**: reads `$0000` |
+   | `00:E058`–`E0EA` dispatcher | 769,938 | **native** except its `LDA $0000` — 640,374 of it — see below |
    | `00:E0EB`–`E110` VBlank prologue | 544,104 | **native** |
    | `00:E219` bank pair | 501,639 | **native** |
    | `00:E1FD`/`E20D` asset resolver | 377,085 | **native** |
@@ -435,8 +488,35 @@ Remaining real logic, in rough order of value:
    The corrected rule distinguishes two kinds of read. **A read whose answer
    depends only on outside input and on lines the routine itself set is
    portable now.** A read whose answer depends on state the device evolves on
-   its own is not: `00:E058` reads what the display is doing, and stays phase
-   2 beside the VDC. The joypad has come off that list, and so has the PSG.
+   its own was recorded as not portable, and `00:E058` was filed under that
+   heading for four more slices.
+
+   **That was the same mistake a second time, and the tell was that it named
+   a routine.** Asked again after the VDC had a native model, the answer came
+   out differently on both halves. The value stopped being the obstacle the
+   day `PceVdc::read` gained its `peek` flag — the entry could have carried
+   the byte the way it carries the pad state. What actually blocks the
+   instruction is that reading `$0000` *is* the interrupt acknowledge: it
+   clears every latched status source and is the only way the VDC's interrupt
+   line falls. The replacement contract is a write channel and a write to
+   `$0000` selects a register rather than acknowledging one, so the side
+   effect has nowhere to go. A transcript that predicted the byte would return
+   to a core whose interrupt had never been taken.
+
+   That is a fact about **one instruction**, and the dispatcher was blocked
+   only because someone had written the routine's name next to it. Splitting
+   at the read makes both sides ordinary: above it, four register saves that
+   touch only the stack page; below it, a dispatch on a byte that is by then
+   in the accumulator. `00:E058` and `00:E05F` are both native and admitted on
+   every one of their 7,198 arrivals, `+640,374`, and the census, the whole
+   stack page and every VDC and joypad bus write are byte-identical to
+   assembly. The core still executes the `LDA` itself, 129,564 cycles, at its
+   own cycle and with its acknowledge intact.
+
+   So the rule to carry is narrower again, and it is about instructions:
+   **a device read is transcribable when the walk can compute the value, and
+   not when the read changes the device.** The joypad has come off the blocked
+   list, and so has the PSG, and so has all but one instruction of this.
 
    The bank-switching wrappers went instead, together with the two in the
    `00:ECC6` family, and they are done: nine entry points, 52,911 calls,
@@ -448,8 +528,11 @@ Remaining real logic, in rough order of value:
    The VBlank body followed, and needed no new capability either: six entry
    points around the calls the core keeps, writing the VDC ports the channel
    already carries. 13,932 calls, admitted on every one. The pad reader made
-   it seven and 17,531, and was the one addition here that did need a new
-   capability — the pad state on `RoutineEntry`.
+   it seven entry points and 17,531 calls, and was the one addition that did
+   need a new capability — the pad state on `RoutineEntry`. The two halves
+   made it nine and 31,927, and needed no new capability at all: the
+   replacement hook fires at every instruction boundary, so `00:E05F` is a
+   legal entry point even though nothing in the game jumps to it.
 
    It did settle a rule that had only been half-stated. Each walk stops one
    instruction short of its `RTI`, in front of the `PLP` that restores the
@@ -668,7 +751,7 @@ Remaining real logic, in rough order of value:
    (5,349,879) — returning from an interrupt is the frame boundary's work,
    item 17 — as are the two `JMP $FC03` chain exits (4,644). The driver is now
    the largest native address on the route at 12.25% of all master cycles, and
-   94.8% of everything outside the idle spin loop runs natively.
+   this slice took everything outside the idle spin loop past 94%.
 16. **Gameplay tails** (32.2M, 2.49% of the machine, of which 6.9M is the
    driver residue item 15 leaves deliberately). Once entry points, boundary
    instructions and interrupt resumption are separated out —
@@ -676,6 +759,9 @@ Remaining real logic, in rough order of value:
    1.6M. In order: `08:41AB` (1.56M), `01:C700`–`C77F` (1.22M),
    `08:4080`–`40FF` (1.20M), `01:DC80`–`DCFF` (950K), `00:E200`–`E27F` (894K),
    `03:6000`–`607F` (857K), `01:C100`–`C17F` (839K), `00:E000`–`E07F` (775K).
+   That last one is the interrupt dispatcher, and it has since been split at
+   its status read: 640,374 of it is native and 129,564 is the `LDA $0000`,
+   whose read is the interrupt acknowledge.
    Three entries that used to head this list — `08:40DE`–`41AB` with
    `08:4085`–`4094` at "2.8M", `01:C5C8`–`C770` at "1.6M", `03:6001`–`6053` at
    "883K" — were boundary instructions and resumption around routines that
@@ -686,14 +772,44 @@ Remaining real logic, in rough order of value:
 
 ### Phase 2 — native device models
 
-- **Joypad.** Largely **done**, and it turned out not to need a device model at
-  all. `00:E195` models the strobe/select protocol inside its own walk against
-  the `InputFrame` the host already supplies to `run_frame`, now carried on
-  `RoutineEntry`; the transcript diffs clean against assembly in the pad bytes
-  and in the `$1000` writes themselves, and it settled 6.9M of phase 1. What
-  remains for this phase is owning the port rather than mirroring it — reading
-  the host's input directly instead of through the core's `current_input_`,
-  which happens when the frame loop goes native.
+- **Joypad.** **Done**, in two steps that turned out to be different kinds of
+  work. `00:E195` models the strobe/select protocol inside its own walk against
+  the `InputFrame` the host supplies to `run_frame`, carried on `RoutineEntry`;
+  the transcript diffs clean against assembly in the pad bytes and in the
+  `$1000` writes themselves, and it settled 6.9M of phase 1. That was the
+  protocol. The port itself — two strobe lines, a multitap counter, five
+  devices — was still the emulator's, and reading through
+  `current_input_` was still reading through the emulator's chain.
+
+  [`src/input/pce_pad.cpp`](../src/input/pce_pad.cpp) is that port, installed
+  through patch `0019`. It is the first seam that moves no computation: the
+  arithmetic was already native, and what changes is who the input belongs to.
+  The host hands its `InputFrame` to the model directly and the model holds it
+  until the machine's own frame latch, so *when* a device sees a press is still
+  the machine's decision.
+
+  **The acceptance is stronger than the census for once, and deliberately.**
+  For the sound and video models a silent fallback would have produced the same
+  census as the model — which is why those tests had to prove the model was the
+  default arm. Here the host starves the alternative: while a pad model is
+  installed the libretro input callback answers zero for every query, so the
+  emulator's own path is dead rather than merely bypassed. The route reproduces
+  `9036a9de…` anyway, with the model reporting 540 of its 35,991 reads
+  answering with a button held. Feeding the model nothing instead — the same
+  binary, one line changed — produces `24b1614f…`, a route where the game never
+  starts. That is what makes the match evidence rather than a coincidence.
+
+  What the route does *not* reach is measured rather than assumed, on the PSG's
+  pattern. `--report-pad-coverage` says: every read went through the multitap
+  and none straight to the first port; 17,996 answered the button half and
+  17,995 the direction half; the counter was reset 3,599 times and stepped
+  17,995; the half-selector toggled 17,995 times and the six-button read path
+  it selects ran **zero** times, because a two-button host never sets the bit
+  that reaches it; and neither filter — the soft-reset suppression or the
+  opposing-directions drop — removed anything, because the route never asks for
+  either. The six-button path, a mouse, and the Tsushin keyboard are the port's
+  remaining unexercised surface, and the last two are counted as unmodelled
+  rather than answered.
 - **PSG.** **Done.** [`src/audio/pce_psg.cpp`](../src/audio/pce_psg.cpp)
   accepts `$0800`–`$0809`, models the six channels, direct digital audio,
   the LFO and the noise LFSR, and drives the two band-limited delta buffers.
@@ -922,9 +1038,10 @@ Remaining real logic, in rough order of value:
   state, so both video models could carry a broken shuttle and every arm would
   still match. A routine replay serializes, restores and re-runs a call over
   eight round trips, and the arms must reproduce the *same* calls. It now
-  covers four models — the two video devices, the interrupt controller and
-  the instruction boundary — and deliberately not the scheduler, which writes
-  the emulator's format straight through its own storage.
+  covers five models — the two video devices, the interrupt controller, the
+  instruction boundary and the controller port — and deliberately not the
+  scheduler, which writes the emulator's format straight through its own
+  storage.
 
   Installing it broke four ROM tests, and the two faults behind that are worth
   keeping. One was the install's: on a state load the emulator's own loader
@@ -1240,6 +1357,86 @@ Remaining real logic, in rough order of value:
   phase matters — a fast-forward has to leave the processor about to
   execute the same one of the two instructions it would have been about to
   execute.
+
+  **Built, and it reproduces the census.** Patch `0018` is the seam: a
+  `dc_beetle_idle_model` asked at the watched address, answering a
+  per-iteration cost, with the fork deciding how many whole iterations may
+  be advanced through. The predicate is native and self-verifying: it reads
+  the four bytes at the address every time it is asked (`C5 zz` / `F0 FC`,
+  a compare against zero page and a branch that lands back on it), takes
+  the zero-page address out of the verified operand rather than being told
+  it, and answers "idle" only while the accumulator equals what that
+  operand names. So a build pointed at the wrong address, a bank switch, or
+  a ROM differing by one byte answers "not idle" instead of skipping time
+  it should not.
+
+  Over the census route the model refuses **nothing** across 3,171,424
+  arrivals, recognises exactly the **3,567** waits this document already
+  counted, and skips **21,077,517 of the 24,248,940** iterations — 86.9%,
+  nine per skip on average and 41 at most. The route reproduces
+  `9036a9de…` with the capability installed and with it handed back, in
+  Debug and in Release, with the coverage identical to the unit in both —
+  so what is skipped is a property of the machine rather than of a build.
+
+  The instruction boundary's own coverage is the sharpest evidence that
+  nothing but time was removed, because it counts the machine's interrupt
+  behaviour directly. Every counter that describes what the boundary
+  *decided* is identical either way — 1 reset, 254,990 timer vectors,
+  63,135 of them on a line the latch did not hold, 7,198 IRQ1, 199,168
+  samples that latched a line, 7,213,928 taken behind the I flag, and
+  2,008,130 decisions woken and declined. The only counters that move are
+  the raw per-instruction totals, and they move by exactly the right
+  amount: 108,732,259 decisions become 66,577,225, a difference of
+  42,155,034, which is two instructions for each of the 21,077,517
+  iterations skipped and not one more. That is also why
+  `verify_native_boundary.cmake` now floors its "a route's worth of
+  instructions" check at sixty million rather than a hundred.
+
+  **The bound has two halves, and only the first was obvious.** The first
+  is the horizon: advance whole iterations that end *strictly before* the
+  scheduler's near horizon, never up to it, so the crossing is left to a
+  real instruction and the placement of an event relative to an instruction
+  boundary stays the machine's decision. Nothing can raise a line before
+  that horizon, and with no instruction running nothing can store to
+  memory, so the exit condition provably cannot move.
+
+  The second is that **nothing may be standing either**, and it cost a
+  census to find. A request the mask already admits has not been *latched*
+  yet. The decision at the top of the instruction loop reads the latch, so
+  it answers "next instruction" and the spin looks idle — but the next
+  instruction's own end-of-cycle sample would catch that request, and the
+  boundary after it would take the vector. A skip spans both boundaries and
+  delivers the interrupt a turn late, which is precisely what the first
+  working version did: within one `00:E321` call the ordered writes stayed
+  identical in sequence, value and instruction address, and the interrupt
+  entry arrived 24 master cycles late. `(IRQlow & IRQMask) != 0` is the
+  whole fix and it costs 1,452 skipped iterations out of 21 million.
+
+  Two plausible explanations were eliminated on the way there, and both are
+  worth recording because both point at the wrong mechanism:
+
+  - *Not the granularity, and not the omitted interrupt samples.*
+    Replacing the single advance with a per-iteration replay of the exact
+    cycles — `ADDCYC(3)`, sample, `ADDCYC(1)`, twice a turn, which is what
+    `LastCycle` does — produces a **byte-identical** census to the coarse
+    skip, and both differ from the golden the same way.
+  - *Not proximity to the horizon.* Leaving a whole iteration of slack
+    diverges too, differently.
+
+  Both results look like they exonerate the sampling, and they do. The
+  fault was in the *deciding*, which is a different thing done at a
+  different moment: `LastCycle` latches once per instruction, but
+  `DcSelectInterrupt` runs once per pass of the instruction loop, and a
+  skip silently spans as many of those passes as it covers. A replay that
+  reproduces every sample and every cycle still reproduces no decisions,
+  which is why the fine and coarse versions failed identically — a result
+  that reads as exoneration and is really a fingerprint.
+
+  One methodological note, since it wasted a cycle: counting skips after
+  which `next_event` had gone non-positive returns zero, but that test
+  cannot fail. `reach_horizon` recalculates the horizon to a fresh positive
+  value before the advance returns, so a crossing is invisible to any test
+  made after it.
 - **There is no device at the frame boundary, and that is the finding.**
   The plan called for one more seam around `Emulate()` in `pce.cpp`. Read
   against this machine — a plain 384 KB HuCard, no CD, no SuperGrafx, no
@@ -1254,22 +1451,22 @@ Remaining real logic, in rough order of value:
   observation read.
 
   So the frame loop is not an object that was missed. It is a rebase
-  protocol over five models that are already native, plus two things that
-  merely happen to be called from the same function. One is **the pad**
-  (`INPUT_Frame`, `INPUT_AdjustTS`), still driving the emulator's
-  `PCE_Input_Device` objects — which is not a new port so much as the
-  ownership step the joypad entry under phase 2 already names: `00:E195`
-  models the strobe protocol natively but reads through the core's
-  `current_input_` rather than owning the port. The other is **the sound
-  output chain**
+  protocol over six models that are already native, plus two things that
+  merely happened to be called from the same function. One was **the pad**
+  (`INPUT_Frame`, `INPUT_AdjustTS`), which drove the emulator's
+  `PCE_Input_Device` objects — that is now the eighth seam and **done**, so
+  the two calls the frame loop makes are dispatches to
+  `devils_crush::input::PcePad` and the loop has one less thing in it. The
+  other is **the sound output chain**
   (`OwlBuffer::Integrate`, `HRRes->Resample`), which sits downstream of the
   native PSG because `dc_beetle_set_psg_device` hands the model the
   emulator's own blip buffers to synthesize into — and that one is not a
   gap, it is the resampling decision under *Open questions*, which keeps it
   in the path until phase 4 so `audio_sha256` stays a live oracle.
 
-  The frame loop then becomes native by subtraction, which is the phase 4
-  pattern rather than a seventh seam.
+  With the pad done, that leaves one, and it is deliberate. The frame loop
+  becomes native by subtraction, which is the phase 4 pattern rather than a
+  ninth seam.
 
 ### Phase 4 — delete the CPU
 

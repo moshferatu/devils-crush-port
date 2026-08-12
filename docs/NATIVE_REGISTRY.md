@@ -11,24 +11,24 @@ state it has not been proven against.
 ## Measured cycle share
 
 Deploying the registry with `--replace-registry` over the 3,600-frame
-Release state-census route (`--native-cycle-census`, measured 2026-08-10):
+Release state-census route (`--native-cycle-census`, measured 2026-08-12):
 
 | | |
 | --- | ---: |
 | Elapsed master cycles | 1,292,371,731 |
-| Native master cycles | 670,996,452 |
-| **Native share** | **51.92%** |
-| **Native share of cycles outside the idle spin loop** | **94.8%** |
-| Routines installed | 366 of 366 |
-| Routines entered | 299 |
-| Calls run natively | 2,650,972 of 2,689,579 entered |
+| Native master cycles | 671,636,826 |
+| **Native share** | **51.97%** |
+| **Native share of cycles outside the idle spin loop** | **94.53%** |
+| Routines installed | 368 of 368 |
+| Routines entered | 301 |
+| Calls run natively | 2,665,368 of 2,703,975 entered |
 | Calls declined at an interrupt horizon | 0 |
-| Transcripts installed inside a suspended transcript | 289,400 |
+| Transcripts installed inside a suspended transcript | 295,164 |
 | Deepest simultaneous suspension | 3 of a permitted 4 |
 | Replacements refused for depth | 0 |
 
 The resulting state census is byte-identical to the assembly-only
-baseline (`9036a9de…`), so that 51.92% is faithful, not merely running.
+baseline (`9036a9de…`), so that 51.97% is faithful, not merely running.
 The last three rows matter because the host credits a native call when
 it *offers* one. A replacement the core then refused would inflate the
 share silently, and a refusal count of zero is what rules that out.
@@ -592,12 +592,13 @@ master cycles across 72 calls — 0.4% of this family.
 
 `00:E058` is the display interrupt. It reads the VDC status register at
 `$0000` into `$01` and dispatches on it: the VBlank bit sends it to
-`00:E0EB`, everything else to `00:E136`. The head is not portable — its
-whole decision is a byte from a device register, and a replacement
-callback receives work RAM and registers only — but nothing downstream of
-that read needs the device again, so the bodies are.
+`00:E0EB`, everything else to `00:E136`. For four slices the dispatcher
+was recorded as blocked in its entirety, on the grounds that its whole
+decision is a byte from a device register. That was the wrong unit. One
+*instruction* is unportable — see **The one instruction that is not**
+below — and both sides of it are now native.
 
-Seven entry points are native, and every one of them is now admitted on
+Nine entry points are native, and every one of them is now admitted on
 every arrival under the deployed registry. Until the core could nest a
 replacement, an interrupt that arrived while a main-thread transcript
 was suspended ran the handler emulated: `00:E136` reached 1,180 of
@@ -609,15 +610,17 @@ when that rule went, without a line of it changing:
 | `00:E195` | Pad reader: poll five ports, publish held state and edges | 3,599 of 3,599 | 6,854,091 |
 | `00:E136` | Non-VBlank arm: reprogram the split, tick `$222A` | 3,599 of 3,599 | 1,160,913 |
 | `00:E0EB` | VBlank prologue: program VDC `$08`/`$07`/`$05` from the RAM shadows | 2,748 of 2,748 | 544,104 |
+| `00:E05F` | Dispatcher tail: stash the status byte, pick the arm from `$54` | 7,198 of 7,198 | 381,246 |
 | `00:E123` | Epilogue after the music call: restore MPR6 and unwind | 3,212 of 3,212 | 337,260 |
+| `00:E058` | Dispatcher head: push `P`, `A`, `X`, `Y` and stop at the read | 7,198 of 7,198 | 259,128 |
 | `00:E117` | Bump the frame counter at `$00`, take or skip the music call | 3,599 of 3,599 | 231,846 |
 | `00:E183` | Secondary handler's epilogue | 387 of 387 | 47,601 |
 | `00:E179` | Secondary handler's prologue | 387 of 387 | 22,059 |
 
-`00:E195` is worth more than the other six together, and it is the first
+`00:E195` is worth more than the other eight together, and it is the first
 routine here that *reads* a device. It was recorded as out of reach for
 four slices on the rule that a replacement callback cannot see a device
-register — the same rule that keeps the dispatcher at `00:E058` emulated.
+register — the same rule that was thought to block `00:E058`.
 
 The rule is about the callback, not about the value. The byte the joypad
 answers with is a function of two things a walk can know: the pad state
@@ -639,15 +642,50 @@ never executed. Verification is the pad bytes at `$200E`-`$201C` and the
 `$1000` writes themselves, both byte-identical to assembly in value,
 address, order and master-cycle offset across all 3,599 calls.
 
-**A device read is not automatically a wall.** It is a wall when the
-value depends on device state the walk cannot reconstruct, which is why
-`00:E058` stays emulated: the VDC status register reports what the
-display is doing. It is not a wall when the value depends only on the
-outside world and on lines the routine itself set.
+**A device read is not automatically a wall.** It is not a wall when the
+value depends only on the outside world and on lines the routine itself
+set, which is this case. It is not a wall merely because the value is
+device state either, once that device has a native model with a
+non-disturbing read. What makes one a wall is below.
 
-Every walk stops one instruction short of its `RTI`, in front of the `PLP`
-that restores the interrupted status byte, and that is the whole lesson of
-the slice. The core samples the IRQ at `LastCycle`, which for `PLP` runs
+### The one instruction that is not
+
+`00:E05C` is `LDA $0000`, and it is the only instruction in this handler
+the port cannot take. The reason recorded for four slices was the one
+above — the VDC status register reports what the display is doing, and a
+callback cannot see it — and that reason turned out not to be the binding
+one. It stopped being true of the *value* the day the VDC became a native
+model: `PceVdc::read` already takes a `peek` flag that answers without
+disturbing anything, so the entry could have carried the byte the same
+way it carries the frame's pad state.
+
+What does not lift is that here the read *is* the acknowledge. Reading
+`$0000` clears every latched status source at once and is the only way
+the VDC's interrupt line falls (`src/video/pce_vdc.cpp`). The replacement
+contract is a **write** channel, and a write to `$0000` selects a
+register rather than acknowledging one, so there is no way for a
+transcript to perform that side effect at the cycle the instruction
+performs it. A transcript that predicted the byte and skipped the read
+would return to a core whose interrupt had never been taken, and the
+handler would be re-entered immediately.
+
+So the rule to carry forward is narrower than the one it replaces, and
+it is about the instruction rather than the routine:
+
+> A device read can be transcribed when the walk can compute the value.
+> It cannot be transcribed when the read *changes* the device, because
+> the transcript has no channel for the change.
+
+Splitting there costs one instruction and recovers the rest. The four
+register saves above it touch only the stack page; below it the byte the
+dispatcher branches on is already in the accumulator, so the device is
+never wanted again. Of the dispatcher's 769,938 master cycles on the
+census route, 640,374 are now native and 129,564 are the `LDA` — the
+core still executes it, at its own cycle, with its acknowledge intact.
+
+Every walk that reaches an `RTI` stops one instruction short of it, in
+front of the `PLP` that restores the interrupted status byte, and that is
+the whole lesson of the slice that ported the bodies. The core samples the IRQ at `LastCycle`, which for `PLP` runs
 *before* the pop; a checkpoint carries one register set and samples with
 it, so a transcript covering `PLP` samples with the restored mask instead
 of the one the instruction ran under. Assembly services a timer interrupt
@@ -1279,10 +1317,16 @@ excluded the graphics drivers; that distinction no longer means
 anything and the figure has been dropped rather than carried forward
 unverified.
 
-Set the idle spin loop aside and 708,122,337 cycles are the machine
-working; 670,996,452 of them, 94.8%, now run natively. The census
-places the remainder at 37,125,885, and pricing the profile
-address by address divides it into two kinds:
+Set the idle spin loop aside and 710,482,755 cycles are the machine
+working; 671,636,826 of them, **94.53%**, now run natively.
+
+The breakdown below is a self-consistent snapshot taken before the
+interrupt dispatcher was split, against a slightly different measurement
+of the wait: 708,122,337 cycles outside it, 670,996,452 native, 94.8%,
+and a census remainder of 37,125,885. It is left at those numbers rather
+than half-updated, because what it is for is the *shape* of the
+remainder. Pricing the profile address by address divides it into two
+kinds:
 
 | Still emulated outside the spin loop | Master cycles |
 | --- | ---: |
@@ -1389,11 +1433,14 @@ time — not from more transcripts.
 
 The pad reader used to head this list at 6.9M, described here as out of
 reach because a callback cannot read a device register. That was true of
-the callback and false of the routine; see the VDC interrupt handler
-section above for how it was done and why `00:E058` is genuinely
-different. What remains true is that reading the VDC status register
-reports what the display is doing, which no walk can reconstruct, so the
-dispatcher stays phase 2 work.
+the callback and false of the routine. The interrupt dispatcher was then
+listed beside it for the same reason, and that was false of the routine
+too: only its `LDA $0000` is unportable, and only because the read is the
+interrupt acknowledge rather than because the value is unknowable. Both
+sides of it are native; see the VDC interrupt handler section above.
+What both cases have in common is that the address someone wrote down as
+blocked was a routine, and the thing that was actually blocked was one
+instruction inside it.
 
 Note that this percentage tracks only one of the three axes that
 removing the emulator needs: which code executes natively. It does not
@@ -1432,7 +1479,7 @@ further. The timer sound driver `00:FC00` is now the single largest
 native address at 12.25% of all master cycles — it passed the collision
 sweep `01:CB48` at 7.96% and the sprite emitter `08:40DF` at 7.59% by
 taking its own epilogue — and the top five together are 31.97% of the
-machine, well over half of the 51.92% that runs natively. Most installed
+machine, well over half of the 51.97% that runs natively. Most installed
 routines are never entered on this route, and many that are entered never
 accept a call.
 

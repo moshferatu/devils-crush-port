@@ -2733,7 +2733,7 @@ instructions turned one row into eight routines:
 | `00:E111`–`E13F` VBlank body | 2,412,678 | Native, every call |
 | `00:E262` trampoline | 953,343 | Native, every call |
 | `00:E140`–`E178` VBlank epilogue | 821,685 | Native, every call |
-| `00:E058`–`E0EA` dispatcher | 769,938 | Blocked: reads `$0000` |
+| `00:E058`–`E0EA` dispatcher | 769,938 | Native either side of its `LDA $0000`: 640,374 |
 | `00:E0EB`–`E110` VBlank prologue | 544,104 | Native, every call |
 | `00:E219` bank pair | 501,639 | Native, every call |
 | `00:E1FD`/`E20D` asset resolver | 377,085 | Native, every call |
@@ -2742,8 +2742,19 @@ The first correction is that the plan's prescription was aimed at the wrong
 side of the bus. `00:E195` writes `$1000` to strobe the pad and then **reads**
 it back, and `00:E058` opens by reading the VDC status register. A replacement
 callback receives work RAM and registers, so nothing on an allowlist reaches
-either. Almost half the row is phase-2 device-model work, not phase-1
-transcription, and the write channel never came into it.
+either. Almost half the row was written off as phase-2 device-model work, and
+the write channel never came into it.
+
+Both halves of that write-off were wrong, and both were wrong in the same way:
+the row names routines, and what was blocked was an instruction. `00:E195`
+went first — what the joypad answers is computable from the frame's pad state
+and the latch lines the routine drives itself. `00:E058` went four slices
+later, split in front of its `LDA $0000`: above the read, four register saves;
+below it, a dispatch on a byte already sitting in the accumulator. 640,374 of
+the row's 769,938 cycles are native, and the 129,564 that are not are the one
+instruction whose read *is* the interrupt acknowledge — a side effect the
+write channel has no way to reproduce. **When a row says a routine is blocked,
+check whether the block is really the whole routine.**
 
 What went instead was the bank-switching linkage — the three wrappers here plus
 the two at `00:ECC6` — nine entry points, 52,911 calls, 4,849,479 cycles,

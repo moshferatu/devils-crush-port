@@ -3,9 +3,11 @@
 #pragma once
 
 #include "devils_crush/audio/pce_psg.hpp"
+#include "devils_crush/cpu/huc6280_idle_skip.hpp"
 #include "devils_crush/cpu/huc6280_interrupt_boundary.hpp"
 #include "devils_crush/cpu/huc6280_irq.hpp"
 #include "devils_crush/cpu/huc6280_scheduler.hpp"
+#include "devils_crush/input/pce_pad.hpp"
 #include "devils_crush/video/pce_vce.hpp"
 #include "devils_crush/video/pce_vdc.hpp"
 
@@ -522,6 +524,50 @@ public:
     [[nodiscard]] virtual
     std::optional<cpu::HuC6280InterruptBoundary::Coverage>
     native_boundary_coverage() const = 0;
+
+    // Lets the machine advance through a frame-sync spin instead of executing
+    // it, one whole iteration at a time, up to but never reaching the
+    // scheduler's near horizon.
+    //
+    // The seventh seam and the only one that replaces nothing. The six before
+    // it each moved work across the boundary and each had a rule about when
+    // they could be installed; this one moves no work, holds no state the
+    // machine needs, and can therefore be installed or handed back at any
+    // point. A machine that never reaches the address it watches behaves
+    // exactly as though it were absent.
+    //
+    // Which address, and the four bytes that must be there, is the caller's
+    // claim about a cartridge. Passing no loop hands the capability back.
+    [[nodiscard]] virtual bool set_native_idle_skip(
+        std::optional<cpu::HuC6280IdleSkip::Loop> loop) = 0;
+    [[nodiscard]] virtual bool native_idle_skip_enabled() const noexcept = 0;
+
+    [[nodiscard]] virtual std::optional<cpu::HuC6280IdleSkip::Coverage>
+    native_idle_skip_coverage() const = 0;
+
+    // Replaces the emulator's controller port with the native device model in
+    // `devils_crush::input`. The eighth seam, and the one that moves the least
+    // computation: the strobe protocol was already native inside the
+    // cartridge's own pad reader, and what moves here is where the input comes
+    // from.
+    //
+    // While the model is installed the `InputFrame` given to `run_frame`
+    // reaches the machine directly. The emulator's input path -- its frontend
+    // button buffer and its five `PCE_Input_Device` objects -- is not
+    // consulted, and this runtime proves it rather than asserting it: the
+    // libretro input callback answers zero for every query while a model is
+    // installed, so a frame that still matched the emulated arm through that
+    // callback could not have been produced by it.
+    //
+    // May be set before or after a ROM loads, but not mid-frame. Handing it
+    // back mid-machine costs one strobe: the emulator's devices have received
+    // nothing while the model ran, so their lines are stale until the pad
+    // reader's next write and their buttons until the next frame.
+    [[nodiscard]] virtual bool set_native_pad(bool enabled) = 0;
+    [[nodiscard]] virtual bool native_pad_enabled() const noexcept = 0;
+
+    [[nodiscard]] virtual std::optional<input::PcePad::Coverage>
+    native_pad_coverage() const = 0;
 
     // Savestates are opaque Beetle payloads plus the host frame counter.
     // Persistent storage must additionally bind them to the ROM and core

@@ -3,12 +3,14 @@
 #include "devils_crush/app/native_registry.hpp"
 #include "devils_crush/core/backup_ram.hpp"
 #include "devils_crush/core/high_score_table.hpp"
+#include "devils_crush/cpu/huc6280_idle_skip.hpp"
 #include "devils_crush/cabinet/cabinet_state.hpp"
 #include "devils_crush/cabinet/display_config.hpp"
 #include "devils_crush/cabinet/dmd_layout.hpp"
 #include "devils_crush/core/rom_image.hpp"
 #include "devils_crush/core/save_state.hpp"
 #include "devils_crush/emulation/pce_runtime.hpp"
+#include "devils_crush/input/pce_pad.hpp"
 #include "devils_crush/game_logic/actor.h"
 #include "devils_crush/game_logic/collision.h"
 #include "devils_crush/game_logic/sprite.h"
@@ -8452,6 +8454,367 @@ void test_high_score_table()
         "a truncated high-score file is refused");
 }
 
+// The predicate half of the frame-sync fast-forward, enumerated rather than
+// sampled. The model reads four bytes and one accumulator, so its whole input
+// space is small enough to walk: every zero-page operand, and every
+// accumulator value against the byte that operand names.
+//
+// What is deliberately not here is the skip itself. How far the machine may
+// be advanced is the scheduler's horizon and the fork's arithmetic, and the
+// oracle for that is the census route producing byte-identical artifacts with
+// the capability installed and handed back.
+void test_idle_skip()
+{
+    using devils_crush::cpu::HuC6280IdleSkip;
+
+    // `00:E323`, as the ROM holds it: CMP <$00 / BEQ back four.
+    constexpr std::array<std::uint8_t, 4> kSpin{0xC5U, 0x00U, 0xF0U, 0xFCU};
+
+    std::array<std::uint8_t, 0x100> zero_page{};
+    zero_page[0x00U] = 0x4BU;
+
+    const auto ask = [&zero_page](
+                         HuC6280IdleSkip& model,
+                         const std::uint8_t accumulator,
+                         const std::span<const std::uint8_t> code) {
+        return model.iteration_cycles(accumulator, code, zero_page);
+    };
+
+    HuC6280IdleSkip model{
+        HuC6280IdleSkip::Loop{.physical_bank = 0x00U, .logical_pc = 0xE323U}};
+    check(
+        model.loop().physical_bank == 0x00U
+            && model.loop().logical_pc == 0xE323U,
+        "the idle model keeps the loop it was pointed at");
+
+    // Equal is the branch being taken, which is the machine still waiting.
+    check(
+        ask(model, 0x4BU, kSpin) == HuC6280IdleSkip::kIterationCycles,
+        "a waiting frame-sync spin answers with one iteration's cost");
+    check(
+        model.coverage().arrivals == 1U && model.coverage().idle == 1U,
+        "an idle answer is counted as one arrival and one idle");
+
+    // Different is the wait already over: the very next instruction leaves
+    // the loop, so there is nothing there to skip.
+    check(
+        ask(model, 0x4CU, kSpin) == 0,
+        "a spin about to exit is executed rather than skipped");
+    check(
+        model.coverage().exits == 1U && model.coverage().idle == 1U,
+        "an exit is counted apart from an idle arrival");
+
+    // Every operand, every accumulator. The model must answer idle exactly
+    // when the compare would be equal, whichever zero-page byte is named.
+    for (std::size_t operand = 0; operand < zero_page.size(); ++operand) {
+        zero_page[operand] = static_cast<std::uint8_t>(operand ^ 0x5AU);
+    }
+    bool enumerated = true;
+    for (std::size_t operand = 0; enumerated && operand < zero_page.size();
+         ++operand) {
+        std::array<std::uint8_t, 4> code = kSpin;
+        code[1] = static_cast<std::uint8_t>(operand);
+        for (unsigned accumulator = 0; accumulator <= 0xFFU; ++accumulator) {
+            const bool equal =
+                static_cast<std::uint8_t>(accumulator) == zero_page[operand];
+            const auto answer =
+                ask(model,
+                    static_cast<std::uint8_t>(accumulator),
+                    code);
+            enumerated = enumerated
+                && answer
+                    == (equal ? HuC6280IdleSkip::kIterationCycles : 0);
+        }
+    }
+    check(
+        enumerated,
+        "the spin is idle for exactly the accumulator the operand names");
+    zero_page[0x00U] = 0x4BU;
+    for (std::size_t operand = 1; operand < zero_page.size(); ++operand) {
+        zero_page[operand] = 0U;
+    }
+
+    // The four bytes are read from the machine every time, so an address
+    // holding something else -- a different opcode, a displacement landing
+    // somewhere other than back on the compare, or a stream that runs out --
+    // is refused rather than skipped through.
+    HuC6280IdleSkip refuser{HuC6280IdleSkip::Loop{}};
+    const auto refused = [&](const std::array<std::uint8_t, 4>& code) {
+        return ask(refuser, 0x4BU, code) == 0;
+    };
+    check(
+        refused({0xC9U, 0x00U, 0xF0U, 0xFCU}),
+        "an immediate compare is not this spin");
+    check(
+        refused({0xC5U, 0x00U, 0xD0U, 0xFCU}),
+        "a branch on difference is not this spin");
+    check(
+        refused({0xC5U, 0x00U, 0xF0U, 0xFEU}),
+        "a branch that lands anywhere but the compare is not this spin");
+    check(
+        ask(refuser, 0x4BU, std::span<const std::uint8_t>(kSpin).first(3U))
+            == 0,
+        "an instruction stream too short to hold the spin is refused");
+    check(
+        refuser.iteration_cycles(0x4BU, kSpin, {}) == 0,
+        "a machine offering no readable zero page is refused");
+    check(
+        refuser.iteration_cycles(
+            0x4BU,
+            std::array<std::uint8_t, 4>{0xC5U, 0x80U, 0xF0U, 0xFCU},
+            std::span<const std::uint8_t>(zero_page).first(0x80U))
+            == 0,
+        "an operand beyond the mapped zero page is refused");
+    check(
+        refuser.coverage().refusals == 6U
+            && refuser.coverage().idle == 0U
+            && refuser.coverage().exits == 0U,
+        "every refusal is counted as a refusal and nothing else");
+
+    // What the machine did with the answer, which the model cannot work out
+    // for itself: neither the horizon it was measured against nor the rate
+    // that prices a turn is the model's to see.
+    HuC6280IdleSkip counter{HuC6280IdleSkip::Loop{}};
+    counter.advanced(12, 288, 24);
+    counter.advanced(5, 120, 24);
+    // An idle answer the horizon or a standing request left no room to skip.
+    // It is still a turn of the loop the machine waited through.
+    counter.advanced(0, 0, 24);
+    check(
+        counter.coverage().skips == 2U
+            && counter.coverage().iterations == 17U
+            && counter.coverage().skipped_master_cycles == 408U
+            && counter.coverage().longest_skip == 12U,
+        "skipped iterations, master cycles and the longest skip accumulate");
+    // Three idle answers cost a turn each, and the skips add their own.
+    check(
+        counter.coverage().wait_master_cycles == 408U + 72U,
+        "the wait counts executed turns as well as skipped ones");
+    // A wait that skipped nothing must still register as waiting, or the
+    // measured wait would shrink as the fast-forward improved.
+    HuC6280IdleSkip unskipped{HuC6280IdleSkip::Loop{}};
+    unskipped.advanced(0, 0, 96);
+    check(
+        unskipped.coverage().skips == 0U
+            && unskipped.coverage().wait_master_cycles == 96U,
+        "a turn nobody skipped is still a turn spent waiting");
+}
+
+void test_pce_pad()
+{
+    using devils_crush::input::PcePad;
+
+    // What every read carries no matter what is plugged in: no CD unit, and
+    // two bits this hardware reads back set.
+    constexpr std::uint8_t kPortBits = 0xB0U;
+
+    const auto plug_in_five_gamepads = [](PcePad& pad) {
+        pad.configure(true, false, false);
+        for (std::size_t port = 0; port < PcePad::kPortCount; ++port) {
+            pad.configure_port(port, PcePad::Device::gamepad);
+        }
+    };
+
+    PcePad pad;
+    plug_in_five_gamepads(pad);
+
+    // A press is the host's until the machine latches it. Nothing a game can
+    // do between two frames makes it visible early, which is what makes a
+    // frame's input one fixed thing.
+    pad.set_port_input(0, 0x0001U);
+    check(
+        pad.read(0, 0x1000U) == (kPortBits | 0x0FU),
+        "a device answers nothing until the machine latches the frame");
+    pad.frame(true);
+    check(
+        pad.read(0, 0x1000U) == (kPortBits | 0x0EU),
+        "the frame latch is where a press becomes visible");
+
+    // Select picks which half of the pad answers: the four buttons low, the
+    // four directions high. A pad answers active-low, so a held button is a
+    // cleared bit.
+    pad.set_port_input(0, 0x0010U);
+    pad.frame(false);
+    check(
+        pad.read(0, 0x1000U) == (kPortBits | 0x0FU),
+        "a direction is not in the half select answers with low");
+    pad.write(0, 0x1000U, 0x03U);
+    check(
+        pad.read(0, 0x1000U) == (kPortBits | 0x0EU),
+        "select high answers with the direction half");
+
+    // Walking the multitap: the counter is reset by a clear edge taken while
+    // select is high, and stepped by a select edge taken while clear stays
+    // low. Only the first port has anything pressed on it, so the counter's
+    // position is readable in the answer.
+    pad.set_port_input(1, 0x0002U);
+    pad.frame(false);
+    pad.write(0, 0x1000U, 0x00U);
+    pad.write(0, 0x1000U, 0x01U);
+    check(
+        pad.read(0, 0x1000U) == (kPortBits | 0x0FU),
+        "a select edge with clear low steps the multitap to the next port");
+    pad.write(0, 0x1000U, 0x03U);
+    check(
+        pad.read(0, 0x1000U) == (kPortBits | 0x0EU),
+        "a clear edge with select high rewinds the multitap to the first");
+
+    // Past the last device the port answers zero rather than the all-high
+    // pattern of an empty one, which is how a game counts how many pads are
+    // attached.
+    PcePad walker;
+    plug_in_five_gamepads(walker);
+    walker.frame(true);
+    for (int step = 0; step < static_cast<int>(PcePad::kPortCount) + 1;
+         ++step) {
+        walker.write(0, 0x1000U, 0x00U);
+        walker.write(0, 0x1000U, 0x01U);
+    }
+    check(
+        walker.read(0, 0x1000U) == kPortBits,
+        "a read past the last device answers zero, not an empty port");
+    check(
+        walker.coverage().reads_past_the_last_port == 1U
+            && walker.coverage().counter_increments
+                == PcePad::kPortCount + 1U,
+        "walking past the last device is counted as its own path");
+
+    // An empty port floats high, and so does one holding a device this model
+    // does not answer for -- which is counted, because answering as an empty
+    // port is a defensible thing to do and hiding it is not.
+    PcePad sparse;
+    sparse.configure(true, false, false);
+    sparse.configure_port(0, PcePad::Device::none);
+    sparse.configure_port(1, PcePad::Device::mouse);
+    sparse.set_port_input(0, 0x00FFU);
+    sparse.frame(true);
+    check(
+        sparse.read(0, 0x1000U) == (kPortBits | 0x0FU),
+        "an empty port answers every line high");
+    check(
+        sparse.coverage().unmodelled_port_devices == 1U
+            && sparse.coverage().absent_port_reads == 1U,
+        "a device this model does not answer for is counted, not assumed");
+
+    // The CD-unit bit is the port's rather than a device's.
+    PcePad with_cd;
+    with_cd.configure(true, false, true);
+    with_cd.configure_port(0, PcePad::Device::gamepad);
+    with_cd.frame(true);
+    check(
+        with_cd.read(0, 0x1000U) == (0x30U | 0x0FU),
+        "an attached CD unit clears the bit that says there is none");
+
+    // The six-button half-selector toggles on the same edge whichever pad is
+    // plugged in; what a two-button pad never does is answer from the half it
+    // selects, because the half is only reached by a pad that says it has one.
+    PcePad six;
+    six.configure(true, false, false);
+    six.configure_port(0, PcePad::Device::gamepad);
+    six.set_port_input(0, 0x0200U);
+    six.frame(true);
+    six.write(0, 0x1000U, 0x03U);
+    six.write(0, 0x1000U, 0x01U);
+    check(
+        six.coverage().six_button_toggles == 1U
+            && six.coverage().six_button_reads == 0U,
+        "a two-button pad toggles the half-selector and never answers from "
+        "it");
+    six.set_port_input(0, static_cast<std::uint16_t>(0x0200U
+        | PcePad::kSixButtonPad));
+    six.frame(false);
+    check(
+        six.read(0, 0x1000U) == kPortBits
+            && six.coverage().six_button_reads == 1U,
+        "a six-button pad answers its selected half with nothing at all "
+        "while select is high");
+    six.write(0, 0x1000U, 0x00U);
+    check(
+        six.read(0, 0x1000U) == (kPortBits | 0x0DU)
+            && six.coverage().six_button_reads == 2U,
+        "and with the four extra buttons while select is low");
+
+    // The two filters. Both act where a frontend acts, on the way in, so the
+    // machine below cannot tell a combination that was filtered out from one
+    // that was never pressed.
+    PcePad filtered;
+    filtered.configure(true, true, false);
+    filtered.configure_port(0, PcePad::Device::gamepad);
+    filtered.set_port_input(0, 0x000CU);
+    filtered.frame(true);
+    check(
+        filtered.read(0, 0x1000U) == (kPortBits | 0x0FU)
+            && filtered.coverage().soft_resets_suppressed == 1U,
+        "select with run is suppressed when the machine asks for it");
+    filtered.set_port_input(0, 0x0050U);
+    filtered.frame(false);
+    filtered.write(0, 0x1000U, 0x03U);
+    check(
+        filtered.read(0, 0x1000U) == (kPortBits | 0x0FU)
+            && filtered.coverage().opposing_directions_filtered == 1U,
+        "up and down together are dropped, because a pad cannot do it");
+
+    PcePad unfiltered;
+    unfiltered.configure(true, false, false);
+    unfiltered.configure_port(0, PcePad::Device::gamepad);
+    unfiltered.set_frontend_policy({.allow_opposing_directions = true});
+    unfiltered.set_port_input(0, 0x005CU);
+    unfiltered.frame(true);
+    check(
+        unfiltered.read(0, 0x1000U) == (kPortBits | 0x03U)
+            && unfiltered.coverage().soft_resets_suppressed == 0U
+            && unfiltered.coverage().opposing_directions_filtered == 0U,
+        "a host that asks for both keeps both");
+
+    // A reset clears what the machine latched, and deliberately not what the
+    // host is holding: a button still pressed through a reset is still
+    // pressed after it, and the next latch is where that shows.
+    PcePad reset;
+    reset.configure(true, false, false);
+    reset.configure_port(0, PcePad::Device::gamepad);
+    reset.set_port_input(0, 0x0001U);
+    reset.frame(true);
+    reset.write(0, 0x1000U, 0x03U);
+    reset.power(0);
+    check(
+        reset.read(0, 0x1000U) == (kPortBits | 0x0FU),
+        "a reset clears the latched buttons and the strobe lines");
+    reset.frame(true);
+    check(
+        reset.read(0, 0x1000U) == (kPortBits | 0x0EU),
+        "what the host is holding survives a reset and returns at the latch");
+
+    // The savestate shuttle carries every field the emulator's format does,
+    // and deliberately not the host's present.
+    PcePad::State captured;
+    reset.capture_state(captured);
+    check(
+        captured.ports[0].buttons == 0x0001U && captured.read_index == 0U
+            && !captured.select && !captured.clear,
+        "the captured state is the port and its devices as they stand");
+
+    PcePad restored;
+    restored.configure(true, false, false);
+    restored.configure_port(0, PcePad::Device::gamepad);
+    PcePad::State written = captured;
+    written.read_index = 3U;
+    written.select = true;
+    written.ports[0].six_button_half = true;
+    restored.apply_state(written);
+    PcePad::State round_trip;
+    restored.capture_state(round_trip);
+    check(round_trip == written, "an applied state captures back unchanged");
+    check(
+        restored.read(0, 0x1000U) == (kPortBits | 0x0FU),
+        "a restored read counter answers from the device it names");
+
+    // The counter that the ownership claim rests on: input reaching the
+    // machine, measured where it arrives.
+    check(
+        reset.coverage().reads_with_a_button_down == 1U,
+        "a read that answered with a button held is counted as one");
+}
+
 void test_actor_scan_run()
 {
     std::vector<std::uint8_t> work_ram(0x2000U, 0U);
@@ -9384,6 +9747,8 @@ int main()
     test_save_state_container();
     test_backup_ram_storage();
     test_high_score_table();
+    test_idle_skip();
+    test_pce_pad();
     test_actor_scan_run();
     test_actor_dispatch_vector();
     test_actor_queue_registration();

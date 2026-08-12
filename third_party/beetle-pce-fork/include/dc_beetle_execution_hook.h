@@ -694,6 +694,197 @@ typedef struct dc_beetle_boundary_model {
         const dc_beetle_boundary_state* state);
 } dc_beetle_boundary_model;
 
+// What the processor is holding at an instruction boundary, for the one
+// question an idle model is asked. Everything here is either a register the
+// processor already has or a direct pointer into memory it has already
+// mapped, so asking costs no bus access and no side effect.
+//
+// The two pointers are the machine's, and what to read from them is the
+// model's business rather than this seam's. `code` is the instruction stream
+// at the watched address, and `zero_page` is this processor's zero page --
+// which is at logical `$2000` rather than at zero, that being where every
+// zero-page effective address on a HuC6280 is built from. Either is null when
+// the logical page it names has no directly readable memory behind it, which
+// for zero page means a machine that has mapped its own RAM out. `code_bytes`
+// is what is left of `code`'s 8 KiB page, so a model may compare a signature
+// without walking off the end of it.
+typedef struct dc_beetle_idle_state {
+    uint16_t logical_pc;
+    uint8_t physical_bank;
+    uint8_t accumulator;
+    uint8_t x;
+    uint8_t y;
+    uint8_t status;
+    const uint8_t* code;
+    uint32_t code_bytes;
+    const uint8_t* zero_page;
+} dc_beetle_idle_state;
+
+// A spin the machine can be advanced through instead of executed.
+//
+// This is the seventh seam and the only one that is a capability rather than
+// a replacement: nothing here takes work away from the emulator, and handing
+// it back changes nothing but the speed. What it provides is the one thing a
+// routine replacement structurally cannot express -- a scope whose cost is
+// not known when it is offered, because it ends when the raster says so.
+//
+// **The split is the whole design.** *Whether this loop is idle* is a claim
+// about a particular cartridge: which two instructions, what they read, and
+// what the machine would be waiting for. *How far the machine may be advanced
+// while nothing executes* is a claim about the machine, and it is this side's
+// answer: as many whole iterations as end strictly before the scheduler's
+// near horizon, and not one cycle further.
+//
+// That bound is what makes the capability exact rather than approximate, and
+// it is worth stating why. Between now and the near horizon no device can
+// raise a line -- the horizon is by construction the nearer of the timer's
+// next tick and the user event's next call -- so no interrupt can be taken,
+// and with the processor executing nothing, no store can reach memory. The
+// end-of-instruction latch that the skipped instructions would each have
+// taken therefore latches what the last real one already latched. Stopping
+// strictly before the horizon leaves the crossing itself to a real
+// instruction, so where an event lands relative to an instruction boundary is
+// decided by the machine exactly as it was before. Nothing observable
+// survives the skip except the clock, which is the point.
+//
+// **And a second condition, which is not the same one and is easy to miss.**
+// Nothing may be *standing* either. A request the mask already admits has not
+// been latched yet, so the decision taken at the top of the instruction loop
+// answers "next instruction" and the spin looks idle -- but the next
+// instruction's own end-of-cycle sample would catch it, and the boundary after
+// that would take the vector. Skipping past that boundary delivers the
+// interrupt a turn late. One condition says nothing can happen before the
+// horizon; this one says nothing has happened already. Both are the machine's,
+// which is why both live on this side of the seam rather than in the model.
+typedef struct dc_beetle_idle_model {
+    void* user_data;
+    // The instruction boundary this model has anything to say about. Compared
+    // against the processor's own two values before the model is consulted at
+    // all, so an installed model costs a load and a predicted branch per
+    // instruction rather than a call.
+    uint16_t watch_logical_pc;
+    uint8_t watch_physical_bank;
+    // Processor cycles one iteration of the spin costs, or zero for "execute
+    // this normally" -- which is the answer whenever the loop is about to
+    // exit, and the answer a model that does not recognise what it is looking
+    // at must give.
+    int32_t (*iteration_cycles)(
+        void* user_data,
+        const dc_beetle_idle_state* state);
+    // What the machine actually did with that answer, which the model cannot
+    // work out for itself because the horizon is not its to see.
+    //
+    // Called on *every* idle answer rather than only on a skip, and priced in
+    // master cycles rather than the processor cycles the model answered in,
+    // because both are needed to say how long the machine waited. A skip
+    // contributes `master_skipped`; the turn the instruction below is about
+    // to execute contributes `master_per_iteration`, and nothing else knows
+    // what that turn costs at the rate the processor is currently running.
+    // `iterations` is zero when the horizon or a standing request left no
+    // room to skip, which is a wait the machine sat through rather than an
+    // absence of one.
+    void (*advanced)(
+        void* user_data,
+        int32_t iterations,
+        int32_t master_skipped,
+        int32_t master_per_iteration);
+} dc_beetle_idle_model;
+
+// The controller port serves five devices through one multitap, and the
+// emulator builds an object for each of them whether or not anything is
+// plugged in.
+#define DC_BEETLE_PAD_PORT_COUNT 5
+
+// Which device the emulator was told to put on a port. The values are this
+// boundary's own rather than the emulator's private enumeration, and the
+// translation happens where that enumeration is in scope.
+enum {
+    DC_BEETLE_PAD_DEVICE_NONE = 0,
+    DC_BEETLE_PAD_DEVICE_GAMEPAD = 1,
+    DC_BEETLE_PAD_DEVICE_MOUSE = 2,
+    DC_BEETLE_PAD_DEVICE_TSUSHINKB = 3
+};
+
+// Every field the emulator's savestate carries for the port and the devices on
+// it, in its order: the `JOY` section's three, then one `JOYn` section per
+// port. `buttons` is the frontend's sixteen-bit word as the device latched it,
+// and `six_button_half` is which half of a six-button pad the next read would
+// answer with.
+typedef struct dc_beetle_pad_port_state {
+    uint16_t buttons;
+    uint8_t select;
+    uint8_t clear;
+    uint8_t six_button_half;
+} dc_beetle_pad_port_state;
+
+typedef struct dc_beetle_pad_state {
+    dc_beetle_pad_port_state ports[DC_BEETLE_PAD_PORT_COUNT];
+    uint8_t select;
+    uint8_t clear;
+    uint8_t read_index;
+} dc_beetle_pad_state;
+
+// A replacement for the joypad port at `$1000`, and the eighth seam.
+//
+// **This one is an ownership change rather than a port.** The strobe protocol
+// the game drives that port with was modelled natively some time ago, in the
+// replacement for the cartridge's own pad reader; what it read *through* was
+// still the emulator's chain -- a frontend button buffer, five
+// `PCE_Input_Device` objects, a multitap counter -- and this is that chain.
+// So the interesting property is not that a device moved but that the input
+// now enters the machine from the host directly: while a model is installed
+// the emulator's button buffer is never consulted, and the frontend may
+// answer every input query with zero without changing a frame.
+//
+// **What the model owns.** Two latched lines, a multitap read counter, and one
+// device per port. That is the entire port: `INPUT_Read` and `INPUT_Write` are
+// dispatched here, `INPUT_Frame` is where a device latches the frontend's
+// buttons, `PCEINPUT_Power` resets it, and `INPUT_AdjustTS` rebases whatever
+// time a device keeps -- which for a two-button gamepad is none, and the entry
+// exists so that the seam is the machine's shape rather than this cartridge's.
+//
+// **Where the host's input arrives is deliberately not here.** A model reads
+// it from whoever owns it, which is the frontend, and this boundary carries
+// only the machine's half: when the latch happens, what is on each port, and
+// the two settings that decide how the port answers.
+typedef struct dc_beetle_pad_model {
+    void* user_data;
+    // The machine's own settings, as the emulator resolved them: whether the
+    // multitap is enabled, whether the SELECT+RUN soft reset is suppressed
+    // before a device sees it, and whether a CD unit is attached -- the last
+    // being a bit of the port's answer rather than a device's.
+    void (*configure)(
+        void* user_data,
+        int multitap_enabled,
+        int disable_soft_reset,
+        int cd_attached);
+    // `PCEINPUT_SetInput`: what the frontend plugged into a port. Reported for
+    // every port the emulator is told about, whether or not a model is
+    // installed at the time, so an install may happen either side of a load.
+    void (*configure_port)(
+        void* user_data,
+        unsigned port,
+        int device_type);
+    void (*power)(void* user_data, int32_t timestamp);
+    // `INPUT_Frame`: the moment every device latches the frontend's buttons.
+    // Called once at the start of a frame and again after each mid-frame
+    // resynchronisation, with `start_frame` distinguishing the two exactly as
+    // the emulator distinguishes them.
+    void (*frame)(void* user_data, int start_frame);
+    // `PCEINPUT_TransformInput`: the soft-reset suppression, applied to the
+    // buttons rather than to a device.
+    void (*transform_input)(void* user_data);
+    void (*adjust_timestamp)(void* user_data, int32_t delta);
+    uint8_t (*read)(void* user_data, int32_t timestamp, uint32_t address);
+    void (*write)(
+        void* user_data,
+        int32_t timestamp,
+        uint32_t address,
+        uint8_t value);
+    void (*capture_state)(void* user_data, dc_beetle_pad_state* state);
+    void (*apply_state)(void* user_data, const dc_beetle_pad_state* state);
+} dc_beetle_pad_model;
+
 // Beetle PCE is single-instance and thread-confined. Registration and callback
 // dispatch must occur on that same owning thread.
 extern dc_beetle_instruction_hook dc_beetle_active_instruction_hook;
@@ -721,6 +912,8 @@ extern const dc_beetle_vce_model* dc_beetle_active_vce_model;
 extern const dc_beetle_irq_model* dc_beetle_active_irq_model;
 extern const dc_beetle_scheduler_model* dc_beetle_active_scheduler_model;
 extern const dc_beetle_boundary_model* dc_beetle_active_boundary_model;
+extern const dc_beetle_idle_model* dc_beetle_active_idle_model;
+extern const dc_beetle_pad_model* dc_beetle_active_pad_model;
 
 // Where the processor's clock and event scheduler currently lives. Never null:
 // with no model installed it points at storage this boundary owns, which is
@@ -844,6 +1037,32 @@ void dc_beetle_clear_scheduler_model(void);
 // had never seen a reset.
 void dc_beetle_set_boundary_model(const dc_beetle_boundary_model* model);
 void dc_beetle_clear_boundary_model(void);
+
+// An idle model is the one registration on this boundary with no timing rule
+// at all. It takes nothing over, so there is nothing for a machine to find
+// missing: it may be installed or handed back at any instruction boundary,
+// before or after a ROM loads, and a machine that never reaches the address
+// it watches behaves as though it were not there.
+void dc_beetle_set_idle_model(const dc_beetle_idle_model* model);
+void dc_beetle_clear_idle_model(void);
+
+// A joypad port may be installed before or after a ROM loads. The boundary
+// remembers the machine's settings and every port assignment the emulator has
+// reported so far and replays them into whichever model is current, so an
+// install that happens after `PCEINPUT_Init` is not a model that missed it.
+//
+// Handing the port back mid-machine is the one thing that loses something: the
+// emulator's own devices have been receiving nothing while the model ran, so
+// their latched lines and button words are whatever they held at the install.
+// The next `INPUT_Frame` restores the buttons; the two lines are restored by
+// the next write, which on this machine is the pad reader's own strobe.
+void dc_beetle_set_pad_model(const dc_beetle_pad_model* model);
+void dc_beetle_clear_pad_model(void);
+void dc_beetle_set_pad_settings(
+    int multitap_enabled,
+    int disable_soft_reset,
+    int cd_attached);
+void dc_beetle_set_pad_port(unsigned port, int device_type);
 
 // The four machine edges an installed scheduler reaches back through, and the
 // reason they are edges rather than an object: the scheduler stops for two

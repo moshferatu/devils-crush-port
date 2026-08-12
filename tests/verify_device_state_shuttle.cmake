@@ -19,12 +19,19 @@ endif()
 # format is written through. On save the model's values are moved into the
 # dormant emulator object before it is serialized; on load they are read back
 # out of it afterwards, once the emulator's own repairs have run over them.
-# Four of them now: 128 KiB of video memory and register file for the
+# Five of them now: 128 KiB of video memory and register file for the
 # controller, the palette and schedule for the colour encoder, the seven
-# fields of the processor's timer and interrupt controller, and the two values
-# the instruction boundary latches. The last two have no dormant object of
-# their own -- the emulator keeps both as private fields of `HuC6280` -- so
+# fields of the processor's timer and interrupt controller, the two values
+# the instruction boundary latches, and the controller port's two lines, its
+# multitap counter and the four fields each of its five devices carry. Two of
+# the five have no dormant object of their own -- the emulator keeps the
+# interrupt controller and the boundary as private fields of `HuC6280` -- so
 # their shuttles write through the processor itself.
+#
+# The port's is the widest shuttle by section count and the narrowest by
+# bytes, and it is the one whose omission would be hardest to notice: a
+# restored machine holding the wrong multitap position answers the next read
+# from the wrong device, which is a single wrong byte in one frame's input.
 #
 # The clock and event scheduler is deliberately absent, and its absence is
 # what the pattern is measured against: it hands the processor its register
@@ -62,16 +69,24 @@ set(
     03:6966
 )
 #
-# Four arms. `emulated` hands the two video devices back and keeps the two
-# inside the processor; `emulated_irq` and `emulated_boundary` each hand back
-# one of those two. Between them every model's shuttle is exercised in some
-# arms and absent from another, which is what attributes a restored machine
-# that differs to the device whose shuttle lost it.
-set(shuttle_arms native emulated emulated_irq emulated_boundary)
+# Five arms. `emulated` hands the two video devices back and keeps the two
+# inside the processor; `emulated_irq`, `emulated_boundary` and
+# `emulated_pad` each hand back one model. Between them every model's shuttle
+# is exercised in some arms and absent from another, which is what attributes
+# a restored machine that differs to the device whose shuttle lost it.
+set(
+    shuttle_arms
+    native
+    emulated
+    emulated_irq
+    emulated_boundary
+    emulated_pad
+)
 set(arm_flags_native "")
 set(arm_flags_emulated "--emulated-vce;--emulated-vdc")
 set(arm_flags_emulated_irq "--emulated-irq")
 set(arm_flags_emulated_boundary "--emulated-boundary")
+set(arm_flags_emulated_pad "--emulated-pad")
 
 foreach(arm IN LISTS shuttle_arms)
     set(arm_flags "${arm_flags_${arm}}")

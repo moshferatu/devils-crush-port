@@ -246,6 +246,10 @@ struct CommandLine {
     // sixth seam and the first that is a rule rather than a device.
     bool emulated_boundary = false;
     bool report_boundary_coverage = false;
+    bool emulated_idle = false;
+    bool report_idle_coverage = false;
+    bool emulated_pad = false;
+    bool report_pad_coverage = false;
     // The interactive host deploys the registry by default so a session runs
     // the ported code; this opts back out to the emulated original.
     bool emulate_only = false;
@@ -776,6 +780,14 @@ parse_logical_address_range(const std::string_view text)
             options.emulated_boundary = true;
         } else if (argument == "--report-boundary-coverage") {
             options.report_boundary_coverage = true;
+        } else if (argument == "--emulated-idle") {
+            options.emulated_idle = true;
+        } else if (argument == "--report-idle-coverage") {
+            options.report_idle_coverage = true;
+        } else if (argument == "--emulated-pad") {
+            options.emulated_pad = true;
+        } else if (argument == "--report-pad-coverage") {
+            options.report_pad_coverage = true;
         } else if (argument == "--replace-registry") {
             options.replace_registry = true;
         } else if (argument == "--cabinet-overlay-stats") {
@@ -2861,7 +2873,9 @@ parse_logical_address_range(const std::string_view text)
                            && request.all_calls;
                        const bool proven_vblank_handler =
                            request.routine.physical_bank == 0x00U
-                           && (request.routine.logical_pc == 0xE0EBU
+                           && (request.routine.logical_pc == 0xE058U
+                               || request.routine.logical_pc == 0xE05FU
+                               || request.routine.logical_pc == 0xE0EBU
                                || request.routine.logical_pc == 0xE117U
                                || request.routine.logical_pc == 0xE123U
                                || request.routine.logical_pc == 0xE136U
@@ -3601,7 +3615,20 @@ void print_usage()
            "  instructions is a sixth, and is a rule rather than a device;\n"
            "  --emulated-boundary hands it back, and\n"
            "  --report-boundary-coverage prints what the route asked of\n"
-           "  it.\n\n"
+           "  it. The frame-sync spin at 00:E323 is advanced through rather\n"
+           "  than executed, which is a capability rather than a\n"
+           "  replacement: it takes no work away from the emulator and\n"
+           "  changes nothing but how long the same frame takes;\n"
+           "  --emulated-idle executes it a turn at a time again, and\n"
+           "  --report-idle-coverage prints how much of a route it\n"
+           "  covered.\n\n"
+        << "  The controller port is native by default, which is an\n"
+           "  ownership change rather than a port: the host's input reaches\n"
+           "  the machine directly instead of through the emulator's own\n"
+           "  input path, which answers nothing while the model is\n"
+           "  installed. --emulated-pad hands the port back, and\n"
+           "  --report-pad-coverage prints which of its paths a route\n"
+           "  drove.\n\n"
         << "Controls (defaults; see input.* in portable-data/cabinet.ini):\n"
         << "  Left Shift / Left    Left flipper (PCE d-pad left)\n"
         << "  Right / Right Shift  Right flipper (PCE d-pad right)\n"
@@ -6433,6 +6460,100 @@ void report_boundary_coverage(
               << coverage->reset_acknowledgements << " acknowledged\n";
 }
 
+void report_idle_coverage(
+    const devils_crush::emulation::PceRuntime& runtime)
+{
+    const auto coverage = runtime.native_idle_skip_coverage();
+    if (!coverage) {
+        std::cout << "The frame-sync spin was executed; no skipped "
+                     "iterations to report.\n";
+        return;
+    }
+
+    std::cout << "Frame-sync spin:\n"
+              << "  arrivals: " << coverage->arrivals << ", idle "
+              << coverage->idle << ", about to exit " << coverage->exits
+              << ", refused " << coverage->refusals << '\n'
+              << "  skips: " << coverage->skips << " covering "
+              << coverage->iterations << " iterations and "
+              << coverage->skipped_master_cycles
+              << " master cycles (longest " << coverage->longest_skip
+              << " iterations)\n"
+              << "  the machine waited here for "
+              << coverage->wait_master_cycles
+              << " master cycles in total\n";
+    if (coverage->skips != 0U) {
+        std::cout << "  iterations a skip covered on average: "
+                  << coverage->iterations / coverage->skips << '\n';
+    }
+    // A refusal is a fault rather than a variation: it says the four bytes
+    // this model describes were not at the address it was pointed at.
+    if (coverage->refusals != 0U) {
+        std::cout << "  the watched address did not hold the spin this "
+                     "model recognises\n";
+    }
+}
+
+void report_pad_coverage(
+    const devils_crush::emulation::PceRuntime& runtime)
+{
+    const auto coverage = runtime.native_pad_coverage();
+    if (!coverage) {
+        std::cout << "The emulator owned the controller port; no native "
+                     "paths to report.\n";
+        return;
+    }
+
+    std::cout << "Controller port:\n"
+              << "  port: " << coverage->reads << " reads, "
+              << coverage->writes << " writes, " << coverage->frames
+              << " frame latches (" << coverage->frame_starts
+              << " at a frame start), " << coverage->timestamp_rebases
+              << " rebases, " << coverage->transforms << " transforms, "
+              << coverage->powers << " resets\n"
+              << "  routing: " << coverage->multitap_reads
+              << " through the multitap, " << coverage->direct_reads
+              << " straight to the first port, "
+              << coverage->reads_past_the_last_port << " past the last "
+              << "device, " << coverage->absent_port_reads
+              << " of an empty port\n"
+              << "  halves: " << coverage->select_low_reads
+              << " with select low, " << coverage->select_high_reads
+              << " with select high, " << coverage->six_button_reads
+              << " of a six-button pad\n"
+              << "  input: " << coverage->reads_with_a_button_down
+              << " reads answered with a button held\n"
+              << "  strobe: " << coverage->counter_resets
+              << " counter resets, " << coverage->counter_increments
+              << " increments, " << coverage->counter_saturations
+              << " saturations, " << coverage->six_button_toggles
+              << " half-selector toggles\n"
+              << "  filtered: " << coverage->soft_resets_suppressed
+              << " soft resets, " << coverage->opposing_directions_filtered
+              << " opposing directions\n";
+
+    // A route exercises what the game asks the port for, which on a
+    // single-player two-button machine is a proper subset of the port. Saying
+    // which subset is the point of the counters above; these two are the ones
+    // whose absence is expected and whose presence would be news.
+    if (coverage->six_button_reads == 0U) {
+        std::cout << "  the six-button read path was never reached, which is "
+                     "a two-button pad\n";
+    }
+    // The port answered every read with nothing held. On a route that presses
+    // buttons that is not a quiet port, it is input that never arrived.
+    if (coverage->reads_with_a_button_down == 0U && coverage->reads != 0U) {
+        std::cout << "  no read answered with a button held\n";
+    }
+    // Unlike the rest, this one is a fault: a port carrying a device this
+    // model does not answer for has been answering as an empty port.
+    if (coverage->unmodelled_port_devices != 0U) {
+        std::cout << "  " << coverage->unmodelled_port_devices
+                  << " port(s) hold a device this model does not answer "
+                     "for\n";
+    }
+}
+
 [[nodiscard]] bool write_instruction_profile(
     const std::filesystem::path& path,
     const std::span<const devils_crush::emulation::InstructionProfileEntry>
@@ -6738,9 +6859,75 @@ constexpr std::array<RoutineKey, 0U> kWithheldRoutines{};
     return true;
 }
 
+// The share, against the denominator that can actually move.
+//
+// Measuring native cycles against the whole route measures them against a
+// denominator that is nearly half frame-sync wait, and no amount of porting
+// can move that part: the game is waiting for the raster, and there is no
+// work in the waiting to port. So the route's own figure is stuck near half
+// however much is ported, which makes it useless as a progress signal even
+// though it is perfectly true.
+//
+// Both are printed. The first is what the machine did; the second is what the
+// machine did while it had something to do, and it is the one to watch. The
+// wait is measured rather than assumed -- every turn of the loop, skipped or
+// executed, priced at the rate the processor was running -- so it is only
+// available when the fast-forward is installed to count it.
+void print_native_cycle_share(
+    const std::uint64_t native_cycles,
+    const std::uint64_t elapsed,
+    const devils_crush::emulation::PceRuntime& runtime)
+{
+    const auto share = [](const std::uint64_t part,
+                          const std::uint64_t whole) {
+        return whole == 0U
+            ? 0.0
+            : 100.0 * static_cast<double>(part) / static_cast<double>(whole);
+    };
+
+    std::cout << "Registry cycles: " << native_cycles << " native of "
+              << elapsed << " elapsed master cycles";
+    if (elapsed != 0U) {
+        std::cout << " (" << std::fixed << std::setprecision(2)
+                  << share(native_cycles, elapsed) << "%)"
+                  << std::defaultfloat;
+    }
+    std::cout << '\n';
+
+    const auto idle = runtime.native_idle_skip_coverage();
+    if (!idle || idle->wait_master_cycles == 0U
+        || idle->wait_master_cycles >= elapsed) {
+        std::cout << "Registry cycles outside the frame-sync wait: not "
+                     "measured; the wait is only counted while the "
+                     "fast-forward is installed\n";
+        return;
+    }
+
+    const std::uint64_t working = elapsed - idle->wait_master_cycles;
+    std::cout << "Registry cycles outside the frame-sync wait: "
+              << native_cycles << " native of " << working << " ("
+              << std::fixed << std::setprecision(2)
+              << share(native_cycles, working) << "%)" << std::defaultfloat
+              << "; the machine waited at 00:E323 for "
+              << idle->wait_master_cycles << " master cycles ("
+              << std::fixed << std::setprecision(2)
+              << share(idle->wait_master_cycles, elapsed) << "% of the route)"
+              << std::defaultfloat << '\n';
+
+    // The count that says how much the host actually interpreted, which is
+    // the other thing the cycle share cannot show: fast-forwarding the wait
+    // removes instructions without removing the cycles they would have taken.
+    const auto boundary = runtime.native_boundary_coverage();
+    if (boundary) {
+        std::cout << "Instructions interpreted: " << boundary->instructions
+                  << '\n';
+    }
+}
+
 void print_native_registry_summary(
     const NativeRegistryDeployment& deployment,
-    const ReplacementNesting nesting)
+    const ReplacementNesting nesting,
+    const devils_crush::emulation::PceRuntime& runtime)
 {
     const auto deployed = static_cast<std::size_t>(std::count_if(
         deployment.rows.begin(),
@@ -6780,16 +6967,8 @@ void print_native_registry_summary(
               << entered_routines << " entered\n"
               << "Registry calls: " << total_accepted << " native of "
               << total_entries << " entered (" << total_declined
-              << " declined at an interrupt horizon)\n"
-              << "Registry cycles: " << native_cycles << " native of "
-              << elapsed << " elapsed master cycles";
-    if (elapsed != 0U) {
-        std::cout << " (" << std::fixed << std::setprecision(2)
-                  << 100.0 * static_cast<double>(native_cycles)
-                      / static_cast<double>(elapsed)
-                  << "%)" << std::defaultfloat;
-    }
-    std::cout << '\n';
+              << " declined at an interrupt horizon)\n";
+    print_native_cycle_share(native_cycles, elapsed, runtime);
     // The cycle line above credits every call this process offered. An
     // overflow is a call the runtime then refused, so a nonzero count is the
     // one condition under which that line overstates the share.
@@ -8893,7 +9072,8 @@ int run_windows_host(
     if (native_registry != nullptr) {
         print_native_registry_summary(
             registry_deployment,
-            runtime.replacement_nesting());
+            runtime.replacement_nesting(),
+            runtime);
         if (!native_registry->native_cycle_census_path.empty()
             && !write_native_cycle_census(
                 native_registry->native_cycle_census_path,
@@ -11598,6 +11778,37 @@ int main(const int argc, char* argv[])
             return EXIT_FAILURE;
         }
 
+        // And this one has no such reason, which is what makes it the odd
+        // entry of the seven: it hands over no work, so there is nothing for
+        // a machine to find missing whenever it is installed. `00:E323` is
+        // the frame-sync wait -- the two instructions the profile measures at
+        // 45.2% of the census route -- and the model verifies the bytes are
+        // there before it claims anything about them.
+        //
+        // Installable at any point, alone among the seven, because it hands
+        // over nothing: it is put here only so that the reporting on exit
+        // reads in the same order as the installs above.
+        if (!options.emulated_idle
+            && !runtime->set_native_idle_skip(
+                devils_crush::cpu::HuC6280IdleSkip::Loop{
+                    .physical_bank = 0x00U,
+                    .logical_pc = 0xE323U,
+                })) {
+            std::cerr << "Could not install the frame-sync fast-forward.\n";
+            return EXIT_FAILURE;
+        }
+
+        // Before the ROM, and for a reason that is the machine's rather than
+        // the model's: the emulator reports what is plugged into each port
+        // exactly once, when it builds its devices at load. The boundary
+        // remembers those reports and replays them into whichever model is
+        // current, so a later install is not a model that missed them -- but
+        // installing here means it never has to be replayed.
+        if (!options.emulated_pad && !runtime->set_native_pad(true)) {
+            std::cerr << "Could not install the native controller port.\n";
+            return EXIT_FAILURE;
+        }
+
         const auto load_result = runtime->load_rom(options.rom_path);
         if (!load_result.loaded) {
             std::cerr << load_result.message << '\n';
@@ -12120,7 +12331,8 @@ int main(const int argc, char* argv[])
             if (options.replace_registry) {
                 print_native_registry_summary(
                     registry_deployment,
-                    runtime->replacement_nesting());
+                    runtime->replacement_nesting(),
+                    *runtime);
             }
             if (!options.native_cycle_census_path.empty()
                 && !write_native_cycle_census(
@@ -12197,6 +12409,12 @@ int main(const int argc, char* argv[])
             }
             if (options.report_boundary_coverage) {
                 report_boundary_coverage(*runtime);
+            }
+            if (options.report_idle_coverage) {
+                report_idle_coverage(*runtime);
+            }
+            if (options.report_pad_coverage) {
+                report_pad_coverage(*runtime);
             }
             if (!routine_replays.empty()) {
                 const int replay_result = verify_routine_replays(

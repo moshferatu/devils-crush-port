@@ -22,6 +22,19 @@ const dc_beetle_vce_model* dc_beetle_active_vce_model = nullptr;
 const dc_beetle_irq_model* dc_beetle_active_irq_model = nullptr;
 const dc_beetle_scheduler_model* dc_beetle_active_scheduler_model = nullptr;
 const dc_beetle_boundary_model* dc_beetle_active_boundary_model = nullptr;
+const dc_beetle_idle_model* dc_beetle_active_idle_model = nullptr;
+const dc_beetle_pad_model* dc_beetle_active_pad_model = nullptr;
+// What the emulator has told this boundary about its controller port. The
+// defaults are a machine that has loaded nothing: no multitap, no soft-reset
+// suppression, no CD unit, and nothing plugged into any of the five ports.
+static int dc_beetle_pad_multitap_enabled = 0;
+static int dc_beetle_pad_disable_soft_reset = 0;
+static int dc_beetle_pad_cd_attached = 0;
+static int dc_beetle_pad_port_devices[DC_BEETLE_PAD_PORT_COUNT] = {
+    DC_BEETLE_PAD_DEVICE_NONE, DC_BEETLE_PAD_DEVICE_NONE,
+    DC_BEETLE_PAD_DEVICE_NONE, DC_BEETLE_PAD_DEVICE_NONE,
+    DC_BEETLE_PAD_DEVICE_NONE
+};
 // Where the processor's clock lives when no model has taken it over. A
 // constant initializer rather than a constructor, so the pointer below is
 // valid before anything in this program has run: the processor reads through
@@ -225,6 +238,99 @@ void dc_beetle_set_boundary_model(const dc_beetle_boundary_model* const model)
 void dc_beetle_clear_boundary_model(void)
 {
     dc_beetle_active_boundary_model = nullptr;
+}
+
+// Simpler still, and for a different reason: this one takes nothing over. A
+// model without an `iteration_cycles` to ask has no question to answer, so it
+// is refused here rather than tested for once per instruction in the loop.
+void dc_beetle_set_idle_model(const dc_beetle_idle_model* const model)
+{
+    if (model == nullptr || model->iteration_cycles == nullptr) {
+        dc_beetle_clear_idle_model();
+        return;
+    }
+
+    dc_beetle_active_idle_model = model;
+}
+
+void dc_beetle_clear_idle_model(void)
+{
+    dc_beetle_active_idle_model = nullptr;
+}
+
+// The joypad port. Two pieces of configuration reach a model here rather than
+// being read by it: the machine's settings, and what the frontend plugged into
+// each port. Both are remembered, because the emulator reports each of them
+// exactly once -- at the load that builds its devices -- and a model installed
+// after that would otherwise be a model that had never been told.
+//
+// The remembered port assignments start as "nothing plugged in", which is the
+// state a machine that has loaded nothing is in.
+void dc_beetle_set_pad_model(const dc_beetle_pad_model* const model)
+{
+    dc_beetle_active_pad_model = model;
+
+    if (model == nullptr) {
+        return;
+    }
+
+    if (model->configure != nullptr) {
+        model->configure(
+            model->user_data,
+            dc_beetle_pad_multitap_enabled,
+            dc_beetle_pad_disable_soft_reset,
+            dc_beetle_pad_cd_attached);
+    }
+
+    if (model->configure_port != nullptr) {
+        for (unsigned port = 0; port < DC_BEETLE_PAD_PORT_COUNT; port++) {
+            model->configure_port(
+                model->user_data,
+                port,
+                dc_beetle_pad_port_devices[port]);
+        }
+    }
+}
+
+void dc_beetle_clear_pad_model(void)
+{
+    dc_beetle_active_pad_model = nullptr;
+}
+
+void dc_beetle_set_pad_settings(
+    const int multitap_enabled,
+    const int disable_soft_reset,
+    const int cd_attached)
+{
+    dc_beetle_pad_multitap_enabled = multitap_enabled;
+    dc_beetle_pad_disable_soft_reset = disable_soft_reset;
+    dc_beetle_pad_cd_attached = cd_attached;
+
+    if (dc_beetle_active_pad_model != nullptr
+        && dc_beetle_active_pad_model->configure != nullptr) {
+        dc_beetle_active_pad_model->configure(
+            dc_beetle_active_pad_model->user_data,
+            multitap_enabled,
+            disable_soft_reset,
+            cd_attached);
+    }
+}
+
+void dc_beetle_set_pad_port(const unsigned port, const int device_type)
+{
+    if (port >= DC_BEETLE_PAD_PORT_COUNT) {
+        return;
+    }
+
+    dc_beetle_pad_port_devices[port] = device_type;
+
+    if (dc_beetle_active_pad_model != nullptr
+        && dc_beetle_active_pad_model->configure_port != nullptr) {
+        dc_beetle_active_pad_model->configure_port(
+            dc_beetle_active_pad_model->user_data,
+            port,
+            device_type);
+    }
 }
 
 // The timer, as an installed scheduler reaches it. Each of these is the line

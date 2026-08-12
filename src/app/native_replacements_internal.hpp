@@ -1241,15 +1241,27 @@ replace_bank_call_wrappers(
     std::span<const std::byte> work_ram,
     std::span<const std::byte> rom);
 
-// The VDC interrupt handler's body. One walk shared by seven entry points: the
-// two arms 00:E058 dispatches to, the two addresses the VBlank arm's calls come
-// back to, the secondary handler's prologue and epilogue, and the pad reader at
-// 00:E195 that the VBlank arm calls. Every transcript stops in front of a call,
-// an RTS or an RTI the core executes itself. The dispatcher at 00:E058 is not
-// here: it decides on a byte read from the VDC status register, which no
-// replacement can see. The pad reader is the exception that proves the rule --
-// it reads a device too, but the joypad's answer is a function of the frame's
-// pad state, which the entry carries, so the walk can compute it.
+// The VDC interrupt handler. One walk shared by nine entry points: the
+// dispatcher's own two halves, the two arms it dispatches to, the two
+// addresses the VBlank arm's calls come back to, the secondary handler's
+// prologue and epilogue, and the pad reader at 00:E195 that the VBlank arm
+// calls. Every transcript stops in front of a call, an RTS, an RTI, another
+// entry in this family, or the one instruction here that cannot be
+// transcribed at all.
+//
+// That instruction is the dispatcher's LDA $0000. Not because the value is
+// unknowable -- the native VDC model answers a peek without disturbing
+// anything, and the entry could carry it the way it carries the frame's pad
+// state -- but because the read *is* the interrupt acknowledge: it clears
+// every latched status source and is the only way the VDC's interrupt line
+// falls. A replacement declares writes, and a write to $0000 selects a
+// register rather than acknowledging one, so there is no channel for the side
+// effect. The walk splits in front of it instead, and the core runs it.
+//
+// The pad reader is the other device read here, and it is portable for the
+// reason the status read is not: the joypad's answer is a function of the
+// frame's pad state, which the entry carries, and of latch lines the routine
+// drives itself.
 [[nodiscard]] std::optional<emulation::RoutineReplacement>
 replace_vblank_handler(
     const emulation::RoutineEntry& entry,

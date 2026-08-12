@@ -2005,6 +2005,30 @@ if(TARGET devils_crush)
             PROPERTIES LABELS rom_required
         )
 
+        # The eighth seam, and the first that is an ownership change rather
+        # than a port: the strobe protocol was already native, and what moves
+        # is where the input comes from. Two arms rather than four, because
+        # this model sits beside the others rather than under them -- and one
+        # check the other seams cannot make, that the host's input actually
+        # arrived, since the emulator's own input path is starved while the
+        # model is installed.
+        add_test(
+            NAME dc_rom_native_pad
+            CONFIGURATIONS Release
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/native-pad-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_native_pad.cmake"
+        )
+        set_tests_properties(
+            dc_rom_native_pad
+            PROPERTIES LABELS rom_required
+        )
+
         add_test(
             NAME dc_rom_device_state_shuttle
             CONFIGURATIONS Release

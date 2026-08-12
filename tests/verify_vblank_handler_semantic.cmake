@@ -10,16 +10,35 @@ if(NOT CONFIG STREQUAL "Release")
     message(FATAL_ERROR "Unsupported VBlank-handler configuration: ${CONFIG}")
 endif()
 
-# The VDC interrupt handler's body. 00:E058 takes the interrupt, reads the VDC
-# status register at $0000 into $01 and dispatches on it. That dispatcher is not
-# portable -- its whole decision comes from a device register a replacement
-# callback cannot read -- but nothing downstream of the read needs the device
-# again, so the bodies are.
+# The VDC interrupt handler. 00:E058 takes the interrupt, reads the VDC status
+# register at $0000 into $01 and dispatches on it.
 #
-# Seven entry points share one walk: the two arms the dispatcher jumps to, the
-# two addresses the VBlank arm's calls come back to, the secondary handler's
-# prologue and epilogue, and the pad reader one of those calls goes to.
+# Exactly one instruction of that is unportable, and the whole dispatcher was
+# recorded as blocked on its account for four slices. `LDA $0000` cannot be
+# transcribed because the read *is* the interrupt acknowledge -- it clears every
+# latched status source and is the only way the VDC's interrupt line falls --
+# and the replacement contract is a write channel, so a transcript that
+# predicted the byte and skipped the read would hand the core back an interrupt
+# that had never been taken. That is a stronger reason than the one recorded
+# before, which was that a callback cannot see a device register: the entry
+# could have carried a peek, the way it already carries the frame's pad state,
+# and it still would not have helped.
 #
+# The routine was the wrong unit. The four register saves above the read touch
+# nothing but the stack page, and below the read the byte the dispatcher
+# branches on is in the accumulator, so the device is never needed again. The
+# head walks to the read and stops; the core executes it, at the right cycle,
+# with its acknowledge; the tail picks the arm up from the accumulator.
+#
+# Nine entry points share one walk: the dispatcher's two halves, the two arms it
+# hands off to, the two addresses the VBlank arm's calls come back to, the
+# secondary handler's prologue and epilogue, and the pad reader one of those
+# calls goes to.
+#
+#   00:E058  the dispatcher's head: push P, A, X and Y and stop in front of the
+#            LDA $0000 that only the core can run
+#   00:E05F  its tail: stash the status byte at $01, test the VBlank bit and
+#            pick the arm from the raster mode at $54
 #   00:E0EB  VBlank prologue: program VDC registers $08/$07/$05 from the RAM
 #            shadows, then stop at the JSR $EB30
 #   00:E117  after the pad read: bump the frame counter at $00 and either take
@@ -32,7 +51,8 @@ endif()
 #   00:E195  the pad reader: poll all five ports and publish the held state at
 #            $2013,Y, the previous frame's at $200E,Y and the edges at $2018,Y
 #
-# All seven are admitted on every call.
+# All nine are admitted on every call. The dispatcher's two halves take 7,198
+# entries each, one per interrupt: 3,599 VBlank and 3,599 raster.
 #
 # `00:E195` is the one routine in the port that reads a device rather than only
 # writing one, and it was left out for four slices on the rule that a
@@ -92,6 +112,10 @@ execute_process(
         --record-state-census
         "${OUTPUT}"
         --replace-hook
+        "00:E058@all"
+        --replace-hook
+        "00:E05F@all"
+        --replace-hook
         "00:E0EB@all"
         --replace-hook
         "00:E117@all"
@@ -139,6 +163,8 @@ endif()
 
 foreach(expected_line IN ITEMS
     "State census recording complete: 3600 frames"
+    "Native replacement 00:E058@all entries: 7198 of 7198"
+    "Native replacement 00:E05F@all entries: 7198 of 7198"
     "Native replacement 00:E0EB@all entries: 2748 of 2748"
     "Native replacement 00:E117@all entries: 3599 of 3599"
     "Native replacement 00:E123@all entries: 3212 of 3212"
@@ -182,8 +208,8 @@ endforeach()
 
 message(
     STATUS
-    "Semantic VDC interrupt handler runs all seven entry points natively across "
-    "17,531 admitted entries as instruction-boundary transcripts, with the "
+    "Semantic VDC interrupt handler runs all nine entry points natively across "
+    "31,927 admitted entries as instruction-boundary transcripts, with the "
     "frame counter, the raster tick, the zero-page shadows, the whole stack "
     "page, the five pads' held and newly-pressed state, every VDC register "
     "write, every joypad latch write and the state census identical to "

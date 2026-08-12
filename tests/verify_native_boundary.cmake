@@ -147,8 +147,17 @@ if(NOT native_output MATCHES "Instruction boundary paths:")
 endif()
 
 # A route's worth of instructions. Both counters run once per instruction, so
-# a hundred million is not a threshold a model that was installed but rarely
+# sixty million is not a threshold a model that was installed but rarely
 # reached could pass.
+#
+# The floor was a hundred million until the frame-sync spin stopped being
+# executed. The machine now advances through `00:E323` instead of running it a
+# turn at a time, so the route makes 66,577,225 decisions where it used to make
+# 108,732,259 -- a difference of 42,155,034, which is exactly two instructions
+# for each of the 21,077,517 iterations skipped. Nothing else about this
+# boundary moved: the vector counts below, the latched and masked sample
+# counts, and the declined decisions are all identical either way, and so is
+# the census hash. Passing `--emulated-idle` restores the old numbers.
 string(
     REGEX MATCH
     "  decisions: ([0-9]+), instruction ([0-9]+) \\(([0-9]+) woken"
@@ -165,7 +174,7 @@ if(NOT coverage_decisions)
         "in the expected form.\n${native_output}"
     )
 endif()
-if(CMAKE_MATCH_1 LESS 100000000)
+if(CMAKE_MATCH_1 LESS 60000000)
     message(
         FATAL_ERROR
         "The native boundary made only ${CMAKE_MATCH_1} decisions, which is "

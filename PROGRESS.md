@@ -1,6 +1,6 @@
 # Project Progress
 
-Last updated: 2026-08-11
+Last updated: 2026-08-12
 
 ## Current Status
 
@@ -5441,11 +5441,280 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
     census hash `7de49230f4654595da7eb268945929c9cbceabcadb03de21cddd376dc285d1ac`.
     The live acknowledgement, wall-clear animation, and bonus routing stay
     assembly-backed.
+- [x] Report the native share against a denominator that can move.
+  `--replace-registry` now prints two figures. The route's own share is
+  **51.92%** and is nearly useless as a progress signal: its denominator is
+  45% frame-sync wait, which no amount of porting can move, so it stays near
+  half however much goes native. The second divides by the cycles in which the
+  machine had something to do -- **670,996,452 native of 710,482,755
+  (94.44%)** -- which is the figure this project has been quoting informally
+  as "outside the idle spin loop" (94.8%, worked out by hand), now measured by
+  the machine: every turn of the loop, skipped or executed, priced at the rate
+  the processor was running, for 581,888,976 master cycles or 45.02% of the
+  route. A third line prints instructions interpreted, because neither cycle
+  share can show what the fast-forward actually removed: 66,315,525 against
+  108,470,069, with both shares unchanged to the byte. The
+  `00:E2B7`-`E39C` inventory row is now marked as waiting rather than work,
+  since it is the one row that can never drop out of that table.
+- [x] Make the validation cadence usable per slice. The ROM regressions were
+  running serially on a 48-core machine: the Release suite took 3,213 seconds
+  against 3,199 sec*proc, a parallelism of exactly one. The test presets now
+  ask for 24 jobs, which takes the full Release suite to **147 seconds** and
+  the Debug sweep from three and a half hours to twenty-five minutes. Nothing
+  needed serialising -- no `RUN_SERIAL`, no resource locks, and every
+  `-DOUTPUT` path already distinct. The Debug ROM sweep is now exceptional
+  rather than a checkpoint step, because the ROM-free Debug tests carry what a
+  Debug build catches that Release cannot and cost 0.7 seconds, while a Debug
+  ROM route adds only cross-configuration artifact equality. The cases that
+  still require one are in `docs/NATIVE_PORT_WORKFLOW.md`, and `PLAN.md`'s
+  acceptance cadence was updated to match.
+- [x] Fast-forward the frame-sync spin at `00:E323`:
+  - [x] Add the fork's idle-model seam (patch `0018`), the native predicate
+    `devils_crush::cpu::HuC6280IdleSkip`, the `set_native_idle_skip` runtime
+    boundary, and the enumerated ROM-free regression.
+  - [x] Prove the predicate on the route: 3,171,424 arrivals, zero refusals,
+    the exact 3,567 waits, and 21,077,517 of 24,248,940 iterations skipped.
+  - [x] Reproduce the census both ways. Installed and handed back, the route
+    gives
+    `9036a9de0c3c9917f47bff8c04c136a4824ec12601fb457d260aa2dfe4443490`.
+  - [x] Find the second half of the bound. A request the mask already admits
+    is not yet latched, so the decision at the top of the instruction loop
+    cannot see it; the next instruction's sample would catch it and the
+    boundary after that would take the vector, so a skip delivered one
+    interrupt a turn late. `(IRQlow & IRQMask) != 0` declines the skip and
+    costs 1,452 iterations out of 21 million. Eliminated on the way: advance
+    granularity and the omitted samples (an exact per-iteration replay
+    diverges identically), and slack before the horizon.
+- [x] Take ownership of the controller port:
+  - [x] Add the fork's joypad seam (patch `0019`), the native device
+    `devils_crush::input::PcePad`, the `set_native_pad` runtime boundary, the
+    ROM-free regression, and `dc_rom_native_pad`.
+  - [x] Make the ownership testable rather than nominal: with a model
+    installed the libretro input callback answers zero, so the emulator's
+    input path is starved rather than bypassed.
+  - [x] Reproduce the census both ways, installed and handed back:
+    `9036a9de0c3c9917f47bff8c04c136a4824ec12601fb457d260aa2dfe4443490`.
+  - [x] Prove the match is not a coincidence. Feeding the model nothing gives
+    `24b1614fc5582a7d9fcc1d58841bf9f30766e365a0e2a9548fd27cd0f1832f5d`, a
+    route where the game never starts.
+  - [x] Carry the port's savestate through the shuttle, and add the
+    `emulated_pad` arm to `dc_rom_device_state_shuttle`.
+- [x] Fix a Debug-only `dc_vce_device` failure found on the way, and unrelated
+  to the port. `VCE::FrameDone` is written by `StartFrame` and `RunPartial`
+  and by nothing else -- neither the constructor nor `Reset` touches it -- so
+  before the first `StartFrame` the emulator's flag is whatever its allocation
+  held. Release reads zero from a fresh page and agrees by accident; Debug
+  reads the CRT's fill pattern and does not. The machine is not disagreeing:
+  nothing reads the flag before `StartFrame`, because `Emulate` calls it
+  first. The test was over-specifying, and now compares that field only once a
+  frame has started.
+- [x] Re-open `00:E058` and record the answer:
+  - [x] Survey it. The rule that parked it -- "a routine that reads a device
+    register cannot be a transcript until that device has a native model" --
+    was wrong twice. The value stopped being an obstacle when `PceVdc::read`
+    gained its `peek` flag; what actually blocks the instruction is that the
+    read *is* the interrupt acknowledge, and the replacement contract is a
+    write channel with no way to express that side effect.
+  - [x] Act on the corollary: the block is an instruction, not the routine.
+    Split the walk in front of `LDA $0000`, add `00:E058` (the four register
+    saves) and `00:E05F` (the dispatch, off a byte already in the accumulator)
+    to the shared handler walk, and let the core keep the read.
+  - [x] Admit both on every arrival: 7,198 of 7,198 each, **640,374 master
+    cycles**, leaving 129,564 for the instruction itself. Deployed registry
+    366 -> 368 routines and 670,996,452 -> 671,636,826 native cycles.
+  - [x] Verify against assembly, not just against the end state. The census
+    stays `9036a9de...` and so do the work-RAM and bus write traces, which
+    cover the whole stack page -- so the four pushes are pinned in value,
+    order and master-cycle offset, not merely in their result.
+  - [x] Stop the shared walk at another entry in its own family, so the
+    dispatcher's tail hands `00:E136` and `00:E0EB` over as their own
+    transactions instead of emptying their registry rows.
 
 ## Active Work
 
-Current owner: Claude. Current slice: **the parts of the sound chip the game
-never plays**. The census proved the PSG device model on everything Devil's
+Current owner: Claude. Current slice: **asking whether `00:E058` is still
+blocked**. Done: the answer is no, for a reason nobody had written down, and
+both sides of the one instruction that *is* blocked are now native.
+
+The survey `### Next` asked for was whether the VDC gaining a native model
+lifted the rule that parked the interrupt dispatcher. It did not — and the
+rule was never the binding constraint. Two separate things had been rolled
+into one sentence:
+
+- **The value.** `PceVdc::read` already takes a `peek` flag that answers
+  without disturbing anything, so the status byte could have been handed over
+  on `RoutineEntry` exactly the way the frame's pad state is. This half did
+  dissolve when the model landed, four slices ago, and nobody noticed.
+- **The side effect.** Reading `$0000` clears every latched status source and
+  is the only way the VDC's interrupt line falls. The replacement contract is
+  a **write** channel; a write to `$0000` selects a register rather than
+  acknowledging one. A transcript that predicted the byte and skipped the read
+  would hand the core back an interrupt that had never been taken, and the
+  handler would be re-entered immediately. This half does not lift, and it is
+  the real answer.
+
+**And it is a fact about one instruction, which the row had recorded as a
+routine.** `LDA $0000` is one of nineteen instructions in the dispatcher, and
+769,938 master cycles sat on the blocked list on its account. Above it are four
+register saves that touch only the stack page; below it the byte the dispatcher
+branches on is already in the accumulator, put there by a load the core
+performed itself, so the device is never wanted again. `00:E058` walks to the
+read and stops; the core executes it, at its own cycle, with its acknowledge
+intact; `00:E05F` picks the dispatch up and hands off to whichever arm `$54`
+selects.
+
+Both are admitted on all 7,198 arrivals — 3,599 VBlank and 3,599 raster —
+for **640,374 master cycles**, leaving 129,564 for the instruction itself.
+The deployed registry moves from 366 routines and 670,996,452 native cycles to
+368 and 671,636,826: 51.97% of the route, **94.53% of it outside the
+frame-sync wait**. The state census is `9036a9de...` unchanged, and so are the
+work-RAM and bus write traces — which is the stronger check, because the whole
+stack page is in that trace and the four pushes now come from a transcript, so
+their values, order and master-cycle offsets are pinned against assembly rather
+than merely their end state.
+
+**This needed no new capability, and that is the part worth keeping.** The
+execution and replacement hooks fire in `RunSub` at every instruction boundary,
+before the opcode fetch, so any ROM address is a legal entry point. `00:E05F`
+is not a jump target and nothing in the game ever branches to it. That freedom
+has been there since patch `0001`; what was missing was the question.
+
+One small change to the shared walk: it now also stops when it reaches another
+entry point in its own family, so the dispatcher's tail hands `00:E136` and
+`00:E0EB` over as their own transactions instead of swallowing them and
+emptying their rows in the registry census.
+
+Modes 1, 2 and 5 of `$54` dispatch to `00:E0D0`, `00:E09E` and `00:E085`, which
+this walk does not cover, so those branch targets decline the whole transaction
+and stay emulated. None occurs on the census route: of the 3,599 VBlank
+entries, 2,748 are mode 0 and 851 are mode 3.
+
+### Previous: taking ownership of the controller port
+
+The eighth entry on the fork boundary, and the census reproduces exactly either
+way.
+
+Patch `0019` adds the eighth entry on the fork boundary and the sixth device
+model, but it is a different kind of slice from the five device models before
+it: **nothing computed moved.** The strobe protocol this port speaks has been
+native since phase 1, inside the cartridge's own pad reader at `00:E195`. What
+it read *through* was still the emulator's chain — a frontend button buffer,
+five `PCE_Input_Device` objects, a multitap counter — and that chain is what
+this replaces. `devils_crush::input::PcePad` is two strobe lines, a read
+counter and five devices; the host hands it an `InputFrame` and it holds it
+until the machine's own `INPUT_Frame` latch, so *when* a device sees a press
+is still the machine's decision.
+
+**The acceptance is stronger than a matching census, and that is the point of
+the slice.** For the sound and video models a silent fallback would have
+produced the same census as the model, which is why those tests had to prove
+the model was the default arm. Here the host starves the alternative: while a
+pad model is installed the libretro input callback answers zero for every
+query, so the emulator's own path is dead rather than merely bypassed. The
+route reproduces `9036a9de...` anyway. Feeding the model nothing instead — the
+same binary, one line changed — gives `24b1614f...`, a route where the game
+never starts, which is what makes the match evidence rather than a
+coincidence. The model also counts the thing directly: **540 of its 35,991
+reads answered with a button held.**
+
+What the route drives and what it does not is measured on the PSG's pattern.
+Every read went through the multitap and none straight to the first port;
+17,996 answered the button half and 17,995 the direction half; the counter was
+reset 3,599 times and stepped 17,995; the half-selector toggled 17,995 times
+and the six-button read path it selects ran **zero** times, because a
+two-button host never sets the bit that reaches it. Neither filter removed
+anything. The port is latched twice per frame — the emulator's frame loop runs
+`INPUT_Frame` again after each mid-frame resynchronisation, which on this
+machine is once — and reset twice in the route.
+
+One asymmetry worth stating, because it is the first seam with it. Five ports
+exist and two carry a host player, so three of them are permanently empty and
+the model answers for them as an empty port rather than pretending they are
+not there. A port carrying a mouse or the Tsushin keyboard would be answered
+the same way, which would be *wrong* — so `configure_port` counts those as
+unmodelled, `--report-pad-coverage` prints the count, and `dc_rom_native_pad`
+fails on a nonzero one. The model does not model those devices and says so
+rather than quietly standing in for them.
+
+### Previous: fast-forwarding the frame-sync spin
+
+Patch `0018` adds the seventh entry on the fork boundary and the first that is
+a **capability** rather than a replacement: it takes no work away from the
+emulator and computes nothing on its behalf. With no model registered the
+machine is the machine it was, and the census reproduces `9036a9de...` to
+prove it.
+
+The split is the design. *Whether `00:E323` is a spin that changes nothing* is
+a claim about a cartridge and lives in `devils_crush::cpu::HuC6280IdleSkip`.
+*How far the machine may be advanced while nothing executes* is a claim about
+the machine and lives in the fork.
+
+The predicate verifies rather than believes. It reads the four bytes at the
+watched address every time it is asked — `C5 zz` / `F0 FC`, a compare against
+zero page and a branch that lands back on it — takes the zero-page address out
+of the verified operand instead of being told it, and answers "idle" only
+while the accumulator equals what that operand names. A wrong address, a bank
+switch, or a ROM differing by one byte answers "not idle" and executes.
+
+Over the census route it refuses **nothing** across 3,171,424 arrivals,
+recognises exactly the **3,567** waits the survey counted, and skips
+**21,077,517 of 24,248,940** iterations — 86.9%, nine per skip and 41 at most.
+The route reproduces `9036a9de...` with the capability installed and with
+`--emulated-idle` handing it back. Debug reproduces the same census and the
+same coverage to the unit -- 3,171,424 arrivals, 21,077,517 iterations, 41 at
+most -- so the skip is not a build-specific quantity.
+
+The instruction boundary's own coverage is the sharpest evidence that nothing
+but time was removed. Every counter describing what the boundary *decided* is
+identical either way -- 1 reset, 254,990 timer vectors, 63,135 of them on a
+line the latch did not hold, 7,198 IRQ1, 199,168 samples that latched a line,
+7,213,928 behind the I flag, 2,008,130 woken and declined. Only the raw
+per-instruction totals move, and by exactly the right amount: 108,732,259
+decisions become 66,577,225, a difference of 42,155,034, which is two
+instructions for each of the 21,077,517 skipped iterations and not one more.
+`verify_native_boundary.cmake` therefore floors its "a route's worth of
+instructions" check at sixty million rather than a hundred.
+
+**The bound has two halves and only the first was obvious.** The horizon is
+the first: advance whole iterations that end *strictly before* the scheduler's
+near horizon, never up to it, so the crossing is left to a real instruction
+and the placement of an event relative to an instruction boundary stays the
+machine's decision.
+
+The second cost a census to find. **Nothing may be standing either.** A
+request the mask already admits has not been *latched* yet; the decision at
+the top of the instruction loop reads the latch, so it answers "next
+instruction" and the spin looks idle — but the next instruction's own
+end-of-cycle sample would catch that request, and the boundary after it would
+take the vector. A skip spans both boundaries and delivers the interrupt a
+turn late, which is exactly what the first working version did: inside one
+`00:E321` call the ordered writes stayed identical in sequence, value and
+instruction address, and the interrupt entry landed 24 master cycles late.
+`(IRQlow & IRQMask) != 0` is the whole fix, and it costs 1,452 skipped
+iterations out of 21 million.
+
+Two explanations were eliminated first, and both are worth keeping because
+both pointed at the wrong mechanism. Granularity and the omitted
+end-of-instruction samples: replacing the single advance with a per-iteration
+replay of the exact `ADDCYC(3)`/sample/`ADDCYC(1)` pairs produces a
+byte-identical census to the coarse skip, diverging the same way. And
+proximity to the horizon: a whole iteration of slack diverges too,
+differently. Both read as exonerating the sampling, and they do — the fault
+was in the *deciding*. `LastCycle` latches once per instruction, but
+`DcSelectInterrupt` runs once per pass of the instruction loop, and a skip
+spans as many of those passes as it covers. A replay reproducing every sample
+and every cycle still reproduces no decisions, which is why the fine and
+coarse versions failed identically: a result that reads as exoneration and is
+really a fingerprint.
+
+One methodological note, since it wasted a cycle. Counting skips after which
+`next_event` had gone non-positive returns zero, but that test cannot fail:
+`reach_horizon` recalculates the horizon to a fresh positive value before the
+advance returns, so a crossing is invisible to any test made after it.
+
+### Previous: the parts of the sound chip the game never plays
+
+The census proved the PSG device model on everything Devil's
 Crush asks the chip to do, which is most of the chip and not all of it. The
 model now counts its own paths, so `--report-psg-coverage` says exactly how
 much: over the census route the waveform path emits 7,048,794 times and the
@@ -5496,41 +5765,38 @@ does not.
 
 ### Next
 
-**Fast-forward the spin loop.** The measurements below settled both of the
-questions this was waiting on, and they changed the plan: there is no seventh
-seam to build, and the one structural item phase 3 has left is a capability
-rather than a device.
+**Ask the same question of the palette-shadow row.** `00:E93C`–`EBD6` is
+1,079,359 cycles recorded as blocked, and it was parked by the same sentence
+`00:E058` was — so it deserves the same re-reading, in the new terms. Now that
+the block is understood to be an instruction rather than a routine, the survey
+is concrete: disassemble the two fade drivers and the whole-palette `TIA` arm,
+find every load on the hardware page, and for each one ask which of the three
+kinds it is — outside input, device state the entry could carry as a peek, or a
+read that *changes* the device. Only the third is a wall, and only at that one
+instruction. `00:EAA7` will still be out of reach for a different and honest
+reason (205,012 cycles per call, past the checkpoint cap) and both fade drivers
+call the frame-sync spin at `00:E321`, so expect the answer to be partial; the
+point is to record which instruction blocks what, instead of a routine name.
 
-At `00:E323` with `$00 == $4B`, the machine is provably idle -- the loop reads
-one byte and writes nothing, and across every wait on the census route that
-byte was written by exactly one instruction, the `INC $00` in the VBlank body.
-Proving that for *any* route rather than this one is part of the slice, since
-an indexed store could reach `$00` from anywhere. So the clock can be
-advanced by whole 24-cycle iterations to the scheduler's next horizon instead
-of executing them, and the horizon is an hblank or a vblank: a few hundred a
-frame against 6,798 iterations. The prize is 45.2% of the route.
+Worth sweeping the same way afterwards: the other rows still labelled
+"blocked", to see how many of them are a whole routine and how many are one
+load with ordinary code either side.
 
-Three things to get right. **The phase.** Both instructions cost 24 master
-cycles between them, so a fast-forward has to leave the processor about to
-execute the same one of the two it would have been about to execute; landing
-on the wrong one shifts everything after by 12 cycles and the census will say
-so. **The predicate.** "This loop is idle" is a claim about the game and
-belongs in native code; "advance to the horizon" is a claim about the machine
-and belongs in the fork. **And where it hooks.** A routine replacement cannot
-express this -- a transcript declares its cost when it is offered, and this
-one's cost depends on where the next VBlank IRQ lands.
+**Then the frame loop, by subtraction.** With the port gone, `Emulate()` on
+this machine is a rebase protocol over models that are already native plus one
+thing that is deliberately still the emulator's: the sound output chain
+(`OwlBuffer::Integrate`, `HRRes->Resample`), which is the resampling decision
+under *Open questions* and stays until phase 4 so `audio_sha256` remains a
+live oracle. What is left to do is subtract rather than seam.
 
-Then the pad -- but as ownership rather than as a port. `00:E195` already
-models the strobe protocol natively; what `INPUT_Frame` and `INPUT_AdjustTS`
-still do is drive the emulator's `PCE_Input_Device` objects, and the step
-phase 2's joypad entry has been waiting on is reading the host's input
-directly instead of through the core's `current_input_`.
-
-Two smaller things carried forward and still undone. The timer interrupt
+Three smaller things carried forward and still undone. The timer interrupt
 horizon is never queried by a census route -- it exists for native routine
 transcripts -- so `dc_rom_native_irq` cannot fail for it; the replacement
-tests drive it, but nothing prints what they drove. And
-`dc_beetle_vce_cd_event` has still never come due.
+tests drive it, but nothing prints what they drove. `dc_beetle_vce_cd_event`
+has still never come due. And the controller port has three paths no route can
+reach -- the six-button pad, the mouse and the Tsushin keyboard -- of which
+the model answers only the first; the other two are counted as unmodelled
+rather than answered, which is honest but is not the same as covered.
 
 ### Previous: the frame boundary, read rather than built
 

@@ -1,0 +1,101 @@
+diff --git a/mednafen/pce/huc6280.cpp b/mednafen/pce/huc6280.cpp
+--- a/mednafen/pce/huc6280.cpp
++++ b/mednafen/pce/huc6280.cpp
+@@ -959,6 +959,97 @@ NO_INLINE void HuC6280::RunSub(void)
+ 		HookInstructionPC = (uint16)PC;
+ 		HookInstructionPhysicalBank = MPR[(PC >> 13) & 0x7];
+ 
++		// Devil's Crush downstream capability, and the only entry on this
++		// boundary that takes no work away from the emulator. It exists for
++		// the one thing a routine replacement structurally cannot express: a
++		// scope whose cost is not known when it is offered, because it ends
++		// when the raster says so.
++		//
++		// The split runs down the middle of the decision. *Whether this
++		// address is a spin that changes nothing* is a claim about a
++		// cartridge and is asked below. *How far the machine may be advanced
++		// while nothing executes* is a claim about the machine, and the
++		// answer is the same for every spin there could ever be: whole
++		// iterations that end strictly before the near horizon.
++		//
++		// That bound is what makes this exact rather than approximate.
++		// Nothing can raise an interrupt line before the near horizon --  it
++		// is by construction the nearer of the timer's next tick and the user
++		// event's next call -- and nothing can store to memory while no
++		// instruction is running, so the end-of-instruction latches the
++		// skipped instructions would each have taken all latch what the last
++		// real one already latched. Stopping strictly before the horizon
++		// leaves the crossing itself to a real instruction, so where an event
++		// falls relative to an instruction boundary is still decided by the
++		// machine and not by this. Nothing observable survives the skip
++		// except the clock, which is the point of it.
++		if(MDFN_UNLIKELY(dc_beetle_active_idle_model != NULL)
++			&& (uint16)PC == dc_beetle_active_idle_model->watch_logical_pc
++			&& HookInstructionPhysicalBank
++				== dc_beetle_active_idle_model->watch_physical_bank)
++		{
++			// This processor's zero page is at logical $2000 rather than
++			// at zero, which is where `GetZP` builds every zero-page
++			// effective address from.
++			const uintptr_t code_page = FastPageR[PC >> 13];
++			const uintptr_t zero_page = FastPageR[0x2000 >> 13];
++			const dc_beetle_idle_state idle_state =
++			{
++				(uint16)PC,
++				HookInstructionPhysicalBank,
++				A,
++				X,
++				Y,
++				P,
++				code_page ? (const uint8*)(code_page + PC) : NULL,
++				code_page ? (uint32)(8192 - (PC & 0x1FFF)) : 0,
++				zero_page ? (const uint8*)(zero_page + 0x2000) : NULL
++			};
++			const int32 cycles =
++				dc_beetle_active_idle_model->iteration_cycles(
++					dc_beetle_active_idle_model->user_data,
++					&idle_state);
++
++			if(cycles > 0)
++			{
++				// The most the clock can move for one iteration. An
++				// overclock divider only ever moves it less, so a bound
++				// computed at the undivided rate is a bound at every rate.
++				const int32 master = (cycles * 3) << DcSched().speed_shift;
++				// A request the mask already admits is one that the *next*
++				// instruction's own end-of-cycle latch would catch, and the
++				// boundary after that one would take the vector. The
++				// decision at the top of this loop cannot see it: that reads
++				// the latch, and this has not been latched yet.
++				//
++				// So a machine with a request already standing is not idle.
++				// It is one instruction away from an interrupt, and skipping
++				// even a single turn would deliver that interrupt a turn
++				// late. This is one half of the bound and the horizon is the
++				// other; they answer different questions. The horizon says
++				// nothing can happen before it. This says nothing has
++				// happened already.
++				const int32 iterations = ((IRQlow & IRQMask) != 0)
++					? 0
++					: (DcSched().next_event - 1) / master;
++
++				if(iterations > 0)
++					ADDCYC(cycles * iterations);
++
++				// Told on every idle answer rather than only on a skip. The
++				// turn the instruction below is about to run is part of the
++				// wait as much as the turns skipped over it, and this is the
++				// only place that knows what a turn costs at the rate the
++				// processor is currently running.
++				if(dc_beetle_active_idle_model->advanced != NULL)
++					dc_beetle_active_idle_model->advanced(
++						dc_beetle_active_idle_model->user_data,
++						iterations > 0 ? iterations : 0,
++						iterations > 0 ? master * iterations : 0,
++						master);
++			}
++		}
++
+ 		lastop = RdOp(PC);
+ 
+ 		if(MDFN_UNLIKELY(dc_beetle_active_instruction_hook != NULL))

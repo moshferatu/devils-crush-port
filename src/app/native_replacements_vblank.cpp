@@ -14,16 +14,39 @@ using emulation::RoutineEntry;
 using emulation::RoutineKey;
 using emulation::RoutineReplacement;
 
-// The VDC interrupt handler's body. 00:E058 takes the interrupt, reads the VDC
-// status register at $0000 into $01 and dispatches on it: the VBlank bit sends
-// it to 00:E0EB, everything else to 00:E136. That dispatcher is not portable --
-// its whole decision comes from a device register a replacement callback cannot
-// read -- but nothing downstream of the read needs the device again, so the
-// bodies are.
+// The VDC interrupt handler. 00:E058 takes the interrupt, reads the VDC status
+// register at $0000 into $01 and dispatches on it: the VBlank bit sends it to
+// 00:E0EB, everything else to 00:E136.
 //
-// Six entry points share one walk. Two are the dispatcher's jump targets and
-// four are the addresses control comes back to, because the handler's work is
-// interleaved with calls the core keeps:
+// One instruction of that is unportable, and for four slices the whole
+// dispatcher was recorded as blocked on its account. `LDA $0000` cannot be
+// transcribed for two reasons that are worth keeping apart. The value is
+// device state a replacement callback cannot see -- that is the reason usually
+// given, and it is the weaker one, because the entry could carry a peek the
+// way it carries the frame's pad state. The reason that does not lift is that
+// the read is the acknowledge: it clears every latched status source and is
+// the only way the VDC's interrupt line falls. The replacement contract is a
+// write channel, and a write to $0000 selects a register rather than
+// acknowledging one, so a transcript that predicted the byte and skipped the
+// read would hand the core back an interrupt that had never been taken.
+//
+// The routine was the wrong unit. The instruction is unportable; the routine
+// is not. The four register saves above the read touch nothing but the stack
+// page, and below it the dispatcher never needs the device again, because the
+// byte it branches on is in the accumulator by then. So the head walks to the
+// read and stops, the core executes it -- at the right cycle, with its
+// acknowledge -- and the tail picks the arm up from the accumulator.
+//
+// Nine entry points share one walk: the dispatcher's own two halves, the two
+// arms it hands off to, the two addresses the VBlank arm's calls come back to,
+// the secondary handler's prologue and epilogue, and the pad reader at
+// 00:E195 described further down. The handler's work is interleaved with calls
+// the core keeps, which is why there are so many:
+//
+//   00:E058  the dispatcher's head: push P, A, X and Y, then stop in front of
+//            the LDA $0000
+//   00:E05F  its tail: stash the status byte at $01, test the VBlank bit and
+//            pick the arm from the raster mode at $54
 //
 //   00:E0EB  VBlank prologue: program VDC registers $08/$07/$05 from the RAM
 //            shadows and clear bit 6 of $02, then stop at the JSR $EB30
@@ -51,8 +74,9 @@ using emulation::RoutineReplacement;
 // and 45:47EE, 376 executions between them -- so the music tick below the
 // wrapper at 00:ECC6 hands the handler back with interrupts enabled. Counting
 // interrupt entries in an assembly write trace of the stack page puts 78 of
-// them inside these six walks, every one at or after 00:E123 and none before a
-// JSR $ECC6.
+// them inside the six body walks, every one at or after 00:E123 and none
+// before a JSR $ECC6. The dispatcher's two halves run before any of that and
+// are masked throughout, so none land there.
 //
 // The stores at $0000, $0002 and $0003 are the VDC's register-select and data
 // ports. They are on the write channel already, and the core prices the cycle
@@ -89,7 +113,8 @@ constexpr std::uint16_t kStackBase = 0x2100U;
 
 [[nodiscard]] constexpr bool is_owned_entry(const std::uint16_t logical_pc)
 {
-    return logical_pc == 0xE0EBU || logical_pc == 0xE117U
+    return logical_pc == 0xE058U || logical_pc == 0xE05FU
+        || logical_pc == 0xE0EBU || logical_pc == 0xE117U
         || logical_pc == 0xE123U || logical_pc == 0xE136U
         || logical_pc == 0xE179U || logical_pc == 0xE183U
         || logical_pc == 0xE195U;
@@ -98,13 +123,15 @@ constexpr std::uint16_t kStackBase = 0x2100U;
 // Where each walk stops. Three are the calls the handler exists to make -- the
 // palette upload, the pad reader and the bank wrapper. Two are the PLP that
 // restores the interrupted status byte, one instruction short of each RTI, for
-// the reason in the note above. The last is the pad reader's own RTS. The core
-// executes all six.
+// the reason in the note above. One is the pad reader's own RTS. The last is
+// the LDA $0000 the dispatcher's head stops in front of. The core executes all
+// seven.
 [[nodiscard]] constexpr bool is_stop_instruction(const std::uint16_t logical_pc)
 {
-    return logical_pc == 0xE111U || logical_pc == 0xE120U
-        || logical_pc == 0xE134U || logical_pc == 0xE180U
-        || logical_pc == 0xE193U || logical_pc == 0xE1F7U;
+    return logical_pc == 0xE05CU || logical_pc == 0xE111U
+        || logical_pc == 0xE120U || logical_pc == 0xE134U
+        || logical_pc == 0xE180U || logical_pc == 0xE193U
+        || logical_pc == 0xE1F7U;
 }
 
 // The joypad at $1000, which is the one device this module reads rather than
@@ -409,7 +436,13 @@ std::optional<RoutineReplacement> replace_vblank_handler(
             return std::nullopt;
         }
 
-        if (is_stop_instruction(pc)) {
+        // A walk ends either in front of an instruction the core executes or
+        // at the head of another entry in this same family, which is how the
+        // dispatcher's tail hands each arm over as its own transaction rather
+        // than swallowing it. The first test is what keeps an entry point from
+        // stopping on itself before it has walked anything.
+        if (pc != entry.routine.logical_pc
+            && (is_stop_instruction(pc) || is_owned_entry(pc))) {
             registers.program_counter = pc;
             replacement.return_instruction = {kBank, pc};
             replacement.output_registers = registers;
@@ -418,6 +451,141 @@ std::optional<RoutineReplacement> replace_vblank_handler(
         }
 
         switch (pc) {
+        // ---- 00:E058  the dispatcher's head -------------------------------
+        // Four register saves, and then the LDA $0000 the walk stops in front
+        // of. Nothing here is device work: the pushes land on the stack page
+        // wherever the interrupt left S, exactly as 00:E179's do.
+        case 0xE058U:  // PHP
+            push(
+                0xE058U,
+                static_cast<std::uint8_t>(registers.status | kBreak));
+            append_checkpoint(0xE058U, 0xE059U, 9U);
+            pc = 0xE059U;
+            break;
+
+        case 0xE059U:  // PHA
+            push(0xE059U, registers.accumulator);
+            append_checkpoint(0xE059U, 0xE05AU, 9U);
+            pc = 0xE05AU;
+            break;
+
+        case 0xE05AU:  // PHX
+            push(0xE05AU, registers.x);
+            append_checkpoint(0xE05AU, 0xE05BU, 9U);
+            pc = 0xE05BU;
+            break;
+
+        case 0xE05BU:  // PHY
+            push(0xE05BU, registers.y);
+            append_checkpoint(0xE05BU, 0xE05CU, 9U);
+            pc = 0xE05CU;
+            break;
+
+        // ---- 00:E05F  the dispatcher's tail -------------------------------
+        // The byte the whole handler branches on is a device register, and it
+        // arrives here in the accumulator because the core executed the read
+        // itself one instruction ago. From this address down the dispatcher is
+        // ordinary work: stash the status byte at $01, test the VBlank bit,
+        // and pick the arm from the scene's raster mode at $54.
+        case 0xE05FU:  // STA $01
+            store(0xE05FU, zp(0x01U), registers.accumulator);
+            append_checkpoint(0xE05FU, 0xE061U, 12U);
+            pc = 0xE061U;
+            break;
+
+        case 0xE061U:  // AND #$20 -- the VBlank bit
+            load_accumulator(
+                static_cast<std::uint8_t>(registers.accumulator & 0x20U));
+            append_checkpoint(0xE061U, 0xE063U, 6U);
+            pc = 0xE063U;
+            break;
+
+        case 0xE063U: {  // BNE $E068
+            const bool taken = (registers.status & kZero) == 0U;
+            const std::uint16_t next = taken ? 0xE068U : 0xE065U;
+            append_checkpoint(0xE063U, next, taken ? 12U : 6U);
+            pc = next;
+            break;
+        }
+
+        case 0xE065U:  // JMP $E136 -- the raster arm
+            append_checkpoint(0xE065U, 0xE136U, 12U);
+            pc = 0xE136U;
+            break;
+
+        case 0xE068U:  // LDA $54 -- the scene's raster mode
+            load_accumulator(read_ram(zp(0x54U)));
+            append_checkpoint(0xE068U, 0xE06AU, 12U);
+            pc = 0xE06AU;
+            break;
+
+        case 0xE06AU: {  // BNE $E06F
+            const bool taken = (registers.status & kZero) == 0U;
+            const std::uint16_t next = taken ? 0xE06FU : 0xE06CU;
+            append_checkpoint(0xE06AU, next, taken ? 12U : 6U);
+            pc = next;
+            break;
+        }
+
+        case 0xE06CU:  // JMP $E0EB -- mode 0, the ordinary VBlank prologue
+            append_checkpoint(0xE06CU, 0xE0EBU, 12U);
+            pc = 0xE0EBU;
+            break;
+
+        // Modes 0 and 3 are handled here, straight to 00:E0EB and 00:E111.
+        // Mode 1 goes to 00:E0D0 and mode 2 to 00:E09E; anything else falls
+        // through 00:E07E to the mode-5 test and 00:E085. None of those three
+        // addresses is in this walk, so reaching one lands on the default
+        // below and declines the whole transaction. Nothing on the census
+        // route takes them: of the 3,599 VBlank entries, 2,748 are mode 0 and
+        // the remaining 851 are mode 3.
+        case 0xE06FU:  // CMP #$01
+            compare_accumulator(0x01U);
+            append_checkpoint(0xE06FU, 0xE071U, 6U);
+            pc = 0xE071U;
+            break;
+
+        case 0xE071U: {  // BEQ $E0D0
+            const bool taken = (registers.status & kZero) != 0U;
+            const std::uint16_t next = taken ? 0xE0D0U : 0xE073U;
+            append_checkpoint(0xE071U, next, taken ? 12U : 6U);
+            pc = next;
+            break;
+        }
+
+        case 0xE073U:  // CMP #$02
+            compare_accumulator(0x02U);
+            append_checkpoint(0xE073U, 0xE075U, 6U);
+            pc = 0xE075U;
+            break;
+
+        case 0xE075U: {  // BEQ $E09E
+            const bool taken = (registers.status & kZero) != 0U;
+            const std::uint16_t next = taken ? 0xE09EU : 0xE077U;
+            append_checkpoint(0xE075U, next, taken ? 12U : 6U);
+            pc = next;
+            break;
+        }
+
+        case 0xE077U:  // CMP #$03
+            compare_accumulator(0x03U);
+            append_checkpoint(0xE077U, 0xE079U, 6U);
+            pc = 0xE079U;
+            break;
+
+        case 0xE079U: {  // BNE $E07E
+            const bool taken = (registers.status & kZero) == 0U;
+            const std::uint16_t next = taken ? 0xE07EU : 0xE07BU;
+            append_checkpoint(0xE079U, next, taken ? 12U : 6U);
+            pc = next;
+            break;
+        }
+
+        case 0xE07BU:  // JMP $E111 -- mode 3 skips the prologue's VDC writes
+            append_checkpoint(0xE07BU, 0xE111U, 12U);
+            pc = 0xE111U;
+            break;
+
         // ---- 00:E0EB  VBlank prologue -------------------------------------
         // Registers $08 and $07 are the two scroll pairs and $05 is the
         // control register; clearing bit 6 of the $02 shadow turns the raster

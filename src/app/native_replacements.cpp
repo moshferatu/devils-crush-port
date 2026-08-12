@@ -255,10 +255,22 @@ replace_native_gameplay_routine_impl(
             }) {
         return detail::replace_bank_call_wrappers(entry, work_ram, rom);
     }
-    // One shared walk, six entry points: the VDC interrupt handler's body.
-    // Each transcript stops in front of the call it makes or the RTI that ends
-    // the handler.
+    // One shared walk, nine entry points: the VDC interrupt handler. Each
+    // transcript stops in front of the call it makes, the RTI that ends the
+    // handler, the arm the dispatcher hands off to, or -- for the dispatcher's
+    // head -- the one instruction here that cannot be transcribed at all, the
+    // status read at 00:E05C whose side effect is the interrupt acknowledge.
     if (entry.routine
+            == RoutineKey{
+                .physical_bank = 0x00U,
+                .logical_pc = 0xE058U,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x00U,
+                .logical_pc = 0xE05FU,
+            }
+        || entry.routine
             == RoutineKey{
                 .physical_bank = 0x00U,
                 .logical_pc = 0xE0EBU,

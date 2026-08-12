@@ -617,9 +617,16 @@ pad reader `00:E195`, bumps the frame counter at `$222A`/`$222B`, and calls
 sequencer. On the standard route that is 3,599 VBlank entries and 3,599
 raster entries.
 
-`00:E058` cannot be a transcript: its first act is `LDA $0000`, the VDC status
-register, which reports what the display is doing. That waits on a native
-device model.
+`00:E058` was listed here as unportable because its first act is `LDA $0000`,
+the VDC status register. That was true of the instruction and false of the
+routine. The read cannot be transcribed — not because the value is unknowable
+(the native VDC model answers a `peek` without disturbing anything) but because
+the read *is* the interrupt acknowledge, and the replacement contract has only
+a write channel. So the walk splits there. `00:E058` covers the four register
+saves and stops in front of the read; the core executes it; `00:E05F` picks the
+dispatch up from the accumulator and hands off to whichever arm `$54` selects.
+Both are admitted on all 7,198 arrivals, 640,374 of the dispatcher's 769,938
+cycles.
 
 `00:E195` was listed here beside it for the same reason, and the reason did not
 hold. It strobes the joypad at `$1000` and reads it back five times a frame,
@@ -663,12 +670,14 @@ vector the same transcript just wrote.
 its four stack slots already pushed by its caller, so its entry contract is not
 its own.
 
-The handler's own body is ported too. `00:E058` is unportable but nothing below
-its `LDA $0000` needs the device again, so the bodies split at the dispatcher's
-jumps and at the calls the core keeps:
+The handler's own body is ported too. Nothing below the `LDA $0000` needs the
+device again, so the walks split at that instruction, at the dispatcher's jumps
+and at the calls the core keeps:
 
 | Entry | Calls | Stops at | What it does |
 | --- | ---: | --- | --- |
+| `E058` | 7,198 | `E05C` `LDA $0000` | Push `P`, `A`, `X` and `Y`, then hand the status read back to the core |
+| `E05F` | 7,198 | `E136`, `E0EB` or `E111` | Stash the status byte at `$01`, test the VBlank bit, pick the arm from `$54` |
 | `E0EB` | 2,748 | `E111` `JSR $EB30` | Programme VDC `$08`/`$07`/`$05` from the shadows at `$02`, clear the raster-compare bit |
 | `E117` | 3,599 | `E120` or `E134` | Bump the frame counter at `$00`; on `$D9` set, write `$DA` and skip the music call |
 | `E123` | 3,212 | `E134` | Restore MPR6 from the stack and join the epilogue |

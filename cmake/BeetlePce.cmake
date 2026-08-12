@@ -53,6 +53,8 @@ function(dc_provide_beetle_pce)
         "${beetle_fork_root}/patches/0015-huc6280-scheduler-device-model.patch"
         "${beetle_fork_root}/patches/0016-huc6280-instruction-boundary-reference-observation.patch"
         "${beetle_fork_root}/patches/0017-huc6280-instruction-boundary-device-model.patch"
+        "${beetle_fork_root}/patches/0018-huc6280-idle-fast-forward.patch"
+        "${beetle_fork_root}/patches/0019-joypad-device-model.patch"
     )
 
     find_package(Git REQUIRED)
@@ -117,6 +119,16 @@ function(dc_provide_beetle_pce)
                 READ
                 "${beetle_root}/mednafen/pce/pce.cpp"
                 beetle_machine_source
+            )
+            file(
+                READ
+                "${beetle_root}/mednafen/pce/input.cpp"
+                beetle_input_source
+            )
+            file(
+                READ
+                "${beetle_root}/mednafen/pce/input/gamepad.cpp"
+                beetle_gamepad_source
             )
             get_filename_component(
                 beetle_patch_name
@@ -331,7 +343,7 @@ function(dc_provide_beetle_pce)
                     "HuC6280::DcObserveBoundary"
                     beetle_patch_marker_two
                 )
-            else()
+            elseif(beetle_patch_name MATCHES "^0017-")
                 string(
                     FIND
                     "${beetle_cpu_header}"
@@ -342,6 +354,32 @@ function(dc_provide_beetle_pce)
                     FIND
                     "${beetle_cpu_source}"
                     "DcResetInterruptSample"
+                    beetle_patch_marker_two
+                )
+            elseif(beetle_patch_name MATCHES "^0018-")
+                string(
+                    FIND
+                    "${beetle_cpu_source}"
+                    "dc_beetle_active_idle_model"
+                    beetle_patch_marker_one
+                )
+                string(
+                    FIND
+                    "${beetle_cpu_source}"
+                    "iteration_cycles"
+                    beetle_patch_marker_two
+                )
+            else()
+                string(
+                    FIND
+                    "${beetle_input_source}"
+                    "dc_beetle_active_pad_model"
+                    beetle_patch_marker_one
+                )
+                string(
+                    FIND
+                    "${beetle_gamepad_source}"
+                    "DcExportState"
                     beetle_patch_marker_two
                 )
             endif()

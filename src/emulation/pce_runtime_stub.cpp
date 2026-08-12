@@ -247,6 +247,39 @@ public:
         return std::nullopt;
     }
 
+    [[nodiscard]] bool set_native_idle_skip(
+        std::optional<cpu::HuC6280IdleSkip::Loop>) override
+    {
+        return false;
+    }
+
+    [[nodiscard]] bool native_idle_skip_enabled() const noexcept override
+    {
+        return false;
+    }
+
+    [[nodiscard]] std::optional<cpu::HuC6280IdleSkip::Coverage>
+    native_idle_skip_coverage() const override
+    {
+        return std::nullopt;
+    }
+
+    [[nodiscard]] bool set_native_pad(bool) override
+    {
+        return false;
+    }
+
+    [[nodiscard]] bool native_pad_enabled() const noexcept override
+    {
+        return false;
+    }
+
+    [[nodiscard]] std::optional<input::PcePad::Coverage>
+    native_pad_coverage() const override
+    {
+        return std::nullopt;
+    }
+
     [[nodiscard]] bool set_bus_write_observer(
         BusWriteCallback) override
     {

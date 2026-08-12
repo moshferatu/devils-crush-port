@@ -6,6 +6,7 @@
 #include "devils_crush/cpu/huc6280_interrupt_boundary.hpp"
 #include "devils_crush/cpu/huc6280_irq.hpp"
 #include "devils_crush/cpu/huc6280_scheduler.hpp"
+#include "devils_crush/input/pce_pad.hpp"
 #include "devils_crush/video/pce_vce.hpp"
 #include "devils_crush/video/pce_vdc.hpp"
 
@@ -284,6 +285,10 @@ public:
         native_scheduler_.reset();
         dc_beetle_clear_boundary_model();
         native_boundary_.reset();
+        dc_beetle_clear_idle_model();
+        native_idle_skip_.reset();
+        dc_beetle_clear_pad_model();
+        native_pad_.reset();
         shutdown_core();
         BeetlePceRuntime* expected = this;
         (void)active_runtime.compare_exchange_strong(
@@ -418,6 +423,16 @@ public:
         }
 
         current_input_ = input;
+        // The host's input, handed to the port itself. This is the whole of
+        // the ownership change: with a model installed the value below is what
+        // the machine reads, and `current_input_` survives only as what the
+        // emulator's own input path would have been given if it were still in
+        // it. The model holds this until the machine's own frame latch, so
+        // when a device sees it is still the machine's decision.
+        if (native_pad_) {
+            native_pad_->set_port_input(0, input.player_one);
+            native_pad_->set_port_input(1, input.player_two);
+        }
         audio_samples_.clear();
         callback_failed_ = false;
 
@@ -1106,6 +1121,107 @@ public:
             return std::nullopt;
         }
         return native_boundary_->coverage();
+    }
+
+    // The idle fast-forward. The one install with no timing rule attached to
+    // it: nothing is handed over, so nothing is stranded by installing late
+    // or handing it back early.
+    [[nodiscard]] bool set_native_idle_skip(
+        const std::optional<cpu::HuC6280IdleSkip::Loop> loop) override
+    {
+        assert_owner_thread();
+        if (!loop) {
+            dc_beetle_clear_idle_model();
+            native_idle_skip_.reset();
+            return true;
+        }
+
+        native_idle_skip_ = std::make_unique<cpu::HuC6280IdleSkip>(*loop);
+        native_idle_skip_model_ = {
+            .user_data = native_idle_skip_.get(),
+            .watch_logical_pc = loop->logical_pc,
+            .watch_physical_bank = loop->physical_bank,
+            .iteration_cycles = &idle_iteration_cycles,
+            .advanced = &idle_advanced,
+        };
+        dc_beetle_set_idle_model(&native_idle_skip_model_);
+        return true;
+    }
+
+    [[nodiscard]] bool native_idle_skip_enabled() const noexcept override
+    {
+        assert_owner_thread();
+        return native_idle_skip_ != nullptr;
+    }
+
+    [[nodiscard]] std::optional<cpu::HuC6280IdleSkip::Coverage>
+    native_idle_skip_coverage() const override
+    {
+        assert_owner_thread();
+        if (native_idle_skip_ == nullptr) {
+            return std::nullopt;
+        }
+        return native_idle_skip_->coverage();
+    }
+
+    // The controller port. The eighth seam and the one that hands over the
+    // least work: the strobe protocol the game drives it with has been native
+    // since phase 1, inside the cartridge's own pad reader. What moves is the
+    // input itself, which now arrives from this host rather than through the
+    // emulator's frontend buffer and its five device objects.
+    [[nodiscard]] bool set_native_pad(const bool enabled) override
+    {
+        assert_owner_thread();
+        if (!enabled) {
+            dc_beetle_clear_pad_model();
+            native_pad_.reset();
+            return true;
+        }
+        if (native_pad_) {
+            return true;
+        }
+
+        native_pad_ = std::make_unique<input::PcePad>();
+        // The host's half of the configuration. The machine's half arrives
+        // through the fork, which reports what the emulator resolved from its
+        // own settings; this is the one policy the machine has no opinion
+        // about, and it is set to match the core option this runtime asks for.
+        native_pad_->set_frontend_policy({
+            .allow_opposing_directions = false,
+        });
+        native_pad_->set_port_input(0, current_input_.player_one);
+        native_pad_->set_port_input(1, current_input_.player_two);
+        native_pad_model_ = {
+            .user_data = native_pad_.get(),
+            .configure = &pad_configure,
+            .configure_port = &pad_configure_port,
+            .power = &pad_power,
+            .frame = &pad_frame,
+            .transform_input = &pad_transform_input,
+            .adjust_timestamp = &pad_adjust_timestamp,
+            .read = &pad_read,
+            .write = &pad_write,
+            .capture_state = &pad_capture_state,
+            .apply_state = &pad_apply_state,
+        };
+        dc_beetle_set_pad_model(&native_pad_model_);
+        return true;
+    }
+
+    [[nodiscard]] bool native_pad_enabled() const noexcept override
+    {
+        assert_owner_thread();
+        return native_pad_ != nullptr;
+    }
+
+    [[nodiscard]] std::optional<input::PcePad::Coverage>
+    native_pad_coverage() const override
+    {
+        assert_owner_thread();
+        if (native_pad_ == nullptr) {
+            return std::nullopt;
+        }
+        return native_pad_->coverage();
     }
 
     [[nodiscard]] std::vector<InstructionProfileEntry>
@@ -2297,6 +2413,46 @@ private:
         state->irq_sample = captured.irq_sample;
     }
 
+    static cpu::HuC6280IdleSkip& idle_model(void* const user_data) noexcept
+    {
+        return *static_cast<cpu::HuC6280IdleSkip*>(user_data);
+    }
+
+    // The two views the machine offers, as spans. Both are direct pointers
+    // into memory the processor has already mapped, so neither costs a bus
+    // access; a null one is a logical page with no directly readable memory
+    // behind it, which the model refuses like any other unrecognised state.
+    static std::int32_t idle_iteration_cycles(
+        void* const user_data,
+        const dc_beetle_idle_state* const state)
+    {
+        const auto view = [](const std::uint8_t* const data,
+                             const std::size_t size) {
+            return data == nullptr
+                ? std::span<const std::uint8_t>{}
+                : std::span<const std::uint8_t>{data, size};
+        };
+
+        return idle_model(user_data).iteration_cycles(
+            state->accumulator,
+            view(state->code, state->code_bytes),
+            // The zero page is 256 bytes at logical $2000, and the model
+            // only ever indexes it with the one byte a zero-page operand
+            // holds, so 256 is both the most it can reach and the least the
+            // machine can have mapped there.
+            view(state->zero_page, 0x100U));
+    }
+
+    static void idle_advanced(
+        void* const user_data,
+        const std::int32_t iterations,
+        const std::int32_t master_skipped,
+        const std::int32_t master_per_iteration)
+    {
+        idle_model(user_data).advanced(
+            iterations, master_skipped, master_per_iteration);
+    }
+
     static void boundary_apply_state(
         void* const user_data,
         const dc_beetle_boundary_state* const state)
@@ -2307,6 +2463,123 @@ private:
         restored.irq_sample = state->irq_sample;
 
         boundary_model(user_data).apply_state(restored);
+    }
+
+    static input::PcePad& pad_model(void* const user_data) noexcept
+    {
+        return *static_cast<input::PcePad*>(user_data);
+    }
+
+    static void pad_configure(
+        void* const user_data,
+        const int multitap_enabled,
+        const int disable_soft_reset,
+        const int cd_attached)
+    {
+        pad_model(user_data).configure(
+            multitap_enabled != 0,
+            disable_soft_reset != 0,
+            cd_attached != 0);
+    }
+
+    static void pad_configure_port(
+        void* const user_data,
+        const unsigned port,
+        const int device_type)
+    {
+        const auto device = [device_type]() {
+            switch (device_type) {
+            case DC_BEETLE_PAD_DEVICE_GAMEPAD:
+                return input::PcePad::Device::gamepad;
+            case DC_BEETLE_PAD_DEVICE_MOUSE:
+                return input::PcePad::Device::mouse;
+            case DC_BEETLE_PAD_DEVICE_TSUSHINKB:
+                return input::PcePad::Device::keyboard;
+            default:
+                return input::PcePad::Device::none;
+            }
+        }();
+
+        pad_model(user_data).configure_port(port, device);
+    }
+
+    static void pad_power(void* const user_data, const std::int32_t timestamp)
+    {
+        pad_model(user_data).power(timestamp);
+    }
+
+    static void pad_frame(void* const user_data, const int start_frame)
+    {
+        pad_model(user_data).frame(start_frame != 0);
+    }
+
+    static void pad_transform_input(void* const user_data)
+    {
+        pad_model(user_data).transform_input();
+    }
+
+    static void pad_adjust_timestamp(
+        void* const user_data,
+        const std::int32_t delta)
+    {
+        pad_model(user_data).adjust_timestamp(delta);
+    }
+
+    static std::uint8_t pad_read(
+        void* const user_data,
+        const std::int32_t timestamp,
+        const std::uint32_t address)
+    {
+        return pad_model(user_data).read(timestamp, address);
+    }
+
+    static void pad_write(
+        void* const user_data,
+        const std::int32_t timestamp,
+        const std::uint32_t address,
+        const std::uint8_t value)
+    {
+        pad_model(user_data).write(timestamp, address, value);
+    }
+
+    static void pad_capture_state(
+        void* const user_data,
+        dc_beetle_pad_state* const state)
+    {
+        input::PcePad::State captured;
+        pad_model(user_data).capture_state(captured);
+
+        state->select = captured.select ? 1U : 0U;
+        state->clear = captured.clear ? 1U : 0U;
+        state->read_index = captured.read_index;
+        for (std::size_t port = 0; port < input::PcePad::kPortCount; port++) {
+            state->ports[port].buttons = captured.ports[port].buttons;
+            state->ports[port].select =
+                captured.ports[port].select ? 1U : 0U;
+            state->ports[port].clear = captured.ports[port].clear ? 1U : 0U;
+            state->ports[port].six_button_half =
+                captured.ports[port].six_button_half ? 1U : 0U;
+        }
+    }
+
+    static void pad_apply_state(
+        void* const user_data,
+        const dc_beetle_pad_state* const state)
+    {
+        input::PcePad::State restored;
+
+        restored.select = state->select != 0U;
+        restored.clear = state->clear != 0U;
+        restored.read_index = state->read_index;
+        for (std::size_t port = 0; port < input::PcePad::kPortCount; port++) {
+            restored.ports[port].buttons = state->ports[port].buttons;
+            restored.ports[port].select = state->ports[port].select != 0U;
+            restored.ports[port].clear = state->ports[port].clear != 0U;
+            restored.ports[port].six_button_half =
+                state->ports[port].six_button_half != 0U;
+        }
+
+        pad_model(user_data).apply_state(restored);
     }
 
     void install_callbacks()
@@ -3083,6 +3356,18 @@ private:
             return 0;
         }
 
+        // With the port model installed the machine reads the host's input
+        // from the model directly, and this callback is the emulator's own
+        // input path -- which is exactly what an ownership change has to make
+        // dead rather than merely bypass. Answering nothing here is what turns
+        // "both arms produce the same census" into evidence: a run that had
+        // silently fallen back to the emulator's chain would be a run with
+        // nothing pressed, and a route that presses buttons would not survive
+        // it.
+        if (runtime->native_pad_) {
+            return 0;
+        }
+
         std::uint16_t buttons = 0;
         if (port == 0U) {
             buttons = runtime->current_input_.player_one;
@@ -3148,6 +3433,10 @@ private:
     dc_beetle_scheduler_model native_scheduler_model_{};
     std::unique_ptr<cpu::HuC6280InterruptBoundary> native_boundary_;
     dc_beetle_boundary_model native_boundary_model_{};
+    std::unique_ptr<cpu::HuC6280IdleSkip> native_idle_skip_;
+    dc_beetle_idle_model native_idle_skip_model_{};
+    std::unique_ptr<input::PcePad> native_pad_;
+    dc_beetle_pad_model native_pad_model_{};
     // The controller the encoder clocks, whichever one that turns out to be.
     // Stateless, so it outlives every install and uninstall of either model.
     BeetleVdcDevice beetle_vdc_bridge_;

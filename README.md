@@ -45,9 +45,15 @@ ctest --preset windows-debug
 ```
 
 For normal native-port iterations, use the Release build and the owning
-family's targeted ROM regression; Debug ROM replay is a family-checkpoint
-audit rather than a duplicate per-routine step. The exact commands and
-admission rules are in [docs/NATIVE_PORT_WORKFLOW.md](docs/NATIVE_PORT_WORKFLOW.md).
+family's targeted ROM regression, plus the ROM-free tests in both
+configurations. The test presets run 24 jobs, so the whole Release suite is
+about 147 seconds and can be a routine check rather than an event.
+
+Debug ROM replay is deliberately exceptional: the ROM-free Debug tests already
+carry what a Debug build catches that Release cannot, while a Debug ROM route
+adds only cross-configuration artifact equality at a cost of minutes to hours.
+The cases that still require one, and the admission rules, are in
+[docs/NATIVE_PORT_WORKFLOW.md](docs/NATIVE_PORT_WORKFLOW.md).
 
 Validate a ROM without opening a window:
 

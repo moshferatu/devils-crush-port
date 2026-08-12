@@ -809,14 +809,25 @@ Provide an interactive monitor-assignment screen and persist display identity, g
 ### Native-port iteration cadence
 
 Milestone 4 routine work follows [the native-port workflow](docs/NATIVE_PORT_WORKFLOW.md).
-Each slice requires an incremental Release build, ROM-free core coverage, and
-one owning-family Release ROM regression. Related sibling routines should
-share that family route and artifact rather than add duplicate full-route
-tests. Debug compilation/core coverage and the owning Debug ROM regression are
-required at family, milestone, and cross-family checkpoints, or immediately
-when shared transaction/interrupt infrastructure or a new branch demands it.
+Each slice requires an incremental Release build, ROM-free core coverage in
+both configurations, and one owning-family Release ROM regression. Related
+sibling routines should share that family route and artifact rather than add
+duplicate full-route tests. The full Release suite is the family, milestone,
+and cross-family checkpoint; it runs in parallel in under three minutes, so it
+is not narrowed.
+
+Debug ROM regressions are deliberately exceptional. The ROM-free Debug tests
+carry what a Debug build catches that a Release build cannot, and they cover
+the native models where such a fault would live. A Debug ROM route adds only
+the claim that an artifact is byte-identical across configurations, so it is
+required for one owning family when a new artifact golden is first recorded,
+when shared transaction/checkpoint/interrupt/save-state machinery changes, or
+when an unexplained Release artifact movement raises undefined behavior as a
+suspect. The full Debug sweep is a release-checkpoint and diagnostic tool.
+
 This cadence changes validation scheduling only: every admitted replacement
-still requires original-assembly parity for its complete observable behavior.
+still requires original-assembly parity for its complete observable behavior,
+and a Debug route that does run must reproduce the Release artifact exactly.
 
 - Verify ROM hashes, asset decompression, table stitching, palettes, display transforms, sharp-scaler math, and save versioning.
 - In pure-emulation mode, compare replay RAM hashes, framebuffer CRCs, audio timing, and scene transitions against Mesen2.

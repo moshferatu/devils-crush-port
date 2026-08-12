@@ -135,6 +135,16 @@ this repository.
   all. The processor hands over the request register, the mask and its own I
   flag and takes back a small integer. `HuC6280::DcInterruptDecision` is
   defined in terms of the values here rather than beside them.
+- `dc_beetle_pad_state`, `dc_beetle_pad_port_state`, `dc_beetle_pad_model`
+  and the `DC_BEETLE_PAD_DEVICE_*` values in
+  `include/dc_beetle_execution_hook.h`, with the remembered settings and port
+  assignments in `src/dc_beetle_execution_hook.cpp`: the seventh device-model
+  boundary, installed by `0019`. Its shape is the sixth's -- a plain call
+  table -- but what crosses it is not: a model is *told* its configuration
+  rather than reading it, because the emulator reports each piece exactly once
+  at the load that builds its devices. Deliberately absent from the table is
+  any way for the host's input to arrive, which belongs to the frontend and
+  reaches a model directly.
 
 ## Patch series
 
@@ -537,6 +547,112 @@ this repository.
       applies through the model instead when one is installed. `HuC6280` gains
       no data members and loses none. Changes nothing when no model is
       registered.
+
+18. `patches/0018-huc6280-idle-fast-forward.patch`
+    - The seventh entry on this boundary and the first that is a *capability*
+      rather than a replacement. Nothing is taken away from the emulator and
+      nothing is computed on its behalf; with no model registered the machine
+      is byte-for-byte the machine it was, and the census proves it.
+    - It exists for the one thing a routine replacement structurally cannot
+      express. A transcript declares its cost when it is offered; a frame-sync
+      wait ends when the raster reaches a scanline, so its cost is not known
+      then. That is why 45.2% of the census route was still being interpreted
+      24 master cycles at a time long after the code around it went native.
+    - The split runs down the middle of the decision. *Whether the address is
+      a spin that changes nothing* is a claim about a cartridge and is asked
+      of the model. *How far the machine may be advanced while nothing
+      executes* is a claim about the machine and is answered here: whole
+      iterations that end **strictly before** the scheduler's near horizon.
+      Never up to it -- leaving the crossing itself to a real instruction is
+      what keeps the placement of an event relative to an instruction boundary
+      the machine's decision rather than this seam's.
+    - The gate is two comparisons against values the processor already holds,
+      behind a null check, so an installed model costs a predicted branch per
+      instruction and a call only at the watched address. It sits after
+      `HookInstructionPC` is assigned and before the opcode fetch, and it does
+      not `continue`: a skip advances the clock and then falls through into
+      the ordinary instruction, so every hook below it still sees a real
+      instruction stream.
+    - `dc_beetle_idle_state` hands over registers and two direct pointers --
+      the instruction stream at the watched address and the processor's zero
+      page, which on a HuC6280 is at logical `$2000` rather than at zero. Both
+      come from `FastPageR`, so a model may verify what it is looking at
+      without a bus access or a side effect. `code_bytes` bounds the first
+      against its own 8 KiB page.
+    - **The horizon is only half the bound, and the other half cost a census
+      to find.** A request the mask already admits has not been latched yet,
+      so the decision at the top of the instruction loop answers "next
+      instruction" and the spin looks idle -- but the next instruction's own
+      end-of-cycle sample would catch it and the boundary after that would
+      take the vector. The first working version skipped past that boundary
+      and delivered one interrupt a turn late; `(IRQlow & IRQMask) != 0` is
+      the whole fix, and it costs 1,452 skipped iterations out of 21 million.
+      One condition says nothing can happen before the horizon, the other says
+      nothing has happened already; both are the machine's, which is why both
+      are here rather than in the model.
+    - What that mistake ruled *out* first is worth keeping, because two
+      plausible explanations were wrong: advance granularity and the omitted
+      end-of-instruction samples together are not the cause (a per-instruction
+      replay of the exact cycles *and* samples diverges identically), and nor
+      is proximity to the horizon (a whole iteration of slack diverges too).
+      Both were red herrings pointing at the sampling; the fault was in the
+      *deciding*, which happens once per pass of the instruction loop and
+      which a skip silently spans.
+    - Over the 3,600-frame census route the model refuses nothing across
+      3,171,424 arrivals, recognises exactly the 3,567 waits, and skips
+      21,077,517 of the route's 24,248,940 iterations. The route reproduces
+      `9036a9de...` with the capability installed and with it handed back.
+      `0017`'s boundary coverage is the sharpest evidence that only time was
+      removed: every counter describing what the boundary decided is identical
+      either way, and the per-instruction totals fall by 42,155,034 -- two
+      instructions per skipped iteration, exactly.
+    - Adds no data members to `HuC6280`. Changes nothing for a machine with no
+      model registered.
+
+19. `patches/0019-joypad-device-model.patch`
+    - The eighth entry, the sixth that is a device model, and the first that
+      is an *ownership* change rather than a port. The strobe protocol this
+      port speaks has been native since phase 1, inside the cartridge's own
+      pad reader at `00:E195`; what it read *through* was still the emulator's
+      chain -- a frontend button buffer, five `PCE_Input_Device` objects, a
+      multitap counter -- and this is that chain.
+    - A registered model owns the whole port. `INPUT_Read` and `INPUT_Write`
+      dispatch to it, `INPUT_Frame` is the latch, `INPUT_AdjustTS` the frame
+      rebase, `PCEINPUT_Power` the reset, and `PCEINPUT_TransformInput` the
+      soft-reset suppression. The five device objects receive nothing while
+      one is installed and survive only as the shuttle `INPUT_StateAction`
+      writes the emulator's savestate format through.
+    - **Where the host's input arrives is deliberately not on this boundary.**
+      A model reads it from whoever owns it, which is the frontend; this seam
+      carries only the machine's half -- when the latch happens, what is on
+      each port, and the two settings that decide how the port answers. The
+      consequence is the point: with a model installed nothing in `input.cpp`
+      consults `data_ptr` at all, so a host may starve the emulator's input
+      path entirely and the machine is unchanged. The Devil's Crush host does
+      exactly that, which is what turns "the model is installed" into a
+      measurement rather than a claim.
+    - Two pieces of configuration are pushed rather than pulled, because the
+      emulator reports each exactly once at the load that builds its devices:
+      `dc_beetle_set_pad_settings` from `SyncSettings` (multitap, soft-reset
+      suppression, and whether a CD unit is attached -- the last being a bit
+      of the port's answer rather than a device's) and `dc_beetle_set_pad_port`
+      from `PCEINPUT_SetInput`. The boundary remembers both and replays them
+      into whichever model is current, so an install may happen either side of
+      a ROM load.
+    - `PCE_Input_Device` gains two virtuals with no-op bases, overridden by
+      the gamepad, so a device that serializes nothing costs nothing. The port
+      section's own three fields move through `INPUT_DcExportState` and
+      `INPUT_DcImportState`, and the shuttle runs inside `INPUT_StateAction`
+      rather than beside it, because the port's state is that file's statics.
+    - Over the 3,600-frame census route the model answers 35,991 reads and
+      43,188 writes, latches twice a frame, resets the multitap 3,599 times
+      and steps it 17,995, and answers 540 reads with a button held -- with
+      the emulator's input callback returning zero throughout. The route
+      reproduces `9036a9de...` with the model installed and with it handed
+      back; feeding the model nothing instead produces a different census
+      entirely, which is what makes the match evidence.
+    - Adds no data members to any emulator device. Changes nothing for a
+      machine with no model registered.
 
 All local files and patches are GPL-3.0-or-later. Upstream per-file notices
 and licenses remain authoritative for upstream sources.

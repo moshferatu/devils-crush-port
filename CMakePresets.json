@@ -79,6 +79,9 @@
       "configuration": "Debug",
       "output": {
         "outputOnFailure": true
+      },
+      "execution": {
+        "jobs": 24
       }
     },
     {
@@ -87,6 +90,9 @@
       "configuration": "Debug",
       "output": {
         "outputOnFailure": true
+      },
+      "execution": {
+        "jobs": 24
       }
     },
     {
@@ -95,6 +101,9 @@
       "configuration": "Release",
       "output": {
         "outputOnFailure": true
+      },
+      "execution": {
+        "jobs": 24
       }
     }
   ]

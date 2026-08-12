@@ -44,9 +44,11 @@ add_library(
     src/cabinet/dmd_layout.cpp
     src/core/backup_ram.cpp
     src/core/high_score_table.cpp
+    src/cpu/huc6280_idle_skip.cpp
     src/cpu/huc6280_interrupt_boundary.cpp
     src/cpu/huc6280_irq.cpp
     src/cpu/huc6280_scheduler.cpp
+    src/input/pce_pad.cpp
     src/core/rom_image.cpp
     src/core/save_state.cpp
     src/render/pce_background.cpp

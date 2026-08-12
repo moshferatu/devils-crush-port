@@ -12,7 +12,8 @@ acceptance criteria in [PLAN.md](../PLAN.md).
 Run these after every bounded native change:
 
 1. Incrementally build the affected Release targets.
-2. Run the ROM-free core tests.
+2. Run the ROM-free core tests, in Debug as well as Release. They cost
+   seconds and they are where a Debug build earns its keep; see below.
 3. Run one Release ROM regression for the owning routine family. Extend that
    family regression with the new replacement count, normalized replay, and
    relevant artifact assertions instead of creating another full-route test.
@@ -28,24 +29,100 @@ writes, and interrupt hand-off.
 
 ### Family checkpoint
 
-Run Debug build/core coverage and the owning Debug ROM regression after a
-related batch, before declaring that family complete, and before a milestone
-or hand-off checkpoint. A related batch normally contains two to five sibling
-routines that share a route, actor family, or state machine. Run Debug sooner
-when a change affects transactional invocation, interrupt delivery, shared
-memory helpers, undefined-behavior-sensitive code, or a previously unseen
-branch.
+Run the full Release suite after a related batch, before declaring that family
+complete, and before a milestone or hand-off checkpoint. A related batch
+normally contains two to five sibling routines that share a route, actor
+family, or state machine. In parallel this is under three minutes, so there is
+no reason to narrow it.
 
-The Debug ROM route is an audit, not a second required execution of every
-single narrow slice. Do not run an additional focused Debug route when the
-family regression already proves the same replacement count and artifact.
+Run the **ROM-free** Debug tests here too, and per slice. They are the
+standing Debug obligation and they cost seconds.
 
 ### Broad acceptance
 
-Run all relevant Debug and Release ROM-backed regressions at milestone,
-release, CI, or deliberate cross-family integration checkpoints. Use the full
-suite when changing shared runtime, trace, checkpoint, save-state, or ROM-load
-behavior.
+Run the full Release suite at milestone, release, CI, or deliberate
+cross-family integration checkpoints, and whenever changing shared runtime,
+trace, checkpoint, save-state, or ROM-load behavior.
+
+## Debug, and why the ROM sweep is the exception
+
+**The ROM-free Debug tests are not optional and never were the problem.** They
+carry the whole of what a Debug build catches that a Release build cannot --
+`assert`, `/RTC1`'s uninitialized-local and stack-corruption checks, and
+`_ITERATOR_DEBUG_LEVEL=2`'s bounds and iterator validation. They also cover
+exactly the code where such a fault would live: `dc_core`, the seven device
+models, the enumerated interrupt boundary, the game-logic C. Run them on every
+slice. They take seconds.
+
+**The Debug ROM sweep is a different thing wearing the same name.** What it
+proves is that census, call and write artifacts are byte-identical in Debug and
+Release -- a determinism claim, and an indirect one: it says no result depends
+on optimization level or on memory that was never initialized. That is worth
+something, but it is worth it *per family*, and a sweep re-proves it for every
+family a change could not reach. It is also the single most expensive thing in
+this project: 219 tests, roughly three and a half hours serial and twenty-five
+minutes parallel, against 147 seconds for the whole Release suite.
+
+So do not run it as a matter of course. Run **one owning-family Debug ROM
+route** -- not the sweep -- when one of these is true:
+
+- A new artifact hash is being recorded as a golden for the first time. This
+  is the strongest case: a value pinned under one configuration that turns out
+  to be configuration-dependent is a defect discovered much later and much
+  more expensively.
+- The change touches shared transaction, checkpoint, interrupt-delivery, or
+  save-state machinery, where Debug and Release shuttle state differently.
+- A Release artifact moved for a reason not yet explained, and the question is
+  whether the cause is undefined behavior.
+
+Run the **full** Debug sweep only at a release checkpoint, or to chase a
+suspected configuration-dependent artifact across families.
+
+One caveat that applies whichever tier is running: a Debug ROM route is a
+genuinely independent execution, so when it does run it must reproduce the
+Release artifact exactly. A route that reproduces the census but not the
+call/write artifacts has found something, and is not to be waved through.
+
+## Run the suites in parallel
+
+The ROM regressions are independent processes writing distinct outputs, so
+they parallelise almost perfectly, and the presets now ask for 24 jobs. This
+is not a tuning detail — it is the difference between a validation tier being
+usable per slice and being something to avoid:
+
+| Suite | Serial | `-j 24` |
+| --- | ---: | ---: |
+| Release, 404 tests | 3,213 s | **147 s** |
+| Debug, 219 tests | ~3.5 h | ~25 min |
+
+The critical path when parallel is the longest single test, currently
+`dc_rom_bonus_scored_results` at 33 seconds, so more jobs buys progressively
+less. Raise `execution.jobs` in `CMakePresets.json` if a machine has the
+cores; each test is single-threaded and needs a few hundred megabytes.
+
+Nothing in the suite *appears* to require serialisation: no test declares
+`RUN_SERIAL` or a resource lock, every `-DOUTPUT` path is distinct along with
+the trace paths derived from it, and the only fixed path any test writes
+(`portable-data/high-score-check.hiscore`) belongs to a single test. The
+recording routes never touch the rest of `portable-data` — backup RAM, the
+cabinet configuration and the high-score autosave are all reached from the
+interactive host only. Keep it that way: a new regression writing a shared
+path under a fixed name would reintroduce the need to run serially.
+
+**One caveat, recorded rather than explained.** In the first two full parallel
+runs, one test — `dc_rom_knight_terminal_release_helper_post_return_scratch_-
+clear_prefix` — failed once and then passed both in isolation and on a
+re-run of the whole suite. That is one failure in roughly eight hundred test
+executions, with no shared path found to account for it and no captured error
+text. Treat an isolated failure under `-j` as unconfirmed until it reproduces:
+re-run the single test before believing it. If it recurs, the things worth
+suspecting first are I/O contention on the larger trace artifacts and CMake's
+`execute_process` output capture under memory pressure, neither of which has
+been ruled in or out.
+
+Do not run the two configurations at once against the same build directory.
+Release and Debug tests share `CMAKE_CURRENT_BINARY_DIR` for their artifacts,
+so concurrent runs overwrite each other's outputs and CTest's own log.
 
 ## Regression design
 
@@ -525,8 +602,8 @@ changed nothing about the reads.
 
 Screen for this at the same time as shared state, and from the same
 disassembly: list every load in the candidate's subtree whose address is on
-the hardware page. If there is one, the routine belongs to phase 2 with its
-device, not to phase 1.
+the hardware page. If there is one, note the *instruction* — not the routine —
+and read on; the next two sections are about how narrow that block usually is.
 
 ### An instruction that changes `I` cannot be summarised by a checkpoint
 
@@ -700,20 +777,65 @@ assembly would have read are one object instead of two kept in step.
 
 Contrast the dispatcher at `00:E058`, one instruction earlier in the same
 handler, which reads the VDC status register. That reports what the display is
-doing — device state with its own clock, which no walk can reconstruct. It
-stays emulated, and correctly so.
+doing — device state with its own clock — and it was written down here as
+"genuinely phase 2, and it needs a native model of that device before anything
+downstream can move."
 
-So when a rejection says "it reads a device", ask which one and what the answer
-depends on:
+**Both halves of that turned out to be wrong, and the slice that found out is
+worth more than the cycles it recovered.** The VDC got its native model, and
+the re-survey the next phase asked for produced a different answer on each
+half:
+
+- *The value was never the obstacle.* `PceVdc::read` takes a `peek` flag that
+  answers without disturbing anything, so the byte could have been handed over
+  on `RoutineEntry` exactly the way the frame's pad state is. Had that been the
+  whole problem, it would have dissolved the moment the model landed.
+- *The obstacle is the side effect.* Reading `$0000` clears every latched
+  status source and is the only way the VDC's interrupt line falls. The
+  replacement contract is a **write** channel, and a write to `$0000` selects a
+  register rather than acknowledging one. A transcript that predicted the byte
+  and skipped the read would return to a core whose interrupt had never been
+  taken, and the handler would be re-entered on the spot.
+
+So the classification is not two kinds of read but three, and the third is the
+one that actually blocks:
 
 - **Outside input, plus lines the routine set itself** — portable now. Model
   the port, emit the writes so the device is left where assembly would leave
   it, and pin both against an assembly trace.
-- **State the device evolves on its own** — genuinely phase 2, and it needs a
-  native model of that device before anything downstream can move.
+- **State the device evolves on its own** — portable once that device has a
+  native model *and* the entry carries a peek of it. This is a smaller category
+  than it looks.
+- **A read that changes the device** — not portable at any length, because the
+  transcript has no channel for the change. This is the only hard one.
 
-Widening the write channel is the small part; it took one address. The
-substantive question is always which of those two kinds of read it is.
+### The block is an instruction; the row says a routine
+
+The corollary is the more useful half. `00:E058`'s status read is a single
+instruction, and the whole dispatcher it sits in — 769,938 master cycles, the
+nineteen instructions the census route reaches plus the arms below them — sat
+on the blocked list for four slices because the
+hotspot table, the registry and this document all recorded the *routine* as the
+thing that was blocked.
+
+Split at the instruction and both sides are ordinary. Above the read are four
+register saves that touch only the stack page. Below it the byte the dispatcher
+branches on is already in the accumulator, put there by a load the core
+performed itself, so the device is never wanted again. `00:E058` walks to the
+read and stops, the core executes it at its own cycle with its acknowledge
+intact, and `00:E05F` picks the dispatch up. 640,374 of the 769,938 are native;
+the 129,564 that remain are the one instruction.
+
+This needed no new capability, which is the part worth remembering. The
+execution and replacement hooks fire in `RunSub` at **every** instruction
+boundary, before the opcode fetch — not at call targets — so any address in the
+ROM is a legal entry point. `00:E05F` is not a jump target and nothing in the
+game ever branches to it. That freedom had been available since patch `0001`.
+
+**So when a candidate is refused for something one instruction does, record the
+refusal against the instruction and check what is left either side of it.** Ask
+it again, in those terms, whenever the reason a routine was parked has changed.
+Widening the write channel is the small part; it took one address.
 
 ### The size of a replacement is not the size of the routine
 
@@ -1387,6 +1509,14 @@ into a table. Do the same for the next device — the counters are the cheapest
 part of the slice and the only part that says what the acceptance test is
 worth.
 
+**One counter is worth more than the path counts, when you can find it: the
+one that says the model did the thing at all.** The controller port has plenty
+of paths and they are all reachable by a machine that nobody is pressing
+anything on, so `PcePad` counts reads that answered with a button held. That
+is the host's input arriving, measured where it arrives, and
+`dc_rom_native_pad` fails on zero rather than merely printing it. A path count
+says which parts of a model ran; this kind says the model was in the path.
+
 **Then check whether another route would close it.** For the PSG it would not.
 The sequencer writes `$0809` from `$2E41`, and every store in the ROM that
 names that byte writes a zero to it, so the plan's answer — "a censused route
@@ -1543,6 +1673,45 @@ added is wrong for the next one, and stays wrong quietly.** Give every patch
 its own branch and its own markers, taken from files that patch alone touches,
 and let the fallback be the newest one only because it is about to stop being
 the newest.
+
+**It happened again, exactly as described.** `0018` was added and left in the
+`else()`, so it was being checked against `0017`'s markers -- the same failure
+mode this section was written about, one patch later. It surfaced only when
+`0019` needed the fallback and `0018` had to come out of it. The rule is not
+"remember to move the fallback"; a rule that depends on remembering has
+already failed twice. Give the new patch its own branch **in the same edit
+that adds it to the series**, and leave the `else()` holding markers for the
+patch you are adding right now, so the next slice has to displace it to do
+anything at all.
+
+### Starve the alternative, then let the census speak
+
+An acceptance test that says "the model produced the same output" is weaker
+than it looks whenever the emulator would have produced that output too. Every
+device seam in this port has that problem: a model that silently failed to
+install leaves the emulator answering, and the census matches perfectly.
+The usual mitigation is to make the model the default arm and removal an
+explicit flag, so at least the arms are labelled.
+
+The controller port allowed something better, and the shape generalises.
+While a pad model is installed, the host's libretro input callback answers
+**zero** for every query -- so the emulator's own input path is not merely
+bypassed, it has nothing to answer with. The census route presses RUN to start
+a game, I to launch a ball, and a flipper every thirty frames for two thousand
+of them; a run that had fallen back is a run where the game never starts. The
+route reproducing `9036a9de...` anyway is then evidence rather than agreement.
+
+Two things make it work, and both are worth checking for before reaching for
+it. The seam has to be an *input* the emulator draws from somewhere the host
+controls -- there is no equivalent for a device the machine drives and reads
+back. And the starved path has to be provably unobserved elsewhere: the same
+callback also feeds the frontend's turbo and six-button toggles, which this
+host disables, so starving it costs nothing else.
+
+Where starving is impossible, the fallback is the negative control: change one
+line so the model receives nothing, record the route, and keep the hash. The
+pad's is `24b1614f...`, and it is what makes the positive result mean
+something -- an oracle nobody has ever seen fail is not yet an oracle.
 
 ### When the device cannot be lifted out, lift the machine down
 
@@ -1855,7 +2024,7 @@ Three things fell out of that, and they are the reason to reach for this
 shape rather than merely tolerate it. There is no publish, so there is no set
 of dispatches to keep total. There is no capture-and-apply pair for the
 savestate, because `SFVARN` writes the emulator's own format straight through
-the model's fields — the first of five models to need no shuttle at all. And
+the model's fields — the only model so far that needs no shuttle at all. And
 the reference shim lost two entry points the fork had been carrying purely
 for it: with the block public, a test writes the two fields no opcode-free
 driver could reach the same way a native machine will.

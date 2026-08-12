@@ -241,6 +241,7 @@ public:
             scanline_start,
             scanline_end);
 
+        frame_started_ = true;
         compare_schedule("start frame");
     }
 
@@ -417,11 +418,24 @@ public:
             state.need_sl_reset ? 1 : 0,
             "field restart pending",
             where);
-        compare_field(
-            observed.frame_done ? 1 : 0,
-            native_->frame_done() ? 1 : 0,
-            "frame done",
-            where);
+        // Only once a frame has started, and the reason is the emulator's
+        // rather than a concession. `VCE::FrameDone` is written by
+        // `StartFrame` and by `RunPartial` and by nothing else -- neither the
+        // constructor nor `Reset` touches it -- so before the first
+        // `StartFrame` the emulator's flag is whatever its allocation held.
+        // A Release build reads zero from a fresh page and agrees by
+        // accident; a Debug build reads the CRT's fill pattern and does not.
+        // Neither is the machine disagreeing: nothing reads the flag before
+        // `StartFrame`, because `Emulate` calls `StartFrame` first. Comparing
+        // it earlier compares against uninitialized memory, which is a
+        // question about the emulator's allocator and not about this model.
+        if (frame_started_) {
+            compare_field(
+                observed.frame_done ? 1 : 0,
+                native_->frame_done() ? 1 : 0,
+                "frame done",
+                where);
+        }
 
         compare_field(
             static_cast<std::int64_t>(
@@ -621,6 +635,10 @@ private:
     std::array<std::int32_t, kFieldLines> native_line_widths_{};
     std::array<std::uint32_t, 512> surface_normal_{};
     std::array<std::uint32_t, 512> surface_grey_{};
+
+    // Whether this pair has reached its first `StartFrame`, which is the one
+    // thing that gives the emulator's frame-done flag a defined value.
+    bool frame_started_ = false;
 
     const char* first_note_ = nullptr;
     std::uint64_t note_count_ = 0;
