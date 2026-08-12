@@ -5529,12 +5529,99 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
   - [x] Stop the shared walk at another entry in its own family, so the
     dispatcher's tail hands `00:E136` and `00:E0EB` over as their own
     transactions instead of emptying their registry rows.
+- [x] Ask the same question of the palette-shadow row, and record the answer
+  even though it is mostly a negative one:
+  - [x] Survey `00:E93C`-`EBD6` per instruction. **There is not one load on
+    the hardware page in the whole range** -- `00:EB30` only ever stores to
+    the VCE -- so the three-kinds classification that unparked the dispatcher
+    has nothing to sort here. The row was never blocked by a device read.
+  - [x] Measure what the 1,079,289 cycles actually are: 625,095 the single
+    `TIA` at `00:EB46`, 302,628 the `RTS` instructions every transcript in the
+    family stops in front of by design, 140,037 the two fade drivers, 11,529
+    chunk boundaries and interrupt resumption.
+  - [x] Split the whole-palette arm around its `TIA` anyway. `00:EB30` now
+    walks to the transfer and `00:EB4D` resumes the arm after it; the routine
+    is admitted on all 3,599 calls, 369 routines deployed, `+3,915` cycles.
+  - [x] Say plainly that this bought admission and not cycles: the transfer is
+    99.6% of its own arm. `00:E058` was the favourable case, not the typical
+    one, and the workflow now says to price a split on what is either side of
+    the instruction rather than on the row's total.
+  - [x] Record a third verdict for the two fade drivers. They are *reachable*
+    -- a walk stops in front of `JSR $E321` like any other instruction, and
+    `00:E94D`'s own `TII` at `00:E950` splits the same way -- and left alone
+    because the route enters them once and eight times. Too few calls to prove
+    a transcript is state-generic is a decline, not a block.
 
 ## Active Work
 
-Current owner: Claude. Current slice: **asking whether `00:E058` is still
-blocked**. Done: the answer is no, for a reason nobody had written down, and
-both sides of the one instruction that *is* blocked are now native.
+Current owner: Claude. Current slice: **asking the same question of the
+palette-shadow row**. Done, and the answer is mostly negative -- which is
+worth as much as the last one was, for the opposite reason.
+
+The question `### Next` set was whether the palette row, 1,079,289 master
+cycles carried as "the two fade drivers and the whole-palette `TIA` arm,
+blocked", was parked by the same sentence `00:E058` had been: a load on the
+hardware page. Disassembling the drivers and the arm answered it in one pass.
+**There is not one load on the hardware page anywhere in `00:E93C`-`EBD6`.**
+`00:EB30` drives the VCE and every access it makes is a store; the drivers and
+the shadow routines never leave work RAM. The classification that unparked the
+dispatcher -- outside input, device state a `peek` could carry, or a read that
+changes the device -- has nothing here to sort.
+
+Measuring the row per instruction says what it is made of instead:
+
+| | Master cycles | Share | What it is |
+| --- | ---: | ---: | --- |
+| `00:EB46` | 625,095 | 58% | The whole-palette `TIA`. One instruction, 29 executions |
+| six `RTS` | 302,628 | 28% | The returns every transcript here stops in front of, by design |
+| `00:E94D`, `00:EA77` | 140,037 | 13% | The two fade drivers |
+| the rest | 11,529 | 1% | `00:EAA7`'s chunk boundaries, and interrupt resumption |
+
+**The `TIA` is a capacity wall, and it is also the cost.** 1,024 writes against
+a 512-write channel, and a block transfer has no interior instruction boundary
+for a chunk to stop at, so it will not move. The arm around it is ordinary, so
+it splits the way the dispatcher did: `00:EB30` walks the four flag tests and
+both colour-table stores and stops in front of the transfer, the core executes
+it, `00:EB4D` clears `$2BB9` and `$2CCB` after it. `00:EB30` is admitted on all
+3,599 calls now; the deployed registry goes 368 -> 369 routines and
+671,636,826 -> 671,640,741 native cycles. That is **+3,915**, because the six
+instructions the split moved are 2,523 cycles against the transfer's 625,095.
+
+**So this bought admission, not cycles, and the contrast is the finding.** At
+`00:E058` the unportable instruction was 17% of its block and the ordinary code
+around it was the rest; here it is 99.6% of its arm. Reading a wall as an
+instruction is always the right reading -- it is what turns a 29-call exception
+into a clean registry row whose regression can state one invariant -- but the
+slice has to be priced on what is either side of the instruction, not on the
+row's total. The workflow now says so.
+
+**A quarter of the row was never blocked at all.** 302,628 cycles are `RTS`
+instructions the transcripts deliberately hand back. An inventory row that
+counts emulated addresses counts them; no reading of "blocked" covers them.
+
+**And the fade drivers get a third verdict.** They are reachable: the old note
+that calling the frame-sync spin at `00:E321` forces a transcript across
+twenty-one frames is wrong in the same way the dispatcher's note was wrong -- a
+walk stops in front of the `JSR` and the return address is the next entry
+point, and `00:E94D`'s own `TII $27B9, $27BA, $03FF` at `00:E950` (1,023 writes,
+18,465 cycles) splits identically. They are left emulated because the route
+enters `00:E94D` **once** and `00:EA77` eight times. Every entry point in this
+family is admitted on hundreds or thousands of calls, which is what lets the
+regression claim a transcript is state-generic rather than a transcription of
+the one path observed. **Too few calls to prove anything is a decline, not a
+block**, and writing it down as "blocked" is what sends the next reader to
+re-survey a row with no answer left in it.
+
+The census is `9036a9de...` unchanged and so are the work-RAM and bus write
+traces. The bus trace is the sharp check here: the two `STZ` stores the split
+moved into a transcript go to `$0402` and `$0403`, inside the traced VCE range,
+so their values, order and master-cycle offsets are pinned against assembly.
+405/405 Release in 164.88 s, 38/38 ROM-free Debug.
+
+### Previous: asking whether `00:E058` is still blocked
+
+The answer was no, for a reason nobody had written down, and both sides of the
+one instruction that *is* blocked are now native.
 
 The survey `### Next` asked for was whether the VDC gaining a native model
 lifted the rule that parked the interrupt dispatcher. It did not — and the
@@ -5765,22 +5852,53 @@ does not.
 
 ### Next
 
-**Ask the same question of the palette-shadow row.** `00:E93C`–`EBD6` is
-1,079,359 cycles recorded as blocked, and it was parked by the same sentence
-`00:E058` was — so it deserves the same re-reading, in the new terms. Now that
-the block is understood to be an instruction rather than a routine, the survey
-is concrete: disassemble the two fade drivers and the whole-palette `TIA` arm,
-find every load on the hardware page, and for each one ask which of the three
-kinds it is — outside input, device state the entry could carry as a peek, or a
-read that *changes* the device. Only the third is a wall, and only at that one
-instruction. `00:EAA7` will still be out of reach for a different and honest
-reason (205,012 cycles per call, past the checkpoint cap) and both fade drivers
-call the frame-sync spin at `00:E321`, so expect the answer to be partial; the
-point is to record which instruction blocks what, instead of a routine name.
+**Ask whether a transcript can absorb its own `RTS`.** This is where the
+palette survey points, and it is a bigger number than any routine left on the
+list. Ranking the census route's emulated instructions puts the frame-sync
+wait first, then the sound driver's `RTI`/`SEI` — both deliberate refusals —
+and then, before any routine that could be called blocked, a long tail of call
+and return linkage: `08:41AB` at 1,560,450 cycles is `08:40DF`'s `RTS`,
+`08:4094` at 1,066,632 is the `JSR` that reaches it, `00:E94C` at 189,645 is
+`00:E93C`'s. The first genuinely unportable instruction in the whole ranking is
+`00:EB46`, the palette `TIA`, at 625,095 — below four handovers.
 
-Worth sweeping the same way afterwards: the other rows still labelled
-"blocked", to see how many of them are a whole routine and how many are one
-load with ordinary code either side.
+`NATIVE_PORT_WORKFLOW.md` already sizes the category at **13.3M master cycles**
+on this route, 21 at each end of every native call, and files it under "one of
+the hybrid's own overheads, which no amount of porting removes". That claim is
+the thing to test, because the same document says two hundred lines later that
+the convention is not a limit: the stack is ordinary work RAM at
+`$2100`-`$21FF`, `output_registers` carries the stack pointer, `RTS` pops and
+therefore emits no write at all, and the collision compositions have been
+writing `JSR` frames since they were written. A sweep of 227 emulated addresses
+shaped like one 7-cycle instruction run hundreds to thousands of times comes to
+15.4M; nine spot-checks were eight `RTS` and one `JSR`.
+
+So the survey is: pick one well-covered family — the palette group is the
+obvious candidate at 302,628 cycles across six returns, all six admitted on
+every call — and try ending its transcripts *past* the `RTS` instead of in
+front of it. The walk pops the return address itself, declares the 21 cycles,
+and sets `return_instruction` to the caller. Three things to establish before
+writing any of it, because each could make the answer no:
+
+- Whether the core's checkpoint and interrupt-horizon machinery accepts a
+  transcript that ends at an address in a different routine, and possibly a
+  different bank, from the one it was entered at.
+- What happens when the caller's return address is itself a registered entry
+  point — the vblank family's stop rule exists for exactly that collision, and
+  this would create many more of them.
+- Whether an interrupt arriving between the `RTS` and the caller's next
+  instruction is still delivered at the right boundary. This is
+  interrupt-delivery machinery, so the owning-family Debug ROM route is
+  required whatever the answer.
+
+If it works, the same move applies to the `JSR` on the other side, and the two
+together are the largest single category of remaining emulated cycles outside
+the wait.
+
+Still worth sweeping afterwards: the other rows labelled "blocked", to see how
+many are a whole routine, how many are one instruction with ordinary code
+either side, and — the verdict this slice added — how many are neither, but
+simply have too few calls on this route to prove a transcript state-generic.
 
 **Then the frame loop, by subtraction.** With the port gone, `Emulate()` on
 this machine is a rebase protocol over models that are already native plus one

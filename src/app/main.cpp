@@ -2857,6 +2857,7 @@ parse_logical_address_range(const std::string_view text)
                                || request.routine.logical_pc == 0xEAA7U
                                || request.routine.logical_pc == 0xEAB0U
                                || request.routine.logical_pc == 0xEB30U
+                               || request.routine.logical_pc == 0xEB4DU
                                || request.routine.logical_pc == 0xEBA5U)
                            && request.all_calls;
                        const bool proven_bank_call_wrappers =

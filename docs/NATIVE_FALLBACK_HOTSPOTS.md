@@ -2651,12 +2651,12 @@ them was the whole of the analysis:
 
 | Routine | Calls | Master cycles | Per call | Outcome |
 | --- | ---: | ---: | ---: | --- |
-| `00:EB30` | 3,599 | 8,636,040 | 2,400 | Native, 3,152 of 3,181 entered |
+| `00:EB30` | 3,599 | 8,636,040 | 2,400 | Native, 3,599 of 3,599 entered, its `TIA` arm split at `00:EB4D` |
 | `00:E9B6` | 672 | 6,548,946 | 9,768 | Native, 672 of 672 |
 | `00:EBA5` | 1,121 | 2,629,866 | 2,388 | Native, 1,121 of 1,121 |
 | `00:EAA7` | 8 | 1,640,100 | 205,012 | Over the checkpoint cap — **superseded**, now native by chunking |
 | `00:E93C` | 8,969 | 758,370 | 106 | Native, 8,969 of 8,969 |
-| `00:E94D`, `00:EA77` | 9 | 140,037 | — | Block on the frame-sync spin |
+| `00:E94D`, `00:EA77` | 9 | 140,037 | — | — **superseded**, see the survey below: reachable, but nine calls is not enough evidence to port on |
 
 Three observations worth carrying forward.
 
@@ -2718,6 +2718,65 @@ colour, 102 per block, because the core's wait-state compensation in
 steals a CPU cycle for the VDC *and* the VCE, so both belong in that test.
 Every write value and every write order was already right when the clock was
 wrong, which is the argument for diffing traces rather than end state.
+
+### Re-reading the row after the dispatcher split, and a null result
+
+`00:E058` was re-opened by asking which *instruction* was blocked rather than
+which routine. The same question was put to this row, whose 1,079,289 remaining
+master cycles the inventory carried as "the two fade drivers and the whole-
+palette `TIA` arm, blocked". The survey was concrete: disassemble the drivers
+and the arm, find every load on the hardware page, and sort each one into
+outside input, device state a `peek` could carry, or a read that *changes* the
+device — only the third being a wall.
+
+**There is not one load on the hardware page in `00:E93C`–`EBD6`.** The
+classification that unparked the dispatcher has nothing to sort here. `00:EB30`
+touches `$0402`-`$0405` and every access is a store; the drivers and the shadow
+routines never leave work RAM. The row was never blocked by a device read, and
+a survey that returns "the question does not apply" is still a survey — it is
+what stops the sentence being copied forward a third time.
+
+Measuring the row per instruction, with the deployed registry, says what it is
+actually made of:
+
+| | Master cycles | Share | What it is |
+| --- | ---: | ---: | --- |
+| `00:EB46` | 625,095 | 58% | The whole-palette `TIA`. One instruction, 29 executions, 21,555 cycles each |
+| six `RTS` | 302,628 | 28% | The returns every transcript in the family stops in front of, by design |
+| `00:E94D`, `00:EA77` | 140,037 | 13% | The two fade drivers |
+| the rest | 11,529 | 1% | `00:EAA7`'s chunk boundaries, and resumption where an interrupt landed on a checkpoint |
+
+Three things follow, and only one of them is a port.
+
+**The `TIA` is a capacity wall, not a semantic one, and it is the cost.** It
+moves 1,024 bytes to the two data ports in one opcode against a 512-write
+channel, and chunking cannot reach it because a checkpoint is an instruction
+boundary and a block transfer has no interior. The arm around it is ordinary,
+so it split the way the dispatcher did — `00:EB30` to the transfer, the core
+through it, `00:EB4D` after — and `00:EB30` is admitted on all 3,599 calls now.
+But the six instructions that moved are 2,523 cycles against the transfer's
+625,095. **Reading a wall as an instruction is always the right reading; it
+only pays when the instruction is not itself the cost.** At `00:E058` the
+unportable instruction was 17% of its block; here it is 99.6% of its arm.
+
+**A quarter of the row was never blocked at all.** 302,628 cycles are `RTS`
+instructions the transcripts deliberately hand back, the same convention every
+family in the port uses. An inventory row that counts emulated addresses counts
+them, and there is no reading of "blocked" under which they qualify.
+
+**The drivers are reachable and still not worth porting, for a reason about
+evidence.** The old note — that calling the frame-sync spin at `00:E321` forces
+a transcript to span twenty-one frames — is wrong in exactly the way the
+dispatcher's note was wrong: a walk stops in front of the `JSR`, the core takes
+the spin, and the return address is the next entry point. `00:E94D` has a
+second such instruction of its own, the `TII $27B9, $27BA, $03FF` at `00:E950`,
+1,023 work-RAM writes and 18,465 cycles, which splits the same way. What stops
+them is that this route enters `00:E94D` **once** and `00:EA77` eight times.
+Every entry point in this family is admitted on hundreds or thousands of calls,
+which is what lets a regression claim the transcript is state-generic rather
+than a transcription of one observed path. One sample cannot make that claim,
+and 0.011% of the route does not justify lowering the bar. That is a different
+verdict from "blocked" and it should be recorded as a different word.
 
 ## The bank-switching call wrappers, and two corrections
 

@@ -1222,9 +1222,12 @@ replace_music_sequencer(
     std::span<const std::byte> work_ram,
     std::span<const std::byte> rom);
 
-// The palette shadow buffer's three leaf maintainers. One walk shared by
-// three entry points, each stopping in front of its own RTS. None of them
-// calls anything, so nothing is inlined.
+// The palette shadow buffer and the VCE upload that drains it. One walk shared
+// by seven registered addresses. None of them calls anything, so nothing is
+// inlined; each stops in front of its own RTS, in front of the JMP that closes
+// 00:EAA7's colour loop when a chunk is full, or -- on 00:EB30's whole-palette
+// arm -- in front of the TIA that moves all 1,024 bytes in one instruction,
+// which the core executes before 00:EB4D resumes the arm.
 [[nodiscard]] std::optional<emulation::RoutineReplacement>
 replace_palette_shadow(
     const emulation::RoutineEntry& entry,

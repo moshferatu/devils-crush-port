@@ -590,12 +590,16 @@ against a `$27B9` base, sets `$2CCC,Y` and `$2CCB`, and copies thirty-two
 bytes in from `$2F/$30`. The source is always ROM on this route: `$8000`-
 `$BFFF` through MPR4/MPR5.
 
-`E93C`, `E9B6`, `EBA5` and `EB30` now run natively. `EB30`'s `TIA` arm is the
-one exception: 1,024 writes against a replacement channel that carries 512,
-so the walk declines in front of it and those 29 calls stay emulated. `EAA7`
-is 205,012 cycles per call, which is past the checkpoint cap; and both fade
-drivers call the frame-sync spin at `00:E321`, so no transcript can cover
-them.
+`E93C`, `E9B6`, `EBA5`, `EAA7` and `EB30` now run natively, through seven
+registered addresses. `EAA7` is 205,012 cycles per call, past the checkpoint
+cap, so it chunks at `EAB0`. `EB30`'s `TIA` arm splits rather than declining:
+the walk stops in front of the transfer, whose 1,024 writes are twice what the
+replacement channel carries and which has no interior boundary for a chunk, the
+core executes it, and `EB4D` clears `$2BB9`/`$2CCB` on the other side. The two
+fade drivers are left emulated — not because they call the frame-sync spin at
+`00:E321`, which a walk can stop in front of like any other `JSR`, but because
+the route enters `E94D` once and `EA77` eight times, which is too few calls to
+demonstrate a transcript is state-generic.
 
 Every call to `EB30` arrives with `I` set — the upload has to land inside the
 blanking interval — which is why an 18,585-cycle transcript here costs the

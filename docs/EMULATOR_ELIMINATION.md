@@ -118,7 +118,7 @@ prints both denominators for the same reason — see *Two shares* below.
 | `00:E128`–`E290` | 1,289,166 | 0.10% | Interrupt epilogue and the two `RTI`s. The dispatcher at `00:E058` used to be listed here as blocked; both its halves are native now and what is left of it is the single `LDA $0000`, 129,564 cycles, whose read is the interrupt acknowledge. The handler bodies, the call wrappers and the pad reader are native |
 | `01:C0FE`–`C1B5` | 1,407,828 | 0.11% | The top-level frame loop itself — glue between calls rather than a routine |
 | `03:694A`–`6A37` | 2,721,348 | 0.21% | Collision-table interpreter — **already ported**; the `RTS` instructions and the resumption after an interrupt lands on a checkpoint, see below |
-| `00:E93C`–`EBD6` | 1,079,359 | 0.08% | Palette shadow buffer — the two fade drivers and the whole-palette `TIA` arm, **blocked**, see below |
+| `00:E93C`–`EBD6` | 1,075,809 | 0.08% | Palette shadow buffer. **Not one blocked routine**: 625,095 of it is the single `TIA` at `00:EB46`, 302,628 is the `RTS` instructions every transcript in the family deliberately stops in front of, 140,037 is the two fade drivers, and the rest is chunk boundaries and interrupt resumption. See below |
 | `02:586F`–`5903` | 501,195 | 0.04% | Sorcerer tick — **already ported**, and both interpreter calls are now composed in line; what is left is the two bank-wrapper calls, three `RTS` instructions and resumption |
 | `01:CA84`–`CC04` | 621,648 | 0.05% | Collision frame — **already ported**, and the call into the scanner is now composed rather than emulated, see below |
 
@@ -393,20 +393,21 @@ Remaining real logic, in rough order of value:
 
    | Routine | Master cycles | State |
    | --- | ---: | --- |
-   | `00:EB30` VCE upload | 8,636,040 | **native** except the 29-call `TIA` arm |
+   | `00:EB30` VCE upload | 8,636,040 | **native** on every call, its `TIA` arm split either side of the transfer |
    | `00:E9B6` block interpolator | 6,548,946 | **native** |
    | `00:EBA5` block stager | 2,629,866 | **native** |
    | `00:EAA7` block decrement | 1,640,100 | **native**, in thirteen chunks a call |
    | `00:E93C` sixteen-bit compare | 758,370 | **native** |
-   | `00:E94D`, `00:EA77` fade drivers | 140,037 | call the frame-sync spin at `00:E321` |
+   | `00:E94D`, `00:EA77` fade drivers | 140,037 | reachable, not worth a transcript: one call and eight |
 
-   The two fade drivers are not portable for the same structural reason the
-   spin loop is not: a transcript for either would have to span the
-   twenty-one frames they wait through. `00:EB30` is done: it took the
-   bounded-register move described in item 3, applied to the VCE, plus the
-   matching widening of the core's wait-state compensation. Its whole-palette
-   arm stays emulated — one `TIA` moving 1,024 bytes is 1,024 writes against
-   a 512-write channel — but that arm is 29 calls of 3,599.
+   `00:EB30` took the bounded-register move described in item 3, applied to
+   the VCE, plus the matching widening of the core's wait-state compensation.
+   Its whole-palette arm — 29 calls of 3,599, where a single `TIA` moves all
+   1,024 bytes — is now native either side of the transfer: the walk stops in
+   front of it, the core executes it, and `00:EB4D` resumes the arm. The
+   transfer itself stays emulated and always will; 1,024 writes against a
+   512-write channel is a capacity limit, and a block transfer has no interior
+   instruction boundary for a chunk to stop at.
 
    The palette group is therefore finished for the hybrid at 18.2M of 20.6M.
 

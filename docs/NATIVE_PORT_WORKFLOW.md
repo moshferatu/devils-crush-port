@@ -837,6 +837,31 @@ refusal against the instruction and check what is left either side of it.** Ask
 it again, in those terms, whenever the reason a routine was parked has changed.
 Widening the write channel is the small part; it took one address.
 
+**And then check whether the instruction is also the cost, because usually it
+is.** The palette row was re-read the same way one slice later. `00:EB30`'s
+whole-palette arm splits cleanly around its `TIA $27B9, $0404, $0400` — 1,024
+writes against a 512-write channel, and a block transfer has no interior
+boundary for a chunk to stop at — so the arm is now native either side of the
+transfer and the routine is admitted on every call. It moved 2,523 master
+cycles, because the transfer is 625,095 of the arm's 627,618. `00:E058` was the
+favourable case, not the typical one: there the unportable instruction was 17%
+of its block and the ordinary code around it was the rest. Split anyway — full
+admission is worth having, and an entry with an exception is an entry whose
+regression cannot state a simple invariant — but price the slice on what is
+either side of the instruction, not on the row's total.
+
+There is a third verdict besides "native" and "blocked", and the same survey
+produced it. The two fade drivers above the shadow buffer are portable: they
+call the frame-sync spin at `00:E321`, and a walk stops in front of a `JSR`
+like any other instruction. They are left emulated because the census route
+enters one of them once and the other eight times. A transcript admitted on one
+call cannot be shown to be state-generic rather than a transcription of the one
+path observed, which is the whole difference between this method and the
+replay-and-match method it replaced. **Too few calls to prove anything is a
+reason to decline, and it is not the same as blocked** — writing it down as
+"blocked" is what makes a later reader re-survey a row that has no answer left
+in it.
+
 ### The size of a replacement is not the size of the routine
 
 `03:6966` sat on the "next slice" line for several rounds because converting it

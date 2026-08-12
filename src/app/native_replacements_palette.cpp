@@ -19,10 +19,10 @@ using emulation::RoutineReplacement;
 // nine-bit GRB here, marks the ones that changed in $2CCC-$2CEB, and lets
 // 00:EB30 push the dirty blocks out to the VCE ports once a frame.
 //
-// Five entry points are ported here, reached through six registered
-// addresses. Three are leaves in the strong sense -- no JSR, no device port,
-// no state another thread of control writes -- which is what makes them the
-// right first step into the video paths:
+// Five routines are ported here, reached through seven registered addresses.
+// Three are leaves in the strong sense -- no JSR, no device port, no state
+// another thread of control writes -- which is what makes them the right first
+// step into the video paths:
 //
 //   00:E93C  the sixteen-bit compare ($2F/$30 against $2D/$2E) the fade
 //            drivers use to decide whether a source pointer has run past its
@@ -37,11 +37,17 @@ using emulation::RoutineReplacement;
 // The fourth is 00:EB30, the upload itself, and it is the first routine in the
 // project to drive the VCE. It reads the flags, and for each dirty block
 // points the colour-table address at $0402/$0403 and pushes sixteen colours
-// through $0404/$0405. Only its whole-palette arm is out of reach: when $2BB9
-// is set the routine uploads all 1,024 bytes with a single TIA, and a
-// transcript for that arm would need 1,024 writes against the channel's cap of
-// 512, so the walk declines in front of it. Twenty-nine of 3,599 calls take
-// that arm.
+// through $0404/$0405. Its whole-palette arm -- taken when $2BB9 is set, on
+// twenty-nine of 3,599 calls -- uploads all 1,024 bytes with a single TIA, and
+// that one instruction is out of reach: 1,024 writes against a channel that
+// carries 512, with no boundary inside a block transfer for a chunk to stop
+// at. The arm is still native either side of it. 00:EB30 walks the four flag
+// tests and the two colour-table stores and stops in front of the transfer;
+// 00:EB4D, a seventh registered address that nothing in the game jumps to,
+// clears the two request bytes afterwards. The routine was never the unit
+// here -- the instruction was, and it is worth 625,095 of the arm's 627,618
+// master cycles, so this split buys admission on every call rather than
+// cycles.
 //
 // The fifth is 00:EAA7, the fade-to-black stepper, and it is the first routine
 // here that a single transcript cannot hold. Where the interpolator crossfades
@@ -54,10 +60,15 @@ using emulation::RoutineReplacement;
 // and each costs the twelve master cycles of the jump the core executes.
 //
 // The two drivers above the shadow buffer -- the crossfade at 00:E94D and the
-// fade-to-black at 00:EA77 -- are still not portable in the hybrid: both call
-// the frame-sync spin at 00:E321, so a transcript for either would have to
-// span twenty-one frames. That is a wait rather than work, and it is a
-// phase-2 problem, not a length problem chunking can solve.
+// fade-to-black at 00:EA77 -- are absent for a reason that was restated once
+// the dispatcher split showed how to read a wall. Both call the frame-sync
+// spin at 00:E321, and the old note said that made a transcript span twenty-
+// one frames; it does not, any more than the TIA above makes one span 1,024
+// writes. A walk stops in front of the JSR and resumes at the return address,
+// and the drivers would chunk that way. They are left alone because the route
+// enters 00:E94D once and 00:EA77 eight times, for 138,582 and 1,455 master
+// cycles: one sample cannot demonstrate that a transcript is state-generic
+// rather than ordinal, which is the bar every entry point above clears.
 constexpr std::uint8_t kBank = 0x00U;
 
 constexpr std::uint8_t kCarry = 0x01U;
@@ -101,7 +112,20 @@ constexpr std::size_t kCheckpointBudget = 1700U;
 {
     return logical_pc == 0xE93CU || logical_pc == 0xE9B6U
         || logical_pc == 0xEAA7U || logical_pc == 0xEAB0U
-        || logical_pc == 0xEB30U || logical_pc == 0xEBA5U;
+        || logical_pc == 0xEB30U || logical_pc == 0xEB4DU
+        || logical_pc == 0xEBA5U;
+}
+
+// The one instruction in this family the contract cannot express, and the
+// reason is capacity rather than meaning. TIA $27B9, $0404, $0400 alternates
+// 1,024 bytes between the two VCE data ports; the replacement channel carries
+// 512 writes, and a checkpoint is an instruction boundary, so there is nowhere
+// inside a block transfer for a chunk to stop. The walk hands it to the core
+// and 00:EB4D picks the arm up again on the other side.
+[[nodiscard]] constexpr bool is_handover_instruction(
+    const std::uint16_t logical_pc)
+{
+    return logical_pc == 0xEB46U;
 }
 
 // The RTS each entry point walks to. The transcript stops in front of it and
@@ -112,7 +136,8 @@ constexpr std::size_t kCheckpointBudget = 1700U;
 {
     return logical_pc == 0xE94CU || logical_pc == 0xEA76U
         || logical_pc == 0xEB2FU || logical_pc == 0xEB3AU
-        || logical_pc == 0xEBA4U || logical_pc == 0xEBD6U;
+        || logical_pc == 0xEB53U || logical_pc == 0xEBA4U
+        || logical_pc == 0xEBD6U;
 }
 
 } // namespace
@@ -415,6 +440,14 @@ std::optional<RoutineReplacement> replace_palette_shadow(
         // The transcript ends in front of the RTS, which the core then
         // executes itself.
         if (is_return_instruction(pc)) {
+            finish(pc);
+            return replacement;
+        }
+        // The whole-palette TIA. The transcript stops in front of it exactly
+        // as it stops in front of an RTS: the core executes the instruction
+        // itself, at its own cycle and with all 1,024 of its port writes, and
+        // the hook is consulted again at the boundary after it.
+        if (is_handover_instruction(pc)) {
             finish(pc);
             return replacement;
         }
@@ -1848,12 +1881,36 @@ std::optional<RoutineReplacement> replace_palette_shadow(
                 (registers.status & kZero) != 0U);
             break;
 
-        // The whole-palette arm. TIA $27B9, $0404, $0400 moves 1,024 bytes
-        // alternating between the two data ports, which is 1,024 writes
-        // against a channel that carries 512. There is no transcript for it,
-        // so the walk hands the call back before its first store lands.
-        case 0xEB40U:  // STZ $0402
-            return std::nullopt;
+        // The whole-palette arm, in two transactions either side of the TIA.
+        // Both stores here point the VCE's colour-table address at zero, which
+        // is ordinary work; only the transfer itself is out of reach.
+        case 0xEB40U:  // STZ $0402 -- colour-table address low
+            store_port(0xEB40U, 0x0402U, 0x00U);
+            append_checkpoint(0xEB40U, 0xEB43U, 18U, 6U);
+            pc = 0xEB43U;
+            break;
+
+        case 0xEB43U:  // STZ $0403 -- colour-table address high
+            store_port(0xEB43U, 0x0403U, 0x00U);
+            append_checkpoint(0xEB43U, 0xEB46U, 18U, 6U);
+            pc = 0xEB46U;
+            break;
+
+        // ---- 00:EB4D  the whole-palette arm past its TIA ------------------
+        // A second entry point rather than a jump target: nothing in the game
+        // branches here, and it is reached only by the core falling out of the
+        // transfer above. It clears both upload requests and returns.
+        case 0xEB4DU:  // STZ $2BB9
+            store(0xEB4DU, 0x2BB9U, 0x00U);
+            append_checkpoint(0xEB4DU, 0xEB50U, 15U);
+            pc = 0xEB50U;
+            break;
+
+        case 0xEB50U:  // STZ $2CCB
+            store(0xEB50U, 0x2CCBU, 0x00U);
+            append_checkpoint(0xEB50U, 0xEB53U, 15U);
+            pc = 0xEB53U;
+            break;
 
         case 0xEB54U:  // CLX -- no flags
             registers.x = 0x00U;

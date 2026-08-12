@@ -16,12 +16,12 @@ Release state-census route (`--native-cycle-census`, measured 2026-08-12):
 | | |
 | --- | ---: |
 | Elapsed master cycles | 1,292,371,731 |
-| Native master cycles | 671,636,826 |
+| Native master cycles | 671,640,741 |
 | **Native share** | **51.97%** |
 | **Native share of cycles outside the idle spin loop** | **94.53%** |
-| Routines installed | 368 of 368 |
-| Routines entered | 301 |
-| Calls run natively | 2,665,368 of 2,703,975 entered |
+| Routines installed | 369 of 369 |
+| Routines entered | 302 |
+| Calls run natively | 2,665,426 of 2,704,004 entered |
 | Calls declined at an interrupt horizon | 0 |
 | Transcripts installed inside a suspended transcript | 295,164 |
 | Deepest simultaneous suspension | 3 of a permitted 4 |
@@ -457,12 +457,13 @@ by a single cycle.**
 Gameplay code never writes the VCE. It keeps thirty-two 32-byte blocks of
 packed nine-bit GRB in a shadow buffer at `$27B9`-`$2BB8`, marks the blocks
 it changed in `$2CCC`-`$2CEB`, and `00:EB30` pushes the dirty ones out to
-the VCE ports once a frame. Five routines are now native, and they are
-the port's first move into the video paths:
+the VCE ports once a frame. Five routines are now native, reached through
+seven registered addresses, and they are the port's first move into the
+video paths:
 
 | Address | What it is | Native calls | Master cycles |
 | --- | --- | ---: | ---: |
-| `00:EB30` | The upload: dirty blocks out to the VCE | 3,152 of 3,181 | 6,870,516 |
+| `00:EB30` + `00:EB4D` | The upload: dirty blocks out to the VCE, and the whole-palette arm either side of its `TIA` | 3,599 and 29, both of both | 6,874,431 |
 | `00:E9B6` | Block interpolator: one crossfade step over sixteen colours | 672 | 6,548,946 |
 | `00:EBA5` | Block stager: a 32-byte copy plus the dirty flags | 1,121 | 2,629,866 |
 | `00:E93C` | The sixteen-bit compare the fade drivers branch on | 8,969 | 758,370 |
@@ -488,10 +489,27 @@ than the VDC and the PSG. It walks the thirty-two dirty flags, and for
 each block it points the colour table at `$0402`/`$0403` and pushes
 sixteen colours through `$0404`/`$0405`. Twenty-nine of its 3,599 calls
 take a second arm instead, where a single `TIA $27B9, $0404, $0400`
-moves all 1,024 bytes at once; that is 1,024 writes against a channel
-that carries 512, so the walk declines in front of the first store
-rather than truncating the upload. A further 418 calls never reach the
-hook because another transcript is suspended when they arrive.
+moves all 1,024 bytes at once — 1,024 writes against a channel that
+carries 512, and a block transfer has no interior boundary a chunk could
+stop at.
+
+For a long time that arm was recorded as declined, and it was the routine
+that was written down rather than the instruction. The `TIA` is one
+instruction of eleven. Above it are four flag tests and two stores that
+zero the colour-table address; below it are two stores that clear the
+upload requests and an `RTS`. So the arm splits the way the interrupt
+dispatcher did: `00:EB30` walks to the transfer and stops, the core
+executes it with all 1,024 of its port writes at its own cycle, and
+`00:EB4D` — a seventh registered address that nothing in the game jumps
+to — finishes the arm. `00:EB30` is now admitted on every call.
+
+**What that buys is admission, not cycles, and the difference from the
+dispatcher is worth stating.** The `TIA` is 625,095 of the arm's 627,618
+master cycles; the six instructions the split moved into transcripts are
+2,523, and the whole change is `+3,915` on the deployed registry. At
+`00:E058` the unportable instruction was 17% of its block and splitting
+moved 640,374. Reading a wall as an instruction is always the right
+reading, but it only pays when the instruction is not itself the cost.
 
 Admitting it took a two-line widening on each side of the boundary: the
 VCE register file was added to the replacement write channel's
@@ -521,11 +539,24 @@ length, so it reads the next record's command byte before committing to
 it — a colour is a fixed seventeen writes, so the stepper decides on the
 counters alone. Chunking is cheaper the more uniform the loop body is.
 
-Two neighbours stay emulated, and neither is a length problem. `00:E94D`
-and `00:EA77`, the two fade drivers, both call the frame-sync spin at
-`00:E321`, so a transcript for either would have to span the twenty-one
-frames they wait through. That is a wait rather than work, and chunking
-does not reach it.
+Two neighbours stay emulated, and the reason given here was wrong.
+`00:E94D` and `00:EA77`, the two fade drivers, both call the frame-sync
+spin at `00:E321`, and this paragraph used to say that made a transcript
+span the twenty-one frames they wait through. It does not — no more than
+the `TIA` above makes one span 1,024 writes. A walk stops in front of the
+`JSR`, the core takes the spin, and the return address is the next entry
+point; the crossfade driver would chunk on its passes exactly as
+`00:EAA7` chunks on its colours. It has a second such instruction of its
+own, the `TII $27B9, $27BA, $03FF` at `00:E950`, which is 1,023 work-RAM
+writes and 18,465 master cycles, and it splits the same way.
+
+They are left alone for a different reason, and it is a reason about
+evidence rather than capability: this route enters `00:E94D` **once** and
+`00:EA77` eight times, for 138,582 and 1,455 master cycles. Every entry
+point in the table above is admitted on hundreds or thousands of calls,
+which is what lets the regression claim a transcript is state-generic
+rather than a transcription of one observed path. One sample cannot make
+that claim, and 0.011% of the route is not worth weakening the bar for.
 
 Verification is the two-run diff, now over three artifacts: 7,369,685
 work-RAM writes covering the shadow buffer, the dirty flags, the
@@ -1318,11 +1349,12 @@ anything and the figure has been dropped rather than carried forward
 unverified.
 
 Set the idle spin loop aside and 710,482,755 cycles are the machine
-working; 671,636,826 of them, **94.53%**, now run natively.
+working; 671,640,741 of them, **94.53%**, now run natively.
 
 The breakdown below is a self-consistent snapshot taken before the
-interrupt dispatcher was split, against a slightly different measurement
-of the wait: 708,122,337 cycles outside it, 670,996,452 native, 94.8%,
+interrupt dispatcher was split and the whole-palette arm with it, against
+a slightly different measurement of the wait: 708,122,337 cycles outside
+it, 670,996,452 native, 94.8%,
 and a census remainder of 37,125,885. It is left at those numbers rather
 than half-updated, because what it is for is the *shape* of the
 remainder. Pricing the profile address by address divides it into two
@@ -1514,7 +1546,8 @@ accept a call.
 | `00:E9B6` | 672 | 672 | `verify_palette_shadow_semantic` |
 | `00:EAA7` | 8 | 8 | `verify_palette_shadow_semantic` |
 | `00:EAB0` | 93 | 93 | `verify_palette_shadow_semantic` |
-| `00:EB30` | 3,570 | 3,599 | `verify_palette_shadow_semantic` |
+| `00:EB30` | 3,599 | 3,599 | `verify_palette_shadow_semantic` |
+| `00:EB4D` | 29 | 29 | `verify_palette_shadow_semantic` |
 | `00:EBA5` | 1,121 | 1,121 | `verify_palette_shadow_semantic` |
 | `00:ECC6` | 3,599 | 3,599 | `verify_bank_call_wrappers_semantic` |
 | `00:ECE2` | 3,599 | 3,599 | `verify_bank_call_wrappers_semantic` |

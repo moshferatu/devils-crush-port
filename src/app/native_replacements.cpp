@@ -201,6 +201,11 @@ replace_native_gameplay_routine_impl(
         || entry.routine
             == RoutineKey{
                 .physical_bank = 0x00U,
+                .logical_pc = 0xEB4DU,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x00U,
                 .logical_pc = 0xEBA5U,
             }) {
         return detail::replace_palette_shadow(entry, work_ram, rom);
