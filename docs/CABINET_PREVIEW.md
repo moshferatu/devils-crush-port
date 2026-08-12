@@ -706,6 +706,65 @@ respond wherever they stand, and `--cabinet-freeze-census` shows the spiders at
 `$26-$29` changing 12.5 times per 100 off-camera frames against 9.7 on camera,
 where they previously missed most of what the ROM asked of them.
 
+### Freeing the flippers during the launch
+
+Lifting the cull did not make the flippers answer while the ball is still in
+the Devil Shooter, and the reason is a separate gate. The actor scheduler
+publishes the held pad byte to `$2CEE` once a frame and blanks it outright
+whenever the shooter owns the ball:
+
+```
+01:C4F1  LDA $2CC7        tilt lock
+01:C4F4  BNE $C4FC
+01:C4F6  LDA <$53
+01:C4F8  AND #$08         the Devil Shooter session
+01:C4FA  BEQ $C4FD
+01:C4FC  CLY
+01:C4FD  STY $2CEE
+```
+
+So from the moment a ball is served until the shooter session ends -- 98
+frames after the launch button is let go, on the census route's first ball --
+every control piece reads zero input no matter what is held. The camera cull
+is real and does bite partway through that window, but it is not what is
+holding the flippers: with the cull lifted and this gate left alone the
+flippers still do not move.
+
+`$2CEE` is read at exactly four addresses in all 384 KB -- `01:D466`,
+`01:D49B`, `01:D4AA` and `01:D4D4` -- and every one of them masks it with
+`$3B80,X` on the next instruction. It is the control pieces' input byte and
+nothing else's, so putting bits back into it can reach nothing but them.
+
+The host therefore hooks `01:C500`, the instruction after the store, and ORs
+back the bits the two configured flipper masks select. Everything else the
+blanking covers stays blanked, so the shooter still charges on a held button
+and no other actor sees an input it did not see before. The masks are the
+host's rather than the cartridge's because they are the ones that describe
+keys; on a configuration that leaves `$3B80,X` alone the right-hand pieces
+carry `$01`, which is Button I, which is also the launch button, and there the
+right flipper rises while the shooter charges. The default bindings send
+neither flipper a Button I -- so that a flipper key can never confirm anything
+-- and do not have that overlap.
+
+`--cabinet-launch-flipper-probe` measures it, launching from the census route
+and then pulsing a flipper input ten frames on and ten off:
+
+| camera cull | shooter input gate | first flipper movement | phase changes |
+| --- | --- | ---: | ---: |
+| original | original | +102 frames | 69 |
+| lifted | original | +102 frames | 66 |
+| original | lifted | +2 frames | 100 |
+| lifted | lifted | +2 frames | 96 |
+
+The gate is the whole of it, and lifting it is worth about 1.7 seconds of
+flipper control per ball. This is host code and no recording route installs
+it, so the state census still hashes to
+`9036a9de0c3c9917f47bff8c04c136a4824ec12601fb457d260aa2dfe4443490`.
+
+`02:C020` is a second copy of the same scheduler with the same gate. It is
+deliberately not hooked: the 3,600-frame census route never executes it, and
+an unmeasured second site would be a claim rather than a change.
+
 ## Deploying to a cabinet
 
 The cabinet is a separate machine from the workstation the port is developed

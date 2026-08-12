@@ -249,6 +249,7 @@ struct CommandLine {
     bool cabinet_drain_probe = false;
     bool cabinet_nudge_probe = false;
     bool cabinet_launch_check = false;
+    bool cabinet_launch_flipper_probe = false;
     bool cabinet_seed_check = false;
     bool cabinet_palette_check = false;
     bool cabinet_attribute_check = false;
@@ -819,6 +820,8 @@ parse_logical_address_range(const std::string_view text)
             options.cabinet_nudge_probe = true;
         } else if (argument == "--cabinet-launch-check") {
             options.cabinet_launch_check = true;
+        } else if (argument == "--cabinet-launch-flipper-probe") {
+            options.cabinet_launch_flipper_probe = true;
         } else if (argument == "--cabinet-seed-check") {
             options.cabinet_seed_check = true;
         } else if (argument == "--cabinet-palette-check") {
@@ -3571,6 +3574,8 @@ void print_usage()
         << "  Right / Right Shift  Right flipper (PCE d-pad right)\n"
         << "  Enter                Launch in the shooter; otherwise start,\n"
         << "                       pause and confirm\n"
+        << "                       (the flippers answer during the launch\n"
+        << "                       too, which the cartridge does not allow)\n"
         << "  X                    Nudge (PCE button II)\n"
         << "  Backspace            Select\n"
         << "  Up / Down            PCE d-pad up and down\n"
@@ -7850,6 +7855,112 @@ void keep_fixed_actors_simulating(
     return ball_in_launcher;
 }
 
+// Gives the flipper buttons back while the ball is still in the Devil Shooter.
+//
+// The actor scheduler publishes the held pad byte to `$2CEE` once a frame and
+// blanks it whenever the shooter owns the ball:
+//
+// ```
+// 01:C4F1  LDA $2CC7        tilt lock
+// 01:C4F4  BNE $C4FC
+// 01:C4F6  LDA <$53
+// 01:C4F8  AND #$08         the Devil Shooter session
+// 01:C4FA  BEQ $C4FD
+// 01:C4FC  CLY
+// 01:C4FD  STY $2CEE
+// ```
+//
+// `$2CEE` is read at exactly four addresses in all 384 KB -- `01:D466`,
+// `01:D49B`, `01:D4AA` and `01:D4D4` -- and every one of them masks it with
+// `$3B80,X` immediately. It is the control pieces' input byte and nothing
+// else's, so putting bits back into it can reach nothing but them.
+//
+// Only the bits the two flipper keys send are put back, and only while a table
+// session is running. Everything else the blanking covers -- Run, Select, the
+// launch button -- stays blanked, so the shooter still charges on a held
+// button and nothing outside the flippers sees an input it did not before.
+//
+// The masks are the host's, not the cartridge's, because they are the ones
+// that describe keys: `apply_flipper_inputs` has already written them into
+// `$3B80,X`. On a configuration that leaves the cartridge masks alone the
+// right-hand pieces carry `$01`, which is Button I, which is also the launch
+// button -- so there the right flipper rises while the shooter charges. The
+// default bindings send neither flipper a Button I, exactly so that a flipper
+// key can never confirm anything, and they do not have that overlap.
+void restore_flipper_input(
+    devils_crush::emulation::PceRuntime& runtime,
+    const devils_crush::cabinet::FlipperInputs& flippers)
+{
+    constexpr std::size_t kSessionFlags = 0x0053U;
+    constexpr std::uint8_t kShooterSession = 0x08U;
+    constexpr std::size_t kHeldInputBase = 0x0013U;
+    constexpr std::size_t kActivePlayer = 0x0251U;
+    constexpr std::size_t kPublishedInput = 0x0CEEU;
+
+    const auto left = devils_crush::cabinet::flipper_input_mask(
+        flippers.left);
+    const auto right = devils_crush::cabinet::flipper_input_mask(
+        flippers.right);
+    const auto masks = static_cast<std::uint8_t>(
+        (left != 0U ? left : devils_crush::cabinet::kCartridgeLeftFlipperMask)
+        | (right != 0U ? right
+                       : devils_crush::cabinet::kCartridgeRightFlipperMask));
+
+    auto work_ram = runtime.export_work_ram();
+    if (work_ram.size() < 0x2000U) {
+        return;
+    }
+    const auto byte_at = [&work_ram](const std::size_t offset) {
+        return std::to_integer<std::uint8_t>(work_ram[offset]);
+    };
+    if ((byte_at(kSessionFlags) & kShooterSession) == 0U) {
+        return;
+    }
+    // Slots `$04-$09` only hold flipper pieces during a table session, and
+    // outside one `$2CEE` is whoever the current screen put in those slots.
+    const auto state =
+        devils_crush::cabinet::decode_cabinet_state(work_ram);
+    if (!state || state->balls_in_session == 0U) {
+        return;
+    }
+
+    const auto held =
+        byte_at(kHeldInputBase + (byte_at(kActivePlayer) & 0x07U));
+    const auto restored = static_cast<std::uint8_t>(
+        byte_at(kPublishedInput) | (held & masks));
+    if (restored == byte_at(kPublishedInput)) {
+        return;
+    }
+    work_ram[kPublishedInput] = static_cast<std::byte>(restored);
+    static_cast<void>(runtime.import_work_ram(work_ram));
+}
+
+// The hook sits on `01:C500`, the instruction after the `STY $2CEE`, so it
+// sees the byte the ROM just wrote and runs before the actor sweep at
+// `01:C50D` reads it. `02:C020` is a second copy of the same code with the
+// same gate; it is deliberately not hooked, because the 3,600-frame census
+// route never executes it and an unmeasured second site is a claim rather
+// than a change.
+//
+// `--cabinet-launch-flipper-probe` measures what this buys: on the census
+// route's first launch the flippers answer two frames after the button is let
+// go rather than 102, and keep answering for the whole 98-frame flight the
+// shooter session used to own.
+[[nodiscard]] bool install_shooter_flipper_gate(
+    devils_crush::emulation::PceRuntime& runtime,
+    const devils_crush::cabinet::FlipperInputs& flippers)
+{
+    return runtime.install_execution_hook({
+        .routine =
+            RoutineKey{.physical_bank = 0x01U, .logical_pc = 0xC500U},
+        .mode = HookMode::observe,
+        .callback =
+            [&runtime, &flippers](const RoutineEntry&) {
+                restore_flipper_input(runtime, flippers);
+            },
+    });
+}
+
 int run_windows_host(
     PceRuntime& runtime,
     const std::filesystem::path& rom_path,
@@ -8078,6 +8189,15 @@ int run_windows_host(
                       << kWithheldRoutines.size()
                       << " withheld as state-diverging).\n";
         }
+    }
+    // After the registry, so a deployed replacement owning either address
+    // would be reported as the collision it is rather than silently winning.
+    if (host_ok
+        && !install_shooter_flipper_gate(
+            runtime, cabinet_config.input.flippers)) {
+        std::cerr << "Could not free the flippers during the launch.\n";
+        running = false;
+        host_ok = false;
     }
     while (running && host_ok) {
         SDL_Event event;
@@ -9639,6 +9759,223 @@ struct NudgePassResult {
     return launched_at != 0 ? EXIT_SUCCESS : EXIT_FAILURE;
 }
 
+// How long the flippers stay dead after a launch, and what is holding them
+// there.
+//
+// The Devil Shooter serves at the bottom right and fires the ball up the right
+// lane; the camera follows the ball. `00:F4FC` clears `$3080,X` bit 7 for
+// every slot outside [camera - 48, camera + 240), and the actor scheduler at
+// `01:C515` skips a slot whose bit 7 is clear while bit 1 is set, so the
+// flipper pieces at `$04-$09` stop being dispatched the moment the camera
+// leaves them behind. The button still reaches `$2CEE`; there is simply
+// nothing running to read it.
+//
+// The probe launches from the census route, then pulses a left-flipper
+// direction and reports when the pieces first answer it -- once with the cull
+// as the cartridge wrote it, once with the cabinet's named-slot lift applied.
+struct LaunchFlipperSample {
+    int frame = 0;
+    unsigned session = 0;
+    unsigned input = 0;
+    unsigned flags = 0;
+    unsigned mask = 0;
+    unsigned phase = 0;
+    unsigned dispatch = 0;
+    int ball_y = 0;
+    int camera_y = 0;
+};
+
+struct LaunchFlipperPass {
+    int launched_at = 0;
+    int first_dispatch = 0;
+    int first_move = 0;
+    std::size_t held_frames = 0;
+    std::size_t dispatched_frames = 0;
+    std::size_t moves = 0;
+    std::vector<LaunchFlipperSample> timeline;
+};
+
+[[nodiscard]] int run_launch_flipper_probe(
+    devils_crush::emulation::PceRuntime& runtime,
+    const bool uncull,
+    const bool restore_input,
+    LaunchFlipperPass& pass)
+{
+    constexpr std::size_t kSessionFlags = 0x0053U;
+    constexpr std::uint8_t kShooterSession = 0x08U;
+    constexpr std::size_t kFlagsBase = 0x1080U;
+    constexpr std::size_t kPhaseBase = 0x1980U;
+    constexpr int kHoldFrom = 1000;
+    constexpr int kReleaseAt = 1180;
+    constexpr int kFrames = 1500;
+    constexpr std::size_t kPieceCount =
+        devils_crush::cabinet::kLastFlipperControlSlot
+        - devils_crush::cabinet::kFirstFlipperControlSlot + 1U;
+
+    runtime.reset();
+    runtime.clear_execution_hooks();
+    pass = {};
+    std::array<unsigned, kPieceCount> last_phase{};
+    bool have_phase = false;
+    bool entered_shooter = false;
+
+    // The host's own gate lift, so the probe measures what is shipped rather
+    // than a second implementation of it. The probe leaves `$3B80,X` as the
+    // cartridge wrote it, so the cartridge masks are what gets restored.
+    const auto flippers =
+        devils_crush::cabinet::default_input_bindings().flippers;
+    if (restore_input
+        && !install_shooter_flipper_gate(runtime, flippers)) {
+        std::cerr << "Could not install the shooter input-gate hook.\n";
+        return EXIT_FAILURE;
+    }
+
+    for (int frame_number = 1; frame_number <= kFrames; ++frame_number) {
+        if (uncull) {
+            keep_fixed_actors_simulating(runtime);
+        }
+        const auto work_ram = runtime.export_work_ram();
+        if (work_ram.size() < 0x2000U) {
+            return EXIT_FAILURE;
+        }
+        const auto byte_at = [&work_ram](const std::size_t offset) {
+            return static_cast<unsigned>(
+                std::to_integer<std::uint8_t>(work_ram[offset]));
+        };
+        const bool in_launcher =
+            (byte_at(kSessionFlags) & kShooterSession) != 0U;
+        entered_shooter = entered_shooter || in_launcher;
+        if (entered_shooter && !in_launcher && pass.launched_at == 0) {
+            pass.launched_at = frame_number;
+        }
+
+        InputFrame input;
+        bool held = false;
+        if (frame_number < kHoldFrom) {
+            input = state_census_input_for_frame(frame_number);
+        } else if (frame_number < kReleaseAt && in_launcher) {
+            input.player_one = static_cast<std::uint16_t>(Button::one);
+        } else {
+            // Ten frames on, ten off, from the moment the button is let go.
+            // A held direction moves a piece through its four phases once and
+            // then stands still, which measures the first answer but not the
+            // rest of the window.
+            held = ((frame_number - kReleaseAt) / 10) % 2 == 0;
+            if (held) {
+                // `$3B80,X` carries $F0 for the left-hand pieces, so any
+                // direction opens their gate at `01:D466`.
+                input.player_one = static_cast<std::uint16_t>(Button::left);
+            }
+        }
+
+        bool dispatched = false;
+        bool moved = false;
+        for (std::size_t slot =
+                 devils_crush::cabinet::kFirstFlipperControlSlot;
+             slot <= devils_crush::cabinet::kLastFlipperControlSlot;
+             ++slot) {
+            const auto piece =
+                slot - devils_crush::cabinet::kFirstFlipperControlSlot;
+            const auto flags = byte_at(kFlagsBase + slot);
+            const auto phase = byte_at(kPhaseBase + slot);
+            // The scheduler skips a slot only when bit 7 is clear and bit 1
+            // is set, so either condition alone leaves it running.
+            if ((flags & 0x80U) != 0U || (flags & 0x02U) == 0U) {
+                dispatched = true;
+            }
+            if (have_phase && phase != last_phase[piece]) {
+                moved = true;
+            }
+            last_phase[piece] = phase;
+        }
+        have_phase = true;
+
+        if (frame_number >= kReleaseAt) {
+            if (held) {
+                ++pass.held_frames;
+            }
+            if (dispatched) {
+                ++pass.dispatched_frames;
+                if (pass.first_dispatch == 0) {
+                    pass.first_dispatch = frame_number;
+                }
+            }
+            if (moved) {
+                ++pass.moves;
+                if (pass.first_move == 0) {
+                    pass.first_move = frame_number;
+                }
+            }
+            if (pass.launched_at == 0 || frame_number <= pass.launched_at) {
+                const auto slot =
+                    devils_crush::cabinet::kFirstFlipperControlSlot;
+                pass.timeline.push_back({
+                    .frame = frame_number,
+                    .session = byte_at(kSessionFlags),
+                    .input = byte_at(0x0CEEU),
+                    .flags = byte_at(kFlagsBase + slot),
+                    .mask = byte_at(0x1B80U + slot),
+                    .phase = byte_at(kPhaseBase + slot),
+                    .dispatch = byte_at(0x1F00U + slot)
+                        | (byte_at(0x1F80U + slot) << 8U),
+                    .ball_y = static_cast<int>(
+                        byte_at(0x1300U) | (byte_at(0x1380U) << 8U)),
+                    .camera_y = static_cast<int>(static_cast<std::int16_t>(
+                        static_cast<std::uint16_t>(
+                            byte_at(0x0BU) | (byte_at(0x0CU) << 8U)))),
+                });
+            }
+        }
+
+        static_cast<void>(runtime.run_frame(input));
+    }
+
+    const auto after = [](const int frame, const int base) {
+        return frame != 0 ? std::to_string(frame - base)
+                          : std::string("never");
+    };
+    runtime.clear_execution_hooks();
+    const int measured = kFrames - kReleaseAt + 1;
+    std::cout << "camera cull: " << (uncull ? "lifted" : "original")
+              << ", shooter input gate: "
+              << (restore_input ? "lifted" : "original") << "\n"
+              << "  button released at frame " << kReleaseAt << "\n"
+              << "  shooter session $53 bit 3 cleared at frame "
+              << pass.launched_at << " (+"
+              << after(pass.launched_at, kReleaseAt) << ")\n"
+              << "  frames a flipper piece was dispatched: "
+              << pass.dispatched_frames << " of " << measured << "\n"
+              << "  frames the direction was held: " << pass.held_frames
+              << "\n"
+              << "  first dispatch after release: +"
+              << after(pass.first_dispatch, kReleaseAt) << " frames\n"
+              << "  first flipper movement after release: +"
+              << after(pass.first_move, kReleaseAt) << " frames\n"
+              << "  phase changes: " << pass.moves << "\n"
+              << "  frame  $53 $2CEE slot04 flags/mask/phase/dispatch"
+                 "  ball_y camera_y\n";
+    for (std::size_t index = 0U; index < pass.timeline.size(); ++index) {
+        const auto& sample = pass.timeline[index];
+        const bool edge = index == 0U || index + 1U == pass.timeline.size()
+            || sample.session != pass.timeline[index - 1U].session
+            || sample.flags != pass.timeline[index - 1U].flags
+            || sample.dispatch != pass.timeline[index - 1U].dispatch;
+        if (!edge && index % 20U != 0U) {
+            continue;
+        }
+        std::cout << "  " << std::setw(5) << sample.frame << "  "
+                  << std::format("{:02X}", sample.session) << "   "
+                  << std::format("{:02X}", sample.input) << "   "
+                  << std::format("{:02X}", sample.flags) << "/"
+                  << std::format("{:02X}", sample.mask) << "/"
+                  << std::format("{:02X}", sample.phase) << "/"
+                  << std::format("{:04X}", sample.dispatch) << "     "
+                  << std::setw(6) << sample.ball_y << std::setw(9)
+                  << sample.camera_y << "\n";
+    }
+    return pass.launched_at != 0 ? EXIT_SUCCESS : EXIT_FAILURE;
+}
+
 void report_nudge_effect(
     const NudgePassResult& without,
     const NudgePassResult& with)
@@ -10541,6 +10878,23 @@ int main(const int argc, char* argv[])
                 return EXIT_FAILURE;
             }
             report_nudge_effect(without, with);
+            return EXIT_SUCCESS;
+        }
+        if (options.cabinet_launch_flipper_probe) {
+            LaunchFlipperPass pass;
+            for (const auto& [uncull, restore] :
+                 std::array<std::pair<bool, bool>, 4>{
+                     std::pair{false, false},
+                     std::pair{true, false},
+                     std::pair{false, true},
+                     std::pair{true, true},
+                 }) {
+                if (run_launch_flipper_probe(
+                        *runtime, uncull, restore, pass)
+                    != EXIT_SUCCESS) {
+                    return EXIT_FAILURE;
+                }
+            }
             return EXIT_SUCCESS;
         }
         if (options.cabinet_launch_check) {
