@@ -6976,7 +6976,13 @@ void print_native_registry_summary(
     std::cout << "Registry nesting: " << nesting.nested
               << " transcripts installed inside a suspended transcript, "
               << nesting.deepest << " deep at the most ("
-              << nesting.overflowed << " refused for depth)\n";
+              << nesting.overflowed << " refused for depth)\n"
+              // A transcript given up on part-way through runs the rest of the
+              // routine as assembly, so this costs cycles rather than
+              // correctness -- but a promise it made and did not keep has to
+              // be withdrawn, which is what the count is here to make visible.
+              << "Registry abandonments: " << nesting.abandoned
+              << " transcripts given up part-way through\n";
 }
 
 // Per-frame census of which table tiles' VRAM pattern words change, split by

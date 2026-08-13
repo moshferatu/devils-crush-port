@@ -315,6 +315,13 @@ struct ReplacementNesting {
     std::uint64_t overflowed = 0;
     // High-water mark of simultaneously suspended transcripts.
     std::uint64_t deepest = 0;
+    // Transcripts the runtime gave up on part-way through, because the machine
+    // did not return to a resume point in the state the transcript declared.
+    // The original assembly runs from the last checkpoint applied, so this
+    // costs cycles and never correctness -- but a transcript that declared
+    // something it has not yet done, such as absorbing its own return, has to
+    // have that declaration withdrawn, and this is how often that happens.
+    std::uint64_t abandoned = 0;
 
     [[nodiscard]] bool operator==(const ReplacementNesting&) const = default;
 };

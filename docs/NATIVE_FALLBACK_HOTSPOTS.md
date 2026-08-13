@@ -3331,6 +3331,34 @@ without the absorption reproduced all three replaced artifacts byte-for-byte,
 which is also the clearest statement of what the absorbed-return declaration
 buys: the observer's record of a loop head is exactly what it was.
 
+## The one row that needed the emulator changed
+
+`01:C52B` is the only row in this whole sweep that was blocked by the *host*
+rather than by anything about the routine, and it is worth separating the two
+because the profile cannot tell them apart. The actor scan loop at `01:C510`
+was long enough to be cut short often and re-entered at the same stack depth,
+and a promise staged by a transcript the core gave up on was later redeemed
+against a live call — 82,201 of 176,861 calls reporting the wrong `Y`, 42,753
+the wrong `MPR4`/`MPR5`, and every cycle column right. Only the routine-call
+comparison sees that; the census and the family's own write trace were correct
+throughout.
+
+`patches/0020-huc6280-replacement-abandonment.patch` has the core report a
+transcript it abandons, naming it with a token the host attached to its own
+result, and the row fell 73,536 → 819.
+
+**Two things about it generalise better than the fix does.** The half-measure
+tried first — withdrawing the promise when the core executes the `RTS` itself —
+made the trace *worse* rather than partly better, 129,236 wrong `Y` against
+82,201, because a cut-short scan usually leaves through the dispatch at
+`01:C52C` and never reaches the return. And the same patch was expected to
+release bank `03`'s `03:6A37` + `03:6988` at 176,025, which had been described
+in the same words; it moved neither by a cycle. Those are residue on a routine
+that *already* absorbs — transcripts an interrupt cut short, and arrivals
+through the three sites that run the interpreter in line — and residue is
+assembly that genuinely runs. Two rows can share a description and not share a
+cause.
+
 ## Use on future families
 
 Follow the command and interpretation rules in

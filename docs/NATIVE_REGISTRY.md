@@ -16,19 +16,19 @@ Release state-census route (`--native-cycle-census`, measured 2026-08-13):
 | | |
 | --- | ---: |
 | Elapsed master cycles | 1,292,371,731 |
-| Native master cycles | 679,191,291 |
-| **Native share** | **52.55%** |
-| **Native share of cycles outside the idle spin loop** | **95.60%** |
+| Native master cycles | 679,286,022 |
+| **Native share** | **52.56%** |
+| **Native share of cycles outside the idle spin loop** | **95.61%** |
 | Routines installed | 369 of 369 |
 | Routines entered | 302 |
 | Calls run natively | 2,665,426 of 2,704,004 entered |
 | Calls declined at an interrupt horizon | 0 |
-| Transcripts installed inside a suspended transcript | 297,770 |
+| Transcripts installed inside a suspended transcript | 297,776 |
 | Deepest simultaneous suspension | 3 of a permitted 4 |
 | Replacements refused for depth | 0 |
 
 The resulting state census is byte-identical to the assembly-only
-baseline (`9036a9de…`), so that 52.55% is faithful, not merely running.
+baseline (`9036a9de…`), so that 52.56% is faithful, not merely running.
 The last three rows matter because the host credits a native call when
 it *offers* one. A replacement the core then refused would inflate the
 share silently, and a refusal count of zero is what rules that out.
@@ -704,9 +704,20 @@ wrong `MPR4`/`MPR5`, with every cycle column still correct. Withdrawing the
 promise when the core executes the `RTS` itself fixes three calls in eight and
 no more, because a cut-short scan usually leaves through the dispatch at
 `01:C52C` and never reaches `01:C52B` at all. Doing it properly means the core
-telling the runtime when it abandons a transcript, which is a fork patch. Until
-then `01:C52B` keeps its 73,536 master cycles, and it is the largest single
-thing left in the bank.
+telling the runtime when it abandons a transcript, which is a fork patch.
+
+**That patch is now `0020-huc6280-replacement-abandonment.patch`, and the
+family shipped.** It adds a report rather than a behaviour: the core already
+handled an abandoned transcript correctly by interpreting the rest of the
+routine, and what it now does is say so, naming the transcript with a token the
+host attached to its own result. The runtime erases the promises that token
+names. `01:C52B` falls 73,536 → 819 and bank `01` 187,590 → 114,873; all
+176,861 replaced calls agree with the emulated trace on every column, against
+82,201 disagreeing before. The census route abandons 21,538 transcripts in
+total, a figure `--replace-registry` now prints. It was expected to unblock
+bank `03`'s two largest rows on the same reasoning and did not move them at
+all: those are residue on a routine that already absorbs, which is a different
+condition wearing the same description.
 
 **Bank `00` was the largest pool after that and is now the fourth**, and it
 came down in six edits because four of its six families are already walks that
@@ -1621,7 +1632,7 @@ anything and the figure has been dropped rather than carried forward
 unverified.
 
 Set the idle spin loop aside and 710,482,755 cycles are the machine
-working; 679,191,291 of them, **95.60%**, now run natively.
+working; 679,286,022 of them, **95.61%**, now run natively.
 
 The breakdown below is a self-consistent snapshot taken before the
 interrupt dispatcher was split and the whole-palette arm with it, against

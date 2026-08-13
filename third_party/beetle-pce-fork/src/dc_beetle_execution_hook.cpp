@@ -13,6 +13,9 @@ dc_beetle_memory_write_hook dc_beetle_active_memory_write_hook = nullptr;
 void* dc_beetle_active_memory_write_hook_user_data = nullptr;
 dc_beetle_replacement_hook dc_beetle_active_replacement_hook = nullptr;
 void* dc_beetle_active_replacement_hook_user_data = nullptr;
+dc_beetle_replacement_abandoned_hook
+    dc_beetle_active_replacement_abandoned_hook = nullptr;
+void* dc_beetle_active_replacement_abandoned_hook_user_data = nullptr;
 const dc_beetle_psg_model* dc_beetle_active_psg_model = nullptr;
 static int32_t* dc_beetle_psg_output_buffers[2] = {nullptr, nullptr};
 static int dc_beetle_psg_revision = DC_BEETLE_PSG_REVISION_HUC6280;
@@ -55,12 +58,14 @@ dc_beetle_scheduler_registers* dc_beetle_active_scheduler_registers =
 uint32_t dc_beetle_replacement_nested_installs = 0;
 uint32_t dc_beetle_replacement_nest_overflows = 0;
 uint32_t dc_beetle_replacement_max_depth = 0;
+uint32_t dc_beetle_replacement_abandonments = 0;
 
 void dc_beetle_reset_replacement_nesting_counters(void)
 {
     dc_beetle_replacement_nested_installs = 0;
     dc_beetle_replacement_nest_overflows = 0;
     dc_beetle_replacement_max_depth = 0;
+    dc_beetle_replacement_abandonments = 0;
 }
 
 void dc_beetle_set_instruction_hook(
@@ -103,6 +108,24 @@ void dc_beetle_clear_replacement_hook(void)
 {
     dc_beetle_active_replacement_hook = nullptr;
     dc_beetle_active_replacement_hook_user_data = nullptr;
+}
+
+// Separate from the replacement hook because it answers a different question,
+// and a host may want one without the other: supplying transcripts is the
+// optimization, and being told when one was dropped is the bookkeeping that
+// only a host observing the machine needs.
+void dc_beetle_set_replacement_abandoned_hook(
+    const dc_beetle_replacement_abandoned_hook hook,
+    void* const user_data)
+{
+    dc_beetle_active_replacement_abandoned_hook_user_data = user_data;
+    dc_beetle_active_replacement_abandoned_hook = hook;
+}
+
+void dc_beetle_clear_replacement_abandoned_hook(void)
+{
+    dc_beetle_active_replacement_abandoned_hook = nullptr;
+    dc_beetle_active_replacement_abandoned_hook_user_data = nullptr;
 }
 
 void dc_beetle_set_psg_model(const dc_beetle_psg_model* const model)

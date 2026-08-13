@@ -1,6 +1,6 @@
 # Project Progress
 
-Last updated: 2026-08-12
+Last updated: 2026-08-13
 
 ## Current Status
 
@@ -5580,8 +5580,85 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
 
 ## Active Work
 
-Current owner: Claude. Current slice: **carrying the absorbed return into bank
-`45`**. Done, in one edit, and it is the cheapest slice the technique has had.
+Current owner: Claude. Current slice: **the fork patch `01:C510` was waiting
+on**. Done. It is the first slice in this run that changed the emulator rather
+than the port, and the only one whose deliverable is a *report* rather than a
+replacement.
+
+`01:C510`, the actor scan loop, now absorbs its return: `01:C52B` falls 73,536
+-> 819 master cycles, bank `01` 187,590 -> 114,873, and the route 1,635,210 ->
+1,562,493. The registry goes 679,191,291 -> 679,286,022 native cycles, **52.56%**
+of the route and **95.61%** of it outside the frame-sync wait. Nested installs
+297,770 -> 297,776, three deep at the most, nothing refused, 0 declined at an
+interrupt horizon, and the census is `9036a9de...` unchanged.
+
+**The patch is 130 lines and says one thing: the core gave up on a
+transcript.** A checkpointed transcript is abandoned when the machine does not
+come back to a resume point in the state the transcript declared -- an
+interrupt handler that returns a register changed, or that leaves through a
+different path. The core has always handled that correctly by interpreting the
+rest of the routine, which is exactly why nothing needed telling for as long as
+a transcript only *replaced* work. Absorbing a return is a transcript that also
+*declares* work, and an undelivered declaration has to be withdrawn.
+
+`patches/0020-huc6280-replacement-abandonment.patch` gives
+`PopReplacementFrame` a `completed` argument, so the single place that ends a
+transcript is the single place that decides which ending it was: reaching the
+last checkpoint while still live is completion and every other way out is not.
+The transcript is named by the host -- a `transcript_token` the core stores,
+carries across suspensions and hands back, and never reads. The runtime erases
+the pendings that token names. A savestate load forgets every token it
+restored, because those name some other host's transcripts.
+
+**The evidence is four runs of the same comparison, and it is worth keeping.**
+`01:C510` swallows its own loop, so it is joined on entry cycle rather than
+compared file to file -- 446,976 emulated calls, 176,861 replaced, every
+replaced call present in the emulated set on all four:
+
+| Build | Rows differing |
+| --- | --- |
+| Absorption on, no patch | `output_y` 82,201, `output_status` 83,084, `MPR4`/`MPR5` 42,753 |
+| Withdrawing on the core's own `RTS` | `output_y` 129,236, `output_status` 83,571, `MPR4`/`MPR5` 46,862 |
+| Absorption backed out | none |
+| **Absorption on, with the patch** | **none** |
+
+The third row is the control the last slice shipped; the fourth is this one.
+The half-fix in the second row made it worse, which is the thing to remember
+about it -- it was not a partial improvement, it was a different wrong answer.
+
+**The patch does not unblock bank `03`, and the note that said it might was
+wrong.** `03:6A37` + `03:6988` are 176,025 cycles of residue on a routine that
+*already* absorbs at its entry wrapper: transcripts an interrupt cut short, and
+arrivals through the three composition sites that call the interpreter
+directly. Both are cycles the assembly genuinely runs, so no report about them
+recovers anything. Their rows are unmoved at 154,521 and 21,504 after this
+slice, which is how that was settled rather than argued.
+
+**The core now counts what it abandons.** `dc_beetle_replacement_abandonments`
+is incremented whether or not a hook is listening and whether or not the
+transcript was named, so it measures the core rather than the host's
+bookkeeping, and `--replace-registry` prints it. The census route abandons
+21,538 transcripts. Nothing consumed that number before this slice and nothing
+depends on it now; it exists so that the next family held back on this can be
+told apart from one that simply never ends where it says it will.
+
+Two full Release runs, 181 s each, and each had exactly one failure: first
+`dc_rom_vblank_handler_semantic`, then `dc_rom_bank_call_wrappers_semantic`.
+Both passed alone in under 18 s, both are families never seen to flake before,
+and that makes eight distinct families now. **The pattern is stable enough to
+stop calling it a flake and start calling it a defect in the harness**: a
+different test every time, never reproducible alone, roughly one per full run.
+It has been deferred for four slices and should be the next thing after this or
+the one after. 3/3 ROM-free Debug. The `windows-debug` sweep was not run.
+
+The patch was checked against a tree carrying `0001`-`0019` and none of this
+slice's edits, and both halves of the CMake path were exercised: applying it to
+that tree, and the already-applied marker branch on the tree it was written
+against.
+
+### Previous: carrying the absorbed return into bank `45`
+
+One edit, and it is the cheapest slice the technique has had.
 
 Bank `45` held 644,397 emulated return cycles, the largest pool left after bank
 `00`. It falls to 68,481 -- seventh of eight -- and the route to 1,635,210. The
@@ -6706,30 +6783,42 @@ does not.
 
 ### Next
 
-**Write the fork patch that `01:C510` is waiting on, or take bank `03`'s
-remainder.** Counting every `RTS` opcode the deployed registry still executes,
-excluding the rows that are themselves registered entries -- a registered
-entry's profile row carries its whole native body, not one return, which is
-worth knowing before reading any of these numbers:
+**Take bank `03`'s remainder, or stop absorbing and port a parent.** Counting
+every `RTS` opcode the deployed registry still executes, excluding the rows
+that are themselves registered entries -- a registered entry's profile row
+carries its whole native body, not one return, which is worth knowing before
+reading any of these numbers:
 
 | Bank | Executions | Master cycles | Mentioned in `src/app` |
 | --- | ---: | ---: | ---: |
 | `03` | 29,601 | **624,837** | 338,784 |
 | `02` | 15,150 | 321,630 | 189,678 |
-| `01` | 8,854 | 187,590 | 103,953 |
 | `00` | 7,727 | 162,675 | 10,650 |
 | `09` | 5,707 | 121,002 | 29,292 |
+| `01` | 5,421 | 114,873 | 31,236 |
 | `08` | 4,406 | 92,742 | 1,302 |
 | `45` | 3,205 | 68,481 | 54,438 |
 | `07` | 2,649 | 56,253 | 56,253 |
-| | 77,299 | **1,635,210** | 784,350 |
+| | 73,866 | **1,562,493** | 711,633 |
 
-Bank `03` is the largest pool again, and it has had thirty edits already: its
-two biggest rows, `03:6A37` + `03:6988` at 176,025, are transcripts an
-interrupt cut short and arrivals through cut compositions -- which is the same
-condition `01:C510` is held back on, so the fork patch may be worth more there
-than the direct 73,536 suggests. Everything below that in bank `03` is unported
-parents rather than absorbable returns.
+Bank `03` is the largest pool again and has had thirty edits already, but read
+its two biggest rows before starting. `03:6A37` + `03:6988` at 176,025 are
+*residue* on a routine that already absorbs at its entry wrapper -- transcripts
+an interrupt cut short, plus arrivals through the three sites that call the
+interpreter in line and by design never absorb. Both kinds are cycles the
+assembly genuinely runs, so nothing recovers them short of shortening the
+transcripts or transcribing the compositions differently. The fork patch was
+guessed at as a way in and is not one; that was settled by measuring, and both
+rows are unmoved. Everything below them in bank `03` is unported parents.
+
+**What is left is mostly not absorbable, and the rows say so.** Of the
+1,562,493 remaining, `03`'s 176,025 is residue, `03:603E` at 137,607 and
+`03:7F80` at 94,878 are an unported parent and an untranscribed arm, and
+`00:E32B` at 75,123 is the frame-sync waiter's own return -- reachable only by
+registering `00:E327` as an entry of its own, which is the one cheap row still
+standing. Below those it is unported parents in the 14k-60k range. The next
+comparable win is more likely to be a routine nobody has ported than a return
+nobody has absorbed.
 
 **Look for a stop list first.** It is the cheapest thing in this technique and
 it has now paid five times: bank `01`'s two walking interpreters were 372,411
@@ -6821,7 +6910,7 @@ What is left in bank `01`:
 
 | Return | Master cycles | Why it is still there |
 | --- | ---: | --- |
-| `01:C52B` | 73,536 | The actor scan loop -- held back on the stale promise |
+| `01:C52B` | 819 | Absorbed once the core reported abandonment; residue only |
 | `01:DCD7` | 46,725 | Unported |
 | `01:CCD4` + `CCD2` | 18,522 | The scan's transcripts ending in front of the mask lookup's return |
 | `01:DD08` | 14,550 | Unported |
@@ -6834,7 +6923,7 @@ What is left in bank `03`, for whoever comes back to it:
 
 | Return | Master cycles | Why it is still there |
 | --- | ---: | --- |
-| `03:6A37` + `6988` | 176,025 | Transcripts an interrupt cut short, and arrivals through cut compositions |
+| `03:6A37` + `6988` | 176,025 | Residue on a routine that already absorbs: transcripts an interrupt cut short, and arrivals through the three in-line compositions. Not a fork-patch problem -- measured, and unmoved by it |
 | `03:603E` | 137,607 | Unported parent at `03:6005` |
 | `03:7F80` | 94,878 | The two-hit arm, which is not transcribed |
 | `03:6533` | 59,268 | Unported |
@@ -6908,15 +6997,23 @@ What to carry across rather than rediscover:
   head that opened the call: `verify_absorbed_return_trace.cmake` takes an
   `OBSERVE` argument for exactly this, and if a write trace grows without bound
   this is the first thing to check.
-- **A promise the transcript never keeps is never withdrawn.** A transaction
-  stages its absorbed return when it is *installed*, and the observer redeems it
-  at the boundary the machine lands on afterwards. Nothing withdraws it if the
-  transcript is cut short. That is harmless until the routine is re-entered at
-  the same stack depth, at which point the stale promise finds a live call and
-  closes it with an abandoned transcript's registers -- correct cycles, wrong
-  `Y` and `MPR`. `01:C510` is the first family with both properties and is held
-  back for it. If a candidate is long enough to be suspended *and* re-entered at
-  the same depth, expect this and trace it before believing it.
+- **A promise the transcript never keeps has to be withdrawn, and only the core
+  knows when.** A transaction stages its absorbed return when it is *installed*,
+  and the observer redeems it at the boundary the machine lands on afterwards.
+  A transcript the core gives up on never lands, and the promise used to stay
+  queued -- harmless until the routine is re-entered at the same stack depth, at
+  which point it finds a live call and closes it with an abandoned transcript's
+  registers: correct cycles, wrong `Y` and `MPR`. Fixed by
+  `patches/0020-huc6280-replacement-abandonment.patch`, which hands the host
+  back a token naming the transcript. If you write another transcript that
+  *declares* something rather than merely replacing work, this is the seam that
+  has to know about it.
+- **A guess about where a limitation bites is worth measuring before it is
+  worth acting on.** The stale promise was recorded as also holding back bank
+  `03`'s two biggest rows. It was not: those 176,025 cycles are residue on a
+  routine that already absorbs, and the patch left both rows exactly where they
+  were. One profile run settled it. A limitation that explains one symptom is
+  not thereby the explanation of every symptom that resembles it.
 - **A shared routine absorbs at its entry, not inside itself.** If any other
   transcript runs the routine in line, it reads `return_instruction` to find
   the `RTS` it must transcribe, and a routine that ran past its own return

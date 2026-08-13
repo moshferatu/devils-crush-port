@@ -84,6 +84,10 @@ typedef struct dc_beetle_replacement_result {
     const dc_beetle_replacement_write* writes;
     uint32_t checkpoint_count;
     const dc_beetle_replacement_checkpoint* checkpoints;
+    // The host's name for this transcript, returned to it if the core abandons
+    // one. Meaningful only to the host: the core stores it, carries it across
+    // suspensions, and hands it back. Zero says the host wants no notice.
+    uint64_t transcript_token;
 } dc_beetle_replacement_result;
 
 typedef void (*dc_beetle_instruction_hook)(
@@ -95,6 +99,23 @@ typedef void (*dc_beetle_memory_write_hook)(
 typedef void (*dc_beetle_replacement_hook)(
     const dc_beetle_cpu_state* state,
     dc_beetle_replacement_result* result,
+    void* user_data);
+// A checkpointed transcript the core has given up on, named by the token its
+// host returned with it.
+//
+// The core abandons a transcript when the machine does not come back to the
+// resume point in the state the transcript declared -- an interrupt handler
+// that returns a register changed, or that does not return there at all. What
+// it does then is correct without this: it interprets the original assembly
+// from the last checkpoint applied, which is why the emulation never needed
+// telling. An observer does. A transcript may have declared things it would go
+// on to do -- absorbing its own return is the one that exists -- and an
+// undelivered declaration has to be withdrawn rather than left standing.
+//
+// Called with the transcript still current, before the suspended one beneath
+// it becomes current again, and never for a transcript that ran to its end.
+typedef void (*dc_beetle_replacement_abandoned_hook)(
+    uint64_t transcript_token,
     void* user_data);
 
 #define DC_BEETLE_PSG_CHANNEL_COUNT 6
@@ -893,6 +914,9 @@ extern dc_beetle_memory_write_hook dc_beetle_active_memory_write_hook;
 extern void* dc_beetle_active_memory_write_hook_user_data;
 extern dc_beetle_replacement_hook dc_beetle_active_replacement_hook;
 extern void* dc_beetle_active_replacement_hook_user_data;
+extern dc_beetle_replacement_abandoned_hook
+    dc_beetle_active_replacement_abandoned_hook;
+extern void* dc_beetle_active_replacement_abandoned_hook_user_data;
 
 // Nesting counters. `nested_installs` counts transcripts installed while an
 // outer transcript was suspended; `nest_overflows` counts replacements the core
@@ -905,6 +929,11 @@ extern void* dc_beetle_active_replacement_hook_user_data;
 extern uint32_t dc_beetle_replacement_nested_installs;
 extern uint32_t dc_beetle_replacement_nest_overflows;
 extern uint32_t dc_beetle_replacement_max_depth;
+// Transcripts the core gave up on part-way through. Counted whether or not
+// anything is listening on the hook above and whether or not the transcript was
+// named, so that this is a measurement of the core rather than of the host's
+// bookkeeping. Reset with the three counters above.
+extern uint32_t dc_beetle_replacement_abandonments;
 
 extern const dc_beetle_psg_model* dc_beetle_active_psg_model;
 extern const dc_beetle_vdc_model* dc_beetle_active_vdc_model;
@@ -935,6 +964,10 @@ void dc_beetle_set_replacement_hook(
     dc_beetle_replacement_hook hook,
     void* user_data);
 void dc_beetle_clear_replacement_hook(void);
+void dc_beetle_set_replacement_abandoned_hook(
+    dc_beetle_replacement_abandoned_hook hook,
+    void* user_data);
+void dc_beetle_clear_replacement_abandoned_hook(void);
 
 // Installing a model may happen before or after the emulator has built its
 // sound device; the boundary remembers what the emulator reports and hands it

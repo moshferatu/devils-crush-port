@@ -1,0 +1,164 @@
+diff --git a/mednafen/pce/huc6280.h b/mednafen/pce/huc6280.h
+--- a/mednafen/pce/huc6280.h
++++ b/mednafen/pce/huc6280.h
+@@ -711,7 +711,7 @@
+ 		const dc_beetle_replacement_checkpoint* completed_checkpoint = NULL);
+ 	void ApplyReplacementCheckpoint(void);
+ 	bool PushReplacementFrame(void);
+-	void PopReplacementFrame(void);
++	void PopReplacementFrame(bool completed);
+ 	uint16 HookInstructionPC;
+ 	uint8 HookInstructionPhysicalBank;
+ 	uint8 IRQMask;
+@@ -759,6 +759,10 @@
+ 	uint32 ReplacementWriteCount;
+ 	uint32 ReplacementCheckpointIndex;
+ 	uint32 ReplacementCheckpointCount;
++	// The host's name for the current transcript, carried so that it can be
++	// given back if this transcript is abandoned. The core reads nothing into
++	// it and compares it with nothing.
++	uint64 ReplacementToken;
+ 	dc_beetle_replacement_write
+ 		ReplacementWrites[DC_BEETLE_MAX_REPLACEMENT_WRITES];
+ 	dc_beetle_replacement_checkpoint
+@@ -776,6 +780,7 @@
+ 		uint32 write_count;
+ 		uint32 checkpoint_index;
+ 		uint32 checkpoint_count;
++		uint64 token;
+ 		dc_beetle_replacement_write
+ 			writes[DC_BEETLE_MAX_REPLACEMENT_WRITES];
+ 		dc_beetle_replacement_checkpoint
+diff --git a/mednafen/pce/huc6280.cpp b/mednafen/pce/huc6280.cpp
+--- a/mednafen/pce/huc6280.cpp
++++ b/mednafen/pce/huc6280.cpp
+@@ -418,6 +418,7 @@
+ 	ReplacementWriteCount = 0;
+ 	ReplacementCheckpointIndex = 0;
+ 	ReplacementCheckpointCount = 0;
++	ReplacementToken = 0;
+ 	ReplacementDepth = 0;
+ 	in_block_move = 0;
+ 
+@@ -510,6 +511,7 @@
+ 	ReplacementWriteCount = 0;
+ 	ReplacementCheckpointIndex = 0;
+ 	ReplacementCheckpointCount = 0;
++	ReplacementToken = 0;
+ 	memset(ReplacementWrites, 0, sizeof(ReplacementWrites));
+ 	memset(
+ 		ReplacementCheckpoints,
+@@ -675,6 +677,7 @@
+ 	frame.write_count = ReplacementWriteCount;
+ 	frame.checkpoint_index = ReplacementCheckpointIndex;
+ 	frame.checkpoint_count = ReplacementCheckpointCount;
++	frame.token = ReplacementToken;
+ 	if(ReplacementWriteCount > 0)
+ 		memcpy(
+ 			frame.writes,
+@@ -697,11 +700,28 @@
+ // Ends the innermost transcript, whether it completed or was abandoned, and
+ // makes the transcript it interrupted current again. With nothing suspended
+ // this is the original "no replacement is running" state.
+-void HuC6280::PopReplacementFrame(void)
++//
++// `completed` says which of the two endings this is, and is passed on to the
++// host before anything is unwound, so that a hook may still read the machine
++// the abandoned transcript was running in. Only the ending matters to the
++// core: a body that stopped early leaves the original assembly at the last
++// checkpoint applied, which is what the loop below returns to either way.
++void HuC6280::PopReplacementFrame(const bool completed)
+ {
++	if(!completed)
++	{
++		dc_beetle_replacement_abandonments++;
++		if(ReplacementToken != 0
++			&& dc_beetle_active_replacement_abandoned_hook != NULL)
++			dc_beetle_active_replacement_abandoned_hook(
++				ReplacementToken,
++				dc_beetle_active_replacement_abandoned_hook_user_data);
++	}
++
+ 	if(ReplacementDepth == 0)
+ 	{
+ 		ReplacementActive = false;
++		ReplacementToken = 0;
+ 		return;
+ 	}
+ 
+@@ -712,6 +732,7 @@
+ 	ReplacementWriteCount = frame.write_count;
+ 	ReplacementCheckpointIndex = frame.checkpoint_index;
+ 	ReplacementCheckpointCount = frame.checkpoint_count;
++	ReplacementToken = frame.token;
+ 	if(frame.write_count > 0)
+ 		memcpy(
+ 			ReplacementWrites,
+@@ -790,7 +811,7 @@
+ 	if(!ReplacementActive
+ 		|| ReplacementCheckpointIndex >= ReplacementCheckpointCount)
+ 	{
+-		PopReplacementFrame();
++		PopReplacementFrame(false);
+ 		return;
+ 	}
+ 
+@@ -819,10 +840,16 @@
+ 	// AdvanceReplacementTo clears the flag rather than unwinding, because the
+ 	// checkpoint reference above still points into the current frame's array.
+ 	// Both endings are handled here, after the last use of that reference.
++	//
++	// A cleared flag is the abandoning one: the advance refused an offset it
++	// could not deliver and stopped part-way through this checkpoint. Reaching
++	// the last checkpoint with the flag still set is the transcript arriving
++	// at its declared end, which is the only ending the host is not told about.
+ 	ReplacementCheckpointIndex++;
+-	if(!ReplacementActive
+-		|| ReplacementCheckpointIndex >= ReplacementCheckpointCount)
+-		PopReplacementFrame();
++	if(!ReplacementActive)
++		PopReplacementFrame(false);
++	else if(ReplacementCheckpointIndex >= ReplacementCheckpointCount)
++		PopReplacementFrame(true);
+ }
+ 
+ void HuC6280::HappySync(void)
+@@ -948,7 +975,7 @@
+ 					registers_match = MPR[i] == previous.mpr[i];
+ 				if(!registers_match)
+ 				{
+-					PopReplacementFrame();
++					PopReplacementFrame(false);
+ 					continue;
+ 				}
+ 				ApplyReplacementCheckpoint();
+@@ -1176,6 +1203,7 @@
+ 					ReplacementCheckpointIndex = 0;
+ 					ReplacementCheckpointCount =
+ 						replacement.checkpoint_count;
++					ReplacementToken = replacement.transcript_token;
+ 					if(replacement.write_count > 0)
+ 						memcpy(
+ 							ReplacementWrites,
+@@ -1402,6 +1430,7 @@
+ 		SFVARN(
+ 			ReplacementCheckpointCount,
+ 			"ReplacementCheckpointCount"),
++		SFVARN(ReplacementToken, "ReplacementToken"),
+ 		SFARRAYN(
+ 			reinterpret_cast<uint8*>(ReplacementWrites),
+ 			sizeof(ReplacementWrites),
+@@ -1486,6 +1515,13 @@
+ 		DcSched().speed &= 0x01;
+ 		if(timer_div < 1)
+ 			timer_div = 1;
++		// A restored transcript was named by whichever host wrote the state,
++		// and the host reading it back has no record of that name. Forgetting
++		// every one of them is what makes an abandonment after a load silent
++		// rather than a message about somebody else's transcript.
++		ReplacementToken = 0;
++		for(uint32 i = 0; i < DC_BEETLE_MAX_REPLACEMENT_DEPTH; i++)
++			ReplacementSuspended[i].token = 0;
+ 		if(ReplacementWriteCount > DC_BEETLE_MAX_REPLACEMENT_WRITES
+ 			|| ReplacementWriteIndex > ReplacementWriteCount
+ 			|| ReplacementCheckpointCount

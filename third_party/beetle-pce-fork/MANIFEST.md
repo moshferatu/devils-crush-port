@@ -654,5 +654,51 @@ this repository.
     - Adds no data members to any emulator device. Changes nothing for a
       machine with no model registered.
 
+20. `patches/0020-huc6280-replacement-abandonment.patch`
+    - The smallest patch in the series and the only one that reports rather
+      than does. It tells a host when the core has *given up* on a checkpointed
+      transcript, which is the one thing about replacement the host could not
+      previously observe.
+    - The core already handled the case correctly: a transcript is abandoned
+      when the machine does not come back to a resume point in the state the
+      transcript declared -- an interrupt handler that returns a register
+      changed, or that does not return there at all -- and the original
+      assembly then runs from the last checkpoint applied. That is why nothing
+      needed telling for as long as transcripts only *replaced* work.
+    - A transcript that also *declares* work is the case this exists for.
+      Absorbing a return is one: the host stages the promise when the
+      transaction is installed and redeems it when the machine lands on the far
+      side of the return, because a transaction's writes are delivered by the
+      core after its hook returns. An abandoned transcript never lands, and
+      before this the promise stayed queued until a later arrival at the same
+      address and stack pointer redeemed it against a live call. Over the
+      3,600-frame census route that fault reported the wrong `Y` on 82,201 of
+      `01:C510`'s 176,861 calls and the wrong `MPR4`/`MPR5` on 42,753, with
+      every cycle column still right -- visible in a routine-call trace and in
+      nothing else. Withdrawing on the core's own `RTS` was tried first and
+      fixed three calls in eight, because a cut-short actor scan usually leaves
+      through the dispatch at `01:C52C` and never reaches its return at all.
+    - `PopReplacementFrame` gains a `completed` argument and is the single
+      place that decides which ending this is: reaching the last checkpoint
+      with the transcript still live is completion, and every other way out is
+      not. The three call sites say which they are rather than the function
+      guessing from state it has already half-unwound.
+    - The transcript is named by its host, not by the core. A
+      `transcript_token` on the result is stored, saved and restored across
+      suspensions, and handed back on abandonment; the core never reads it,
+      compares it, or generates one. A savestate load forgets every token it
+      restored, because those name transcripts belonging to whichever host
+      wrote the state.
+    - `dc_beetle_replacement_abandonments` counts every abandonment whether or
+      not a hook is listening and whether or not the transcript was named, so
+      it measures the core rather than the host's bookkeeping. The census route
+      abandons 21,538 transcripts. With the report in place `01:C510` absorbs
+      its return: `01:C52B` falls from 73,536 emulated master cycles to 819,
+      all 176,861 replaced calls agree with the emulated trace on every column,
+      and the state census is unchanged at `9036a9de…`.
+    - Adds one 64-bit field to `HuC6280` and one to each of its four suspended
+      frames. Changes nothing for a host that registers no hook, and nothing at
+      all for a host whose transcripts carry no token.
+
 All local files and patches are GPL-3.0-or-later. Upstream per-file notices
 and licenses remain authoritative for upstream sources.

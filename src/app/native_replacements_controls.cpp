@@ -3535,25 +3535,36 @@ replace_actor_scan_run(
     replacement.output_registers = registers;
     replacement.body_master_cycles = cycle;
 
-    // This walk does not absorb its return, and 01:C52B's 73,956 master cycles
-    // stay emulated because of it.
+    // The counter reaching its limit ends the scan on its own `RTS`; a
+    // dispatch leaves at `01:C51E` and is a handover, not a return. The walk
+    // never touches the stack, so the pointer the entry carried is the one the
+    // return is reached with, exactly as at the tail in the next routine.
     //
-    // It is the first family whose transcript is both long enough to be cut
-    // short often and re-entered at the same stack depth, and the two together
-    // defeat the observer's bookkeeping. A transaction stages the return it
-    // promises to absorb when it is installed, and the promise is redeemed at
-    // the boundary the machine lands on afterwards. Nothing withdraws it if the
-    // transcript never gets that far: an interrupt suspends it, the resume
-    // state disagrees, the core interprets the rest, and the promise stays
-    // queued. A later arrival at the same address and depth then redeems it and
-    // closes a call with the abandoned transcript's registers -- 82,201 of
-    // 176,861 calls report the wrong Y, and 42,753 the wrong MPR4/MPR5.
+    // This is the family the absorbed return waited on a fork patch for, and
+    // it is worth recording what the wait was about. This walk is both long
+    // enough to be cut short often and re-entered at the same stack depth. A
+    // transaction stages the return it promises when it is *installed*, and
+    // the promise is redeemed at the boundary the machine lands on afterwards
+    // -- so a transcript the core gives up on part-way through used to leave a
+    // promise standing with nothing to redeem it, and the next arrival at the
+    // same address and depth redeemed it instead, closing a live call with an
+    // abandoned transcript's registers. 82,201 of 176,861 calls reported the
+    // wrong Y and 42,753 the wrong MPR4/MPR5, with every cycle right.
     //
-    // Withdrawing the promise when the core executes the `RTS` itself fixes
-    // three calls in eight and no more, because a cut-short scan usually leaves
-    // through the dispatch at 01:C52C and never reaches 01:C52B at all. Doing
-    // it properly means the core telling the runtime when it abandons a
-    // transcript, which is a fork patch rather than a rule.
+    // Withdrawing on the core's own `RTS` was tried and fixed three calls in
+    // eight, because a cut-short scan usually leaves through the dispatch at
+    // `01:C52C` and never reaches `01:C52B` at all. What fixes it is the core
+    // saying when it abandons a transcript, which is
+    // `patches/0020-huc6280-replacement-abandonment.patch`.
+    if (registers.program_counter == kTerminalPc) {
+        absorb_return(
+            replacement,
+            work_ram,
+            entry.registers.stack_pointer,
+            {kRoutine.physical_bank, kTerminalPc},
+            cycle,
+            registers);
+    }
     return replacement;
 }
 

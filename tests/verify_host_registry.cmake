@@ -59,10 +59,18 @@ if(NOT deployed_count EQUAL expected_deployed)
     )
 endif()
 
+# `Registry abandonments` reads a counter the patched core owns. Ten frames is
+# not enough to pin a number -- it is one or two -- but the line's presence is
+# what says the count reached the host at all, which is the half of the seam
+# that lives in this repository. The other half, the core actually reporting an
+# abandoned transcript, is guarded at configure time: the marker branch for
+# `0020` looks for `dc_beetle_active_replacement_abandoned_hook` in the core
+# source and fails the build if a patched tree does not have it.
 foreach(expected_line IN ITEMS
     "Registry hold-backs: "
     "Registry deployment: "
     "Registry cycles: "
+    "Registry abandonments: "
     "Cabinet host smoke test passed"
 )
     string(FIND "${deployed_output}" "${expected_line}" line_offset)

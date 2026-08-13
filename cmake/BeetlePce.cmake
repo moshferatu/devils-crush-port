@@ -55,6 +55,7 @@ function(dc_provide_beetle_pce)
         "${beetle_fork_root}/patches/0017-huc6280-instruction-boundary-device-model.patch"
         "${beetle_fork_root}/patches/0018-huc6280-idle-fast-forward.patch"
         "${beetle_fork_root}/patches/0019-joypad-device-model.patch"
+        "${beetle_fork_root}/patches/0020-huc6280-replacement-abandonment.patch"
     )
 
     find_package(Git REQUIRED)
@@ -369,7 +370,7 @@ function(dc_provide_beetle_pce)
                     "iteration_cycles"
                     beetle_patch_marker_two
                 )
-            else()
+            elseif(beetle_patch_name MATCHES "^0019-")
                 string(
                     FIND
                     "${beetle_input_source}"
@@ -380,6 +381,19 @@ function(dc_provide_beetle_pce)
                     FIND
                     "${beetle_gamepad_source}"
                     "DcExportState"
+                    beetle_patch_marker_two
+                )
+            else()
+                string(
+                    FIND
+                    "${beetle_cpu_source}"
+                    "dc_beetle_active_replacement_abandoned_hook"
+                    beetle_patch_marker_one
+                )
+                string(
+                    FIND
+                    "${beetle_cpu_header}"
+                    "ReplacementToken"
                     beetle_patch_marker_two
                 )
             endif()

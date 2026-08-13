@@ -737,8 +737,9 @@ hybrid's own overheads, which no amount of porting removes:
   master cycles of the 13.3M, taken by two edits. Banks `03`, `02` and `01`
   have since taken 1,054,221, 1,314,528, 873,453 and 872,514, bank `00`
   694,653, and bank `45` 575,916 in a single condition, so a little over 7.2M
-  of the 13.3M is gone and the remaining pool is 1,635,210 returns plus the
-  `JSR` half.
+  of the 13.3M is gone. `01:C52B`'s 72,717 followed once the core could report
+  an abandoned transcript, leaving 1,562,493 returns plus the `JSR` half — and
+  most of what remains is unported parents rather than absorbable returns.
 - **Resumption after an interrupt.** An interrupt landing inside a transcript
   rewinds to a checkpoint and interprets the rest of the body, so a fully
   admitted routine still shows interpreted executions, climbing monotonically
@@ -1022,24 +1023,41 @@ rebuilding bank `45` without the absorption reproduced all three replaced
 artifacts byte-for-byte, which also says what the absorbed-return declaration is
 for: it leaves the observer's record of a loop head exactly as it found it.
 
-**A promise the transcript never keeps is never withdrawn, and that is the
-technique's second limit.** A transaction stages the return it will absorb when
-it is *installed*; the observer redeems the promise at the boundary the machine
-lands on afterwards. Nothing withdraws it if the transcript is cut short before
-reaching that point. For every family shipped so far this is harmless: the core
-interprets the rest, executes the `RTS`, closes the call correctly, and the
-stale promise is redeemed one boundary later against a call that is already
-closed — a no-op. It stops being harmless when the routine is *re-entered at the
-same stack depth*, because then the stale promise finds a live victim and closes
-it with an abandoned transcript's registers. `01:C510` is the first family that
-is both, and it reports the wrong `Y` on 82,201 of 176,861 calls and the wrong
-`MPR4`/`MPR5` on 42,753, with every cycle column still right — which is why the
-comparison catches it and a hash of the census would not. Withdrawing the
-promise when the core executes the `RTS` itself fixes three calls in eight and
-no more, because a cut-short scan usually leaves through the dispatch at
-`01:C52C` and never reaches `01:C52B`. The real fix is the core telling the
-runtime when it abandons a transcript, which is a fork patch; until it exists, a
-family with both properties should not absorb.
+**A promise the transcript never keeps has to be withdrawn, and for one slice
+that was the technique's second limit.** A transaction stages the return it will
+absorb when it is *installed*; the observer redeems the promise at the boundary
+the machine lands on afterwards. Nothing withdrew it if the transcript was cut
+short before reaching that point. For every family shipped up to bank `45` this
+was harmless: the core interprets the rest, executes the `RTS`, closes the call
+correctly, and the stale promise is redeemed one boundary later against a call
+that is already closed — a no-op. It stops being harmless when the routine is
+*re-entered at the same stack depth*, because then the stale promise finds a
+live victim and closes it with an abandoned transcript's registers. `01:C510`
+is the first family that is both, and it reported the wrong `Y` on 82,201 of
+176,861 calls and the wrong `MPR4`/`MPR5` on 42,753, with every cycle column
+still right — which is why the comparison catches it and a hash of the census
+would not.
+
+**The fix is `patches/0020-huc6280-replacement-abandonment.patch`, and what it
+adds is a report rather than a behaviour.** The core already handled an
+abandoned transcript correctly by interpreting the rest of the routine; what it
+did not do was say so. `PopReplacementFrame` now takes a `completed` argument —
+reaching the last checkpoint while still live is completion, every other way out
+is not — and calls back with a `transcript_token` the host attached to the
+result and the core only ever stored. The runtime erases the pendings that token
+names. `01:C52B` fell from 73,536 master cycles to 819 and all 176,861 replaced
+calls agree with the emulated trace on every column.
+
+Two things about that are worth carrying. The half-fix tried first — withdrawing
+when the core executes the `RTS` itself — did not partly work, it made the trace
+*worse* (129,236 wrong `Y` against 82,201), because a cut-short scan usually
+leaves through the dispatch at `01:C52C` and never reaches the return at all.
+And the patch was expected to unblock bank `03`'s two largest rows on the same
+reasoning; it did not move them by a cycle. Those 176,025 are residue on a
+routine that already absorbs — transcripts an interrupt cut short, and arrivals
+through in-line compositions — which are cycles the assembly really runs. A
+limitation that explains one symptom is not the explanation of every symptom
+that resembles it.
 
 **One thing in the host that a single family could not have shown.** The
 observer reports a boundary's cycle on two clocks, and only the absolute one
@@ -2060,6 +2078,15 @@ already failed twice. Give the new patch its own branch **in the same edit
 that adds it to the series**, and leave the `else()` holding markers for the
 patch you are adding right now, so the next slice has to displace it to do
 anything at all.
+
+`0020` was the first patch added after that was written, and the procedure held:
+`0019` got its own branch in the same edit that added `0020` to the series, and
+the `else()` now holds `0020`'s markers — `dc_beetle_active_replacement_abandoned_hook`
+in the CPU source and `ReplacementToken` in the CPU header, both touched by no
+other patch. Both halves were then exercised rather than assumed: `git apply
+--check` against a tree carrying `0001`-`0019` and none of the slice's edits,
+and a CMake configure of a tree where `0020` was already applied, which is the
+only path that runs the marker branch at all.
 
 ### Starve the alternative, then let the census speak
 

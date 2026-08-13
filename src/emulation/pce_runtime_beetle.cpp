@@ -278,6 +278,13 @@ class BeetlePceRuntime final : public PceRuntime {
         // gives them nothing to measure against.
         std::uint64_t absolute_master_cycle = 0;
         std::uint32_t master_cycle = 0;
+        // Which transcript promised it. A checkpointed transcript can be given
+        // up on part-way through, and then the return it declared never
+        // happens; the core hands this token back so the promise can be taken
+        // off the list instead of waiting for a landing that will not come.
+        // Zero for a transcript that runs atomically, which cannot be
+        // abandoned and so is never withdrawn.
+        std::uint64_t transcript_token = 0;
     };
 
 public:
@@ -665,6 +672,7 @@ public:
             .nested = dc_beetle_replacement_nested_installs,
             .overflowed = dc_beetle_replacement_nest_overflows,
             .deepest = dc_beetle_replacement_max_depth,
+            .abandoned = dc_beetle_replacement_abandonments,
         };
     }
 
@@ -2719,8 +2727,12 @@ private:
             dc_beetle_set_replacement_hook(
                 &replacement_hook_callback,
                 this);
+            dc_beetle_set_replacement_abandoned_hook(
+                &replacement_abandoned_hook_callback,
+                this);
         } else {
             dc_beetle_clear_replacement_hook();
+            dc_beetle_clear_replacement_abandoned_hook();
         }
 
         if (routine_call_observers_.empty()
@@ -2922,7 +2934,8 @@ private:
     // hook second, so the frame is already registered.
     void stage_absorbed_returns(
         const dc_beetle_cpu_state& state,
-        const RoutineReplacement& result)
+        const RoutineReplacement& result,
+        const std::uint64_t transcript_token)
     {
         if (result.absorbed_returns.empty()
             || routine_call_observers_.empty()) {
@@ -2942,8 +2955,35 @@ private:
                     + absorbed.master_cycle_offset,
                 .master_cycle = state.master_cycle
                     + absorbed.master_cycle_offset,
+                .transcript_token = transcript_token,
             });
         }
+    }
+
+    // Take back a promise the transcript that made it never kept.
+    //
+    // The core abandons a checkpointed transcript when the machine does not
+    // come back to a resume point in the state the transcript declared -- an
+    // interrupt handler that returns a register changed, or that leaves through
+    // a different path entirely. The original assembly then runs from the last
+    // checkpoint applied, and executes the very `RTS` this transaction said it
+    // would run past; the ordinary observer closes the call on it. So the entry
+    // left here is not merely undeliverable, it has a live rival, and leaving
+    // it standing is the fault this exists to prevent: the next arrival at that
+    // address and stack pointer is a different call, and it would be closed
+    // with an abandoned transcript's registers.
+    //
+    // Harmless without a re-entry, which is why every family shipped before
+    // this could absorb without it. `01:C510` is the one that is both long
+    // enough to be cut short and re-entered at the same depth.
+    void withdraw_absorbed_returns(
+        const std::uint64_t transcript_token) noexcept
+    {
+        std::erase_if(
+            pending_absorbed_returns_,
+            [transcript_token](const PendingAbsorbedReturn& pending) {
+                return pending.transcript_token == transcript_token;
+            });
     }
 
     // Close the call whose absorbed return the machine has just landed on the
@@ -3247,7 +3287,18 @@ private:
                         "return.");
                 }
             }
-            runtime->stage_absorbed_returns(*state, result);
+            // Named only if it can be abandoned. An atomic transcript is
+            // applied whole inside the core's own loop iteration, so there is
+            // no moment at which it can be given up on and nothing for the
+            // core to hand back; zero says so.
+            const std::uint64_t transcript_token = checkpoint_count > 0U
+                ? ++runtime->next_transcript_token_
+                : 0U;
+            runtime->stage_absorbed_returns(
+                *state,
+                result,
+                transcript_token);
+            core_result->transcript_token = transcript_token;
 
             core_result->resume_logical_pc =
                 result.return_instruction.logical_pc;
@@ -3320,7 +3371,21 @@ private:
             dc_beetle_clear_instruction_hook();
             dc_beetle_clear_memory_write_hook();
             dc_beetle_clear_replacement_hook();
+            dc_beetle_clear_replacement_abandoned_hook();
         }
+    }
+
+    static void replacement_abandoned_hook_callback(
+        const std::uint64_t transcript_token,
+        void* const user_data) noexcept
+    {
+        auto* const runtime =
+            static_cast<BeetlePceRuntime*>(user_data);
+        if (runtime == nullptr || transcript_token == 0U
+            || runtime->pending_absorbed_returns_.empty()) {
+            return;
+        }
+        runtime->withdraw_absorbed_returns(transcript_token);
     }
 
     static void memory_write_hook_callback(
@@ -3769,6 +3834,10 @@ private:
     std::vector<ExecutionHook> execution_hooks_;
     std::vector<RoutineCallRegistration> routine_call_observers_;
     std::vector<PendingAbsorbedReturn> pending_absorbed_returns_;
+    // Names the transcripts this runtime hands the core, so that one it gives
+    // up on can be named back. Monotonic and never reused, so a token that
+    // arrives late cannot match a promise made since.
+    std::uint64_t next_transcript_token_ = 0;
     std::array<std::uint64_t, 0x100U> stack_page_write_cycle_{};
     WorkRamWriteCallback work_ram_write_observer_;
     BusWriteCallback bus_write_observer_;
