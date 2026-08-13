@@ -674,9 +674,11 @@ all sit in the first page of their bank.
 All nine run natively, admitted on every call. They are the first transcripts
 in the port to change the bank mapping: `TAM` sets `registers.mpr[slot]` and
 costs fifteen master cycles, and the core applies the slots at every
-checkpoint. Two of the stops are indirect jumps — `E26E` and `ECFA` — and the
-walk stops in front of both rather than resolving them, because each reads a
-vector the same transcript just wrote.
+checkpoint. Every walk also makes its own call rather than stopping in front of
+one — `E252`, `E26E`, `ECDF` and `ECFA`, 30,468 of them at 21 master cycles
+each. Two are indirect jumps, and each reads a vector the same walk wrote two
+instructions earlier; the target is always `$40xx`, so the bank is MPR2, which
+the prologue mapped.
 
 `00:ED5E`, the fifth wrapper, is deliberately absent: it is entered with two of
 its four stack slots already pushed by its caller, so its entry contract is not

@@ -16,19 +16,19 @@ Release state-census route (`--native-cycle-census`, measured 2026-08-13):
 | | |
 | --- | ---: |
 | Elapsed master cycles | 1,292,371,731 |
-| Native master cycles | 686,342,148 |
-| **Native share** | **53.11%** |
-| **Native share of cycles outside the idle spin loop** | **96.60%** |
+| Native master cycles | 686,981,976 |
+| **Native share** | **53.16%** |
+| **Native share of cycles outside the idle spin loop** | **96.69%** |
 | Routines installed | 371 of 371 |
 | Routines entered | 304 |
 | Calls run natively | 2,673,011 of 2,711,589 entered |
 | Calls declined at an interrupt horizon | 0 |
-| Transcripts installed inside a suspended transcript | 301,246 |
+| Transcripts installed inside a suspended transcript | 301,484 |
 | Deepest simultaneous suspension | 3 of a permitted 4 |
 | Replacements refused for depth | 0 |
 
 The resulting state census is byte-identical to the assembly-only
-baseline (`9036a9de…`), so that 53.11% is faithful, not merely running.
+baseline (`9036a9de…`), so that 53.16% is faithful, not merely running.
 The last three rows matter because the host credits a native call when
 it *offers* one. A replacement the core then refused would inflate the
 share silently, and a refusal count of zero is what rules that out.
@@ -344,8 +344,8 @@ because there they were absorbed into a transcript entered elsewhere and here
 they are the entry — a difference in which address carries the cycles, not in
 what the machine runs.
 
-**And the slice after that stopped waiting for a blocked walk to become
-possible.** Entering past an instruction the walk cannot cross was still, at
+And the slice after that stopped waiting for a blocked walk to become
+possible. Entering past an instruction the walk cannot cross was still, at
 bottom, a way of getting a transcript to the far side of something. The
 sprite-emitter driver's four `JSR $40DF` were not blocked by anything: the
 walks stopped in front of them because the call had always looked like a wall,
@@ -354,6 +354,20 @@ address, so it may end on the callee's first instruction — push the return,
 jump, and let the entry that already exists there take the body. See **The
 satellite attribute submission** below. 1,550,178 master cycles, no new
 routine, no new entry point, and every entry count in the family unchanged.
+
+**Then the same reading was applied where it had been written down as a
+refusal.** The bank-switching wrappers are the game's linkage and were among
+the earliest routines taken, but the four calls the family exists to make were
+left standing — this file said so, in as many words, and gave a reason: two of
+them are indirect jumps through a vector, and resolving one is the only place
+that module would have to work out a resume bank. That is a cost, not an
+obstacle. The vector is a cell the same walk wrote two instructions earlier and
+the target is always `$40xx`, so the bank is the slot the prologue just mapped;
+a `JSR` needs even less. See **The bank-switching call wrappers** below. All
+30,468 calls, 639,828 master cycles, and the family's own regression passes
+with the hashes it already had — the stack page and both vectors were in scope
+before this module made a single call of its own, so a wrong pushed byte or a
+mispriced offset had nowhere to hide.
 
 ## The music sequencer
 
@@ -810,8 +824,8 @@ sweep one, and the VBlank handler's pad reader one — 694,653 in total, with
 
 `00:E261` and `00:ECF1` are the shape this bank added: **a return that closes
 a call a different routine opened**. A bank wrapper is written in two halves.
-`00:E241` saves the two MPR shadows and stops in front of its `JSR`; the core
-makes the call; and control comes back not to `00:E241` but to `00:E255`,
+`00:E241` saves the two MPR shadows and then makes its `JSR` itself; control
+comes back not to `00:E241` but to `00:E255`,
 which is a registered routine in its own right. That second transcript pulls
 the shadows back off and returns — two bytes above its own entry, on the frame
 `00:E241`'s caller pushed. `00:ECC6`/`00:ECE2` is the same thing one shadow
@@ -951,12 +965,35 @@ Nine entry points are native, admitted on every one of 52,911 calls:
 | `00:E200` | The asset resolver's tail | 1,861 | 122,826 |
 
 Four of those are heads and five are the addresses a wrapper's call comes
-back to, because a wrapper exists to call something and the transcript has
-to stop in front of that call. Two of the stops are indirect jumps,
-`00:E26E` and `00:ECFA`, and the walk stops in front of both rather than
-resolving them: each reads a vector the same transcript just wrote, so
-handing the jump back to the core costs six instructions of coverage and
-removes the only place this module would have to compute a resume bank.
+back to, because a wrapper exists to call something — and every walk now
+ends by making that call:
+
+| Address | The call | Crossings | Master cycles |
+| --- | --- | ---: | ---: |
+| `00:E26E` | `JMP [$2CBE]`, into the callee's `$40xx` | 11,671 | 245,091 |
+| `00:E252` | `JSR $E262`, into the trampoline | 11,599 | 243,579 |
+| `00:ECDF` | `JSR $ECF2`, into the sequencer's entry point | 3,599 | 75,579 |
+| `00:ECFA` | `JMP [$2047]`, into bank `$45` at `$4003` | 3,599 | 75,579 |
+
+For a long while these were where a walk stopped rather than what it ended
+on, which left the family's entire reason for existing to the interpreter
+in a module that had already taken everything around it. The two `JSR`s
+are the same three stack bytes the sprite emitter's calls were. The two
+indirect jumps read a vector the same walk wrote two instructions earlier,
+and resolving one is the only place this module computes a resume bank:
+the target is always `$40xx`, so the bank is MPR2, which the prologue
+mapped from `$30`.
+
+Reading that cell in the transcript rather than letting the machine read
+it at the jump widens the window in which a handler could disagree from
+three instructions to five. Nothing can use that window which could not
+already ruin the routine, because a wrapper jumps through a cell it has
+just written — anything able to overwrite it in between would send the
+assembly itself to the wrong address. The write trace names every writer
+of both cells and finds no preemption: `$2CBE`/`$2CBF` is written by
+`00:E264`/`E269` and by `02:4101`/`4107`, `$2047`/`$2048` by
+`00:ECF4`/`ECF8` and by the palette upload at `00:EB57`/`EB89`, each a
+straight-line writer of its own vector.
 
 This is the first slice whose transcripts change the bank mapping. `TAM`
 is expressible because `CpuRegisters` carries all eight `MPR` slots and a
@@ -973,6 +1010,18 @@ state census, both byte-identical to a pure-assembly run of the same route.
 The whole stack page is in scope rather than a window of it: this family is
 nothing but stack-balanced save and restore, and its pushes land wherever
 the caller left `S`, spanning `$21E2` through `$21FD` on this route.
+
+Crossing the calls did not move either hash, and that is the check rather
+than a note about it. The stack page and both vectors were already in scope
+when the core made these calls, so when the transcripts took them over the
+trace had to keep matching a recording made before this module pushed a
+byte of its own — same values, same order, same master-cycle offsets. `JSR`
+charges no cycle before it pushes, so both return-address bytes carry the
+instruction's start offset, which ties with the end offset of the
+checkpoint in front of them; the core breaks that tie by instruction, so
+the pair lands with the call and an interrupt taken at the earlier boundary
+finds a stack the call has not touched. Getting that wrong moves an offset
+in a trace that is compared offset by offset.
 
 `00:ED5E` is the fifth wrapper and is deliberately absent. It is entered
 with two of its four stack slots already pushed by its caller, so its entry
@@ -1777,7 +1826,7 @@ anything and the figure has been dropped rather than carried forward
 unverified.
 
 Set the idle spin loop aside and 710,482,755 cycles are the machine
-working; 686,342,148 of them, **96.60%**, now run natively.
+working; 686,981,976 of them, **96.69%**, now run natively.
 
 The breakdown below is a self-consistent snapshot taken before the
 interrupt dispatcher was split and the whole-palette arm with it, against

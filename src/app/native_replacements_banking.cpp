@@ -28,24 +28,40 @@ using emulation::RoutineReplacement;
 //
 // Nine entry points share one walk. Four of them are heads; the rest are the
 // addresses control comes back to, because a wrapper's whole purpose is to
-// call something and the walk has to stop in front of that call:
+// call something, and every walk ends by making that call:
 //
 //   00:E20D  map $30 into MPR4/MPR5
 //   00:E200  the asset resolver's tail: read the $8000 table through the slot
 //            00:E20D just mapped and leave the resolved reference in $2F/$30
 //   00:E219  map the fixed bank pair for the current mode at $55
-//   00:E241  save MPR2/MPR3, map $30 into them, stop at the JSR $E262
+//   00:E241  save MPR2/MPR3, map $30 into them, call $E262
 //   00:E255  store the callee's result in $2A and restore MPR2/MPR3
-//   00:E262  the trampoline: build $40xx in $2CBE/$2CBF, stop at the JMP
-//   00:ECC6  save MPR2/MPR3/MPR4, map banks $45-$47, stop at the JSR $ECF2
+//   00:E262  the trampoline: build $40xx in $2CBE/$2CBF and jump through it
+//   00:ECC6  save MPR2/MPR3/MPR4, map banks $45-$47, call $ECF2
 //   00:ECE2  restore MPR2/MPR3/MPR4
-//   00:ECF2  point $47/$48 at $4003 and stop at the JMP that enters bank $45
+//   00:ECF2  point $47/$48 at $4003 and jump through it into bank $45
 //
-// Two of those stops are indirect jumps -- 00:E26E and 00:ECFA -- and the walk
-// stops in front of both rather than resolving them. The vector each one reads
-// is a cell the same transcript just wrote, so leaving the jump to the core
-// costs six instructions of coverage and removes the only place this module
-// would have to compute a resume bank.
+// Those four calls used to be where a walk stopped rather than what it ended
+// on, which left this family's entire reason for existing to the interpreter:
+// 30,468 calls and 639,828 master cycles, in a module that had already taken
+// everything around them. A transcript may end on another transcript's front
+// door, so each walk now makes its call and names the target as the
+// instruction it ends on. Two of those targets, $E262 and $ECF2, are entries
+// in this same file; the other two are the $40xx the whole idiom exists to
+// reach.
+//
+// Both indirect jumps read a vector the same walk wrote two instructions
+// earlier, and resolving it is the one place this module computes a resume
+// bank -- the target is always $40xx, so the bank is MPR2, which the prologue
+// mapped. Reading that cell here rather than letting the machine read it at
+// the jump widens the window in which a handler could disagree from three
+// instructions to five. Nothing can use that window which could not already
+// ruin the routine: a wrapper jumps through a cell it has just written, so
+// anything able to overwrite it in between would send the assembly itself to
+// the wrong address. $2CBE/$2CBF is written by 00:E264/E269 and by 02:4101/
+// 4107, and $2047/$2048 by 00:ECF4/ECF8 and by the palette upload at
+// 00:EB57/EB89 -- each pair a straight-line writer of its own vector, none of
+// them a preemption of another.
 //
 // Nothing here reads state an interrupt handler leaves changed. The VBlank
 // handler's own wrapper at 00:ECC6 is the only interrupt-context writer of
@@ -70,6 +86,11 @@ constexpr std::uint16_t kWorkRamBase = 0x2000U;
 constexpr std::uint16_t kWorkRamEnd = 0x4000U;
 constexpr std::uint16_t kStackBase = 0x2100U;
 
+// Both shapes of call this family makes cost seven CPU cycles: Mednafen's case
+// $20 charges ADDCYC(6) after its two pushes, and case $6C charges ADDCYC(6)
+// after resolving the vector, and each opcode's own fetch is the seventh.
+constexpr std::uint32_t kCall = 21U;
+
 [[nodiscard]] std::uint8_t set_nz(
     const std::uint8_t status,
     const std::uint8_t value)
@@ -93,25 +114,17 @@ constexpr std::uint16_t kStackBase = 0x2100U;
         || logical_pc == 0xECF2U;
 }
 
-// Where each walk stops. Five are RTS instructions and four are the calls this
-// family exists to make -- two JSRs and two indirect jumps -- which the core
-// executes, re-entering whichever replacement owns the target.
-[[nodiscard]] constexpr bool is_stop_instruction(const std::uint16_t logical_pc)
-{
-    return logical_pc == 0xE20CU || logical_pc == 0xE218U
-        || logical_pc == 0xE232U || logical_pc == 0xE252U
-        || logical_pc == 0xE261U || logical_pc == 0xE26EU
-        || logical_pc == 0xECDFU || logical_pc == 0xECF1U
-        || logical_pc == 0xECFAU;
-}
-
-// All five of those RTS instructions are returns, and every one of them can be
-// run past. What differs from the rest of the port is where the frame is: two
-// of these walks give the stack back before they return, so the pointer at the
-// RTS is above the one the routine was entered with. This says by how much, and
-// the walk is checked against it rather than trusted -- the pointer is derived
-// from the entry's through the same push and pop the machine performs, so a
-// disagreement here is a modelling error and not a fact about the route.
+// Where each walk stops. Every stop is now a return: the four calls this
+// family exists to make are crossed rather than stopped in front of, so an RTS
+// is the only instruction left that ends a walk.
+//
+// All five of them can be run past. What differs from the rest of the port is
+// where the frame is: two of these walks give the stack back before they
+// return, so the pointer at the RTS is above the one the routine was entered
+// with. This says by how much, and the walk is checked against it rather than
+// trusted -- the pointer is derived from the entry's through the same push and
+// pop the machine performs, so a disagreement here is a modelling error and
+// not a fact about the route.
 //
 // Each stop is reachable from exactly one of the nine entries, so a single
 // count per address is well defined: the walks are straight-line from the pop
@@ -125,14 +138,14 @@ constexpr std::uint16_t kStackBase = 0x2100U;
 //   00:ECF1  from 00:ECE2, which restores $20, $1F and $1E
 //
 // The last two are the far side of this family's own linkage. 00:E241 pushes
-// the two MPR shadows and stops in front of `JSR $E262`; the core makes the
-// call, the callee returns to 00:E255, and it is that transcript -- a separate
-// entry, entered by an RTS landing rather than by a JSR -- which pulls the
-// shadows back off and returns to whoever called the wrapper. So the frame this
-// absorbs belongs to a call that was opened two transcripts ago, which is what
-// makes reading the pointer at the return rather than at the entry the whole
-// of the correctness argument. 00:ECC6 and 00:ECE2, either side of the `JSR` at
-// 00:ECDF, are the same shape one shadow wider.
+// the two MPR shadows and then makes `JSR $E262` itself; the callee returns to
+// 00:E255, and it is that transcript -- a separate entry, entered by an RTS
+// landing rather than by a JSR -- which pulls the shadows back off and returns
+// to whoever called the wrapper. So the frame this absorbs belongs to a call
+// that was opened two transcripts ago, which is what makes reading the pointer
+// at the return rather than at the entry the whole of the correctness
+// argument. 00:ECC6 and 00:ECE2, either side of the `JSR` at 00:ECDF, are the
+// same shape one shadow wider.
 [[nodiscard]] constexpr std::optional<std::uint8_t> absorbable_return_pops(
     const std::uint16_t logical_pc)
 {
@@ -312,6 +325,49 @@ std::optional<RoutineReplacement> replace_bank_call_wrappers(
             }
         };
 
+    // Set by the instruction that ends a walk by making this family's call.
+    // A jump names its target and stops there; the target is not in this file
+    // for the two indirect ones, so the bank comes from the slot the logical
+    // address lands in rather than from kBank.
+    std::optional<RoutineKey> crossed;
+    const auto jump =
+        [&registers, &append_checkpoint, &crossed](
+            const std::uint16_t instruction_pc,
+            const std::uint16_t target_pc) {
+            append_checkpoint(instruction_pc, target_pc, kCall);
+            crossed = RoutineKey{
+                .physical_bank = registers.mpr[target_pc >> 13U],
+                .logical_pc = target_pc,
+            };
+        };
+    // A JSR is a jump that leaves the address of its own last byte behind,
+    // which is what the callee's RTS adds one to. It is also the one
+    // instruction here that writes before it charges a cycle -- case $20 is
+    // PUSH, PUSH, ADDCYC -- so both bytes carry the instruction's start
+    // offset, and that is the end offset of the checkpoint in front of it. The
+    // core breaks that tie by instruction, so the pair lands with the call
+    // rather than with whatever preceded it, and an interrupt taken at the
+    // earlier boundary finds a stack the call has not touched.
+    const auto call =
+        [&cycle, &push, &commit_pending_writes, &jump](
+            const std::uint16_t instruction_pc,
+            const std::uint16_t target_pc) {
+            const auto pushed = static_cast<std::uint16_t>(instruction_pc + 2U);
+            push(instruction_pc, static_cast<std::uint8_t>(pushed >> 8U));
+            push(instruction_pc, static_cast<std::uint8_t>(pushed & 0x00FFU));
+            commit_pending_writes(cycle);
+            jump(instruction_pc, target_pc);
+        };
+    // The vector both indirect jumps read, from the copy of work RAM this walk
+    // has been writing: two instructions ago it was this transcript that put
+    // the target there.
+    const auto vector = [&read_ram](const std::uint16_t address) {
+        return static_cast<std::uint16_t>(
+            read_ram(address)
+            | static_cast<std::uint16_t>(
+                read_ram(static_cast<std::uint16_t>(address + 1U)) << 8U));
+    };
+
     auto pc = entry.routine.logical_pc;
     for (;;) {
         if (overflow
@@ -320,7 +376,7 @@ std::optional<RoutineReplacement> replace_bank_call_wrappers(
             return std::nullopt;
         }
 
-        if (is_stop_instruction(pc)) {
+        if (const auto pops = absorbable_return_pops(pc); pops.has_value()) {
             registers.program_counter = pc;
             replacement.return_instruction = {kBank, pc};
             replacement.output_registers = registers;
@@ -335,9 +391,7 @@ std::optional<RoutineReplacement> replace_bank_call_wrappers(
             // atomic question can never be the thing that refuses an absorption
             // -- it is asked because a transcript with no checkpoint is not
             // this file's rule to break.
-            if (const auto pops = absorbable_return_pops(pc);
-                pops.has_value()
-                && registers.stack_pointer
+            if (registers.stack_pointer
                     == static_cast<std::uint8_t>(
                         entry.registers.stack_pointer + *pops)
                 && (!replacement.checkpoints.empty()
@@ -561,6 +615,10 @@ std::optional<RoutineReplacement> replace_bank_call_wrappers(
             pc = 0xE252U;
             break;
 
+        case 0xE252U:  // JSR $E262 -- the trampoline, an entry in this file
+            call(0xE252U, 0xE262U);
+            break;
+
         // ---- 00:E255  banked call, epilogue -------------------------------
         case 0xE255U:  // STA $2A -- the callee's result
             store(0xE255U, zp(0x2AU), registers.accumulator);
@@ -636,6 +694,13 @@ std::optional<RoutineReplacement> replace_bank_call_wrappers(
             load_accumulator(read_ram(zp(0x2AU)));
             append_checkpoint(0xE26CU, 0xE26EU, 12U);
             pc = 0xE26EU;
+            break;
+
+        // The call the whole idiom exists to make. $2CBF holds the #$40 four
+        // instructions back, so the target is in segment 2, which 00:E241
+        // mapped to the callee's bank.
+        case 0xE26EU:  // JMP [$2CBE]
+            jump(0xE26EU, vector(0x2CBEU));
             break;
 
         // ---- 00:ECC6  the VBlank handler's music call, prologue -----------
@@ -735,6 +800,10 @@ std::optional<RoutineReplacement> replace_bank_call_wrappers(
             pc = 0xECDFU;
             break;
 
+        case 0xECDFU:  // JSR $ECF2 -- also an entry in this file
+            call(0xECDFU, 0xECF2U);
+            break;
+
         // ---- 00:ECE2  the VBlank handler's music call, epilogue -----------
         case 0xECE2U:  // PLA
             load_accumulator(pop());
@@ -818,8 +887,27 @@ std::optional<RoutineReplacement> replace_bank_call_wrappers(
             pc = 0xECFAU;
             break;
 
+        // $4003 in whichever of banks $45-$47 00:ECC6 left in segment 2, which
+        // is the sequencer's own entry.
+        case 0xECFAU:  // JMP [$2047]
+            jump(0xECFAU, vector(0x2047U));
+            break;
+
         default:
             return std::nullopt;
+        }
+
+        // A call ends the walk, but it is made rather than left standing: the
+        // transcript hands the machine the callee's first instruction, and
+        // whatever owns that address picks the body up from there.
+        if (crossed.has_value()) {
+            if (overflow) {
+                return std::nullopt;
+            }
+            replacement.return_instruction = *crossed;
+            replacement.output_registers = registers;
+            replacement.body_master_cycles = cycle;
+            return replacement;
         }
     }
 }

@@ -260,11 +260,11 @@ own when the CPU does.
 is the one to watch:
 
 ```
-Registry cycles: 686342148 native of 1292371731 elapsed master cycles (53.11%)
-Registry cycles outside the frame-sync wait: 686342148 native of 710482755
-  (96.60%); the machine waited at 00:E323 for 581888976 master cycles
+Registry cycles: 686981976 native of 1292371731 elapsed master cycles (53.16%)
+Registry cycles outside the frame-sync wait: 686981976 native of 710482755
+  (96.69%); the machine waited at 00:E323 for 581888976 master cycles
   (45.02% of the route)
-Instructions interpreted: 66312528
+Instructions interpreted: 66312539
 ```
 
 The first line is true and nearly useless as a progress signal. Its
@@ -481,9 +481,9 @@ Remaining real logic, in rough order of value:
    | Routine | Master cycles | State |
    | --- | ---: | --- |
    | `00:E195` pad reader | 6,929,670 | **native** — see below |
-   | `00:E241`/`E255` banked call | 2,878,650 | **native** |
+   | `00:E241`/`E255` banked call | 2,878,650 | **native**, including its `JSR` |
    | `00:E111`–`E13F` VBlank body | 2,412,678 | **native** except its `RTI` |
-   | `00:E262` trampoline | 953,343 | **native** |
+   | `00:E262` trampoline | 953,343 | **native**, including its indirect `JMP` |
    | `00:E140`–`E178` VBlank epilogue | 821,685 | **native** |
    | `00:E058`–`E0EA` dispatcher | 769,938 | **native** except its `LDA $0000` — 640,374 of it — see below |
    | `00:E0EB`–`E110` VBlank prologue | 544,104 | **native** |

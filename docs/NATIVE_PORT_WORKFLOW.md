@@ -1018,8 +1018,8 @@ writing the edit, and that is the right ratio.
 
 **A return does not have to be reached at the pointer the routine was entered
 with, and the pointer at the return is the one that matters.** Bank `00`'s call
-wrappers are written in two halves: `00:E241` saves the MPR shadows and stops in
-front of its own `JSR`, and control comes back from that call not to `00:E241`
+wrappers are written in two halves: `00:E241` saves the MPR shadows and makes
+its own `JSR`, and control comes back from that call not to `00:E241`
 but to `00:E255`, a registered routine in its own right, which pulls the shadows
 back off and returns two bytes above where it was entered — on the frame
 `00:E241`'s caller pushed. `00:ECC6`/`00:ECE2` is the same shape one shadow
@@ -1391,6 +1391,24 @@ to any entry count in the family, because the callee is entered at the same
 address either way. The transcripts grew by one instruction, so unlike
 composition it pays no shadowing bill at all: it moves cycles out of the
 interpreter without lengthening anything enough to swallow an extra interrupt.
+
+The same move takes an indirect jump, and that is where it is worth the most,
+because a `JMP ($nnnn)` is 21 master cycles with no stack traffic at all. Bank
+`00`'s wrappers end on four of these between them — two `JSR`s and two
+`JMP [$nnnn]` — and the module had written the jumps off in a comment: each
+reads a vector the same transcript wrote two instructions earlier, so leaving
+them to the core "removes the only place this module would have to compute a
+resume bank." That is a cost, not an obstacle. Resolve the vector out of the
+walk's own copy of work RAM, take the bank from `output_registers.mpr[target >>
+13]`, and the transcript ends on the callee. All 30,468 calls, 639,828 master
+cycles.
+
+Resolving a vector yourself does move where it is read: the machine reads the
+cell at the jump, the transcript reads it when the walk is built. Before
+crossing an indirect jump, ask what could write that cell in between. Here
+nothing could that would not already break the game, since the routine jumps
+through a cell it has just written — but that argument has to be made, and a
+work-RAM write trace scoped to the vector names every writer for you.
 
 Use composition when you want the callee's body in line — to reach a state the
 parent needs afterwards, or to absorb the `RTS` too. Use this when you only

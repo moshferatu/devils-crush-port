@@ -18,21 +18,21 @@ endif()
 # makes the idiom re-entrant.
 #
 # Nine entry points share one walk. Four are heads; the rest are the addresses
-# each wrapper's call comes back to, because a wrapper exists to call something
-# and the transcript has to stop in front of that call.
+# each wrapper's call comes back to, because a wrapper exists to call something,
+# and every walk ends by making that call.
 #
 #   00:E20D  map $30 into MPR4/MPR5
 #   00:E200  the asset resolver's tail, reading its table through that slot
 #   00:E219  map the fixed bank pair for the current mode at $55
-#   00:E241  save MPR2/MPR3, map $30 into them, stop at the JSR $E262
+#   00:E241  save MPR2/MPR3, map $30 into them, call $E262
 #   00:E255  store the callee's result in $2A, restore MPR2/MPR3
-#   00:E262  the trampoline: build $40xx in $2CBE/$2CBF, stop at the JMP
+#   00:E262  the trampoline: build $40xx in $2CBE/$2CBF and jump through it
 #   00:ECC6  the VBlank handler's music call: save MPR2-MPR4, map banks $45-$47
 #   00:ECE2  restore MPR2-MPR4
-#   00:ECF2  point $47/$48 at $4003, stop at the JMP into bank $45
+#   00:ECF2  point $47/$48 at $4003 and jump through it into bank $45
 #
 # All nine are admitted on every call. They carry no game logic, read nothing an
-# interrupt handler leaves changed, and have bodies of 36 to 162 master cycles
+# interrupt handler leaves changed, and have bodies of 36 to 183 master cycles
 # against a 5,068-cycle timer period, so there is nothing for the horizon valve
 # or the shared-state guard to decline.
 #
@@ -45,6 +45,17 @@ endif()
 # matters here: a wrapper writes an MPR shadow and the register together, and a
 # transcript that misprices either one moves a bank switch without moving a
 # byte.
+#
+# The two `JSR`s the walks now make rather than stop in front of are checked by
+# that same page, and by these same hashes: the stack was already in scope when
+# the core made those calls, so nothing here changed when the transcripts took
+# them over. A pushed byte with the wrong value, the wrong order or the wrong
+# master-cycle offset breaks a trace that was recorded before this module made
+# a single call of its own -- and `JSR` charges no cycle before it pushes, so
+# both bytes carry the instruction's start offset and tie with the checkpoint
+# in front of them. $2047/$2048 and $2CBE/$2CBF are the vectors the two
+# indirect jumps read, in scope for the same reason: they are the difference
+# between arriving at the callee and arriving somewhere else that is real.
 set(
     expected_census_sha256
     "9036a9de0c3c9917f47bff8c04c136a4824ec12601fb457d260aa2dfe4443490"
@@ -150,7 +161,9 @@ endforeach()
 message(
     STATUS
     "Semantic bank-switching call wrappers run all nine entry points natively "
-    "across 52,911 admitted entries as instruction-boundary transcripts, with "
-    "the MPR shadows, the trampoline vector, the sequencer entry pointer, the "
-    "whole stack page and the state census identical to assembly."
+    "across 52,911 admitted entries as instruction-boundary transcripts, make "
+    "all 30,468 of the calls the family exists to make, and land on the "
+    "callee, with the MPR shadows, the trampoline vector, the sequencer entry "
+    "pointer, every pushed return address, the whole stack page and the state "
+    "census identical to assembly."
 )
