@@ -191,9 +191,20 @@ constexpr std::uint32_t kChannelIterationMasterCycles = 2304U;
 }
 
 // Every RTS in the ported set. At call depth zero the walk stops in front of
-// one of these and hands the return itself back to the core, which is the
-// established shape for a leaf transcript; deeper than that the walk executes
-// it, because the matching JSR was one of its own.
+// one of these; deeper than that it executes the RTS outright, because the
+// matching JSR was one of its own.
+//
+// All twenty-five are ordinary returns rather than dispatches, checked against
+// the ROM, so a stop can be absorbed -- run as the last instruction of the
+// transcript instead of being handed to the core -- and the runtime test is
+// that the pointer still stands where the entry left it. That is the whole of
+// it, without the pop counts bank 00's wrappers needed: these returns close
+// the call their own entry opened.
+//
+// The ported span holds the other shape twice. 45:4579 and 45:4BE6 each push
+// an address and let the RTS jump to it, which is not a return; both are
+// deliberately absent from the list, and the pointer test would refuse them in
+// any case, standing two below wherever such a walk began.
 [[nodiscard]] constexpr bool is_return_instruction(const std::uint16_t pc)
 {
     return pc == 0x4141U
@@ -578,8 +589,10 @@ std::optional<RoutineReplacement> replace_music_sequencer(
                         && cycle + kChannelIterationMasterCycles
                             >= entry.master_cycles_until_timer_interrupt)));
 
-        // A return at the outermost level ends the transcript in front of the
-        // RTS, which the core then executes itself.
+        // A stop at the outermost level ends the transcript in front of the
+        // instruction standing there. A tick stop is a handover and stays that
+        // way; a return is absorbed if the stack agrees, and only then does the
+        // core resume above this bank instead of inside it.
         if (depth == 0U && (is_return_instruction(pc) || tick_stop)) {
             // The driver-state guard. Entering with the interrupt mask
             // already set is the strong case: `4142` brackets each voice in
@@ -596,6 +609,24 @@ std::optional<RoutineReplacement> replace_music_sequencer(
             replacement.return_instruction = {kBank, pc};
             replacement.output_registers = registers;
             replacement.body_master_cycles = cycle;
+            // The absorbed RTS reads only the stack, so the driver-state guard
+            // above still covers the whole body; what the twenty-one extra
+            // cycles can cross is an interrupt horizon. A chunked transcript
+            // already carries checkpoints and gets one more for the return, so
+            // the host can stop on it. An atomic one cannot be stopped at all
+            // and has to be shown to land clear of every horizon first.
+            if (is_return_instruction(pc)
+                && registers.stack_pointer == entry.registers.stack_pointer
+                && (!replacement.checkpoints.empty()
+                    || absorbed_return_fits_atomically(entry, cycle))) {
+                absorb_return(
+                    replacement,
+                    work_ram,
+                    registers.stack_pointer,
+                    {kBank, pc},
+                    cycle,
+                    registers);
+            }
             return replacement;
         }
 

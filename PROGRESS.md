@@ -5581,8 +5581,80 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
 ## Active Work
 
 Current owner: Claude. Current slice: **carrying the absorbed return into bank
-`00`**. Done, in six edits, and it is the slice that found the pointer a return
-is reached with need not be the one its routine was entered with.
+`45`**. Done, in one edit, and it is the cheapest slice the technique has had.
+
+Bank `45` held 644,397 emulated return cycles, the largest pool left after bank
+`00`. It falls to 68,481 -- seventh of eight -- and the route to 1,635,210. The
+registry goes 678,599,007 -> 679,191,291 native cycles, **52.55%** of the route
+and **95.60%** of it outside the frame-sync wait. Nested installs rose 297,634
+-> 297,770, three deep at the most, nothing refused, and 0 calls declined at an
+interrupt horizon. The state census is `9036a9de...` unchanged.
+
+**The whole bank is one walk, and the walk already had a stop list.** Fifteen
+entry points share `replace_music_sequencer`; twenty-five addresses are listed
+in `is_return_instruction`; every one of them is a genuine `RTS` reached on a
+balanced stack. So the edit is a single condition in the stop branch, and it
+took 575,916 master cycles -- more than bank `00`'s six edits together, and the
+largest return in it, `45:4210` at 76,044, is not especially large.
+
+| Return | Before | After |
+| --- | ---: | ---: |
+| `45:4210` | 76,044 | 10,122 |
+| `45:4141` | 75,939 | 546 |
+| `45:49B5` | 73,086 | 630 |
+| `45:4935` | 72,933 | 2,205 |
+| `45:48B3` | 54,822 | 168 |
+| `45:4A9B` | 47,757 | 2,541 |
+| `45:46D6` | 47,526 | 10,416 |
+| `45:49D1` | 39,714 | 21 |
+| `45:4227` | 37,527 | 84 |
+| `45:48AC` | 36,960 | 5,040 |
+| `45:429E` | 20,748 | 0 |
+| `45:49F8` | 14,397 | 6,978 |
+| `45:4A28` | 14,253 | 168 |
+
+**No pop counts, and it is worth saying why not.** Bank `00` needed them
+because its wrappers are written in two halves and the second half returns
+above where it was entered. Nothing here does: this bank's returns close the
+call their own entry opened, so the test is the plain one -- the pointer still
+stands where the entry left it. The bank does contain the other shape, twice.
+`45:4579` and `45:4BE6` each push an address and `RTS` to it, which is a jump
+rather than a return; both were already absent from the stop list, and the
+pointer test would have refused them anyway, standing two below the entry's.
+
+**Three of the fifteen entries do not compare, and the reason is older than
+this slice.** `45:4044`, `45:409C` and `45:4143` are loop heads reached by a
+`JMP` rather than a call, and replacing a loop head coarsens the call trace:
+the iterations the walk runs inside one transcript stop being separate calls.
+At `45:4143` the emulated route records 19,062 calls and the replaced one
+9,602. Every replaced call is present in the emulated trace verbatim -- 0
+absent, 9,460 swallowed -- but a subset is not a match, so I rebuilt with the
+absorption removed and traced all three again. The replaced artifacts are
+**byte-identical** to the ones the absorption produces, census, call trace and
+call-write trace alike. The coarsening is what replacing a loop head has always
+done, and the absorbed-return declaration changed nothing about those records.
+The other twelve entries compare byte-identically, emulated against replaced.
+
+**What is left in bank `45` is mostly not in the ported set.** Of the remaining
+68,481, some 20,000 sits on addresses the walk never stops at -- `45:496C`
+(6,387), `45:4559` (3,255), `45:494B` (2,841), `45:4B85` (2,442), `45:495E`
+(2,352), `45:4579` (1,701), `45:4CB8` (1,386) -- and the rest is residue on
+listed stops, led by `45:46D6` (10,416 of 47,526) and `45:4210` (10,122 of
+76,044): transcripts that declined, or that stopped short of the return.
+
+The registry table needed no regeneration -- `Generate-NativeRegistry.ps1
+-Check` reports it current at 369 admitted routines, because absorbing a return
+changes neither an admission count nor the evidence that proves one.
+
+411/411 Release in 171.71 s and 3/3 ROM-free Debug. The `windows-debug` sweep
+was not run. **No flake this time**, on the run after the one that recorded a
+sixth distinct single failure; that count stands at six across eight runs, none
+repeating, and still deserves a deliberate look.
+
+### Previous: carrying the absorbed return into bank `00`
+
+Six edits, and it is the slice that found the pointer a return is reached with
+need not be the one its routine was entered with.
 
 Bank `00` held 857,328 emulated return cycles, the largest pool left after bank
 `01`. It falls to 162,675 -- fourth of eight -- and the route to 2,211,126. The
@@ -6634,37 +6706,38 @@ does not.
 
 ### Next
 
-**Price bank `45`'s music interpreter, and decide between it and the fork patch
-that `01:C510` is waiting on.** Counting every `RTS` opcode the deployed
-registry still executes, excluding the rows that are themselves registered
-entries -- a registered entry's profile row carries its whole native body, not
-one return, which is worth knowing before reading any of these numbers:
+**Write the fork patch that `01:C510` is waiting on, or take bank `03`'s
+remainder.** Counting every `RTS` opcode the deployed registry still executes,
+excluding the rows that are themselves registered entries -- a registered
+entry's profile row carries its whole native body, not one return, which is
+worth knowing before reading any of these numbers:
 
 | Bank | Executions | Master cycles | Mentioned in `src/app` |
 | --- | ---: | ---: | ---: |
-| `45` | 30,529 | **644,397** | 630,354 |
-| `03` | 29,601 | 624,837 | 338,784 |
+| `03` | 29,601 | **624,837** | 338,784 |
 | `02` | 15,150 | 321,630 | 189,678 |
 | `01` | 8,854 | 187,590 | 103,953 |
 | `00` | 7,727 | 162,675 | 10,650 |
 | `09` | 5,707 | 121,002 | 29,292 |
 | `08` | 4,406 | 92,742 | 1,302 |
+| `45` | 3,205 | 68,481 | 54,438 |
 | `07` | 2,649 | 56,253 | 56,253 |
-| | 104,623 | **2,211,126** | 1,360,266 |
+| | 77,299 | **1,635,210** | 784,350 |
 
-Bank `45` is now both the largest pool and the friendliest ratio -- 630,354 of
-its 644,397 has a mention in `src/app`, against 14,043 that does not -- and it
-is a single large walk rather than a spread. Its top rows are `45:4210`
-(76,044), `45:4141` (75,939), `45:49B5` (73,086), `45:4935` (72,933), `45:48B3`
-(54,822), `45:4A9B` (47,757) and `45:46D6` (47,526): seven rows for 448,107,
-several of them running once per frame.
+Bank `03` is the largest pool again, and it has had thirty edits already: its
+two biggest rows, `03:6A37` + `03:6988` at 176,025, are transcripts an
+interrupt cut short and arrivals through cut compositions -- which is the same
+condition `01:C510` is held back on, so the fork patch may be worth more there
+than the direct 73,536 suggests. Everything below that in bank `03` is unported
+parents rather than absorbable returns.
 
 **Look for a stop list first.** It is the cheapest thing in this technique and
-it has now paid four times: bank `01`'s two walking interpreters were 372,411
-between them, and bank `00`'s call wrappers were 475,071 in a single edit. Grep
-for `is_stop_instruction` to see which families already have the shape. Then
-read the list rather than counting it -- check the opcode at every stop against
-the ROM, and check what each `RTS` actually pops.
+it has now paid five times: bank `01`'s two walking interpreters were 372,411
+between them, bank `00`'s call wrappers were 475,071 in a single edit, and bank
+`45`'s music sequencer was 575,916 in one condition. Grep for
+`is_stop_instruction` and `is_return_instruction` to see which families already
+have the shape. Then read the list rather than counting it -- check the opcode
+at every stop against the ROM, and check what each `RTS` actually pops.
 
 **Check where each stop leaves the stack pointer.** Bank `00` is the reason
 this is now a step of its own. A wrapper written in two halves returns above
@@ -6679,23 +6752,27 @@ has no `RTS` at its own depth for the observer to close on, so the call it
 opens never closes. Watch the head that opened the call instead, which is what
 `OBSERVE` is for.
 
-**Rank by ported owner, not by cycles**, and the six banks done so far bracket
-what that means: bank `03` took eight edits for 1,054,221 because its pool was
-spread, then twenty-two more for 873,453 because two of its rows were shared
-routines; bank `08` took two for 1,633,611 because 95% of it was two returns of
-already-native walks; bank `02` took twenty-one for 1,314,528 and was both at
-once; bank `01` took twenty-one for 872,514; bank `00` took six for 694,653
-because four of its six families already ended at a fixed set of addresses. No
-number in the table above predicts any of that.
+**Rank by ported owner, not by cycles**, and the seven banks done so far
+bracket what that means: bank `03` took eight edits for 1,054,221 because its
+pool was spread, then twenty-two more for 873,453 because two of its rows were
+shared routines; bank `08` took two for 1,633,611 because 95% of it was two
+returns of already-native walks; bank `02` took twenty-one for 1,314,528 and was
+both at once; bank `01` took twenty-one for 872,514; bank `00` took six for
+694,653 because four of its six families already ended at a fixed set of
+addresses; bank `45` took **one** for 575,916 because all of it was a single
+walk that already did. No number in the table above predicts any of that.
 
 The last column is a crude discriminator run over the whole profile in one
 pass: for each non-entry `RTS` row, ask whether its address appears anywhere in
 `src/app/*.cpp` as a hexadecimal literal. It over-counts -- a mention can be a
 resume address, a branch target or a `return_instruction` on an arm that hands
-over mid-routine rather than one a walk ends on. Bank `00` is the clearest
-demonstration yet of both directions: it read 705,303 mentioned before this
-slice and delivered 694,653, and what is left reads only 10,650, which is
-honest, because the remainder really is unported or unreachable.
+over mid-routine rather than one a walk ends on. Bank `00` demonstrated both
+directions: it read 705,303 mentioned before that slice and delivered 694,653,
+and what is left reads only 10,650, which is honest. Bank `45` is now the
+counter-example to trusting it downward as well as upward: 54,438 of its
+remaining 68,481 still reads as mentioned, and almost none of that is
+absorbable -- it is residue on stops the walk does end at but did not reach on
+those arrivals.
 
 **The other thing `### Next` could be is the fork patch.** `01:C510` is the
 only family so far that cannot absorb, and the reason is a host limitation
@@ -6709,6 +6786,22 @@ callback from there into `pending_absorbed_returns_`. It is worth 73,536 cycles
 at `01:C52B` directly, and more in what it unblocks: every family from here on
 that is long and re-entrant is in the same position, and there is no way to
 tell from the profile which those are.
+
+What is left in bank `45`:
+
+| Return | Master cycles | Why it is still there |
+| --- | ---: | --- |
+| `45:46D6` | 10,416 | Residue: 496 of `45:457A`'s 2,254 arrivals, against 1,758 absorbed |
+| `45:4210` | 10,122 | Residue on the channel loop's return, which chunks |
+| `45:49F8` | 6,978 | Residue |
+| `45:496C` | 6,387 | Not a stop the walk ends at |
+| `45:48AC` | 5,040 | Residue |
+| `45:4882` | 3,948 | Listed as a stop, but unchanged by this slice: no transcript reaches it |
+| `45:4775` | 3,696 | Residue |
+| `45:4559` | 3,255 | Not a stop the walk ends at |
+| `45:494B` | 2,841 | Not a stop the walk ends at |
+| `45:4A9B` | 2,541 | Residue |
+| others | 13,257 | Twenty-five rows, none above 2,442 |
 
 What is left in bank `00`:
 
@@ -6777,6 +6870,18 @@ What to carry across rather than rediscover:
   If it matches the emulated one, the difference is this slice's; if it does
   not, the slice has found something older and the fix belongs somewhere else.
   Two builds and two runs, and it is the difference between a fix and a guess.
+  Bank `45` is the case where it mattered and nothing was wrong: three of its
+  fifteen entries differed, the removal build reproduced the difference
+  byte-for-byte, and the slice was clean.
+- **A loop head cannot be compared call-for-call, and that is not a fault.**
+  An entry reached by a `JMP` from inside its own body -- `45:4044`, `45:409C`,
+  `45:4143`, each closing a loop -- opens a fresh call on every arrival when the
+  route is emulated, but one transcript swallows all the arrivals it runs
+  through. The replaced trace is a strict subset of the emulated one, not a
+  match: at `45:4143`, 9,602 calls against 19,062, every one of the 9,602
+  present verbatim. Check the subset relation rather than the hash, and check
+  it in that direction -- a replaced call *absent* from the emulated trace is
+  the real fault this would otherwise hide.
 - **Look for a stop list before ranking rows.** A walking interpreter that ends
   in front of whichever address in a fixed list it reached is one absorption for
   the whole family, however many registered entries dispatch it -- and it is the

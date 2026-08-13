@@ -16,19 +16,19 @@ Release state-census route (`--native-cycle-census`, measured 2026-08-13):
 | | |
 | --- | ---: |
 | Elapsed master cycles | 1,292,371,731 |
-| Native master cycles | 678,599,007 |
-| **Native share** | **52.51%** |
-| **Native share of cycles outside the idle spin loop** | **95.51%** |
+| Native master cycles | 679,191,291 |
+| **Native share** | **52.55%** |
+| **Native share of cycles outside the idle spin loop** | **95.60%** |
 | Routines installed | 369 of 369 |
 | Routines entered | 302 |
 | Calls run natively | 2,665,426 of 2,704,004 entered |
 | Calls declined at an interrupt horizon | 0 |
-| Transcripts installed inside a suspended transcript | 297,634 |
+| Transcripts installed inside a suspended transcript | 297,770 |
 | Deepest simultaneous suspension | 3 of a permitted 4 |
 | Replacements refused for depth | 0 |
 
 The resulting state census is byte-identical to the assembly-only
-baseline (`9036a9de…`), so that 52.51% is faithful, not merely running.
+baseline (`9036a9de…`), so that 52.55% is faithful, not merely running.
 The last three rows matter because the host credits a native call when
 it *offers* one. A replacement the core then refused would inflate the
 share silently, and a refusal count of zero is what rules that out.
@@ -752,6 +752,30 @@ changes it, which is not a body a transcript can express at all. It could be
 had by registering `00:E327`, the three instructions the spin falls out into,
 as an entry of its own; that is a new admission with its own regression rather
 than an absorption, so it is written down here rather than taken.
+
+Bank `45` followed, and it is the cheapest the technique has been: **one
+condition, 575,916 master cycles**. The music sequencer is a single walk behind
+fifteen entry points, and it had listed its twenty-five returns in
+`is_return_instruction` since it was written. All twenty-five are genuine `RTS`
+instructions reached on a balanced stack, so no pop counts were needed — the
+plain test, that the pointer still stands where the entry left it, covers the
+whole bank. The two places that push an address and `RTS` to it, `45:4579` and
+`45:4BE6`, are jumps rather than returns; both were already off the list, and
+the pointer test would refuse them in any case, standing two below the entry's.
+`45:4210` falls 76,044 → 10,122, `45:4141` 75,939 → 546, `45:49B5` 73,086 →
+630, `45:4935` 72,933 → 2,205, `45:49D1` 39,714 → 21. The bank falls 644,397 →
+68,481 and the route 2,211,126 → 1,635,210; the registry goes 678,599,007 →
+679,191,291, **52.55%** of the route and **95.60%** outside the frame-sync wait.
+
+Three of the fifteen entries do not compare call-for-call, for a reason that
+predates the absorption. `45:4044`, `45:409C` and `45:4143` are loop heads
+reached by a `JMP` from inside their own bodies, and replacing a loop head
+coarsens the trace: arrivals the walk runs through inside one transcript stop
+being separate calls. At `45:4143` the emulated route records 19,062 and the
+replaced one 9,602, every one of the 9,602 present in the emulated trace
+verbatim. Rebuilding without the absorption reproduces all three replaced
+artifacts byte-for-byte, which is the point worth keeping: the absorbed-return
+declaration leaves the observer's record of a loop head exactly as it found it.
 
 The `JSR` half is the same argument from the other side and is not new: a
 caller's walk that steps into the callee is composition, which `01:CB48`
@@ -1597,7 +1621,7 @@ anything and the figure has been dropped rather than carried forward
 unverified.
 
 Set the idle spin loop aside and 710,482,755 cycles are the machine
-working; 678,599,007 of them, **95.51%**, now run natively.
+working; 679,191,291 of them, **95.60%**, now run natively.
 
 The breakdown below is a self-consistent snapshot taken before the
 interrupt dispatcher was split and the whole-palette arm with it, against

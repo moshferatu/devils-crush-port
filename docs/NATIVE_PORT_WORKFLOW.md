@@ -735,9 +735,10 @@ hybrid's own overheads, which no amount of porting removes:
   structural does not. **A transcript can end past its own `RTS`**: see the
   section below — and both of those two returns are now absorbed, 1,634,598
   master cycles of the 13.3M, taken by two edits. Banks `03`, `02` and `01`
-  have since taken 1,054,221, 1,314,528, 873,453 and 872,514, and bank `00`
-  694,653, so a little over 6.6M of the 13.3M is gone and the remaining pool is
-  2,211,126 returns plus the `JSR` half.
+  have since taken 1,054,221, 1,314,528, 873,453 and 872,514, bank `00`
+  694,653, and bank `45` 575,916 in a single condition, so a little over 7.2M
+  of the 13.3M is gone and the remaining pool is 1,635,210 returns plus the
+  `JSR` half.
 - **Resumption after an interrupt.** An interrupt landing inside a transcript
   rewinds to a checkpoint and interprets the rest of the body, so a fully
   admitted routine still shows interpreted executions, climbing monotonically
@@ -970,6 +971,16 @@ and still be wrong, because it would tell the observer a call had completed when
 none had. Check the opcode at every stop, and then check the stack pointer each
 `RTS` is reached with — which is not always the entry's, as the next lesson says.
 
+Bank `45`'s music sequencer is the limit case of how cheap this gets. Fifteen
+entry points share one walk, its `is_return_instruction` lists twenty-five
+addresses, all twenty-five are genuine returns reached on a balanced stack, and
+absorbing them all is **one condition for 575,916 master cycles** — more than
+bank `00`'s six edits together. The bank contains the `01:CBF9` shape twice,
+`45:4579` and `45:4BE6`, and both were already off the list; the stack-pointer
+test would have refused them anyway, since a routine that pushes its own target
+stands two below where it was entered. Reading the list still cost more than
+writing the edit, and that is the right ratio.
+
 **A return does not have to be reached at the pointer the routine was entered
 with, and the pointer at the return is the one that matters.** Bank `00`'s call
 wrappers are written in two halves: `00:E241` saves the MPR shadows and stops in
@@ -996,6 +1007,20 @@ by the head of the wrapper, so `dc_rom_absorbed_return_trace` takes an `OBSERVE`
 argument and the sixth test replaces `00:ECE2` while watching `00:ECC6`. If a
 write trace grows without bound, check whether the routine returns where it was
 entered before looking for a bug.
+
+**A loop head does not compare call-for-call, and expecting it to will send you
+hunting a fault that is not there.** An entry reached by a `JMP` from inside its
+own body — `45:4044`, `45:409C` and `45:4143` each close a loop that way — opens
+a fresh call on every arrival when the route is emulated, but one transcript
+runs through many arrivals and swallows them. At `45:4143` that is 19,062
+emulated calls against 9,602 replaced, with every one of the 9,602 present in
+the emulated trace verbatim. The right assertion is the subset relation, and in
+that direction: a replaced call *absent* from the emulated trace is a real
+fault, while emulated calls the replacement swallowed are the coarsening working
+as designed. When the hashes differ anyway, the two-build check settles it —
+rebuilding bank `45` without the absorption reproduced all three replaced
+artifacts byte-for-byte, which also says what the absorbed-return declaration is
+for: it leaves the observer's record of a loop head exactly as it found it.
 
 **A promise the transcript never keeps is never withdrawn, and that is the
 technique's second limit.** A transaction stages the return it will absorb when

@@ -3299,6 +3299,38 @@ Two consequences worth carrying forward:
   writes — twenty gigabytes before the run was stopped. That is the instrument,
   not the routine. Watch the head that opened the call instead.
 
+## One condition for a whole bank, and a trace that legitimately differs
+
+Bank `45` made the stop-list shape pay for a fifth time and set the ceiling for
+how cheap it gets: **575,916 master cycles for one condition**, more than bank
+`00`'s six edits together. The music sequencer is one walk behind fifteen entry
+points; its `is_return_instruction` has listed twenty-five addresses since it
+was written; all twenty-five are genuine `RTS` instructions reached on a
+balanced stack. No pop counts were needed. The bank does hold the `01:CBF9`
+shape twice — `45:4579` and `45:4BE6` push an address and let the `RTS` jump to
+it — and both were already off the list; the stack-pointer test refuses that
+shape in any case, since a routine that pushes its own target stands two below
+where it was entered.
+
+**The screening lesson is that the mention discriminator can mislead downward
+as well as upward.** Before the slice bank `45` read 630,354 of 644,397
+mentioned in `src/app`, which was right. After it, 54,438 of the remaining
+68,481 still reads as mentioned, and almost none of that is absorbable: it is
+residue on stops the walk does end at but did not reach on those arrivals.
+Ranking a bank by that column is a first pass, never a second one.
+
+**A loop head legitimately fails the emulated-versus-replaced comparison.**
+Three of the fifteen entries — `45:4044`, `45:409C`, `45:4143` — are reached by
+a `JMP` from inside their own bodies. Emulated, each arrival opens a call;
+replaced, one transcript runs through many arrivals and swallows them. At
+`45:4143` that is 19,062 calls against 9,602, with every one of the 9,602
+present in the emulated trace verbatim. The assertion to make is the subset
+relation and its direction — a replaced call absent from the emulated trace is
+a real fault; swallowed emulated calls are the coarsening working. Rebuilding
+without the absorption reproduced all three replaced artifacts byte-for-byte,
+which is also the clearest statement of what the absorbed-return declaration
+buys: the observer's record of a loop head is exactly what it was.
+
 ## Use on future families
 
 Follow the command and interpretation rules in

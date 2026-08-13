@@ -46,6 +46,16 @@ endif()
 # balance programmer `4522`, the note-to-period conversion `46D7`, and the
 # handlers themselves -- so none of those is a separate entry.
 #
+# Every one of the twenty-five stops in `is_return_instruction` is absorbed
+# rather than handed to the core: the walk runs the `RTS` itself and the
+# transcript ends on the caller's side of it. That took the bank from 644,397
+# emulated return cycles to 68,481 in a single condition, and it moves nothing
+# this test asserts. An `RTS` writes nothing, so the write and bus traces below
+# are untouched, and the absorbed-return declaration reproduces the boundary
+# the observer would otherwise have recorded, so the counts are untouched too.
+# All three hashes and every count here are the same either side of it, which
+# is the strongest thing that can be said for the change.
+#
 # The entry points admitted at less than 100% are these.
 #
 #   - `4142` reads the timer driver's channel bank bytes at $F5/$F7/$F9, and
