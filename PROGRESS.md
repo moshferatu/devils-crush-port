@@ -5581,7 +5581,193 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
 ## Active Work
 
 Current owner: Claude. Current slice: **carrying the absorbed return into bank
-`08`**. Done, and it cost two edits.
+`03`'s remainder**. Done, in twenty-two edits, and the first two needed a
+distinction the previous three slices never had to make.
+
+Bank `03` held 1,498,290 emulated return cycles, the largest pool left. It falls
+to 624,837 and the route to 3,778,293. The registry goes 676,133,460 ->
+677,038,098 native cycles, **52.39%** of the route and **95.29%** of it outside
+the frame-sync wait. Nested installs rose 296,732 -> 297,017, three deep at the
+most, nothing refused, and 0 calls declined at an interrupt horizon. The state
+census is `9036a9de...` unchanged.
+
+**The two biggest returns belong to routines that cannot absorb them.**
+`03:6966`, the collision-table interpreter, is the busiest routine on the route,
+and `03:7FB1`, the collision response, sits behind it. Both are *shared*: the
+same function answers the registered entry the core takes and the sites that run
+it in line -- the Sorcerer tick's two calls, `03:7F57`, `03:73AC` -- and every
+one of those reads `return_instruction` to learn which `RTS` the child stopped
+on, so that it can transcribe that return into its own transcript at its own
+cycle. A routine that ran past its own return would hand all three an address in
+the caller and a body twenty-one cycles longer than the one they are splicing,
+and they would transcribe the return a second time on top of it.
+
+So the absorption belongs to the *entry*, not to the routine.
+`replace_collision_table_entry` and `replace_collision_response_entry` are two
+new wrappers that call the shared routine and absorb after it; the registry's
+dispatch points at them and nothing else does. The composition sites go on
+calling the routines directly and see exactly what they saw before. Each wrapper
+still checks what it is absorbing: that the return is one of the routine's own,
+that the stack pointer came back to where it started, and -- because the
+interpreter's older result-computing path answers atomically on everything its
+transcript refuses -- that twenty-one more cycles fit inside the horizon.
+
+| Return | Owner | Master cycles |
+| --- | --- | ---: |
+| `03:6A37` + `6988` | `03:6966`, collision-table interpreter | 442,578 -> 176,025 |
+| `03:7FD1` | `03:7FB1`, collision response | 110,856 -> 21,819 |
+| `03:65E9` | `03:65C2`, three-blobs controller | 56,154 -> 0 |
+| `03:7B6C` + `7B34` | `03:7B27`, fixed-scheduler gate | 56,154 -> 7,044 |
+| `03:6375` | `03:6339`, walled-star hit gate | 56,058 -> 0 |
+| `03:74DF` | `03:74D8`, giant-face request gate | 56,040 -> 0 |
+| `03:612A` | `03:60C3`, tower hit gate | 55,905 -> 399 |
+| `03:7E28` + `7D8A` | `03:7E23`/`7D85`, small-soldier sources | 103,914 -> 0 |
+| `03:7748` | `03:7726`, giant-face mouth gate | 25,854 -> 0 |
+| `03:66E1` | `03:66DE`, three-blobs continuation | 22,029 -> 147 |
+| `03:7BED` | `03:7BEC`, fixed-marker `PLY` tail | 21,036 -> 0 |
+| `03:7685` | `03:767E`, giant-face animation gate | 18,549 -> 21 |
+| `03:7717` | `03:76FA`, giant-face collision gate | 18,375 -> 0 |
+| `03:62D3` | `03:62B8`, giant-door gate | 14,244 -> 0 |
+| `03:6401` | `03:63F1`, Devil's-coffin gate | 13,557 -> 0 |
+| `03:7E1F` + `7D81` | `03:7E0D`/`7D6F`, delayed spawn | 8,112 -> 1,452 |
+| `03:645C` + `6426` | `03:6445`/`640A`, coffin closing and opening | 672 -> 0 |
+
+**Absorbing removes the return only from the calls that finish.** This is the
+technique's ceiling and bank `03` is where it became visible. A checkpointed
+transcript is replayed checkpoint by checkpoint and can be cut short; when it
+is, the rest of the routine is interpreted, including the `RTS` it was going to
+absorb. `03:6966` absorbs on every one of its 14,307 registry entries -- native
+cycles rise by exactly 14,307 x 21, which is how that is confirmed -- and
+`03:6A37` and `03:6988` still execute 8,381 times between them. Eleven of the
+twenty ordinary rows went to zero; the ones that did not are the long
+transcripts. Nothing in the ranking distinguishes the two beforehand, so the
+residue is worth reading after the edit rather than predicting before it.
+
+Two of the twenty-two edits move nothing today. `03:67B3` and `03:67C0` both end
+on `03:67E5`, but with the registry deployed they are entered fifteen times each
+-- `03:66DE` composes that whole stretch in line -- so the 19,695 cycles at
+`03:67E5` are arrivals through paths neither walk owns. The edits are correct
+and verified; they are simply not exercised at the top level.
+
+**Proof.** All twenty-two entry points touched here were traced emulated and
+replaced, one routine at a time, and the census, the call trace and the
+call-write trace are byte-identical across the two runs for every one.
+`dc_rom_absorbed_return_trace` now runs over four routines: `03:6966` is the
+fourth shape, a return absorbed at the entry rather than inside the routine, and
+it is the busiest routine on the route with 54,149 calls when nothing else is
+replaced.
+
+409/409 Release in 181.72 s, 3/3 ROM-free Debug -- 409 rather than 408 because
+of the fourth absorbed-return route. The `windows-debug` ROM sweep was not run.
+The suite was run five times: three were 409/409 and two had a single failure
+each -- one in the
+`knight_terminal_release_helper_post_return_actor_attribute` family and one in
+`dc_rom_bonus_layout` -- both of which passed immediately on their own. Those
+are the two families already recorded as intermittent under parallel load in
+`NATIVE_PORT_WORKFLOW.md`, and the pattern is the documented one -- a different
+test each time, never reproducible alone -- rather than anything this slice
+introduced.
+
+### Previous: carrying the absorbed return into bank `02`
+
+Done, in twenty-one edits, and it found a defect four slices older than
+itself.
+
+Bank `02` held 1,636,158 emulated return cycles, the largest pool left. It
+falls to 321,630 and the route to 4,651,746. The registry goes 674,715,267 ->
+676,133,460 native cycles, **52.32%** of the route and **95.17%** of it outside
+the frame-sync wait. Nested installs rose 296,226 -> 296,732, three deep at the
+most, nothing refused, and 0 calls declined at an interrupt horizon. The state
+census is `9036a9de...` unchanged.
+
+**The bank was both of the previous two shapes at once.** Bank `03` was spread
+across eight families; bank `08` was 95% two addresses. Bank `02`'s head is one
+family and its tail is eighteen:
+
+| Return | Owner | Executions | Master cycles |
+| --- | --- | ---: | ---: |
+| `02:5903` + `5895` + `5882` | `02:586F`/`5886`/`5893`/`58C2`, Sorcerer tick | 21,176 -> 448 | 448,056 -> 9,408 |
+| `02:434A` | `02:4345`, Dragon-egg hit gate | 9,856 -> 34 | 209,088 -> 714 |
+| `02:4FE1` | `02:4FC1`, mercy-star gate | 7,950 -> 0 | 168,438 -> 0 |
+| `02:4CF1` | five walks, shared table tail | 5,843 -> 4,389 | 123,663 -> 92,865 |
+| `02:4460` | `02:445B`, big-star feature gate | 2,650 -> 0 | 56,106 -> 0 |
+| `02:57F7` | `02:57E9`, Sorcerer colour gate | 2,648 -> 0 | 56,064 -> 0 |
+| `02:5F64` | `02:5F5F`, tower-insect source gate | 2,504 -> 7 | 53,064 -> 147 |
+| `02:55FE` | `02:55F9`, skeleton-insect centre gate | 2,402 -> 0 | 50,922 -> 0 |
+| `02:5A73` | `02:5A4B` + `02:5A6E`, dragon-head hit | 2,144 -> 0 | 45,432 -> 0 |
+| `02:4DE9` | `02:4DD9`, giant-skeleton eyeball gate | 1,988 -> 12 | 41,964 -> 252 |
+| `02:42FB` | `02:42F6`, dragon-egg controller | 1,790 -> 16 | 37,782 -> 336 |
+| `02:54BE` | `02:54B9`, skeleton-insect left gate | 1,630 -> 0 | 34,446 -> 0 |
+| `02:5420` | `02:5408`, companion appearance | 1,288 -> 336 | 27,288 -> 7,296 |
+| `02:53A7` | `02:5397`, companion position | 1,260 -> 442 | 26,772 -> 9,594 |
+| `02:545C` + `53E3` | `02:53DD`/`5456`, companion dormant | 2,140 -> 478 | 45,348 -> 10,446 |
+| `02:5971` | `02:5955`, scaled word add | 997 -> 0 | 21,153 -> 0 |
+
+**One edit was worth more than the other twenty.** `02:5903` at 384,024 cycles
+was the largest emulated instruction left anywhere on the route, and the
+Sorcerer tick stops on it and on two more of its own returns. The walk already
+knew where it stopped -- `is_stop_instruction` -- so absorbing was one more
+predicate naming the three of those stops that are returns rather than calls,
+and one call to `absorb_return` at the end of the walk. That family also runs
+the collision-table interpreter in line, which stages a `JSR` frame in the
+stack page: it lands two bytes *below* where the absorbed return reads, so the
+two uses never meet, and the family's regression already watches `21F7-21FB`
+and would have said so if they did.
+
+`02:4CF1` is the one that barely moved, and for the documented reason. It is a
+shared tail five walks end on, but the giant-face-helmet controller hands the
+machine back at `02:4A9B` on most of its calls -- mid-routine, an ordinary
+boundary -- and a walk can only absorb what it itself ends on. What is left at
+that address is arrivals, not returns.
+
+**Three atomic families made this technique cost something for the first
+time.** A transcript with no checkpoints cannot be interrupted, so the horizon
+valve declines it outright if its body would reach a user event or a
+serviceable timer interrupt. Twenty-one more cycles pushed calls over that
+line: `02:5397` fell 873 -> 818 admitted, `02:5408` 1,015 -> 952, `02:53DD`
+929 -> 832 and `02:5456` 926 -> 830. 311 whole bodies traded for returns, and
+the only visible symptom was the admitted count in one regression.
+`absorbed_return_fits_atomically` asks first and hands the return back when the
+room is not there; all four counts returned to what they were, and the route
+still declines nothing at a horizon. Eighteen of the twenty-one families are
+interruptible and never face the question.
+
+**The comparison found a defect that predates this slice by four of them.**
+Pointed at `02:5408`, the emulated-versus-replaced trace reported the same
+calls with the same bodies, the same registers and the same write counts, and
+two writes per call on the wrong cycle. The transcript credited
+`STA $3E00,X` at offset 48 and `INC $3980,X` at 75; a store lands on its
+instruction's final cycle, and from the 36 that the not-taken `BEQ` leaves,
+those are 51 and 72. Every clean advance and reset call was three cycles out,
+in both directions. Rebuilding with the absorption removed and re-running is
+what placed it: the control run still differed, so it was older than this
+slice. `dc_rom_devil_shooter_companion_dormant_semantic` records a hash of that
+write trace and had been agreeing with the mistake since the transcript was
+written; the hash is refreshed, and `02:5408` now matches the emulated run byte
+for byte on census, call trace and write trace.
+
+**Proof.** Thirty-one of the thirty-two entry points touched here were traced
+emulated and replaced, one routine at a time, and all three artifacts are
+byte-identical across the two runs for every one of them. Doing it one routine
+at a time is not optional: run them together and the comparison is meaningless,
+because replaced walks swallow arrivals the emulated observer counts -- the
+whole set reports 88,244 calls emulated against 73,187 replaced, which is the
+composition working, not a discrepancy. `02:4C78` is the thirty-second and has
+nothing to compare: it is entered on this route and admitted on none of those
+entries, and once the initializers around it are replaced it is not even
+entered.
+
+`dc_rom_absorbed_return_trace` now runs over three routines. `02:58C2` is the
+third shape -- a walk that runs a call in line and then ends past its own
+return, and the only absorbed return whose transcript also writes to the stack
+page.
+
+408/408 Release in 175.31 s, 3/3 ROM-free Debug -- 408 rather than 407 because
+of the third absorbed-return route. The `windows-debug` ROM sweep was not run.
+
+### Previous: carrying the absorbed return into bank `08`
+
+Done, and it cost two edits.
 
 Bank `08` held 1,726,353 emulated return cycles, the largest pool left, and 95%
 of it was two addresses whose walks were already native. It falls to 92,742 and
@@ -6217,75 +6403,94 @@ does not.
 
 ### Next
 
-**Carry the rollout into bank `02`, which is now the largest pool and looks
-like bank `03` rather than bank `08`.** Counting every `RTS` opcode the deployed
-registry still executes, excluding the rows that are themselves registered
-entries -- a registered entry's profile row carries its whole native body, not
-one return, which is worth knowing before reading any of these numbers:
+**Survey bank `01`, which is now the largest pool and looks like the easiest of
+the four so far.** Counting every `RTS` opcode the deployed registry still
+executes, excluding the rows that are themselves registered entries -- a
+registered entry's profile row carries its whole native body, not one return,
+which is worth knowing before reading any of these numbers:
 
 | Bank | Executions | Master cycles |
 | --- | ---: | ---: |
-| `02` | 77,254 | **1,636,158** |
-| `03` | 70,874 | 1,498,290 |
-| `01` | 50,016 | 1,060,104 |
+| `01` | 50,016 | **1,060,104** |
 | `00` | 40,568 | 857,328 |
 | `45` | 30,529 | 644,397 |
+| `03` | 29,601 | 624,837 |
+| `02` | 15,150 | 321,630 |
 | `09` | 5,707 | 121,002 |
 | `08` | 4,406 | 92,742 |
 | `07` | 2,649 | 56,253 |
-| | 282,003 | **5,966,274** |
+| | 178,626 | **3,778,293** |
 
-**Rank by ported owner, not by cycles**, and expect the two banks done so far
-to bracket what that means. Bank `03` took eight edits for 1,054,221 cycles
-because its pool was spread across eight families; bank `08` took two for
-1,633,611 because 95% of its pool was two returns of already-native walks.
-Neither number was predictable from the bank total. `03:603E`, the
-second-largest row left in bank `03` at 137,607 cycles, is still not a target:
-it is the return of an *unported* parent, and no declaration can absorb a
-return whose routine has no transcript. The cheap discriminator is whether the
-address already appears in a walk as a `return_instruction`.
+**Rank by ported owner, not by cycles**, and the four banks done so far bracket
+what that means: bank `03` took eight edits for 1,054,221 because its pool was
+spread, then twenty-two more for 873,453 because two of its rows were shared
+routines; bank `08` took two for 1,633,611 because 95% of it was two returns of
+already-native walks; bank `02` took twenty-one for 1,314,528 and was both at
+once. No number in the table above predicts any of that.
 
-Bank `02`'s head looks like the spread case rather than the concentrated one --
-`02:5903` at 384,024 (the sorcerer tick), then `02:434A` at 209,088, `02:4FE1`
-at 168,438, `02:4CF1` at 123,663, and a long tail of ~50,000-cycle rows. Nine
-of the top ten addresses already appear in a walk, so most of them are probably
-one edit each; `02:526A` at 46,005 appears in none and is the shape that needs
-a ported owner first.
+A crude version of the discriminator can be run over a whole profile in one
+pass: for each non-entry `RTS` row, ask whether its address appears anywhere in
+`src/app/*.cpp` as a hexadecimal literal. Across the remaining 3,778,293,
+2,927,433 do and 850,860 do not. Per bank, `01` is 976,467 mentioned against
+83,637 not, `00` is 705,303 against 152,025, and `45` is 630,354 against 14,043.
+That is a proxy and it over-counts -- a mention can be a resume address, a
+branch target or a `return_instruction` on an arm that hands over mid-routine
+rather than one a walk ends on -- but 92% is a strong enough signal to make
+bank `01` the one to open, and `01:CB48` and the controls family already own a
+great deal of it. Bank `45`'s music interpreter is a single large walk rather
+than a spread, which is a different and probably shorter piece of work.
 
-What remains in bank `03`, and why each is not simply another edit:
+What is left in bank `03`, for whoever comes back to it:
 
 | Return | Master cycles | Why it is still there |
 | --- | ---: | --- |
-| `03:6A37` + `03:6988` | 442,578 | `03:6966`, shared with three composition sites |
+| `03:6A37` + `6988` | 176,025 | Transcripts an interrupt cut short, and arrivals through cut compositions |
 | `03:603E` | 137,607 | Unported parent at `03:6005` |
-| `03:7FD1` | 110,856 | `03:7FB1`, composed by `03:7F57` |
 | `03:7F80` | 94,878 | The two-hit arm, which is not transcribed |
 | `03:6533` | 59,268 | Unported |
+| `03:64A4` | 56,082 | Unported |
+| `03:7F45` | 23,736 | Unported |
+| `03:67E5` | 19,695 | Arrivals through `03:66DE`'s composition |
 
-`03:6966` is the one worth doing and is not a one-line edit. The same function
-serves the registered entry *and* three composition sites (`03:7F57`, the
-sorcerer tick, `03:73AC`), all of which require it to stop in front of its
-`RTS` and read the address off `return_instruction`. Absorbing inside the
-shared walk breaks all three. It needs a separate top-level entry that calls
-the shared interpreter and absorbs after it, which is additive and safe but is
-its own piece of work. `03:7FD1` is the same shape.
+What is left in bank `02`:
+
+| Return | Master cycles | Why it is still there |
+| --- | ---: | --- |
+| `02:4CF1` | 92,865 | Arrivals from arms that hand back at `02:4A9B` |
+| `02:526A` | 46,005 | Unported |
+| `02:5F21` | 45,183 | Unported |
+| `02:438E` | 24,402 | Unported -- not the bank-45 music `438E` |
+| `02:55AF` | 23,052 | Unported |
 
 What to carry across rather than rediscover:
 
 - **Read the family's regression before changing its walk.** Not for the stack
-  page — for what it observes. This is the step that turned up the broken call
-  trace two slices ago, and the step that turned up the stale Debug baseline in
-  this one.
+  page -- for what it observes. This is the step that turned up the broken call
+  trace three slices ago, and the step that turned up the stale Debug baseline
+  the slice before.
 - **Prove it by comparison, not by hash.** Trace the family emulated and
   replaced and require the census, the call trace and the call-write trace to
   be byte-identical. A recorded expectation can drift into agreeing with a
-  mistake; the emulated run cannot. This has now caught a host bug in each of
-  the last two slices, both on the first family it was pointed at.
+  mistake; the emulated run cannot. This has now caught a host bug in two of
+  the last four slices, both on the first family it was pointed at, and in a
+  third it caught a four-slice-old write-cycle error at `02:5408` that the
+  family's own recorded hash had been agreeing with all along.
 - **When the comparison does differ, find out whose bug it is before fixing
   it.** Rebuild with the absorption removed and run the replaced trace again.
   If it matches the emulated one, the difference is this slice's; if it does
   not, the slice has found something older and the fix belongs somewhere else.
   Two builds and two runs, and it is the difference between a fix and a guess.
+- **A shared routine absorbs at its entry, not inside itself.** If any other
+  transcript runs the routine in line, it reads `return_instruction` to find
+  the `RTS` it must transcribe, and a routine that ran past its own return
+  would break every one of those sites. Add a wrapper that calls the routine
+  and absorbs afterwards, and point the registry's dispatch at the wrapper;
+  nothing composes a wrapper. `replace_collision_table_entry` is the pattern.
+- **Absorbing removes the return only from the calls that finish.** A
+  checkpointed transcript can be cut short, and then the rest of the routine --
+  including the `RTS` -- is interpreted. Confirm the edit by the *native* side:
+  registry cycles should rise by exactly (entries x 21). The profile row will
+  not go to zero for a long family and that is not a fault.
 - **A walk whose transcript swallows a loop cannot be compared call for call.**
   `08:40C3` branches back to its own entry, so the emulated observer opens a
   call per iteration -- 113,810 against 4,334 replaced. Join the two traces on
@@ -6293,26 +6498,41 @@ What to carry across rather than rediscover:
   arrivals are the replacement working, not a discrepancy.
 - **Absorb only what the walk itself ends on.** One call per arm, at the cycle
   the return instruction's own boundary sits on, with the registers before the
-  pop. Arms that hand over mid-routine (`03:7B7A` at `$7B87`, `03:78C7`'s phase
-  handlers) end at an ordinary instruction and absorb nothing.
+  pop. Arms that hand over mid-routine (`03:7B4B` on the fixed scheduler's
+  active path, `03:60D2` on the tower hit gate's) end at an ordinary
+  instruction and absorb nothing.
 - **Expect nested installs to rise slightly** and nothing else to move. One
   more live checkpoint per transcript means one more boundary at which an
   interrupt can arrive while it is still active. Watch the refused-for-depth
-  counter, which has stayed at zero across all ten families.
+  counter, which has stayed at zero in every family that has done this.
+- **An atomic walk has to ask whether it can afford the twenty-one cycles.**
+  A transcript with no checkpoints cannot be interrupted, so the horizon valve
+  declines it outright if its body would reach a user event or a serviceable
+  timer interrupt -- and absorbing makes the body longer. Wrap the call in
+  `absorbed_return_fits_atomically` whenever the walk produces no checkpoints,
+  and read the admitted counts before and after as the check. Three bank-`02`
+  families lost 311 whole bodies before that guard existed, and the admitted
+  count in one regression was the only place it showed.
 - **A long transcript is a different case from a short one.** Anything the
   transaction predicts about its own end is falsified by a suspension, and a
   transcript that runs for thousands of cycles will be suspended. If a family
   is long enough to be interrupted twice, add it to
-  `dc_rom_absorbed_return_trace` rather than assuming the two routines there
+  `dc_rom_absorbed_return_trace` rather than assuming the four routines there
   already cover its shape.
+- **Compare one routine at a time.** Replacing a whole family at once and
+  diffing the trace proves nothing, because a composed walk swallows arrivals
+  the emulated observer counts: bank `02`'s thirty-one entry points reported
+  88,244 calls emulated against 73,187 replaced, and every one of them is
+  byte-identical when traced alone.
+
 
 **Two documentation debts, both mechanical and both their own commit.**
 `docs/NATIVE_REGISTRY.md` says it is generated and is no longer reproducible
 from `tools/Generate-NativeRegistry.ps1`: a run with `-ReportPath` would
 discard about 150 lines the doc has and the generator does not. Nothing
 enforces it, because `dc_native_registry_manifest` checks the generated `.inc`
-rather than the report, so the two have been drifting for at least two slices
-and are now being kept level by hand. And **a hundred and three verify scripts
+rather than the report, so the two have been drifting for at least three
+slices and are now being kept level by hand. And **a hundred and three verify scripts
 still carry the stale `a95d0c34...` Debug census** in an
 `if(CONFIG STREQUAL "Debug")` branch that nothing reaches, since
 `dc_rom_tower_insect_native_family_debug` is the only test registered

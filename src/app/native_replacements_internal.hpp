@@ -27,6 +27,21 @@ void absorb_return(
     std::uint32_t return_master_cycle_offset,
     const emulation::CpuRegisters& at_return);
 
+// Whether an atomic walk can afford to absorb its return.
+//
+// A transcript with no checkpoints has no boundary inside it at which an
+// interrupt could be taken, so the horizon valve declines it outright if it
+// would span a user event or a serviceable timer interrupt. Absorbing makes
+// such a body twenty-one cycles longer, and a walk that absorbs regardless
+// trades those twenty-one cycles for its whole body on every call that no
+// longer fits -- 311 calls across three of bank `02`'s families, which is the
+// wrong way round and an avoidable one. Ask first, and hand the return back
+// when the room is not there. An interruptible transcript has no such limit
+// and does not need this.
+[[nodiscard]] bool absorbed_return_fits_atomically(
+    const emulation::RoutineEntry& entry,
+    std::uint32_t body_master_cycles);
+
 [[nodiscard]] std::optional<emulation::RoutineReplacement>
 replace_rng_update(
     const emulation::RoutineEntry& entry,
@@ -1417,8 +1432,25 @@ replace_collision_table_interpreter(
     std::span<const std::byte> work_ram,
     std::span<const std::byte> rom);
 
+// What the registry dispatches at 03:6966. The interpreter above is shared with
+// three sites that run it in line and need it to stop in front of its `RTS`, so
+// the return is absorbed here, where the caller is the core rather than another
+// transcript. Nothing composes this.
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_collision_table_entry(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram,
+    std::span<const std::byte> rom);
+
 [[nodiscard]] std::optional<emulation::RoutineReplacement>
 replace_collision_response(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram);
+
+// What the registry dispatches at 03:7FB1, for the reason above: 03:7F57
+// splices this routine in line and reads the `RTS` it stopped on.
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_collision_response_entry(
     const emulation::RoutineEntry& entry,
     std::span<const std::byte> work_ram);
 

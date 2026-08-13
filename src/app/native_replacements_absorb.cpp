@@ -2,13 +2,27 @@
 
 #include "native_replacements_internal.hpp"
 
+#include <algorithm>
 #include <cstdint>
 
 namespace devils_crush::app::detail {
 
 using emulation::CpuRegisters;
+using emulation::RoutineEntry;
 using emulation::RoutineKey;
 using emulation::RoutineReplacement;
+
+bool absorbed_return_fits_atomically(
+    const RoutineEntry& entry,
+    const std::uint32_t body_master_cycles)
+{
+    // The valve declines a body that reaches the horizon, so the absorbed
+    // return has to land strictly before it.
+    return body_master_cycles + 21U
+        < std::min(
+               entry.master_cycles_until_user_event,
+               entry.master_cycles_until_timer_interrupt);
+}
 
 void absorb_return(
     RoutineReplacement& replacement,

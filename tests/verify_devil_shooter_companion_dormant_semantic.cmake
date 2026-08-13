@@ -18,7 +18,16 @@ set(expected_call_sha256 "71a87a8e3d59e242da052cd7b7c4eacf413496c715c07fb150a615
 # every call's body_master_cycles, full input/output register set and
 # write_count, so the companion below has the same rows in the same order for
 # the same calls. What moved is the per-write cycle attribution inside them.
-set(expected_write_sha256 "fdbc03bd6b198ea758584a8e32ef5f9c52b4b85aea743c2eb56a5beac91f6865")
+#
+# Refreshed again, and this time because two of those attributions were wrong.
+# 02:5408's transcript credited `STA $3E00,X` at offset 48 and `INC $3980,X` at
+# 75; a store lands on its instruction's final cycle, which puts them at 51 and
+# 72. Every clean advance and reset call was three cycles out in both
+# directions. Nothing here could have caught it -- this hash agreed with the
+# mistake -- and it was found by tracing 02:5408 emulated and replaced and
+# requiring the two to match. They now do, byte for byte, on all three
+# artifacts, which is a stronger statement than the constant below.
+set(expected_write_sha256 "ea255ce89ade722d0f926d4f49ab076f6c7630802c3b57227f8a7a0b6a553d42")
 set(call_output "${OUTPUT}.calls.csv")
 set(write_output "${call_output}.writes.csv")
 

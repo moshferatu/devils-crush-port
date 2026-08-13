@@ -26,7 +26,7 @@
 # drift into agreeing with a mistake -- the emulated run is the answer.
 #
 # The script takes the routine to prove, so that each one it is pointed at is a
-# test of its own rather than a longer one. Two are registered.
+# test of its own rather than a longer one. Four are registered.
 #
 # 00:E93C is the palette family's most-called walk and the one the technique was
 # established on. It returns to more than one caller, it is called from more
@@ -42,6 +42,21 @@
 # reported a return 729 cycles early with the last entry's writes missing. The
 # palette family is never suspended, so no run of the test above could fail for
 # this.
+#
+# 02:58C2 is the Sorcerer tick's main piece, and it is the third shape: a walk
+# that runs a call in line and then ends past its own return. Its transcript
+# contains the collision-table interpreter's whole body, including the `JSR`
+# frame it stages in the stack page three bytes below where the absorbed return
+# reads -- so the two uses of that page have to stay out of each other's way,
+# and neither of the routines above stages anything at all.
+#
+# 03:6966 is that interpreter, and it is the fourth shape: a routine whose
+# return belongs to the entry rather than to the routine. The same function
+# serves the registered entry and three sites that run it in line, and those
+# three read the `RTS` it stopped on so that they can transcribe the return
+# themselves, so only the entry the core takes runs past it. It is also the
+# busiest routine on the census route -- 54,149 calls with nothing else
+# replaced -- which makes it the one that would show a mismatch soonest.
 
 foreach(required_variable IN ITEMS APP CONFIG ROM OUTPUT ROUTINE)
     if(NOT DEFINED ${required_variable} OR "${${required_variable}}" STREQUAL "")
@@ -62,6 +77,16 @@ elseif(routine STREQUAL "08:40DF")
         "Native replacement 08:40DF@all entries: 73818 of 73818")
     set(expected_trace
         "Routine call trace complete: 73818 calls, 1477731 writes")
+elseif(routine STREQUAL "02:58C2")
+    set(expected_entries
+        "Native replacement 02:58C2@all entries: 18152 of 18152")
+    set(expected_trace
+        "Routine call trace complete: 18152 calls, 321875 writes")
+elseif(routine STREQUAL "03:6966")
+    set(expected_entries
+        "Native replacement 03:6966@all entries: 54149 of 54149")
+    set(expected_trace
+        "Routine call trace complete: 54149 calls, 542826 writes")
 else()
     message(FATAL_ERROR "Unknown absorbed-return routine: ${routine}")
 endif()

@@ -2463,7 +2463,7 @@ replace_native_gameplay_routine_impl(
             .physical_bank = 0x03U,
             .logical_pc = 0x6966U,
         }) {
-        replacement = detail::replace_collision_table_interpreter(
+        replacement = detail::replace_collision_table_entry(
             entry,
             work_ram,
             rom);
@@ -2473,7 +2473,7 @@ replace_native_gameplay_routine_impl(
             .logical_pc = 0x7FB1U,
         }) {
         replacement =
-            detail::replace_collision_response(entry, work_ram);
+            detail::replace_collision_response_entry(entry, work_ram);
     } else if (entry.routine
         == RoutineKey{
             .physical_bank = 0x03U,

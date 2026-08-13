@@ -2965,6 +2965,76 @@ replace_collision_table_interpreter(
     return replacement;
 }
 
+// The four `RTS` instructions the interpreter can end on. Both the transcript
+// and the older result-computing replacement report one of these as the
+// boundary they stopped in front of, so this covers every path through the
+// routine and not only the transcribed ones.
+[[nodiscard]] constexpr bool is_collision_table_return(
+    const std::uint16_t logical_pc)
+{
+    return logical_pc == 0x6988U || logical_pc == 0x6994U
+        || logical_pc == 0x69A1U || logical_pc == 0x6A37U;
+}
+
+// The interpreter as the core enters it, which is not how the three sites that
+// run it in line enter it.
+//
+// `03:6A37` and `03:6988` are 442,578 emulated master cycles between them, the
+// largest single pool left anywhere on the route, and they are exactly the
+// returns the interpreter stops in front of. It cannot absorb them itself. The
+// same function serves this entry and three composition sites -- the Sorcerer
+// tick's two calls, `03:7F57` and `03:73AC` -- and every one of those reads
+// `return_instruction` to learn which `RTS` the child stopped on so that it can
+// transcribe that return into its own transcript. A routine that ran past its
+// own return would hand all three an address in the caller and a body twenty-one
+// cycles longer than the one they are splicing, and they would transcribe the
+// return a second time on top of it.
+//
+// So the absorption belongs to the entry rather than to the routine. This is
+// the only thing the registry dispatches at `03:6966`; the composition sites go
+// on calling the interpreter directly and see exactly what they saw before.
+[[nodiscard]] std::optional<RoutineReplacement>
+replace_collision_table_entry(
+    const RoutineEntry& entry,
+    const std::span<const std::byte> work_ram,
+    const std::span<const std::byte> rom)
+{
+    auto replacement =
+        replace_collision_table_interpreter(entry, work_ram, rom);
+    if (!replacement || work_ram.size() < 0x2000U) {
+        return replacement;
+    }
+    // The frame the return reads is the one the caller's `JSR` left, which is
+    // where the walk thinks it is only if every push the routine made has been
+    // popped. The interpreter's own `JSR $6995` loop balances, and its walk
+    // refuses a transcript whose depth does not come back to zero, but an entry
+    // that leaves on a different stack pointer than it arrived on declines the
+    // absorption rather than declaring a boundary the core will never reach.
+    if (replacement->return_instruction.physical_bank != 0x03U
+        || !is_collision_table_return(
+            replacement->return_instruction.logical_pc)
+        || replacement->output_registers.stack_pointer
+            != entry.registers.stack_pointer) {
+        return replacement;
+    }
+    // The result-computing replacement answers atomically on every path the
+    // transcript refuses, and an atomic body that reaches an interrupt horizon
+    // is dropped whole rather than shortened, so it has to be asked first.
+    if (replacement->checkpoints.empty()
+        && !absorbed_return_fits_atomically(
+            entry, replacement->body_master_cycles)) {
+        return replacement;
+    }
+
+    const auto return_instruction = replacement->return_instruction;
+    const auto return_cycle = replacement->body_master_cycles;
+    const auto at_return = replacement->output_registers;
+    absorb_return(
+        *replacement, work_ram, entry.registers.stack_pointer,
+        return_instruction, return_cycle, at_return);
+    return replacement;
+}
+
 [[nodiscard]] std::optional<RoutineReplacement>
 replace_collision_response(
     const RoutineEntry& entry,
@@ -3150,6 +3220,47 @@ replace_collision_response(
         append_checkpoint(0x7FCBU, 0x7FCEU, 141U, checkpoint);
         append_checkpoint(0x7FCEU, 0x7FD1U, 162U, output);
     }
+    return replacement;
+}
+
+// The collision response as the core enters it, for the same reason and in the
+// same shape as the interpreter above: `03:7FB1` is both a registered entry and
+// a call `03:7F57` splices in line, and the splice reads `return_instruction`
+// to find the `RTS` it has to transcribe. `03:7FD1` was 110,856 emulated master
+// cycles and this takes 90,237 of them, one per top-level entry; the rest are
+// calls whose transcript an interrupt cut short before it reached the end.
+//
+// The routine has one return and every path emits checkpoints, so neither the
+// address test nor the atomic question the interpreter has to ask can fail
+// here; both are written out anyway, because what makes them unnecessary is a
+// property of the transcript above rather than of this entry.
+[[nodiscard]] std::optional<RoutineReplacement>
+replace_collision_response_entry(
+    const RoutineEntry& entry,
+    const std::span<const std::byte> work_ram)
+{
+    auto replacement = replace_collision_response(entry, work_ram);
+    if (!replacement || work_ram.size() < 0x2000U) {
+        return replacement;
+    }
+    if (replacement->return_instruction
+            != RoutineKey{.physical_bank = 0x03U, .logical_pc = 0x7FD1U}
+        || replacement->output_registers.stack_pointer
+            != entry.registers.stack_pointer) {
+        return replacement;
+    }
+    if (replacement->checkpoints.empty()
+        && !absorbed_return_fits_atomically(
+            entry, replacement->body_master_cycles)) {
+        return replacement;
+    }
+
+    const auto return_instruction = replacement->return_instruction;
+    const auto return_cycle = replacement->body_master_cycles;
+    const auto at_return = replacement->output_registers;
+    absorb_return(
+        *replacement, work_ram, entry.registers.stack_pointer,
+        return_instruction, return_cycle, at_return);
     return replacement;
 }
 

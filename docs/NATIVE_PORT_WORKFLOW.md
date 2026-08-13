@@ -734,7 +734,10 @@ hybrid's own overheads, which no amount of porting removes:
   observation about `08:40DE` stands. The conclusion that the 21 cycles were
   structural does not. **A transcript can end past its own `RTS`**: see the
   section below — and both of those two returns are now absorbed, 1,634,598
-  master cycles of the 13.3M, taken by two edits.
+  master cycles of the 13.3M, taken by two edits. Banks `03` and `02` have
+  since taken 1,054,221, 1,314,528 and a further 873,453, so a little under 5M
+  of the 13.3M is gone and the remaining pool is 3,778,293 returns plus the
+  `JSR` half.
 - **Resumption after an interrupt.** An interrupt landing inside a transcript
   rewinds to a checkpoint and interprets the rest of the body, so a fully
   admitted routine still shows interpreted executions, climbing monotonically
@@ -857,12 +860,28 @@ The regression is `dc_rom_absorbed_return_trace`, and it is a comparison rather
 than a recorded hash: it traces the same route with the routine emulated and
 with it replaced, and requires the census, the call trace and the call-write
 trace to be byte-identical across the two. A recorded expectation could drift
-into agreeing with a mistake; the emulated run cannot. It runs over two
-routines, registered as two tests so they run side by side. `00:E93C` is the
+into agreeing with a mistake; the emulated run cannot. It runs over four
+routines, registered as four tests so they run side by side. `00:E93C` is the
 family the technique was established on and exercises both recognitions;
 `08:40DF` is long enough to be suspended part-way through and interrupted at
-its end, which is the case neither recognition got right on its own. Point the
-script at a third when a family reaches a shape these two do not.
+its end, which is the case neither recognition got right on its own; `02:58C2`
+runs a call in line and then ends past its own return, so its transcript writes
+to the stack page three bytes below where the absorbed return reads; `03:6966`
+is a routine whose return is absorbed at the entry rather than inside the
+routine, and is the busiest thing on the route. Point the script at a fifth when
+a family reaches a shape these four do not.
+
+**The comparison finds more than absorption bugs, and one of them was four
+slices old.** Pointed at `02:5408`, it reported the same calls with the same
+bodies and the same registers, and two writes per call on the wrong cycle: the
+transcript credited `STA $3E00,X` at offset 48 and `INC $3980,X` at 75, where a
+store lands on its instruction's *final* cycle and the two belong at 51 and 72.
+Every clean advance and reset call was three cycles out, in both directions.
+The family's own regression records a hash of that write trace, so it had been
+agreeing with the mistake since the transcript was written. Rebuilding with the
+absorption removed and re-running is what separated the two: the control run
+still differed, which made it older than the slice, and the emulated run said
+what the right answer was.
 
 **Before absorbing a return in a new family, check what its regression
 observes.** 315 of the verify scripts take a call trace, usually of the routine
@@ -888,6 +907,47 @@ unported parent at `03:6005`, so it is a request for a ported caller wearing a
 return's clothes. Rank a bank by ported owner, not by cycles; the cheap
 discriminator is whether the address already appears in a walk as a
 `return_instruction`.
+
+**An atomic walk has to ask whether it can afford the twenty-one cycles.** A
+transcript with no checkpoints has no boundary inside it at which an interrupt
+could be taken, so the horizon valve — in the registry deployment and in the
+`@all` routes alike — declines it outright if its body would reach a user event
+or a serviceable timer interrupt. Absorbing makes that body twenty-one cycles
+longer, and a walk that absorbs regardless trades those twenty-one cycles for
+its *whole body* on every call that no longer fits: three of bank `02`'s atomic
+families lost 311 calls that way, and the loss is invisible except as a fall in
+the admitted count. `absorbed_return_fits_atomically` in
+`native_replacements_absorb.cpp` is the guard; wrap the `absorb_return` call in
+it whenever the walk produces no checkpoints, and read the admitted counts
+before and after as the check that it worked. An interruptible transcript is
+not subject to the valve and does not need this.
+
+**A shared routine absorbs at its entry, not inside itself.** A routine that is
+both a registered entry and a callee some other transcript runs in line cannot
+end past its own `RTS`: every composition site reads `return_instruction` to
+learn which return the child stopped on, so that it can transcribe that return
+into its own transcript at its own cycle. A child that ran past it would hand
+the site an address in the *caller* and a body twenty-one cycles longer than the
+one being spliced, and the site would then transcribe the return a second time.
+The fix is additive and is not a rewrite: leave the routine alone, add a wrapper
+that calls it and absorbs afterwards, and point the registry's dispatch at the
+wrapper. `replace_collision_table_entry` and `replace_collision_response_entry`
+are the two. Nothing composes a wrapper, which is the whole point of it. The
+wrapper still has to check what it is absorbing — that the return is one of the
+routine's own, that the stack pointer came back to where it started, and, if the
+body it got is atomic, that twenty-one more cycles fit inside the horizon.
+
+**Absorbing removes the return only from calls that finish.** A checkpointed
+transcript is replayed checkpoint by checkpoint and can be cut short: if the
+machine leaves it — an interrupt whose handler does not come back to the
+checkpoint's exact resume state — the rest of the routine is interpreted,
+including the `RTS` the transcript was going to absorb. So the row does not go
+to zero for a long family, and the shortfall is not a bug. `03:6966` absorbs on
+every one of its 14,307 registry entries — native cycles rise by exactly
+14,307 × 21, which is how you confirm it — and its two returns still execute
+8,381 times. Eleven of bank `03`'s twenty ordinary rows went to zero and the
+long ones did not. Read the profile's residue after the edit; the ranking before
+it cannot tell you which kind you have.
 
 **One thing in the host that a single family could not have shown.** The
 observer reports a boundary's cycle on two clocks, and only the absolute one

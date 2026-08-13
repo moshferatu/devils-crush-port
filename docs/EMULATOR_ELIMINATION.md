@@ -258,11 +258,11 @@ own when the CPU does.
 is the one to watch:
 
 ```
-Registry cycles: 674715267 native of 1292371731 elapsed master cycles (52.21%)
-Registry cycles outside the frame-sync wait: 674715267 native of 710482755
-  (94.97%); the machine waited at 00:E323 for 581888976 master cycles
+Registry cycles: 677038098 native of 1292371731 elapsed master cycles (52.39%)
+Registry cycles outside the frame-sync wait: 677038098 native of 710482755
+  (95.29%); the machine waited at 00:E323 for 581888976 master cycles
   (45.02% of the route)
-Instructions interpreted: 66315692
+Instructions interpreted: 66312445
 ```
 
 The first line is true and nearly useless as a progress signal. Its
@@ -772,6 +772,12 @@ Remaining real logic, in rough order of value:
    emitter's own transcript, leaving 987), `01:C700`–`C77F` (1.22M),
    `08:4080`–`40FF` (1.20M), `01:DC80`–`DCFF` (950K), `00:E200`–`E27F` (894K),
    `03:6000`–`607F` (857K), `01:C100`–`C17F` (839K), `00:E000`–`E07F` (775K).
+   `02:5900`–`597F` belongs on that list too and no longer does: `02:5903`,
+   the Sorcerer tick's own return, was 384K and is now 8,547. `03:6980`–`6A37`
+   went the same way for the same reason and did not fall as far: the
+   collision-table interpreter's two returns were 442K and are now 176K,
+   because it is long enough that an interrupt cuts one call in eight short of
+   the return it absorbed.
    That last one is the interrupt dispatcher, and it has since been split at
    its status read: 640,374 of it is native and 129,564 is the `LDA $0000`,
    whose read is the interrupt acknowledge.

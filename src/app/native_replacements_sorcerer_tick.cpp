@@ -156,6 +156,17 @@ constexpr std::uint16_t kInterpreterEntry = 0x6966U;
     return logical_pc == 0x5890U || logical_pc == 0x58DAU;
 }
 
+// And three of them are the routine's own returns rather than somewhere to hand
+// control back to. Every walk this family admits ends on one of the three, so
+// between them they were 448,056 emulated master cycles -- 02:5903 alone was
+// 384,024 of that, the largest emulated instruction anywhere on the route.
+[[nodiscard]] constexpr bool is_return_instruction(
+    const std::uint16_t logical_pc)
+{
+    return logical_pc == 0x5882U || logical_pc == 0x5895U
+        || logical_pc == 0x5903U;
+}
+
 } // namespace
 
 std::optional<RoutineReplacement> replace_sorcerer_tick(
@@ -768,6 +779,24 @@ std::optional<RoutineReplacement> replace_sorcerer_tick(
     registers.program_counter = pc;
     replacement.output_registers = registers;
     replacement.body_master_cycles = cycle;
+
+    // A walk that ended on one of the routine's returns can run past it. The
+    // frame that return reads is the one the caller's `JSR` left, which is
+    // where the walk thinks it is only if the walk balanced every push it
+    // made -- both composed calls pop what they push, and the stack range
+    // 21F7-21FB in this family's regression is what proves it. An unbalanced
+    // walk declines the absorption rather than declaring a boundary the core
+    // will never reach.
+    if (is_return_instruction(pc)
+        && registers.stack_pointer == entry.registers.stack_pointer) {
+        absorb_return(
+            replacement,
+            work_ram,
+            registers.stack_pointer,
+            {kBank, pc},
+            cycle,
+            registers);
+    }
     return replacement;
 }
 

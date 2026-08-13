@@ -11,24 +11,24 @@ state it has not been proven against.
 ## Measured cycle share
 
 Deploying the registry with `--replace-registry` over the 3,600-frame
-Release state-census route (`--native-cycle-census`, measured 2026-08-12):
+Release state-census route (`--native-cycle-census`, measured 2026-08-13):
 
 | | |
 | --- | ---: |
 | Elapsed master cycles | 1,292,371,731 |
-| Native master cycles | 674,715,267 |
-| **Native share** | **52.21%** |
-| **Native share of cycles outside the idle spin loop** | **94.97%** |
+| Native master cycles | 677,038,098 |
+| **Native share** | **52.39%** |
+| **Native share of cycles outside the idle spin loop** | **95.29%** |
 | Routines installed | 369 of 369 |
 | Routines entered | 302 |
 | Calls run natively | 2,665,426 of 2,704,004 entered |
 | Calls declined at an interrupt horizon | 0 |
-| Transcripts installed inside a suspended transcript | 296,226 |
+| Transcripts installed inside a suspended transcript | 297,017 |
 | Deepest simultaneous suspension | 3 of a permitted 4 |
 | Replacements refused for depth | 0 |
 
 The resulting state census is byte-identical to the assembly-only
-baseline (`9036a9de…`), so that 52.21% is faithful, not merely running.
+baseline (`9036a9de…`), so that 52.39% is faithful, not merely running.
 The last three rows matter because the host credits a native call when
 it *offers* one. A replacement the core then refused would inflate the
 share silently, and a refusal count of zero is what rules that out.
@@ -606,10 +606,57 @@ walks that were already native: `08:41AB` ends the sprite emitter `08:40DF` on
 every one of its 73,818 calls, and `08:40DE` ends the SAT tail clear `08:40C3`
 on the 3,492 of its 4,334 arrivals that run Y down rather than spend the write
 budget. The bank falls to 92,742 and the route to 5,966,274; the registry goes
-673,091,757 → 674,715,267, **52.21%** of the route and **94.97%** outside the
+673,091,757 → 674,715,267, 52.21% of the route and 94.97% outside the
 frame-sync wait. The same "rank by ported owner" test explains both halves of
 the bank: everything left in it — `08:5E4C`, `08:5976`, `08:5A69` — returns
 from a routine that has no transcript.
+
+**Bank `02` was both shapes at once and took twenty-one edits.** Its 1,636,158
+cycles were the largest pool left, and the head of it is one family: the
+Sorcerer tick stops on three of its own returns, and 02:5903 alone was 384,024
+master cycles — the single largest emulated instruction anywhere on the route.
+One edit took all three. The other eighteen families behind it are bank `03`'s
+shape, a return apiece. The bank falls to 321,630 and the route to 4,651,746;
+the registry goes 674,715,267 → 676,133,460, **52.32%** of the route and
+**95.17%** outside the frame-sync wait.
+
+Three of those families are *atomic* — no checkpoints, nothing inside them at
+which an interrupt could be taken — and for them absorbing is not free. The
+horizon valve declines an atomic body that would reach a user event or a
+serviceable timer interrupt, so twenty-one more cycles cost 311 calls their
+whole body before the guard was written. `absorbed_return_fits_atomically` asks
+first and hands the return back when the room is not there; coverage returned
+to 929/1,055, 926/1,085, 873/1,260 and 1,015/1,288, and the route still has
+none declined at a horizon. An interruptible transcript has no such limit,
+which is why eighteen of the twenty-one families never had to ask.
+
+**Bank `03`'s remainder took twenty-two edits and needed a new distinction to
+take the first two.** `03:6966`, the collision-table interpreter, is the
+busiest routine on the route and its two returns were 442,578 cycles; `03:7FB1`,
+the collision response, was another 110,856. Neither could absorb inside itself.
+Both are shared: the same function serves the registered entry *and* the sites
+that run it in line — the Sorcerer tick's two calls, `03:7F57`, `03:73AC` — and
+every one of those reads `return_instruction` to learn which `RTS` the child
+stopped on so that it can transcribe the return itself. So the absorption
+belongs to the *entry* rather than to the routine.
+`replace_collision_table_entry` and `replace_collision_response_entry` are what
+the registry dispatches; the composition sites go on calling the routines
+directly and see what they always saw. Twenty more families behind them are the
+ordinary shape, a return apiece, and eleven of those rows go to zero. The bank
+falls 1,498,290 → 624,837 and the route 4,651,746 → 3,778,293; the registry goes
+676,133,460 → 677,038,098, **52.39%** of the route and **95.29%** outside the
+frame-sync wait.
+
+**This is also where the technique's ceiling became visible.** Absorbing a
+return removes it only from calls whose transcript reaches its own end, and a
+transcript that an interrupt cuts short finishes under the core — including its
+`RTS`. Every one of the interpreter's 14,307 registry entries absorbs (native
+cycles rise by exactly 14,307 × 21), and `03:6A37` and `03:6988` still execute
+8,381 times, because 12% of those entries and every arrival through a cut
+composition finish emulated. The rows that go to zero are the short families;
+the ones that leave a residue are the long ones. Nothing about the ranking says
+which is which, so the residue is worth reading after the edit rather than
+predicted before it.
 
 The `JSR` half is the same argument from the other side and is not new: a
 caller's walk that steps into the callee is composition, which `01:CB48`
@@ -1455,7 +1502,7 @@ anything and the figure has been dropped rather than carried forward
 unverified.
 
 Set the idle spin loop aside and 710,482,755 cycles are the machine
-working; 674,715,267 of them, **94.97%**, now run natively.
+working; 677,038,098 of them, **95.29%**, now run natively.
 
 The breakdown below is a self-consistent snapshot taken before the
 interrupt dispatcher was split and the whole-palette arm with it, against

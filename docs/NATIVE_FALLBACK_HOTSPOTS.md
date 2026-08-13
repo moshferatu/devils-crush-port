@@ -2833,6 +2833,38 @@ edits took the bank to 92,742 and the route to 5,966,274 — more than the eight
 families of bank `03` put together. The size of a bank's pool says nothing
 about the work it will take; the number of ported owners in it says everything.
 
+Bank `02` was both shapes at once. Twenty-one edits took it from 1,636,158 to
+321,630 and the route to 4,651,746, and one of the twenty-one — the Sorcerer
+tick, which stops on three of its own returns — was worth more than the other
+twenty combined, because `02:5903` at 384,024 cycles was the largest emulated
+instruction left anywhere. The ranking that found it is the same one that found
+`08:41AB`; what differs is only how much of a bank is behind its biggest row.
+
+It also produced the one cost this technique has. A transcript with no
+checkpoints cannot be interrupted, so the horizon valve declines it outright if
+it would reach a user event or a serviceable timer interrupt, and twenty-one
+more cycles of absorbed return push some calls over that line: three atomic
+families lost 311 calls, whole bodies, in exchange for returns. Ask before
+absorbing — `absorbed_return_fits_atomically` — and the trade disappears.
+Interruptible transcripts, which is nearly all of them, never face it.
+
+Bank `03`'s remainder was the last big pool and it added a distinction rather
+than a technique. Its two largest returns belong to routines that are *shared*:
+`03:6966` and `03:7FB1` each serve the registered entry the core takes and one
+or more sites that run them in line, and those sites read `return_instruction`
+to find the `RTS` they must transcribe themselves. Absorbing inside such a
+routine breaks every composition of it. Absorbing at a wrapper the registry
+dispatches — `replace_collision_table_entry`, `replace_collision_response_entry`
+— breaks nothing, because nothing composes a wrapper. Twenty more ordinary
+families followed and the bank went 1,498,290 → 624,837, the route to 3,778,293.
+
+Read the residue after the edit. The interpreter absorbs on all 14,307 of its
+registry entries and its returns still execute 8,381 times, because a transcript
+an interrupt cuts short finishes under the core and executes the `RTS` it was
+going to absorb. Eleven of the twenty ordinary rows went to zero; the ones that
+did not are the long transcripts. Nothing in the ranking distinguishes them
+beforehand.
+
 **The drivers are reachable and still not worth porting, for a reason about
 evidence.** The old note — that calling the frame-sync spin at `00:E321` forces
 a transcript to span twenty-one frames — is wrong in exactly the way the

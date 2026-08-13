@@ -218,6 +218,13 @@ replace_giant_skeleton_eyeball_gate(
         set_nz(checkpoint.status, checkpoint.accumulator, true);
     append_checkpoint(0x4DE2U, 0x4DE4U, 45U, checkpoint);
     append_checkpoint(0x4DE4U, 0x4DE9U, 57U, output);
+    absorb_return(
+        replacement,
+        work_ram,
+        entry.registers.stack_pointer,
+        {0x02U, 0x4DE9U},
+        57U,
+        output);
     return replacement;
 }
 
@@ -864,6 +871,13 @@ replace_mercy_star_gate(
     checkpoint.status = output.status;
     append_checkpoint(0x4FC9U, 0x4FCAU, 42U, checkpoint);
     append_checkpoint(0x4FCAU, 0x4FE1U, 54U, output);
+    absorb_return(
+        replacement,
+        work_ram,
+        entry.registers.stack_pointer,
+        {0x02U, 0x4FE1U},
+        54U,
+        output);
     return replacement;
 }
 
@@ -934,6 +948,13 @@ replace_dragon_egg_controller(
 
     append_checkpoint(0x42F6U, 0x42F9U, 15U, output);
     append_checkpoint(0x42F9U, 0x42FBU, 21U, output);
+    absorb_return(
+        replacement,
+        work_ram,
+        entry.registers.stack_pointer,
+        {0x02U, 0x42FBU},
+        21U,
+        output);
     return replacement;
 }
 
@@ -1058,6 +1079,13 @@ replace_big_star_feature_gate(
 
     append_checkpoint(0x445BU, 0x445EU, 15U, output);
     append_checkpoint(0x445EU, 0x4460U, 21U, output);
+    absorb_return(
+        replacement,
+        work_ram,
+        entry.registers.stack_pointer,
+        {0x02U, 0x4460U},
+        21U,
+        output);
     return replacement;
 }
 
@@ -1741,6 +1769,19 @@ replace_devil_shooter_companion_dormant(
         .output_registers = output,
         .body_master_cycles = 24U,
     };
+    // Both dormant arms end on their own routine's `RTS`, one per companion.
+    // The transcript has no checkpoints, so absorbing the return adds none
+    // either: an atomic body stays atomic across the seam, and has to fit
+    // inside the same horizon it already fits inside.
+    if (absorbed_return_fits_atomically(entry, 24U)) {
+        absorb_return(
+            replacement,
+            work_ram,
+            entry.registers.stack_pointer,
+            {0x02U, return_pc},
+            24U,
+            output);
+    }
     return replacement;
 }
 
@@ -1822,6 +1863,15 @@ replace_devil_shooter_companion_position(
         .value = position.vertical_high,
         .master_cycle_offset = 75U,
     });
+    if (absorbed_return_fits_atomically(entry, 75U)) {
+        absorb_return(
+            replacement,
+            work_ram,
+            entry.registers.stack_pointer,
+            {0x02U, 0x53A7U},
+            75U,
+            output);
+    }
     return replacement;
 }
 
@@ -1983,16 +2033,24 @@ replace_devil_shooter_companion_appearance(
     };
     if (!is_idle) {
         replacement.work_ram_writes.push_back({
+            // A store lands on its instruction's final cycle. `STA $3E00,X`
+            // at 02:5410 is absolute-indexed and costs fifteen from the 36 the
+            // not-taken `BEQ` leaves, so the write is at 51 and not 48; the
+            // read-modify-write below costs twenty-one and lands at 72, not
+            // 75. Both were three out, in opposite directions, and the
+            // emulated-versus-replaced write trace is what showed it -- the
+            // family's own regression records a hash of this and so agreed
+            // with it.
             .instruction = {0x02U, 0x5410U},
             .logical_address = static_cast<std::uint16_t>(0x3E00U + appearance.slot),
             .value = appearance.charge,
-            .master_cycle_offset = 48U,
+            .master_cycle_offset = 51U,
         });
         replacement.work_ram_writes.push_back({
             .instruction = {0x02U, 0x5413U},
             .logical_address = static_cast<std::uint16_t>(0x3980U + appearance.slot),
             .value = appearance.advanced_appearance,
-            .master_cycle_offset = 75U,
+            .master_cycle_offset = 72U,
         });
         if (is_reset) {
             replacement.work_ram_writes.push_back({
@@ -2002,6 +2060,15 @@ replace_devil_shooter_companion_appearance(
                 .master_cycle_offset = 114U,
             });
         }
+    }
+    if (absorbed_return_fits_atomically(entry, body_cycles)) {
+        absorb_return(
+            replacement,
+            work_ram,
+            entry.registers.stack_pointer,
+            {0x02U, 0x5420U},
+            body_cycles,
+            output);
     }
     return replacement;
 }
@@ -2315,6 +2382,13 @@ replace_walled_star_hit_gate(
         collision_registers);
     append_checkpoint(0x6366U, 0x6369U, 42U, output);
     append_checkpoint(0x6369U, 0x6375U, 54U, output);
+    absorb_return(
+        replacement,
+        work_ram,
+        entry.registers.stack_pointer,
+        {0x03U, 0x6375U},
+        54U,
+        output);
     return replacement;
 }
 
@@ -2460,6 +2534,13 @@ replace_tower_hit_gate(
         after_collision_load);
     if (gate.path == DC_TOWER_HIT_GATE_IDLE) {
         append_checkpoint(0x60C6U, 0x612AU, 27U, output);
+        absorb_return(
+            replacement,
+            work_ram,
+            entry.registers.stack_pointer,
+            {0x03U, 0x612AU},
+            27U,
+            output);
         return replacement;
     }
     if (work_ram.size() <= 0x1580U
@@ -2507,9 +2588,18 @@ replace_tower_hit_gate(
         replacement.body_master_cycles = 69U;
         replacement.output_registers = output;
         append_checkpoint(0x60D0U, 0x612AU, 69U, output);
+        absorb_return(
+            replacement,
+            work_ram,
+            entry.registers.stack_pointer,
+            {0x03U, 0x612AU},
+            69U,
+            output);
         return replacement;
     }
 
+    // The remaining arm stops at 03:60D2, which is where the routine carries
+    // on rather than where it returns.
     output.program_counter = 0x60D2U;
     replacement.return_instruction.logical_pc = 0x60D2U;
     replacement.body_master_cycles = 63U;
@@ -6891,6 +6981,13 @@ replace_tower_insect_source_gate(
         };
     append_checkpoint(0x5F5FU, 0x5F62U, 15U, output);
     append_checkpoint(0x5F62U, 0x5F64U, 21U, output);
+    absorb_return(
+        replacement,
+        work_ram,
+        entry.registers.stack_pointer,
+        {0x02U, 0x5F64U},
+        21U,
+        output);
     return replacement;
 }
 
@@ -7455,6 +7552,13 @@ replace_small_soldier_delayed_spawn_gates(
         .instruction = {.physical_bank = 0x03U, .logical_pc = return_pc},
         .registers = output,
     });
+    absorb_return(
+        replacement,
+        work_ram,
+        entry.registers.stack_pointer,
+        {0x03U, return_pc},
+        33U,
+        output);
     return replacement;
 }
 
@@ -7535,6 +7639,13 @@ replace_small_soldier_source_gate(
     };
     append_checkpoint(load_pc, branch_pc, 15U, output);
     append_checkpoint(branch_pc, return_pc, 21U, output);
+    absorb_return(
+        replacement,
+        work_ram,
+        entry.registers.stack_pointer,
+        {0x03U, return_pc},
+        21U,
+        output);
     return replacement;
 }
 
@@ -7631,6 +7742,13 @@ replace_sorcerer_color_gate(
     // moved.
     append_checkpoint(0x57ECU, 0x57EFU, 30U, checkpoint);
     append_checkpoint(0x57EFU, 0x57F7U, 42U, output);
+    absorb_return(
+        replacement,
+        work_ram,
+        entry.registers.stack_pointer,
+        {0x02U, 0x57F7U},
+        42U,
+        output);
     return replacement;
 }
 
@@ -8079,6 +8197,16 @@ replace_dragon_head_hit_gate(
         after_collision_load);
     if (gate.path == DC_DRAGON_HEAD_HIT_GATE_IDLE) {
         append_checkpoint(0x5A4EU, 0x5A73U, 27U, output);
+        // The idle arm ends on the shared `RTS` at 02:5A73, which the
+        // continuation walk below also ends on. The other arm hands back at
+        // 02:5A55, mid-routine.
+        absorb_return(
+            replacement,
+            work_ram,
+            entry.registers.stack_pointer,
+            {0x02U, 0x5A73U},
+            27U,
+            output);
         return replacement;
     }
     if ((entry.registers.status & 0x28U) != 0U) {
@@ -8191,6 +8319,13 @@ replace_dragon_head_hit_continuation(
         .instruction = {0x02U, 0x5A71U},
         .registers = output,
     });
+    absorb_return(
+        replacement,
+        work_ram,
+        entry.registers.stack_pointer,
+        {0x02U, 0x5A73U},
+        27U,
+        output);
     return replacement;
 }
 
@@ -10322,6 +10457,13 @@ replace_walled_star_access_initializer(
         .instruction = {.physical_bank = 0x02U, .logical_pc = 0x4CE4U},
         .registers = output,
     });
+    absorb_return(
+        replacement,
+        work_ram,
+        entry.registers.stack_pointer,
+        {0x02U, 0x4CF1U},
+        kBodyCycles,
+        output);
     return replacement;
 }
 
@@ -10413,6 +10555,13 @@ replace_side_star_initializers(
         .instruction = {.physical_bank = 0x02U, .logical_pc = 0x4CE4U},
         .registers = output,
     });
+    absorb_return(
+        replacement,
+        work_ram,
+        entry.registers.stack_pointer,
+        {0x02U, 0x4CF1U},
+        kBodyCycles,
+        output);
     return replacement;
 }
 
@@ -10873,6 +11022,16 @@ replace_skeleton_insect_left_gate(
         replacement.body_master_cycles,
         output);
     if (gate.path == DC_SKELETON_INSECT_LEFT_GATE_IDLE) {
+        // The idle arm stops on the routine's own `RTS`; the other one carries
+        // on into the body and eventually into a composed scheduler, whose
+        // return is the child's and is not this one to take.
+        absorb_return(
+            replacement,
+            work_ram,
+            entry.registers.stack_pointer,
+            {0x02U, 0x54BEU},
+            replacement.body_master_cycles,
+            output);
         return replacement;
     }
 
@@ -11462,11 +11621,21 @@ replace_skeleton_insect_center_gate(
         };
 
     append_checkpoint(0x55F9U, 0x55FCU, 15U, output);
-    append_checkpoint(
-        0x55FCU,
-        output.program_counter,
-        replacement.body_master_cycles,
-        output);
+    const auto body_cycles = replacement.body_master_cycles;
+    append_checkpoint(0x55FCU, output.program_counter, body_cycles, output);
+
+    // Only the idle arm lands on the routine's `RTS`. The other one takes the
+    // branch into the body at 02:55FF, which is an ordinary instruction and
+    // the caller's own business.
+    if (output.program_counter == 0x55FEU) {
+        absorb_return(
+            replacement,
+            work_ram,
+            entry.registers.stack_pointer,
+            {0x02U, 0x55FEU},
+            body_cycles,
+            output);
+    }
     return replacement;
 }
 
@@ -11962,6 +12131,13 @@ replace_devils_coffin_gate(
             0x6401U,
             collision_load_cycle + 6U,
             output);
+        absorb_return(
+            replacement,
+            work_ram,
+            entry.registers.stack_pointer,
+            {0x03U, 0x6401U},
+            collision_load_cycle + 6U,
+            output);
         return replacement;
     }
 
@@ -12351,6 +12527,13 @@ replace_devils_coffin_opening(
     append_checkpoint(0x640AU, 0x640DU, 21U, after_decrement);
     if (opening.path == DC_DEVILS_COFFIN_OPENING_WAITING) {
         append_checkpoint(0x640DU, 0x6426U, 33U, output);
+        absorb_return(
+            replacement,
+            work_ram,
+            entry.registers.stack_pointer,
+            {0x03U, 0x6426U},
+            33U,
+            output);
         return replacement;
     }
 
@@ -12413,6 +12596,13 @@ replace_devils_coffin_opening(
     append_checkpoint(0x6422U, 0x6424U, 126U, output);
     if (opening.path == DC_DEVILS_COFFIN_OPENING_ADVANCE) {
         append_checkpoint(0x6424U, 0x6426U, 132U, output);
+        absorb_return(
+            replacement,
+            work_ram,
+            entry.registers.stack_pointer,
+            {0x03U, 0x6426U},
+            132U,
+            output);
         return replacement;
     }
 
@@ -12662,6 +12852,13 @@ replace_devils_coffin_closing(
     append_checkpoint(0x6445U, 0x6448U, 21U, after_decrement);
     if (closing.path == DC_DEVILS_COFFIN_CLOSING_WAITING) {
         append_checkpoint(0x6448U, 0x645CU, 33U, output);
+        absorb_return(
+            replacement,
+            work_ram,
+            entry.registers.stack_pointer,
+            {0x03U, 0x645CU},
+            33U,
+            output);
         return replacement;
     }
 
@@ -12712,6 +12909,13 @@ replace_devils_coffin_closing(
         after_appearance_decrement);
     if (closing.path == DC_DEVILS_COFFIN_CLOSING_ADVANCE) {
         append_checkpoint(0x645AU, 0x645CU, 111U, output);
+        absorb_return(
+            replacement,
+            work_ram,
+            entry.registers.stack_pointer,
+            {0x03U, 0x645CU},
+            111U,
+            output);
         return replacement;
     }
 
@@ -13130,6 +13334,18 @@ replace_fixed_scheduler_gate(
             append_checkpoint(
                 0x7B38U, 0x7B6CU, 87U, after_decrement);
         }
+    }
+    // Two of the three arms end on the routine's own `RTS`. The third stops at
+    // 03:7B4B, which is an ordinary instruction the walk hands back at rather
+    // than a return, so there is nothing there to run past.
+    if (!active) {
+        absorb_return(
+            replacement,
+            work_ram,
+            entry.registers.stack_pointer,
+            {0x03U, suppressed ? 0x7B34U : 0x7B6CU},
+            suppressed ? 48U : 87U,
+            output);
     }
     return replacement;
 }
@@ -13948,6 +14164,19 @@ replace_fixed_marker_helper_segment(
         replacement.output_registers = checkpoint;
         replacement.output_registers.program_counter = 0x7BEDU;
         replacement.body_master_cycles = 12U;
+        // The `PLY` above has already restored the stack, so the frame this
+        // return reads is above the pointer the walk arrived on rather than
+        // above `entry`'s -- which is also the pointer the call being closed
+        // was entered on, and so the one the return has to declare.
+        auto at_return = checkpoint;
+        at_return.program_counter = 0x7BEDU;
+        absorb_return(
+            replacement,
+            work_ram,
+            checkpoint.stack_pointer,
+            {0x03U, 0x7BEDU},
+            12U,
+            at_return);
         return replacement;
     }
 
@@ -14165,6 +14394,13 @@ replace_scaled_word_add(
     }
     checkpoint.program_counter = 0x5971U;
     replacement.output_registers = checkpoint;
+    absorb_return(
+        replacement,
+        work_ram,
+        entry.registers.stack_pointer,
+        {0x02U, 0x5971U},
+        cycle,
+        checkpoint);
     return replacement;
 }
 
@@ -14320,6 +14556,17 @@ replace_dragon_egg_hit_gate(
     append_checkpoint(0x4345U, 0x4348U, 15U, after_collision_load);
     if (gate.path == DC_DRAGON_EGG_HIT_GATE_IDLE) {
         append_checkpoint(0x4348U, 0x434AU, 21U, output);
+        // The idle arm ends on the routine's own `RTS`, which is 9,856
+        // executions and the second-largest emulated instruction left in this
+        // bank. The other arm hands back at 02:4351, mid-routine, and has no
+        // return to absorb.
+        absorb_return(
+            replacement,
+            work_ram,
+            entry.registers.stack_pointer,
+            {0x02U, 0x434AU},
+            21U,
+            output);
         return replacement;
     }
 
@@ -14722,6 +14969,13 @@ replace_giant_door_hit_gate(
 
     append_checkpoint(0x62B8U, 0x62BBU, 15U, output);
     append_checkpoint(0x62BBU, 0x62D3U, 27U, output);
+    absorb_return(
+        replacement,
+        work_ram,
+        entry.registers.stack_pointer,
+        {0x03U, 0x62D3U},
+        27U,
+        output);
     return replacement;
 }
 
@@ -15442,6 +15696,13 @@ replace_giant_face_request_gate(
     append_checkpoint(0x74D8U, 0x74DBU, 15U, checkpoint);
     append_checkpoint(0x74DBU, 0x74DDU, 21U, output);
     append_checkpoint(0x74DDU, 0x74DFU, 27U, output);
+    absorb_return(
+        replacement,
+        work_ram,
+        entry.registers.stack_pointer,
+        {0x03U, 0x74DFU},
+        27U,
+        output);
     return replacement;
 }
 
@@ -15533,6 +15794,13 @@ replace_giant_face_animator_gate(
     append_checkpoint(0x767EU, 0x7681U, 15U, checkpoint);
     append_checkpoint(0x7681U, 0x7683U, 21U, output);
     append_checkpoint(0x7683U, 0x7685U, 27U, output);
+    absorb_return(
+        replacement,
+        work_ram,
+        entry.registers.stack_pointer,
+        {0x03U, 0x7685U},
+        27U,
+        output);
     return replacement;
 }
 
@@ -15668,6 +15936,13 @@ replace_giant_face_crown_gate(
 
     append_checkpoint(0x76FAU, 0x76FDU, 15U, output);
     append_checkpoint(0x76FDU, 0x7717U, 27U, output);
+    absorb_return(
+        replacement,
+        work_ram,
+        entry.registers.stack_pointer,
+        {0x03U, 0x7717U},
+        27U,
+        output);
     return replacement;
 }
 
@@ -15746,6 +16021,13 @@ replace_giant_face_mouth_gate(
     append_checkpoint(0x7729U, 0x772BU, 21U, mouth_state_registers);
     append_checkpoint(0x772BU, 0x772EU, 36U, output);
     append_checkpoint(0x772EU, 0x7748U, 48U, output);
+    absorb_return(
+        replacement,
+        work_ram,
+        entry.registers.stack_pointer,
+        {0x03U, 0x7748U},
+        48U,
+        output);
     return replacement;
 }
 
@@ -16157,11 +16439,25 @@ replace_giant_face_helmet_controller(
     append_checkpoint(0x4CEAU, 0x4CECU, 123U, after_compare);
     if (controller.path == DC_GIANT_FACE_HELMET_CONTROLLER_ADVANCE) {
         append_checkpoint(0x4CECU, 0x4CF1U, 135U, output);
+        absorb_return(
+            replacement,
+            work_ram,
+            entry.registers.stack_pointer,
+            {0x02U, 0x4CF1U},
+            135U,
+            output);
         return replacement;
     }
 
     append_checkpoint(0x4CECU, 0x4CEEU, 129U, after_compare);
     append_checkpoint(0x4CEEU, 0x4CF1U, 144U, output);
+    absorb_return(
+        replacement,
+        work_ram,
+        entry.registers.stack_pointer,
+        {0x02U, 0x4CF1U},
+        144U,
+        output);
     return replacement;
 }
 
@@ -16453,6 +16749,13 @@ replace_giant_face_helmet_initializer(
         .instruction = {0x02U, 0x4CECU},
         .registers = output,
     });
+    absorb_return(
+        replacement,
+        work_ram,
+        entry.registers.stack_pointer,
+        {0x02U, 0x4CF1U},
+        kBodyCycles,
+        output);
     return replacement;
 }
 
@@ -16523,6 +16826,13 @@ replace_giant_face_helmet_outer_initializers(
         .instruction = {0x02U, 0x4CECU},
         .registers = output,
     });
+    absorb_return(
+        replacement,
+        work_ram,
+        entry.registers.stack_pointer,
+        {0x02U, 0x4CF1U},
+        kBodyCycles,
+        output);
     return replacement;
 }
 
@@ -18886,6 +19196,13 @@ replace_three_blobs_controller(
 
     if (controller.path == DC_THREE_BLOBS_FIRST_PAIR_MISMATCH) {
         append_checkpoint(0x65C8U, 0x65E9U, 42U, output);
+        absorb_return(
+            replacement,
+            work_ram,
+            entry.registers.stack_pointer,
+            {0x03U, 0x65E9U},
+            42U,
+            output);
         return replacement;
     }
 
@@ -18896,6 +19213,13 @@ replace_three_blobs_controller(
         controller.third_state);
     append_checkpoint(0x65CAU, 0x65CDU, 51U, checkpoint);
     append_checkpoint(0x65CDU, 0x65E9U, 63U, output);
+    absorb_return(
+        replacement,
+        work_ram,
+        entry.registers.stack_pointer,
+        {0x03U, 0x65E9U},
+        63U,
+        output);
     return replacement;
 }
 
@@ -18994,6 +19318,13 @@ replace_three_blobs_appearance_gate(
     replacement.output_registers = checkpoint;
     replacement.body_master_cycles = 93U;
     append_checkpoint(replacement, 0x67C3U, 0x67E5U, 93U, checkpoint);
+    absorb_return(
+        replacement,
+        work_ram,
+        entry.registers.stack_pointer,
+        {0x03U, 0x67E5U},
+        93U,
+        checkpoint);
     return replacement;
 }
 
@@ -19094,6 +19425,13 @@ replace_three_blobs_collision_gate(
     };
     append_checkpoint(replacement, 0x67C0U, 0x67C3U, 15U, output);
     append_checkpoint(replacement, 0x67C3U, 0x67E5U, 27U, output);
+    absorb_return(
+        replacement,
+        work_ram,
+        entry.registers.stack_pointer,
+        {0x03U, 0x67E5U},
+        27U,
+        output);
     return replacement;
 }
 
@@ -19205,6 +19543,16 @@ replace_three_blobs_direct_continuation(
     replacement.output_registers = checkpoint;
     replacement.body_master_cycles = 189U;
     append_checkpoint(0x67E5U, 0x66E1U, 189U, checkpoint);
+    // The composed child's `JSR` frame sits at $2100+S and $2100+S-1, two bytes
+    // below the word this routine's own return reads back, so the walk can run
+    // past 03:66E1 without the two uses of the stack page meeting.
+    absorb_return(
+        replacement,
+        work_ram,
+        entry.registers.stack_pointer,
+        {0x03U, 0x66E1U},
+        189U,
+        checkpoint);
     return replacement;
 }
 

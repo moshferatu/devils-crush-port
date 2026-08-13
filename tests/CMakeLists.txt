@@ -2136,6 +2136,50 @@ if(TARGET devils_crush)
             PROPERTIES LABELS rom_required
         )
 
+        # And over the Sorcerer tick, which runs the collision-table
+        # interpreter in line and then ends past its own return. It is the only
+        # absorbed return whose transcript also writes to the stack page.
+        add_test(
+            NAME dc_rom_absorbed_return_trace_composed
+            CONFIGURATIONS Release
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/absorbed-return-trace-composed-v1"
+                "-DROUTINE=02:58C2"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_absorbed_return_trace.cmake"
+        )
+        set_tests_properties(
+            dc_rom_absorbed_return_trace_composed
+            PROPERTIES LABELS rom_required
+        )
+
+        # 03:6966 is the fourth shape: a routine whose return is absorbed at the
+        # entry the core takes and left in place for the three sites that run it
+        # in line. It is also the busiest routine on the route, so it is the one
+        # that shows the technique's limit -- a transcript that does not reach
+        # its own end never reaches the return it absorbed either.
+        add_test(
+            NAME dc_rom_absorbed_return_trace_shared
+            CONFIGURATIONS Release
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/absorbed-return-trace-shared-v1"
+                "-DROUTINE=03:6966"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_absorbed_return_trace.cmake"
+        )
+        set_tests_properties(
+            dc_rom_absorbed_return_trace_shared
+            PROPERTIES LABELS rom_required
+        )
+
         add_test(
             NAME dc_rom_bank_call_wrappers_semantic
             CONFIGURATIONS Release
