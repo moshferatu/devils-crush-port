@@ -260,11 +260,14 @@ replace_native_gameplay_routine_impl(
             }) {
         return detail::replace_bank_call_wrappers(entry, work_ram, rom);
     }
-    // One shared walk, nine entry points: the VDC interrupt handler. Each
-    // transcript stops in front of the call it makes, the RTI that ends the
-    // handler, the arm the dispatcher hands off to, or -- for the dispatcher's
-    // head -- the one instruction here that cannot be transcribed at all, the
-    // status read at 00:E05C whose side effect is the interrupt acknowledge.
+    // One shared walk, eleven entry points: the VDC interrupt handler. Each
+    // transcript stops in front of the call it makes, the PLP that restores the
+    // interrupted status byte, the arm the dispatcher hands off to, or -- for
+    // the dispatcher's head -- the one instruction here that cannot be
+    // transcribed at all, the status read at 00:E05C whose side effect is the
+    // interrupt acknowledge. Two of the eleven are the RTIs past those PLPs,
+    // entries of one instruction rather than tails of the walks that reach
+    // them, because the PLP between has to be interpreted.
     if (entry.routine
             == RoutineKey{
                 .physical_bank = 0x00U,
@@ -293,6 +296,11 @@ replace_native_gameplay_routine_impl(
         || entry.routine
             == RoutineKey{
                 .physical_bank = 0x00U,
+                .logical_pc = 0xE135U,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x00U,
                 .logical_pc = 0xE136U,
             }
         || entry.routine
@@ -304,6 +312,11 @@ replace_native_gameplay_routine_impl(
             == RoutineKey{
                 .physical_bank = 0x00U,
                 .logical_pc = 0xE183U,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x00U,
+                .logical_pc = 0xE194U,
             }
         || entry.routine
             == RoutineKey{

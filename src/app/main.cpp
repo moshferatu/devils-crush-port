@@ -2880,9 +2880,11 @@ parse_logical_address_range(const std::string_view text)
                                || request.routine.logical_pc == 0xE0EBU
                                || request.routine.logical_pc == 0xE117U
                                || request.routine.logical_pc == 0xE123U
+                               || request.routine.logical_pc == 0xE135U
                                || request.routine.logical_pc == 0xE136U
                                || request.routine.logical_pc == 0xE179U
                                || request.routine.logical_pc == 0xE183U
+                               || request.routine.logical_pc == 0xE194U
                                || request.routine.logical_pc == 0xE195U)
                            && request.all_calls;
                        const bool proven_vram_upload =

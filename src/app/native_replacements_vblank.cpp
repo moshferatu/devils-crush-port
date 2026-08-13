@@ -37,11 +37,12 @@ using emulation::RoutineReplacement;
 // read and stops, the core executes it -- at the right cycle, with its
 // acknowledge -- and the tail picks the arm up from the accumulator.
 //
-// Nine entry points share one walk: the dispatcher's own two halves, the two
+// Eleven entry points share one walk: the dispatcher's own two halves, the two
 // arms it hands off to, the two addresses the VBlank arm's calls come back to,
-// the secondary handler's prologue and epilogue, and the pad reader at
-// 00:E195 described further down. The handler's work is interleaved with calls
-// the core keeps, which is why there are so many:
+// the secondary handler's prologue and epilogue, the pad reader at 00:E195
+// described further down, and the two interrupt returns listed after them. The
+// handler's work is interleaved with calls the core keeps, which is why there
+// are so many:
 //
 //   00:E058  the dispatcher's head: push P, A, X and Y, then stop in front of
 //            the LDA $0000
@@ -65,8 +66,19 @@ using emulation::RoutineReplacement;
 // the IRQ is sampled -- runs before PLP pops. A checkpoint carries one register
 // set and samples the interrupt with it, so a transcript covering PLP samples
 // with the restored I rather than the one the instruction ran under, and an
-// interrupt that assembly services between the PLP and the RTI is missed. Two
-// instructions of coverage buy exactness.
+// interrupt that assembly services between the PLP and the RTI is missed. One
+// instruction of coverage buys exactness.
+//
+// The RTI on the far side of each is an entry of its own rather than the tail
+// of those walks, and both exist because the PLP cannot be crossed. Where
+// PLP's status byte and its interrupt sample disagree, an RTI's cannot: Beetle
+// restores P from the stack before LastCycle, so the flag the return produced
+// is the one the boundary is judged on and one checkpoint states both
+// truthfully. What separates the two is not that either touches I but where
+// inside the instruction the mask is sampled.
+//
+//   00:E135  the shared epilogue's return, 7,198 of them
+//   00:E194  the secondary handler's, 387
 //
 // That matters because the handler does not run masked throughout. It is
 // entered with I set, but bank 45 ends three of its critical sections with an
@@ -115,8 +127,9 @@ constexpr std::uint16_t kStackBase = 0x2100U;
 {
     return logical_pc == 0xE058U || logical_pc == 0xE05FU
         || logical_pc == 0xE0EBU || logical_pc == 0xE117U
-        || logical_pc == 0xE123U || logical_pc == 0xE136U
-        || logical_pc == 0xE179U || logical_pc == 0xE183U
+        || logical_pc == 0xE123U || logical_pc == 0xE135U
+        || logical_pc == 0xE136U || logical_pc == 0xE179U
+        || logical_pc == 0xE183U || logical_pc == 0xE194U
         || logical_pc == 0xE195U;
 }
 
@@ -195,6 +208,15 @@ std::optional<RoutineReplacement> replace_vblank_handler(
     // The VDC ports only reach the device while the hardware page is mapped at
     // segment 0 -- the same condition the core's write validator imposes.
     if (entry.registers.mpr[0] != 0xFFU) {
+        return std::nullopt;
+    }
+    // Every walk here reads and writes the stack out of its private copy of
+    // work RAM, which is only the stack while $2000 is the page MPR1 selects.
+    // Four of them push there before the dispatch and three pull the saved
+    // registers back; the two interrupt returns take the address they resume
+    // at from it. The assumption is as old as the file and is stated here
+    // rather than left implied.
+    if (entry.registers.mpr[1] != 0xF8U) {
         return std::nullopt;
     }
 
@@ -429,6 +451,7 @@ std::optional<RoutineReplacement> replace_vblank_handler(
         };
 
     auto pc = entry.routine.logical_pc;
+    bool interrupt_returned = false;
     for (;;) {
         if (overflow
             || replacement.checkpoints.size() > 1800U
@@ -448,11 +471,12 @@ std::optional<RoutineReplacement> replace_vblank_handler(
             replacement.output_registers = registers;
             replacement.body_master_cycles = cycle;
 
-            // 00:E1F7 is the one return in this family. The other two `RTI`
-            // paths stop a whole instruction earlier, at the `PLP`, and an
-            // `RTI` is not a return this technique expresses -- it pops a
-            // status byte and an address the machine pushed for itself rather
-            // than a frame a `JSR` left.
+            // 00:E1F7 is the one `RTS` in this family, and the only return
+            // this absorption applies to: it pops the frame the handler's own
+            // `JSR` left, where the two `RTI` paths pop a status byte and an
+            // address the machine pushed for itself. Those are entries of
+            // their own further down rather than the tails of these walks,
+            // because the `PLP` in front of each has to be interpreted.
             //
             // Only 00:E195 can reach it. Every other entry in the family is at
             // a lower address and the walk stops in front of the next entry it
@@ -809,6 +833,34 @@ std::optional<RoutineReplacement> replace_vblank_handler(
             append_checkpoint(0xE133U, 0xE134U, 12U);
             pc = 0xE134U;
             break;
+
+        // ---- 00:E135 and 00:E194  the interrupt returns -------------------
+        // Each is an entry of one instruction. Both epilogues stop in front of
+        // the `PLP` above, the core interprets it, and the hook is offered
+        // again here with the caller's status byte already restored -- which
+        // is the whole reason these are separate entries rather than two more
+        // lines of the walks that reach them.
+        //
+        // The pull is a read of ordinary work RAM like any other. It takes
+        // three bytes rather than the two an `RTS` takes, and lands on the
+        // address it read rather than one past it, the interrupt sequence
+        // having pushed the instruction it was about to run where `JSR` pushes
+        // the last byte of itself.
+        case 0xE135U:  // RTI
+        case 0xE194U:  // RTI
+        {
+            const auto return_instruction_pc = pc;
+            registers.status = pop();
+            const auto low = pop();
+            const auto high = pop();
+            const auto resume = static_cast<std::uint16_t>(
+                static_cast<std::uint16_t>(low)
+                | static_cast<std::uint16_t>(high) << 8U);
+            append_checkpoint(return_instruction_pc, resume, 21U);
+            pc = resume;
+            interrupt_returned = true;
+            break;
+        }
 
         // ---- 00:E136  the non-VBlank arm ----------------------------------
         // $54 is the scene's raster mode. Modes 0 and 2 reprogram the split
@@ -1447,6 +1499,24 @@ std::optional<RoutineReplacement> replace_vblank_handler(
 
         default:
             return std::nullopt;
+        }
+
+        // An interrupt return leaves the family altogether, so it ends the
+        // walk here rather than at the test above, which only knows addresses
+        // inside the handler. The bank is resolved through the mapping this
+        // transcript is publishing rather than assumed to be this one: every
+        // other stop is an address in the handler, which MPR7 holds, while the
+        // return lands wherever the machine was when the interrupt was taken.
+        // The host rejects a resume whose bank disagrees with the registers
+        // alongside it.
+        if (interrupt_returned) {
+            replacement.return_instruction = {
+                registers.mpr[pc >> 13U],
+                pc,
+            };
+            replacement.output_registers = registers;
+            replacement.body_master_cycles = cycle;
+            return replacement;
         }
     }
 }

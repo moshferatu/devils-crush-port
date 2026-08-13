@@ -115,7 +115,7 @@ prints both denominators for the same reason — see *Two shares* below.
 | `00:FC03`–`FC8D` | 1,538,781 | 0.12% | Sound driver — body, epilogue **and interrupt return** now native on every arrival. Two deliberate refusals account for 1,518,702 of this: the `SEI` at `FC81` (1,509,498) and the chain exit `FC89` with the `FC03` trampoline it lands on (9,204). The `RTI` at `FC8D` was the third and is gone: 5,292,108 cycles this table called a refusal until the refusal was checked. The remaining 20,079 is the body itself running emulated on the few dozen arrivals a route where the walk declines |
 | `00:FD07`–`FD81` | 24,346 | 0.00% | The driver's second arm, likewise, with its own `SEI` (16,548); its `RTI` (57,771) went with the first |
 | bank `45` (`4000`–`4A9B`) | 5,266,590 | 0.41% | Music sequencer — the tick is **native**, chunked at its voice loop, and so is the PSG programmer `45:4142`, chunked at its channel loop; what is left is `45:4936`, the track loader `45:4BCC` and the chunk boundaries |
-| `00:E128`–`E290` | 1,289,166 | 0.10% | Interrupt epilogue and the two `RTI`s. The dispatcher at `00:E058` used to be listed here as blocked; both its halves are native now and what is left of it is the single `LDA $0000`, 129,564 cycles, whose read is the interrupt acknowledge. The handler bodies, the call wrappers and the pad reader are native |
+| `00:E128`–`E290` | 1,092,873 | 0.08% | Interrupt epilogue. The dispatcher at `00:E058` used to be listed here as blocked; both its halves are native now and what is left of it is the single `LDA $0000`, 129,564 cycles, whose read is the interrupt acknowledge. The two `RTI`s at `00:E135` and `00:E194` were listed here too, at the 196,293 this instrument prices them at; they are native, and the census puts their real cost at 159,285. The handler bodies, the call wrappers and the pad reader are native |
 | `01:C0FE`–`C1B5` | 1,407,828 | 0.11% | The top-level frame loop itself — glue between calls rather than a routine |
 | `03:694A`–`6A37` | 2,721,348 | 0.21% | Collision-table interpreter — **already ported**; the `RTS` instructions and the resumption after an interrupt lands on a checkpoint, see below. The returns are 442,872 of it and are now known to be answerable — but not by a one-line change, because the same walk serves three composition sites that need it to stop in front of them |
 | `00:E93C`–`EBD6` | 772,635 | 0.06% | Palette shadow buffer. **Not one blocked routine**: 625,095 of it is the single `TIA` at `00:EB46`, 140,037 is the two fade drivers, 7,440 is chunk boundaries and resumption — and the `RTS` instructions, 302,628 of this row in the revision before, are now **63**. The transcripts absorb their own returns. See below |
@@ -260,9 +260,9 @@ own when the CPU does.
 is the one to watch:
 
 ```
-Registry cycles: 679286022 native of 1292371731 elapsed master cycles (52.56%)
-Registry cycles outside the frame-sync wait: 679286022 native of 710482755
-  (95.61%); the machine waited at 00:E323 for 581888976 master cycles
+Registry cycles: 684791970 native of 1292371731 elapsed master cycles (52.99%)
+Registry cycles outside the frame-sync wait: 684791970 native of 710482755
+  (96.38%); the machine waited at 00:E323 for 581888976 master cycles
   (45.02% of the route)
 Instructions interpreted: 66312528
 ```
@@ -298,6 +298,15 @@ where it used to interpret 108,470,069, and both cycle shares are unchanged to
 the byte. That is the correct outcome and worth stating plainly, because the
 opposite expectation — that eliminating 45% of the cycles should move the
 coverage — is the natural one and it is wrong.
+
+Read that third line as **boundary decisions**, not as interpreted work. The
+core asks the same question at the top of the same loop whether it is about to
+interpret an instruction or apply a checkpoint, so a slice can move thousands
+of instructions off the interpreter without moving it at all. Three consecutive
+slices left it at exactly 66,312,528 while taking four `RTI`s off the
+interpreter between them. It is a good check that a slice changed *where* work
+happens rather than *when* the machine judges its interrupts, and a poor
+measure of how much is left.
 
 ## Phases
 
@@ -546,11 +555,12 @@ Remaining real logic, in rough order of value:
    need a new capability — the pad state on `RoutineEntry`. The two halves
    made it nine and 31,927, and needed no new capability at all: the
    replacement hook fires at every instruction boundary, so `00:E05F` is a
-   legal entry point even though nothing in the game jumps to it.
+   legal entry point even though nothing in the game jumps to it. The two
+   `RTI`s made it eleven and 39,512, on that same property.
 
-   It did settle a rule that had only been half-stated. Each walk stops one
-   instruction short of its `RTI`, in front of the `PLP` that restores the
-   interrupted status byte, because the core samples the IRQ at `LastCycle` —
+   It did settle a rule that had only been half-stated. Each walk stops in
+   front of the `PLP` that restores the interrupted status byte, because the
+   core samples the IRQ at `LastCycle` —
    which for `PLP` runs before the pop — while a checkpoint carries one register
    set and samples with it. A transcript covering `PLP` samples with the
    restored mask instead of the one the instruction ran under, and swallows an
@@ -572,9 +582,15 @@ Remaining real logic, in rough order of value:
    but does not stay masked, because bank `45` ends three critical sections with
    an unconditional `CLI` instead of restoring the caller's mask.
 
+   **The corrected rule then paid for itself here.** The two `RTI`s past those
+   `PLP`s — `00:E135` at 7,198 executions and `00:E194` at 387, 159,285 master
+   cycles — are native as of the eleventh and twelfth entry points, and they
+   are entries rather than longer walks precisely because the `PLP` between has
+   to be interpreted. The shape is worth keeping: where a walk cannot cross one
+   instruction, entering on the far side of it costs nothing but an admission.
+
    What is left in the region is the dispatcher, which is phase 2, plus the
-   two `RTI`s and the three `JSR`s the walks stop at — 1.2M of instructions
-   the core executes by design.
+   three `JSR`s the walks stop at — instructions the core executes by design.
 4. **The collision frame** (8.4M) — **done**. `01:CA84`–`CDF7` is the code
    around the overlap scanner `01:CC1A`, which has been native since the
    twenty-sixth replacement: the playfield-tile probe `01:CD74` (2.6M), the

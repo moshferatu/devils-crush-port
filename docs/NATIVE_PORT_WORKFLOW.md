@@ -712,6 +712,19 @@ does not remove it either, and that is the limit of this instrument — the same
 against a real 21, so a return is over-priced by the method meant to correct
 it. For a boundary instruction, trust `--native-cycle-census` over this.
 
+How badly depends on what the return returns *into*, which is not something the
+address predicts. Of the display handler's two, `00:E135` prices at 26.1 per
+execution against the same real 21 and `00:E194` at 21.1 — a 24% error and a
+0.5% one, against `00:FC8D`'s 312%. So the correction is not a constant that
+could be applied and forgotten; it is a reason to census any row you are about
+to plan a slice around.
+
+Watch the entry-point flag rather than the row when checking one afterwards.
+Absorbing a return into a transcript entered elsewhere deletes its profile row;
+making the return an entry in its own right leaves the row untouched and flips
+that flag. Both mean the instruction is no longer executed, so a row that has
+not moved is not evidence the slice failed.
+
 Excluding known offenders by hand does not scale and does not find the ones you
 have not noticed. Instead run the same route with no replacements at all, where
 nothing can be absorbed, and take each address's true cost from there:

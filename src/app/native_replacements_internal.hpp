@@ -1290,13 +1290,15 @@ replace_bank_call_wrappers(
     std::span<const std::byte> work_ram,
     std::span<const std::byte> rom);
 
-// The VDC interrupt handler. One walk shared by nine entry points: the
+// The VDC interrupt handler. One walk shared by eleven entry points: the
 // dispatcher's own two halves, the two arms it dispatches to, the two
 // addresses the VBlank arm's calls come back to, the secondary handler's
-// prologue and epilogue, and the pad reader at 00:E195 that the VBlank arm
-// calls. Every transcript stops in front of a call, an RTS, an RTI, another
-// entry in this family, or the one instruction here that cannot be
-// transcribed at all.
+// prologue and epilogue, the pad reader at 00:E195 that the VBlank arm
+// calls, and the two RTIs the handler leaves through. Every transcript stops
+// in front of a call, an RTS, the PLP that restores the interrupted status
+// byte, another entry in this family, or the one instruction here that cannot
+// be transcribed at all -- except the two RTI entries, which are one
+// instruction each and end wherever the interrupt was taken.
 //
 // That instruction is the dispatcher's LDA $0000. Not because the value is
 // unknowable -- the native VDC model answers a peek without disturbing

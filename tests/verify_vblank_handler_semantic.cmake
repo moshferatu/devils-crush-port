@@ -30,10 +30,10 @@ endif()
 # head walks to the read and stops; the core executes it, at the right cycle,
 # with its acknowledge; the tail picks the arm up from the accumulator.
 #
-# Nine entry points share one walk: the dispatcher's two halves, the two arms it
-# hands off to, the two addresses the VBlank arm's calls come back to, the
-# secondary handler's prologue and epilogue, and the pad reader one of those
-# calls goes to.
+# Eleven entry points share one walk: the dispatcher's two halves, the two arms
+# it hands off to, the two addresses the VBlank arm's calls come back to, the
+# secondary handler's prologue and epilogue, the pad reader one of those calls
+# goes to, and the two interrupt returns.
 #
 #   00:E058  the dispatcher's head: push P, A, X and Y and stop in front of the
 #            LDA $0000 that only the core can run
@@ -50,9 +50,13 @@ endif()
 #   00:E183  its epilogue: restore MPR6, rewrite $0000 twice and unwind
 #   00:E195  the pad reader: poll all five ports and publish the held state at
 #            $2013,Y, the previous frame's at $200E,Y and the edges at $2018,Y
+#   00:E135  the shared epilogue's RTI, and 00:E194 the secondary handler's:
+#            one instruction each, three bytes off the stack
 #
-# All nine are admitted on every call. The dispatcher's two halves take 7,198
-# entries each, one per interrupt: 3,599 VBlank and 3,599 raster.
+# All eleven are admitted on every call. The dispatcher's two halves take 7,198
+# entries each, one per interrupt: 3,599 VBlank and 3,599 raster. 00:E135 takes
+# the same 7,198 because every interrupt the dispatcher takes leaves through it,
+# whichever arm it went down, and 00:E194 takes the secondary handler's 387.
 #
 # `00:E195` is the one routine in the port that reads a device rather than only
 # writing one, and it was left out for four slices on the rule that a
@@ -70,18 +74,27 @@ endif()
 # for. The port writes pin the latch sequence and the pad bytes pin what the
 # model computed, both against assembly, for all 3,599 calls.
 #
-# Each walk stops one instruction short of its RTI, in front of the PLP that
-# restores the interrupted status byte, and that is the point this regression
-# exists to hold. The handler does not run masked throughout: it is entered with
-# I set, but bank 45 ends three critical sections with an unconditional CLI
-# instead of restoring the caller's mask, so the music tick below 00:ECC6 hands
-# the handler back with interrupts enabled. 78 of the route's interrupt entries
-# land inside these walks. PLP is the only instruction here that
-# changes I, and the core samples the IRQ at LastCycle -- before PLP pops -- so a
-# transcript that covered it would sample with the restored flag and swallow an
-# interrupt assembly services between the PLP and the RTI. Nothing in the state
-# census alone would necessarily show that; the stack page does, because a
-# swallowed interrupt moves where its handler pushes.
+# Each walk stops in front of the PLP that restores the interrupted status byte,
+# and that is the point this regression exists to hold. The handler does not run
+# masked throughout: it is entered with I set, but bank 45 ends three critical
+# sections with an unconditional CLI instead of restoring the caller's mask, so
+# the music tick below 00:ECC6 hands the handler back with interrupts enabled.
+# 78 of the route's interrupt entries land inside these walks. PLP is the only
+# instruction here whose I flag and whose interrupt sample disagree, because the
+# core samples the IRQ at LastCycle -- before PLP pops -- so a transcript that
+# covered it would sample with the restored flag and swallow an interrupt
+# assembly services between the PLP and the RTI. Nothing in the state census
+# alone would necessarily show that; the stack page does, because a swallowed
+# interrupt moves where its handler pushes.
+#
+# The RTI past it is a separate entry rather than more of those walks for
+# exactly that reason, and it is expressible where the PLP is not because RTI
+# restores P *before* LastCycle: the flag the return produced is the one the
+# boundary is judged on, so one checkpoint states both truthfully. The same
+# stack page proves it. Both returns read three bytes out of it and resume
+# wherever the interrupt was taken, and a transcript that read the wrong bytes,
+# priced the seven cycles wrong, or resumed in the wrong bank would move every
+# push made afterwards.
 #
 # So the whole stack page is in scope, and the VDC's three base ports are
 # censused directly with --bus-write-range: a store to $0000-$0003 costs the
@@ -122,11 +135,15 @@ execute_process(
         --replace-hook
         "00:E123@all"
         --replace-hook
+        "00:E135@all"
+        --replace-hook
         "00:E136@all"
         --replace-hook
         "00:E179@all"
         --replace-hook
         "00:E183@all"
+        --replace-hook
+        "00:E194@all"
         --replace-hook
         "00:E195@all"
         --work-ram-write-range
@@ -168,9 +185,11 @@ foreach(expected_line IN ITEMS
     "Native replacement 00:E0EB@all entries: 2748 of 2748"
     "Native replacement 00:E117@all entries: 3599 of 3599"
     "Native replacement 00:E123@all entries: 3212 of 3212"
+    "Native replacement 00:E135@all entries: 7198 of 7198"
     "Native replacement 00:E136@all entries: 3599 of 3599"
     "Native replacement 00:E179@all entries: 387 of 387"
     "Native replacement 00:E183@all entries: 387 of 387"
+    "Native replacement 00:E194@all entries: 387 of 387"
     "Native replacement 00:E195@all entries: 3599 of 3599"
     "Work-RAM write trace complete: 5061032 selected writes"
     "Bus write trace complete: 2079422 selected writes"

@@ -5613,11 +5613,88 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
   - [x] Correct `main.cpp`'s "Instructions interpreted" comment. The count did
     not move, because a checkpoint costs the same boundary decision an
     interpreted instruction does; it counts decisions, not interpreted work.
+- [x] Take the display handler's two interrupt returns, the sequel that slice
+  made reachable:
+  - [x] Enter *at* the return rather than extending the walk. The `PLP` in
+    front of each still cannot be crossed, and the replacement hook fires at
+    every instruction boundary, so `00:E135` and `00:E194` are legal entries
+    even though nothing jumps to them.
+  - [x] State the family's stack assumption — MPR1 selects work RAM — and
+    decline rather than guess. It declined nothing; all nine existing entries
+    hold their counts.
+  - [x] Resolve the resume's bank through the transcript's own MPRs, as the
+    driver's return does, because it lands wherever the interrupt was taken.
+  - [x] Measure: **+159,285 native master cycles** (684,632,685 ->
+    684,791,970, 52.97% -> **52.99%** of the route, 96.36% -> **96.38%**
+    outside the wait), with `7,585 x 21` closing it exactly and all three of
+    the existing regression's artifacts byte-identical.
+  - [x] Record that a profile row standing still is not evidence a slice
+    failed: an absorbed return loses its row, an entered one keeps it.
+  - [x] Correct the stale figures in `NATIVE_REGISTRY.md` and its generator
+    that could be checked from the census — header counts, the two missing
+    dispatcher rows, `00:E195`'s cycles. The structural drift is untouched.
 
 ## Active Work
 
-Current owner: Claude. Current slice: **the sound driver's interrupt return**.
-Done. One instruction, and the largest one still emulated anywhere on the route
+Current owner: Claude. Current slice: **the display handler's interrupt
+returns**. Done. Two entry points of one instruction each, and the sequel the
+previous slice made reachable.
+
+**`00:E135` and `00:E194` are the `RTI`s the VDC interrupt leaves through** —
+7,198 of them on the shared epilogue and 387 on the secondary handler's,
+**159,285 master cycles**. They were the only interrupt returns left on the
+route after the sound driver's, and they close the technique out. The registry
+goes 684,632,685 -> 684,791,970 native cycles, **52.99%** of the route and
+**96.38%** of it outside the frame-sync wait.
+
+**The finding is the shape, not the size.** The walk cannot cross the `PLP` in
+front of each return — that is the rule the handler's own slice settled, and it
+still holds — so the returns were recorded as unreachable. They are not: what
+cannot be crossed can be entered on the far side of. Both are entries of one
+instruction, taken after the core has interpreted the `PLP` between them, and
+the replacement hook fires at every instruction boundary so no new capability
+was needed to admit an address nothing jumps to. That is worth carrying: an
+instruction a transcript cannot express blocks the walk, not the address past
+it.
+
+**It cost one guard and one line of resume handling.** The entry states the
+assumption the whole family had leaned on silently since it was written — that
+MPR1 selects work RAM, which is what makes the walk's private copy the stack —
+and declines rather than guesses. It declined nothing; all nine existing
+entries hold their counts exactly. And like the driver's return, the resume
+lands wherever the machine was when the interrupt was taken, so its bank is
+resolved through the MPRs the transcript publishes rather than assumed to be
+bank `00`.
+
+**The evidence is the regression that already existed, unchanged in scope.**
+`dc_rom_vblank_handler_semantic` censuses the whole stack page at
+`$2100`-`$21FF` alongside the VDC and joypad ports, which is exactly what a
+return reading three bytes off the stack and resuming in the wrong place would
+disturb. All three artifacts are byte-identical: state census `9036a9de…`,
+5,061,032 work-RAM writes, 2,079,422 bus writes. Registry calls rose by 7,585
+and native cycles by 159,285, which is `7,585 × 21` to the cycle.
+"Instructions interpreted" is 66,312,528 either way for the third slice
+running, which is the same corrected reading of that figure as before.
+
+**One instrument note this slice adds.** Absorbing the driver's `RTI` deleted
+its profile row; making these two entries left their rows exactly where they
+were — same executions, same cycles, only the entry-point flag changed. Both
+are consistent with the instruction no longer being executed, so a profile row
+is not evidence either way and the census is what settles it.
+
+**The stale figures I could check, I fixed.** `NATIVE_REGISTRY.md` calls itself
+generated, and its header said 366 routines and 3,452,755 calls against a real
+371 and 3,509,295; its VDC table was missing the two dispatcher halves and
+priced `00:E195` at 6,854,091 against a censused 6,929,670 that predates this
+slice. Those are corrected in the document and in the generator. The ~400-line
+structural drift between the two is untouched and still wants its own slice.
+
+411/411 Release. 3/3 ROM-free Debug in both configurations. The `windows-debug`
+sweep was not run.
+
+### Previous: the sound driver's interrupt return
+
+One instruction, and the largest one still emulated anywhere on the route
 outside the frame-sync wait.
 
 **It was the biggest thing left and it was on the deliberate-refusal list.**
@@ -6970,10 +7047,11 @@ does not.
 
 ### Next
 
-**Re-ranked after the interrupt-return slice, by real per-instruction cost
-rather than by the profile's cycle column.** With `00:FC8D` and `00:FD81` gone,
-25,850,070 master cycles are left outside the frame-sync wait, and the largest
-single emulated instructions on the route are now:
+**Re-ranked after both interrupt-return slices, by real per-instruction cost
+rather than by the profile's cycle column.** With `00:FC8D`, `00:FD81`,
+`00:E135` and `00:E194` all taken, 25,690,785 master cycles are left outside
+the frame-sync wait, and the largest single emulated instructions on the route
+are now:
 
 | Address | Executions | Master cycles | What it is |
 | --- | ---: | ---: | --- |
@@ -6984,16 +7062,24 @@ single emulated instructions on the route are now:
 | `00:E26E` | 11,671 | 247,059 | `JMP [$2CBE]`, the dispatch indirection |
 | `00:E252` | 11,599 | 245,451 | `JSR $E262` into a native entry |
 | `00:E327`–`E32B` | 3,567 | 161,091 | The frame-sync waiter's three-instruction tail and its `RTS` |
-| `00:E135` | 7,198 | 151,158 | The VBlank/IRQ1 `RTI` |
+| `00:E134` | 7,198 | 86,376 | The `PLP` in front of the return just taken. It stays: its mask sample precedes its own change to `I` |
 
-**`00:E135` is the direct sequel to this slice and was not reachable before
-it.** It is the same instruction in the same shape, and the reason it was out
-of reach was the `PLP` at `00:E134` in front of it: the walk has to stop there,
-so no transcript can run on to the return. What this slice establishes is that
-the return itself is expressible, so the way in is an entry *at* `00:E135` —
-one instruction, three bytes off the stack — rather than an extension of the
-handler's walk. That is a new admission with its own regression, like `00:E327`
-below, and unlike this slice, which needed none.
+**The interrupt returns are finished, and what the two slices leave is a
+technique rather than a list.** Four `RTI`s, 5,505,948 cycles, taken two ways:
+absorbed into a walk that already reached them, or entered directly when an
+instruction in front blocked the walk. Nothing on the route matches that shape
+any more. The list above is now three kinds of thing, and only one of them is
+still an absorption: instructions a checkpoint structurally cannot express
+(`00:FC81`, `00:F423`, `00:E134` — refusals, not targets), calls into an entry
+that is already native (`08:4094`, `08:4072`, `00:E252` — these want a ported
+*caller*, which is a different and larger kind of slice), and the frame-sync
+waiter's tail.
+
+**`08:4094` is the largest thing left that is not a refusal**, and worth
+looking at first for whether the entry-at-the-blocked-instruction trick from
+this slice generalises to it: an entry *at* the `JSR`, pushing the return and
+delegating to the walk the callee already has. That is a guess and should be
+checked against the core's frame handling before it is planned around.
 
 **The old ranking, kept because its per-bank arithmetic still holds.** Note
 that it counts `RTS` opcodes only, so it never saw the interrupt return that
