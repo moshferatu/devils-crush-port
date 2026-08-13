@@ -2,6 +2,8 @@
 
 #include "devils_crush/core/backup_ram.hpp"
 
+#include "devils_crush/core/atomic_file.hpp"
+
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
 #include <Windows.h>
@@ -84,7 +86,8 @@ LoadResult load_exact(
 
 SaveResult save_atomic(
     const std::filesystem::path& path,
-    const std::vector<std::byte>& bytes)
+    const std::vector<std::byte>& bytes,
+    const int commit_budget_milliseconds)
 {
     if (bytes.empty()
         || bytes.size()
@@ -128,15 +131,17 @@ SaveResult save_atomic(
         }
     }
 
-    if (!MoveFileExW(
-            temporary_path.c_str(),
-            path.c_str(),
-            MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
+    const auto commit = devils_crush::core::commit_replacement(
+        temporary_path,
+        path,
+        commit_budget_milliseconds);
+    if (!commit.committed) {
         return {
             .saved = false,
             .message =
                 "Could not atomically commit backup RAM; Windows error "
-                + std::to_string(GetLastError()) + ".",
+                + std::to_string(commit.last_error) + " after "
+                + std::to_string(commit.retries) + " retries.",
         };
     }
 

@@ -2,6 +2,8 @@
 
 #include "devils_crush/cabinet/display_config.hpp"
 
+#include "devils_crush/core/atomic_file.hpp"
+
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
 #include <Windows.h>
@@ -730,16 +732,16 @@ ConfigSaveResult save_display_config_atomic(
             };
         }
     }
-    if (!MoveFileExW(
-            temporary_path.c_str(),
-            path.c_str(),
-            MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
+    const auto commit =
+        devils_crush::core::commit_replacement(temporary_path, path);
+    if (!commit.committed) {
         return {
             .saved = false,
             .message =
                 "Could not atomically commit the cabinet configuration; "
                 "Windows error "
-                + std::to_string(GetLastError()) + ".",
+                + std::to_string(commit.last_error) + " after "
+                + std::to_string(commit.retries) + " retries.",
         };
     }
     return {

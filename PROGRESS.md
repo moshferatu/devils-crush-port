@@ -5577,11 +5577,104 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
   - [x] Strike the workflow's "call and return boundaries ... which no amount
     of porting removes", 13.3M route-wide. The observation about `08:40DE`
     stands; the conclusion did not.
+- [x] Fix the per-run test failure that had been deferred for four slices:
+  - [x] Capture it instead of describing it. Four instances across four
+    unrelated regressions carry one message,
+    `Could not commit <artifact>; Windows error 32`, raised after the route
+    ran and every replacement matched its entry count.
+  - [x] Measure which handle refuses the replace rather than assuming. A
+    handle on the destination gives ERROR_ACCESS_DENIED; only a handle on the
+    temporary gives error 32, so the scanner is holding the file this process
+    just wrote and closed.
+  - [x] Add `devils_crush::core::commit_replacement` and route all fifteen
+    commit sites through it; retry only the refusals another process can stop
+    causing, inside a bounded budget, and report an absorbed wait.
+  - [x] Reproduce the defect in the ROM-free suite with the same no-sharing
+    handle a scanner takes, and pin both errors.
 
 ## Active Work
 
-Current owner: Claude. Current slice: **the fork patch `01:C510` was waiting
-on**. Done. It is the first slice in this run that changed the emulator rather
+Current owner: Claude. Current slice: **the per-run test failure, deferred for
+four slices**. Done. It is not a port slice at all: nothing in the registry
+moved, no artifact changed, and the deliverable is that the validation gate
+every other slice is measured against stops lying about once per run.
+
+**It was never a divergence.** Every captured instance carries one message —
+`Could not commit <artifact>; Windows error 32` — raised after the route had
+run and every replacement had reported its entry count. The recorders write
+`<path>.tmp` and end with `MoveFileEx(..., REPLACE_EXISTING)`, and that replace
+is the one step another process can refuse. Four instances now exist across four
+unrelated regressions: `dc_rom_palette_shadow_semantic` and
+`dc_rom_actor_camera_sweep_semantic` at `-j 6`, the work-RAM and census
+artifacts respectively, plus
+`dc_rom_knight_terminal_release_helper_post_return_position_high_scratch_add_prefix`
+captured deliberately this slice at `-j 24`. Four different tests with one
+message is a property of the commit, not of any of them.
+
+**The dates settle it independently of the message.** `-j 24` arrived in
+`074fb10`; there have been exactly eight slices since, and the failure was seen
+about once per run across those eight. Serially, over hundreds of runs, it never
+appeared. Nothing about the emulation changed at `074fb10` — only how many of
+these processes close a large file at the same moment.
+
+**Which of the two files the scanner holds was measured, and the intuitive
+answer is wrong.** A handle on the destination is refused with
+ERROR_ACCESS_DENIED; only a handle on the temporary gives error 32. Every
+message from the suite was error 32, so what was held was the artifact the
+process had just written and closed -- which is what an on-close scan is for --
+not the older file being replaced. This was not reasoned out: the first version
+of the regression modelled a held *destination*, failed, and the failure is what
+produced the distinction.
+
+`devils_crush::core::commit_replacement` now performs the replace and retries
+while the refusal is one another process can stop causing --
+ERROR_SHARING_VIOLATION, ERROR_ACCESS_DENIED, ERROR_LOCK_VIOLATION,
+ERROR_USER_MAPPED_FILE -- on a doubling backoff inside a five-second budget.
+Every other error still fails on the first attempt, and so does a transient that
+outlasts the budget, so a genuinely denied destination fails inside the same run
+instead of hanging it. All fifteen commit sites go through it: thirteen in
+`main.cpp`, the cabinet configuration and the backup RAM.
+
+**The end-to-end proof is on the shipped binary, not only on the helper.**
+Holding a recorder's temporary open for three seconds -- sharing read and write
+but not delete, so the recorder keeps writing and only the rename is refused --
+produced
+
+```
+Committed Canonical recording after 27 retries; Windows error 32.
+Canonical recording complete: 600 frames
+```
+
+and the committed file is byte-identical to the suite's own canonical artifact,
+`67a55bed2d4f4e8dc5019c2b9b845df2f29514bbb564e2e44cde406d159575fe`, with no
+temporary left behind. Before this slice that run exits 1.
+
+**One regression was found on the way and closed.** The high-score autosave
+commits from inside the frame loop, where five seconds of waiting out a scanner
+would be a visible stall rather than a saved write. That caller does not face
+the loss the budget exists to prevent -- a failed store stays pending, the poll
+returns twice a second, and the flush at shutdown gets the last word -- so it
+keeps a single attempt and shutdown keeps the full budget.
+`backup::save_atomic` takes the budget for that reason.
+
+**Do not expect to see an absorbed wait in a green suite log, and do not read
+its absence as the race having stopped.** Each verify script captures the
+recorder's stdout into an `execute_process` `OUTPUT_VARIABLE`, which CTest
+surfaces only on failure, so the retry line is swallowed by the same capture
+that would have shown the failure. The outcome evidence is five clean full
+Release runs after the fix -- 2,055 test executions, 0 commit failures, against
+roughly one per run before. The mechanism evidence is `test_atomic_commit`,
+which is deterministic: it takes the same no-sharing handle a scanner takes,
+releases it part way through the wait, and pins both error codes, the
+zero-budget refusal that reproduces the old behavior, the expired budget, and a
+missing source failing at once rather than waiting.
+
+411/411 Release, six runs. 3/3 ROM-free Debug in both configurations. The
+`windows-debug` sweep was not run.
+
+### Previous: the fork patch `01:C510` was waiting on
+
+It is the first slice in this run that changed the emulator rather
 than the port, and the only one whose deliverable is a *report* rather than a
 replacement.
 
@@ -5650,6 +5743,9 @@ stop calling it a flake and start calling it a defect in the harness**: a
 different test every time, never reproducible alone, roughly one per full run.
 It has been deferred for four slices and should be the next thing after this or
 the one after. 3/3 ROM-free Debug. The `windows-debug` sweep was not run.
+(It was the next thing: see the current slice. The call above was right that it
+is a defect in the harness and wrong about where -- it is not CTest, it is the
+artifact commit being refused by a scanner.)
 
 The patch was checked against a tree carrying `0001`-`0019` and none of this
 slice's edits, and both halves of the CMake path were exercised: applying it to

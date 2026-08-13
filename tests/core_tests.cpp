@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "devils_crush/app/native_registry.hpp"
+#include "devils_crush/core/atomic_file.hpp"
 #include "devils_crush/core/backup_ram.hpp"
 #include "devils_crush/core/high_score_table.hpp"
 #include "devils_crush/cpu/huc6280_idle_skip.hpp"
@@ -23,16 +24,25 @@
 #include "devils_crush/render/pce_sprite_overlay.hpp"
 #include "devils_crush/render/sharp_pixel_scaler.hpp"
 
+#define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
+#include <Windows.h>
+
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cstddef>
 #include <cstdlib>
 #include <filesystem>
+#include <fstream>
 #include <iostream>
+#include <iterator>
 #include <limits>
 #include <ranges>
 #include <stdexcept>
+#include <string>
 #include <string_view>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -8356,6 +8366,170 @@ void test_backup_ram_storage()
         "backup RAM test file is removed");
 }
 
+// The atomic replace every recorder ends with, against the thing that was
+// actually interfering with it.
+//
+// This reproduces the suite's own intermittent failure rather than a model of
+// it. A second handle is opened with no sharing at all, which is what a malware
+// scanner does to a file in the moment after it is closed, and `MoveFileEx` is
+// refused for exactly as long as that handle is open. Under `-j 24` this landed
+// about once per full Release run, on a different regression every time, and
+// read as nondeterminism in the port until the captured message turned out to
+// name an I/O error on a file instead of a mismatch in anything.
+//
+// **Which of the two files is held decides the error, and the suite's error
+// names the source.** Holding the temporary gives ERROR_SHARING_VIOLATION and
+// holding the destination gives ERROR_ACCESS_DENIED; every failure captured
+// from the suite was error 32, so what the scanner had open was the artifact
+// this process had just written and closed, not the one it was replacing. That
+// is the expected shape -- a freshly written file is exactly what an on-close
+// scan is for -- and it is worth pinning, because the destination case was the
+// intuitive guess and it is the wrong one. Both are covered below since both
+// are absorbed.
+void test_atomic_commit()
+{
+    using devils_crush::core::commit_replacement;
+    using devils_crush::core::is_transient_commit_error;
+
+    check(
+        is_transient_commit_error(ERROR_SHARING_VIOLATION)
+            && is_transient_commit_error(ERROR_ACCESS_DENIED)
+            && is_transient_commit_error(ERROR_LOCK_VIOLATION)
+            && is_transient_commit_error(ERROR_USER_MAPPED_FILE),
+        "the errors another process can stop causing are retried");
+    check(
+        !is_transient_commit_error(ERROR_FILE_NOT_FOUND)
+            && !is_transient_commit_error(ERROR_PATH_NOT_FOUND)
+            && !is_transient_commit_error(ERROR_DISK_FULL)
+            && !is_transient_commit_error(ERROR_SUCCESS),
+        "an error that says the replace itself was wrong is not retried");
+
+    const auto directory = std::filesystem::current_path();
+    const auto destination = directory / "dc-core-tests-commit.bin";
+    auto source = destination;
+    source += ".tmp";
+
+    const auto write_file = [](const std::filesystem::path& path,
+                               const std::string_view contents) {
+        std::ofstream output(path, std::ios::binary | std::ios::trunc);
+        output.write(
+            contents.data(),
+            static_cast<std::streamsize>(contents.size()));
+        output.flush();
+        return static_cast<bool>(output);
+    };
+    const auto read_file = [](const std::filesystem::path& path) {
+        std::ifstream input(path, std::ios::binary);
+        return std::string(
+            std::istreambuf_iterator<char>(input),
+            std::istreambuf_iterator<char>());
+    };
+    // Open a file the way a scanner does: read access and no sharing, so a
+    // replace involving it is refused until this handle closes.
+    const auto hold = [](const std::filesystem::path& path) {
+        return CreateFileW(
+            path.c_str(),
+            FILE_READ_DATA,
+            0U,
+            nullptr,
+            OPEN_EXISTING,
+            FILE_ATTRIBUTE_NORMAL,
+            nullptr);
+    };
+
+    std::error_code error;
+    (void)std::filesystem::remove(destination, error);
+    error.clear();
+    (void)std::filesystem::remove(source, error);
+
+    check(write_file(source, "first"), "commit source is written");
+    const auto fresh = commit_replacement(source, destination);
+    check(
+        fresh.committed && fresh.retries == 0 && fresh.last_error == 0U,
+        "an uncontended commit succeeds on the first attempt");
+    check(read_file(destination) == "first", "the committed bytes are there");
+    check(
+        !std::filesystem::exists(source),
+        "a committed source no longer exists under its temporary name");
+
+    // The defect itself: the temporary is held, and let go part way through the
+    // wait. The commit has to survive the refusals and then land.
+    check(write_file(source, "second"), "contended commit source is written");
+    HANDLE holder = hold(source);
+    check(holder != INVALID_HANDLE_VALUE, "the temporary is held open");
+    std::thread release([holder]() {
+        std::this_thread::sleep_for(std::chrono::milliseconds(250));
+        CloseHandle(holder);
+    });
+    const auto contended = commit_replacement(source, destination);
+    release.join();
+    check(contended.committed, "a contended commit still lands");
+    check(
+        contended.retried()
+            && contended.last_error == ERROR_SHARING_VIOLATION,
+        "a contended commit reports the sharing violation it waited out");
+    check(
+        read_file(destination) == "second",
+        "the contended commit published its own bytes");
+
+    // The other side of the same race, which reports a different error and is
+    // absorbed just the same.
+    check(write_file(source, "third"), "destination-held source is written");
+    HANDLE destination_holder = hold(destination);
+    check(
+        destination_holder != INVALID_HANDLE_VALUE,
+        "the destination is held open");
+    std::thread destination_release([destination_holder]() {
+        std::this_thread::sleep_for(std::chrono::milliseconds(250));
+        CloseHandle(destination_holder);
+    });
+    const auto denied = commit_replacement(source, destination);
+    destination_release.join();
+    check(denied.committed, "a commit against a held destination still lands");
+    check(
+        denied.retried() && denied.last_error == ERROR_ACCESS_DENIED,
+        "a held destination is refused with access denied, not sharing");
+    check(
+        read_file(destination) == "third",
+        "the destination-held commit published its own bytes");
+
+    // The same contention with no budget to wait it out is the behavior this
+    // replaced, and it is exactly what the suite was failing on.
+    check(write_file(source, "fourth"), "unbudgeted commit source is written");
+    holder = hold(source);
+    check(holder != INVALID_HANDLE_VALUE, "the temporary is held open again");
+    const auto refused = commit_replacement(source, destination, 0);
+    check(
+        !refused.committed && refused.retries == 0
+            && refused.last_error == ERROR_SHARING_VIOLATION,
+        "a single attempt against a held temporary fails as it always did");
+
+    // A budget that expires gives up rather than hanging, and still says why.
+    const auto expired = commit_replacement(source, destination, 40);
+    check(
+        !expired.committed && expired.retried()
+            && expired.last_error == ERROR_SHARING_VIOLATION,
+        "a commit that outlasts its budget fails with the reason");
+    CloseHandle(holder);
+    check(
+        read_file(destination) == "third",
+        "a refused commit leaves the previous artifact whole");
+
+    // Nothing this process can wait out: the source does not exist.
+    error.clear();
+    (void)std::filesystem::remove(source, error);
+    const auto missing = commit_replacement(source, destination);
+    check(
+        !missing.committed && missing.retries == 0
+            && missing.last_error == ERROR_FILE_NOT_FOUND,
+        "a commit with no source fails immediately rather than waiting");
+
+    error.clear();
+    check(
+        std::filesystem::remove(destination, error) && !error,
+        "commit test file is removed");
+}
+
 void test_high_score_table()
 {
     using devils_crush::core::HighScoreTable;
@@ -9746,6 +9920,7 @@ int main()
     test_pce_sprite_overlay();
     test_save_state_container();
     test_backup_ram_storage();
+    test_atomic_commit();
     test_high_score_table();
     test_idle_skip();
     test_pce_pad();

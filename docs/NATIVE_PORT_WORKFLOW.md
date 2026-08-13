@@ -130,16 +130,23 @@ cabinet configuration and the high-score autosave are all reached from the
 interactive host only. Keep it that way: a new regression writing a shared
 path under a fixed name would reintroduce the need to run serially.
 
-**One caveat, recorded rather than explained.** In the first two full parallel
-runs, one test — `dc_rom_knight_terminal_release_helper_post_return_scratch_-
-clear_prefix` — failed once and then passed both in isolation and on a
-re-run of the whole suite. That is one failure in roughly eight hundred test
-executions, with no shared path found to account for it and no captured error
-text. Treat an isolated failure under `-j` as unconfirmed until it reproduces:
-re-run the single test before believing it. If it recurs, the things worth
-suspecting first are I/O contention on the larger trace artifacts and CMake's
-`execute_process` output capture under memory pressure, neither of which has
-been ruled in or out.
+**The caveat this section used to carry has been explained and fixed.** For
+eight runs after the switch to `-j 24`, roughly one test per full Release run
+failed, never the same one and never reproducible alone. It was not
+nondeterminism in anything under test: every captured message said
+`Could not commit <artifact>; Windows error 32`, a sharing violation raised
+*after* the route had run and every replacement had matched its entry count.
+The recorders write `<path>.tmp` and replace `<path>` at the end, and a scanner
+opens the temporary in the moment after it is closed, so the replace was
+refused by another process's housekeeping. `commit_replacement` in
+`devils_crush::core` now retries that replace while the refusal is one another
+process can stop causing, and prints a line naming the artifact and the wait
+whenever it absorbs one. See `test_atomic_commit` for the reproduction, which
+takes the same handle a scanner takes.
+
+An isolated failure under `-j` is still worth re-running alone before believing
+it. **Read the message first**: a commit failure names a file and is
+infrastructure, while a hash mismatch names an artifact and is not.
 
 Do not run the two configurations at once against the same build directory.
 Release and Debug tests share `CMAKE_CURRENT_BINARY_DIR` for their artifacts,
@@ -2609,6 +2616,40 @@ replacement reported its entry count, and only the atomic replace failed. It
 passed on its own immediately afterwards. Two different tests with the same
 signature is enough to stop reading it as a property of either — the artifact
 commit itself is what is racing something outside the suite.
+
+**Fixed on 2026-08-13, and the diagnosis above was right.** A fourth instance
+was captured deliberately — `dc_rom_knight_terminal_release_helper_post_return_-
+position_high_scratch_add_prefix`, `Could not commit State census recording;
+Windows error 32`, at `-j 24` — which made four instances across four unrelated
+regressions with one message between them. `devils_crush::core::commit_replacement`
+now performs the replace, and retries while the refusal is one that another
+process can stop causing: ERROR_SHARING_VIOLATION, ERROR_ACCESS_DENIED,
+ERROR_LOCK_VIOLATION and ERROR_USER_MAPPED_FILE, on a doubling backoff inside a
+five-second budget. Anything else fails on the first attempt as before, and so
+does a transient that outlasts the budget, so a genuine permissions failure
+still fails inside the same run rather than hanging it. All fifteen commit
+sites go through it.
+
+**Which file the scanner holds was measured rather than assumed, and the
+intuitive answer is wrong.** A handle on the *destination* is refused with
+ERROR_ACCESS_DENIED; only a handle on the *temporary* gives error 32. Every
+message from the suite was error 32, so what the scanner had open was the
+artifact the process had just written and closed — which is what an on-close
+scan is for — and not the older file being replaced. `test_atomic_commit` in
+the ROM-free core suite pins both, by opening the same no-sharing handle a
+scanner opens and releasing it part way through the wait.
+
+When a commit absorbs a wait it says so on stdout, naming the artifact, the
+retries and the error — but **do not expect to see that line after a green
+run, and do not read its absence as evidence the race stopped happening.** Each
+verify script captures the recorder's output into an `execute_process`
+`OUTPUT_VARIABLE`, and CTest surfaces that only when the test fails, so an
+absorbed wait is swallowed by the same capture that would have shown the
+failure. Five clean full runs after the fix are 2,055 test executions without a
+commit failure, against roughly one per run before it; that is the outcome
+evidence. The mechanism evidence is `test_atomic_commit`, which is
+deterministic. To watch an absorption directly, run a recorder command by hand
+rather than through CTest.
 
 ## Future acceleration work
 

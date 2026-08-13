@@ -42,6 +42,7 @@ add_library(
     src/cabinet/cabinet_state.cpp
     src/cabinet/display_config.cpp
     src/cabinet/dmd_layout.cpp
+    src/core/atomic_file.cpp
     src/core/backup_ram.cpp
     src/core/high_score_table.cpp
     src/cpu/huc6280_idle_skip.cpp

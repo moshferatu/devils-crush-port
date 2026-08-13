@@ -6,6 +6,7 @@
 #include "devils_crush/cabinet/cabinet_state.hpp"
 #include "devils_crush/cabinet/display_config.hpp"
 #include "devils_crush/cabinet/dmd_layout.hpp"
+#include "devils_crush/core/atomic_file.hpp"
 #include "devils_crush/core/high_score_table.hpp"
 #include "devils_crush/core/rom_image.hpp"
 #include "devils_crush/core/save_state.hpp"
@@ -3747,6 +3748,37 @@ void print_validation(const devils_crush::rom::ValidationResult& result)
     return true;
 }
 
+// Publish a finished artifact over its own name, and say so when the replace
+// had to wait for something else to let go of the file.
+//
+// Every recorder here writes to `<path>.tmp` and replaces `<path>` at the end,
+// so the artifact a regression hashes is either the whole of the last run or
+// the whole of the previous one, never half of either. The replace is the only
+// step in a recording that another process can refuse: see
+// `devils_crush::core::commit_replacement` for what does the refusing. The
+// retried-success line exists because absorbing the wait silently would leave
+// no way to tell a suite that never races from one that races and recovers.
+[[nodiscard]] bool commit_artifact(
+    const std::filesystem::path& temporary_path,
+    const std::filesystem::path& path,
+    const std::string_view label)
+{
+    const auto commit =
+        devils_crush::core::commit_replacement(temporary_path, path);
+    if (!commit.committed) {
+        std::cerr << "Could not commit " << label << "; Windows error "
+                  << commit.last_error << " after " << commit.retries
+                  << " retries.\n";
+        return false;
+    }
+    if (commit.retried()) {
+        std::cout << "Committed " << label << " after " << commit.retries
+                  << " retries; Windows error " << commit.last_error
+                  << ".\n";
+    }
+    return true;
+}
+
 [[nodiscard]] bool save_quick_state(
     const PceRuntime& runtime,
     const std::filesystem::path& path)
@@ -3800,12 +3832,7 @@ void print_validation(const devils_crush::rom::ValidationResult& result)
         }
     }
 
-    if (!MoveFileExW(
-            temporary_path.c_str(),
-            path.c_str(),
-            MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
-        std::cerr << "Could not commit quick-state file; Windows error "
-                  << GetLastError() << ".\n";
+    if (!commit_artifact(temporary_path, path, "quick-state file")) {
         return false;
     }
 
@@ -5858,12 +5885,7 @@ bool write_pcm16_wave_header(
         std::cerr << "Could not finalize routine trace.\n";
         return false;
     }
-    if (!MoveFileExW(
-            temporary_path.c_str(),
-            path.c_str(),
-            MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
-        std::cerr << "Could not commit routine trace; Windows error "
-                  << GetLastError() << ".\n";
+    if (!commit_artifact(temporary_path, path, "routine trace")) {
         return false;
     }
 
@@ -6031,21 +6053,13 @@ bool write_pcm16_wave_header(
         std::cerr << "Could not finalize routine-call trace outputs.\n";
         return false;
     }
-    if (!MoveFileExW(
-            writes_temporary_path.c_str(),
-            writes_path.c_str(),
-            MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
-        std::cerr
-            << "Could not commit routine-write trace; Windows error "
-            << GetLastError() << ".\n";
+    if (!commit_artifact(
+            writes_temporary_path,
+            writes_path,
+            "routine-write trace")) {
         return false;
     }
-    if (!MoveFileExW(
-            temporary_path.c_str(),
-            path.c_str(),
-            MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
-        std::cerr << "Could not commit routine-call trace; Windows error "
-                  << GetLastError() << ".\n";
+    if (!commit_artifact(temporary_path, path, "routine-call trace")) {
         return false;
     }
 
@@ -6128,13 +6142,7 @@ bool write_pcm16_wave_header(
         std::cerr << "Could not finalize work-RAM write trace.\n";
         return false;
     }
-    if (!MoveFileExW(
-            temporary_path.c_str(),
-            path.c_str(),
-            MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
-        std::cerr
-            << "Could not commit work-RAM write trace; Windows error "
-            << GetLastError() << ".\n";
+    if (!commit_artifact(temporary_path, path, "work-RAM write trace")) {
         return false;
     }
 
@@ -6216,13 +6224,7 @@ bool write_pcm16_wave_header(
         std::cerr << "Could not finalize bus write trace.\n";
         return false;
     }
-    if (!MoveFileExW(
-            temporary_path.c_str(),
-            path.c_str(),
-            MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
-        std::cerr
-            << "Could not commit bus write trace; Windows error "
-            << GetLastError() << ".\n";
+    if (!commit_artifact(temporary_path, path, "bus write trace")) {
         return false;
     }
 
@@ -6631,12 +6633,7 @@ void report_pad_coverage(
         std::cerr << "Could not finalize instruction profile.\n";
         return false;
     }
-    if (!MoveFileExW(
-            temporary_path.c_str(),
-            path.c_str(),
-            MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
-        std::cerr << "Could not commit instruction profile; Windows error "
-                  << GetLastError() << ".\n";
+    if (!commit_artifact(temporary_path, path, "instruction profile")) {
         return false;
     }
 
@@ -6711,13 +6708,7 @@ void report_pad_coverage(
         std::cerr << "Could not finalize native cycle census.\n";
         return false;
     }
-    if (!MoveFileExW(
-            temporary_path.c_str(),
-            path.c_str(),
-            MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
-        std::cerr
-            << "Could not commit native cycle census; Windows error "
-            << GetLastError() << ".\n";
+    if (!commit_artifact(temporary_path, path, "native cycle census")) {
         return false;
     }
 
@@ -7162,13 +7153,7 @@ public:
             std::cerr << "Could not finalize table VRAM census.\n";
             return false;
         }
-        if (!MoveFileExW(
-                temporary_path.c_str(),
-                path.c_str(),
-                MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
-            std::cerr
-                << "Could not commit table VRAM census; Windows error "
-                << GetLastError() << ".\n";
+        if (!commit_artifact(temporary_path, path, "table VRAM census")) {
             return false;
         }
 
@@ -7557,41 +7542,31 @@ int run_deterministic_recording(
             return EXIT_FAILURE;
         }
     }
-    if (!MoveFileExW(
-            temporary_path.c_str(),
-            path.c_str(),
-            MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
-        std::cerr << "Could not commit " << plan.label
-                  << " recording; Windows error "
-                  << GetLastError() << ".\n";
+    if (!commit_artifact(
+            temporary_path,
+            path,
+            std::string(plan.label) + " recording")) {
         return EXIT_FAILURE;
     }
     if (!work_ram_path.empty()
-        && !MoveFileExW(
-            work_ram_temporary_path.c_str(),
-            work_ram_path.c_str(),
-            MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
-        std::cerr << "Could not commit work-RAM recording; Windows error "
-                  << GetLastError() << ".\n";
+        && !commit_artifact(
+            work_ram_temporary_path,
+            work_ram_path,
+            "work-RAM recording")) {
         return EXIT_FAILURE;
     }
     if (!framebuffer_path.empty()
-        && !MoveFileExW(
-            framebuffer_temporary_path.c_str(),
-            framebuffer_path.c_str(),
-            MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
-        std::cerr << "Could not commit framebuffer recording; Windows error "
-                  << GetLastError() << ".\n";
+        && !commit_artifact(
+            framebuffer_temporary_path,
+            framebuffer_path,
+            "framebuffer recording")) {
         return EXIT_FAILURE;
     }
     if (!audio_path.empty()
-        && !MoveFileExW(
-            audio_temporary_path.c_str(),
-            audio_path.c_str(),
-            MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
-        std::cerr << "Could not commit " << plan.label
-                  << " audio; Windows error "
-                  << GetLastError() << ".\n";
+        && !commit_artifact(
+            audio_temporary_path,
+            audio_path,
+            std::string(plan.label) + " audio")) {
         return EXIT_FAILURE;
     }
 
@@ -8291,11 +8266,20 @@ struct HighScoreAutosave {
     return autosave;
 }
 
-void store_high_scores(HighScoreAutosave& autosave)
+// `commit_budget_milliseconds` is zero for the caller in the frame loop. A
+// commit refused because something else has the file open is worth waiting out
+// where the alternative is losing the write, but this caller does not face that
+// alternative: a failed store stays pending, the poll below comes back twice a
+// second, and the flush at shutdown gets the last word. Waiting there would buy
+// nothing and be seen as a dropped frame.
+void store_high_scores(
+    HighScoreAutosave& autosave,
+    const int commit_budget_milliseconds)
 {
     const auto result = devils_crush::backup::save_atomic(
         autosave.path,
-        devils_crush::core::encode_high_score_table(autosave.last));
+        devils_crush::core::encode_high_score_table(autosave.last),
+        commit_budget_milliseconds);
     if (result.saved) {
         autosave.pending = false;
         autosave.settled_samples = 0;
@@ -8384,7 +8368,7 @@ void poll_high_scores(
     if (!autosave.pending || ++autosave.settled_samples < kSettledSamples) {
         return;
     }
-    store_high_scores(autosave);
+    store_high_scores(autosave, 0);
 }
 
 void flush_high_scores(HighScoreAutosave& autosave)
@@ -8392,7 +8376,9 @@ void flush_high_scores(HighScoreAutosave& autosave)
     if (!autosave.table_seen || !autosave.pending) {
         return;
     }
-    store_high_scores(autosave);
+    store_high_scores(
+        autosave,
+        devils_crush::core::kDefaultCommitBudgetMilliseconds);
 }
 
 int run_windows_host(
