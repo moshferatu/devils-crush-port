@@ -41,8 +41,15 @@ Full SDL host:
 ```powershell
 cmake --preset windows-vs2022
 cmake --build --preset windows-debug
-ctest --preset windows-debug
+ctest --preset windows-release
 ```
+
+> **`ctest --preset windows-debug` is the full Debug ROM sweep** — 219 tests,
+> about 25 minutes at 24 jobs and several hours serial. It is a release
+> checkpoint, not a build check, so the line above runs the Release suite
+> instead. For the cheap Debug tests use `ctest --preset windows-core-debug`
+> from the core-only build. (The `cmake --build` preset of the same name is a
+> different thing and is only a compile.)
 
 For normal native-port iterations, use the Release build and the owning
 family's targeted ROM regression, plus the ROM-free tests in both

@@ -174,10 +174,38 @@ struct ReplacementCheckpoint {
         const ReplacementCheckpoint&) const = default;
 };
 
+// An `RTS` a transcript ended past rather than in front of.
+//
+// The core needs nothing from this. The pop is already in `output_registers`
+// and the caller's address is already `return_instruction`, which is why the
+// technique needed no core change to work. The routine-call observer does need
+// it: its only completion signal is an emulated `RTS` boundary at the frame the
+// call was entered on, and an absorbed return deletes the boundary it is
+// watching for. Without this the call stays open until some ancestor returns at
+// the same stack pointer, and is then reported with that ancestor's return
+// address, its cycle and every write in between.
+//
+// Declaring the return here lets the observer finish the call where the
+// assembly finished it, so a trace taken over a transcript that absorbs its
+// return is the trace that was taken over the routine that did not.
+struct AbsorbedReturn {
+    RoutineKey instruction;
+    // Where the return instruction's own boundary sits inside the transaction:
+    // the start of the `RTS`, not the end of it.
+    std::uint32_t master_cycle_offset = 0;
+    // The state at that boundary, so before the pop -- the stack pointer still
+    // names the frame the call was entered on, which is what the observer
+    // matches against.
+    CpuRegisters registers;
+
+    [[nodiscard]] bool operator==(const AbsorbedReturn&) const = default;
+};
+
 struct RoutineReplacement {
-    // The core advances to this routine's outer RTS after applying the
-    // transaction. The RTS itself remains emulated, preserving stack and
-    // caller-return behavior.
+    // Where the core resumes after applying the transaction. A transcript that
+    // stops in front of its own RTS names that RTS here and leaves it to be
+    // emulated; one that ends past it names the caller instead and declares the
+    // return in `absorbed_returns` below.
     RoutineKey return_instruction;
     CpuRegisters output_registers;
     std::uint32_t body_master_cycles = 0;
@@ -192,6 +220,10 @@ struct RoutineReplacement {
     // advances one checkpoint at a time so original interrupt handlers can
     // preempt and return between native segments.
     std::vector<ReplacementCheckpoint> checkpoints;
+    // The returns this transcript ended past rather than in front of, in the
+    // order it passed them: its own, and any it absorbed on behalf of a routine
+    // it composed. Empty for a transcript that stops before its RTS.
+    std::vector<AbsorbedReturn> absorbed_returns;
 };
 
 using ReplacementHookCallback = std::function<

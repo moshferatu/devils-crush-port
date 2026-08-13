@@ -256,6 +256,28 @@ class BeetlePceRuntime final : public PceRuntime {
         std::vector<ActiveRoutineCall> active_calls;
     };
 
+    // An `RTS` a transaction has declared it will run past, waiting for the
+    // machine to arrive at the far side of it.
+    struct PendingAbsorbedReturn {
+        RoutineKey instruction;
+        CpuRegisters registers;
+        // The address and stack pointer the return lands on. Together they are
+        // the signal that it has happened: no other boundary in the routine
+        // reaches the caller's address with the caller's frame restored.
+        std::uint16_t resume_logical_pc = 0;
+        std::uint8_t resume_stack_pointer = 0;
+        // Master cycles from the return instruction's boundary to the end of
+        // the transaction, which is how far back the boundary sits from the one
+        // that recognises it.
+        std::uint32_t trailing_master_cycles = 0;
+        // Where the return falls if the transaction runs to its end
+        // uninterrupted, which is what the interrupted-at-the-end case needs:
+        // there the machine leaves for the vector without ever standing on the
+        // resume address, so the cycle cannot be measured back from it.
+        std::uint64_t absolute_master_cycle = 0;
+        std::uint32_t master_cycle = 0;
+    };
+
 public:
     BeetlePceRuntime()
     {
@@ -2779,6 +2801,13 @@ private:
         };
 
         try {
+            // Returns a transcript ended past rather than in front of are
+            // closed here, at the first boundary after them, because that is
+            // the first moment their writes have been delivered.
+            if (!runtime->pending_absorbed_returns_.empty()) {
+                runtime->complete_absorbed_calls(*state);
+            }
+
             std::vector<std::pair<RoutineCallCallback, RoutineCall>>
                 completed_calls;
 
@@ -2873,6 +2902,204 @@ private:
             runtime->callback_failed_ = true;
             dc_beetle_clear_instruction_hook();
             dc_beetle_clear_memory_write_hook();
+        }
+    }
+
+    // Remember the return a transaction is about to absorb, so the call it ends
+    // can be closed when the machine arrives on the far side of it.
+    //
+    // The ordinary completion path is an emulated `RTS` boundary in
+    // `instruction_hook_callback`, matched by stack pointer. A transcript that
+    // ends past its own return deletes that boundary, so without this the call
+    // stays open and is later closed by an ancestor's `RTS` at the same stack
+    // pointer -- reported with that ancestor's return address, its cycle, and
+    // every write made in between.
+    //
+    // The call this will close was opened moments ago by the instruction hook
+    // at this same boundary: the core runs that hook first and the replacement
+    // hook second, so the frame is already registered.
+    void stage_absorbed_returns(
+        const dc_beetle_cpu_state& state,
+        const RoutineReplacement& result)
+    {
+        if (result.absorbed_returns.empty()
+            || routine_call_observers_.empty()) {
+            return;
+        }
+        for (const auto& absorbed : result.absorbed_returns) {
+            pending_absorbed_returns_.push_back({
+                .instruction = absorbed.instruction,
+                .registers = absorbed.registers,
+                .resume_logical_pc =
+                    result.return_instruction.logical_pc,
+                .resume_stack_pointer =
+                    result.output_registers.stack_pointer,
+                .trailing_master_cycles = result.body_master_cycles
+                    - absorbed.master_cycle_offset,
+                .absolute_master_cycle = state.absolute_master_cycle
+                    + absorbed.master_cycle_offset,
+                .master_cycle = state.master_cycle
+                    + absorbed.master_cycle_offset,
+            });
+        }
+    }
+
+    // Close the call whose absorbed return the machine has just landed on the
+    // far side of.
+    //
+    // Waiting for a boundary rather than closing inside the replacement hook is
+    // what makes the row match the emulated one. A call carries the writes made
+    // inside it and a transaction's writes are delivered by the core after the
+    // hook returns, so closing early would report the routine as having written
+    // nothing.
+    //
+    // Waiting for *this* boundary rather than simply the next one is what makes
+    // preemption come out right. An interrupt that lands on a checkpoint
+    // suspends the transcript rather than cancelling it: the handler runs, and
+    // the remaining checkpoints are applied when it returns. So the return
+    // happens, but hundreds of cycles after the transaction began, and the next
+    // boundary after the hook is the handler's first instruction. Recognising
+    // the return by where it lands instead of when it was due keeps both
+    // endings right, and keeps the reported cycle the real one -- measured back
+    // from here rather than forward from a prediction.
+    void complete_absorbed_calls(const dc_beetle_cpu_state& state)
+    {
+        // An interrupt delivered at the end of a transcript takes the resume
+        // address off it and goes to the vector, so the machine never stands on
+        // that address and the plain test above would not fire until the
+        // handler returned -- charging the call the whole handler. It is
+        // recognisable from the frame the interrupt has just pushed: three
+        // bytes below the returned-to stack pointer, carrying the address the
+        // return produced.
+        const auto interrupt_took_the_return =
+            [&state, this](const PendingAbsorbedReturn& pending) {
+                const auto* const work_ram = work_ram_data();
+                if (work_ram == nullptr || state.mpr[1] != 0xF8U
+                    || state.stack_pointer
+                        != static_cast<std::uint8_t>(
+                            pending.resume_stack_pointer - 3U)) {
+                    return false;
+                }
+                const auto low_offset = static_cast<std::uint16_t>(
+                    0x100U
+                    | static_cast<std::uint8_t>(
+                        pending.resume_stack_pointer - 1U));
+                const auto high_offset = static_cast<std::uint16_t>(
+                    0x100U | pending.resume_stack_pointer);
+                const auto stacked = static_cast<std::uint16_t>(
+                    std::to_integer<std::uint8_t>(work_ram[low_offset])
+                    | (static_cast<std::uint16_t>(
+                           std::to_integer<std::uint8_t>(
+                               work_ram[high_offset]))
+                       << 8U));
+                return stacked == pending.resume_logical_pc;
+            };
+
+        bool measured_from_here = true;
+        auto arrived = std::find_if(
+            pending_absorbed_returns_.begin(),
+            pending_absorbed_returns_.end(),
+            [&state](const PendingAbsorbedReturn& pending) {
+                return pending.resume_logical_pc == state.logical_pc
+                    && pending.resume_stack_pointer
+                        == state.stack_pointer;
+            });
+        if (arrived == pending_absorbed_returns_.end()) {
+            arrived = std::find_if(
+                pending_absorbed_returns_.begin(),
+                pending_absorbed_returns_.end(),
+                interrupt_took_the_return);
+            measured_from_here = false;
+        }
+        if (arrived == pending_absorbed_returns_.end()) {
+            return;
+        }
+        const auto absorbed = *arrived;
+        pending_absorbed_returns_.erase(arrived);
+
+        // Where the deleted boundary was. The emulated observer reported the
+        // `RTS` instruction's own cycle, which is this one less the cost of the
+        // return. When the interrupt took the return instead, this boundary is
+        // past the vector sequence and the transcript's own reckoning is the
+        // closer one.
+        const auto return_absolute_master_cycle = measured_from_here
+            ? state.absolute_master_cycle - absorbed.trailing_master_cycles
+            : absorbed.absolute_master_cycle;
+
+        // The same instant on the emulator's own clock, which is not the same
+        // arithmetic. `master_cycle` is a slice timestamp and restarts every
+        // time the core is re-entered, so counting back from this boundary is
+        // only right while both ends are inside one slice. A return that lands
+        // in the last cycles of a slice is recognised at the first boundary of
+        // the next, and subtracting there measures against the wrong origin --
+        // 03:7F80 does this twice on the census route, reporting 9 where the
+        // emulated observer reported 176,064. So the slice origin is recovered
+        // from the absolute clock, which never restarts, and the transcript's
+        // own reckoning is used only when the return is behind that origin
+        // entirely, where no arithmetic on this slice's clock can reach it.
+        const auto slice_start_absolute_master_cycle =
+            state.absolute_master_cycle - state.master_cycle;
+        const auto return_master_cycle =
+            return_absolute_master_cycle >= slice_start_absolute_master_cycle
+                ? static_cast<std::uint32_t>(
+                      return_absolute_master_cycle
+                      - slice_start_absolute_master_cycle)
+                : static_cast<std::uint32_t>(
+                      absorbed.master_cycle
+                      + (return_absolute_master_cycle
+                         - absorbed.absolute_master_cycle));
+
+        std::vector<std::pair<RoutineCallCallback, RoutineCall>>
+            completed_calls;
+        for (auto& registration : routine_call_observers_) {
+            auto& active_calls = registration.active_calls;
+            for (auto active = active_calls.begin();
+                 active != active_calls.end();) {
+                if (active->entry_stack_pointer
+                    != absorbed.registers.stack_pointer) {
+                    ++active;
+                    continue;
+                }
+
+                auto& call = active->call;
+                call.return_instruction = absorbed.instruction;
+                call.output_registers = absorbed.registers;
+                call.return_master_cycle = return_master_cycle;
+                call.return_absolute_master_cycle =
+                    return_absolute_master_cycle;
+                call.body_master_cycles =
+                    return_absolute_master_cycle
+                    - call.entry.absolute_master_cycle;
+                // The transcript resumed where the `RTS` would have landed, so
+                // the return address needs no second reading off the stack --
+                // which is just as well, because by now an interrupt may have
+                // pushed its own over it.
+                call.return_pc = absorbed.resume_logical_pc;
+                call.caller_pc =
+                    static_cast<std::uint16_t>(call.return_pc - 3U);
+                // A call's writes are the ones it made, and recognising the
+                // return after the fact means a few can arrive in between --
+                // when an interrupt takes the return, the three bytes of its
+                // own frame. The emulated observer closed at the `RTS` and
+                // never saw them.
+                std::erase_if(
+                    call.work_ram_writes,
+                    [return_absolute_master_cycle](
+                        const ObservedMemoryWrite& write) {
+                        return write.absolute_master_cycle
+                            > return_absolute_master_cycle;
+                    });
+
+                completed_calls.emplace_back(
+                    registration.observer.callback,
+                    std::move(call));
+                active = active_calls.erase(active);
+            }
+        }
+        for (const auto& [callback, call] : completed_calls) {
+            if (callback) {
+                callback(call);
+            }
         }
     }
 
@@ -2974,6 +3201,25 @@ private:
                     "Replacement hook returned an incomplete checkpoint "
                     "transcript.");
             }
+
+            // A declared return has to be the one this transcript ends on. That
+            // is the only shape the observer can recognise, because the signal
+            // it waits for is the transaction's own resume: an interior return,
+            // absorbed on behalf of a routine this one composed, lands at an
+            // address the machine passes through without ever stopping on.
+            for (const auto& absorbed : result.absorbed_returns) {
+                if (result.absorbed_returns.size() > 1U
+                    || absorbed.master_cycle_offset
+                        >= result.body_master_cycles
+                    || static_cast<std::uint8_t>(
+                           absorbed.registers.stack_pointer + 2U)
+                        != result.output_registers.stack_pointer) {
+                    throw std::runtime_error(
+                        "Replacement hook returned an invalid absorbed "
+                        "return.");
+                }
+            }
+            runtime->stage_absorbed_returns(*state, result);
 
             core_result->resume_logical_pc =
                 result.return_instruction.logical_pc;
@@ -3485,6 +3731,7 @@ private:
     std::unique_ptr<InstructionProfile> instruction_profile_;
     std::vector<ExecutionHook> execution_hooks_;
     std::vector<RoutineCallRegistration> routine_call_observers_;
+    std::vector<PendingAbsorbedReturn> pending_absorbed_returns_;
     WorkRamWriteCallback work_ram_write_observer_;
     BusWriteCallback bus_write_observer_;
     std::array<

@@ -16,19 +16,19 @@ Release state-census route (`--native-cycle-census`, measured 2026-08-12):
 | | |
 | --- | ---: |
 | Elapsed master cycles | 1,292,371,731 |
-| Native master cycles | 671,640,741 |
-| **Native share** | **51.97%** |
-| **Native share of cycles outside the idle spin loop** | **94.53%** |
+| Native master cycles | 673,091,757 |
+| **Native share** | **52.08%** |
+| **Native share of cycles outside the idle spin loop** | **94.74%** |
 | Routines installed | 369 of 369 |
 | Routines entered | 302 |
 | Calls run natively | 2,665,426 of 2,704,004 entered |
 | Calls declined at an interrupt horizon | 0 |
-| Transcripts installed inside a suspended transcript | 295,164 |
+| Transcripts installed inside a suspended transcript | 295,740 |
 | Deepest simultaneous suspension | 3 of a permitted 4 |
 | Replacements refused for depth | 0 |
 
 The resulting state census is byte-identical to the assembly-only
-baseline (`9036a9de…`), so that 51.97% is faithful, not merely running.
+baseline (`9036a9de…`), so that 52.08% is faithful, not merely running.
 The last three rows matter because the host credits a native call when
 it *offers* one. A replacement the core then refused would inflate the
 share silently, and a refusal count of zero is what rules that out.
@@ -459,15 +459,26 @@ packed nine-bit GRB in a shadow buffer at `$27B9`-`$2BB8`, marks the blocks
 it changed in `$2CCC`-`$2CEB`, and `00:EB30` pushes the dirty ones out to
 the VCE ports once a frame. Five routines are now native, reached through
 seven registered addresses, and they are the port's first move into the
-video paths:
+video paths. They are also where transcripts stopped handing their `RTS`
+back to the core: **every walk here ends past its own return**, which is
+worth 14,369 returns and 301,749 master cycles on this route and is
+described under *Absorbing the return* below.
 
-| Address | What it is | Native calls | Master cycles |
+| Address | What it is | Native calls | Native master cycles |
 | --- | --- | ---: | ---: |
-| `00:EB30` + `00:EB4D` | The upload: dirty blocks out to the VCE, and the whole-palette arm either side of its `TIA` | 3,599 and 29, both of both | 6,874,431 |
-| `00:E9B6` | Block interpolator: one crossfade step over sixteen colours | 672 | 6,548,946 |
-| `00:EBA5` | Block stager: a 32-byte copy plus the dirty flags | 1,121 | 2,629,866 |
-| `00:E93C` | The sixteen-bit compare the fade drivers branch on | 8,969 | 758,370 |
-| `00:EAA7` | Fade-to-black stepper: one step over all thirty-two blocks | 8, in 101 chunks | 1,652,520 |
+| `00:EB30` + `00:EB4D` | The upload: dirty blocks out to the VCE, and the whole-palette arm either side of its `TIA` | 3,599 and 29, both of both | 8,010,945 |
+| `00:E9B6` | Block interpolator: one crossfade step over sixteen colours | 672 | 6,563,058 |
+| `00:EBA5` | Block stager: a 32-byte copy plus the dirty flags | 1,121 | 2,653,407 |
+| `00:E93C` | The sixteen-bit compare the fade drivers branch on | 8,969 | 946,719 |
+| `00:EAA7` | Fade-to-black stepper: one step over all thirty-two blocks | 8, in 101 chunks | 1,652,688 |
+
+The last column is the deployed registry's own measured credit
+(`--native-cycle-census`), not the routines' cost in an assembly-only run —
+`ROUTINE_MAP.md` and `EMULATOR_ELIMINATION.md` carry that inventory, and
+the two are close but no longer identical, because each transcript now
+carries its own return. Earlier revisions of this table quoted the
+inventory figures here and one derived `00:EB30` + `00:EB4D` total;
+all five rows are measured.
 
 The bottom four are admitted on every call, which is unusual enough to
 explain. They are leaves — no `JSR`, no device port, and nothing another
@@ -510,6 +521,90 @@ master cycles; the six instructions the split moved into transcripts are
 `00:E058` the unportable instruction was 17% of its block and splitting
 moved 640,374. Reading a wall as an instruction is always the right
 reading, but it only pays when the instruction is not itself the cost.
+
+### Absorbing the return
+
+Every transcript in the project used to stop in front of its `RTS` and let
+the core execute it. That cost 21 master cycles a call at each end, it was
+written down as an overhead of the hybrid that no amount of porting could
+remove, and it was the single largest category of remaining emulated
+cycles outside the frame-sync wait — 13.3M on this route. It was not
+structural. Three things had to hold, and all three did:
+
+- **The core does not know what routine a transcript was entered at.**
+  Nothing relates `resume_logical_pc` to the entry address, at the install
+  site or at a checkpoint; the core assigns it to `PC` and restarts its
+  loop. The host's one related check is a consistency check — the reported
+  bank must be what `output_registers.mpr[resume >> 13]` maps that segment
+  to — so a walk resolves the bank through its own MPRs rather than
+  assuming its own module's.
+- **The return address is data the entry already carries.** The stack is
+  ordinary work RAM at `$2100`-`$21FF`. `RTS` pops the low byte from
+  `$2100 + S + 1` and the high from `$2100 + S + 2` and lands on that word
+  plus one, `JSR` having pushed the address of its own last byte. Read it
+  out of the staged work RAM, put `S + 2` in `output_registers`.
+- **Interrupt delivery does not move.** The final checkpoint samples at its
+  declared offset, advances to its end, assigns the caller's address and
+  pops the frame — all before the loop reaches `DcSelectInterrupt`. So the
+  boundary after the absorbed `RTS` is a real boundary with the caller's
+  address in `PC` and `S` already popped, which is what the machine does.
+
+`RTS` is 6 cycles plus the one `LastCycle` charges after it samples: 21
+master with the interrupt sampled 3 back, needing no special `sample_back`.
+And it **emits no write**, which is what makes this checkable instead of
+merely arguable — absorbing one is not allowed to move anything in any
+trace. Nothing moved. The census, the work-RAM trace and the VCE bus trace
+are byte-identical to the stop-in-front version, in the family regression
+and in the whole-registry census, and an independent Debug run of the same
+route reproduced all three.
+
+On this family that is 14,369 returns and **+301,749 native master cycles**
+— 671,640,741 → 671,942,490, which `14,369 × 21` closes exactly. The seven
+return addresses fell from 302,628 emulated cycles to **63**: three
+executions reached by interpretation rather than through a transcript.
+
+"Not allowed to move anything in any trace" held for every trace the family
+regression takes and failed for one it does not.
+`--routine-call-trace` completes an observed call on an emulated `RTS`
+boundary, and absorbing the return deletes the boundary it waits for — so
+the call stayed open until an unrelated ancestor returned at the same stack
+pointer. `00:E93C` traced afterwards reported 8,966 calls rather than
+8,969, the first returning to `01:CAB6` after 53,486,487 cycles rather than
+to `00:F0FE` after 78, with 38,057,951 writes against a routine that makes
+12,905. A transcript now declares the return it absorbs so the host can
+close the call where the assembly closed it; the three artifacts are again
+byte-identical whether the routine is emulated, replaced, or replaced and
+absorbing, which is what `dc_rom_absorbed_return_trace` requires on every
+run. See *An absorbed return has to be declared* in
+`NATIVE_PORT_WORKFLOW.md`.
+
+One measured side effect, benign and to be expected wherever this is done
+next. Nested installs rose 295,164 → 295,258. Extending a transcript by one
+checkpoint means the instruction before the `RTS` no longer ends it, so
+there is one more boundary at which an interrupt can arrive while the
+transcript is still active, and its handler nests. Delivery lands on the
+same boundary at the same cycle either way, which is why nothing moved.
+Depth stayed at 3 of a permitted 4 and no replacement was refused.
+
+**Rolled out across bank `03`**, which was the largest remaining pool of
+emulated returns. Seven more families absorb theirs — `03:7F57`, `03:7378`,
+`03:6054`, `03:65A4`, `03:78C7`, `03:7CAF`, `03:60A6` and `03:7B7A` — taking
+the bank from 2,552,511 emulated return cycles to 1,498,290 and the route
+from 8,957,280 to 7,599,885. The registry goes 671,942,490 → 673,091,757.
+The mechanism is shared now (`detail::absorb_return`), so a family costs one
+call per arm that reaches a return, and nested installs rose 295,258 →
+295,740 with nothing refused.
+
+What is *not* a target is the more useful half of that. An emulated `RTS` can
+only be absorbed by the walk that owns it, so a bank's return ranking is not a
+work queue: `03:603E` is the second-largest row left in the bank at 137,607
+cycles and belongs to an unported parent at `03:6005`. Rank by ported owner.
+
+The `JSR` half is the same argument from the other side and is not new: a
+caller's walk that steps into the callee is composition, which `01:CB48`
+has been doing since it was written — push the frame, inline the callee's
+transcript, add two back to `S`. What that needs is a *ported caller*, so
+it is a per-family question rather than a sweep.
 
 Admitting it took a two-line widening on each side of the boundary: the
 VCE register file was added to the replacement write channel's
@@ -1349,7 +1444,7 @@ anything and the figure has been dropped rather than carried forward
 unverified.
 
 Set the idle spin loop aside and 710,482,755 cycles are the machine
-working; 671,640,741 of them, **94.53%**, now run natively.
+working; 673,091,757 of them, **94.74%**, now run natively.
 
 The breakdown below is a self-consistent snapshot taken before the
 interrupt dispatcher was split and the whole-palette arm with it, against
@@ -1511,7 +1606,7 @@ further. The timer sound driver `00:FC00` is now the single largest
 native address at 12.25% of all master cycles — it passed the collision
 sweep `01:CB48` at 7.96% and the sprite emitter `08:40DF` at 7.59% by
 taking its own epilogue — and the top five together are 31.97% of the
-machine, well over half of the 51.97% that runs natively. Most installed
+machine, well over half of the 52.08% that runs natively. Most installed
 routines are never entered on this route, and many that are entered never
 accept a call.
 

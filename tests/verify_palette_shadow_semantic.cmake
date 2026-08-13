@@ -16,7 +16,31 @@ endif()
 # once a frame.
 #
 # Five routines share one walk, and none of them calls anything, so each is a
-# straight transcript to its own RTS.
+# straight transcript that ends past its own RTS.
+#
+# That last word is this revision of the test. Every transcript used to stop in
+# front of its return and let the core execute it, on the understanding that
+# the 21 master cycles were an overhead of the hybrid rather than a target. They
+# are not. A checkpoint is an instruction boundary and the core assigns its
+# resume address straight to PC, so a boundary whose instruction is the RTS and
+# whose resume is the caller asks for no new capability; the stack is ordinary
+# work RAM at $2100, so the return address is two bytes the entry already
+# carries. This family was converted first because it is the best covered, and
+# it is worth 14,369 returns and 301,749 master cycles on this route.
+#
+# The reason that claim is checked *here* rather than by a cycle count is that
+# an RTS only reads. Absorbing one may not move a single write, a single value
+# or a single master-cycle offset, in work RAM or on the bus -- so the three
+# hashes below are the whole proof, and the stack range in particular is what
+# would catch a return address popped from the wrong slot or an S left wrong.
+#
+# "The whole proof" was overstated, and the correction is worth carrying here
+# because this file is where the claim was made. These three hashes cover
+# everything the machine does, and absorbing the return moved none of it. What
+# they do not cover is the observers, and one of them -- the routine-call trace
+# -- completes a call on the very RTS boundary this family deletes. That is
+# checked by verify_absorbed_return_trace.cmake, which traces 00:E93C emulated
+# and replaced and requires the two to agree.
 #
 #   00:E93C  the sixteen-bit compare the fade drivers branch on
 #   00:E9B6  the block interpolator, one crossfade step over sixteen colours
@@ -71,11 +95,14 @@ endif()
 # cycles per colour. The stack range $21E0-$21FF is here for the same reason it
 # is in the sequencer's regression: nothing in this slice pushes, so every stack
 # write in the trace belongs to surrounding code, and any cycle these
-# transcripts misprice moves those writes.
+# transcripts misprice moves those writes. It does double duty now that the
+# transcripts absorb their returns -- an RTS writes nothing but it does move S,
+# and an S left two too high or too low would put the next surrounding push at
+# the wrong address inside this very range.
 #
 # All three hashes are the ones the four-entry-point version of this test
-# asserted, and that is the point of the slice's verification rather than an
-# oversight. The whole-palette split is checked hardest by the bus trace: the
+# asserted, and that is the point of both this slice's verification and the
+# last one's rather than an oversight. The whole-palette split is checked hardest by the bus trace: the
 # two STZ stores it moved into a transcript go to $0402 and $0403, which are
 # inside the traced VCE range, so their values, order and master-cycle offsets
 # are pinned against assembly rather than merely their effect on the screen. The ranges above already covered every byte 00:EAA7 touches --
@@ -201,7 +228,8 @@ message(
     "sixteen-bit compare, fade-to-black stepper and VCE upload natively across "
     "14,491 admitted entries as instruction-boundary transcripts -- the "
     "stepper in thirteen chunks a call, the upload's whole-palette arm split "
-    "either side of its TIA -- with the shadow buffer, its dirty "
+    "either side of its TIA, and all 14,369 of the returns absorbed rather "
+    "than handed back -- with the shadow buffer, its dirty "
     "flags, the zero-page scratch, the stack, every VCE register write and the "
     "whole state census identical to assembly."
 )

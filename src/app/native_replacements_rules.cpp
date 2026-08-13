@@ -15,6 +15,7 @@
 
 namespace devils_crush::app::detail {
 
+using emulation::CpuRegisters;
 using emulation::ReplacementMemoryWrite;
 using emulation::RoutineEntry;
 using emulation::RoutineKey;
@@ -5716,6 +5717,19 @@ replace_knight_waiting_parent(
         checkpoint.stack_pointer + 2U);
     append_checkpoint(0x73FDU, 0x7385U, 117U, checkpoint);
     append_checkpoint(0x7385U, 0x7387U, 123U, output);
+    // Absorb the return at $7387. Only this arm reaches it: the activating arm
+    // tail-calls into the coroutine scheduler and ends wherever that ends, so
+    // it never stands on a return of its own. This walk stages its child's
+    // `JSR` frame at S and S-1 and already absorbs the child's own return at
+    // $73FD, which is the interior case the declaration does not cover -- but
+    // nothing observes 03:73D8 while this routine is replaced.
+    absorb_return(
+        replacement,
+        work_ram,
+        entry.registers.stack_pointer,
+        {0x03U, 0x7387U},
+        123U,
+        output);
     return replacement;
 }
 
@@ -6105,11 +6119,29 @@ replace_spider_appearance(
         21U);
     append_checkpoint(replacement, 0x65A4U, 0x65A7U, 21U, output);
 
+    // All three arms below meet at the `RTS` at $65BB and absorb it. The
+    // routine is a leaf -- it decrements a timer, advances an appearance index
+    // and wraps it -- so the boundary the walk ends on is the caller's, and the
+    // only thing that differs between the arms is where in the transcript the
+    // return falls.
+    const auto absorb =
+        [&entry, work_ram](
+            RoutineReplacement& replacement,
+            const std::uint32_t return_offset,
+            CpuRegisters at_return) {
+            at_return.program_counter = 0x65BBU;
+            absorb_return(
+                replacement,
+                work_ram,
+                entry.registers.stack_pointer,
+                {0x03U, 0x65BBU},
+                return_offset,
+                at_return);
+        };
+
     if (appearance.path == DC_SPIDER_APPEARANCE_WAITING) {
-        output.program_counter = 0x65BBU;
-        replacement.output_registers = output;
-        replacement.body_master_cycles = 33U;
         append_checkpoint(replacement, 0x65A7U, 0x65BBU, 33U, output);
+        absorb(replacement, 33U, output);
         return replacement;
     }
 
@@ -6139,10 +6171,8 @@ replace_spider_appearance(
     append_checkpoint(replacement, 0x65B4U, 0x65B6U, 90U, output);
 
     if (appearance.path == DC_SPIDER_APPEARANCE_ADVANCE) {
-        output.program_counter = 0x65BBU;
-        replacement.output_registers = output;
-        replacement.body_master_cycles = 102U;
         append_checkpoint(replacement, 0x65B6U, 0x65BBU, 102U, output);
+        absorb(replacement, 102U, output);
         return replacement;
     }
 
@@ -6152,11 +6182,9 @@ replace_spider_appearance(
         static_cast<std::uint16_t>(0x3980U + appearance.slot),
         0x00U,
         111U);
-    output.program_counter = 0x65BBU;
-    replacement.output_registers = output;
-    replacement.body_master_cycles = 111U;
     append_checkpoint(replacement, 0x65B6U, 0x65B8U, 96U, output);
     append_checkpoint(replacement, 0x65B8U, 0x65BBU, 111U, output);
+    absorb(replacement, 111U, output);
     return replacement;
 }
 
@@ -6326,11 +6354,28 @@ replace_tower_insect_animation(
         135U);
     append_checkpoint(replacement, 0x606BU, 0x606EU, 135U, checkpoint);
 
+    // Both arms meet at the `RTS` at $6078 and absorb it. This is a `BSR`
+    // target rather than a `JSR` one, which changes nothing here: `BSR` pushes
+    // the address of its own last byte the same way, so the return reads the
+    // same two bytes off the same two stack slots.
+    const auto absorb =
+        [&entry, work_ram](
+            RoutineReplacement& replacement,
+            const std::uint32_t return_offset,
+            CpuRegisters at_return) {
+            at_return.program_counter = 0x6078U;
+            absorb_return(
+                replacement,
+                work_ram,
+                entry.registers.stack_pointer,
+                {0x03U, 0x6078U},
+                return_offset,
+                at_return);
+        };
+
     if (animation.path == DC_TOWER_INSECT_ANIMATION_WAITING) {
-        checkpoint.program_counter = 0x6078U;
-        replacement.output_registers = checkpoint;
-        replacement.body_master_cycles = 147U;
         append_checkpoint(replacement, 0x606EU, 0x6078U, 147U, checkpoint);
+        absorb(replacement, 147U, checkpoint);
         return replacement;
     }
 
@@ -6353,10 +6398,8 @@ replace_tower_insect_animation(
         static_cast<std::uint16_t>(0x3C80U + animation.slot),
         animation.advanced_phase,
         183U);
-    checkpoint.program_counter = 0x6078U;
-    replacement.output_registers = checkpoint;
-    replacement.body_master_cycles = 183U;
     append_checkpoint(replacement, 0x6075U, 0x6078U, 183U, checkpoint);
+    absorb(replacement, 183U, checkpoint);
     return replacement;
 }
 
@@ -8223,7 +8266,17 @@ replace_bumper_hit_gate(
         15U,
         after_collision_load);
     if (gate.path == DC_BUMPER_HIT_GATE_IDLE) {
+        // Only the idle arm returns. Every other path branches into a phase
+        // handler and ends there, so $78E6 is this arm's own `RTS` and nothing
+        // else's.
         append_checkpoint(0x78CAU, 0x78E6U, 27U, output);
+        absorb_return(
+            replacement,
+            work_ram,
+            entry.registers.stack_pointer,
+            {0x03U, 0x78E6U},
+            27U,
+            output);
         return replacement;
     }
 
@@ -12902,6 +12955,13 @@ replace_tower_guard_selector(
     append_checkpoint(0x60A8U, 0x60ABU, 21U, output);
     append_checkpoint(0x60ABU, 0x60AFU, 33U, output);
     append_checkpoint(0x60AFU, 0x60B2U, 48U, output);
+    absorb_return(
+        replacement,
+        work_ram,
+        entry.registers.stack_pointer,
+        {0x03U, 0x60B2U},
+        48U,
+        output);
     return replacement;
 }
 
@@ -13648,6 +13708,18 @@ replace_fixed_marker_gate(
                 0x7BAFU, 0x7BB1U, mode_branch_cycle + 36U, checkpoint);
         }
     }
+    // The dormant arm is the only one that reaches a return. The suppressed arm
+    // stops at $7B87 and the active arm at $7BB1, both of which are ordinary
+    // instructions the core goes on to execute, not this routine's `RTS`.
+    if (!suppressed && !active) {
+        absorb_return(
+            replacement,
+            work_ram,
+            entry.registers.stack_pointer,
+            {0x03U, 0x7BDFU},
+            93U,
+            output);
+    }
     return replacement;
 }
 
@@ -14170,6 +14242,13 @@ replace_fixed_response_gate(
     append_checkpoint(0x7CB2U, 0x7CB7U, 27U, after_scene_load);
     append_checkpoint(0x7CB7U, 0x7CB9U, 39U, output);
     append_checkpoint(0x7CB9U, 0x7CBBU, 45U, output);
+    absorb_return(
+        replacement,
+        work_ram,
+        entry.registers.stack_pointer,
+        {0x03U, 0x7CBBU},
+        45U,
+        output);
     return replacement;
 }
 

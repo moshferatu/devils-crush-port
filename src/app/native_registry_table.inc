@@ -34,7 +34,7 @@ DC_ADMITTED_ROUTINE(0x00U, 0xE65CU, 3700, 3700, "verify_signed_fixed_multiply_se
 DC_ADMITTED_ROUTINE(0x00U, 0xE837U, 894, 894, "verify_signed_word_negation_semantic")
 DC_ADMITTED_ROUTINE(0x00U, 0xE8B3U, 78, 78, "verify_rng")
 DC_ADMITTED_ROUTINE(0x00U, 0xE905U, 752, 752, "verify_signed_division_semantic")
-DC_ADMITTED_ROUTINE(0x00U, 0xE93CU, 8969, 8969, "verify_palette_shadow_semantic")
+DC_ADMITTED_ROUTINE(0x00U, 0xE93CU, 8969, 8969, "verify_absorbed_return_trace +1")
 DC_ADMITTED_ROUTINE(0x00U, 0xE9B6U, 672, 672, "verify_palette_shadow_semantic")
 DC_ADMITTED_ROUTINE(0x00U, 0xEAA7U, 8, 8, "verify_palette_shadow_semantic")
 DC_ADMITTED_ROUTINE(0x00U, 0xEAB0U, 93, 93, "verify_palette_shadow_semantic")

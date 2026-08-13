@@ -117,8 +117,8 @@ prints both denominators for the same reason — see *Two shares* below.
 | bank `45` (`4000`–`4A9B`) | 5,266,590 | 0.41% | Music sequencer — the tick is **native**, chunked at its voice loop, and so is the PSG programmer `45:4142`, chunked at its channel loop; what is left is `45:4936`, the track loader `45:4BCC` and the chunk boundaries |
 | `00:E128`–`E290` | 1,289,166 | 0.10% | Interrupt epilogue and the two `RTI`s. The dispatcher at `00:E058` used to be listed here as blocked; both its halves are native now and what is left of it is the single `LDA $0000`, 129,564 cycles, whose read is the interrupt acknowledge. The handler bodies, the call wrappers and the pad reader are native |
 | `01:C0FE`–`C1B5` | 1,407,828 | 0.11% | The top-level frame loop itself — glue between calls rather than a routine |
-| `03:694A`–`6A37` | 2,721,348 | 0.21% | Collision-table interpreter — **already ported**; the `RTS` instructions and the resumption after an interrupt lands on a checkpoint, see below |
-| `00:E93C`–`EBD6` | 1,075,809 | 0.08% | Palette shadow buffer. **Not one blocked routine**: 625,095 of it is the single `TIA` at `00:EB46`, 302,628 is the `RTS` instructions every transcript in the family deliberately stops in front of, 140,037 is the two fade drivers, and the rest is chunk boundaries and interrupt resumption. See below |
+| `03:694A`–`6A37` | 2,721,348 | 0.21% | Collision-table interpreter — **already ported**; the `RTS` instructions and the resumption after an interrupt lands on a checkpoint, see below. The returns are 442,872 of it and are now known to be answerable — but not by a one-line change, because the same walk serves three composition sites that need it to stop in front of them |
+| `00:E93C`–`EBD6` | 772,635 | 0.06% | Palette shadow buffer. **Not one blocked routine**: 625,095 of it is the single `TIA` at `00:EB46`, 140,037 is the two fade drivers, 7,440 is chunk boundaries and resumption — and the `RTS` instructions, 302,628 of this row in the revision before, are now **63**. The transcripts absorb their own returns. See below |
 | `02:586F`–`5903` | 501,195 | 0.04% | Sorcerer tick — **already ported**, and both interpreter calls are now composed in line; what is left is the two bank-wrapper calls, three `RTS` instructions and resumption |
 | `01:CA84`–`CC04` | 621,648 | 0.05% | Collision frame — **already ported**, and the call into the scanner is now composed rather than emulated, see below |
 
@@ -258,11 +258,11 @@ own when the CPU does.
 is the one to watch:
 
 ```
-Registry cycles: 671636826 native of 1292371731 elapsed master cycles (51.97%)
-Registry cycles outside the frame-sync wait: 671636826 native of 710482755
-  (94.53%); the machine waited at 00:E323 for 581888976 master cycles
+Registry cycles: 673091757 native of 1292371731 elapsed master cycles (52.08%)
+Registry cycles outside the frame-sync wait: 673091757 native of 710482755
+  (94.74%); the machine waited at 00:E323 for 581888976 master cycles
   (45.02% of the route)
-Instructions interpreted: 66315525
+Instructions interpreted: 66315692
 ```
 
 The first line is true and nearly useless as a progress signal. Its
@@ -408,6 +408,17 @@ Remaining real logic, in rough order of value:
    transfer itself stays emulated and always will; 1,024 writes against a
    512-write channel is a capacity limit, and a block transfer has no interior
    instruction boundary for a chunk to stop at.
+
+   The group is also where transcripts stopped handing their returns back.
+   Every walk in it now ends *past* its own `RTS`: the stack is ordinary work
+   RAM at `$2100`, so the return address is two bytes the entry already
+   carries, and the core never relates a resume address to the entry address.
+   `RTS` emits no write, so nothing in any trace was allowed to move and
+   nothing did. That is 14,369 returns and 301,749 master cycles here, and it
+   retires the largest category that used to be filed as an unremovable
+   overhead of the hybrid — 13.3M route-wide at 21 cycles each end of every
+   native call. The `JSR` end is the same argument from the caller's side, and
+   needs a ported caller, so it goes family by family.
 
    The palette group is therefore finished for the hybrid at 18.2M of 20.6M.
 

@@ -12,10 +12,21 @@ endif()
 
 set(call_output "${OUTPUT}.calls.csv")
 set(write_output "${call_output}.writes.csv")
-# This regression runs the Debug binary, whose assembly-only census is
-# a95d0c34..., the same baseline verify_collision_consumer_semantic uses for
-# Debug. The call and write traces are identical to the Release ones.
-set(expected_census_sha256 "a95d0c343108b107d7ec1aa3c20915540d91bb08817704776531e5696ea9b5e2")
+# This regression runs the Debug binary, and its census is now the same
+# 9036a9de... the Release binary produces. It used to be a95d0c34..., the
+# Debug-only baseline a hundred-odd verify scripts still carry in a branch
+# nothing reaches -- this is the only test registered `CONFIGURATIONS Debug`,
+# so it is the only one that ever compared against it.
+#
+# The two configurations agreeing is the right answer and the old split was
+# the anomaly: a census is a record of machine state, and a build's
+# optimization level has no business moving it. The value below is checked the
+# strongest way a census baseline can be, by running the Debug binary with no
+# hooks and no replacements at all -- an assembly-only route, which no
+# transcript can reach and which produces exactly this hash.
+#
+# The call and write traces are identical to the Release ones.
+set(expected_census_sha256 "9036a9de0c3c9917f47bff8c04c136a4824ec12601fb457d260aa2dfe4443490")
 set(expected_call_sha256 "48ca8436bb293f964fb7a2f89ff441d31a6280615a6011f7b64e7685f0b41de2")
 set(expected_write_sha256 "f169bf28c1f265139e016007c85b225cb883793850e4a609b01cb1cb2313898b")
 

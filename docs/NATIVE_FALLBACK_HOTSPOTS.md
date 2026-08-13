@@ -2746,6 +2746,18 @@ actually made of:
 | `00:E94D`, `00:EA77` | 140,037 | 13% | The two fade drivers |
 | the rest | 11,529 | 1% | `00:EAA7`'s chunk boundaries, and resumption where an interrupt landed on a checkpoint |
 
+That table is the survey as it stood. The second row did not survive the next
+slice — see *The returns were not a floor* below — and the row now measures
+772,635:
+
+| | Master cycles | Share | What it is |
+| --- | ---: | ---: | --- |
+| `00:EB46` | 625,095 | 80.9% | The whole-palette `TIA`, unchanged and still the wall |
+| `00:E94D` | 138,582 | 17.9% | The crossfade driver |
+| the rest | 7,440 | 1.0% | Chunk boundaries and resumption |
+| `00:EA77` | 1,455 | 0.2% | The fade-to-black driver |
+| seven `RTS` | 63 | 0.008% | Three executions the transcripts did not absorb |
+
 Three things follow, and only one of them is a port.
 
 **The `TIA` is a capacity wall, not a semantic one, and it is the cost.** It
@@ -2763,6 +2775,57 @@ unportable instruction was 17% of its block; here it is 99.6% of its arm.
 instructions the transcripts deliberately hand back, the same convention every
 family in the port uses. An inventory row that counts emulated addresses counts
 them, and there is no reading of "blocked" under which they qualify.
+
+### The returns were not a floor
+
+The paragraph above stopped one step short. "Not blocked, it is the convention"
+is a true statement about why the cycles were there and an unexamined one about
+whether they had to be, and the convention turned out to be a habit rather than
+a constraint. **A transcript can end past its own `RTS`**, and the palette
+family is where that was established:
+
+- the core never relates a resume address to the entry address, at the install
+  site or at a checkpoint;
+- the stack is ordinary work RAM at `$2100`, so the return address is two bytes
+  the entry already carries — low at `$2100 + S + 1`, high at `$2100 + S + 2`,
+  land on that word plus one, `S` up by two;
+- and delivery is unmoved, because the final checkpoint samples, advances,
+  assigns the caller's address and pops the frame before the loop reaches
+  `DcSelectInterrupt` — the same boundary at the same cycle.
+
+`RTS` **emits no write**, which is what makes it checkable rather than merely
+arguable: nothing in a trace is allowed to move. Nothing did. All three golden
+artifacts held, in the family regression and in the whole-registry census, and
+the Debug route reproduced all three byte-for-byte. 14,369 returns absorbed,
+**+301,749 native master cycles** (671,640,741 → 671,942,490, and 14,369 × 21
+closes it exactly), and the seven return addresses fell from 302,628 cycles to
+**63** — three executions reached by interpretation rather than through a
+transcript.
+
+The lesson is narrower than "audit the conventions". It is that *the reason a
+cycle is emulated* and *whether it has to be* are two questions, and answering
+the first is not answering the second. This row had already been re-read once
+for exactly that mistake.
+
+There is a second lesson, learned a slice later. "Nothing in a trace is allowed
+to move, and nothing did" was true of every trace the family regression takes,
+and false of one it does not: `--routine-call-trace` completes a call on an
+emulated `RTS` boundary, and absorbing the return deleted the boundary it waits
+for. Traced afterwards, `00:E93C` reported its first call as returning to
+`01:CAB6` after 53,486,487 cycles rather than to `00:F0FE` after 78. A
+transcript now declares the return it absorbs so the observer can close the call
+where the assembly did; see *An absorbed return has to be declared* in
+`NATIVE_PORT_WORKFLOW.md`. Checking that a change moves nothing is only as good
+as the set of things being watched.
+
+There is a third, from the rollout that followed. Bank `03`'s eight owning
+families now absorb their returns too, taking the bank from 2,552,511 emulated
+return cycles to 1,498,290 and the route from 8,957,280 to 7,599,885 — but the
+ranking that ordered that work is not a work queue. A return is only absorbable
+by the walk that owns it, and `03:603E`, the second-largest row left in the
+bank at 137,607 cycles, belongs to a parent at `03:6005` that has never been
+transcribed. A survey of emulated `RTS` rows measures a *pool*; what is
+addressable in it is whatever already has a ported owner.
 
 **The drivers are reachable and still not worth porting, for a reason about
 evidence.** The old note — that calling the frame-sync spin at `00:E321` forces

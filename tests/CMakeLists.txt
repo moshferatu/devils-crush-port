@@ -2098,6 +2098,23 @@ if(TARGET devils_crush)
         )
 
         add_test(
+            NAME dc_rom_absorbed_return_trace
+            CONFIGURATIONS Release
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/absorbed-return-trace-v1"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_absorbed_return_trace.cmake"
+        )
+        set_tests_properties(
+            dc_rom_absorbed_return_trace
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
             NAME dc_rom_bank_call_wrappers_semantic
             CONFIGURATIONS Release
             COMMAND

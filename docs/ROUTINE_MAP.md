@@ -601,6 +601,14 @@ fade drivers are left emulated — not because they call the frame-sync spin at
 the route enters `E94D` once and `EA77` eight times, which is too few calls to
 demonstrate a transcript is state-generic.
 
+Every walk here also ends *past* its own `RTS` rather than in front of one,
+which is where that technique was established. The stack is ordinary work RAM
+at `$2100`, so the return address is two bytes the entry already carries: low
+at `$2100 + S + 1`, high at `$2100 + S + 2`, land on that word plus one, `S`
+up by two. `RTS` writes nothing, so absorbing it moves no trace — it moves
+14,369 returns and 301,749 master cycles from emulated to native, and takes
+these seven return addresses from 302,628 emulated cycles to 63.
+
 Every call to `EB30` arrives with `I` set — the upload has to land inside the
 blanking interval — which is why an 18,585-cycle transcript here costs the
 sound driver nothing, while `E9B6` at half the length costs it 1,181 entries.

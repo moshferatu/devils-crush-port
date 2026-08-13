@@ -5551,12 +5551,294 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
     `00:E94D`'s own `TII` at `00:E950` splits the same way -- and left alone
     because the route enters them once and eight times. Too few calls to prove
     a transcript is state-generic is a decline, not a block.
+- [x] Ask whether a transcript can absorb its own `RTS`. It can, and the
+  survey above had stopped one step short of finding out:
+  - [x] Establish the three things that could have made it impossible, in the
+    core rather than by argument. Nothing relates a resume address to the
+    entry address, at the install site or at a checkpoint; the host's only
+    related check is that the reported bank agrees with
+    `output_registers.mpr[resume >> 13]`. The return address is two bytes of
+    ordinary work RAM in the stack page. And the final checkpoint samples,
+    advances, assigns the caller's address and pops the frame *before* the
+    loop reaches `DcSelectInterrupt`, so delivery lands on the same boundary
+    at the same cycle.
+  - [x] Convert the palette family, the best-covered one: every walk now pops
+    the return address from `$2100 + S + 1`/`+ 2`, lands on that word plus
+    one, and reports `S + 2` -- with the bank resolved through its own MPRs,
+    because the walk no longer ends inside its own module.
+  - [x] Prove it by *absence*. `RTS` emits no write, so nothing in any trace
+    was allowed to move. The census, the work-RAM trace and the VCE bus trace
+    are byte-identical, in the family regression and under the whole registry,
+    and an independent Debug run of the route reproduced all three.
+  - [x] Measure: 14,369 returns absorbed, **+301,749 native master cycles**
+    (671,640,741 -> 671,942,490, and `14,369 x 21` closes it exactly). The
+    seven return addresses fell from 302,628 emulated cycles to **63**, and
+    the row from 1,075,809 to 772,635.
+  - [x] Strike the workflow's "call and return boundaries ... which no amount
+    of porting removes", 13.3M route-wide. The observation about `08:40DE`
+    stands; the conclusion did not.
 
 ## Active Work
 
-Current owner: Claude. Current slice: **asking the same question of the
-palette-shadow row**. Done, and the answer is mostly negative -- which is
-worth as much as the last one was, for the opposite reason.
+Current owner: Claude. Current slice: **rolling the absorbed return out across
+bank `03`**. Done, for everything in the bank that is a leaf of its own walk.
+
+Seven families, `2,552,511 -> 1,498,290` emulated master cycles in the bank and
+`8,957,280 -> 7,599,885` across the route. The deployed registry goes
+671,942,490 -> 673,091,757 native cycles, 52.08% of the route.
+
+| Return | Owner | Executions | Master cycles |
+| --- | --- | ---: | ---: |
+| `03:7F80` | `03:7F57`, no-hit collision consumer | 21,010 -> 4,518 | 441,213 -> 94,878 |
+| `03:7387` | `03:7378`, knight release transition | 10,600 -> 0 | 224,712 -> 0 |
+| `03:6078` | `03:6054`, tower insect animator | 6,750 -> 355 | 142,950 -> 7,455 |
+| `03:65BB` | `03:65A4`, spider appearance | 5,441 -> 90 | 115,557 -> 1,890 |
+| `03:78E6` | `03:78C7`, bumper hit gate | 3,457 -> 0 | 73,149 -> 0 |
+| `03:7CBB` | `03:7CAF`, fixed response gate | 2,650 -> 0 | 56,298 -> 0 |
+| `03:60B2` | `03:60A6`, tower guard selector | 2,650 -> 30 | 56,178 -> 630 |
+| `03:7BDF` | `03:7B7A`, fixed scheduler gate | 2,649 -> 332 | 56,157 -> 7,140 |
+
+What is left at each address is the arms the walk does not transcribe -- the
+consumer's two-hit path falls through to the same `RTS`, and the classifiers
+decline a handful of snapshots -- not returns the technique missed.
+
+**One edit per walk, because the mechanism is now shared.**
+`detail::absorb_return` (`native_replacements_absorb.cpp`) takes the state on
+the return instruction's own boundary and rewrites the transcript's resume,
+output registers, length and final checkpoint from it, pushing the declaration
+the observer needs. Every walk above calls it once per arm that reaches a
+return. It reads the stack from the *staged* transcript rather than from entry
+work RAM: most walks never touch the stack page, but a composition stages its
+children's `JSR` frames there, and a walk that stored over its own return
+address should fail loudly rather than quietly.
+
+**Which returns are targets is a smaller set than the ranking suggests, and
+that is the finding to carry forward.** An emulated `RTS` is only absorbable if
+it is the ending of a routine that is *already ported*. Of what remains in bank
+`03`, `03:603E` at 137,607 cycles is the second-largest row and is not a target
+at all: it is the return of the Tower-insect steady-state parent at `03:6005`,
+which composes `03:6966` and `03:6054` and has never been transcribed. Neither
+is `03:6533`. Those are blocked on a ported parent, exactly like the `JSR`
+half, and a rollout that reads only the ranking will spend its time on them.
+
+**A latent bug in the host, found by the second family and not the first.**
+`master_cycle` is a slice timestamp -- it restarts every time the core is
+re-entered -- so measuring the deleted boundary by counting back from the
+recognition boundary is only right while both are inside one slice. A return
+that lands in the last cycles of a slice is recognised at the first boundary of
+the next, and the subtraction measures against the wrong origin. `03:7F80` does
+this twice on the census route, reporting 9 where the emulated observer
+reported 176,064. The slice origin is now recovered from the absolute clock,
+which never restarts, and the transcript's own reckoning is used only when the
+return is behind that origin entirely. The palette family never straddled a
+slice, so the previous slice's regression could not have found this; the
+emulated-versus-replaced comparison in this one did, on the first family it was
+pointed at.
+
+**And a stale expectation nothing was running.** The one test registered
+`CONFIGURATIONS Debug`, `dc_rom_tower_insect_native_family_debug`, compared
+against a Debug-only census baseline `a95d0c34...` that the Debug binary no
+longer produces. It produces `9036a9de...`, the same as Release. This is not
+this slice's doing and cannot be: running the **Debug** binary with no hooks
+and no replacements at all -- an assembly-only route no transcript can reach --
+produces `9036a9de...`. The two configurations agreeing is the right answer and
+the old split was the anomaly, since a build's optimization level has no
+business moving a record of machine state. The baseline is corrected and the
+test passes in full, including its Debug-specific call and write hashes.
+
+That last point is worth more than the fix. **`03:6054`'s replay still reports
+`147 body cycles`** with its return absorbed, and its call and write traces
+hash to the values recorded before any of this -- which is the declaration
+working under a second observer (`--routine-replay`) and a second build, both
+of which this slice's own regression never touches.
+
+406/406 Release in 181.16 s, 3/3 ROM-free Debug, and the Debug family route
+above run directly. Nested installs rose 295,460 -> 295,740 as expected, three
+deep at the most, nothing refused for depth.
+
+### Previous: making the absorbed return visible to the call trace
+
+The slice that had to come before the rollout, and it exists because the
+rollout's first step found the slice before *it* had broken an instrument
+without any regression saying so.
+
+The plan was bank `03`, the largest remaining pool of emulated returns
+(2,552,511 master cycles across 120,611 executions, ranked below). The first
+target was `03:7F57`, whose own `RTS` at `03:7F80` is 441,213 of them. Reading
+its regression before changing its walk -- the fourth thing the previous slice
+said to carry across -- turned up something bigger than the target.
+
+**`--routine-call-trace` completes a call on an emulated `RTS` boundary, and
+absorbing the return deletes the boundary it waits for.** It is the observer's
+only completion signal: an instruction boundary whose opcode is `$60` at the
+stack pointer the call was entered on. With the return absorbed there is no
+such boundary, and the observer does not fail -- it waits, and closes the call
+on the next ancestor that returns at the same stack pointer.
+
+Measured on the palette family, which the previous slice had already
+converted: tracing `00:E93C` reported 8,966 calls instead of 8,969, the first
+of them returning to `01:CAB6` after 53,486,487 master cycles instead of to
+`00:F0FE` after 78, with 38,057,951 writes recorded against a routine that
+makes 12,905. Every artifact the family regression pins -- census, work-RAM
+writes, bus writes -- was byte-identical throughout. The machine was right and
+the instrument was wrong, and nothing in the suite could tell, because none of
+the 315 verify scripts that take a call trace happens to trace a palette
+routine.
+
+The control run settles what was at stake. With the replacement deployed but
+the absorption disabled, the call trace is byte-identical to the un-replaced
+run -- so the instrument had been *exact*, and the previous slice had cost
+that without knowing.
+
+**A transcript now declares the return it absorbs**, in
+`RoutineReplacement::absorbed_returns`: the return instruction, where its
+boundary sits inside the transaction, and the registers at it. The host keeps
+the observed call open and closes it when the machine is demonstrably past the
+return -- which took two recognitions, not one:
+
+- **The transcript resumed at the caller.** The next boundary stands on the
+  resume address with the caller's stack pointer restored. The return's cycle
+  is measured *back* from that boundary rather than predicted forward from the
+  transaction, which is what makes preemption right: an interrupt taken at a
+  checkpoint suspends a transcript rather than cancelling it
+  (`PushReplacementFrame`/`PopReplacementFrame`), so the return really happens
+  hundreds of cycles after the transaction predicted it.
+- **The interrupt took the return.** When delivery lands on the last
+  checkpoint the core assigns the resume address and leaves for the vector, so
+  the machine never stands on it. Recognised instead from the frame the
+  interrupt has just pushed -- three bytes below the returned-to stack pointer,
+  carrying the address the return produced -- and there the transcript's own
+  reckoning is the right cycle, because it ran to its end.
+
+Each was found by measurement rather than by reading. The first recognition
+alone left 54 of 8,969 rows wrong; adding the second left all cycle fields
+right and 54 rows carrying three extra writes each, which were the interrupt's
+own pushes arriving between the return and its recognition. A call's writes are
+now trimmed to those made at or before its return, and the return address comes
+from the transaction's resume rather than a second reading of the stack --
+because by the time the call is closed, an interrupt may have pushed its own
+frame across exactly those two bytes. That last one was a real bug, found the
+same way.
+
+**The result is exact.** Three runs of the same route -- routine emulated,
+routine replaced without absorption, routine replaced with absorption -- now
+produce byte-identical censuses, call traces and call-write traces:
+`9036a9de...`, `9818acdf...`, `6f13d0ac...`. The absorbed return is invisible
+to the instrument that watches for one.
+
+The regression is `dc_rom_absorbed_return_trace`, and it is deliberately a
+comparison rather than a recorded hash: it traces the route with `00:E93C`
+emulated and with it replaced and requires all three artifacts to agree. A
+recorded expectation could drift into agreeing with a mistake; the emulated run
+cannot. It also pins the entry count, because a comparison would pass just as
+well if the replacement never ran.
+
+The host validates the declaration: exactly one per transcript, ending that
+transcript, leaving `S` two above where the return instruction found it. That
+is narrower than what the technique can do, and deliberately so. A return
+absorbed on behalf of a *composed* routine part-way through a transcript --
+`03:7F57` has absorbed its two children's returns since it was written -- is
+not expressible, because the observer cannot recognise by arrival an address
+the machine passes through without stopping on. No regression observes a child
+while its parent is replaced, so nothing is broken today. It is a known gap,
+written down rather than papered over.
+
+406/406 Release, ROM-free Debug clean, and the determinism check the workflow
+requires when a change touches interrupt-delivery machinery: the same two runs
+under **Debug** reproduce all three artifacts byte-for-byte, so all four runs
+across both configurations agree. `dc_native_registry_manifest` went stale
+because the new test adds a second covering regression for `00:E93C`;
+regenerating fixed it, and
+regenerating also turned out to close most of the `NATIVE_REGISTRY.md` drift
+flagged below, since the previous slice had put its measurements into the
+generator as well as the doc.
+
+### Previous: absorbing the `RTS`
+
+The palette survey below decomposed its row and filed 302,628 cycles under
+"the returns every transcript hands back, by design". That was a true
+statement about *why* those cycles were emulated and an unexamined one about
+*whether they had to be*, and the convention turned out to be a habit. **A
+transcript can end past its own `RTS`.** Three things had to hold and all
+three did:
+
+- **The core does not know what routine a transcript was entered at.** Nothing
+  relates `resume_logical_pc` to the entry address, at the install site or at
+  a checkpoint -- the core assigns it to `PC` and restarts its loop. The
+  host's one related check is a consistency check: the reported bank must be
+  what `output_registers.mpr[resume >> 13]` maps that segment to
+  (`pce_runtime_beetle.cpp:2925`), so a walk resolves the bank through its own
+  MPRs instead of assuming its own module's.
+- **The return address is data the entry already carries.** The stack is
+  ordinary work RAM at `$2100`-`$21FF`. `RTS` pops the low byte from
+  `$2100 + S + 1` and the high from `$2100 + S + 2` and lands on that word
+  plus one, `JSR` having pushed the address of its own last byte.
+- **Interrupt delivery does not move.** The final checkpoint samples at its
+  declared offset, advances to its end, assigns the caller's address and pops
+  the frame -- all before the loop reaches `DcSelectInterrupt`. The boundary
+  after the absorbed `RTS` is a real boundary with the caller's address in
+  `PC` and `S` already popped, which is exactly what the machine does.
+
+`RTS` is 6 cycles plus the one `LastCycle` charges after it samples: 21 master
+with the interrupt sampled 3 back, so it needs no special `sample_back`. And
+it **emits no write** -- which is what makes this provable rather than merely
+plausible, because absorbing one is not allowed to move anything in any trace.
+
+Nothing moved. All three golden artifacts held in the family regression, the
+whole-registry census stayed `9036a9de...`, and an independent **Debug** run
+of the same route reproduced the census, the work-RAM trace and the bus trace
+byte-for-byte -- the determinism check the workflow requires when a change
+touches interrupt-delivery machinery.
+
+Measured on the palette family: **14,369 returns absorbed, +301,749 native
+master cycles**, 671,640,741 -> 671,942,490, and `14,369 x 21` closes it
+exactly. The seven return addresses fell from 302,628 emulated cycles to
+**63** -- three executions reached by interpretation rather than through a
+transcript -- and the row from 1,075,809 to 772,635:
+
+| | Master cycles | Share | What it is |
+| --- | ---: | ---: | --- |
+| `00:EB46` | 625,095 | 80.9% | The whole-palette `TIA`, still the wall |
+| `00:E94D` | 138,582 | 17.9% | The crossfade driver |
+| the rest | 7,440 | 1.0% | Chunk boundaries and resumption |
+| `00:EA77` | 1,455 | 0.2% | The fade-to-black driver |
+| seven `RTS` | 63 | 0.008% | Three executions not absorbed |
+
+One measured side effect, benign and to be expected wherever this is done
+next. Nested installs rose 295,164 -> 295,258: extending a transcript by one
+checkpoint means the instruction before the `RTS` no longer ends it, so there
+is one more boundary at which an interrupt can arrive while the transcript is
+still active, and its handler nests. Delivery lands on the same boundary at
+the same cycle either way, which is why nothing moved. Depth stayed 3 of a
+permitted 4, nothing refused.
+
+This strikes a claim `NATIVE_PORT_WORKFLOW.md` had carried for a long time:
+that call and return boundaries are "one of the hybrid's own overheads, which
+no amount of porting removes", 13.3M on this route. The observation that
+`08:40DE`-`41AB` was four `JSR`s and an `RTS` around an already-native routine
+stands. The conclusion drawn from it does not. The `JSR` half is the same
+argument from the caller's side -- composition, which `01:CB48` has been doing
+since it was written -- and needs a *ported caller*, so it goes family by
+family rather than as a sweep.
+
+405/405 Release in 163.69 s, ROM-free Debug clean. One Release run had an
+unrelated flake in `dc_rom_tower_bonus_stage_selection`, which deploys only
+`03:60F9`/`03:6136` and cannot reach this change; it passed in isolation and
+on a full re-run.
+
+**One thing left untidy, and flagged rather than fixed.**
+`docs/NATIVE_REGISTRY.md` says it is generated by
+`tools/Generate-NativeRegistry.ps1`, but the generator's hard-coded prose and
+measured figures have drifted from the committed doc across the last few
+slices -- regenerating it now would revert about nineteen hunks of hand-written
+prose. This slice put its own measurements into *both* and left the rest. The
+drift should be reconciled deliberately, in its own slice, rather than by
+whoever next runs the generator.
+
+### Previous: asking the same question of the palette-shadow row
+
+The answer was mostly negative -- which was worth as much as the dispatcher's
+was, for the opposite reason.
 
 The question `### Next` set was whether the palette row, 1,079,289 master
 cycles carried as "the two fade drivers and the whole-palette `TIA` arm,
@@ -5598,6 +5880,9 @@ row's total. The workflow now says so.
 **A quarter of the row was never blocked at all.** 302,628 cycles are `RTS`
 instructions the transcripts deliberately hand back. An inventory row that
 counts emulated addresses counts them; no reading of "blocked" covers them.
+*(This paragraph stopped one step short: it explained why those cycles were
+emulated and never asked whether they had to be. The slice above absorbs them,
+and the row's returns are now 63 cycles rather than 302,628.)*
 
 **And the fade drivers get a third verdict.** They are reachable: the old note
 that calling the frame-sync spin at `00:E321` forces a transcript across
@@ -5852,48 +6137,89 @@ does not.
 
 ### Next
 
-**Ask whether a transcript can absorb its own `RTS`.** This is where the
-palette survey points, and it is a bigger number than any routine left on the
-list. Ranking the census route's emulated instructions puts the frame-sync
-wait first, then the sound driver's `RTI`/`SEI` — both deliberate refusals —
-and then, before any routine that could be called blocked, a long tail of call
-and return linkage: `08:41AB` at 1,560,450 cycles is `08:40DF`'s `RTS`,
-`08:4094` at 1,066,632 is the `JSR` that reaches it, `00:E94C` at 189,645 is
-`00:E93C`'s. The first genuinely unportable instruction in the whole ranking is
-`00:EB46`, the palette `TIA`, at 625,095 — below four handovers.
+**Carry the rollout into bank `08`, which is now the largest pool.** The
+technique is established, the mechanism is shared, and the cost is one call to
+`absorb_return` per arm that reaches a return. Counting every `RTS` opcode the
+deployed registry still executes, excluding the rows that are themselves
+registered entries -- a registered entry's profile row carries its whole native
+body, not one return, which is worth knowing before reading any of these
+numbers:
 
-`NATIVE_PORT_WORKFLOW.md` already sizes the category at **13.3M master cycles**
-on this route, 21 at each end of every native call, and files it under "one of
-the hybrid's own overheads, which no amount of porting removes". That claim is
-the thing to test, because the same document says two hundred lines later that
-the convention is not a limit: the stack is ordinary work RAM at
-`$2100`-`$21FF`, `output_registers` carries the stack pointer, `RTS` pops and
-therefore emits no write at all, and the collision compositions have been
-writing `JSR` frames since they were written. A sweep of 227 emulated addresses
-shaped like one 7-cycle instruction run hundreds to thousands of times comes to
-15.4M; nine spot-checks were eight `RTS` and one `JSR`.
+| Bank | Executions | Master cycles |
+| --- | ---: | ---: |
+| `08` | 81,669 | **1,726,353** |
+| `02` | 77,254 | 1,636,158 |
+| `03` | 70,874 | 1,498,290 |
+| `01` | 50,016 | 1,060,104 |
+| `00` | 40,568 | 857,328 |
+| `45` | 30,529 | 644,397 |
+| `09` | 5,707 | 121,002 |
+| `07` | 2,649 | 56,253 |
+| | 359,266 | **7,599,885** |
 
-So the survey is: pick one well-covered family — the palette group is the
-obvious candidate at 302,628 cycles across six returns, all six admitted on
-every call — and try ending its transcripts *past* the `RTS` instead of in
-front of it. The walk pops the return address itself, declares the 21 cycles,
-and sets `return_instruction` to the caller. Three things to establish before
-writing any of it, because each could make the answer no:
+So `NATIVE_PORT_WORKFLOW.md`'s 13.3M was right as a *size* and wrong only as a
+verdict. What is left of the return half is still larger than any single
+routine on the list.
 
-- Whether the core's checkpoint and interrupt-horizon machinery accepts a
-  transcript that ends at an address in a different routine, and possibly a
-  different bank, from the one it was entered at.
-- What happens when the caller's return address is itself a registered entry
-  point — the vblank family's stop rule exists for exactly that collision, and
-  this would create many more of them.
-- Whether an interrupt arriving between the `RTS` and the caller's next
-  instruction is still delivered at the right boundary. This is
-  interrupt-delivery machinery, so the owning-family Debug ROM route is
-  required whatever the answer.
+**Rank by ported owner, not by cycles.** This is the one thing bank `03` taught
+that a ranking cannot show. `03:603E` is the second-largest row left in the
+bank at 137,607 cycles and is not a target: it is the return of an *unported*
+parent, and no declaration can absorb a return whose routine has no transcript.
+Sorting a bank's `RTS` rows and working down it will spend most of its time on
+rows that are really requests for a ported caller. The cheap discriminator is
+whether the address already appears in a walk as a `return_instruction`.
 
-If it works, the same move applies to the `JSR` on the other side, and the two
-together are the largest single category of remaining emulated cycles outside
-the wait.
+What remains in bank `03`, and why each is not simply another edit:
+
+| Return | Master cycles | Why it is still there |
+| --- | ---: | --- |
+| `03:6A37` + `03:6988` | 442,578 | `03:6966`, shared with three composition sites |
+| `03:603E` | 137,607 | Unported parent at `03:6005` |
+| `03:7FD1` | 110,856 | `03:7FB1`, composed by `03:7F57` |
+| `03:7F80` | 94,878 | The two-hit arm, which is not transcribed |
+| `03:6533` | 59,268 | Unported |
+
+`03:6966` is the one worth doing and is not a one-line edit. The same function
+serves the registered entry *and* three composition sites (`03:7F57`, the
+sorcerer tick, `03:73AC`), all of which require it to stop in front of its
+`RTS` and read the address off `return_instruction`. Absorbing inside the
+shared walk breaks all three. It needs a separate top-level entry that calls
+the shared interpreter and absorbs after it, which is additive and safe but is
+its own piece of work. `03:7FD1` is the same shape.
+
+What to carry across rather than rediscover:
+
+- **Read the family's regression before changing its walk.** Not for the stack
+  page — for what it observes. This is the step that turned up the broken call
+  trace two slices ago, and the step that turned up the stale Debug baseline in
+  this one.
+- **Prove it by comparison, not by hash.** Trace the family emulated and
+  replaced and require the census, the call trace and the call-write trace to
+  be byte-identical. A recorded expectation can drift into agreeing with a
+  mistake; the emulated run cannot. This is what caught the slice-clock bug,
+  and it caught it on the first family.
+- **Absorb only what the walk itself ends on.** One call per arm, at the cycle
+  the return instruction's own boundary sits on, with the registers before the
+  pop. Arms that hand over mid-routine (`03:7B7A` at `$7B87`, `03:78C7`'s phase
+  handlers) end at an ordinary instruction and absorb nothing.
+- **Expect nested installs to rise slightly** and nothing else to move. One
+  more live checkpoint per transcript means one more boundary at which an
+  interrupt can arrive while it is still active. Watch the refused-for-depth
+  counter, which stayed at zero across all seven families.
+
+**A hundred and three verify scripts still carry the stale `a95d0c34...` Debug
+census** in an `if(CONFIG STREQUAL "Debug")` branch that nothing reaches, since
+`dc_rom_tower_insect_native_family_debug` is the only test registered
+`CONFIGURATIONS Debug`. They are dead expectations rather than wrong ones, but
+they are a trap for whoever next registers a Debug test. Correcting them is
+mechanical and belongs in its own commit; the value to write is `9036a9de...`,
+which the Debug binary produces on an assembly-only route.
+
+The `JSR` half is composition, not absorption: the caller's walk steps into
+the callee, which `01:CB48` has done since it was written. It needs a *ported
+caller*, so it follows the rollout rather than leading it. When it comes, the
+composed child's absorbed return is the case the declaration deliberately does
+not yet cover.
 
 Still worth sweeping afterwards: the other rows labelled "blocked", to see how
 many are a whole routine, how many are one instruction with ordinary code

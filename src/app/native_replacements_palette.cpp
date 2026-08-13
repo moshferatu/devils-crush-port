@@ -22,7 +22,21 @@ using emulation::RoutineReplacement;
 // Five routines are ported here, reached through seven registered addresses.
 // Three are leaves in the strong sense -- no JSR, no device port, no state
 // another thread of control writes -- which is what makes them the right first
-// step into the video paths:
+// step into the video paths.
+//
+// **Every transcript here ends past its own RTS rather than in front of one,
+// and this family is where that was established.** The convention used to be
+// that a walk stopped at the return and the core executed it, which cost 21
+// master cycles a call and was written down as an overhead of the hybrid that
+// no amount of porting could remove. It is not one. A checkpoint is an
+// instruction boundary whose resume address the core simply assigns to PC, so a
+// boundary whose instruction is the RTS and whose resume is the caller needs no
+// new capability; the stack is ordinary work RAM at $2100, so the return
+// address is two bytes the entry already carries; and RTS only reads, so
+// absorbing one adds no write and moves no cycle. On this route that is 14,369
+// returns and 301,749 master cycles, and it moved no artifact of any kind --
+// the census, the work-RAM trace and the VCE bus trace are byte-identical to
+// what the stop-in-front version produced.
 //
 //   00:E93C  the sixteen-bit compare ($2F/$30 against $2D/$2E) the fade
 //            drivers use to decide whether a source pointer has run past its
@@ -83,6 +97,17 @@ constexpr std::uint8_t kNegative = 0x80U;
 constexpr std::uint16_t kWorkRamBase = 0x2000U;
 constexpr std::uint16_t kWorkRamEnd = 0x4000U;
 
+// The stack page. It is ordinary work RAM on this processor, which is the
+// whole reason a transcript can end past its own RTS rather than in front of
+// one: the return address is two bytes of memory the entry already carries.
+constexpr std::uint16_t kStackBase = 0x2100U;
+
+// RTS is six cycles plus the one LastCycle charges after it samples, so
+// twenty-one master cycles with the interrupt sampled three back -- the same
+// shape as every other instruction here, and the reason it needs no special
+// sample_back.
+constexpr std::uint32_t kReturn = 21U;
+
 // Where a 00:EAA7 chunk stops. One colour costs at most seventeen writes and
 // fifty-seven checkpoints, and the block tail past it another two and ten, so
 // a walk that decides to continue at these counts still lands inside the hard
@@ -128,9 +153,10 @@ constexpr std::size_t kCheckpointBudget = 1700U;
     return logical_pc == 0xEB46U;
 }
 
-// The RTS each entry point walks to. The transcript stops in front of it and
-// the core executes the return itself. 00:EB30 has two of them: the early
-// return it takes when nothing is dirty, and the one after the block walk.
+// The RTS each entry point walks to, and the last instruction of the
+// transcript rather than the first one after it. 00:EB30 has two of them: the
+// early return it takes when nothing is dirty, and the one after the block
+// walk.
 [[nodiscard]] constexpr bool is_return_instruction(
     const std::uint16_t logical_pc)
 {
@@ -430,17 +456,65 @@ std::optional<RoutineReplacement> replace_palette_shadow(
             return std::nullopt;
         }
 
+        // Where the transcript hands the machine back. The bank is resolved
+        // through the MPRs the transcript is declaring rather than assumed to
+        // be this module's own, because the address below is not always inside
+        // it: absorbing an RTS ends the walk at the caller, and the host
+        // requires the reported bank to be the one that segment maps to.
         const auto finish = [&](const std::uint16_t stop_pc) {
             registers.program_counter = stop_pc;
-            replacement.return_instruction = {kBank, stop_pc};
+            replacement.return_instruction = {
+                registers.mpr[stop_pc >> 13U],
+                stop_pc,
+            };
             replacement.output_registers = registers;
             replacement.body_master_cycles = cycle;
         };
 
-        // The transcript ends in front of the RTS, which the core then
-        // executes itself.
+        // The transcript ends *past* the RTS, not in front of it.
+        //
+        // Nothing new is being asked of the core here. A checkpoint is an
+        // instruction boundary and its resume address is unconstrained -- the
+        // core assigns it to PC and restarts its loop -- so a boundary whose
+        // instruction is the return and whose resume is the caller is the same
+        // shape as any other. What makes it expressible is that the stack is
+        // ordinary work RAM: RTS pops the low byte from $2100 + S + 1 and the
+        // high from $2100 + S + 2, and lands on that word plus one, JSR having
+        // pushed the address of its own last byte. Both indices wrap inside
+        // the page, and the read comes from the staged copy so that a walk
+        // which had stored into the stack would read back its own bytes.
+        //
+        // And it emits nothing. RTS only reads, so absorbing one adds no write
+        // to the trace and moves no cycle: the same twenty-one either side of
+        // the seam. What changes is only which side of it they are counted on.
         if (is_return_instruction(pc)) {
-            finish(pc);
+            const auto low = read_ram(static_cast<std::uint16_t>(
+                kStackBase
+                + static_cast<std::uint8_t>(registers.stack_pointer + 1U)));
+            const auto high = read_ram(static_cast<std::uint16_t>(
+                kStackBase
+                + static_cast<std::uint8_t>(registers.stack_pointer + 2U)));
+            const auto return_pc = static_cast<std::uint16_t>(
+                (static_cast<std::uint16_t>(high) << 8U)
+                + static_cast<std::uint16_t>(low) + 1U);
+            // Declare it before taking it. Absorbing a return deletes the
+            // instruction boundary the routine-call observer completes a call
+            // on, so a transcript that ends past its RTS has to say where that
+            // boundary would have been and what state it would have carried.
+            // The stack pointer here is the one the call was entered on, which
+            // is what the observer matches, so the snapshot has to be taken
+            // ahead of the pop.
+            auto at_return = registers;
+            at_return.program_counter = pc;
+            replacement.absorbed_returns.push_back({
+                .instruction = {kBank, pc},
+                .master_cycle_offset = cycle,
+                .registers = at_return,
+            });
+            registers.stack_pointer =
+                static_cast<std::uint8_t>(registers.stack_pointer + 2U);
+            append_checkpoint(pc, return_pc, kReturn);
+            finish(return_pc);
             return replacement;
         }
         // The whole-palette TIA. The transcript stops in front of it exactly

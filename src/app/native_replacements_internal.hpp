@@ -5,10 +5,27 @@
 #include "devils_crush/emulation/pce_runtime.hpp"
 
 #include <cstddef>
+#include <cstdint>
 #include <optional>
 #include <span>
 
 namespace devils_crush::app::detail {
+
+// End a transcript past its own `RTS` rather than in front of it.
+//
+// `at_return` is the state on the return instruction's own boundary -- the
+// program counter it sits at, and the stack pointer the call was entered on --
+// and `return_master_cycle_offset` is where that boundary falls in the
+// transcript. The transcript's resume, output registers and length are all
+// rewritten from it, and the declaration the routine-call observer needs is
+// pushed. Twenty-one master cycles per call, and no write.
+void absorb_return(
+    emulation::RoutineReplacement& replacement,
+    std::span<const std::byte> work_ram,
+    std::uint8_t entry_stack_pointer,
+    emulation::RoutineKey return_instruction,
+    std::uint32_t return_master_cycle_offset,
+    const emulation::CpuRegisters& at_return);
 
 [[nodiscard]] std::optional<emulation::RoutineReplacement>
 replace_rng_update(
@@ -1224,10 +1241,12 @@ replace_music_sequencer(
 
 // The palette shadow buffer and the VCE upload that drains it. One walk shared
 // by seven registered addresses. None of them calls anything, so nothing is
-// inlined; each stops in front of its own RTS, in front of the JMP that closes
-// 00:EAA7's colour loop when a chunk is full, or -- on 00:EB30's whole-palette
-// arm -- in front of the TIA that moves all 1,024 bytes in one instruction,
-// which the core executes before 00:EB4D resumes the arm.
+// inlined; each ends *past* its own RTS -- popping the return address out of
+// the stack page and resuming at the caller, which is where that technique was
+// established -- or in front of the JMP that closes 00:EAA7's colour loop when
+// a chunk is full, or -- on 00:EB30's whole-palette arm -- in front of the TIA
+// that moves all 1,024 bytes in one instruction, which the core executes before
+// 00:EB4D resumes the arm.
 [[nodiscard]] std::optional<emulation::RoutineReplacement>
 replace_palette_shadow(
     const emulation::RoutineEntry& entry,

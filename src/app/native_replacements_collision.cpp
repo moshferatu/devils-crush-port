@@ -3251,17 +3251,22 @@ replace_collision_consumer_no_hit(
         return std::nullopt;
     }
 
-    auto output = entry.registers;
-    output.program_counter = 0x7F80U;
-    output.accumulator = collision;
-    output.y = response->output_registers.y;
-    output.status = static_cast<std::uint8_t>(
+    // The state on the `RTS` at $7F80's own boundary. This used to be the
+    // transcript's output; it is now the instant before the return rather than
+    // the end of the walk, because the walk goes past it.
+    auto at_return = entry.registers;
+    at_return.program_counter = 0x7F80U;
+    at_return.accumulator = collision;
+    at_return.y = response->output_registers.y;
+    at_return.status = static_cast<std::uint8_t>(
         response->output_registers.status
         & static_cast<std::uint8_t>(~0x82U));
     if (collision == 0U) {
-        output.status = static_cast<std::uint8_t>(output.status | 0x02U);
+        at_return.status =
+            static_cast<std::uint8_t>(at_return.status | 0x02U);
     } else if ((collision & 0x80U) != 0U) {
-        output.status = static_cast<std::uint8_t>(output.status | 0x80U);
+        at_return.status =
+            static_cast<std::uint8_t>(at_return.status | 0x80U);
     }
 
     constexpr std::uint32_t kFirstChildOffset = 36U;
@@ -3269,16 +3274,19 @@ replace_collision_consumer_no_hit(
         kFirstChildOffset + table->body_master_cycles + 21U);
     const auto response_child_offset = static_cast<std::uint32_t>(
         second_jsr_offset + 21U);
+    const auto response_end = static_cast<std::uint32_t>(
+        response_child_offset + response->body_master_cycles);
+    // Where the `RTS` at $7F80 begins. The `BPL` at $7F63 lands on it, so this
+    // is the last boundary of the no-hit arm and what the whole transcript used
+    // to be worth.
+    const auto return_offset = static_cast<std::uint32_t>(response_end + 48U);
     RoutineReplacement replacement{
         .return_instruction = {
             .physical_bank = 0x03U,
             .logical_pc = 0x7F80U,
         },
-        .output_registers = output,
-        .body_master_cycles = static_cast<std::uint32_t>(
-            response_child_offset
-            + response->body_master_cycles
-            + 48U),
+        .output_registers = at_return,
+        .body_master_cycles = return_offset,
     };
     replacement.work_ram_writes.reserve(
         4U
@@ -3408,8 +3416,6 @@ replace_collision_consumer_no_hit(
             replacement.checkpoints.push_back(child_checkpoint);
         }
 
-        const auto response_end = static_cast<std::uint32_t>(
-            response_child_offset + response->body_master_cycles);
         auto after_response_rts = response->output_registers;
         after_response_rts.stack_pointer =
             entry.registers.stack_pointer;
@@ -3435,8 +3441,33 @@ replace_collision_consumer_no_hit(
             0x7F80U,
             response_end + 45U,
             response_end + 48U,
-            output);
+            at_return);
     }
+
+    // Absorb the return.
+    //
+    // $7F80 was the single largest emulated `RTS` left on the route -- 21,010
+    // executions and 441,213 master cycles -- and it opened the bank 03 rollout
+    // because nothing composes this routine: it is entered from the actor
+    // dispatcher and returns straight to it, so the absorbed address is a
+    // caller rather than a parent walk's next instruction. What is left at
+    // $7F80 afterwards is the two-hit arm, which falls through to the same
+    // return and is not transcribed here.
+    //
+    // The staged read the helper does earns its keep here in particular: this
+    // walk writes into the stack page itself, staging both children's `JSR`
+    // frames at S and S-1. Those sit below the return address at S+1/S+2 and so
+    // cannot reach it, but that is a fact about this routine rather than about
+    // the mechanism. It goes last because the helper closes the transcript --
+    // the resume, the output registers, the length and the final checkpoint are
+    // all its answer, and the writes have to be staged before it reads them.
+    absorb_return(
+        replacement,
+        work_ram,
+        entry.registers.stack_pointer,
+        {0x03U, 0x7F80U},
+        return_offset,
+        at_return);
     return replacement;
 }
 
