@@ -16,19 +16,19 @@ Release state-census route (`--native-cycle-census`, measured 2026-08-12):
 | | |
 | --- | ---: |
 | Elapsed master cycles | 1,292,371,731 |
-| Native master cycles | 673,091,757 |
-| **Native share** | **52.08%** |
-| **Native share of cycles outside the idle spin loop** | **94.74%** |
+| Native master cycles | 674,715,267 |
+| **Native share** | **52.21%** |
+| **Native share of cycles outside the idle spin loop** | **94.97%** |
 | Routines installed | 369 of 369 |
 | Routines entered | 302 |
 | Calls run natively | 2,665,426 of 2,704,004 entered |
 | Calls declined at an interrupt horizon | 0 |
-| Transcripts installed inside a suspended transcript | 295,740 |
+| Transcripts installed inside a suspended transcript | 296,226 |
 | Deepest simultaneous suspension | 3 of a permitted 4 |
 | Replacements refused for depth | 0 |
 
 The resulting state census is byte-identical to the assembly-only
-baseline (`9036a9de…`), so that 52.08% is faithful, not merely running.
+baseline (`9036a9de…`), so that 52.21% is faithful, not merely running.
 The last three rows matter because the host credits a native call when
 it *offers* one. A replacement the core then refused would inflate the
 share silently, and a refusal count of zero is what rules that out.
@@ -599,6 +599,17 @@ What is *not* a target is the more useful half of that. An emulated `RTS` can
 only be absorbed by the walk that owns it, so a bank's return ranking is not a
 work queue: `03:603E` is the second-largest row left in the bank at 137,607
 cycles and belongs to an unported parent at `03:6005`. Rank by ported owner.
+
+**Bank `08` then cost two edits and paid more than all eight of those.** Its
+1,726,353 cycles of emulated returns are 95% two addresses, and both belong to
+walks that were already native: `08:41AB` ends the sprite emitter `08:40DF` on
+every one of its 73,818 calls, and `08:40DE` ends the SAT tail clear `08:40C3`
+on the 3,492 of its 4,334 arrivals that run Y down rather than spend the write
+budget. The bank falls to 92,742 and the route to 5,966,274; the registry goes
+673,091,757 → 674,715,267, **52.21%** of the route and **94.97%** outside the
+frame-sync wait. The same "rank by ported owner" test explains both halves of
+the bank: everything left in it — `08:5E4C`, `08:5976`, `08:5A69` — returns
+from a routine that has no transcript.
 
 The `JSR` half is the same argument from the other side and is not new: a
 caller's walk that steps into the callee is composition, which `01:CB48`
@@ -1444,7 +1455,7 @@ anything and the figure has been dropped rather than carried forward
 unverified.
 
 Set the idle spin loop aside and 710,482,755 cycles are the machine
-working; 673,091,757 of them, **94.74%**, now run natively.
+working; 674,715,267 of them, **94.97%**, now run natively.
 
 The breakdown below is a self-consistent snapshot taken before the
 interrupt dispatcher was split and the whole-palette arm with it, against
@@ -1606,7 +1617,7 @@ further. The timer sound driver `00:FC00` is now the single largest
 native address at 12.25% of all master cycles — it passed the collision
 sweep `01:CB48` at 7.96% and the sprite emitter `08:40DF` at 7.59% by
 taking its own epilogue — and the top five together are 31.97% of the
-machine, well over half of the 52.08% that runs natively. Most installed
+machine, well over half of the 52.21% that runs natively. Most installed
 routines are never entered on this route, and many that are entered never
 accept a call.
 

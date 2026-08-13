@@ -620,8 +620,18 @@ replace_sprite_emit_run(
         return std::nullopt;
     }
 
-    replacement.output_registers = registers;
-    replacement.body_master_cycles = cycle;
+    // And then past the return itself. Every one of the 73,818 calls ends on
+    // this single `RTS`, which made it the largest emulated instruction left
+    // anywhere on the route -- 1,560,450 master cycles, more than the whole of
+    // bank `03`'s rollout put together. The routine pushes nothing, so the
+    // frame the return reads is the one the caller's `JSR` left.
+    absorb_return(
+        replacement,
+        work_ram,
+        entry.registers.stack_pointer,
+        {kRoutine.physical_bank, kReturnPc},
+        cycle,
+        registers);
     return replacement;
 }
 
@@ -1085,7 +1095,8 @@ replace_sat_submission_step(
 
 [[nodiscard]] std::optional<RoutineReplacement>
 replace_sat_tail_clear(
-    const RoutineEntry& entry)
+    const RoutineEntry& entry,
+    const std::span<const std::byte> work_ram)
 {
     // The tail of the same SAT submission `08:40DF` fills the head of. Once
     // every queued actor has been emitted, `$4E` holds the sprite count and
@@ -1098,7 +1109,7 @@ replace_sat_tail_clear(
     //   40CF STZ $0002 18   40D2 STZ $0003 18
     //   40D5 STZ $0002 18   40D8 STZ $0003 18
     //   40DB DEY        6   40DC BNE $40C3 6/12
-    //   40DE RTS            (stays emulated)
+    //   40DE RTS       21
     //
     // There is no snapshot to classify: the loop reads no memory, writes the
     // same constant every time, and is driven entirely by Y. What it does
@@ -1126,7 +1137,9 @@ replace_sat_tail_clear(
     // call in one transaction: Y is $40 - $4E and averages 33.
     constexpr std::uint16_t kMaximumIterations = 48U;
 
-    if (entry.routine != kRoutine) {
+    // The loop itself reads nothing, but the return it ends on reads the
+    // caller's frame out of the stack page.
+    if (entry.routine != kRoutine || work_ram.size() < 0x2000U) {
         return std::nullopt;
     }
     if ((entry.registers.status & kUnsupportedFlags) != 0U) {
@@ -1224,6 +1237,20 @@ replace_sat_tail_clear(
     };
     replacement.output_registers = registers;
     replacement.body_master_cycles = cycle;
+
+    // Only the arm that ran Y down to zero ends on the return. The other one
+    // spent its write budget and stops at the loop head, which is an ordinary
+    // instruction boundary the next arrival continues from -- 4,334 arrivals
+    // against 3,492 calls, and only the calls have a return to absorb.
+    if (registers.program_counter == kReturnPc) {
+        absorb_return(
+            replacement,
+            work_ram,
+            entry.registers.stack_pointer,
+            {kRoutine.physical_bank, kReturnPc},
+            cycle,
+            registers);
+    }
     return replacement;
 }
 

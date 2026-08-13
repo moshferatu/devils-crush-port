@@ -271,9 +271,11 @@ class BeetlePceRuntime final : public PceRuntime {
         // that recognises it.
         std::uint32_t trailing_master_cycles = 0;
         // Where the return falls if the transaction runs to its end
-        // uninterrupted, which is what the interrupted-at-the-end case needs:
-        // there the machine leaves for the vector without ever standing on the
-        // resume address, so the cycle cannot be measured back from it.
+        // uninterrupted. It is a prediction and a last resort: a transcript
+        // suspended part-way through ends later than this by the whole of the
+        // handler that suspended it, so both recognitions measure back from the
+        // boundary they fire on and fall back to this only when the machine
+        // gives them nothing to measure against.
         std::uint64_t absolute_master_cycle = 0;
         std::uint32_t master_cycle = 0;
     };
@@ -3019,12 +3021,38 @@ private:
 
         // Where the deleted boundary was. The emulated observer reported the
         // `RTS` instruction's own cycle, which is this one less the cost of the
-        // return. When the interrupt took the return instead, this boundary is
-        // past the vector sequence and the transcript's own reckoning is the
-        // closer one.
-        const auto return_absolute_master_cycle = measured_from_here
-            ? state.absolute_master_cycle - absorbed.trailing_master_cycles
-            : absorbed.absolute_master_cycle;
+        // return.
+        //
+        // When the interrupt took the return instead, this boundary is past the
+        // vector sequence, so the sequence has to be subtracted as well. It is
+        // eight CPU cycles, and its third and fourth push the address the
+        // return produced -- consecutive cycles of the same sequence, so the
+        // gap between those two writes is what one CPU cycle costs at whatever
+        // speed the machine is running. Measuring it rather than assuming the
+        // high speed keeps this arithmetic true of a transcript written at
+        // either.
+        //
+        // The transcript's own prediction is the fallback, and it is only a
+        // fallback: it is made when the transaction is installed and takes no
+        // account of a transcript being suspended part-way through. An
+        // interrupt inside the routine inserts the whole handler into the body,
+        // and then a second interrupt at the end recognises the return here --
+        // 08:41AB does exactly this on 58 of its 73,818 calls, where the
+        // prediction is short by the handler it never saw.
+        auto return_absolute_master_cycle =
+            state.absolute_master_cycle - absorbed.trailing_master_cycles;
+        if (!measured_from_here) {
+            const auto pushed_high = stack_page_write_cycle_
+                [absorbed.resume_stack_pointer];
+            const auto pushed_low = stack_page_write_cycle_
+                [static_cast<std::uint8_t>(
+                    absorbed.resume_stack_pointer - 1U)];
+            if (pushed_low > pushed_high) {
+                return_absolute_master_cycle -= 8U * (pushed_low - pushed_high);
+            } else {
+                return_absolute_master_cycle = absorbed.absolute_master_cycle;
+            }
+        }
 
         // The same instant on the emulator's own clock, which is not the same
         // arithmetic. `master_cycle` is a slice timestamp and restarts every
@@ -3328,6 +3356,15 @@ private:
             }
             if (write->physical_bank != 0xF8U) {
                 return;
+            }
+            // When each byte of the stack page was last written. An absorbed
+            // return that an interrupt takes rather than lands on is recognised
+            // from the frame that interrupt pushed, and these are the only
+            // record of when the push happened.
+            if ((write->logical_address & 0xFF00U) == 0x2100U) {
+                runtime->stack_page_write_cycle_
+                    [write->logical_address & 0xFFU] =
+                        write->absolute_master_cycle;
             }
             const ObservedMemoryWrite observed{
                 .instruction = {
@@ -3732,6 +3769,7 @@ private:
     std::vector<ExecutionHook> execution_hooks_;
     std::vector<RoutineCallRegistration> routine_call_observers_;
     std::vector<PendingAbsorbedReturn> pending_absorbed_returns_;
+    std::array<std::uint64_t, 0x100U> stack_page_write_cycle_{};
     WorkRamWriteCallback work_ram_write_observer_;
     BusWriteCallback bus_write_observer_;
     std::array<

@@ -733,7 +733,8 @@ hybrid's own overheads, which no amount of porting removes:
   `JSR $40DF`s and an `RTS` around a routine that was already native. The
   observation about `08:40DE` stands. The conclusion that the 21 cycles were
   structural does not. **A transcript can end past its own `RTS`**: see the
-  section below.
+  section below — and both of those two returns are now absorbed, 1,634,598
+  master cycles of the 13.3M, taken by two edits.
 - **Resumption after an interrupt.** An interrupt landing inside a transcript
   rewinds to a checkpoint and interprets the rest of the body, so a fully
   admitted routine still shows interpreted executions, climbing monotonically
@@ -827,8 +828,23 @@ return. There are two ways to be past it, and both are needed:
   checkpoint, the core assigns the resume address and goes straight to the
   vector, so the machine never stands on it. That case is recognised from the
   frame the interrupt has just pushed — three bytes below the returned-to stack
-  pointer, carrying the address the return produced — and there the
-  transcript's own reckoning is the right cycle, because it ran to its end.
+  pointer, carrying the address the return produced — and the cycle is measured
+  back from the recognising boundary here too, over the return *and* the vector
+  sequence. The sequence is eight CPU cycles, and its third and fourth push the
+  address the return produced: consecutive cycles, so the gap between those two
+  writes is what a CPU cycle costs at whatever speed the machine is running,
+  and the host measures it rather than assuming the high speed a transcript is
+  usually written at.
+
+  This case originally used the transcript's own reckoning instead, on the
+  argument that it had run to its end. That is true and not sufficient: the
+  reckoning is fixed when the transaction is installed, and a transcript long
+  enough to be *suspended* part-way through has the whole handler inserted into
+  it before it ends. `08:40DF` does both on 58 of its 73,818 calls — an
+  interrupt inside the routine and a second one at the end — and reported those
+  returns 729 cycles early, with the last sprite entry's writes missing.
+  Anything a prediction can say about when a transcript ended, a suspension can
+  falsify.
 
 Two smaller things fall out. The return address comes from the transaction's
 resume rather than a second reading of the stack, because by the time the call
@@ -838,10 +854,15 @@ because the interrupt's three pushes arrive in the gap between the return and
 its recognition, and the emulated observer never saw them.
 
 The regression is `dc_rom_absorbed_return_trace`, and it is a comparison rather
-than a recorded hash: it traces the same route with `00:E93C` emulated and with
-it replaced, and requires the census, the call trace and the call-write trace to
-be byte-identical across the two. A recorded expectation could drift into
-agreeing with a mistake; the emulated run cannot.
+than a recorded hash: it traces the same route with the routine emulated and
+with it replaced, and requires the census, the call trace and the call-write
+trace to be byte-identical across the two. A recorded expectation could drift
+into agreeing with a mistake; the emulated run cannot. It runs over two
+routines, registered as two tests so they run side by side. `00:E93C` is the
+family the technique was established on and exercises both recognitions;
+`08:40DF` is long enough to be suspended part-way through and interrupted at
+its end, which is the case neither recognition got right on its own. Point the
+script at a third when a family reaches a shape these two do not.
 
 **Before absorbing a return in a new family, check what its regression
 observes.** 315 of the verify scripts take a call trace, usually of the routine

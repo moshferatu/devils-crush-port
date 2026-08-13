@@ -258,9 +258,9 @@ own when the CPU does.
 is the one to watch:
 
 ```
-Registry cycles: 673091757 native of 1292371731 elapsed master cycles (52.08%)
-Registry cycles outside the frame-sync wait: 673091757 native of 710482755
-  (94.74%); the machine waited at 00:E323 for 581888976 master cycles
+Registry cycles: 674715267 native of 1292371731 elapsed master cycles (52.21%)
+Registry cycles outside the frame-sync wait: 674715267 native of 710482755
+  (94.97%); the machine waited at 00:E323 for 581888976 master cycles
   (45.02% of the route)
 Instructions interpreted: 66315692
 ```
@@ -768,7 +768,8 @@ Remaining real logic, in rough order of value:
    driver residue item 15 leaves deliberately). Once entry points, boundary
    instructions and interrupt resumption are separated out —
    see `docs/NATIVE_PORT_WORKFLOW.md` — nothing genuinely unported is above
-   1.6M. In order: `08:41AB` (1.56M), `01:C700`–`C77F` (1.22M),
+   1.6M. In order: `08:41AB` (1.56M — since absorbed into the sprite
+   emitter's own transcript, leaving 987), `01:C700`–`C77F` (1.22M),
    `08:4080`–`40FF` (1.20M), `01:DC80`–`DCFF` (950K), `00:E200`–`E27F` (894K),
    `03:6000`–`607F` (857K), `01:C100`–`C17F` (839K), `00:E000`–`E07F` (775K).
    That last one is the interrupt dispatcher, and it has since been split at

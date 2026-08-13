@@ -60,7 +60,7 @@ replace_native_gameplay_routine_impl(
             .physical_bank = 0x08U,
             .logical_pc = 0x40C3U,
         }) {
-        return detail::replace_sat_tail_clear(entry);
+        return detail::replace_sat_tail_clear(entry, work_ram);
     }
     // The timer-interrupt sound driver. The interrupt vector is the only way
     // into the handler, so FC00 is its one real entry point. FC82 and FD76

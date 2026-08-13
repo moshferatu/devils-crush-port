@@ -2106,11 +2106,33 @@ if(TARGET devils_crush)
                 "-DCONFIG=$<CONFIG>"
                 "-DROM=${DC_ROM_PATH}"
                 "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/absorbed-return-trace-v1"
+                "-DROUTINE=00:E93C"
                 "-P"
                 "${CMAKE_CURRENT_SOURCE_DIR}/verify_absorbed_return_trace.cmake"
         )
         set_tests_properties(
             dc_rom_absorbed_return_trace
+            PROPERTIES LABELS rom_required
+        )
+
+        # The same comparison over the sprite emitter, which is the transcript
+        # long enough to be suspended by an interrupt and then interrupted again
+        # at its end. Registered separately so the two routes run side by side.
+        add_test(
+            NAME dc_rom_absorbed_return_trace_suspended
+            CONFIGURATIONS Release
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/absorbed-return-trace-suspended-v1"
+                "-DROUTINE=08:40DF"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_absorbed_return_trace.cmake"
+        )
+        set_tests_properties(
+            dc_rom_absorbed_return_trace_suspended
             PROPERTIES LABELS rom_required
         )
 

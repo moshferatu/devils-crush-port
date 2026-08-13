@@ -2827,6 +2827,12 @@ bank at 137,607 cycles, belongs to a parent at `03:6005` that has never been
 transcribed. A survey of emulated `RTS` rows measures a *pool*; what is
 addressable in it is whatever already has a ported owner.
 
+Bank `08` then made the same point from the other end. Its 1,726,353 cycles
+were 95% two addresses, both ending walks that were already native, so two
+edits took the bank to 92,742 and the route to 5,966,274 — more than the eight
+families of bank `03` put together. The size of a bank's pool says nothing
+about the work it will take; the number of ported owners in it says everything.
+
 **The drivers are reachable and still not worth porting, for a reason about
 evidence.** The old note — that calling the frame-sync spin at `00:E321` forces
 a transcript to span twenty-one frames — is wrong in exactly the way the

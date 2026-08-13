@@ -5580,8 +5580,88 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
 
 ## Active Work
 
-Current owner: Claude. Current slice: **rolling the absorbed return out across
-bank `03`**. Done, for everything in the bank that is a leaf of its own walk.
+Current owner: Claude. Current slice: **carrying the absorbed return into bank
+`08`**. Done, and it cost two edits.
+
+Bank `08` held 1,726,353 emulated return cycles, the largest pool left, and 95%
+of it was two addresses whose walks were already native. It falls to 92,742 and
+the route to 5,966,274. The registry goes 673,091,757 -> 674,715,267 native
+cycles, **52.21%** of the route and **94.97%** of it outside the frame-sync
+wait.
+
+| Return | Owner | Executions | Master cycles |
+| --- | --- | ---: | ---: |
+| `08:41AB` | `08:40DF`, sprite emitter | 73,818 -> 47 | 1,560,450 -> 987 |
+| `08:40DE` | `08:40C3`, SAT tail clear | 3,492 -> 0 | 74,148 -> 0 |
+
+`08:41AB` was the largest single emulated instruction anywhere on the route --
+more than all eight of bank `03`'s families together. `08:40C3` absorbs on one
+arm only: 4,334 arrivals but 3,492 calls, because a run longer than the
+transcript's 48-iteration write budget stops at the loop head, which is an
+ordinary boundary the next arrival continues from and not a return.
+
+**The bank ranking says nothing about the work.** Bank `03` needed eight edits
+for 1,054,221 cycles; bank `08` needed two for 1,633,611. What predicts the
+cost is how many of a bank's returns end walks that are already ported, and
+everything left in `08` -- `08:5E4C` at 55,845, then `08:5976`, `08:5A69` --
+returns from a routine with no transcript. The cheap test is still whether the
+address already appears in a walk as a `return_instruction`.
+
+**A second host bug, and the first family that could show it.** The
+interrupted-at-the-end recognition used the transcript's own reckoning for the
+return's cycle, on the argument that the transcript had run to its end. True,
+and not sufficient: that reckoning is fixed when the transaction is installed,
+and a transcript long enough to be *suspended* has the whole interrupt handler
+inserted into it before it ends. `08:40DF` is both suspended part-way and
+interrupted at its end on 58 of its 73,818 calls, and reported those returns
+729 cycles early with the last sprite entry's six writes missing. The host now
+measures back from the recognising boundary over the return *and* the eight-CPU
+-cycle vector sequence, taking the length of a CPU cycle from the gap between
+the two bytes of the frame the interrupt just pushed -- consecutive cycles of
+that sequence -- rather than assuming the high speed. That needed one new piece
+of state: when each byte of the stack page was last written.
+
+This is the same shape as the previous slice's slice-clock bug and the same
+lesson twice: **anything a prediction says about when a transcript ended, a
+suspension can falsify.** The palette family is never suspended, so no run of
+`dc_rom_absorbed_return_trace` could have failed for this. The test now runs
+over two routines -- `00:E93C` and `08:40DF` -- registered as two tests so they
+run side by side, and the script carries each routine's expected console lines
+literally so the registry generator can still read which routines it proves.
+`08:40DF` gained a second proof from it.
+
+The regression that found it was the workflow's own rule, followed exactly:
+trace the family emulated, trace it replaced, require the census, the call
+trace and the call-write trace to be byte-identical. 58 rows of 73,818
+differed, all of them calls with an interrupt inside. Then, to be sure the
+difference was mine and not pre-existing, the same comparison was run against a
+build with the absorption removed: byte-identical to the emulated run, which is
+what made it a bug in this slice rather than a discovery about the last one.
+
+`08:40C3` cannot be compared that way -- its transcript swallows the loop the
+observer counts, so the emulated run reports 113,810 arrivals against 4,334 --
+so the comparison was done as a join on entry cycle instead: all 4,334 replaced
+arrivals match their emulated counterpart on return instruction, return cycle,
+body cycles, output registers and write count, and the 2,137 of them that write
+match write for write.
+
+**`docs/NATIVE_REGISTRY.md` is no longer reproducible from its generator.** The
+file says "Do not edit by hand" and the previous slice hand-edited it; a run
+with `-ReportPath` would now discard about 150 lines of prose that only the doc
+has. Nothing enforces it -- `dc_native_registry_manifest` checks the generated
+`.inc` and not the report -- so this slice updated the numbers in both places by
+hand to keep them level rather than regenerating. Reconciling them is
+mechanical and belongs in its own commit.
+
+407/407 Release in 180.11 s, 3/3 ROM-free Debug. The first Release run had five
+failures: `dc_native_registry_manifest`, which was the new test not yet in the
+generated table and went away when it was regenerated, and four ROM routes that
+pass individually and passed on the re-run -- flakes under parallel load rather
+than a verdict, but worth watching if they recur. Nested installs rose 295,740
+-> 296,226, three deep at the most, nothing refused. The state census is
+`9036a9de...` unchanged.
+
+### Previous: rolling the absorbed return out across bank `03`
 
 Seven families, `2,552,511 -> 1,498,290` emulated master cycles in the bank and
 `8,957,280 -> 7,599,885` across the route. The deployed registry goes
@@ -6137,37 +6217,40 @@ does not.
 
 ### Next
 
-**Carry the rollout into bank `08`, which is now the largest pool.** The
-technique is established, the mechanism is shared, and the cost is one call to
-`absorb_return` per arm that reaches a return. Counting every `RTS` opcode the
-deployed registry still executes, excluding the rows that are themselves
-registered entries -- a registered entry's profile row carries its whole native
-body, not one return, which is worth knowing before reading any of these
-numbers:
+**Carry the rollout into bank `02`, which is now the largest pool and looks
+like bank `03` rather than bank `08`.** Counting every `RTS` opcode the deployed
+registry still executes, excluding the rows that are themselves registered
+entries -- a registered entry's profile row carries its whole native body, not
+one return, which is worth knowing before reading any of these numbers:
 
 | Bank | Executions | Master cycles |
 | --- | ---: | ---: |
-| `08` | 81,669 | **1,726,353** |
-| `02` | 77,254 | 1,636,158 |
+| `02` | 77,254 | **1,636,158** |
 | `03` | 70,874 | 1,498,290 |
 | `01` | 50,016 | 1,060,104 |
 | `00` | 40,568 | 857,328 |
 | `45` | 30,529 | 644,397 |
 | `09` | 5,707 | 121,002 |
+| `08` | 4,406 | 92,742 |
 | `07` | 2,649 | 56,253 |
-| | 359,266 | **7,599,885** |
+| | 282,003 | **5,966,274** |
 
-So `NATIVE_PORT_WORKFLOW.md`'s 13.3M was right as a *size* and wrong only as a
-verdict. What is left of the return half is still larger than any single
-routine on the list.
+**Rank by ported owner, not by cycles**, and expect the two banks done so far
+to bracket what that means. Bank `03` took eight edits for 1,054,221 cycles
+because its pool was spread across eight families; bank `08` took two for
+1,633,611 because 95% of its pool was two returns of already-native walks.
+Neither number was predictable from the bank total. `03:603E`, the
+second-largest row left in bank `03` at 137,607 cycles, is still not a target:
+it is the return of an *unported* parent, and no declaration can absorb a
+return whose routine has no transcript. The cheap discriminator is whether the
+address already appears in a walk as a `return_instruction`.
 
-**Rank by ported owner, not by cycles.** This is the one thing bank `03` taught
-that a ranking cannot show. `03:603E` is the second-largest row left in the
-bank at 137,607 cycles and is not a target: it is the return of an *unported*
-parent, and no declaration can absorb a return whose routine has no transcript.
-Sorting a bank's `RTS` rows and working down it will spend most of its time on
-rows that are really requests for a ported caller. The cheap discriminator is
-whether the address already appears in a walk as a `return_instruction`.
+Bank `02`'s head looks like the spread case rather than the concentrated one --
+`02:5903` at 384,024 (the sorcerer tick), then `02:434A` at 209,088, `02:4FE1`
+at 168,438, `02:4CF1` at 123,663, and a long tail of ~50,000-cycle rows. Nine
+of the top ten addresses already appear in a walk, so most of them are probably
+one edit each; `02:526A` at 46,005 appears in none and is the shape that needs
+a ported owner first.
 
 What remains in bank `03`, and why each is not simply another edit:
 
@@ -6196,8 +6279,18 @@ What to carry across rather than rediscover:
 - **Prove it by comparison, not by hash.** Trace the family emulated and
   replaced and require the census, the call trace and the call-write trace to
   be byte-identical. A recorded expectation can drift into agreeing with a
-  mistake; the emulated run cannot. This is what caught the slice-clock bug,
-  and it caught it on the first family.
+  mistake; the emulated run cannot. This has now caught a host bug in each of
+  the last two slices, both on the first family it was pointed at.
+- **When the comparison does differ, find out whose bug it is before fixing
+  it.** Rebuild with the absorption removed and run the replaced trace again.
+  If it matches the emulated one, the difference is this slice's; if it does
+  not, the slice has found something older and the fix belongs somewhere else.
+  Two builds and two runs, and it is the difference between a fix and a guess.
+- **A walk whose transcript swallows a loop cannot be compared call for call.**
+  `08:40C3` branches back to its own entry, so the emulated observer opens a
+  call per iteration -- 113,810 against 4,334 replaced. Join the two traces on
+  entry cycle instead and compare the rows that exist in both; the swallowed
+  arrivals are the replacement working, not a discrepancy.
 - **Absorb only what the walk itself ends on.** One call per arm, at the cycle
   the return instruction's own boundary sits on, with the registers before the
   pop. Arms that hand over mid-routine (`03:7B7A` at `$7B87`, `03:78C7`'s phase
@@ -6205,10 +6298,23 @@ What to carry across rather than rediscover:
 - **Expect nested installs to rise slightly** and nothing else to move. One
   more live checkpoint per transcript means one more boundary at which an
   interrupt can arrive while it is still active. Watch the refused-for-depth
-  counter, which stayed at zero across all seven families.
+  counter, which has stayed at zero across all ten families.
+- **A long transcript is a different case from a short one.** Anything the
+  transaction predicts about its own end is falsified by a suspension, and a
+  transcript that runs for thousands of cycles will be suspended. If a family
+  is long enough to be interrupted twice, add it to
+  `dc_rom_absorbed_return_trace` rather than assuming the two routines there
+  already cover its shape.
 
-**A hundred and three verify scripts still carry the stale `a95d0c34...` Debug
-census** in an `if(CONFIG STREQUAL "Debug")` branch that nothing reaches, since
+**Two documentation debts, both mechanical and both their own commit.**
+`docs/NATIVE_REGISTRY.md` says it is generated and is no longer reproducible
+from `tools/Generate-NativeRegistry.ps1`: a run with `-ReportPath` would
+discard about 150 lines the doc has and the generator does not. Nothing
+enforces it, because `dc_native_registry_manifest` checks the generated `.inc`
+rather than the report, so the two have been drifting for at least two slices
+and are now being kept level by hand. And **a hundred and three verify scripts
+still carry the stale `a95d0c34...` Debug census** in an
+`if(CONFIG STREQUAL "Debug")` branch that nothing reaches, since
 `dc_rom_tower_insect_native_family_debug` is the only test registered
 `CONFIGURATIONS Debug`. They are dead expectations rather than wrong ones, but
 they are a trap for whoever next registers a Debug test. Correcting them is

@@ -1212,7 +1212,8 @@ replace_actor_scan_advance(
 
 [[nodiscard]] std::optional<emulation::RoutineReplacement>
 replace_sat_tail_clear(
-    const emulation::RoutineEntry& entry);
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram);
 
 [[nodiscard]] std::optional<emulation::RoutineReplacement>
 replace_sat_submission_step(
