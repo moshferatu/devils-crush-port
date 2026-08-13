@@ -6906,9 +6906,18 @@ void print_native_cycle_share(
               << share(idle->wait_master_cycles, elapsed) << "% of the route)"
               << std::defaultfloat << '\n';
 
-    // The count that says how much the host actually interpreted, which is
-    // the other thing the cycle share cannot show: fast-forwarding the wait
-    // removes instructions without removing the cycles they would have taken.
+    // Every point at which the machine decided that the next thing to happen
+    // was an instruction rather than an interrupt -- the other thing the cycle
+    // share cannot show, because fast-forwarding the wait removes those points
+    // without removing the cycles they would have taken.
+    //
+    // Not the same as "instructions the host executed", and the sound driver's
+    // interrupt return is what showed the difference: absorbing it stopped
+    // 254,603 `RTI`s being interpreted and left this figure exactly where it
+    // was, because applying a checkpoint returns to the top of the same loop
+    // and asks the same question. That is the reassuring direction -- the
+    // machine judged its interrupts at the same points either way -- but it is
+    // a count of decisions, not of interpreted work.
     const auto boundary = runtime.native_boundary_coverage();
     if (boundary) {
         std::cout << "Instructions interpreted: " << boundary->instructions

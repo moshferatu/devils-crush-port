@@ -62,11 +62,12 @@ constexpr std::uint16_t kFirstMaskPc = 0xFC81U;
 constexpr std::uint16_t kSecondMaskPc = 0xFD75U;
 constexpr std::uint16_t kFirstResumePc = 0xFC82U;
 constexpr std::uint16_t kSecondResumePc = 0xFD76U;
-// Both halves stop in front of an instruction the driver does not own: the
-// RTI that ends the interrupt, or the JMP that chains into the sequencer. A
-// timer interrupt arriving while the handler is already running takes neither
-// -- it bails out of FC2C through FC8C without touching a channel, and joins
-// the same RTI.
+// Both halves end on one of two instructions the driver does not own: the RTI
+// that ends the interrupt, which the transcript now runs, or the JMP that
+// chains into the sequencer, which it still stops in front of. A timer
+// interrupt arriving while the handler is already running takes neither on its
+// own account -- it bails out of FC2C through FC8C without touching a channel,
+// and joins the same RTI.
 constexpr std::uint16_t kFirstReturnPc = 0xFC8DU;
 constexpr std::uint16_t kSecondReturnPc = 0xFD81U;
 constexpr std::uint16_t kFirstChainPc = 0xFC89U;
@@ -138,6 +139,14 @@ std::optional<RoutineReplacement> replace_sound_timer_driver(
     // Nothing in the driver is written to run in decimal mode or under the
     // memory-operand T flag; both would change ADC/SBC and the loads.
     if ((entry.registers.status & (kDecimal | kMemory)) != 0U) {
+        return std::nullopt;
+    }
+    // The walk reads the stack out of its private copy of work RAM, which is
+    // only the stack while $2000 is the page MPR1 selects. The epilogue has
+    // pulled A, X and Y through that copy since it was written; the interrupt
+    // return below also takes the address it resumes at from it, so the
+    // assumption is stated here rather than left implied.
+    if (entry.registers.mpr[1] != 0xF8U) {
         return std::nullopt;
     }
 
@@ -279,6 +288,7 @@ std::optional<RoutineReplacement> replace_sound_timer_driver(
     };
 
     auto pc = entry.routine.logical_pc;
+    bool interrupt_returned = false;
     for (;;) {
         if (overflow
             || replacement.checkpoints.size() > 2000U
@@ -901,6 +911,41 @@ std::optional<RoutineReplacement> replace_sound_timer_driver(
             append_checkpoint(0xFC8CU, 0xFC8DU, 12U);
             pc = 0xFC8DU;
             break;
+
+        // The interrupt return, which both epilogues reach and neither owns.
+        // It is the largest single emulated instruction left on the route --
+        // 251,852 executions at FC8D and 2,751 at FD81, 5,346,663 master
+        // cycles between them -- because a transcript that stopped in front of
+        // it handed the machine back for seven cycles of stack reads.
+        //
+        // It is expressible for the same reason an absorbed `RTS` is: the
+        // stack is ordinary work RAM, so the pull is a read the walk can make
+        // like any other. It takes three bytes rather than two and lands on
+        // the address it read rather than one past it, `JSR` having stored the
+        // address of its own last byte where the interrupt sequence stores the
+        // one it was about to run.
+        //
+        // What makes it safe to publish as a checkpoint is where the core
+        // samples the mask. `SEI` is emulated a few instructions above because
+        // its P and its sample disagree, and this is the same question with
+        // the opposite answer: Beetle restores P *before* `LastCycle`, so the
+        // I flag the return produced is the one the boundary is judged on and
+        // a single status byte says both things truthfully.
+        case kFirstReturnPc:   // RTI
+        case kSecondReturnPc:  // RTI
+        {
+            const auto return_instruction_pc = pc;
+            registers.status = pull();
+            const auto low = pull();
+            const auto high = pull();
+            const auto resume = static_cast<std::uint16_t>(
+                static_cast<std::uint16_t>(low)
+                | static_cast<std::uint16_t>(high) << 8U);
+            append_checkpoint(return_instruction_pc, resume, 21U);
+            pc = resume;
+            interrupt_returned = true;
+            break;
+        }
 
         case 0xFC8EU:  // TYA
             registers.accumulator = registers.y;
@@ -2495,14 +2540,21 @@ std::optional<RoutineReplacement> replace_sound_timer_driver(
             return std::nullopt;
         }
 
-        if (pc == kFirstReturnPc || pc == kSecondReturnPc
-            || pc == kFirstChainPc || pc == kSecondChainPc
+        if (interrupt_returned || pc == kFirstChainPc || pc == kSecondChainPc
             || pc == kFirstMaskPc || pc == kSecondMaskPc) {
             break;
         }
     }
 
-    replacement.return_instruction = {kBank, pc};
+    // Resolved through the mapping the transcript is declaring rather than
+    // assumed to be this bank. Every stop but the interrupt return is an
+    // address in the driver, which MPR7 holds; the return lands wherever the
+    // machine was when the timer took it, and the host rejects a resume whose
+    // bank disagrees with the registers alongside it.
+    replacement.return_instruction = {
+        registers.mpr[pc >> 13U],
+        pc,
+    };
     replacement.output_registers = registers;
     replacement.body_master_cycles = cycle;
     if (replacement.checkpoints.empty()

@@ -654,12 +654,19 @@ Both halves of this have now been paid for.
   `PLP` and let the core execute it. Twelve master cycles a call, against a
   fault the two-run diff would otherwise have to catch every time.
 
-The general form: if an instruction changes `I`, either delay the published
-change by one checkpoint or do not cover the instruction. Do not assume a body
-is masked throughout because an interrupt sequence sets `I` on the way in —
-check. The VBlank handler is entered masked and does not stay that way, because
-bank `45` ends three critical sections with an unconditional `CLI` rather than
-restoring the caller's mask.
+The general form: if an instruction's mask sample is taken *before* it changes
+`I`, either delay the published change by one checkpoint or do not cover the
+instruction. The clause about the sample is the whole rule and it was missing
+from the first version of this note, which said simply "if an instruction
+changes `I`". In that form it reads as a ban on `RTI`, and it kept the sound
+driver's return emulated for two slices on a property `RTI` does not have:
+the core restores `P` from the stack *before* `LastCycle`, so its status byte
+and its `IFlagSample` agree and one checkpoint says both. Read the core for
+where the sample falls; do not infer it from what the opcode does to the flag.
+Do not assume a body is masked throughout because an interrupt sequence sets
+`I` on the way in — check. The VBlank handler is entered masked and does not
+stay that way, because bank `45` ends three critical sections with an
+unconditional `CLI` rather than restoring the caller's mask.
 
 The stack page is what makes this class of fault visible. A swallowed interrupt
 moves where its handler pushes, so an assembly-diff that includes `$2100`-`$21FF`
@@ -696,11 +703,18 @@ own next-target list, and one hid an eight-figure target for four slices.
 every sample the span to the next sample, and a native body produces no
 samples, so a native body's cycles land on the last instruction sampled before
 it. That is normally the entry point, but it is *any* instruction that precedes
-a native call — the `RTI` at `00:FC8D` returns into a suspended transcript and
-carried 99,636,684 cycles of other routines' work. Excluding known offenders by
-hand does not scale and does not find the ones you have not noticed. Instead
-run the same route with no replacements at all, where nothing can be absorbed,
-and take each address's true cost from there:
+a native call — the `RTI` at `00:FC8D` returned into a suspended transcript and
+carried 99,636,684 cycles of other routines' work. That address is native now,
+which moves the effect rather than removing it: the same cycles land on the
+three entries the sound driver is deployed at instead. Pricing from assembly
+does not remove it either, and that is the limit of this instrument — the same
+`00:FC8D` costs 86.5 master cycles per execution in the *assembly-only* profile
+against a real 21, so a return is over-priced by the method meant to correct
+it. For a boundary instruction, trust `--native-cycle-census` over this.
+
+Excluding known offenders by hand does not scale and does not find the ones you
+have not noticed. Instead run the same route with no replacements at all, where
+nothing can be absorbed, and take each address's true cost from there:
 
 ```
 cost = native_run_executions × (assembly_cycles ÷ assembly_executions)

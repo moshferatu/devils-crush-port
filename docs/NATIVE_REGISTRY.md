@@ -16,9 +16,9 @@ Release state-census route (`--native-cycle-census`, measured 2026-08-13):
 | | |
 | --- | ---: |
 | Elapsed master cycles | 1,292,371,731 |
-| Native master cycles | 679,286,022 |
-| **Native share** | **52.56%** |
-| **Native share of cycles outside the idle spin loop** | **95.61%** |
+| Native master cycles | 684,632,685 |
+| **Native share** | **52.97%** |
+| **Native share of cycles outside the idle spin loop** | **96.36%** |
 | Routines installed | 369 of 369 |
 | Routines entered | 302 |
 | Calls run natively | 2,665,426 of 2,704,004 entered |
@@ -28,7 +28,7 @@ Release state-census route (`--native-cycle-census`, measured 2026-08-13):
 | Replacements refused for depth | 0 |
 
 The resulting state census is byte-identical to the assembly-only
-baseline (`9036a9de…`), so that 52.56% is faithful, not merely running.
+baseline (`9036a9de…`), so that 52.97% is faithful, not merely running.
 The last three rows matter because the host credits a native call when
 it *offers* one. A replacement the core then refused would inflate the
 share silently, and a refusal count of zero is what rules that out.
@@ -58,46 +58,48 @@ routine that needs it; the list is empty and every run says so.
 
 ## Cycle budget
 
-A whole-ROM `--instruction-profile` of the same deployed route (6,389
+A whole-ROM `--instruction-profile` of the same deployed route (6,297
 executed addresses, 1,292,378,139 master cycles) shows what the
 remainder is:
 
 | Category | Master cycles | Share of all cycles | Share of working cycles |
 | --- | ---: | ---: | ---: |
-| Frame-sync spin loop (`00:E2FB`–`E39C`) | 584,757,771 | 45.25% | — |
-| Timer sound driver (`00:FC00`–`FE48`) | 177,034,446 | 13.70% | 25.02% |
-| Transcripts resumed after its RTI | 95,769,795 | 7.41% | 13.53% |
-| Music sequencer (bank `45`) | 32,952,048 | 2.55% | 4.66% |
-| Video banks (`08`, `09`) | 96,288,942 | 7.45% | 13.61% |
-| Gameplay pool | 305,575,137 | 23.64% | 43.18% |
+| Frame-sync spin loop (`00:E2FB`–`E39C`) | 568,013,451 | 43.95% | — |
+| Timer sound driver (`00:FC00`–`FE48`) | 290,447,796 | 22.47% | 40.10% |
+| — of which other routines' transcripts, resumed | 113,073,114 | 8.75% | 15.61% |
+| Music sequencer (bank `45`) | 32,945,322 | 2.55% | 4.55% |
+| Video banks (`08`, `09`) | 95,595,966 | 7.40% | 13.20% |
+| Gameplay pool | 305,375,604 | 23.63% | 42.16% |
 
 Nearly half the machine is idle: `00:E323` is `CMP $00` / `BEQ -4`,
 spinning on the VBlank counter 24.2 million times. That is the game
 waiting, not working, so it is not a porting target and it is the slack
 that absorbs anything the port makes faster.
 
-The second row needs the third to read honestly. The profile charges each
-address the span to the next instruction hook, and the driver ends in an
-`RTI` that returns into whatever the timer interrupted. When that is a
-suspended checkpointed transcript, the rest of it replays with no hook in
-between, so those cycles land on the driver's `RTI`: `00:FC8D` shows 398
-master cycles per execution against a real cost of 21. Those 95,769,795
-cycles are other routines' native bodies, already counted as native, not
-sound-driver work. Every other address in the driver profiles at a clean
-6, 12, 15, 18 or 21.
+The driver's row cannot be read without the indented one under it. The
+profile charges each address the span to the next instruction hook, and
+the driver ends by returning into whatever the timer interrupted. When
+that is a suspended checkpointed transcript, the rest of it replays with
+no hook in between, so its cycles are charged to the last driver address
+the hook saw. They are other routines' native bodies, already counted as
+native, and they are not sound-driver work.
 
-Both the second and third rows grew when the epilogue slice landed, and
-the music sequencer's row fell by about as much. Nothing moved between
-banks: carrying the driver's transcripts all the way to the `RTI`
-removed the epilogue's own hook samples, so a sequencer transcript that
-the timer suspended now replays with no sample between the `RTI` and
-itself, and its cycles land on `00:FC8D` instead of in bank `45`. The
-third row is exactly the mechanism, which is why it has to be read
-together with the second.
+Which address carries them has now moved twice, and neither move was a
+change in the machine. It used to be the sequencer's own rows, until the
+epilogue slice carried the driver's transcripts down to the `RTI`; then it
+was `00:FC8D`, the `RTI` itself, at 467 master cycles apiece against a real
+cost of 21; and now that the return is absorbed and `00:FC8D` never
+executes at all, it is `00:FC82`, `00:FD76` and `00:FC00` — the three
+transcript entries the driver is deployed at. The move is exactly
+conservative: 118,760,013 cycles left the two `RTI` rows and the same
+118,760,013 arrived on the three entry rows, to the cycle. The indented
+figure is the part of the driver's row the native cycle census does not
+attribute to the driver: 290,447,796 profiled against 175,809,837 of
+census-measured native driver body and 1,564,845 of emulated instructions,
+which is the `SEI` and nothing else that matters.
 
-The pool is the residual, so the six rows sum to the profile total exactly.
-An earlier revision quoted it 7.9M high, which made the working-cycle column
-add to 101%; the rows above are recomputed and the column now adds to 100%.
+The pool is the residual, so the five categories sum to the profile total
+exactly; the indented line is part of the row above it and is not summed.
 
 ## The sound driver
 
@@ -277,6 +279,57 @@ and track pointers, and 954,241 PSG, timer and interrupt-acknowledge
 bus writes, each carrying its own master-cycle stamp. All three are
 byte-identical, so the epilogue's stack, mapping and timing match
 the machine write for write and cycle for cycle.
+
+### The interrupt return, and the same question with the other answer
+
+The epilogue then stopped one instruction short for two more slices. Both
+halves ran down to the `RTI` and handed the machine back for it, and that
+single instruction was the largest one still emulated anywhere on the route
+outside the frame-sync wait: 251,852 executions at `00:FC8D` and 2,751 at
+`00:FD81`, **5,346,663 master cycles**, 17% of everything left outside that
+wait. It is now transcribed. The registry goes 679,286,022 -> 684,632,685
+native cycles, **52.97%** of the route and **96.36%** of it outside the wait,
+and neither address executes again.
+
+It is expressible for the reason an absorbed `RTS` is: the stack is ordinary
+work RAM at $2100, so the pull is a read the walk can make like any other. It
+differs in taking three bytes rather than two and landing on the address it
+read rather than one past it — `JSR` stores the address of its own last byte,
+the interrupt sequence stores the one it was about to run.
+
+**What makes it safe to publish is the question the `SEI` above failed, asked
+again with the opposite answer.** A checkpoint carries one status byte and the
+core takes two things from it: the `P` an interrupt taken at that boundary
+would push, and the `IFlagSample` deciding whether one may be taken there at
+all. `SEI` is emulated because those disagree. For `RTI` they cannot: Beetle
+restores `P` from the stack *before* `LastCycle()`, so the `I` flag the return
+produced is the one the boundary is judged on, and a single byte says both
+things truthfully. Two instructions a checkpoint cannot express sit ten bytes
+from one it can, and what separates them is not the opcode but where inside
+the instruction the mask is sampled.
+
+The resume is the other half. Every other transcript in the registry ends
+inside the routine that owns it, so its bank is the routine's; a return from
+an interrupt lands wherever the machine was when the timer took it, which over
+this route is a different bank on most arrivals. The declared resume therefore
+resolves its bank through the MPRs the transcript is publishing rather than
+assuming bank `00`, and the host rejects a transaction whose two halves
+disagree about that. The walk also now states the assumption it had been
+leaning on quietly since it was written — that MPR1 selects work RAM, which is
+what makes its private copy the stack — and declines rather than guesses if it
+does not. Over the census route it declined nothing: 254,990, 251,531 and
+2,758 entries, unchanged.
+
+The evidence is the same three artifacts as the epilogue slice, and it needed
+no new ones: the state census, the 1,604,764 work-RAM writes and the 954,241
+bus writes are byte-identical, and the deployed-registry census is still
+`9036a9de…`. Two counters that did not move are worth as much as the ones that
+did. Nesting stayed at 297,776 transcripts with a depth of 3 and none refused,
+so returning straight into a suspended transcript resumes it exactly as the
+emulated `RTI` did. And the instruction-boundary model reports 66,312,528
+decisions either way, to the decision — the machine judged its interrupts at
+precisely the same points, because applying a checkpoint returns to the top of
+the same loop and asks the same question an interpreted instruction does.
 
 ## The music sequencer
 
@@ -1632,7 +1685,7 @@ anything and the figure has been dropped rather than carried forward
 unverified.
 
 Set the idle spin loop aside and 710,482,755 cycles are the machine
-working; 679,286,022 of them, **95.61%**, now run natively.
+working; 684,632,685 of them, **96.36%**, now run natively.
 
 The breakdown below is a self-consistent snapshot taken before the
 interrupt dispatcher was split and the whole-palette arm with it, against
@@ -1681,8 +1734,11 @@ A native body absorbs its cycles into the last instruction sampled before
 it, because the profiler charges each sample the span to the next one and
 a replacement produces no samples. That is normally the entry point, but
 any instruction that precedes a native call is inflated the same way --
-the `RTI` at `00:FC8D` returns *into* a suspended transcript and carried
-99,636,684 cycles of other routines' work. The fix is not a blacklist:
+the `RTI` at `00:FC8D` returned *into* a suspended transcript and carried
+99,636,684 cycles of other routines' work — that address no longer executes,
+and the same cycles are now charged to the three entries the driver is
+deployed at, which is where the effect moves to rather than where it stops.
+The fix is not a blacklist:
 price each address at its executions times its cost from the
 *assembly-only* profile, where nothing is replaced and so nothing can be
 absorbed. Every leak goes at once.
@@ -1718,17 +1774,30 @@ the rest was a real 26M target nobody could see. Nesting recovered
 85,778,658 and exposed the epilogue; the epilogue slice then took
 25,180,701 of what it exposed.
 
-What is left of the driver is 6,880,569 cycles in three pieces, and
-each is left deliberately. The `RTI`s at `00:FC8D` and `00:FD81` are
-5,349,879: returning from an interrupt is the frame boundary's work,
-not a transcript's. The `SEI`s at `00:FC81` and `00:FD75` are
-1,526,046, and are the finding of that slice — see the epilogue
-section above for why a checkpoint cannot describe them. The two
-`JMP $FC03` chain exits are 4,644.
+What is left of the driver is 1,530,690 cycles in two pieces. The `SEI`s at
+`00:FC81` and `00:FD75` are 1,526,046, and are the finding of the epilogue
+slice — see that section above for why a checkpoint cannot describe them.
+The two `JMP $FC03` chain exits are 4,644.
+
+**The third piece was the `RTI`s, and this file was wrong about them.** They
+were recorded here as 5,349,879 cycles left deliberately, because "returning
+from an interrupt is the frame boundary's work, not a transcript's". That was
+an assertion and not a measurement, and it did not survive being checked: the
+transcript expresses the return exactly, and the section on it above says how.
+The census figure was 5,346,663.
+
+The instrument also over-prices a return, which is worth knowing before
+trusting one of these rows about a boundary instruction. `00:FC8D` profiles at
+86.5 master cycles per execution in the *assembly-only* run — the one whose
+whole purpose is that nothing is replaced and so nothing can be absorbed —
+against a real cost of 21. Pricing from assembly removes the leak a native
+body causes and does not remove whatever an interrupt return collects, which
+on that address is about 16.5M route-wide. The native cycle census is what
+settled the figure, and it is what should settle any row of this kind.
 
 The rest is spread thin: 32,197,371 cycles, 2.49% of the machine, of
-which the driver's deliberate 6.9M is the largest single item and
-nothing else is above 1.6M. The largest are `08:41AB` (1.56M),
+which the driver's deliberate 1.53M is now one of the largest single items
+and nothing is above 1.6M. The largest are `08:41AB` (1.56M),
 `01:C700`-`C77F` (1.22M), `08:4080`-`40FF` (1.20M), `01:DC80`-`DCFF`
 (950K), `00:E200`-`E27F` (894K), `03:6000`-`607F` (857K),
 `01:C100`-`C17F` (839K) and `00:E000`-`E07F` (775K).

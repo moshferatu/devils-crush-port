@@ -112,8 +112,8 @@ prints both denominators for the same reason — see *Two shares* below.
 | Region | Master cycles | Share | What it is |
 | --- | ---: | ---: | --- |
 | `00:E2B7`–`E39C` | 584,758,197 | 45.25% | **Waiting, not work.** The frame-sync spin: the loop is `00:E321`–`E32B` (584,453,517) and all but 204,123 of *that* is the two-instruction wait at `00:E323`/`00:E325`. This row is the one entry in the table that is not a porting target and never was — the game is waiting for the raster, and there is no computation in the waiting to move. It is **done** as far as this document is concerned: phase 3 advances the machine through it rather than executing it, so 21,077,517 of the 24,248,940 turns are no longer interpreted. The cycles remain, because the wait is real machine time; what is gone is the cost of simulating it. The rest of the region is the colour encoder's initialiser and the two bit-set/bit-clear helpers around it |
-| `00:FC03`–`FC8D` | 6,830,889 | 0.53% | Sound driver — body **and epilogue** now native on every arrival. Three deliberate refusals account for 6,810,810 of this: the `RTI` at `FC8D` (5,292,108), the `SEI` at `FC81` (1,509,498), and the chain exit `FC89` with the `FC03` trampoline it lands on (9,204). The remaining 20,079 is the body itself running emulated on the few dozen arrivals a route where the walk declines |
-| `00:FD07`–`FD81` | 82,117 | 0.01% | The driver's second arm, likewise, with its own `RTI` (57,771) and `SEI` (16,548) |
+| `00:FC03`–`FC8D` | 1,538,781 | 0.12% | Sound driver — body, epilogue **and interrupt return** now native on every arrival. Two deliberate refusals account for 1,518,702 of this: the `SEI` at `FC81` (1,509,498) and the chain exit `FC89` with the `FC03` trampoline it lands on (9,204). The `RTI` at `FC8D` was the third and is gone: 5,292,108 cycles this table called a refusal until the refusal was checked. The remaining 20,079 is the body itself running emulated on the few dozen arrivals a route where the walk declines |
+| `00:FD07`–`FD81` | 24,346 | 0.00% | The driver's second arm, likewise, with its own `SEI` (16,548); its `RTI` (57,771) went with the first |
 | bank `45` (`4000`–`4A9B`) | 5,266,590 | 0.41% | Music sequencer — the tick is **native**, chunked at its voice loop, and so is the PSG programmer `45:4142`, chunked at its channel loop; what is left is `45:4936`, the track loader `45:4BCC` and the chunk boundaries |
 | `00:E128`–`E290` | 1,289,166 | 0.10% | Interrupt epilogue and the two `RTI`s. The dispatcher at `00:E058` used to be listed here as blocked; both its halves are native now and what is left of it is the single `LDA $0000`, 129,564 cycles, whose read is the interrupt acknowledge. The handler bodies, the call wrappers and the pad reader are native |
 | `01:C0FE`–`C1B5` | 1,407,828 | 0.11% | The top-level frame loop itself — glue between calls rather than a routine |
@@ -153,10 +153,12 @@ block, and a genuinely unported epilogue that had no way to show itself while
 the whole driver read as blocked. Nesting recovered 85,778,658 cycles across
 the driver, the VDC handler chain and the sequencer, and the epilogue slice
 then took 25,180,701 of what nesting had exposed. Both driver rows above now
-total 6,913,006, and 6,880,569 of that is deliberate refusal rather than
-unwritten work: two `RTI`s (5,349,879), two `SEI`s (1,526,046) and two
-`JMP $FC03` chain exits (4,644). The rest is the `FC03` trampoline and the few
-dozen arrivals a route on which the walk declines and the body runs emulated.
+total 1,563,127, and 1,530,690 of that is deliberate refusal rather than
+unwritten work: two `SEI`s (1,526,046) and two `JMP $FC03` chain exits
+(4,644). The two `RTI`s were counted here as a third refusal, 5,349,879, until
+the refusal was tested rather than restated; the interrupt-return slice took
+them. The rest is the `FC03` trampoline and the few dozen arrivals a route on
+which the walk declines and the body runs emulated.
 
 Pricing this way also separates the hybrid's own overhead from unported code:
 the `JSR` and `RTS` at each end of every native call, and interpretation
@@ -553,8 +555,18 @@ Remaining real logic, in rough order of value:
    set and samples with it. A transcript covering `PLP` samples with the
    restored mask instead of the one the instruction ran under, and swallows an
    interrupt assembly services between the `PLP` and the `RTI`. The sound driver
-   hit the same fault from the other direction with `CLI`. **An instruction that
-   changes `I` cannot be summarised by a checkpoint that publishes its result.**
+   hit the same fault from the other direction with `CLI`. **An instruction
+   whose mask sample is taken before it changes `I` cannot be summarised by a
+   checkpoint that publishes its result.**
+
+   That rule was first written without its opening clause, as "an instruction
+   that changes `I`", and in that form it is too strong — it kept `RTI` off the
+   table for two slices on a property `RTI` does not have. `PLP`, `SEI` and
+   `CLI` sample before the change and so need two different answers out of one
+   status byte. `RTI` restores `P` *before* `LastCycle`, so it needs one, and
+   the sound driver's return is transcribed. The test is where in the
+   instruction the sample falls, and it has to be read out of the core rather
+   than inferred from what the opcode does to the flag.
 
    That is not a theoretical concern here: the handler is entered with `I` set
    but does not stay masked, because bank `45` ends three critical sections with
@@ -759,12 +771,14 @@ Remaining real logic, in rough order of value:
    side of it, entering at `00:FC82` and `00:FD76`. This is the second such
    instruction after `BBR` at `00:F423`; both were found by the census, and in
    both cases the fix was to hand the instruction back rather than widen a
-   format that phase 4 deletes. The `RTI`s at `00:FC8D` and `00:FD81` are left
-   (5,349,879) — returning from an interrupt is the frame boundary's work,
-   item 17 — as are the two `JMP $FC03` chain exits (4,644). The driver is now
-   the largest native address on the route at 12.25% of all master cycles, and
-   this slice took everything outside the idle spin loop past 94%.
-16. **Gameplay tails** (32.2M, 2.49% of the machine, of which 6.9M is the
+   format that phase 4 deletes. The two `JMP $FC03` chain exits (4,644) are
+   left. The `RTI`s at `00:FC8D` and `00:FD81` were left too, 5,349,879, on the
+   reasoning that returning from an interrupt is the frame boundary's work;
+   that was an assertion rather than a measurement, and the next slice took
+   them. The driver is now the largest native address on the route at 12.25% of
+   all master cycles, and this slice took everything outside the idle spin loop
+   past 94%.
+16. **Gameplay tails** (32.2M, 2.49% of the machine, of which 1.53M is the
    driver residue item 15 leaves deliberately). Once entry points, boundary
    instructions and interrupt resumption are separated out —
    see `docs/NATIVE_PORT_WORKFLOW.md` — nothing genuinely unported is above

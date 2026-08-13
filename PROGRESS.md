@@ -5591,11 +5591,102 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
     causing, inside a bounded budget, and report an absorbed wait.
   - [x] Reproduce the defect in the ROM-free suite with the same no-sharing
     handle a scanner takes, and pin both errors.
+- [x] Take the sound driver's interrupt return, which both this file and
+  `NATIVE_REGISTRY.md` had listed as a deliberate refusal:
+  - [x] Test the refusal instead of repeating it. "Returning from an interrupt
+    is the frame boundary's work, not a transcript's" was never measured;
+    `00:FC8D` and `00:FD81` were 5,346,663 master cycles, 17% of everything
+    still emulated outside the frame-sync wait.
+  - [x] Check where the mask is sampled before assuming the `SEI` verdict
+    carries. Beetle restores `P` before `LastCycle()`, so an `RTI`'s status
+    byte and its `IFlagSample` agree where the `SEI`'s cannot.
+  - [x] Run both epilogues through the return: three bytes off the stack,
+    landing on the address read rather than one past it, and resolve the
+    resume's bank through the transcript's own MPRs because it lands wherever
+    the timer interrupted.
+  - [x] State the walk's stack assumption — MPR1 selects work RAM — and
+    decline rather than guess. It declined nothing.
+  - [x] Measure: **+5,346,663 native master cycles** (679,286,022 ->
+    684,632,685, 52.56% -> **52.97%** of the route, 95.61% -> **96.36%**
+    outside the wait), with `254,603 x 21` closing it exactly and both
+    addresses gone from the profile.
+  - [x] Correct `main.cpp`'s "Instructions interpreted" comment. The count did
+    not move, because a checkpoint costs the same boundary decision an
+    interpreted instruction does; it counts decisions, not interpreted work.
 
 ## Active Work
 
-Current owner: Claude. Current slice: **the per-run test failure, deferred for
-four slices**. Done. It is not a port slice at all: nothing in the registry
+Current owner: Claude. Current slice: **the sound driver's interrupt return**.
+Done. One instruction, and the largest one still emulated anywhere on the route
+outside the frame-sync wait.
+
+**It was the biggest thing left and it was on the deliberate-refusal list.**
+`00:FC8D` and `00:FD81` are the `RTI`s the two epilogues end on. They ran
+251,852 and 2,751 times for **5,346,663 master cycles** — 17% of everything
+still emulated outside the frame-sync wait, and nine times the largest slice
+before it. This file and `NATIVE_REGISTRY.md` both listed them as left on
+purpose, on the grounds that "returning from an interrupt is the frame
+boundary's work, not a transcript's". That was an assertion rather than a
+measurement, and it was wrong. The registry goes 679,286,022 -> 684,632,685
+native cycles, **52.97%** of the route and **96.36%** of it outside the wait,
+and neither address executes again.
+
+**It is expressible for the reason an absorbed `RTS` is**, and it differs in
+two ways worth stating: three bytes off the stack rather than two, and it lands
+on the address it read rather than one past it, because `JSR` stores the
+address of its own last byte where the interrupt sequence stores the one it was
+about to run.
+
+**What made it safe to publish is the `SEI` question asked again with the
+opposite answer.** A checkpoint carries one status byte and the core takes two
+things from it: the `P` an interrupt taken there would push, and the
+`IFlagSample` deciding whether one may be taken there at all. The `SEI` ten
+bytes earlier is emulated because those disagree. For `RTI` they cannot —
+Beetle restores `P` before `LastCycle()`, so the flag the return produced is
+the one the boundary is judged on. What separates the two is not the opcode but
+where inside the instruction the mask is sampled, which is a thing to check
+before assuming the next interrupt-shaped instruction is out of reach.
+
+**The resume needed one thing no other transcript has needed.** Every other one
+ends inside the routine that owns it; this one lands wherever the machine was
+when the timer took it, which is a different bank on most arrivals. The
+declared resume now resolves its bank through the MPRs the transcript is
+publishing rather than assuming bank `00`. The walk also states the assumption
+it had leaned on silently since it was written — that MPR1 selects work RAM, so
+its private copy is the stack — and declines instead of guessing. It declined
+nothing: 254,990, 251,531 and 2,758 entries, unchanged.
+
+**Two counters that did not move carry as much as the one that did.** Nesting
+stayed at 297,776 transcripts, 3 deep, none refused, so returning straight into
+a suspended transcript resumes it exactly as the emulated `RTI` did. And the
+instruction-boundary model reports 66,312,528 decisions either way, to the
+decision — the machine judged its interrupts at precisely the same points.
+That last one also corrects a comment in `main.cpp`: the figure it prints is
+not "instructions the host interpreted", because applying a checkpoint returns
+to the top of the same loop and asks the same question, so 254,603 `RTI`s
+stopped being interpreted without moving it at all.
+
+**Found on the way, and not fixed here: `docs/NATIVE_REGISTRY.md` says "do not
+edit by hand" and is no longer what its generator produces.** Running
+`tools/Generate-NativeRegistry.ps1` over the committed tree — before any edit of
+this slice — rewrites the document with 416 lines deleted and 56 added, and the
+deleted ones are prose that exists only in the document. So regenerating is
+currently destructive, and the banner is advice nobody has been able to take;
+the header counts alone are three routines and fifty thousand calls stale. The
+`dc_native_registry_manifest` regression does not catch it, because what it
+compares is `native_registry_table.inc`, which regenerates identically. This
+slice edited both files to say the same thing and left the drift alone — it is
+a few hundred lines of reconciliation and belongs to a slice of its own, before
+someone runs the generator and loses the difference.
+
+411/411 Release. 3/3 ROM-free Debug in both configurations. The state census is
+`9036a9de…` with the registry deployed, and the driver's 1,604,764 work-RAM
+writes and 954,241 bus writes are byte-identical. The `windows-debug` sweep was
+not run.
+
+### Previous: the per-run test failure, deferred for four slices
+
+It is not a port slice at all: nothing in the registry
 moved, no artifact changed, and the deliverable is that the validation gate
 every other slice is measured against stops lying about once per run.
 
@@ -6878,6 +6969,36 @@ will apply: the census for what the game drives, the emulator for what it
 does not.
 
 ### Next
+
+**Re-ranked after the interrupt-return slice, by real per-instruction cost
+rather than by the profile's cycle column.** With `00:FC8D` and `00:FD81` gone,
+25,850,070 master cycles are left outside the frame-sync wait, and the largest
+single emulated instructions on the route are now:
+
+| Address | Executions | Master cycles | What it is |
+| --- | ---: | ---: | --- |
+| `00:FC81` | 251,531 | 1,509,498 | The driver's `SEI`. A checkpoint cannot express it; this is the refusal that survives |
+| `08:4094` | 50,248 | 1,066,632 | `JSR $40DF` into a native entry — wants a ported caller, not an absorption |
+| `00:F423` | 17,248 | 365,664 | `BBR0`, the other instruction a checkpoint cannot express |
+| `08:4072` | 16,576 | 351,792 | The same `JSR`, second site |
+| `00:E26E` | 11,671 | 247,059 | `JMP [$2CBE]`, the dispatch indirection |
+| `00:E252` | 11,599 | 245,451 | `JSR $E262` into a native entry |
+| `00:E327`–`E32B` | 3,567 | 161,091 | The frame-sync waiter's three-instruction tail and its `RTS` |
+| `00:E135` | 7,198 | 151,158 | The VBlank/IRQ1 `RTI` |
+
+**`00:E135` is the direct sequel to this slice and was not reachable before
+it.** It is the same instruction in the same shape, and the reason it was out
+of reach was the `PLP` at `00:E134` in front of it: the walk has to stop there,
+so no transcript can run on to the return. What this slice establishes is that
+the return itself is expressible, so the way in is an entry *at* `00:E135` —
+one instruction, three bytes off the stack — rather than an extension of the
+handler's walk. That is a new admission with its own regression, like `00:E327`
+below, and unlike this slice, which needed none.
+
+**The old ranking, kept because its per-bank arithmetic still holds.** Note
+that it counts `RTS` opcodes only, so it never saw the interrupt return that
+turned out to be nine times the largest row in it — rank by what the machine
+executes, not by what the technique of the moment can absorb.
 
 **Take bank `03`'s remainder, or stop absorbing and port a parent.** Counting
 every `RTS` opcode the deployed registry still executes, excluding the rows
