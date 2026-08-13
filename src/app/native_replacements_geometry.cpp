@@ -1153,6 +1153,27 @@ std::optional<RoutineReplacement> replace_actor_geometry_leaf(
     registers.program_counter = pc;
     replacement.output_registers = registers;
     replacement.body_master_cycles = cycle;
+
+    // Four of the five stops are the `RTS` the walk ends on, and the walk can
+    // run past them: nothing composes this routine, so no other transcript is
+    // reading the address back to transcribe the return itself. 01:C972 is the
+    // fifth and is an `LDA` -- the arm of the guard's `BNE` this route never
+    // takes -- which is a handover rather than a return.
+    //
+    // These walks touch no stack at all, so the frame the return reads is the
+    // one the caller pushed and the pointer is still the entry's. The
+    // checkpoint list is non-empty by the test above, so the transcript is
+    // interruptible and the horizon valve never has to weigh the extra
+    // twenty-one cycles.
+    if (pc != 0xC972U) {
+        absorb_return(
+            replacement,
+            work_ram,
+            entry.registers.stack_pointer,
+            {kBank, pc},
+            cycle,
+            registers);
+    }
     return replacement;
 }
 

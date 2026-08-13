@@ -102,6 +102,13 @@ replace_flipper_input_gate(
             replacement, 0xD469U, 0xD46CU, 30U, checkpoint);
         append_checkpoint(
             replacement, 0xD46CU, 0xD46EU, 36U, output);
+        absorb_return(
+            replacement,
+            work_ram,
+            entry.registers.stack_pointer,
+            {0x01U, 0xD46EU},
+            36U,
+            output);
         return replacement;
     }
 
@@ -302,6 +309,21 @@ replace_flipper_input_gate(
         replacement, 0xC5E4U, 0xC5E6U, 267U, checkpoint);
     append_checkpoint(
         replacement, 0xC5E6U, 0xC5E9U, 282U, output);
+
+    // The `RTS` this walk ends in front of belongs to the scheduler it ran in
+    // line, but the frame it reads is this routine's caller's: 01:D48B staged a
+    // `JSR` frame at $2100+S and $2100+S-1, and the scheduler's two `PLA`s at
+    // 01:C5C9 and 01:C5CC took it straight back off to learn the address it was
+    // called from. So the pointer is the entry's again by 01:C5E9, and the word
+    // the return reads sits immediately above the frame this transcript staged
+    // rather than on top of it.
+    absorb_return(
+        replacement,
+        work_ram,
+        entry.registers.stack_pointer,
+        {0x01U, 0xC5E9U},
+        282U,
+        output);
     return replacement;
 }
 
@@ -439,6 +461,13 @@ replace_flipper_phase_step(
         append_checkpoint(0xD51CU, 0xD51FU, 99U, checkpoint);
         append_checkpoint(0xD51FU, 0xD521U, 105U, checkpoint);
         append_checkpoint(0xD521U, 0xD524U, 126U, output);
+        absorb_return(
+            replacement,
+            work_ram,
+            entry.registers.stack_pointer,
+            {0x01U, 0xD524U},
+            126U,
+            output);
         return replacement;
     }
     append_checkpoint(0xD50EU, 0xD510U, 78U, checkpoint);
@@ -466,6 +495,13 @@ replace_flipper_phase_step(
     append_checkpoint(0xD515U, 0xD517U, 105U, checkpoint);
     append_checkpoint(0xD517U, 0xD51AU, 126U, output);
     append_checkpoint(0xD51AU, 0xD524U, 138U, output);
+    absorb_return(
+        replacement,
+        work_ram,
+        entry.registers.stack_pointer,
+        {0x01U, 0xD524U},
+        138U,
+        output);
     return replacement;
 }
 
@@ -629,6 +665,17 @@ replace_flipper_geometry_lookup(
     append_checkpoint(0xD097U, 0xD09AU, 135U, checkpoint);
     append_checkpoint(0xD09AU, 0xD09CU, 147U, checkpoint);
     append_checkpoint(0xD09CU, 0xD09DU, 159U, output);
+
+    // 01:D085 pushed Y and 01:D09C pulled it back, so the pointer at the return
+    // is the entry's and the byte the push left at $2100+S sits one below the
+    // frame the return reads.
+    absorb_return(
+        replacement,
+        work_ram,
+        entry.registers.stack_pointer,
+        {0x01U, 0xD09DU},
+        159U,
+        output);
     return replacement;
 }
 
@@ -863,6 +910,53 @@ replace_coroutine_scheduler(
         0xC5E9U,
         replacement.body_master_cycles,
         output);
+    return replacement;
+}
+
+// What the registry dispatches at 01:C5C9. The scheduler above is run in line
+// by twenty-seven walks in native_replacements_rules.cpp, each of which takes
+// its `return_instruction` and its `body_master_cycles` for its own and several
+// of which test that the body is exactly 159 cycles, so the routine itself has
+// to stop in front of its `RTS` and report the address it stopped on. The entry
+// the core takes is the one arrival nothing else is reading, so that is where
+// the return is absorbed. Nothing composes this wrapper.
+std::optional<RoutineReplacement> replace_coroutine_scheduler_entry(
+    const RoutineEntry& entry,
+    const std::span<const std::byte> work_ram)
+{
+    auto replacement = replace_coroutine_scheduler(entry, work_ram);
+    if (!replacement || work_ram.size() < 0x2000U) {
+        return replacement;
+    }
+
+    // The scheduler's first two instructions are the `PLA`s that take its own
+    // return address off the stack, so the pointer it ends on is two above the
+    // one it was entered with and the frame its `RTS` reads is its caller's
+    // caller's. That is the pointer the return has to declare and the one the
+    // word is read above -- the entry's would name the frame those `PLA`s have
+    // already consumed.
+    if (replacement->return_instruction.physical_bank != 0x01U
+        || replacement->return_instruction.logical_pc != 0xC5E9U
+        || replacement->output_registers.stack_pointer
+            != static_cast<std::uint8_t>(
+                entry.registers.stack_pointer + 2U)) {
+        return replacement;
+    }
+    if (replacement->checkpoints.empty()
+        && !absorbed_return_fits_atomically(
+            entry, replacement->body_master_cycles)) {
+        return replacement;
+    }
+
+    const auto return_cycle = replacement->body_master_cycles;
+    const auto at_return = replacement->output_registers;
+    absorb_return(
+        *replacement,
+        work_ram,
+        at_return.stack_pointer,
+        {0x01U, 0xC5E9U},
+        return_cycle,
+        at_return);
     return replacement;
 }
 
@@ -1571,6 +1665,13 @@ replace_nudge_input_gate(
     append_checkpoint(0xC3D8U, 0xC3DAU, 63U, checkpoint);
     if (session_return) {
         append_checkpoint(0xC3DAU, 0xC3DCU, 69U, output);
+        absorb_return(
+            replacement,
+            work_ram,
+            entry.registers.stack_pointer,
+            {0x01U, 0xC3DCU},
+            69U,
+            output);
         return replacement;
     }
     append_checkpoint(0xC3DAU, 0xC3DDU, 75U, checkpoint);
@@ -1639,6 +1740,13 @@ replace_nudge_input_gate(
     append_checkpoint(
         0xC3F8U,
         0xC3FAU,
+        177U + continuation_offset,
+        output);
+    absorb_return(
+        replacement,
+        work_ram,
+        entry.registers.stack_pointer,
+        {0x01U, 0xC3FAU},
         177U + continuation_offset,
         output);
     return replacement;
@@ -1735,6 +1843,13 @@ replace_session_input_gate(
     checkpoint.status = set_nz(checkpoint.status, checkpoint.accumulator);
     append_checkpoint(0xC4AAU, 0xC4ACU, 60U, checkpoint);
     append_checkpoint(0xC4ACU, 0xC4C8U, 72U, output);
+    absorb_return(
+        replacement,
+        work_ram,
+        entry.registers.stack_pointer,
+        {0x01U, 0xC4C8U},
+        72U,
+        output);
     return replacement;
 }
 
@@ -1850,6 +1965,13 @@ replace_ball_drain_threshold(
         replacement.return_instruction = {.physical_bank = 0x01U, .logical_pc = 0xDD80U};
         replacement.output_registers = checkpoint;
         replacement.body_master_cycles = 78U;
+        absorb_return(
+            replacement,
+            work_ram,
+            entry.registers.stack_pointer,
+            {0x01U, 0xDD80U},
+            78U,
+            checkpoint);
         return replacement;
     }
 
@@ -1861,6 +1983,13 @@ replace_ball_drain_threshold(
     replacement.return_instruction = {.physical_bank = 0x01U, .logical_pc = 0xDD82U};
     replacement.output_registers = checkpoint;
     replacement.body_master_cycles = 84U;
+    absorb_return(
+        replacement,
+        work_ram,
+        entry.registers.stack_pointer,
+        {0x01U, 0xDD82U},
+        84U,
+        checkpoint);
     return replacement;
 }
 
@@ -3405,6 +3534,26 @@ replace_actor_scan_run(
     };
     replacement.output_registers = registers;
     replacement.body_master_cycles = cycle;
+
+    // This walk does not absorb its return, and 01:C52B's 73,956 master cycles
+    // stay emulated because of it.
+    //
+    // It is the first family whose transcript is both long enough to be cut
+    // short often and re-entered at the same stack depth, and the two together
+    // defeat the observer's bookkeeping. A transaction stages the return it
+    // promises to absorb when it is installed, and the promise is redeemed at
+    // the boundary the machine lands on afterwards. Nothing withdraws it if the
+    // transcript never gets that far: an interrupt suspends it, the resume
+    // state disagrees, the core interprets the rest, and the promise stays
+    // queued. A later arrival at the same address and depth then redeems it and
+    // closes a call with the abandoned transcript's registers -- 82,201 of
+    // 176,861 calls report the wrong Y, and 42,753 the wrong MPR4/MPR5.
+    //
+    // Withdrawing the promise when the core executes the `RTS` itself fixes
+    // three calls in eight and no more, because a cut-short scan usually leaves
+    // through the dispatch at 01:C52C and never reaches 01:C52B at all. Doing
+    // it properly means the core telling the runtime when it abandons a
+    // transcript, which is a fork patch rather than a rule.
     return replacement;
 }
 
@@ -3533,6 +3682,19 @@ replace_actor_scan_advance(
     };
     replacement.output_registers = registers;
     replacement.body_master_cycles = cycle;
+
+    // The counter reaching its limit ends the loop on its `RTS`; anything
+    // short of that branches back to the loop head, which is a continuation
+    // and not a return.
+    if (registers.program_counter == kTerminalPc) {
+        absorb_return(
+            replacement,
+            work_ram,
+            entry.registers.stack_pointer,
+            {kRoutine.physical_bank, kTerminalPc},
+            cycle,
+            registers);
+    }
     return replacement;
 }
 
@@ -4371,13 +4533,14 @@ replace_actor_camera_sweep(
 
 [[nodiscard]] std::optional<RoutineReplacement>
 replace_actor_slot_reset(
-    const RoutineEntry& entry)
+    const RoutineEntry& entry,
+    const std::span<const std::byte> work_ram)
 {
     constexpr RoutineKey kRoutine{
         .physical_bank = 0x01U,
         .logical_pc = 0xC574U,
     };
-    if (entry.routine != kRoutine) {
+    if (entry.routine != kRoutine || work_ram.size() < 0x2000U) {
         return std::nullopt;
     }
     if ((entry.registers.status & 0x08U) != 0U) {
@@ -4634,6 +4797,16 @@ replace_actor_slot_reset(
     checkpoint.program_counter = 0xC594U;
     append_checkpoint(0xC593U, 0xC594U, 3627U, checkpoint);
     replacement.output_registers = checkpoint;
+
+    // 01:C574 pushed Y and 01:C593 pulled it back, so the pointer at the return
+    // is the entry's and the pushed byte is one below the frame it reads.
+    absorb_return(
+        replacement,
+        work_ram,
+        entry.registers.stack_pointer,
+        {0x01U, 0xC594U},
+        3627U,
+        checkpoint);
     return replacement;
 }
 } // namespace devils_crush::app::detail

@@ -2180,6 +2180,31 @@ if(TARGET devils_crush)
             PROPERTIES LABELS rom_required
         )
 
+        # 01:C5C9 is the fifth shape: a return whose frame is not where the
+        # entry's stack pointer says it is. The scheduler's first two
+        # instructions pull its own return address off the stack to learn where
+        # it was called from, so the `RTS` it ends on reads its caller's
+        # caller's frame -- two bytes above the word every other absorption in
+        # the registry reads. Getting that wrong would return to a plausible
+        # address rather than a wrong-looking one.
+        add_test(
+            NAME dc_rom_absorbed_return_trace_displaced
+            CONFIGURATIONS Release
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/absorbed-return-trace-displaced-v1"
+                "-DROUTINE=01:C5C9"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_absorbed_return_trace.cmake"
+        )
+        set_tests_properties(
+            dc_rom_absorbed_return_trace_displaced
+            PROPERTIES LABELS rom_required
+        )
+
         add_test(
             NAME dc_rom_bank_call_wrappers_semantic
             CONFIGURATIONS Release

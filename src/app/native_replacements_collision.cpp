@@ -5807,4 +5807,90 @@ replace_collision_scan_vertical_reject(
     }
     return replacement;
 }
+
+// What the registry dispatches at 01:CC1A. The sweep at 01:CB48 runs the
+// vertical scan in line and only composes it when the scan reports that it
+// stopped in front of 01:CC40 with the pointer it was entered on -- so a scan
+// that ran past its own return would fail that test on every call and the
+// sweep would quietly go back to composing nothing. The entry the core takes is
+// where the absorption belongs. Nothing composes this wrapper.
+//
+// The scan hands part of its work to replace_collision_scan_post_geometry_reject
+// and returns that result directly. Nothing else calls the delegate, so both
+// paths to 01:CC40 come through here and both are covered.
+std::optional<RoutineReplacement> replace_collision_scan_vertical_reject_entry(
+    const RoutineEntry& entry,
+    const std::span<const std::byte> work_ram,
+    const std::span<const std::byte> rom)
+{
+    auto replacement =
+        replace_collision_scan_vertical_reject(entry, work_ram, rom);
+    if (!replacement || work_ram.size() < 0x2000U) {
+        return replacement;
+    }
+
+    // A hit leaves the scan from the middle of itself, at 01:CCD2 or 01:CCD4,
+    // which is the mask lookup's return and not this routine's. Only 01:CC40
+    // is the scan's own.
+    if (replacement->return_instruction
+            != RoutineKey{.physical_bank = 0x01U, .logical_pc = 0xCC40U}
+        || replacement->output_registers.stack_pointer
+            != entry.registers.stack_pointer) {
+        return replacement;
+    }
+    if (replacement->checkpoints.empty()
+        && !absorbed_return_fits_atomically(
+            entry, replacement->body_master_cycles)) {
+        return replacement;
+    }
+
+    const auto return_cycle = replacement->body_master_cycles;
+    const auto at_return = replacement->output_registers;
+    absorb_return(
+        *replacement,
+        work_ram,
+        entry.registers.stack_pointer,
+        {0x01U, 0xCC40U},
+        return_cycle,
+        at_return);
+    return replacement;
+}
+
+// What the registry dispatches at 01:CC98, for the same reason: the scan above
+// splices this routine in line and tests which of its two `RTS` addresses it
+// stopped on before it will transcribe the return itself.
+std::optional<RoutineReplacement> replace_collision_mask_lookup_entry(
+    const RoutineEntry& entry,
+    const std::span<const std::byte> work_ram,
+    const std::span<const std::byte> rom)
+{
+    auto replacement = replace_collision_mask_lookup(entry, work_ram, rom);
+    if (!replacement || work_ram.size() < 0x2000U) {
+        return replacement;
+    }
+    if (replacement->return_instruction.physical_bank != 0x01U
+        || (replacement->return_instruction.logical_pc != 0xCCD2U
+            && replacement->return_instruction.logical_pc != 0xCCD4U)
+        || replacement->output_registers.stack_pointer
+            != entry.registers.stack_pointer) {
+        return replacement;
+    }
+    if (replacement->checkpoints.empty()
+        && !absorbed_return_fits_atomically(
+            entry, replacement->body_master_cycles)) {
+        return replacement;
+    }
+
+    const auto return_instruction = replacement->return_instruction;
+    const auto return_cycle = replacement->body_master_cycles;
+    const auto at_return = replacement->output_registers;
+    absorb_return(
+        *replacement,
+        work_ram,
+        entry.registers.stack_pointer,
+        return_instruction,
+        return_cycle,
+        at_return);
+    return replacement;
+}
 } // namespace devils_crush::app::detail

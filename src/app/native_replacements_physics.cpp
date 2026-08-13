@@ -1196,6 +1196,13 @@ replace_motion_rotation(
     checkpoint.program_counter = 0xD227U;
     replacement.output_registers = checkpoint;
     replacement.body_master_cycles = cycle;
+    absorb_return(
+        replacement,
+        work_ram,
+        entry.registers.stack_pointer,
+        {0x01U, 0xD227U},
+        cycle,
+        checkpoint);
     return replacement;
 }
 
@@ -2638,6 +2645,19 @@ replace_collision_motion_adjustment(
         replacement.return_instruction.logical_pc;
     replacement.output_registers = checkpoint;
     replacement.body_master_cycles = cycle;
+
+    // All six arms end on an `RTS` -- the routine is a mode switch whose every
+    // branch runs to its own return -- and none of them touches the stack, so
+    // one call is absorbed whichever arm ran. The address is copied out first
+    // because absorbing overwrites the field it came from.
+    const auto return_instruction = replacement.return_instruction;
+    absorb_return(
+        replacement,
+        work_ram,
+        entry.registers.stack_pointer,
+        return_instruction,
+        cycle,
+        checkpoint);
     return replacement;
 }
 
@@ -3662,6 +3682,18 @@ replace_motion_damping(
     checkpoint.program_counter = 0xDD6DU;
     replacement.output_registers = checkpoint;
     replacement.body_master_cycles = cycle;
+
+    // The pointer is the entry's -- the check above throws rather than returns
+    // if the composed children have not balanced their frames -- so the word
+    // this return reads sits two bytes clear of the last `JSR` frame the walk
+    // staged.
+    absorb_return(
+        replacement,
+        work_ram,
+        entry.registers.stack_pointer,
+        {0x01U, 0xDD6DU},
+        cycle,
+        checkpoint);
     return replacement;
 }
 
@@ -5258,6 +5290,13 @@ replace_flipper_projection(
     checkpoint.program_counter = 0xD11FU;
     replacement.output_registers = checkpoint;
     replacement.body_master_cycles = cycle;
+    absorb_return(
+        replacement,
+        work_ram,
+        entry.registers.stack_pointer,
+        {0x01U, 0xD11FU},
+        cycle,
+        checkpoint);
     return replacement;
 }
 

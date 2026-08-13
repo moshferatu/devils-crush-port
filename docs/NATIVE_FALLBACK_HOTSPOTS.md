@@ -3236,6 +3236,37 @@ than the caps — not the ones that name a property of the data.
 > is a budgeting question. Ask where the loop head is before calling it
 > anything else.
 
+## Reading a stop list, and the two things that are not returns
+
+Bank `01`'s return pool fell 1,060,104 → 187,590, and a third of that came from
+two edits rather than twenty, because two of its families are walking
+interpreters. `replace_collision_tail` and `replace_actor_geometry_leaf` each
+end at whichever address in a fixed `is_stop_instruction` list the walk reached,
+and each is dispatched for many registered entries, so one absorption at the
+walk's terminus covers every return the family has. That is worth looking for
+before ranking a bank address by address: **a family with a stop list is one
+edit, not one edit per row.**
+
+It is also the only place so far where the rows had to be read rather than
+counted. A stop list mixes three things and only one of them can be absorbed:
+
+- Addresses the walk hands back at mid-routine — a `JSR` the family makes, a
+  `BBR` a checkpoint cannot express, a branch arm. These are not returns and
+  are excluded by inspection.
+- Genuine `RTS` instructions the walk ends on. These absorb.
+- **An `RTS` that is not a return.** `01:CBF9` closes the confirmed-contact
+  dispatcher by pushing a vector out of the tables at `01:CBFA`/`01:CBFF` with
+  two `PHA`s and letting the `RTS` jump to it. The word it pops is one the
+  routine wrote two instructions earlier. `absorb_return` reads the staged
+  transcript rather than entry work RAM, so it would compute the *right*
+  landing address and still be wrong, because it would report a completed call
+  where no call completed.
+
+The stack-pointer test catches that last one as a side effect — the two pushes
+have moved the pointer — but relying on that would be an accident rather than a
+reason, and the next tail dispatch may not push. Check the opcode at every stop
+against the ROM, then check what each `RTS` actually pops.
+
 ## Use on future families
 
 Follow the command and interpretation rules in

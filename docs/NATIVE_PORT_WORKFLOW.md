@@ -734,9 +734,9 @@ hybrid's own overheads, which no amount of porting removes:
   observation about `08:40DE` stands. The conclusion that the 21 cycles were
   structural does not. **A transcript can end past its own `RTS`**: see the
   section below — and both of those two returns are now absorbed, 1,634,598
-  master cycles of the 13.3M, taken by two edits. Banks `03` and `02` have
-  since taken 1,054,221, 1,314,528 and a further 873,453, so a little under 5M
-  of the 13.3M is gone and the remaining pool is 3,778,293 returns plus the
+  master cycles of the 13.3M, taken by two edits. Banks `03`, `02` and `01`
+  have since taken 1,054,221, 1,314,528, 873,453 and 872,514, so a little under
+  6M of the 13.3M is gone and the remaining pool is 2,905,779 returns plus the
   `JSR` half.
 - **Resumption after an interrupt.** An interrupt landing inside a transcript
   rewinds to a checkpoint and interprets the rest of the body, so a fully
@@ -860,16 +860,18 @@ The regression is `dc_rom_absorbed_return_trace`, and it is a comparison rather
 than a recorded hash: it traces the same route with the routine emulated and
 with it replaced, and requires the census, the call trace and the call-write
 trace to be byte-identical across the two. A recorded expectation could drift
-into agreeing with a mistake; the emulated run cannot. It runs over four
-routines, registered as four tests so they run side by side. `00:E93C` is the
+into agreeing with a mistake; the emulated run cannot. It runs over five
+routines, registered as five tests so they run side by side. `00:E93C` is the
 family the technique was established on and exercises both recognitions;
 `08:40DF` is long enough to be suspended part-way through and interrupted at
 its end, which is the case neither recognition got right on its own; `02:58C2`
 runs a call in line and then ends past its own return, so its transcript writes
 to the stack page three bytes below where the absorbed return reads; `03:6966`
 is a routine whose return is absorbed at the entry rather than inside the
-routine, and is the busiest thing on the route. Point the script at a fifth when
-a family reaches a shape these four do not.
+routine, and is the busiest thing on the route; `01:C5C9` reads its frame at
+$2100+S+3 and +4 rather than the +1 and +2 every other absorption reads, having
+pulled its own return address off first. Point the script at a sixth when a
+family reaches a shape these five do not.
 
 **The comparison finds more than absorption bugs, and one of them was four
 slices old.** Pointed at `02:5408`, it reported the same calls with the same
@@ -948,6 +950,41 @@ every one of its 14,307 registry entries — native cycles rise by exactly
 8,381 times. Eleven of bank `03`'s twenty ordinary rows went to zero and the
 long ones did not. Read the profile's residue after the edit; the ranking before
 it cannot tell you which kind you have.
+
+**A walking interpreter absorbs at its stop list, which is the cheapest edit
+available and the one place a stop list has to be read rather than trusted.**
+`replace_collision_tail` and `replace_actor_geometry_leaf` each end by stopping
+in front of whichever address in a fixed list the walk reached, and each is
+dispatched for many registered entries, so a single absorption at that one place
+covered thirteen returns and 372,411 master cycles. But a stop list mixes
+returns with handovers, and it mixes returns with things that only look like
+them: ten of the collision tail's twenty-five stops are `RTS` and only nine are
+returns. `01:CBF9` is a tail dispatch — `01:CBF4` and `01:CBF8` push a vector
+read out of a table and the `RTS` jumps to it — so the word it pops is one the
+routine wrote two instructions earlier rather than a frame a caller pushed.
+`absorb_return` would compute the right landing address from the staged writes
+and still be wrong, because it would tell the observer a call had completed when
+none had. Check the opcode at every stop, and then check that each `RTS` is
+reached with the stack pointer the entry arrived on.
+
+**A promise the transcript never keeps is never withdrawn, and that is the
+technique's second limit.** A transaction stages the return it will absorb when
+it is *installed*; the observer redeems the promise at the boundary the machine
+lands on afterwards. Nothing withdraws it if the transcript is cut short before
+reaching that point. For every family shipped so far this is harmless: the core
+interprets the rest, executes the `RTS`, closes the call correctly, and the
+stale promise is redeemed one boundary later against a call that is already
+closed — a no-op. It stops being harmless when the routine is *re-entered at the
+same stack depth*, because then the stale promise finds a live victim and closes
+it with an abandoned transcript's registers. `01:C510` is the first family that
+is both, and it reports the wrong `Y` on 82,201 of 176,861 calls and the wrong
+`MPR4`/`MPR5` on 42,753, with every cycle column still right — which is why the
+comparison catches it and a hash of the census would not. Withdrawing the
+promise when the core executes the `RTS` itself fixes three calls in eight and
+no more, because a cut-short scan usually leaves through the dispatch at
+`01:C52C` and never reaches `01:C52B`. The real fix is the core telling the
+runtime when it abandons a transcript, which is a fork patch; until it exists, a
+family with both properties should not absorb.
 
 **One thing in the host that a single family could not have shown.** The
 observer reports a boundary's cycle on two clocks, and only the absolute one

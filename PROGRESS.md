@@ -5581,8 +5581,152 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
 ## Active Work
 
 Current owner: Claude. Current slice: **carrying the absorbed return into bank
-`03`'s remainder**. Done, in twenty-two edits, and the first two needed a
-distinction the previous three slices never had to make.
+`01`**. Done, in twenty-one absorptions across fifteen families, and it is the
+first slice where a family had to be held back rather than shipped.
+
+Bank `01` held 1,060,104 emulated return cycles, the largest pool left. It falls
+to 187,590 -- fifth of eight -- and the route to 2,905,779. The registry goes
+677,038,098 -> 677,903,067 native cycles, **52.45%** of the route and **95.41%**
+of it outside the frame-sync wait. Nested installs rose 297,017 -> 297,374,
+three deep at the most, nothing refused, and 0 calls declined at an interrupt
+horizon. The state census is `9036a9de...` unchanged. Twenty-three rows go to
+zero.
+
+**A third of the bank came from two edits, because two of its families are
+walking interpreters.** `replace_collision_tail` and
+`replace_actor_geometry_leaf` each end by stopping in front of whichever address
+in a fixed `is_stop_instruction` list the walk reached, and each is dispatched
+for many registered entries -- nineteen and two -- so one absorption at the
+walk's terminus covers every return the family has: 213,939 master cycles for
+the first and 158,472 for the second. Neither routine is composed by anything,
+so the return belongs inside the routine and needs no wrapper. That shape is
+worth looking for before ranking a bank row by row.
+
+**The stop list had to be read rather than counted.** Eleven of the collision
+tail's twenty-five stops are `RTS` and only ten of those are returns.
+`01:CBF9` closes the confirmed-contact dispatcher by pushing a vector out of the
+tables at `01:CBFA`/`01:CBFF` with two `PHA`s and letting the `RTS` jump to it,
+so the word it pops is one the routine wrote two instructions earlier rather
+than a frame a caller pushed. `absorb_return` reads the staged transcript rather
+than entry work RAM, so it would have computed the right landing address and
+still been wrong -- it would have told the observer a call completed where none
+did. The stack-pointer test would have caught it as a side effect, the two
+pushes having moved the pointer, but that is an accident rather than a reason.
+
+**Three routines needed the entry wrapper, and one of them is a new shape.**
+`01:C5C9`, the coroutine scheduler, is run in line by twenty-seven walks in
+`native_replacements_rules.cpp`, each of which adopts its `return_instruction`
+and `body_master_cycles` as its own and several of which test that the body is
+exactly 159 cycles -- so a scheduler that ran past its own return would have
+made every one of those compositions fail its guard and fall back silently. It
+is also the first absorption whose frame is not where the entry's stack pointer
+says: its first two instructions are the `PLA`s that take its own return address
+off the stack to record where it was called from, so the `RTS` reads its
+caller's caller's frame, at $2100+S+3 and +4 rather than the +1 and +2 every
+other absorption reads. Reading the wrong pair there would not look wrong -- it
+would return to the
+address the routine was called from, which is a real address the machine would
+go on executing. That is why it is now the fifth routine in
+`dc_rom_absorbed_return_trace`. `01:CC1A` and `01:CC98` are the other two
+wrappers, both composed by the sweep at `01:CB48`, which tests which `RTS` the
+child stopped on before it will splice it.
+
+**`01:CC98` is correct and idle.** The native cycle census reports 0 entries for
+it with the whole registry deployed: the sweep composes the mask lookup on every
+call, so nothing arrives at it from the core. Its 18,522 cycles at `01:CCD2` and
+`01:CCD4` are the *scan's* transcripts ending in front of the child's return,
+which is a different edit and was not attempted.
+
+**One family was held back, and it is the technique's second limit.**
+`01:C510`, the actor scan loop, is both long enough to be cut short often and
+re-entered at the same stack depth. A transaction stages the return it will
+absorb when it is *installed*, and the observer redeems the promise at the
+boundary the machine lands on afterwards; nothing withdraws it when the
+transcript never gets that far. For every family shipped so far that is
+harmless -- the core interprets the rest, executes the `RTS`, closes the call
+correctly, and the stale promise is redeemed one boundary later against a call
+that is already closed. It stops being harmless when the routine is re-entered
+at the same depth, because then the stale promise finds a live victim. Traced
+emulated against replaced, `01:C510` reported the wrong `Y` on 82,201 of 176,861
+calls and the wrong `MPR4`/`MPR5` on 42,753, with every cycle column still
+right -- which is exactly why the comparison catches it and a census hash does
+not.
+
+Both halves of the diagnosis were built rather than assumed. The control run
+with the absorption removed agreed with the emulated run on every shared column,
+which made the difference this slice's. A candidate host fix -- withdrawing the
+promise when the core executes the `RTS` itself -- was written, built and
+measured: it fixed three calls in eight and no more, because a cut-short scan
+usually leaves through the dispatch at `01:C52C` and never reaches `01:C52B` at
+all. It was backed out rather than shipped half-working. The real fix is the
+core telling the runtime when it abandons a transcript, which is a fork patch
+and its own slice. Until then `01:C52B` keeps its 73,536 master cycles and is
+the largest single thing left in the bank.
+
+What moved, and what did not:
+
+| Return | Before | After | |
+| --- | ---: | ---: | --- |
+| `01:D46E` | 153,072 | 0 | flipper input gate |
+| `01:C52B` | 73,956 | 73,536 | **held back** -- the stale promise |
+| `01:C971` | 63,429 | 0 | geometry walker |
+| `01:CB92` | 62,166 | 0 | collision tail |
+| `01:CDF1` | 61,767 | 0 | collision tail |
+| `01:C4C8` | 56,085 | 0 | session input gate |
+| `01:DD6D` | 53,724 | 0 | motion damping |
+| `01:C5E9` | 52,062 | 2,355 | scheduler wrapper + input gate |
+| `01:C968` | 49,668 | 0 | geometry walker |
+| `01:C3FA` | 49,626 | 0 | nudge input gate |
+| `01:DD82` | 49,620 | 0 | ball drain threshold |
+| `01:DCD7` | 46,725 | 46,725 | unported |
+| `01:CB20` | 45,765 | 0 | collision tail |
+| `01:DB9D` | 30,951 | 21 | geometry walker |
+| `01:D524` | 20,820 | 0 | flipper phase step |
+| `01:CBC6` | 20,421 | 0 | collision tail |
+| `01:CC40` | 19,776 | 0 | vertical scan wrapper |
+| `01:DD08` | 14,550 | 14,550 | unported |
+| `01:DB81` | 14,424 | 21 | geometry walker |
+| `01:CCD4` + `CCD2` | 18,522 | 18,522 | the scan's mid-routine handovers |
+| `01:D11F` | 11,388 | 0 | flipper projection |
+| `01:D09D` | 11,364 | 0 | flipper geometry lookup |
+| `01:D227` | 7,554 | 0 | motion rotation |
+| `01:CBF9` | 5,694 | 5,694 | tail dispatch, not a return |
+| | **1,060,104** | **187,590** | |
+
+Verified the way the last four slices were: every touched entry point traced
+emulated and replaced, one routine at a time, with the census, the call trace
+and the call-write trace required byte-identical. Thirty-seven entry points,
+thirty-six of them byte-identical, and the admitted count unchanged on every
+one. `01:C510` swallows its own loop, so it was joined on entry cycle instead of
+compared file to file -- 446,976 emulated calls against 176,861 replaced, every
+replaced call present in the emulated set, and after the absorption was backed
+out every shared column agreeing.
+
+`01:D466` reports 7,468 of 7,470 admitted. That is not this slice: the registry
+table already recorded `7468, 7470` before it, and the two declines are the
+routine's own unsupported-activation path.
+
+410/410 Release in 174.24 s on the final build -- the extra test is
+`dc_rom_absorbed_return_trace_displaced` -- and 3/3 ROM-free Debug. The
+`windows-debug` sweep was not run.
+
+**The parallel-load flake is wider than the two families the workflow doc
+names.** Five full Release runs today produced one failure each in
+`dc_rom_giant_door_completion_prefix`, `dc_rom_bonus_stage4`,
+`dc_rom_gray_blob_first_live_prefix_semantic`,
+`dc_rom_upper_wall_pocket_hand_opening_expiry` and
+`dc_rom_session_zero_ball_prefix`, all of which passed in isolation and none of
+which repeated. Three of those five came from two suites running concurrently --
+48 processes on 24 cores, which was my mistake -- but `session_zero_ball_prefix`
+failed on a run that had the machine to itself. Two clean runs bracketing it
+were 410/410. The families are not the ones previously recorded as intermittent,
+so this is a property of the harness under load rather than of any one
+regression, and it is worth a deliberate look rather than another note.
+
+### Previous: carrying the absorbed return into bank `03`'s remainder
+
+Done, in twenty-two edits, and the first two needed a distinction the previous
+three slices never had to make.
 
 Bank `03` held 1,498,290 emulated return cycles, the largest pool left. It falls
 to 624,837 and the route to 3,778,293. The registry goes 676,133,460 ->
@@ -6403,42 +6547,79 @@ does not.
 
 ### Next
 
-**Survey bank `01`, which is now the largest pool and looks like the easiest of
-the four so far.** Counting every `RTS` opcode the deployed registry still
-executes, excluding the rows that are themselves registered entries -- a
-registered entry's profile row carries its whole native body, not one return,
-which is worth knowing before reading any of these numbers:
+**Survey bank `00`, which is now the largest pool, and then decide between it
+and the fork patch that `01:C510` is waiting on.** Counting every `RTS` opcode
+the deployed registry still executes, excluding the rows that are themselves
+registered entries -- a registered entry's profile row carries its whole native
+body, not one return, which is worth knowing before reading any of these
+numbers:
 
-| Bank | Executions | Master cycles |
-| --- | ---: | ---: |
-| `01` | 50,016 | **1,060,104** |
-| `00` | 40,568 | 857,328 |
-| `45` | 30,529 | 644,397 |
-| `03` | 29,601 | 624,837 |
-| `02` | 15,150 | 321,630 |
-| `09` | 5,707 | 121,002 |
-| `08` | 4,406 | 92,742 |
-| `07` | 2,649 | 56,253 |
-| | 178,626 | **3,778,293** |
+| Bank | Executions | Master cycles | Mentioned in `src/app` |
+| --- | ---: | ---: | ---: |
+| `00` | 40,568 | **857,328** | 705,303 |
+| `45` | 30,529 | 644,397 | 630,354 |
+| `03` | 29,601 | 624,837 | 338,784 |
+| `02` | 15,150 | 321,630 | 189,678 |
+| `01` | 8,854 | 187,590 | 103,953 |
+| `09` | 5,707 | 121,002 | 29,292 |
+| `08` | 4,406 | 92,742 | 1,302 |
+| `07` | 2,649 | 56,253 | 56,253 |
+| | 137,464 | **2,905,779** | 2,054,919 |
 
-**Rank by ported owner, not by cycles**, and the four banks done so far bracket
+**Rank by ported owner, not by cycles**, and the five banks done so far bracket
 what that means: bank `03` took eight edits for 1,054,221 because its pool was
 spread, then twenty-two more for 873,453 because two of its rows were shared
 routines; bank `08` took two for 1,633,611 because 95% of it was two returns of
 already-native walks; bank `02` took twenty-one for 1,314,528 and was both at
-once. No number in the table above predicts any of that.
+once; bank `01` took twenty-one for 872,514, a third of which came from two
+edits because two of its families are walking interpreters with a stop list. No
+number in the table above predicts any of that.
 
-A crude version of the discriminator can be run over a whole profile in one
-pass: for each non-entry `RTS` row, ask whether its address appears anywhere in
-`src/app/*.cpp` as a hexadecimal literal. Across the remaining 3,778,293,
-2,927,433 do and 850,860 do not. Per bank, `01` is 976,467 mentioned against
-83,637 not, `00` is 705,303 against 152,025, and `45` is 630,354 against 14,043.
-That is a proxy and it over-counts -- a mention can be a resume address, a
-branch target or a `return_instruction` on an arm that hands over mid-routine
-rather than one a walk ends on -- but 92% is a strong enough signal to make
-bank `01` the one to open, and `01:CB48` and the controls family already own a
-great deal of it. Bank `45`'s music interpreter is a single large walk rather
-than a spread, which is a different and probably shorter piece of work.
+**Look for a stop list first.** It is the cheapest thing in this technique: a
+walking interpreter that ends at whichever address in a fixed list it reached is
+one absorption for every return the family has, however many registered entries
+dispatch it. Bank `01` had two and they were worth 372,411 between them. Grep
+for `is_stop_instruction` to see which families already have the shape.
+
+Bank `45`'s music interpreter is a single large walk rather than a spread, and
+its 630,354 mentioned against 14,043 not is the friendliest ratio left --
+probably a shorter piece of work than bank `00`, and worth pricing before
+committing to the larger pool.
+
+The last column is a crude discriminator run over the whole profile in one pass:
+for each non-entry `RTS` row, ask whether its address appears anywhere in
+`src/app/*.cpp` as a hexadecimal literal. Across the remaining 2,905,779,
+2,054,919 do and 850,860 do not. It over-counts -- a mention can be a resume
+address, a branch target or a `return_instruction` on an arm that hands over
+mid-routine rather than one a walk ends on -- and bank `01` is the proof of how
+much: it read 976,467 mentioned before this slice and delivered 872,514, but
+what is left still reads 103,953 mentioned. Use it to rank, not to estimate.
+
+**The other thing `### Next` could be is the fork patch.** `01:C510` is the
+first family that cannot absorb, and the reason is a host limitation rather than
+anything about the routine: a transaction stages its absorbed return when it is
+installed and nothing withdraws the promise when the transcript is cut short, so
+a routine re-entered at the same stack depth redeems a stale one against a live
+call. The core knows when it abandons a transcript -- `ReplacementActive` goes
+false in eight places in
+`patches/0006-huc6280-interruptible-replacement.patch` -- so the patch is a
+callback from there into `pending_absorbed_returns_`. It is worth 73,536 cycles
+at `01:C52B` directly, and more than that in what it unblocks: every family from
+here on that is long and re-entrant is in the same position, and there is no way
+to tell from the profile which those are.
+
+What is left in bank `01`:
+
+| Return | Master cycles | Why it is still there |
+| --- | ---: | --- |
+| `01:C52B` | 73,536 | The actor scan loop -- held back on the stale promise |
+| `01:DCD7` | 46,725 | Unported |
+| `01:CCD4` + `CCD2` | 18,522 | The scan's transcripts ending in front of the mask lookup's return |
+| `01:DD08` | 14,550 | Unported |
+| `01:CBF9` | 5,694 | A tail dispatch, not a return |
+| `01:D4A3` + `D4DC` | 10,392 | Unported |
+| `01:C70A` | 4,179 | Unported |
+| `01:CF99` | 3,561 | Unported |
 
 What is left in bank `03`, for whoever comes back to it:
 
@@ -6480,6 +6661,24 @@ What to carry across rather than rediscover:
   If it matches the emulated one, the difference is this slice's; if it does
   not, the slice has found something older and the fix belongs somewhere else.
   Two builds and two runs, and it is the difference between a fix and a guess.
+- **Look for a stop list before ranking rows.** A walking interpreter that ends
+  in front of whichever address in a fixed list it reached is one absorption for
+  the whole family, however many registered entries dispatch it -- and it is the
+  only case where the rows have to be *read* rather than counted. A stop list
+  mixes returns with mid-routine handovers and with `RTS` instructions that are
+  not returns at all. `01:CBF9` pushes a vector and lets the `RTS` jump to it;
+  absorbing there would have computed the right landing address and still
+  reported a completed call where none completed. Check the opcode at every
+  stop, then check what each `RTS` actually pops.
+- **A promise the transcript never keeps is never withdrawn.** A transaction
+  stages its absorbed return when it is *installed*, and the observer redeems it
+  at the boundary the machine lands on afterwards. Nothing withdraws it if the
+  transcript is cut short. That is harmless until the routine is re-entered at
+  the same stack depth, at which point the stale promise finds a live call and
+  closes it with an abandoned transcript's registers -- correct cycles, wrong
+  `Y` and `MPR`. `01:C510` is the first family with both properties and is held
+  back for it. If a candidate is long enough to be suspended *and* re-entered at
+  the same depth, expect this and trace it before believing it.
 - **A shared routine absorbs at its entry, not inside itself.** If any other
   transcript runs the routine in line, it reads `return_instruction` to find
   the `RTS` it must transcribe, and a routine that ran past its own return

@@ -16,19 +16,19 @@ Release state-census route (`--native-cycle-census`, measured 2026-08-13):
 | | |
 | --- | ---: |
 | Elapsed master cycles | 1,292,371,731 |
-| Native master cycles | 677,038,098 |
-| **Native share** | **52.39%** |
-| **Native share of cycles outside the idle spin loop** | **95.29%** |
+| Native master cycles | 677,903,067 |
+| **Native share** | **52.45%** |
+| **Native share of cycles outside the idle spin loop** | **95.41%** |
 | Routines installed | 369 of 369 |
 | Routines entered | 302 |
 | Calls run natively | 2,665,426 of 2,704,004 entered |
 | Calls declined at an interrupt horizon | 0 |
-| Transcripts installed inside a suspended transcript | 297,017 |
+| Transcripts installed inside a suspended transcript | 297,374 |
 | Deepest simultaneous suspension | 3 of a permitted 4 |
 | Replacements refused for depth | 0 |
 
 The resulting state census is byte-identical to the assembly-only
-baseline (`9036a9de…`), so that 52.39% is faithful, not merely running.
+baseline (`9036a9de…`), so that 52.45% is faithful, not merely running.
 The last three rows matter because the host credits a native call when
 it *offers* one. A replacement the core then refused would inflate the
 share silently, and a refusal count of zero is what rules that out.
@@ -657,6 +657,56 @@ composition finish emulated. The rows that go to zero are the short families;
 the ones that leave a residue are the long ones. Nothing about the ranking says
 which is which, so the residue is worth reading after the edit rather than
 predicted before it.
+
+**Bank `01` was the largest pool and the cheapest of the four, because two
+edits took a third of it.** `replace_collision_tail` and
+`replace_actor_geometry_leaf` are walking interpreters: each is dispatched for
+many registered entries and each ends by stopping in front of whichever address
+in a fixed list it walked into. Absorbing at that one place covers thirteen
+returns — 213,939 master cycles for the first and 158,472 for the second — and
+neither routine is composed by anything, so the return belongs inside the
+routine and needs no wrapper. What the list needed was reading rather than
+trusting: eleven of the tail's twenty-five stops are `RTS` and only ten of
+those are returns. `01:CBF9` is the tail dispatch at the end of the confirmed-contact
+dispatcher, where `01:CBF4` and `01:CBF8` push a vector out of a table and the
+`RTS` jumps to it. The word it pops is one the routine wrote two instructions
+earlier, so no call completes there and there is nothing to absorb.
+
+Three of bank `01`'s routines needed the entry wrapper, and the coroutine
+scheduler at `01:C5C9` is the reason the technique now has a fifth regression.
+Twenty-seven walks in `native_replacements_rules.cpp` run it in line and adopt
+its `return_instruction` and `body_master_cycles` as their own, several of them
+testing that the body is exactly 159 cycles — so a scheduler that ran past its
+own return would have made every one of those compositions fail its guard and
+fall back silently. It is also the first absorption whose frame is not where the
+entry's stack pointer says: its first two instructions are the `PLA`s that take
+its own return address off the stack to record where it was called from, so the
+`RTS` reads its caller's caller's frame, at $2100+S+3 and +4 rather than the
++1 and +2 every other absorption reads. Reading the wrong pair there would not
+look wrong — it would return to the address the routine was called from, which
+is a real address the machine would go on executing. That is why `dc_rom_absorbed_return_trace` now
+runs over five routines.
+
+The bank falls 1,060,104 → 187,590 and the route 3,778,293 → 2,905,779; the
+registry goes 677,038,098 → 677,903,067, **52.45%** of the route and **95.41%**
+outside the frame-sync wait. Twenty-three rows go to zero.
+
+**And bank `01` is where the technique's second limit showed up**, in the one
+family held back rather than shipped. The actor scan loop at `01:C510` is both
+long enough to be cut short often and re-entered at the same stack depth, and
+the two together defeat the observer's bookkeeping. A transaction stages the
+return it promises to absorb when it is installed, and the promise is redeemed
+at the boundary the machine lands on afterwards; nothing withdraws it when the
+transcript never gets that far. A later arrival at the same address and depth
+then redeems the stale promise and closes a call with an abandoned transcript's
+registers — 82,201 of 176,861 calls reporting the wrong `Y`, and 42,753 the
+wrong `MPR4`/`MPR5`, with every cycle column still correct. Withdrawing the
+promise when the core executes the `RTS` itself fixes three calls in eight and
+no more, because a cut-short scan usually leaves through the dispatch at
+`01:C52C` and never reaches `01:C52B` at all. Doing it properly means the core
+telling the runtime when it abandons a transcript, which is a fork patch. Until
+then `01:C52B` keeps its 73,536 master cycles, and it is the largest single
+thing left in the bank.
 
 The `JSR` half is the same argument from the other side and is not new: a
 caller's walk that steps into the callee is composition, which `01:CB48`
@@ -1502,7 +1552,7 @@ anything and the figure has been dropped rather than carried forward
 unverified.
 
 Set the idle spin loop aside and 710,482,755 cycles are the machine
-working; 677,038,098 of them, **95.29%**, now run natively.
+working; 677,903,067 of them, **95.41%**, now run natively.
 
 The breakdown below is a self-consistent snapshot taken before the
 interrupt dispatcher was split and the whole-palette arm with it, against

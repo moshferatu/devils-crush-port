@@ -159,6 +159,29 @@ constexpr std::uint32_t kPushAccumulator = 9U;
         || logical_pc == 0xCDF7U;
 }
 
+// Which of those stops is a return the walk can run past. Eleven of the
+// twenty-five are `RTS` and ten of those are returns. The eleventh, 01:CBF9,
+// is not a return at all. It is
+// the tail dispatch described above: 01:CBF4 and 01:CBF8 push a vector read out
+// of the tables at 01:CBFA and 01:CBFF, and the `RTS` jumps to it. The word it
+// pops is one this routine wrote two instructions earlier rather than the frame
+// a caller pushed, so no call completes there and there is nothing to absorb.
+// The stack-pointer test at the stop would refuse it in any case, the two pushes
+// having moved the pointer, but that would be an accident rather than a reason.
+//
+// Everything else in the list is an address the walk hands back at -- a `JSR`
+// the family makes, the `BBR` at 01:CB7E, or a branch arm -- and hands back
+// mid-routine, with no return to take.
+[[nodiscard]] constexpr bool is_absorbable_return(
+    const std::uint16_t logical_pc)
+{
+    return logical_pc == 0xCA89U || logical_pc == 0xCB20U
+        || logical_pc == 0xCB29U || logical_pc == 0xCB89U
+        || logical_pc == 0xCB92U || logical_pc == 0xCBB2U
+        || logical_pc == 0xCBC6U || logical_pc == 0xCBCEU
+        || logical_pc == 0xCDF1U || logical_pc == 0xCDF7U;
+}
+
 } // namespace
 
 std::optional<RoutineReplacement> replace_collision_tail(
@@ -494,6 +517,33 @@ std::optional<RoutineReplacement> replace_collision_tail(
             replacement.return_instruction = {kBank, pc};
             replacement.output_registers = registers;
             replacement.body_master_cycles = cycle;
+
+            // Nothing composes this walk -- the registry dispatches it and
+            // that is its only caller -- so the return belongs inside the
+            // routine rather than to a wrapper around it.
+            //
+            // The stack pointer is tested rather than assumed. Every walk that
+            // ends on one of these returns leaves it where it found it, but
+            // this routine does push, and a return read from the wrong end of
+            // a frame is the one mistake here that would still look correct.
+            //
+            // The atomic question cannot fail: a stop is never an entry, so
+            // the walk has crossed at least one instruction and emitted at
+            // least one checkpoint. It is asked anyway, because what makes it
+            // unnecessary is a property of is_owned_entry rather than of this
+            // loop.
+            if (is_absorbable_return(pc)
+                && registers.stack_pointer == entry.registers.stack_pointer
+                && (!replacement.checkpoints.empty()
+                    || absorbed_return_fits_atomically(entry, cycle))) {
+                absorb_return(
+                    replacement,
+                    work_ram,
+                    entry.registers.stack_pointer,
+                    {kBank, pc},
+                    cycle,
+                    registers);
+            }
             return replacement;
         }
 

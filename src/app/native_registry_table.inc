@@ -85,7 +85,7 @@ DC_ADMITTED_ROUTINE(0x01U, 0xC5BBU, 1, 64, "verify_knight_terminal_release_helpe
 DC_ADMITTED_ROUTINE(0x01U, 0xC5BEU, 1, 64, "verify_knight_terminal_release_helper_allocator_mode_load_prefix")
 DC_ADMITTED_ROUTINE(0x01U, 0xC5C0U, 1, 64, "verify_knight_terminal_release_helper_allocator_mode_branch_prefix")
 DC_ADMITTED_ROUTINE(0x01U, 0xC5C7U, 1, 64, "verify_knight_terminal_release_helper_allocator_return_carry_clear_prefix")
-DC_ADMITTED_ROUTINE(0x01U, 0xC5C9U, 2462, 2462, "verify_coroutine_scheduler_semantic")
+DC_ADMITTED_ROUTINE(0x01U, 0xC5C9U, 2462, 2462, "verify_absorbed_return_trace +1")
 DC_ADMITTED_ROUTINE(0x01U, 0xC606U, 171734, 171734, "verify_actor_queue_semantic")
 DC_ADMITTED_ROUTINE(0x01U, 0xC654U, 171734, 171734, "verify_actor_loop_linkage_semantic")
 DC_ADMITTED_ROUTINE(0x01U, 0xC7E5U, 1, 1, "verify_session_alternate_outer +2")

@@ -26,7 +26,7 @@
 # drift into agreeing with a mistake -- the emulated run is the answer.
 #
 # The script takes the routine to prove, so that each one it is pointed at is a
-# test of its own rather than a longer one. Four are registered.
+# test of its own rather than a longer one. Five are registered.
 #
 # 00:E93C is the palette family's most-called walk and the one the technique was
 # established on. It returns to more than one caller, it is called from more
@@ -57,6 +57,15 @@
 # themselves, so only the entry the core takes runs past it. It is also the
 # busiest routine on the census route -- 54,149 calls with nothing else
 # replaced -- which makes it the one that would show a mismatch soonest.
+#
+# 01:C5C9 is the coroutine scheduler, and it is the fifth shape: a return whose
+# frame is not above the pointer the routine was entered with. Its first two
+# instructions are `PLA`s that take its own return address off the stack so it
+# can record where it was called from, and the `RTS` it ends on then reads the
+# frame above that -- its caller's caller's. Every other absorption in the
+# registry reads $2100+S+1 and +2; this one reads +3 and +4. Reading the wrong
+# pair here would not look wrong: it would return to the address the routine was
+# called from, which is a real address that the machine would go on executing.
 
 foreach(required_variable IN ITEMS APP CONFIG ROM OUTPUT ROUTINE)
     if(NOT DEFINED ${required_variable} OR "${${required_variable}}" STREQUAL "")
@@ -87,6 +96,11 @@ elseif(routine STREQUAL "03:6966")
         "Native replacement 03:6966@all entries: 54149 of 54149")
     set(expected_trace
         "Routine call trace complete: 54149 calls, 542826 writes")
+elseif(routine STREQUAL "01:C5C9")
+    set(expected_entries
+        "Native replacement 01:C5C9@all entries: 2462 of 2462")
+    set(expected_trace
+        "Routine call trace complete: 2462 calls, 863105 writes")
 else()
     message(FATAL_ERROR "Unknown absorbed-return routine: ${routine}")
 endif()

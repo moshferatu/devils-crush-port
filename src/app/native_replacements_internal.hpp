@@ -1151,6 +1151,15 @@ replace_coroutine_scheduler(
     const emulation::RoutineEntry& entry,
     std::span<const std::byte> work_ram);
 
+// What the registry dispatches at 01:C5C9. Twenty-seven walks in
+// native_replacements_rules.cpp run the scheduler above in line and adopt the
+// `RTS` it stopped on as their own, so the routine cannot run past it and the
+// absorption belongs here, where the caller is the core. Nothing composes this.
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_coroutine_scheduler_entry(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram);
+
 [[nodiscard]] std::optional<emulation::RoutineReplacement>
 replace_nudge_input_gate(
     const emulation::RoutineEntry& entry,
@@ -1211,9 +1220,11 @@ replace_actor_camera_activation(
     const emulation::RoutineEntry& entry,
     std::span<const std::byte> work_ram);
 
+// Work RAM is read for one byte only: the frame the absorbed return pops.
 [[nodiscard]] std::optional<emulation::RoutineReplacement>
 replace_actor_slot_reset(
-    const emulation::RoutineEntry& entry);
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram);
 
 [[nodiscard]] std::optional<emulation::RoutineReplacement>
 replace_actor_scan_run(
@@ -1474,6 +1485,22 @@ replace_collision_geometry(
 
 [[nodiscard]] std::optional<emulation::RoutineReplacement>
 replace_collision_scan_vertical_reject(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram,
+    std::span<const std::byte> rom);
+
+// What the registry dispatches at 01:CC1A and 01:CC98. Both routines above are
+// run in line by another transcript that reads the `RTS` they stopped on before
+// it will splice them, so neither can run past its own return; the entry the
+// core takes is the one arrival nothing is reading. Nothing composes these.
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_collision_scan_vertical_reject_entry(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram,
+    std::span<const std::byte> rom);
+
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_collision_mask_lookup_entry(
     const emulation::RoutineEntry& entry,
     std::span<const std::byte> work_ram,
     std::span<const std::byte> rom);
