@@ -16,19 +16,19 @@ Release state-census route (`--native-cycle-census`, measured 2026-08-13):
 | | |
 | --- | ---: |
 | Elapsed master cycles | 1,292,371,731 |
-| Native master cycles | 684,791,970 |
-| **Native share** | **52.99%** |
-| **Native share of cycles outside the idle spin loop** | **96.38%** |
+| Native master cycles | 686,342,148 |
+| **Native share** | **53.11%** |
+| **Native share of cycles outside the idle spin loop** | **96.60%** |
 | Routines installed | 371 of 371 |
 | Routines entered | 304 |
 | Calls run natively | 2,673,011 of 2,711,589 entered |
 | Calls declined at an interrupt horizon | 0 |
-| Transcripts installed inside a suspended transcript | 300,708 |
+| Transcripts installed inside a suspended transcript | 301,246 |
 | Deepest simultaneous suspension | 3 of a permitted 4 |
 | Replacements refused for depth | 0 |
 
 The resulting state census is byte-identical to the assembly-only
-baseline (`9036a9de…`), so that 52.99% is faithful, not merely running.
+baseline (`9036a9de…`), so that 53.11% is faithful, not merely running.
 The last three rows matter because the host credits a native call when
 it *offers* one. A replacement the core then refused would inflate the
 share silently, and a refusal count of zero is what rules that out.
@@ -338,11 +338,22 @@ instruction in the same shape, and they were unreachable until this one
 because the `PLP` in front of each stops the walk that would run on to them.
 The answer is to enter *at* the return: an entry of one instruction, the core
 having interpreted the `PLP` between the two. The registry goes 684,632,685 ->
-684,791,970, **52.99%** and **96.38%**. See **The VDC interrupt handler** below.
+684,791,970, 52.99% and 96.38%. See **The VDC interrupt handler** below.
 Both `RTI`s remain in the instruction profile afterwards, unlike the driver's,
 because there they were absorbed into a transcript entered elsewhere and here
 they are the entry — a difference in which address carries the cycles, not in
 what the machine runs.
+
+**And the slice after that stopped waiting for a blocked walk to become
+possible.** Entering past an instruction the walk cannot cross was still, at
+bottom, a way of getting a transcript to the far side of something. The
+sprite-emitter driver's four `JSR $40DF` were not blocked by anything: the
+walks stopped in front of them because the call had always looked like a wall,
+and 73,818 of them stayed interpreted for it. A transcript may end on any
+address, so it may end on the callee's first instruction — push the return,
+jump, and let the entry that already exists there take the body. See **The
+satellite attribute submission** below. 1,550,178 master cycles, no new
+routine, no new entry point, and every entry count in the family unchanged.
 
 ## The music sequencer
 
@@ -1172,6 +1183,66 @@ Verification is the two-run diff against pure assembly over three artifacts:
 whole stack page, 2,151,922 writes to the VDC and VCE register files censused
 directly with `--bus-write-range`, and the state census.
 
+## The satellite attribute submission, and crossing a call
+
+`08:4036`-`40DE` is the driver that hands the VDC its sprite table each frame.
+It points the write pointer at `$7800`, drains the three queues the actor
+scheduler fills, emits the ball's own slot, and falls into the tail clear that
+zeroes whatever the frame did not use. The emitter it calls, `08:40DF`, is a
+registered routine of its own -- 73,818 calls, 99.6M native cycles, the
+busiest thing in the registry.
+
+The driver cannot be one transaction. Subsuming twenty-one emitter calls a
+frame at ~944 cycles each blows every channel there is. So it is a shared walk
+across five entry points -- the head, and the four addresses a `JSR $40DF`
+returns to -- and the walk is shared because the stops chain: draining one
+queue empty falls into the next, so an arrival at `08:4063` can end anywhere
+in the routine.
+
+| Address | What it is | Native calls |
+| --- | --- | ---: |
+| `08:4097` | Return from the third queue's call | 50,248 of 50,248 |
+| `08:4075` | Return from the second queue's call | 16,576 of 16,576 |
+| `08:4063` | Return from the first queue's call | 4,427 of 4,427 |
+| `08:4036` | The head: point MAWR at `$7800 + ($58 << 2)` | 3,492 of 3,492 |
+| `08:4088` | Return from the ball slot's call | 2,567 of 2,567 |
+
+`08:4088` is entered 3,492 times in all but only 2,567 times here, because
+four of the five walks reach it inline through the ball slot's two branches.
+
+**What the family is in the registry for is the call.** Each walk used to stop
+*in front of* its `JSR`, and the core interpreted it: 73,818 subroutine calls,
+1,550,178 master cycles, the largest single block of assembly left on the
+route once the interrupt returns were taken. Nothing blocked them. The walks
+stopped there because a call reads like a wall -- the thing a transcript
+famously cannot afford to follow.
+
+It is not one. A transcript ends by naming the next instruction, and nothing
+requires that instruction to be inside the routine that produced it or even to
+be un-replaced. So the walk makes the call instead of stopping in front of it:
+push the address of the `JSR`'s last byte, drop the stack pointer two, and end
+on `08:40DF`, where the emitter's own entry is waiting. The callee is not
+subsumed, inlined or modelled. It is arrived at.
+
+Two details make the push exact. `JSR` pushes before it charges a cycle
+(Mednafen's case `$20` is PUSH, PUSH, ADDCYC), so both bytes carry the
+instruction's *start* offset -- which is also the offset of the checkpoint in
+front of it. The core holds a write back at a checkpoint naming a different
+instruction, so the pair lands with the call, and an interrupt taken at the
+earlier boundary finds a stack the call has not touched. And the value is the
+`JSR`'s last byte rather than the following instruction, because the emitter's
+absorbed `RTS` reads that word and adds one.
+
+The slice adds no routine, no entry point and no call: the emitter still
+begins at `08:40DF` on all 73,818, and the five entries above hold their
+counts to the call. Only the cycles move, and only from the interpreter.
+Verification is the write trace with the stack page `$2100`-`$21FF` scoped and
+diffed against the same route with nothing replaced -- 4,438,966 writes,
+identical -- so every pushed address, its order and its master-cycle offset are
+pinned against the machine rather than against a recorded expectation. A wrong
+word here would not fault: the emitter would return to some other real address
+and keep running.
+
 ## The tilemap upload, and an instruction a checkpoint cannot express
 
 `00:F261`–`F4F1` is the other half of the graphics driver's port work and
@@ -1706,7 +1777,7 @@ anything and the figure has been dropped rather than carried forward
 unverified.
 
 Set the idle spin loop aside and 710,482,755 cycles are the machine
-working; 684,791,970 of them, **96.38%**, now run natively.
+working; 686,342,148 of them, **96.60%**, now run natively.
 
 The breakdown below is a self-consistent snapshot taken before the
 interrupt dispatcher was split and the whole-palette arm with it, against

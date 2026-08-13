@@ -260,9 +260,9 @@ own when the CPU does.
 is the one to watch:
 
 ```
-Registry cycles: 684791970 native of 1292371731 elapsed master cycles (52.99%)
-Registry cycles outside the frame-sync wait: 684791970 native of 710482755
-  (96.38%); the machine waited at 00:E323 for 581888976 master cycles
+Registry cycles: 686342148 native of 1292371731 elapsed master cycles (53.11%)
+Registry cycles outside the frame-sync wait: 686342148 native of 710482755
+  (96.60%); the machine waited at 00:E323 for 581888976 master cycles
   (45.02% of the route)
 Instructions interpreted: 66312528
 ```
@@ -800,7 +800,9 @@ Remaining real logic, in rough order of value:
    see `docs/NATIVE_PORT_WORKFLOW.md` — nothing genuinely unported is above
    1.6M. In order: `08:41AB` (1.56M — since absorbed into the sprite
    emitter's own transcript, leaving 987), `01:C700`–`C77F` (1.22M),
-   `08:4080`–`40FF` (1.20M), `01:DC80`–`DCFF` (950K), `00:E200`–`E27F` (894K),
+   `08:4080`–`40FF` (1.20M — since taken: it was the `JSR $40DF` at `08:4094`
+   and its three siblings, and the driver's walks now make the call instead of
+   stopping in front of it), `01:DC80`–`DCFF` (950K), `00:E200`–`E27F` (894K),
    `03:6000`–`607F` (857K), `01:C100`–`C17F` (839K), `00:E000`–`E07F` (775K).
    `02:5900`–`597F` belongs on that list too and no longer does: `02:5903`,
    the Sorcerer tick's own return, was 384K and is now 8,547. `03:6980`–`6A37`
@@ -815,6 +817,17 @@ Remaining real logic, in rough order of value:
    `08:4085`–`4094` at "2.8M", `01:C5C8`–`C770` at "1.6M", `03:6001`–`6053` at
    "883K" — were boundary instructions and resumption around routines that
    were already native.
+
+   **"Boundary instruction" was doing too much work in that sentence.** It is
+   the right diagnosis of the *number* — a native body's cycles are charged to
+   the last address the profile sampled, so a block that looks like 2.8M can be
+   one instruction plus a routine that is already ported — but it was read as
+   though the instruction left over were an accounting artefact rather than
+   machine time. `08:4085`–`4094` is four `JSR $40DF`, 73,818 executions,
+   1,550,178 master cycles that the interpreter really did spend, and a
+   transcript can make a call as easily as it can make a store. Separating the
+   entry point from the body tells you the block is smaller than it looks; it
+   does not tell you the remainder is nothing.
 17. **Boot and reset path.** Off the census route's hot path but required.
 18. **The frame-sync spin loop** (584.8M). Trivial code, but it is where the
    native frame boundary ends up living — do it with phase 3, not before.

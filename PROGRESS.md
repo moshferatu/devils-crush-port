@@ -5633,11 +5633,99 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
   - [x] Correct the stale figures in `NATIVE_REGISTRY.md` and its generator
     that could be checked from the census — header counts, the two missing
     dispatcher rows, `00:E195`'s cycles. The structural drift is untouched.
+- [x] Cross the sprite emitter's four calls, the largest emulated block left
+  once the returns were taken:
+  - [x] End the SAT driver's walks *on* `08:40DF` rather than in front of the
+    `JSR`. A transcript's resume address need not be inside the routine that
+    produced it, and may be another transcript's entry point — so the callee
+    is arrived at rather than subsumed, inlined or modelled.
+  - [x] Push the address of the `JSR`'s last byte, both bytes at the
+    instruction's *start* offset, because `JSR` pushes before it charges a
+    cycle and the emitter's absorbed `RTS` reads that word and adds one.
+  - [x] State this family's stack assumption too — MPR1 selects work RAM —
+    and decline rather than guess. It declined nothing.
+  - [x] Scope the stack page into the regression's write trace and prove it by
+    two-run diff against assembly rather than by a recorded hash: 4,438,966
+    writes identical, census unchanged at `9036a9de…`. A wrong pushed word
+    would not fault, so nothing weaker would catch it.
+  - [x] Measure: **+1,550,178 native master cycles** (684,791,970 ->
+    686,342,148, 52.99% -> **53.11%** of the route, 96.38% -> **96.60%**
+    outside the wait), with `73,818 x 21` closing it exactly, and no new
+    routine, entry point or call — every entry count in the family unchanged.
+  - [x] Write the technique up beside composition in the workflow doc. They
+    answer different questions: composition wants the callee's body in line
+    and pays for the length in shadowing; this wants only the call and pays
+    nothing.
+  - [x] Correct `EMULATOR_ELIMINATION.md`'s dismissal of `08:4085`-`4094` as
+    "boundary instructions around routines that were already native". True of
+    the number, wrong about the remainder — 1,550,178 cycles of it.
 
 ## Active Work
 
-Current owner: Claude. Current slice: **the display handler's interrupt
-returns**. Done. Two entry points of one instruction each, and the sequel the
+Current owner: Claude. Current slice: **the sprite emitter's four calls**.
+Done. The walks now make the call instead of stopping in front of it.
+
+**`08:4036`'s four `JSR $40DF` were 73,818 interpreted subroutine calls,
+1,550,178 master cycles** — the largest single block of assembly left on the
+route once the interrupt returns were taken, and the only item on the previous
+ranking that was neither a refusal nor residue. The registry goes 684,791,970
+-> **686,342,148** native cycles, 52.99% -> **53.11%** of the route and
+96.38% -> **96.60%** of it outside the frame-sync wait. 73,818 × 21 closes it
+exactly.
+
+**Nothing was blocking them.** The SAT driver is a shared walk across five
+entry points, each ending in front of a `JSR` into the sprite emitter, and the
+reason it stopped there was that the callee is 944 cycles and twenty-one calls
+a frame — far too much to compose. That is a true statement about the *body*
+and it was read as a statement about the *call*. A transcript ends by naming
+the next instruction, and nothing requires that instruction to be inside the
+routine that produced it. So the walk pushes the return address, charges the
+21 cycles, and ends on `08:40DF` — the emitter's own registered entry, which
+picks the body up exactly as it did when the core interpreted the `JSR`.
+
+**This is a third option beside composition, and a cheaper one.** Composition
+subsumes the callee to absorb the call *and* its `RTS`, and pays for the extra
+length in shadowing — the collision sweep's slice gave 19.7% of its gross back
+that way. Crossing the call adds one instruction to the transcript and nothing
+to its span, so it pays no shadowing bill at all: gross and net are the same
+number here. The `RTS` half was already absorbed by the emitter two slices
+before this one, so the family now pays neither half of the 42-cycle tax.
+
+**It adds no routine, no entry point and no call.** The registry stays at 371
+routines, 304 entered, 2,673,011 of 2,711,589 calls; all five SAT entry counts
+and the emitter's 73,818 are unchanged to the call. Only the cycles move, and
+only out of the interpreter. Nesting rose 300,708 -> 301,246; abandonments are
+unchanged at 21,538; instructions interpreted is 66,312,528 for the fourth
+consecutive slice, which is what that figure counting boundary *decisions*
+rather than interpreted work looks like — the walk used to end and let the core
+decide at the `JSR`, and now it ends and lets the core decide at `08:40DF`.
+
+**The verification is a two-run diff, not a recorded hash.** The SAT
+regression's write trace gained the stack page `$2100`-`$21FF`, so every
+pushed address, its order and its master-cycle offset are pinned: 4,438,966
+writes, byte-identical between the replaced route and the same route with
+nothing replaced (`6cbeecb8…`), and the state census unchanged at
+`9036a9de…`. That check matters more than usual here, because a wrong pushed
+word would not fault — the emitter reads it back through its absorbed `RTS`
+and would return to some other real address and keep running.
+
+**Two details make the push exact**, both already in the workflow doc and now
+cross-referenced from it. `JSR` pushes before it charges a cycle, so both
+bytes carry the instruction's start offset — which is also the preceding
+checkpoint's offset, and the core disambiguates a tie by instruction rather
+than by offset, so the pair lands with the call and an interrupt at the earlier
+boundary finds a stack the call has not touched. And the pushed value is the
+`JSR`'s last byte rather than the next instruction, because the emitter's
+absorbed return reads that word and adds one.
+
+The walk also states the assumption the family had been leaning on unspoken:
+its queue reads, its `PHY`/`PLY` and now its pushes all come out of one
+private copy of work RAM, which is only the stack while MPR1 selects `$F8`.
+The guard declined nothing.
+
+### Previous: the display handler's interrupt returns
+
+Done. Two entry points of one instruction each, and the sequel the
 previous slice made reachable.
 
 **`00:E135` and `00:E194` are the `RTI`s the VDC interrupt leaves through** —
@@ -7047,39 +7135,55 @@ does not.
 
 ### Next
 
-**Re-ranked after both interrupt-return slices, by real per-instruction cost
-rather than by the profile's cycle column.** With `00:FC8D`, `00:FD81`,
-`00:E135` and `00:E194` all taken, 25,690,785 master cycles are left outside
-the frame-sync wait, and the largest single emulated instructions on the route
-are now:
+**Re-measured with the registry deployed after this slice** (instruction
+profile, 3,600-frame Release route). The two `08:40xx` rows the previous
+ranking led with are gone. Excluding the frame-sync spin loop's own two
+instructions, the largest emulated addresses left are:
 
 | Address | Executions | Master cycles | What it is |
 | --- | ---: | ---: | --- |
-| `00:FC81` | 251,531 | 1,509,498 | The driver's `SEI`. A checkpoint cannot express it; this is the refusal that survives |
-| `08:4094` | 50,248 | 1,066,632 | `JSR $40DF` into a native entry — wants a ported caller, not an absorption |
+| `00:FC81` | 251,531 | 1,509,498 | The driver's `SEI`. A checkpoint cannot express it; the refusal that survives everything |
+| `00:E321` | 3,568 | 1,180,680 | The frame-sync waiter. Attribution, not work — the row carries the wait |
+| `00:EB46` | 29 | 625,095 | The whole-palette `TIA`. A capacity wall: 1,024 writes against a 512-write channel, and no interior boundary to chunk at |
 | `00:F423` | 17,248 | 365,664 | `BBR0`, the other instruction a checkpoint cannot express |
-| `08:4072` | 16,576 | 351,792 | The same `JSR`, second site |
-| `00:E26E` | 11,671 | 247,059 | `JMP [$2CBE]`, the dispatch indirection |
-| `00:E252` | 11,599 | 245,451 | `JSR $E262` into a native entry |
-| `00:E327`–`E32B` | 3,567 | 161,091 | The frame-sync waiter's three-instruction tail and its `RTS` |
-| `00:E134` | 7,198 | 86,376 | The `PLP` in front of the return just taken. It stays: its mask sample precedes its own change to `I` |
+| `00:E26E` | 11,671 | 247,059 | `JMP [$2CBE]`, the bank wrapper's dispatch indirection |
+| `00:E252` | 11,599 | 245,451 | `JSR $E262`, the same family's call into a native entry |
+| `03:601C` | 6,494 | 157,176 | `BSR $6054` into a native entry |
+| `03:6A37` | 7,357 | 154,521 | Interpreter residue: transcripts an interrupt cut short |
+| `03:6019` | 6,494 | 137,694 | `JSR $6966` into a native entry |
+| `03:603E` | 6,491 | 137,607 | The unported parent's own `RTS` |
+| `00:E05C` | 7,198 | 129,564 | `LDA $0000`, the interrupt acknowledge. A device read that changes the device; refused with reasons |
 
-**The interrupt returns are finished, and what the two slices leave is a
-technique rather than a list.** Four `RTI`s, 5,505,948 cycles, taken two ways:
-absorbed into a walk that already reached them, or entered directly when an
-instruction in front blocked the walk. Nothing on the route matches that shape
-any more. The list above is now three kinds of thing, and only one of them is
-still an absorption: instructions a checkpoint structurally cannot express
-(`00:FC81`, `00:F423`, `00:E134` — refusals, not targets), calls into an entry
-that is already native (`08:4094`, `08:4072`, `00:E252` — these want a ported
-*caller*, which is a different and larger kind of slice), and the frame-sync
-waiter's tail.
+**Take the bank-call wrappers next.** `00:E252` and `00:E26E` are 488,670
+master cycles of exactly what this slice just did, in a family whose three
+entry points are already native and whose walks already stop in front of both.
+`00:E252` is the same instruction as the four just crossed — push `$E254`, end
+on `00:E262`, which is a registered entry. `00:E26E` is the interesting half:
+an indirect `JMP` is a work-RAM read and a resume address, and the pointer is
+one the same walk wrote two instructions earlier (`$2F` low, `#$40` high), so
+the target is `$40xx` in whatever bank MPR2 holds. Resolving the resume bank
+through the transcript's own MPRs is machinery the interrupt-return slice
+already built and the host already validates. Neither is a new capability;
+both should be one edit.
 
-**`08:4094` is the largest thing left that is not a refusal**, and worth
-looking at first for whether the entry-at-the-blocked-instruction trick from
-this slice generalises to it: an entry *at* the `JSR`, pushing the return and
-delegating to the walk the callee already has. That is a guess and should be
-checked against the core's frame handling before it is planned around.
+**Then bank `03`'s unported parent.** `03:6000`-`607F` is the largest thing
+left that is a *routine* rather than an instruction: `03:6013`, `03:6019` and
+`03:601C` are three calls into entries that are already native, `03:603E` is
+its own return, and nothing in it has been transcribed. `03:6013` is cold — 4
+executions — so the two live calls are 294,870 and the whole routine is about
+629,000 including its two `LDA`s and the return. A parent with native children
+is the shape composition was written for, so read both techniques against it
+before choosing; the choice turns on the children's lengths and the shadowing
+bill, not on the call count.
+
+**What the top of the list now says about the route.** Five of the eleven rows
+above are refusals or attribution — `00:FC81`, `00:E321`, `00:EB46`,
+`00:F423`, `00:E05C` — and they are 3,810,501 of the table's 4,890,009. Of
+the remaining 1,079,508, four rows are calls or jumps into entries that are
+already native, one is an unported parent's own return, and one is interpreter
+residue nothing recovers. **The route no longer has a large emulated body on
+it.** What it has is joins between native bodies, and every one of those is
+now known to be expressible.
 
 **The old ranking, kept because its per-bank arithmetic still holds.** Note
 that it counts `RTS` opcodes only, so it never saw the interrupt return that

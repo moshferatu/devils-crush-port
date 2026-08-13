@@ -649,11 +649,19 @@ replace_sat_submission_step(
     // each. So the transcript is a walk that starts at any of the five
     // addresses control can arrive at with no replacement active -- the
     // routine's head, and the four returns from a `JSR $40DF` -- and runs
-    // until it reaches the next `JSR`, which the machine then executes and
-    // which re-enters the native emitter. The walk is shared because the
-    // stopping points chain: draining one queue empty falls straight into the
-    // next, so an arrival at `08:4063` can end anywhere from `08:4060` to
-    // `08:40C3`.
+    // until it has made the next call, ending on the emitter's own first
+    // instruction so that the machine takes the body from there. The walk is
+    // shared because the stopping points chain: draining one queue empty falls
+    // straight into the next, so an arrival at `08:4063` can end anywhere from
+    // `08:40DF` to `08:40C3`.
+    //
+    // The four `JSR`s used to be where each walk stopped rather than what it
+    // ended on, which left the call itself emulated: 73,818 of them, and the
+    // largest block of assembly still standing on the route. Subsuming the
+    // callee is what a transcript cannot afford here; crossing the call is
+    // three stack bytes and a jump, and the address it lands on is a
+    // registered entry that picks the body up unchanged. A transcript may end
+    // anywhere, including on another transcript's front door.
     //
     //   4036  point MAWR at $7800 + ($58 << 2), select VWR
     //   4056  drain $2C3A/$2CBC downward   -> JSR $40DF at 4060
@@ -667,6 +675,7 @@ replace_sat_submission_step(
     constexpr std::uint16_t kSecondReturnPc = 0x4075U;
     constexpr std::uint16_t kBallReturnPc = 0x4088U;
     constexpr std::uint16_t kThirdReturnPc = 0x4097U;
+    constexpr std::uint16_t kEmitterPc = 0x40DFU;
     constexpr std::uint16_t kTailClearPc = 0x40C3U;
     constexpr std::uint16_t kSpriteCountGuardPc = 0x40A6U;
 
@@ -692,6 +701,7 @@ replace_sat_submission_step(
     constexpr std::uint32_t kPortStore = 18U;
     constexpr std::uint32_t kPush = 9U;
     constexpr std::uint32_t kPull = 12U;
+    constexpr std::uint32_t kSubroutineCall = 21U;
     constexpr std::uint32_t kBranchTaken = 12U;
     constexpr std::uint32_t kBranchNotTaken = 6U;
 
@@ -712,6 +722,13 @@ replace_sat_submission_step(
     // The VDC ports are only addressable while the hardware page is mapped at
     // segment 0, which is also what the core's write validator requires.
     if (entry.registers.mpr[0] != 0xFFU) {
+        return std::nullopt;
+    }
+    // Three of the walk's queue drains push and pull around the call, and all
+    // four of its calls push a return address, out of the same private copy of
+    // work RAM the queues are read from. That copy is only the stack while
+    // $2000 is the page MPR1 selects.
+    if (entry.registers.mpr[1] != 0xF8U) {
         return std::nullopt;
     }
 
@@ -774,6 +791,42 @@ replace_sat_submission_step(
                 instruction_pc,
                 resume_pc,
                 address <= kVdcDataHigh ? 6U : 3U);
+        };
+    // Cross a `JSR $40DF`. All four sites are the same instruction with the
+    // same target, so the only thing that distinguishes them is the address
+    // pushed: the last byte of the call, which is what an `RTS` adds one to.
+    //
+    // `JSR` is the one instruction in this walk that pushes before it charges
+    // a cycle -- Mednafen's case $20 is PUSH, PUSH, ADDCYC -- so both bytes
+    // carry the instruction's start offset, which is also the offset the
+    // checkpoint in front of it carries. The core holds a write back at a
+    // checkpoint that names a different instruction, so the pair lands with
+    // the call rather than with whatever preceded it, and an interrupt taken
+    // at that earlier boundary finds a stack the call has not touched.
+    const auto call =
+        [&](const std::uint16_t instruction_pc) {
+            const auto pushed =
+                static_cast<std::uint16_t>(instruction_pc + 2U);
+            replacement.work_ram_writes.push_back({
+                .instruction = {kBank, instruction_pc},
+                .logical_address = static_cast<std::uint16_t>(
+                    0x2100U + registers.stack_pointer),
+                .value = static_cast<std::uint8_t>(pushed >> 8U),
+                .master_cycle_offset = cycle,
+            });
+            replacement.work_ram_writes.push_back({
+                .instruction = {kBank, instruction_pc},
+                .logical_address = static_cast<std::uint16_t>(
+                    0x2100U
+                    + static_cast<std::uint8_t>(
+                        registers.stack_pointer - 1U)),
+                .value = static_cast<std::uint8_t>(pushed & 0x00FFU),
+                .master_cycle_offset = cycle,
+            });
+            registers.stack_pointer =
+                static_cast<std::uint8_t>(registers.stack_pointer - 2U);
+            cycle += kSubroutineCall;
+            boundary(instruction_pc, kEmitterPc, 3U);
         };
     // The two identical MAWR setups at 4041 and 40A8: A << 2 becomes the low
     // half of the word address and $78 the high half.
@@ -1073,8 +1126,15 @@ replace_sat_submission_step(
             return std::nullopt;
         }
 
-        if (pc == 0x4060U || pc == 0x4072U || pc == 0x4085U || pc == 0x4094U
-            || pc == kTailClearPc || pc == kSpriteCountGuardPc) {
+        // A `JSR` ends the walk, but it is made rather than left standing: the
+        // transcript pushes the return and hands the machine the emitter's
+        // first instruction, where the emitter's own transcript is waiting.
+        if (pc == 0x4060U || pc == 0x4072U || pc == 0x4085U || pc == 0x4094U) {
+            call(pc);
+            pc = kEmitterPc;
+            break;
+        }
+        if (pc == kTailClearPc || pc == kSpriteCountGuardPc) {
             break;
         }
     }

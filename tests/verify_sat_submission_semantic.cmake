@@ -16,8 +16,15 @@ endif()
 # frame at about 944 cycles each. Instead one shared walk starts at each of the
 # five addresses control can arrive at with no replacement active: the
 # routine's head at `08:4036` and the four returns from a `JSR $40DF`. Each
-# walk runs until it reaches the next `JSR`, which the machine executes and
-# which re-enters the native emitter.
+# walk runs until it has made the next call, and ends on the emitter's first
+# instruction rather than in front of the `JSR`.
+#
+# Subsuming the callee is what a transcript cannot afford; crossing the call is
+# three stack bytes and a jump. All 73,818 of those calls are now made by a
+# transcript rather than interpreted, and the address each one ends on is the
+# emitter's registered entry, which picks the body up unchanged — so the five
+# entry counts below are the same as when the `JSR`s were left standing, and
+# the emitter's is too.
 #
 # The scoped ranges are the driver's own work-RAM output: the VDC port shadow
 # at $2006, the sprite count at $204E, and the two queue cursors at $2CBA and
@@ -25,13 +32,21 @@ endif()
 # work-RAM trace, so the census carries them — and it hashes the rendered
 # framebuffer every frame, which is what a mispointed write address would show
 # up in.
+#
+# The stack page at $2100-$21FF is scoped because the call is the thing being
+# proved. Each crossing writes the address of the `JSR`'s last byte, high half
+# first, and both halves carry the instruction's start offset rather than its
+# end — `JSR` pushes before it charges a cycle. The trace pins the values, the
+# order, and those offsets against the same route with nothing replaced, which
+# is where this hash comes from; the emitter reads that word back to find its
+# way home, so a wrong one resumes somewhere real and keeps running.
 set(
     expected_census_sha256
     "9036a9de0c3c9917f47bff8c04c136a4824ec12601fb457d260aa2dfe4443490"
 )
 set(
     expected_write_sha256
-    "e483f10651b97f84ef0786e5ac805b27181da141461b6fb697f81c94bb4abd9a"
+    "6cbeecb8c4b3cbfdd12fbf77c751c59671fa380fb409a271247c7a6bd103378a"
 )
 
 set(write_output "${OUTPUT}.writes.csv")
@@ -55,6 +70,8 @@ execute_process(
         "2006-2006"
         --work-ram-write-range
         "204E-204E"
+        --work-ram-write-range
+        "2100-21FF"
         --work-ram-write-range
         "2CBA-2CBC"
         --work-ram-write-trace
@@ -83,7 +100,7 @@ foreach(expected_line IN ITEMS
     "Native replacement 08:4075@all entries: 16576 of 16576"
     "Native replacement 08:4088@all entries: 2567 of 2567"
     "Native replacement 08:4097@all entries: 50248 of 50248"
-    "Work-RAM write trace complete: 233267 selected writes"
+    "Work-RAM write trace complete: 4438966 selected writes"
 )
     string(FIND "${recorder_output}" "${expected_line}" line_offset)
     if(line_offset EQUAL -1)
@@ -117,8 +134,9 @@ endforeach()
 message(
     STATUS
     "Semantic 4036/4063/4075/4088/4097 SAT submission points the VDC, drains "
-    "all three actor queues, and reaches the tail clear natively across all "
-    "77,310 entries as instruction-boundary transcripts, with its port "
-    "shadow, sprite count, and queue cursors and the whole state census — "
-    "including every frame's rendered framebuffer — identical to assembly."
+    "all three actor queues, makes all 73,818 emitter calls, and reaches the "
+    "tail clear natively across all 77,310 entries as instruction-boundary "
+    "transcripts, with its port shadow, sprite count, queue cursors and every "
+    "pushed return address, and the whole state census — including every "
+    "frame's rendered framebuffer — identical to assembly."
 )

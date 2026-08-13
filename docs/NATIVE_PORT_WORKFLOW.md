@@ -1372,6 +1372,31 @@ replacement is active and so runs the sound driver emulated. `00:FC00` lost
 around a short body, where the tax is a large fraction of the region. Around a
 long body the 42 cycles are noise and the shadowing is not.
 
+**And there is a third option, which is neither of the two above.** Composition
+answers "how do I get the callee's body into this transcript". Often you do not
+want it there — that is the whole reason the walk stopped — and you still do
+not want to pay for the call. So cross the `JSR` and stop: push the return
+address, charge the 21 cycles, and end the transcript on the callee's *first
+instruction* rather than on the `JSR`. The core resumes there, and if the
+callee is a registered routine its own replacement is installed exactly as it
+would have been. A transcript's `return_instruction` may be any address; it
+does not have to be inside the routine that produced it, and it may be another
+transcript's entry point.
+
+The sprite-emitter driver `08:4036` is the case. Its four walks each ended in
+front of a `JSR $40DF`, and the callee is 944 cycles — far too long to
+compose, twenty-one calls a frame. Crossing the four calls took 73,818 × 21 =
+1,550,178 master cycles with no new routine, no new entry point and no change
+to any entry count in the family, because the callee is entered at the same
+address either way. The transcripts grew by one instruction, so unlike
+composition it pays no shadowing bill at all: it moves cycles out of the
+interpreter without lengthening anything enough to swallow an extra interrupt.
+
+Use composition when you want the callee's body in line — to reach a state the
+parent needs afterwards, or to absorb the `RTS` too. Use this when you only
+want the call. The `RTS` half of the tax is a separate question with its own
+answer; see the absorbed-return sections.
+
 ### The stack is work RAM, and a transcript may push and pop
 
 `RoutineReplacement`'s comment says the outer `RTS` "remains emulated,
@@ -1770,6 +1795,16 @@ Check the operand order in `huc6280_ops.inc` for anything that writes outside
 the `ST_*`/`RMW_*` macros rather than assuming. Getting it wrong is invisible
 to the state census and to a device-write trace; it shows up only as a
 constant cycle skew in a work-RAM trace that includes the stack.
+
+There is a consequence worth stating separately, because it looks like a
+collision and is not. A `JSR`'s start offset is also the *end* offset of the
+instruction in front of it, so its two writes carry the same number as the
+preceding checkpoint. The core disambiguates by instruction, not by offset: a
+write whose offset equals a checkpoint's is flushed at that checkpoint only if
+it names the same instruction. So the pair lands with the call, and an
+interrupt delivered at the boundary before it finds a stack the call has not
+touched — which is the correct machine behaviour and needs nothing said in the
+transcript.
 
 ### Read a whole bank by its call graph before reading its instructions
 
