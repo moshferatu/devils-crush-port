@@ -3267,6 +3267,38 @@ have moved the pointer — but relying on that would be an accident rather than 
 reason, and the next tail dispatch may not push. Check the opcode at every stop
 against the ROM, then check what each `RTS` actually pops.
 
+## A wrapper written in two halves, and the pointer that is not the entry's
+
+Bank `00` made the stop-list shape pay for a fourth time — the call wrappers
+were 475,071 master cycles across five returns in one edit — and it added the
+qualification the sentence above needs. **The pointer to test a stop against is
+not always the one the routine was entered with.**
+
+Every bank wrapper in this game is written in two halves around the call it
+exists to make. `00:E241` saves the two MPR shadows, maps the target bank and
+stops in front of `JSR $E262`. The core makes that call. Control comes back not
+to `00:E241` but to `00:E255`, which is a registered routine in its own right:
+it stores the result, pulls the two shadows back off and returns. So its `RTS`
+at `00:E261` executes two bytes above where that transcript was entered, on the
+frame `00:E241`'s caller pushed — 245,475 master cycles, the largest row
+absorbed since `08:41AB`. `00:ECC6`/`00:ECE2` is the same shape one shadow wider,
+three bytes up, and taken in interrupt context.
+
+Two consequences worth carrying forward:
+
+- **Give each stop a pop count, not an equality test.** The count is structural
+  — it comes from pushes and pops the walk models, and every walk reaching a
+  given stop reaches it from one entry by a straight-line path — so a
+  disagreement is a modelling error and still worth refusing on. The tilemap
+  upload needed the same treatment for one stop: `00:F43C` ends the row-upload
+  loop, whose `PHY` and `PLY` are balanced across an iteration but not across a
+  transcript, because `00:F423` sits between them and is handed to the core.
+- **The observer cannot watch a routine like that.** It opens a call at the
+  entry pointer and closes it on the next `RTS` standing there; for `00:ECE2`
+  there is none, so the call stays open and accumulates the rest of the route's
+  writes — twenty gigabytes before the run was stopped. That is the instrument,
+  not the routine. Watch the head that opened the call instead.
+
 ## Use on future families
 
 Follow the command and interpretation rules in

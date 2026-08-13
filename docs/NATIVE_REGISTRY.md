@@ -16,19 +16,19 @@ Release state-census route (`--native-cycle-census`, measured 2026-08-13):
 | | |
 | --- | ---: |
 | Elapsed master cycles | 1,292,371,731 |
-| Native master cycles | 677,903,067 |
-| **Native share** | **52.45%** |
-| **Native share of cycles outside the idle spin loop** | **95.41%** |
+| Native master cycles | 678,599,007 |
+| **Native share** | **52.51%** |
+| **Native share of cycles outside the idle spin loop** | **95.51%** |
 | Routines installed | 369 of 369 |
 | Routines entered | 302 |
 | Calls run natively | 2,665,426 of 2,704,004 entered |
 | Calls declined at an interrupt horizon | 0 |
-| Transcripts installed inside a suspended transcript | 297,374 |
+| Transcripts installed inside a suspended transcript | 297,634 |
 | Deepest simultaneous suspension | 3 of a permitted 4 |
 | Replacements refused for depth | 0 |
 
 The resulting state census is byte-identical to the assembly-only
-baseline (`9036a9de…`), so that 52.45% is faithful, not merely running.
+baseline (`9036a9de…`), so that 52.51% is faithful, not merely running.
 The last three rows matter because the host credits a native call when
 it *offers* one. A replacement the core then refused would inflate the
 share silently, and a refusal count of zero is what rules that out.
@@ -707,6 +707,51 @@ no more, because a cut-short scan usually leaves through the dispatch at
 telling the runtime when it abandons a transcript, which is a fork patch. Until
 then `01:C52B` keeps its 73,536 master cycles, and it is the largest single
 thing left in the bank.
+
+**Bank `00` was the largest pool after that and is now the fourth**, and it
+came down in six edits because four of its six families are already walks that
+end at a fixed set of addresses. The bank-call wrappers alone were 475,071
+master cycles across five returns in a single edit: `00:E20C`, `00:E218`,
+`00:E232`, `00:E261` and `00:ECF1`. Nine entry points share that walk, each
+stop is reachable from
+exactly one of them, and nothing composes it, so the whole family is one
+absorption at the terminus. The tilemap upload gave three more the same way,
+the position integration and cached-position restore one each, the camera
+sweep one, and the VBlank handler's pad reader one — 694,653 in total, with
+`00:E261` at 245,475 the largest row absorbed since `08:41AB`.
+
+`00:E261` and `00:ECF1` are the shape this bank added: **a return that closes
+a call a different routine opened**. A bank wrapper is written in two halves.
+`00:E241` saves the two MPR shadows and stops in front of its `JSR`; the core
+makes the call; and control comes back not to `00:E241` but to `00:E255`,
+which is a registered routine in its own right. That second transcript pulls
+the shadows back off and returns — two bytes above its own entry, on the frame
+`00:E241`'s caller pushed. `00:ECC6`/`00:ECE2` is the same thing one shadow
+wider, three bytes up, and taken in interrupt context. So the pointer at the
+return, not the one at the entry, is the whole of the correctness argument
+here, and each stop carries the count of what its walk gave back rather than
+being tested for equality with the entry.
+
+That also changed what the proof has to watch. A routine entered by an `RTS`
+landing and returning above its entry pointer is not a call the observer can
+open and close: it opens one at the entry pointer and closes it at the next
+`RTS` standing there, which belongs to some ancestor. Watching `00:ECE2`
+directly does not terminate — the call stays open for the rest of the route and
+the write trace passed twenty gigabytes before it was stopped. The call its
+return actually closes was opened at `00:ECC6`, so that is what the sixth
+`dc_rom_absorbed_return_trace` test names, through a new `OBSERVE` argument.
+
+The bank falls 857,328 → 162,675 and the route 2,905,779 → 2,211,126; the
+registry goes 677,903,067 → 678,599,007, **52.51%** of the route and **95.51%**
+outside the frame-sync wait.
+
+What is left in bank `00` is mostly out of reach rather than merely unported.
+`00:E32B`, at 75,123 master cycles, is nearly half of it and is the frame-sync
+waiter's own return — `00:E321` spins on `$00` until the VBlank handler
+changes it, which is not a body a transcript can express at all. It could be
+had by registering `00:E327`, the three instructions the spin falls out into,
+as an entry of its own; that is a new admission with its own regression rather
+than an absorption, so it is written down here rather than taken.
 
 The `JSR` half is the same argument from the other side and is not new: a
 caller's walk that steps into the callee is composition, which `01:CB48`
@@ -1552,7 +1597,7 @@ anything and the figure has been dropped rather than carried forward
 unverified.
 
 Set the idle spin loop aside and 710,482,755 cycles are the machine
-working; 677,903,067 of them, **95.41%**, now run natively.
+working; 678,599,007 of them, **95.51%**, now run natively.
 
 The breakdown below is a self-consistent snapshot taken before the
 interrupt dispatcher was split and the whole-palette arm with it, against

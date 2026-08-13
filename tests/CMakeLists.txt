@@ -2205,6 +2205,36 @@ if(TARGET devils_crush)
             PROPERTIES LABELS rom_required
         )
 
+        # 00:ECE2 is the sixth shape: a return that closes a call a different
+        # routine opened. 00:ECC6 saves the MPR shadows and stops in front of
+        # its `JSR`; control comes back from that call not to 00:ECC6 but to
+        # 00:ECE2, which pulls the shadows back and returns on 00:ECC6's frame,
+        # three bytes above its own entry. It is also the only absorbed return
+        # taken in interrupt context.
+        #
+        # This is the one test that watches an address other than the one it
+        # replaces, because watching 00:ECE2 measures the observer rather than
+        # the routine: the call opened there has no `RTS` at its own depth to
+        # close on, so it stays open for the rest of the route.
+        add_test(
+            NAME dc_rom_absorbed_return_trace_handed_over
+            CONFIGURATIONS Release
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/absorbed-return-trace-handed-over-v1"
+                "-DROUTINE=00:ECE2"
+                "-DOBSERVE=00:ECC6"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_absorbed_return_trace.cmake"
+        )
+        set_tests_properties(
+            dc_rom_absorbed_return_trace_handed_over
+            PROPERTIES LABELS rom_required
+        )
+
         add_test(
             NAME dc_rom_bank_call_wrappers_semantic
             CONFIGURATIONS Release

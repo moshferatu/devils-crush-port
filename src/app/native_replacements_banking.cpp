@@ -93,10 +93,9 @@ constexpr std::uint16_t kStackBase = 0x2100U;
         || logical_pc == 0xECF2U;
 }
 
-// Where each walk stops. Four are the RTS instructions the core executes
-// itself, as everywhere else in the port. The other three are the calls this
+// Where each walk stops. Five are RTS instructions and four are the calls this
 // family exists to make -- two JSRs and two indirect jumps -- which the core
-// also executes, re-entering whichever replacement owns the target.
+// executes, re-entering whichever replacement owns the target.
 [[nodiscard]] constexpr bool is_stop_instruction(const std::uint16_t logical_pc)
 {
     return logical_pc == 0xE20CU || logical_pc == 0xE218U
@@ -104,6 +103,51 @@ constexpr std::uint16_t kStackBase = 0x2100U;
         || logical_pc == 0xE261U || logical_pc == 0xE26EU
         || logical_pc == 0xECDFU || logical_pc == 0xECF1U
         || logical_pc == 0xECFAU;
+}
+
+// All five of those RTS instructions are returns, and every one of them can be
+// run past. What differs from the rest of the port is where the frame is: two
+// of these walks give the stack back before they return, so the pointer at the
+// RTS is above the one the routine was entered with. This says by how much, and
+// the walk is checked against it rather than trusted -- the pointer is derived
+// from the entry's through the same push and pop the machine performs, so a
+// disagreement here is a modelling error and not a fact about the route.
+//
+// Each stop is reachable from exactly one of the nine entries, so a single
+// count per address is well defined: the walks are straight-line from the pop
+// onwards, and the only branch in the family (00:E224) is upstream of the two
+// that pop anything.
+//
+//   00:E20C  from 00:E200, which touches no stack
+//   00:E218  from 00:E20D, which touches no stack
+//   00:E232  from 00:E219, which touches no stack
+//   00:E261  from 00:E255, which restores $1F and $1E
+//   00:ECF1  from 00:ECE2, which restores $20, $1F and $1E
+//
+// The last two are the far side of this family's own linkage. 00:E241 pushes
+// the two MPR shadows and stops in front of `JSR $E262`; the core makes the
+// call, the callee returns to 00:E255, and it is that transcript -- a separate
+// entry, entered by an RTS landing rather than by a JSR -- which pulls the
+// shadows back off and returns to whoever called the wrapper. So the frame this
+// absorbs belongs to a call that was opened two transcripts ago, which is what
+// makes reading the pointer at the return rather than at the entry the whole
+// of the correctness argument. 00:ECC6 and 00:ECE2, either side of the `JSR` at
+// 00:ECDF, are the same shape one shadow wider.
+[[nodiscard]] constexpr std::optional<std::uint8_t> absorbable_return_pops(
+    const std::uint16_t logical_pc)
+{
+    switch (logical_pc) {
+    case 0xE20CU:
+    case 0xE218U:
+    case 0xE232U:
+        return static_cast<std::uint8_t>(0U);
+    case 0xE261U:
+        return static_cast<std::uint8_t>(2U);
+    case 0xECF1U:
+        return static_cast<std::uint8_t>(3U);
+    default:
+        return std::nullopt;
+    }
 }
 
 } // namespace
@@ -281,6 +325,31 @@ std::optional<RoutineReplacement> replace_bank_call_wrappers(
             replacement.return_instruction = {kBank, pc};
             replacement.output_registers = registers;
             replacement.body_master_cycles = cycle;
+
+            // Nothing composes this walk -- the registry is its only caller --
+            // so it can absorb its own return rather than needing an entry
+            // wrapper to do it. The stack pointer is the one the walk arrived
+            // at the RTS with, not the entry's, and it is required to be
+            // exactly the entry's plus what this stop's walk popped. Every walk
+            // here spends at least one instruction before it stops, so the
+            // atomic question can never be the thing that refuses an absorption
+            // -- it is asked because a transcript with no checkpoint is not
+            // this file's rule to break.
+            if (const auto pops = absorbable_return_pops(pc);
+                pops.has_value()
+                && registers.stack_pointer
+                    == static_cast<std::uint8_t>(
+                        entry.registers.stack_pointer + *pops)
+                && (!replacement.checkpoints.empty()
+                    || absorbed_return_fits_atomically(entry, cycle))) {
+                absorb_return(
+                    replacement,
+                    work_ram,
+                    registers.stack_pointer,
+                    {kBank, pc},
+                    cycle,
+                    registers);
+            }
             return replacement;
         }
 

@@ -5581,7 +5581,94 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
 ## Active Work
 
 Current owner: Claude. Current slice: **carrying the absorbed return into bank
-`01`**. Done, in twenty-one absorptions across fifteen families, and it is the
+`00`**. Done, in six edits, and it is the slice that found the pointer a return
+is reached with need not be the one its routine was entered with.
+
+Bank `00` held 857,328 emulated return cycles, the largest pool left after bank
+`01`. It falls to 162,675 -- fourth of eight -- and the route to 2,211,126. The
+registry goes 677,903,067 -> 678,599,007 native cycles, **52.51%** of the route
+and **95.51%** of it outside the frame-sync wait. Nested installs rose 297,374
+-> 297,634, three deep at the most, nothing refused, and 0 calls declined at an
+interrupt horizon. The state census is `9036a9de...` unchanged.
+
+**Four of the bank's six families already ended at a fixed set of addresses,
+so the edits were cheap.** The bank-call wrappers were the whole of the first one: nine entry
+points share `replace_bank_call_wrappers`, five of its nine stops are `RTS` and
+all five are returns, each stop is reachable from exactly one entry, and nothing
+composes the walk -- so one absorption at the terminus took 475,071 master
+cycles. `00:E261` alone is 245,475, the largest row absorbed since `08:41AB`.
+The tilemap upload gave three more the same way, the position integration and
+the cached-position restore one each, the camera sweep one, and the VBlank
+handler's pad reader one.
+
+| Return | Before | After | Family |
+| --- | ---: | ---: | --- |
+| `00:E261` | 245,475 | 0 | bank-call wrappers |
+| `00:ECF1` | 76,131 | 2,961 | bank-call wrappers |
+| `00:E1F7` | 75,579 | 0 | VBlank handler's pad reader |
+| `00:F240` | 75,504 | 0 | position integration |
+| `00:E232` | 74,703 | 0 | bank-call wrappers |
+| `00:F28F` | 45,159 | 2,982 | tilemap upload |
+| `00:E218` | 39,441 | 273 | bank-call wrappers |
+| `00:E20C` | 39,321 | 0 | bank-call wrappers |
+| `00:F43C` | 11,343 | 0 | tilemap upload |
+| `00:F4FB` | 11,043 | 0 | camera sweep |
+| `00:F25F` | 7,233 | 0 | cached-position restore |
+
+**A wrapper is written in two halves, and the second half returns above where it
+was entered.** `00:E241` saves the two MPR shadows and stops in front of `JSR
+$E262`; the core makes the call; control comes back not to `00:E241` but to
+`00:E255`, a registered routine in its own right, which pulls the shadows back
+off and returns two bytes above its own entry, on the frame `00:E241`'s caller
+pushed. `00:ECC6`/`00:ECE2` is the same one shadow wider, three bytes up, and
+taken in interrupt context. `absorb_return`'s stack-pointer argument has always
+meant the pointer *at the return*; every family before `01:C5C9` merely had the
+two equal. So each stop now carries the count of what its walk gave back rather
+than being tested for equality with the entry -- 0, 0, 0, +2 and +3 for the
+wrappers, and +1 for the tilemap's `00:F43C`, whose `PHY`/`PLY` pair is balanced
+across a loop iteration but not across a transcript because `00:F423` sits
+between them and is handed to the core.
+
+**A routine of that shape cannot be watched, and that is the instrument rather
+than the routine.** The observer opens a call at the entry pointer and closes it
+on the next `RTS` standing there; `00:ECE2` has none at that depth, so the call
+stays open and collects the rest of the route's writes. The trace passed twenty
+gigabytes before I stopped it. The call `00:ECF1` actually closes was opened at
+`00:ECC6`, so `verify_absorbed_return_trace.cmake` now takes an `OBSERVE`
+argument and the sixth test -- `dc_rom_absorbed_return_trace_handed_over` --
+replaces `00:ECE2` while watching `00:ECC6`. It is the only absorbed return
+taken in interrupt context.
+
+Twenty-two emulated-versus-replaced comparisons, one routine at a time, all
+byte-identical across census, call trace and call-write trace. `00:F523`
+(28,813 of 28,823) and `00:F54E` (28,575 of 28,579) report partial admission;
+both figures were already in the registry table before this slice.
+
+**What is left in bank `00` is mostly out of reach rather than unported.**
+`00:E32B` is 75,123 of the remaining 162,675 and is the frame-sync waiter's own
+return: `00:E321` spins on `$00` until the VBlank handler changes it, which no
+transcript can express. It could be had by registering `00:E327` -- the three
+instructions the spin falls out into -- as an entry of its own, but that is a
+new admission with its own regression rather than an absorption, so it is
+written down rather than taken. The rest is the unported family around
+`00:F0A0`-`00:F1B3` (70,662 across five rows) and small change.
+
+411/411 Release in 171.28 s on the final build -- the extra test is
+`dc_rom_absorbed_return_trace_handed_over` -- and 3/3 ROM-free Debug. The
+`windows-debug` sweep was not run.
+
+**The flake seen in the previous slice recurred once and then did not.** The
+first full Release run of this slice failed one test,
+`dc_rom_devils_coffin_opening_semantic`, which passes in isolation and passed
+in the 411/411 re-run. That is a sixth family, distinct from the five the bank
+`01` slice recorded and from the two the workflow doc names, on a run that had
+the machine to itself. Six single failures in six different families across
+seven runs, none repeating, is a harness property rather than a regression, and
+it still deserves a deliberate look rather than another note.
+
+### Previous: carrying the absorbed return into bank `01`
+
+Done, in twenty-one absorptions across fifteen families, and it is the
 first slice where a family had to be held back rather than shipped.
 
 Bank `01` held 1,060,104 emulated return cycles, the largest pool left. It falls
@@ -6547,66 +6634,95 @@ does not.
 
 ### Next
 
-**Survey bank `00`, which is now the largest pool, and then decide between it
-and the fork patch that `01:C510` is waiting on.** Counting every `RTS` opcode
-the deployed registry still executes, excluding the rows that are themselves
-registered entries -- a registered entry's profile row carries its whole native
-body, not one return, which is worth knowing before reading any of these
-numbers:
+**Price bank `45`'s music interpreter, and decide between it and the fork patch
+that `01:C510` is waiting on.** Counting every `RTS` opcode the deployed
+registry still executes, excluding the rows that are themselves registered
+entries -- a registered entry's profile row carries its whole native body, not
+one return, which is worth knowing before reading any of these numbers:
 
 | Bank | Executions | Master cycles | Mentioned in `src/app` |
 | --- | ---: | ---: | ---: |
-| `00` | 40,568 | **857,328** | 705,303 |
-| `45` | 30,529 | 644,397 | 630,354 |
+| `45` | 30,529 | **644,397** | 630,354 |
 | `03` | 29,601 | 624,837 | 338,784 |
 | `02` | 15,150 | 321,630 | 189,678 |
 | `01` | 8,854 | 187,590 | 103,953 |
+| `00` | 7,727 | 162,675 | 10,650 |
 | `09` | 5,707 | 121,002 | 29,292 |
 | `08` | 4,406 | 92,742 | 1,302 |
 | `07` | 2,649 | 56,253 | 56,253 |
-| | 137,464 | **2,905,779** | 2,054,919 |
+| | 104,623 | **2,211,126** | 1,360,266 |
 
-**Rank by ported owner, not by cycles**, and the five banks done so far bracket
+Bank `45` is now both the largest pool and the friendliest ratio -- 630,354 of
+its 644,397 has a mention in `src/app`, against 14,043 that does not -- and it
+is a single large walk rather than a spread. Its top rows are `45:4210`
+(76,044), `45:4141` (75,939), `45:49B5` (73,086), `45:4935` (72,933), `45:48B3`
+(54,822), `45:4A9B` (47,757) and `45:46D6` (47,526): seven rows for 448,107,
+several of them running once per frame.
+
+**Look for a stop list first.** It is the cheapest thing in this technique and
+it has now paid four times: bank `01`'s two walking interpreters were 372,411
+between them, and bank `00`'s call wrappers were 475,071 in a single edit. Grep
+for `is_stop_instruction` to see which families already have the shape. Then
+read the list rather than counting it -- check the opcode at every stop against
+the ROM, and check what each `RTS` actually pops.
+
+**Check where each stop leaves the stack pointer.** Bank `00` is the reason
+this is now a step of its own. A wrapper written in two halves returns above
+where its second half was entered, and `absorb_return` wants the pointer *at
+the return*. Give each stop a pop count rather than testing it for equality
+with the entry, and derive the count from pushes and pops the walk models so a
+disagreement stays a modelling error worth refusing on.
+
+**If a write trace grows without bound, the routine is the wrong thing to
+watch.** A routine entered by an `RTS` landing and returning above its entry
+has no `RTS` at its own depth for the observer to close on, so the call it
+opens never closes. Watch the head that opened the call instead, which is what
+`OBSERVE` is for.
+
+**Rank by ported owner, not by cycles**, and the six banks done so far bracket
 what that means: bank `03` took eight edits for 1,054,221 because its pool was
 spread, then twenty-two more for 873,453 because two of its rows were shared
 routines; bank `08` took two for 1,633,611 because 95% of it was two returns of
 already-native walks; bank `02` took twenty-one for 1,314,528 and was both at
-once; bank `01` took twenty-one for 872,514, a third of which came from two
-edits because two of its families are walking interpreters with a stop list. No
+once; bank `01` took twenty-one for 872,514; bank `00` took six for 694,653
+because four of its six families already ended at a fixed set of addresses. No
 number in the table above predicts any of that.
 
-**Look for a stop list first.** It is the cheapest thing in this technique: a
-walking interpreter that ends at whichever address in a fixed list it reached is
-one absorption for every return the family has, however many registered entries
-dispatch it. Bank `01` had two and they were worth 372,411 between them. Grep
-for `is_stop_instruction` to see which families already have the shape.
-
-Bank `45`'s music interpreter is a single large walk rather than a spread, and
-its 630,354 mentioned against 14,043 not is the friendliest ratio left --
-probably a shorter piece of work than bank `00`, and worth pricing before
-committing to the larger pool.
-
-The last column is a crude discriminator run over the whole profile in one pass:
-for each non-entry `RTS` row, ask whether its address appears anywhere in
-`src/app/*.cpp` as a hexadecimal literal. Across the remaining 2,905,779,
-2,054,919 do and 850,860 do not. It over-counts -- a mention can be a resume
-address, a branch target or a `return_instruction` on an arm that hands over
-mid-routine rather than one a walk ends on -- and bank `01` is the proof of how
-much: it read 976,467 mentioned before this slice and delivered 872,514, but
-what is left still reads 103,953 mentioned. Use it to rank, not to estimate.
+The last column is a crude discriminator run over the whole profile in one
+pass: for each non-entry `RTS` row, ask whether its address appears anywhere in
+`src/app/*.cpp` as a hexadecimal literal. It over-counts -- a mention can be a
+resume address, a branch target or a `return_instruction` on an arm that hands
+over mid-routine rather than one a walk ends on. Bank `00` is the clearest
+demonstration yet of both directions: it read 705,303 mentioned before this
+slice and delivered 694,653, and what is left reads only 10,650, which is
+honest, because the remainder really is unported or unreachable.
 
 **The other thing `### Next` could be is the fork patch.** `01:C510` is the
-first family that cannot absorb, and the reason is a host limitation rather than
-anything about the routine: a transaction stages its absorbed return when it is
-installed and nothing withdraws the promise when the transcript is cut short, so
-a routine re-entered at the same stack depth redeems a stale one against a live
-call. The core knows when it abandons a transcript -- `ReplacementActive` goes
-false in eight places in
+only family so far that cannot absorb, and the reason is a host limitation
+rather than anything about the routine: a transaction stages its absorbed
+return when it is installed and nothing withdraws the promise when the
+transcript is cut short, so a routine re-entered at the same stack depth
+redeems a stale one against a live call. The core knows when it abandons a
+transcript -- `ReplacementActive` goes false in eight places in
 `patches/0006-huc6280-interruptible-replacement.patch` -- so the patch is a
 callback from there into `pending_absorbed_returns_`. It is worth 73,536 cycles
-at `01:C52B` directly, and more than that in what it unblocks: every family from
-here on that is long and re-entrant is in the same position, and there is no way
-to tell from the profile which those are.
+at `01:C52B` directly, and more in what it unblocks: every family from here on
+that is long and re-entrant is in the same position, and there is no way to
+tell from the profile which those are.
+
+What is left in bank `00`:
+
+| Return | Master cycles | Why it is still there |
+| --- | ---: | --- |
+| `00:E32B` | 75,123 | The frame-sync waiter's own return -- `00:E321` spins until an interrupt moves `$00`, so there is no transcript to end past it. Reachable only by registering `00:E327` as an entry of its own |
+| `00:F0BF` | 25,818 | Unported |
+| `00:F147` | 21,534 | Unported |
+| `00:F103` | 10,626 | Unported |
+| `00:F1B3` | 6,342 | Unported |
+| `00:F17D` | 6,342 | Unported |
+| `00:F28F` | 2,982 | Residue: transcripts that did not reach the return |
+| `00:ECF1` | 2,961 | Residue: transcripts that did not reach the return |
+| others | 10,947 | Thirty-three rows, none above 2,205 |
 
 What is left in bank `01`:
 
@@ -6670,6 +6786,23 @@ What to carry across rather than rediscover:
   absorbing there would have computed the right landing address and still
   reported a completed call where none completed. Check the opcode at every
   stop, then check what each `RTS` actually pops.
+- **Check where each stop leaves the stack pointer; it is not always the
+  entry's.** Bank `00`'s call wrappers are written in two halves around the
+  call they exist to make, and the second half returns above where it was
+  entered -- `00:E261` two bytes up on `00:E241`'s frame, `00:ECF1` three up on
+  `00:ECC6`'s. `absorb_return`'s stack-pointer argument has always meant the
+  pointer *at the return*; every family before `01:C5C9` merely had the two
+  equal. Give each stop a pop count rather than testing it for equality with
+  the entry, and derive the count from pushes and pops the walk models so a
+  disagreement stays a modelling error worth refusing on.
+- **A routine that returns above its entry cannot be watched.** The observer
+  opens a call at the entry pointer and closes it on the next `RTS` standing
+  there; for a tail like `00:ECE2` there is none, so the call never closes and
+  collects the rest of the route's writes -- the trace passed twenty gigabytes
+  before it was stopped. That is the instrument, not the routine. Watch the
+  head that opened the call: `verify_absorbed_return_trace.cmake` takes an
+  `OBSERVE` argument for exactly this, and if a write trace grows without bound
+  this is the first thing to check.
 - **A promise the transcript never keeps is never withdrawn.** A transaction
   stages its absorbed return when it is *installed*, and the observer redeems it
   at the boundary the machine lands on afterwards. Nothing withdraws it if the
@@ -6716,7 +6849,7 @@ What to carry across rather than rediscover:
   transaction predicts about its own end is falsified by a suspension, and a
   transcript that runs for thousands of cycles will be suspended. If a family
   is long enough to be interrupted twice, add it to
-  `dc_rom_absorbed_return_trace` rather than assuming the four routines there
+  `dc_rom_absorbed_return_trace` rather than assuming the six routines there
   already cover its shape.
 - **Compare one routine at a time.** Replacing a whole family at once and
   diffing the trace proves nothing, because a composed walk swallows arrivals
@@ -6724,11 +6857,12 @@ What to carry across rather than rediscover:
   88,244 calls emulated against 73,187 replaced, and every one of them is
   byte-identical when traced alone.
 
-
 **Two documentation debts, both mechanical and both their own commit.**
 `docs/NATIVE_REGISTRY.md` says it is generated and is no longer reproducible
-from `tools/Generate-NativeRegistry.ps1`: a run with `-ReportPath` would
-discard about 150 lines the doc has and the generator does not. Nothing
+from `tools/Generate-NativeRegistry.ps1`: a run with `-ReportPath` discards
+about 336 lines the doc has and the generator does not, and this slice had to
+run it -- the new test changes `00:ECE2`'s evidence in the `.inc` -- so the
+report was restored by hand afterwards and its headline numbers levelled. Nothing
 enforces it, because `dc_native_registry_manifest` checks the generated `.inc`
 rather than the report, so the two have been drifting for at least three
 slices and are now being kept level by hand. And **a hundred and three verify scripts

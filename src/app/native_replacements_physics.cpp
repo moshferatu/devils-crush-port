@@ -139,6 +139,36 @@ replace_position_integration(
     replacement.work_ram_writes.reserve(
         15U + sign_branch_count
         + static_cast<std::size_t>(!changed_integer_index.has_value()));
+
+    // 00:F240 is this routine's only return and the walk from 00:F1B4 reaches
+    // it without touching the stack, so the frame sits where the entry pointer
+    // says and the pointer at the return is the entry's. Nothing composes this
+    // replacement -- the registry is its only caller -- so it absorbs its own
+    // return rather than needing an entry wrapper.
+    //
+    // There are two ways out of the body below and both arrive here with
+    // `output_registers` and `body_master_cycles` already final, so the
+    // absorption is expressed once and applied at whichever exit is taken.
+    // Both append a checkpoint on 00:F240 immediately before returning, so the
+    // atomic question cannot be what refuses an absorption here; it is asked
+    // because a transcript with no checkpoint is not this routine's rule to
+    // break.
+    const auto absorb_f240 =
+        [&entry, work_ram](RoutineReplacement& value) -> RoutineReplacement& {
+            if (!value.checkpoints.empty()
+                || absorbed_return_fits_atomically(
+                    entry, value.body_master_cycles)) {
+                absorb_return(
+                    value,
+                    work_ram,
+                    entry.registers.stack_pointer,
+                    {0x00U, 0xF240U},
+                    value.body_master_cycles,
+                    value.output_registers);
+            }
+            return value;
+        };
+
     constexpr std::array<std::uint16_t, 6> kCacheStorePcs{
         0xF1B7U,
         0xF1BCU,
@@ -663,7 +693,7 @@ replace_position_integration(
                 0xF240U,
                 573U + comparison_cycles,
                 output);
-            return replacement;
+            return absorb_f240(replacement);
         }
         append_checkpoint(
             kCompareBranchPcs[index],
@@ -693,7 +723,7 @@ replace_position_integration(
         0xF240U,
         702U + both_sign_cycles,
         output);
-    return replacement;
+    return absorb_f240(replacement);
 }
 
 [[nodiscard]] std::optional<RoutineReplacement>
@@ -5426,6 +5456,21 @@ replace_cached_position_restore(
             index + 1U == DC_CACHED_POSITION_BYTE_COUNT
                 ? output
                 : checkpoint);
+    }
+
+    // 00:F25F is this routine's only return, and the six loads and stores
+    // between it and 00:F241 touch no stack, so the frame is where the entry
+    // pointer says. Nothing composes this replacement.
+    if (!replacement.checkpoints.empty()
+        || absorbed_return_fits_atomically(
+            entry, replacement.body_master_cycles)) {
+        absorb_return(
+            replacement,
+            work_ram,
+            entry.registers.stack_pointer,
+            {0x00U, 0xF25FU},
+            replacement.body_master_cycles,
+            output);
     }
     return replacement;
 }

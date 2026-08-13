@@ -735,9 +735,9 @@ hybrid's own overheads, which no amount of porting removes:
   structural does not. **A transcript can end past its own `RTS`**: see the
   section below — and both of those two returns are now absorbed, 1,634,598
   master cycles of the 13.3M, taken by two edits. Banks `03`, `02` and `01`
-  have since taken 1,054,221, 1,314,528, 873,453 and 872,514, so a little under
-  6M of the 13.3M is gone and the remaining pool is 2,905,779 returns plus the
-  `JSR` half.
+  have since taken 1,054,221, 1,314,528, 873,453 and 872,514, and bank `00`
+  694,653, so a little over 6.6M of the 13.3M is gone and the remaining pool is
+  2,211,126 returns plus the `JSR` half.
 - **Resumption after an interrupt.** An interrupt landing inside a transcript
   rewinds to a checkpoint and interprets the rest of the body, so a fully
   admitted routine still shows interpreted executions, climbing monotonically
@@ -860,8 +860,8 @@ The regression is `dc_rom_absorbed_return_trace`, and it is a comparison rather
 than a recorded hash: it traces the same route with the routine emulated and
 with it replaced, and requires the census, the call trace and the call-write
 trace to be byte-identical across the two. A recorded expectation could drift
-into agreeing with a mistake; the emulated run cannot. It runs over five
-routines, registered as five tests so they run side by side. `00:E93C` is the
+into agreeing with a mistake; the emulated run cannot. It runs over six
+routines, registered as six tests so they run side by side. `00:E93C` is the
 family the technique was established on and exercises both recognitions;
 `08:40DF` is long enough to be suspended part-way through and interrupted at
 its end, which is the case neither recognition got right on its own; `02:58C2`
@@ -870,8 +870,11 @@ to the stack page three bytes below where the absorbed return reads; `03:6966`
 is a routine whose return is absorbed at the entry rather than inside the
 routine, and is the busiest thing on the route; `01:C5C9` reads its frame at
 $2100+S+3 and +4 rather than the +1 and +2 every other absorption reads, having
-pulled its own return address off first. Point the script at a sixth when a
-family reaches a shape these five do not.
+pulled its own return address off first; and `00:ECE2` closes a call that
+`00:ECC6` opened two transcripts earlier, three bytes above its own entry and in
+interrupt context, which is why it is the one test whose `OBSERVE` names a
+different address from its `ROUTINE`. Point the script at a seventh when a
+family reaches a shape these six do not.
 
 **The comparison finds more than absorption bugs, and one of them was four
 slices old.** Pointed at `02:5408`, it reported the same calls with the same
@@ -956,16 +959,43 @@ available and the one place a stop list has to be read rather than trusted.**
 `replace_collision_tail` and `replace_actor_geometry_leaf` each end by stopping
 in front of whichever address in a fixed list the walk reached, and each is
 dispatched for many registered entries, so a single absorption at that one place
-covered thirteen returns and 372,411 master cycles. But a stop list mixes
+covered fourteen returns and 372,411 master cycles. But a stop list mixes
 returns with handovers, and it mixes returns with things that only look like
-them: ten of the collision tail's twenty-five stops are `RTS` and only nine are
-returns. `01:CBF9` is a tail dispatch — `01:CBF4` and `01:CBF8` push a vector
+them: eleven of the collision tail's twenty-five stops are `RTS` and only ten
+are returns. `01:CBF9` is a tail dispatch — `01:CBF4` and `01:CBF8` push a vector
 read out of a table and the `RTS` jumps to it — so the word it pops is one the
 routine wrote two instructions earlier rather than a frame a caller pushed.
 `absorb_return` would compute the right landing address from the staged writes
 and still be wrong, because it would tell the observer a call had completed when
-none had. Check the opcode at every stop, and then check that each `RTS` is
-reached with the stack pointer the entry arrived on.
+none had. Check the opcode at every stop, and then check the stack pointer each
+`RTS` is reached with — which is not always the entry's, as the next lesson says.
+
+**A return does not have to be reached at the pointer the routine was entered
+with, and the pointer at the return is the one that matters.** Bank `00`'s call
+wrappers are written in two halves: `00:E241` saves the MPR shadows and stops in
+front of its own `JSR`, and control comes back from that call not to `00:E241`
+but to `00:E255`, a registered routine in its own right, which pulls the shadows
+back off and returns two bytes above where it was entered — on the frame
+`00:E241`'s caller pushed. `00:ECC6`/`00:ECE2` is the same shape one shadow
+wider and taken in interrupt context. `absorb_return`'s stack-pointer argument
+has always meant *the pointer at the return* rather than at the entry; every
+family before `01:C5C9` just had them equal. So pass `registers.stack_pointer`
+as the walk stands at the `RTS`, and give each stop the count of what its walk
+gave back rather than testing it for equality with the entry. The count is a
+structural constant per stop — it comes from modelled pushes and pops, not from
+data — so a disagreement is a modelling error worth refusing on.
+
+**A routine that returns above its entry cannot be watched, so watch the head
+instead.** The routine-call observer opens a call at the entry pointer and
+closes it on the next `RTS` standing there. For a tail like `00:ECE2` no such
+`RTS` exists at that depth, so the call stays open and collects every write the
+rest of the route makes — the trace passed twenty gigabytes before it was
+stopped. Nothing is wrong with the routine or the absorption; the instrument
+simply does not model this shape. The call the return actually closes was opened
+by the head of the wrapper, so `dc_rom_absorbed_return_trace` takes an `OBSERVE`
+argument and the sixth test replaces `00:ECE2` while watching `00:ECC6`. If a
+write trace grows without bound, check whether the routine returns where it was
+entered before looking for a bug.
 
 **A promise the transcript never keeps is never withdrawn, and that is the
 technique's second limit.** A transaction stages the return it will absorb when

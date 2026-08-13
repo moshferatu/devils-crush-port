@@ -4528,6 +4528,29 @@ replace_actor_camera_sweep(
     };
     replacement.output_registers = registers;
     replacement.body_master_cycles = cycle;
+
+    // 00:F4FB ends the sweep, and it is only ever reached from one of the
+    // child's three `RTS` instructions -- 00:F4F2 always leaves through the
+    // loop's own `JSR` instead. Those three entries begin by pulling the frame
+    // that `JSR` pushed, which the arm above has already checked is the loop's,
+    // so the pointer at 00:F4FB stands two bytes above the entry's and the
+    // frame this absorbs is the one the sweep's caller pushed. Nothing composes
+    // this walk.
+    //
+    // The atomic question is not asked because it cannot arise: a transcript
+    // with no checkpoint was refused above, so this one always has at least the
+    // return the walk entered on.
+    if (pc == kTerminalPc
+        && registers.stack_pointer
+            == static_cast<std::uint8_t>(entry.registers.stack_pointer + 2U)) {
+        absorb_return(
+            replacement,
+            work_ram,
+            registers.stack_pointer,
+            {kBank, kTerminalPc},
+            cycle,
+            registers);
+    }
     return replacement;
 }
 

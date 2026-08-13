@@ -447,6 +447,35 @@ std::optional<RoutineReplacement> replace_vblank_handler(
             replacement.return_instruction = {kBank, pc};
             replacement.output_registers = registers;
             replacement.body_master_cycles = cycle;
+
+            // 00:E1F7 is the one return in this family. The other two `RTI`
+            // paths stop a whole instruction earlier, at the `PLP`, and an
+            // `RTI` is not a return this technique expresses -- it pops a
+            // status byte and an address the machine pushed for itself rather
+            // than a frame a `JSR` left.
+            //
+            // Only 00:E195 can reach it. Every other entry in the family is at
+            // a lower address and the walk stops in front of the next entry it
+            // meets, so a walk that would run into the pad reader hands over to
+            // it instead. The reader balances its own stack -- the `PHA` and
+            // `PLA` at 00:E1A5, like the `NOP` after them, are there to let the
+            // joypad's latch settle rather than to save anything -- so the
+            // frame is where the entry pointer says.
+            //
+            // This return is taken in interrupt context, and it is the frame
+            // the handler's own `JSR` pushed that it pops.
+            if (pc == 0xE1F7U
+                && registers.stack_pointer == entry.registers.stack_pointer
+                && (!replacement.checkpoints.empty()
+                    || absorbed_return_fits_atomically(entry, cycle))) {
+                absorb_return(
+                    replacement,
+                    work_ram,
+                    entry.registers.stack_pointer,
+                    {kBank, pc},
+                    cycle,
+                    registers);
+            }
             return replacement;
         }
 

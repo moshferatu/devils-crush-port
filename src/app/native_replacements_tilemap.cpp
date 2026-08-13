@@ -174,6 +174,36 @@ constexpr std::uint32_t kPortSampleBack = 6U;
         || logical_pc == 0xF4F2U;
 }
 
+// All three of those RTS instructions are returns, and each says how much stack
+// the walk that reaches it has given back, so the frame can be read from the
+// pointer at the return rather than the one at the entry.
+//
+//   00:F28F  from 00:F261, which touches no stack
+//   00:F3F3  from 00:F3E7, which touches no stack
+//   00:F43C  from 00:F426 and 00:F42A, which pull one byte back
+//
+// The last is the row-upload loop and the only one that is not obvious. The
+// loop pushes Y at 00:F41A and pulls it back at 00:F42E, which is balanced
+// across an iteration but not across a transcript: 00:F423 sits between the two
+// and is handed to the core for the reason above, so a transcript entered at
+// 00:F42A begins with the pull and ends either at the next push -- back where
+// it started -- or, when Y reaches $40, at 00:F43C one byte higher. Both of the
+// entries below the branch reach it the same way, so the count is a property of
+// the return and not of which arm was taken.
+[[nodiscard]] constexpr std::optional<std::uint8_t> absorbable_return_pops(
+    const std::uint16_t logical_pc)
+{
+    switch (logical_pc) {
+    case 0xF28FU:
+    case 0xF3F3U:
+        return static_cast<std::uint8_t>(0U);
+    case 0xF43CU:
+        return static_cast<std::uint8_t>(1U);
+    default:
+        return std::nullopt;
+    }
+}
+
 } // namespace
 
 std::optional<RoutineReplacement> replace_tilemap_upload(
@@ -474,6 +504,26 @@ std::optional<RoutineReplacement> replace_tilemap_upload(
             replacement.return_instruction = {kBank, pc};
             replacement.output_registers = registers;
             replacement.body_master_cycles = cycle;
+
+            // Nothing composes this walk, so it absorbs its own return. The
+            // pointer tested is the one the walk arrived at the RTS with, and
+            // it has to be exactly the entry's plus what that stop's walk
+            // pulled back.
+            if (const auto pops = absorbable_return_pops(pc);
+                pops.has_value()
+                && registers.stack_pointer
+                    == static_cast<std::uint8_t>(
+                        entry.registers.stack_pointer + *pops)
+                && (!replacement.checkpoints.empty()
+                    || absorbed_return_fits_atomically(entry, cycle))) {
+                absorb_return(
+                    replacement,
+                    work_ram,
+                    registers.stack_pointer,
+                    {kBank, pc},
+                    cycle,
+                    registers);
+            }
             return replacement;
         }
 

@@ -26,7 +26,16 @@
 # drift into agreeing with a mistake -- the emulated run is the answer.
 #
 # The script takes the routine to prove, so that each one it is pointed at is a
-# test of its own rather than a longer one. Five are registered.
+# test of its own rather than a longer one. Six are registered.
+#
+# It also takes the routine to watch, which is usually the same one and for the
+# last is not. A routine entered by an `RTS` landing rather than by a `JSR`, and
+# returning above the pointer it was entered with, is not a call the observer
+# can open and close: it opens one at the entry pointer and closes it at the
+# next `RTS` that stands there, which is some ancestor's, so the call is
+# reported with that ancestor's writes. Watching such a routine measures the
+# instrument rather than the routine. The call its return actually closes was
+# opened by the head of the same wrapper, and the head is what OBSERVE names.
 #
 # 00:E93C is the palette family's most-called walk and the one the technique was
 # established on. It returns to more than one caller, it is called from more
@@ -66,12 +75,31 @@
 # registry reads $2100+S+1 and +2; this one reads +3 and +4. Reading the wrong
 # pair here would not look wrong: it would return to the address the routine was
 # called from, which is a real address that the machine would go on executing.
+#
+# 00:ECE2 is the VBlank wrapper's tail, and it is the sixth shape: a return that
+# closes a call another routine opened. 00:ECC6 saves three MPR shadows and
+# stops in front of `JSR $ECF2`; the core makes the call, the sequencer runs,
+# and control comes back not to 00:ECC6 but to 00:ECE2, which is a registered
+# routine in its own right. That transcript pulls the three shadows back and
+# returns -- three bytes above where it was entered, and on the frame 00:ECC6's
+# caller pushed. So the return being absorbed here belongs to a call that was
+# opened two transcripts earlier by a different registered routine, which is
+# why this one is watched at 00:ECC6. Watched at itself it does not finish:
+# the call stays open for the rest of the route and the write trace passed
+# twenty gigabytes before it was stopped.
+#
+# It is also the only absorbed return that happens in interrupt context.
 
 foreach(required_variable IN ITEMS APP CONFIG ROM OUTPUT ROUTINE)
     if(NOT DEFINED ${required_variable} OR "${${required_variable}}" STREQUAL "")
         message(FATAL_ERROR "${required_variable} is required.")
     endif()
 endforeach()
+
+# Watching the routine itself is the usual case and the default.
+if(NOT DEFINED OBSERVE OR "${OBSERVE}" STREQUAL "")
+    set(OBSERVE "${ROUTINE}")
+endif()
 
 # The counts are written out per routine rather than passed in, so that the
 # admitted-registry generator can read this file and see which routines it
@@ -101,6 +129,11 @@ elseif(routine STREQUAL "01:C5C9")
         "Native replacement 01:C5C9@all entries: 2462 of 2462")
     set(expected_trace
         "Routine call trace complete: 2462 calls, 863105 writes")
+elseif(routine STREQUAL "00:ECE2")
+    set(expected_entries
+        "Native replacement 00:ECE2@all entries: 3599 of 3599")
+    set(expected_trace
+        "Routine call trace complete: 3599 calls, 951407 writes")
 else()
     message(FATAL_ERROR "Unknown absorbed-return routine: ${routine}")
 endif()
@@ -113,7 +146,7 @@ function(dc_trace_route label extra_argument output_variable)
         --record-state-census
         "${census}"
         --observe-hook
-        "${routine}"
+        "${OBSERVE}"
     )
     if(NOT extra_argument STREQUAL "")
         list(APPEND command --replace-hook "${extra_argument}")
@@ -171,6 +204,6 @@ endforeach()
 
 message(
     STATUS
-    "Absorbing the return at ${routine} leaves every observed call reported "
-    "exactly as the emulated routine reports it."
+    "Absorbing the return at ${routine} leaves every call observed at "
+    "${OBSERVE} reported exactly as the emulated routine reports it."
 )

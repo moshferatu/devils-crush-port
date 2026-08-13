@@ -42,7 +42,7 @@ DC_ADMITTED_ROUTINE(0x00U, 0xEB30U, 3599, 3599, "verify_palette_shadow_semantic"
 DC_ADMITTED_ROUTINE(0x00U, 0xEB4DU, 29, 29, "verify_palette_shadow_semantic")
 DC_ADMITTED_ROUTINE(0x00U, 0xEBA5U, 1121, 1121, "verify_palette_shadow_semantic")
 DC_ADMITTED_ROUTINE(0x00U, 0xECC6U, 3599, 3599, "verify_bank_call_wrappers_semantic")
-DC_ADMITTED_ROUTINE(0x00U, 0xECE2U, 3599, 3599, "verify_bank_call_wrappers_semantic")
+DC_ADMITTED_ROUTINE(0x00U, 0xECE2U, 3599, 3599, "verify_absorbed_return_trace +1")
 DC_ADMITTED_ROUTINE(0x00U, 0xECF2U, 3599, 3599, "verify_bank_call_wrappers_semantic")
 DC_ADMITTED_ROUTINE(0x00U, 0xF1B4U, 1156, 1156, "verify_position_integration_semantic")
 DC_ADMITTED_ROUTINE(0x00U, 0xF241U, 404, 404, "verify_cached_position_restore_semantic")
