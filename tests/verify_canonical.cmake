@@ -12,11 +12,11 @@ set(
 )
 set(
     expected_observe_trace_sha256
-    "585b2221987701f24b9f6a271d48a7bedec3ce01fb08f3889d196cfe1a3191a4"
+    "250e4dc668bb1652c7e22c3c5c78232b18272da259234b7c27468e126226956b"
 )
 set(
     expected_multi_observe_trace_sha256
-    "38ffd96714732c1f1f4073888c44f1b94b325dee8429e36d4712290bd1d5bddc"
+    "fb99fe8071647afbaf7559356505726d71a48332fb6f7274fcf9926a28d52a52"
 )
 
 execute_process(

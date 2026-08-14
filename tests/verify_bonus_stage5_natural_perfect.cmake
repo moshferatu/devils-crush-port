@@ -19,7 +19,7 @@ set(
 )
 set(
     expected_entry_sha256
-    "2ca1575931a1fa892e9755b1cf09d685c3195fced3b82f88780a21f3373e267b"
+    "44ebaaa83fff908b31bca4055688f7aa322eb642f6e2cc7db15adba14f2ca028"
 )
 set(
     expected_state_sha256

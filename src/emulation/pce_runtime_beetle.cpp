@@ -21,12 +21,14 @@
 #include <cstring>
 #include <filesystem>
 #include <limits>
+#include <map>
 #include <memory>
 #include <stdexcept>
 #include <string>
 #include <string_view>
 #include <system_error>
 #include <thread>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -285,6 +287,36 @@ class BeetlePceRuntime final : public PceRuntime {
         // Zero for a transcript that runs atomically, which cannot be
         // abandoned and so is never withdrawn.
         std::uint64_t transcript_token = 0;
+    };
+
+    // One abandonment site, as a key rather than a row: the transcript, where
+    // the machine went on interpreting from, and why. Counted rather than
+    // listed because the interesting ones repeat -- an address abandoned once
+    // is noise and an address abandoned five thousand times is a routine to
+    // work on.
+    struct AbandonmentKey {
+        RoutineKey routine;
+        RoutineKey resume;
+        AbandonmentReason reason = AbandonmentReason::registers;
+        std::uint8_t mismatch = 0;
+
+        [[nodiscard]] bool operator<(const AbandonmentKey& other) const
+        {
+            return std::tuple{
+                       routine.physical_bank,
+                       routine.logical_pc,
+                       resume.physical_bank,
+                       resume.logical_pc,
+                       reason,
+                       mismatch}
+            < std::tuple{
+                       other.routine.physical_bank,
+                       other.routine.logical_pc,
+                       other.resume.physical_bank,
+                       other.resume.logical_pc,
+                       other.reason,
+                       other.mismatch};
+        }
     };
 
 public:
@@ -1304,6 +1336,45 @@ public:
                            right.instruction.logical_pc};
             });
         return entries;
+    }
+
+    [[nodiscard]] std::vector<AbandonmentSite>
+    export_abandonment_census() const override
+    {
+        assert_owner_thread();
+        std::vector<AbandonmentSite> sites;
+        sites.reserve(abandonment_census_.size());
+        for (const auto& [key, count] : abandonment_census_) {
+            sites.push_back({
+                .routine = key.routine,
+                .resume = key.resume,
+                .reason = key.reason,
+                .mismatch = key.mismatch,
+                .count = count,
+            });
+        }
+        std::ranges::sort(
+            sites,
+            [](const AbandonmentSite& left, const AbandonmentSite& right) {
+                if (left.count != right.count) {
+                    return left.count > right.count;
+                }
+                return std::tuple{
+                           left.routine.physical_bank,
+                           left.routine.logical_pc,
+                           left.resume.physical_bank,
+                           left.resume.logical_pc,
+                           left.reason,
+                           left.mismatch}
+                < std::tuple{
+                           right.routine.physical_bank,
+                           right.routine.logical_pc,
+                           right.resume.physical_bank,
+                           right.resume.logical_pc,
+                           right.reason,
+                           right.mismatch};
+            });
+        return sites;
     }
 
     [[nodiscard]] bool set_bus_write_observer(
@@ -2746,6 +2817,30 @@ private:
         }
     }
 
+    // The status register as anything outside the processor is entitled to see
+    // it, which is every flag except B.
+    //
+    // B is not state on this processor. `PHP` pushes `P | B_FLAG` and an
+    // interrupt pushes `P & ~B_FLAG`, so both writers force the bit and
+    // neither consults it; the only other reader of `P` in the core caches
+    // `I`. What the live register happens to hold is therefore a residue of
+    // whichever of those two things last ran -- a `PLP` after a `PHP` leaves it
+    // set, the next interrupt leaves it clear -- and no execution can depend on
+    // which.
+    //
+    // It has to be dropped rather than reported faithfully because a transcript
+    // cannot model it. A transcript models `PHP` and `PLP` exactly and so
+    // carries the bit forward, but it cannot know when an interrupt will clear
+    // it, so a replaced route and an emulated one disagree about it and about
+    // nothing else. Dropping it on the way out is what makes those two
+    // comparable; the alternative would be to report a difference that no
+    // instruction could ever observe.
+    [[nodiscard]] static constexpr std::uint8_t observable_status(
+        const std::uint8_t status) noexcept
+    {
+        return static_cast<std::uint8_t>(status & 0xEFU);
+    }
+
     [[nodiscard]] static CpuRegisters cpu_registers(
         const dc_beetle_cpu_state& state) noexcept
     {
@@ -2755,7 +2850,7 @@ private:
             .x = state.x,
             .y = state.y,
             .stack_pointer = state.stack_pointer,
-            .status = state.status,
+            .status = observable_status(state.status),
             .mpr = {
                 state.mpr[0],
                 state.mpr[1],
@@ -2942,9 +3037,15 @@ private:
             return;
         }
         for (const auto& absorbed : result.absorbed_returns) {
+            // The registers this call will be reported closing on, so they are
+            // normalised exactly as an observed boundary's would be. A
+            // transcript's own B would otherwise be the one column on which a
+            // replaced route and an emulated one disagree.
+            auto registers = absorbed.registers;
+            registers.status = observable_status(registers.status);
             pending_absorbed_returns_.push_back({
                 .instruction = absorbed.instruction,
-                .registers = absorbed.registers,
+                .registers = registers,
                 .resume_logical_pc =
                     result.return_instruction.logical_pc,
                 .resume_stack_pointer =
@@ -3291,8 +3392,18 @@ private:
             // applied whole inside the core's own loop iteration, so there is
             // no moment at which it can be given up on and nothing for the
             // core to hand back; zero says so.
+            //
+            // The name carries the routine it was issued for as well as a
+            // serial. The core hands the token back and nothing else, so
+            // without this the host would have to keep every open transcript in
+            // a map to answer "which one" -- and it is never told which ones
+            // closed, because completion reaches no hook. A name that says what
+            // it names needs no such map. The serial keeps it unique, which is
+            // what the withdrawal below matches on.
             const std::uint64_t transcript_token = checkpoint_count > 0U
-                ? ++runtime->next_transcript_token_
+                ? ((++runtime->next_transcript_token_ << 24U)
+                   | (static_cast<std::uint64_t>(routine.physical_bank) << 16U)
+                   | static_cast<std::uint64_t>(routine.logical_pc))
                 : 0U;
             runtime->stage_absorbed_returns(
                 *state,
@@ -3308,7 +3419,12 @@ private:
             core_result->y = result.output_registers.y;
             core_result->stack_pointer =
                 result.output_registers.stack_pointer;
-            core_result->status = result.output_registers.status;
+            // Normalised on the way in as well as on the way out. A transcript
+            // models `PLP` faithfully and so carries a B the machine may not
+            // have; handing that to the core would write a modelling artifact
+            // into the register the emulator saves.
+            core_result->status =
+                observable_status(result.output_registers.status);
             std::copy(
                 result.output_registers.mpr.begin(),
                 result.output_registers.mpr.end(),
@@ -3357,7 +3473,7 @@ private:
                 core_checkpoint.stack_pointer =
                     checkpoint.registers.stack_pointer;
                 core_checkpoint.status =
-                    checkpoint.registers.status;
+                    observable_status(checkpoint.registers.status);
                 std::copy(
                     checkpoint.registers.mpr.begin(),
                     checkpoint.registers.mpr.end(),
@@ -3377,12 +3493,38 @@ private:
 
     static void replacement_abandoned_hook_callback(
         const std::uint64_t transcript_token,
+        const std::uint16_t resume_logical_pc,
+        const std::uint8_t resume_physical_bank,
+        const std::uint8_t reason,
+        const std::uint8_t detail,
         void* const user_data) noexcept
     {
         auto* const runtime =
             static_cast<BeetlePceRuntime*>(user_data);
-        if (runtime == nullptr || transcript_token == 0U
-            || runtime->pending_absorbed_returns_.empty()) {
+        if (runtime == nullptr || transcript_token == 0U) {
+            return;
+        }
+        // The token names the routine it was issued for in its low
+        // twenty-four bits, so the transcript identifies itself and no record
+        // of open transcripts has to be kept. Nothing tells this runtime when
+        // one completes, and completion is the common ending.
+        runtime->abandonment_census_[{
+            .routine =
+                {
+                    .physical_bank = static_cast<std::uint8_t>(
+                        (transcript_token >> 16U) & 0xFFU),
+                    .logical_pc = static_cast<std::uint16_t>(
+                        transcript_token & 0xFFFFU),
+                },
+            .resume =
+                {
+                    .physical_bank = resume_physical_bank,
+                    .logical_pc = resume_logical_pc,
+                },
+            .reason = static_cast<AbandonmentReason>(reason),
+            .mismatch = detail,
+        }] += 1U;
+        if (runtime->pending_absorbed_returns_.empty()) {
             return;
         }
         runtime->withdraw_absorbed_returns(transcript_token);
@@ -3836,8 +3978,11 @@ private:
     std::vector<PendingAbsorbedReturn> pending_absorbed_returns_;
     // Names the transcripts this runtime hands the core, so that one it gives
     // up on can be named back. Monotonic and never reused, so a token that
-    // arrives late cannot match a promise made since.
+    // arrives late cannot match a promise made since. The low twenty-four bits
+    // of a token are the routine it was issued for; this is the serial above
+    // them, and the shift is what keeps a routine's tokens distinct.
     std::uint64_t next_transcript_token_ = 0;
+    std::map<AbandonmentKey, std::uint64_t> abandonment_census_;
     std::array<std::uint64_t, 0x100U> stack_page_write_cycle_{};
     WorkRamWriteCallback work_ram_write_observer_;
     BusWriteCallback bus_write_observer_;

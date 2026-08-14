@@ -180,7 +180,7 @@ foreach(expected_line IN ITEMS
     "Native replacement 00:E93C@all entries: 8969 of 8969"
     "Native replacement 00:E9B6@all entries: 672 of 672"
     "Native replacement 00:EAA7@all entries: 8 of 8"
-    "Native replacement 00:EAB0@all entries: 93 of 93"
+    "Native replacement 00:EAB0@all entries: 92 of 92"
     # 3,561 of 3,590 before replacements could nest: nine of this group's own
     # calls arrive inside a suspended sibling, and the core would not install a
     # second transcript. Then 3,570 of 3,599, the twenty-nine whole-palette

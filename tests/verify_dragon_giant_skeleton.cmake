@@ -22,11 +22,11 @@ endif()
 
 set(
     expected_trace_sha256
-    "ca858c9f1fcea148c369d95bd13b026f5b45b1f35d5ff0cefbd8ac825d129cf5"
+    "79b73ce944da1354abd514fbc6c33789ae2fab178cfd2245d18515f9654d88d0"
 )
 set(
     expected_call_sha256
-    "aeb9de1db6f9dfae7e59a45c37bc82f2cb2e1360892c76dfcafe1131d3332819"
+    "826568621976410ee73ef68b21fdd1dab0d35c4512edb48dc4f0c332b7360a4d"
 )
 set(
     expected_write_sha256

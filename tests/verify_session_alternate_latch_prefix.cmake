@@ -10,7 +10,7 @@ if(NOT CONFIG STREQUAL "Release")
 endif()
 
 set(expected_census_sha256 "987c6f07d131bae52958c71ef8345304ca7d737216687bcadd77ec03b5a742c1")
-set(expected_call_sha256 "fde029cff362c212d8d2a000ce683e4545bab79c922d8b373ac53bebeee3149a")
+set(expected_call_sha256 "d0aa52b3a8a6b2bca10caa9da54967ad6bee29d0aa9f6730539830b98a77ab51")
 set(expected_write_sha256 "775e0419916ea3fe37b35e8aacf00b26b5c2c6d3d7119cc1d81f57d8f4a80e87")
 set(call_output "${OUTPUT}.calls.csv")
 set(write_output "${call_output}.writes.csv")

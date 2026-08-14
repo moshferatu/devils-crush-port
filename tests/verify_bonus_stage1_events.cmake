@@ -23,7 +23,7 @@ set(
 )
 set(
     expected_call_sha256
-    "7a01d9bd957c3b1ac7f9f358b4e6e965c96d8206eebaf72d7f486bea8c2dcf2e"
+    "cbb27ca7bd9870f9b650ee3b224bc0892250f31815723d7de47c265305117889"
 )
 set(
     expected_write_sha256

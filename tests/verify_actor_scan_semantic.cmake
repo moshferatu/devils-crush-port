@@ -80,7 +80,7 @@ endif()
 
 foreach(expected_line IN ITEMS
     "State census recording complete: 3600 frames"
-    "Native replacement 01:C510@all entries: 176861 of 176861"
+    "Native replacement 01:C510@all entries: 175226 of 175226"
     "Work-RAM write trace complete: 450469 selected writes"
 )
     string(FIND "${recorder_output}" "${expected_line}" line_offset)

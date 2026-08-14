@@ -26,11 +26,11 @@ set(
 )
 set(
     expected_trace_sha256
-    "c151ef79d4052f94b0740eb6232398d19eee5b0e8b1086f71990134f8b113d7b"
+    "e2375353bf5206e199167968c9fa510d909f7caf6c9534c2c649e642788d94e5"
 )
 set(
     expected_call_sha256
-    "239b72a47ddb1965af5c206136062a4e735dbcb475e798b1f9da29cc6752eeca"
+    "ee3569150d74133c017baa7b20687cd2c0b3f838a88731b30e58441df7a87fe6"
 )
 set(
     expected_write_sha256

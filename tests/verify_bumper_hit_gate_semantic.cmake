@@ -22,7 +22,7 @@ endif()
 
 set(
     expected_call_sha256
-    "0495b9de1e3dcfb1781e0056411705464a2e52d8ddcde371d2efc4d0124b882a"
+    "178b2b76d3b32f4fbf927de499671f7167b293467fb0e0349f26689eceaa0cb7"
 )
 set(
     expected_write_sha256

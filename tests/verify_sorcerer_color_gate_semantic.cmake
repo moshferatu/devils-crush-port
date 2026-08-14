@@ -13,7 +13,7 @@ endif()
 set(call_output "${OUTPUT}.calls.csv")
 set(write_output "${call_output}.writes.csv")
 set(expected_census_sha256 "9036a9de0c3c9917f47bff8c04c136a4824ec12601fb457d260aa2dfe4443490")
-set(expected_call_sha256 "902b5143e8de9aabf2accc6954f6e870bbee820e5ca0fd0edf933fd651962a64")
+set(expected_call_sha256 "a88f8dc0fde5114259192ad2a71e92e1bf6a2a5cf71e15c817cd059f31332aaf")
 set(expected_write_sha256 "52c8d70b7105d49c68abd8ed95286abb50b68394dfa26cd0a72eee755e4f96a6")
 
 execute_process(

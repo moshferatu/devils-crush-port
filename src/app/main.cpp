@@ -276,6 +276,7 @@ struct CommandLine {
     std::vector<RoutineKey> registry_excludes;
     std::filesystem::path native_cycle_census_path;
     std::filesystem::path instruction_profile_path;
+    std::filesystem::path abandonment_census_path;
     std::filesystem::path table_vram_census_path;
     bool backup_ram_test = false;
     std::filesystem::path backup_ram_test_path = kBackupRamTestPath;
@@ -930,6 +931,13 @@ parse_logical_address_range(const std::string_view text)
                 return options;
             }
             options.instruction_profile_path = argv[++index];
+        } else if (argument == "--abandonment-census") {
+            if (index + 1 >= argc) {
+                options.error =
+                    "--abandonment-census requires a path.";
+                return options;
+            }
+            options.abandonment_census_path = argv[++index];
         } else if (argument == "--backup-ram-test") {
             options.backup_ram_test = true;
             const std::string_view next =
@@ -1027,6 +1035,17 @@ parse_logical_address_range(const std::string_view text)
                && !recording_selected) {
         options.error =
             "--instruction-profile requires a recording operation.";
+    } else if (!options.abandonment_census_path.empty()
+               && !recording_selected) {
+        options.error =
+            "--abandonment-census requires a recording operation.";
+    } else if (!options.abandonment_census_path.empty()
+               && !options.replace_registry && !host_registry
+               && options.replace_hooks.empty()) {
+        // Only a transcript can be abandoned, so with nothing replaced the
+        // census is empty by construction rather than by measurement.
+        options.error =
+            "--abandonment-census requires a replacement to be deployed.";
     } else if (!options.table_vram_census_path.empty()
                && !recording_selected) {
         options.error =
@@ -3595,6 +3614,7 @@ void print_usage()
            "      [--registry-exclude <bank:pc>]...\n"
            "      [--native-cycle-census <census.csv>]\n"
            "      [--instruction-profile <profile.csv>]\n"
+           "      [--abandonment-census <census.csv>]\n"
            "      [--routine-trace <entries.csv>]\n"
            "      [--routine-call-trace <calls.csv>]\n"
            "      [--routine-replay <bank:pc@ordinal>]...\n"
@@ -6669,6 +6689,128 @@ void report_pad_coverage(
     std::cout << "Instruction profile complete: " << entries.size()
               << " addresses, " << total_cycles << " master cycles\n"
               << "Output: " << path.string() << '\n';
+    return true;
+}
+
+// Where the route's abandoned transcripts were given up, and why.
+//
+// The two addresses are the point of the file. A transcript is installed at a
+// routine's entry and abandoned at whichever checkpoint it had reached, so the
+// address the emulator picks the routine up from is neither the entry nor
+// anything the registry names -- it is an interior instruction, and the cycles
+// the abandonment costs are spent there and at every address after it. Reading
+// this beside an instruction profile is what tells an interior row in the
+// profile from a row that belongs to code nobody has ported.
+[[nodiscard]] bool write_abandonment_census(
+    const std::filesystem::path& path,
+    const std::span<const devils_crush::emulation::AbandonmentSite> sites,
+    const std::string_view core_revision)
+{
+    using devils_crush::emulation::AbandonmentReason;
+    using devils_crush::emulation::RegisterMismatch;
+
+    // An empty census is a result and not a failure: it says every transcript
+    // the route installed ran to its end. The file is written either way, so
+    // that "no abandonments" and "the census was never asked for" stay
+    // distinguishable to whatever reads the artifact afterwards.
+    std::error_code error;
+    const auto directory = path.parent_path();
+    if (!directory.empty()) {
+        std::filesystem::create_directories(directory, error);
+    }
+    if (error) {
+        std::cerr << "Could not create abandonment census directory: "
+                  << error.message() << '\n';
+        return false;
+    }
+
+    auto temporary_path = path;
+    temporary_path += ".tmp";
+    std::ofstream output(
+        temporary_path,
+        std::ios::binary | std::ios::trunc);
+    if (!output) {
+        std::cerr << "Could not create abandonment census: "
+                  << temporary_path.string() << '\n';
+        return false;
+    }
+
+    std::uint64_t total = 0U;
+    for (const auto& site : sites) {
+        total += site.count;
+    }
+
+    output << "# format=devils-crush-abandonment-census-v1\n"
+           << "# rom_sha256=" << devils_crush::rom::kSupportedSha256 << '\n'
+           << "# core_revision=" << core_revision << '\n'
+           << "# site_count=" << sites.size() << '\n'
+           << "# total_abandonments=" << total << '\n'
+           << "routine_physical_bank,routine_logical_pc,"
+              "resume_physical_bank,resume_logical_pc,reason,mismatch,"
+              "count\n";
+
+    for (const auto& site : sites) {
+        const auto* const reason = [&site] {
+            switch (site.reason) {
+            case AbandonmentReason::registers:
+                return "registers";
+            case AbandonmentReason::advance:
+                return "advance";
+            case AbandonmentReason::exhausted:
+                return "exhausted";
+            }
+            return "unknown";
+        }();
+        // The registers that disagreed, named rather than numbered, and joined
+        // because more than one can come back changed at once.
+        std::string mismatch;
+        const auto add = [&mismatch, &site](
+                             const RegisterMismatch bit,
+                             const std::string_view name) {
+            if ((site.mismatch & static_cast<std::uint8_t>(bit)) == 0U) {
+                return;
+            }
+            if (!mismatch.empty()) {
+                mismatch += '+';
+            }
+            mismatch += name;
+        };
+        add(RegisterMismatch::accumulator, "a");
+        add(RegisterMismatch::x, "x");
+        add(RegisterMismatch::y, "y");
+        add(RegisterMismatch::status, "p");
+        add(RegisterMismatch::mpr, "mpr");
+        if (mismatch.empty()) {
+            mismatch = "none";
+        }
+        output << std::uppercase << std::hex << std::setfill('0')
+               << std::setw(2)
+               << static_cast<unsigned>(site.routine.physical_bank) << ','
+               << std::setw(4) << site.routine.logical_pc << ','
+               << std::setw(2)
+               << static_cast<unsigned>(site.resume.physical_bank) << ','
+               << std::setw(4) << site.resume.logical_pc << std::dec
+               << std::setfill(' ') << ',' << reason << ',' << mismatch
+               << ',' << site.count << '\n';
+    }
+
+    output.close();
+    if (!output) {
+        std::cerr << "Could not finalize abandonment census.\n";
+        return false;
+    }
+    if (!commit_artifact(temporary_path, path, "abandonment census")) {
+        return false;
+    }
+
+    if (sites.empty()) {
+        std::cout << "Abandonment census complete: no transcript was "
+                     "abandoned\n";
+    } else {
+        std::cout << "Abandonment census complete: " << sites.size()
+                  << " sites, " << total << " abandonments\n";
+    }
+    std::cout << "Output: " << path.string() << '\n';
     return true;
 }
 
@@ -12356,6 +12498,13 @@ int main(const int argc, char* argv[])
                 && !write_instruction_profile(
                     options.instruction_profile_path,
                     runtime->export_instruction_profile(),
+                    runtime_info.upstream_revision)) {
+                return EXIT_FAILURE;
+            }
+            if (!options.abandonment_census_path.empty()
+                && !write_abandonment_census(
+                    options.abandonment_census_path,
+                    runtime->export_abandonment_census(),
                     runtime_info.upstream_revision)) {
                 return EXIT_FAILURE;
             }

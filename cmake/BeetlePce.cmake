@@ -56,6 +56,8 @@ function(dc_provide_beetle_pce)
         "${beetle_fork_root}/patches/0018-huc6280-idle-fast-forward.patch"
         "${beetle_fork_root}/patches/0019-joypad-device-model.patch"
         "${beetle_fork_root}/patches/0020-huc6280-replacement-abandonment.patch"
+        "${beetle_fork_root}/patches/0021-huc6280-abandonment-reason.patch"
+        "${beetle_fork_root}/patches/0022-huc6280-break-flag-resume.patch"
     )
 
     find_package(Git REQUIRED)
@@ -383,7 +385,7 @@ function(dc_provide_beetle_pce)
                     "DcExportState"
                     beetle_patch_marker_two
                 )
-            else()
+            elseif(beetle_patch_name MATCHES "^0020-")
                 string(
                     FIND
                     "${beetle_cpu_source}"
@@ -394,6 +396,32 @@ function(dc_provide_beetle_pce)
                     FIND
                     "${beetle_cpu_header}"
                     "ReplacementToken"
+                    beetle_patch_marker_two
+                )
+            elseif(beetle_patch_name MATCHES "^0021-")
+                string(
+                    FIND
+                    "${beetle_cpu_source}"
+                    "DC_BEETLE_REPLACEMENT_ABANDONED_REGISTERS"
+                    beetle_patch_marker_one
+                )
+                string(
+                    FIND
+                    "${beetle_cpu_header}"
+                    "PopReplacementFrame(bool completed, uint8 reason, uint8 detail)"
+                    beetle_patch_marker_two
+                )
+            else()
+                string(
+                    FIND
+                    "${beetle_cpu_source}"
+                    "(checkpoint.status & ~B_FLAG) | (P & B_FLAG)"
+                    beetle_patch_marker_one
+                )
+                string(
+                    FIND
+                    "${beetle_cpu_source}"
+                    "((P ^ previous.status) & ~B_FLAG)"
                     beetle_patch_marker_two
                 )
             endif()

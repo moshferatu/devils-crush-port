@@ -34,7 +34,7 @@ if(NOT ORDINAL STREQUAL "all" AND NOT ORDINAL STREQUAL "2" AND NOT ORDINAL STREQ
 endif()
 
 set(expected_census_sha256 "9b1bbcadc419ba8ed03e9864734ed667dffcb6c72638d1be87e3e403a0d90021")
-set(expected_call_sha256 "5dbb230e751f0f2cc1e089661dba74b4f0b9b1a7c38fdbc010e039d35b926a10")
+set(expected_call_sha256 "361259d93ef4416df7133a622ab4cf8c452cead8d360d42b26e4acf98310c56c")
 set(expected_write_sha256 "bc5d40c4259a012696a3576188271060d601c660c362f97bca719293a22da83c")
 set(call_output "${OUTPUT}.calls.csv")
 set(write_output "${call_output}.writes.csv")

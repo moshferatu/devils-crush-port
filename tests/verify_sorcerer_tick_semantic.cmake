@@ -28,15 +28,22 @@ endif()
 #            into $3880,X; 02:58DD copies the interpreter's event record from
 #            $3A80,X to $3980,X.
 #
-# Five entry points: two routine heads and three addresses the core arrives at
-# after one of the interpreter calls. 02:5896 is hookable on its own but is not
-# an entry here, because the 02:5893 walk branches into it.
+# Three entry points, all of them routine heads. 02:5896 is hookable on its own
+# but is not an entry here, because the 02:5893 walk branches into it.
 #
-# Both interpreter calls are now run in line rather than handed back, so the
-# three addresses on the far side of them are entered only when an interrupt
-# lands inside the composed transcript and the core resumes the remainder in
-# assembly: 02:5893 falls from 1,800 entries to 272 and 02:58DD from 18,152 to
-# 4,628. They stay registered because that resumption is a real arrival.
+# There were five. Both interpreter calls are run in line rather than handed
+# back, so the three addresses on the far side of them -- 02:5893, 02:5896 and
+# 02:58DD -- were only ever reached when an interrupt landed inside the composed
+# transcript and the core resumed the remainder in assembly. That resumption was
+# a real arrival and they were registered for it: 272 entries and 4,628.
+#
+# It is not a real arrival any more. Those resumptions were abandonments, and
+# every abandonment on this route was the core giving a transcript up over the
+# B flag, which is not a register bit -- see
+# `patches/0022-huc6280-break-flag-resume.patch`. With the comparison corrected
+# the transcripts run to their ends, the composed bodies are never re-entered
+# in assembly, and both addresses fall to zero arrivals. Their replacements are
+# still correct and still dispatched; nothing on this route reaches them.
 #
 # $21F7-$21FB is the stack depth the two `JSR $6966` instructions push their
 # return address to, and it is in the ranges for the composition's sake: a `JSR`
@@ -74,11 +81,7 @@ execute_process(
         --replace-hook
         "02:5886@all"
         --replace-hook
-        "02:5893@all"
-        --replace-hook
         "02:58C2@all"
-        --replace-hook
-        "02:58DD@all"
         --work-ram-write-range
         "21F7-21FB"
         --work-ram-write-range
@@ -115,9 +118,7 @@ foreach(expected_line IN ITEMS
     "State census recording complete: 3600 frames"
     "Native replacement 02:586F@all entries: 1240 of 1240"
     "Native replacement 02:5886@all entries: 1800 of 1800"
-    "Native replacement 02:5893@all entries: 272 of 272"
     "Native replacement 02:58C2@all entries: 18152 of 18152"
-    "Native replacement 02:58DD@all entries: 4628 of 4628"
     "Work-RAM write trace complete: 1940085 selected writes"
 )
     string(FIND "${recorder_output}" "${expected_line}" line_offset)
@@ -151,7 +152,7 @@ endforeach()
 
 message(
     STATUS
-    "Semantic Sorcerer tick runs all five entry points natively across "
-    "26,092 admitted entries, both interpreter calls composed in line, with "
+    "Semantic Sorcerer tick runs all three entry points natively across "
+    "21,192 admitted entries, both interpreter calls composed in line, with "
     "the family's whole output and the state census identical to assembly."
 )

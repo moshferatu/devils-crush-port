@@ -27,7 +27,7 @@ endif()
 # the consumer's own paths, not the child's.
 set(
     expected_call_sha256
-    "3ab64128aab89d056216f79d0d3f041e186eb109048aefe82785e2875f41ec4f"
+    "54358379da1048ac1e0ffaaf5aa30a0a0259039cffbfc9942d03ba884c571bdb"
 )
 set(
     expected_write_sha256

@@ -22,11 +22,11 @@ endif()
 
 set(
     expected_trace_sha256
-    "e00d2caf31a341328834cebb8deadaf3fa456f06184e415d45806acaf37d64dd"
+    "96aca1652644e1e8e9d67ee81b433069b80164f9350ade5a3a0b7324ec55eb6c"
 )
 set(
     expected_call_sha256
-    "357c7cc9550d7dd5c4804cd1cb76ff62fec6f4db8621b8b3e36c383c369ba3d7"
+    "a1e9de6878930e06f0978c84a6c17acef8a184adae4252eea6d16239322f5d42"
 )
 set(
     expected_write_sha256
@@ -69,8 +69,6 @@ execute_process(
         "03:7726"
         --replace-hook
         "03:7428@all"
-        --replace-hook
-        "03:742B@all"
         --replace-hook
         "03:742E@all"
         --replace-hook
@@ -167,7 +165,6 @@ endforeach()
 foreach(expected_line IN ITEMS
     "State census recording complete: 3600 frames"
     "Native replacement 03:7428@all entries: 1 of 1"
-    "Native replacement 03:742B@all entries: 1 of 1"
     "Native replacement 03:742E@all entries: 1 of 1"
     "Native replacement 03:766C@all entries: 1 of 1"
     "Native replacement 03:7718@all entries: 1 of 1"

@@ -114,9 +114,60 @@ typedef void (*dc_beetle_replacement_hook)(
 //
 // Called with the transcript still current, before the suspended one beneath
 // it becomes current again, and never for a transcript that ran to its end.
+//
+// `resume_logical_pc` and `resume_physical_bank` are where the original
+// assembly is about to be interpreted from, which is the last checkpoint the
+// transcript managed to apply rather than the address it was installed at.
+// They are the machine's own program counter, read before anything is unwound.
+//
+// `detail` carries whatever the reason has to add. For a register mismatch it
+// is the set of registers that disagreed, below; for the others it is zero.
 typedef void (*dc_beetle_replacement_abandoned_hook)(
     uint64_t transcript_token,
+    uint16_t resume_logical_pc,
+    uint8_t resume_physical_bank,
+    uint8_t reason,
+    uint8_t detail,
     void* user_data);
+
+// Why the core gave a transcript up. Three endings, one per place the decision
+// is made, and they mean different things to a host trying to reduce them: the
+// first is the machine disagreeing with a declaration, and the other two are
+// the transcript being unable to keep one it made.
+//
+// Zero is none of them. A transcript that runs to its end is not abandoned and
+// reaches no hook, so the value never appears on this interface; it exists so
+// that the ending itself carries no reason rather than borrowing one.
+//
+// The machine came back to the resume point carrying a register the checkpoint
+// did not declare. This is the interesting one: the transcript was correct
+// about where control would return and wrong about the state it would return
+// in, which is a claim about an interrupt handler rather than about the
+// transcript's own body.
+#define DC_BEETLE_REPLACEMENT_ABANDONED_REGISTERS 1
+// A checkpoint asked to advance to an offset the core could not deliver -- a
+// write due before the cycle already spent, or a stalling-port wait wider than
+// the offset the write was priced into. The body stopped part-way through the
+// checkpoint it was applying.
+#define DC_BEETLE_REPLACEMENT_ABANDONED_ADVANCE 2
+// A checkpoint was asked for when none was left. A transcript that reaches its
+// last checkpoint has completed, so this is the core being asked to resume a
+// transcript that has nothing further to say.
+#define DC_BEETLE_REPLACEMENT_ABANDONED_EXHAUSTED 3
+
+// Which registers disagreed, in the `detail` byte of a `REGISTERS`
+// abandonment. More than one bit may be set; the core compares all of them
+// before giving up rather than stopping at the first.
+//
+// The program counter and the stack pointer are deliberately absent. They are
+// how the core recognises a resume point at all, so a machine that comes back
+// with either of them changed does not reach this comparison and is not an
+// abandonment of this kind.
+#define DC_BEETLE_REPLACEMENT_MISMATCH_ACCUMULATOR 0x01
+#define DC_BEETLE_REPLACEMENT_MISMATCH_X 0x02
+#define DC_BEETLE_REPLACEMENT_MISMATCH_Y 0x04
+#define DC_BEETLE_REPLACEMENT_MISMATCH_STATUS 0x08
+#define DC_BEETLE_REPLACEMENT_MISMATCH_MPR 0x10
 
 #define DC_BEETLE_PSG_CHANNEL_COUNT 6
 #define DC_BEETLE_PSG_WAVEFORM_LENGTH 32

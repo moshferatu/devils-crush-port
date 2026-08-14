@@ -25,11 +25,11 @@ endif()
 
 set(
     expected_trace_sha256
-    "7e3e07db7f985011ff1d79972077c1524f7d14324e0b963d36cf99510cedf661"
+    "493c5ffdc0d95010c13a20b4980b42559bb98b26f73446f81a8194042784da63"
 )
 set(
     expected_call_sha256
-    "cb5d44ef5d6aad1cf78af90d34f382ef288dcdedfb31ca186fbe644f86f12059"
+    "71d52995cf4a095d36245033de6ce93c92de183162c35ef46846379359d2dece"
 )
 set(
     expected_write_sha256

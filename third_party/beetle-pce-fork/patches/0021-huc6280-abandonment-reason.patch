@@ -1,0 +1,119 @@
+diff --git a/mednafen/pce/huc6280.h b/mednafen/pce/huc6280.h
+--- a/mednafen/pce/huc6280.h
++++ b/mednafen/pce/huc6280.h
+@@ -711,7 +711,7 @@
+ 		const dc_beetle_replacement_checkpoint* completed_checkpoint = NULL);
+ 	void ApplyReplacementCheckpoint(void);
+ 	bool PushReplacementFrame(void);
+-	void PopReplacementFrame(bool completed);
++	void PopReplacementFrame(bool completed, uint8 reason, uint8 detail);
+ 	uint16 HookInstructionPC;
+ 	uint8 HookInstructionPhysicalBank;
+ 	uint8 IRQMask;
+diff --git a/mednafen/pce/huc6280.cpp b/mednafen/pce/huc6280.cpp
+--- a/mednafen/pce/huc6280.cpp
++++ b/mednafen/pce/huc6280.cpp
+@@ -706,7 +706,22 @@
+ // the abandoned transcript was running in. Only the ending matters to the
+ // core: a body that stopped early leaves the original assembly at the last
+ // checkpoint applied, which is what the loop below returns to either way.
+-void HuC6280::PopReplacementFrame(const bool completed)
++//
++// `reason` says which of the three abandoning decisions this was, and is the
++// caller's to supply because only the caller knows: by the time control
++// arrives here the machine looks the same whichever it was. `detail` carries
++// whatever that reason has to add, which is the mismatching registers and
++// nothing else. Both are ignored entirely when `completed`.
++//
++// The program counter is the resume point rather than the address the
++// transcript was installed at. Every abandoning caller has already put the
++// last applied checkpoint's resume address in it, which is exactly where the
++// loop below leaves the original assembly to be interpreted from, so reading
++// it here costs nothing and needs no argument.
++void HuC6280::PopReplacementFrame(
++	const bool completed,
++	const uint8 reason,
++	const uint8 detail)
+ {
+ 	if(!completed)
+ 	{
+@@ -715,6 +730,10 @@
+ 			&& dc_beetle_active_replacement_abandoned_hook != NULL)
+ 			dc_beetle_active_replacement_abandoned_hook(
+ 				ReplacementToken,
++				(uint16)PC,
++				MPR[(PC >> 13) & 0x7],
++				reason,
++				detail,
+ 				dc_beetle_active_replacement_abandoned_hook_user_data);
+ 	}
+ 
+@@ -811,7 +830,10 @@
+ 	if(!ReplacementActive
+ 		|| ReplacementCheckpointIndex >= ReplacementCheckpointCount)
+ 	{
+-		PopReplacementFrame(false);
++		PopReplacementFrame(
++			false,
++			DC_BEETLE_REPLACEMENT_ABANDONED_EXHAUSTED,
++			0);
+ 		return;
+ 	}
+ 
+@@ -847,9 +869,12 @@
+ 	// at its declared end, which is the only ending the host is not told about.
+ 	ReplacementCheckpointIndex++;
+ 	if(!ReplacementActive)
+-		PopReplacementFrame(false);
++		PopReplacementFrame(
++			false,
++			DC_BEETLE_REPLACEMENT_ABANDONED_ADVANCE,
++			0);
+ 	else if(ReplacementCheckpointIndex >= ReplacementCheckpointCount)
+-		PopReplacementFrame(true);
++		PopReplacementFrame(true, 0, 0);
+ }
+ 
+ void HuC6280::HappySync(void)
+@@ -966,16 +991,32 @@
+ 			if(PC == previous.resume_logical_pc
+ 				&& S == previous.stack_pointer)
+ 			{
+-				bool registers_match =
+-					A == previous.accumulator
+-					&& X == previous.x
+-					&& Y == previous.y
+-					&& P == previous.status;
+-				for(unsigned i = 0; registers_match && i < 8; i++)
+-					registers_match = MPR[i] == previous.mpr[i];
+-				if(!registers_match)
++				// Every register rather than the first that disagrees. The
++				// comparison used to stop early because all it produced was a
++				// yes or a no; a host asking *which* register an interrupt
++				// handler brought back changed is asking about all of them.
++				uint8 mismatch = 0;
++				if(A != previous.accumulator)
++					mismatch |=
++						DC_BEETLE_REPLACEMENT_MISMATCH_ACCUMULATOR;
++				if(X != previous.x)
++					mismatch |= DC_BEETLE_REPLACEMENT_MISMATCH_X;
++				if(Y != previous.y)
++					mismatch |= DC_BEETLE_REPLACEMENT_MISMATCH_Y;
++				if(P != previous.status)
++					mismatch |= DC_BEETLE_REPLACEMENT_MISMATCH_STATUS;
++				for(unsigned i = 0; i < 8; i++)
++					if(MPR[i] != previous.mpr[i])
++					{
++						mismatch |= DC_BEETLE_REPLACEMENT_MISMATCH_MPR;
++						break;
++					}
++				if(mismatch != 0)
+ 				{
+-					PopReplacementFrame(false);
++					PopReplacementFrame(
++						false,
++						DC_BEETLE_REPLACEMENT_ABANDONED_REGISTERS,
++						mismatch);
+ 					continue;
+ 				}
+ 				ApplyReplacementCheckpoint();

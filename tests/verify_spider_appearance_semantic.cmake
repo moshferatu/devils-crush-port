@@ -16,7 +16,7 @@ endif()
 
 set(call_output "${OUTPUT}.calls.csv")
 set(write_output "${call_output}.writes.csv")
-set(expected_call_sha256 "7e987ec3f4faa07710a6d528d2e108ca4b5157cf8dd0f9183c701a1eb3583356")
+set(expected_call_sha256 "5621b48b8cd7042c1ec1a7fac86efa12a561f016f5d0598af05e0105eef50b3c")
 set(expected_write_sha256 "d7c55c4dde46c9c844669f67e5a3e932d411fa8aac206d6e1d9bc284fccac210")
 
 execute_process(

@@ -151,6 +151,12 @@ public:
         return {};
     }
 
+    [[nodiscard]] std::vector<AbandonmentSite>
+    export_abandonment_census() const override
+    {
+        return {};
+    }
+
     [[nodiscard]] bool set_native_psg(bool) override
     {
         return false;

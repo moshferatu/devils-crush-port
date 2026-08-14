@@ -11,8 +11,8 @@ if(NOT CONFIG STREQUAL "Release")
 endif()
 
 set(expected_census_sha256 "653c6cc868191f0f2e1c3aa7c01536353dcd48b9555d08a04fb7962590f0f5e9")
-set(expected_trace_sha256 "18c66cd2b797e3731aad21fd59df0fb0c1108085e216a8b2f15a5302a9206df7")
-set(expected_call_sha256 "78c4d40fd5c722013d99d1d64e3bc92eb8d332fa565293ad5f1bd7352793775d")
+set(expected_trace_sha256 "a0a7ed6a108110f757b460a3479c0a3f3009f0767bb9a1495d02c546047c10de")
+set(expected_call_sha256 "65875fee04d6dd139f5e3c9612519871b606bc40fa8b317c63c4b67d60a8e28f")
 set(expected_write_sha256 "887a94ced66802395af27d63c3cc20685bc8453ca914a2044d89619aaa98d510")
 
 set(trace_output "${OUTPUT}.trace.csv")

@@ -147,8 +147,6 @@ execute_process(
         --replace-hook
         "45:4883@all"
         --replace-hook
-        "45:48B4@all"
-        --replace-hook
         "45:48F6@all"
         --replace-hook
         "45:49A2@all"
@@ -189,20 +187,19 @@ endif()
 foreach(expected_line IN ITEMS
     "State census recording complete: 3600 frames"
     "Native replacement 45:4015@all entries: 1933 of 3599"
-    "Native replacement 45:4044@all entries: 1208 of 7724"
-    "Native replacement 45:409C@all entries: 1509 of 4892"
+    "Native replacement 45:4044@all entries: 837 of 7339"
+    "Native replacement 45:409C@all entries: 1395 of 4766"
     "Native replacement 45:413B@all entries: 3599 of 3599"
     "Native replacement 45:4142@all entries: 3216 of 3604"
     "Native replacement 45:4143@all entries: 3788 of 6386"
-    "Native replacement 45:4211@all entries: 1783 of 1783"
+    "Native replacement 45:4211@all entries: 1669 of 1669"
     "Native replacement 45:4228@all entries: 1065 of 1065"
     "Native replacement 45:457A@all entries: 2219 of 2299"
-    "Native replacement 45:4883@all entries: 4321 of 4321"
-    "Native replacement 45:48B4@all entries: 72 of 72"
-    "Native replacement 45:48F6@all entries: 3398 of 3398"
-    "Native replacement 45:49A2@all entries: 3463 of 3463"
+    "Native replacement 45:4883@all entries: 4234 of 4234"
+    "Native replacement 45:48F6@all entries: 3371 of 3371"
+    "Native replacement 45:49A2@all entries: 3371 of 3371"
     "Native replacement 45:49B6@all entries: 1671 of 1671"
-    "Native replacement 45:49F9@all entries: 3476 of 3482"
+    "Native replacement 45:49F9@all entries: 3366 of 3371"
     "Work-RAM write trace complete: 5458568 selected writes"
     "Bus write trace complete: 699251 selected writes"
 )

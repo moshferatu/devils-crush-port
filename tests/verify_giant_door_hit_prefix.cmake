@@ -10,7 +10,7 @@ if(NOT CONFIG STREQUAL "Release")
 endif()
 
 set(expected_census_sha256 "9d0473039fa1218c016f6e7bff94c7904298b30533e6f1741b80aa564d1aaca3")
-set(expected_call_sha256 "2cdc3b20e62bb4602c51bad08c6994e145abed31d426d4537ee950fdb42531a5")
+set(expected_call_sha256 "78e27b05c42a1243e93867ad3e6fabfa42f39ee9514ccc54b8962d7b74cb1245")
 set(expected_write_sha256 "e1c7a5d1d5dda8c706072af39314fb00b137b06eceb500fb5c3af96bfdc4f17e")
 set(expected_state_write_sha256 "bb4aa090cee9958ac6d57a3437adbd64cfca7395a7757bdb6ac1eee0a79904e5")
 

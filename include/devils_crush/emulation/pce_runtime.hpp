@@ -326,6 +326,60 @@ struct ReplacementNesting {
     [[nodiscard]] bool operator==(const ReplacementNesting&) const = default;
 };
 
+// Why the runtime gave a transcript up. The three values are the three places
+// the decision is made, and they are not variations on one fault: the first is
+// the machine disagreeing with something the transcript declared, and the other
+// two are the transcript unable to keep something it declared.
+enum class AbandonmentReason : std::uint8_t {
+    // The machine came back to a resume point carrying a register the
+    // checkpoint did not declare. The transcript was right about where control
+    // would return and wrong about the state it would return in, which makes
+    // this a fact about an interrupt handler rather than about the transcript.
+    registers = 1,
+    // A checkpoint asked to advance to an offset the runtime could not deliver:
+    // a write due before the cycle already spent, or a stalling-port wait wider
+    // than the offset the write was priced into. The transcript mispriced its
+    // own body.
+    advance = 2,
+    // A checkpoint was asked for when none was left. Reaching the last
+    // checkpoint is completion, so this is a transcript being resumed that has
+    // nothing further to say.
+    exhausted = 3,
+};
+
+// Which registers disagreed, for an abandonment whose reason is `registers`.
+// More than one may be set. The program counter and the stack pointer are not
+// among them: they are how a resume point is recognised at all, so a machine
+// that returns with either changed never reaches the comparison.
+enum class RegisterMismatch : std::uint8_t {
+    none = 0x00,
+    accumulator = 0x01,
+    x = 0x02,
+    y = 0x04,
+    status = 0x08,
+    mpr = 0x10,
+};
+
+// One abandonment site: a transcript, the address the original assembly was
+// interpreted from afterwards, and why.
+//
+// The two addresses are different questions and both are needed. `routine` is
+// where the transcript was installed, which says who owns the fault; `resume`
+// is the last checkpoint it managed to apply, which is where the emulator picks
+// the routine up and therefore where the cycles this costs are spent. Neither
+// is derivable from the other: a transcript covers a whole routine and may be
+// given up at any instruction in it.
+struct AbandonmentSite {
+    RoutineKey routine;
+    RoutineKey resume;
+    AbandonmentReason reason = AbandonmentReason::registers;
+    // The set of `RegisterMismatch` bits, zero for the other two reasons.
+    std::uint8_t mismatch = 0;
+    std::uint64_t count = 0;
+
+    [[nodiscard]] bool operator==(const AbandonmentSite&) const = default;
+};
+
 class PceRuntime {
 public:
     virtual ~PceRuntime() = default;
@@ -413,6 +467,19 @@ public:
     // never executed are omitted.
     [[nodiscard]] virtual std::vector<InstructionProfileEntry>
     export_instruction_profile() const = 0;
+
+    // Where the abandonments counted by `ReplacementNesting::abandoned`
+    // happened, grouped by transcript, resume address and reason, in descending
+    // count order. Recorded whenever replacements are deployed and costs
+    // nothing until one is abandoned, so there is no flag to enable.
+    //
+    // The counts sum to `abandoned` less any transcript the runtime declined to
+    // name. Only a checkpointed transcript can be abandoned and only a named
+    // one is reported, so the difference is transcripts installed before this
+    // runtime issued their name -- which is to say, those restored from a
+    // savestate written by somebody else.
+    [[nodiscard]] virtual std::vector<AbandonmentSite>
+    export_abandonment_census() const = 0;
 
     // One optional global observer receives every write to the physical
     // 8 KiB PCE work-RAM bank. It is intended for selective state-writer

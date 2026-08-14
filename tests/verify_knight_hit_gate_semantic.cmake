@@ -14,7 +14,7 @@ else()
     message(FATAL_ERROR "Unsupported Knight-hit-gate configuration: ${CONFIG}")
 endif()
 
-set(expected_call_sha256 "6d8c143b2d3519b08ab769316c6754d14d7b8217e4c1d31609c76b085ecfb3c1")
+set(expected_call_sha256 "8ed50f2eaca81ef769e8e7eed1283965323f40e91d8abd9b4753dd7e64c24917")
 set(expected_write_sha256 "9d7282f06841f7e4dcbd40d6ccfeb507647c85afe351251be26d2c04832f31da")
 
 set(call_output "${OUTPUT}.calls.csv")

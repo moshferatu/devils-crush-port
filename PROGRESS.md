@@ -5839,13 +5839,163 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
     outside the wait), 379 routines and 312 entered, every call admitted.
   - [x] Re-run the sweep: **no `JSR` or `BSR` remains in any family's
     `is_stop_instruction`.** The crossing technique is finished.
+- [x] Ask the core where its abandoned transcripts go, and find out that all
+  21,657 of them are one bit.
+  - [x] `patches/0021-huc6280-abandonment-reason.patch`: the abandonment hook
+    gains the resume address, its bank, and a reason code for each of the three
+    places the decision is made. Reports; does not act.
+  - [x] Name every transcript by the routine it was issued for, by encoding the
+    routine key in the low twenty-four bits of the token the core hands back.
+    No map of open transcripts is possible -- completion reaches no hook.
+  - [x] `--abandonment-census <path>`: 904 sites, and they sum to exactly the
+    21,657 the core counts, so no abandonment is unaccounted for.
+  - [x] Confirm the instrument against an independent measurement: excluding
+    `03:6966` from the registry drops the core's counter by 1,721, and the
+    census attributes exactly 1,721 to `03:6966`.
+  - [x] **Every abandonment on the route is `registers`.** Never a mispriced
+    advance, never an exhausted transcript.
+  - [x] **Every one of those is `P`, and every one of those is the B flag
+    alone.** Measured by passing the status XOR through the same census.
+  - [x] Correct the recorded guess about the bank `03` residue: `03:6966` owns
+    1,721 of it and its callers own the rest.
+- [x] `patches/0022-huc6280-break-flag-resume.patch`: stop comparing the B
+  flag, and stop recording it.
+  - [x] Ignore B when a resume point is checked, and leave the machine's own B
+    standing when a checkpoint is applied. **21,657 abandonments -> 0.**
+  - [x] Drop B from the status the host reports and the status it declares,
+    because a transcript models `PHP`/`PLP` exactly and cannot know when an
+    interrupt will clear the bit.
+  - [x] Prove the emulation is untouched: the 3,600-frame state census is
+    byte-identical, and all eight `absorbed_return_trace` regressions -- which
+    compare an emulated route against a replaced one inside the same run --
+    pass.
+  - [x] Prove the re-baseline is only that bit: regenerating
+    `knights-v1.csv.trace.csv` either side of the change gives one differing
+    column across 10,605 rows and one differing value, `10` -> `00`.
+  - [x] Re-baseline 220 stored expectations, drop the four entry points that
+    only post-abandonment arrivals ever reached, and correct every figure in
+    `docs/` that the double count had inflated. 415/415 Release, 3/3 ROM-free
+    Debug.
 
 ## Active Work
 
-Current owner: Claude. Current slice: **every call the port had left**. Done,
-and done in the sense that the sweep now returns nothing: no `JSR` or `BSR`
-survives in any family's `is_stop_instruction`. The technique that has carried
-the last four slices has no sites left to spend on.
+Current owner: Claude. Current slice: **where the abandoned transcripts go**.
+Done, and it answered a question that was recorded here as the next slice's
+first step. It also found something bigger than the slice, which is parked
+below rather than landed.
+
+**Nothing about the emulation changed.** `patches/0021` adds three facts to
+what the core says and none to what it does; the route is
+688,632,969 / 53.28% / 96.92% and 21,657 abandonments exactly as before, and
+415/415 Release and 3/3 ROM-free Debug pass.
+
+**`--abandonment-census` names all 21,657 across 904 sites.** The core counts
+abandonments whether or not anyone is listening, so the census summing to that
+counter is the check that none is missed. The transcript names itself: rather
+than keep a map of open transcripts -- impossible, because completion reaches
+no hook and completion is the common ending -- the token the host mints carries
+the routine key in its low twenty-four bits and the core hands it straight
+back.
+
+| Transcript | Abandonments | Distinct resume addresses |
+| --- | ---: | ---: |
+| `02:58C2` | 5,034 | 92 |
+| `03:7F57` | 4,515 | 95 |
+| `01:C510` | 2,637 | 11 |
+| `01:C606` | 2,464 | 28 |
+| `03:6966` | 1,721 | 71 |
+| `01:C52C` | 1,230 | 4 |
+| `01:C523` | 813 | 3 |
+
+**The recorded guess about the bank `03` residue was wrong, and the census is
+what corrects it.** `PROGRESS.md` had this slice down as the first step toward
+`03:6900`-`03:6A80`'s 2,433,327 emulated cycles, on the assumption that they
+belong to `03:6966`. They mostly do not. `03:6966` abandons 1,721 times; its
+*callers* abandon while running its body, because both of them compose it --
+`02:58C2` resumes at `03:699C`, `03:69C7`, `03:6A16`, `03:6A33` and eighty-odd
+other addresses inside it, and `03:7F57` resumes at `03:6966`, `03:6982` and
+`03:696B`. 11,037 of the route's abandonments resume in bank `03` and only
+1,721 of them are the interpreter's own. An address list of interior resume
+points was never the answer; there are hundreds and they belong to three
+different transcripts.
+
+**All 21,657 are `registers`.** Not one is a transcript mispricing its own
+advance, and not one is a transcript resumed past its last checkpoint. The two
+other endings the patch can report were never seen. So no transcript on this
+route is internally wrong -- every abandonment is the machine coming back from
+an interrupt in a state the transcript did not declare.
+
+**All 21,657 of those are `P`, and all 21,657 of those are the B flag.** Never
+`A`, never `X`, never `Y`, never an `MPR`; never any other bit of `P`. Measured
+by sending the status XOR through the `detail` byte for one run, which decodes
+to `0x10` on every site.
+
+**B is not a register bit on this processor.** `PHP` pushes `P | B_FLAG` and
+`PLP` pops the byte back whole, so any `PHP`/`PLP` pair -- `03:697C` and
+`03:6982` are one, in the middle of the interpreter -- *sets* it in the live
+register. Any interrupt clears it again, because that push forces it off and
+`RTI` restores what was pushed. Nothing ever reads it: both pushers force it
+themselves in opposite directions, and the only other reader of `P` is
+`REDOPIMCACHE`, which caches `I`. So the core has been giving transcripts up
+over a bit no execution can depend on, and has been doing it 21,657 times.
+
+**So the comparison stopped**
+(`patches/0022-huc6280-break-flag-resume.patch`): B is ignored when a resume
+point is checked, and a checkpoint leaves the machine's own B standing rather
+than writing the transcript's.
+
+| | Before | After |
+| --- | ---: | ---: |
+| Abandonments | 21,657 | **0** |
+| Instructions interpreted | 66,312,647 | 66,291,003 |
+| Registry cycles | 688,632,969 | 683,629,137 |
+| Share of the route | 53.28% | **52.90%** |
+| Share outside the frame-sync wait | 96.92% | **96.22%** |
+| Admitted routines | 379 | 375 |
+| State census | `9036a9de…` | **byte-identical** |
+
+**The reported cycles fall because they were wrong, not because the port got
+worse.** The host credits a native call when it *offers* one. An abandoned
+transcript was credited its whole body while the emulator delivered only part
+of it -- and then, re-interpreting the rest of that same span, the machine
+arrived at registered addresses *inside* it and each of those was credited its
+own body on top. `02:58C2` abandons 5,034 times and `02:58DD` loses 4,628
+entries once the abandonments stop; `03:7F57` abandons 4,515 and `03:7FB1`
+loses 3,172. Fifty-two routines move and every one moves down. **52.90% is the
+first figure this project has had with nothing abandoned and therefore nothing
+counted twice**, and the emulator interprets 21,644 fewer instructions than it
+did at 53.28%.
+
+**Four routines lost their last caller.** `02:5893`, `02:58DD`, `03:742B` and
+`45:48B4` were reached *only* when the core gave a transcript up and resumed
+the composed body in assembly. They were registered because that resumption
+was a real arrival; it is not one any more, and the registry is 375 rather than
+379. Their replacements are still dispatched and still correct. Four entry
+points that existed to catch the fallout of a spurious comparison is a fair
+summary of what the comparison cost.
+
+**The host stopped recording B as well, and had to.** A transcript models
+`PHP`/`PLP` exactly, so it carries B forward; it cannot know when an interrupt
+will clear it. Abandonment used to throw those transcripts away before anyone
+could compare them, so with them completing, the declared register reached the
+call traces and disagreed with the emulated one -- and the eight
+`absorbed_return_trace` regressions, which compare an emulated route against a
+replaced one *inside the same run*, caught it. `observable_status` drops the
+bit on the way out of the machine and on the way into the core, for the same
+reason the core stopped comparing it. All eight pass.
+
+**220 stored expectations moved and every one of them is that bit.** Verified
+directly rather than assumed: regenerating `knights-v1.csv.trace.csv` either
+side of the change gives one differing column across 10,605 rows, `status`,
+and one differing value, `10` -> `00`. The rest are `entries: N of M` counts
+that fall by exactly the post-abandonment re-entries the census predicts --
+`01:C510` from 176,861 to 175,226 against 2,637 abandonments.
+
+### Previous: every call the port had left
+
+Done, and done in the sense that the sweep returned nothing afterwards: no
+`JSR` or `BSR` survives in any family's `is_stop_instruction`. The technique
+that carried four slices has no sites left to spend on.
 
 **The registry goes 688,368,726 -> 688,632,969, +264,243.** 53.26% ->
 **53.28%** of the route; 96.89% -> **96.92%** of it outside the frame-sync

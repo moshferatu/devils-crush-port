@@ -13,7 +13,7 @@ elseif(CONFIG STREQUAL "Release")
 else()
     message(FATAL_ERROR "Unsupported Knight waiting-parent configuration: ${CONFIG}")
 endif()
-set(expected_call_sha256 "fcc85209b476ba21441502ef04ae63c9511045399c9720cd188dc5de49b68f6c")
+set(expected_call_sha256 "64190c02108f2a3b23ffb5ab32068d5e54879b865f70946c5ea9258ff76d1eba")
 set(expected_write_sha256 "66e905370e6333ef4466eb922b24f1ae04897f1599ea77582e03f6c58e4c36e9")
 
 set(call_output "${OUTPUT}.calls.csv")

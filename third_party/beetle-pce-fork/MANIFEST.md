@@ -699,6 +699,73 @@ this repository.
     - Adds one 64-bit field to `HuC6280` and one to each of its four suspended
       frames. Changes nothing for a host that registers no hook, and nothing at
       all for a host whose transcripts carry no token.
+21. `patches/0021-huc6280-abandonment-reason.patch`
+    - Smaller again than `0020`, and the same kind of thing: it adds nothing to
+      what the core does and three facts to what it says. The abandonment hook
+      gains the resume address, its physical bank, and a reason.
+    - The resume address is the point of it. `0020` said *that* a transcript was
+      given up and left the host to guess *where*, and the two are not the same
+      question: a transcript is installed at a routine's entry and abandoned at
+      whichever checkpoint it had reached, so the address the original assembly
+      is interpreted from is neither the entry nor anything the host declared.
+      It is already in `PC` by the time every abandoning caller reaches
+      `PopReplacementFrame`, because applying a checkpoint is what puts it
+      there, so the patch reads it rather than passing it.
+    - The reason has to be passed, because the three decisions are made in three
+      places and look identical once control arrives: the machine came back to a
+      resume point carrying a register the checkpoint did not declare
+      (`REGISTERS`); a checkpoint asked to advance to an offset the core could
+      not deliver (`ADVANCE`); or a checkpoint was asked for when none was left
+      (`EXHAUSTED`). Zero is reserved for the ending that is not an abandonment
+      at all, so a completed transcript borrows no reason from the enumeration.
+    - Which one it is decides what a host can do about it. `REGISTERS` is a
+      claim about an interrupt handler and is answered by declaring less;
+      `ADVANCE` is a transcript mispricing its own writes; `EXHAUSTED` is the
+      core being asked to resume a transcript that has nothing left to say.
+      Counting them apart is what turns 21,657 abandonments from a number into
+      a list of addresses to work on. On the census route every one of the
+      21,657 is `REGISTERS`, so the other two are reported and never seen.
+    - A `detail` byte carries what the reason has to add, which for `REGISTERS`
+      is the set of registers that disagreed. The comparison it comes from used
+      to stop at the first mismatch, because a `bool` was all it produced; it
+      now tests all five so that the byte is the whole answer rather than the
+      earliest one. `PC` and `S` are absent by construction -- they are how a
+      resume point is recognised, so a machine that comes back with either
+      changed does not reach this comparison at all.
+    - Changes no signature a host outside this fork uses, because the only one
+      it changes is the abandonment hook `0020` introduced. A host that
+      registers no hook is unaffected; the counter is unchanged.
+22. `patches/0022-huc6280-break-flag-resume.patch`
+    - Stops the resume comparison testing a flag that has no meaning in the
+      live register, which is what `0021`'s census found every one of the
+      census route's 21,657 abandonments to be. Afterwards the route abandons
+      nothing at all.
+    - B is set in `P` by any `PHP`/`PLP` pair, because `PHP` pushes
+      `P | B_FLAG` and `PLP` pops the byte back whole. It is cleared again by
+      any interrupt, because that push forces it off and `RTI` restores what
+      was pushed. So a transcript spanning a `PLP` declares B set, the handler
+      that interrupts it hands the machine back with B clear, and the core gave
+      the transcript up over the disagreement.
+    - Nothing on this processor reads it. The two instructions that push `P`
+      force the bit themselves in opposite directions, and the only other
+      reader of `P` is `REDOPIMCACHE`, which caches `I`. That is what makes
+      ignoring it exact rather than approximate: this is not a tolerance, it is
+      the observation that the comparison was testing a bit no execution can
+      depend on.
+    - Applying a checkpoint leaves the machine's own B standing instead of
+      writing the transcript's, so a modelling artifact cannot reach the
+      register the emulator saves.
+    - Confined to the checkpointed path. An atomic transcript is applied whole
+      inside one loop iteration, is never resumed and never abandoned, and is
+      untouched here.
+    - The state census over the 3,600-frame route is byte-identical either side
+      of this patch, and the eight `absorbed_return_trace` regressions -- which
+      compare an emulated route against a replaced one inside the same run
+      rather than against a stored hash -- pass. The host drops B from the
+      status it reports and from the status it declares, for the same reason
+      this patch stops comparing it; a transcript models `PHP`/`PLP` exactly
+      and so cannot help carrying a bit the interrupt it cannot see would have
+      cleared.
 
 All local files and patches are GPL-3.0-or-later. Upstream per-file notices
 and licenses remain authoritative for upstream sources.

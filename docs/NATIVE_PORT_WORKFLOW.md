@@ -1157,7 +1157,67 @@ result and the core only ever stored. The runtime erases the pendings that token
 names. `01:C52B` fell from 73,536 master cycles to 819 and all 176,861 replaced
 calls agree with the emulated trace on every column.
 
-Two things about that are worth carrying. The half-fix tried first — withdrawing
+**`patches/0021-huc6280-abandonment-reason.patch` finishes the report, and
+`--abandonment-census` is where to read it.** `0020` said *that* a transcript
+was given up; `0021` says where the emulator picked the routine up afterwards
+and why the core gave up, and the host names the transcript by encoding the
+routine key in the token it mints. Over the census route that is 904 sites
+summing to exactly the 21,657 the core counts. Two results from it are worth
+more than the instrument.
+
+**Every abandonment on this route is the machine disagreeing, never the
+transcript.** Not one is a mispriced advance and not one is an exhausted
+transcript — the two other endings are reported and never seen. And every
+disagreement is `P`, and every one of those is the **B flag**, which is not a
+register bit on this processor: `PHP` pushes `P | B_FLAG` and `PLP` pops the
+byte back whole, so any such pair sets it in the live register, and any
+interrupt clears it again because that push forces it off. Nothing reads it.
+So before spending a slice on where abandonments *land*, check what they are —
+21,657 of them turned out to be one bit that no execution can depend on.
+`patches/0022-huc6280-break-flag-resume.patch` stops comparing it and the route
+abandons nothing at all.
+
+**Two things that came out of landing it are worth more than the patch.** The
+first is that **an abandonment inflates the reported native share, and nobody
+had noticed for as long as abandonments were normal.** The host credits a
+native call when it *offers* one, so an abandoned transcript was credited its
+whole body while the emulator delivered part of it — and the machine, going on
+to re-interpret the rest of that span, arrived at registered addresses *inside*
+it and each of those was credited its own body on top. Removing the
+abandonments took the reported figure *down*, from 53.28% to 52.90%, while the
+emulator interpreted 21,644 fewer instructions. A number that falls when the
+port improves is worth stopping over: it means the number was measuring
+something else.
+
+**The second is that a transcript cannot model the B flag, so nothing should
+record it.** A transcript models `PHP` and `PLP` exactly and therefore carries
+B forward; it cannot know when an interrupt will clear it. While abandonment
+was normal that never showed, because the transcripts that would have disagreed
+were thrown away first. With them completing, the declared register reached the
+call traces and the `absorbed_return_trace` family caught it immediately —
+those compare an emulated route against a replaced one *inside the same run*
+rather than against a stored hash, which is why they are the regressions worth
+having. `observable_status` in the runtime drops the bit on the way out of the
+machine and on the way into the core.
+
+**Re-baselining on that scale needs a confinement argument, not a diff count.**
+220 stored expectations moved. What makes that safe is not that the suite goes
+green afterwards — it would go green around almost any mistake — but that
+regenerating one artifact either side of the change gives exactly one differing
+column across 10,605 rows, `status`, and exactly one differing value, `10` to
+`00`. Establish that on a representative artifact of each kind before rewriting
+anything, and treat a diff that touches a second column as a fault rather than
+a baseline.
+
+**And do not read a residue address as belonging to the routine it sits in.**
+The bank `03` interpreter's 2,433,327 emulated cycles were recorded here as
+`03:6966`'s to recover. `03:6966` abandons 1,721 times; `02:58C2` abandons
+5,034 and `03:7F57` 4,515, both of them *inside* `03:6966`'s body, because both
+compose it. An interior address is reached by whoever was running when the
+transcript covering it was given up, and the census is the only thing that
+says who that was.
+
+Two things about `0020` are worth carrying. The half-fix tried first — withdrawing
 when the core executes the `RTS` itself — did not partly work, it made the trace
 *worse* (129,236 wrong `Y` against 82,201), because a cut-short scan usually
 leaves through the dispatch at `01:C52C` and never reaches the return at all.

@@ -1,0 +1,37 @@
+diff --git a/mednafen/pce/huc6280.cpp b/mednafen/pce/huc6280.cpp
+--- a/mednafen/pce/huc6280.cpp
++++ b/mednafen/pce/huc6280.cpp
+@@ -846,7 +846,12 @@
+ 	X = checkpoint.x;
+ 	Y = checkpoint.y;
+ 	S = checkpoint.stack_pointer;
+-	P = checkpoint.status;
++	// Every flag the transcript declared except the one it does not own. B has
++	// no meaning in the live register on this processor -- it exists in the
++	// byte pushed to the stack, and both pushers force it there regardless of
++	// what the register holds -- so a transcript's B is a modelling artifact
++	// and the machine's own is left standing rather than overwritten by it.
++	P = (uint8)((checkpoint.status & ~B_FLAG) | (P & B_FLAG));
+ 	REDOPIMCACHE();
+ 	for(unsigned i = 0; i < 8; i++)
+ 		SetMPR(i, checkpoint.mpr[i]);
+@@ -1003,7 +1008,18 @@
+ 					mismatch |= DC_BEETLE_REPLACEMENT_MISMATCH_X;
+ 				if(Y != previous.y)
+ 					mismatch |= DC_BEETLE_REPLACEMENT_MISMATCH_Y;
+-				if(P != previous.status)
++				// Every flag but B. It is set in the live register by any
++				// PHP/PLP pair, because PHP pushes `P | B_FLAG` and PLP pops
++				// the byte back whole, and it is cleared again by any
++				// interrupt, because that push forces it off and RTI restores
++				// what was pushed. So a transcript that spans a PLP declares
++				// it set, the handler that interrupts the transcript hands it
++				// back clear, and the two disagree about a bit that no
++				// instruction on this processor reads: both pushers force it,
++				// and the only other reader of P caches I. Comparing it
++				// abandoned 21,657 transcripts over the census route and every
++				// abandonment there was this and nothing else.
++				if(((P ^ previous.status) & ~B_FLAG) != 0)
+ 					mismatch |= DC_BEETLE_REPLACEMENT_MISMATCH_STATUS;
+ 				for(unsigned i = 0; i < 8; i++)
+ 					if(MPR[i] != previous.mpr[i])
