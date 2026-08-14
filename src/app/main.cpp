@@ -2900,6 +2900,7 @@ parse_logical_address_range(const std::string_view text)
                            && (request.routine.logical_pc == 0xE058U
                                || request.routine.logical_pc == 0xE05FU
                                || request.routine.logical_pc == 0xE0EBU
+                               || request.routine.logical_pc == 0xE114U
                                || request.routine.logical_pc == 0xE117U
                                || request.routine.logical_pc == 0xE123U
                                || request.routine.logical_pc == 0xE135U

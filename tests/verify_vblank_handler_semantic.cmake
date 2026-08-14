@@ -30,33 +30,51 @@ endif()
 # head walks to the read and stops; the core executes it, at the right cycle,
 # with its acknowledge; the tail picks the arm up from the accumulator.
 #
-# Eleven entry points share one walk: the dispatcher's two halves, the two arms
+# Twelve entry points share one walk: the dispatcher's two halves, the two arms
 # it hands off to, the two addresses the VBlank arm's calls come back to, the
-# secondary handler's prologue and epilogue, the pad reader one of those calls
-# goes to, and the two interrupt returns.
+# one-instruction entry between those calls, the secondary handler's prologue
+# and epilogue, the pad reader one of those calls goes to, and the two interrupt
+# returns.
 #
 #   00:E058  the dispatcher's head: push P, A, X and Y and stop in front of the
 #            LDA $0000 that only the core can run
 #   00:E05F  its tail: stash the status byte at $01, test the VBlank bit and
 #            pick the arm from the raster mode at $54
 #   00:E0EB  VBlank prologue: program VDC registers $08/$07/$05 from the RAM
-#            shadows, then stop at the JSR $EB30
-#   00:E117  after the pad read: bump the frame counter at $00 and either take
+#            shadows, then cross the JSR $EB30 into the palette upload
+#   00:E114  one instruction, the JSR $E195 the upload returns onto, crossed
+#            into the pad reader
+#   00:E117  after the pad read: bump the frame counter at $00 and either cross
 #            the bank wrapper at 00:ECC6 or set $DA and fall into the epilogue
 #   00:E123  after that wrapper: restore MPR6 and join the epilogue
 #   00:E136  the non-VBlank arm: reprogram the split registers from $0B/$0C on
 #            raster modes 0 and 2, then bump the 16-bit tick at $222A
-#   00:E179  the secondary handler's prologue, down to its JSR $ECC6
+#   00:E179  the secondary handler's prologue, across its JSR $ECC6
 #   00:E183  its epilogue: restore MPR6, rewrite $0000 twice and unwind
 #   00:E195  the pad reader: poll all five ports and publish the held state at
 #            $2013,Y, the previous frame's at $200E,Y and the edges at $2018,Y
 #   00:E135  the shared epilogue's RTI, and 00:E194 the secondary handler's:
 #            one instruction each, three bytes off the stack
 #
-# All eleven are admitted on every call. The dispatcher's two halves take 7,198
+# All twelve are admitted on every call. The dispatcher's two halves take 7,198
 # entries each, one per interrupt: 3,599 VBlank and 3,599 raster. 00:E135 takes
 # the same 7,198 because every interrupt the dispatcher takes leaves through it,
 # whichever arm it went down, and 00:E194 takes the secondary handler's 387.
+#
+# The four calls the handler makes -- 00:E111 into the palette upload, 00:E114
+# into the pad reader, and 00:E120 and the secondary handler's 00:E180 into the
+# bank wrapper -- are crossed rather than stopped in front of, and this
+# regression is where that is proved. A crossing writes the two return
+# bytes itself, at the offset the JSR writes them -- both before the opcode has
+# charged a cycle, so both carry the instruction's start offset -- and charges
+# the same twenty-one cycles the core would have. If that is right then nothing
+# observable moves: the same bytes reach the same stack addresses in the same
+# order at the same master-cycle offsets, and every push made afterwards is
+# where it was. So all three expected hashes below are the ones this file
+# already carried before the crossings existed. They are not re-recorded
+# expectations. An unchanged write trace over the whole stack page is the
+# strongest statement this test can make about a call: the transcript now does
+# the pushing and it is indistinguishable from when the core did.
 #
 # `00:E195` is the one routine in the port that reads a device rather than only
 # writing one, and it was left out for four slices on the rule that a
@@ -131,6 +149,8 @@ execute_process(
         --replace-hook
         "00:E0EB@all"
         --replace-hook
+        "00:E114@all"
+        --replace-hook
         "00:E117@all"
         --replace-hook
         "00:E123@all"
@@ -183,6 +203,7 @@ foreach(expected_line IN ITEMS
     "Native replacement 00:E058@all entries: 7198 of 7198"
     "Native replacement 00:E05F@all entries: 7198 of 7198"
     "Native replacement 00:E0EB@all entries: 2748 of 2748"
+    "Native replacement 00:E114@all entries: 3599 of 3599"
     "Native replacement 00:E117@all entries: 3599 of 3599"
     "Native replacement 00:E123@all entries: 3212 of 3212"
     "Native replacement 00:E135@all entries: 7198 of 7198"
@@ -227,8 +248,9 @@ endforeach()
 
 message(
     STATUS
-    "Semantic VDC interrupt handler runs all nine entry points natively across "
-    "31,927 admitted entries as instruction-boundary transcripts, with the "
+    "Semantic VDC interrupt handler runs all twelve entry points natively "
+    "across 43,111 admitted entries as instruction-boundary transcripts, with "
+    "the "
     "frame counter, the raster tick, the zero-page shadows, the whole stack "
     "page, the five pads' held and newly-pressed state, every VDC register "
     "write, every joypad latch write and the state census identical to "

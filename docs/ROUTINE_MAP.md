@@ -706,22 +706,36 @@ its own.
 
 The handler's own body is ported too. Nothing below the `LDA $0000` needs the
 device again, so the walks split at that instruction, at the dispatcher's jumps
-and at the calls the core keeps:
+and at the four calls it makes — not in front of those calls but past them, on
+the first instruction of the callee:
 
-| Entry | Calls | Stops at | What it does |
+| Entry | Calls | Ends on | What it does |
 | --- | ---: | --- | --- |
 | `E058` | 7,198 | `E05C` `LDA $0000` | Push `P`, `A`, `X` and `Y`, then hand the status read back to the core |
-| `E05F` | 7,198 | `E136`, `E0EB` or `E111` | Stash the status byte at `$01`, test the VBlank bit, pick the arm from `$54` |
-| `E0EB` | 2,748 | `E111` `JSR $EB30` | Programme VDC `$08`/`$07`/`$05` from the shadows at `$02`, clear the raster-compare bit |
-| `E117` | 3,599 | `E120` or `E134` | Bump the frame counter at `$00`; on `$D9` set, write `$DA` and skip the music call |
+| `E05F` | 7,198 | `E136`, `E0EB` or `EB30` | Stash the status byte at `$01`, test the VBlank bit, pick the arm from `$54` |
+| `E0EB` | 2,748 | `EB30` | Programme VDC `$08`/`$07`/`$05` from the shadows at `$02`, clear the raster-compare bit, cross the `JSR $EB30` |
+| `E114` | 3,599 | `E195` | One instruction: cross the `JSR $E195` the palette upload returns onto |
+| `E117` | 3,599 | `ECC6` or `E134` | Bump the frame counter at `$00`; on `$D9` set, write `$DA` and skip the music call, otherwise cross into it |
 | `E123` | 3,212 | `E134` | Restore MPR6 from the stack and join the epilogue |
 | `E136` | 3,599 | `E134` | Raster arm: on `$54` of 0 or 2 reprogramme the split from `$0B`/`$0C`, then tick `$222A`/`$222B` |
-| `E179` | 387 | `E180` `JSR $ECC6` | The secondary handler's prologue |
+| `E179` | 387 | `ECC6` | The secondary handler's prologue, across the same call `E117` crosses |
 | `E183` | 387 | `E193` | Its epilogue: restore MPR6, rewrite `$0000` twice, unwind |
 | `E195` | 3,599 | `E1F7` `RTS` | Poll all five ports; publish held state at `$2013,Y`, last frame's at `$200E,Y`, edges at `$2018,Y` |
 
 `E179` is reached only on the frames where `$D9` suppresses the VBlank arm's own
 music call, which is why its 387 entries match `E128`'s exactly.
+
+The four calls are `E111` into the palette upload, `E114` into the pad reader,
+`E120` into the bank wrapper and `E180` into that same wrapper from the
+secondary handler. Every one of them was a stop for as long as this family has
+existed. Each is now crossed instead: the transcript pushes the two return bytes
+itself, at the offset `JSR` writes them, charges the same twenty-one cycles and
+ends on `EB30`, `E195` or `ECC6`. All three targets are registered entries of
+their own, so the core enters each natively rather than interpreting a call on
+the way in. `E114` is an entry only so that the second of the four can be crossed
+at all: between the palette upload's return and `E117` the core would otherwise
+find no hook, and the crossing above it would have bought nothing but its own
+twenty-one cycles.
 
 Each walk stops one instruction short of its `RTI`, in front of the `PLP` at
 `E134` or `E193`. That is not the usual "let the core execute the return": the

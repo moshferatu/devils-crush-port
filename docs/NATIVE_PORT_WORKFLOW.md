@@ -717,6 +717,20 @@ site in code that was never ported recovers the call's own 21 cycles and leaves
 the body interpreted, which is real but small. Check which of the two a cluster
 is before pricing it.
 
+There is a third, and it cost this file a wrong recommendation the first time
+the classification was run. **A `JSR` row can be a call that is already
+crossed.** The bucket is built from the profile, and the profile records what
+the *interpreter* executed; a walk that declines its entry runs the whole
+routine interpreted, call sites and all, and every one of those instructions
+gets a row. Bank `45`'s cluster — `45:408F`, `45:4138`, `45:40AA`, `45:409F`,
+313,257 cycles and the densest four addresses in the whole bucket — is exactly
+this. All four have been crossings in `native_replacements_music.cpp` for
+slices; the rows are the music tick's declined entries, 6,516 of 7,724 at
+`45:4044` alone, and the way to recover them is to make the walk admissible
+more often, not to edit a call that is already an edit. Grep the family source
+for the address before planning a slice around its row. The check costs one
+command and the mistake costs the slice.
+
 #### Take the cost from the assembly run and the weight from the ratio
 
 Three corrections turn that ranking from suggestive into usable. All three were

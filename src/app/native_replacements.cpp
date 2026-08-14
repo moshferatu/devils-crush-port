@@ -304,6 +304,11 @@ replace_native_gameplay_routine_impl(
         || entry.routine
             == RoutineKey{
                 .physical_bank = 0x00U,
+                .logical_pc = 0xE114U,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x00U,
                 .logical_pc = 0xE117U,
             }
         || entry.routine

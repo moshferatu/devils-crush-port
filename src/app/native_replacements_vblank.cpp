@@ -126,25 +126,36 @@ constexpr std::uint16_t kStackBase = 0x2100U;
 [[nodiscard]] constexpr bool is_owned_entry(const std::uint16_t logical_pc)
 {
     return logical_pc == 0xE058U || logical_pc == 0xE05FU
-        || logical_pc == 0xE0EBU || logical_pc == 0xE117U
-        || logical_pc == 0xE123U || logical_pc == 0xE135U
-        || logical_pc == 0xE136U || logical_pc == 0xE179U
-        || logical_pc == 0xE183U || logical_pc == 0xE194U
-        || logical_pc == 0xE195U;
+        || logical_pc == 0xE0EBU || logical_pc == 0xE114U
+        || logical_pc == 0xE117U || logical_pc == 0xE123U
+        || logical_pc == 0xE135U || logical_pc == 0xE136U
+        || logical_pc == 0xE179U || logical_pc == 0xE183U
+        || logical_pc == 0xE194U || logical_pc == 0xE195U;
 }
 
-// Where each walk stops. Three are the calls the handler exists to make -- the
-// palette upload, the pad reader and the bank wrapper. Two are the PLP that
-// restores the interrupted status byte, one instruction short of each RTI, for
-// the reason in the note above. One is the pad reader's own RTS. The last is
-// the LDA $0000 the dispatcher's head stops in front of. The core executes all
-// seven.
+// Where each walk stops. Two are the first instruction of a routine this
+// handler calls -- the palette upload at 00:EB30 and the bank wrapper at
+// 00:ECC6 -- reached by crossing the `JSR` rather than stopping in front of
+// it. The pad reader at 00:E195 is a third such target and needs no line
+// here: it is an entry of this family, and the test above already ends a walk
+// on any of those.
+//
+// The walks used to stop in front of all four calls -- 00:E111, 00:E114,
+// 00:E120 and the secondary handler's 00:E180 -- and leave the core to execute
+// them. Crossing costs exactly what stopping did: the same two pushes, at the
+// same offset, and the same twenty-one cycles. All three callees are
+// registered, so the core enters each one natively on the instruction the
+// transcript ends on rather than interpreting a `JSR` on the way in.
+//
+// Of the rest, two are the PLP that restores the interrupted status byte, one
+// instruction short of each RTI, for the reason in the note above. One is the
+// pad reader's own RTS. The last is the LDA $0000 the dispatcher's head stops
+// in front of. The core executes those four.
 [[nodiscard]] constexpr bool is_stop_instruction(const std::uint16_t logical_pc)
 {
-    return logical_pc == 0xE05CU || logical_pc == 0xE111U
-        || logical_pc == 0xE120U || logical_pc == 0xE134U
-        || logical_pc == 0xE180U || logical_pc == 0xE193U
-        || logical_pc == 0xE1F7U;
+    return logical_pc == 0xE05CU || logical_pc == 0xE134U
+        || logical_pc == 0xE193U || logical_pc == 0xE1F7U
+        || logical_pc == 0xEB30U || logical_pc == 0xECC6U;
 }
 
 // The joypad at $1000, which is the one device this module reads rather than
@@ -327,6 +338,23 @@ std::optional<RoutineReplacement> replace_vblank_handler(
         return read_ram(
             static_cast<std::uint16_t>(kStackBase + registers.stack_pointer));
     };
+
+    // A call the walk crosses instead of stopping in front of. `JSR` pushes the
+    // address of its own last byte, high half first, and both bytes reach
+    // memory before the opcode has charged a cycle -- so they carry the
+    // instruction's start offset, which is the end offset of whatever preceded
+    // it. Committing them here, ahead of the commit append_checkpoint makes at
+    // the instruction's end, is what puts them there.
+    const auto call =
+        [&cycle, &push, &commit_pending_writes, &append_checkpoint](
+            const std::uint16_t instruction_pc,
+            const std::uint16_t target) {
+            const auto pushed = static_cast<std::uint16_t>(instruction_pc + 2U);
+            push(instruction_pc, static_cast<std::uint8_t>(pushed >> 8U));
+            push(instruction_pc, static_cast<std::uint8_t>(pushed & 0xFFU));
+            commit_pending_writes(cycle);
+            append_checkpoint(instruction_pc, target, 21U);
+        };
 
     // Zero page lives at $2000; an absolute address is used as written.
     const auto zp = [](const std::uint8_t address) {
@@ -734,6 +762,22 @@ std::optional<RoutineReplacement> replace_vblank_handler(
             pc = 0xE111U;
             break;
 
+        case 0xE111U:  // JSR $EB30 -- crossed into the palette upload
+            call(0xE111U, 0xEB30U);
+            pc = 0xEB30U;
+            break;
+
+        // ---- 00:E114  between the two calls -------------------------------
+        // One instruction, and an entry of its own because the palette
+        // upload's return lands on it. Without the entry the core would find
+        // no hook here and interpret this call as well, and the walk that
+        // crossed the one above would have bought nothing but its own
+        // twenty-one cycles.
+        case 0xE114U:  // JSR $E195 -- crossed into the pad reader
+            call(0xE114U, 0xE195U);
+            pc = 0xE195U;
+            break;
+
         // ---- 00:E117  after the pad read ----------------------------------
         // $00 is the frame counter the spin loop at 00:E2B7 waits on. $D9
         // suppresses the sequencer tick while a track is being loaded.
@@ -767,6 +811,14 @@ std::optional<RoutineReplacement> replace_vblank_handler(
             push(0xE11FU, registers.accumulator);
             append_checkpoint(0xE11FU, 0xE120U, 9U);
             pc = 0xE120U;
+            break;
+
+        // The wrapper this crosses into runs with MPR6 already saved on the
+        // stack by the two instructions above, so the transcript ends holding
+        // a frame the core will unwind at 00:E123 rather than a balanced one.
+        case 0xE120U:  // JSR $ECC6 -- crossed into the bank wrapper
+            call(0xE120U, 0xECC6U);
+            pc = 0xECC6U;
             break;
 
         case 0xE128U:  // LDA #$FF
@@ -1085,6 +1137,14 @@ std::optional<RoutineReplacement> replace_vblank_handler(
             push(0xE17FU, registers.accumulator);
             append_checkpoint(0xE17FU, 0xE180U, 9U);
             pc = 0xE180U;
+            break;
+
+        // The same call 00:E120 makes, from the same two-instruction MPR6
+        // save, and crossed for the same reason. 00:E183 below is where it
+        // comes back to.
+        case 0xE180U:  // JSR $ECC6 -- crossed into the bank wrapper
+            call(0xE180U, 0xECC6U);
+            pc = 0xECC6U;
             break;
 
         // ---- 00:E183  the secondary handler's epilogue --------------------

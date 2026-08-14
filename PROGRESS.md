@@ -5754,10 +5754,111 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
     three consecutive non-routine gains had been arguing for: 2,942,532 master
     cycles sit in 464 uncrossed `JSR`/`BSR` sites and another 1,422,765 in
     unabsorbed `RTS`.
+- [x] Cross all four calls the VDC interrupt handler makes, the whole of bank
+  `00`'s harvestable share of that bucket.
+  - [x] Cross `00:E111` into the palette upload at `00:EB30`, reached by two
+    different walks — `00:E0EB`'s prologue and `00:E05F`'s raster-mode-3 jump —
+    for 57,708 and 17,871.
+  - [x] Register `00:E114`, one instruction, so the second call can be crossed
+    at all: `00:EB30` returns onto it, and without a hook there the core would
+    interpret `JSR $E195` exactly as before and the crossing above it would
+    have bought only its own twenty-one cycles. Worth 75,579, which is more
+    than three of the eleven rows in the family that do real work.
+  - [x] Cross `00:E120` into the bank wrapper at `00:ECC6` for 67,452, and
+    `00:E180` — the same call from the same two-instruction MPR6 save, one
+    handler over — for 8,127.
+  - [x] Prove it by *unchanged* artifacts rather than re-recorded ones: all
+    three of `verify_vblank_handler_semantic`'s hashes are the ones the file
+    already carried, over 5,061,032 work-RAM writes with the whole stack page
+    in scope and 2,079,422 bus writes. A crossing that mispriced the call or
+    wrote the return bytes at the wrong offset would move every push after it.
+  - [x] Measure: **+226,737 native master cycles** (688,080,711 ->
+    688,307,448, 53.24% -> **53.26%** of the route, 96.85% -> **96.88%**
+    outside the wait), 377 routines and 310 entered, every call admitted.
+  - [x] Correct last slice's recommendation: bank `45`'s four densest `JSR`
+    rows are already crossings and the rows are the music tick's declined
+    entries. A `JSR` row in the profile is not evidence of an uncrossed call.
+    Recorded as the third caution on reading an opcode bucket in
+    `docs/NATIVE_PORT_WORKFLOW.md`.
 
 ## Active Work
 
-Current owner: Claude. Current slice: **the setup screen's palette stager**.
+Current owner: Claude. Current slice: **the display handler's four calls**.
+Done. No new capability, no new routine, no new understanding of the machine —
+four instructions that were already understood, moved from the core into the
+transcripts that stop in front of them.
+
+**The VDC interrupt handler makes four calls, and every walk that reached one
+ended in front of it.** `00:E111` into the palette upload at `00:EB30`,
+`00:E114` into the pad reader at `00:E195`, `00:E120` into the bank wrapper at
+`00:ECC6`, and `00:E180` into that same wrapper from the secondary handler. All
+three targets have been registered entries for slices; what stood between them
+and the walk was one `JSR` the core had to interpret first. The registry goes
+688,080,711 -> **688,307,448**, 53.24% -> **53.26%** of the route and 96.85% ->
+**96.88%** of it outside the frame-sync wait.
+
+| Site | Into | Walk that reaches it | Executions | Master cycles |
+| --- | --- | --- | ---: | ---: |
+| `00:E111` | `00:EB30` | `00:E0EB`, and `00:E05F` on raster mode 3 | 2,748 + 851 | 75,579 |
+| `00:E114` | `00:E195` | `00:E114`, a new entry of one instruction | 3,599 | 75,579 |
+| `00:E120` | `00:ECC6` | `00:E117` | 3,212 | 67,452 |
+| `00:E180` | `00:ECC6` | `00:E179` | 387 | 8,127 |
+
+**Crossing costs a transcript exactly what stopping cost it.** The same two
+return bytes on the stack page, written at the same offset — `JSR` pushes both
+before charging a cycle, so both carry the instruction's start offset, and the
+core breaks that tie by instruction so the pair lands with the call — and the
+same twenty-one cycles. What it buys is that the walk ends *on* the callee's
+first instruction rather than in front of the call, so the core enters a
+registered routine instead of interpreting its way into one.
+
+**`00:E114` is an entry that exists only to cross a call, and it is the half of
+this slice worth remembering.** Crossing `00:E111` alone would have bought
+57,708 and then handed the machine straight back: `00:EB30`'s return lands on
+`00:E114`, and with no hook there the core interprets `JSR $E195` exactly as it
+always did. One instruction, registered, whose entire body is a call, is worth
+the whole 75,579 the call is worth — more than three of the eleven rows in this
+family that do real work. **A one-instruction entry is not too small to be
+worth registering; it is worth whatever the instruction is worth.**
+
+**The evidence is that nothing changed.** All three of
+`verify_vblank_handler_semantic`'s expected hashes are the ones the file already
+carried before any of this existed — census `9036a9de…`, 5,061,032 work-RAM
+writes over the whole stack page at `3fb9b061`-era scope hashing
+`69dc2054…`, and 2,079,422 bus writes over the VDC's three base ports and the
+joypad latch hashing `adc3b5cc…`. Not re-recorded: unchanged. A crossing that
+priced the call wrong, pushed the wrong bytes, or wrote them at the wrong offset
+would move every push made afterwards, and the whole stack page is in scope. An
+unchanged write trace is the strongest thing this test can say about a call: the
+transcript does the pushing now and it is indistinguishable from when the core
+did.
+
+**Ranking by opcode found this, and the same ranking's largest cluster was a
+mirage.** Bank `45`'s four densest rows — `45:408F`, `45:4138`, `45:40AA`,
+`45:409F`, 313,257 cycles — were recommended in this file last slice as the
+first thing to take. They are already crossings, and have been for slices:
+`native_replacements_music.cpp` pushes and charges at every one of them. The
+rows are the music tick's *declined* entries, 6,516 of 7,724 at `45:4044`
+alone, running the whole routine interpreted with its call sites in it. **A
+`JSR` row in the profile is not evidence of an uncrossed call; it is evidence
+that the interpreter ran that address.** Recorded in
+`docs/NATIVE_PORT_WORKFLOW.md` as the third caution on reading an opcode
+bucket, and it is one grep per candidate.
+
+**The counters.** 377 routines, 310 entered, 2,696,439 of 2,735,024 calls —
+the 3,599 added are `00:E114`, admitted on every arrival. Nesting rises
+301,698 -> 302,159, which is the 461 frames of those 3,599 where the display
+interrupt landed inside a suspended main-thread transcript. Instructions
+interpreted and abandonments are unchanged at 66,312,646 and 21,656.
+
+**Two incidental fixes.** `verify_vblank_handler_semantic.cmake` closed by
+announcing "all nine entry points across 31,927 admitted entries" when there
+were eleven and 39,512, both stale since the dispatcher's halves were added;
+it now says twelve and 43,111. And `docs/NATIVE_REGISTRY.md` opened with 374
+admitted routines against the generator's 377.
+
+### Previous: the setup screen's palette stager
+
 Done. The crossing again, this time across a bank boundary — and the call it
 crosses is the reason the routine had been left alone.
 
@@ -7454,84 +7555,86 @@ does not.
 ### Next
 
 **Re-measured with the registry deployed after this slice** (instruction
-profile, 3,600-frame Release route). Both `08:59xx` rows have left the list.
-Excluding the frame-sync spin loop's own two instructions, the largest emulated
-addresses left are:
+profile, 3,600-frame Release route). Excluding the frame-sync spin loop and
+every row that is itself a registered entry, the largest emulated addresses
+left are:
 
 | Address | Executions | Master cycles | What it is |
 | --- | ---: | ---: | --- |
 | `00:FC81` | 251,531 | 1,509,498 | The driver's `SEI`. A checkpoint cannot express it; the refusal that survives everything |
-| `00:E321` | 3,568 | 1,180,680 | The frame-sync waiter. Attribution, not work — the row carries the wait |
 | `00:EB46` | 29 | 625,095 | The whole-palette `TIA`. A capacity wall: 1,024 writes against a 512-write channel, and no interior boundary to chunk at |
 | `00:F423` | 17,248 | 365,664 | `BBR0`, the other instruction a checkpoint cannot express |
 | `03:6A37` | 7,357 | 154,521 | Interpreter residue: transcripts an interrupt cut short |
 | `01:C100` | 1 | 147,489 | One `TII $2000,$2001,$1FFF` at startup. A single instruction that clears work RAM |
 | `03:6A33` | 7,001 | 147,021 | Residue, same walk |
-| `00:E05C` | 7,198 | 129,564 | `LDA $0000`, the interrupt acknowledge. A device read that changes the device; refused with reasons |
+| `00:E05C` | 7,198 | 129,564 | The `LDA $0000` interrupt acknowledge. A device read that changes the device; refused with reasons |
 | `03:6A14` | 5,953 | 125,013 | Residue, same walk |
 | `03:69C5` | 4,898 | 102,858 | Residue, same walk |
-| `45:4047` | 6,519 | 98,097 | A chunk boundary in the music tick |
+| `45:4047` | 6,519 | 98,097 | A declined entry in the music tick, not a chunk boundary — see below |
 | `03:7F80` | 4,518 | 94,878 | An untranscribed arm |
+| `02:4CF1` | 4,389 | 92,865 | An untranscribed arm |
 
-**Stop ranking by routine. Rank by opcode.** Reading the profile a routine at a
-time has been the wrong instrument for three slices running — the last three
-gains were 1,550,178, 639,828 and 701,016, and not one of them was a routine.
-Classify every emulated row by the opcode at its address instead, and the
-remainder outside the spin loop divides like this:
+**Rank by opcode as well, but price it honestly.** Last slice's opcode bucket
+was priced from the profiler's attributed cycles, which over-charge any
+instruction that precedes a native body. Price each call site at what the
+instruction actually costs instead — 21 master cycles for `JSR` and `RTS`, 24
+for `BSR`, times the executions the profile counts, which is exact — and the
+remainder outside the spin loop and outside registered entries divides like
+this:
 
-| Opcode at the emulated address | Sites | Executions | Master cycles |
-| --- | ---: | ---: | ---: |
-| `JSR` | 460 | 138,870 | **2,937,348** |
-| `RTS` | 221 | 67,274 | 1,422,765 |
-| `JMP` | 122 | 43,446 | 525,468 |
-| `JMP ($nn)` | 4 | 1,409 | 29,637 |
-| `BSR` | 4 | 210 | 5,184 |
-| Everything else | 5,139 | 1,692,863 | 20,109,009 |
+| Opcode at the emulated address | Sites | True master cycles |
+| --- | ---: | ---: |
+| `JSR` | 456 | **2,689,533** |
+| `RTS` | 221 | 1,412,754 |
+| `JMP` | 122 | 521,352 |
+| `JMP ($nn)` | 4 | 29,589 |
+| `BSR` | 4 | 5,040 |
 
-**2,942,532 master cycles are calls a transcript stops in front of, spread over
-464 sites, and every one of them is this slice's edit.** That is more than four
-times the largest single gain the port has ever made, and it needs no new
-capability at all: a walk that would end in front of a `JSR` instead pushes the
-two return bytes at the instruction's start offset, charges 21, and ends on the
-callee's first instruction. Whether the callee is registered does not matter —
-the core resumes there either way, and if it is registered it simply enters
-immediately. The 1,422,765 in emulated `RTS` is the same argument for
-absorption, which is already routine.
+Per bank, the call bucket is `01` 1,366,596, `03` 530,337, `45` 476,490, `00`
+159,747, `02` 79,290, `08` 64,218, `09` 17,895.
 
-The concentration is by bank: `01` 1,380,276, `03` 534,321, `45` 478,170, `00`
-387,348, `02` 80,010, `08` 64,218, `09` 18,189. The largest individual sites are
-`45:408F` (90,885), `45:4138` (76,107), `00:E114` and `00:E111` (75,579 each),
-`45:40AA` (73,299), `45:409F` (72,966), `01:C73F` (69,303), `01:CB76` (68,565),
-`00:E120` (67,452), `01:C749` (64,395), `03:7F5D` (64,011), `01:C75E` (63,573).
+**But the headline number is not a work queue, and last slice's recommendation
+out of it was wrong.** Crossing a call is an edit to a *transcript*; it is only
+available where a native walk already ends in front of the call. Three
+different things put a `JSR` row in that bucket and only one of them is a
+crossing:
 
-Two things temper it. Not every site is a native walk stopping at a wall — some
-are in code that was never ported, where crossing the call recovers 21 cycles
-and leaves the body interpreted. And a site inside a *composed* transcript is
-not a candidate at all: the composition already runs the callee in line, and the
-row is there because a chunk ended or an interrupt cut the walk short. `45:408F`
-and its neighbours are the music tick's voice loop, which chunks, so read those
-rows as chunk boundaries before treating them as calls.
+- **A walk stops in front of it.** The real target. This slice's four were all
+  of these, and they were the whole of bank `00`'s harvestable share.
+- **The walk declines and the whole routine runs interpreted, call sites and
+  all.** Bank `45`'s 476,490 is this, and it was recommended here last slice as
+  the densest cluster to take first. `45:408F`, `45:4138`, `45:40AA` and
+  `45:409F` have been crossings in `native_replacements_music.cpp` for slices;
+  the rows are the tick's declined entries, 6,516 of 7,724 at `45:4044` alone,
+  under the `$F5`/`$F7`/`$F9` guard against the timer driver's writes. The way
+  to recover them is to widen admission, not to edit a call that is already an
+  edit.
+- **The code was never ported.** Bank `01`'s 1,366,596 is mostly this:
+  `01:C73F`, `01:C749`, `01:C75E`, `01:C154` and the `01:C16C`-`C18D` run
+  appear in no family source at all. Crossing one recovers 21 cycles and leaves
+  the body interpreted, which means porting the routine is the slice and the
+  call comes free with it.
 
-**Take the bank `45` cluster first**, because it is the densest and the family
-already chunks, so the shape is familiar: `45:408F`, `45:4138`, `45:40AA` and
-`45:409F` are 313,257 between them, four calls the sequencer's walks stop in
-front of. `45:409C` is already a registered entry — it is where the tick resumes
-after `4936` — so at least one of the four resumption points exists already.
+One grep per candidate settles which it is. That is now the third caution in
+`docs/NATIVE_PORT_WORKFLOW.md`.
 
-**Then the display handler's three**, which need no new thinking: `00:E111`
-(`JSR $EB30`, 75,579), `00:E114` (`JSR $E195`, 75,579) and `00:E120`
-(`JSR $ECC6`, 67,452), 218,610 between them. `00:E117` and `00:E123` are already
-registered entries that resume after two of them, so only `00:E114`'s
-resumption point would be new. Note `00:E120` sits inside a `TMA`/`PHA` …
-`PLA`/`TAM` bank save, so the walk that crosses it carries the wrapper's bank
-state.
+**Take `00:E1FD` next.** The asset resolver's own head is a single `JSR $E20D`
+for 39,081 cycles over 1,861 executions, and it is the last uncrossed call in
+bank `00` with a walk already landing on it: `08:5977` ends there, and so do the
+tilemap's `00:F2A8` (6,006) and `00:F35C` (4,872), which are two more uncrossed
+calls of their own. Register `00:E1FD` as a one-instruction entry that crosses
+into `00:E20D` — which is native, as is `00:E200`, where its return lands — and
+the whole resolver becomes native for the cost of one `case`. 49,959 between the
+three, in a family whose nine other entry points are already done.
 
-**And `00:E1FD` is one instruction of the same shape for 39,465 cycles.** The
-asset resolver's own head is a single `JSR $E20D` that three call sites reach
-and no walk has ever crossed — this slice's `08:5977` now lands on it, and so do
-the tilemap's `00:F2A8` and `00:F35C` (6,054 and 4,872, which are two more
-uncrossed calls of their own). It belongs to the call-wrapper family, whose nine
-other entry points are already native.
+**Then decide whether the music tick's guard can be widened**, because that is
+where the largest recoverable block now sits. 476,490 in call sites is only the
+visible part: the tick declines 6,516 of 7,724 entries at `45:4044` and 2,598 of
+7,724 at the tick's own head, and everything inside a declined entry runs
+interpreted. The guard is a correctness boundary, not a horizon heuristic — the
+driver writes `$F5`/`$F7`/`$F9` from the other thread of control — so this is a
+design question about how a transcript can read a byte another thread owns, and
+not a mechanical edit. It is the first item on this list in slices that is not.
 
 **The old ranking, kept because its per-bank arithmetic still holds.** Note
 that it counts `RTS` opcodes only, so it never saw the interrupt return that
