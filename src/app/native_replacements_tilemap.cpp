@@ -44,26 +44,30 @@ using emulation::RoutineReplacement;
 // which 00:E20D pointed at the scene's bank pair one instruction earlier, while
 // its attribute array stays in work RAM through segment 1.
 //
-// Ten entry points, because a transcript stops in front of a call and this
-// family makes six of them. Each entry is the head of a routine or the address
-// the core arrives at after an instruction it executes itself:
+// Ten entry points, because this family makes six calls and a transcript ends
+// on one. Each entry is the head of a routine or the address the core arrives
+// at after an instruction it executes itself:
 //
-//   00:F261  head            stops at 00:F28F, 00:F2A8 or 00:F35C
-//   00:F2AB  after JSR $E1FD stops at 00:F2FE
-//   00:F301  after JSR $F3E7 stops at 00:F32D, or runs the tail to 00:F4F2
+//   00:F261  head            ends on 00:F28F, or on 00:E1FD across either
+//                            00:F2A8 or 00:F35C
+//   00:F2AB  after JSR $E1FD ends on 00:F3E7
+//   00:F301  after JSR $F3E7 ends on 00:F3E7, or runs the tail to 00:F4F2
 //   00:F330  after JSR $F3E7 runs the tail to 00:F4F2
-//   00:F35F  after JSR $E1FD stops at 00:F3B2
-//   00:F3B5  after JSR $F3E7 stops at 00:F3E1, or runs the tail to 00:F4F2
+//   00:F35F  after JSR $E1FD ends on 00:F3E7
+//   00:F3B5  after JSR $F3E7 ends on 00:F3E7, or runs the tail to 00:F4F2
 //   00:F3E4  after JSR $F3E7 runs the tail to 00:F4F2
 //   00:F3E7  the row writer   stops at 00:F3F3 or 00:F423
 //   00:F426 / 00:F42A  the two arms of the BBR at 00:F423, which the core
 //            executes -- see is_stop_instruction below. Each runs the rest of
 //            its loop iteration and stops at the next 00:F423, or at 00:F43C.
 //
-// Two of those calls -- 00:F2A8 and 00:F35C, both JSR $E1FD -- land on the bank
-// helper at 00:E20D and 00:E200, which have been native since the call-wrapper
-// slice. Stopping in front of them re-enters that module rather than
-// transcribing the same eleven instructions again.
+// None of those six calls is stopped in front of. A crossing pushes the two
+// return bytes itself and charges the same twenty-one cycles the core would
+// have, so it costs exactly what stopping cost -- and it ends on the callee's
+// first instruction, which for all six is a registered entry. Four go to
+// 00:F3E7 above. The other two, 00:F2A8 and 00:F35C, go to 00:E1FD, the asset
+// resolver's one-instruction head in the banking family; 00:E20D below it and
+// 00:E200, where it returns, have been native since the call-wrapper slice.
 //
 // The walk ends at 00:F4F2 rather than at an RTS: 00:F261 falls through into the
 // camera-visibility sweep, which has been native since its own slice. The
@@ -116,6 +120,7 @@ constexpr std::uint32_t kIndirectIndexed = 21U;
 constexpr std::uint32_t kBranchTaken = 12U;
 constexpr std::uint32_t kBranchNotTaken = 6U;
 constexpr std::uint32_t kJump = 12U;
+constexpr std::uint32_t kCall = 21U;
 constexpr std::uint32_t kPushY = 9U;
 constexpr std::uint32_t kPullY = 12U;
 // A store to a VDC port is an ordinary absolute store plus the cycle the device
@@ -146,9 +151,17 @@ constexpr std::uint32_t kPortSampleBack = 6U;
         || logical_pc == 0xF426U || logical_pc == 0xF42AU;
 }
 
-// Where each walk stops. Three are RTS instructions, five are the calls this
-// family makes -- which the core executes, re-entering whichever replacement
-// owns the target -- and 00:F4F2 is the camera sweep 00:F261 falls into.
+// Where each walk stops. Three are RTS instructions and 00:F4F2 is the camera
+// sweep 00:F261 falls into.
+//
+// The six calls this family makes used to be here too, and are not any more:
+// each is now crossed, so the transcript pushes the two return bytes itself and
+// ends on the callee's first instruction rather than in front of the JSR. The
+// four that go to 00:F3E7 land on this file's own row writer, and the two that
+// go to 00:E1FD land on the asset resolver's head in the banking family. All
+// three targets are admitted on every call, which is the whole reason a
+// crossing is worth its twenty-one cycles: it costs exactly what stopping cost
+// and buys entering a registered routine instead of interpreting into one.
 //
 // 00:F423 is the tenth, and it is there for a different reason. Every other
 // instruction in the region charges its cycles in one ADDCYC and one
@@ -166,10 +179,7 @@ constexpr std::uint32_t kPortSampleBack = 6U;
 // interrupt opportunity the machine does not have.
 [[nodiscard]] constexpr bool is_stop_instruction(const std::uint16_t logical_pc)
 {
-    return logical_pc == 0xF28FU || logical_pc == 0xF2A8U
-        || logical_pc == 0xF2FEU || logical_pc == 0xF32DU
-        || logical_pc == 0xF35CU || logical_pc == 0xF3B2U
-        || logical_pc == 0xF3E1U || logical_pc == 0xF3F3U
+    return logical_pc == 0xF28FU || logical_pc == 0xF3F3U
         || logical_pc == 0xF423U || logical_pc == 0xF43CU
         || logical_pc == 0xF4F2U;
 }
@@ -488,6 +498,35 @@ std::optional<RoutineReplacement> replace_tilemap_upload(
             store(instruction_pc, zp(address), result);
         };
 
+    // Set by the instruction that ends a walk by making one of this region's
+    // calls. All six targets live in segment 7, so the bank is whatever MPR7
+    // holds -- read rather than assumed, because that is what the core will
+    // dispatch on when it looks the callee up.
+    std::optional<RoutineKey> crossed;
+    // A JSR leaves the address of its own last byte behind, which is what the
+    // callee's RTS adds one to. It is also the one instruction here that writes
+    // before it charges a cycle -- case $20 is PUSH, PUSH, ADDCYC -- so both
+    // bytes carry the instruction's start offset, and that is the end offset of
+    // the checkpoint in front of it. Committing them here, ahead of the commit
+    // append_checkpoint makes at the instruction's end, is what puts them
+    // there; the core breaks the tie by instruction, so the pair lands with the
+    // call rather than with whatever preceded it.
+    const auto call =
+        [&registers, &cycle, &push, &commit_pending_writes, &append_checkpoint,
+         &crossed](
+            const std::uint16_t instruction_pc,
+            const std::uint16_t target_pc) {
+            const auto pushed = static_cast<std::uint16_t>(instruction_pc + 2U);
+            push(instruction_pc, static_cast<std::uint8_t>(pushed >> 8U));
+            push(instruction_pc, static_cast<std::uint8_t>(pushed & 0x00FFU));
+            commit_pending_writes(cycle);
+            append_checkpoint(instruction_pc, target_pc, kCall);
+            crossed = RoutineKey{
+                .physical_bank = registers.mpr[target_pc >> 13U],
+                .logical_pc = target_pc,
+            };
+        };
+
     auto pc = entry.routine.logical_pc;
     for (;;) {
         // The core's channels are 512 writes and 2,048 checkpoints. Nothing
@@ -752,6 +791,16 @@ std::optional<RoutineReplacement> replace_tilemap_upload(
             store(0xF2A6U, zp(0x30U), registers.accumulator);
             append_checkpoint(0xF2A6U, 0xF2A8U, kZeroPage);
             pc = 0xF2A8U;
+            break;
+
+        // The reference in $2F/$30 is built; the resolver turns it into a real
+        // pointer. 00:E1FD is one instruction long and belongs to the banking
+        // family, and that it is an entry at all is what makes crossing it
+        // worth anything -- without one the core would interpret its JSR $E20D
+        // and this walk would have bought nothing but its own twenty-one
+        // cycles. 00:F2AB below is where the resolver comes back to.
+        case 0xF2A8U:  // JSR $E1FD -- crossed into the asset resolver
+            call(0xF2A8U, 0xE1FDU);
             break;
 
         // ---- 00:F2AB  the downward VRAM and attribute addresses ------------
@@ -1051,6 +1100,13 @@ std::optional<RoutineReplacement> replace_tilemap_upload(
             pc = 0xF2FEU;
             break;
 
+        // Downward, first row: the VRAM address and the source pointer are in
+        // place, so hand the row to the writer. 00:F3E7 is this file's own,
+        // admitted on all 539 of the calls the four sites make between them.
+        case 0xF2FEU:  // JSR $F3E7 -- crossed into the row writer
+            call(0xF2FEU, 0xF3E7U);
+            break;
+
         // ---- 00:F301  a second row, when the movement spanned two ----------
         case 0xF301U:  // LDA $A7
             load_accumulator(read_ram(zp(0xA7U)));
@@ -1215,6 +1271,11 @@ std::optional<RoutineReplacement> replace_tilemap_upload(
             pc = 0xF32DU;
             break;
 
+        // Downward, second row: reached only when the movement spanned two.
+        case 0xF32DU:  // JSR $F3E7 -- crossed into the row writer
+            call(0xF32DU, 0xF3E7U);
+            break;
+
         // ---- 00:F330  the downward tail ------------------------------------
         case 0xF330U:  // JMP $F48D
             append_checkpoint(0xF330U, 0xF48DU, kJump);
@@ -1349,6 +1410,12 @@ std::optional<RoutineReplacement> replace_tilemap_upload(
             store(0xF35AU, zp(0x30U), registers.accumulator);
             append_checkpoint(0xF35AU, 0xF35CU, kZeroPage);
             pc = 0xF35CU;
+            break;
+
+        // The same call 00:F2A8 makes, from the same reference, on the upward
+        // arm. 00:F35F below is where it comes back to.
+        case 0xF35CU:  // JSR $E1FD -- crossed into the asset resolver
+            call(0xF35CU, 0xE1FDU);
             break;
 
         // ---- 00:F35F  the upward VRAM and attribute addresses --------------
@@ -1645,6 +1712,11 @@ std::optional<RoutineReplacement> replace_tilemap_upload(
             pc = 0xF3B2U;
             break;
 
+        // Upward, first row.
+        case 0xF3B2U:  // JSR $F3E7 -- crossed into the row writer
+            call(0xF3B2U, 0xF3E7U);
+            break;
+
         // ---- 00:F3B5  a second row above, when $26 spanned two -------------
         case 0xF3B5U:  // LDA $26
             load_accumulator(read_ram(zp(0x26U)));
@@ -1803,6 +1875,11 @@ std::optional<RoutineReplacement> replace_tilemap_upload(
             store(0xF3DFU, zp(0x2EU), registers.accumulator);
             append_checkpoint(0xF3DFU, 0xF3E1U, kZeroPage);
             pc = 0xF3E1U;
+            break;
+
+        // Upward, second row: reached only for a sixteen-pixel step.
+        case 0xF3E1U:  // JSR $F3E7 -- crossed into the row writer
+            call(0xF3E1U, 0xF3E7U);
             break;
 
         // ---- 00:F3E4  the upward tail --------------------------------------
@@ -2741,6 +2818,19 @@ std::optional<RoutineReplacement> replace_tilemap_upload(
 
         default:
             return std::nullopt;
+        }
+
+        // A call ends the walk, but it is made rather than left standing: the
+        // transcript hands the machine the callee's first instruction, and
+        // whatever owns that address picks the body up from there.
+        if (crossed.has_value()) {
+            if (overflow) {
+                return std::nullopt;
+            }
+            replacement.return_instruction = *crossed;
+            replacement.output_registers = registers;
+            replacement.body_master_cycles = cycle;
+            return replacement;
         }
     }
 }

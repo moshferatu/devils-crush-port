@@ -686,19 +686,28 @@ The wrappers around them are ported. There are five, all the same idiom, and
 | `E20D` | 1,861 | 135,192 | Map `$30` into MPR4/MPR5 |
 | `ECF2` | 3,599 | 129,564 | Write `$4003` into `$47`/`$48` and jump through it |
 | `E200` | 1,861 | 123,666 | Read the `$8000` reference table through that slot |
+| `E1FD` | 1,861 | 39,081 | One instruction: the `JSR $E20D` above |
 
 Every callee is entered at `$4000 + mem[$2F]`, so each bank begins with a jump
 table of up to 128 entries — which is why `02:4088`, `08:4030` and `45:4003`
 all sit in the first page of their bank.
 
-All nine run natively, admitted on every call. They are the first transcripts
+All ten run natively, admitted on every call. They are the first transcripts
 in the port to change the bank mapping: `TAM` sets `registers.mpr[slot]` and
 costs fifteen master cycles, and the core applies the slots at every
 checkpoint. Every walk also makes its own call rather than stopping in front of
-one — `E252`, `E26E`, `ECDF` and `ECFA`, 30,468 of them at 21 master cycles
-each. Two are indirect jumps, and each reads a vector the same walk wrote two
-instructions earlier; the target is always `$40xx`, so the bank is MPR2, which
-the prologue mapped.
+one — `E252`, `E26E`, `ECDF`, `ECFA` and `E1FD`, 32,329 of them at 21 master
+cycles each. Two are indirect jumps, and each reads a vector the same walk
+wrote two instructions earlier; the target is always `$40xx`, so the bank is
+MPR2, which the prologue mapped.
+
+`E1FD` is the last row of that table and the smallest entry in the port: one
+instruction, whose whole body is the call. It is registered for that reason
+and no other. Three walks end on it — `08:597F` in the setup-screen palette
+stager and `00:F2A8`/`00:F35C` in the tilemap upload — and until it was an
+entry all three were crossing onto an address the core had no hook for, which
+made them cost twenty-one cycles for nothing. What an entry is worth is what
+its callers stop interpreting, not how long its body is.
 
 `00:ED5E`, the fifth wrapper, is deliberately absent: it is entered with two of
 its four stack slots already pushed by its caller, so its entry contract is not
@@ -1070,7 +1079,7 @@ All ten entry points are native, admitted on every call:
 
 | Entry | What it is | Calls | Master cycles |
 | --- | --- | ---: | ---: |
-| `00:F261` | Scroll driver head; stops at `$F28F`, `$F2A8` or `$F35C` | 2,649 | 619,371 |
+| `00:F261` | Scroll driver head; ends on `$F28F` or, across `$F2A8` or `$F35C`, on `$E1FD` | 2,649 | 619,371 |
 | `00:F2AB` | After `JSR $E1FD`, the downward arm | 286 | 137,280 |
 | `00:F301` | After the first `JSR $F3E7` | 286 | 140,214 |
 | `00:F330` | After the second `JSR $F3E7` | 5 | 2,250 |
@@ -1081,8 +1090,11 @@ All ten entry points are native, admitted on every call:
 | `00:F426` | `BBR`'s odd-nibble arm, and the rest of the iteration | 8,624 | 2,009,931 |
 | `00:F42A` | `BBR`'s even-nibble arm, and the rest of the iteration | 8,624 | 1,862,784 |
 
-Six of those are just the return addresses of the driver's calls, because a
-transcript stops in front of one. `$F426` and `$F42A` are there for a different
+Six of those are just the return addresses of the driver's calls, one per `JSR`.
+None of those six calls is stopped in front of any more: each is crossed, four
+onto `$F3E7` in the same table and two onto `$E1FD`, the asset resolver's
+one-instruction head, which became an entry of its own in the same slice.
+22,197 master cycles between them. `$F426` and `$F42A` are there for a different
 reason: `BBR` is `LD_ZP` wrapping `JR` in the core, so it samples the interrupt
 twice, and a checkpoint carries one sample and one clock jump. Handing `$F423`
 back keeps the core's event phase exact and leaves 365,664 of the region's
@@ -1092,7 +1104,7 @@ back keeps the core's event phase exact and leaves 365,664 of the region's
 against 2,649 exact call windows from a `00:F261` observer, 92,978 writes inside
 them are the routine's own; the rest are interrupt frames below the live stack
 pointer, plus four stores to `$20` from the VDC handler's bank wrapper, which
-this region writes only inside the `$E1FD` it stops in front of and never reads.
+this region writes only below the `$E1FD` it crosses into and never reads.
 
 The complete `$F6A6/$F6D0` selector family is now decoded. Its 42 appearance
 entries collapse to these nine unique pointers:

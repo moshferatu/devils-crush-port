@@ -731,6 +731,21 @@ more often, not to edit a call that is already an edit. Grep the family source
 for the address before planning a slice around its row. The check costs one
 command and the mistake costs the slice.
 
+**Then stop using the profile for this question altogether.** Three unrelated
+conditions produce a `JSR` row and only one of them is a crossable call, so the
+bucket is a poor instrument for the very thing it was built to find. The
+condition that matters is written down somewhere exact: a walk that ends in
+front of a call is an address in that family's `is_stop_instruction`. Sweep
+every `native_replacements_*.cpp` for its `is_stop_instruction` body, read
+`kBank` from the same file, look up the ROM opcode at each address, and keep
+the ones that are `$20` or `$44`. That is the complete list of uncrossed calls
+in the port, with no false positives and nothing hiding behind a declined entry
+— it took twenty lines of Python and settled in one run a question two slices
+had answered wrong from the profile. Cross-check each survivor's target against
+`native_registry_table.inc` before pricing it: a crossing onto an address no
+one owns costs its twenty-one cycles and buys nothing, which is the one way
+this edit can be worthless.
+
 #### Take the cost from the assembly run and the weight from the ratio
 
 Three corrections turn that ranking from suggestive into usable. All three were

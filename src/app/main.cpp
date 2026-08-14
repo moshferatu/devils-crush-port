@@ -2885,7 +2885,8 @@ parse_logical_address_range(const std::string_view text)
                            && request.all_calls;
                        const bool proven_bank_call_wrappers =
                            request.routine.physical_bank == 0x00U
-                           && (request.routine.logical_pc == 0xE200U
+                           && (request.routine.logical_pc == 0xE1FDU
+                               || request.routine.logical_pc == 0xE200U
                                || request.routine.logical_pc == 0xE20DU
                                || request.routine.logical_pc == 0xE219U
                                || request.routine.logical_pc == 0xE241U

@@ -5780,10 +5780,107 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
     entries. A `JSR` row in the profile is not evidence of an uncrossed call.
     Recorded as the third caution on reading an opcode bucket in
     `docs/NATIVE_PORT_WORKFLOW.md`.
+- [x] Register the asset resolver's head and cross the six calls the tilemap
+  upload makes.
+  - [x] Register `00:E1FD`, one instruction, whose whole body is `JSR $E20D`.
+    `00:E20D` and `00:E200` have been native since the call-wrapper slice, so
+    this was the only interpreted instruction left between a caller and a
+    resolved asset — and three walks were already ending on it and buying
+    nothing, because there was no hook there to find. Worth 39,081 over 1,861
+    executions for the cost of one `case`.
+  - [x] Give `native_replacements_tilemap.cpp` the `crossed`/`call` pair the
+    banking and vblank families use; it had stopped at every call it made.
+    `is_stop_instruction` falls from eleven addresses to five.
+  - [x] Cross `00:F2A8` (6,006) and `00:F35C` (4,872) into `00:E1FD`, and
+    `00:F2FE` (6,006), `00:F3B2` (4,872), `00:F3E1` (336) and `00:F32D` (105)
+    into the row writer at `00:F3E7`. 22,197 in total, and the resolver had to
+    be an entry first or two of the six would have bought nothing.
+  - [x] Prove it by *unchanged* artifacts again: all five expected hashes
+    across `verify_bank_call_wrappers_semantic` and
+    `verify_tilemap_upload_semantic` are the ones those files already carried,
+    over 6,389,776 and 6,977,084 work-RAM writes with the whole stack page in
+    scope and 2,036,234 VDC register writes.
+  - [x] Measure: **+61,278 native master cycles** (688,307,448 ->
+    688,368,726, 53.26% of the route either way, 96.88% -> **96.89%** outside
+    the wait), 378 routines and 311 entered, every call admitted.
+  - [x] Establish mechanically that the technique is nearly exhausted: sweep
+    every family's `is_stop_instruction` for a `JSR`/`BSR` opcode rather than
+    reading the profile. Sixteen sites remain, all in
+    `native_replacements_collision_tail.cpp` and
+    `native_replacements_sorcerer_tick.cpp`, worth 277,284.
 
 ## Active Work
 
-Current owner: Claude. Current slice: **the display handler's four calls**.
+Current owner: Claude. Current slice: **the asset resolver's head, and the six
+calls the tilemap makes**. Done. Seven `JSR`s moved out of the core, and one
+new entry that exists for no purpose except to hold one of them.
+
+**The registry goes 688,307,448 -> 688,368,726, +61,278.** 53.26% of the route
+either way; 96.88% -> **96.89%** of it outside the frame-sync wait. 378
+routines, 311 entered, 2,698,300 of 2,736,885 calls.
+
+**`00:E1FD` is the asset resolver, and the asset resolver is a call.** One
+instruction, `JSR $E20D`. Everything around it was already native: `00:E20D`
+maps `$30` into MPR4/MPR5, `00:E200` reads the reference table through that
+slot, and both have been registered since the call-wrapper slice. This one
+instruction was the entire interpreted gap between a caller and a resolved
+asset, and three walks were already ending on it — `08:597F` in the
+setup-screen palette stager, `00:F2A8` and `00:F35C` in the tilemap. All three
+were crossing onto an address with no hook behind it, so all three were paying
+twenty-one cycles for nothing. Registering it costs one `case` in
+`native_replacements_banking.cpp` and is worth 1,861 x 21 = **39,081**.
+
+**Then the tilemap's six calls, which had all been stops.**
+
+| Site | Into | Executions | Master cycles |
+| --- | --- | ---: | ---: |
+| `00:F2A8` | `00:E1FD`, the resolver | 286 | 6,006 |
+| `00:F2FE` | `00:F3E7`, the row writer | 286 | 6,006 |
+| `00:F35C` | `00:E1FD`, the resolver | 232 | 4,872 |
+| `00:F3B2` | `00:F3E7`, the row writer | 232 | 4,872 |
+| `00:F3E1` | `00:F3E7`, the row writer | 16 | 336 |
+| `00:F32D` | `00:F3E7`, the row writer | 5 | 105 |
+
+**22,197 between them**, and the two that go to `00:E1FD` are why the order
+mattered: crossed before that address was an entry they would have bought
+nothing, exactly as `00:E111` would have without `00:E114` last slice. The
+same lesson twice in two slices, from opposite directions — last time the
+target had to be *created*, this time it had to be created *first*.
+
+`native_replacements_tilemap.cpp` had no crossing machinery at all; it stopped
+at every call. It now carries the same `crossed`/`call` pair the banking and
+vblank families use, and `is_stop_instruction` is down from eleven addresses to
+five: three `RTS`, the `BBR` at `00:F423` that is handed back on purpose, and
+`00:F4F2` where `00:F261` falls into the camera sweep.
+
+**The model closed before anything was written and the measurement matched it
+exactly, twice.** 39,081 for `00:E1FD` and 22,197 for the tilemap, both to the
+cycle, both being nothing but executions x 21.
+
+**The evidence is that nothing changed.** All five expected hashes across the
+two regressions are the ones those files already carried:
+`verify_bank_call_wrappers_semantic` (census `9036a9de…`, 6,389,776 work-RAM
+writes over the whole stack page hashing `7beefad7…`) and
+`verify_tilemap_upload_semantic` (census `9036a9de…`, 6,977,084 work-RAM writes
+hashing `1d908fc7…`, 2,036,234 VDC register writes hashing `1221e168…`). Not
+re-recorded: unchanged. Both traces already had the whole stack page in scope,
+so a crossing that mispriced a call or wrote its return bytes at the wrong
+offset would move every push made afterwards.
+`dc_rom_setup_screen_palette_stager_semantic` passes unchanged too, which is
+the third caller of `00:E1FD` reporting that a walk it was already making now
+lands somewhere that answers.
+
+**One perturbation, and it is worth naming rather than rounding away.**
+Interpreted instructions rise by one (66,312,646 -> 66,312,647) and
+abandonments by one (21,656 -> 21,657); nesting rises twelve (302,159 ->
+302,171). A one-instruction entry is a transcript an interrupt can arrive
+inside, which the interpreted `JSR` at the same address was not, so a single
+arrival across 1,861 installs turns into an abandonment and the instruction
+runs emulated. Every artifact hash is unchanged, so the perturbation is in
+which side of the boundary an instruction ran on, not in what it did.
+
+### Previous: the display handler's four calls
+
 Done. No new capability, no new routine, no new understanding of the machine —
 four instructions that were already understood, moved from the core into the
 transcripts that stop in front of them.
@@ -7584,14 +7681,15 @@ this:
 
 | Opcode at the emulated address | Sites | True master cycles |
 | --- | ---: | ---: |
-| `JSR` | 456 | **2,689,533** |
+| `JSR` | 453 | **2,629,599** |
 | `RTS` | 221 | 1,412,754 |
 | `JMP` | 122 | 521,352 |
 | `JMP ($nn)` | 4 | 29,589 |
 | `BSR` | 4 | 5,040 |
 
-Per bank, the call bucket is `01` 1,366,596, `03` 530,337, `45` 476,490, `00`
-159,747, `02` 79,290, `08` 64,218, `09` 17,895.
+Per bank, the call bucket is `01` 1,366,596, `03` 525,441, `45` 476,490, `00`
+99,813, `02` 79,170, `08` 64,218, `09` 17,871. Re-measured after this slice,
+which is why bank `00` fell by a third.
 
 **But the headline number is not a work queue, and last slice's recommendation
 out of it was wrong.** Crossing a call is an edit to a *transcript*; it is only
@@ -7599,8 +7697,10 @@ available where a native walk already ends in front of the call. Three
 different things put a `JSR` row in that bucket and only one of them is a
 crossing:
 
-- **A walk stops in front of it.** The real target. This slice's four were all
-  of these, and they were the whole of bank `00`'s harvestable share.
+- **A walk stops in front of it.** The real target — and the profile cannot
+  tell you which rows these are. Only `is_stop_instruction` can, because that
+  is where the condition is written down. Sweep it for `$20` and `$44` opcodes
+  instead of reading rows.
 - **The walk declines and the whole routine runs interpreted, call sites and
   all.** Bank `45`'s 476,490 is this, and it was recommended here last slice as
   the densest cluster to take first. `45:408F`, `45:4138`, `45:40AA` and
@@ -7618,14 +7718,56 @@ crossing:
 One grep per candidate settles which it is. That is now the third caution in
 `docs/NATIVE_PORT_WORKFLOW.md`.
 
-**Take `00:E1FD` next.** The asset resolver's own head is a single `JSR $E20D`
-for 39,081 cycles over 1,861 executions, and it is the last uncrossed call in
-bank `00` with a walk already landing on it: `08:5977` ends there, and so do the
-tilemap's `00:F2A8` (6,006) and `00:F35C` (4,872), which are two more uncrossed
-calls of their own. Register `00:E1FD` as a one-instruction entry that crosses
-into `00:E20D` — which is native, as is `00:E200`, where its return lands — and
-the whole resolver becomes native for the cost of one `case`. 49,959 between the
-three, in a family whose nine other entry points are already done.
+**Take the collision tail's twelve calls next, and stop reading the profile to
+find them.** Ranking the residue by opcode has now been wrong twice in a row
+about which rows are crossable, because three unrelated conditions produce the
+same row and only one is an uncrossed call. The reliable question is not what
+the profile says but what the *source* says, and it is mechanical: sweep every
+family's `is_stop_instruction` for an address whose ROM opcode is `$20` or
+`$44`. A stop on a `JSR` is a walk that ends in front of a call, by definition,
+and nothing else in the codebase is.
+
+Run over all twenty-odd families that leaves exactly sixteen sites:
+
+| Site | Into | Registered | Executions | Master cycles |
+| --- | --- | --- | ---: | ---: |
+| `01:CB76` | `01:CD74` | yes | 3,233 | 67,893 |
+| `01:CA9E` | `00:E93C` | yes | 2,315 | 48,615 |
+| `01:CB0E` | `00:E93C` | yes | 2,121 | 44,541 |
+| `01:CB01` | `00:E93C` | yes | 2,121 | 44,541 |
+| `01:CBBF` | `01:CC1A` | yes | 980 | 20,580 |
+| `01:CBB3` | `00:E219` | yes | 980 | 20,580 |
+| `02:58DA` | `03:6966` | yes | 598 | 12,558 |
+| `01:CB7B` | `01:CF33` | **no** | 318 | 6,678 |
+| `01:CAD0` | `00:E93C` | yes | 194 | 4,074 |
+| `01:CAB3` | `00:E93C` | yes | 194 | 4,074 |
+| `01:CADD` | `00:E93C` | yes | 50 | 1,050 |
+| `01:CAEA` | `00:E93C` | yes | 42 | 882 |
+| `02:5890` | `03:6966` | yes | 23 | 483 |
+| `01:CBC7` | `01:CBCF` | yes | 19 | 399 |
+| `02:58BF` | `01:C018`? | **no** | 8 | 168 |
+| `02:5883` | `01:C018`? | **no** | 8 | 168 |
+
+**277,284 in total, 270,270 of it crossable today** — thirteen of the sixteen
+land on an address that is already an entry admitted on every call, and seven
+of those land on the same one, the palette shadow writer at `00:E93C`. That is
+four times this slice and larger than the last two together, and it needs no
+new understanding of anything: `native_replacements_collision_tail.cpp` gets
+the `crossed`/`call` pair, twelve `case` labels replace twelve stops, and the
+regressions' existing stack-page hashes decide whether it is right.
+
+The three exceptions are worth their own line. `01:CB7B` goes to `01:CF33`,
+which is not registered — the same shape `00:E1FD` was this slice, so register
+it first or the crossing buys nothing. `02:5883` and `02:58BF` go to `$C018`
+through MPR6, whose bank the profile does not name; resolve it before assuming
+the target exists.
+
+**After that, the crossing technique is finished.** Every remaining large `JSR`
+row in the profile is one of the two conditions that are not crossings:
+`03:7F5D` (63,987) is *composed* inline by the collision module and its row is
+the declined path; `03:652B`, `03:6528`, `03:649C`, `03:6499` (55-59k each),
+`02:5EEC` (44,919), `00:F13F`, `00:F0A1` (21,462 each) and the rest appear in
+no family source at all. Those are ports, not edits.
 
 **Then decide whether the music tick's guard can be widened**, because that is
 where the largest recoverable block now sits. 476,490 in call sites is only the

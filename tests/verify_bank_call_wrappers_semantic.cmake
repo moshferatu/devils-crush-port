@@ -17,10 +17,11 @@ endif()
 # shadows of MPR2-MPR5, and keeping the shadow and the register in step is what
 # makes the idiom re-entrant.
 #
-# Nine entry points share one walk. Four are heads; the rest are the addresses
+# Ten entry points share one walk. Five are heads; the rest are the addresses
 # each wrapper's call comes back to, because a wrapper exists to call something,
 # and every walk ends by making that call.
 #
+#   00:E1FD  the asset resolver's head: one instruction, the JSR $E20D below
 #   00:E20D  map $30 into MPR4/MPR5
 #   00:E200  the asset resolver's tail, reading its table through that slot
 #   00:E219  map the fixed bank pair for the current mode at $55
@@ -31,7 +32,7 @@ endif()
 #   00:ECE2  restore MPR2-MPR4
 #   00:ECF2  point $47/$48 at $4003 and jump through it into bank $45
 #
-# All nine are admitted on every call. They carry no game logic, read nothing an
+# All ten are admitted on every call. They carry no game logic, read nothing an
 # interrupt handler leaves changed, and have bodies of 36 to 183 master cycles
 # against a 5,068-cycle timer period, so there is nothing for the horizon valve
 # or the shared-state guard to decline.
@@ -46,7 +47,7 @@ endif()
 # transcript that misprices either one moves a bank switch without moving a
 # byte.
 #
-# The two `JSR`s the walks now make rather than stop in front of are checked by
+# The three `JSR`s the walks now make rather than stop in front of are checked by
 # that same page, and by these same hashes: the stack was already in scope when
 # the core made those calls, so nothing here changed when the transcripts took
 # them over. A pushed byte with the wrong value, the wrong order or the wrong
@@ -72,6 +73,8 @@ execute_process(
         "${APP}"
         --record-state-census
         "${OUTPUT}"
+        --replace-hook
+        "00:E1FD@all"
         --replace-hook
         "00:E200@all"
         --replace-hook
@@ -118,6 +121,7 @@ endif()
 
 foreach(expected_line IN ITEMS
     "State census recording complete: 3600 frames"
+    "Native replacement 00:E1FD@all entries: 1861 of 1861"
     "Native replacement 00:E200@all entries: 1861 of 1861"
     "Native replacement 00:E20D@all entries: 1861 of 1861"
     "Native replacement 00:E219@all entries: 3523 of 3523"
@@ -160,9 +164,9 @@ endforeach()
 
 message(
     STATUS
-    "Semantic bank-switching call wrappers run all nine entry points natively "
-    "across 52,911 admitted entries as instruction-boundary transcripts, make "
-    "all 30,468 of the calls the family exists to make, and land on the "
+    "Semantic bank-switching call wrappers run all ten entry points natively "
+    "across 54,772 admitted entries as instruction-boundary transcripts, make "
+    "all 32,329 of the calls the family exists to make, and land on the "
     "callee, with the MPR shadows, the trampoline vector, the sequencer entry "
     "pointer, every pushed return address, the whole stack page and the state "
     "census identical to assembly."

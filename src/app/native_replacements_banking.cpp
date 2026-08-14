@@ -107,7 +107,8 @@ constexpr std::uint32_t kCall = 21U;
 
 [[nodiscard]] constexpr bool is_owned_entry(const std::uint16_t logical_pc)
 {
-    return logical_pc == 0xE200U || logical_pc == 0xE20DU
+    return logical_pc == 0xE1FDU || logical_pc == 0xE200U
+        || logical_pc == 0xE20DU
         || logical_pc == 0xE219U || logical_pc == 0xE241U
         || logical_pc == 0xE255U || logical_pc == 0xE262U
         || logical_pc == 0xECC6U || logical_pc == 0xECE2U
@@ -408,6 +409,18 @@ std::optional<RoutineReplacement> replace_bank_call_wrappers(
         }
 
         switch (pc) {
+        // ---- 00:E1FD  the asset resolver's head ---------------------------
+        // One instruction, and an entry for the same reason 00:E114 is one:
+        // the resolver is a call and nothing else, so the address is worth
+        // exactly what the call is worth. Both halves of the routine below it
+        // are already native and so is 00:E200, where this call comes back --
+        // this was the only interpreted instruction left between a caller and
+        // a resolved asset. 08:597F crosses onto it, and so will the two
+        // tilemap call sites.
+        case 0xE1FDU:  // JSR $E20D -- the mapper, an entry in this file
+            call(0xE1FDU, 0xE20DU);
+            break;
+
         // ---- 00:E200  asset resolver tail ---------------------------------
         // $2F indexes a table of two-byte references at the head of the bank
         // 00:E20D has just mapped at $8000. The resolved offset and bank

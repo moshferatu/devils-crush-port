@@ -23,8 +23,22 @@ endif()
 #
 # Nothing in the region reads a device register, so the whole row is
 # expressible. Ten entry points: the two routine heads, the six return addresses
-# of the calls the driver makes -- a transcript stops in front of a call -- and
-# 00:F426/00:F42A, the two arms of the BBR at 00:F423.
+# of the calls the driver makes, and 00:F426/00:F42A, the two arms of the BBR at
+# 00:F423.
+#
+# Those six calls are crossed rather than stopped in front of, and this
+# regression is where that is proved. A crossing writes the two return bytes
+# itself, at the offset the JSR writes them -- both before the opcode has
+# charged a cycle, so both carry the instruction's start offset -- and charges
+# the same twenty-one cycles the core would have. If that is right then nothing
+# observable moves, and the whole stack page is already in scope below, so all
+# three expected hashes here are the ones this file carried before the crossings
+# existed. They are not re-recorded expectations. What the crossings buy is
+# where each walk ends: four of them on 00:F3E7 in this same family, and
+# 00:F2A8 and 00:F35C on 00:E1FD, the asset resolver's one-instruction head,
+# which is an entry of its own as of the same slice. Ending on a registered
+# address is the entire point -- the twenty-one cycles cost what stopping cost,
+# and buy the core entering a transcript instead of interpreting into one.
 #
 # That BBR is the reason for the last two. Every other instruction here charges
 # its cycles in one ADDCYC and one LastCycle, which is exactly what a checkpoint
@@ -42,7 +56,7 @@ endif()
 # rather than inferred from the writes: across all 2,649 calls, 92,978 writes
 # inside the windows are the routine's own, and the only others are 8,118
 # interrupt-frame pushes below the live stack pointer and four stores to $20 --
-# an address the region writes only inside the 00:E1FD it stops in front of, and
+# an address the region writes only below the 00:E1FD it now crosses into, and
 # never reads. The ranges below are the routine's whole output plus the stack
 # page, and the VDC register file is censused directly with --bus-write-range.
 # All three artifacts are compared against a pure-assembly run of the same

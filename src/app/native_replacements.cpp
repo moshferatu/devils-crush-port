@@ -228,10 +228,16 @@ replace_native_gameplay_routine_impl(
             work_ram,
             rom);
     }
-    // One shared walk, nine entry points: the bank-switching call wrappers
-    // every cross-bank call in the game goes through. Each transcript stops in
-    // front of the call it exists to make, or in front of its own RTS.
+    // One shared walk, ten entry points: the bank-switching call wrappers
+    // every cross-bank call in the game goes through. Each transcript makes the
+    // call it exists to make and ends on the callee, or ends in front of its
+    // own RTS.
     if (entry.routine
+            == RoutineKey{
+                .physical_bank = 0x00U,
+                .logical_pc = 0xE1FDU,
+            }
+        || entry.routine
             == RoutineKey{
                 .physical_bank = 0x00U,
                 .logical_pc = 0xE200U,
