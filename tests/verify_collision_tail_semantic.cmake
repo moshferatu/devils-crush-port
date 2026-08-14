@@ -29,13 +29,20 @@ endif()
 #            transcript: the pushes are transcribed and the core executes the
 #            RTS.
 #
-# Nineteen entry points. Eleven are the addresses the core arrives at after a
-# call this family makes, because a transcript stops in front of one; four are
-# routine heads; 01:CD74 is the probe; and 01:CB81/01:CB8A are the two arms of
-# the BBR at 01:CB7E, which the tilemap slice established a checkpoint cannot
-# express -- BBR is LD_ZP wrapping JR, so the machine crosses it in four clock
-# steps where a checkpoint crosses it in two, and the core tests next_event on
-# those steps.
+# Twenty entry points. Eleven are the addresses a call this family makes returns
+# to; four are routine heads; 01:CD74 is the probe; 01:CB76 is one instruction,
+# the JSR $CD74 that 01:CB71's taken arm lands on; and 01:CB81/01:CB8A are the
+# two arms of the BBR at 01:CB7E, which the tilemap slice established a
+# checkpoint cannot express -- BBR is LD_ZP wrapping JR, so the machine crosses
+# it in four clock steps where a checkpoint crosses it in two, and the core
+# tests next_event on those steps.
+#
+# All twelve calls this family makes are crossed rather than stopped in front
+# of, so a transcript pushes the two return bytes itself and ends on the
+# callee's first instruction. Eleven land on a registered entry; 01:CB7B lands
+# on 01:CF33, which no replacement owns, and is crossed anyway because a
+# crossing converts the twenty-one cycles the `JSR` costs whatever is on the far
+# side of it.
 #
 # The zero page here is shared with the rest of the game: $2D-$30 is the general
 # pointer scratch, $26 a tile-id temporary, $64-$67 the sweep cursor and
@@ -89,6 +96,8 @@ execute_process(
         "01:CB2A@all"
         --replace-hook
         "01:CB74@all"
+        --replace-hook
+        "01:CB76@all"
         --replace-hook
         "01:CB79@all"
         --replace-hook
@@ -159,6 +168,7 @@ foreach(expected_line IN ITEMS
     "Native replacement 01:CB11@all entries: 2121 of 2121"
     "Native replacement 01:CB2A@all entries: 3233 of 3233"
     "Native replacement 01:CB74@all entries: 2986 of 2986"
+    "Native replacement 01:CB76@all entries: 247 of 247"
     "Native replacement 01:CB79@all entries: 3233 of 3233"
     "Native replacement 01:CB81@all entries: 299 of 299"
     "Native replacement 01:CB8A@all entries: 2934 of 2934"
@@ -201,7 +211,7 @@ endforeach()
 
 message(
     STATUS
-    "Semantic collision tail runs all nineteen entry points natively across "
-    "28,833 admitted entries, with the family's shared zero page, its whole "
+    "Semantic collision tail runs all twenty entry points natively across "
+    "29,080 admitted entries, with the family's shared zero page, its whole "
     "output, the stack page and the state census identical to assembly."
 )

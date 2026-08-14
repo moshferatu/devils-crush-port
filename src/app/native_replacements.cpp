@@ -449,12 +449,13 @@ replace_native_gameplay_routine_impl(
         return detail::replace_tilemap_upload(entry, work_ram, rom);
     }
 
-    // One shared walk, nineteen entry points: the frame around the collision
+    // One shared walk, twenty entry points: the frame around the collision
     // scanner. Four are routine heads -- the ball/table gate at 01:CA84, the
     // sweep setup at 01:CB2A, the single-slot probe at 01:CBAB and the contact
     // dispatcher at 01:CBCF -- one is the playfield-tile probe at 01:CD74, and
-    // the rest are addresses the core arrives at after a call this family makes
-    // or after the BBR at 01:CB7E, which it resolves itself.
+    // the rest are addresses a call this family makes returns to, or arms of
+    // the BBR at 01:CB7E and the BBS at 01:CB71, which the core resolves
+    // itself. 01:CB76 is one of those arms and one instruction long.
     if (entry.routine
             == RoutineKey{
                 .physical_bank = 0x01U,
@@ -504,6 +505,11 @@ replace_native_gameplay_routine_impl(
             == RoutineKey{
                 .physical_bank = 0x01U,
                 .logical_pc = 0xCB74U,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x01U,
+                .logical_pc = 0xCB76U,
             }
         || entry.routine
             == RoutineKey{

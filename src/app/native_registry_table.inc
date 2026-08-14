@@ -115,6 +115,7 @@ DC_ADMITTED_ROUTINE(0x01U, 0xCB48U, 87968, 87968, "verify_collision_scan_semanti
 DC_ADMITTED_ROUTINE(0x01U, 0xCB61U, 84735, 84735, "verify_collision_scan_advance_semantic")
 DC_ADMITTED_ROUTINE(0x01U, 0xCB6BU, 400892, 400892, "verify_collision_scan_advance_semantic")
 DC_ADMITTED_ROUTINE(0x01U, 0xCB74U, 2986, 2986, "verify_collision_tail_semantic")
+DC_ADMITTED_ROUTINE(0x01U, 0xCB76U, 247, 247, "verify_collision_tail_semantic")
 DC_ADMITTED_ROUTINE(0x01U, 0xCB79U, 3233, 3233, "verify_collision_tail_semantic")
 DC_ADMITTED_ROUTINE(0x01U, 0xCB81U, 299, 299, "verify_collision_tail_semantic")
 DC_ADMITTED_ROUTINE(0x01U, 0xCB8AU, 2934, 2934, "verify_collision_tail_semantic")

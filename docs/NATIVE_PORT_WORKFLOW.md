@@ -741,10 +741,32 @@ every `native_replacements_*.cpp` for its `is_stop_instruction` body, read
 the ones that are `$20` or `$44`. That is the complete list of uncrossed calls
 in the port, with no false positives and nothing hiding behind a declined entry
 — it took twenty lines of Python and settled in one run a question two slices
-had answered wrong from the profile. Cross-check each survivor's target against
-`native_registry_table.inc` before pricing it: a crossing onto an address no
-one owns costs its twenty-one cycles and buys nothing, which is the one way
-this edit can be worthless.
+had answered wrong from the profile.
+
+**Do not check the target against the registry, and do not skip a crossing
+because nothing owns the far side.** This file said the opposite for two
+slices, and the collision-tail slice measured it: crossing `01:CB7B` into
+`01:CF33`, which is not registered and is still interpreted instruction for
+instruction, is worth 6,678 cycles over 318 calls — exactly 21 each, exactly
+what every other crossing pays. The reasoning behind the old rule confused two
+different things. A crossing converts the `JSR` *itself*, and that conversion
+happens whatever is on the far side; what a registered callee adds is the
+callee's own body, which was never this edit's to claim. The mistake was
+expensive in the other direction too: it is why the sorcerer tick's two calls
+to `$C018` sat in the "unresolved target" column for a slice instead of being
+crossed. There is no such thing as a worthless crossing.
+
+**But do not price a survivor from its profile row either.** The sweep names
+the addresses correctly; the row does not tell you how many of those executions
+are walk-stops. `02:58DA` is in `is_stop_instruction` and profiled 598
+executions worth 12,558, and crossing it recovered none of them: every one of
+those 598 was interpreted *residue*, the core running on through the routine
+after an interrupt abandoned a transcript upstream, never reaching the stop at
+all. The same region shows it plainly — `02:58C7` through `02:58E3` all carry
+interpreted counts inside a routine whose entry installs 18,152 times. Residue
+is a different slice with a different fix, which is a new entry point, not a
+crossing. Take the sweep's address list, cross the lot, and let the census say
+what it was worth.
 
 #### Take the cost from the assembly run and the weight from the ratio
 

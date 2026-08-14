@@ -1371,9 +1371,10 @@ replace_tilemap_upload(
 // The frame around the collision scanner: the playfield-tile probe at 01:CD74,
 // the ball/table gate at 01:CA84, the sweep setup at 01:CB2A and its tail, the
 // single-slot probe at 01:CBAB and the contact dispatcher at 01:CBCF. One walk
-// shared by nineteen entry points -- four routine heads, the probe, eleven
-// addresses the core arrives at after a call this family makes, and the two
-// arms of the BBR at 01:CB7E, which a checkpoint cannot express.
+// shared by twenty entry points -- four routine heads, the probe, eleven
+// addresses a call this family makes returns to, the two arms of the BBR at
+// 01:CB7E, which a checkpoint cannot express, and both arms of the BBS at
+// 01:CB71, one of which is a single JSR.
 [[nodiscard]] std::optional<emulation::RoutineReplacement>
 replace_collision_tail(
     const emulation::RoutineEntry& entry,

@@ -845,6 +845,7 @@ register:
 | `01:CBC2` | After `JSR $CC1A` | 980 | 17,526 |
 | `01:CB81` | The `BBR`'s set arm | 299 | 10,764 |
 | `01:CAD3` | After the third `JSR $E93C` | 194 | 9,012 |
+| `01:CB76` | One instruction: the `JSR $CD74` below | 247 | 5,187 |
 | `01:CAED` | After the fifth `JSR $E93C`, upper arm | 42 | 2,400 |
 | `01:CAE0` | After the fourth `JSR $E93C` | 50 | 2,196 |
 | `01:CBCA` | After `JSR $CBCF` | 19 | 456 |
@@ -876,8 +877,29 @@ Two instructions in the region are deliberately left to the core. `01:CB7E` is
 a `BBR` and `01:CB71` a `BBS`, and the tilemap slice established that neither
 can be a checkpoint — they are `LD_ZP` wrapping `JR`, so the machine crosses
 them in four clock steps where a checkpoint crosses in two, and the core tests
-`next_event` on those steps. `01:CB74`, `01:CB81` and `01:CB8A` are entry points
-precisely because the core resolves those branches itself.
+`next_event` on those steps. `01:CB74`, `01:CB76`, `01:CB81` and `01:CB8A` are
+entry points precisely because the core resolves those branches itself —
+`01:CB74` is the `BBS`'s fall-through arm and `01:CB76` the arm it takes.
+
+All twelve calls the region makes are crossed rather than stopped in front of.
+A transcript pushes the two return bytes, charges the twenty-one cycles the
+`JSR` costs, and ends on the callee's first instruction, so the core arrives
+there instead of interpreting its way in. That is 263,907 master cycles over
+12,567 calls, and it is why the eleven return addresses above are still entry
+points for the plain reason that a callee's `RTS` lands on them, rather than
+because a walk stopped short. Seven of the twelve go to the same place, the
+compare helper at `00:E93C`.
+
+`01:CB7B`, the `JSR $CF33` on the contact path, is the one that corrected the
+rule. `01:CF33` is not a registered routine and is still interpreted
+instruction for instruction, and the workflow notes said for two slices that a
+crossing onto such an address buys nothing. It is worth 6,678 over 318 calls,
+21 apiece, which is what every crossing pays: the conversion is of the `JSR`
+itself and happens whatever is on the far side. `01:CB76` is the other
+correction, from the other direction. It is one instruction and was worth
+registering because 247 of its 3,233 arrivals come through the `BBS` at
+`01:CB71` rather than through `01:CB74` — the crossing was already installed
+two bytes earlier and those arrivals went round it.
 
 What was left emulated in the region was almost entirely the call boundary: the
 `JSR $CC1A` at `01:CB5E` and its `RTS` at `01:CC40`, crossed 84,735 times for
@@ -3468,6 +3490,17 @@ entry point: the walk from `02:5893` takes its own branch into it. What is left
 emulated in `02:586F`-`02:5903` is 910,530 cycles, about 87% of it the two
 interpreter calls, the two calls to the bank-01 wrapper at `$C018`, and the
 three `RTS` instructions the walks stop in front of.
+
+All four of those calls are handled now. The two to the interpreter are
+composed where the interpreter accepts the entry and crossed where it declines;
+the two to `$C018` are crossed outright, which is worth 336 cycles over their
+sixteen calls. The interesting number is the one that did not move. `02:58DA`
+profiles 598 interpreted executions worth 12,558, and crossing it recovered
+none of them: those executions never reach the stop. They are residue — the
+core running on through the routine after an interrupt abandoned a transcript
+upstream — and the whole stretch `02:58C7`-`02:58E3` carries the same kind of
+count inside a routine whose entry installs 18,152 times. Recovering residue
+means a new entry point, not a crossing.
 
 The bounded capture contains 23,859 calls and 346,654 scoped writes.
 Normalized first samples cover controller idle `02:57AD` (69 cycles, zero

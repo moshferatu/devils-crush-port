@@ -148,12 +148,32 @@ constexpr std::uint16_t kInterpreterEntry = 0x6966U;
         || logical_pc == 0x58E8U || logical_pc == 0x5903U;
 }
 
-// Two of those stops are calls this walk can run rather than hand back. They
-// remain stops for the calls the interpreter refuses, which is what keeps the
-// three addresses on the far side of them worth registering.
+// Two of those stops are calls this walk can compose rather than hand back.
+// They remain stops for the calls the interpreter refuses, which is what keeps
+// the three addresses on the far side of them worth registering.
 [[nodiscard]] constexpr bool is_interpreter_call(const std::uint16_t logical_pc)
 {
     return logical_pc == 0x5890U || logical_pc == 0x58DAU;
+}
+
+// All four of the calls, and where each goes. Composition is the better answer
+// where it is available, because it carries the walk on through the callee;
+// crossing is what the other two calls get, and what the two above fall back to
+// when the interpreter declines. A crossing needs nothing of its target -- it
+// converts the twenty-one cycles the `JSR` costs either way, and what a
+// registered callee adds is its own body rather than this instruction. That is
+// why 02:5883 and 02:58BF are crossed into $C018 without this file having any
+// idea what lives there.
+[[nodiscard]] constexpr bool is_crossable_call(const std::uint16_t logical_pc)
+{
+    return logical_pc == 0x5883U || logical_pc == 0x5890U
+        || logical_pc == 0x58BFU || logical_pc == 0x58DAU;
+}
+
+[[nodiscard]] constexpr std::uint16_t call_target(const std::uint16_t logical_pc)
+{
+    return (logical_pc == 0x5883U || logical_pc == 0x58BFU) ? 0xC018U
+                                                            : kInterpreterEntry;
 }
 
 // And three of them are the routine's own returns rather than somewhere to hand
@@ -522,6 +542,36 @@ std::optional<RoutineReplacement> replace_sorcerer_tick(
             return true;
         };
 
+    // The fallback described above `is_crossable_call`: push the two return
+    // bytes, charge the call, and end the transcript on the callee's first
+    // instruction rather than in front of the `JSR`.
+    std::optional<RoutineKey> crossed;
+    const auto call =
+        [&registers, &cycle, &store, &commit_pending_writes, &append_checkpoint,
+         &crossed](
+            const std::uint16_t instruction_pc,
+            const std::uint16_t target_pc) {
+            const auto pushed = static_cast<std::uint16_t>(instruction_pc + 2U);
+            store(
+                instruction_pc,
+                static_cast<std::uint16_t>(0x2100U + registers.stack_pointer),
+                static_cast<std::uint8_t>(pushed >> 8U));
+            store(
+                instruction_pc,
+                static_cast<std::uint16_t>(
+                    0x2100U
+                    + static_cast<std::uint8_t>(registers.stack_pointer - 1U)),
+                static_cast<std::uint8_t>(pushed & 0x00FFU));
+            registers.stack_pointer =
+                static_cast<std::uint8_t>(registers.stack_pointer - 2U);
+            commit_pending_writes(cycle);
+            append_checkpoint(instruction_pc, target_pc, kJumpToSubroutine);
+            crossed = RoutineKey{
+                .physical_bank = registers.mpr[target_pc >> 13U],
+                .logical_pc = target_pc,
+            };
+        };
+
     auto pc = entry.routine.logical_pc;
     bool stopped = false;
     while (!stopped && !overflow
@@ -529,6 +579,9 @@ std::optional<RoutineReplacement> replace_sorcerer_tick(
         && replacement.work_ram_writes.size() < kMaximumWrites) {
         if (is_stop_instruction(pc)) {
             if (!is_interpreter_call(pc) || !compose_interpreter_call(pc)) {
+                if (is_crossable_call(pc)) {
+                    call(pc, call_target(pc));
+                }
                 stopped = true;
                 continue;
             }
@@ -770,6 +823,16 @@ std::optional<RoutineReplacement> replace_sorcerer_tick(
         || replacement.checkpoints.size() >= kMaximumCheckpoints
         || replacement.work_ram_writes.size() >= kMaximumWrites) {
         return std::nullopt;
+    }
+
+    // A crossed call ends the walk on the callee, so the transcript names that
+    // address rather than the `JSR` it just made. There is no return to absorb:
+    // the one this routine would take belongs to the callee and has not run.
+    if (crossed.has_value()) {
+        replacement.return_instruction = *crossed;
+        replacement.output_registers = registers;
+        replacement.body_master_cycles = cycle;
+        return replacement;
     }
 
     replacement.return_instruction = {

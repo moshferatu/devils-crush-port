@@ -48,10 +48,12 @@ using emulation::RoutineReplacement;
 //            transcript: the pushes are transcribed and the core executes the
 //            RTS, which jumps exactly as it would have.
 //
-// Nineteen entry points. Eleven are the addresses the core arrives at after a
-// call this family makes, because a transcript stops in front of one; four are
-// routine heads; and four are branch arms of instructions handed back to the
-// core -- see is_stop_instruction.
+// Twenty entry points. Eleven are the addresses a call this family makes
+// returns to; four are routine heads; and five are branch arms of instructions
+// handed back to the core -- see is_stop_instruction. The eleven were once the
+// addresses a walk resumed at after stopping in front of a call. They are still
+// entry points now that the calls are crossed rather than stopped at, for the
+// plainer reason that the callee's `RTS` lands on them.
 //
 // Its zero page is shared with the rest of the game: $2D-$30 is the general
 // pointer scratch, $26 a tile-id temporary, $64-$67 the sweep cursor and
@@ -97,6 +99,10 @@ constexpr std::uint32_t kBranchTaken = 12U;
 constexpr std::uint32_t kBranchNotTaken = 6U;
 constexpr std::uint32_t kSwapXY = 9U;
 constexpr std::uint32_t kPushAccumulator = 9U;
+// JSR is seven CPU cycles: both return bytes pushed, then ADDCYC(6) and the
+// LastCycle. Both writes carry the instruction's start offset, since the core
+// pushes before it charges anything.
+constexpr std::uint32_t kCall = 21U;
 
 [[nodiscard]] std::uint8_t set_nz(
     const std::uint8_t status,
@@ -119,6 +125,7 @@ constexpr std::uint32_t kPushAccumulator = 9U;
         || logical_pc == 0xCAE0U || logical_pc == 0xCAEDU
         || logical_pc == 0xCB04U || logical_pc == 0xCB11U
         || logical_pc == 0xCB2AU || logical_pc == 0xCB74U
+        || logical_pc == 0xCB76U
         || logical_pc == 0xCB79U || logical_pc == 0xCB81U
         || logical_pc == 0xCB8AU || logical_pc == 0xCBABU
         || logical_pc == 0xCBB6U || logical_pc == 0xCBC2U
@@ -126,9 +133,16 @@ constexpr std::uint32_t kPushAccumulator = 9U;
         || logical_pc == 0xCD74U;
 }
 
-// Where each walk stops. Nine are RTS instructions and eleven are the calls
-// this family makes, which the core executes so that whichever replacement
-// owns the target is entered normally.
+// Where each walk stops. Eleven are RTS instructions; none is a call. All
+// twelve calls this family makes are crossed rather than stopped in front of --
+// see the `call` lambda below.
+//
+// Eleven of the twelve land on an address that is itself a registered entry.
+// The twelfth, 01:CB7B, goes to 01:CF33, which no replacement owns, and it is
+// crossed anyway: a crossing converts the twenty-one cycles the `JSR` itself
+// costs whatever is on the far side, and what a registered callee adds is its
+// own body rather than this instruction. Measured at 6,678 over 318 calls,
+// with 01:CF33 still interpreted exactly as before.
 //
 // Two are neither. 01:CB46 is the STA $64 that ends the sweep setup: handing
 // it back leaves the core at 01:CB48, where the sweep's own replacement picks
@@ -140,27 +154,23 @@ constexpr std::uint32_t kPushAccumulator = 9U;
 // it moves the video EventHandler to a later timestamp and shifts an interrupt.
 // So 01:CB7E goes back to the core and both its arms, 01:CB81 and 01:CB8A,
 // become entry points. The same reasoning applies to 01:CB71 and 01:CB68,
-// which are BBS instructions this family never walks into -- 01:CB74 is an
-// entry precisely because the core resolves 01:CB71 itself.
+// which are BBS instructions this family never walks into -- 01:CB74 and
+// 01:CB76 are both entries precisely because the core resolves 01:CB71 itself,
+// and they are its two arms: 01:CB74 the fall-through, 01:CB76 the one it
+// takes.
 [[nodiscard]] constexpr bool is_stop_instruction(const std::uint16_t logical_pc)
 {
-    return logical_pc == 0xCA89U || logical_pc == 0xCA9EU
-        || logical_pc == 0xCAB3U || logical_pc == 0xCAD0U
-        || logical_pc == 0xCADDU || logical_pc == 0xCAEAU
-        || logical_pc == 0xCB01U || logical_pc == 0xCB0EU
-        || logical_pc == 0xCB20U || logical_pc == 0xCB29U
-        || logical_pc == 0xCB46U || logical_pc == 0xCB76U
-        || logical_pc == 0xCB7BU || logical_pc == 0xCB7EU
+    return logical_pc == 0xCA89U || logical_pc == 0xCB20U
+        || logical_pc == 0xCB29U || logical_pc == 0xCB46U
+        || logical_pc == 0xCB7EU
         || logical_pc == 0xCB89U || logical_pc == 0xCB92U
-        || logical_pc == 0xCBB2U || logical_pc == 0xCBB3U
-        || logical_pc == 0xCBBFU || logical_pc == 0xCBC6U
-        || logical_pc == 0xCBC7U || logical_pc == 0xCBCEU
-        || logical_pc == 0xCBF9U || logical_pc == 0xCDF1U
-        || logical_pc == 0xCDF7U;
+        || logical_pc == 0xCBB2U || logical_pc == 0xCBC6U
+        || logical_pc == 0xCBCEU || logical_pc == 0xCBF9U
+        || logical_pc == 0xCDF1U || logical_pc == 0xCDF7U;
 }
 
 // Which of those stops is a return the walk can run past. Eleven of the
-// twenty-five are `RTS` and ten of those are returns. The eleventh, 01:CBF9,
+// thirteen are `RTS` and ten of those are returns. The eleventh, 01:CBF9,
 // is not a return at all. It is
 // the tail dispatch described above: 01:CBF4 and 01:CBF8 push a vector read out
 // of the tables at 01:CBFA and 01:CBFF, and the `RTS` jumps to it. The word it
@@ -169,8 +179,8 @@ constexpr std::uint32_t kPushAccumulator = 9U;
 // The stack-pointer test at the stop would refuse it in any case, the two pushes
 // having moved the pointer, but that would be an accident rather than a reason.
 //
-// Everything else in the list is an address the walk hands back at -- a `JSR`
-// the family makes, the `BBR` at 01:CB7E, or a branch arm -- and hands back
+// Everything else in the list is an address the walk hands back at -- the
+// `BBR` at 01:CB7E, the `STA $64` at 01:CB46, or a branch arm -- and hands back
 // mid-routine, with no return to take.
 [[nodiscard]] constexpr bool is_absorbable_return(
     const std::uint16_t logical_pc)
@@ -501,6 +511,29 @@ std::optional<RoutineReplacement> replace_collision_tail(
             return next;
         };
 
+    // A call the walk makes rather than hands back. The two return bytes are
+    // pushed before the instruction charges a cycle, so both writes carry its
+    // start offset, and the transcript ends on the callee's first instruction
+    // with whatever runs there picking the body up. It costs exactly what
+    // stopping in front of the call cost, and what it converts is the `JSR`
+    // itself, so it is worth its twenty-one cycles whatever is on the far side.
+    std::optional<RoutineKey> crossed;
+    const auto call =
+        [&registers, &cycle, &push, &commit_pending_writes, &append_checkpoint,
+         &crossed](
+            const std::uint16_t instruction_pc,
+            const std::uint16_t target_pc) {
+            const auto pushed = static_cast<std::uint16_t>(instruction_pc + 2U);
+            push(instruction_pc, static_cast<std::uint8_t>(pushed >> 8U));
+            push(instruction_pc, static_cast<std::uint8_t>(pushed & 0x00FFU));
+            commit_pending_writes(cycle);
+            append_checkpoint(instruction_pc, target_pc, kCall);
+            crossed = RoutineKey{
+                .physical_bank = registers.mpr[target_pc >> 13U],
+                .logical_pc = target_pc,
+            };
+        };
+
     auto pc = entry.routine.logical_pc;
     for (;;) {
         // The core's channels are 512 writes and 2,048 checkpoints. Nothing
@@ -622,6 +655,10 @@ std::optional<RoutineReplacement> replace_collision_tail(
             pc = 0xCA9EU;
             break;
 
+        case 0xCA9EU:  // JSR $E93C -- crossed into the comparison helper
+            call(0xCA9EU, 0xE93CU);
+            break;
+
         case 0xCAA1U:  // BCC $CAF1
             pc = branch(
                 0xCAA1U, 0xCAF1U, 0xCAA3U,
@@ -670,6 +707,10 @@ std::optional<RoutineReplacement> replace_collision_tail(
             store(0xCAB1U, zp(0x2EU), registers.accumulator);
             append_checkpoint(0xCAB1U, 0xCAB3U, kZeroPage);
             pc = 0xCAB3U;
+            break;
+
+        case 0xCAB3U:  // JSR $E93C -- crossed into the comparison helper
+            call(0xCAB3U, 0xE93CU);
             break;
 
         case 0xCAB6U:  // BCC $CABE
@@ -746,6 +787,10 @@ std::optional<RoutineReplacement> replace_collision_tail(
             pc = 0xCAD0U;
             break;
 
+        case 0xCAD0U:  // JSR $E93C -- crossed into the comparison helper
+            call(0xCAD0U, 0xE93CU);
+            break;
+
         case 0xCAD3U:  // BCS $CB21
             pc = branch(
                 0xCAD3U, 0xCB21U, 0xCAD5U,
@@ -776,6 +821,10 @@ std::optional<RoutineReplacement> replace_collision_tail(
             pc = 0xCADDU;
             break;
 
+        case 0xCADDU:  // JSR $E93C -- crossed into the comparison helper
+            call(0xCADDU, 0xE93CU);
+            break;
+
         case 0xCAE0U:  // BCS $CB16
             pc = branch(
                 0xCAE0U, 0xCB16U, 0xCAE2U,
@@ -804,6 +853,10 @@ std::optional<RoutineReplacement> replace_collision_tail(
             store(0xCAE8U, zp(0x2EU), registers.accumulator);
             append_checkpoint(0xCAE8U, 0xCAEAU, kZeroPage);
             pc = 0xCAEAU;
+            break;
+
+        case 0xCAEAU:  // JSR $E93C -- crossed into the comparison helper
+            call(0xCAEAU, 0xE93CU);
             break;
 
         case 0xCAEDU:  // BCS $CB21
@@ -862,6 +915,10 @@ std::optional<RoutineReplacement> replace_collision_tail(
             pc = 0xCB01U;
             break;
 
+        case 0xCB01U:  // JSR $E93C -- crossed into the comparison helper
+            call(0xCB01U, 0xE93CU);
+            break;
+
         case 0xCB04U:  // BCC $CB21
             pc = branch(
                 0xCB04U, 0xCB21U, 0xCB06U,
@@ -890,6 +947,10 @@ std::optional<RoutineReplacement> replace_collision_tail(
             store(0xCB0CU, zp(0x2EU), registers.accumulator);
             append_checkpoint(0xCB0CU, 0xCB0EU, kZeroPage);
             pc = 0xCB0EU;
+            break;
+
+        case 0xCB0EU:  // JSR $E93C -- crossed into the comparison helper
+            call(0xCB0EU, 0xE93CU);
             break;
 
         case 0xCB11U:  // BCC $CB16
@@ -1052,10 +1113,26 @@ std::optional<RoutineReplacement> replace_collision_tail(
             pc = 0xCB76U;
             break;
 
+        // The contact test, and the largest of the twelve crossings. Its own
+        // entry point is 01:CD74, in this file.
+        //
+        // This address is also an entry point, and for the reason 01:CB74 is
+        // one: 01:CB71 is a `BBS` the core resolves, and where 01:CB74 is its
+        // fall-through arm, this is the arm it takes. 247 of the 3,233 arrivals
+        // come that way and would otherwise be interpreted, so the entry is one
+        // instruction long and worth exactly what that instruction is worth.
+        case 0xCB76U:  // JSR $CD74
+            call(0xCB76U, 0xCD74U);
+            break;
+
         case 0xCB79U:  // BCC $CB7E
             pc = branch(
                 0xCB79U, 0xCB7EU, 0xCB7BU,
                 (registers.status & kCarry) == 0U);
+            break;
+
+        case 0xCB7BU:  // JSR $CF33 -- crossed into the contact response
+            call(0xCB7BU, 0xCF33U);
             break;
 
         case 0xCB81U:  // LDA $3800,X
@@ -1121,6 +1198,10 @@ std::optional<RoutineReplacement> replace_collision_tail(
                 (registers.status & kZero) != 0U);
             break;
 
+        case 0xCBB3U:  // JSR $E219 -- crossed into a bank-call wrapper
+            call(0xCBB3U, 0xE219U);
+            break;
+
         // $77 starts at $80 so the sweep's own flags read as "single slot",
         // and the slot index is parked in $64 while X and Y trade places.
         case 0xCBB6U:  // LDA #$80
@@ -1156,6 +1237,10 @@ std::optional<RoutineReplacement> replace_collision_tail(
             break;
         }
 
+        case 0xCBBFU:  // JSR $CC1A -- crossed into the vertical scan
+            call(0xCBBFU, 0xCC1AU);
+            break;
+
         case 0xCBC2U:  // BCS $CBC7
             pc = branch(
                 0xCBC2U, 0xCBC7U, 0xCBC4U,
@@ -1166,6 +1251,10 @@ std::optional<RoutineReplacement> replace_collision_tail(
             load_x(read_ram(zp(0x64U)));
             append_checkpoint(0xCBC4U, 0xCBC6U, kZeroPage);
             pc = 0xCBC6U;
+            break;
+
+        case 0xCBC7U:  // JSR $CBCF -- crossed into the contact dispatcher
+            call(0xCBC7U, 0xCBCFU);
             break;
 
         case 0xCBCAU:  // STZ $BD,X
@@ -1773,6 +1862,21 @@ std::optional<RoutineReplacement> replace_collision_tail(
 
         default:
             return std::nullopt;
+        }
+
+        // A call ends the walk, but it is made rather than left standing: the
+        // transcript hands the machine the callee's first instruction, and
+        // whatever owns that address picks the body up from there. Nothing is
+        // absorbed here -- the return the walk would take belongs to the callee
+        // and has not been executed yet.
+        if (crossed.has_value()) {
+            if (overflow) {
+                return std::nullopt;
+            }
+            replacement.return_instruction = *crossed;
+            replacement.output_registers = registers;
+            replacement.body_master_cycles = cycle;
+            return replacement;
         }
     }
 }
