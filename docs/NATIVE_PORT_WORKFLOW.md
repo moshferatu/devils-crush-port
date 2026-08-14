@@ -1304,6 +1304,27 @@ which is a stronger statement than an enumeration of what the handlers write,
 and much cheaper to obtain. Enumerate handler writes when the count is short of
 N; when it is N of N, say so and move on.
 
+**The cheapest hand-off is a fall-through into a registered address.** A walk
+that meets a call can cross it, which converts the `JSR` and buys 21 cycles for
+the price of pushing a return frame. A walk whose last instruction simply falls
+into a routine the registry already owns pays nothing at all: the transcript
+stops, the machine is handed a program counter, and whatever owns that address
+picks the body up — no pushed frame, no converted call, no jump to transcribe.
+`01:C4DE`-`01:C50E` ends on `STX <$4D` and the next address is the registered
+actor scan at `01:C510`. **So when ranking candidates, look at what runs
+immediately before an address already in the registry**; adjacency to a ported
+routine is worth as much as a call into one and costs less to claim.
+
+**Hand an arm back because its target is outside the transcript, not because the
+branch has never gone that way.** Both are arms this route has never taken, and
+they are not the same. `01:C4ED` reaches instructions nothing else in the walk
+covers, so declining it leaves the core to be right about them by construction.
+The two branches to `01:C4FC` reach an address the walk already transcribes —
+the fall-through from `01:C4FA` arrives there 322 times — so following one lands
+on ground already proven, and the only untranscribed thing about the arm is
+which way the flag went. Declining that second kind buys no safety and loses the
+tail of the walk.
+
 Two things about `0020` are worth carrying. The half-fix tried first — withdrawing
 when the core executes the `RTS` itself — did not partly work, it made the trace
 *worse* (129,236 wrong `Y` against 82,201), because a cut-short scan usually

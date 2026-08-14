@@ -2452,6 +2452,23 @@ if(TARGET devils_crush)
         )
 
         add_test(
+            NAME dc_rom_actor_scan_preamble_semantic
+            CONFIGURATIONS Release
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/actor-scan-preamble-semantic-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_actor_scan_preamble_semantic.cmake"
+        )
+        set_tests_properties(
+            dc_rom_actor_scan_preamble_semantic
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
             NAME dc_rom_sorcerer_tick_semantic
             CONFIGURATIONS Release
             COMMAND

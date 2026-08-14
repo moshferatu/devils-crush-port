@@ -5932,12 +5932,107 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
     arrivals admitted, none declined. The gain, 910,662, is again exactly what
     the static instruction model predicted. 418/418 Release, 3/3 ROM-free
     Debug.
+- [x] Port `01:C4DE`-`01:C50E`, the actor scan's preamble -- the simplest block
+  of its size left anywhere, and the first slice whose hand-off is a
+  fall-through rather than a call.
+  - [x] `replace_actor_scan_preamble`: one entry point, twenty instructions, no
+    call of any kind and not one ROM read, every operand in work RAM, ending in
+    front of the registered `01:C510`.
+  - [x] Hand back only the arm this route has never taken: `01:C4ED`, where
+    `$2254` would select the mask staged in `<$B7` instead.
+  - [x] Prove it against assembly on the same route: byte-identical census and
+    a byte-identical 563,457-write trace over the six bytes it writes, all six
+    of them shared with other writers.
+  - [x] **686,655,855 -> 687,431,079, 53.13% -> 53.19% of the route and
+    96.65% -> 96.76% outside the wait.** 399 routines, 332 entered, all 3,492
+    arrivals admitted, none declined. The gain, 775,224, is a third time
+    exactly what the static instruction model predicted. 419/419 Release, 3/3
+    ROM-free Debug.
 
 ## Active Work
 
-Current owner: Claude. Current slice: **the shared motion step**. Done. It is
-the most widely shared routine ported so far, and the first family whose calls
-go to leaves it owns itself.
+Current owner: Claude. Current slice: **the actor scan's preamble**. Done. It is
+the simplest block of its size left in the ROM, and the first slice whose
+hand-off is a fall-through rather than a call.
+
+**`01:C4DE`-`01:C50E` settles what the actor scan is about to walk.** It decides
+this frame's actor enable mask, resets the three cursors the scan allocates its
+list entries from, clears the scan index, and falls into the scan itself. The
+mask lands in `$2CEE`, and `$2CEE` is a mask rather than an index: 01:D466 loads
+it and ANDs it against each actor's `$3B80,X` attribute byte, so a zero there
+turns every actor off for the frame. Four gates can produce that zero --
+`$2D35`, `$2CC7`, bit 3 of `<$53`, and on one arm a mask staged in `<$B7`
+instead. `$2CBA` and `$2CBB` are the two ends of a single 128-entry list at
+`$2BBA`, which is why one is cleared and the other set to $7F; `$2CBC` indexes
+the separate list at `$2C3A`; `<$4D` is the scan index 01:C510 reads on its
+first instruction.
+
+| | Before | After |
+| --- | ---: | ---: |
+| Registry cycles | 686,655,855 | **687,431,079** |
+| Share of the route | 53.13% | **53.19%** |
+| Share outside the frame-sync wait | 96.65% | **96.76%** |
+| Native calls | 2,720,395 of 2,758,953 | 2,723,887 of 2,762,445 |
+| Admitted routines | 398 | 399 |
+| Routines entered | 331 | 332 |
+| Residue outside the wait | 17,520,351 | 16,740,903 |
+| Declined at a horizon | 0 | 0 |
+| Abandonments | 0 | 0 |
+
+**775,224 master cycles, and the static model predicted 775,224.** Three slices
+running, against a profile that put the same range at 779,448 -- 4,224 high, the
+same proportion as the last two. Price with the model; rank with the profile.
+
+**Its hand-off is a fall-through, and that is the thing worth keeping.** Every
+slice before this one ended a walk either at a return or at a call. This one
+ends at neither: the last instruction is `STX <$4D`, and the next address is
+01:C510, the registered actor scan. The transcript simply stops in front of an
+address this port already owns. A crossing has to push a return frame and buys
+the 21 cycles of the `JSR` it converts; a fall-through pushes nothing, converts
+nothing and costs nothing, and it works for the same reason a crossing does --
+the machine is handed a program counter, and whatever owns that address picks
+the body up. **Look for the routine that runs immediately before a registered
+one.** It is the cheapest kind of adjacency the port has.
+
+**No call of any kind, and no ROM read.** Twenty instructions, twelve work-RAM
+addresses, two immediate constants. There is nothing in it that could reach a
+device, so the only thing the transcript has to be right about is arithmetic on
+flags and the six bytes it writes.
+
+**One arm is handed back and it has never run.** `$2254` was zero on all 3,492
+arrivals, so 01:C4ED and 01:C4EF -- which would take the mask in `<$B7` -- have
+not executed once in 3,600 frames. The two branches to 01:C4FC are transcribed
+instead, and the distinction is worth keeping: neither of those has been taken
+either, but 01:C4FC is live, reached 322 times by the fall-through from 01:C4FA,
+so following a branch there lands on an instruction the walk already owns.
+**Hand back an arm when its target is outside the transcript, not merely because
+the branch has never gone that way.**
+
+**The range has no residue.** All eighteen interior addresses are gone from the
+deployed profile; 01:C4DE remains as the registry's own row and 01:C510 as the
+next routine's. The same measurement re-run over the seven other ranked
+runs reproduced every one of them to the cycle, so the zero is a change in this range
+and not in the way it was counted.
+
+**`entries: 3492 of 3492` is again the shared-state argument.** A transcript is
+computed from a snapshot, so its reads must all fall inside one interrupt
+horizon, and the adapter declines a body that reaches the deadline. None was
+declined, so no walk here spanned a serviceable interrupt: the whole routine is
+about 222 master cycles against an interrupt period near 5,068 on this route.
+
+**The call bucket did not move at all**, which is the arithmetic check on the
+claim above. This slice crossed no call and absorbed no return, so `JSR` stays
+at 413 sites and 1,810,866 cycles and `RTS` at 167 and 930,039, derived from
+before and after by the same script. What moved is bank `01`'s remainder, by
+779,448, and nothing else.
+
+**`Instructions interpreted` did not move again, at 66,291,003**, for the fourth
+slice running. It counts interrupt-decision points rather than interpreted work,
+and one checkpoint per instruction preserves every one of them.
+
+### Previous: the shared motion step
+Done. It was the most widely shared routine ported so far, and the first family
+whose calls went to leaves it owned itself.
 
 **`00:F08E`-`00:F1B3` moves one actor and reports whether it left the
 playfield.** `$3800,X` is the actor's motion-enable byte and the head is a
@@ -8256,7 +8351,9 @@ no walk at all until it was ported. **A crossing is not a technique you exhaust;
 it is what a walk does when it meets a call, so the supply of them is the supply
 of unported code.** The motion step added a second case to it: four of its six
 crossings went to leaves the same slice owns, so the call and the body on the
-far side of it were converted together.
+far side of it were converted together. The preamble after it added a third
+case that is not a crossing at all -- it ends by falling through into a
+registered address, which converts no call and pays nothing for the hand-off.
 
 **The `JSR` bucket is still not crossable as it stands, and for the same two
 reasons.** A row is in it because the routine around it declines and runs
@@ -8282,15 +8379,16 @@ The bucket, re-priced over non-entry rows with the frame-sync spin excluded:
 Per bank the `JSR` share is `01` 711,918, `45` 466,974, `03` 462,969, `02`
 66,513, `08` 63,777, `00` 20,622, `09` 18,093.
 
-**Both sides of this one were derived by the same script, so the delta is the
-slice.** `JSR` went from 419 sites and 1,888,086 cycles to 413 and 1,810,866 --
-the six calls the motion step crossed -- and `RTS` from 172 and 1,000,701 to 167
-and 930,039, the five returns it absorbed. `JMP` did not move. Two rows of the
-stored per-bank line did not reproduce exactly (`03` 467,937 against 462,969,
-`02` 66,633 against 66,513); the figures above are the re-derived ones on both
-sides. **When a derived table disagrees with a stored one, re-derive the stored
-one before believing the delta** -- that caution was written a slice ago and it
-is why this table can be read as a difference at all.
+**The bucket did not move this slice, and that is a check rather than an
+absence.** The preamble crossed no call and absorbed no return, so every row
+above should be exactly what it was, and derived from before and after by the
+same script every row is. The slice before moved it by precisely what it did:
+`JSR` from 419 sites and 1,888,086 cycles to 413 and 1,810,866, its six
+crossings, and `RTS` from 172 and 1,000,701 to 167 and 930,039, its five
+absorbed returns. **When a derived table disagrees with a stored one, re-derive
+the stored one before believing the delta** -- and when a slice predicts no
+change, derive it anyway, because a table that moved when nothing crossed would
+mean the accounting was wrong somewhere else.
 
 **The residue category is closed.** It was recommended here as the largest
 recoverable block left, on the strength of `03:6900`-`03:6A80` carrying
@@ -8303,23 +8401,31 @@ is 84, `03:7F80` (94,878, filed as an untranscribed arm) is 63, and `02:58DA`
 priced by the profile and a walk cannot explain it, suspect the resume before
 inventing a parent for it.**
 
-**Take `01:C4DE`-`01:C50E` next, 779,448 cycles.** It is the simplest block of
-its size left anywhere: twenty addresses, no call of any kind, no ROM read, and
-every operand in work RAM. It reads three flags (`$2D35`, `$2254`, `$2CC7` and
-bit 3 of `$53`) to decide whether an index survives, stores it to `$2CEE`, then
-clears `$56`, `$2CBA` and `$2CBC`, writes `$7F` to `$2CBB`, and falls through
-`CLX`/`STX <$4D` into the already registered `01:C510` -- so the walk ends by
-handing the machine an entry that is already ours, with no jump to transcribe.
-It runs 3,492 times per route and is the last obvious mechanical block in bank
-`01`.
+**Take `01:C154`-`01:C1B5` next, 1,259,148 cycles, and read the note on
+`01:C0FE`-`01:C1B5` below as superseded.** That note called the main game loop
+"not portable as a unit" because it opens on `JSR $E321`, the frame-sync wait,
+and closes on `BEQ $C154`. Both facts are true and neither matters: a walk does
+not have to contain a call to cross it, and the wait is not a porting target.
+What the run actually is, is nine `JSR`s with immediate stores between them and
+a tail of `BIT #` tests on `<$53`, and **eight of those nine calls now go
+straight into registered transcripts** -- `00:F261`, `00:E241` four times,
+`01:C3CB`, `01:C49E`, `01:CA84`, and `01:C4DE`, which this slice registered. The
+ninth is `00:E321`, where the walk hands over and the interpreter spends the
+frame waiting, exactly as it should. So the slice is roughly ten short entries,
+each a store or two ending in a crossing, and its back edge returns to its own
+first entry.
+
+Four arms in the tail are dead: `01:C1A2`, `01:C1A9`, `01:C1B0` and `01:C1B7`
+are `JMP`s out of the loop into state handlers, and none has executed in 3,600
+frames. Hand them back.
 
 **Then `01:C012`, 11,160 cycles for one instruction.** It is the trampoline the
 motion step's 924 principal callers come through, a bare `JMP $F08E` in bank
-`01`'s jump table at `01:C000`-`01:C020`, and it now hands straight to a
-registered entry. The table's other live row, `01:C018` (`JMP $C5C9`, 1,508
-executions, 18,168 cycles), is the same shape. Twenty-nine thousand cycles for
-two transcribed jumps is a poor rate per line of code but an honest one, and
-both are trivially provable.
+`01`'s jump table at `01:C000`-`01:C020`, and it hands straight to a registered
+entry. The table's other live row, `01:C018` (`JMP $C5C9`, 1,508 executions,
+18,168 cycles), is the same shape. Twenty-nine thousand cycles for two
+transcribed jumps is a poor rate per line of code but an honest one, and both
+are trivially provable.
 
 **The ranking outside the spin loop, re-measured after this slice:**
 
@@ -8344,20 +8450,20 @@ names a slice:
 | `45:4000`-`45:4109` | 2,593,836 | Music tick head and its declined entries |
 | `00:E2B7`-`00:E39C` | 1,646,451 | The frame-sync waiter and its neighbours. Mostly the `00:E321` row above; not work |
 | `00:FC81`-`00:FC89` | 1,514,058 | The `SEI`. Refused |
-| `01:C0FE`-`01:C1B5` | 1,407,828 | The main game loop. Opens with `JSR $E321` and closes with `BEQ $C154`, so its boundary *is* the frame-sync wait -- not portable as a unit, and 147,489 of it is the one startup `TII` |
+| `01:C0FE`-`01:C1B5` | 1,407,828 | The main game loop, of which `01:C154`-`01:C1B5` is 1,259,148 and portable as a chain of crossings. **Recommended above.** 147,489 of the rest is the one startup `TII` |
 | `45:4138`-`45:4210` | 1,398,669 | Music tick |
-| `01:C4DE`-`01:C50E` | 779,448 | **Unported, and falls through into the registered `01:C510`.** Recommended above |
 | `09:6FB1`-`09:737B` | 773,025 | Unported |
 | `09:60C7`-`09:612A` | 711,312 | Unported |
 | `00:EB46` | 625,095 | The whole-palette `TIA`. A capacity wall |
 
 Per bank the remainder outside the wait is `00` 5,372,172, `45` 4,430,103,
-`01` 3,090,630, `09` 1,493,322, `03` 1,174,179, `02` 1,004,511, `08` 698,754,
-`07` 256,680 -- 17,520,351 in total. Bank `00` fell 914,958 this slice and is
-still the largest, but roughly four million of it is the refused set above --
-the driver's `SEI`, the whole-palette `TIA`, the `BBR0` at `00:F423`, the two
-interrupt acknowledges -- which leaves bank `45` the largest recoverable pool
-and bank `09` the largest untouched one.
+`01` 2,311,182, `09` 1,493,322, `03` 1,174,179, `02` 1,004,511, `08` 698,754,
+`07` 256,680 -- 16,740,903 in total. Bank `01` fell 779,448 this slice, the
+whole of the gain and nothing else. Bank `00` is still the largest, but roughly
+four million of it is the refused set above -- the driver's `SEI`, the
+whole-palette `TIA`, the `BBR0` at `00:F423`, the two interrupt acknowledges --
+which leaves bank `45` the largest recoverable pool and bank `09` the largest
+untouched one.
 
 **Then decide whether the music tick's guard can be widened**, because that is
 where the largest recoverable block now sits. 476,490 in call sites is only the

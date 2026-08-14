@@ -83,6 +83,7 @@ DC_ADMITTED_ROUTINE(0x00U, 0xFD76U, 2758, 2758, "verify_sound_timer_driver_seman
 DC_ADMITTED_ROUTINE(0x01U, 0xC024U, 1, 64, "verify_knight_terminal_release_helper_shared_jump_prefix")
 DC_ADMITTED_ROUTINE(0x01U, 0xC3CBU, 2649, 2649, "verify_nudge_input_gate_semantic")
 DC_ADMITTED_ROUTINE(0x01U, 0xC49EU, 2649, 2649, "verify_session_input_gate_semantic")
+DC_ADMITTED_ROUTINE(0x01U, 0xC4DEU, 3492, 3492, "verify_actor_scan_preamble_semantic")
 DC_ADMITTED_ROUTINE(0x01U, 0xC510U, 175226, 175226, "verify_actor_scan_semantic")
 DC_ADMITTED_ROUTINE(0x01U, 0xC51EU, 171734, 171734, "verify_actor_loop_linkage_semantic")
 DC_ADMITTED_ROUTINE(0x01U, 0xC520U, 171734, 171734, "verify_actor_loop_linkage_semantic")

@@ -1261,6 +1261,15 @@ replace_actor_slot_reset(
     const emulation::RoutineEntry& entry,
     std::span<const std::byte> work_ram);
 
+// 01:C4DE-01:C50E, the actor scan's preamble: settle the frame's actor enable
+// mask, reset the three list cursors, clear the scan index, and fall through
+// into the registered scan at 01:C510. One entry, no call of any kind, and no
+// ROM read; see native_replacements_actor_scan_preamble.cpp.
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_actor_scan_preamble(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram);
+
 [[nodiscard]] std::optional<emulation::RoutineReplacement>
 replace_actor_scan_run(
     const emulation::RoutineEntry& entry,

@@ -157,6 +157,7 @@ if(DC_BUILD_APP)
         src/app/main.cpp
         src/app/native_replacements.cpp
         src/app/native_replacements_absorb.cpp
+        src/app/native_replacements_actor_scan_preamble.cpp
         src/app/native_replacements_banking.cpp
         src/app/native_replacements_collision.cpp
         src/app/native_replacements_collision_interpreter.cpp

@@ -785,8 +785,43 @@ the frame under the stack pointer to tell the two apart.
 
 ## Main actor loop
 
-`01:C500` sets up the per-frame actor pass and `01:C510` is its head. The loop
-walks slots `$00-$7F` through the cursor at `$204D`:
+`01:C4DE` sets up the per-frame actor pass and `01:C510` is its head. The
+preamble decides the frame's actor enable mask, resets the three cursors the
+pass allocates its queue entries from, and clears the slot cursor:
+
+```
+C4DE  LDA $2D35     frozen: nothing is enabled
+C4E1  BNE $C4FC
+C4E3  LDX $2251     the current side
+C4E6  LDY <$13,X    its mask
+C4E8  LDA $2254     ... or the mask staged in <$B7 instead
+C4EB  BEQ $C4F1
+C4ED  LDY <$B7
+C4EF  BRA $C4FD
+C4F1  LDA $2CC7     ... and $2CC7 or bit 3 of <$53 clears it
+C4F4  BNE $C4FC
+C4F6  LDA <$53
+C4F8  AND #$08
+C4FA  BEQ $C4FD
+C4FC  CLY
+C4FD  STY $2CEE     the mask 01:D466 tests each slot against
+C500  STZ <$56
+C502  STZ $2CBA     $2BBA from the bottom
+C505  STZ $2CBC     $2C3A from the bottom
+C508  LDA #$7F
+C50A  STA $2CBB     $2BBA from the top
+C50D  CLX
+C50E  STX <$4D      the slot cursor
+```
+
+`$2CEE` is a mask rather than an index: `01:D466` loads it and ANDs it against
+each slot's `$3B80,X` attribute byte, so a zero there suppresses every slot for
+the frame. `$2CBA` and `$2CBB` walk the single 128-entry queue at `$2BBA` from
+its two ends, which is why one starts at zero and the other at `$7F`; `$2CBC`
+indexes the separate queue at `$2C3A`. `01:C539` is a shorter variant of the
+same preamble with only the `$2D35` gate.
+
+The loop walks slots `$00-$7F` through the cursor at `$204D`:
 
 ```
 C510  LDA $3000,X   slot state; positive means idle
@@ -809,9 +844,12 @@ table into `$2F`/`$30` and jumps through it; the handler returns to `01:C520`.
 `01:C606` is the queue filer described under the SAT presentation below, and
 its `RTS` at `01:C654` returns to the tail at `01:C523`.
 
-Every instruction listed here runs natively. The walk at `01:C510` absorbs the
-tail for each slot it skips, so `01:C523` exists as a separate replacement only
-for the arrivals a dispatch hands back.
+Every instruction listed here runs natively, the preamble included. Its walk
+ends by falling through into `01:C510` rather than by calling it, so the machine
+steps from one transcript into the next with nothing pushed; only `01:C4ED` and
+`01:C4EF` are left to the core, and they have not executed in 3,600 frames. The
+walk at `01:C510` absorbs the tail for each slot it skips, so `01:C523` exists
+as a separate replacement only for the arrivals a dispatch hands back.
 
 The collision sweep at `01:CB48` has the same shape: a walk that rejects most
 slots inline, the vertical scan at `01:CC1A` for the rest, the `BCC` at

@@ -170,6 +170,13 @@ replace_native_gameplay_routine_impl(
     if (entry.routine
         == RoutineKey{
             .physical_bank = 0x01U,
+            .logical_pc = 0xC4DEU,
+        }) {
+        return detail::replace_actor_scan_preamble(entry, work_ram);
+    }
+    if (entry.routine
+        == RoutineKey{
+            .physical_bank = 0x01U,
             .logical_pc = 0xC510U,
         }) {
         return detail::replace_actor_scan_run(entry, work_ram);
