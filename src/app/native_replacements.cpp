@@ -43,6 +43,69 @@ replace_native_gameplay_routine_impl(
         }) {
         return detail::replace_motion_substep_split(entry, work_ram);
     }
+    // The loop that spends what the split above hands it. Eleven entry points:
+    // the head the coroutine scheduler resumes at, and the ten addresses this
+    // family's eight crossed calls and one handed-back `BBR` arrive at. They
+    // are written out one key at a time rather than folded into a predicate
+    // because the admitted-registry generator reads this chain to check that
+    // every routine it admits can actually be reached.
+    if (entry.routine
+            == RoutineKey{
+                .physical_bank = 0x01U,
+                .logical_pc = 0xC721U,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x01U,
+                .logical_pc = 0xC72EU,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x01U,
+                .logical_pc = 0xC742U,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x01U,
+                .logical_pc = 0xC74CU,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x01U,
+                .logical_pc = 0xC759U,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x01U,
+                .logical_pc = 0xC75CU,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x01U,
+                .logical_pc = 0xC75EU,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x01U,
+                .logical_pc = 0xC761U,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x01U,
+                .logical_pc = 0xC768U,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x01U,
+                .logical_pc = 0xC76BU,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x01U,
+                .logical_pc = 0xC76EU,
+            }) {
+        return detail::replace_ball_substep_loop(entry, work_ram);
+    }
     if (entry.routine
         == RoutineKey{
             .physical_bank = 0x01U,

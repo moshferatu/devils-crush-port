@@ -1249,6 +1249,33 @@ than an assumption, because a tail call leaves the stack looking ordinary and
 reading it wrong returns to a live address instead of faulting. It is the ninth
 shape in `verify_absorbed_return_trace`.
 
+**The static instruction model prices a candidate exactly, and it is cheap
+enough to do before writing anything.** Multiply each address's opcode cost by
+its execution count from the profile and add them up. For `01:C721`-`01:C770`
+that came to 1,122,531 master cycles, and the registry gained 1,122,531 — to the
+cycle, where the profile's own total for the same range was 10,752 higher for
+the reason above. Doing this first also tells you what the arms cost
+individually, which is how you decide whether an arm the format cannot express
+is worth handing back.
+
+**The admitted-registry generator reads the dispatch chain, so write the keys
+out literally.** `Generate-NativeRegistry.ps1` matches
+`entry.routine == RoutineKey{ .physical_bank = 0xNN, .logical_pc = 0xNNNN }` in
+`native_replacements.cpp`, or a `constexpr RoutineKey kRoutine{…}` guard in a
+family source, and nothing else. A `switch` or a helper predicate registers the
+routine correctly at runtime and is then rejected as unreachable by `-Check`.
+Match the pattern rather than teaching the tool a second one: that check is what
+stops a routine being admitted to the registry that the dispatcher would never
+hand a replacement for.
+
+**A crossing is not a technique that gets exhausted.** The sweep for walks
+ending in front of a call returned nothing for several slices, and that was
+recorded as the technique being finished. It was finished only for the code that
+had been ported. The substep loop added eight crossings the day it was written,
+because a crossing is simply what a walk does when it meets a call — so the
+supply of them is the supply of unported code, and a `JSR` row in the profile is
+a port waiting to happen rather than an edit waiting to be made.
+
 Two things about `0020` are worth carrying. The half-fix tried first — withdrawing
 when the core executes the `RTS` itself — did not partly work, it made the trace
 *worse* (129,236 wrong `Y` against 82,201), because a cut-short scan usually

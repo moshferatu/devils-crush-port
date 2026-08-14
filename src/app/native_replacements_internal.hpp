@@ -1118,6 +1118,14 @@ replace_motion_substep_split(
     const emulation::RoutineEntry& entry,
     std::span<const std::byte> work_ram);
 
+// 01:C721-01:C770, the loop that spends the substeps 01:DC95 splits out.
+// Eleven entry points, eight crossed calls and no return of its own; see
+// native_replacements_substep_loop.cpp.
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_ball_substep_loop(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram);
+
 [[nodiscard]] std::optional<emulation::RoutineReplacement>
 replace_unsigned_byte_multiply(
     const emulation::RoutineEntry& entry,

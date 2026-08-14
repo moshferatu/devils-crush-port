@@ -169,6 +169,7 @@ if(DC_BUILD_APP)
         src/app/native_replacements_rules.cpp
         src/app/native_replacements_sorcerer_tick.cpp
         src/app/native_replacements_sound.cpp
+        src/app/native_replacements_substep_loop.cpp
         src/app/native_replacements_tilemap.cpp
         src/app/native_replacements_vblank.cpp
         src/app/native_replacements_video.cpp
