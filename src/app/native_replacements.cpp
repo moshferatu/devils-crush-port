@@ -106,6 +106,67 @@ replace_native_gameplay_routine_impl(
             }) {
         return detail::replace_ball_substep_loop(entry, work_ram);
     }
+    // The shared motion step. Eleven entry points: the head, the four leaves
+    // its own calls cross into, the four addresses those calls come back to,
+    // and the two the comparison helper at 00:E93C returns to. Written out one
+    // key at a time for the same reason as the block above.
+    if (entry.routine
+            == RoutineKey{
+                .physical_bank = 0x00U,
+                .logical_pc = 0xF08EU,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x00U,
+                .logical_pc = 0xF09AU,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x00U,
+                .logical_pc = 0xF0A4U,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x00U,
+                .logical_pc = 0xF0AEU,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x00U,
+                .logical_pc = 0xF0B8U,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x00U,
+                .logical_pc = 0xF0C0U,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x00U,
+                .logical_pc = 0xF0FEU,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x00U,
+                .logical_pc = 0xF104U,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x00U,
+                .logical_pc = 0xF142U,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x00U,
+                .logical_pc = 0xF148U,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x00U,
+                .logical_pc = 0xF17EU,
+            }) {
+        return detail::replace_actor_motion_step(entry, work_ram);
+    }
     if (entry.routine
         == RoutineKey{
             .physical_bank = 0x01U,

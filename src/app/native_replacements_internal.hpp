@@ -1126,6 +1126,15 @@ replace_ball_substep_loop(
     const emulation::RoutineEntry& entry,
     std::span<const std::byte> work_ram);
 
+// 00:F08E-00:F1B3, the shared motion step: a four-way dispatcher on the bottom
+// bits of $3800,X over two position integrators and two velocity steps. Eleven
+// entry points, six crossed calls -- four of them into its own leaves -- and
+// five absorbed returns; see native_replacements_motion_step.cpp.
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_actor_motion_step(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram);
+
 [[nodiscard]] std::optional<emulation::RoutineReplacement>
 replace_unsigned_byte_multiply(
     const emulation::RoutineEntry& entry,

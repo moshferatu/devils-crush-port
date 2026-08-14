@@ -5916,12 +5916,131 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
     96.36% -> 96.52% outside the wait.** 387 routines, 320 entered, every call
     admitted, none declined. The gain, 1,122,531, is exactly what the static
     instruction model predicted. 417/417 Release, 3/3 ROM-free Debug.
+- [x] Port `00:F08E`-`00:F1B3`, the shared motion step -- the largest coherent
+  family left in bank `00`, and the one the most callers reach.
+  - [x] `replace_actor_motion_step`: eleven entry points, six crossed calls --
+    four of them into leaves this same family owns -- and five absorbed
+    returns, so nothing in the range is left interpreted.
+  - [x] Hand back only the three arms this route has never taken: `00:F0BC`,
+    `00:F100` and `00:F144`, the head and the two integrators reporting a
+    departure that has not happened once in 3,600 frames.
+  - [x] Prove it against assembly on the same route: byte-identical census and
+    a byte-identical 6,180,712-write trace over the scratch it stages, the
+    whole stack page, and the ten bytes of position and velocity it moves.
+  - [x] **685,745,193 -> 686,655,855, 53.06% -> 53.13% of the route and
+    96.52% -> 96.65% outside the wait.** 398 routines, 331 entered, all 7,018
+    arrivals admitted, none declined. The gain, 910,662, is again exactly what
+    the static instruction model predicted. 418/418 Release, 3/3 ROM-free
+    Debug.
 
 ## Active Work
 
-Current owner: Claude. Current slice: **the ball's substep loop**. Done. It is
-the consumer of the routine the last slice ported, and the first family in the
-port whose value is mostly in its calls rather than in its arithmetic.
+Current owner: Claude. Current slice: **the shared motion step**. Done. It is
+the most widely shared routine ported so far, and the first family whose calls
+go to leaves it owns itself.
+
+**`00:F08E`-`00:F1B3` moves one actor and reports whether it left the
+playfield.** `$3800,X` is the actor's motion-enable byte and the head is a
+four-way dispatcher on its bottom four bits: bit 0 integrates the vertical
+position at `00:F0C0`, bit 1 the horizontal at `00:F104`, bit 2 steps the
+vertical velocity toward its target at `00:F148`, bit 3 the horizontal at
+`00:F17E`. Position is a twenty-four-bit fixed-point triple and velocity a
+signed sixteen-bit pair; the integrators add one into the other with the sign
+extended through `$2B`, then stage the whole-pixel word and a bound into
+`$2D`-`$30` and call the registered comparison at `00:E93C` -- $0140 across,
+$02D0 down, the playfield's two dimensions. Out of bounds bumps `$26`, and the
+head turns `$26` into the carry it returns.
+
+| | Before | After |
+| --- | ---: | ---: |
+| Registry cycles | 685,745,193 | **686,655,855** |
+| Share of the route | 53.06% | **53.13%** |
+| Share outside the frame-sync wait | 96.52% | **96.65%** |
+| Native calls | 2,713,377 of 2,751,935 | 2,720,395 of 2,758,953 |
+| Admitted routines | 387 | 398 |
+| Routines entered | 320 | 331 |
+| Residue outside the wait | 18,435,309 | 17,520,351 |
+| Declined at a horizon | 0 | 0 |
+| Abandonments | 0 | 0 |
+
+**910,662 master cycles, and the static model predicted 910,662.** That is the
+second slice running where it did, against a profile that put the same range at
+914,958 -- 4,296 high, for the reason recorded two slices ago. Price with the
+model; rank with the profile.
+
+**Four of the eleven entry points are leaves this family owns, which is new.**
+Every crossing before this one handed the machine to somebody else's registered
+routine. Here `00:F097`, `00:F0A1`, `00:F0AB` and `00:F0B5` cross into
+`00:F0C0`, `00:F104`, `00:F148` and `00:F17E`, all four inside the slice, so the
+`JSR` and the body on the far side of it were converted together. The other two
+crossings, at `00:F0FB` and `00:F13F`, go to `00:E93C`. The remaining entries
+are the head, the four addresses the leaves return to, and the two `00:E93C`
+returns to.
+
+**Five returns are absorbed, and with them the range has no residue at all.**
+`00:F0BF`, `00:F103`, `00:F147`, `00:F17D` and `00:F1B3` are each the last
+instruction of a routine the walk entered at its first, reached with the stack
+exactly as it was found -- the only pushes here belong to a crossed `JSR`, and
+crossing ends the walk two instructions earlier. Absorbing them means a leaf
+hands the machine straight back to the dispatcher's next test, and with the
+crossings it means the range has no residue: every non-entry row between
+`00:F08E` and `00:F1B3` is gone from the deployed profile.
+
+**Three arms are handed back and none of them has ever run.** `00:F0BC` is the
+head reporting a departure; `00:F100` and `00:F144` are the two integrators
+declaring one. In 3,600 frames no actor left the playfield through this routine:
+`$26` was zero at `00:F0B8` on all 1,226 calls, neither integrator found a
+negative position, and both comparisons took the in-bounds arm every time.
+Handing them back costs nothing measurable and keeps the walk off a path it has
+never seen -- and it puts `00:F0BD`, `00:F102` and `00:F146` out of reach, which
+is why those three returns are not in the absorbable set.
+
+**It is the most widely shared routine in the registry.** 924 of its 1,226 calls
+arrive through the bank-01 trampoline at `01:C012`, which sixteen sites across
+banks `02` to `07` reach it by, and the other 302 from eight `JSR`s in bank
+`09`. The ball does not use it at all, having its own integrator at `00:F1B4`.
+The trampoline itself is still emulated: one `JMP` at `01:C012`, 924 executions,
+11,160 cycles, and it hands straight to this family's head.
+
+**The proof is a two-run diff over the routine's own output.** The same route
+recorded with the eleven entries emulated and with them replaced gives a
+byte-identical census (`9036a9de...`) and a byte-identical 6,180,712-write trace
+over `$26`, `$2B`, `$2D`-`$30`, the whole stack page, `$3100-$33FF` (the two
+positions, sub-pixel byte first) and `$3400-$35FF` (the two velocities). The
+stack page carries the crossings, at the instruction's start offset, and it
+carries the absorbed returns too: an absorbed `RTS` deletes a pop that the next
+push would otherwise land differently, so a stack pointer or a cycle wrong by
+one moves rows in that range.
+
+**`entries: N of N` is the shared-state argument, not a separate one.** The
+constraint that would bite a family this small and this shared is the interrupt
+deadline: a transcript is computed from a snapshot, so its reads all have to
+happen before the next serviceable interrupt, and the adapter declines a body
+that reaches the horizon. All 7,018 arrivals were admitted and none declined, so
+no walk here ever spanned an interrupt, and every read of `$3800,X`, `$26` and
+`$2B` happened inside one horizon. The longest walk is the vertical integrator
+at twenty-five instructions, about 330 master cycles against an interrupt period
+near 5,068 on this route. That measurement is worth more than enumerating what
+the handlers write, and it is far cheaper to obtain -- the previous slice spent
+real time on the enumeration.
+
+**`Instructions interpreted` did not move again, at 66,291,003**, for the third
+slice running. It counts interrupt-decision points rather than interpreted work,
+and one checkpoint per instruction preserves every one of them.
+
+**`docs/NATIVE_REGISTRY.md` says it is generated and it is not.** Running
+`Generate-NativeRegistry.ps1 -ReportPath docs/NATIVE_REGISTRY.md` rewrote the
+whole report from prose stored in the script and deleted about 340 net lines of
+slice history that exists only in the document. The document is hand-maintained
+with the script kept as a mirror; the per-routine rows are the only part
+genuinely derived, so those were taken from a report generated to a scratch path
+and pasted in. Only `-Check` and the default table write are safe to run at the
+repository. This is now the first caution in `docs/NATIVE_PORT_WORKFLOW.md`.
+
+### Previous: the ball's substep loop
+Done. It was the consumer of the routine the slice before it ported, and the
+first family in the port whose value is mostly in its calls rather than in its
+arithmetic.
 
 **`01:C721`-`01:C770` spends the substeps `01:DC95` splits out.** `$57` is the
 count the split wrote for this frame, `$56` counts them off, `$59` caps the loop
@@ -8116,13 +8235,13 @@ of them is a crossing:
   under the `$F5`/`$F7`/`$F9` guard against the timer driver's writes. The way
   to recover them is to widen admission, not to edit a call that is already an
   edit.
-- **The code was never ported.** Bank `01`'s call bucket was 1,102,689 and is
-  711,918 now, because this was the whole of it: `01:C73F`, `01:C749` and
-  `01:C75E` appeared in no family source at all, and porting the loop around
-  them collected all three. What is left of it is `01:C154` and the
-  `01:C16C`-`C18D` run. Crossing one on its own recovers 21 cycles and leaves
-  the body interpreted, which means porting the routine is the slice and the
-  call comes free with it.
+- **The code was never ported.** Bank `00`'s call bucket was 97,842 and is
+  20,622 now, and the whole of the difference is the six `JSR`s the motion step
+  crossed -- none of which appeared in any family source before it was written.
+  Bank `01`'s 711,918 is unchanged and is the same story waiting to happen:
+  `01:C154` and the `01:C16C`-`C18D` run. Crossing one on its own recovers 21
+  cycles and leaves the body interpreted, which means porting the routine is
+  the slice and the call comes free with it.
 
 One grep per candidate settles which it is. That is now the third caution in
 `docs/NATIVE_PORT_WORKFLOW.md`.
@@ -8131,10 +8250,13 @@ One grep per candidate settles which it is. That is now the third caution in
 keeping.** It was recorded here as finished because the sweep it was built on --
 every family's `is_stop_instruction`, filtered to ROM opcodes `$20` and `$44` --
 returned nothing: no walk in the port ended in front of a call. That was true,
-and it stayed true for exactly as long as no new walk was written. This slice
-crossed eight calls, all of them in code that had no walk at all until it was
-ported. **A crossing is not a technique you exhaust; it is what a walk does when
-it meets a call, so the supply of them is the supply of unported code.**
+and it stayed true for exactly as long as no new walk was written. The substep loop
+crossed eight calls and the motion step six more, all fourteen in code that had
+no walk at all until it was ported. **A crossing is not a technique you exhaust;
+it is what a walk does when it meets a call, so the supply of them is the supply
+of unported code.** The motion step added a second case to it: four of its six
+crossings went to leaves the same slice owns, so the call and the body on the
+far side of it were converted together.
 
 **The `JSR` bucket is still not crossable as it stands, and for the same two
 reasons.** A row is in it because the routine around it declines and runs
@@ -8142,31 +8264,33 @@ interpreted, or because nobody has ported it. Neither is fixed by editing the
 call. `03:7F5D` (63,987) is *composed* inline by the collision module and its
 row is the declined path; `03:652B`, `03:6528`, `03:649C`, `03:6499` (55-59k
 each) and `02:5EEC` (44,919) appear in no family source at all. Those are ports,
-and the calls come free with them -- which is exactly what happened to
-`01:C73F`, `01:C749` and `01:C75E`, three rows this file listed under "the code
-was never ported" and which this slice collected by porting the code.
+and the calls come free with them -- which is exactly what happened to bank
+`00`'s six rows, and to `01:C73F`, `01:C749` and `01:C75E` the slice before,
+every one of them listed here under "the code was never ported" and collected
+by porting the code around it.
 
 The bucket, re-priced over non-entry rows with the frame-sync spin excluded:
 
 | Opcode at the emulated address | Sites | Master cycles |
 | --- | ---: | ---: |
-| `JSR` | 419 | 1,888,086 |
-| `RTS` | 172 | 1,000,701 |
+| `JSR` | 413 | 1,810,866 |
+| `RTS` | 167 | 930,039 |
 | `JMP` | 111 | 488,496 |
 | `BSR` | 4 | 5,184 |
 | `JMP ($nn)` | 2 | 3,408 |
 
-Per bank the call bucket is `01` 711,918, `03` 467,937, `45` 466,974, `00`
-97,842, `02` 66,633, `08` 63,777, `09` 18,189.
+Per bank the `JSR` share is `01` 711,918, `45` 466,974, `03` 462,969, `02`
+66,513, `08` 63,777, `00` 20,622, `09` 18,093.
 
-**Read that table against the one recorded before this slice with care: it does
-not line up row for row, and the difference is mostly the rule and not the
-slice.** The older table counted rows this one excludes. Measured the same way
-both times, this slice moved `JSR` from 427 sites and 2,289,657 cycles to 419
-and 1,888,086, and `JMP` from 113 sites and 516,912 to 111 and 488,496 -- the
-eight calls it crossed and the two jumps it transcribed. Nothing else changed.
-**When a derived table disagrees with a stored one, re-derive the stored one
-before believing the delta.**
+**Both sides of this one were derived by the same script, so the delta is the
+slice.** `JSR` went from 419 sites and 1,888,086 cycles to 413 and 1,810,866 --
+the six calls the motion step crossed -- and `RTS` from 172 and 1,000,701 to 167
+and 930,039, the five returns it absorbed. `JMP` did not move. Two rows of the
+stored per-bank line did not reproduce exactly (`03` 467,937 against 462,969,
+`02` 66,633 against 66,513); the figures above are the re-derived ones on both
+sides. **When a derived table disagrees with a stored one, re-derive the stored
+one before believing the delta** -- that caution was written a slice ago and it
+is why this table can be read as a difference at all.
 
 **The residue category is closed.** It was recommended here as the largest
 recoverable block left, on the strength of `03:6900`-`03:6A80` carrying
@@ -8179,21 +8303,23 @@ is 84, `03:7F80` (94,878, filed as an untranscribed arm) is 63, and `02:58DA`
 priced by the profile and a walk cannot explain it, suspect the resume before
 inventing a parent for it.**
 
-**Take `00:F08E`-`00:F1B3` next, 914,958 cycles.** It is the same shape as the
-slice just finished and in the same subsystem, one page below the already
-registered `00:F1B4`. `00:F08E` is a four-way dispatcher: it reads bits 0 to 3
-of `$3800,X` and calls `$F0C0`, `$F104`, `$F148` and `$F17E` for each bit set,
-then returns the accumulated `$26` in the carry. The four bodies are
-straight-line signed sixteen-bit adds over the actor's position and motion
-words at `$3200`/`$3280`, `$3400`/`$3480`, `$3500`/`$3580` and `$3600`, with no
-call out of the bank and no device read. So it is a head with four crossed calls
-plus four leaves, and `00:F0A1` and `00:F13F` -- two of the `JSR` rows listed
-above as unported code -- come with it. Its head runs 1,226 times per route and
-each arm about 1,022.
+**Take `01:C4DE`-`01:C50E` next, 779,448 cycles.** It is the simplest block of
+its size left anywhere: twenty addresses, no call of any kind, no ROM read, and
+every operand in work RAM. It reads three flags (`$2D35`, `$2254`, `$2CC7` and
+bit 3 of `$53`) to decide whether an index survives, stores it to `$2CEE`, then
+clears `$56`, `$2CBA` and `$2CBC`, writes `$7F` to `$2CBB`, and falls through
+`CLX`/`STX <$4D` into the already registered `01:C510` -- so the walk ends by
+handing the machine an entry that is already ours, with no jump to transcribe.
+It runs 3,492 times per route and is the last obvious mechanical block in bank
+`01`.
 
-**Then `01:C4DE`-`01:C50E`, 779,448 cycles**, which runs 3,492 times directly in
-front of the registered `01:C510` and is the last obvious mechanical block left
-in bank `01`.
+**Then `01:C012`, 11,160 cycles for one instruction.** It is the trampoline the
+motion step's 924 principal callers come through, a bare `JMP $F08E` in bank
+`01`'s jump table at `01:C000`-`01:C020`, and it now hands straight to a
+registered entry. The table's other live row, `01:C018` (`JMP $C5C9`, 1,508
+executions, 18,168 cycles), is the same shape. Twenty-nine thousand cycles for
+two transcribed jumps is a poor rate per line of code but an honest one, and
+both are trivially provable.
 
 **The ranking outside the spin loop, re-measured after this slice:**
 
@@ -8220,18 +8346,18 @@ names a slice:
 | `00:FC81`-`00:FC89` | 1,514,058 | The `SEI`. Refused |
 | `01:C0FE`-`01:C1B5` | 1,407,828 | The main game loop. Opens with `JSR $E321` and closes with `BEQ $C154`, so its boundary *is* the frame-sync wait -- not portable as a unit, and 147,489 of it is the one startup `TII` |
 | `45:4138`-`45:4210` | 1,398,669 | Music tick |
-| `00:F08E`-`00:F1B3` | 914,958 | **The motion dispatcher and its four leaves.** Recommended above |
-| `01:C4DE`-`01:C50E` | 779,448 | Unported, in front of the registered `01:C510` |
+| `01:C4DE`-`01:C50E` | 779,448 | **Unported, and falls through into the registered `01:C510`.** Recommended above |
 | `09:6FB1`-`09:737B` | 773,025 | Unported |
 | `09:60C7`-`09:612A` | 711,312 | Unported |
 | `00:EB46` | 625,095 | The whole-palette `TIA`. A capacity wall |
 
-Per bank the remainder outside the wait is `00` 6,287,130, `45` 4,430,103,
+Per bank the remainder outside the wait is `00` 5,372,172, `45` 4,430,103,
 `01` 3,090,630, `09` 1,493,322, `03` 1,174,179, `02` 1,004,511, `08` 698,754,
-`07` 256,680 -- 18,435,309 in total. Bank `00`'s is the largest and roughly
-four million of it is the refused set above, which makes bank `45` the largest
-recoverable pool. Bank `01` fell 1,133,283 this slice and is no longer the
-largest mechanical one.
+`07` 256,680 -- 17,520,351 in total. Bank `00` fell 914,958 this slice and is
+still the largest, but roughly four million of it is the refused set above --
+the driver's `SEI`, the whole-palette `TIA`, the `BBR0` at `00:F423`, the two
+interrupt acknowledges -- which leaves bank `45` the largest recoverable pool
+and bank `09` the largest untouched one.
 
 **Then decide whether the music tick's guard can be widened**, because that is
 where the largest recoverable block now sits. 476,490 in call sites is only the

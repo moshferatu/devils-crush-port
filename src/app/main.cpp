@@ -1290,6 +1290,20 @@ parse_logical_address_range(const std::string_view text)
                                || request.routine.logical_pc == 0xC76BU
                                || request.routine.logical_pc == 0xC76EU)
                            && request.all_calls;
+                       const bool proven_actor_motion_step =
+                           request.routine.physical_bank == 0x00U
+                           && (request.routine.logical_pc == 0xF08EU
+                               || request.routine.logical_pc == 0xF09AU
+                               || request.routine.logical_pc == 0xF0A4U
+                               || request.routine.logical_pc == 0xF0AEU
+                               || request.routine.logical_pc == 0xF0B8U
+                               || request.routine.logical_pc == 0xF0C0U
+                               || request.routine.logical_pc == 0xF0FEU
+                               || request.routine.logical_pc == 0xF104U
+                               || request.routine.logical_pc == 0xF142U
+                               || request.routine.logical_pc == 0xF148U
+                               || request.routine.logical_pc == 0xF17EU)
+                           && request.all_calls;
                        const bool proven_remaining_ball_presentation =
                            request.routine
                                    == RoutineKey{
@@ -3130,6 +3144,7 @@ parse_logical_address_range(const std::string_view text)
                            && !proven_ball_drain_threshold
                            && !proven_motion_substep_split
                            && !proven_ball_substep_loop
+                           && !proven_actor_motion_step
                            && !proven_remaining_ball_presentation
                            && !proven_zero_ball_scheduler
                            && !proven_alternate_ball_scheduler
@@ -3382,6 +3397,10 @@ parse_logical_address_range(const std::string_view text)
             "semantic 01:C74C@all, semantic 01:C759@all, semantic 01:C75C@all, "
             "semantic 01:C75E@all, semantic 01:C761@all, semantic 01:C768@all, "
             "semantic 01:C76B@all, semantic 01:C76E@all, "
+            "semantic 00:F08E@all, semantic 00:F09A@all, semantic 00:F0A4@all, "
+            "semantic 00:F0AE@all, semantic 00:F0B8@all, semantic 00:F0C0@all, "
+            "semantic 00:F0FE@all, semantic 00:F104@all, semantic 00:F142@all, "
+            "semantic 00:F148@all, semantic 00:F17E@all, "
             "semantic 01:C80A@all, semantic 01:C7F4@all, semantic 01:C7EF@all, semantic 01:C7F9@all, semantic 01:C7FC@all, semantic 01:C804@all, semantic 01:C812@all, semantic 01:C7EA@all, semantic 01:C7E5@all, "
             "semantic 02:42EB@all, "
             "semantic 02:42F6@all, semantic 02:4345@all, "

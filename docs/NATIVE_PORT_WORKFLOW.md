@@ -1276,6 +1276,34 @@ because a crossing is simply what a walk does when it meets a call — so the
 supply of them is the supply of unported code, and a `JSR` row in the profile is
 a port waiting to happen rather than an edit waiting to be made.
 
+**`docs/NATIVE_REGISTRY.md` says it is generated and it is not, any more.**
+Running `Generate-NativeRegistry.ps1 -ReportPath docs/NATIVE_REGISTRY.md`
+rewrites the whole report from the prose stored in the script, and that prose
+has fallen behind the checked-in file — on this slice the regeneration was a net
+loss of about 340 lines, including several paragraphs of slice history that
+exist only in the document. Edit the document by hand and mirror the same change
+into the script's `$lines.Add(...)` block, which is what keeps the two from
+drifting further. The per-routine table rows *are* derived, so take those from a
+report generated to a scratch path and paste them in. Only `-Check` and the
+default table write are safe to run at the repository.
+
+**A call into a routine the same family owns is still a crossing, and it is
+worth more than one into somebody else's.** `00:F08E`'s four `JSR`s go to
+`00:F0C0`, `00:F104`, `00:F148` and `00:F17E`, all inside the same slice. Making
+the call rather than stopping in front of it converts the `JSR` itself, and
+because the target is an entry the same walk declares, the body on the far side
+is converted in the same slice. Crossing plus absorbing the returns is what
+lets a family of five routines leave nothing in its range interpreted.
+
+**When every arrival is admitted, that is the shared-state argument, not a
+separate one.** The deadline this port has to meet is that a transcript's reads
+all happen before the next serviceable interrupt, and the adapter enforces it by
+declining a body that reaches the horizon. So `entries: N of N` with zero
+declined is a measurement that no walk in the family ever spanned an interrupt —
+which is a stronger statement than an enumeration of what the handlers write,
+and much cheaper to obtain. Enumerate handler writes when the count is short of
+N; when it is N of N, say so and move on.
+
 Two things about `0020` are worth carrying. The half-fix tried first — withdrawing
 when the core executes the `RTS` itself — did not partly work, it made the trace
 *worse* (129,236 wrong `Y` against 82,201), because a cut-short scan usually
