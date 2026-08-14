@@ -26,7 +26,7 @@
 # drift into agreeing with a mistake -- the emulated run is the answer.
 #
 # The script takes the routine to prove, so that each one it is pointed at is a
-# test of its own rather than a longer one. Eight are registered.
+# test of its own rather than a longer one. Nine are registered.
 #
 # It also takes the routine to watch, which is usually the same one and for the
 # last is not. A routine entered by an `RTS` landing rather than by a `JSR`, and
@@ -109,6 +109,16 @@
 # MPRs before returning, so the transcript that absorbs the `RTS` is entered
 # from a routine in a different bank than the one that opened the call. It is
 # watched at 08:5977 for the same reason as the two above.
+#
+# 01:DC95 is the ball's substep split, and it is the ninth shape: a routine that
+# is mostly not called at all. One site reaches it with `JSR $DC95` and seven
+# with `JMP $DC95`, and 2,340 of its 2,895 arrivals come through the `JMP` at
+# 01:C770 -- so on most calls the frame its `RTS` reads was pushed by whoever
+# called *its caller*, and the return it absorbs skips a level of the stack that
+# no other absorption here does. The pointer arithmetic is the same $2100+S+1
+# and +2 as the usual case, which is exactly why this is worth a test: a tail
+# call leaves the stack looking ordinary, so getting it wrong would return to a
+# live address rather than fault.
 
 foreach(required_variable IN ITEMS APP CONFIG ROM OUTPUT ROUTINE)
     if(NOT DEFINED ${required_variable} OR "${${required_variable}}" STREQUAL "")
@@ -164,6 +174,11 @@ elseif(routine STREQUAL "08:5982")
         "Native replacement 08:5982@all entries: 177 of 177")
     set(expected_trace
         "Routine call trace complete: 177 calls, 9204 writes")
+elseif(routine STREQUAL "01:DC95")
+    set(expected_entries
+        "Native replacement 01:DC95@all entries: 2895 of 2895")
+    set(expected_trace
+        "Routine call trace complete: 2895 calls, 31737 writes")
 else()
     message(FATAL_ERROR "Unknown absorbed-return routine: ${routine}")
 endif()

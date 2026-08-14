@@ -34,6 +34,15 @@ replace_native_gameplay_routine_impl(
         }) {
         return detail::replace_ball_drain_threshold(entry, work_ram);
     }
+    // The `else if` chain below is at the compiler's nesting limit, so new
+    // routines are matched here, where each arm returns instead of nesting.
+    if (entry.routine
+        == RoutineKey{
+            .physical_bank = 0x01U,
+            .logical_pc = 0xDC95U,
+        }) {
+        return detail::replace_motion_substep_split(entry, work_ram);
+    }
     if (entry.routine
         == RoutineKey{
             .physical_bank = 0x01U,

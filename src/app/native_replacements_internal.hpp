@@ -1114,6 +1114,11 @@ replace_motion_damping(
     std::span<const std::byte> work_ram);
 
 [[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_motion_substep_split(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram);
+
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
 replace_unsigned_byte_multiply(
     const emulation::RoutineEntry& entry,
     std::span<const std::byte> work_ram);

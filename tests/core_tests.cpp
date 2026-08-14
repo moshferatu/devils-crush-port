@@ -382,6 +382,118 @@ void test_native_motion_damping()
         "native DD09 rejects a truncated work-RAM snapshot");
 }
 
+void test_native_motion_substep_split()
+{
+    std::array<std::uint8_t, 0x2000> work_ram{};
+    constexpr std::uint8_t slot = 5U;
+
+    const auto load = [&work_ram](
+                          const std::uint16_t first,
+                          const std::uint16_t second) {
+        work_ram[0x1400U + slot] = static_cast<std::uint8_t>(first);
+        work_ram[0x1480U + slot] = static_cast<std::uint8_t>(first >> 8U);
+        work_ram[0x1500U + slot] = static_cast<std::uint8_t>(second);
+        work_ram[0x1580U + slot] = static_cast<std::uint8_t>(second >> 8U);
+    };
+
+    dc_motion_substep_split split{};
+    load(0x0340U, 0x0180U);
+    check(
+        dc_split_motion_substeps(
+            work_ram.data(),
+            work_ram.size(),
+            slot,
+            &split)
+                != 0
+            && split.magnitude == 0x03U
+            && split.substeps == 1U
+            && split.shifts == 0U
+            && split.first_step == 0x0340U
+            && split.second_step == 0x0180U,
+        "native DC95 leaves motion below four whole units in one substep");
+
+    load(0x0180U, 0x0480U);
+    check(
+        dc_split_motion_substeps(
+            work_ram.data(),
+            work_ram.size(),
+            slot,
+            &split)
+                != 0
+            && split.first_magnitude == 0x01U
+            && split.second_magnitude == 0x04U
+            && split.magnitude == 0x04U
+            && split.substeps == 2U
+            && split.shifts == 1U
+            && split.first_step == 0x00C0U
+            && split.second_step == 0x0240U,
+        "native DC95 halves both components when either reaches four");
+
+    load(0xF800U, 0x0100U);
+    check(
+        dc_split_motion_substeps(
+            work_ram.data(),
+            work_ram.size(),
+            slot,
+            &split)
+                != 0
+            && split.first_magnitude == 0x08U
+            && split.magnitude == 0x08U
+            && split.substeps == 4U
+            && split.shifts == 2U
+            && split.first_step == 0xFE00U
+            && split.second_step == 0x0040U,
+        "native DC95 quarters a negative component arithmetically");
+
+    // The odd low bit is shifted out rather than rounded, so four substeps of
+    // the quotient fall short of the original motion. The ROM does that, and
+    // 01:C721 relies on it: the residue is what the damping pass reads back.
+    load(0x0803U, 0x0000U);
+    check(
+        dc_split_motion_substeps(
+            work_ram.data(),
+            work_ram.size(),
+            slot,
+            &split)
+                != 0
+            && split.substeps == 4U
+            && split.first_step == 0x0200U
+            && split.second_magnitude == 0U,
+        "native DC95 truncates rather than rounds the per-substep motion");
+
+    // EOR #$FF / INC A maps $80 to itself, which is still far above the eight
+    // that selects four substeps, so the fixed point costs nothing.
+    load(0x8000U, 0x0000U);
+    check(
+        dc_split_motion_substeps(
+            work_ram.data(),
+            work_ram.size(),
+            slot,
+            &split)
+                != 0
+            && split.first_magnitude == 0x80U
+            && split.substeps == 4U
+            && split.first_step == 0xE000U,
+        "native DC95 keeps the negation fixed point at four substeps");
+
+    check(
+        dc_split_motion_substeps(
+            work_ram.data(),
+            work_ram.size() - 1U,
+            slot,
+            &split)
+            == 0,
+        "native DC95 rejects a truncated work-RAM snapshot");
+    check(
+        dc_split_motion_substeps(
+            work_ram.data(),
+            work_ram.size(),
+            0x80U,
+            &split)
+            == 0,
+        "native DC95 rejects a slot outside the indexed tables");
+}
+
 void test_native_motion_rotation()
 {
     std::array<std::uint8_t, 0x2000> work_ram{};
@@ -9777,6 +9889,7 @@ int main()
     test_hash_vectors();
     test_native_position_integrator();
     test_native_motion_damping();
+    test_native_motion_substep_split();
     test_native_signed_division();
     test_native_motion_rotation();
     test_native_collision_table_pass();

@@ -46,6 +46,18 @@ typedef struct dc_motion_damping {
     uint8_t second_component_nonzero;
 } dc_motion_damping;
 
+typedef struct dc_motion_substep_split {
+    uint16_t first_motion;
+    uint16_t second_motion;
+    uint16_t first_step;
+    uint16_t second_step;
+    uint8_t first_magnitude;
+    uint8_t second_magnitude;
+    uint8_t magnitude;
+    uint8_t substeps;
+    uint8_t shifts;
+} dc_motion_substep_split;
+
 typedef struct dc_motion_rotation {
     uint16_t first_input;
     uint16_t second_input;
@@ -203,6 +215,19 @@ int dc_damp_and_accelerate_motion(
     size_t work_ram_size,
     uint8_t slot,
     dc_motion_damping* damping);
+
+// Native equivalent of ROM routine 01:DC95. It splits one frame of motion
+// into the substeps the integrator will take, so that a fast ball is stepped
+// through the playfield rather than across it. The larger of the two integer
+// magnitudes selects 1, 2 or 4 substeps, and each signed 8.8 component is
+// arithmetic-shifted right once per doubling to give the per-substep motion
+// staged at B9:BA and BB:BC. The function is pure: callers commit the
+// returned writes.
+int dc_split_motion_substeps(
+    const uint8_t* work_ram,
+    size_t work_ram_size,
+    uint8_t slot,
+    dc_motion_substep_split* split);
 
 // Native equivalent of ROM routine 01:D1A2. It rotates two signed 8.8
 // motion components by signed 8.8 cosine/sine coefficients using the

@@ -137,6 +137,7 @@ DC_ADMITTED_ROUTINE(0x01U, 0xD500U, 980, 980, "verify_flipper_phase_step_semanti
 DC_ADMITTED_ROUTINE(0x01U, 0xD612U, 62, 62, "verify_flipper_radius_projection_semantic")
 DC_ADMITTED_ROUTINE(0x01U, 0xD62EU, 62, 62, "verify_flipper_angle_projection_semantic")
 DC_ADMITTED_ROUTINE(0x01U, 0xDAF8U, 2139, 2139, "verify_actor_geometry_semantic")
+DC_ADMITTED_ROUTINE(0x01U, 0xDC95U, 2895, 2895, "verify_absorbed_return_trace")
 DC_ADMITTED_ROUTINE(0x01U, 0xDD09U, 753, 753, "verify_motion_damping_semantic")
 DC_ADMITTED_ROUTINE(0x01U, 0xDD6EU, 1744, 1744, "verify_ball_drain_threshold_semantic")
 DC_ADMITTED_ROUTINE(0x02U, 0x41A0U, 1, 1, "verify_knight_terminal_release_helper_prefix")

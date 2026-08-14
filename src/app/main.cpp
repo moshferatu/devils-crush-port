@@ -1269,6 +1269,13 @@ parse_logical_address_range(const std::string_view text)
                                        .logical_pc = 0xDD6EU,
                                    }
                            && request.all_calls;
+                       const bool proven_motion_substep_split =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x01U,
+                                       .logical_pc = 0xDC95U,
+                                   }
+                           && request.all_calls;
                        const bool proven_remaining_ball_presentation =
                            request.routine
                                    == RoutineKey{
@@ -3107,6 +3114,7 @@ parse_logical_address_range(const std::string_view text)
                            && !proven_nudge_input_gate
                            && !proven_session_input_gate
                            && !proven_ball_drain_threshold
+                           && !proven_motion_substep_split
                            && !proven_remaining_ball_presentation
                            && !proven_zero_ball_scheduler
                            && !proven_alternate_ball_scheduler
@@ -3354,6 +3362,7 @@ parse_logical_address_range(const std::string_view text)
             "semantic "
             "01:D500@all, semantic 01:D081@all, semantic 01:C5C9@all, "
             "semantic 01:C3CB@all, semantic 01:C49E@all, semantic 01:DD6E@all, "
+            "semantic 01:DC95@all, "
             "semantic 01:C80A@all, semantic 01:C7F4@all, semantic 01:C7EF@all, semantic 01:C7F9@all, semantic 01:C7FC@all, semantic 01:C804@all, semantic 01:C812@all, semantic 01:C7EA@all, semantic 01:C7E5@all, "
             "semantic 02:42EB@all, "
             "semantic 02:42F6@all, semantic 02:4345@all, "

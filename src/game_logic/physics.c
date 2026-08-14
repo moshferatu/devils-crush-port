@@ -221,6 +221,64 @@ int dc_damp_and_accelerate_motion(
     return 1;
 }
 
+// The ROM takes the magnitude with EOR #$FF / INC A, so $80 negates to itself
+// and stays $80. Nothing downstream distinguishes it from any other value at
+// or above the eight that selects four substeps.
+static uint8_t motion_magnitude(const uint8_t high)
+{
+    return (high & 0x80U) != 0U ? (uint8_t)(0U - (uint32_t)high) : high;
+}
+
+// CMP #$80 followed by ROR high / ROR low shifts the carry the comparison set
+// from the sign bit back into it, which makes the pair an arithmetic shift.
+static uint16_t shift_motion_right(const uint16_t motion, const uint8_t shifts)
+{
+    uint16_t value = motion;
+    for (uint8_t shift = 0U; shift < shifts; ++shift) {
+        value = (uint16_t)((value >> 1U) | (value & 0x8000U));
+    }
+    return value;
+}
+
+int dc_split_motion_substeps(
+    const uint8_t* const work_ram,
+    const size_t work_ram_size,
+    const uint8_t slot,
+    dc_motion_substep_split* const split)
+{
+    if (work_ram == NULL || split == NULL || work_ram_size < 0x2000U
+        || slot >= 0x80U) {
+        return 0;
+    }
+
+    split->first_motion = read_motion(work_ram, 0x1400U, slot);
+    split->second_motion = read_motion(work_ram, 0x1500U, slot);
+    split->first_magnitude =
+        motion_magnitude((uint8_t)(split->first_motion >> 8U));
+    split->second_magnitude =
+        motion_magnitude((uint8_t)(split->second_motion >> 8U));
+    split->magnitude = split->second_magnitude >= split->first_magnitude
+        ? split->second_magnitude
+        : split->first_magnitude;
+
+    if (split->magnitude >= 0x08U) {
+        split->substeps = 4U;
+        split->shifts = 2U;
+    } else if (split->magnitude >= 0x04U) {
+        split->substeps = 2U;
+        split->shifts = 1U;
+    } else {
+        split->substeps = 1U;
+        split->shifts = 0U;
+    }
+
+    split->first_step =
+        shift_motion_right(split->first_motion, split->shifts);
+    split->second_step =
+        shift_motion_right(split->second_motion, split->shifts);
+    return 1;
+}
+
 int dc_divide_signed_word(
     const uint8_t* const work_ram,
     const size_t work_ram_size,

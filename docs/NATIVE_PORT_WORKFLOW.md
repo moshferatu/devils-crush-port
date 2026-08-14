@@ -1217,6 +1217,38 @@ compose it. An interior address is reached by whoever was running when the
 transcript covering it was given up, and the census is the only thing that
 says who that was.
 
+**The correction to that last one is worth more than the caution was.** After
+the B flag stopped being compared, the same range fell from 2,433,327 emulated
+cycles to 21,180 — and nobody ported anything in that bank. Residue *was*
+abandonment. Three rows recorded elsewhere as ordinary unported code went with
+it: `03:603E` at 137,607 was filed as an unported parent and is 84; `03:7F80`
+at 94,878 was filed as an untranscribed arm and is 63; `02:58DA` at 12,558 had
+been crossed, returned nothing, and no longer executes at all. So when a
+profile row is expensive and no walk explains it, suspect where a transcript
+resumed before inventing a parent for it.
+
+**The instruction profile over-reports every row by about one per cent, and it
+is not noise.** `01:DC95`'s residue profiled at 1,002,069 and the registry
+gained 993,525 when it was ported. The gap appears on every row because the
+profile measures elapsed master cycles between instruction boundaries, so an
+interrupt taken at a boundary is charged to the instruction in front of it. At
+the extreme this is the whole row: `00:E321` is `LDA <$4B`, twelve master
+cycles, 3,568 executions — 42,816 cycles of instruction against a row of
+1,180,680, because it is the boundary the VBlank interrupt is taken on. **Rank
+with the profile; cost with the static instruction model.** A row that prices
+much higher than its opcodes can account for is telling you about a boundary,
+not about work to port.
+
+**A routine reached by `JMP` is still an entry, and its absorbed return is the
+interesting case.** `01:DC95` has one `JSR` site and seven `JMP` sites, and
+2,340 of its 2,895 arrivals come through the `JMP` at `01:C770`. On those the
+frame its `RTS` reads was pushed by whoever called its *caller*: the routine
+never had a frame of its own. The pointer arithmetic is unchanged — still
+$2100+S+1 and +2 — which is exactly what makes it worth a regression rather
+than an assumption, because a tail call leaves the stack looking ordinary and
+reading it wrong returns to a live address instead of faulting. It is the ninth
+shape in `verify_absorbed_return_trace`.
+
 Two things about `0020` are worth carrying. The half-fix tried first — withdrawing
 when the core executes the `RTS` itself — did not partly work, it made the trace
 *worse* (129,236 wrong `Y` against 82,201), because a cut-short scan usually

@@ -5876,10 +5876,89 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
     only post-abandonment arrivals ever reached, and correct every figure in
     `docs/` that the double count had inflated. 415/415 Release, 3/3 ROM-free
     Debug.
+- [x] Re-rank the remainder once the abandonments were gone, and find the
+  residue category had closed itself: `03:6900`-`03:6A80` went from 2,433,327
+  emulated cycles to 21,180 without anyone porting anything in that bank.
+- [x] Port `01:DC95`, the ball's substep split -- the largest self-contained
+  routine left in bank `01` and the only member of its neighbourhood nobody had
+  ported.
+  - [x] `dc_split_motion_substeps` in the physics core, with the two fixed
+    points the ROM has: `EOR #$FF`/`INC A` maps `$80` to itself, and the
+    per-substep motion is truncated rather than rounded.
+  - [x] `replace_motion_substep_split`: one checkpoint per instruction, a
+    per-path return instruction (`DCD7` for the one-substep exit, `DD08` for
+    the shifted ones), and the return absorbed.
+  - [x] Prove it by in-run comparison rather than by stored hash: census, call
+    trace and write trace byte-identical emulated against replaced, 2,895 calls
+    and 31,737 writes either way. The call trace carries each call's body cycle
+    count, so the cycle model is checked exactly.
+  - [x] Register it as a ninth shape for `verify_absorbed_return_trace` -- a
+    routine reached by `JMP` on 2,340 of its 2,895 arrivals, whose absorbed
+    return therefore reads a frame its caller never pushed.
+  - [x] **683,629,137 -> 684,622,662, 52.90% -> 52.97% of the route and
+    96.22% -> 96.36% outside the wait.** 376 routines, 309 entered, every call
+    admitted, none declined. 416/416 Release, 3/3 ROM-free Debug.
 
 ## Active Work
 
-Current owner: Claude. Current slice: **where the abandoned transcripts go**.
+Current owner: Claude. Current slice: **the ball's substep split**. Done, and
+the residue it removes is the whole routine rather than a return.
+
+**`01:DC95` decides how finely one frame of motion is integrated.** It takes
+the larger of the two integer motion magnitudes, selects one, two or four
+substeps from it, and arithmetic-shifts both signed 8.8 components down to
+match, so a fast ball is stepped through the playfield rather than across it.
+`01:C721` is the loop that consumes it: `$56` counts substeps, `$57` is the
+count this routine wrote, `$59` caps the loop at sixteen, and `01:C770` tail-
+jumps back into `01:DC95` to arm the next frame.
+
+**It was the largest self-contained routine left in bank `01` and the only
+member of its own neighbourhood nobody had ported.** `01:DD09` sits directly
+after it with 4,313,058 native cycles and `01:DD6E` after that; `01:DC95` ran
+2,895 times per route with every instruction emulated, 1,002,069 master cycles
+across forty-eight addresses. Those forty-eight are now zero.
+
+| | Before | After |
+| --- | ---: | ---: |
+| Registry cycles | 683,629,137 | **684,622,662** |
+| Share of the route | 52.90% | **52.97%** |
+| Share outside the frame-sync wait | 96.22% | **96.36%** |
+| Native calls | 2,686,166 of 2,724,724 | 2,689,061 of 2,727,619 |
+| Admitted routines | 375 | 376 |
+| Residue outside the wait | 20,570,661 | 19,568,592 |
+| Declined at a horizon | 0 | 0 |
+| Abandonments | 0 | 0 |
+
+**Nothing about it is a stored expectation.** The proof is the in-run
+comparison: the same route traced with the routine emulated and with it
+replaced gives byte-identical census, call trace and write trace -- 2,895
+calls and 31,737 writes either way, with the call trace carrying each call's
+body cycle count, so the cycle model is checked exactly rather than plausibly.
+
+**It is a ninth shape for `verify_absorbed_return_trace`, and a new one: a
+routine that is mostly not called at all.** One site reaches it with
+`JSR $DC95` and seven with `JMP $DC95`, and 2,340 of its 2,895 arrivals come
+through the `JMP` at `01:C770`. On those the frame its `RTS` reads was pushed
+by whoever called its *caller*, so the absorbed return skips a level of the
+stack that no other absorption in the registry does. The pointer arithmetic is
+the ordinary $2100+S+1 and +2, which is exactly why it is worth a test: a tail
+call leaves the stack looking normal, so reading it wrong would return to a
+live address and keep running rather than fault.
+
+**`Instructions interpreted` did not move, and that is the correct result.**
+It counts the points at which the machine decided the next thing to happen was
+an instruction rather than an interrupt, not interpreted work. The transcript
+carries one checkpoint per instruction, so every one of those decision points
+survives the port -- the same reason absorbing the sound driver's `RTI` left
+the figure where it was.
+
+**One thing the profile will not tell you, recorded because it cost time.**
+The rows over-report slightly: `01:DC95`'s residue profiles at 1,002,069 but
+the registry gains 993,525, a 0.85% gap that appears on every row and is the
+cycles of interrupts landing inside the instruction being attributed to it.
+The static instruction model is the exact one; the profile is for ranking.
+
+### Previous: where the abandoned transcripts go
 Done, and it answered a question that was recorded here as the next slice's
 first step. It also found something bigger than the slice, which is parked
 below rather than landed.
@@ -7968,41 +8047,64 @@ bucket now reads:
 Per bank the call bucket is `01` 1,102,689, `03` 530,337, `45` 476,490, `00`
 99,813, `02` 78,954, `08` 64,218, `09` 17,895.
 
-**Take the interpreter's residue next — it is the largest recoverable block
-left, and this slice is what identified it as a category.** `02:58DA` was
-priced at 12,558 by the sweep and returned nothing when crossed, because its
-598 executions never reach the stop: they are the core running on through the
-routine after an interrupt abandoned a transcript upstream. Once that shape is
-recognised it is visible everywhere, and the biggest instance is the
-collision-table interpreter in bank `03`. `03:6900`-`03:6A80` carries
-**2,433,327** emulated cycles across addresses that are not entry points at
-all, four of them in the top ten of the whole remainder: `03:6A37` (154,521),
-`03:6A33` (147,021), `03:6A14` (125,013), `03:69C5` (102,858).
+**The residue category is closed.** It was recommended here as the largest
+recoverable block left, on the strength of `03:6900`-`03:6A80` carrying
+2,433,327 emulated cycles. It is 21,180 now and nobody ported anything in that
+bank: residue *was* abandonment, and correcting the B-flag comparison removed
+the category rather than the code. Three rows this file had classified as
+something else went with it -- `03:603E` (137,607, filed as an unported parent)
+is 84, `03:7F80` (94,878, filed as an untranscribed arm) is 63, and `02:58DA`
+(12,558, crossed and returned nothing) no longer executes. **When a row is
+priced by the profile and a walk cannot explain it, suspect the resume before
+inventing a parent for it.**
 
-Residue is not recovered by crossing or by composition. It is recovered by
-giving the core somewhere to land — an entry point at the address an abandoned
-walk resumes at — which is the same edit `01:CB76` was this slice, applied to
-a much bigger surface. The question to answer first is which addresses those
-resumes actually are: 21,657 abandonments across the route, and the profile
-says where they landed but not which transcript they came out of. That is one
-recorder flag away, not one slice away.
+**Take the substep loop next: `01:C721`-`01:C770`, 1,315,128 cycles.** It is
+the caller of the routine this slice ported and the last unported piece of the
+ball's physics driver, and reading it is most of the work already done: `$56`
+counts substeps against the `$57` that `01:DC95` writes, `$59` caps the loop at
+sixteen, and the far end runs `JSR $C8F3`, `JSR $DD09`, `JSR $DD6E` before tail-
+jumping back into `01:DC95`. Several of the bodies it calls are registered
+already. Two things to settle before starting: it leaves through `JMP $C8D7`
+and `JMP $C8C2` on two of its arms, so it is not a single-exit body, and
+`01:C732`'s 5,609 executions against the head's 2,342 are the loop going round,
+not two entry points.
 
 **The ranking outside the spin loop, re-measured after this slice:**
 
 | Address | Executions | Master cycles | What it is |
 | --- | ---: | ---: | --- |
 | `00:FC81` | 251,531 | 1,509,498 | The driver's `SEI`. A checkpoint cannot express it; the refusal that survives everything |
+| `00:E321` | 3,568 | 1,180,680 | `LDA <$4B` in front of the frame-sync spin. Twelve master cycles times 3,568 is 42,816, so 96% of this row is what happens at that boundary rather than the instruction. Not work |
 | `00:EB46` | 29 | 625,095 | The whole-palette `TIA`. A capacity wall: 1,024 writes against a 512-write channel |
 | `00:F423` | 17,248 | 365,664 | `BBR0`, the other instruction a checkpoint cannot express |
-| `03:6A37` | 7,357 | 154,521 | Interpreter residue |
 | `01:C100` | 1 | 147,489 | One `TII $2000,$2001,$1FFF` at startup |
-| `03:6A33` | 7,001 | 147,021 | Residue, same walk |
 | `00:E05C` | 7,198 | 129,564 | The `LDA $0000` interrupt acknowledge. A device read that changes the device; refused with reasons |
-| `03:6A14` | 5,953 | 125,013 | Residue, same walk |
-| `03:69C5` | 4,898 | 102,858 | Residue, same walk |
-| `45:4047` | 6,519 | 98,097 | A declined entry in the music tick |
-| `03:7F80` | 4,518 | 94,878 | An untranscribed arm |
-| `02:4CF1` | 4,389 | 92,865 | An untranscribed arm |
+| `45:4047` | 6,502 | 97,842 | A declined entry in the music tick |
+| `02:4CF1` | 4,377 | 92,613 | An untranscribed arm |
+| `45:408F` | 4,234 | 89,058 | The music tick again |
+| `00:E134` | 7,198 | 86,568 | Interrupt acknowledge, same handler |
+
+Ranked by contiguous run rather than by address, which is the reading that
+names a slice:
+
+| Run | Master cycles | What it is |
+| --- | ---: | --- |
+| `00:E2FB`-`00:E39C` | 1,646,025 | The frame-sync waiter and its neighbours. Mostly the row above; not work |
+| `00:FC81`-`00:FC89` | 1,514,058 | The `SEI`. Refused |
+| `45:4081`-`45:4109` | 1,472,049 | Music tick, declined entries |
+| `01:C0FE`-`01:C1B5` | 1,407,828 | The main game loop. Opens with `JSR $E321` and closes with `BEQ $C154`, so its boundary *is* the frame-sync wait -- not portable as a unit, and 147,489 of it is the one startup `TII` |
+| `45:4138`-`45:4210` | 1,398,669 | Music tick |
+| `01:C624`-`01:C770` | 1,315,128 | **The substep loop.** Recommended above |
+| `45:4000`-`45:4070` | 1,121,787 | Music tick head |
+| `00:F08E`-`00:F1B3` | 914,958 | Unported |
+| `01:C4DE`-`01:C50E` | 779,448 | Unported, in front of the registered `01:C510` |
+| `09:60C7`-`09:612A` | 711,312 | Unported |
+
+Per bank the remainder outside the wait is `00` 6,287,130, `45` 4,430,103,
+`01` 4,223,913, `09` 1,493,322, `03` 1,174,179, `02` 1,004,511, `08` 698,754,
+`07` 256,680 -- 19,568,592 in total. Bank `00`'s is the largest and roughly
+four million of it is the refused set above, which makes bank `45` the largest
+recoverable pool and bank `01` the largest *mechanical* one.
 
 **Then decide whether the music tick's guard can be widened**, because that is
 where the largest recoverable block now sits. 476,490 in call sites is only the
