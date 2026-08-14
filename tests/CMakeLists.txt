@@ -639,6 +639,23 @@ if(TARGET devils_crush)
         )
 
         add_test(
+            NAME dc_rom_registry_stack_page_writes
+            CONFIGURATIONS Release
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/registry-stack-page-v1"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_registry_stack_page_writes.cmake"
+        )
+        set_tests_properties(
+            dc_rom_registry_stack_page_writes
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
             NAME dc_rom_canonical
             COMMAND
                 "${CMAKE_COMMAND}"

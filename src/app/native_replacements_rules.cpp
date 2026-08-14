@@ -2276,12 +2276,18 @@ replace_devil_shooter_companion_active_controller(
         .output_registers = output,
         .body_master_cycles = body_cycles,
     };
+    // The entry instruction is the `JSR` to the timer, and a `JSR` on this core
+    // pushes both bytes before it charges a single cycle: the opcode body runs
+    // `PUSH(PC >> 8); PUSH(PC);` and only then `ADDCYC(6); LastCycle();`. Real
+    // hardware spends its third and fourth cycles on those pushes, but a
+    // transcript has to name the cycle the emulator would have stamped, not the
+    // one the silicon would have used, so both land on the entry cycle itself.
     replacement.work_ram_writes.push_back({
         .instruction = {0x02U, entry.routine.logical_pc},
         .logical_address = static_cast<std::uint16_t>(
             0x2100U + entry.registers.stack_pointer),
         .value = is_left ? 0x53U : 0x54U,
-        .master_cycle_offset = 6U,
+        .master_cycle_offset = 0U,
     });
     replacement.work_ram_writes.push_back({
         .instruction = {0x02U, entry.routine.logical_pc},
@@ -2289,7 +2295,7 @@ replace_devil_shooter_companion_active_controller(
             0x2100U + static_cast<std::uint8_t>(
                           entry.registers.stack_pointer - 1U)),
         .value = is_left ? 0xCAU : 0x43U,
-        .master_cycle_offset = 6U,
+        .master_cycle_offset = 0U,
     });
     for (auto write : child->work_ram_writes) {
         write.master_cycle_offset += 21U;

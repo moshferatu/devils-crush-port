@@ -6091,18 +6091,101 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
     at a horizon, 0 abandonments, boundary decisions unchanged at 66,291,003.
     420/420 Release, 3/3 ROM-free Debug.
 
-- [ ] **Six cycles under `01:C018`.** The stack trace differs from pure
-  assembly in 708 of 4,205,705 writes -- same address, same value, 6 master
+- [x] **Six cycles under `01:C018`.** The stack trace differed from pure
+  assembly in 708 of 4,205,699 writes -- same address, same value, 6 master
   cycles late, at `02:53C8` and `02:5441`, each immediately after a
-  `JSR $C018`. A build without the `SEI` slice reproduces the same 708
-  differences, so a deployed replacement beneath `01:C018` mis-declares six
-  cycles and has done for some time. The frame-sync wait absorbs it, which is
-  why no census caught it. Find which replacement and what it is charging.
+  `JSR $C018`. Not a `C018` fault at all: both addresses *are* the `JSR` that
+  follows it, and both are admitted routines whose own entry instruction was
+  the mis-declared write.
+  - [x] Name the instruction, not the neighbourhood.
+    `replace_devil_shooter_companion_active_controller` credited the two bytes
+    its entry `JSR` pushes at offset 6 -- cycles three and four, which is where
+    the silicon pushes them. This core pushes both before charging a cycle
+    (`PUSH(PC >> 8); PUSH(PC);` then `ADDCYC(6); LastCycle()`), so both land on
+    the instruction's first cycle. Declared 0.
+  - [x] **4,205,699 writes over `2100-21FF`, byte-identical to assembly**,
+    same SHA-256 on both runs. Census unchanged (`9036a9de...`), registry
+    cycles unchanged at 692,715,369 -- the defect was never worth a cycle,
+    only a wrong one.
+  - [x] Give the oracle a home. `dc_rom_registry_stack_page_writes` runs the
+    route twice, emulated and with all 404 routines deployed, and requires the
+    two stack-page traces to be identical. Not a pinned digest: a digest states
+    the registry still does what it did, and twice now a pinned digest has
+    agreed with a defect.
+  - [x] 421/421 Release, 3/3 ROM-free Debug.
 
 ## Active Work
 
-Current owner: Claude. Current slice: **the `SEI` stop, removed from the
-checkpoint format**. Done. The largest single instruction the deployed registry
+Current owner: Claude. Current slice: **the six cycles under `01:C018`**. Done,
+and the heading is wrong: nothing was under `01:C018`. The finding named the
+`JSR $C018` that preceded the two mis-declared writes because that is what a
+reader's eye lands on, and the actual fault was the instruction *after* it, in
+a transcript that had been deployed and passing for months.
+
+**Both addresses were the entry instruction of their own replacement.**
+`02:53C8` is `JSR $53E4` and `02:5441` is `JSR $545D` -- the heads of the
+Devil-Shooter companion controllers, admitted routines both.
+`replace_devil_shooter_companion_active_controller` declared the two bytes that
+`JSR` pushes at master-cycle offset 6, and the emulator writes them at offset 0.
+354 calls a route, two writes each, 708 lines.
+
+**Offset 6 is the right answer to the wrong question.** On the silicon a `JSR`
+spends its third and fourth cycles pushing, which is offsets 6 and 9. This core
+does not model it that way: the opcode body runs
+
+```
+PUSH(PC >> 8);
+PUSH(PC);
+PC = RdOp(PC) << 8;
+...
+ADDCYC(6);
+LastCycle();
+```
+
+so both bytes are stamped with the timestamp the instruction started at, and
+the seven cycles are charged afterwards in one go. A transcript is not a
+description of the processor; it is a description of what the emulator would
+have done, and where those two differ the emulator wins by definition.
+
+**A write is credited at one end of its instruction or the other, and which
+end depends on the opcode.** A store lands on its instruction's *final* cycle
+-- that was the 02:5408 finding three slices back, `STA $3E00,X` credited at 48
+when it belongs at 51. A push lands on its instruction's *first*. Both mistakes
+were three or six cycles, both were invisible to every census, and both were
+found the same way.
+
+| | Before | After |
+| --- | ---: | ---: |
+| Stack-page writes matching assembly | 4,204,991 of 4,205,699 | **4,205,699 of 4,205,699** |
+| Registry cycles | 692,715,369 | 692,715,369 |
+| Admitted routines | 404 | 404 |
+| Release tests | 420 | **421** |
+
+**The cycle count could not move and that is the point.** A transcript's
+`body_master_cycles` was right the whole time; only the attribution inside it
+was wrong. Nothing in the registry summary, the state census, or the routine
+replay could see it. `--routine-replay` in particular *verified* this exact
+routine at `02:53C8@3` and `02:5441@3` on every Release run: it restores a
+savestate and re-runs the frame with the same configuration, so both sides of
+its comparison were the same replacement agreeing with itself.
+
+**So the oracle is now a test rather than a habit.**
+`dc_rom_registry_stack_page_writes` records the whole 3,600-frame route twice
+-- once emulated, once with every admitted routine deployed -- and requires the
+two traces over `$2100-21FF` to be byte-identical. It is deliberately not a
+pinned hash. The two comments this defect class has already left in
+`verify_devil_shooter_companion_dormant_semantic.cmake` both say the same
+thing: *this hash agreed with the mistake*. A digest states that the registry
+still does what it did; the comparison states that the registry still does what
+the original does, which is the property the port claims. It costs 33 seconds
+and does not extend the suite's critical path (191.4s before, 191.7s after).
+
+The guard was checked for sensitivity by putting the defect back, rebuilding
+and re-running it: it fails, and reports the same two hashes the manual traces
+produced. 421/421 Release, 3/3 ROM-free Debug. `windows-debug` was not run.
+
+### Previous: the `SEI` stop, removed from the checkpoint format
+Done. The largest single instruction the deployed registry
 still emulated was one the format could not describe, and the format was wrong.
 
 **`00:FC81` is one `SEI`, and it was 1,509,498 emulated master cycles.** More

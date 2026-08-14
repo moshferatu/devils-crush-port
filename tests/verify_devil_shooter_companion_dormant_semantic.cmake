@@ -27,7 +27,18 @@ set(expected_call_sha256 "71a87a8e3d59e242da052cd7b7c4eacf413496c715c07fb150a615
 # mistake -- and it was found by tracing 02:5408 emulated and replaced and
 # requiring the two to match. They now do, byte for byte, on all three
 # artifacts, which is a stronger statement than the constant below.
-set(expected_write_sha256 "ea255ce89ade722d0f926d4f49ab076f6c7630802c3b57227f8a7a0b6a553d42")
+#
+# Refreshed a third time for the same reason at the other end of an
+# instruction. 02:53C8 and 02:5441 are each a `JSR`, and their transcripts
+# credited the two bytes it pushes at offset 6 -- the third and fourth cycle,
+# which is where the silicon puts them. The core does not: the opcode runs
+# `PUSH(PC >> 8); PUSH(PC);` and only afterwards `ADDCYC(6); LastCycle()`, so
+# both bytes land on the instruction's first cycle. A store is credited at the
+# end of its instruction and a push at the beginning, and a transcript has to
+# say whichever one the emulator would have said. This hash agreed with the
+# mistake too; what found it was requiring the whole route's writes to
+# $2100-21FF to match pure assembly, where all 4,205,699 now do.
+set(expected_write_sha256 "e500c93431055858526410570490516a6a9058f42928fa8e72643df30d8332e0")
 set(call_output "${OUTPUT}.calls.csv")
 set(write_output "${call_output}.writes.csv")
 

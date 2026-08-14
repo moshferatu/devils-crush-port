@@ -2284,6 +2284,13 @@ the `ST_*`/`RMW_*` macros rather than assuming. Getting it wrong is invisible
 to the state census and to a device-write trace; it shows up only as a
 constant cycle skew in a work-RAM trace that includes the stack.
 
+Two transcripts have now been written against the silicon's timing instead of
+the core's — the `JSR`s at `02:53C8` and `02:5441`, whose pushes were declared
+at offset 6, where the hardware puts them, rather than 0, where this core does.
+Both were caught by the whole-route stack comparison and neither by anything
+else, which is why that comparison is now `dc_rom_registry_stack_page_writes`
+rather than a step someone is expected to remember.
+
 There is a consequence worth stating separately, because it looks like a
 collision and is not. A `JSR`'s start offset is also the *end* offset of the
 instruction in front of it, so its two writes carry the same number as the
@@ -2334,6 +2341,32 @@ same range later caught the `PLP` status fault above, on the strength of two
 differing bytes in 5.5 million writes. Both faults are stack-only by
 construction: an interrupt frame and a return address are written nowhere
 else, so a trace that omits the stack cannot see either.
+
+**A check this good should not depend on remembering to run it.** Everything
+above was already written down when a third stack-attribution fault was found:
+`02:53C8` and `02:5441` credited their entry `JSR`'s two pushes at offset 6
+rather than 0, 708 wrong lines in 4,205,699, deployed and passing for months.
+The rule it violated has its own section two headings up. What was missing was
+not the knowledge or the technique but the standing invariant, so the whole-route
+comparison is now `dc_rom_registry_stack_page_writes`: record the route twice,
+emulated and with every admitted routine deployed, and require the two traces
+over `$2100-21FF` to be byte-identical. It runs in 33 seconds inside a suite
+that takes 191, because it shares the critical path with nothing.
+
+Keep it a comparison rather than a digest. Both times this defect class was
+caught, the pinned per-routine hash covering the same routine had quietly been
+refreshed to *agree* with the mistake — the two comments now stacked at the top
+of `verify_devil_shooter_companion_dormant_semantic.cmake` are the record of it.
+A digest says the registry still does what it did. A comparison against
+assembly says the registry still does what the original does, and only the
+second one is the claim the port is making.
+
+**A replay is not a comparison.** `--routine-replay` verified `02:53C8@3` on
+every Release run while the defect was live. It restores a savestate and re-runs
+the frame with the same configuration, so when a routine is replaced both sides
+of its comparison are the same transcript agreeing with itself. It proves a
+transcript is independent of the state it was reached through — which is worth
+proving — and nothing whatever about fidelity.
 
 **Widen the range to whatever the new code writes.** The sample trigger at
 `45:4776` writes nine bytes of the timer driver's per-channel zero page, none
