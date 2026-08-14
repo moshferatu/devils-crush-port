@@ -260,11 +260,11 @@ own when the CPU does.
 is the one to watch:
 
 ```
-Registry cycles: 686981976 native of 1292371731 elapsed master cycles (53.16%)
-Registry cycles outside the frame-sync wait: 686981976 native of 710482755
-  (96.69%); the machine waited at 00:E323 for 581888976 master cycles
+Registry cycles: 687682992 native of 1292371731 elapsed master cycles (53.21%)
+Registry cycles outside the frame-sync wait: 687682992 native of 710482755
+  (96.79%); the machine waited at 00:E323 for 581888976 master cycles
   (45.02% of the route)
-Instructions interpreted: 66312539
+Instructions interpreted: 66312646
 ```
 
 The first line is true and nearly useless as a progress signal. Its

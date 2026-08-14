@@ -89,6 +89,19 @@
 # twenty gigabytes before it was stopped.
 #
 # It is also the only absorbed return that happens in interrupt context.
+#
+# 03:601E is the Tower-insect controller's tail, and it is the seventh shape:
+# the same handover as above, but between three transcripts of one routine
+# rather than between two wrappers. 03:6016 crosses its `JSR` into the
+# collision interpreter and 03:601C crosses its `BSR` into the animation leaf,
+# so the call the observer opened at 03:6016 is closed by an `RTS` two
+# transcripts later, at an address the machine only ever arrives at from a
+# callee's return. It is watched at 03:6016 for the same reason 00:ECE2 is
+# watched at 00:ECC6.
+#
+# Seven of its 6,494 arrivals are hits and decline, so this is also the only
+# one of the seven where the replacement is not installed on every call -- the
+# comparison has to hold with the two paths interleaved.
 
 foreach(required_variable IN ITEMS APP CONFIG ROM OUTPUT ROUTINE)
     if(NOT DEFINED ${required_variable} OR "${${required_variable}}" STREQUAL "")
@@ -134,6 +147,11 @@ elseif(routine STREQUAL "00:ECE2")
         "Native replacement 00:ECE2@all entries: 3599 of 3599")
     set(expected_trace
         "Routine call trace complete: 3599 calls, 951407 writes")
+elseif(routine STREQUAL "03:601E")
+    set(expected_entries
+        "Native replacement 03:601E@all entries: 6487 of 6494")
+    set(expected_trace
+        "Routine call trace complete: 6494 calls, 114100 writes")
 else()
     message(FATAL_ERROR "Unknown absorbed-return routine: ${routine}")
 endif()

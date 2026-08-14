@@ -728,6 +728,19 @@ replace_tower_insect_animation(
     std::span<const std::byte> work_ram);
 
 [[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_tower_insect_collision_call(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram);
+
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_tower_insect_animation_call(const emulation::RoutineEntry& entry);
+
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_tower_insect_hit_gate(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram);
+
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
 replace_tower_insect_source_initializer(
     const emulation::RoutineEntry& entry,
     std::span<const std::byte> work_ram);

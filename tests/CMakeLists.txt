@@ -2235,6 +2235,49 @@ if(TARGET devils_crush)
             PROPERTIES LABELS rom_required
         )
 
+        # 03:601E is the seventh shape: the same handover, between three
+        # transcripts of one routine. 03:6016 crosses its `JSR` and 03:601C
+        # crosses its `BSR`, so the call opened at 03:6016 is closed by an
+        # `RTS` two transcripts later, at an address only ever reached from a
+        # callee's return -- which is why this one is watched at 03:6016 too.
+        # It is also the only one of the seven whose replacement declines on
+        # some calls, so the comparison holds with both paths interleaved.
+        add_test(
+            NAME dc_rom_absorbed_return_trace_dispatched
+            CONFIGURATIONS Release
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/absorbed-return-trace-dispatched-v1"
+                "-DROUTINE=03:601E"
+                "-DOBSERVE=03:6016"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_absorbed_return_trace.cmake"
+        )
+        set_tests_properties(
+            dc_rom_absorbed_return_trace_dispatched
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_tower_insect_controller_semantic
+            CONFIGURATIONS Release
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/tower-insect-controller-semantic-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_tower_insect_controller_semantic.cmake"
+        )
+        set_tests_properties(
+            dc_rom_tower_insect_controller_semantic
+            PROPERTIES LABELS rom_required
+        )
+
         add_test(
             NAME dc_rom_bank_call_wrappers_semantic
             CONFIGURATIONS Release

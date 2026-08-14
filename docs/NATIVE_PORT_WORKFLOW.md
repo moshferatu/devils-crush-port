@@ -1410,6 +1410,30 @@ nothing could that would not already break the game, since the routine jumps
 through a cell it has just written — but that argument has to be made, and a
 work-RAM write trace scoped to the vector names every writer for you.
 
+**A parent whose children are already native is the case where the two options
+look most alike, and it is the one to get right.** The dynamic Tower-insect
+controller `03:6016` is six instructions: a load, a `JSR` into the collision
+interpreter, a `BSR` into the animation leaf, a load, a branch, an `RTS`. Both
+callees were registered routines. Composition is written for exactly that
+shape, and it was still wrong here, because the question is not whether the
+callee is native — it is whether the parent needs the callee's *body* in this
+transcript. This one does not: it passes its argument in the accumulator and
+reads nothing back, and both callees are entered at their own addresses either
+way, so composing would carry a variable-length interpreter body and a 147- or
+183-cycle leaf for no cycles at all and be suspended across more interrupts for
+it. Ask what the parent reads *after* the call, not how many calls there are.
+When the answer is nothing, the routine decomposes into one transcript per
+straight-line run — here three, of one, one and three instructions, 701,016
+master cycles.
+
+That decomposition needs an entry per resumption point, and the addresses are
+not call targets: `03:601C` and `03:601E` are where a callee's `RTS` lands.
+Registering them is ordinary — the core admits a transcript wherever `PC`
+reaches a registered address — but it means the last walk is entered on a
+frame it did not push and returns above where it started, so its absorbed
+return has to be watched at the head that opened the call rather than at
+itself. See *An absorbed return has to be declared* below.
+
 Use composition when you want the callee's body in line — to reach a state the
 parent needs afterwards, or to absorb the `RTS` too. Use this when you only
 want the call. The `RTS` half of the tax is a separate question with its own

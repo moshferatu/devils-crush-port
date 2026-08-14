@@ -6493,6 +6493,240 @@ replace_tower_insect_animation(
     return replacement;
 }
 
+// The dynamic Tower-insect controller, which is almost entirely its calls.
+//
+// `03:6016` is where the four runtime insects dispatch. It hands the collision
+// selector at `$3780,X` to the table interpreter at `03:6966`, branches to the
+// animation leaf at `03:6054` above, and returns unless the interpreter left
+// bit 7 of `$3800,X` set. Both callees have been native since this family was
+// ported and the six instructions around them never were, which made the
+// parent the largest emulated body still on the route: 6,494 calls, and every
+// one of them running a load, a `JSR`, a `BSR`, a load, a branch and an `RTS`
+// through the interpreter to reach code that was already transcribed.
+//
+// None of it wants composition. The collision interpreter is a data-driven
+// walk of variable length, the animation leaf is a routine in its own right,
+// and both are entered at their own addresses either way -- bringing either
+// body in line would lengthen this transcript without moving a cycle out of
+// the interpreter, and a longer transcript is suspended across more timer
+// interrupts. What is left to take is the calls themselves, and a call is
+// crossed rather than composed: push the return, charge the cycles, and end
+// the transcript on the callee's first instruction. So the controller is three
+// walks, split exactly where the assembly leaves it:
+//
+//   03:6016  read the selector, then make the `JSR $6966`
+//   03:601C  make the `BSR $6054`
+//   03:601E  read the hit flag, take the no-hit branch, absorb the `RTS`
+//
+// The third is where the return goes. 6,487 of the 6,494 calls find bit 7
+// clear and have nothing left to do, so that walk ends past the `RTS` at
+// `$603E` and hands the caller back. The seven hits decline it and keep the
+// assembly, which is the whole rule -- the 10-unit award, audio command `$29`,
+// the two-hit counter and the slot release -- and none of that is here.
+//
+// Both calls push the address of their own last byte, and both push it before
+// they charge a cycle: case `$20` is two pushes then `ADDCYC(6)`, case `$44`
+// two pushes then `ADDCYC(4)` and a taken branch's `ADDCYC(3)`, each opcode's
+// own fetch making them 21 and 24 master cycles. So the two bytes carry the
+// instruction's start offset, which for `03:6019` is the end offset of the
+// checkpoint in front of it; the core breaks that tie by instruction, so the
+// pair lands with the call rather than with the load.
+[[nodiscard]] std::optional<RoutineReplacement>
+replace_tower_insect_collision_call(
+    const RoutineEntry& entry,
+    const std::span<const std::byte> work_ram)
+{
+    constexpr RoutineKey kRoutine{
+        .physical_bank = 0x03U,
+        .logical_pc = 0x6016U,
+    };
+    if (entry.routine != kRoutine) {
+        return std::nullopt;
+    }
+
+    const auto set_nz = [](std::uint8_t status, const std::uint8_t value) {
+        status = static_cast<std::uint8_t>(status & 0x7DU);
+        if (value == 0U) {
+            status = static_cast<std::uint8_t>(status | 0x02U);
+        } else if ((value & 0x80U) != 0U) {
+            status = static_cast<std::uint8_t>(status | 0x80U);
+        }
+        return status;
+    };
+
+    RoutineReplacement replacement{};
+    const auto append_checkpoint = [&replacement](
+                                       const std::uint16_t instruction_pc,
+                                       const std::uint16_t resume_pc,
+                                       const std::uint32_t master_cycle,
+                                       auto registers) {
+        registers.program_counter = resume_pc;
+        replacement.checkpoints.push_back({
+            .interrupt_sample_master_cycle_offset = master_cycle - 3U,
+            .master_cycle_offset = master_cycle,
+            .instruction = {0x03U, instruction_pc},
+            .registers = registers,
+        });
+    };
+
+    // `$3780,X`, the collision selector the interpreter is called with.
+    constexpr std::size_t kSelectorOffset = 0x1780U;
+
+    auto checkpoint = entry.registers;
+    checkpoint.accumulator = std::to_integer<std::uint8_t>(
+        work_ram[kSelectorOffset + entry.registers.x]);
+    checkpoint.status = set_nz(checkpoint.status, checkpoint.accumulator);
+    append_checkpoint(0x6016U, 0x6019U, 15U, checkpoint);
+
+    const auto stack_high = static_cast<std::uint16_t>(
+        0x2100U + checkpoint.stack_pointer);
+    const auto stack_low = static_cast<std::uint16_t>(
+        0x2100U + static_cast<std::uint8_t>(checkpoint.stack_pointer - 1U));
+    replacement.work_ram_writes.push_back({
+        .instruction = {0x03U, 0x6019U},
+        .logical_address = stack_high,
+        .value = 0x60U,
+        .master_cycle_offset = 15U,
+    });
+    replacement.work_ram_writes.push_back({
+        .instruction = {0x03U, 0x6019U},
+        .logical_address = stack_low,
+        .value = 0x1BU,
+        .master_cycle_offset = 15U,
+    });
+    checkpoint.stack_pointer =
+        static_cast<std::uint8_t>(checkpoint.stack_pointer - 2U);
+    append_checkpoint(0x6019U, 0x6966U, 36U, checkpoint);
+
+    // The callee is in this walk's own segment, so its bank is the one the
+    // transcript is already executing from -- but it is read out of the MPRs
+    // being declared rather than assumed, because that is what the host checks
+    // the resume against.
+    checkpoint.program_counter = 0x6966U;
+    replacement.return_instruction = {
+        checkpoint.mpr[0x6966U >> 13U],
+        0x6966U,
+    };
+    replacement.output_registers = checkpoint;
+    replacement.body_master_cycles = 36U;
+    return replacement;
+}
+
+[[nodiscard]] std::optional<RoutineReplacement>
+replace_tower_insect_animation_call(const RoutineEntry& entry)
+{
+    constexpr RoutineKey kRoutine{
+        .physical_bank = 0x03U,
+        .logical_pc = 0x601CU,
+    };
+    if (entry.routine != kRoutine) {
+        return std::nullopt;
+    }
+
+    // One instruction, and the pushes are the first thing in the walk, so they
+    // carry offset zero. There is no earlier checkpoint for them to tie with.
+    RoutineReplacement replacement{};
+    auto checkpoint = entry.registers;
+    replacement.work_ram_writes.push_back({
+        .instruction = {0x03U, 0x601CU},
+        .logical_address =
+            static_cast<std::uint16_t>(0x2100U + checkpoint.stack_pointer),
+        .value = 0x60U,
+        .master_cycle_offset = 0U,
+    });
+    replacement.work_ram_writes.push_back({
+        .instruction = {0x03U, 0x601CU},
+        .logical_address = static_cast<std::uint16_t>(
+            0x2100U + static_cast<std::uint8_t>(checkpoint.stack_pointer - 1U)),
+        .value = 0x1DU,
+        .master_cycle_offset = 0U,
+    });
+    checkpoint.stack_pointer =
+        static_cast<std::uint8_t>(checkpoint.stack_pointer - 2U);
+    checkpoint.program_counter = 0x6054U;
+    replacement.checkpoints.push_back({
+        .interrupt_sample_master_cycle_offset = 21U,
+        .master_cycle_offset = 24U,
+        .instruction = {0x03U, 0x601CU},
+        .registers = checkpoint,
+    });
+
+    replacement.return_instruction = {
+        checkpoint.mpr[0x6054U >> 13U],
+        0x6054U,
+    };
+    replacement.output_registers = checkpoint;
+    replacement.body_master_cycles = 24U;
+    return replacement;
+}
+
+[[nodiscard]] std::optional<RoutineReplacement>
+replace_tower_insect_hit_gate(
+    const RoutineEntry& entry,
+    const std::span<const std::byte> work_ram)
+{
+    constexpr RoutineKey kRoutine{
+        .physical_bank = 0x03U,
+        .logical_pc = 0x601EU,
+    };
+    if (entry.routine != kRoutine) {
+        return std::nullopt;
+    }
+
+    // `$3800,X`. Bit 7 is what the collision interpreter sets on a contact.
+    constexpr std::size_t kHitFlagOffset = 0x1800U;
+
+    const auto flag = std::to_integer<std::uint8_t>(
+        work_ram[kHitFlagOffset + entry.registers.x]);
+
+    const auto set_nz = [](std::uint8_t status, const std::uint8_t value) {
+        status = static_cast<std::uint8_t>(status & 0x7DU);
+        if (value == 0U) {
+            status = static_cast<std::uint8_t>(status | 0x02U);
+        } else if ((value & 0x80U) != 0U) {
+            status = static_cast<std::uint8_t>(status | 0x80U);
+        }
+        return status;
+    };
+
+    RoutineReplacement replacement{};
+    const auto append_checkpoint = [&replacement](
+                                       const std::uint16_t instruction_pc,
+                                       const std::uint16_t resume_pc,
+                                       const std::uint32_t master_cycle,
+                                       auto registers) {
+        registers.program_counter = resume_pc;
+        replacement.checkpoints.push_back({
+            .interrupt_sample_master_cycle_offset = master_cycle - 3U,
+            .master_cycle_offset = master_cycle,
+            .instruction = {0x03U, instruction_pc},
+            .registers = registers,
+        });
+    };
+
+    auto checkpoint = entry.registers;
+    checkpoint.accumulator = flag;
+    checkpoint.status = set_nz(checkpoint.status, flag);
+    append_checkpoint(0x601EU, 0x6021U, 15U, checkpoint);
+
+    // The rule itself begins at $6023 and stays with the assembly.
+    if ((flag & 0x80U) != 0U) {
+        return std::nullopt;
+    }
+
+    append_checkpoint(0x6021U, 0x603EU, 27U, checkpoint);
+    auto at_return = checkpoint;
+    at_return.program_counter = 0x603EU;
+    absorb_return(
+        replacement,
+        work_ram,
+        entry.registers.stack_pointer,
+        {0x03U, 0x603EU},
+        27U,
+        at_return);
+    return replacement;
+}
+
 [[nodiscard]] std::optional<RoutineReplacement>
 replace_tower_initializer(
     const RoutineEntry& entry,

@@ -5687,12 +5687,122 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
     routine, entry point or call.
   - [x] Drop `is_stop_instruction`. With every call crossed, every stop is an
     `RTS`, and it had the same domain as `absorbable_return_pops`.
+- [x] Port the dynamic Tower-insect controller `03:6016`, the largest emulated
+  body left on the route, as three transcripts rather than one.
+  - [x] Choose crossing over composition on what the parent reads *after* the
+    call rather than on the call count. It passes its selector in the
+    accumulator and takes nothing back, and both callees are entered at their
+    own addresses either way, so composing would carry the interpreter's
+    variable-length body and the leaf's 147 or 183 cycles for no cycles at all.
+  - [x] Cross the `JSR $6966` at `03:6016` and the `BSR $6054` at `03:601C`,
+    landing each on a callee that is already a registered entry.
+  - [x] Price `BSR` from the opcode table rather than by analogy: case `$44` is
+    PUSH, PUSH, `ADDCYC(4)` and then the taken branch's `ADDCYC(3)`, so 24
+    master cycles against a `JSR`'s 21, with the same two bytes pushed before
+    any cycle is charged and therefore the same offset tie.
+  - [x] Absorb the `RTS` at `$603E` in the third walk and register its
+    resumption points `03:601C` and `03:601E`, which are where a callee's
+    return lands rather than call targets.
+  - [x] Watch that absorbed return at `03:6016`, the head that opened the call,
+    because the last walk is entered on a frame it did not push and returns
+    above where it started — the same shape as `00:ECE2` watched at `00:ECC6`.
+  - [x] Decline the seven hits. Everything past the branch is the rule itself —
+    the 10-unit award, command `$29`, the two-hit counter, the slot release —
+    and it stays with the assembly.
+  - [x] Prove it by comparison rather than by recorded expectation: 4,282,022
+    writes across the stack page, the hit flags, both counters and the
+    live-instance counter, byte-identical with the family emulated and with all
+    four routines replaced, and a routine-call trace of 6,494 calls and 114,100
+    writes that matches the hashes `Analyze-TwoHitTargetSemantics.ps1` has
+    asserted since the family was mapped.
+  - [x] Measure: **+701,016 native master cycles** (686,981,976 ->
+    687,682,992, 53.16% -> **53.21%** of the route, 96.69% -> **96.79%**
+    outside the wait), which is `6,494 x 36 + 6,494 x 24 + 6,487 x 48` exactly.
 
 ## Active Work
 
-Current owner: Claude. Current slice: **the bank-call wrappers' four calls**.
-Done. The same move as the previous slice, made where the module had written
-the refusal down.
+Current owner: Claude. Current slice: **the Tower-insect controller**. Done.
+The same move again, made against a parent whose children were already native
+— which is the case where crossing and composition look most alike.
+
+**`03:6016` was the largest emulated body left on the route.** Six
+instructions: load the collision selector from `$3780,X`, `JSR $6966` into the
+collision-table interpreter, `BSR $6054` into the animation leaf, load
+`$3800,X`, branch on bit 7, `RTS`. Both callees have been registered since this
+family was ported and the parent never was, so 6,494 dispatches ran a load, two
+calls, a load, a branch and a return through the interpreter to reach code that
+was already transcribed. The registry goes 686,981,976 -> **687,682,992**,
+53.16% -> **53.21%** of the route and 96.69% -> **96.79%** of it outside the
+frame-sync wait.
+
+| Entry | Instructions | Ends on | Native calls | Master cycles |
+| --- | --- | --- | ---: | ---: |
+| `03:6016` | the load, then the `JSR $6966` | `03:6966` | 6,494 of 6,494 | 233,784 |
+| `03:601C` | the `BSR $6054` | `03:6054` | 6,494 of 6,494 | 155,856 |
+| `03:601E` | the load, the branch, the `RTS` | the caller | 6,487 of 6,494 | 311,376 |
+
+**Composition is written for this shape and is still the wrong answer.** A
+parent with native children is exactly what composition exists for, so the
+choice had to be made on something other than the call count. The test that
+decides it is what the parent reads *after* the call. This one reads nothing:
+it passes the selector in the accumulator and takes nothing back, and both
+callees are entered at their own addresses either way — so a composed walk
+would carry the interpreter's variable-length body and the leaf's 147 or 183
+cycles for no cycles at all, and be suspended across more timer interrupts for
+it. Crossing both calls instead decomposes the routine into one transcript per
+straight-line run.
+
+**The prices came from the opcode table, not from the profile.** `BSR` is case
+`$44` — PUSH, PUSH, `ADDCYC(4)`, then the taken branch's `ADDCYC(3)` — so 8 CPU
+cycles, 24 master, against a `JSR`'s 21, and it pushes the same two bytes in
+the same order before charging anything, so the offset tie is the same one.
+Reading the profile confirmed the model rather than supplying it: every one of
+the six rows exceeded its instruction cost by an exact multiple of 24 master
+cycles, which is the interrupt entry sequence charged to the last address
+sampled. 271 of those across the six, and they are dispatch, not the routine.
+
+**The seven hits decline.** Bit 7 set means a contact, and everything past the
+branch — the 10-unit award, audio command `$29`, the two-hit counter, the slot
+release, the tail-call into the generic slot clear — is the rule itself and
+stays with the assembly. So `03:601E` covers 6,487 of 6,494, and the two paths
+interleave on the same route.
+
+**The evidence is a comparison, not a recorded expectation.** The same route
+traced with the whole stack page, the hit flags, the two-hit counters and the
+live-instance counter in scope produces 4,282,022 writes, byte-identical with
+the family emulated and with all four routines replaced — so every pushed
+return address matches in value, address, order and master-cycle offset, and
+the census is the assembly-only `9036a9de…` either way. The routine-call trace
+matches too, 6,494 calls and 114,100 writes, `cb5d44ef…` and `7d2174b6…`, which
+are the hashes `tools/Analyze-TwoHitTargetSemantics.ps1` has asserted since the
+family was mapped. That is the check on the absorbed return at `$603E`:
+deleting the boundary the observer completes a call on is the one thing here a
+write trace could not have seen.
+
+**Two entries are resumption points rather than call targets.** `03:601C` and
+`03:601E` are where a callee's `RTS` lands, so the last walk is entered on a
+frame it did not push and returns above where it started. Its absorbed return
+is therefore watched at `03:6016` — the head that opened the call — which is
+the same shape as `00:ECE2` watched at `00:ECC6`, and it is registered as the
+seventh case of `dc_rom_absorbed_return_trace`. It is also the only one of the
+seven whose replacement declines on some calls.
+
+**The arithmetic closes and the counters say what changed.** 6,494 × 36 +
+6,494 × 24 + 6,487 × 48 = 701,016, which is the measured gain exactly. 374
+routines, 307 entered, 2,692,486 of 2,731,071 calls — the 19,482 entered are
+6,494 × 3 and the seven declines are the hits. Nesting rose 301,484 ->
+301,698. Instructions interpreted rose by 107, to 66,312,646, and abandonments
+by the same 107, to 21,656; the gain is the full gross even so.
+
+**One incidental fix.** The dispatch chain in `native_replacements.cpp` hit
+MSVC's C1061 block-nesting limit at the three new `else if` clauses. The file
+already keeps a flat early-return section ahead of the chain for the same
+reason, so the three joined it there rather than the chain being restructured.
+
+### Previous: the bank-call wrappers' four calls
+
+Done. The same move as the sprite emitter's slice, made where the module had
+written the refusal down.
 
 **`00:E252`, `00:E26E`, `00:ECDF` and `00:ECFA` were 30,468 interpreted calls,
 639,828 master cycles** — the four calls the game's entire cross-bank linkage
@@ -7235,7 +7345,7 @@ does not.
 ### Next
 
 **Re-measured with the registry deployed after this slice** (instruction
-profile, 3,600-frame Release route). `00:E252` and `00:E26E` have left the
+profile, 3,600-frame Release route). All four `03:60xx` rows have left the
 list. Excluding the frame-sync spin loop's own two instructions, the largest
 emulated addresses left are:
 
@@ -7245,39 +7355,58 @@ emulated addresses left are:
 | `00:E321` | 3,568 | 1,180,680 | The frame-sync waiter. Attribution, not work — the row carries the wait |
 | `00:EB46` | 29 | 625,095 | The whole-palette `TIA`. A capacity wall: 1,024 writes against a 512-write channel, and no interior boundary to chunk at |
 | `00:F423` | 17,248 | 365,664 | `BBR0`, the other instruction a checkpoint cannot express |
-| `03:601C` | 6,494 | 157,176 | `BSR $6054` into a native entry |
 | `03:6A37` | 7,357 | 154,521 | Interpreter residue: transcripts an interrupt cut short |
 | `01:C100` | 1 | 147,489 | One `TII $2000,$2001,$1FFF` at startup. A single instruction that clears work RAM |
 | `03:6A33` | 7,001 | 147,021 | Residue, same walk |
-| `03:6019` | 6,494 | 137,694 | `JSR $6966` into a native entry |
-| `03:603E` | 6,491 | 137,607 | The unported parent's own `RTS` |
 | `00:E05C` | 7,198 | 129,564 | `LDA $0000`, the interrupt acknowledge. A device read that changes the device; refused with reasons |
+| `03:6A14` | 5,953 | 125,013 | Residue, same walk |
+| `08:59A2` | 5,664 | 118,944 | The load in an unported 32-byte copy loop |
+| `03:69C5` | 4,898 | 102,858 | Residue, same walk |
+| `45:4047` | 6,519 | 98,097 | A chunk boundary in the music tick |
 
-**Take bank `03`'s unported parent next.** `03:6000`-`607F` is now the largest
-thing left that is a *routine* rather than an instruction, and it is the last
-item on this list that is a body rather than a join or a refusal. `03:6013`,
-`03:6019` and `03:601C` are three calls into entries that are already native,
-`03:603E` is its own return, and nothing in it has been transcribed. `03:6013`
-is cold — 4 executions — so the two live calls are 294,870, the return is
-137,607, and the whole routine is about 629,000 including its two `LDA`s.
+**The top of the profile is now almost entirely what the model refuses or
+cannot recover.** Of the table's 4,704,444: 3,810,501 is refusals and
+attribution (`00:FC81`, `00:E321`, `00:EB46`, `00:F423`, `00:E05C`), 529,413 is
+collision-interpreter residue that nothing short of shortening the transcripts
+recovers, and 147,489 is a single `TII` executed once at startup. That leaves
+217,041 in the whole top twelve that is portable work, and it is two rows.
 
-Read both techniques against it before choosing. A parent with native children
-is the shape composition was written for, but the last two slices are the
-reason to check: if the parent only needs to *reach* its children rather than
-have their bodies in line, crossing three calls is three edits and pays no
-shadowing bill, whereas composing them lengthens the transcript and gives some
-of the gross back. The choice turns on whether the parent reads anything a
-child leaves behind — not on the call count. Note `03:601C` is a `BSR`, which
-is 24 master cycles rather than 21 and pushes the same two bytes.
+**Take the bank `08` block copy next.** `08:5977`-`59B4` is now the largest
+unported *routine* on the route. It loads `$1E04` into `$2F`/`$30`, calls
+`08:E1FD`, takes the animation phase from `$3A80,X`, shifts it left five times
+into a 16-bit value, adds that to the pointer, copies 32 bytes from `[$2F],Y`
+to `$27B9,Y`, and sets `$2CCB` and `$2CCC` to 1. **397,719 master cycles across
+177 calls**, and 338,778 of that is the five instructions of the loop.
 
-**What the top of the list now says about the route.** Five of the eleven rows
-above are refusals or attribution — `00:FC81`, `00:E321`, `00:EB46`,
-`00:F423`, `00:E05C` — and they are 3,810,501 of the table's 4,692,009. Of the
-remaining 881,508: 294,870 is two calls into native entries, 137,607 is the
-same parent's return, 301,542 is interpreter residue nothing recovers, and
-147,489 is a single `TII` executed once at startup. **The route no longer has
-a large emulated body on it.** What it has is one unported parent, some joins,
-and the instructions the model refuses on purpose.
+It is the cleanest shape left. The arithmetic is straight-line, the iteration
+count is fixed at 32, there are 34 writes, there is one `RTS` to absorb — and
+no interrupt lands anywhere in it on this route, which is visible in the
+profile: every row is an exact multiple of its instruction cost, `5664 × 21`
+for the load and `5664 × 15` for the store, with no dispatch charged to any of
+them. Two things to settle first. **The source is not work RAM.** `[$2F]` is
+`$1E04 + (phase << 5)`, which is segment 0, so the walk reads through MPR0 and
+needs the ROM span rather than the work-RAM snapshot — several replacement
+functions already take `rom` for this, and the bank has to come from the
+transcript's own MPRs. And `08:597F` is a `JSR $E1FD` in the middle of it, so
+this is two walks with a crossed call between them, exactly like `03:6016`:
+`08:5977` up to and including the call, then a second entry at `08:5982`.
+
+**Then the display handler's three calls**, which are this slice's technique
+again and need no new thinking: `00:E111` (`JSR $EB30`, 75,579), `00:E114`
+(`JSR $E195`, 75,579) and `00:E120` (`JSR $ECC6`, 67,452) are three `JSR`s the
+handler's walks stop in front of, 218,610 between them. `00:E117` and `00:E123`
+are already registered entries that resume after two of them, so the shape is
+the one just built at `03:6016`: cross the call, register the address the
+callee returns to. `00:E114` would be the new entry; `00:E123` already exists.
+Note `00:E120` is inside a `TMA`/`PHA` … `PLA`/`TAM` bank save, so the walk
+that crosses it has the wrapper's bank state to carry.
+
+**What the route no longer has is a large emulated body.** The two candidates above
+are 616,329 together, and below them the profile is flat: nothing between
+100,000 and the residue, and a long tail of chunk boundaries, joins and
+one-shot initializers. Rank by what the machine executes rather than by what
+looks unported — three of the four largest rows in this table are instructions,
+not routines.
 
 **The old ranking, kept because its per-bank arithmetic still holds.** Note
 that it counts `RTS` opcodes only, so it never saw the interrupt return that

@@ -2476,6 +2476,23 @@ parse_logical_address_range(const std::string_view text)
                                        .logical_pc = 0x6054U,
                                    }
                            && request.all_calls;
+                       const bool proven_tower_insect_controller =
+                           (request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x03U,
+                                       .logical_pc = 0x6016U,
+                                   }
+                               || request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x03U,
+                                       .logical_pc = 0x601CU,
+                                   }
+                               || request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x03U,
+                                       .logical_pc = 0x601EU,
+                           })
+                           && request.all_calls;
                        const bool proven_small_soldier_source_gates =
                            (request.routine
                                    == RoutineKey{
@@ -3243,6 +3260,7 @@ parse_logical_address_range(const std::string_view text)
                            && !proven_knight_movement_parent
                            && !proven_spider_appearance
                            && !proven_tower_insect_animation
+                           && !proven_tower_insect_controller
                            && !proven_small_soldier_source_gates
                            && !proven_small_soldier_source_initializers
                            && !proven_small_soldier_delayed_spawn_gates

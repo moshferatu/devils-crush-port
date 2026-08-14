@@ -3496,9 +3496,19 @@ SHA-256 values are respectively:
 - `9d3beee15ee6ada8ea7b15b414745437e71876b1ef5be14e5f184c188b7ddf76`
 - `a0d6ad02b991511ecfde741d752b4c11b5da61afe9a27cdd02d90b397a4c2f2e`
 
-The broader `03:6016` controller still owns collision, score, audio, and
-child-lifetime behavior and remains assembly-backed. The paired source-gate
-slice completes the Tower-insect Debug family checkpoint below.
+The broader `03:6016` controller is now three transcripts of its own, split
+where the assembly leaves the routine: `03:6016` reads the collision selector
+and makes the `JSR $6966`, `03:601C` makes the `BSR $6054`, and `03:601E`
+reads the hit flag, takes the no-hit branch and ends past the `RTS` at
+`$603E`. Neither call is composed — both callees are entered at the same
+address either way — so the three walks are 36, 24 and 48 master cycles and
+add 701,016 across 6,494 dispatches. Score, audio, the two-hit counter and
+child lifetime stay with the assembly: they are behind the branch, and the
+seven hits on the route decline the third walk. `dc_rom_tower_insect_controller_semantic`
+compares the whole stack page, the hit flags, both counters and the census
+against a run with all four routines emulated, and
+`dc_rom_absorbed_return_trace_dispatched` compares the call trace. The paired
+source-gate slice completes the Tower-insect Debug family checkpoint below.
 
 ## Tower-insect source gate native replacement
 
