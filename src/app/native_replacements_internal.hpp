@@ -1293,6 +1293,17 @@ replace_palette_shadow(
     std::span<const std::byte> work_ram,
     std::span<const std::byte> rom);
 
+// The setup screen's own block stager, the shadow buffer's only producer
+// outside bank 00. Two transcripts: the head builds the asset reference and
+// crosses the `JSR $E1FD` that resolves it into a pointer, and 08:5982 -- the
+// address that call comes back to -- does the phase arithmetic, the thirty-two
+// byte copy and the two dirty flags, then ends past its own RTS.
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_setup_screen_palette_stager(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram,
+    std::span<const std::byte> rom);
+
 // The bank-switching call wrappers. One walk shared by nine entry points:
 // four heads and the addresses each one's call comes back to. Every transcript
 // stops in front of an instruction the core executes itself -- an RTS, one of

@@ -693,6 +693,30 @@ address. Add the native total, the spin loop and the rest back together and the
 elapsed total comes back within a few per cent, which is what makes the residue
 trustworthy.
 
+#### Classify the residue by opcode, not by routine
+
+Ranking the residue by address, and then by the routine each address sits in, is
+the instrument this file has recommended for most of the port, and it stopped
+being the right one. Three consecutive slices — the sprite emitter's four calls,
+the wrappers' four, the Tower insects' two — gained 1,550,178, 639,828 and
+701,016 master cycles, and not one of them was a routine. They were instructions
+of one kind, scattered across families that were otherwise finished.
+
+So read the opcode at each emulated address. The ROM byte is a lookup: physical
+bank to ROM page, plus `pc & 0x1FFF`. Bucketing the whole residue that way takes
+a few lines and answers a different question — not *which routine is left* but
+*what kind of instruction is left* — and on this route it found 2,942,532 master
+cycles in 464 uncrossed `JSR`/`BSR` sites and 1,422,765 more in unabsorbed
+`RTS`, against a largest remaining routine of 397,719. One technique, applied
+where the profile already says it applies.
+
+Two cautions when reading such a bucket. A call site inside a *composed*
+transcript is not a candidate: the composition runs the callee in line, and the
+row exists because a chunk ended or an interrupt cut the walk short. And a call
+site in code that was never ported recovers the call's own 21 cycles and leaves
+the body interpreted, which is real but small. Check which of the two a cluster
+is before pricing it.
+
 #### Take the cost from the assembly run and the weight from the ratio
 
 Three corrections turn that ranking from suggestive into usable. All three were
@@ -1433,6 +1457,29 @@ reaches a registered address — but it means the last walk is entered on a
 frame it did not push and returns above where it started, so its absorbed
 return has to be watched at the head that opened the call rather than at
 itself. See *An absorbed return has to be declared* below.
+
+**A call into another bank is the same edit, and the two banks it needs are
+both already to hand.** `08:5977` builds an asset reference and calls the
+resolver at `00:E1FD`, which lives in segment 7 and exists to switch MPR4 and
+MPR5. Composing it is pointless — it is eleven instructions that are already
+transcribed at `00:E20D` and `00:E200`, and their `TAM`s would land on this
+walk's own register file for nothing — so the walk crosses it. Two things
+follow, and neither is new machinery. The `return_instruction` bank is
+`output_registers.mpr[target >> 13]`, read out of the register file the
+transcript is declaring rather than assumed to be the walk's own bank, exactly
+as it is for a resolved vector. And the walk that resumes afterwards reads its
+data through the MPRs *the resolver left*, which arrive in `entry.registers.mpr`
+like any other input; a source in `$8000`-`$BFFF` is then ROM through whichever
+banks that call mapped, and `read_mapped` resolves it per address.
+
+The callee's first instruction does not have to be registered for this to work.
+The transcript ends on it and the core resumes there; if an entry exists it is
+taken immediately, and if not the core interprets from that address as it would
+have anyway. So crossing is never worse than stopping in front of the call, and
+it is worth 21 master cycles even when nothing native waits on the other side.
+`00:E1FD` is a live example of both halves: `08:5977` crosses into it, and its
+own first instruction — a `JSR $E20D` that three call sites reach — is still
+interpreted for want of a fourth entry.
 
 Use composition when you want the callee's body in line — to reach a state the
 parent needs afterwards, or to absorb the `RTS` too. Use this when you only

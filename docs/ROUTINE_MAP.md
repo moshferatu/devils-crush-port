@@ -16,7 +16,7 @@ and cycle role are understood.
 
 | Routine | Canonical observations | Status | Evidence |
 | --- | ---: | --- | --- |
-| `08:5977` | 115, frames 157-600 | Setup-screen data helper | Active across the title, play-mode, speed, and data-load screens. The routine copies indexed setup-screen data and raises work-RAM update flags. Its higher-level scene role is not yet named. |
+| `08:5977` | 115, frames 157-600 | Setup-screen palette stager | Active across the title, play-mode, speed, and data-load screens. It resolves a colour set through the asset resolver at `00:E1FD`, selects one of two phases from the cadence at `$3A80,X`, copies thirty-two bytes into block zero of the palette shadow buffer at `$27B9`, and raises the dirty flags at `$2CCC` and `$2CCB` — `00:EBA5`'s job for the block those screens flash. Native across `08:5977` and `08:5982`; see the palette section below. |
 | `08:59B5` | 1, frame 300 | Transition candidate | Entered on the scripted Run press that advances from play-mode selection toward speed selection. |
 | `08:59CE` | 1, frame 420 | Transition candidate | Entered on the scripted button-I press that advances from speed selection toward data load. |
 | `08:59E7` | 1, frame 540 | Transition candidate | Entered on the final scripted left-plus-button-I input in the data-load screen. The resulting screen does not leave data load within the canonical window. |
@@ -612,6 +612,26 @@ these seven return addresses from 302,628 emulated cycles to 63.
 Every call to `EB30` arrives with `I` set — the upload has to land inside the
 blanking interval — which is why an 18,585-cycle transcript here costs the
 sound driver nothing, while `E9B6` at half the length costs it 1,181 entries.
+
+The buffer has one more producer, and it is not in this bank. `08:5977` does
+`EBA5`'s job for block zero, which is the block the title, play-mode, speed and
+data-load screens flash: its caller runs a four-tick timer at `$3A00,X`, flips
+bit 0 of the cadence at `$3A80,X` when it expires, and calls here. What differs
+is the source. `EBA5` is handed a pointer; `08:5977` builds one — `$04`/`$1E`
+into `$2F`/`$30`, then `JSR $E1FD`, which maps bank `$1E` at `$8000` and `$1F`
+at `$A000` and replaces the pair with the pointer it reads out of `$8004`. Only
+then is the phase shifted left five times into a sixteen-bit displacement and
+added on, so the two phases are thirty-two bytes apart in the same table.
+
+It is native across two registered addresses, 177 calls each and 397,719 master
+cycles between them, and it is a crossing rather than a composition: the
+resolver exists to switch banks and both of its halves have been native since
+the call-wrapper slice, so `08:5977` pushes the return, charges the twenty-one
+cycles and ends on `00:E1FD`. `08:5982` is where that call comes back, and it
+runs the arithmetic, the copy and the two flags and ends past its own `RTS` —
+which closes the call `08:5977` was entered on, so it is watched there.
+`dc_rom_setup_screen_palette_stager_semantic` and
+`dc_rom_absorbed_return_trace_resolved` are the two regressions.
 
 ## The VDC interrupt handler and the bank-switching call wrappers
 

@@ -16,19 +16,19 @@ Release state-census route (`--native-cycle-census`, measured 2026-08-13):
 | | |
 | --- | ---: |
 | Elapsed master cycles | 1,292,371,731 |
-| Native master cycles | 687,682,992 |
-| **Native share** | **53.21%** |
-| **Native share of cycles outside the idle spin loop** | **96.79%** |
-| Routines installed | 374 of 374 |
-| Routines entered | 307 |
-| Calls run natively | 2,692,486 of 2,731,071 entered |
+| Native master cycles | 688,080,711 |
+| **Native share** | **53.24%** |
+| **Native share of cycles outside the idle spin loop** | **96.85%** |
+| Routines installed | 376 of 376 |
+| Routines entered | 309 |
+| Calls run natively | 2,692,840 of 2,731,425 entered |
 | Calls declined at an interrupt horizon | 0 |
 | Transcripts installed inside a suspended transcript | 301,698 |
 | Deepest simultaneous suspension | 3 of a permitted 4 |
 | Replacements refused for depth | 0 |
 
 The resulting state census is byte-identical to the assembly-only
-baseline (`9036a9de…`), so that 53.21% is faithful, not merely running.
+baseline (`9036a9de…`), so that 53.24% is faithful, not merely running.
 The last three rows matter because the host credits a native call when
 it *offers* one. A replacement the core then refused would inflate the
 share silently, and a refusal count of zero is what rules that out.
@@ -369,7 +369,7 @@ with the hashes it already had — the stack page and both vectors were in scope
 before this module made a single call of its own, so a wrong pushed byte or a
 mispriced offset had nowhere to hide.
 
-**And then to a routine that was nothing but its calls.** The dynamic
+And then to a routine that was nothing but its calls. The dynamic
 Tower-insect controller `03:6016` is where four runtime actors dispatch. It
 hands a selector to the collision-table interpreter at `03:6966`, branches to
 the animation leaf at `03:6054`, and returns unless the interpreter reported a
@@ -385,6 +385,19 @@ return, and the routine is three walks of one, one and three instructions. See
 **The Tower insects** below. 701,016 master cycles, and the work-RAM write
 trace — the whole stack page, the hit flags, both counters — is byte-identical
 to the same route with all four routines emulated.
+
+**And then across a bank, to a routine whose call was the reason it was
+left.** `08:5977` stages block zero of the palette shadow buffer for the
+setup screens, which is `00:EBA5`'s job — but it resolves its own source
+first, through `JSR $E1FD` in another bank, and that call is why the buffer's
+one producer outside bank `00` stayed emulated while the five inside it were
+taken years of slices ago. It is the same crossing as the Tower insects and
+needed no new capability: push the return, charge twenty-one cycles, end on
+`00:E1FD`, and register the address the resolver comes back to. See **The
+palette shadow buffer** above. 397,719 master cycles across 177 calls, all
+177 admitted on both entries, and the write trace — the whole stack page, the
+pointer the walk builds, the whole shadow buffer and all thirty-two dirty
+flags — is byte-identical with the family emulated.
 
 ## The music sequencer
 
@@ -565,9 +578,10 @@ by a single cycle.**
 Gameplay code never writes the VCE. It keeps thirty-two 32-byte blocks of
 packed nine-bit GRB in a shadow buffer at `$27B9`-`$2BB8`, marks the blocks
 it changed in `$2CCC`-`$2CEB`, and `00:EB30` pushes the dirty ones out to
-the VCE ports once a frame. Five routines are now native, reached through
-seven registered addresses, and they are the port's first move into the
-video paths. They are also where transcripts stopped handing their `RTS`
+the VCE ports once a frame. Five routines in this bank are now native,
+reached through seven registered addresses, and they are the port's first
+move into the video paths. A sixth producer lives in bank `08` and is
+described below the table. They are also where transcripts stopped handing their `RTS`
 back to the core: **every walk here ends past its own return**, which is
 worth 14,369 returns and 301,749 master cycles on this route and is
 described under *Absorbing the return* below.
@@ -579,6 +593,7 @@ described under *Absorbing the return* below.
 | `00:EBA5` | Block stager: a 32-byte copy plus the dirty flags | 1,121 | 2,653,407 |
 | `00:E93C` | The sixteen-bit compare the fade drivers branch on | 8,969 | 946,719 |
 | `00:EAA7` | Fade-to-black stepper: one step over all thirty-two blocks | 8, in 101 chunks | 1,652,688 |
+| `08:5977` + `08:5982` | The setup screen's own stager: the resolver call, then the copy and the flags | 177, both of both | 397,719 |
 
 The last column is the deployed registry's own measured credit
 (`--native-cycle-census`), not the routines' cost in an assembly-only run —
@@ -586,7 +601,28 @@ The last column is the deployed registry's own measured credit
 the two are close but no longer identical, because each transcript now
 carries its own return. Earlier revisions of this table quoted the
 inventory figures here and one derived `00:EB30` + `00:EB4D` total;
-all five rows are measured.
+all six rows are measured.
+
+The last row is not in this bank and does not use this family's source
+convention. `08:5977` stages block zero for the title, play-mode, speed and
+data-load screens, whose caller flips bit 0 of a cadence byte every four
+ticks so that the block alternates between two colour sets. `00:EBA5` is
+handed a pointer; this one builds one, putting `$04`/`$1E` in `$2F`/`$30`
+and calling the asset resolver at `00:E1FD`, which maps banks `$1E` and
+`$1F` at `$8000` and `$A000` and replaces the pair with the pointer it reads
+out of `$8004`. The phase is only then shifted left five times into a
+sixteen-bit displacement and added on.
+
+That call is crossed rather than composed, so the routine is two
+transcripts: `08:5977` builds the reference and ends on `00:E1FD`, and
+`08:5982` — the address the resolver returns to — does the arithmetic, the
+thirty-two loads and the two flags, and ends past its own `RTS`. Composing
+the resolver was never on the table: it exists to switch banks, and both of
+its halves have been native since the call-wrapper slice, so bringing it in
+line would transcribe a routine that is already transcribed and take its
+`TAM`s onto this walk's own register file for nothing. The thirty-two loads
+then run against the two banks that call just mapped, resolved through the
+MPRs the transcript declares rather than assumed.
 
 The bottom four are admitted on every call, which is unusual enough to
 explain. They are leaves — no `JSR`, no device port, and nothing another
@@ -1892,7 +1928,7 @@ anything and the figure has been dropped rather than carried forward
 unverified.
 
 Set the idle spin loop aside and 710,482,755 cycles are the machine
-working; 687,682,992 of them, **96.79%**, now run natively.
+working; 688,080,711 of them, **96.85%**, now run natively.
 
 The breakdown below is a self-consistent snapshot taken before the
 interrupt dispatcher was split and the whole-palette arm with it, against

@@ -366,6 +366,8 @@ DC_ADMITTED_ROUTINE(0x08U, 0x4088U, 2567, 2567, "verify_sat_submission_semantic"
 DC_ADMITTED_ROUTINE(0x08U, 0x4097U, 50248, 50248, "verify_sat_submission_semantic")
 DC_ADMITTED_ROUTINE(0x08U, 0x40C3U, 4334, 4334, "verify_sat_tail_clear_semantic")
 DC_ADMITTED_ROUTINE(0x08U, 0x40DFU, 73818, 73818, "verify_absorbed_return_trace +1")
+DC_ADMITTED_ROUTINE(0x08U, 0x5977U, 177, 177, "verify_setup_screen_palette_stager_semantic")
+DC_ADMITTED_ROUTINE(0x08U, 0x5982U, 177, 177, "verify_absorbed_return_trace +1")
 DC_ADMITTED_ROUTINE(0x45U, 0x4015U, 1933, 3599, "verify_music_sequencer_semantic")
 DC_ADMITTED_ROUTINE(0x45U, 0x4044U, 1208, 7724, "verify_music_sequencer_semantic")
 DC_ADMITTED_ROUTINE(0x45U, 0x409CU, 1509, 4892, "verify_music_sequencer_semantic")

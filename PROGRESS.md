@@ -5718,12 +5718,121 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
   - [x] Measure: **+701,016 native master cycles** (686,981,976 ->
     687,682,992, 53.16% -> **53.21%** of the route, 96.69% -> **96.79%**
     outside the wait), which is `6,494 x 36 + 6,494 x 24 + 6,487 x 48` exactly.
+- [x] Port the setup screen's palette stager at `08:5977`, the palette shadow
+  buffer's only producer outside bank `00`, and cross the call that had kept it
+  emulated.
+  - [x] Identify what the routine actually is before porting it. `ROUTINE_MAP`
+    called it a "setup-screen data helper" whose scene role was unnamed; it
+    stages thirty-two bytes into block zero of the shadow buffer at `$27B9` and
+    raises `$2CCC` and `$2CCB`, which is `00:EBA5`'s job, and its caller flips
+    bit 0 of `$3A80,X` every four ticks so the block alternates between two
+    colour sets. It belongs in `native_replacements_palette.cpp` next to the
+    twin, not in a new file.
+  - [x] Cross the `JSR $E1FD` at `08:597F` rather than composing the resolver:
+    it exists to switch banks, and both of its halves at `00:E20D` and
+    `00:E200` have been native since the call-wrapper slice.
+  - [x] Register `08:5982`, the address the resolver returns to, and read the
+    thirty-two source bytes through the MPRs the transcript declares — MPR4 and
+    MPR5 hold the banks that call just mapped, so the walk needs the ROM span
+    rather than the work-RAM snapshot.
+  - [x] Absorb the `RTS` at `$59B4` and watch it at `08:5977`, the head that
+    opened the call; the eighth case of `dc_rom_absorbed_return_trace`, and the
+    first where the two transcripts are separated by a call into another bank.
+  - [x] Close the cycle model before writing code: 57 for the head and 2,190
+    for the body is 2,247 a call, and 2,247 x 177 is the 397,719 the profile
+    attributes to the routine, with no interrupt dispatch charged anywhere in
+    it.
+  - [x] Prove it by comparison rather than by recorded expectation: 5,763,953
+    writes across the whole stack page, the pointer the walk builds, the whole
+    shadow buffer and all thirty-two dirty flags, byte-identical with the
+    family emulated and with both entries replaced, plus a routine-call trace
+    of 177 calls and 9,204 writes that matches either way.
+  - [x] Measure: **+397,719 native master cycles** (687,682,992 ->
+    688,080,711, 53.21% -> **53.24%** of the route, 96.79% -> **96.85%**
+    outside the wait), all 177 calls admitted on both entries.
+  - [x] Re-rank the remainder by opcode rather than by routine, which is what
+    three consecutive non-routine gains had been arguing for: 2,942,532 master
+    cycles sit in 464 uncrossed `JSR`/`BSR` sites and another 1,422,765 in
+    unabsorbed `RTS`.
 
 ## Active Work
 
-Current owner: Claude. Current slice: **the Tower-insect controller**. Done.
-The same move again, made against a parent whose children were already native
-— which is the case where crossing and composition look most alike.
+Current owner: Claude. Current slice: **the setup screen's palette stager**.
+Done. The crossing again, this time across a bank boundary — and the call it
+crosses is the reason the routine had been left alone.
+
+**`08:5977` was the largest unported routine left on the route**, and it turned
+out to be a member of a family that has been native for slices. It stages
+thirty-two bytes into block zero of the palette shadow buffer at `$27B9` and
+raises the dirty flags at `$2CCC` and `$2CCB`, which is exactly `00:EBA5`'s job,
+for the one block the title, play-mode, speed and data-load screens flash. Its
+caller runs a four-tick timer at `$3A00,X` and flips bit 0 of the cadence at
+`$3A80,X` when it expires, so the phase alternates between two colour sets. The
+registry goes 687,682,992 -> **688,080,711**, 53.21% -> **53.24%** of the route
+and 96.79% -> **96.85%** of it outside the frame-sync wait.
+
+| Entry | Instructions | Ends on | Native calls | Master cycles |
+| --- | --- | --- | ---: | ---: |
+| `08:5977` | the asset reference, then the `JSR $E1FD` | `00:E1FD` | 177 of 177 | 10,089 |
+| `08:5982` | the displacement, the 32-byte copy, the flags, the `RTS` | the caller | 177 of 177 | 387,630 |
+
+**What made it look unportable was the source, and the source is a call.**
+`00:EBA5` is handed a pointer; this routine builds one. It puts `$04` and `$1E`
+in `$2F`/`$30` and calls the asset resolver at `00:E1FD`, which maps bank `$1E`
+at `$8000` and `$1F` at `$A000` and then replaces the pair with the sixteen-bit
+pointer it reads out of `$8004`. Only then is the phase shifted left five times
+into a displacement and added on. So the thirty-two loads read ROM through two
+MPR slots that a call one instruction earlier set — resolved out of the MPRs the
+transcript declares, never assumed, which is the discipline `00:EBA5`'s own
+source read has always used.
+
+**The resolver is crossed, and composing it was never the alternative.** It
+exists to switch banks: `TAM #$10` and `TAM #$20` are the point of it, and both
+of its halves at `00:E20D` and `00:E200` have been native since the call-wrapper
+slice. Bringing eleven instructions in line would transcribe a routine that is
+already transcribed and take its MPR changes onto this walk's own register file
+for nothing. Push the return, charge 21, end on the callee's first instruction.
+
+**The cycle model was closed before any code was written.** 57 master cycles for
+the head and 2,190 for the body — the copy loop is 48 per iteration plus 12 for
+each of 31 taken branches and 6 for the last — is 2,247 a call, and 2,247 × 177
+is 397,719, which is exactly what the profile attributes to the routine's
+fifteen addresses. No interrupt lands anywhere in it on this route, which is
+visible in the same place: every row is an exact multiple of its own instruction
+cost, with no dispatch charged to any of them.
+
+**The evidence is a comparison, not a recorded expectation.** The same route
+traced with the whole stack page, the pointer the walk builds at `$202E`-`$2030`,
+the *whole* shadow buffer and all thirty-two dirty flags in scope produces
+5,763,953 writes, byte-identical with the family emulated and with both entries
+replaced — `3fb9b061…` either way, census the assembly-only `9036a9de…` either
+way. The scope is the whole buffer rather than block zero on purpose: a walk
+that staged the wrong block, or more than one, would show, and the family's
+other producers stay emulated in that run and have to interleave with this one
+exactly as they did.
+
+**The second entry is a resumption point, and its return closes someone else's
+call.** `08:5982` is where the resolver lands, so it is entered on a frame it
+did not push, and the `RTS` it ends past closes the call `08:5977` was entered
+on. It is watched at `08:5977` — the shape `00:ECE2` established and `03:601E`
+repeated, but this is the first one where the two transcripts are separated by a
+call into another bank. Registered as the eighth case of
+`dc_rom_absorbed_return_trace`: 177 calls and 9,204 writes, identical either
+way.
+
+**The counters.** 376 routines, 309 entered, 2,692,840 of 2,731,425 calls — the
+354 added are 177 × 2, all admitted. Nesting, instructions interpreted and
+abandonments are all unchanged at 301,698, 66,312,646 and 21,656, which is what
+a routine no interrupt ever lands in looks like.
+
+**One incidental fix.** `tests/verify_absorbed_return_trace.cmake` said "Six are
+registered" when there were seven, and `tools/Generate-NativeRegistry.ps1`
+still carried a stray `**` from the wrapper slice's de-bolding. Both corrected.
+
+### Previous: the Tower-insect controller
+
+Done. The same move again, made against a parent whose children were already
+native — which is the case where crossing and composition look most alike.
 
 **`03:6016` was the largest emulated body left on the route.** Six
 instructions: load the collision selector from `$3780,X`, `JSR $6966` into the
@@ -7345,9 +7454,9 @@ does not.
 ### Next
 
 **Re-measured with the registry deployed after this slice** (instruction
-profile, 3,600-frame Release route). All four `03:60xx` rows have left the
-list. Excluding the frame-sync spin loop's own two instructions, the largest
-emulated addresses left are:
+profile, 3,600-frame Release route). Both `08:59xx` rows have left the list.
+Excluding the frame-sync spin loop's own two instructions, the largest emulated
+addresses left are:
 
 | Address | Executions | Master cycles | What it is |
 | --- | ---: | ---: | --- |
@@ -7360,53 +7469,69 @@ emulated addresses left are:
 | `03:6A33` | 7,001 | 147,021 | Residue, same walk |
 | `00:E05C` | 7,198 | 129,564 | `LDA $0000`, the interrupt acknowledge. A device read that changes the device; refused with reasons |
 | `03:6A14` | 5,953 | 125,013 | Residue, same walk |
-| `08:59A2` | 5,664 | 118,944 | The load in an unported 32-byte copy loop |
 | `03:69C5` | 4,898 | 102,858 | Residue, same walk |
 | `45:4047` | 6,519 | 98,097 | A chunk boundary in the music tick |
+| `03:7F80` | 4,518 | 94,878 | An untranscribed arm |
 
-**The top of the profile is now almost entirely what the model refuses or
-cannot recover.** Of the table's 4,704,444: 3,810,501 is refusals and
-attribution (`00:FC81`, `00:E321`, `00:EB46`, `00:F423`, `00:E05C`), 529,413 is
-collision-interpreter residue that nothing short of shortening the transcripts
-recovers, and 147,489 is a single `TII` executed once at startup. That leaves
-217,041 in the whole top twelve that is portable work, and it is two rows.
+**Stop ranking by routine. Rank by opcode.** Reading the profile a routine at a
+time has been the wrong instrument for three slices running — the last three
+gains were 1,550,178, 639,828 and 701,016, and not one of them was a routine.
+Classify every emulated row by the opcode at its address instead, and the
+remainder outside the spin loop divides like this:
 
-**Take the bank `08` block copy next.** `08:5977`-`59B4` is now the largest
-unported *routine* on the route. It loads `$1E04` into `$2F`/`$30`, calls
-`08:E1FD`, takes the animation phase from `$3A80,X`, shifts it left five times
-into a 16-bit value, adds that to the pointer, copies 32 bytes from `[$2F],Y`
-to `$27B9,Y`, and sets `$2CCB` and `$2CCC` to 1. **397,719 master cycles across
-177 calls**, and 338,778 of that is the five instructions of the loop.
+| Opcode at the emulated address | Sites | Executions | Master cycles |
+| --- | ---: | ---: | ---: |
+| `JSR` | 460 | 138,870 | **2,937,348** |
+| `RTS` | 221 | 67,274 | 1,422,765 |
+| `JMP` | 122 | 43,446 | 525,468 |
+| `JMP ($nn)` | 4 | 1,409 | 29,637 |
+| `BSR` | 4 | 210 | 5,184 |
+| Everything else | 5,139 | 1,692,863 | 20,109,009 |
 
-It is the cleanest shape left. The arithmetic is straight-line, the iteration
-count is fixed at 32, there are 34 writes, there is one `RTS` to absorb — and
-no interrupt lands anywhere in it on this route, which is visible in the
-profile: every row is an exact multiple of its instruction cost, `5664 × 21`
-for the load and `5664 × 15` for the store, with no dispatch charged to any of
-them. Two things to settle first. **The source is not work RAM.** `[$2F]` is
-`$1E04 + (phase << 5)`, which is segment 0, so the walk reads through MPR0 and
-needs the ROM span rather than the work-RAM snapshot — several replacement
-functions already take `rom` for this, and the bank has to come from the
-transcript's own MPRs. And `08:597F` is a `JSR $E1FD` in the middle of it, so
-this is two walks with a crossed call between them, exactly like `03:6016`:
-`08:5977` up to and including the call, then a second entry at `08:5982`.
+**2,942,532 master cycles are calls a transcript stops in front of, spread over
+464 sites, and every one of them is this slice's edit.** That is more than four
+times the largest single gain the port has ever made, and it needs no new
+capability at all: a walk that would end in front of a `JSR` instead pushes the
+two return bytes at the instruction's start offset, charges 21, and ends on the
+callee's first instruction. Whether the callee is registered does not matter —
+the core resumes there either way, and if it is registered it simply enters
+immediately. The 1,422,765 in emulated `RTS` is the same argument for
+absorption, which is already routine.
 
-**Then the display handler's three calls**, which are this slice's technique
-again and need no new thinking: `00:E111` (`JSR $EB30`, 75,579), `00:E114`
-(`JSR $E195`, 75,579) and `00:E120` (`JSR $ECC6`, 67,452) are three `JSR`s the
-handler's walks stop in front of, 218,610 between them. `00:E117` and `00:E123`
-are already registered entries that resume after two of them, so the shape is
-the one just built at `03:6016`: cross the call, register the address the
-callee returns to. `00:E114` would be the new entry; `00:E123` already exists.
-Note `00:E120` is inside a `TMA`/`PHA` … `PLA`/`TAM` bank save, so the walk
-that crosses it has the wrapper's bank state to carry.
+The concentration is by bank: `01` 1,380,276, `03` 534,321, `45` 478,170, `00`
+387,348, `02` 80,010, `08` 64,218, `09` 18,189. The largest individual sites are
+`45:408F` (90,885), `45:4138` (76,107), `00:E114` and `00:E111` (75,579 each),
+`45:40AA` (73,299), `45:409F` (72,966), `01:C73F` (69,303), `01:CB76` (68,565),
+`00:E120` (67,452), `01:C749` (64,395), `03:7F5D` (64,011), `01:C75E` (63,573).
 
-**What the route no longer has is a large emulated body.** The two candidates above
-are 616,329 together, and below them the profile is flat: nothing between
-100,000 and the residue, and a long tail of chunk boundaries, joins and
-one-shot initializers. Rank by what the machine executes rather than by what
-looks unported — three of the four largest rows in this table are instructions,
-not routines.
+Two things temper it. Not every site is a native walk stopping at a wall — some
+are in code that was never ported, where crossing the call recovers 21 cycles
+and leaves the body interpreted. And a site inside a *composed* transcript is
+not a candidate at all: the composition already runs the callee in line, and the
+row is there because a chunk ended or an interrupt cut the walk short. `45:408F`
+and its neighbours are the music tick's voice loop, which chunks, so read those
+rows as chunk boundaries before treating them as calls.
+
+**Take the bank `45` cluster first**, because it is the densest and the family
+already chunks, so the shape is familiar: `45:408F`, `45:4138`, `45:40AA` and
+`45:409F` are 313,257 between them, four calls the sequencer's walks stop in
+front of. `45:409C` is already a registered entry — it is where the tick resumes
+after `4936` — so at least one of the four resumption points exists already.
+
+**Then the display handler's three**, which need no new thinking: `00:E111`
+(`JSR $EB30`, 75,579), `00:E114` (`JSR $E195`, 75,579) and `00:E120`
+(`JSR $ECC6`, 67,452), 218,610 between them. `00:E117` and `00:E123` are already
+registered entries that resume after two of them, so only `00:E114`'s
+resumption point would be new. Note `00:E120` sits inside a `TMA`/`PHA` …
+`PLA`/`TAM` bank save, so the walk that crosses it carries the wrapper's bank
+state.
+
+**And `00:E1FD` is one instruction of the same shape for 39,465 cycles.** The
+asset resolver's own head is a single `JSR $E20D` that three call sites reach
+and no walk has ever crossed — this slice's `08:5977` now lands on it, and so do
+the tilemap's `00:F2A8` and `00:F35C` (6,054 and 4,872, which are two more
+uncrossed calls of their own). It belongs to the call-wrapper family, whose nine
+other entry points are already native.
 
 **The old ranking, kept because its per-bank arithmetic still holds.** Note
 that it counts `RTS` opcodes only, so it never saw the interrupt return that

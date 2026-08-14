@@ -260,9 +260,9 @@ own when the CPU does.
 is the one to watch:
 
 ```
-Registry cycles: 687682992 native of 1292371731 elapsed master cycles (53.21%)
-Registry cycles outside the frame-sync wait: 687682992 native of 710482755
-  (96.79%); the machine waited at 00:E323 for 581888976 master cycles
+Registry cycles: 688080711 native of 1292371731 elapsed master cycles (53.24%)
+Registry cycles outside the frame-sync wait: 688080711 native of 710482755
+  (96.85%); the machine waited at 00:E323 for 581888976 master cycles
   (45.02% of the route)
 Instructions interpreted: 66312646
 ```

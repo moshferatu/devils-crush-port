@@ -26,7 +26,7 @@
 # drift into agreeing with a mistake -- the emulated run is the answer.
 #
 # The script takes the routine to prove, so that each one it is pointed at is a
-# test of its own rather than a longer one. Six are registered.
+# test of its own rather than a longer one. Eight are registered.
 #
 # It also takes the routine to watch, which is usually the same one and for the
 # last is not. A routine entered by an `RTS` landing rather than by a `JSR`, and
@@ -102,6 +102,13 @@
 # Seven of its 6,494 arrivals are hits and decline, so this is also the only
 # one of the seven where the replacement is not installed on every call -- the
 # comparison has to hold with the two paths interleaved.
+#
+# 08:5982 is the setup screen's palette stager, and it is the eighth: the same
+# handover again, but across a call into another bank. 08:5977 crosses its
+# `JSR $E1FD` into the asset resolver, which runs in segment 7 and switches two
+# MPRs before returning, so the transcript that absorbs the `RTS` is entered
+# from a routine in a different bank than the one that opened the call. It is
+# watched at 08:5977 for the same reason as the two above.
 
 foreach(required_variable IN ITEMS APP CONFIG ROM OUTPUT ROUTINE)
     if(NOT DEFINED ${required_variable} OR "${${required_variable}}" STREQUAL "")
@@ -152,6 +159,11 @@ elseif(routine STREQUAL "03:601E")
         "Native replacement 03:601E@all entries: 6487 of 6494")
     set(expected_trace
         "Routine call trace complete: 6494 calls, 114100 writes")
+elseif(routine STREQUAL "08:5982")
+    set(expected_entries
+        "Native replacement 08:5982@all entries: 177 of 177")
+    set(expected_trace
+        "Routine call trace complete: 177 calls, 9204 writes")
 else()
     message(FATAL_ERROR "Unknown absorbed-return routine: ${routine}")
 endif()

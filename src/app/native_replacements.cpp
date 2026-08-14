@@ -210,6 +210,24 @@ replace_native_gameplay_routine_impl(
             }) {
         return detail::replace_palette_shadow(entry, work_ram, rom);
     }
+    // The same job in bank 08, for the block the setup screens flash. Two
+    // entry points, because the walk crosses the resolver call that turns its
+    // asset reference into a source pointer.
+    if (entry.routine
+            == RoutineKey{
+                .physical_bank = 0x08U,
+                .logical_pc = 0x5977U,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x08U,
+                .logical_pc = 0x5982U,
+            }) {
+        return detail::replace_setup_screen_palette_stager(
+            entry,
+            work_ram,
+            rom);
+    }
     // One shared walk, nine entry points: the bank-switching call wrappers
     // every cross-bank call in the game goes through. Each transcript stops in
     // front of the call it exists to make, or in front of its own RTS.

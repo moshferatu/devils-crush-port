@@ -2878,6 +2878,11 @@ parse_logical_address_range(const std::string_view text)
                                || request.routine.logical_pc == 0xEB4DU
                                || request.routine.logical_pc == 0xEBA5U)
                            && request.all_calls;
+                       const bool proven_setup_screen_palette_stager =
+                           request.routine.physical_bank == 0x08U
+                           && (request.routine.logical_pc == 0x5977U
+                               || request.routine.logical_pc == 0x5982U)
+                           && request.all_calls;
                        const bool proven_bank_call_wrappers =
                            request.routine.physical_bank == 0x00U
                            && (request.routine.logical_pc == 0xE200U
@@ -3044,6 +3049,7 @@ parse_logical_address_range(const std::string_view text)
                            && !proven_sound_timer_driver
                            && !proven_music_sequencer
                            && !proven_palette_shadow
+                           && !proven_setup_screen_palette_stager
                            && !proven_bank_call_wrappers
                            && !proven_vblank_handler
                            && !proven_vram_upload

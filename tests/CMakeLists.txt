@@ -2262,6 +2262,42 @@ if(TARGET devils_crush)
         )
 
         add_test(
+            NAME dc_rom_absorbed_return_trace_resolved
+            CONFIGURATIONS Release
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/absorbed-return-trace-resolved-v1"
+                "-DROUTINE=08:5982"
+                "-DOBSERVE=08:5977"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_absorbed_return_trace.cmake"
+        )
+        set_tests_properties(
+            dc_rom_absorbed_return_trace_resolved
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_setup_screen_palette_stager_semantic
+            CONFIGURATIONS Release
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/setup-screen-palette-stager-semantic-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_setup_screen_palette_stager_semantic.cmake"
+        )
+        set_tests_properties(
+            dc_rom_setup_screen_palette_stager_semantic
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
             NAME dc_rom_tower_insect_controller_semantic
             CONFIGURATIONS Release
             COMMAND

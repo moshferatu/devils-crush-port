@@ -2478,4 +2478,535 @@ std::optional<RoutineReplacement> replace_palette_shadow(
     }
 }
 
+namespace {
+
+// The setup screen's own block stager, and the shadow buffer's only producer
+// outside bank 00.
+//
+// 08:5977 does what 00:EBA5 above does -- thirty-two bytes into a block of the
+// shadow buffer, then the dirty flags -- for the one block the title, play-mode,
+// speed and data-load screens animate. Its caller at 08:5963 runs a four-tick
+// timer at `$3A00,X`, flips bit 0 of the cadence at `$3A80,X` when it expires,
+// and calls here; the phase selects between two thirty-two byte colour sets and
+// the screen flashes between them. The block is always the first one, so the
+// destination is the literal `$27B9` and the flags are the literal `$2CCC` and
+// `$2CCB` rather than 00:EBA5's indexed pair.
+//
+// What the two do not share is where the source comes from. 00:EBA5 is handed a
+// pointer; this routine builds one. It puts `$04` and `$1E` in `$2F`/`$30` and
+// calls the asset resolver at 00:E1FD, which maps bank `$1E` at `$8000` and
+// `$1F` at `$A000` and then replaces the pair with the sixteen-bit pointer it
+// reads from `$8004`. Only then is the phase shifted left five times into a
+// sixteen-bit displacement and added to it. So the thirty-two loads run against
+// two ROM banks that a call one instruction earlier put in MPR4 and MPR5, and
+// they are resolved through the MPRs the transcript is declaring rather than
+// assumed -- the same discipline 00:EBA5's own source read has always used.
+//
+// The resolver is crossed, not composed. It is a bank switch: `TAM #$10` and
+// `TAM #$20` are the point of it, and its own two halves at 00:E20D and 00:E200
+// have been native since the call-wrapper slice, so bringing eleven instructions
+// in line would transcribe a routine that is already transcribed and take the
+// MPR changes onto this walk's own register file for nothing. The walk pushes
+// the return, charges the twenty-one cycles and ends on the callee's first
+// instruction, and the routine becomes two transcripts:
+//
+//   08:5977  load the asset reference, then make the `JSR $E1FD`
+//   08:5982  the phase arithmetic, the thirty-two byte copy, the two flags,
+//            and the `RTS`
+//
+// The second is entered by the resolver's return rather than by a call, and it
+// ends past the `RTS` that closes the call 08:5977 was entered on, so the
+// absorbed return belongs to a call another transcript opened -- the shape
+// 00:ECE2 established and 03:601E repeated. It is watched at 08:5977.
+//
+// The copy loop is 160 checkpoints and the whole walk is 183 against a channel
+// of 2,048, and 42 writes against 512, so it needs no chunking. And no interrupt
+// lands anywhere in this routine on the census route: every profile row is an
+// exact multiple of its own instruction cost, which is why 2,247 master cycles a
+// call times 177 calls is exactly the 397,719 the profile attributes to it.
+constexpr std::uint8_t kSetupBank = 0x08U;
+
+[[nodiscard]] constexpr bool is_setup_entry(const std::uint16_t logical_pc)
+{
+    return logical_pc == 0x5977U || logical_pc == 0x5982U;
+}
+
+} // namespace
+
+std::optional<RoutineReplacement> replace_setup_screen_palette_stager(
+    const RoutineEntry& entry,
+    const std::span<const std::byte> work_ram,
+    const std::span<const std::byte> rom)
+{
+    if (entry.routine.physical_bank != kSetupBank
+        || !is_setup_entry(entry.routine.logical_pc)
+        || work_ram.size() < 0x2000U) {
+        return std::nullopt;
+    }
+    // The two ADCs below run in binary, and the memory-operand T flag would
+    // redirect the accumulator through zero page for both of them.
+    if ((entry.registers.status & (kDecimal | kMemory)) != 0U) {
+        return std::nullopt;
+    }
+
+    std::uint8_t ram[0x2000];
+    for (std::size_t index = 0U; index < 0x2000U; ++index) {
+        ram[index] = std::to_integer<std::uint8_t>(work_ram[index]);
+    }
+
+    RoutineReplacement replacement;
+    CpuRegisters registers = entry.registers;
+    std::uint32_t cycle = 0U;
+    bool overflow = false;
+
+    const auto read_ram =
+        [&ram, &overflow](const std::uint16_t address) -> std::uint8_t {
+            if (address < kWorkRamBase || address >= kWorkRamEnd) {
+                overflow = true;
+                return 0U;
+            }
+            return ram[address - kWorkRamBase];
+        };
+
+    // The colour sets live in the two banks the resolver just mapped, so the
+    // mapping is read out of the register file the transcript is declaring. The
+    // hardware page fails the bank test, which is what makes a device read
+    // decline rather than fabricate a value.
+    const auto read_mapped =
+        [&registers, &ram, rom, &overflow](
+            const std::uint16_t address) -> std::uint8_t {
+            const auto bank = registers.mpr[address >> 13U];
+            if (bank == 0xF8U) {
+                return ram[address & 0x1FFFU];
+            }
+            if (bank >= 0x80U || rom.size() != 0x60000U) {
+                overflow = true;
+                return 0U;
+            }
+            const auto rom_bank = bank < 0x40U
+                ? static_cast<std::size_t>(bank & 0x1FU)
+                : static_cast<std::size_t>((bank & 0x0FU) + 0x20U);
+            const auto offset = rom_bank * 0x2000U
+                + static_cast<std::size_t>(address & 0x1FFFU);
+            if (offset >= rom.size()) {
+                overflow = true;
+                return 0U;
+            }
+            return std::to_integer<std::uint8_t>(rom[offset]);
+        };
+
+    std::size_t committed_writes = 0U;
+    const auto commit_pending_writes =
+        [&replacement, &committed_writes](const std::uint32_t at_cycle) {
+            while (committed_writes < replacement.work_ram_writes.size()) {
+                replacement.work_ram_writes[committed_writes]
+                    .master_cycle_offset = at_cycle;
+                ++committed_writes;
+            }
+        };
+
+    const auto append_checkpoint =
+        [&replacement, &registers, &cycle, &commit_pending_writes](
+            const std::uint16_t instruction_pc,
+            const std::uint16_t resume_pc,
+            const std::uint32_t instruction_cycles) {
+            cycle += instruction_cycles;
+            commit_pending_writes(cycle);
+            registers.program_counter = resume_pc;
+            replacement.checkpoints.push_back({
+                .interrupt_sample_master_cycle_offset = cycle - 3U,
+                .master_cycle_offset = cycle,
+                .instruction = {kSetupBank, instruction_pc},
+                .registers = registers,
+            });
+        };
+
+    const auto store =
+        [&replacement, &ram, &overflow](
+            const std::uint16_t instruction_pc,
+            const std::uint16_t address,
+            const std::uint8_t value) {
+            if (address < kWorkRamBase || address >= kWorkRamEnd) {
+                overflow = true;
+                return;
+            }
+            ram[address - kWorkRamBase] = value;
+            replacement.work_ram_writes.push_back({
+                .instruction = {kSetupBank, instruction_pc},
+                .logical_address = address,
+                .value = value,
+                .master_cycle_offset = 0U,
+            });
+        };
+
+    const auto zp = [](const std::uint8_t address) {
+        return static_cast<std::uint16_t>(kWorkRamBase + address);
+    };
+    const auto indexed_x = [&registers](const std::uint16_t base) {
+        return static_cast<std::uint16_t>(
+            base + static_cast<std::uint16_t>(registers.x));
+    };
+    const auto indexed_y = [&registers](const std::uint16_t base) {
+        return static_cast<std::uint16_t>(
+            base + static_cast<std::uint16_t>(registers.y));
+    };
+    const auto indirect_y =
+        [&ram, &registers, &overflow](const std::uint8_t pointer) {
+            const auto base = static_cast<std::uint32_t>(
+                static_cast<std::uint16_t>(ram[pointer])
+                | static_cast<std::uint16_t>(
+                    ram[static_cast<std::uint8_t>(pointer + 1U)])
+                    << 8U);
+            const auto target = base + static_cast<std::uint32_t>(registers.y);
+            if (target > 0xFFFFU) {
+                overflow = true;
+                return static_cast<std::uint16_t>(0U);
+            }
+            return static_cast<std::uint16_t>(target);
+        };
+
+    const auto load_accumulator = [&registers](const std::uint8_t value) {
+        registers.accumulator = value;
+        registers.status = set_nz(registers.status, value);
+    };
+    const auto compare =
+        [&registers](const std::uint8_t lhs, const std::uint8_t rhs) {
+            const auto difference = static_cast<std::uint16_t>(
+                static_cast<std::uint16_t>(lhs)
+                - static_cast<std::uint16_t>(rhs));
+            registers.status = set_nz(
+                registers.status,
+                static_cast<std::uint8_t>(difference));
+            registers.status = static_cast<std::uint8_t>(
+                registers.status & static_cast<std::uint8_t>(~kCarry));
+            if (lhs >= rhs) {
+                registers.status = static_cast<std::uint8_t>(
+                    registers.status | kCarry);
+            }
+        };
+    const auto add_with_carry = [&registers](const std::uint8_t operand) {
+        const auto sum = static_cast<std::uint16_t>(
+            static_cast<std::uint16_t>(registers.accumulator)
+            + static_cast<std::uint16_t>(operand)
+            + static_cast<std::uint16_t>(registers.status & kCarry));
+        auto status = static_cast<std::uint8_t>(
+            registers.status & static_cast<std::uint8_t>(~(0x43U | kNegative)));
+        const auto overflow_bit = static_cast<std::uint8_t>(
+            ((((registers.accumulator ^ operand) & 0x80U) ^ 0x80U)
+             & ((registers.accumulator ^ sum) & 0x80U))
+            >> 1U);
+        status = static_cast<std::uint8_t>(status | overflow_bit);
+        status = static_cast<std::uint8_t>(
+            status | static_cast<std::uint8_t>((sum >> 8U) & kCarry));
+        registers.accumulator = static_cast<std::uint8_t>(sum);
+        registers.status = set_nz(status, registers.accumulator);
+    };
+    const auto shift_left_accumulator = [&registers]() {
+        const auto carry = static_cast<std::uint8_t>(
+            (registers.accumulator >> 7U) & kCarry);
+        registers.accumulator = static_cast<std::uint8_t>(
+            registers.accumulator << 1U);
+        registers.status = set_nz(
+            static_cast<std::uint8_t>(
+                (registers.status & static_cast<std::uint8_t>(~kCarry))
+                | carry),
+            registers.accumulator);
+    };
+    const auto rotate_left_memory =
+        [&registers, &read_ram, &store, &zp](
+            const std::uint16_t instruction_pc,
+            const std::uint8_t address) {
+            const auto operand = read_ram(zp(address));
+            const auto rotated = static_cast<std::uint8_t>(
+                static_cast<std::uint8_t>(operand << 1U)
+                | static_cast<std::uint8_t>(registers.status & kCarry));
+            store(instruction_pc, zp(address), rotated);
+            registers.status = set_nz(
+                static_cast<std::uint8_t>(
+                    (registers.status & static_cast<std::uint8_t>(~kCarry))
+                    | static_cast<std::uint8_t>((operand >> 7U) & kCarry)),
+                rotated);
+        };
+    const auto branch =
+        [&append_checkpoint](
+            const std::uint16_t instruction_pc,
+            const std::uint16_t taken_pc,
+            const std::uint16_t fallthrough_pc,
+            const bool taken) {
+            const auto next = taken ? taken_pc : fallthrough_pc;
+            append_checkpoint(instruction_pc, next, taken ? 12U : 6U);
+            return next;
+        };
+
+    // Where the transcript hands the machine back. The bank comes out of the
+    // MPRs being declared, because neither stop is in this module's own bank:
+    // one is the resolver in segment 7, the other the caller the absorbed
+    // return lands on.
+    const auto finish = [&](const std::uint16_t stop_pc) {
+        registers.program_counter = stop_pc;
+        replacement.return_instruction = {
+            registers.mpr[stop_pc >> 13U],
+            stop_pc,
+        };
+        replacement.output_registers = registers;
+        replacement.body_master_cycles = cycle;
+    };
+
+    auto pc = entry.routine.logical_pc;
+    for (;;) {
+        if (overflow) {
+            return std::nullopt;
+        }
+
+        switch (pc) {
+        // ---- 08:5977  the asset reference and the resolver call -----------
+        case 0x5977U:  // LDA #$04
+            load_accumulator(0x04U);
+            append_checkpoint(0x5977U, 0x5979U, 6U);
+            pc = 0x5979U;
+            break;
+
+        case 0x5979U:  // STA $2F
+            store(0x5979U, zp(0x2FU), registers.accumulator);
+            append_checkpoint(0x5979U, 0x597BU, 12U);
+            pc = 0x597BU;
+            break;
+
+        case 0x597BU:  // LDA #$1E
+            load_accumulator(0x1EU);
+            append_checkpoint(0x597BU, 0x597DU, 6U);
+            pc = 0x597DU;
+            break;
+
+        case 0x597DU:  // STA $30
+            store(0x597DU, zp(0x30U), registers.accumulator);
+            append_checkpoint(0x597DU, 0x597FU, 12U);
+            pc = 0x597FU;
+            break;
+
+        case 0x597FU: {  // JSR $E1FD -- crossed, not composed
+            // The two pushes happen before the opcode charges a cycle, so both
+            // bytes carry the instruction's start offset -- which is also the
+            // end offset of the store in front of them. The core breaks that
+            // tie by instruction, so the pair lands with the call. What is
+            // pushed is the address of the JSR's own last byte, $5981.
+            store(
+                0x597FU,
+                static_cast<std::uint16_t>(kStackBase + registers.stack_pointer),
+                0x59U);
+            store(
+                0x597FU,
+                static_cast<std::uint16_t>(
+                    kStackBase
+                    + static_cast<std::uint8_t>(registers.stack_pointer - 1U)),
+                0x81U);
+            commit_pending_writes(cycle);
+            registers.stack_pointer =
+                static_cast<std::uint8_t>(registers.stack_pointer - 2U);
+            append_checkpoint(0x597FU, 0xE1FDU, 21U);
+            finish(0xE1FDU);
+            return replacement;
+        }
+
+        // ---- 08:5982  the displacement, the copy and the flags ------------
+        case 0x5982U:  // LDA $3A80,X -- the cadence phase
+            load_accumulator(read_ram(indexed_x(0x3A80U)));
+            append_checkpoint(0x5982U, 0x5985U, 15U);
+            pc = 0x5985U;
+            break;
+
+        case 0x5985U:  // STZ $2E
+            store(0x5985U, zp(0x2EU), 0x00U);
+            append_checkpoint(0x5985U, 0x5987U, 12U);
+            pc = 0x5987U;
+            break;
+
+        case 0x5987U:  // ASL A
+            shift_left_accumulator();
+            append_checkpoint(0x5987U, 0x5988U, 6U);
+            pc = 0x5988U;
+            break;
+
+        case 0x5988U:  // ROL $2E
+            rotate_left_memory(0x5988U, 0x2EU);
+            append_checkpoint(0x5988U, 0x598AU, 18U);
+            pc = 0x598AU;
+            break;
+
+        case 0x598AU:  // ASL A
+            shift_left_accumulator();
+            append_checkpoint(0x598AU, 0x598BU, 6U);
+            pc = 0x598BU;
+            break;
+
+        case 0x598BU:  // ROL $2E
+            rotate_left_memory(0x598BU, 0x2EU);
+            append_checkpoint(0x598BU, 0x598DU, 18U);
+            pc = 0x598DU;
+            break;
+
+        case 0x598DU:  // ASL A
+            shift_left_accumulator();
+            append_checkpoint(0x598DU, 0x598EU, 6U);
+            pc = 0x598EU;
+            break;
+
+        case 0x598EU:  // ROL $2E
+            rotate_left_memory(0x598EU, 0x2EU);
+            append_checkpoint(0x598EU, 0x5990U, 18U);
+            pc = 0x5990U;
+            break;
+
+        case 0x5990U:  // ASL A
+            shift_left_accumulator();
+            append_checkpoint(0x5990U, 0x5991U, 6U);
+            pc = 0x5991U;
+            break;
+
+        case 0x5991U:  // ROL $2E
+            rotate_left_memory(0x5991U, 0x2EU);
+            append_checkpoint(0x5991U, 0x5993U, 18U);
+            pc = 0x5993U;
+            break;
+
+        case 0x5993U:  // ASL A
+            shift_left_accumulator();
+            append_checkpoint(0x5993U, 0x5994U, 6U);
+            pc = 0x5994U;
+            break;
+
+        case 0x5994U:  // ROL $2E
+            rotate_left_memory(0x5994U, 0x2EU);
+            append_checkpoint(0x5994U, 0x5996U, 18U);
+            pc = 0x5996U;
+            break;
+
+        case 0x5996U:  // CLC
+            registers.status = static_cast<std::uint8_t>(
+                registers.status & static_cast<std::uint8_t>(~kCarry));
+            append_checkpoint(0x5996U, 0x5997U, 6U);
+            pc = 0x5997U;
+            break;
+
+        case 0x5997U:  // ADC $2F -- displacement onto the resolved pointer
+            add_with_carry(read_ram(zp(0x2FU)));
+            append_checkpoint(0x5997U, 0x5999U, 12U);
+            pc = 0x5999U;
+            break;
+
+        case 0x5999U:  // STA $2F
+            store(0x5999U, zp(0x2FU), registers.accumulator);
+            append_checkpoint(0x5999U, 0x599BU, 12U);
+            pc = 0x599BU;
+            break;
+
+        case 0x599BU:  // LDA $2E
+            load_accumulator(read_ram(zp(0x2EU)));
+            append_checkpoint(0x599BU, 0x599DU, 12U);
+            pc = 0x599DU;
+            break;
+
+        case 0x599DU:  // ADC $30 -- carry out of the low byte
+            add_with_carry(read_ram(zp(0x30U)));
+            append_checkpoint(0x599DU, 0x599FU, 12U);
+            pc = 0x599FU;
+            break;
+
+        case 0x599FU:  // STA $30
+            store(0x599FU, zp(0x30U), registers.accumulator);
+            append_checkpoint(0x599FU, 0x59A1U, 12U);
+            pc = 0x59A1U;
+            break;
+
+        case 0x59A1U:  // CLY -- no flags
+            registers.y = 0x00U;
+            append_checkpoint(0x59A1U, 0x59A2U, 6U);
+            pc = 0x59A2U;
+            break;
+
+        case 0x59A2U:  // LDA ($2F),Y -- the colour set, in ROM
+            load_accumulator(read_mapped(indirect_y(0x2FU)));
+            append_checkpoint(0x59A2U, 0x59A4U, 21U);
+            pc = 0x59A4U;
+            break;
+
+        case 0x59A4U:  // STA $27B9,Y -- block zero of the shadow buffer
+            store(0x59A4U, indexed_y(0x27B9U), registers.accumulator);
+            append_checkpoint(0x59A4U, 0x59A7U, 15U);
+            pc = 0x59A7U;
+            break;
+
+        case 0x59A7U:  // INY
+            registers.y = static_cast<std::uint8_t>(registers.y + 1U);
+            registers.status = set_nz(registers.status, registers.y);
+            append_checkpoint(0x59A7U, 0x59A8U, 6U);
+            pc = 0x59A8U;
+            break;
+
+        case 0x59A8U:  // CPY #$20
+            compare(registers.y, 0x20U);
+            append_checkpoint(0x59A8U, 0x59AAU, 6U);
+            pc = 0x59AAU;
+            break;
+
+        case 0x59AAU:  // BNE $59A2
+            pc = branch(
+                0x59AAU,
+                0x59A2U,
+                0x59ACU,
+                (registers.status & kZero) == 0U);
+            break;
+
+        case 0x59ACU:  // LDA #$01
+            load_accumulator(0x01U);
+            append_checkpoint(0x59ACU, 0x59AEU, 6U);
+            pc = 0x59AEU;
+            break;
+
+        case 0x59AEU:  // STA $2CCC -- block zero is dirty
+            store(0x59AEU, 0x2CCCU, registers.accumulator);
+            append_checkpoint(0x59AEU, 0x59B1U, 15U);
+            pc = 0x59B1U;
+            break;
+
+        case 0x59B1U:  // STA $2CCB -- some block is dirty
+            store(0x59B1U, 0x2CCBU, registers.accumulator);
+            append_checkpoint(0x59B1U, 0x59B4U, 15U);
+            pc = 0x59B4U;
+            break;
+
+        case 0x59B4U: {  // RTS -- absorbed
+            // The frame this reads was pushed by the `JSR $5977` two
+            // transcripts ago, so the call the routine-call observer opened at
+            // 08:5977 is closed here. Declare the boundary before taking it,
+            // with the stack pointer the call was entered on.
+            const auto low = read_ram(static_cast<std::uint16_t>(
+                kStackBase
+                + static_cast<std::uint8_t>(registers.stack_pointer + 1U)));
+            const auto high = read_ram(static_cast<std::uint16_t>(
+                kStackBase
+                + static_cast<std::uint8_t>(registers.stack_pointer + 2U)));
+            const auto return_pc = static_cast<std::uint16_t>(
+                (static_cast<std::uint16_t>(high) << 8U)
+                + static_cast<std::uint16_t>(low) + 1U);
+            auto at_return = registers;
+            at_return.program_counter = 0x59B4U;
+            replacement.absorbed_returns.push_back({
+                .instruction = {kSetupBank, 0x59B4U},
+                .master_cycle_offset = cycle,
+                .registers = at_return,
+            });
+            registers.stack_pointer =
+                static_cast<std::uint8_t>(registers.stack_pointer + 2U);
+            append_checkpoint(0x59B4U, return_pc, kReturn);
+            finish(return_pc);
+            return replacement;
+        }
+
+        default:
+            return std::nullopt;
+        }
+    }
+}
+
 } // namespace devils_crush::app::detail
