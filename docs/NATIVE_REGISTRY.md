@@ -16,20 +16,20 @@ Release state-census route (`--native-cycle-census`, measured 2026-08-14):
 | | |
 | --- | ---: |
 | Elapsed master cycles | 1,292,371,731 |
-| Native master cycles | 687,431,079 |
-| **Native share** | **53.19%** |
-| **Native share of cycles outside the idle spin loop** | **96.76%** |
-| Routines installed | 399 of 399 |
-| Routines entered | 332 |
-| Calls run natively | 2,723,887 of 2,762,445 entered |
+| Native master cycles | 692,715,369 |
+| **Native share** | **53.60%** |
+| **Native share of cycles outside the idle spin loop** | **97.50%** |
+| Routines installed | 404 of 404 |
+| Routines entered | 337 |
+| Calls run natively | 2,713,488 of 2,737,810 entered |
 | Calls declined at an interrupt horizon | 0 |
-| Transcripts installed inside a suspended transcript | 304,273 |
+| Transcripts installed inside a suspended transcript | 307,961 |
 | Deepest simultaneous suspension | 3 of a permitted 4 |
 | Transcripts abandoned part-way through | 0 |
 | Replacements refused for depth | 0 |
 
 The resulting state census is byte-identical to the assembly-only
-baseline (`9036a9de…`), so that 53.19% is faithful, not merely running.
+baseline (`9036a9de…`), so that 53.60% is faithful, not merely running.
 The last three rows matter because the host credits a native call when
 it *offers* one. A replacement the core then refused would inflate the
 share silently, and a refusal count of zero is what rules that out.
@@ -312,23 +312,38 @@ would have restored, silently reopening a window the driver had just
 closed. Publishing the true `P` instead is not right either: it shuts
 a boundary the hardware leaves open. Neither byte is the machine.
 
-So the `SEI` stays emulated and the two transcripts meet on either
-side of it — the first stops in front of it, the second is entered at
-`00:FC82` and `00:FD76`, the instruction after. It costs 1,526,046
-cycles of the 26.7M the epilogue was worth, 5.7%, and buys an exact
+So the `SEI` stayed emulated and the two transcripts met on either
+side of it — the first stopped in front of it, the second was entered
+at `00:FC82` and `00:FD76`, the instruction after. It cost 1,526,046
+cycles of the 26.7M the epilogue was worth, 5.7%, and bought an exact
 answer for the other 94.3%.
 
-This is the second instruction the checkpoint format cannot express,
-and the pair is worth reading together. `BBR` at `00:F423` could not
-be expressed because of *when* the core steps — two clock steps where
-the machine takes four, which moved a video event. `SEI` cannot be
-expressed because of *what* a checkpoint carries — one status byte
-where the machine distinguishes two. Both were found by the census
-rather than by reading the core, both cost a low single-digit
-percentage of their slice, and in both cases the fix was to hand the
-instruction back rather than to widen the format. The format is
-scaffolding that phase 4 deletes; an exception carved into it would
-outlive its usefulness.
+**Two slices later that trade stopped being worth taking, and this
+file argued the wrong way about it.** What stood here was that `BBR`
+at `00:F423` and `SEI` were both instructions the format could not
+express — `BBR` because of *when* the core steps, `SEI` because of
+*what* a checkpoint carries — and that in both cases the fix was to
+hand the instruction back rather than widen the format, because "the
+format is scaffolding that phase 4 deletes; an exception carved into
+it would outlive its usefulness."
+
+The reasoning was sound and the arithmetic was not done. Handing the
+instruction back is only cheap while the instruction is rare, and this
+one is not: `00:FC81` executes 251,531 times on the route. When the
+residue was next ranked it stood at 1,509,498 emulated master cycles —
+the most expensive single instruction outside the frame-sync wait, and
+more than any *routine* still unported. Scaffolding that costs 0.2% of
+the route is not scaffolding.
+
+The widening was also smaller than the argument assumed. A checkpoint
+already separates the sample from the boundary in time —
+`interrupt_sample_master_cycle_offset` exists for exactly that reason —
+and did not separate them for the mask;
+`patches/0023-huc6280-interrupt-flag-sample.patch` adds one flag that
+does, defaulting to the old behaviour so that all 404 admitted routines
+are unaffected by construction. `BBR` is untouched and the pair no
+longer belongs together: one was a limit of the format, the other was
+a gap in it.
 
 Verification is the two-run diff against pure assembly: the state
 census, 1,604,764 work-RAM writes over the driver's channel records
@@ -614,7 +629,12 @@ way out.
 
 The bank is now 44,971,824 of 45,805,974 cycles native, **98.2%**, up from
 41,213,268. What is left is `45:4936`, the track loader `45:4BCC`, the six
-emulated `SEI`s, and the chunk boundaries the tick and `4142` hand back. The
+emulated `SEI`s -- which a checkpoint can describe since
+`patches/0023-huc6280-interrupt-flag-sample.patch`, but which are left
+emulated here for a reason measured in that slice: transcribing them holds
+`interrupt_window_open` across the mask set, and the conservatism that buys
+costs more admissions than the 71,226 cycles it recovers -- and the chunk
+boundaries the tick and `4142` hand back. The
 last slice here was worth `+3,758,556` master cycles on the whole route,
 53.19% to **53.48%**, and 96.76% to **97.28%** of everything outside the
 frame-sync wait — and every cycle of it came from this bank, with no other
@@ -2208,10 +2228,19 @@ the rest was a real 26M target nobody could see. Nesting recovered
 85,778,658 and exposed the epilogue; the epilogue slice then took
 25,180,701 of what it exposed.
 
-What is left of the driver is 1,530,690 cycles in two pieces. The `SEI`s at
-`00:FC81` and `00:FD75` are 1,526,046, and are the finding of the epilogue
-slice — see that section above for why a checkpoint cannot describe them.
-The two `JMP $FC03` chain exits are 4,644.
+What is left of the driver is 4,644 cycles: the two `JMP $FC03` chain exits.
+
+It was 1,530,690 in two pieces until the slice after the epilogue's. The
+`SEI`s at `00:FC81` and `00:FD75` were 1,526,046 of it, left emulated because
+a checkpoint carried one status byte and an `SEI` needs two answers from it.
+`00:FC81` alone was the single most expensive interpreted instruction on the
+route outside the frame-sync wait — more than any unported routine — which is
+what finally made changing the format the cheaper move than working around it.
+The checkpoint now carries the sampled mask beside the retired one
+(`patches/0023-huc6280-interrupt-flag-sample.patch`), the walk runs the `SEI`
+and ends past it at `FC82`, and the split the epilogue needs for its `$DA`
+read survives untouched — because that split was always going to fall on this
+instruction.
 
 **The third piece was the `RTI`s, and this file was wrong about them.** They
 were recorded here as 5,349,879 cycles left deliberately, because "returning

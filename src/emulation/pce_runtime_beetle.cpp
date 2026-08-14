@@ -2841,6 +2841,10 @@ private:
         return static_cast<std::uint8_t>(status & 0xEFU);
     }
 
+    // The interrupt-disable mask in the status byte, used only to check that a
+    // checkpoint claiming to have sampled it clear is one that set it.
+    static constexpr std::uint8_t kInterruptDisableFlag = 0x04U;
+
     [[nodiscard]] static CpuRegisters cpu_registers(
         const dc_beetle_cpu_state& state) noexcept
     {
@@ -3360,6 +3364,19 @@ private:
                     throw std::runtime_error(
                         "Replacement hook returned an invalid checkpoint.");
                 }
+                // A boundary can only claim to have sampled the mask clear if
+                // it retired with the mask set, because the claim exists to
+                // describe the one instruction that closes a window it was
+                // still standing inside. Declared anywhere else it would open
+                // a window the machine had shut, so it is refused here rather
+                // than quietly handed to the core.
+                if (checkpoint.samples_interrupt_flag_clear
+                    && (checkpoint.registers.status
+                        & kInterruptDisableFlag) == 0U) {
+                    throw std::runtime_error(
+                        "Replacement hook returned a checkpoint that samples "
+                        "the interrupt mask clear without setting it.");
+                }
                 previous_cycle = checkpoint.master_cycle_offset;
             }
             if (!result.checkpoints.empty()
@@ -3474,6 +3491,8 @@ private:
                     checkpoint.registers.stack_pointer;
                 core_checkpoint.status =
                     observable_status(checkpoint.registers.status);
+                core_checkpoint.samples_interrupt_flag_clear =
+                    checkpoint.samples_interrupt_flag_clear ? 1U : 0U;
                 std::copy(
                     checkpoint.registers.mpr.begin(),
                     checkpoint.registers.mpr.end(),

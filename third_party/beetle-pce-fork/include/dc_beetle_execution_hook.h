@@ -67,6 +67,15 @@ typedef struct dc_beetle_replacement_checkpoint {
     uint8_t y;
     uint8_t stack_pointer;
     uint8_t status;
+    // Non-zero when the original instruction sampled the interrupt lines with
+    // the `I` mask clear and retired with it set -- which is every `SEI`, and
+    // on this processor nothing else. `status` above is what the instruction
+    // retired, because that is the register the resumed code reads and the
+    // byte an interrupt taken here pushes; this is what `LastCycle` saw one
+    // cycle earlier, which is what decides whether the interrupt is taken at
+    // all. A transcript that leaves this zero is describing an instruction
+    // whose two answers agree, which is every other instruction.
+    uint8_t samples_interrupt_flag_clear;
     uint8_t mpr[8];
 } dc_beetle_replacement_checkpoint;
 

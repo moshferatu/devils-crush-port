@@ -26,8 +26,8 @@ high byte. The deterministic 1,800-frame route now executes 18,806 of 19,648
 preserving the byte-identical gameplay artifact, complete 19,648-call trace,
 and all 180,389 ordered writes.
 
-The deployed registry now runs **691,189,635 of 1,292,371,731 master cycles
-natively, 53.48% of the route and 97.28% of everything outside the frame-sync
+The deployed registry now runs **692,715,369 of 1,292,371,731 master cycles
+natively, 53.60% of the route and 97.50% of everything outside the frame-sync
 wait**, across 404 admitted routines with no transcript declined at an
 interrupt horizon and none abandoned. The 3,600-frame state census remains
 `9036a9de0c3c9917f47bff8c04c136a4824ec12601fb457d260aa2dfe4443490`.
@@ -6061,10 +6061,126 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
     41,213,268 to 44,971,824 of its 45,805,974 cycles -- **98.2%** -- and no
     other routine on the route moved. 420/420 Release, 3/3 ROM-free Debug.
 
+- [x] **Stop working around the `SEI` rule and remove it.** Ranking the
+  residue put one instruction at the top of the table: `00:FC81`, a single
+  `SEI`, 1,509,498 emulated master cycles -- more than any unported routine.
+  Eight sites, 1,597,272 cycles, 13% of everything still emulated.
+  - [x] Widen the checkpoint rather than the walk.
+    `patches/0023-huc6280-interrupt-flag-sample.patch` adds
+    `samples_interrupt_flag_clear`, and the core applies the clear mask across
+    `DcSampleInterrupt` and the retired mask immediately after. The checkpoint
+    already separated the sample from the boundary in time; it did not
+    separate them for the mask.
+  - [x] Make it additive and unspoofable. Zero in the field is the old path
+    exactly, so all 404 admitted routines were unaffected by construction, and
+    the host refuses a checkpoint claiming the clear sample without the set.
+  - [x] Run the driver epilogue through its own `SEI`s. The split at `FC81`
+    survives -- the `$DA` read still needs a snapshot from after the window
+    shut -- but the first transcript now ends past the instruction instead of
+    in front of it.
+  - [x] Prove it on the stack page, where a wrong answer would land.
+    `--work-ram-write-range 2100-21FF`, 4,205,705 writes, identical to
+    assembly; the state census cannot see a byte that is pushed and popped
+    inside a frame.
+  - [x] Revert bank `45`'s six. Correct, but transcribing them holds
+    `interrupt_window_open` across the mask set, which cost more admissions
+    (`45:4142` 3,544 -> 3,216 of 3,604, `45:485E` never entered) than the
+    129,942 cycles it recovered. Needs its own pass.
+  - [x] **691,189,635 -> 692,715,369, 53.48% -> 53.60% of the route and
+    97.28% -> 97.50% outside the wait.** 404 routines, 337 entered, 0 declined
+    at a horizon, 0 abandonments, boundary decisions unchanged at 66,291,003.
+    420/420 Release, 3/3 ROM-free Debug.
+
+- [ ] **Six cycles under `01:C018`.** The stack trace differs from pure
+  assembly in 708 of 4,205,705 writes -- same address, same value, 6 master
+  cycles late, at `02:53C8` and `02:5441`, each immediately after a
+  `JSR $C018`. A build without the `SEI` slice reproduces the same 708
+  differences, so a deployed replacement beneath `01:C018` mis-declares six
+  cycles and has done for some time. The frame-sync wait absorbs it, which is
+  why no census caught it. Find which replacement and what it is charging.
+
 ## Active Work
 
-Current owner: Claude. Current slice: **finishing bank 45, the music
-sequencer**. Done. Nothing in it needed porting: every instruction had been
+Current owner: Claude. Current slice: **the `SEI` stop, removed from the
+checkpoint format**. Done. The largest single instruction the deployed registry
+still emulated was one the format could not describe, and the format was wrong.
+
+**`00:FC81` is one `SEI`, and it was 1,509,498 emulated master cycles.** More
+than any other instruction outside the frame-sync wait, and more than any
+routine still unported. Two slices had worked around the rule that produced it
+-- stop in front of the mask set, register the address after it, let the core
+run the one instruction -- and the ranking finally priced the workaround:
+1,597,272 cycles across eight sites, **13% of everything the registry still
+emulated**.
+
+| | Before | After |
+| --- | ---: | ---: |
+| Registry cycles | 691,189,635 | **692,715,369** |
+| Share of the route | 53.48% | **53.60%** |
+| Share outside the frame-sync wait | 97.28% | **97.50%** |
+| Residue outside the wait | 11,964,270 | 10,438,224 |
+| Admitted routines | 404 | 404 |
+| Interrupt-boundary decisions | 66,291,003 | 66,291,003 |
+| Declined at a horizon | 0 | 0 |
+| Abandonments | 0 | 0 |
+
+**+1,525,734 master cycles, and not one line of new transcript.** `00:FC81` and
+`00:FD75` are gone from the instruction profile entirely rather than reduced.
+
+**The ambiguity was one field, not one byte.** A checkpoint carried a single
+status, and the core took two things from it: the `P` an interrupt taken at
+that boundary pushes, and the `IFlagSample` deciding whether it may be taken.
+`LastCycle` runs before the opcode's writeback, so an `SEI` samples the window
+it is about to close -- an interrupt already pending is still taken there, and
+pushes the `P` the `SEI` just wrote. But the checkpoint *already* separates the
+sample from the boundary in time: `interrupt_sample_master_cycle_offset` exists
+for exactly that reason. It simply did not separate them for the mask.
+`patches/0023-huc6280-interrupt-flag-sample.patch` adds
+`samples_interrupt_flag_clear`; the core applies the clear mask across
+`DcSampleInterrupt` and the retired one immediately after.
+
+Three things kept a core change from being a risky one, and they are the
+pattern to copy:
+
+- **Additive, with the old behaviour as the default.** A checkpoint that
+  leaves the field zero takes byte-for-byte its previous path, so all 404
+  admitted routines were unaffected by construction rather than by testing.
+- **Refused rather than trusted.** The host throws on a checkpoint claiming the
+  clear sample without setting the mask, so the one way to state it wrongly
+  cannot reach the core.
+- **Proved where a wrong answer would land.** Both readings of an `SEI`
+  boundary differ only in the byte an interrupt pushes, so the oracle is the
+  stack page: `--work-ram-write-range 2100-21FF` over the whole route,
+  **4,205,705 writes, identical**. The state census cannot see it -- a pushed
+  byte is popped long before a frame boundary -- which is exactly why the
+  census missed the four-byte fault in the slice before this one.
+
+**A pre-existing defect surfaced and is not mine.** The stack trace differs
+from pure assembly in 708 of those 4,205,705 writes: same address, same value,
+6 master cycles late, at two `JSR`s in bank `02` (`53C8` and `5441`) that each
+sit immediately after a `JSR $C018`. Rebuilding without this slice's producer
+reproduces the same 708 differences byte-for-byte, so a deployed replacement
+under `01:C018` mis-declares six cycles. The census absorbs it at the
+frame-sync wait, which is why nothing has caught it. It is the next thing to
+look at.
+
+**The fix removes the obstacle; it does not decide the walk.** Bank `45`'s six
+`SEI`s were transcribed too, and then reverted. Removing the stop means the
+walk carries on through the mask set and holds `interrupt_window_open` across
+it -- correctly, since that boundary is genuinely still open -- which made the
+staleness guard and the chunk bound conservative over a much longer span:
+`45:4142` fell from 3,544 admitted arrivals of 3,604 to 3,216 and `45:485E`
+stopped being entered at all, for a net **+129,942**. The driver epilogue has
+no such interaction, because its split at the `SEI` is required for an
+unrelated reason -- the `$DA` read needs a snapshot from after the window shut
+-- so the transcript ends there whatever the mask set costs. Bank `45` needs
+its own measurement pass and a third state in the window model; it is not part
+of this slice.
+
+420/420 Release, 3/3 ROM-free Debug. `windows-debug` was not run.
+
+### Previous: finishing bank 45, the music sequencer
+Done. Nothing in it needed porting: every instruction had been
 written already, and 4.4M master cycles a route were being refused by the
 walk's own guards.
 

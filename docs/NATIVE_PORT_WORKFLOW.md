@@ -2065,10 +2065,11 @@ interrupt entry appears as three descending pushes at one timestamp, and the
 
 There is no publishable byte. `IFlagSample` needs the old mask and the pushed
 `P` needs the new one, and a checkpoint carries one status for both. So `SEI`
-joins `BBR` as an instruction the format cannot express, and takes the same
+joined `BBR` as an instruction the format could not express, and took the same
 remedy: stop in front of it, register the address after it, and let the core
-run the instruction itself. In the driver epilogue that costs 1,526,046 cycles
-of a 26.7M slice.
+run the instruction itself. In the driver epilogue that cost 1,526,046 cycles
+of a 26.7M slice — until the format was changed to say both. See *The format
+could not express it, so the format was wrong* below.
 
 The two exceptions are worth holding together, because they are found
 differently. `BBR` is a *timing* defect — the transcript's own artifacts are
@@ -2099,6 +2100,60 @@ majority, because `4142` brackets each channel in `PHP`/`SEI`/`PLP` and most
 callers arrive masked. Keep the case in the switch for the masked path;
 deleting it sends every masked arrival to `default` and refuses the transcript,
 which is how this was first got wrong.
+
+#### The format could not express it, so the format was wrong
+
+Two slices in a row worked around the `SEI` rule, and then the residue ranking
+put the cost of the workaround at the top of the table. `00:FC81` — one `SEI`
+— was **1,509,498 emulated master cycles**, more than any other single
+instruction outside the frame-sync wait and more than any unported *routine*.
+Add `00:FD75` and bank `45`'s six and the rule was costing 1,597,272 cycles,
+13% of everything the deployed registry still emulated.
+
+That is the signal to stop working around a format and change it. The
+ambiguity was never "one byte cannot say two things" — it was that the
+checkpoint had one *field* where the hardware has two moments. `LastCycle`
+sampling and the opcode's writeback are a cycle apart, and the checkpoint
+already models that separation for time: `interrupt_sample_master_cycle_offset`
+exists precisely because the sample happens before the boundary. It just did
+not model it for the mask. `patches/0023-huc6280-interrupt-flag-sample.patch`
+adds `samples_interrupt_flag_clear`, and the core applies the clear mask across
+`DcSampleInterrupt` and the retired one immediately after.
+
+Three properties made it a small change rather than a risky one, and they are
+worth copying the next time a format looks like the obstacle:
+
+- **Additive with the old behaviour as the default.** A checkpoint that leaves
+  the field zero takes byte-for-byte the path it took before, so all 404
+  admitted routines were unaffected by construction rather than by testing.
+- **Refused rather than trusted at the boundary.** The host throws on a
+  checkpoint that claims the clear sample without setting the mask, so the one
+  way to state the new field wrongly cannot reach the core.
+- **Proved where a wrong answer would land.** Both readings of an `SEI`
+  boundary differ only in the byte an interrupt pushes, so the oracle is the
+  stack page: `--work-ram-write-range 2100-21FF` over the whole route,
+  4,205,705 writes, identical. The state census cannot see it — a pushed byte
+  is popped again long before a frame boundary — which is the same reason the
+  census missed the four-byte fault in the slice before this one.
+
+One corroboration is worth knowing about because it is nearly free. The
+boundary-decision count printed by the census — 66,291,003 — did not move.
+That figure counts the questions the machine asked, not the work it did, so a
+change to *how* an interrupt boundary is answered that leaves the count alone
+has not moved any boundary. It caught nothing here, but it is the cheapest
+available check that a change of this kind is confined to the answer.
+
+What the fix does **not** do is make every `SEI` free. Removing the stop means
+the walk carries on through the mask set, and a walk that carries on holds its
+`interrupt_window_open` state across the boundary — which is genuinely still
+open, since the interrupt can be taken there. In bank `45` that made the
+staleness guard and the chunk bound conservative over a much longer span, and
+`45:4142` dropped from 3,544 admitted arrivals of 3,604 to 3,216 while
+`45:485E` stopped being entered at all, for a net gain of only 129,942 cycles.
+The driver epilogue has no such interaction — its split at the `SEI` is needed
+for an unrelated reason, so the transcript ends there anyway — which is why
+this landed there and not in bank `45`. **A format fix removes the obstacle;
+it does not decide the walk.**
 
 #### The mask a body runs under is not the mask it was entered with
 

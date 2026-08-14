@@ -47,17 +47,26 @@ constexpr std::uint16_t kEntryPc = 0xFC00U;
 // is two transcripts, and the second is entered late enough for its snapshot
 // to contain the write.
 //
-// The split falls on the SEI because that instruction is the one a checkpoint
-// cannot describe. A checkpoint carries a single status byte, and the core
-// derives two different things from it: the machine's P, which an interrupt
-// taken at that boundary pushes, and IFlagSample, which decides whether the
-// timer may interrupt there at all. Every other instruction wants the same
-// answer from both. SEI does not -- P has I set the moment it retires, but
-// its LastCycle sampled the mask beforehand, so the boundary is still open.
-// Publishing the open mask corrupts the pushed P; publishing the true P
-// closes a window the hardware leaves open. Neither is the machine, so the
-// SEI stays emulated, and the two transcripts meet on either side of it. It
-// costs 1,526,046 master cycles of the 26.7M the epilogue is worth.
+// The split falls on the SEI because that is the instruction the window shuts
+// on: after it, no handler can reach $DA, so a snapshot taken there is the
+// first one guaranteed to be current. The first transcript therefore runs the
+// SEI and ends past it, at FC82, where the second is registered.
+//
+// It used to stop in front of the SEI and leave it emulated, because a
+// checkpoint could not describe one. A checkpoint carried a single status
+// byte, and the core derived two different things from it: the machine's P,
+// which an interrupt taken at that boundary pushes, and IFlagSample, which
+// decides whether the timer may interrupt there at all. Every other
+// instruction wants the same answer from both. SEI does not -- P has I set
+// the moment it retires, but its LastCycle sampled the mask beforehand, so
+// the boundary is still open. Publishing the open mask corrupted the pushed
+// P; publishing the true P closed a window the hardware leaves open.
+//
+// A checkpoint now says both, and the two here were what paid for it: the
+// SEI at FC81 was 1,509,498 emulated master cycles over the census route,
+// more than any other single instruction outside the frame-sync wait, and
+// FD75 another 16,548. The split survives; only the stop in front of it is
+// gone.
 constexpr std::uint16_t kFirstMaskPc = 0xFC81U;
 constexpr std::uint16_t kSecondMaskPc = 0xFD75U;
 constexpr std::uint16_t kFirstResumePc = 0xFC82U;
@@ -200,8 +209,10 @@ std::optional<RoutineReplacement> replace_sound_timer_driver(
     // the interrupt for that instruction, so the first instruction after a
     // CLI still runs masked. The checkpoint for CLI therefore publishes the
     // old mask and the clear lands on the following checkpoint. The mirror
-    // case, SEI, is not modelled here: see kFirstMaskPc above for why it is
-    // left emulated instead.
+    // case, SEI, cannot be deferred the same way -- the deferred byte would be
+    // the one an interrupt taken at that boundary pushes -- so its checkpoint
+    // publishes the mask it set and says separately that it sampled the
+    // window still open. See kFirstMaskPc above.
     bool interrupt_enable_pending = false;
     const auto append_checkpoint =
         [&replacement,
@@ -211,7 +222,8 @@ std::optional<RoutineReplacement> replace_sound_timer_driver(
          &interrupt_enable_pending](
             const std::uint16_t instruction_pc,
             const std::uint16_t resume_pc,
-            const std::uint32_t instruction_cycles) {
+            const std::uint32_t instruction_cycles,
+            const bool samples_interrupt_flag_clear = false) {
             cycle += instruction_cycles;
             while (committed_writes < replacement.work_ram_writes.size()) {
                 replacement.work_ram_writes[committed_writes]
@@ -224,6 +236,8 @@ std::optional<RoutineReplacement> replace_sound_timer_driver(
                 .master_cycle_offset = cycle,
                 .instruction = {kBank, instruction_pc},
                 .registers = registers,
+                .samples_interrupt_flag_clear =
+                    samples_interrupt_flag_clear,
             });
             if (interrupt_enable_pending) {
                 registers.status = static_cast<std::uint8_t>(
@@ -868,10 +882,23 @@ std::optional<RoutineReplacement> replace_sound_timer_driver(
             pc = kFirstMaskPc;
             break;
 
-        // The head of the second transcript. The first one stopped in front
-        // of the SEI at FC81; the core emulates that, then re-enters here,
-        // so everything below runs against a snapshot taken after any
-        // preempting handler has finished writing $DA.
+        // The instruction the two transcripts used to meet on either side of.
+        // The first one now runs it and ends past it, at FC82, where the
+        // second is registered -- which is what keeps the split: the walk has
+        // to stop here whatever the SEI costs, because $DA below is written by
+        // a handler that preempts this one and the second transcript needs a
+        // snapshot taken after that window shut. The SEI is the instruction
+        // that shuts it, so the boundary was always going to be here.
+        case kFirstMaskPc:  // SEI
+            registers.status = static_cast<std::uint8_t>(
+                registers.status | kInterrupt);
+            append_checkpoint(kFirstMaskPc, kFirstResumePc, 6U, true);
+            pc = kFirstResumePc;
+            break;
+
+        // The head of the second transcript, entered at the boundary the
+        // first one ended on, so everything below runs against a snapshot
+        // taken after any preempting handler has finished writing $DA.
         case 0xFC82U:  // STZ $D9
             store(0xFC82U, logical(kHandlerBusy), 0U);
             append_checkpoint(0xFC82U, 0xFC84U, 12U);
@@ -1905,6 +1932,16 @@ std::optional<RoutineReplacement> replace_sound_timer_driver(
             pc = kSecondMaskPc;
             break;
 
+        // The sequencer half's copy of FC81, and it splits for the same two
+        // reasons: the mask it sets is the window the $DA below is written
+        // through, and the second transcript wants a snapshot from after it.
+        case kSecondMaskPc:  // SEI
+            registers.status = static_cast<std::uint8_t>(
+                registers.status | kInterrupt);
+            append_checkpoint(kSecondMaskPc, kSecondResumePc, 6U, true);
+            pc = kSecondResumePc;
+            break;
+
         case 0xFD76U:  // STZ $D9
             store(0xFD76U, logical(kHandlerBusy), 0U);
             append_checkpoint(0xFD76U, 0xFD78U, 12U);
@@ -2541,7 +2578,7 @@ std::optional<RoutineReplacement> replace_sound_timer_driver(
         }
 
         if (interrupt_returned || pc == kFirstChainPc || pc == kSecondChainPc
-            || pc == kFirstMaskPc || pc == kSecondMaskPc) {
+            || pc == kFirstResumePc || pc == kSecondResumePc) {
             break;
         }
     }

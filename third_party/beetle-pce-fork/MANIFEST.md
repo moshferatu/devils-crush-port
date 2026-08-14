@@ -766,6 +766,33 @@ this repository.
       this patch stops comparing it; a transcript models `PHP`/`PLP` exactly
       and so cannot help carrying a bit the interrupt it cannot see would have
       cleared.
+23. `patches/0023-huc6280-interrupt-flag-sample.patch`
+    - Lets a checkpoint describe an `SEI`, which is the one instruction it
+      could not. The checkpoint gains `samples_interrupt_flag_clear`; when it
+      is set the core applies the mask clear across `DcSampleInterrupt` and
+      writes the retired status immediately afterwards.
+    - The ambiguity is real rather than a modelling shortcut. `LastCycle` runs
+      before the opcode's writeback, so an `SEI` samples the window it is
+      about to close: an interrupt already pending is taken at that boundary
+      and pushes the `P` the `SEI` just wrote. One status byte answers both
+      questions for every other instruction and cannot answer both for this
+      one -- publishing the open mask corrupts the pushed byte, publishing the
+      closed one suppresses an interrupt the hardware takes.
+    - A mask clear needs nothing here, and that asymmetry is the reason this
+      patch is only about `SEI`. A transcript expresses `CLI` and `PLP` by
+      publishing the old mask on the instruction and the new one on the
+      checkpoint after it, and both answers come out right from the one byte,
+      because a boundary that closes no window has nothing to disagree about.
+    - Additive and inert by default. A checkpoint that leaves the field zero
+      takes exactly the path it took before, which is every checkpoint the
+      fork's hosts produced until now; the host refuses at the boundary any
+      checkpoint that claims the clear sample without setting the mask.
+    - The state census over the 3,600-frame route is byte-identical either
+      side of this patch, as is a 4,205,705-write trace of the whole stack
+      page `$2100-21FF` -- which is where a wrong answer would land, since
+      both readings differ only in the byte an interrupt pushes. The count of
+      interrupt-boundary decisions is unchanged at 66,291,003, so the machine
+      judged its interrupts at the same points either way.
 
 All local files and patches are GPL-3.0-or-later. Upstream per-file notices
 and licenses remain authoritative for upstream sources.

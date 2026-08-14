@@ -1,0 +1,51 @@
+diff --git a/mednafen/pce/huc6280.cpp b/mednafen/pce/huc6280.cpp
+--- a/mednafen/pce/huc6280.cpp
++++ b/mednafen/pce/huc6280.cpp
+@@ -851,13 +851,46 @@
+ 	// byte pushed to the stack, and both pushers force it there regardless of
+ 	// what the register holds -- so a transcript's B is a modelling artifact
+ 	// and the machine's own is left standing rather than overwritten by it.
+-	P = (uint8)((checkpoint.status & ~B_FLAG) | (P & B_FLAG));
++	const uint8 retired_status =
++		(uint8)((checkpoint.status & ~B_FLAG) | (P & B_FLAG));
++
++	// The mask an instruction retires with is not always the mask it sampled
++	// the interrupt lines under. `LastCycle` runs before the opcode's own
++	// writeback, so `SEI` samples the window it is about to close: an
++	// interrupt already pending is still taken at that boundary, and pushes
++	// the P the SEI just wrote. One status byte cannot say both, which is why
++	// a transcript used to stop in front of every mask set and let the
++	// emulator run it.
++	//
++	// So the checkpoint says both. `status` stays what the instruction
++	// retired -- the register the resumed code reads and an interrupt pushes
++	// -- and this flag carries the one bit `LastCycle` saw instead, applied
++	// only across the sample and then retired like the hardware retires it.
++	// Nothing else on this processor needs it: `CLI` and `PLP` want the
++	// opposite deferral, which a transcript already expresses by publishing
++	// the old mask and applying the new one at the following checkpoint,
++	// because a boundary that closes no window has nothing to disagree about.
++	const uint8 sampled_status = checkpoint.samples_interrupt_flag_clear
++		? (uint8)(retired_status & ~I_FLAG)
++		: retired_status;
++
++	P = sampled_status;
+ 	REDOPIMCACHE();
+ 	for(unsigned i = 0; i < 8; i++)
+ 		SetMPR(i, checkpoint.mpr[i]);
+ 
+ 	DcSampleInterrupt();
+ 
++	// The writeback the sample ran ahead of. `IRQSample` and `IFlagSample`
++	// are latched by now, so this is the register alone catching up to what
++	// the instruction left behind -- and on every checkpoint but a mask set
++	// the two bytes are the same byte and this is not reached at all.
++	if(sampled_status != retired_status)
++	{
++		P = retired_status;
++		REDOPIMCACHE();
++	}
++
+ 	AdvanceReplacementTo(checkpoint.master_cycle_offset, &checkpoint);
+ 	HookInstructionPC = checkpoint.instruction_logical_pc;
+ 	HookInstructionPhysicalBank =

@@ -58,6 +58,7 @@ function(dc_provide_beetle_pce)
         "${beetle_fork_root}/patches/0020-huc6280-replacement-abandonment.patch"
         "${beetle_fork_root}/patches/0021-huc6280-abandonment-reason.patch"
         "${beetle_fork_root}/patches/0022-huc6280-break-flag-resume.patch"
+        "${beetle_fork_root}/patches/0023-huc6280-interrupt-flag-sample.patch"
     )
 
     find_package(Git REQUIRED)
@@ -411,7 +412,7 @@ function(dc_provide_beetle_pce)
                     "PopReplacementFrame(bool completed, uint8 reason, uint8 detail)"
                     beetle_patch_marker_two
                 )
-            else()
+            elseif(beetle_patch_name MATCHES "^0022-")
                 string(
                     FIND
                     "${beetle_cpu_source}"
@@ -422,6 +423,19 @@ function(dc_provide_beetle_pce)
                     FIND
                     "${beetle_cpu_source}"
                     "((P ^ previous.status) & ~B_FLAG)"
+                    beetle_patch_marker_two
+                )
+            else()
+                string(
+                    FIND
+                    "${beetle_cpu_source}"
+                    "checkpoint.samples_interrupt_flag_clear"
+                    beetle_patch_marker_one
+                )
+                string(
+                    FIND
+                    "${beetle_cpu_source}"
+                    "sampled_status != retired_status"
                     beetle_patch_marker_two
                 )
             endif()

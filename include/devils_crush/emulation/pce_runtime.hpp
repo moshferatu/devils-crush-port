@@ -169,6 +169,25 @@ struct ReplacementCheckpoint {
     std::uint32_t master_cycle_offset = 0;
     RoutineKey instruction;
     CpuRegisters registers;
+    // Set only by a checkpoint standing after an `SEI`.
+    //
+    // `registers.status` is what the instruction retired: the byte the resumed
+    // code reads, and the byte an interrupt taken at this boundary pushes. It
+    // is also, for every other instruction, the byte the interrupt lines were
+    // sampled under -- so the core reads the `I` mask straight out of it and
+    // one field says both things.
+    //
+    // A mask set is the one instruction where the two disagree. `LastCycle`
+    // samples before the opcode writes back, so an `SEI` samples the window it
+    // is about to close and an interrupt already pending is still taken there.
+    // This says so, and the core applies the clear mask across the sample and
+    // the retired one immediately after, which is the order the hardware has.
+    //
+    // A mask clear needs nothing here: publish the old status at the `CLI` and
+    // the new one at the checkpoint after it, and both answers come out right
+    // from the one byte. That deferral is what `pull_status` and the
+    // status-change machinery in the walkers already do.
+    bool samples_interrupt_flag_clear = false;
 
     [[nodiscard]] bool operator==(
         const ReplacementCheckpoint&) const = default;
