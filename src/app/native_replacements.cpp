@@ -225,12 +225,14 @@ replace_native_gameplay_routine_impl(
             }) {
         return detail::replace_sound_timer_driver(entry, work_ram, rom);
     }
-    // One shared walk, fifteen entry points: the bank-45 music sequencer's
+    // One shared walk, sixteen entry points: the bank-45 music sequencer's
     // sample/envelope group, its PSG register programmer, its portamento
     // stepper and its command interpreter. Each is a subroutine the
     // per-frame voice walk calls; the walk inlines any nested call and stops
-    // in front of the RTS. Two of the fifteen are not calls at all -- `4044`
-    // and `4143` are loop heads, where a chunked transcript resumes.
+    // in front of the RTS. Three of the sixteen are not calls at all -- `4044`
+    // and `4143` are loop heads, where a chunked transcript resumes, and
+    // `4169` is where the channel loop picks up after the one instruction in
+    // the bank a checkpoint cannot describe, the SEI at `4168`.
     if (entry.routine
             == RoutineKey{
                 .physical_bank = 0x45U,
@@ -260,6 +262,36 @@ replace_native_gameplay_routine_impl(
             == RoutineKey{
                 .physical_bank = 0x45U,
                 .logical_pc = 0x4143U,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x45U,
+                .logical_pc = 0x4169U,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x45U,
+                .logical_pc = 0x4154U,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x45U,
+                .logical_pc = 0x47E0U,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x45U,
+                .logical_pc = 0x482EU,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x45U,
+                .logical_pc = 0x485EU,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x45U,
+                .logical_pc = 0x49E4U,
             }
         || entry.routine
             == RoutineKey{

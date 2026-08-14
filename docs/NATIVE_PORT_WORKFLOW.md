@@ -672,6 +672,32 @@ The stack page is what makes this class of fault visible. A swallowed interrupt
 moves where its handler pushes, so an assembly-diff that includes `$2100`-`$21FF`
 fails loudly; an end-state census may not.
 
+### Read the registry's own admission rates before ranking anything
+
+The instrument below ranks what is still emulated, and the reflex on reading it
+is to look for a routine nobody has ported. Check first whether the routine is
+already there and switched off. `--native-cycle-census` prints `native_calls`
+against `entries` for every admitted address, and a row that reads `837 of
+7,339` is a finished, proven transcript builder being refused five times in
+six — the work is written, the evidence exists, and the cycles are on the floor.
+
+Bank `45` was 4,430,103 emulated master cycles ranked across three clusters
+that all looked like unported code, and not one instruction of it needed
+writing: three defects in the walk's own guards accounted for the lot, and
+fixing them was worth `+3,758,556` against a largest-remaining-routine of
+roughly 1.3M. **Sort the census by `native_calls / entries` ascending and read
+the top of that list before reading the residue at all.**
+
+Two things stop that from being a to-do list on its own. A low rate is only
+worth chasing if the row also carries cycles: the `knight_terminal_release_-
+helper_*_prefix` family sits at the very top at `0 of 4,387` and is not a
+defect at all — those are single-ordinal slices proven on a patched route,
+whose preconditions the natural route never meets, and they report
+`native_master_cycles` of zero to say so. And a partial row is sometimes a
+deliberate hold-back. Rank by `entries - native_calls` weighted by the routine's
+own cycle cost, then count the declines to tell a hold-back from a bug; the two
+are indistinguishable from the outside.
+
 ### Rank what the deployed registry does not cover, not what is expensive
 
 A `--instruction-profile` taken *with* `--replace-registry` attributes each
@@ -2051,6 +2077,79 @@ divergence is right there in the transcript's own cycle stamps, and the stack
 page names the instruction. If a walk's writes are correct in value and order
 but uniformly late from some point onward, look for an interrupt the machine
 did not take, and look at the mask first.
+
+#### Fix every `SEI` in the span, and make the stop conditional
+
+The note above was written from one instance and read as being about one
+instance. Bank `45` had **six** — `4153`, `4168`, `47DF`, `482D`, `485D`,
+`49E3` — every one of them transcribed with the deferred set, and the one
+that was eventually caught was caught only because an unrelated change started
+admitting the walks that reach it. The others had been latent for slices. So
+when this rule bites once, **sweep the ported span for the opcode** rather than
+patching the address in front of you: `$78` is one byte and the disassembler
+prints it.
+
+The cost is not what the driver epilogue's figure suggests, because the stop
+can be conditional. The ambiguity only exists when the `SEI` has a window to
+close: reached with `I` already set, the deferred byte and the true byte are
+the same byte and the walk can transcribe it normally. Testing the walk's
+current mask at the instruction turned six unconditional stops into stops that
+fire on the arrivals that need them — and the arrivals that do not are the
+majority, because `4142` brackets each channel in `PHP`/`SEI`/`PLP` and most
+callers arrive masked. Keep the case in the switch for the masked path;
+deleting it sends every masked arrival to `default` and refuses the transcript,
+which is how this was first got wrong.
+
+#### The mask a body runs under is not the mask it was entered with
+
+A guard that exempts a walk from some promise "because the machine is masked"
+must follow the mask instruction by instruction. Reading it once from
+`entry.registers.status` is the same answer only for a body that never changes
+it, and a body that never changes it is not the interesting case.
+
+Bank `45` is the worst kind of example. Its per-frame tick is called from
+inside the VBlank handler, so it is entered with `I` set — and it does not stay
+that way, because `4837`, `4872`, `47EE` and `49F2` each end a critical section
+with an unconditional `CLI` rather than restoring the caller's mask. The
+sequencer's guard read the entry byte, concluded no interrupt could land during
+the body, and exempted the whole walk from the staleness test it exists to
+apply. The timer driver then ran inside that body and the transcript read its
+own snapshot afterwards.
+
+Track it as a flag that starts from the entry mask and is updated wherever a
+deferred status change lands — one place, if every mask change goes through
+`append_checkpoint`. With the `SEI` rule above in force the flag only ever
+opens, which is what makes it cheap to reason about: nothing inside a
+transcript can mask the machine, because a walk stops in front of anything that
+would.
+
+#### The stop list and the execute list have to agree
+
+A family that stops in front of an `RTS` at depth zero and executes one deeper
+carries two lists of the same addresses, and they can drift apart silently. In
+bank `45` seven returns — `4141`, `4243`, `4270`, `429E`, `42B2`, `42B9`,
+`46D6` — were in the stop list and missing from the execute list, so a walk
+that inlined a call ending at any of them fell through to `default` and gave
+the whole transcript up. That single omission was **9,830 refusals on the
+census route, six times every other cause in the bank put together**, and it
+was invisible from the outside: the routine was admitted, entered, and simply
+declined most of the time.
+
+An address in one list and not the other is a routine that can be entered and
+never left. Derive one list from the other, or assert they match.
+
+#### Measure why a walk declines; do not reason about it
+
+Four rounds of plausible reasoning about bank `45`'s refusal rate — the chunk
+margin, the interrupt horizon, the driver-state guard, the MPR mapping — were
+all wrong, and each cost a build and a 3,600-frame run to disprove. A
+throwaway counter at every `return std::nullopt`, keyed by entry address and
+stopping program counter, named the real cause in one run and named the second
+one in the run after that.
+
+It is twenty lines and it does not need to be good code. Add it, run once,
+delete it. The temptation is to skip it because the next hypothesis feels
+obvious; the record here is nought for four.
 
 ### The write channel reaches device registers, not just work RAM
 

@@ -1,6 +1,6 @@
 # Project Progress
 
-Last updated: 2026-08-13
+Last updated: 2026-08-14
 
 ## Current Status
 
@@ -25,6 +25,12 @@ high byte. The deterministic 1,800-frame route now executes 18,806 of 19,648
 `03:6966` calls natively (95.7%) while
 preserving the byte-identical gameplay artifact, complete 19,648-call trace,
 and all 180,389 ordered writes.
+
+The deployed registry now runs **691,189,635 of 1,292,371,731 master cycles
+natively, 53.48% of the route and 97.28% of everything outside the frame-sync
+wait**, across 404 admitted routines with no transcript declined at an
+interrupt horizon and none abandoned. The 3,600-frame state census remains
+`9036a9de0c3c9917f47bff8c04c136a4824ec12601fb457d260aa2dfe4443490`.
 
 Application orchestration is now separated from native transaction
 synthesis. The replacement adapters and central dispatcher moved from
@@ -6010,12 +6016,145 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
     the gate working throughout, because without one it was measuring a
     machine nobody plays. With the registry it reproduces +2 frames against
     +102. 420/420 Release, 3/3 ROM-free Debug.
+- [x] Finish bank `45`, the music sequencer -- the largest single block of
+  emulated cycles the deployed registry had left, and not a routine anybody
+  needed to port. All 4.4M of it was code already written and being refused.
+  - [x] Add the seven missing nested returns. `4141`, `4243`, `4270`, `429E`,
+    `42B2`, `42B9` and `46D6` were declared ordinary returns -- which is what
+    lets a walk stop in front of one -- and had no case to execute one, so a
+    walk that inlined a call ending at any of them fell through to `default`
+    and gave the whole transcript up. `46D6` and `429E` alone were **9,830
+    refusals, six times every other cause in the bank put together.**
+  - [x] Fix all six `SEI`s, not the one that was found. A checkpoint carries
+    one status byte and the core wants two different things from it at a mask
+    set, so the walk stops in front of each and the core runs the instruction;
+    `4154`, `4169`, `47E0`, `485E` and `49E4` are where it resumes. The stop
+    is conditional on the mask actually being open, which is what keeps it
+    cheap -- reached already masked, the deferred byte and the true byte are
+    the same byte.
+  - [x] Stop reading the interrupt mask from the entry status. The tick is
+    called from inside the VBlank handler, so it is entered masked, and
+    `4837`, `4872`, `47EE` and `49F2` each end a critical section with an
+    unconditional `CLI` rather than restoring the caller's mask. The old guard
+    exempted the whole body from its own staleness test on the strength of one
+    byte it was handed on the way in.
+  - [x] Bound every chunk against the horizon rather than only the chunks that
+    have already read driver state. Waiting for the read is too late by
+    construction: the flag is tested at the top of an iteration and set
+    part-way through the next.
+  - [x] Prove it against assembly rather than against the stored hash. The
+    census, the 5,458,568-write work-RAM trace and the 699,251-write PSG/timer
+    bus trace are byte-identical with the family emulated. The write trace
+    earned its keep for the third time: **four bytes in 5.4 million** -- a
+    `PHA` at `45:4847` pushing `$C9` where assembly pushes `$49`, the
+    sequencer reading a channel-bank byte the driver had cleared while the
+    transcript was suspended -- with the census and every device write
+    matching either way.
+  - [x] Find the cause by measuring it. Four rounds of plausible reasoning
+    about chunk margins, interrupt horizons, the driver-state guard and the
+    MPR mapping were all wrong, and each cost a build and a 3,600-frame run;
+    a throwaway counter at every `return std::nullopt` named the real cause in
+    one run and the second in the run after.
+  - [x] **687,431,079 -> 691,189,635, 53.19% -> 53.48% of the route and
+    96.76% -> 97.28% outside the wait.** 404 routines, 337 entered, 0 declined
+    at a horizon, 0 abandonments. The whole gain is bank `45`, which goes from
+    41,213,268 to 44,971,824 of its 45,805,974 cycles -- **98.2%** -- and no
+    other routine on the route moved. 420/420 Release, 3/3 ROM-free Debug.
 
 ## Active Work
 
-Current owner: Claude. Current slice: **the actor scan's preamble**. Done. It is
-the simplest block of its size left in the ROM, and the first slice whose
-hand-off is a fall-through rather than a call.
+Current owner: Claude. Current slice: **finishing bank 45, the music
+sequencer**. Done. Nothing in it needed porting: every instruction had been
+written already, and 4.4M master cycles a route were being refused by the
+walk's own guards.
+
+**The largest single thing the deployed registry still emulated was code it
+already had.** Ranking the residue put bank `45` at 4,430,103 master cycles
+across three clusters, and every one of them was the sequencer running
+interpreted because a transcript had been declined -- `45:4044` admitted 837 of
+7,339 arrivals, `45:4015` 1,933 of 3,599. The routine was admitted, entered,
+and simply did not run. **Look at the admitted set's own admission rates before
+looking for a new routine to port**; a registry row that reads `837 of 7,339`
+is a finished port that is switched off five times in six.
+
+| | Before | After |
+| --- | ---: | ---: |
+| Registry cycles | 687,431,079 | **691,189,635** |
+| Share of the route | 53.19% | **53.48%** |
+| Share outside the frame-sync wait | 96.76% | **97.28%** |
+| Bank 45 native | 41,213,268 | 44,971,824 of 45,805,974 |
+| Admitted routines | 399 | 404 |
+| Routines entered | 332 | 337 |
+| Residue outside the wait | 16,740,903 | 13,144,950 |
+| Declined at a horizon | 0 | 0 |
+| Abandonments | 0 | 0 |
+
+**+3,758,556 master cycles, and every one of them is bank 45.** No other
+routine on the route moved. It is between three and five times each of the last
+four slices, and none of it came from writing a transcript.
+
+**Three faults, and the first was a list that had drifted.** A family that
+stops in front of an `RTS` at depth zero and executes one deeper keeps two
+lists of the same addresses. Seven returns -- `4141`, `4243`, `4270`, `429E`,
+`42B2`, `42B9`, `46D6` -- were in the stop list and missing from the execute
+list, so a walk that inlined a call ending at any of them fell through to
+`default` and gave up the whole transcript. `46D6` and `429E` alone were 9,830
+refusals on the census route, six times every other cause in the bank put
+together. **An address in one list and not the other is a routine that can be
+entered and never left.**
+
+**The second was one `SEI`, and then it was six.** A checkpoint carries a
+single status byte and the core takes two different things from it -- the `P`
+an interrupt taken at that boundary pushes, and the `IFlagSample` that decides
+whether it may be taken there at all -- and a mask *set* wants opposite answers,
+because `LastCycle` samples before the flag retires. `docs/` had recorded that
+from one instance in the sound driver and it read as being about that instance;
+bank `45` had six, all transcribed with the deferred set, all latent for
+slices. The remedy is the sound driver's: stop in front of it, register the
+address after it. `4154`, `4169`, `47E0`, `485E` and `49E4` are those
+addresses.
+
+**Make that stop conditional and it costs almost nothing.** The ambiguity only
+exists when the `SEI` has a window to close; reached with `I` already set, the
+deferred byte and the true byte are the same byte and the walk transcribes it
+normally. `4142` brackets every channel in `PHP`/`SEI`/`PLP`, so most arrivals
+are masked -- and `4169` is now the busiest entry in the bank at 11,093
+arrivals, all admitted, for exactly that reason. Deleting the masked case
+instead of keeping it sent every masked arrival to `default`, which is how this
+was got wrong the first time.
+
+**The third was reading the mask once.** The driver-state guard exempts a walk
+that ran masked, because the driver cannot have changed its bytes since the
+snapshot. It read that from `entry.registers.status`, and the tick is called
+from inside the VBlank handler -- so it is entered with `I` set, and bank `45`
+does not honour that: `4837`, `4872`, `47EE` and `49F2` each end a critical
+section with an unconditional `CLI` rather than restoring the caller's mask. A
+body entered masked runs most of itself unmasked, and the guard was exempting
+all of it. **The mask a body runs under is not the mask it was entered with**,
+and following it instruction by instruction is only tractable because the `SEI`
+rule above means nothing inside a transcript can close the window.
+
+**The proof is a two-run diff, and it caught the third fault.** The same route
+recorded with the family emulated and replaced gives a byte-identical census, a
+byte-identical 5,458,568-write work-RAM trace over the voice records, the
+zero-page command pointer, the driver's per-channel state and the stack page,
+and a byte-identical 699,251-write bus trace over `$0800`-`$0809` and
+`$0C00`-`$0C01`. The intermediate version differed by **four bytes in 5.4
+million** -- a `PHA` at `45:4847` pushing `$C9` where assembly pushes `$49` --
+and the census matched, and all 699,251 device writes matched. Only the stack
+page said so.
+
+**Measure why a walk declines; do not reason about it.** Four hypotheses --
+the chunk margin, the interrupt horizon, the driver-state guard, the MPR
+mapping -- were each plausible, each cost a build and a 3,600-frame run, and
+each was wrong. A twenty-line counter at every `return std::nullopt`, keyed by
+entry address and stopping program counter, named the real cause in one run and
+the second one in the run after that. Nought for four is the record that
+matters.
+
+### Previous: the actor scan's preamble
+Done. It is the simplest block of its size left in the ROM, and the first slice
+whose hand-off is a fall-through rather than a call.
 
 **`01:C4DE`-`01:C50E` settles what the actor scan is about to walk.** It decides
 this frame's actor enable mask, resets the three cursors the scan allocates its

@@ -139,11 +139,19 @@ execute_process(
         --replace-hook
         "45:4143@all"
         --replace-hook
+        "45:4154@all"
+        --replace-hook
+        "45:4169@all"
+        --replace-hook
         "45:4211@all"
         --replace-hook
         "45:4228@all"
         --replace-hook
         "45:457A@all"
+        --replace-hook
+        "45:47E0@all"
+        --replace-hook
+        "45:485E@all"
         --replace-hook
         "45:4883@all"
         --replace-hook
@@ -152,6 +160,8 @@ execute_process(
         "45:49A2@all"
         --replace-hook
         "45:49B6@all"
+        --replace-hook
+        "45:49E4@all"
         --replace-hook
         "45:49F9@all"
         --work-ram-write-range
@@ -186,20 +196,25 @@ endif()
 
 foreach(expected_line IN ITEMS
     "State census recording complete: 3600 frames"
-    "Native replacement 45:4015@all entries: 1933 of 3599"
-    "Native replacement 45:4044@all entries: 837 of 7339"
-    "Native replacement 45:409C@all entries: 1395 of 4766"
+    "Native replacement 45:4015@all entries: 3554 of 3599"
+    "Native replacement 45:4044@all entries: 1413 of 1535"
+    "Native replacement 45:409C@all entries: 855 of 896"
     "Native replacement 45:413B@all entries: 3599 of 3599"
-    "Native replacement 45:4142@all entries: 3216 of 3604"
-    "Native replacement 45:4143@all entries: 3788 of 6386"
-    "Native replacement 45:4211@all entries: 1669 of 1669"
-    "Native replacement 45:4228@all entries: 1065 of 1065"
-    "Native replacement 45:457A@all entries: 2219 of 2299"
-    "Native replacement 45:4883@all entries: 4234 of 4234"
-    "Native replacement 45:48F6@all entries: 3371 of 3371"
-    "Native replacement 45:49A2@all entries: 3371 of 3371"
-    "Native replacement 45:49B6@all entries: 1671 of 1671"
-    "Native replacement 45:49F9@all entries: 3366 of 3371"
+    "Native replacement 45:4142@all entries: 3544 of 3604"
+    "Native replacement 45:4143@all entries: 3 of 60"
+    "Native replacement 45:4154@all entries: 13 of 13"
+    "Native replacement 45:4169@all entries: 11093 of 11093"
+    "Native replacement 45:4211@all entries: 93 of 93"
+    "Native replacement 45:4228@all entries: 12 of 12"
+    "Native replacement 45:457A@all entries: 4 of 51"
+    "Native replacement 45:47E0@all entries: 36 of 36"
+    "Native replacement 45:485E@all entries: 308 of 308"
+    "Native replacement 45:4883@all entries: 348 of 348"
+    "Native replacement 45:48F6@all entries: 41 of 41"
+    "Native replacement 45:49A2@all entries: 41 of 41"
+    "Native replacement 45:49B6@all entries: 50 of 50"
+    "Native replacement 45:49E4@all entries: 289 of 289"
+    "Native replacement 45:49F9@all entries: 39 of 41"
     "Work-RAM write trace complete: 5458568 selected writes"
     "Bus write trace complete: 699251 selected writes"
 )

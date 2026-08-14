@@ -2928,6 +2928,12 @@ parse_logical_address_range(const std::string_view text)
                                || request.routine.logical_pc == 0x413BU
                                || request.routine.logical_pc == 0x4142U
                                || request.routine.logical_pc == 0x4143U
+                               || request.routine.logical_pc == 0x4154U
+                               || request.routine.logical_pc == 0x4169U
+                               || request.routine.logical_pc == 0x47E0U
+                               || request.routine.logical_pc == 0x482EU
+                               || request.routine.logical_pc == 0x485EU
+                               || request.routine.logical_pc == 0x49E4U
                                || request.routine.logical_pc == 0x4211U
                                || request.routine.logical_pc == 0x4228U
                                || request.routine.logical_pc == 0x457AU

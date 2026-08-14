@@ -57,6 +57,14 @@ using emulation::RoutineReplacement;
 //   45:4044  the head of its voice loop, and the chunk head
 //   45:409C  where it resumes after 45:4936, which is not transcribed here
 //   45:413B  where it resumes after 45:4142
+//
+// Five more are not subroutines at all. Each of the bank's SEIs is emulated
+// rather than transcribed -- see `closes_interrupt_window` -- and these are
+// where the body picks back up on the far side of one:
+//
+//   45:4154  the channel-release arm       45:47E0  the sample trigger
+//   45:4169  each channel of 45:4142       45:485E  its bank-map arm
+//   45:49E4  the voice commit
 constexpr std::uint8_t kBank = 0x45U;
 
 constexpr std::uint8_t kCarry = 0x01U;
@@ -179,15 +187,50 @@ constexpr std::uint32_t kChannelIterationMasterCycles = 2304U;
         || logical_pc == 0x413BU
         || logical_pc == 0x4142U
         || logical_pc == 0x4143U
+        || logical_pc == 0x4154U
+        || logical_pc == 0x4169U
         || logical_pc == 0x4211U
         || logical_pc == 0x4228U
         || logical_pc == 0x457AU
+        || logical_pc == 0x47E0U
+        || logical_pc == 0x482EU
+        || logical_pc == 0x485EU
         || logical_pc == 0x4883U
         || logical_pc == 0x48B4U
         || logical_pc == 0x48F6U
         || logical_pc == 0x49A2U
         || logical_pc == 0x49B6U
+        || logical_pc == 0x49E4U
         || logical_pc == 0x49F9U;
+}
+
+// Every SEI in the ported span. A checkpoint cannot describe one: the core
+// takes two different things from its single status byte -- the P that an
+// interrupt taken at that boundary pushes, and the IFlagSample that decides
+// whether it may be taken there at all -- and SEI wants opposite answers,
+// because its LastCycle samples the mask before the flag retires. Publishing
+// the open mask lets the interrupt through and then hands the handler an `I`
+// the machine had already closed, so the RTI reopens a window the routine had
+// just shut; publishing the closed one suppresses an interrupt the hardware
+// takes. There is no third byte.
+//
+// So the walk stops in front of each of these and the core runs the one
+// instruction, exactly as the sound driver's epilogue does at 00:FC81. The
+// address after each is registered, so the body resumes immediately with the
+// mask the machine actually set.
+//
+// The stop is conditional, and that is what keeps it cheap: the ambiguity only
+// exists when the SEI has something to close. Reached with the mask already
+// set -- which is most of `4153`, entered from a masked caller -- the deferred
+// byte and the true byte are the same byte, and the walk transcribes it.
+[[nodiscard]] constexpr bool closes_interrupt_window(const std::uint16_t pc)
+{
+    return pc == 0x4153U
+        || pc == 0x4168U
+        || pc == 0x47DFU
+        || pc == 0x482DU
+        || pc == 0x485DU
+        || pc == 0x49E3U;
 }
 
 // Every RTS in the ported set. At call depth zero the walk stops in front of
@@ -264,21 +307,42 @@ std::optional<RoutineReplacement> replace_music_sequencer(
     // JSR/RTS nesting inside the transcript. Zero means the next RTS belongs
     // to the caller and terminates the walk.
     unsigned depth = 0U;
+    // Whether a timer interrupt could be delivered as the walk stands. It
+    // begins as the entry mask and can only open: a walk stops in front of any
+    // SEI that would close it (see `closes_interrupt_window`), so nothing
+    // inside a transcript ever masks the machine, while the bank's four CLIs
+    // and the PLP at 41F1 all open it.
+    //
+    // This used to be read from `entry.registers.status` alone, and that was
+    // wrong in the direction that matters. The tick is called from inside the
+    // VBlank handler, so it is entered with the mask already set -- which the
+    // old guard read as "no interrupt can land during this body, so the
+    // driver's bytes cannot go stale" and then exempted the whole walk. Bank
+    // 45 does not honour that: 4837, 4872, 47EE and 49F2 each end a critical
+    // section with an unconditional CLI rather than restoring the caller's
+    // mask, so a body entered masked runs most of itself unmasked. The
+    // exemption has to follow the machine's mask instruction by instruction,
+    // not the one byte it was handed on the way in.
+    bool interrupt_window_open =
+        (entry.registers.status & kInterruptDisable) == 0U;
     // Set the first time the walk reads one of the timer driver's channel
-    // bank bytes. Those are the only bytes here another thread of control
-    // writes, and a transcript reads them from a snapshot taken before it
-    // runs, so a walk that touches them is only correct if no timer interrupt
-    // is delivered while it runs. Checked once at the end.
+    // bank bytes *while an interrupt could land*. Those are the only bytes
+    // here another thread of control writes, and a transcript reads them from
+    // a snapshot taken before it runs, so such a read is only correct if the
+    // walk reaches it before the next serviceable timer interrupt. Checked
+    // once at the end. A read taken under the mask needs no such promise: the
+    // driver cannot have run since the snapshot.
     bool reads_driver_state = false;
 
     const auto read_ram =
-        [&ram, &overflow, &reads_driver_state](
+        [&ram, &overflow, &reads_driver_state, &interrupt_window_open](
             const std::uint16_t address) -> std::uint8_t {
             if (address < kWorkRamBase || address >= kWorkRamEnd) {
                 overflow = true;
                 return 0U;
             }
-            if (address >= kDriverChannelBankFirst
+            if (interrupt_window_open
+                && address >= kDriverChannelBankFirst
                 && address <= kDriverChannelBankLast) {
                 reads_driver_state = true;
             }
@@ -342,7 +406,8 @@ std::optional<RoutineReplacement> replace_music_sequencer(
          &cycle,
          &commit_pending_writes,
          &status_change_pending,
-         &pending_status](
+         &pending_status,
+         &interrupt_window_open](
             const std::uint16_t instruction_pc,
             const std::uint16_t resume_pc,
             const std::uint32_t instruction_cycles) {
@@ -358,6 +423,13 @@ std::optional<RoutineReplacement> replace_music_sequencer(
             if (status_change_pending) {
                 registers.status = pending_status;
                 status_change_pending = false;
+                // Every deferred mask change lands here, which makes this the
+                // one place that has to notice the window opening -- the four
+                // CLIs and the PLP alike, at exactly the boundary the core
+                // will first sample with the new mask.
+                if ((registers.status & kInterruptDisable) == 0U) {
+                    interrupt_window_open = true;
+                }
             }
         };
 
@@ -573,19 +645,35 @@ std::optional<RoutineReplacement> replace_music_sequencer(
         // enough that one more iteration might not fit, or once the horizon it
         // was handed no longer has an iteration left in it. One iteration is
         // reached on every pass of either loop, so neither needs lookahead.
+        //
+        // Both bound the chunk whenever an interrupt could land, rather than
+        // only once the walk has already read the driver's bytes. Waiting for
+        // the read is too late by construction: the flag is tested at the top
+        // of an iteration and set part-way through the next one, so a chunk
+        // that reads driver state late runs past the horizon before any stop
+        // is ever considered, and the guard below then refuses the whole
+        // thing. Bounding every chunk instead costs the walks that would never
+        // have needed it one extra boundary of twelve master cycles, and it is
+        // what makes the guard unreachable at these two addresses.
+
+        // An SEI with a window still open cannot be described by a checkpoint,
+        // so it is handed to the core whatever the call depth: a transcript
+        // that ends inside a nested call is merely less efficient, while one
+        // that guesses this instruction's status byte is wrong.
+        const auto mask_stop = closes_interrupt_window(pc)
+            && (registers.status & kInterruptDisable) == 0U;
+
         const auto tick_stop = pc == 0x4099U || pc == 0x4138U
             || (pc == 0x40FFU
                 && (replacement.checkpoints.size() >= kChunkCheckpoints
                     || replacement.work_ram_writes.size() >= kChunkWrites
-                    || (reads_driver_state
-                        && (entry.registers.status & kInterruptDisable) == 0U
+                    || (interrupt_window_open
                         && cycle + kIterationMasterCycles
                             >= entry.master_cycles_until_timer_interrupt)))
             || (pc == 0x41F7U
                 && (replacement.checkpoints.size() >= kChunkCheckpoints
                     || replacement.work_ram_writes.size() >= kChunkWrites
-                    || (reads_driver_state
-                        && (entry.registers.status & kInterruptDisable) == 0U
+                    || (interrupt_window_open
                         && cycle + kChannelIterationMasterCycles
                             >= entry.master_cycles_until_timer_interrupt)));
 
@@ -593,15 +681,15 @@ std::optional<RoutineReplacement> replace_music_sequencer(
         // instruction standing there. A tick stop is a handover and stays that
         // way; a return is absorbed if the stack agrees, and only then does the
         // core resume above this bank instead of inside it.
-        if (depth == 0U && (is_return_instruction(pc) || tick_stop)) {
-            // The driver-state guard. Entering with the interrupt mask
-            // already set is the strong case: `4142` brackets each voice in
-            // PHP/SEI/PLP, so a masked entry stays masked for the whole body
-            // and no interrupt can land. Otherwise the body has to finish
-            // before the next serviceable timer interrupt, or the values it
-            // read may already be stale by the time it reaches them.
+        if (mask_stop
+            || (depth == 0U && (is_return_instruction(pc) || tick_stop))) {
+            // The driver-state guard. A read taken while the machine was
+            // masked needs nothing: the driver cannot have run between the
+            // snapshot and the read, so `reads_driver_state` was never set for
+            // it. An unmasked one has to be reached before the next
+            // serviceable timer interrupt, or the value may already be stale
+            // by the time the walk uses it.
             if (reads_driver_state
-                && (entry.registers.status & kInterruptDisable) == 0U
                 && cycle >= entry.master_cycles_until_timer_interrupt) {
                 return std::nullopt;
             }
@@ -1475,7 +1563,9 @@ std::optional<RoutineReplacement> replace_music_sequencer(
             pc = 0x4153U;
             break;
 
-        case 0x4153U:  // SEI
+        // Only reached with the mask already set; otherwise
+        // `closes_interrupt_window` stops the walk in front of it.
+        case 0x4153U:  // SEI, already masked
             pending_status = static_cast<std::uint8_t>(
                 registers.status | kInterruptDisable);
             status_change_pending = true;
@@ -1546,7 +1636,10 @@ std::optional<RoutineReplacement> replace_music_sequencer(
             pc = 0x4168U;
             break;
 
-        case 0x4168U:  // SEI
+        // Reached only with the mask already set -- `closes_interrupt_window`
+        // stops the walk otherwise -- and there the deferred publish is exact,
+        // because the byte it defers is the byte the machine already has.
+        case 0x4168U:  // SEI, already masked
             pending_status = static_cast<std::uint8_t>(
                 registers.status | kInterruptDisable);
             status_change_pending = true;
@@ -1554,7 +1647,7 @@ std::optional<RoutineReplacement> replace_music_sequencer(
             pc = 0x4169U;
             break;
 
-        case 0x4169U:  // STX $0800
+        case 0x4169U:  // STX $0800 -- the entry after an emulated SEI
             store(0x4169U, kPsgChannelSelect, registers.x);
             append_checkpoint(0x4169U, 0x416CU, 15U);
             pc = 0x416CU;
@@ -2762,7 +2855,9 @@ std::optional<RoutineReplacement> replace_music_sequencer(
                 (registers.status & kZero) == 0U);
             break;
 
-        case 0x49E3U:  // SEI
+        // Only reached with the mask already set; otherwise
+        // `closes_interrupt_window` stops the walk in front of it.
+        case 0x49E3U:  // SEI, already masked
             // The mask is applied after the core has sampled the interrupt
             // for this instruction, so an interrupt already pending here is
             // still taken; the checkpoint publishes the old status.
@@ -5620,7 +5715,9 @@ std::optional<RoutineReplacement> replace_music_sequencer(
             pc = 0x47DFU;
             break;
 
-        case 0x47DFU:  // SEI -- applies one instruction late
+        // Only reached with the mask already set; otherwise
+        // `closes_interrupt_window` stops the walk in front of it.
+        case 0x47DFU:  // SEI, already masked
             pending_status = static_cast<std::uint8_t>(
                 registers.status | kInterruptDisable);
             status_change_pending = true;
@@ -5864,7 +5961,9 @@ std::optional<RoutineReplacement> replace_music_sequencer(
                 (registers.status & kCarry) == 0U);
             break;
 
-        case 0x482DU:  // SEI -- out of range, silence the channel instead
+        // Only reached with the mask already set; otherwise
+        // `closes_interrupt_window` stops the walk in front of it.
+        case 0x482DU:  // SEI, already masked; out of range, so silence
             pending_status = static_cast<std::uint8_t>(
                 registers.status | kInterruptDisable);
             status_change_pending = true;
@@ -6021,7 +6120,9 @@ std::optional<RoutineReplacement> replace_music_sequencer(
             pc = 0x485DU;
             break;
 
-        case 0x485DU:  // SEI
+        // Only reached with the mask already set; otherwise
+        // `closes_interrupt_window` stops the walk in front of it.
+        case 0x485DU:  // SEI, already masked
             pending_status = static_cast<std::uint8_t>(
                 registers.status | kInterruptDisable);
             status_change_pending = true;
@@ -6863,8 +6964,26 @@ std::optional<RoutineReplacement> replace_music_sequencer(
         // ---- nested returns ---------------------------------------------
         // Only reached with depth > 0; the depth-zero case terminated the
         // walk above, in front of the RTS.
+        //
+        // Seven of these are recent, and their absence was the bank's largest
+        // single refusal. `4141`, `4243`, `4270`, `429E`, `42B2`, `42B9` and
+        // `46D6` were already declared ordinary returns by
+        // `is_return_instruction` -- which is what lets a walk *stop* in front
+        // of one -- and simply had no case to *execute* one, so a walk that
+        // inlined a call ending at any of them fell through to `default` and
+        // gave the whole transcript up. 46D6 and 429E alone accounted for
+        // 9,830 refusals on the census route, six times every other cause in
+        // the bank put together. The two lists have to agree: an address in
+        // one and not the other is a routine that can be entered and never
+        // left.
+        case 0x4141U:
         case 0x4210U:
         case 0x4227U:
+        case 0x4243U:
+        case 0x4270U:
+        case 0x429EU:
+        case 0x42B2U:
+        case 0x42B9U:
         case 0x4318U:
         case 0x4343U:
         case 0x434FU:
@@ -6883,6 +7002,7 @@ std::optional<RoutineReplacement> replace_music_sequencer(
         case 0x4470U:
         case 0x451AU:
         case 0x4559U:
+        case 0x46D6U:
         case 0x46E1U:
         case 0x46FBU:
         case 0x4775U:

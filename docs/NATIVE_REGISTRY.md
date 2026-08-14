@@ -472,34 +472,55 @@ itself followed once it became clear it could be chunked:
 
 | Entry | Admitted | What it does |
 | --- | ---: | --- |
-| `45:4015` | 1,933 of 3,599 | **The per-frame tick**, the bank's top level |
-| `45:4044` | 1,208 of 7,724 | The head of its voice loop, and the chunk head |
-| `45:409C` | 1,509 of 4,892 | Where the tick resumes after `4936` |
+| `45:4015` | 3,554 of 3,599 | **The per-frame tick**, the bank's top level |
+| `45:4044` | 1,413 of 1,535 | The head of its voice loop, and the chunk head |
+| `45:409C` | 855 of 896 | Where the tick resumes after `4936` |
 | `45:413B` | 3,599 of 3,599 | Where the tick resumes after `4142` |
-| `45:48B4` | 72 of 72 | Sequence-data fetch, the shared command decoder |
-| `45:4883` | 4,321 of 4,321 | Pitch/period update (inlines `48B4`) |
-| `45:48F6` | 3,398 of 3,398 | Sweep accumulator update (inlines `48B4`) |
-| `45:49A2` | 3,463 of 3,463 | Vibrato accumulator update |
-| `45:49B6` | 1,671 of 1,671 | Voice-latch clear |
-| `45:49F9` | 3,476 of 3,482 | Voice commit, which drives `$0800`/`$0804` |
-| `45:4211` | 1,783 of 1,783 | The two pending-event gates |
-| `45:4228` | 1,065 of 1,065 | Portamento stepper |
-| `45:457A` | 2,219 of 2,299 | Command interpreter |
-| `45:4142` | 3,216 of 3,604 | PSG register programmer, six voices plus the LFO |
-| `45:4143` | 3,788 of 6,386 | The head of its channel loop, and the chunk head |
+| `45:4883` | 348 of 348 | Pitch/period update (inlines `48B4`) |
+| `45:48F6` | 41 of 41 | Sweep accumulator update (inlines `48B4`) |
+| `45:49A2` | 41 of 41 | Vibrato accumulator update |
+| `45:49B6` | 50 of 50 | Voice-latch clear |
+| `45:49F9` | 39 of 41 | Voice commit, which drives `$0800`/`$0804` |
+| `45:49E4` | 289 of 289 | Where the commit resumes after its own `SEI` |
+| `45:4211` | 93 of 93 | The two pending-event gates |
+| `45:4228` | 12 of 12 | Portamento stepper |
+| `45:457A` | 4 of 51 | Command interpreter |
+| `45:47E0` | 36 of 36 | Where the sample trigger resumes after its `SEI` |
+| `45:485E` | 308 of 308 | Where the bank-map arm resumes after its `SEI` |
+| `45:4142` | 3,544 of 3,604 | PSG register programmer, six voices plus the LFO |
+| `45:4143` | 3 of 60 | The head of its channel loop, and the chunk head |
+| `45:4154` | 13 of 13 | Where the release arm resumes after its `SEI` |
+| `45:4169` | 11,093 of 11,093 | Where each channel resumes after its `SEI` |
 
-One walk serves all fifteen. Each stops in front of its own `RTS` and
+One walk serves all nineteen. Each stops in front of its own `RTS` and
 hands the return back to the core, and any call the walk makes on the way
-is inlined into the same transcript — which is why `48B4` is admitted only
-72 times on its own: the other 25,896 calls to it are made from inside a
-`4883` or `48F6` transcript and never reach the hook. Adding the tick did
-the same thing one level up, which is why every subroutine count above
-fell: 83,417 calls that used to arrive at a hook are now inlined into a
-tick transcript. `4883` is 4,321 rather than 22,664 for exactly the
-reason `48B4` was always 72. `457A` inlines four
+is inlined into the same transcript — which is why `48B4` is not in the
+table at all: every one of its calls is made from inside a `4883` or `48F6`
+transcript and never reaches a hook. Adding the tick did the same thing one
+level up, and completing it did it again. `4883` is 348 rather than 22,664
+for exactly the reason `48B4` is absent: the tick now inlines almost every
+arrival, so a subroutine's own count measures only the calls that still reach
+a hook on their own. Read these counts as *boundaries crossed*, never as work
+done. `457A` inlines four
 callees the same way: the `$42BA` dispatch trampoline at `4569`, the
 balance ramp `4522`, the note-to-period conversion `46D7`, and the forty
 command handlers themselves.
+
+Five of the nineteen exist only because of one instruction. A checkpoint
+carries a single status byte and the core reads two different things from it —
+the `P` an interrupt taken at that boundary pushes, and the `IFlagSample` that
+decides whether it may be taken there at all — and `SEI` wants opposite answers
+from the two, because its `LastCycle` samples the mask before the flag retires.
+There is no byte that says both. So the walk stops in front of each of the
+bank's six `SEI`s and the core runs the one instruction; `4154`, `4169`,
+`47E0`, `485E` and `49E4` are where it picks the body back up. (`482E`, after
+the sixth, is never reached on this route and so is not admitted.)
+
+The stop is conditional on the mask actually being open, which is what keeps it
+cheap: reached with `I` already set — most of `4153`, whose callers arrive
+masked — the deferred byte and the true byte are the same byte and the walk
+transcribes it normally. `4169` is the busiest entry in the bank at 11,093
+arrivals precisely because `4142` brackets every channel this way.
 
 The partial rows have three different reasons.
 
@@ -510,12 +531,28 @@ clears it when the channel falls idle. `4142` reads all three, and the
 amplitude commit at `45:49D2` reaches them through `$20F5,Y` — which both
 `49B6` and `49F9` run, so every voice iteration of the tick touches it.
 A transcript reads them from a snapshot
-taken before it runs. The walk therefore declines unless the interrupt mask
-is already set at entry — `4142` brackets each voice in PHP/SEI/PLP, so a
-masked entry stays masked for the whole body — or the body finishes before
-the next serviceable timer interrupt. That is a correctness boundary, not a
-horizon heuristic: without it the transcript would act on a value the driver
-had already changed.
+taken before it runs, so such a read is only sound if the walk reaches it
+before the next serviceable timer interrupt, or if the machine was masked
+continuously from the snapshot to the read. That is a correctness boundary,
+not a horizon heuristic: without it the transcript acts on a value the driver
+has already changed.
+
+The masked exemption used to be read once, from the entry status, and that was
+wrong in the direction that matters. The tick is called from inside the VBlank
+handler, so it is entered with `I` set — and bank `45` does not honour that,
+because `4837`, `4872`, `47EE` and `49F2` each end a critical section with an
+unconditional `CLI` rather than restoring the caller's mask. A body entered
+masked runs most of itself unmasked, and the old guard exempted the whole of
+it. It now follows the machine's mask instruction by instruction, which is
+straightforward to state because with the `SEI` rule above in force the window
+only ever opens: nothing inside a transcript can mask the machine, since a walk
+stops in front of anything that would.
+
+The fault this exposed was four bytes in 5,458,568, and the write trace is what
+found them: a `PHA` at `45:4847` pushing `$C9` where assembly pushes `$49`,
+the sequencer having read a channel-bank byte the driver had cleared while the
+transcript was suspended. The census matched, and so did all 699,251 PSG and
+timer-control writes.
 
 `4142` sat at 1,792 of 3,604 under that guard for four slices, on the
 arithmetic that a whole call averages 2,055 master cycles against a
@@ -575,9 +612,13 @@ pre-pop status — two differing bytes in 5.5 million, both on the stack,
 with the census matching either way because the handler restores `P` on the
 way out.
 
-The bank is now 43,256,343 of 46,078,773 cycles native, 94%, up from
-24,827,955. What is left is `45:4936`, the track loader `45:4BCC`, and
-the chunk boundaries the tick and `4142` hand back.
+The bank is now 44,971,824 of 45,805,974 cycles native, **98.2%**, up from
+41,213,268. What is left is `45:4936`, the track loader `45:4BCC`, the six
+emulated `SEI`s, and the chunk boundaries the tick and `4142` hand back. The
+last slice here was worth `+3,758,556` master cycles on the whole route,
+53.19% to **53.48%**, and 96.76% to **97.28%** of everything outside the
+frame-sync wait — and every cycle of it came from this bank, with no other
+routine on the route moving.
 
 ### Chunking the per-frame tick
 
@@ -616,11 +657,23 @@ nobody had looked at. A correct conclusion resting on a reason that would
 not survive being checked is still worth re-checking when the method
 changes.
 
-`4015` and `4044` are admitted on roughly half their arrivals because a
-chunk boundary is, by construction, the moment the horizon is nearly
-spent: the entry immediately after one often cannot fit an iteration
-either and hands that iteration to assembly. That is the cost of the
-technique and it is already priced into the figures above.
+`4015`, `4044` and `409C` were admitted on roughly half their arrivals for two
+reasons, and only one of them was the technique's cost. A chunk boundary is, by
+construction, the moment the horizon is nearly spent, so the entry immediately
+after one often cannot fit an iteration either. But most of the refusals were
+not that at all: seven of the bank's returns — `4141`, `4243`, `4270`, `429E`,
+`42B2`, `42B9`, `46D6` — were declared ordinary returns, which is what lets a
+walk *stop* in front of one, and had no case to *execute* one, so a walk that
+inlined a call ending at any of them gave the whole transcript up. `46D6` and
+`429E` alone were 9,830 refusals, six times every other cause in the bank put
+together, and nothing said so: the routine was admitted, entered, and simply
+declined. The tick is now 3,554 of 3,599.
+
+Two lists of the same addresses can drift apart silently, and an address in one
+and not the other is a routine that can be entered and never left. The cause
+was found by counting declines at every `return std::nullopt`, keyed by entry
+and stopping address — four rounds of plausible reasoning about margins,
+horizons and mappings had all been wrong first.
 
 The slice moved 14,664,984 cycles into bank 45 and cost 1,647,495
 elsewhere, a bill of 11.2%, for a net `+13,017,489` and 41.61% to
@@ -2643,21 +2696,25 @@ accept a call.
 | `08:4097` | 50,248 | 50,248 | `verify_sat_submission_semantic` |
 | `08:40C3` | 4,334 | 4,334 | `verify_sat_tail_clear_semantic` |
 | `08:40DF` | 73,818 | 73,818 | `verify_sprite_emit_semantic` |
-| `45:4015` | 1,933 | 3,599 | `verify_music_sequencer_semantic` |
-| `45:4044` | 1,208 | 7,724 | `verify_music_sequencer_semantic` |
-| `45:409C` | 1,509 | 4,892 | `verify_music_sequencer_semantic` |
+| `45:4015` | 3,554 | 3,599 | `verify_music_sequencer_semantic` |
+| `45:4044` | 1,413 | 1,535 | `verify_music_sequencer_semantic` |
+| `45:409C` | 855 | 896 | `verify_music_sequencer_semantic` |
 | `45:413B` | 3,599 | 3,599 | `verify_music_sequencer_semantic` |
-| `45:4142` | 3,216 | 3,604 | `verify_music_sequencer_semantic` |
-| `45:4143` | 3,788 | 6,386 | `verify_music_sequencer_semantic` |
-| `45:4211` | 1,783 | 1,783 | `verify_music_sequencer_semantic` |
-| `45:4228` | 1,065 | 1,065 | `verify_music_sequencer_semantic` |
-| `45:457A` | 2,219 | 2,299 | `verify_music_sequencer_semantic` |
-| `45:4883` | 4,321 | 4,321 | `verify_music_sequencer_semantic` |
-| `45:48B4` | 72 | 72 | `verify_music_sequencer_semantic` |
-| `45:48F6` | 3,398 | 3,398 | `verify_music_sequencer_semantic` |
-| `45:49A2` | 3,463 | 3,463 | `verify_music_sequencer_semantic` |
-| `45:49B6` | 1,671 | 1,671 | `verify_music_sequencer_semantic` |
-| `45:49F9` | 3,476 | 3,482 | `verify_music_sequencer_semantic` |
+| `45:4142` | 3,544 | 3,604 | `verify_music_sequencer_semantic` |
+| `45:4143` | 3 | 60 | `verify_music_sequencer_semantic` |
+| `45:4154` | 13 | 13 | `verify_music_sequencer_semantic` |
+| `45:4169` | 11,093 | 11,093 | `verify_music_sequencer_semantic` |
+| `45:4211` | 93 | 93 | `verify_music_sequencer_semantic` |
+| `45:4228` | 12 | 12 | `verify_music_sequencer_semantic` |
+| `45:457A` | 4 | 51 | `verify_music_sequencer_semantic` |
+| `45:47E0` | 36 | 36 | `verify_music_sequencer_semantic` |
+| `45:485E` | 308 | 308 | `verify_music_sequencer_semantic` |
+| `45:4883` | 348 | 348 | `verify_music_sequencer_semantic` |
+| `45:48F6` | 41 | 41 | `verify_music_sequencer_semantic` |
+| `45:49A2` | 41 | 41 | `verify_music_sequencer_semantic` |
+| `45:49B6` | 50 | 50 | `verify_music_sequencer_semantic` |
+| `45:49E4` | 289 | 289 | `verify_music_sequencer_semantic` |
+| `45:49F9` | 39 | 41 | `verify_music_sequencer_semantic` |
 
 ## Dispatch-reachable without `@all` evidence
 
