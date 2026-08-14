@@ -361,6 +361,200 @@ the gate-open counts confirm the rewrite:
 dispatch phases and still move, so nothing was disabled — the left flipper was
 narrowed and the right one moved from button I to a direction.
 
+### The plunger
+
+A cabinet has a real plunger on it, and a launch key is not one. What a
+plunger knows is a distance, and the interesting question was whether the
+cartridge has anywhere to put one.
+
+It does, and it is the shooter itself. `02:52E3` charges the Devil Shooter by
+moving its own piece down the table — it adds `$0040` to the piece's
+twenty-four-bit vertical position on every tick button I is held — and then
+derives the charge from where the piece ended up:
+
+```
+02:52FB  SEC
+02:52FC  LDA $3300,X      the piece's whole-pixel Y
+02:52FF  SBC $3E00,X      the rest position 02:50EE gave it
+02:5302  STA $2D15        the charge
+```
+
+So `$2D15` is not a timer. It is the distance the shooter has been pulled
+down from its rest position, in pixels, running from `$00` to `$27`; the
+initializer parks the live piece at Y=671 against a reference of 632, which
+is that same `$27` apart. `02:51DA` turns it into the ball's launch velocity
+as `-(($2D15 >> 2) + 2)`. **The shooter piece is a plunger, and its draw is
+the only thing the shot is computed from.**
+
+That is what makes an analog plunger possible rather than approximate. A held
+button charges a quarter of a pixel per tick, so a full `$27` takes 156
+frames — two and a half seconds — while a spring-loaded rod is pulled and let
+go inside sixty. Mapped to the button, the pull distance would reach the game
+as nothing whatever and every shot would come out near the bottom of the
+range. Mapped to the piece's position, the pull *is* the charge, and
+`02:51DA` computes the shot from it exactly as it always did. The host
+chooses neither the velocity nor the moment of firing.
+
+Three bytes are written, and they are the three `02:52E3` writes itself: the
+fraction at `$3280,X` and the two halves of the coordinate at `$3300,X` and
+`$3380,X`. `$2D15` is written with them because on the frame the rod is let go
+button I is already up, so `02:52E3` does not run to recompute it and
+`02:51DA` reads it that frame. The appearance at `$3980,X` is left alone —
+`02:52E3` sets it from `$2D15` on every frame the rod is still back, which is
+every frame but the last.
+
+**The ball is carried with the shooter, which the cartridge does not have
+to do and this does.** Nothing in the charge path places the ball: while the
+shooter descends the ball rests on it and falls after it, and that works
+because the cartridge descends a quarter of a pixel per tick. Measured on the
+census route, the ball tracks the shooter exactly nine pixels above through the
+whole 96-frame charge, 623 to 647 as the shooter goes 632 to 656. A rod moves
+ten pixels in a frame; gravity cannot keep up, and the shooter slides out from
+under a ball that stays where it was. Before this was fixed the ball was 14, 24,
+34 and 44 pixels adrift at the four measured draws — growing with the draw,
+exactly as a race between a rod and gravity would.
+
+So the ball is placed with the shooter, and the rule is the cartridge's own
+rather than an invention. `02:52C7`-`02:52D4` is where the Devil Shooter puts
+the ball while it retracts:
+
+```
+02:52C7  LDA $3300,X      the shooter's whole-pixel Y
+02:52CA  SBC #$09
+02:52CC  STA $3300        the ball's
+```
+
+That is the same relationship, applied in the phase where the cartridge leaves
+gravity to maintain it. It is only taken over while the ball is *already*
+holding it, measured against where the shooter is rather than where it is
+going — asking about the destination instead would refuse exactly the case that
+needs carrying, a rod drawn far in a single frame.
+
+The slot is found rather than assumed. `02:5156 JSR $C018` installs `$5159`
+into `$3F00,X`/`$3F80,X`, so the charging shooter is the slot dispatching to
+`02:5159`, and the write is refused unless exactly one slot is doing that, a
+shooter session is running at `$53` bit 3, the table is in normal mode at
+`$2254`, and the piece's current draw is already inside `$00`-`$27`.
+
+That last gate turned out to matter for a reason worth recording. `$53` bit 3
+goes up the moment a ball is served — frame 942 on the census route — and the
+shooter does not catch the ball until 1,064 or install its charge script until
+1,084. Two seconds separate "a ball is in play" from "there is something for
+the rod to move", so whether the shooter took the write is the only sound
+gate, and the host uses it for the launch button as well as for the position:
+until the write lands, a drawn rod sends nothing.
+
+#### Reading the rod
+
+The plunger is read as a raw SDL joystick rather than as a gamepad. SDL's
+gamepad layer only answers for a controller its database has a mapping for and
+no plunger board is in it: what a cabinet has is a potentiometer on an
+Arduino, presenting one axis of an anonymous HID device. The joystick layer
+answers for anything with an axis, which is the whole set.
+
+Four numbers describe one, and none of them can be guessed. Which axis the rod
+is on is the board's choice; the two endpoints are a potentiometer's, so they
+differ between two copies of the same board.
+
+```ini
+input.plunger.device=
+input.plunger.axis=-1
+input.plunger.rest=0
+input.plunger.drawn=32767
+input.plunger.deadzone=8
+input.plunger.release=25
+```
+
+`axis=-1` is no plunger, and it is the default. Off rather than on, and that
+is a measurement rather than caution: a plunger and a thumbstick are
+indistinguishable from here. The PinOne's rests at the centre of its axis and
+reads negative when drawn, which is exactly what a stick pushed one way looks
+like, and axis 2 on an ordinary gamepad *is* the right stick — so a plunger
+that defaulted to on would let a thumbstick charge the shooter on any desktop
+with a pad plugged in. Somebody has to say which axis it is.
+
+The endpoints do default to a Cleveland Software Design PinOne's, which
+reports its plunger on an eight-bit Z axis resting at the centre and reading
+positive as the rod is drawn; SDL widens that to the range above, and Windows
+reports Z as the third axis of anything that has one. So a PinOne needs only
+`input.plunger.axis=2` — but confirm it with the probe rather than assuming,
+because a board's firmware settings decide which end of its own travel is
+which. `device` is a case-insensitive substring of the
+controller's name, and empty matches the first controller that has the axis.
+
+Two endpoints rather than a range and an inversion flag: a plunger whose axis
+runs backwards is one whose `drawn` is the smaller number, and needs no
+setting of its own to say so.
+
+Getting them the wrong way round is not subtle, and is worth naming because it
+looks like a different fault than it is. The on-screen shooter answers the rod
+being *pushed in* rather than pulled out; only the inch or two of push travel is
+reachable, so the charge never gets far, and every shot dribbles back down the
+lane instead of launching. That is one setting, not three symptoms. Run the
+probe.
+
+`--cabinet-plunger-probe` supplies all four. It watches every connected
+controller, takes two seconds of stillness as the rest position, then watches
+somebody pull the rod and prints the axis that moved furthest as a block ready
+to paste into `cabinet.ini`.
+
+#### Letting go is a speed
+
+A spring-loaded rod let go from a full draw is home in two to four frames at
+60Hz; a player easing it forward to fine-tune a shot moves it a few percent
+per frame. Those are the same journey and different intentions, so the release
+test is the one-frame fall. Drop by `release` percent of the travel in a
+single frame and the rod has been let go, at the draw it held the frame
+before — which is the shot the player asked for, not wherever the spring
+happened to be caught. Ease it forward and nothing fires; the charge simply
+follows the rod back down, which is what easing it forward asks for.
+
+Reaching rest fires too, and has to. A rod eased all the way home by hand
+never falls fast enough to trip the first test, and without the second the
+shooter would sit at no charge with the button still held and the ball would
+never leave.
+
+A rod found already drawn is not somebody pulling it. It has to be seen at
+rest once before it counts, which is what stops a controller that is not the
+plunger — one whose axis happens to sit at full scale, or one that answers
+nothing — from launching the ball on its own.
+
+#### Four draws, four shots
+
+`--cabinet-plunger-check` drives the same model the host drives from a
+scripted rod, four times, and reads back what the cartridge computed:
+
+```text
+scripted plunger, one pass per draw:
+  draw   $2D15   $3580   fired at   escaped   ride
+   25%       9   $FC         1097        no      9
+   50%      19   $FA         1097       yes      9
+   75%      29   $F7         1097       yes      9
+  100%      39   $F5         1097       yes      9
+  4 distinct launch velocities, and the ball rode the rod in every one.
+```
+
+Both computed columns are the ROM's own arithmetic and neither is worked out by
+the host. The charges are `draw * $27 / 100`, and the velocities are
+`-(($2D15 >> 2) + 2)` of those: `-4`, `-6`, `-9`, `-11`. Four draws producing
+one velocity would be exactly the failure a button-mapped plunger has, and
+`ride` is the ball's distance above the shooter at the shot, which `02:52CA`
+says is nine.
+
+The launch frame is found by the charge starting to come back rather than by
+watching the ball, because `02:51DA` does both in one dispatch — it stores the
+velocity at `02:51FA` and then `02:5208 JSR $533B` begins the retraction. An
+earlier version watched the ball instead, taking the most negative `$3580` of
+the following thirty frames, and read a step too fast at the two largest draws:
+a ball launched hard picks up more speed later in the lane than it left with.
+The extreme of the flight is not the launch.
+
+The quarter draw fires and does not escape, and that is the cartridge rather
+than a shortfall: four pixels a frame will not climb the shooter lane, so the
+ball rolls back and the shooter resets to charge again — which is what a short
+press of button I does on the original. `dc_rom_plunger_check` pins all eight
+numbers, including that one.
+
 ### Nudge
 
 Nudging works and is faithful to the cartridge; it is simply very small.
@@ -422,10 +616,17 @@ input.left=Left Shift,Left
 input.left_flipper=left
 input.right_flipper=right,up
 input.launch=Return
+input.plunger.device=
+input.plunger.axis=-1
+input.plunger.rest=0
+input.plunger.drawn=32767
+input.plunger.deadzone=8
+input.plunger.release=25
 ```
 
 The two `_flipper` lines name pad inputs rather than keys, from the same set
-as the `input.` suffixes above.
+as the `input.` suffixes above. The `plunger.` lines are a controller rather
+than a keyboard and are described under [The plunger](#the-plunger).
 
 Names are SDL scancode names, matched case-insensitively, so the host can
 resolve them with `SDL_GetScancodeFromName` and there is no bespoke key table
@@ -791,6 +992,45 @@ The gate is the whole of it, and lifting it is worth about 1.7 seconds of
 flipper control per ball. This is host code and no recording route installs
 it, so the state census still hashes to
 `9036a9de0c3c9917f47bff8c04c136a4824ec12601fb457d260aa2dfe4443490`.
+
+#### The port swallowed this hook once
+
+Porting `01:C4DE`-`01:C50E`, the actor scan's preamble, broke this gate
+silently and completely. `01:C500` is an interior instruction of that range,
+and a routine that runs as a native transcript never presents its interior to
+the interpreter -- the walk leaves `01:C4DE` and hands back a program counter
+of `01:C510`. So the hook fired on every frame before the slice and on none
+after it, and the flippers went dead during the launch again.
+
+Nothing failed. `install_execution_hook` still succeeded, because `01:C500` is
+not a registry entry and so collided with nothing; the collision check only
+covers entries, and this address was in the middle of a body. **An address is
+hookable only if the interpreter still arrives at it, which for a ported range
+means its entry and whatever it hands back to, and nothing in between.**
+
+Neither of those was usable here. `01:C4DE` is before the store, and every
+address between the store and the four reads -- `01:C510`, `01:C52C`,
+`01:D466` -- is a registry entry itself, and a key carries one hook. So the
+host claims the preamble back through `install_native_registry`'s
+`claimed_routines` and runs it interpreted. That costs 775,224 master cycles of
+a 1.29-billion-cycle route, 0.06% of a session, and the host says so on the way
+up rather than quietly deploying one routine fewer:
+
+```text
+Native registry: 398 of 399 admitted routines deployed (0 withheld as
+state-diverging, 1 claimed by the host).
+Registry claim: 01:C4DE claimed; the shooter's input gate hooks 01:C500 inside
+it, and a native transcript never presents its interior to the interpreter.
+```
+
+`dc_rom_host_registry` checks that arithmetic -- deployed equals admitted minus
+withheld minus claimed, and every claim is named -- because a routine that
+quietly stopped deploying would otherwise be indistinguishable from one
+deployed and never entered.
+
+The probe below missed all of this for as long as it ran without the registry,
+and now deploys it. **A probe that measures a host behaviour has to deploy the
+registry, or it measures a machine nobody plays.**
 
 `02:C020` is a second copy of the same scheduler with the same gate. It is
 deliberately not hooked: the 3,600-frame census route never executes it, and

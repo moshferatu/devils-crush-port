@@ -1325,6 +1325,32 @@ on ground already proven, and the only untranscribed thing about the arm is
 which way the flag went. Declining that second kind buys no safety and loses the
 tail of the walk.
 
+**A port can swallow an instruction hook, and nothing will say so.** Porting
+`01:C4DE`-`01:C50E` silently broke the cabinet's shooter input gate, which hung
+an observe hook on `01:C500` to put the flipper bits back into `$2CEE` between
+the preamble's `STY $2CEE` and the four addresses that read it. A routine that
+runs as a native transcript never presents its interior instructions to the
+interpreter — the walk leaves `01:C4DE` and hands back a program counter of
+`01:C510` — so the hook fired on every frame before the slice and on none after
+it. Nothing failed: `install_execution_hook` still succeeded, because `01:C500`
+is not a registry entry and so collided with nothing. It simply never ran again,
+and the flippers went dead during the launch.
+
+**An address is hookable only if the interpreter still arrives at it, which for
+a ported range means its entry and whatever it hands back to, and nothing in
+between.** Neither was available here — `01:C4DE` is before the write, and
+`01:C510`, `01:C52C` and `01:D466`, every address between the write and the
+reads, are registry entries themselves, and a key carries one hook. So the host
+claims the preamble back through `install_native_registry`'s `claimed_routines`
+and runs it interpreted: 775,224 master cycles, 0.06% of the route, for a
+flipper that answers 100 frames sooner on every launch.
+
+Two things follow for the next slice. **Before porting a range, grep the host
+for hooks inside it**, because the collision check only covers entries. And
+**a probe that measures a host behaviour has to deploy the registry**, or it
+measures a machine nobody plays: `--cabinet-launch-flipper-probe` kept
+reporting the gate working for as long as it ran without one.
+
 Two things about `0020` are worth carrying. The half-fix tried first — withdrawing
 when the core executes the `RTS` itself — did not partly work, it made the trace
 *worse* (129,236 wrong `Y` against 82,201), because a cut-short scan usually

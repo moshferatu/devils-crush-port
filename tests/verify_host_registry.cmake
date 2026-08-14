@@ -29,7 +29,7 @@ endif()
 
 string(
     REGEX MATCH
-    "Native registry: ([0-9]+) of ([0-9]+) admitted routines deployed \\(([0-9]+) withheld"
+    "Native registry: ([0-9]+) of ([0-9]+) admitted routines deployed \\(([0-9]+) withheld as state-diverging, ([0-9]+) claimed"
     installed_line
     "${deployed_output}"
 )
@@ -43,20 +43,40 @@ endif()
 set(deployed_count "${CMAKE_MATCH_1}")
 set(admitted_count "${CMAKE_MATCH_2}")
 set(withheld_count "${CMAKE_MATCH_3}")
+set(claimed_count "${CMAKE_MATCH_4}")
 if(admitted_count LESS_EQUAL 0)
     message(FATAL_ERROR "The admitted-routine registry is empty.")
 endif()
-# Nothing claims a key on this path, so the only admitted routines the host
-# may skip are the declared state-diverging hold-backs.
-math(EXPR expected_deployed "${admitted_count} - ${withheld_count}")
+# An admitted routine the host does not run is either a declared
+# state-diverging hold-back or a key the host claimed for a hook of its own,
+# and both have to be counted out loud. The arithmetic is the point: a routine
+# that quietly stopped deploying would be indistinguishable from one deployed
+# and never entered, and this is the only line that can tell them apart.
+math(EXPR expected_deployed
+    "${admitted_count} - ${withheld_count} - ${claimed_count}")
 if(NOT deployed_count EQUAL expected_deployed)
     message(
         FATAL_ERROR
         "The interactive host deployed ${deployed_count} routines, but "
-        "${admitted_count} admitted minus ${withheld_count} withheld is "
-        "${expected_deployed}.\n"
+        "${admitted_count} admitted minus ${withheld_count} withheld minus "
+        "${claimed_count} claimed is ${expected_deployed}.\n"
         "${deployed_output}${deployed_error}"
     )
+endif()
+
+# Each claim has to say what took the key and why, so that a claim can be read
+# back rather than merely counted. `01:C4DE` is the actor scan's preamble; the
+# cabinet's shooter input gate hooks `01:C500` inside it, and a ported range
+# never presents its interior instructions to the interpreter.
+if(claimed_count GREATER 0)
+    string(FIND "${deployed_output}" "Registry claim: " claim_offset)
+    if(claim_offset EQUAL -1)
+        message(
+            FATAL_ERROR
+            "The host claimed ${claimed_count} routines without naming any.\n"
+            "${deployed_output}${deployed_error}"
+        )
+    endif()
 endif()
 
 # `Registry abandonments` reads a counter the patched core owns. Ten frames is

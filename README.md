@@ -90,6 +90,36 @@ work each flipper is configurable too — see
 [docs/CABINET_PREVIEW.md](docs/CABINET_PREVIEW.md#controls) for the full
 mapping and the measurements behind it.
 
+### Analog plunger
+
+A cabinet's plunger is supported as one axis of an ordinary game controller,
+so any board that reports one works — the settings are a device name, an axis,
+and the two axis values the rod rests and bottoms out at, all under
+`input.plunger.` in `cabinet.ini`. Run
+`devils-crush --cabinet-plunger-probe`, pull the rod a few times, and it
+prints the four numbers ready to paste in.
+
+There is no plunger until one is named (`input.plunger.axis=-1`), because a
+plunger and a thumbstick look identical from the host's side and axis 2 on an
+ordinary gamepad is the right stick. The endpoints do default to a Cleveland
+Software Design PinOne's, which puts its plunger on the Z axis, so a PinOne
+needs only `input.plunger.axis=2` — but confirm it with the probe, because a
+board's own firmware settings decide which end of its travel reads as drawn. If
+`rest` and `drawn` are the wrong way round the on-screen shooter answers the rod
+being pushed in rather than pulled out, and every shot dribbles instead of
+launching.
+
+The rod is not mapped to the launch button. The Devil Shooter's charge is the
+distance its own piece has been pulled down the table — `$2D15` is that
+distance in pixels, and `02:51DA` computes the ball's launch velocity from it
+— so the rod is mapped to the distance, and the cartridge works out the shot
+exactly as it always did. Mapping it to the button instead would take two and
+a half seconds to reach full power and would ignore how far the rod was
+pulled. `--cabinet-plunger-check` demonstrates the difference: four draws
+produce four launch velocities, each one the ROM's own arithmetic on the
+charge the rod set. See
+[docs/CABINET_PREVIEW.md](docs/CABINET_PREVIEW.md#the-plunger).
+
 ## Saved data
 
 Everything the host keeps between runs lives in `portable-data/` beside the
@@ -100,7 +130,7 @@ executable:
 | `devils-crush.sav` | The cartridge's backup RAM, including the five numbered save slots the game writes from its own save screen |
 | `devils-crush.hiscore` | The high-score table |
 | `devils-crush.state` | The F5/F9 quick state |
-| `cabinet.ini` | Display assignment and key bindings |
+| `cabinet.ini` | Display assignment, key bindings, and plunger calibration |
 
 High scores save themselves. The cartridge only ever kept its table by
 spending one of five save slots on it by hand — pause, Select for High Scores,
@@ -2383,10 +2413,10 @@ visibly across two complete Release-host processes. See
 procedure and result.
 
 The current host boots the verified ROM through the pinned Beetle PCE core,
-plays its float-stereo audio, accepts keyboard or the first available SDL
-gamepad, and presents desktop or cabinet output through the fixed sharp scaler.
-Gamepads can be connected, disconnected, or replaced while the host is
-running. Optional SDL-format mappings are loaded from
+plays its float-stereo audio, accepts keyboard, the first available SDL
+gamepad, or a cabinet's analog plunger, and presents desktop or cabinet output
+through the fixed sharp scaler. Gamepads and the plunger can be connected,
+disconnected, or replaced while the host is running. Optional SDL-format mappings are loaded from
 `portable-data/gamecontrollerdb.txt`; F10 reloads the file after edits. F11
 toggles playfield borderless fullscreen; F12 opens cabinet display assignment;
 Escape exits outside that assignment screen. F5 atomically writes a versioned

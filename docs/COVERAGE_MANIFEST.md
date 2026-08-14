@@ -40,7 +40,7 @@ and ROM-derived assets remain ignored local artifacts.
 | `M-FE-07` | Full-capacity save deletion prompt and all five populated slots | F | Milestone 6 save acceptance |
 | `M-FE-08` | Password creation and password-based restore without backup RAM | F | Milestone 6 acceptance; the legacy UI remains emulated |
 | `M-FE-09` | Left and right flippers | D | `dc_rom_controls_physics` |
-| `M-FE-10` | Button-I Devil Shooter/plunger | D | `dc_rom_controls_physics`, `dc_rom_devil_shooter` |
+| `M-FE-10` | Button-I Devil Shooter/plunger | D | `dc_rom_controls_physics`, `dc_rom_devil_shooter`; `dc_rom_plunger_check` covers a cabinet's analog plunger driving the same charge |
 | `M-FE-11` | Button-II nudge applied to ball motion | D | Three deterministic nudge pairs in `dc_rom_controls_physics` |
 | `M-FE-12` | Tilt lock/gate while ordinary controls remain eligible | D | `$2CC7=0` for all 3,600 closure-route frames |
 | `M-FE-13` | Actual tilt accumulation, lockout, and recovery | F | Milestone 4 native session port and Milestone 6 acceptance |

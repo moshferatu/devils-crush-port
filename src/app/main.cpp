@@ -11,6 +11,7 @@
 #include "devils_crush/core/rom_image.hpp"
 #include "devils_crush/core/save_state.hpp"
 #include "devils_crush/emulation/pce_runtime.hpp"
+#include "devils_crush/input/plunger.hpp"
 #include "devils_crush/render/pce_background.hpp"
 #include "devils_crush/render/pce_sprite_overlay.hpp"
 #include "devils_crush/render/table_palette_cache.hpp"
@@ -263,6 +264,8 @@ struct CommandLine {
     bool cabinet_nudge_probe = false;
     bool cabinet_launch_check = false;
     bool cabinet_launch_flipper_probe = false;
+    bool cabinet_plunger_probe = false;
+    bool cabinet_plunger_check = false;
     bool high_score_check = false;
     std::filesystem::path cabinet_view_probe_directory;
     bool cabinet_seed_check = false;
@@ -846,6 +849,10 @@ parse_logical_address_range(const std::string_view text)
             options.cabinet_launch_check = true;
         } else if (argument == "--cabinet-launch-flipper-probe") {
             options.cabinet_launch_flipper_probe = true;
+        } else if (argument == "--cabinet-plunger-probe") {
+            options.cabinet_plunger_probe = true;
+        } else if (argument == "--cabinet-plunger-check") {
+            options.cabinet_plunger_check = true;
         } else if (argument == "--high-score-check") {
             options.high_score_check = true;
         } else if (argument == "--cabinet-view-probe") {
@@ -971,7 +978,9 @@ parse_logical_address_range(const std::string_view text)
     // and so they measure the configuration people actually play.
     const bool host_registry =
         (host_selected || options.cabinet_drain_probe
-         || options.cabinet_nudge_probe || options.cabinet_launch_check)
+         || options.cabinet_nudge_probe || options.cabinet_launch_check
+         || options.cabinet_plunger_check
+         || options.cabinet_launch_flipper_probe)
         && !options.emulate_only;
     const int recording_frame_count = options.record_state_census
         ? kStateCensusRecordingFrames
@@ -3684,7 +3693,28 @@ void print_usage()
         << "  devils-crush --high-score-check [--rom <path>]\n"
         << "  devils-crush --cabinet-view-probe <directory> "
            "[--rom <path>]\n"
+        << "  devils-crush --cabinet-plunger-probe\n"
+        << "  devils-crush --cabinet-plunger-check [--rom <path>]\n"
         << "  devils-crush --help\n\n"
+        << "Plunger:\n"
+        << "  An analog plunger is read as one axis of an ordinary game\n"
+           "  controller, so any board that reports one works: the settings\n"
+           "  are a device name, an axis, and the axis values the rod rests\n"
+           "  and bottoms out at. --cabinet-plunger-probe watches every\n"
+           "  controller while you pull the rod and prints those four\n"
+           "  numbers ready to paste into portable-data/cabinet.ini. There\n"
+           "  is no plunger until one is named, because a plunger and a\n"
+           "  thumbstick look identical from here and axis 2 on an\n"
+           "  ordinary gamepad is the right stick; the endpoints default\n"
+           "  to a Cleveland Software Design PinOne's, which puts its\n"
+           "  plunger on the Z axis, so a PinOne needs only\n"
+           "  input.plunger.axis=2.\n\n"
+           "  A drawn rod does not merely hold the launch button. The Devil\n"
+           "  Shooter's charge is the distance its own piece has been pulled\n"
+           "  down the table, so the rod is mapped to that distance and the\n"
+           "  cartridge computes the shot from it exactly as it always did.\n"
+           "  Holding a button instead would take two and a half seconds to\n"
+           "  reach full power and would ignore how far the rod was pulled.\n\n"
         << "Saved data (all under portable-data/):\n"
         << "  devils-crush.sav      The cartridge's backup RAM, holding the\n"
            "                        five numbered save slots the game writes\n"
@@ -3747,6 +3777,8 @@ void print_usage()
         << "  Backspace            Select\n"
         << "  Up / Down            PCE d-pad up and down\n"
         << "  Gamepad              First connected SDL gamepad\n"
+        << "  Plunger              Launches from the shooter, at the power\n"
+           "                       the rod was drawn to\n"
         << "  F5                   Save quick state\n"
         << "  F9                   Restore quick state\n"
         << "  F10                  Reload custom gamepad mappings\n"
@@ -5543,7 +5575,8 @@ void resolve_opposing_directions(
     SDL_Gamepad* gamepad,
     const ResolvedKeyBindings& bindings,
     const bool ball_in_launcher,
-    const devils_crush::cabinet::FlipperInputs& flippers)
+    const devils_crush::cabinet::FlipperInputs& flippers,
+    const bool plunger_drawn)
 {
     InputFrame input;
     const bool* keys = SDL_GetKeyboardState(nullptr);
@@ -5576,7 +5609,12 @@ void resolve_opposing_directions(
                 && SDL_GetGamepadButton(gamepad, binding.gamepad));
         set_button(input.player_one, binding.button, pressed);
     }
-    if (launching) {
+    // A drawn plunger holds button I on the same terms as a launch key, and
+    // for the same reason: button I launches, and button I also accepts a
+    // high-score letter. The rod is only allowed to send it where it can only
+    // mean launch. It has no ordinary pad input to suppress -- a plunger is
+    // not a key -- so it needs no entry in `suppressed`.
+    if (launching || (ball_in_launcher && plunger_drawn)) {
         set_button(input.player_one, Button::one, true);
     }
     resolve_opposing_directions(input.player_one, flippers);
@@ -5665,6 +5703,290 @@ void handle_gamepad_device_event(
                   << (name != nullptr ? name : "unnamed SDL gamepad")
                   << '\n';
     }
+}
+
+// The plunger is read as a raw joystick rather than as a gamepad, and that is
+// deliberate rather than incidental. SDL's gamepad layer only answers for a
+// controller its database has a mapping for, and no plunger board is in it: a
+// cabinet's plunger is a potentiometer on an Arduino, and what it presents is
+// an axis on an anonymous HID device. The joystick layer answers for anything
+// with an axis, which is exactly the set of devices this has to work with.
+struct PlungerDevice {
+    SDL_Joystick* joystick = nullptr;
+    SDL_JoystickID id = 0;
+    devils_crush::input::Plunger model;
+};
+
+[[nodiscard]] bool name_contains(
+    const char* const name,
+    const std::string& needle)
+{
+    if (needle.empty()) {
+        return true;
+    }
+    if (name == nullptr) {
+        return false;
+    }
+    const auto fold = [](const std::string_view text) {
+        std::string folded(text);
+        std::ranges::transform(
+            folded,
+            folded.begin(),
+            [](const char value) {
+                return static_cast<char>(
+                    std::tolower(static_cast<unsigned char>(value)));
+            });
+        return folded;
+    };
+    return fold(name).find(fold(needle)) != std::string::npos;
+}
+
+// A controller is the plunger if its name matches and it actually has the axis
+// the binding names. The second half matters more than it looks: a cabinet has
+// several HID devices on it, and opening the wrong one and reading past its
+// axis count would answer a constant rather than fail.
+[[nodiscard]] bool is_plunger_candidate(
+    const SDL_JoystickID id,
+    const devils_crush::input::PlungerBinding& binding)
+{
+    if (!name_contains(SDL_GetJoystickNameForID(id), binding.device)) {
+        return false;
+    }
+    SDL_Joystick* const joystick = SDL_OpenJoystick(id);
+    if (joystick == nullptr) {
+        return false;
+    }
+    const bool has_axis = SDL_GetNumJoystickAxes(joystick) > binding.axis;
+    SDL_CloseJoystick(joystick);
+    return has_axis;
+}
+
+void close_plunger(PlungerDevice& plunger)
+{
+    if (plunger.joystick != nullptr) {
+        SDL_CloseJoystick(plunger.joystick);
+    }
+    plunger.joystick = nullptr;
+    plunger.id = 0;
+    // The rod's position is the device's, so it goes with the device. What
+    // stays is the calibration, which is the cabinet's.
+    plunger.model.rearm();
+}
+
+void open_plunger(
+    PlungerDevice& plunger,
+    const devils_crush::input::PlungerBinding& binding)
+{
+    if (!binding.enabled() || plunger.joystick != nullptr) {
+        return;
+    }
+    int count = 0;
+    SDL_JoystickID* const ids = SDL_GetJoysticks(&count);
+    if (ids == nullptr) {
+        return;
+    }
+    for (int index = 0; index < count; ++index) {
+        if (!is_plunger_candidate(ids[index], binding)) {
+            continue;
+        }
+        plunger.joystick = SDL_OpenJoystick(ids[index]);
+        if (plunger.joystick == nullptr) {
+            report_sdl_error("SDL_OpenJoystick failed");
+            continue;
+        }
+        plunger.id = SDL_GetJoystickID(plunger.joystick);
+        plunger.model.configure(binding.calibration);
+        const char* const name = SDL_GetJoystickName(plunger.joystick);
+        std::cout << "Using plunger: "
+                  << (name != nullptr ? name : "unnamed SDL joystick")
+                  << " axis " << binding.axis << '\n';
+        break;
+    }
+    SDL_free(ids);
+}
+
+void handle_joystick_device_event(
+    const SDL_JoyDeviceEvent& event,
+    PlungerDevice& plunger,
+    const devils_crush::input::PlungerBinding& binding)
+{
+    if (event.type == SDL_EVENT_JOYSTICK_ADDED) {
+        open_plunger(plunger, binding);
+        return;
+    }
+    if (event.type == SDL_EVENT_JOYSTICK_REMOVED
+        && plunger.joystick != nullptr && plunger.id == event.which) {
+        std::cerr << "Plunger disconnected.\n";
+        close_plunger(plunger);
+        open_plunger(plunger, binding);
+    }
+}
+
+// One frame's reading. A plunger that is not configured, not plugged in, or
+// plugged in and not moving all answer the same thing, which is why the caller
+// needs no test of its own: an absent plunger is a plunger at rest.
+[[nodiscard]] devils_crush::input::PlungerSample read_plunger(
+    PlungerDevice& plunger,
+    const devils_crush::input::PlungerBinding& binding)
+{
+    if (plunger.joystick == nullptr || !binding.enabled()) {
+        return {};
+    }
+    return plunger.model.update(
+        SDL_GetJoystickAxis(plunger.joystick, binding.axis));
+}
+
+// Finds out what a cabinet's plunger actually is, by watching it move.
+//
+// None of the four numbers this feature needs can be guessed from here. Which
+// axis a board puts the rod on is the board's choice -- the PinOne uses Z,
+// which Windows reports third, but nothing makes that universal -- and the two
+// endpoints are a potentiometer's, so they differ between two copies of the
+// same board. What they have in common is that they are all obvious the moment
+// somebody pulls the rod: the plunger is the axis that moves, rest is where it
+// sits, and a full draw is as far as it went. So the probe watches, and prints
+// the answer in the form it is written down in.
+constexpr int kPlungerProbeRestMs = 2000;
+constexpr int kPlungerProbeWatchMs = 12000;
+constexpr int kPlungerProbeReportMs = 250;
+// Below this the axis did not move enough to be a rod being pulled. A
+// sixteenth of the axis's range is far more than a potentiometer's noise and
+// far less than any deliberate pull.
+constexpr int kPlungerProbeTravel = 4096;
+
+struct ProbedAxis {
+    SDL_JoystickID id = 0;
+    std::string name;
+    int axis = 0;
+    int rest = 0;
+    int extreme = 0;
+
+    [[nodiscard]] int travel() const noexcept
+    {
+        return std::abs(extreme - rest);
+    }
+};
+
+[[nodiscard]] int run_plunger_probe()
+{
+    if (!SDL_Init(SDL_INIT_JOYSTICK)) {
+        report_sdl_error("SDL_Init failed");
+        return EXIT_FAILURE;
+    }
+
+    int count = 0;
+    SDL_JoystickID* const ids = SDL_GetJoysticks(&count);
+    std::vector<SDL_Joystick*> opened;
+    std::vector<ProbedAxis> axes;
+    for (int index = 0; index < count; ++index) {
+        SDL_Joystick* const joystick = SDL_OpenJoystick(ids[index]);
+        if (joystick == nullptr) {
+            continue;
+        }
+        opened.push_back(joystick);
+        const char* const name = SDL_GetJoystickName(joystick);
+        const std::string label =
+            name != nullptr ? name : "unnamed SDL joystick";
+        const int axis_count = SDL_GetNumJoystickAxes(joystick);
+        std::cout << "Controller " << index << ": " << label << " ("
+                  << axis_count << " axes, "
+                  << SDL_GetNumJoystickButtons(joystick) << " buttons)\n";
+        for (int axis = 0; axis < axis_count; ++axis) {
+            axes.push_back(
+                {.id = ids[index],
+                 .name = label,
+                 .axis = axis,
+                 .rest = 0,
+                 .extreme = 0});
+        }
+    }
+    SDL_free(ids);
+
+    if (axes.empty()) {
+        std::cerr << "No controller with an axis is connected.\n";
+        SDL_Quit();
+        return EXIT_FAILURE;
+    }
+
+    const auto axis_value = [&opened](const ProbedAxis& probed) {
+        for (auto* const joystick : opened) {
+            if (SDL_GetJoystickID(joystick) == probed.id) {
+                return static_cast<int>(
+                    SDL_GetJoystickAxis(joystick, probed.axis));
+            }
+        }
+        return 0;
+    };
+    const auto pump = [] {
+        SDL_Event event;
+        while (SDL_PollEvent(&event)) {
+        }
+        SDL_Delay(16);
+    };
+
+    std::cout << "\nLeave the plunger alone for two seconds.\n";
+    const auto started = SDL_GetTicks();
+    while (SDL_GetTicks() - started < kPlungerProbeRestMs) {
+        pump();
+    }
+    for (auto& probed : axes) {
+        probed.rest = axis_value(probed);
+        probed.extreme = probed.rest;
+    }
+
+    std::cout << "Now pull the plunger all the way back and let it go, a few "
+                 "times.\n\n";
+    const auto watching = SDL_GetTicks();
+    Uint64 reported = 0;
+    while (SDL_GetTicks() - watching < kPlungerProbeWatchMs) {
+        pump();
+        for (auto& probed : axes) {
+            const int value = axis_value(probed);
+            if (std::abs(value - probed.rest)
+                > std::abs(probed.extreme - probed.rest)) {
+                probed.extreme = value;
+            }
+        }
+        if (SDL_GetTicks() - reported < kPlungerProbeReportMs) {
+            continue;
+        }
+        reported = SDL_GetTicks();
+        std::cout << "  ";
+        for (const auto& probed : axes) {
+            std::cout << "a" << probed.axis << "="
+                      << std::setw(6) << axis_value(probed) << ' ';
+        }
+        std::cout << '\n';
+    }
+
+    const auto moved = std::ranges::max_element(
+        axes,
+        {},
+        [](const ProbedAxis& probed) { return probed.travel(); });
+    std::cout << '\n';
+    if (moved == axes.end() || moved->travel() < kPlungerProbeTravel) {
+        std::cerr << "No axis moved far enough to be a plunger.\n";
+        for (auto* const joystick : opened) {
+            SDL_CloseJoystick(joystick);
+        }
+        SDL_Quit();
+        return EXIT_FAILURE;
+    }
+
+    std::cout << "The plunger is axis " << moved->axis << " of \""
+              << moved->name << "\", resting at " << moved->rest
+              << " and reaching " << moved->extreme << ".\n\n"
+              << "Put this in portable-data/cabinet.ini:\n\n"
+              << "input.plunger.device=" << moved->name << '\n'
+              << "input.plunger.axis=" << moved->axis << '\n'
+              << "input.plunger.rest=" << moved->rest << '\n'
+              << "input.plunger.drawn=" << moved->extreme << '\n';
+
+    for (auto* const joystick : opened) {
+        SDL_CloseJoystick(joystick);
+    }
+    SDL_Quit();
+    return EXIT_SUCCESS;
 }
 
 [[nodiscard]] bool consume_emulated_frame(
@@ -6981,8 +7303,39 @@ constexpr std::array<RoutineKey, 0U> kWithheldRoutines{};
 
 // Installs every admitted routine that is neither withheld nor already claimed
 // by an explicit hook. The recording paths and the interactive host share this
-// installer so a routine cannot be proven under one and quietly absent under
-// the other.
+// Where the shooter's input gate is lifted, and what the host has to take back
+// from the registry to be able to lift it there.
+//
+// `restore_flipper_input` has to run between `01:C4FD STY $2CEE` and the four
+// addresses that read `$2CEE`, and `01:C500` is the first instruction after
+// the write. That was an ordinary instruction hook until `01:C4DE`-`01:C50E`
+// was ported: a routine that runs as a native transcript never presents its
+// interior instructions to the interpreter -- the walk leaves `01:C4DE` and
+// hands back a program counter of `01:C510` -- so the hook stopped firing and
+// the flippers went dead during the launch again. Nothing failed loudly.
+// `install_execution_hook` still succeeded, because `01:C500` is not a
+// registry entry and collided with nothing; it simply never fired.
+//
+// **An address is hookable only if the interpreter still arrives at it, which
+// for a ported range means its entry and whatever it hands back to, and
+// nothing in between.** Neither of those is available here. `01:C4DE` is
+// before the write, and `01:C510`, `01:C52C` and `01:D466` -- every address
+// between the write and the reads -- are registry entries themselves, and a
+// key may carry one hook.
+//
+// So the host claims the preamble back. `01:C4DE` runs interpreted while the
+// gate is installed, which costs 775,224 master cycles of a 1.29-billion-cycle
+// route: 0.06% of the session, against a flipper that answers 100 frames
+// sooner on every launch.
+constexpr RoutineKey kShooterGateInstruction{
+    .physical_bank = 0x01U,
+    .logical_pc = 0xC500U,
+};
+constexpr RoutineKey kShooterGateOwner{
+    .physical_bank = 0x01U,
+    .logical_pc = 0xC4DEU,
+};
+
 [[nodiscard]] bool install_native_registry(
     PceRuntime& runtime,
     const CommandLine& options,
@@ -8343,6 +8696,185 @@ void keep_fixed_actors_simulating(
     return ball_in_launcher;
 }
 
+// `02:52CA SBC #$09`, the ball's offset above the shooter it is sitting on,
+// and how far it may be from there before it is taken to be something other
+// than a ball sitting in the shooter.
+constexpr int kBallRidesAbove = 9;
+constexpr int kBallRideSlack = 16;
+
+// Puts the Devil Shooter where the physical plunger is.
+//
+// The cartridge charges the shooter by moving its own piece. `02:52E3` adds
+// `$0040` to the piece's twenty-four-bit vertical position every tick button I
+// is held, and then derives everything else from where the piece ended up:
+//
+// ```
+// 02:52FB  SEC
+// 02:52FC  LDA $3300,X      the piece's whole-pixel Y
+// 02:52FF  SBC $3E00,X      the rest position the initializer stored
+// 02:5302  STA $2D15        the charge
+// ```
+//
+// So `$2D15` is not a timer -- it is the distance the piece has been pulled
+// down from its rest position, in pixels, and `02:51DA` turns it into the
+// launch velocity as `-(($2D15 >> 2) + 2)`. The shooter piece *is* a plunger,
+// and its draw is the only thing the launch is computed from.
+//
+// That is what makes an analog plunger possible at all. A held button charges
+// a quarter of a pixel per tick, so the full `$27` takes 156 frames; a real
+// rod is pulled and let go inside 60. Mapped to the button, the pull distance
+// would reach the game as nothing whatever and every shot would come out at
+// the bottom of the range. Mapped to the piece's position, the pull *is* the
+// charge, and the cartridge computes the shot from it exactly as it always
+// did -- `02:51DA` is untouched, and the host neither chooses the velocity nor
+// decides when to fire.
+//
+// Three bytes are written, and they are the same three `02:52E3` writes: the
+// fraction, and the two halves of the whole-pixel coordinate. `$2D15` is
+// written with them because on the frame the rod is let go button I is up, so
+// `02:52E3` does not run to recompute it, and `02:51DA` reads it that frame.
+// The appearance at `$3980,X` is left alone: `02:52E3` sets it from `$2D15`
+// on every frame the rod is still back, which is every frame but the last.
+//
+// **And the ball is carried with it, which the cartridge does not have to do
+// and this does.** Nothing in the charge path places the ball: while the
+// shooter descends the ball simply rests on it and falls after it, and that
+// works because the cartridge descends a quarter of a pixel per tick.
+// Measured on the census route, the ball tracks the shooter exactly nine
+// pixels above through the whole 96-frame charge, 623 to 647 as the shooter
+// goes 632 to 656. A rod moves several pixels a frame, gravity cannot keep
+// up, and the shooter slides out from under a ball that stays where it was --
+// which is what a player sees as the ball being left behind by the plunger.
+//
+// So the ball is placed with the shooter, and the rule is the cartridge's own
+// rather than an invention: `02:52C7`-`02:52D4` is where the Devil Shooter
+// puts the ball while it retracts, and it puts it at the shooter's coordinate
+// less nine.
+//
+// ```
+// 02:52C7  LDA $3300,X      the shooter's whole-pixel Y
+// 02:52CA  SBC #$09
+// 02:52CC  STA $3300        the ball's
+// ```
+//
+// This is the same relationship in the phase where the cartridge leaves
+// gravity to maintain it. It is only taken over while the ball is already
+// holding it, so a ball that is not seated on the shooter is never moved.
+//
+// The slot is found rather than assumed. The Devil Shooter is fixed layout
+// slot `$0E`, but the piece that charges is the live actor, and what makes it
+// identifiable is its dispatch pointer: `02:5156 JSR $C018` installs `$5159`
+// into `$3F00,X/$3F80,X`, so the charging shooter is the slot dispatching to
+// `02:5159`. Requiring exactly one match, a shooter session at `$53` bit 3, a
+// normal table at `$2254`, and a current draw already inside `$00`-`$27` is
+// four conditions on a byte pair that is per-actor and general-purpose; any of
+// them failing means this is not the shooter and nothing is written.
+[[nodiscard]] bool apply_plunger_draw(
+    devils_crush::emulation::PceRuntime& runtime,
+    const std::uint8_t draw)
+{
+    constexpr std::size_t kSessionFlags = 0x0053U;
+    constexpr std::uint8_t kShooterSession = 0x08U;
+    constexpr std::size_t kTableMode = 0x0254U;
+    constexpr std::size_t kChargeCounter = 0x0D15U;
+    constexpr std::size_t kYFractionBase = 0x1280U;
+    constexpr std::size_t kYLowBase = 0x1300U;
+    constexpr std::size_t kYHighBase = 0x1380U;
+    constexpr std::size_t kRestLowBase = 0x1E00U;
+    constexpr std::size_t kRestHighBase = 0x1E80U;
+    constexpr std::size_t kDispatchLowBase = 0x1F00U;
+    constexpr std::size_t kDispatchHighBase = 0x1F80U;
+    constexpr std::uint16_t kChargeDispatch = 0x5159U;
+    constexpr std::uint8_t kFullCharge = 0x27U;
+
+    auto work_ram = runtime.export_work_ram();
+    if (work_ram.size() < 0x2000U) {
+        return false;
+    }
+    const auto byte_at = [&work_ram](const std::size_t offset) {
+        return std::to_integer<std::uint8_t>(work_ram[offset]);
+    };
+    if ((byte_at(kSessionFlags) & kShooterSession) == 0U
+        || byte_at(kTableMode) != 0U) {
+        return false;
+    }
+
+    std::size_t shooter = 0;
+    std::size_t matches = 0;
+    for (std::size_t slot = 0;
+         slot < devils_crush::cabinet::kActorSlotCount;
+         ++slot) {
+        const auto dispatch = static_cast<std::uint16_t>(
+            byte_at(kDispatchLowBase + slot)
+            | (static_cast<std::uint16_t>(byte_at(kDispatchHighBase + slot))
+               << 8U));
+        if (dispatch == kChargeDispatch) {
+            shooter = slot;
+            ++matches;
+        }
+    }
+    if (matches != 1U) {
+        return false;
+    }
+
+    const auto rest_low = byte_at(kRestLowBase + shooter);
+    const auto current =
+        static_cast<std::uint8_t>(byte_at(kYLowBase + shooter) - rest_low);
+    if (current > kFullCharge) {
+        return false;
+    }
+
+    // Never zero while the rod is back. A charge of zero is how the cartridge
+    // says there is nothing to launch -- `02:5173 LDA $2D15 : BEQ $5178`
+    // returns without firing -- so writing it would leave the ball sitting in
+    // a shooter that the player has already let go of.
+    const auto charge = static_cast<std::uint8_t>(std::max<std::uint32_t>(
+        1U,
+        (static_cast<std::uint32_t>(draw) * kFullCharge) / 100U));
+    const auto sum = static_cast<std::uint16_t>(rest_low + charge);
+    const auto low = static_cast<std::uint8_t>(sum & 0xFFU);
+    const auto high = static_cast<std::uint8_t>(
+        byte_at(kRestHighBase + shooter) + (sum >> 8U));
+
+    // The ball rides nine pixels above the shooter, per `02:52C7`-`02:52D4`.
+    // Taken over only where the ball is holding that relationship *now*,
+    // against where the shooter is before this moves it -- not against where
+    // it is going. The distinction is the whole guard: "is this ball sitting
+    // in the shooter" is a question about the present, and asking it about the
+    // destination instead would refuse exactly the case that needs carrying,
+    // a rod drawn far in one frame. A ball that is not seated -- caught
+    // mid-flight, or somewhere else entirely -- is left to the cartridge.
+    const auto shooter_y = static_cast<int>(low | (high << 8U));
+    const auto shooter_was = static_cast<int>(
+        byte_at(kYLowBase + shooter)
+        | (byte_at(kYHighBase + shooter) << 8U));
+    const auto ball_y = static_cast<int>(
+        byte_at(kYLowBase) | (byte_at(kYHighBase) << 8U));
+    const auto seated = shooter_y - kBallRidesAbove;
+    const bool carries_ball =
+        std::abs(ball_y - (shooter_was - kBallRidesAbove))
+        <= kBallRideSlack;
+
+    if (byte_at(kYFractionBase + shooter) == 0U
+        && byte_at(kYLowBase + shooter) == low
+        && byte_at(kYHighBase + shooter) == high
+        && byte_at(kChargeCounter) == charge
+        && (!carries_ball || ball_y == seated)) {
+        return true;
+    }
+    work_ram[kYFractionBase + shooter] = std::byte{0};
+    work_ram[kYLowBase + shooter] = static_cast<std::byte>(low);
+    work_ram[kYHighBase + shooter] = static_cast<std::byte>(high);
+    work_ram[kChargeCounter] = static_cast<std::byte>(charge);
+    if (carries_ball) {
+        work_ram[kYLowBase] = static_cast<std::byte>(seated & 0xFF);
+        work_ram[kYHighBase] =
+            static_cast<std::byte>((seated >> 8) & 0xFF);
+    }
+    static_cast<void>(runtime.import_work_ram(work_ram));
+    return true;
+}
+
 // Gives the flipper buttons back while the ball is still in the Devil Shooter.
 //
 // The actor scheduler publishes the held pad byte to `$2CEE` once a frame and
@@ -8425,22 +8957,24 @@ void restore_flipper_input(
 
 // The hook sits on `01:C500`, the instruction after the `STY $2CEE`, so it
 // sees the byte the ROM just wrote and runs before the actor sweep at
-// `01:C50D` reads it. `02:C020` is a second copy of the same code with the
-// same gate; it is deliberately not hooked, because the 3,600-frame census
-// route never executes it and an unmeasured second site is a claim rather
-// than a change.
+// `01:C50D` reads it. That requires the preamble to be interpreted, which is
+// why `kShooterGateOwner` is claimed back from the registry wherever this is
+// installed; see the note there. `02:C020` is a second copy of the same code
+// with the same gate; it is deliberately not hooked, because the 3,600-frame
+// census route never executes it and an unmeasured second site is a claim
+// rather than a change.
 //
-// `--cabinet-launch-flipper-probe` measures what this buys: on the census
-// route's first launch the flippers answer two frames after the button is let
-// go rather than 102, and keep answering for the whole 98-frame flight the
-// shooter session used to own.
+// `--cabinet-launch-flipper-probe` measures what this buys, and measures it
+// with the registry deployed so that it is measuring what people play: on the
+// census route's first launch the flippers answer two frames after the button
+// is let go rather than 102, and keep answering for the whole 98-frame flight
+// the shooter session used to own.
 [[nodiscard]] bool install_shooter_flipper_gate(
     devils_crush::emulation::PceRuntime& runtime,
     const devils_crush::cabinet::FlipperInputs& flippers)
 {
     return runtime.install_execution_hook({
-        .routine =
-            RoutineKey{.physical_bank = 0x01U, .logical_pc = 0xC500U},
+        .routine = kShooterGateInstruction,
         .mode = HookMode::observe,
         .callback =
             [&runtime, &flippers](const RoutineEntry&) {
@@ -8626,7 +9160,11 @@ int run_windows_host(
     const CabinetLayers layers = CabinetLayers::all,
     const bool overlay_stats = false)
 {
-    if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMEPAD)) {
+    // Joystick as well as gamepad: the plunger is an anonymous HID axis that
+    // SDL's gamepad database has no mapping for, so it is only visible through
+    // the joystick subsystem.
+    if (!SDL_Init(
+            SDL_INIT_VIDEO | SDL_INIT_GAMEPAD | SDL_INIT_JOYSTICK)) {
         report_sdl_error("SDL_Init failed");
         return EXIT_FAILURE;
     }
@@ -8763,6 +9301,9 @@ int run_windows_host(
     }
 
     SDL_Gamepad* gamepad = open_first_gamepad();
+    PlungerDevice plunger;
+    plunger.model.configure(cabinet_config.input.plunger.calibration);
+    open_plunger(plunger, cabinet_config.input.plunger);
     SourceTexture source;
     StageTexture stage;
     SourceTexture backglass_logo_source;
@@ -8829,13 +9370,17 @@ int run_windows_host(
         ? read_rom_bytes(rom_path)
         : std::optional<std::vector<std::byte>>{std::vector<std::byte>{}};
     NativeRegistryDeployment registry_deployment;
+    // The preamble is claimed back so the shooter's input gate has an
+    // interpreted instruction to hang off; see `kShooterGateOwner`.
+    constexpr std::array<RoutineKey, 1> kHostClaimedRoutines{
+        kShooterGateOwner};
     if (native_registry != nullptr) {
         if (!replacement_rom
             || !install_native_registry(
                 runtime,
                 *native_registry,
                 *replacement_rom,
-                {},
+                kHostClaimedRoutines,
                 registry_deployment)) {
             running = false;
             host_ok = false;
@@ -8851,7 +9396,21 @@ int run_windows_host(
                       << registry_deployment.rows.size()
                       << " admitted routines deployed ("
                       << kWithheldRoutines.size()
-                      << " withheld as state-diverging).\n";
+                      << " withheld as state-diverging, "
+                      << kHostClaimedRoutines.size()
+                      << " claimed by the host).\n";
+            // Named rather than merely counted, on the same terms as the
+            // hold-backs: a routine the host takes back is one the registry
+            // proved and the shipped configuration does not run, and that is
+            // worth having to read.
+            for (const auto& claimed : kHostClaimedRoutines) {
+                std::cout << "Registry claim: "
+                          << format_routine_key(claimed)
+                          << " claimed; the shooter's input gate hooks "
+                          << format_routine_key(kShooterGateInstruction)
+                          << " inside it, and a native transcript never "
+                             "presents its interior to the interpreter.\n";
+            }
         }
     }
     // After the registry, so a deployed replacement owning either address
@@ -9035,6 +9594,13 @@ int run_windows_host(
                 || event.type == SDL_EVENT_GAMEPAD_REMAPPED) {
                 handle_gamepad_device_event(event.gdevice, gamepad);
             } else if (
+                event.type == SDL_EVENT_JOYSTICK_ADDED
+                || event.type == SDL_EVENT_JOYSTICK_REMOVED) {
+                handle_joystick_device_event(
+                    event.jdevice,
+                    plunger,
+                    cabinet_config.input.plunger);
+            } else if (
                 event.type == SDL_EVENT_AUDIO_DEVICE_REMOVED
                 || event.type == SDL_EVENT_AUDIO_DEVICE_FORMAT_CHANGED) {
                 handle_audio_device_event(event.adevice, audio);
@@ -9074,11 +9640,25 @@ int run_windows_host(
             }
             const bool ball_in_launcher = apply_flipper_inputs(
                 runtime, cabinet_config.input.flippers);
+            const auto rod =
+                read_plunger(plunger, cabinet_config.input.plunger);
+            // Whether the shooter took the write is the gate, rather than
+            // whether a ball is in play. `$53` bit 3 goes up the moment a ball
+            // is served and the shooter does not catch it for another two
+            // seconds -- measured, 942 against 1,064 on the census route, with
+            // the charge script not installed until 1,084 -- so a rod pulled
+            // the instant the ball appears has nothing to move yet. Asking
+            // `apply_plunger_draw` is asking the only question that matters:
+            // it writes when the Devil Shooter is holding the ball and
+            // dispatching to its charge script, and refuses otherwise.
+            const bool rod_engaged = ball_in_launcher && rod.drawn
+                && apply_plunger_draw(runtime, rod.draw);
             const auto frame = runtime.run_frame(read_input(
                 gamepad,
                 key_bindings,
                 ball_in_launcher,
-                cabinet_config.input.flippers));
+                cabinet_config.input.flippers,
+                rod_engaged && !rod.released));
             ++emulated_frames;
             poll_high_scores(runtime, high_scores, emulated_frames);
             if (!cabinet_mode) {
@@ -9289,6 +9869,7 @@ int run_windows_host(
     if (gamepad != nullptr) {
         SDL_CloseGamepad(gamepad);
     }
+    close_plunger(plunger);
     save_current_cabinet_config();
     destroy_auxiliary_window(dmd);
     destroy_auxiliary_window(backglass);
@@ -10952,6 +11533,242 @@ enum class ViewProbeRoute {
     return launched_at != 0 ? EXIT_SUCCESS : EXIT_FAILURE;
 }
 
+// Whether how far the rod is pulled reaches the game, measured rather than
+// asserted.
+//
+// The claim the plunger rests on is that the shot comes out of the draw. That
+// is checkable without a plunger: drive the same model the host drives from a
+// scripted rod, pull it to a different distance on each pass, and read back
+// the two bytes the cartridge computed for itself -- the charge it settled on
+// at `$2D15`, and the launch velocity `02:51DA` derived from it and stored in
+// the ball's own `$3580`. Four draws that produce four velocities is the whole
+// feature working end to end; four draws that produce one velocity would mean
+// the rod never reached the shooter.
+//
+// The rod is scripted rather than sampled: it ramps back over four frames, is
+// held until the shooter has followed it for ten, and is let go in one, which
+// is what a briskly pulled rod and a spring return look like at 60Hz.
+//
+// Four frames rather than a leisurely ramp because that is the case the ball
+// has to survive. Nothing in the charge path places the ball -- it rests on
+// the shooter and falls after it, which works at the quarter-pixel-per-tick
+// the cartridge descends at and not at the ten a rod does. The ball's distance
+// above the shooter is therefore the third thing measured, and `02:52CA` says
+// what it has to be: nine.
+//
+// What the check does *not* require is that the ball get away, because the
+// cartridge does not require it either. The velocity is
+// `-(($2D15 >> 2) + 2)`, which is four pixels a frame at a quarter draw, and
+// four is not enough to climb the shooter lane: the ball rolls back down and
+// the shooter resets to charge again. That is the original's own behaviour on
+// a short press of button I, and reproducing it is the point rather than a
+// defect -- so what is measured is the velocity the cartridge computed, and
+// whether the ball escaped is reported beside it.
+struct PlungerCheckPass {
+    std::uint8_t draw = 0;
+    std::uint8_t charge = 0;
+    std::uint8_t velocity = 0;
+    int launched_at = 0;
+    int shooter_began = 0;
+    int driven = 0;
+    bool escaped = false;
+    int ride = 0;
+};
+
+[[nodiscard]] int run_plunger_check_pass(
+    devils_crush::emulation::PceRuntime& runtime,
+    const std::uint8_t draw,
+    PlungerCheckPass& pass)
+{
+    constexpr std::size_t kSessionFlags = 0x0053U;
+    constexpr std::uint8_t kShooterSession = 0x08U;
+    constexpr std::size_t kChargeCounter = 0x0D15U;
+    constexpr std::size_t kBallVelocityY = 0x1580U;
+    constexpr int kScriptUntil = 1000;
+    constexpr int kRampFrames = 4;
+    // Frames the shooter has to have followed the rod before the script lets
+    // it go, rather than a count of frames since the ball was served. The two
+    // are not the same: `$53` bit 3 goes up at 942 on this route and the
+    // shooter does not install its charge script until 1,084, so a rod let go
+    // on a timer would be home before there was anything to move.
+    constexpr int kDriveFrames = 10;
+    constexpr int kFrames = 1600;
+
+    runtime.reset();
+    pass = {.draw = draw};
+    devils_crush::input::Plunger rod;
+    // An axis whose reading is its draw, so the script says what it means.
+    rod.configure(
+        {.rest = 0, .drawn = 100, .deadzone = 0, .release = 25});
+
+    int shooter_began = 0;
+    int released_at = 0;
+    bool session = false;
+    bool letting_go = false;
+    for (int frame_number = 1; frame_number <= kFrames; ++frame_number) {
+        const auto work_ram = runtime.export_work_ram();
+        if (work_ram.size() < 0x2000U) {
+            return EXIT_FAILURE;
+        }
+        const bool in_launcher =
+            (std::to_integer<std::uint8_t>(work_ram[kSessionFlags])
+             & kShooterSession)
+            != 0U;
+        if (in_launcher && shooter_began == 0
+            && frame_number >= kScriptUntil) {
+            shooter_began = frame_number;
+            pass.shooter_began = frame_number;
+        }
+        session = in_launcher;
+        if (shooter_began != 0 && !in_launcher) {
+            pass.escaped = true;
+        }
+        // The charge the rod settled on, read back on the frame after it was
+        // written rather than trusted from the host's side, and the velocity
+        // the cartridge made of it.
+        //
+        // The launch frame is found by the charge starting to come back rather
+        // than by watching the ball, because `02:51DA` does both in the same
+        // dispatch: it stores the velocity at `02:51FA` and then `02:5208 JSR
+        // $533B` begins retracting the shooter. The first frame `$2D15` is
+        // below what the rod set is therefore the frame the shot was computed,
+        // and `$3580` on it is the shot.
+        //
+        // Watching the ball instead is what an earlier version of this did,
+        // taking the most negative `$3580` of the following thirty frames --
+        // and it read a step too fast at the two largest draws, because a ball
+        // launched hard picks up more speed later in the lane than it left
+        // with. The extreme of the flight is not the launch.
+        if (released_at != 0 && pass.charge == 0) {
+            pass.charge =
+                std::to_integer<std::uint8_t>(work_ram[kChargeCounter]);
+        }
+        if (released_at != 0 && pass.charge != 0 && pass.launched_at == 0
+            && std::to_integer<std::uint8_t>(work_ram[kChargeCounter])
+                < pass.charge) {
+            pass.launched_at = frame_number;
+            pass.velocity =
+                std::to_integer<std::uint8_t>(work_ram[kBallVelocityY]);
+        }
+
+        std::int32_t raw = 0;
+        if (shooter_began != 0 && !letting_go) {
+            const int elapsed = frame_number - shooter_began;
+            raw = elapsed < kRampFrames
+                ? (static_cast<std::int32_t>(draw) * elapsed) / kRampFrames
+                : draw;
+        }
+        const auto sample = rod.update(raw);
+        const bool engaged = session && sample.drawn
+            && apply_plunger_draw(runtime, sample.draw);
+        if (engaged) {
+            ++pass.driven;
+        }
+        letting_go = letting_go || pass.driven >= kDriveFrames;
+        if (sample.released && released_at == 0) {
+            released_at = frame_number;
+            // How far above the shooter the ball is at the moment of the
+            // shot, which is where it was carried to rather than where the
+            // host put it: the ball is read back out of work RAM after a
+            // frame has run on it.
+            std::size_t shooter = 0;
+            for (std::size_t slot = 0;
+                 slot < devils_crush::cabinet::kActorSlotCount;
+                 ++slot) {
+                const auto dispatch = static_cast<std::uint16_t>(
+                    std::to_integer<std::uint8_t>(work_ram[0x1F00U + slot])
+                    | (static_cast<std::uint16_t>(
+                           std::to_integer<std::uint8_t>(
+                               work_ram[0x1F80U + slot]))
+                       << 8U));
+                if (dispatch == 0x5159U) {
+                    shooter = slot;
+                }
+            }
+            const auto whole_y = [&work_ram](const std::size_t slot) {
+                return static_cast<int>(
+                    std::to_integer<std::uint8_t>(work_ram[0x1300U + slot])
+                    | (std::to_integer<std::uint8_t>(work_ram[0x1380U + slot])
+                       << 8U));
+            };
+            pass.ride = whole_y(shooter) - whole_y(0);
+        }
+        InputFrame input;
+        if (frame_number < kScriptUntil) {
+            input = state_census_input_for_frame(frame_number);
+        } else if (engaged && !sample.released) {
+            input.player_one = static_cast<std::uint16_t>(Button::one);
+        }
+        static_cast<void>(runtime.run_frame(input));
+    }
+    return pass.launched_at != 0 ? EXIT_SUCCESS : EXIT_FAILURE;
+}
+
+[[nodiscard]] int run_plunger_check(
+    devils_crush::emulation::PceRuntime& runtime)
+{
+    constexpr std::array<std::uint8_t, 4> kDraws{25U, 50U, 75U, 100U};
+    std::array<PlungerCheckPass, kDraws.size()> passes{};
+    for (std::size_t index = 0; index < kDraws.size(); ++index) {
+        if (run_plunger_check_pass(runtime, kDraws[index], passes[index])
+            != EXIT_SUCCESS) {
+            std::cerr << "The shooter never fired at a draw of "
+                      << static_cast<unsigned>(kDraws[index])
+                      << "%: the session began at frame "
+                      << passes[index].shooter_began << ", the rod drove it "
+                      << passes[index].driven
+                      << " times, and the charge settled at "
+                      << static_cast<unsigned>(passes[index].charge)
+                      << ".\n";
+            return EXIT_FAILURE;
+        }
+    }
+
+    std::cout << "scripted plunger, one pass per draw:\n"
+              << "  draw   $2D15   $3580   fired at   escaped   ride\n";
+    std::set<std::uint8_t> velocities;
+    for (const auto& pass : passes) {
+        velocities.insert(pass.velocity);
+        std::cout << std::format(
+            "  {:>3}%   {:>5}   ${:02X}     {:>8}   {:>7}   {:>4}\n",
+            static_cast<unsigned>(pass.draw),
+            static_cast<unsigned>(pass.charge),
+            static_cast<unsigned>(pass.velocity),
+            pass.launched_at,
+            pass.escaped ? "yes" : "no",
+            pass.ride);
+    }
+    // Four draws have to produce four velocities. Anything less means part of
+    // the rod's travel is not reaching the cartridge, which is exactly the
+    // failure a button-mapped plunger would have.
+    if (velocities.size() != kDraws.size()) {
+        std::cerr << "Only " << velocities.size()
+                  << " distinct launch velocities: the draw is not reaching "
+                     "the shooter.\n";
+        return EXIT_FAILURE;
+    }
+    // And the ball has to still be on the shooter when it fires. A rod moves
+    // faster than gravity carries the ball, so without the ride being taken
+    // over the shooter slides out from under it and the gap grows with the
+    // draw -- measured at 14, 24, 34 and 44 before this was fixed, against the
+    // nine `02:52CA` asks for.
+    for (const auto& pass : passes) {
+        if (pass.ride != kBallRidesAbove) {
+            std::cerr << "At a draw of "
+                      << static_cast<unsigned>(pass.draw)
+                      << "% the ball sat " << pass.ride
+                      << " pixels above the shooter rather than "
+                      << kBallRidesAbove
+                      << ": it is not riding the rod.\n";
+            return EXIT_FAILURE;
+        }
+    }
+    std::cout << "  " << velocities.size()
+              << " distinct launch velocities, and the ball rode the rod in "
+                 "every one.\n";
+    return EXIT_SUCCESS;
+}
+
 // How long the flippers stay dead after a launch, and what is holding them
 // there.
 //
@@ -10990,6 +11807,8 @@ struct LaunchFlipperPass {
 
 [[nodiscard]] int run_launch_flipper_probe(
     devils_crush::emulation::PceRuntime& runtime,
+    const CommandLine* const native_registry,
+    const std::vector<std::byte>& rom,
     const bool uncull,
     const bool restore_input,
     LaunchFlipperPass& pass)
@@ -11011,6 +11830,28 @@ struct LaunchFlipperPass {
     std::array<unsigned, kPieceCount> last_phase{};
     bool have_phase = false;
     bool entered_shooter = false;
+
+    // With the registry, because without it this probe measured a machine
+    // nobody plays and missed the one thing it exists to catch. The gate hangs
+    // off an instruction hook, a native transcript never presents its interior
+    // instructions to the interpreter, and so a hook that a port swallowed
+    // would keep passing here and keep failing in the host. Deployed after
+    // `clear_execution_hooks` for the obvious reason, and before the gate so
+    // that a routine owning the gate's address would collide with it visibly.
+    NativeRegistryDeployment registry_deployment;
+    const std::vector<RoutineKey> claimed_routines = restore_input
+        ? std::vector<RoutineKey>{kShooterGateOwner}
+        : std::vector<RoutineKey>{};
+    if (native_registry != nullptr
+        && !install_native_registry(
+            runtime,
+            *native_registry,
+            rom,
+            claimed_routines,
+            registry_deployment)) {
+        std::cerr << "Could not deploy the native registry.\n";
+        return EXIT_FAILURE;
+    }
 
     // The host's own gate lift, so the probe measures what is shipped rather
     // than a second implementation of it. The probe leaves `$3B80,X` as the
@@ -11931,6 +12772,13 @@ int main(const int argc, char* argv[])
         print_usage();
         return EXIT_SUCCESS;
     }
+    // Before the ROM is even looked at, because this one is about the cabinet's
+    // hardware rather than the game's: it is what somebody runs when the
+    // plunger does nothing, and asking them for a ROM first would be beside
+    // the point.
+    if (options.cabinet_plunger_probe) {
+        return run_plunger_probe();
+    }
 
     const auto validation =
         devils_crush::rom::validate_file(options.rom_path);
@@ -12104,7 +12952,14 @@ int main(const int argc, char* argv[])
             report_nudge_effect(without, with);
             return EXIT_SUCCESS;
         }
+        if (options.cabinet_plunger_check) {
+            return run_plunger_check(*runtime);
+        }
         if (options.cabinet_launch_flipper_probe) {
+            const auto probe_rom = read_rom_bytes(options.rom_path);
+            if (!probe_rom) {
+                return EXIT_FAILURE;
+            }
             LaunchFlipperPass pass;
             for (const auto& [uncull, restore] :
                  std::array<std::pair<bool, bool>, 4>{
@@ -12114,7 +12969,12 @@ int main(const int argc, char* argv[])
                      std::pair{true, true},
                  }) {
                 if (run_launch_flipper_probe(
-                        *runtime, uncull, restore, pass)
+                        *runtime,
+                        options.emulate_only ? nullptr : &options,
+                        *probe_rom,
+                        uncull,
+                        restore,
+                        pass)
                     != EXIT_SUCCESS) {
                     return EXIT_FAILURE;
                 }

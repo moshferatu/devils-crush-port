@@ -12,6 +12,7 @@
 #include "devils_crush/core/save_state.hpp"
 #include "devils_crush/emulation/pce_runtime.hpp"
 #include "devils_crush/input/pce_pad.hpp"
+#include "devils_crush/input/plunger.hpp"
 #include "devils_crush/game_logic/actor.h"
 #include "devils_crush/game_logic/collision.h"
 #include "devils_crush/game_logic/sprite.h"
@@ -7039,6 +7040,172 @@ void test_cabinet_state()
         "actor-state decode rejects incomplete work RAM");
 }
 
+// The plunger, without a plunger. Everything the rod's motion means is decided
+// here rather than in the host, so all of it can be driven from a list of axis
+// readings -- which is also the only way to test a spring return, since the
+// interesting frames are the two or three it takes and nobody can produce
+// those by hand.
+void test_plunger()
+{
+    using devils_crush::input::Plunger;
+    using devils_crush::input::PlungerCalibration;
+
+    // An axis that reads its draw directly, so the readings below are the
+    // percentages they produce and nothing has to be worked backwards.
+    constexpr PlungerCalibration kDirect{
+        .rest = 0,
+        .drawn = 100,
+        .deadzone = 0,
+        .release = 25,
+    };
+
+    // A rod found already back is not somebody pulling it. This is what keeps
+    // a controller that is not the plunger -- one whose axis happens to sit at
+    // full scale, or one that answers nothing -- from launching the ball.
+    {
+        Plunger plunger;
+        plunger.configure({});
+        check(
+            !plunger.update(32767).drawn && !plunger.armed(),
+            "a plunger found drawn does not count as a pull");
+        check(
+            !plunger.update(32767).drawn,
+            "and stays inert for as long as it is held there");
+        check(
+            !plunger.update(0).drawn && plunger.armed(),
+            "coming home arms it, and is not itself a pull");
+        check(
+            plunger.update(32767).drawn,
+            "and only then does drawing it count");
+    }
+
+    // The default calibration is the PinOne's: an eight-bit Z axis resting at
+    // the centre and reading positive as the rod is drawn, which SDL widens to
+    // the sixteen-bit range.
+    {
+        Plunger plunger;
+        plunger.configure({});
+        static_cast<void>(plunger.update(0));
+        check(
+            plunger.update(2000).draw == 0,
+            "inside the deadzone the rod still reads as at rest");
+        check(
+            plunger.update(16384).draw == 45,
+            "half the travel is 45 percent once the deadzone is taken off");
+        check(
+            plunger.update(32767).draw == 100,
+            "and the end of the travel is still a full draw");
+    }
+
+    {
+        Plunger plunger;
+        plunger.configure({});
+        static_cast<void>(plunger.update(0));
+        check(
+            plunger.update(-4000).draw == 0,
+            "a rod pushed past its rest position reads as no draw at all");
+    }
+
+    // Let go. The spring covers the travel in two or three frames, so the
+    // one-frame fall is what distinguishes it, and the shot is the draw the
+    // rod held before the spring took it rather than where it was caught.
+    {
+        Plunger plunger;
+        plunger.configure(kDirect);
+        static_cast<void>(plunger.update(0));
+        const auto drawing = plunger.update(80);
+        check(
+            drawing.drawn && !drawing.released && drawing.draw == 80,
+            "the shooter follows the rod while it is being drawn");
+        const auto let_go = plunger.update(20);
+        check(
+            let_go.released && let_go.drawn && let_go.draw == 80,
+            "a fall of 60 in one frame is a release, and it fires at 80");
+        const auto rebound = plunger.update(80);
+        check(
+            !rebound.drawn,
+            "a rod that never came home cannot start a second draw");
+        static_cast<void>(plunger.update(0));
+        check(
+            plunger.update(80).drawn,
+            "and once it is home it draws again");
+    }
+
+    // A hand easing the rod forward moves it a few percent a frame, which is
+    // the same journey as a release and a different intention. Nothing fires,
+    // and the charge follows the rod down -- which is what easing it forward
+    // asks for.
+    {
+        Plunger plunger;
+        plunger.configure(kDirect);
+        static_cast<void>(plunger.update(0));
+        static_cast<void>(plunger.update(80));
+        const auto eased = plunger.update(70);
+        check(
+            eased.drawn && !eased.released && eased.draw == 70,
+            "easing the rod forward is not letting it go");
+        const auto eased_more = plunger.update(60);
+        check(
+            !eased_more.released && eased_more.draw == 60,
+            "and the shooter follows it back down instead");
+    }
+
+    // Which leaves the rod eased all the way home, where nothing ever falls
+    // fast enough to look like a release. Reaching rest has to fire too, or
+    // the shooter would sit at no charge with the button still held and the
+    // ball would never leave.
+    {
+        Plunger plunger;
+        plunger.configure(kDirect);
+        static_cast<void>(plunger.update(0));
+        static_cast<void>(plunger.update(20));
+        check(
+            !plunger.update(10).released,
+            "a ten-point step is not fast enough to be a release");
+        const auto home = plunger.update(0);
+        check(
+            home.released && home.draw == 10,
+            "but reaching rest is, at the draw the rod last held");
+    }
+
+    // A ball is served. Whatever the rod was doing before does not count, so a
+    // player already holding it back has to let it go first -- which is also
+    // what the cartridge wants, since a button held from before the ball is
+    // seated never launches.
+    {
+        Plunger plunger;
+        plunger.configure(kDirect);
+        static_cast<void>(plunger.update(0));
+        check(plunger.update(80).drawn, "the rod is drawn");
+        plunger.rearm();
+        check(
+            !plunger.update(80).drawn,
+            "and a rearm holds it inert until it comes home again");
+    }
+
+    // Two endpoints rather than a range and an inversion flag: a plunger whose
+    // axis runs backwards is one whose drawn end is the smaller number, and it
+    // needs no setting of its own to say so.
+    {
+        Plunger plunger;
+        plunger.configure(
+            {.rest = 100, .drawn = 0, .deadzone = 0, .release = 25});
+        static_cast<void>(plunger.update(100));
+        check(
+            plunger.update(50).draw == 50,
+            "an axis running the other way needs no inversion setting");
+    }
+
+    {
+        Plunger plunger;
+        plunger.configure(
+            {.rest = 0, .drawn = 0, .deadzone = 0, .release = 25});
+        check(
+            !plunger.update(20000).drawn,
+            "two endpoints that are the same describe no plunger");
+    }
+}
+
 void test_cabinet_display_config()
 {
     using devils_crush::cabinet::ConfigLoadStatus;
@@ -7410,6 +7577,77 @@ void test_cabinet_display_config()
         check(
             no_launch_decoded && no_launch_decoded->input.launch_keys.empty(),
             "an empty launch list disables the shooter override");
+
+        // The plunger's four numbers are what `--cabinet-plunger-probe`
+        // prints, so they have to survive being typed straight back in.
+        // Off by default, because a plunger and a thumbstick look the same
+        // from here: both rest at the centre of an axis and read to one end
+        // when moved, and axis 2 on an ordinary gamepad is the right stick.
+        check(
+            !defaults.plunger.enabled() && defaults.plunger.device.empty(),
+            "no plunger is assumed until somebody names its axis");
+        check(
+            defaults.plunger.calibration.rest == 0
+                && defaults.plunger.calibration.drawn == 32767,
+            "but the endpoints default to the PinOne's, so it needs only the "
+            "axis");
+
+        auto plunger = legacy;
+        plunger +=
+            "input.plunger.device=PinOne\n"
+            "input.plunger.axis=4\n"
+            "input.plunger.rest=-1200\n"
+            "input.plunger.drawn=30000\n"
+            "input.plunger.deadzone=12\n"
+            "input.plunger.release=30\n";
+        const auto plunger_decoded = decode_display_config(to_bytes(plunger));
+        check(
+            plunger_decoded
+                && plunger_decoded->input.plunger
+                    == devils_crush::input::PlungerBinding{
+                        .device = "PinOne",
+                        .axis = 4,
+                        .calibration = {
+                            .rest = -1200,
+                            .drawn = 30000,
+                            .deadzone = 12,
+                            .release = 30}},
+            "a plunger binding round-trips through the file");
+
+        // Endpoints the wrong way round are a plunger whose axis runs
+        // backwards, not a mistake, so nothing rejects them.
+        auto reversed = legacy;
+        reversed += "input.plunger.rest=32767\ninput.plunger.drawn=-32768\n";
+        const auto reversed_decoded =
+            decode_display_config(to_bytes(reversed));
+        check(
+            reversed_decoded
+                && reversed_decoded->input.plunger.calibration.rest == 32767
+                && reversed_decoded->input.plunger.calibration.drawn
+                    == -32768,
+            "a plunger axis may run in either direction");
+
+        auto enabled = legacy;
+        enabled += "input.plunger.axis=2\n";
+        const auto enabled_decoded = decode_display_config(to_bytes(enabled));
+        check(
+            enabled_decoded && enabled_decoded->input.plunger.enabled()
+                && enabled_decoded->input.plunger.axis == 2,
+            "naming an axis turns the plunger on");
+
+        auto bad_percent = legacy;
+        bad_percent += "input.plunger.deadzone=140\n";
+        check(
+            !decode_display_config(to_bytes(bad_percent)),
+            "a percentage outside 0-100 is rejected");
+
+        const auto plunger_rewritten = decode_display_config(
+            encode_display_config(*plunger_decoded));
+        check(
+            plunger_rewritten
+                && plunger_rewritten->input.plunger
+                    == plunger_decoded->input.plunger,
+            "the host's own rewrite preserves the plunger");
     }
 
     const std::array displays{
@@ -10027,6 +10265,7 @@ int main()
     test_scaler_examples();
     test_scaler_edges();
     test_cabinet_state();
+    test_plunger();
     test_cabinet_display_config();
     test_pce_background_decode();
     test_background_stitch_and_crop();

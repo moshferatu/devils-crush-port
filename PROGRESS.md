@@ -5948,6 +5948,68 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
     arrivals admitted, none declined. The gain, 775,224, is a third time
     exactly what the static instruction model predicted. 419/419 Release, 3/3
     ROM-free Debug.
+- [x] Support a cabinet's analog plunger (milestone 3 rather than a port
+  slice). The Devil Shooter's charge turned out to be a distance rather than a
+  time -- `02:52E3` derives `$2D15` as `$3300,X - $3E00,X`, the pixels the
+  shooter's own piece has been pulled below the rest position `02:50EE` gave
+  it -- so the rod is mapped to that distance and `02:51DA` computes the shot
+  from it unchanged.
+  - [x] `devils_crush::input::Plunger`: calibration as two axis endpoints, so
+    an axis that runs backwards needs no inversion setting; a deadzone; a
+    release detected as a one-frame fall, which is what tells a spring return
+    from a hand easing the rod forward; and an arming rule that refuses a rod
+    found already drawn, so a controller that is not the plunger cannot launch
+    anything.
+  - [x] Read as a raw SDL joystick rather than a gamepad, because no plunger
+    board is in SDL's gamepad database. `input.plunger.*` in `cabinet.ini`,
+    and `--cabinet-plunger-probe` to find the four numbers by watching the rod
+    move.
+  - [x] Gate the write on the shooter having taken it rather than on `$53` bit
+    3: the session flag goes up at 942 on the census route and the charge
+    script is not installed until 1,084, so a rod pulled the moment the ball
+    appears has nothing to move for two seconds.
+  - [x] Carry the ball with the shooter. Nothing in the charge path places it
+    -- it rests on the shooter and falls after it, which works at the
+    quarter-pixel-per-tick the cartridge descends at and not at the ten a rod
+    does, so the shooter slid out from under a ball 14, 24, 34 and 44 pixels
+    adrift at the four measured draws. `02:52C7`-`02:52D4` is the cartridge's
+    own rule for where the ball sits, nine pixels above, and it is taken over
+    only while the ball is already holding it -- measured against where the
+    shooter *is*, not where it is going, since asking about the destination
+    refuses exactly the case that needs carrying.
+  - [x] **Four draws, four shots.** `--cabinet-plunger-check` scripts the rod
+    at 25/50/75/100% and reads back charges 9/19/29/39 and velocities
+    `$FC`/`$FA`/`$F7`/`$F5` -- the ROM's own `draw * $27 / 100` and
+    `-(($2D15 >> 2) + 2)`, computed nowhere in the host -- with the ball
+    aboard at nine in every pass. The launch frame is found by the charge
+    starting to retract rather than by watching the ball: taking the most
+    negative `$3580` of the following thirty frames read a step too fast at
+    the two largest draws, because a ball launched hard picks up more speed
+    later in the lane than it left with. Pinned by `dc_rom_plunger_check`.
+- [x] Get the flippers back during the launch, which the actor-scan preamble
+  slice had silently killed.
+  - [x] The cabinet's shooter input gate hooks `01:C500` to put the flipper
+    bits back into `$2CEE`, and `01:C500` is an interior instruction of the
+    ported `01:C4DE`-`01:C50E`. A native transcript never presents its
+    interior to the interpreter, so the hook fired every frame before the
+    slice and never after it. Nothing failed:
+    `install_execution_hook` succeeded, because the collision check only
+    covers registry entries and this address was in the middle of a body.
+  - [x] **An address is hookable only if the interpreter still arrives at it**
+    -- for a ported range, its entry and whatever it hands back to, and
+    nothing in between. Neither was usable: `01:C4DE` is before the store, and
+    `01:C510`, `01:C52C` and `01:D466` are all registry entries themselves.
+    So the host claims `01:C4DE` back and runs it interpreted: 775,224 master
+    cycles, 0.06% of the route, against a flipper answering 100 frames sooner
+    on every launch.
+  - [x] Say it out loud rather than deploying one routine fewer. The host
+    prints the claim and names it; `dc_rom_host_registry` now checks deployed
+    equals admitted minus withheld minus claimed, and that every claim is
+    named.
+  - [x] Make `--cabinet-launch-flipper-probe` deploy the registry. It reported
+    the gate working throughout, because without one it was measuring a
+    machine nobody plays. With the registry it reproduces +2 frames against
+    +102. 420/420 Release, 3/3 ROM-free Debug.
 
 ## Active Work
 

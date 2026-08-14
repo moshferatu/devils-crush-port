@@ -237,6 +237,28 @@ void append_bindings(std::string& output, const InputBindings& input)
         output += escape_value(key);
     }
     output += '\n';
+
+    // Written as six plain numbers and a name rather than as a device
+    // identifier, because the two that matter -- the axis and its two
+    // endpoints -- are exactly what `--cabinet-plunger-probe` prints while
+    // somebody moves the rod, and the point of the probe is that its output
+    // can be typed straight back in here.
+    const auto& plunger = input.plunger;
+    output += "input.plunger.device=";
+    output += escape_value(plunger.device);
+    output += "\ninput.plunger.axis=";
+    output += std::to_string(plunger.axis);
+    output += "\ninput.plunger.rest=";
+    output += std::to_string(plunger.calibration.rest);
+    output += "\ninput.plunger.drawn=";
+    output += std::to_string(plunger.calibration.drawn);
+    output += "\ninput.plunger.deadzone=";
+    output += std::to_string(
+        static_cast<unsigned>(plunger.calibration.deadzone));
+    output += "\ninput.plunger.release=";
+    output += std::to_string(
+        static_cast<unsigned>(plunger.calibration.release));
+    output += '\n';
 }
 
 [[nodiscard]] std::optional<PadButton> pad_button_from_field(
@@ -368,8 +390,54 @@ void append_bindings(std::string& output, const InputBindings& input)
         }
         input.launch_keys = std::move(*parsed);
     }
+
+    const auto device = fields.find("input.plunger.device");
+    if (device != fields.end()) {
+        auto name = unescape_value(trim(device->second));
+        if (!name) {
+            return false;
+        }
+        input.plunger.device = std::move(*name);
+    }
+    // A percentage is range-checked and a raw axis value is not, because the
+    // percentages are the port's own units and an out-of-range one is a typo,
+    // while the endpoints belong to whatever controller the cabinet has and
+    // this port does not get to say how wide its axis is.
+    const auto parse_percent = [&fields](
+                                   const std::string_view key,
+                                   std::uint8_t& value) {
+        std::string field("input.plunger.");
+        field += key;
+        const auto found = fields.find(field);
+        if (found == fields.end()) {
+            return true;
+        }
+        unsigned int raw = 0;
+        if (!parse_integer(trim(found->second), raw) || raw > 100U) {
+            return false;
+        }
+        value = static_cast<std::uint8_t>(raw);
+        return true;
+    };
+    const auto parse_axis_value = [&fields](
+                                      const std::string_view key,
+                                      std::int32_t& value) {
+        std::string field("input.plunger.");
+        field += key;
+        const auto found = fields.find(field);
+        if (found == fields.end()) {
+            return true;
+        }
+        return parse_integer(trim(found->second), value);
+    };
+
     return parse_flipper("left_flipper", input.flippers.left)
-        && parse_flipper("right_flipper", input.flippers.right);
+        && parse_flipper("right_flipper", input.flippers.right)
+        && parse_axis_value("axis", input.plunger.axis)
+        && parse_axis_value("rest", input.plunger.calibration.rest)
+        && parse_axis_value("drawn", input.plunger.calibration.drawn)
+        && parse_percent("deadzone", input.plunger.calibration.deadzone)
+        && parse_percent("release", input.plunger.calibration.release);
 }
 
 [[nodiscard]] std::uint64_t overlap_area(

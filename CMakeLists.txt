@@ -50,6 +50,7 @@ add_library(
     src/cpu/huc6280_irq.cpp
     src/cpu/huc6280_scheduler.cpp
     src/input/pce_pad.cpp
+    src/input/plunger.cpp
     src/core/rom_image.cpp
     src/core/save_state.cpp
     src/render/pce_background.cpp

@@ -12,6 +12,8 @@
 #include <string_view>
 #include <vector>
 
+#include "devils_crush/input/plunger.hpp"
+
 namespace devils_crush::cabinet {
 
 inline constexpr std::uint32_t kDisplayConfigVersion = 1U;
@@ -151,6 +153,13 @@ struct InputBindings {
     // binding one that normally sends Run pauses the game everywhere except
     // the one screen where it should launch instead.
     std::vector<std::string> launch_keys;
+
+    // The analog plunger, if the cabinet has one. A drawn plunger does what a
+    // launch key does and more: it holds button I while the rod is back, and
+    // it also puts the Devil Shooter's own piece where the rod is, so the
+    // charge the cartridge launches on is the distance the player pulled
+    // rather than the time they waited. See `devils_crush::input::Plunger`.
+    input::PlungerBinding plunger;
 
     [[nodiscard]] const std::vector<std::string>& operator[](
         const PadButton button) const noexcept
