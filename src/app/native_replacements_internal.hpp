@@ -1270,6 +1270,15 @@ replace_actor_scan_preamble(
     const emulation::RoutineEntry& entry,
     std::span<const std::byte> work_ram);
 
+// 01:C154-01:C1B5, the main session loop: the frame-sync wait, the nine calls
+// the frame is made of, and the tail that decides whether to run another. Ten
+// entry points, one per return address, each walk ending on the call it
+// crosses; see native_replacements_main_loop.cpp.
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_main_session_loop(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram);
+
 [[nodiscard]] std::optional<emulation::RoutineReplacement>
 replace_actor_scan_run(
     const emulation::RoutineEntry& entry,

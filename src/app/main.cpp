@@ -2879,6 +2879,19 @@ parse_logical_address_range(const std::string_view text)
                                        .logical_pc = 0xC4DEU,
                                    }
                            && request.all_calls;
+                       const bool proven_main_session_loop =
+                           request.routine.physical_bank == 0x01U
+                           && (request.routine.logical_pc == 0xC157U
+                               || request.routine.logical_pc == 0xC15AU
+                               || request.routine.logical_pc == 0xC15DU
+                               || request.routine.logical_pc == 0xC166U
+                               || request.routine.logical_pc == 0xC169U
+                               || request.routine.logical_pc == 0xC16CU
+                               || request.routine.logical_pc == 0xC16FU
+                               || request.routine.logical_pc == 0xC17AU
+                               || request.routine.logical_pc == 0xC185U
+                               || request.routine.logical_pc == 0xC190U)
+                           && request.all_calls;
                        const bool proven_actor_scan_run =
                            request.routine
                                    == RoutineKey{
@@ -3116,6 +3129,7 @@ parse_logical_address_range(const std::string_view text)
                            && !proven_collision_scan_candidate_branch
                            && !proven_collision_scan_advance
                            && !proven_actor_scan_preamble
+                           && !proven_main_session_loop
                            && !proven_actor_scan_run
                            && !proven_actor_dispatch_vector
                            && !proven_actor_queue_registration
@@ -3425,6 +3439,10 @@ parse_logical_address_range(const std::string_view text)
             "semantic 00:F0FE@all, semantic 00:F104@all, semantic 00:F142@all, "
             "semantic 00:F148@all, semantic 00:F17E@all, "
             "semantic 01:C4DE@all, "
+            "semantic 01:C157@all, semantic 01:C15A@all, semantic 01:C15D@all, "
+            "semantic 01:C166@all, semantic 01:C169@all, semantic 01:C16C@all, "
+            "semantic 01:C16F@all, semantic 01:C17A@all, semantic 01:C185@all, "
+            "semantic 01:C190@all, "
             "semantic 01:C80A@all, semantic 01:C7F4@all, semantic 01:C7EF@all, semantic 01:C7F9@all, semantic 01:C7FC@all, semantic 01:C804@all, semantic 01:C812@all, semantic 01:C7EA@all, semantic 01:C7E5@all, "
             "semantic 02:42EB@all, "
             "semantic 02:42F6@all, semantic 02:4345@all, "

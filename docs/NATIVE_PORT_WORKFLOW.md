@@ -1597,6 +1597,17 @@ routine's head, and the address after each `JSR` it makes. Write one walk that
 starts at any of them and runs until it reaches the next `JSR` — which the
 machine then executes, re-entering the child's own replacement.
 
+**`--observe-hook` cannot be pointed at any of those addresses except the head.**
+An observed call is opened at the hook and closed by its return, and an entry
+that is a return address never returns — control leaves it through the next call
+instead. The capture never closes, and it grows without bound: three observe
+hooks on the main session loop's entries, with *no* replacement installed at
+all, reached 79 GB of resident memory halfway through the census route and then
+failed the recording. Nothing was wrong with the port; the shape of the request
+was wrong. Use `--work-ram-write-range` with `--work-ram-write-trace` for these
+families. It is the better oracle anyway, since it says what was written and
+when rather than what the trace believed a call was.
+
 Make it one shared function rather than one transcript per entry, because the
 stopping points chain: falling out of one loop drops into the next, so an
 arrival at one return address can legitimately end at a completely different
@@ -1632,7 +1643,23 @@ logic the sweep surrounds. Before deciding a region is finished, profile the
 call instructions separately; a family whose entry-point count is high relative
 to its cycle count is paying this tax rather than doing work.
 
-The way out is **composition**: instead of stopping in front of the `JSR`,
+**When composition will not fit, a crossing still collects half the tax.** A
+crossing is composition's first step without its second: push the return
+address, charge the 21 cycles, and end the transcript on the callee's first
+instruction instead of walking into it. That converts the `JSR` without needing
+the callee to fit inside the parent's horizon or channels, which is the case
+composition cannot serve. The main session loop is the extreme version — ten
+crossings, and the callees are the frame's whole actor scan and motion pass, so
+splicing any of them in was never on the table. It took the range from
+1,259,148 emulated master cycles to 21.
+
+The corollary is that **a crossing does not port what it crosses**, and that is
+a feature rather than a limitation. `01:C154` calls the frame-sync wait, where
+the machine is supposed to sit for 45% of the route. Crossing it makes the call
+natively and hands the interpreter `00:E321` to spin in, which is exactly right:
+the 21 cycles were work, and the spin never was.
+
+The way out for the rest is **composition**: instead of stopping in front of the `JSR`,
 transcribe it — push the return address, charge its 21 cycles — and keep
 walking into the callee, then walk its `RTS` back. `01:CC1A` already did this
 one level down with `01:CCD5`, staging the child's entry, calling the child's

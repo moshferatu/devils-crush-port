@@ -165,6 +165,7 @@ if(DC_BUILD_APP)
         src/app/native_replacements_collision_tail.cpp
         src/app/native_replacements_controls.cpp
         src/app/native_replacements_geometry.cpp
+        src/app/native_replacements_main_loop.cpp
         src/app/native_replacements_motion_step.cpp
         src/app/native_replacements_music.cpp
         src/app/native_replacements_palette.cpp

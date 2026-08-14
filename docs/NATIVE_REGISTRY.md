@@ -16,20 +16,20 @@ Release state-census route (`--native-cycle-census`, measured 2026-08-14):
 | | |
 | --- | ---: |
 | Elapsed master cycles | 1,292,371,731 |
-| Native master cycles | 692,715,369 |
-| **Native share** | **53.60%** |
-| **Native share of cycles outside the idle spin loop** | **97.50%** |
-| Routines installed | 404 of 404 |
-| Routines entered | 337 |
-| Calls run natively | 2,713,488 of 2,737,810 entered |
+| Native master cycles | 693,963,048 |
+| **Native share** | **53.70%** |
+| **Native share of cycles outside the idle spin loop** | **97.67%** |
+| Routines installed | 414 of 414 |
+| Routines entered | 347 |
+| Calls run natively | 2,739,978 of 2,764,300 entered |
 | Calls declined at an interrupt horizon | 0 |
-| Transcripts installed inside a suspended transcript | 307,961 |
+| Transcripts installed inside a suspended transcript | 308,471 |
 | Deepest simultaneous suspension | 3 of a permitted 4 |
 | Transcripts abandoned part-way through | 0 |
 | Replacements refused for depth | 0 |
 
 The resulting state census is byte-identical to the assembly-only
-baseline (`9036a9de…`), so that 53.60% is faithful, not merely running.
+baseline (`9036a9de…`), so that 53.70% is faithful, not merely running.
 The last three rows matter because the host credits a native call when
 it *offers* one. A replacement the core then refused would inflate the
 share silently, and a refusal count of zero is what rules that out.

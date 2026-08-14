@@ -174,6 +174,61 @@ replace_native_gameplay_routine_impl(
         }) {
         return detail::replace_actor_scan_preamble(entry, work_ram);
     }
+    // The main session loop. Ten entry points, all of them the address a call
+    // returns to: the loop is a chain of crossings, and each walk ends on the
+    // next `JSR` it makes rather than on a return.
+    if (entry.routine
+            == RoutineKey{
+                .physical_bank = 0x01U,
+                .logical_pc = 0xC157U,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x01U,
+                .logical_pc = 0xC15AU,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x01U,
+                .logical_pc = 0xC15DU,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x01U,
+                .logical_pc = 0xC166U,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x01U,
+                .logical_pc = 0xC169U,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x01U,
+                .logical_pc = 0xC16CU,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x01U,
+                .logical_pc = 0xC16FU,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x01U,
+                .logical_pc = 0xC17AU,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x01U,
+                .logical_pc = 0xC185U,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x01U,
+                .logical_pc = 0xC190U,
+            }) {
+        return detail::replace_main_session_loop(entry, work_ram);
+    }
     if (entry.routine
         == RoutineKey{
             .physical_bank = 0x01U,

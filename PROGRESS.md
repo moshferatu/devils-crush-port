@@ -26,11 +26,16 @@ high byte. The deterministic 1,800-frame route now executes 18,806 of 19,648
 preserving the byte-identical gameplay artifact, complete 19,648-call trace,
 and all 180,389 ordered writes.
 
-The deployed registry now runs **692,715,369 of 1,292,371,731 master cycles
-natively, 53.60% of the route and 97.50% of everything outside the frame-sync
-wait**, across 404 admitted routines with no transcript declined at an
+The deployed registry now runs **693,963,048 of 1,292,371,731 master cycles
+natively, 53.70% of the route and 97.67% of everything outside the frame-sync
+wait**, across 414 admitted routines with no transcript declined at an
 interrupt horizon and none abandoned. The 3,600-frame state census remains
 `9036a9de0c3c9917f47bff8c04c136a4824ec12601fb457d260aa2dfe4443490`.
+
+The main session loop is native. Its ten entry points execute all 2,649
+iterations of `01:C154`-`01:C1B5` as a chain of crossings, leaving 21 emulated
+master cycles in the range -- one `JSR` executed once at start-up -- where there
+were 1,259,148.
 
 Application orchestration is now separated from native transaction
 synthesis. The replacement adapters and central dispatcher moved from
@@ -6113,11 +6118,113 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
     the registry still does what it did, and twice now a pinned digest has
     agreed with a defect.
   - [x] 421/421 Release, 3/3 ROM-free Debug.
+- [x] Port the main session loop, `01:C154`-`01:C1B5`, 1,259,148 master cycles.
+  - [x] Ten entry points, one per return address; each walk ends on the call it
+    crosses. Eight of the nine calls land on a registered transcript.
+  - [x] Cross the frame-sync wait at `01:C154` as well. Crossing makes the
+    `JSR`; it does not port `00:E321`, which stays interpreted and should.
+  - [x] Hand back all six arms that leave the loop, `01:C195` included -- it is
+    the maximum-score ending and is reached in play, just not on this route.
+  - [x] Copy the core's `BIT #`, which sets N and V from the operand where a
+    65C02 sets neither.
+  - [x] **21 emulated master cycles left in the range**, one `JSR` run once at
+    start-up. Registry cycles 693,963,048 (53.70%, 97.67% outside the wait),
+    414 admitted routines, census unchanged.
+  - [x] Prove it as a comparison, not a digest: the route recorded twice over
+    `$202F`-`$2030`, 1,169,947 writes identical. The twenty stack pushes an
+    iteration are covered by `dc_rom_registry_stack_page_writes`, unchanged at
+    `6b1d9dea...`.
+  - [x] 422/422 Release, 3/3 ROM-free Debug.
 
 ## Active Work
 
-Current owner: Claude. Current slice: **the six cycles under `01:C018`**. Done,
-and the heading is wrong: nothing was under `01:C018`. The finding named the
+Current owner: Claude. Current slice: **the main session loop**. Done.
+`01:C154`-`01:C1B5` is the loop the whole game runs in -- wait for the frame,
+call the nine things a frame is made of, ask whether to run another -- and it
+was 1,259,148 emulated master cycles, the fourth-largest run left outside the
+frame-sync wait and the largest that was actually work.
+
+**It ports as a chain of crossings, not as a walk.** A transcript that makes a
+call ends on it, so the loop is ten transcripts rather than one, each entered at
+the address the previous callee returns to:
+
+```
+C157 C15A C15D C166 C169 C16C C16F C17A C185 C190
+```
+
+Composition -- splicing the callee's transcript in and walking its `RTS` back,
+which is what the collision sweep does one level down -- is not available here.
+These callees are the frame's entire actor scan and motion pass: tens of
+thousands of cycles and hundreds of writes each, past every interrupt horizon
+and both channel caps. Crossing is the only shape that fits, and it is enough,
+because eight of the nine calls land on a transcript this port already owns.
+
+**The frame-sync wait is crossed too, and it is not a porting target.** The
+ninth call is `00:E321`, where the machine is *meant* to sit; the note this
+file left last slice said the walk hands over there, and handing over was one
+cycle-count too pessimistic. A crossing does not port the callee -- it makes the
+`JSR` itself, 21 master cycles, and hands the interpreter the callee's first
+instruction. So the walk entered at `01:C190` runs the whole tail and the call
+at `01:C154`, and the interpreter picks up in the spin exactly as before.
+
+| | Before | After |
+| --- | ---: | ---: |
+| Emulated in `01:C154`-`01:C1B5` | 1,259,148 | **21** |
+| Registry cycles | 692,715,369 | **693,963,048** |
+| Native share | 53.60% | **53.70%** |
+| Native share outside the wait | 97.50% | **97.67%** |
+| Admitted routines | 404 | **414** |
+| Registry calls | 2,713,488 | **2,739,978** |
+| Release tests | 421 | **422** |
+
+Twenty-one cycles is one `JSR $E321` executed once, at start-up, by falling
+through from `01:C151`. `01:C154` is deliberately not an entry: every other
+arrival at it comes from inside the walk that crosses it.
+
+**`BIT #` sets N and V on this core.** A 65C02 leaves both alone for the
+immediate form. The core routes every addressing mode of `BIT` through one
+macro -- `P &= ~(Z|V|N); P |= ZNTable[x & A] & Z; P |= x & (V|N);` -- so the
+four tail tests set N from `#$80` and V from `#$40`, out of the operand rather
+than the result. Nothing in the loop reads either flag; all four branch on Z.
+The transcript carries them anyway, for the same reason the `JSR` pushes moved
+last slice: **a transcript states what the emulator would have done, and where
+the emulator and the processor differ the emulator wins by definition.**
+
+**Six arms are handed back and one of them is live.** `01:C1A2`, `01:C1A9`,
+`01:C1B0`, `01:C1B7` and `01:C1BA` are the five ways the session leaves the
+loop, and `01:C195` is the maximum-score ending. None executes on this route,
+so transcribing one would be claiming a path this port has never watched run --
+and `01:C195` really is reached in play, because the score-saturation helper
+sets `$2CC0.7` and the ending goes through it.
+
+**The guard built last slice paid for itself on its first use.** Ten crossings
+are twenty stack pushes an iteration, which is the exact defect class that has
+now appeared three times, and `dc_rom_registry_stack_page_writes` compares the
+whole route's writes to `$2100-21FF` against pure assembly. All 4,205,699 still
+match, hash unchanged at `6b1d9dea…`. Nothing else in the suite would have
+looked.
+
+The new regression is a comparison for the same reason, not a digest: it records
+the route twice, emulated and replaced, over the two request bytes at
+`$202F`-`$2030`, and requires the traces to be identical -- 1,169,947 writes,
+same values, same order, same cycles. The census is pinned on top of that,
+because a comparison cannot see route drift; both sides would drift together.
+21.5s.
+
+**`--observe-hook` cannot be used on an address that is not a routine head**,
+which cost an hour to learn. The first attempt at this regression used the usual
+observe-plus-call-trace shape and died at frame 1,240. It is not a replacement
+fault: with *no* replacement installed and three observe hooks on these
+addresses, the recorder reached 79 GB by half the route. An observed call is
+closed by its return, and these entries are return addresses -- the call never
+closes. The write-trace shape has no such problem and is the right oracle here
+anyway.
+
+422/422 Release, 3/3 ROM-free Debug, registry current at 414 admitted routines.
+`windows-debug` was not run.
+
+### Previous: the six cycles under `01:C018`
+Done, and the heading is wrong: nothing was under `01:C018`. The finding named the
 `JSR $C018` that preceded the two mis-declared writes because that is what a
 reader's eye lands on, and the actual fault was the instruction *after* it, in
 a transcript that had been deployed and passing for months.
@@ -8801,6 +8908,14 @@ is 84, `03:7F80` (94,878, filed as an untranscribed arm) is 63, and `02:58DA`
 priced by the profile and a walk cannot explain it, suspect the resume before
 inventing a parent for it.**
 
+**Taken.** `01:C154`-`01:C1B5` is native; 21 emulated master cycles are left in
+the range and the recommendation below is kept because it was right, including
+about the shape. One thing in it was wrong and the slice corrected it: the ninth
+call was to be handed over, and it is crossed instead. Crossing a `JSR` does not
+port its callee -- it makes the call and hands the interpreter the callee's
+first instruction -- so the frame-sync wait still runs interpreted, 21 cycles
+later than it used to start.
+
 **Take `01:C154`-`01:C1B5` next, 1,259,148 cycles, and read the note on
 `01:C0FE`-`01:C1B5` below as superseded.** That note called the main game loop
 "not portable as a unit" because it opens on `JSR $E321`, the frame-sync wait,
@@ -8850,16 +8965,17 @@ names a slice:
 | `45:4000`-`45:4109` | 2,593,836 | Music tick head and its declined entries |
 | `00:E2B7`-`00:E39C` | 1,646,451 | The frame-sync waiter and its neighbours. Mostly the `00:E321` row above; not work |
 | `00:FC81`-`00:FC89` | 1,514,058 | The `SEI`. Refused |
-| `01:C0FE`-`01:C1B5` | 1,407,828 | The main game loop, of which `01:C154`-`01:C1B5` is 1,259,148 and portable as a chain of crossings. **Recommended above.** 147,489 of the rest is the one startup `TII` |
+| `01:C0FE`-`01:C1B5` | 148,680 | The main game loop. `01:C154`-`01:C1B5` was 1,259,148 of it and is native now, leaving 21; 147,489 of what is left is the one startup `TII` |
 | `45:4138`-`45:4210` | 1,398,669 | Music tick |
 | `09:6FB1`-`09:737B` | 773,025 | Unported |
 | `09:60C7`-`09:612A` | 711,312 | Unported |
 | `00:EB46` | 625,095 | The whole-palette `TIA`. A capacity wall |
 
 Per bank the remainder outside the wait is `00` 5,372,172, `45` 4,430,103,
-`01` 2,311,182, `09` 1,493,322, `03` 1,174,179, `02` 1,004,511, `08` 698,754,
-`07` 256,680 -- 16,740,903 in total. Bank `01` fell 779,448 this slice, the
-whole of the gain and nothing else. Bank `00` is still the largest, but roughly
+`01` 1,052,055, `09` 1,493,322, `03` 1,174,179, `02` 1,004,511, `08` 698,754,
+`07` 256,680 -- 15,481,776 in total. Bank `01` fell 1,259,127 for the main
+session loop, the whole of the gain and nothing else; the slice before it fell
+779,448 the same way. Bank `00` is still the largest, but roughly
 four million of it is the refused set above -- the driver's `SEI`, the
 whole-palette `TIA`, the `BBR0` at `00:F423`, the two interrupt acknowledges --
 which leaves bank `45` the largest recoverable pool and bank `09` the largest
