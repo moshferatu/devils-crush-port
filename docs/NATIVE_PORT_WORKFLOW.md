@@ -2522,6 +2522,80 @@ including the rows nobody has ever mentioned. The same applies to any structure
 entered by computed address: vector tables, state-machine dispatch arrays, the
 actor handler table.
 
+### The analyzer groups contiguous addresses; a routine is joined by control flow
+
+The candidate ranking builds approximate routines out of runs of contiguous
+*executed* addresses, so a gap in the profile ends a run. A branch forward over
+code the route never takes is exactly such a gap, and it splits one routine into
+two candidates that are each a fragment of it.
+
+`09:7237` is ten instructions and 327,924 master cycles, forty-two per cent of
+what was left in bank `09`. It never appeared in a ranking. It branches over an
+untaken countdown at `7249`-`725B`, so the analyzer offered `09:71EA`-`7247` and
+`09:725E`-`72EA` — the first ending in the middle of the poll and starting in the
+middle of an unrelated animation stepper, the second beginning at the poll's own
+join point. `PROGRESS.md` carried both as separate recommendations, and neither
+of them is a routine.
+
+**Disassemble a candidate's range before pricing it, and price what the
+disassembly says the routine is.** Two cheap habits catch this. A run that
+starts at an address nothing calls, or ends at one that is not a return or a
+jump, is a fragment — check the addresses immediately before and after it in the
+profile. And a run whose *first* instruction is a plain load rather than
+something a caller would arrive at is usually the far side of a branch. The fix
+costs one `Disassemble-Rom.py` call over the union of the neighbouring runs,
+which is what the "read a whole bank by its call graph" note already asks for
+and what this file has otherwise been treating as optional.
+
+### Check the core's opcode semantics, not the processor's documentation
+
+`BIT #$01` at `09:7261` decides whether the score panel redraws. On a 65C02 the
+immediate addressing mode of `BIT` is the documented exception that affects only
+`Z` and leaves `N` and `V` alone. This core has one `BIT` macro shared across
+every addressing mode — `P &= ~(Z|V|N); P |= ZNTable[x&A]&Z; P |= x&(V|N)` — so
+immediate `BIT` clears `N` and `V` from the operand's top two bits like every
+other form.
+
+The transcript has to match the core, not the datasheet, because the core is
+what the census was recorded from. Getting it wrong is not silent: the host
+compares registers at the resume point and would have abandoned the walk. But it
+would have abandoned it on every call, and an abandoned transcript still reports
+as installed — the number that moves is `Registry abandonments`, which is easy
+to read past when the deployment line says 433 of 433.
+
+**Read the opcode out of `huc6280.cpp` and `huc6280_ops.inc` for any instruction
+whose flag behaviour is mode-dependent or unusual**: `BIT`, `TSB`/`TRB`, the
+`T`-flag arithmetic, the block moves, `BBRi`/`BBSi`. It is a grep, and it costs
+less than reading an abandonment count backwards. The same source settles
+timing, which is the other half: `JR` charges `ADDCYC(3)` on the taken arm and
+`ADDCYC(1)` on the untaken one, and calls `LastCycle()` on both, so a taken
+branch is 12 master cycles sampling at 9 and an untaken one is 6 sampling at 3.
+
+### An oracle for a routine that produces a decision
+
+The write-range comparison this file recommends everywhere assumes the routine's
+product is bytes. `09:7237`'s product is a *choice*: which of four gates stopped
+it, and what flags it returned. It writes one byte, thirty-three times in 3,600
+frames. A write comparison over everything it touches would have been nearly
+empty, and would have passed just as happily if the walk returned the wrong `N`
+and `V` on all 2,616 calls that write nothing at all — which, given the `BIT`
+above, was the live risk.
+
+**Make the routine-call trace the primary artifact when the routine's output is
+control flow.** It carries `output_a`, `output_status`, `output_sp`,
+`body_master_cycles` and `return_instruction_pc` per call, so comparing an
+emulated trace against a replaced one compares the arm and the register state
+directly, for every call, at no extra cost — the trace is already being recorded
+to check the absorbed return. `return_instruction_pc` alone distinguishes the
+arms: 2,616 calls end at `7265` and 33 at `72EA`, and a gate read from the wrong
+address moves that split before it moves anything else.
+
+Keep the write channels underneath it, chosen for what the *decision* enables
+rather than for what the routine writes. Here that means the VDC base ports:
+the redraw the poll admits is a tile stream through `$0000`-`$0003`, so
+`--bus-write-range` catches a dirty bit consumed one call early or late, which no
+work-RAM census can see.
+
 ### A recommendation ages against the measurement it was built on
 
 `PROGRESS.md` recommended widening bank `45`'s driver-state guard as "the

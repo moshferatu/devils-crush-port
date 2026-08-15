@@ -184,6 +184,16 @@ replace_native_gameplay_routine_impl(
         }) {
         return detail::replace_palette_colour_cycle(entry, work_ram);
     }
+    // The score panel's redraw poll. Four work RAM gates and a dirty bit; the
+    // redraw it guards stays interpreted, which on this route is 33 calls of
+    // 2,649.
+    if (entry.routine
+        == RoutineKey{
+            .physical_bank = 0x09U,
+            .logical_pc = 0x7237U,
+        }) {
+        return detail::replace_score_panel_poll(entry, work_ram);
+    }
     // The main session loop. Ten entry points, all of them the address a call
     // returns to: the loop is a chain of crossings, and each walk ends on the
     // next `JSR` it makes rather than on a return.

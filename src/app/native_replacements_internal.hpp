@@ -1275,6 +1275,15 @@ replace_palette_colour_cycle(
     const emulation::RoutineEntry& entry,
     std::span<const std::byte> work_ram);
 
+// 09:7237-09:7268, the score panel's redraw poll: four work RAM gates in front
+// of the panel body, which on this route decline the redraw 2,616 times out of
+// 2,649. Ten instructions and forty-two per cent of bank 09's remainder; see
+// native_replacements_score_panel.cpp.
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_score_panel_poll(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram);
+
 // 01:C154-01:C1B5, the main session loop: the frame-sync wait, the nine calls
 // the frame is made of, and the tail that decides whether to run another. Ten
 // entry points, one per return address, each walk ending on the call it

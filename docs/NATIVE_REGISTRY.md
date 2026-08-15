@@ -16,20 +16,20 @@ Release state-census route (`--native-cycle-census`, measured 2026-08-14):
 | | |
 | --- | ---: |
 | Elapsed master cycles | 1,292,371,731 |
-| Native master cycles | 694,772,727 |
-| **Native share** | **53.76%** |
-| **Native share of cycles outside the idle spin loop** | **97.79%** |
-| Routines installed | 432 of 432 |
-| Routines entered | 365 |
-| Calls run natively | 2,749,422 of 2,773,656 entered |
+| Native master cycles | 695,098,752 |
+| **Native share** | **53.78%** |
+| **Native share of cycles outside the idle spin loop** | **97.83%** |
+| Routines installed | 433 of 433 |
+| Routines entered | 366 |
+| Calls run natively | 2,752,071 of 2,776,305 entered |
 | Calls declined at an interrupt horizon | 0 |
-| Transcripts installed inside a suspended transcript | 308,985 |
+| Transcripts installed inside a suspended transcript | 309,159 |
 | Deepest simultaneous suspension | 3 of a permitted 4 |
 | Transcripts abandoned part-way through | 0 |
 | Replacements refused for depth | 0 |
 
 The resulting state census is byte-identical to the assembly-only
-baseline (`9036a9de…`), so that 53.76% is faithful, not merely running.
+baseline (`9036a9de…`), so that 53.78% is faithful, not merely running.
 The last three rows matter because the host credits a native call when
 it *offers* one. A replacement the core then refused would inflate the
 share silently, and a refusal count of zero is what rules that out.
@@ -2146,6 +2146,58 @@ check on the absorbed return: deleting the boundary the observer completes a
 call on is the one thing here that a write trace could not have seen.
 
 
+## The score panel's poll, and a routine the ranking had cut in half
+
+`09:7237` is the guard in front of the score panel's redraw. Four gates read
+straight out of work RAM — the in-progress flag `$2DBB`, the session handshake
+`$2D53`, the hold-off countdown `$2D70`, and bit 0 of `$2CC0`, which is the
+dirty bit `00:F55C`'s score accumulator sets and `01:C812` sets again when a
+ball is lost. If nothing is pending it returns, and on the census route that is
+what happens 2,616 times out of 2,649. Thirty-three calls clear the bit and fall
+into the redraw at `09:7266`, which `ROUTINE_MAP.md` has recorded for several
+milestones as the routine that converts the score and pushes the digits through
+`09:72FD`.
+
+Ten instructions, 327,924 emulated master cycles, **forty-two per cent of what
+was left in bank 09** — and the candidate ranking had never shown it, because
+the ranking groups *contiguous* executed addresses and this routine branches
+over the untaken countdown at `7249`-`725B`. It appeared as two runs, `09:71EA`-`7247`
+and `09:725E`-`72EA`, and neither of those is a routine: the first ends in the
+middle of the poll and starts in the middle of an unrelated animation stepper,
+the second begins at the poll's own join point. Both were recommended
+separately. Control flow joins what address adjacency splits, and the profile
+only knows the second one.
+
+The walk is state-generic and ends wherever the gates send it. `$2DBB` non-zero
+stops in front of the `JMP` at `723C`; `$2D70` non-zero stops in front of the
+`DEC` at `7249`; the dirty bit set walks the two work RAM instructions that
+consume the request and hands back the redraw itself, which is where the VDC
+traffic is. The `$2D53` arm needs nothing, because it branches to `725E`, which
+the walk models for every call anyway. Only the common answer absorbs the `RTS`.
+
+326,025 master cycles, and the interesting instruction is `BIT #$01`. A 65C02's
+immediate-mode `BIT` touches only `Z`; this core has one `BIT` macro shared
+across every addressing mode, so it also clears `N` and `V` from the operand's
+top two bits. Writing the documented behaviour instead would not have corrupted
+anything — the core compares registers at each resume point and would have
+abandoned the transcript — but it would have abandoned it on all 2,649 calls,
+and the report would have said the routine was installed.
+
+**A routine whose product is a decision needs an oracle for the decision.**
+This one writes a single byte, thirty-three times in 3,600 frames; a write-range
+comparison would be nearly empty and would pass just as happily if the walk
+returned the wrong flags on the 2,616 calls that write nothing at all. So the
+regression's primary artifact is the routine-call trace, which carries
+`output_a`, `output_status`, `body_master_cycles` and `return_instruction_pc`
+for every call: it compares the arm the gates chose and the flags the walk left,
+which is the whole of what the routine produces, and it is also what proves the
+absorbed `RTS` put the observer's boundary back. Three write channels sit under
+it — the zero-page scratch the redraw builds its VRAM cursor in, the flags and
+gates themselves, and 2,036,234 writes to the VDC base ports `$0000`-`$0003`,
+because a poll that consumed the dirty bit one call early or late would move the
+tile stream and a work-RAM census cannot see a device write at all.
+
+
 ## What is left
 
 Everything except the idle spin loop is now a porting target, because
@@ -2760,6 +2812,7 @@ accept a call.
 | `08:40C3` | 4,334 | 4,334 | `verify_sat_tail_clear_semantic` |
 | `08:40DF` | 73,818 | 73,818 | `verify_sprite_emit_semantic` |
 | `09:60C7` | 996 | 996 | `verify_palette_colour_cycle_semantic` |
+| `09:7237` | 2,649 | 2,649 | `verify_score_panel_poll_semantic` |
 | `45:4015` | 3,554 | 3,599 | `verify_music_sequencer_semantic` |
 | `45:4044` | 1,417 | 1,535 | `verify_music_sequencer_semantic` |
 | `45:409C` | 855 | 892 | `verify_music_sequencer_semantic` |

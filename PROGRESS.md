@@ -26,16 +26,23 @@ high byte. The deterministic 1,800-frame route now executes 18,806 of 19,648
 preserving the byte-identical gameplay artifact, complete 19,648-call trace,
 and all 180,389 ordered writes.
 
-The deployed registry now runs **694,772,727 of 1,292,371,731 master cycles
-natively, 53.76% of the route and 97.79% of everything outside the frame-sync
-wait**, across 432 admitted routines with no transcript declined at an
+The deployed registry now runs **695,098,752 of 1,292,371,731 master cycles
+natively, 53.78% of the route and 97.83% of everything outside the frame-sync
+wait**, across 433 admitted routines with no transcript declined at an
 interrupt horizon and none abandoned. The 3,600-frame state census remains
 `9036a9de0c3c9917f47bff8c04c136a4824ec12601fb457d260aa2dfe4443490`.
 
-Bank `09` has its first registered routine. `09:60C7`-`09:612A`, the
-palette-block colour rotator, runs natively on all 996 calls -- fifty-nine
-instructions, no branch, 708 master cycles each -- and takes the bank's
-emulated remainder outside the wait from 1,493,322 to 782,010.
+The score panel's redraw poll is native. `09:7237`-`09:7268` runs on all 2,649
+calls -- four work RAM gates that decline the redraw 2,616 times, ten
+instructions, 327,924 emulated master cycles. It had never been ranked, because
+it branches over code this route never takes and the candidate analyzer groups
+contiguous *executed* addresses: it was offered as two runs that are each a
+fragment of it.
+
+Bank `09` has two registered routines. `09:60C7`-`09:612A`, the palette-block
+colour rotator, runs natively on all 996 calls -- fifty-nine instructions, no
+branch, 708 master cycles each. With the poll beside it the bank's emulated
+remainder outside the wait falls 1,493,322 -> 453,369.
 
 The main session loop is native. Its ten entry points execute all 2,649
 iterations of `01:C154`-`01:C1B5` as a chain of crossings, leaving 21 emulated
@@ -6198,106 +6205,123 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
   - [x] Worth +3,159 master cycles, and the census did not move. The correction
     is right and the pool it was recommended for does not exist.
 
+- [x] Take the score panel's redraw poll, `09:7237`-`09:7268`, 327,924 master
+  cycles.
+  - [x] Ten instructions, 2,649 calls, and forty-two per cent of what was left
+    in bank `09` after the previous slice.
+  - [x] It had never been ranked: the analyzer groups contiguous executed
+    addresses and this routine branches over an untaken countdown, so it was
+    offered as two runs that are each a fragment of it. Both were sitting in
+    `### Next` as separate recommendations.
+  - [x] Read `BIT #$01` out of the core rather than the datasheet -- this core
+    shares one `BIT` macro across every addressing mode, so immediate `BIT`
+    clears `N` and `V` where a 65C02 leaves them alone.
+  - [x] Make the routine-call trace the oracle, because the routine's product is
+    a decision and not bytes: same arm, same flags, same body cycles on all
+    2,649 calls.
+  - [x] Registry cycles 694,772,727 -> **695,098,752**; 53.78%, 97.83% outside
+    the wait; 433 admitted routines, 366 entered; bank `09` 782,010 -> 453,369;
+    census unchanged.
+
 ## Active Work
 
-Current owner: Claude. Current slice: **bank `09`, and the guard the file was
-wrong about**. Done.
+Current owner: Claude. Current slice: **the score panel's redraw poll**. Done.
 
-**The recommendation named a pool a previous slice had already taken.**
-`### Next` put bank `45`'s music tick first -- "the largest recoverable block
-now sits" there, 476,490 in call sites plus 6,516 of 7,724 declined entries at
-`45:4044`. Those figures were written *before* the slice that chunked the tick,
-and they are the numbers that slice removed. Measured today: `45:4044` admits
-1,413 of 1,535, and bank `45`'s emulated remainder outside the wait is 834,150
-rather than the 4,430,103 the per-bank table still carried -- the second
-smallest in the ROM, not the largest. **A per-bank table is derived, so
-re-derive it before believing a recommendation built on it.** This file already
-says that about the `JSR` bucket; the caution has to cover the per-bank line
-too, and the six banks whose figures were still right are what made the two
-stale ones easy to miss.
+**The largest thing left in bank `09` had never been ranked, and the reason is
+worth more than the routine.** The candidate analyzer groups *contiguous
+executed* addresses into approximate routines. `09:7237` branches forward over a
+countdown this route never takes, at `7249`-`725B`, so the profile has a hole in
+the middle of it and the analyzer offered two runs instead: `09:71EA`-`7247`,
+which ends in the middle of the poll and begins in the middle of an unrelated
+animation stepper, and `09:725E`-`72EA`, which begins at the poll's own join
+point. `### Next` carried both as separate recommendations. Neither is a
+routine. Read as one, they are ten instructions and **327,924 master cycles,
+forty-two per cent of what the previous slice left in the bank** -- more than
+either fragment and more than anything else in it.
 
-**The guard was worth correcting anyway, and its own comment said how.** It
-refuses a transcript that read one of the timer driver's channel bank bytes at
-`$20F5`-`$20FA` while unmasked, because another thread of control owns those
-bytes and a transcript reads them from a snapshot taken before it runs. The
-comment says such a read "has to be reached before the next serviceable timer
-interrupt". The code compared `cycle` -- the *finished body* -- against the
-horizon, so a walk that read the byte at cycle 300 and ran on to 12,000 was
-refused for something that could only happen 4,700 cycles after the read it was
-worried about. **What the driver can invalidate is a read, and a read is over at
-the boundary of the instruction that made it.**
+**What it does is decide not to work.** Four gates, all read straight out of
+work RAM: the redraw-in-progress flag `$2DBB`, the session handshake `$2D53`,
+the hold-off countdown `$2D70`, and bit 0 of `$2CC0`. That last one is the panel
+dirty bit -- `00:F55C`'s score accumulator sets it, `01:C812` sets it again when
+a ball is lost, and `ROUTINE_MAP.md` has recorded the far side of this poll for
+several milestones as "`09:7266`, `09:72FD`: consumes the dirty bit and redraws
+the score and remaining-ball digits". So the addresses named the routine before
+the control flow did, again. On the census route it returns without doing
+anything 2,616 times out of 2,649.
 
-The fix records the read's own cycle, priced exactly the way a store already is,
-and keeps the *last* such read rather than the first: once the body crosses the
-horizon the core may deliver the interrupt at a checkpoint, so a read after that
-point is stale however early the first one was. **+3,159 master cycles**, census
-unchanged -- about a thousandth of what the note predicted.
+The walk is state-generic and ends wherever the gates send it: `$2DBB` non-zero
+stops in front of the `JMP` at `723C`, `$2D70` non-zero stops in front of the
+`DEC` at `7249`, and the dirty bit set walks the two work RAM instructions that
+consume the request before handing back the redraw itself, which is where the
+VDC traffic is. The `$2D53` arm needs no code at all -- it branches to `725E`,
+which the walk models for every call anyway. Only the common answer absorbs the
+`RTS`.
 
-**Nothing lifts the guard itself, and it is worth writing down why.** The core
-abandons a transcript on a register mismatch at the resume point; it never
-compares work RAM. An interrupt handler that runs, rewrites `$20F5,Y` and
-returns with its registers restored is therefore invisible to the abandonment
-machinery -- which is exactly what the timer driver does. **A transcript's reads
-of another thread's memory can only ever be guarded by the host, because the
-core's only check is registers.**
-
-**So the slice went to bank `09`, which had no registered routine at all** --
-1,493,322 emulated master cycles and not one entry in the registry. Its largest
-contiguous run, `09:60C7`-`09:612A`, is 711,312 of them: forty-eight per cent of
-the bank in fifty-nine instructions across a hundred bytes.
-
-**Every row in the range carries exactly 996 executions.** There is no branch in
-it, so there is nothing to predict and the transcript is the disassembly with
-the cycle counts filled in -- 708 master cycles a call, which is what the
-profile's 711,312 comes to once the interrupts landing on it are removed. Each
-distinct instruction timing was confirmed against the profile's own per-row
-totals before a line was written: 996 `ASL A` is 6,048, 996 `ROL <$30` is
-18,072, 996 `LDA [$2F],Y` is 21,060.
-
-**What it does was settled by the addresses, not by the control flow.** It
-builds `$27B9 + block * 32` in `$2F`/`$30` from a block number in the
-accumulator, and `$27B9` is the palette shadow -- the 1,024-byte buffer
-`00:E950`'s `TII $27B9, $27BA, $03FF` clears and `00:EB46`'s whole-palette `TIA`
-uploads. Thirty-two blocks of thirty-two bytes is thirty-two blocks of sixteen
-nine-bit colours, which is the VCE's entire palette RAM. It then rotates the
-pairs at offsets 6/7, 8/9 and 10/11 by one position and writes `$2CCC,Y` and
-`$2CCB`, the dirty flags `00:EB4D` clears after that upload. **It is colour
-cycling**, and the port already had five members of this family -- a consumer
-with no producer. Reading a routine's constants against addresses the port has
-already named is faster than reading its control flow.
+**`BIT #$01` is the instruction that had to come out of the core rather than the
+datasheet.** A 65C02's immediate-mode `BIT` is the documented exception that
+affects only `Z`; this core has a single `BIT` macro shared across every
+addressing mode, so `BIT #$01` also clears `N` and `V` from the operand's top two
+bits. Implementing the documented behaviour would not have corrupted anything --
+the host compares registers at each resume point -- but it would have abandoned
+the transcript on all 2,649 calls while the deployment line went on saying 433
+of 433. The number that moves in that case is `Registry abandonments`, and it is
+easy to read past.
 
 | | Before | After |
 | --- | ---: | ---: |
-| Emulated in `09:60C7`-`09:612A` | 711,312 | **0** |
-| Registry cycles | 694,064,400 | **694,772,727** |
-| Native share | 53.70% | **53.76%** |
-| Native share outside the wait | 97.69% | **97.79%** |
-| Admitted routines | 431 | **432** |
-| Routines entered | 364 | **365** |
-| Bank `09` outside the wait | 1,493,322 | **782,010** |
-| Bank `45` outside the wait | 834,150 | **830,901** |
-| Release tests | 423 | **424** |
+| Emulated in `09:7237`-`7265` | 327,924 | **0** |
+| Registry cycles | 694,772,727 | **695,098,752** |
+| Native share | 53.76% | **53.78%** |
+| Native share outside the wait | 97.79% | **97.83%** |
+| Admitted routines | 432 | **433** |
+| Routines entered | 365 | **366** |
+| Bank `09` outside the wait | 782,010 | **453,369** |
+| Release tests | 424 | **425** |
 
-The registry gained exactly 996 x 708. The two changes are separable and were
-measured separately: +3,159 for the guard, +705,168 for the rotator.
+The registry gained 326,025, which is the transcripts' modelled cycles exactly:
+2,649 x 102 for the gates, 2,616 x 21 for the absorbed `RTS`, 33 x 27 for the
+taken branch and the two instructions that consume the request. The bank's
+emulated remainder fell by 2,616 more than that, and the difference is the
+per-row interrupt overhang the profile charges to whichever instruction was
+executing -- a fixed error on ten addresses, not a discrepancy.
 
-**The oracle is every byte the routine touches, and this is the family that
-makes that possible.** A producer that writes the shadow can be checked against
-the shadow. The regression records the route twice, emulated and replaced, over
-three ranges -- `$27B9`-`$2FB8` for the rotation itself, `$2CCB`-`$2CEB` for the
-dirty flags, and `$2028`-`$2032` for the zero-page scratch the pointer is built
-in -- and requires 2,639,947 writes to match on address, value, order and master
-cycle. The scratch range is the sharp one: it is where the five
-`ASL A`/`ROL <$30` pairs and both halves of the sixteen-bit `ADC` land, so a
-mis-modelled carry shows up there before it can reach a colour. The call trace
-is compared as well, because the walk ends past its `RTS` and an absorbed return
-deletes the boundary the observer closes a call on. 26.9s.
+**A routine whose product is a decision needs an oracle for the decision.** This
+one writes a single byte, thirty-three times in 3,600 frames. The write-range
+comparison this project uses everywhere would have been nearly empty here, and
+would have passed just as happily with the wrong `N` and `V` on the 2,616 calls
+that write nothing at all -- which, given the `BIT` above, was the live risk and
+not a hypothetical one. So the primary artifact is the **routine-call trace**,
+compared emulated against replaced: it carries `output_a`, `output_status`,
+`body_master_cycles` and `return_instruction_pc` for every call, so it compares
+the arm the gates chose and the flags the walk left, and it is also what proves
+the absorbed `RTS` put the observer's boundary back. `return_instruction_pc`
+splits 2,616 at `7265` and 33 at `72EA`, and a gate read from the wrong address
+moves that split before it moves anything else.
 
-**It was right on the first run**, which is worth recording only for what made
-it so: the routine has no state to be wrong about. Fifty-nine instructions of
-work RAM with no branch, no ROM read, no device access and no call means the
-only thing that can stop the walk is the block number leaving work RAM above
-block 195 -- and the route only ever passes 2, 3 and 7.
+Three write channels sit under it, chosen for what the decision *enables* rather
+than for what the routine writes: `$202D`-`$2036`, the zero-page scratch the
+redraw builds its VRAM cursor in and which stays empty unless the gate opens;
+`$2CC0` and `$2D52`-`$2DBB`, the flag and the gates the body writes back; and
+**2,036,234 writes to the VDC base ports `$0000`-`$0003`**, because the redraw's
+whole visible output is a tile stream through those four registers and a dirty
+bit consumed one call early or late would move it. A work-RAM census cannot see
+a device write at all.
+
+All four artifacts matched on the first run, and the census is unchanged at
+`9036a9de...`.
+
+
+### Previous: bank `09`'s palette colour rotator, and the driver-state guard
+`09:60C7`-`09:612A` opened bank `09`, which had 1,493,322 emulated master cycles
+and not one registry entry: fifty-nine instructions, 996 calls, no branch
+anywhere, rotating three colours of one palette-shadow block and flagging it for
+the whole-palette upload. Its constants identified it -- `$27B9` is the shadow
+`00:EB46` uploads and `$2CCB` the flag `00:EB4D` clears -- where its control flow
+said nothing. The same slice corrected bank `45`'s driver-state guard, which
+compared a finished transcript against the interrupt horizon when what has to
+beat the horizon is the read, and found that the recommendation it was taken
+from had been priced before the slice that chunked the music tick. +705,168 and
++3,159.
 
 ### Previous: bank `01`'s jump table
 `01:C000`-`01:C0CB` is sixty-eight `JMP absolute` rows, three bytes each, and it
@@ -9247,8 +9271,8 @@ names a slice:
 **The per-bank remainder, re-derived in full rather than carried forward.**
 Every row below is the profile's `master_cycles` summed over rows with
 `registry_entry == 0`, excluding the frame-sync spin at `00:E323` and
-`00:E325`. **That rule is stated because the previous version of this table was
-not reproducible from it**: two of its eight rows had been carried forward
+`00:E325`. **That rule is stated because a version of this table two slices ago
+was not reproducible from it**: two of its eight rows had been carried forward
 across the slices that moved them, and six had not, which is what made it read
 as current. Re-derive all eight whenever one moves.
 
@@ -9259,16 +9283,17 @@ as current. Re-derive all eight whenever one moves.
 | `02` | 1,004,511 | |
 | `01` | 950,343 | Given up 2,140,287 in three slices |
 | `45` | 830,901 | |
-| `09` | 782,010 | Was 1,493,322 before this slice |
 | `08` | 698,754 | |
+| `09` | 453,369 | Was 1,493,322 two slices ago |
 | `07` | 256,680 | |
-| | **9,543,504** | |
+| | **9,214,863** | |
 
 Bank `00` is still the largest and most of it is the refused set above -- the
 driver's `SEI`, the whole-palette `TIA`, the `BBR0` at `00:F423`, the two
-interrupt acknowledges. Below it the banks have converged: five of the seven
-now sit between 700k and 1.2M, and no single pool is worth more than the
-`09:60C7` slice was.
+interrupt acknowledges. Below it the banks have converged: five of the seven now
+sit between 450k and 1.2M, and no *bank* is the unit to rank by any more. Bank
+`03` is the largest remaining pool and it is spread thin; bank `09` is second
+smallest and still holds the largest single routine on the list.
 
 **The music tick's guard is settled and is not a recommendation any more.**
 This list carried it for several slices as the largest recoverable block,
@@ -9281,18 +9306,46 @@ further lifts it: the core abandons only on a register mismatch and never
 compares work RAM, so a transcript's reads of another thread's memory can only
 be guarded host-side.
 
-**Take the rest of bank `09` next.** It has one registered routine and 782,010
-emulated master cycles left, in three runs that are each about the size of a
-recent slice and none of which appears in any family source:
-`09:72FD`-`09:737B` (284,361), `09:71EA`-`09:7247` (245,358) and
-`09:725E`-`09:72EA` (164,607). They are contiguous and adjacent, which suggests
-one routine or one family rather than three, and `09:60C7` has already
-established the bank's shape: work RAM, no ROM read, entered through the
-bank-call wrapper. Disassemble `09:71EA`-`09:737B` as a unit before splitting
-it.
+**Two of the three runs this list recommended last slice were not routines.**
+It offered `09:71EA`-`09:7247` (245,358) and `09:725E`-`09:72EA` (164,607) as
+separate candidates. They are two fragments of one routine, `09:7237`, which
+branches over an untaken countdown so that the analyzer's contiguous-address
+grouping puts a hole in the middle of it. Read as a unit it was 327,924 and it
+became this slice. **The analyzer's runs are address ranges; disassemble before
+pricing.** The remaining fragments of those two runs are `09:71EA`-`720A`
+(45,000, an animation frame stepper, and `09:70C1`-`70E4` is a near-identical
+second copy worth 44,703) and `09:727D`-`72EA` (33,987, the tail of the redraw
+this slice's poll now guards).
 
-The cheap work after that is the fifty jump-table rows in bank `01` that this
-route never reaches, whenever a route reaches them.
+**Take `09:72FD`-`09:737B` next**, the one candidate from that list that *is* a
+routine and now the largest single routine left anywhere: **284,361 master
+cycles, 63% of what remains in bank `09`**, 376 calls, fifty-six instructions
+and not one branch. It is the score panel's glyph writer -- the leaf the redraw
+calls once per digit. Three things are already known about it:
+
+- **It is a device routine**, and that is the point of taking it. It selects VDC
+  register 0, writes a VRAM address from `$35`/`$36`, selects register 2, and
+  pushes four tile words from the table at `$7390` indexed by `A * 4`, stepping
+  the address by `$40` between the two rows and back by `$42` at the end -- a
+  net two columns *backwards*, because the panel is drawn right to left from the
+  least significant digit.
+- **The machinery for it exists and is proven.** `$0000`-`$0003` is already in
+  `is_replaceable_hardware_port`, and `native_replacements_vram.cpp` prices a
+  `STA $0003` at 18 master cycles sampling at `- 6` throughout -- the stealing
+  port's last cycle lands after `LastCycle`, so it is the `- 6` case, not `- 3`.
+- **Do not price it from the profile.** Two of its rows, `09:732E` and `09:736A`,
+  average 33.8 master cycles against 18 for the same instruction at four other
+  addresses. Those two are the second `$0003` write of each pair, which completes
+  a VRAM word and stalls until the VDC yields a slot. The core charges that stall
+  on the checkpointed path, so the transcript declares 18 and the credited gain
+  will be materially below 284,361. Measure it, do not assume it.
+
+It also reads ROM -- `$7390,Y` through MPR3 -- which twenty-four replacements
+already do; `native_replacements_vblank.cpp` has the `read_rom` lambda to copy.
+
+After bank `09`, the cheap work is the fifty jump-table rows in bank `01` that
+this route never reaches, whenever a route reaches them.
+
 **The old ranking, kept because its per-bank arithmetic still holds.** Note
 that it counts `RTS` opcodes only, so it never saw the interrupt return that
 turned out to be nine times the largest row in it — rank by what the machine
