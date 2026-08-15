@@ -622,11 +622,6 @@ replace_knight_terminal_release_helper_post_return_actor_field_second_constant_s
     std::span<const std::byte> work_ram);
 
 [[nodiscard]] std::optional<emulation::RoutineReplacement>
-replace_knight_terminal_release_helper_shared_jump_prefix(
-    const emulation::RoutineEntry& entry,
-    std::span<const std::byte> work_ram);
-
-[[nodiscard]] std::optional<emulation::RoutineReplacement>
 replace_knight_terminal_release_helper_shared_scan_initializer_prefix(
     const emulation::RoutineEntry& entry,
     std::span<const std::byte> work_ram);
@@ -1278,6 +1273,14 @@ replace_actor_scan_preamble(
 replace_main_session_loop(
     const emulation::RoutineEntry& entry,
     std::span<const std::byte> work_ram);
+
+// 01:C000-01:C0CB, bank 01's jump table: sixty-eight `JMP absolute` rows, of
+// which the recorded route reaches eighteen. One instruction, twelve master
+// cycles and no state at all -- the walk reads nothing, writes nothing and
+// touches no flag, and ends on the row's target; see
+// native_replacements_jump_table.cpp.
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_bank_one_jump_table(const emulation::RoutineEntry& entry);
 
 [[nodiscard]] std::optional<emulation::RoutineReplacement>
 replace_actor_scan_run(

@@ -229,6 +229,100 @@ replace_native_gameplay_routine_impl(
             }) {
         return detail::replace_main_session_loop(entry, work_ram);
     }
+    // Bank 01's jump table. Eighteen rows, one `JMP absolute` each: the walk
+    // charges twelve master cycles, transfers, and ends on the row's target.
+    if (entry.routine
+        == RoutineKey{
+            .physical_bank = 0x01U,
+            .logical_pc = 0xC012U,
+        }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x01U,
+                .logical_pc = 0xC018U,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x01U,
+                .logical_pc = 0xC021U,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x01U,
+                .logical_pc = 0xC024U,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x01U,
+                .logical_pc = 0xC027U,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x01U,
+                .logical_pc = 0xC02AU,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x01U,
+                .logical_pc = 0xC03CU,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x01U,
+                .logical_pc = 0xC042U,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x01U,
+                .logical_pc = 0xC05DU,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x01U,
+                .logical_pc = 0xC060U,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x01U,
+                .logical_pc = 0xC063U,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x01U,
+                .logical_pc = 0xC069U,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x01U,
+                .logical_pc = 0xC06CU,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x01U,
+                .logical_pc = 0xC06FU,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x01U,
+                .logical_pc = 0xC081U,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x01U,
+                .logical_pc = 0xC087U,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x01U,
+                .logical_pc = 0xC09FU,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x01U,
+                .logical_pc = 0xC0A2U,
+            }) {
+        return detail::replace_bank_one_jump_table(entry);
+    }
     if (entry.routine
         == RoutineKey{
             .physical_bank = 0x01U,
@@ -1590,15 +1684,6 @@ replace_native_gameplay_routine_impl(
     }
     if (entry.routine == RoutineKey{.physical_bank = 0x02U, .logical_pc = 0x4264U}) {
         return detail::replace_knight_terminal_release_helper_post_return_actor_field_second_constant_store_prefix(entry, work_ram);
-    }
-    if (entry.routine
-        == RoutineKey{
-            .physical_bank = 0x01U,
-            .logical_pc = 0xC024U,
-        }) {
-        return detail::replace_knight_terminal_release_helper_shared_jump_prefix(
-            entry,
-            work_ram);
     }
     if (entry.routine
         == RoutineKey{

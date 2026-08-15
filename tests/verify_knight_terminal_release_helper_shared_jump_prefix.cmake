@@ -9,6 +9,18 @@ if(NOT CONFIG STREQUAL "Release")
     message(FATAL_ERROR "Knight-terminal-release-helper-shared-jump-prefix regression is Release-only.")
 endif()
 
+# 01:C024 is a row of bank 01's jump table -- `JMP $C5AB`, twelve master cycles
+# -- and it used to be replaced here by a transcript pinned to the one register
+# state this patched route arrives in, which is where the `1 of 64` below came
+# from. The jump-table family in native_replacements_jump_table.cpp now owns the
+# address state-generically, because a `JMP` has no state to be generic about:
+# it reads nothing, writes nothing and moves no flag, so all sixty-four
+# arrivals get the transcript the pinned one gave to one of them.
+#
+# The three hashes below did not move when that changed, which is the whole
+# argument in one measurement: sixty-three more arrivals ran natively and the
+# route, the call trace and the write trace are byte-for-byte what assembly
+# produced.
 set(expected_census_sha256 "5bee19b564a4e54444f444fdaf156fcec1385fbca952abf8b531b910eeb75243")
 set(expected_call_sha256 "b126a20194bce8328d8f3ae183a48a14d2ca5a59c98cef0c4298b20bbb5f91d1")
 set(expected_write_sha256 "a3ae6fedc5e16e5994e008038d5b614c9f2810db5261f5d0df6764ca1f06cf5d")
@@ -36,7 +48,7 @@ if(NOT recorder_result EQUAL 0)
 endif()
 foreach(expected_line IN ITEMS
     "Work-RAM patches applied: 17"
-    "Native replacement 01:C024@all entries: 1 of 64"
+    "Native replacement 01:C024@all entries: 64 of 64"
     "Observe hook 1 entries: 64"
     "Routine call trace complete: 64 calls, 1746 writes"
 )

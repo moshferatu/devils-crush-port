@@ -4755,36 +4755,6 @@ replace_knight_terminal_release_helper_post_return_actor_field_second_constant_s
 }
 
 [[nodiscard]] std::optional<RoutineReplacement>
-replace_knight_terminal_release_helper_shared_jump_prefix(
-    const RoutineEntry& entry,
-    const std::span<const std::byte>)
-{
-    // The terminal-only shared entry immediately jumps into the broad C5AB
-    // worker. Keep the worker's timer, drawing, and coroutine work in assembly.
-    constexpr RoutineKey kRoutine{.physical_bank = 0x01U, .logical_pc = 0xC024U};
-    if (entry.routine != kRoutine || entry.registers.accumulator != 0x42U
-        || entry.registers.x != 0x3AU || entry.registers.y != 0U
-        || entry.registers.stack_pointer != 0xF4U || entry.registers.status != 0U) {
-        return std::nullopt;
-    }
-
-    auto output = entry.registers;
-    output.program_counter = 0xC5ABU;
-    RoutineReplacement replacement{
-        .return_instruction = {.physical_bank = 0x01U, .logical_pc = 0xC5ABU},
-        .output_registers = output,
-        .body_master_cycles = 12U,
-    };
-    replacement.checkpoints.push_back({
-        .interrupt_sample_master_cycle_offset = 9U,
-        .master_cycle_offset = 12U,
-        .instruction = {0x01U, 0xC024U},
-        .registers = output,
-    });
-    return replacement;
-}
-
-[[nodiscard]] std::optional<RoutineReplacement>
 replace_knight_terminal_release_helper_shared_scan_initializer_prefix(
     const RoutineEntry& entry,
     const std::span<const std::byte>)

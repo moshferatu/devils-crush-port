@@ -2892,6 +2892,27 @@ parse_logical_address_range(const std::string_view text)
                                || request.routine.logical_pc == 0xC185U
                                || request.routine.logical_pc == 0xC190U)
                            && request.all_calls;
+                       const bool proven_bank_one_jump_table =
+                           request.routine.physical_bank == 0x01U
+                           && (request.routine.logical_pc == 0xC012U
+                               || request.routine.logical_pc == 0xC018U
+                               || request.routine.logical_pc == 0xC021U
+                               || request.routine.logical_pc == 0xC024U
+                               || request.routine.logical_pc == 0xC027U
+                               || request.routine.logical_pc == 0xC02AU
+                               || request.routine.logical_pc == 0xC03CU
+                               || request.routine.logical_pc == 0xC042U
+                               || request.routine.logical_pc == 0xC05DU
+                               || request.routine.logical_pc == 0xC060U
+                               || request.routine.logical_pc == 0xC063U
+                               || request.routine.logical_pc == 0xC069U
+                               || request.routine.logical_pc == 0xC06CU
+                               || request.routine.logical_pc == 0xC06FU
+                               || request.routine.logical_pc == 0xC081U
+                               || request.routine.logical_pc == 0xC087U
+                               || request.routine.logical_pc == 0xC09FU
+                               || request.routine.logical_pc == 0xC0A2U)
+                           && request.all_calls;
                        const bool proven_actor_scan_run =
                            request.routine
                                    == RoutineKey{
@@ -3130,6 +3151,7 @@ parse_logical_address_range(const std::string_view text)
                            && !proven_collision_scan_advance
                            && !proven_actor_scan_preamble
                            && !proven_main_session_loop
+                           && !proven_bank_one_jump_table
                            && !proven_actor_scan_run
                            && !proven_actor_dispatch_vector
                            && !proven_actor_queue_registration
@@ -3443,6 +3465,12 @@ parse_logical_address_range(const std::string_view text)
             "semantic 01:C166@all, semantic 01:C169@all, semantic 01:C16C@all, "
             "semantic 01:C16F@all, semantic 01:C17A@all, semantic 01:C185@all, "
             "semantic 01:C190@all, "
+            "semantic 01:C012@all, semantic 01:C018@all, semantic 01:C021@all, "
+            "semantic 01:C024@all, semantic 01:C027@all, semantic 01:C02A@all, "
+            "semantic 01:C03C@all, semantic 01:C042@all, semantic 01:C05D@all, "
+            "semantic 01:C060@all, semantic 01:C063@all, semantic 01:C069@all, "
+            "semantic 01:C06C@all, semantic 01:C06F@all, semantic 01:C081@all, "
+            "semantic 01:C087@all, semantic 01:C09F@all, semantic 01:C0A2@all, "
             "semantic 01:C80A@all, semantic 01:C7F4@all, semantic 01:C7EF@all, semantic 01:C7F9@all, semantic 01:C7FC@all, semantic 01:C804@all, semantic 01:C812@all, semantic 01:C7EA@all, semantic 01:C7E5@all, "
             "semantic 02:42EB@all, "
             "semantic 02:42F6@all, semantic 02:4345@all, "

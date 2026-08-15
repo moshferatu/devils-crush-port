@@ -16,12 +16,12 @@ Release state-census route (`--native-cycle-census`, measured 2026-08-14):
 | | |
 | --- | ---: |
 | Elapsed master cycles | 1,292,371,731 |
-| Native master cycles | 693,963,048 |
+| Native master cycles | 694,064,400 |
 | **Native share** | **53.70%** |
-| **Native share of cycles outside the idle spin loop** | **97.67%** |
-| Routines installed | 414 of 414 |
-| Routines entered | 347 |
-| Calls run natively | 2,739,978 of 2,764,300 entered |
+| **Native share of cycles outside the idle spin loop** | **97.69%** |
+| Routines installed | 431 of 431 |
+| Routines entered | 364 |
+| Calls run natively | 2,748,424 of 2,772,702 entered |
 | Calls declined at an interrupt horizon | 0 |
 | Transcripts installed inside a suspended transcript | 308,471 |
 | Deepest simultaneous suspension | 3 of a permitted 4 |
@@ -2412,7 +2412,24 @@ accept a call.
 | `00:FC00` | 254,990 | 254,990 | `verify_sound_timer_driver_semantic` |
 | `00:FC82` | 251,531 | 251,531 | `verify_sound_timer_driver_semantic` |
 | `00:FD76` | 2,758 | 2,758 | `verify_sound_timer_driver_semantic` |
-| `01:C024` | 1 | 64 | `verify_knight_terminal_release_helper_shared_jump_prefix` (patched route) |
+| `01:C012` | 924 | 924 | `verify_bank_one_jump_table_semantic` |
+| `01:C018` | 1,599 | 1,599 | `verify_bank_one_jump_table_semantic` |
+| `01:C021` | 71 | 71 | `verify_bank_one_jump_table_semantic` |
+| `01:C024` | 64 | 64 | `verify_bank_one_jump_table_semantic` and `verify_knight_terminal_release_helper_shared_jump_prefix` (patched route) |
+| `01:C027` | 123 | 123 | `verify_bank_one_jump_table_semantic` |
+| `01:C02A` | 40 | 40 | `verify_bank_one_jump_table_semantic` |
+| `01:C03C` | 204 | 204 | `verify_bank_one_jump_table_semantic` |
+| `01:C042` | 1,119 | 1,119 | `verify_bank_one_jump_table_semantic` |
+| `01:C05D` | 1,119 | 1,119 | `verify_bank_one_jump_table_semantic` |
+| `01:C060` | 996 | 996 | `verify_bank_one_jump_table_semantic` |
+| `01:C063` | 7 | 7 | `verify_bank_one_jump_table_semantic` |
+| `01:C069` | 3 | 3 | `verify_bank_one_jump_table_semantic` |
+| `01:C06C` | 14 | 14 | `verify_bank_one_jump_table_semantic` |
+| `01:C06F` | 2,139 | 2,139 | `verify_bank_one_jump_table_semantic` |
+| `01:C081` | 78 | 78 | `verify_bank_one_jump_table_semantic` |
+| `01:C087` | 58 | 58 | `verify_bank_one_jump_table_semantic` |
+| `01:C09F` | 2 | 2 | `verify_bank_one_jump_table_semantic` |
+| `01:C0A2` | 1 | 1 | `verify_bank_one_jump_table_semantic` |
 | `01:C3CB` | 2,649 | 2,649 | `verify_nudge_input_gate_semantic` |
 | `01:C49E` | 2,649 | 2,649 | `verify_session_input_gate_semantic` |
 | `01:C4DE` | 3,492 | 3,492 | `verify_actor_scan_preamble_semantic` |

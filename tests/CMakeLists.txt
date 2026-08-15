@@ -2519,6 +2519,23 @@ if(TARGET devils_crush)
         )
 
         add_test(
+            NAME dc_rom_bank_one_jump_table_semantic
+            CONFIGURATIONS Release
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/bank-one-jump-table-semantic-v1"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_bank_one_jump_table_semantic.cmake"
+        )
+        set_tests_properties(
+            dc_rom_bank_one_jump_table_semantic
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
             NAME dc_rom_sorcerer_tick_semantic
             CONFIGURATIONS Release
             COMMAND

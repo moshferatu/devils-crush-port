@@ -2462,6 +2462,66 @@ child's shape from the child or has it written in. `03:73A6` had `0x6988`
 written in; every other site takes the address from the transcript it spliced.
 **A shape gate is only dangerous when something downstream assumes the shape.**
 
+### A state-generic transcript supersedes a pinned one, and the pinned test proves it
+
+Early families proved a transcript by reproducing one observed register state:
+the walk refuses unless `A`, `X`, `Y`, `SP` and `P` match what the fixture
+recorded, and it is admitted on the one arrival that matches. A hundred and six
+routines in this registry are still of that kind. When a later, state-generic
+family reaches the same address, the pinned one is not a competitor to be
+ordered around — it is superseded, and the right move is to delete it.
+
+`01:C024` is the clean case. It is a row of bank `01`'s jump table, `JMP $C5AB`,
+and `replace_knight_terminal_release_helper_shared_jump_prefix` owned it gated
+on `A=$42, X=$3A, Y=0, SP=$F4, P=0`: **1 of 64 arrivals**. The transcript it
+produced was byte-identical to the one the general row produces, because a `JMP`
+reads nothing, writes nothing and moves no flag — there is no state for a gate
+to be about. Deleting the pinned function raised the address to 64 of 64.
+
+**The proof that a supersession is safe is the pinned test's own hashes.** Do
+not write a new one. That fixture already drives the exact route the pinned
+transcript was built from — here, seventeen work-RAM patches to force the knight
+terminal path — and it already pins the census, the call trace and the write
+trace. Change its expected admission count and nothing else, and re-run it:
+
+- **Hashes unchanged, count risen.** The general transcript does on all
+  arrivals what the pinned one did on one. That is the whole claim, and it is
+  now measured on the arrivals the pinned one refused.
+- **Any hash moved.** The two transcripts are not the same transcript. Stop;
+  the general one is wrong on some state the pinned gate was excluding, and
+  the gate was load-bearing after all.
+
+Sixty-three additional native arrivals here moved not one byte of any artifact.
+
+**Watch for the shadowing, because nothing will tell you.** Dispatch is a chain
+of `if (entry.routine == RoutineKey{...}) { return ...; }`, so the *first*
+matching key owns the address outright — a `std::nullopt` from it falls back to
+the interpreter, not to the next block. Add a family that overlaps an older one
+and the older one silently stops running, wherever it sits in the file. Two
+things surface it: `tools/Generate-NativeRegistry.ps1` merges the two evidence
+sources into one row and marks it `+1`, and its partial-coverage count moves.
+Read that summary after adding any family that spans a range rather than an
+address.
+
+### Price a jump table by profiling its range, not by collecting the rows other notes mention
+
+`01:C000`-`01:C0CB` was carried in `PROGRESS.md` for several slices as "`01:C012`
+and `01:C018`, 29,000 cycles for two transcribed jumps" — a poor rate, honestly
+priced, and postponed accordingly. Both figures were right and the conclusion
+was wrong. Those are simply the two rows that other notes in that file had cause
+to name, because they are the trampolines in front of two heavily used routines.
+Profiling the range found **eighteen** live rows worth 101,352 cycles, and the
+table runs a hundred and seventy bytes further than the note said.
+
+A dispatch table has no call graph to read: every row is reached by an indirect
+mechanism — a request number, an index, a bank-call wrapper — so nothing in the
+surrounding code names its rows, and the survey habits that work on routines
+(read the callers, follow the `JSR`s) return nothing. **Grep the profile for the
+address range instead**, which takes one command and prices the whole table
+including the rows nobody has ever mentioned. The same applies to any structure
+entered by computed address: vector tables, state-machine dispatch arrays, the
+actor handler table.
+
 ### A replaced *device* can pass the oracle by not running at all
 
 Every lesson above is about transcripts, where a native body that never

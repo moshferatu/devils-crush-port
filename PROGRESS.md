@@ -26,9 +26,9 @@ high byte. The deterministic 1,800-frame route now executes 18,806 of 19,648
 preserving the byte-identical gameplay artifact, complete 19,648-call trace,
 and all 180,389 ordered writes.
 
-The deployed registry now runs **693,963,048 of 1,292,371,731 master cycles
-natively, 53.70% of the route and 97.67% of everything outside the frame-sync
-wait**, across 414 admitted routines with no transcript declined at an
+The deployed registry now runs **694,064,400 of 1,292,371,731 master cycles
+natively, 53.70% of the route and 97.69% of everything outside the frame-sync
+wait**, across 431 admitted routines with no transcript declined at an
 interrupt horizon and none abandoned. The 3,600-frame state census remains
 `9036a9de0c3c9917f47bff8c04c136a4824ec12601fb457d260aa2dfe4443490`.
 
@@ -36,6 +36,12 @@ The main session loop is native. Its ten entry points execute all 2,649
 iterations of `01:C154`-`01:C1B5` as a chain of crossings, leaving 21 emulated
 master cycles in the range -- one `JSR` executed once at start-up -- where there
 were 1,259,148.
+
+Bank `01`'s jump table is native on every row this route reaches. Eighteen of
+its sixty-eight `JMP absolute` rows execute, 8,541 arrivals between them, and
+each is now a one-instruction transcript that charges twelve master cycles and
+ends on the row's target. Bank `01`'s emulated remainder outside the wait falls
+1,052,055 -> 950,343.
 
 Application orchestration is now separated from native transaction
 synthesis. The replacement adapters and central dispatcher moved from
@@ -6136,9 +6142,128 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
     `6b1d9dea...`.
   - [x] 422/422 Release, 3/3 ROM-free Debug.
 
+- [x] Port bank `01`'s jump table, `01:C000`-`01:C0CB`, 101,352 master cycles.
+  - [x] Eighteen of the sixty-eight rows execute on this route; each is one
+    `JMP absolute` -- twelve master cycles, no register, no flag, no read and
+    no write -- and the walk ends on the row's target.
+  - [x] The correctness argument is the ROM's, not the state's: admission at
+    `01:C0xx` *is* the statement that MPR6 holds bank 01, so the two operand
+    bytes are known and the target is the disassembly's.
+  - [x] Retire `replace_knight_terminal_release_helper_shared_jump_prefix`,
+    which owned `01:C024` pinned to one register state and served 1 of its 64
+    arrivals. The general row serves all 64, and the knight regression's three
+    pinned hashes did not move.
+  - [x] Hand back the fifty rows this route never reaches: `--replace-hook` on
+    them reports `0 of 0`, which is not evidence.
+  - [x] Registry cycles 693,963,048 -> **694,064,400**, exactly 8,446 x 12;
+    53.70%, 97.69% outside the wait; 431 admitted routines, 364 entered;
+    census unchanged.
+  - [x] Prove it against the stack page, because the family writes nothing of
+    its own: the route recorded twice over `$2100`-`$21FF`, 4,205,699 writes
+    identical, so a row priced at eleven or thirteen cycles would move the
+    whole trace.
+  - [x] 423/423 Release, 3/3 ROM-free Debug.
+
 ## Active Work
 
-Current owner: Claude. Current slice: **the main session loop**. Done.
+Current owner: Claude. Current slice: **bank `01`'s jump table**. Done.
+`01:C000`-`01:C0CB` is sixty-eight `JMP absolute` rows, three bytes each, and it
+is how the rest of the cartridge reaches bank 01's routines -- and, through the
+bank-call wrapper at `00:E241`, bank 00's. A caller names a row rather than a
+routine, which is why the table exists and why nothing in the port had touched
+it: it is not a routine, it is a switchboard.
+
+Eighteen rows execute on this route, 8,541 arrivals between them:
+
+| Row | Target | Row | Target | Row | Target |
+| --- | --- | --- | --- | --- | --- |
+| `C012` | `$F08E` | `C03C` | `$E93C` | `C06C` | `$F4FC` |
+| `C018` | `$C5C9` | `C042` | `$E1FD` | `C06F` | `$DAF8` |
+| `C021` | `$C5EA` | `C05D` | `$EBA5` | `C081` | `$E8B3` |
+| `C024` | `$C5AB` | `C060` | `$E241` | `C087` | `$ECFD` |
+| `C027` | `$C574` | `C063` | `$D6E2` | `C09F` | `$D8CA` |
+| `C02A` | `$F54F` | `C069` | `$D75E` | `C0A2` | `$D8D2` |
+
+**This is the shortest transcript the port can write, and the only one whose
+correctness is settled by the ROM alone.** `JMP absolute` reads two operand
+bytes, sets the program counter, and charges `ADDCYC(3)` plus the `LastCycle`:
+no flag moves, no register moves, nothing is read from work RAM and nothing is
+written to it. Every other family in this port has to argue that the state it
+read is the state the route will always present. This one does not have state.
+The two operand bytes come through MPR6, and a transaction admitted at
+`01:C0xx` *is* the statement that MPR6 holds bank 01 -- so the bytes are bank
+01's own `$0012`, `$0018` and so on, and the target beside each row above is
+the disassembly's rather than a guess.
+
+Each walk ends on its target, the same way a crossed `JSR` ends on its callee's
+first instruction and for the same reason: the transcript did the transfer, and
+whatever owns the address on the far side picks the body up. Eleven of the
+eighteen targets are registered entries and continue natively; the other seven
+hand back to the interpreter, which costs nothing. **A row is not a claim about
+the routine it names.**
+
+The single checkpoint is not decoration. The profile shows interrupts landing on
+these instructions -- `01:C012`'s 924 arrivals cost 11,160 rather than 11,088 --
+and the checkpoint is where the core samples for one, at the `LastCycle`,
+exactly as the assembly does.
+
+| | Before | After |
+| --- | ---: | ---: |
+| Emulated in `01:C000`-`01:C0CB` | 101,712 | **0** |
+| Registry cycles | 693,963,048 | **694,064,400** |
+| Native share | 53.70% | 53.70% |
+| Native share outside the wait | 97.67% | **97.69%** |
+| Admitted routines | 414 | **431** |
+| Routines entered | 347 | **364** |
+| Registry calls | 2,739,978 | **2,748,424** |
+| Bank `01` outside the wait | 1,052,055 | **950,343** |
+| Release tests | 422 | **423** |
+
+The registry gained exactly 8,446 x 12 = 101,352 cycles, which is the profile's
+arrival count for the eighteen rows times the instruction's own price. The bank
+remainder falls slightly more, 101,712, because `01:C024` was already a
+registered entry and its 576 were already excluded from that column.
+
+**A pinned relic was retired, and the measurement that retired it is the best
+thing in this slice.** `01:C024` was already owned --
+`replace_knight_terminal_release_helper_shared_jump_prefix`, a transcript
+identical to this one but gated on `A=$42, X=$3A, Y=0, SP=$F4, P=0`, admitted
+on **1 of its 64 arrivals**. It was written in the era when a transcript
+proved itself by reproducing one observed state. A `JMP` has no state to be
+generic about, so the general row simply subsumes it; the function and its
+dispatch are deleted. Running all sixty-four arrivals natively instead of one
+left the knight regression's three pinned hashes -- census, call trace and write
+trace, on a seventeen-patch route -- **byte-for-byte unchanged**. Sixty-three
+more native arrivals, and not one byte of the machine moved. The generator's
+partial-coverage count fell 88 to 87.
+
+**The oracle is the stack page, because this family writes nothing of its own.**
+There is no output range to compare: a row moves the program counter and charges
+twelve cycles, and that is all of it. But a cycle miscounted here shifts every
+later instruction on the route, and `$2100-21FF` carries the cycle of every push
+and pop the route makes. So the regression records the route twice, emulated and
+replaced, over the stack page, and requires the traces to be identical --
+4,205,699 writes, same bytes, same order, same cycles. A row priced at eleven or
+thirteen would move the whole trace from that point on. The census is pinned on
+top, because a comparison cannot see route drift and because a wrong *target*
+would not shift the stack page, it would end the route. 32.2s.
+
+**Fifty rows are handed back for want of a witness**, and nothing about them is
+harder -- each is the same twelve cycles and the same two bytes. But
+`--replace-hook` on an address this route never reaches reports `0 of 0`, which
+is not evidence, and this port admits a routine on measured calls rather than on
+an argument that the measurement would have been dull. They are the cheapest
+work left in bank `01` whenever a route reaches them.
+
+One number in this file needed correcting: the recommendation priced this slice
+at 29,000 cycles for `01:C012` and `01:C018`. Those are the two largest rows,
+not the live set -- there are eighteen, worth 101,352. **A jump table is priced
+by profiling the range, not by reading the rows a caller happened to mention.**
+
+423/423 Release, 3/3 ROM-free Debug, registry current at 431 admitted routines.
+`windows-debug` was not run.
+
+### Previous: the main session loop
 `01:C154`-`01:C1B5` is the loop the whole game runs in -- wait for the frame,
 call the nine things a frame is made of, ask whether to run another -- and it
 was 1,259,148 emulated master cycles, the fourth-largest run left outside the
@@ -8934,6 +9059,13 @@ Four arms in the tail are dead: `01:C1A2`, `01:C1A9`, `01:C1B0` and `01:C1B7`
 are `JMP`s out of the loop into state handlers, and none has executed in 3,600
 frames. Hand them back.
 
+**Taken, and it was worth three and a half times what this said.** The
+recommendation below named `01:C012` and `01:C018` because those are the two
+rows a caller happens to be described by elsewhere in this file. Profiling the
+range instead found **eighteen** live rows worth 101,352 cycles, and the table
+runs to `01:C0CB` rather than `01:C020`. **Price a jump table by profiling its
+range, not by collecting the rows other notes mention.**
+
 **Then `01:C012`, 11,160 cycles for one instruction.** It is the trampoline the
 motion step's 924 principal callers come through, a bare `JMP $F08E` in bank
 `01`'s jump table at `01:C000`-`01:C020`, and it hands straight to a registered
@@ -8972,10 +9104,12 @@ names a slice:
 | `00:EB46` | 625,095 | The whole-palette `TIA`. A capacity wall |
 
 Per bank the remainder outside the wait is `00` 5,372,172, `45` 4,430,103,
-`01` 1,052,055, `09` 1,493,322, `03` 1,174,179, `02` 1,004,511, `08` 698,754,
-`07` 256,680 -- 15,481,776 in total. Bank `01` fell 1,259,127 for the main
-session loop, the whole of the gain and nothing else; the slice before it fell
-779,448 the same way. Bank `00` is still the largest, but roughly
+`01` 950,343, `09` 1,493,322, `03` 1,174,179, `02` 1,004,511, `08` 698,754,
+`07` 256,680 -- 15,380,064 in total. Bank `01` fell 101,712 for the jump table,
+the whole of the gain and nothing else; the slice before it fell 1,259,127 for
+the main session loop, and the one before that 779,448 the same way. Bank `01`
+has now given up 2,140,287 in three slices and is the smallest remainder but
+one. Bank `00` is still the largest, but roughly
 four million of it is the refused set above -- the driver's `SEI`, the
 whole-palette `TIA`, the `BBR0` at `00:F423`, the two interrupt acknowledges --
 which leaves bank `45` the largest recoverable pool and bank `09` the largest
