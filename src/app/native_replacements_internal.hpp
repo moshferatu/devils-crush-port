@@ -1265,6 +1265,16 @@ replace_actor_scan_preamble(
     const emulation::RoutineEntry& entry,
     std::span<const std::byte> work_ram);
 
+// 09:60C7-09:612A, the palette-block colour rotator: rotate colours three,
+// four and five of the palette-shadow block named in the accumulator, then
+// flag the block and the shadow as dirty. Bank 09's first registered routine.
+// Fifty-nine instructions, no branch and no ROM read; see
+// native_replacements_palette_cycle.cpp.
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_palette_colour_cycle(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram);
+
 // 01:C154-01:C1B5, the main session loop: the frame-sync wait, the nine calls
 // the frame is made of, and the tail that decides whether to run another. Ten
 // entry points, one per return address, each walk ending on the call it

@@ -170,6 +170,7 @@ if(DC_BUILD_APP)
         src/app/native_replacements_motion_step.cpp
         src/app/native_replacements_music.cpp
         src/app/native_replacements_palette.cpp
+        src/app/native_replacements_palette_cycle.cpp
         src/app/native_replacements_physics.cpp
         src/app/native_replacements_rules.cpp
         src/app/native_replacements_sorcerer_tick.cpp

@@ -16,20 +16,20 @@ Release state-census route (`--native-cycle-census`, measured 2026-08-14):
 | | |
 | --- | ---: |
 | Elapsed master cycles | 1,292,371,731 |
-| Native master cycles | 694,064,400 |
-| **Native share** | **53.70%** |
-| **Native share of cycles outside the idle spin loop** | **97.69%** |
-| Routines installed | 431 of 431 |
-| Routines entered | 364 |
-| Calls run natively | 2,748,424 of 2,772,702 entered |
+| Native master cycles | 694,772,727 |
+| **Native share** | **53.76%** |
+| **Native share of cycles outside the idle spin loop** | **97.79%** |
+| Routines installed | 432 of 432 |
+| Routines entered | 365 |
+| Calls run natively | 2,749,422 of 2,773,656 entered |
 | Calls declined at an interrupt horizon | 0 |
-| Transcripts installed inside a suspended transcript | 308,471 |
+| Transcripts installed inside a suspended transcript | 308,985 |
 | Deepest simultaneous suspension | 3 of a permitted 4 |
 | Transcripts abandoned part-way through | 0 |
 | Replacements refused for depth | 0 |
 
 The resulting state census is byte-identical to the assembly-only
-baseline (`9036a9de…`), so that 53.70% is faithful, not merely running.
+baseline (`9036a9de…`), so that 53.76% is faithful, not merely running.
 The last three rows matter because the host credits a native call when
 it *offers* one. A replacement the core then refused would inflate the
 share silently, and a refusal count of zero is what rules that out.
@@ -488,22 +488,22 @@ itself followed once it became clear it could be chunked:
 | Entry | Admitted | What it does |
 | --- | ---: | --- |
 | `45:4015` | 3,554 of 3,599 | **The per-frame tick**, the bank's top level |
-| `45:4044` | 1,413 of 1,535 | The head of its voice loop, and the chunk head |
-| `45:409C` | 855 of 896 | Where the tick resumes after `4936` |
+| `45:4044` | 1,417 of 1,535 | The head of its voice loop, and the chunk head |
+| `45:409C` | 855 of 892 | Where the tick resumes after `4936` |
 | `45:413B` | 3,599 of 3,599 | Where the tick resumes after `4142` |
-| `45:4883` | 348 of 348 | Pitch/period update (inlines `48B4`) |
-| `45:48F6` | 41 of 41 | Sweep accumulator update (inlines `48B4`) |
-| `45:49A2` | 41 of 41 | Vibrato accumulator update |
+| `45:4883` | 344 of 344 | Pitch/period update (inlines `48B4`) |
+| `45:48F6` | 37 of 37 | Sweep accumulator update (inlines `48B4`) |
+| `45:49A2` | 37 of 37 | Vibrato accumulator update |
 | `45:49B6` | 50 of 50 | Voice-latch clear |
-| `45:49F9` | 39 of 41 | Voice commit, which drives `$0800`/`$0804` |
+| `45:49F9` | 35 of 37 | Voice commit, which drives `$0800`/`$0804` |
 | `45:49E4` | 289 of 289 | Where the commit resumes after its own `SEI` |
-| `45:4211` | 93 of 93 | The two pending-event gates |
+| `45:4211` | 89 of 89 | The two pending-event gates |
 | `45:4228` | 12 of 12 | Portamento stepper |
 | `45:457A` | 4 of 51 | Command interpreter |
 | `45:47E0` | 36 of 36 | Where the sample trigger resumes after its `SEI` |
 | `45:485E` | 308 of 308 | Where the bank-map arm resumes after its `SEI` |
-| `45:4142` | 3,544 of 3,604 | PSG register programmer, six voices plus the LFO |
-| `45:4143` | 3 of 60 | The head of its channel loop, and the chunk head |
+| `45:4142` | 3,562 of 3,604 | PSG register programmer, six voices plus the LFO |
+| `45:4143` | 3 of 42 | The head of its channel loop, and the chunk head |
 | `45:4154` | 13 of 13 | Where the release arm resumes after its `SEI` |
 | `45:4169` | 11,093 of 11,093 | Where each channel resumes after its `SEI` |
 
@@ -710,8 +710,8 @@ packed nine-bit GRB in a shadow buffer at `$27B9`-`$2BB8`, marks the blocks
 it changed in `$2CCC`-`$2CEB`, and `00:EB30` pushes the dirty ones out to
 the VCE ports once a frame. Five routines in this bank are now native,
 reached through seven registered addresses, and they are the port's first
-move into the video paths. A sixth producer lives in bank `08` and is
-described below the table. They are also where transcripts stopped handing their `RTS`
+move into the video paths. Two more producers live outside it, in banks `08`
+and `09`, and are described below the table. They are also where transcripts stopped handing their `RTS`
 back to the core: **every walk here ends past its own return**, which is
 worth 14,369 returns and 301,749 master cycles on this route and is
 described under *Absorbing the return* below.
@@ -724,6 +724,7 @@ described under *Absorbing the return* below.
 | `00:E93C` | The sixteen-bit compare the fade drivers branch on | 8,969 | 946,719 |
 | `00:EAA7` | Fade-to-black stepper: one step over all thirty-two blocks | 8, in 101 chunks | 1,652,688 |
 | `08:5977` + `08:5982` | The setup screen's own stager: the resolver call, then the copy and the flags | 177, both of both | 397,719 |
+| `09:60C7` | Colour rotator: rotate colours three, four and five of one block | 996 | 705,168 |
 
 The last column is the deployed registry's own measured credit
 (`--native-cycle-census`), not the routines' cost in an assembly-only run —
@@ -733,8 +734,24 @@ carries its own return. Earlier revisions of this table quoted the
 inventory figures here and one derived `00:EB30` + `00:EB4D` total;
 all six rows are measured.
 
-The last row is not in this bank and does not use this family's source
-convention. `08:5977` stages block zero for the title, play-mode, speed and
+`09:60C7` is the shortest producer of the six and **bank 09's first
+registered routine of any kind**. It is handed a block number in the
+accumulator, builds `$27B9 + block * 32` in `$2F`/`$30` with five
+`ASL A`/`ROL <$30` pairs and a sixteen-bit `ADC`, rotates the three colour
+pairs at offsets 6/7, 8/9 and 10/11 by one position, and sets both dirty
+flags. That is the whole routine: fifty-nine instructions, no branch, no ROM
+read, no call, and 708 master cycles every time. It is the colour cycling the
+table above had a consumer for and no producer.
+
+Its oracle is the one this family makes available to nothing else. A producer
+that writes the shadow can be checked against the shadow, so the regression
+records the route twice — emulated and replaced — over `$27B9`-`$2FB8`, the
+dirty flags, and the zero-page scratch the pointer is built in, and requires
+the 2,639,947 writes to match on address, value, order and master cycle. The
+call trace is compared too, because this walk ends past its `RTS`.
+
+The last row of the table is not in this bank and does not use this family's
+source convention. `08:5977` stages block zero for the title, play-mode, speed and
 data-load screens, whose caller flips bit 0 of a cadence byte every four
 ticks so that the block alternates between two colour sets. `00:EBA5` is
 handed a pointer; this one builds one, putting `$04`/`$1E` in `$2F`/`$30`
@@ -2742,25 +2759,26 @@ accept a call.
 | `08:4097` | 50,248 | 50,248 | `verify_sat_submission_semantic` |
 | `08:40C3` | 4,334 | 4,334 | `verify_sat_tail_clear_semantic` |
 | `08:40DF` | 73,818 | 73,818 | `verify_sprite_emit_semantic` |
+| `09:60C7` | 996 | 996 | `verify_palette_colour_cycle_semantic` |
 | `45:4015` | 3,554 | 3,599 | `verify_music_sequencer_semantic` |
-| `45:4044` | 1,413 | 1,535 | `verify_music_sequencer_semantic` |
-| `45:409C` | 855 | 896 | `verify_music_sequencer_semantic` |
+| `45:4044` | 1,417 | 1,535 | `verify_music_sequencer_semantic` |
+| `45:409C` | 855 | 892 | `verify_music_sequencer_semantic` |
 | `45:413B` | 3,599 | 3,599 | `verify_music_sequencer_semantic` |
-| `45:4142` | 3,544 | 3,604 | `verify_music_sequencer_semantic` |
-| `45:4143` | 3 | 60 | `verify_music_sequencer_semantic` |
+| `45:4142` | 3,562 | 3,604 | `verify_music_sequencer_semantic` |
+| `45:4143` | 3 | 42 | `verify_music_sequencer_semantic` |
 | `45:4154` | 13 | 13 | `verify_music_sequencer_semantic` |
 | `45:4169` | 11,093 | 11,093 | `verify_music_sequencer_semantic` |
-| `45:4211` | 93 | 93 | `verify_music_sequencer_semantic` |
+| `45:4211` | 89 | 89 | `verify_music_sequencer_semantic` |
 | `45:4228` | 12 | 12 | `verify_music_sequencer_semantic` |
 | `45:457A` | 4 | 51 | `verify_music_sequencer_semantic` |
 | `45:47E0` | 36 | 36 | `verify_music_sequencer_semantic` |
 | `45:485E` | 308 | 308 | `verify_music_sequencer_semantic` |
-| `45:4883` | 348 | 348 | `verify_music_sequencer_semantic` |
-| `45:48F6` | 41 | 41 | `verify_music_sequencer_semantic` |
-| `45:49A2` | 41 | 41 | `verify_music_sequencer_semantic` |
+| `45:4883` | 344 | 344 | `verify_music_sequencer_semantic` |
+| `45:48F6` | 37 | 37 | `verify_music_sequencer_semantic` |
+| `45:49A2` | 37 | 37 | `verify_music_sequencer_semantic` |
 | `45:49B6` | 50 | 50 | `verify_music_sequencer_semantic` |
 | `45:49E4` | 289 | 289 | `verify_music_sequencer_semantic` |
-| `45:49F9` | 39 | 41 | `verify_music_sequencer_semantic` |
+| `45:49F9` | 35 | 37 | `verify_music_sequencer_semantic` |
 
 ## Dispatch-reachable without `@all` evidence
 

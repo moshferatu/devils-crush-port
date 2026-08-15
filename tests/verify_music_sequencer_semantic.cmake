@@ -194,27 +194,41 @@ if(NOT recorder_result EQUAL 0)
     )
 endif()
 
+# Both columns moved when the driver-state guard stopped comparing a finished
+# transcript against the interrupt horizon and started comparing the cycle of
+# the read it is actually about. Admissions rose -- 45:4044 by four, 45:4142 by
+# eighteen -- because a walk that read one of the driver's channel bank bytes
+# early and ran on well past the horizon is no longer refused for something that
+# could only happen long after the read.
+#
+# The *arrivals* fell at the same time, and that is the same fact seen from the
+# other end: 45:4143 from 60 to 42, 45:409C from 896 to 892, 45:48F6 from 41 to
+# 37. An admitted chunk covers ground the interpreter would otherwise have
+# walked back into these heads over, so admitting more of them means arriving at
+# them less often. A denominator that moves on its own would be a route change;
+# these move against numerators that rose, and the census and both traces below
+# are unchanged, which is what says the route did not.
 foreach(expected_line IN ITEMS
     "State census recording complete: 3600 frames"
     "Native replacement 45:4015@all entries: 3554 of 3599"
-    "Native replacement 45:4044@all entries: 1413 of 1535"
-    "Native replacement 45:409C@all entries: 855 of 896"
+    "Native replacement 45:4044@all entries: 1417 of 1535"
+    "Native replacement 45:409C@all entries: 855 of 892"
     "Native replacement 45:413B@all entries: 3599 of 3599"
-    "Native replacement 45:4142@all entries: 3544 of 3604"
-    "Native replacement 45:4143@all entries: 3 of 60"
+    "Native replacement 45:4142@all entries: 3562 of 3604"
+    "Native replacement 45:4143@all entries: 3 of 42"
     "Native replacement 45:4154@all entries: 13 of 13"
     "Native replacement 45:4169@all entries: 11093 of 11093"
-    "Native replacement 45:4211@all entries: 93 of 93"
+    "Native replacement 45:4211@all entries: 89 of 89"
     "Native replacement 45:4228@all entries: 12 of 12"
     "Native replacement 45:457A@all entries: 4 of 51"
     "Native replacement 45:47E0@all entries: 36 of 36"
     "Native replacement 45:485E@all entries: 308 of 308"
-    "Native replacement 45:4883@all entries: 348 of 348"
-    "Native replacement 45:48F6@all entries: 41 of 41"
-    "Native replacement 45:49A2@all entries: 41 of 41"
+    "Native replacement 45:4883@all entries: 344 of 344"
+    "Native replacement 45:48F6@all entries: 37 of 37"
+    "Native replacement 45:49A2@all entries: 37 of 37"
     "Native replacement 45:49B6@all entries: 50 of 50"
     "Native replacement 45:49E4@all entries: 289 of 289"
-    "Native replacement 45:49F9@all entries: 39 of 41"
+    "Native replacement 45:49F9@all entries: 35 of 37"
     "Work-RAM write trace complete: 5458568 selected writes"
     "Bus write trace complete: 699251 selected writes"
 )

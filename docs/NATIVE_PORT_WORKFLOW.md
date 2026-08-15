@@ -2522,6 +2522,83 @@ including the rows nobody has ever mentioned. The same applies to any structure
 entered by computed address: vector tables, state-machine dispatch arrays, the
 actor handler table.
 
+### A recommendation ages against the measurement it was built on
+
+`PROGRESS.md` recommended widening bank `45`'s driver-state guard as "the
+largest recoverable block", worth 476,490 master cycles in call sites plus
+6,516 of 7,724 declined entries at `45:4044`. Every number in that sentence was
+correct when it was written and none of them survived the slice that chunked the
+music tick — the same slice, in the same file, a few sections above. Measured
+before starting: `45:4044` admits 1,413 of 1,535, and the bank's emulated
+remainder is 834,150 rather than the 4,430,103 the per-bank table still carried.
+The recommendation was pointing at a pool the file itself had already taken.
+
+The per-bank table is what made it hard to catch. Six of its eight rows matched
+a fresh derivation exactly, because the slice that wrote them updated only the
+bank it moved and carried the rest forward. A table that is right in six places
+reads as current in all eight.
+
+**Re-derive the per-bank remainder before acting on a recommendation built on
+it**, the same way this file already insists on re-deriving the `JSR` bucket. It
+is one command against the instruction profile. And when a slice updates one row
+of a derived table, either re-derive every row or say in the table which ones
+were measured — a stale row is worse than a missing one, because a missing row
+sends the next reader to measure.
+
+### A guard on another thread's memory is about the read's cycle, not the body's length
+
+Bank `45`'s sequencer reads three bytes the timer driver writes from its own
+thread of control. A transcript computes from a snapshot, so such a read is only
+sound if the walk reaches it before the driver can next run, and the host
+guarded that by refusing any transcript whose **finished body** exceeded the
+interrupt horizon. The guard's own comment said the *read* had to be reached in
+time. The code compared the whole body, so a walk that read the byte at cycle
+300 and ran on to 12,000 was refused for something that could only happen 4,700
+cycles after the read it was worried about.
+
+**What the other thread can invalidate is a read, and a read is over at the
+boundary of the instruction that made it.** Record that cycle — priced exactly
+the way a store's is, at the next checkpoint — and compare it instead. Keep the
+*last* such read rather than the first: once the body crosses the horizon the
+core may deliver the interrupt at a checkpoint, so a read after that point is
+stale however early the first one was.
+
+Two things about the shape are worth keeping. First, the correction was worth
++3,159 master cycles, roughly a thousandth of what it had been recommended for,
+because chunking had already made the bodies short — **a guard that reads as
+over-conservative may simply be unreachable**, and the way to find out is to
+measure it rather than to argue about it. Second, the proof was not a new test:
+the family's existing two-run comparison passed unchanged with twenty-two more
+chunks admitted. A guard change that is correct moves the admitted counts and
+nothing else.
+
+**And nothing lifts a guard of this kind.** The core abandons a transcript on a
+register mismatch at the resume point; it never compares work RAM. An interrupt
+handler that runs, rewrites the byte and returns with its registers restored is
+invisible to the abandonment machinery — which is exactly what a timer-driven
+sound driver does. A transcript's reads of another thread's memory can only ever
+be guarded by the host.
+
+### Identify a routine by the addresses it names, not by its control flow
+
+`09:60C7` was picked out of a profile as the largest contiguous emulated run in
+an untouched bank, with nothing said anywhere about what it did. Its control
+flow answers nothing: fifty-nine instructions, no branch, six indexed writes
+through a pointer it builds itself. Its *constants* answer everything. It builds
+`$27B9 + block * 32`, and `$27B9` is the palette shadow — the buffer one
+already-ported routine clears with a `TII` and another uploads with a `TIA`. It
+finishes by writing `$2CCB`, which is the flag a third already-ported routine
+clears after that upload. So it is colour cycling, and it belongs to a family the
+port already had five members of and a name for.
+
+**Grep the port's own sources and docs for a routine's constants before reading
+its logic.** After a few dozen slices the addresses that matter have been named
+somewhere, and a base address plus a flag address identifies a routine faster
+and more reliably than tracing what it does to them. It also puts the new
+routine in the right family, which is what decides its oracle: a producer that
+writes a buffer the port has already documented can be compared against that
+buffer, and the regression writes itself.
+
 ### A replaced *device* can pass the oracle by not running at all
 
 Every lesson above is about transcripts, where a native body that never

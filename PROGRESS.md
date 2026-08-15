@@ -26,11 +26,16 @@ high byte. The deterministic 1,800-frame route now executes 18,806 of 19,648
 preserving the byte-identical gameplay artifact, complete 19,648-call trace,
 and all 180,389 ordered writes.
 
-The deployed registry now runs **694,064,400 of 1,292,371,731 master cycles
-natively, 53.70% of the route and 97.69% of everything outside the frame-sync
-wait**, across 431 admitted routines with no transcript declined at an
+The deployed registry now runs **694,772,727 of 1,292,371,731 master cycles
+natively, 53.76% of the route and 97.79% of everything outside the frame-sync
+wait**, across 432 admitted routines with no transcript declined at an
 interrupt horizon and none abandoned. The 3,600-frame state census remains
 `9036a9de0c3c9917f47bff8c04c136a4824ec12601fb457d260aa2dfe4443490`.
+
+Bank `09` has its first registered routine. `09:60C7`-`09:612A`, the
+palette-block colour rotator, runs natively on all 996 calls -- fifty-nine
+instructions, no branch, 708 master cycles each -- and takes the bank's
+emulated remainder outside the wait from 1,493,322 to 782,010.
 
 The main session loop is native. Its ten entry points execute all 2,649
 iterations of `01:C154`-`01:C1B5` as a chain of crossings, leaving 21 emulated
@@ -6164,9 +6169,142 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
     whole trace.
   - [x] 423/423 Release, 3/3 ROM-free Debug.
 
+- [x] Open bank `09` with the palette-block colour rotator, `09:60C7`-`09:612A`,
+  711,312 master cycles.
+  - [x] Fifty-nine instructions, 996 executions on every row, and no branch
+    anywhere: the transcript is the disassembly with the cycle counts filled in.
+  - [x] Read the addresses rather than the shape: `$27B9` is the palette shadow
+    `00:EB46`'s whole-palette `TIA` uploads, `$2CCB` and `$2CCC,Y` are the dirty
+    flags `00:EB4D` clears, so the routine is colour cycling and belongs to a
+    family the port already had five members of.
+  - [x] Absorb the return; the `RTS` reads only the stack, and the call trace
+    proves the declaration put the observer's boundary back.
+  - [x] Registry cycles 694,067,559 -> **694,772,727**, exactly 996 x 708;
+    53.76%, 97.79% outside the wait; 432 admitted routines, 365 entered; bank
+    `09` 1,493,322 -> 782,010; census unchanged.
+  - [x] Prove it by comparison over every byte it touches -- the shadow, both
+    dirty flags and the zero-page pointer scratch -- 2,639,947 writes identical
+    on address, value, order and master cycle.
+
+- [x] Answer the question the file asked about bank `45`'s driver-state guard,
+  and correct it.
+  - [x] The recommendation was stale: it priced the guard from a measurement the
+    chunking slice had already consumed. `45:4044` declines 118 of 1,535
+    arrivals now, not 6,516 of 7,724.
+  - [x] The guard was still wrong, in the way its own comment described: it
+    compared the *finished transcript* against the interrupt horizon when what
+    has to beat the horizon is the read. Record the last driver-state read's own
+    cycle and compare that instead.
+  - [x] Worth +3,159 master cycles, and the census did not move. The correction
+    is right and the pool it was recommended for does not exist.
+
 ## Active Work
 
-Current owner: Claude. Current slice: **bank `01`'s jump table**. Done.
+Current owner: Claude. Current slice: **bank `09`, and the guard the file was
+wrong about**. Done.
+
+**The recommendation named a pool a previous slice had already taken.**
+`### Next` put bank `45`'s music tick first -- "the largest recoverable block
+now sits" there, 476,490 in call sites plus 6,516 of 7,724 declined entries at
+`45:4044`. Those figures were written *before* the slice that chunked the tick,
+and they are the numbers that slice removed. Measured today: `45:4044` admits
+1,413 of 1,535, and bank `45`'s emulated remainder outside the wait is 834,150
+rather than the 4,430,103 the per-bank table still carried -- the second
+smallest in the ROM, not the largest. **A per-bank table is derived, so
+re-derive it before believing a recommendation built on it.** This file already
+says that about the `JSR` bucket; the caution has to cover the per-bank line
+too, and the six banks whose figures were still right are what made the two
+stale ones easy to miss.
+
+**The guard was worth correcting anyway, and its own comment said how.** It
+refuses a transcript that read one of the timer driver's channel bank bytes at
+`$20F5`-`$20FA` while unmasked, because another thread of control owns those
+bytes and a transcript reads them from a snapshot taken before it runs. The
+comment says such a read "has to be reached before the next serviceable timer
+interrupt". The code compared `cycle` -- the *finished body* -- against the
+horizon, so a walk that read the byte at cycle 300 and ran on to 12,000 was
+refused for something that could only happen 4,700 cycles after the read it was
+worried about. **What the driver can invalidate is a read, and a read is over at
+the boundary of the instruction that made it.**
+
+The fix records the read's own cycle, priced exactly the way a store already is,
+and keeps the *last* such read rather than the first: once the body crosses the
+horizon the core may deliver the interrupt at a checkpoint, so a read after that
+point is stale however early the first one was. **+3,159 master cycles**, census
+unchanged -- about a thousandth of what the note predicted.
+
+**Nothing lifts the guard itself, and it is worth writing down why.** The core
+abandons a transcript on a register mismatch at the resume point; it never
+compares work RAM. An interrupt handler that runs, rewrites `$20F5,Y` and
+returns with its registers restored is therefore invisible to the abandonment
+machinery -- which is exactly what the timer driver does. **A transcript's reads
+of another thread's memory can only ever be guarded by the host, because the
+core's only check is registers.**
+
+**So the slice went to bank `09`, which had no registered routine at all** --
+1,493,322 emulated master cycles and not one entry in the registry. Its largest
+contiguous run, `09:60C7`-`09:612A`, is 711,312 of them: forty-eight per cent of
+the bank in fifty-nine instructions across a hundred bytes.
+
+**Every row in the range carries exactly 996 executions.** There is no branch in
+it, so there is nothing to predict and the transcript is the disassembly with
+the cycle counts filled in -- 708 master cycles a call, which is what the
+profile's 711,312 comes to once the interrupts landing on it are removed. Each
+distinct instruction timing was confirmed against the profile's own per-row
+totals before a line was written: 996 `ASL A` is 6,048, 996 `ROL <$30` is
+18,072, 996 `LDA [$2F],Y` is 21,060.
+
+**What it does was settled by the addresses, not by the control flow.** It
+builds `$27B9 + block * 32` in `$2F`/`$30` from a block number in the
+accumulator, and `$27B9` is the palette shadow -- the 1,024-byte buffer
+`00:E950`'s `TII $27B9, $27BA, $03FF` clears and `00:EB46`'s whole-palette `TIA`
+uploads. Thirty-two blocks of thirty-two bytes is thirty-two blocks of sixteen
+nine-bit colours, which is the VCE's entire palette RAM. It then rotates the
+pairs at offsets 6/7, 8/9 and 10/11 by one position and writes `$2CCC,Y` and
+`$2CCB`, the dirty flags `00:EB4D` clears after that upload. **It is colour
+cycling**, and the port already had five members of this family -- a consumer
+with no producer. Reading a routine's constants against addresses the port has
+already named is faster than reading its control flow.
+
+| | Before | After |
+| --- | ---: | ---: |
+| Emulated in `09:60C7`-`09:612A` | 711,312 | **0** |
+| Registry cycles | 694,064,400 | **694,772,727** |
+| Native share | 53.70% | **53.76%** |
+| Native share outside the wait | 97.69% | **97.79%** |
+| Admitted routines | 431 | **432** |
+| Routines entered | 364 | **365** |
+| Bank `09` outside the wait | 1,493,322 | **782,010** |
+| Bank `45` outside the wait | 834,150 | **830,901** |
+| Release tests | 423 | **424** |
+
+The registry gained exactly 996 x 708. The two changes are separable and were
+measured separately: +3,159 for the guard, +705,168 for the rotator.
+
+**The oracle is every byte the routine touches, and this is the family that
+makes that possible.** A producer that writes the shadow can be checked against
+the shadow. The regression records the route twice, emulated and replaced, over
+three ranges -- `$27B9`-`$2FB8` for the rotation itself, `$2CCB`-`$2CEB` for the
+dirty flags, and `$2028`-`$2032` for the zero-page scratch the pointer is built
+in -- and requires 2,639,947 writes to match on address, value, order and master
+cycle. The scratch range is the sharp one: it is where the five
+`ASL A`/`ROL <$30` pairs and both halves of the sixteen-bit `ADC` land, so a
+mis-modelled carry shows up there before it can reach a colour. The call trace
+is compared as well, because the walk ends past its `RTS` and an absorbed return
+deletes the boundary the observer closes a call on. 26.9s.
+
+**It was right on the first run**, which is worth recording only for what made
+it so: the routine has no state to be wrong about. Fifty-nine instructions of
+work RAM with no branch, no ROM read, no device access and no call means the
+only thing that can stop the walk is the block number leaving work RAM above
+block 195 -- and the route only ever passes 2, 3 and 7.
+
+### Previous: bank `01`'s jump table
+`01:C000`-`01:C0CB` is sixty-eight `JMP absolute` rows, three bytes each, and it
+is how the rest of the cartridge reaches bank 01's routines -- and, through the
+bank-call wrapper at `00:E241`, bank 00's. A caller names a row rather than a
+routine, which is why the table exists and why nothing in the port had touched
+it: it is not a routine, it is a switchboard.
 `01:C000`-`01:C0CB` is sixty-eight `JMP absolute` rows, three bytes each, and it
 is how the rest of the cartridge reaches bank 01's routines -- and, through the
 bank-call wrapper at `00:E241`, bank 00's. A caller names a row rather than a
@@ -9059,6 +9197,9 @@ Four arms in the tail are dead: `01:C1A2`, `01:C1A9`, `01:C1B0` and `01:C1B7`
 are `JMP`s out of the loop into state handlers, and none has executed in 3,600
 frames. Hand them back.
 
+**Taken; the guard half is settled above and the bank-09 half became this
+slice.**
+
 **Taken, and it was worth three and a half times what this said.** The
 recommendation below named `01:C012` and `01:C018` because those are the two
 rows a caller happens to be described by elsewhere in this file. Profiling the
@@ -9103,27 +9244,55 @@ names a slice:
 | `09:60C7`-`09:612A` | 711,312 | Unported |
 | `00:EB46` | 625,095 | The whole-palette `TIA`. A capacity wall |
 
-Per bank the remainder outside the wait is `00` 5,372,172, `45` 4,430,103,
-`01` 950,343, `09` 1,493,322, `03` 1,174,179, `02` 1,004,511, `08` 698,754,
-`07` 256,680 -- 15,380,064 in total. Bank `01` fell 101,712 for the jump table,
-the whole of the gain and nothing else; the slice before it fell 1,259,127 for
-the main session loop, and the one before that 779,448 the same way. Bank `01`
-has now given up 2,140,287 in three slices and is the smallest remainder but
-one. Bank `00` is still the largest, but roughly
-four million of it is the refused set above -- the driver's `SEI`, the
-whole-palette `TIA`, the `BBR0` at `00:F423`, the two interrupt acknowledges --
-which leaves bank `45` the largest recoverable pool and bank `09` the largest
-untouched one.
+**The per-bank remainder, re-derived in full rather than carried forward.**
+Every row below is the profile's `master_cycles` summed over rows with
+`registry_entry == 0`, excluding the frame-sync spin at `00:E323` and
+`00:E325`. **That rule is stated because the previous version of this table was
+not reproducible from it**: two of its eight rows had been carried forward
+across the slices that moved them, and six had not, which is what made it read
+as current. Re-derive all eight whenever one moves.
 
-**Then decide whether the music tick's guard can be widened**, because that is
-where the largest recoverable block now sits. 476,490 in call sites is only the
-visible part: the tick declines 6,516 of 7,724 entries at `45:4044` and 2,598 of
-7,724 at the tick's own head, and everything inside a declined entry runs
-interpreted. The guard is a correctness boundary, not a horizon heuristic — the
-driver writes `$F5`/`$F7`/`$F9` from the other thread of control — so this is a
-design question about how a transcript can read a byte another thread owns, and
-not a mechanical edit. It is the first item on this list in slices that is not.
+| Bank | Master cycles | |
+| --- | ---: | --- |
+| `00` | 3,846,126 | Roughly four million was refused set; see below |
+| `03` | 1,174,179 | |
+| `02` | 1,004,511 | |
+| `01` | 950,343 | Given up 2,140,287 in three slices |
+| `45` | 830,901 | |
+| `09` | 782,010 | Was 1,493,322 before this slice |
+| `08` | 698,754 | |
+| `07` | 256,680 | |
+| | **9,543,504** | |
 
+Bank `00` is still the largest and most of it is the refused set above -- the
+driver's `SEI`, the whole-palette `TIA`, the `BBR0` at `00:F423`, the two
+interrupt acknowledges. Below it the banks have converged: five of the seven
+now sit between 700k and 1.2M, and no single pool is worth more than the
+`09:60C7` slice was.
+
+**The music tick's guard is settled and is not a recommendation any more.**
+This list carried it for several slices as the largest recoverable block,
+worth 476,490 in call sites plus 6,516 of 7,724 declined entries at `45:4044`.
+Those figures predate the slice that chunked the tick and are the numbers that
+slice removed: `45:4044` admits 1,417 of 1,535 now. The guard was corrected
+anyway -- it compared a finished transcript against the interrupt horizon when
+what has to beat the horizon is the read -- and that was worth +3,159. Nothing
+further lifts it: the core abandons only on a register mismatch and never
+compares work RAM, so a transcript's reads of another thread's memory can only
+be guarded host-side.
+
+**Take the rest of bank `09` next.** It has one registered routine and 782,010
+emulated master cycles left, in three runs that are each about the size of a
+recent slice and none of which appears in any family source:
+`09:72FD`-`09:737B` (284,361), `09:71EA`-`09:7247` (245,358) and
+`09:725E`-`09:72EA` (164,607). They are contiguous and adjacent, which suggests
+one routine or one family rather than three, and `09:60C7` has already
+established the bank's shape: work RAM, no ROM read, entered through the
+bank-call wrapper. Disassemble `09:71EA`-`09:737B` as a unit before splitting
+it.
+
+The cheap work after that is the fifty jump-table rows in bank `01` that this
+route never reaches, whenever a route reaches them.
 **The old ranking, kept because its per-bank arithmetic still holds.** Note
 that it counts `RTS` opcodes only, so it never saw the interrupt return that
 turned out to be nine times the largest row in it — rank by what the machine

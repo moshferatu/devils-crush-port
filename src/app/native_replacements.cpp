@@ -174,6 +174,16 @@ replace_native_gameplay_routine_impl(
         }) {
         return detail::replace_actor_scan_preamble(entry, work_ram);
     }
+    // Bank 09's palette-block colour rotator, and bank 09's first entry of any
+    // kind. Straight-line work RAM: rotate three colours of one shadow block
+    // and flag it for the whole-palette upload.
+    if (entry.routine
+        == RoutineKey{
+            .physical_bank = 0x09U,
+            .logical_pc = 0x60C7U,
+        }) {
+        return detail::replace_palette_colour_cycle(entry, work_ram);
+    }
     // The main session loop. Ten entry points, all of them the address a call
     // returns to: the loop is a chain of crossings, and each walk ends on the
     // next `JSR` it makes rather than on a return.

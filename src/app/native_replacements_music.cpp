@@ -325,18 +325,40 @@ std::optional<RoutineReplacement> replace_music_sequencer(
     // not the one byte it was handed on the way in.
     bool interrupt_window_open =
         (entry.registers.status & kInterruptDisable) == 0U;
-    // Set the first time the walk reads one of the timer driver's channel
-    // bank bytes *while an interrupt could land*. Those are the only bytes
-    // here another thread of control writes, and a transcript reads them from
-    // a snapshot taken before it runs, so such a read is only correct if the
-    // walk reaches it before the next serviceable timer interrupt. Checked
-    // once at the end. A read taken under the mask needs no such promise: the
-    // driver cannot have run since the snapshot.
+    // Where the walk last read one of the timer driver's channel bank bytes
+    // *while an interrupt could land*, as a master-cycle offset into the body,
+    // and whether it ever did. Those are the only bytes here another thread of
+    // control writes, and a transcript reads them from a snapshot taken before
+    // it runs, so such a read is only correct if the walk reaches it before the
+    // next serviceable timer interrupt. A read taken under the mask needs no
+    // such promise: the driver cannot have run since the snapshot.
+    //
+    // **It is the read's own cycle that has to beat the horizon, not the
+    // transcript's length**, and those are very different numbers here. This
+    // guard used to compare the finished body against the horizon, so a walk
+    // that read the byte at cycle 300 and ran on to 12,000 was refused for
+    // something that happened 4,700 cycles after the read it was worried
+    // about. What the driver can invalidate is a read, and a read is over at
+    // the boundary of the instruction that made it.
+    //
+    // The *last* such read is the one to keep, not the first. Once the body
+    // crosses the horizon the core may deliver the interrupt at a checkpoint
+    // and the driver may write these bytes; a read after that point is stale
+    // however early the first one was.
+    //
+    // Priced exactly the way a store is, and for the same reason: the offset is
+    // not known until the instruction's cycle count is, so the read is recorded
+    // here and stamped by the next `append_checkpoint`.
     bool reads_driver_state = false;
+    bool driver_state_read_pending = false;
+    std::uint32_t driver_state_read_cycle = 0U;
 
     const auto read_ram =
-        [&ram, &overflow, &reads_driver_state, &interrupt_window_open](
-            const std::uint16_t address) -> std::uint8_t {
+        [&ram,
+         &overflow,
+         &reads_driver_state,
+         &driver_state_read_pending,
+         &interrupt_window_open](const std::uint16_t address) -> std::uint8_t {
             if (address < kWorkRamBase || address >= kWorkRamEnd) {
                 overflow = true;
                 return 0U;
@@ -345,6 +367,7 @@ std::optional<RoutineReplacement> replace_music_sequencer(
                 && address >= kDriverChannelBankFirst
                 && address <= kDriverChannelBankLast) {
                 reads_driver_state = true;
+                driver_state_read_pending = true;
             }
             return ram[address - kWorkRamBase];
         };
@@ -407,12 +430,21 @@ std::optional<RoutineReplacement> replace_music_sequencer(
          &commit_pending_writes,
          &status_change_pending,
          &pending_status,
+         &driver_state_read_pending,
+         &driver_state_read_cycle,
          &interrupt_window_open](
             const std::uint16_t instruction_pc,
             const std::uint16_t resume_pc,
             const std::uint32_t instruction_cycles) {
             cycle += instruction_cycles;
             commit_pending_writes(cycle);
+            // A driver-state read is over once its instruction is, which is
+            // the first boundary at which the core could deliver the interrupt
+            // that lets the driver rewrite the byte.
+            if (driver_state_read_pending) {
+                driver_state_read_cycle = cycle;
+                driver_state_read_pending = false;
+            }
             registers.program_counter = resume_pc;
             replacement.checkpoints.push_back({
                 .interrupt_sample_master_cycle_offset = cycle - 3U,
@@ -688,9 +720,11 @@ std::optional<RoutineReplacement> replace_music_sequencer(
             // snapshot and the read, so `reads_driver_state` was never set for
             // it. An unmasked one has to be reached before the next
             // serviceable timer interrupt, or the value may already be stale
-            // by the time the walk uses it.
+            // by the time the walk uses it -- and it is the read that has to
+            // be reached in time, not the transcript that has to end in time.
             if (reads_driver_state
-                && cycle >= entry.master_cycles_until_timer_interrupt) {
+                && driver_state_read_cycle
+                    >= entry.master_cycles_until_timer_interrupt) {
                 return std::nullopt;
             }
             registers.program_counter = pc;

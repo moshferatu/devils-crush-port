@@ -2913,6 +2913,13 @@ parse_logical_address_range(const std::string_view text)
                                || request.routine.logical_pc == 0xC09FU
                                || request.routine.logical_pc == 0xC0A2U)
                            && request.all_calls;
+                       const bool proven_palette_colour_cycle =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x09U,
+                                       .logical_pc = 0x60C7U,
+                                   }
+                           && request.all_calls;
                        const bool proven_actor_scan_run =
                            request.routine
                                    == RoutineKey{
@@ -3152,6 +3159,7 @@ parse_logical_address_range(const std::string_view text)
                            && !proven_actor_scan_preamble
                            && !proven_main_session_loop
                            && !proven_bank_one_jump_table
+                           && !proven_palette_colour_cycle
                            && !proven_actor_scan_run
                            && !proven_actor_dispatch_vector
                            && !proven_actor_queue_registration
@@ -3471,6 +3479,7 @@ parse_logical_address_range(const std::string_view text)
             "semantic 01:C060@all, semantic 01:C063@all, semantic 01:C069@all, "
             "semantic 01:C06C@all, semantic 01:C06F@all, semantic 01:C081@all, "
             "semantic 01:C087@all, semantic 01:C09F@all, semantic 01:C0A2@all, "
+            "semantic 09:60C7@all, "
             "semantic 01:C80A@all, semantic 01:C7F4@all, semantic 01:C7EF@all, semantic 01:C7F9@all, semantic 01:C7FC@all, semantic 01:C804@all, semantic 01:C812@all, semantic 01:C7EA@all, semantic 01:C7E5@all, "
             "semantic 02:42EB@all, "
             "semantic 02:42F6@all, semantic 02:4345@all, "
