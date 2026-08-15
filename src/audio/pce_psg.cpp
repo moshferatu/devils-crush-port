@@ -140,11 +140,19 @@ void PcePsg::update_output(
     const std::int32_t timestamp,
     Channel& channel) noexcept
 {
+    const auto channel_index = static_cast<std::size_t>(
+        &channel - channels_.data());
     const auto count = [this, &channel](PathCoverage& path) {
         ++path.total;
         ++path.by_channel[
             static_cast<std::size_t>(&channel - channels_.data())];
     };
+
+    if ((output_channel_mask_ & (1U << channel_index)) == 0U) {
+        count(coverage_.silent);
+        emit(timestamp, channel, 0, 0);
+        return;
+    }
 
     switch (channel.output_mode) {
     case OutputMode::Off:
@@ -200,6 +208,26 @@ void PcePsg::update_output(
         emit(timestamp, channel, left, right);
         break;
     }
+    }
+}
+
+void PcePsg::set_output_channel_mask(
+    const std::int32_t timestamp,
+    const std::uint8_t mask) noexcept
+{
+    const auto bounded_mask = static_cast<std::uint8_t>(mask & 0x3FU);
+    if (bounded_mask == output_channel_mask_) {
+        return;
+    }
+
+    update(timestamp);
+    const auto changed = static_cast<std::uint8_t>(
+        bounded_mask ^ output_channel_mask_);
+    output_channel_mask_ = bounded_mask;
+    for (std::size_t index = 0; index < channels_.size(); ++index) {
+        if ((changed & (1U << index)) != 0U) {
+            update_output(timestamp, channels_[index]);
+        }
     }
 }
 

@@ -173,6 +173,19 @@ public:
         return std::nullopt;
     }
 
+    [[nodiscard]] bool set_music_voice_overlay(
+        bool,
+        std::span<const std::byte>) override
+    {
+        return false;
+    }
+
+    [[nodiscard]] bool music_voice_overlay_enabled()
+        const noexcept override
+    {
+        return false;
+    }
+
     [[nodiscard]] bool set_native_vdc(bool) override
     {
         return false;

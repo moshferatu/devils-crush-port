@@ -2,6 +2,7 @@
 
 #include "devils_crush/emulation/pce_runtime.hpp"
 
+#include "devils_crush/audio/music_voice_overlay.hpp"
 #include "devils_crush/audio/pce_psg.hpp"
 #include "devils_crush/cpu/huc6280_interrupt_boundary.hpp"
 #include "devils_crush/cpu/huc6280_irq.hpp"
@@ -46,6 +47,10 @@ constexpr std::size_t kPceWorkRamSize = 8192U;
 constexpr std::size_t kPceVramWordCount = DC_BEETLE_VRAM_WORD_COUNT;
 constexpr std::size_t kPcePaletteEntryCount =
     DC_BEETLE_PALETTE_ENTRY_COUNT;
+// Bank $45 maps to HuCard ROM bank $25. The programmer at 45:41A3 indexes
+// 32-byte waveforms starting at logical $4E59 and cannot cross the bank.
+constexpr std::size_t kMusicWaveformTableOffset = 0x25U * 0x2000U + 0x0E59U;
+constexpr std::size_t kMusicWaveformTableEnd = 0x26U * 0x2000U;
 
 // Device registers a replacement transcript may drive directly. Each range
 // is a whole register file on the hardware page (physical bank FF) whose
@@ -337,6 +342,7 @@ public:
     {
         assert_owner_thread();
         dc_beetle_clear_psg_model();
+        music_voice_overlay_.reset();
         native_psg_.reset();
         dc_beetle_clear_vdc_model();
         native_vdc_.reset();
@@ -835,6 +841,7 @@ public:
         assert_owner_thread();
         if (!enabled) {
             dc_beetle_clear_psg_model();
+            music_voice_overlay_.reset();
             native_psg_.reset();
             return true;
         }
@@ -847,7 +854,7 @@ public:
             nullptr,
             audio::PcePsg::Revision::HuC6280);
         native_psg_model_ = {
-            .user_data = native_psg_.get(),
+            .user_data = this,
             .configure = &psg_configure,
             .power = &psg_power,
             .write = &psg_write,
@@ -874,6 +881,37 @@ public:
             return std::nullopt;
         }
         return native_psg_->coverage();
+    }
+
+    [[nodiscard]] bool set_music_voice_overlay(
+        const bool enabled,
+        const std::span<const std::byte> rom) override
+    {
+        assert_owner_thread();
+        if (!enabled) {
+            music_voice_overlay_.reset();
+            return true;
+        }
+        if (music_voice_overlay_) {
+            return true;
+        }
+        if (loaded_ || !native_psg_
+            || rom.size() < kMusicWaveformTableEnd) {
+            return false;
+        }
+
+        music_voice_overlay_ =
+            std::make_unique<audio::MusicVoiceOverlay>(rom.subspan(
+                kMusicWaveformTableOffset,
+                kMusicWaveformTableEnd - kMusicWaveformTableOffset));
+        return true;
+    }
+
+    [[nodiscard]] bool music_voice_overlay_enabled()
+        const noexcept override
+    {
+        assert_owner_thread();
+        return music_voice_overlay_ != nullptr;
     }
 
     // The same seam for the video device, with one difference that matters:
@@ -1455,9 +1493,14 @@ private:
 
     // The fork's boundary is C, so the model reaches it as free functions
     // carrying the instance in `user_data`.
+    static BeetlePceRuntime& psg_runtime(void* const user_data) noexcept
+    {
+        return *static_cast<BeetlePceRuntime*>(user_data);
+    }
+
     static audio::PcePsg& psg_model(void* const user_data) noexcept
     {
-        return *static_cast<audio::PcePsg*>(user_data);
+        return *psg_runtime(user_data).native_psg_;
     }
 
     static void psg_configure(
@@ -1466,19 +1509,27 @@ private:
         std::int32_t* const right,
         const int revision)
     {
-        psg_model(user_data).configure(
-            left,
-            right,
+        const auto model_revision =
             revision == DC_BEETLE_PSG_REVISION_HUC6280A
-                ? audio::PcePsg::Revision::HuC6280A
-                : audio::PcePsg::Revision::HuC6280);
+            ? audio::PcePsg::Revision::HuC6280A
+            : audio::PcePsg::Revision::HuC6280;
+        auto& runtime = psg_runtime(user_data);
+        runtime.native_psg_->configure(left, right, model_revision);
+        if (runtime.music_voice_overlay_) {
+            runtime.music_voice_overlay_->configure(
+                left, right, model_revision);
+        }
     }
 
     static void psg_power(
         void* const user_data,
         const std::int32_t timestamp)
     {
-        psg_model(user_data).power(timestamp);
+        auto& runtime = psg_runtime(user_data);
+        runtime.native_psg_->power(timestamp);
+        if (runtime.music_voice_overlay_) {
+            runtime.music_voice_overlay_->power(timestamp);
+        }
     }
 
     static void psg_write(
@@ -1487,21 +1538,40 @@ private:
         const std::uint8_t address,
         const std::uint8_t value)
     {
-        psg_model(user_data).write(timestamp, address, value);
+        auto& runtime = psg_runtime(user_data);
+        runtime.native_psg_->write(timestamp, address, value);
+        if (runtime.music_voice_overlay_) {
+            const auto* const work_ram = runtime.work_ram_data();
+            runtime.music_voice_overlay_->observe_primary_write(
+                timestamp,
+                address,
+                value,
+                work_ram != nullptr
+                    ? std::span<const std::byte>{work_ram, kPceWorkRamSize}
+                    : std::span<const std::byte>{});
+        }
     }
 
     static void psg_update(
         void* const user_data,
         const std::int32_t timestamp)
     {
-        psg_model(user_data).update(timestamp);
+        auto& runtime = psg_runtime(user_data);
+        runtime.native_psg_->update(timestamp);
+        if (runtime.music_voice_overlay_) {
+            runtime.music_voice_overlay_->update(timestamp);
+        }
     }
 
     static void psg_reset_timestamp(
         void* const user_data,
         const std::int32_t base)
     {
-        psg_model(user_data).reset_timestamp(base);
+        auto& runtime = psg_runtime(user_data);
+        runtime.native_psg_->reset_timestamp(base);
+        if (runtime.music_voice_overlay_) {
+            runtime.music_voice_overlay_->reset_timestamp(base);
+        }
     }
 
     static void psg_capture_state(
@@ -1583,6 +1653,10 @@ private:
         restored.volume_update_pending = state->volume_update_pending != 0U;
 
         psg_model(user_data).apply_state(restored);
+        auto& runtime = psg_runtime(user_data);
+        if (runtime.music_voice_overlay_) {
+            runtime.music_voice_overlay_->invalidate(0);
+        }
     }
 
     static video::PceVdc& vdc_model(void* const user_data) noexcept
@@ -3932,6 +4006,7 @@ private:
     // Both outlive every frame the model is installed for.
     std::unique_ptr<audio::PcePsg> native_psg_;
     dc_beetle_psg_model native_psg_model_{};
+    std::unique_ptr<audio::MusicVoiceOverlay> music_voice_overlay_;
     std::unique_ptr<video::PceVdc> native_vdc_;
     dc_beetle_vdc_model native_vdc_model_{};
     std::unique_ptr<video::PceVce> native_vce_;

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "devils_crush/app/native_registry.hpp"
+#include "devils_crush/audio/music_voice_overlay.hpp"
 #include "devils_crush/core/atomic_file.hpp"
 #include "devils_crush/core/backup_ram.hpp"
 #include "devils_crush/core/high_score_table.hpp"
@@ -99,6 +100,75 @@ void test_hash_vectors()
             == "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61"
                "f20015ad",
         "SHA-256 known vector");
+}
+
+void test_music_voice_overlay()
+{
+    constexpr std::size_t kBufferPositions = 65536U + 32U;
+    std::vector<std::int32_t> left(kBufferPositions);
+    std::vector<std::int32_t> right(kBufferPositions);
+    std::array<std::byte, 32> waveform{};
+    for (std::size_t index = 0; index < waveform.size(); ++index) {
+        waveform[index] = static_cast<std::byte>(
+            (index & 1U) != 0U ? 0x1FU : 0x00U);
+    }
+
+    devils_crush::audio::MusicVoiceOverlay overlay(waveform);
+    overlay.configure(
+        left.data(),
+        right.data(),
+        devils_crush::audio::PcePsg::Revision::HuC6280A);
+    overlay.power(0);
+
+    std::array<std::byte,
+               devils_crush::audio::MusicVoiceOverlay::kWorkRamSize>
+        ram{};
+    const auto store = [&ram](
+                           const std::uint16_t address,
+                           const std::uint8_t value) {
+        ram[static_cast<std::size_t>(address - 0x2000U)] =
+            static_cast<std::byte>(value);
+    };
+
+    // Effect slot 6 and music slot 2 both target channel 2. The effect wins
+    // the cartridge's physical latch, while the overlay reconstructs slot 2.
+    store(0x20D6U, 0x04U);
+    store(0x2E46U + 6U, 0x01U);
+    store(0x2E82U + 6U, 0x02U);
+    store(0x2F22U + 6U, 0x40U);
+    store(0x2F2CU + 6U, 0x01U);
+    store(0x2E46U + 2U, 0x01U);
+    store(0x2E82U + 2U, 0x02U);
+    store(0x2F22U + 2U, 0x60U);
+    store(0x2F2CU + 2U, 0x01U);
+    store(0x2EA0U + 2U, 0x00U);
+    store(0x2FAEU + 2U, 0xFFU);
+    store(0x2E37U, 0x1FU);
+
+    overlay.observe_primary_write(0, 0x01U, 0xFFU, ram);
+    overlay.observe_primary_write(0, 0x00U, 0x00U, ram);
+    overlay.observe_primary_write(0, 0x02U, 0x40U, ram);
+    check(
+        overlay.displaced_channel_mask() == 0x04U,
+        "music overlay identifies the effect-displaced PSG channel");
+
+    overlay.update(20000);
+    check(
+        std::ranges::any_of(left, [](const std::int32_t sample) {
+            return sample != 0;
+        }),
+        "music overlay emits the displaced persistent voice");
+
+    // With the effect gone the same sequencer prefix mutes the derived voice;
+    // it is not a duplicate of music already audible on the physical PSG.
+    store(0x2E46U + 6U, 0x00U);
+    store(0x2F22U + 6U, 0x00U);
+    store(0x2F2CU + 6U, 0x00U);
+    overlay.observe_primary_write(20000, 0x00U, 0x00U, ram);
+    overlay.observe_primary_write(20000, 0x02U, 0x40U, ram);
+    check(
+        overlay.displaced_channel_mask() == 0x00U,
+        "music overlay mutes itself when the physical music voice returns");
 }
 
 void test_native_cached_position_restore()
@@ -10125,6 +10195,7 @@ void test_runtime_boundary()
 int main()
 {
     test_hash_vectors();
+    test_music_voice_overlay();
     test_native_position_integrator();
     test_native_motion_damping();
     test_native_motion_substep_split();

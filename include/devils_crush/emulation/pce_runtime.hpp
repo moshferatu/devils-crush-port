@@ -535,6 +535,18 @@ public:
     [[nodiscard]] virtual std::optional<audio::PcePsg::Coverage>
     native_psg_coverage() const = 0;
 
+    // Experimental Devil's Crush-specific extension: runs the six persistent
+    // music voices on a second native PSG and mixes back only voices displaced
+    // by the three higher-priority effect slots. The ROM bytes supply the
+    // cartridge's original waveform table; they are copied during install.
+    // Enable it before loading the ROM so the core can bind both PSGs to the
+    // same pair of resampler buffers.
+    [[nodiscard]] virtual bool set_music_voice_overlay(
+        bool enabled,
+        std::span<const std::byte> rom) = 0;
+    [[nodiscard]] virtual bool music_voice_overlay_enabled()
+        const noexcept = 0;
+
     // Replaces the emulator's video display controller with the native device
     // model in `devils_crush::video`. The colour encoder keeps the schedule --
     // the dot-clock divider, the two blanking counters, the palette and the

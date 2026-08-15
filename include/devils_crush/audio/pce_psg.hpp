@@ -112,6 +112,21 @@ public:
         std::uint8_t value) noexcept;
     void update(std::int32_t timestamp) noexcept;
 
+    // Selects which channels contribute to the output buffers without
+    // stopping their oscillators. A muted channel keeps advancing, so it can
+    // be made audible later without restarting its waveform or noise phase.
+    // The ordinary hardware model leaves all six bits enabled; this seam is
+    // used by the music-voice overlay, which runs a second PSG silently until
+    // an effect occupies one of the physical chip's channels.
+    void set_output_channel_mask(
+        std::int32_t timestamp,
+        std::uint8_t mask) noexcept;
+
+    [[nodiscard]] std::uint8_t output_channel_mask() const noexcept
+    {
+        return output_channel_mask_;
+    }
+
     // Rebases every timestamp the model holds. The frame boundary calls this
     // with the master-cycle remainder that did not fit in the frame, divided
     // by three, so the next frame's timestamps stay relative to the same
@@ -205,6 +220,7 @@ private:
 
     std::int32_t lastts_ = 0;
     Revision revision_ = Revision::HuC6280;
+    std::uint8_t output_channel_mask_ = 0x3FU;
 
     Coverage coverage_{};
 

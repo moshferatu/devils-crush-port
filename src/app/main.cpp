@@ -220,6 +220,9 @@ struct CommandLine {
     // out to the emulator's, which is what a difference in the audio hash is
     // measured against.
     bool emulated_psg = false;
+    // Experimental repair for the cartridge's deliberate effect-first PSG
+    // arbitration: displaced music voices continue on a second native PSG.
+    bool music_voice_overlay = false;
     // Reports which of the device model's paths a recorded route exercised,
     // which is the measure of what a census-based acceptance actually proves.
     bool report_psg_coverage = false;
@@ -763,6 +766,9 @@ parse_logical_address_range(const std::string_view text)
             options.bus_write_trace_path = argv[++index];
         } else if (argument == "--emulated-psg") {
             options.emulated_psg = true;
+        } else if (argument == "--music-voice-overlay"
+                   || argument == "--native-music-overlay") {
+            options.music_voice_overlay = true;
         } else if (argument == "--report-psg-coverage") {
             options.report_psg_coverage = true;
         } else if (argument == "--emulated-vdc") {
@@ -3693,6 +3699,10 @@ parse_logical_address_range(const std::string_view text)
         options.error =
             "--bus-write-range and --bus-write-trace "
             "must be used together.";
+    } else if (options.music_voice_overlay && options.emulated_psg) {
+        options.error =
+            "--music-voice-overlay requires the native PSG; remove "
+            "--emulated-psg.";
     }
     return options;
 }
@@ -3805,8 +3815,11 @@ void print_usage()
            "  --emulated-psg hands it back to the emulator, which is what a\n"
            "  difference in the audio hash is measured against, and\n"
            "  --report-psg-coverage prints which of its paths a recorded\n"
-           "  route exercised. The video display controller is a native\n"
-           "  device model on the same terms; --emulated-vdc hands the chip\n"
+           "  route exercised. --music-voice-overlay experimentally keeps\n"
+           "  music voices sounding on a second native PSG while effects\n"
+           "  occupy their original hardware channels. The video display\n"
+           "  controller is a native device model on the same terms;\n"
+           "  --emulated-vdc hands the chip\n"
            "  back, and --report-vdc-coverage prints what the route asked\n"
            "  of it. The colour encoder is a third, and owns the video\n"
            "  schedule and the framebuffer; --emulated-vce hands it back,\n"
@@ -12871,6 +12884,17 @@ int main(const int argc, char* argv[])
         if (!options.emulated_psg && !runtime->set_native_psg(true)) {
             std::cerr << "Could not install the native sound generator.\n";
             return EXIT_FAILURE;
+        }
+
+        if (options.music_voice_overlay) {
+            const auto overlay_rom = read_rom_bytes(options.rom_path);
+            if (!overlay_rom
+                || !runtime->set_music_voice_overlay(true, *overlay_rom)) {
+                std::cerr << "Could not install the experimental music "
+                             "voice overlay.\n";
+                return EXIT_FAILURE;
+            }
+            std::cout << "Music voice overlay: enabled (experimental)\n";
         }
 
         // Installed before the ROM for a different reason: the model takes

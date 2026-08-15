@@ -38,6 +38,7 @@ include(CompilerWarnings)
 add_library(
     dc_core
     STATIC
+    src/audio/music_voice_overlay.cpp
     src/audio/pce_psg.cpp
     src/cabinet/cabinet_state.cpp
     src/cabinet/display_config.cpp
