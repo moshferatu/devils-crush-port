@@ -21,6 +21,10 @@ inline constexpr std::size_t kActorSlotCount = 0x7FU;
 inline constexpr std::size_t kBallActorSlot = 0x00U;
 inline constexpr std::size_t kFirstFlipperControlSlot = 0x04U;
 inline constexpr std::size_t kLastFlipperControlSlot = 0x09U;
+inline constexpr std::size_t kFirstSpiderSlot = 0x26U;
+inline constexpr std::size_t kLastSpiderSlot = 0x29U;
+inline constexpr std::size_t kFirstThreeBlobSlot = 0x58U;
+inline constexpr std::size_t kLastThreeBlobSlot = 0x5AU;
 inline constexpr std::size_t kFirstFixedActorSlot = 0x0AU;
 inline constexpr std::size_t kLastFixedActorSlot = 0x61U;
 inline constexpr std::size_t kFirstDynamicActorSlot = 0x62U;
@@ -75,6 +79,13 @@ struct TableActorState {
 
 [[nodiscard]] std::optional<CabinetState> decode_cabinet_state(
     std::span<const std::byte> work_ram) noexcept;
+
+// Selects the fixed actors whose original camera cull cabinet mode may
+// disable. The Three Blobs are admitted only after the camera has activated
+// them once, preserving their original start-of-session initialization.
+[[nodiscard]] bool should_disable_actor_camera_cull(
+    std::size_t slot,
+    std::uint8_t flags) noexcept;
 
 // Decodes the mapped parallel actor arrays at logical $3000-$3FFF. This is
 // observation only: the original assembly remains the sole owner of actor

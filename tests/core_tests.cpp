@@ -6998,6 +6998,7 @@ void test_cabinet_state()
     using devils_crush::cabinet::PlayfieldView;
     using devils_crush::cabinet::decode_cabinet_state;
     using devils_crush::cabinet::decode_table_actor_state;
+    using devils_crush::cabinet::should_disable_actor_camera_cull;
 
     std::vector<std::byte> work_ram(8192U);
     const auto frontend = decode_cabinet_state(work_ram);
@@ -7132,6 +7133,21 @@ void test_cabinet_state()
         !decode_table_actor_state(
             std::span<const std::byte>(work_ram).first(8191U)),
         "actor-state decode rejects incomplete work RAM");
+
+    check(
+        should_disable_actor_camera_cull(0x04U, 0x02U)
+            && should_disable_actor_camera_cull(0x29U, 0x02U),
+        "flippers and spiders always bypass the cabinet camera cull");
+    check(
+        !should_disable_actor_camera_cull(0x58U, 0x02U)
+            && should_disable_actor_camera_cull(0x58U, 0x82U)
+            && should_disable_actor_camera_cull(0x5AU, 0x82U),
+        "the Three Blobs bypass the cull only after camera activation");
+    check(
+        !should_disable_actor_camera_cull(0x58U, 0x80U)
+            && !should_disable_actor_camera_cull(0x57U, 0x82U)
+            && !should_disable_actor_camera_cull(0x5BU, 0x82U),
+        "the cabinet cull policy leaves uncullable and unrelated actors alone");
 }
 
 // The plunger, without a plunger. Everything the rod's motion means is decided

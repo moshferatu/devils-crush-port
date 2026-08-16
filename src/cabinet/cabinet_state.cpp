@@ -27,6 +27,8 @@ constexpr std::size_t kScoreLowBase = 0x0205U;
 constexpr std::size_t kScoreMiddleBase = 0x020CU;
 constexpr std::size_t kScoreHighBase = 0x0213U;
 constexpr std::uint8_t kBonusStageSessionBit = 0x10U;
+constexpr std::uint8_t kActorCameraCullFlag = 0x02U;
+constexpr std::uint8_t kActorCameraActiveFlag = 0x80U;
 constexpr std::size_t kActorTypeBase = 0x1000U;
 constexpr std::size_t kActorFlagsBase = 0x1080U;
 constexpr std::size_t kActorXLowBase = 0x1180U;
@@ -117,6 +119,25 @@ std::optional<CabinetState> decode_cabinet_state(
         .bonus_stage = bonus_stage,
         .screen_selector = screen_selector,
     };
+}
+
+bool should_disable_actor_camera_cull(
+    const std::size_t slot,
+    const std::uint8_t flags) noexcept
+{
+    if ((flags & kActorCameraCullFlag) == 0U) {
+        return false;
+    }
+
+    const bool flipper =
+        slot >= kFirstFlipperControlSlot
+        && slot <= kLastFlipperControlSlot;
+    const bool spider =
+        slot >= kFirstSpiderSlot && slot <= kLastSpiderSlot;
+    const bool activated_three_blob =
+        slot >= kFirstThreeBlobSlot && slot <= kLastThreeBlobSlot
+        && (flags & kActorCameraActiveFlag) != 0U;
+    return flipper || spider || activated_three_blob;
 }
 
 std::optional<std::array<TableActorState, kActorSlotCount>>

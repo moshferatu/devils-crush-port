@@ -917,9 +917,15 @@ giant face reading as lit from the start of a game until the camera reached
 them and the on-camera logic put them right. The flippers are safe because
 `01:D466` is driven entirely by the button and consults nothing else, and the
 spiders were the other family the whole-table view exposed as frozen.
-`--cabinet-seed-check` measures the blast radius: under the named-slot lift its
-opening sweep is pixel-identical to the original cull, where the wholesale lift
-moved several hundred pixels a frame.
+The three color-changing Blobs at slots `$58-$5A` use a camera-latched policy:
+they retain the original cull until bit 7 proves the camera has activated their
+region once, then cabinet mode clears bit 1 so their floating animation keeps
+running after the ball leaves. This avoids the incorrect start-of-session
+state caused by unculling them before their first activation.
+`--cabinet-seed-check` measures the blast radius: the named-slot policy leaves
+each latched family under the original cull until its first camera activation,
+where the wholesale lift moved several hundred pixels before the game had put
+those mechanisms into their live state.
 
 `--cabinet-flipper-trace` measures this directly, booting the census route to
 frame 1,300 and then running 600 frames while holding each pad input the

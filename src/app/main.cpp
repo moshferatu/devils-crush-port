@@ -8672,35 +8672,28 @@ int run_smoke_test(PceRuntime& runtime)
 //
 // The flipper pieces are safe because their state machine is driven entirely
 // by the button through `01:D466` and consults nothing else, and the spiders
-// were the other family the whole-table view exposed as frozen. The dynamic
-// pool at `$62-$7E` and every other fixed mechanism keep their cull.
+// were the other family the whole-table view exposed as frozen. The Three
+// Blobs at `$58-$5A` also need to keep floating when the ball leaves their
+// region, but only after the original camera has activated them once. This
+// preserves their start-of-session setup while making that activation a latch:
+// clearing bit 1 persists after the camera sweep later clears bit 7. The
+// dynamic pool at `$62-$7E` and every other fixed mechanism keep their cull.
 void keep_fixed_actors_simulating(
     devils_crush::emulation::PceRuntime& runtime)
 {
-    // Front Spiders sit beneath the Bumpers, Side Spiders at the lower-table
-    // side shoots.
-    constexpr std::size_t kFirstSpiderSlot = 0x26U;
-    constexpr std::size_t kLastSpiderSlot = 0x29U;
-    const auto simulates_off_camera = [](const std::size_t slot) {
-        return (slot >= devils_crush::cabinet::kFirstFlipperControlSlot
-                && slot <= devils_crush::cabinet::kLastFlipperControlSlot)
-            || (slot >= kFirstSpiderSlot && slot <= kLastSpiderSlot);
-    };
-
     auto work_ram = runtime.export_work_ram();
     if (work_ram.size() < 0x2000U) {
         return;
     }
     bool changed = false;
     for (std::size_t slot = devils_crush::cabinet::kFirstFlipperControlSlot;
-         slot <= kLastSpiderSlot;
+         slot <= devils_crush::cabinet::kLastThreeBlobSlot;
          ++slot) {
-        if (!simulates_off_camera(slot)) {
-            continue;
-        }
         const std::size_t offset = 0x1080U + slot;
         const auto flags = std::to_integer<std::uint8_t>(work_ram[offset]);
-        if ((flags & 0x02U) == 0U) {
+        if (!devils_crush::cabinet::should_disable_actor_camera_cull(
+                slot,
+                flags)) {
             continue;
         }
         work_ram[offset] = static_cast<std::byte>(flags & 0xFDU);
