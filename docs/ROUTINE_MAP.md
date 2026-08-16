@@ -5289,10 +5289,11 @@ remain assembly-backed until the shared presentation helper can be composed
 from its own transcript or another natural route reaches a local return
 branch.
 
-The repeated score-panel leaf `09:72FD` was also screened. Its dominant
-255-call, 699-cycle/9-write form is not a native-gameplay candidate because
-it directly emits VDC-port commands through `$0000/$0002/$0003`; retain that
-hardware presentation path, and its `09:7266` parent, in assembly.
+The repeated score-panel leaf `09:72FD` was originally screened out because
+its dominant 255-call, 699-cycle/9-work-RAM-write form directly emits VDC-port
+commands through `$0000/$0002/$0003`. The bounded hardware-port channel now
+supports it: all 376 natural calls execute through an exact 56-boundary native
+transcript. Its `09:7266` parent remains in assembly.
 
 `tools/Analyze-SessionScoringRoute.ps1` and `dc_rom_session_scoring` guard the
 ROM gates, complete work-RAM timeline, 400 globally ordered entries and

@@ -2,6 +2,7 @@
 
 #include "native_replacements_internal.hpp"
 
+#include <array>
 #include <cstdint>
 #include <optional>
 #include <span>
@@ -70,12 +71,16 @@ using emulation::RoutineReplacement;
 // bank, which is what admission at `09:7237` states.
 constexpr std::uint8_t kBank = 0x09U;
 
+constexpr std::uint8_t kCarry = 0x01U;
 constexpr std::uint8_t kZero = 0x02U;
+constexpr std::uint8_t kDecimal = 0x08U;
 constexpr std::uint8_t kMemory = 0x20U;
 constexpr std::uint8_t kOverflow = 0x40U;
 constexpr std::uint8_t kNegative = 0x80U;
 
 constexpr std::uint16_t kWorkRamBase = 0x2000U;
+constexpr std::uint16_t kWorkRamEnd = 0x4000U;
+constexpr std::uint16_t kStackBase = 0x2100U;
 
 // The four gates, in the order the routine reads them. All four are absolute
 // addresses written into the instructions, so unlike a walk that builds a
@@ -272,6 +277,359 @@ std::optional<RoutineReplacement> replace_score_panel_poll(
         work_ram,
         entry.registers.stack_pointer,
         {kBank, 0x7265U},
+        cycle,
+        at_return);
+    return replacement;
+}
+
+std::optional<RoutineReplacement> replace_score_panel_glyph(
+    const RoutineEntry& entry,
+    const std::span<const std::byte> work_ram,
+    const std::span<const std::byte> rom)
+{
+    // 09:72FD-09:737B writes one two-by-two score-panel glyph. The caller
+    // supplies a digit in A and a right-to-left VRAM cursor in $35:$36. The
+    // routine indexes four tile bytes at $7390 by A * 4, writes the top and
+    // bottom rows through the VDC, and leaves the cursor two columns left of
+    // where it started.
+    constexpr RoutineKey kRoutine{
+        .physical_bank = kBank,
+        .logical_pc = 0x72FDU,
+    };
+    if (entry.routine != kRoutine || work_ram.size() < 0x2000U
+        || rom.size() != 0x60000U) {
+        return std::nullopt;
+    }
+    // Zero page and the stack are work RAM, the glyph table is in the bank
+    // executing in segment 3, and the VDC ports are visible only through the
+    // hardware page in segment 0. Decimal mode changes both cursor arithmetic
+    // operations; T redirects accumulator arithmetic through zero page.
+    if (entry.registers.mpr[0] != 0xFFU
+        || entry.registers.mpr[1] != 0xF8U
+        || entry.registers.mpr[3] != kBank
+        || (entry.registers.status & (kDecimal | kMemory)) != 0U) {
+        return std::nullopt;
+    }
+
+    std::array<std::uint8_t, 0x2000U> ram{};
+    for (std::size_t index = 0U; index < ram.size(); ++index) {
+        ram[index] = std::to_integer<std::uint8_t>(work_ram[index]);
+    }
+
+    RoutineReplacement replacement;
+    replacement.work_ram_writes.reserve(25U);
+    replacement.checkpoints.reserve(56U);
+
+    CpuRegisters registers = entry.registers;
+    std::uint32_t cycle = 0U;
+    bool overflow = false;
+
+    const auto zp = [](const std::uint8_t address) {
+        return static_cast<std::uint16_t>(kWorkRamBase + address);
+    };
+    const auto read_ram = [&ram, &overflow](const std::uint16_t address) {
+        if (address < kWorkRamBase || address >= kWorkRamEnd) {
+            overflow = true;
+            return std::uint8_t{0U};
+        }
+        return ram[address - kWorkRamBase];
+    };
+    const auto read_rom =
+        [&registers, rom, &overflow](const std::uint16_t address) {
+            const auto bank = registers.mpr[address >> 13U];
+            if (bank >= 0x80U) {
+                overflow = true;
+                return std::uint8_t{0U};
+            }
+            const auto physical_bank = bank < 0x40U
+                ? static_cast<std::size_t>(bank & 0x1FU)
+                : static_cast<std::size_t>((bank & 0x0FU) + 0x20U);
+            const auto offset = physical_bank * 0x2000U
+                + static_cast<std::size_t>(address & 0x1FFFU);
+            if (offset >= rom.size()) {
+                overflow = true;
+                return std::uint8_t{0U};
+            }
+            return std::to_integer<std::uint8_t>(rom[offset]);
+        };
+
+    const auto store =
+        [&replacement, &ram, &overflow](
+            const std::uint16_t instruction_pc,
+            const std::uint16_t address,
+            const std::uint8_t value) {
+            if (address < kWorkRamBase || address >= kWorkRamEnd) {
+                overflow = true;
+                return;
+            }
+            ram[address - kWorkRamBase] = value;
+            replacement.work_ram_writes.push_back({
+                .instruction = {kBank, instruction_pc},
+                .logical_address = address,
+                .value = value,
+                .master_cycle_offset = 0U,
+            });
+        };
+    const auto store_port =
+        [&replacement](
+            const std::uint16_t instruction_pc,
+            const std::uint16_t address,
+            const std::uint8_t value) {
+            replacement.work_ram_writes.push_back({
+                .instruction = {kBank, instruction_pc},
+                .logical_address = address,
+                .value = value,
+                .master_cycle_offset = 0U,
+            });
+        };
+
+    std::size_t committed_writes = 0U;
+    const auto commit_pending_writes =
+        [&replacement, &committed_writes](const std::uint32_t at_cycle) {
+            while (committed_writes < replacement.work_ram_writes.size()) {
+                replacement.work_ram_writes[committed_writes]
+                    .master_cycle_offset = at_cycle;
+                ++committed_writes;
+            }
+        };
+    const auto append_checkpoint =
+        [&replacement, &registers, &cycle, &commit_pending_writes](
+            const std::uint16_t instruction_pc,
+            const std::uint16_t resume_pc,
+            const std::uint32_t instruction_cycles,
+            const std::uint32_t sample_back = 3U) {
+            cycle += instruction_cycles;
+            commit_pending_writes(cycle);
+            registers.program_counter = resume_pc;
+            replacement.checkpoints.push_back({
+                .interrupt_sample_master_cycle_offset = cycle - sample_back,
+                .master_cycle_offset = cycle,
+                .instruction = {kBank, instruction_pc},
+                .registers = registers,
+            });
+        };
+
+    const auto load_accumulator = [&registers](const std::uint8_t value) {
+        registers.accumulator = value;
+        registers.status = set_nz(registers.status, value);
+    };
+    const auto load_y = [&registers](const std::uint8_t value) {
+        registers.y = value;
+        registers.status = set_nz(registers.status, value);
+    };
+    const auto shift_left_accumulator = [&registers]() {
+        const auto carry = static_cast<std::uint8_t>(
+            (registers.accumulator >> 7U) & kCarry);
+        registers.accumulator = static_cast<std::uint8_t>(
+            registers.accumulator << 1U);
+        registers.status = set_nz(
+            static_cast<std::uint8_t>(
+                (registers.status & static_cast<std::uint8_t>(~kCarry))
+                | carry),
+            registers.accumulator);
+    };
+    const auto add_with_carry = [&registers](const std::uint8_t operand) {
+        const auto sum = static_cast<std::uint16_t>(
+            static_cast<std::uint16_t>(registers.accumulator)
+            + static_cast<std::uint16_t>(operand)
+            + static_cast<std::uint16_t>(registers.status & kCarry));
+        const auto result = static_cast<std::uint8_t>(sum);
+        const bool signed_overflow =
+            ((registers.accumulator ^ result)
+             & (operand ^ result) & kNegative) != 0U;
+        registers.status = static_cast<std::uint8_t>(
+            registers.status & static_cast<std::uint8_t>(~(kCarry | kOverflow)));
+        if (sum > 0xFFU) {
+            registers.status =
+                static_cast<std::uint8_t>(registers.status | kCarry);
+        }
+        if (signed_overflow) {
+            registers.status =
+                static_cast<std::uint8_t>(registers.status | kOverflow);
+        }
+        registers.accumulator = result;
+        registers.status = set_nz(registers.status, result);
+    };
+    const auto subtract_with_carry = [&registers](const std::uint8_t operand) {
+        const auto difference = static_cast<std::uint16_t>(
+            static_cast<std::uint16_t>(registers.accumulator)
+            - static_cast<std::uint16_t>(operand)
+            - static_cast<std::uint16_t>((registers.status & kCarry) ^ kCarry));
+        const auto result = static_cast<std::uint8_t>(difference);
+        const bool signed_overflow =
+            ((registers.accumulator ^ result)
+             & (registers.accumulator ^ operand) & kNegative) != 0U;
+        registers.status = static_cast<std::uint8_t>(
+            registers.status & static_cast<std::uint8_t>(~(kCarry | kOverflow)));
+        if ((difference & 0x100U) == 0U) {
+            registers.status =
+                static_cast<std::uint8_t>(registers.status | kCarry);
+        }
+        if (signed_overflow) {
+            registers.status =
+                static_cast<std::uint8_t>(registers.status | kOverflow);
+        }
+        registers.accumulator = result;
+        registers.status = set_nz(registers.status, result);
+    };
+    const auto push_y = [&registers, &store]() {
+        store(
+            0x72FDU,
+            static_cast<std::uint16_t>(kStackBase + registers.stack_pointer),
+            registers.y);
+        registers.stack_pointer =
+            static_cast<std::uint8_t>(registers.stack_pointer - 1U);
+    };
+    const auto pop = [&registers, &read_ram]() {
+        registers.stack_pointer =
+            static_cast<std::uint8_t>(registers.stack_pointer + 1U);
+        return read_ram(
+            static_cast<std::uint16_t>(kStackBase + registers.stack_pointer));
+    };
+
+    constexpr std::uint32_t kImplied = 6U;
+    constexpr std::uint32_t kPush = 9U;
+    constexpr std::uint32_t kPull = 12U;
+    constexpr std::uint32_t kImmediateCycles = 6U;
+    constexpr std::uint32_t kZeroPage = 12U;
+    constexpr std::uint32_t kAbsoluteCycles = 15U;
+    constexpr std::uint32_t kPortStore = 18U;
+    constexpr std::uint32_t kPortSampleBack = 6U;
+
+    // The VDC's high-data write may stall longer than the declared eighteen
+    // master cycles while VRAM is busy. The core applies that wait through the
+    // hardware bus and reconciles it at the checkpoint; the transcript keeps
+    // the instruction's nominal cycle count and samples two CPU cycles back.
+    push_y();
+    append_checkpoint(0x72FDU, 0x72FEU, kPush);
+    shift_left_accumulator();
+    append_checkpoint(0x72FEU, 0x72FFU, kImplied);
+    shift_left_accumulator();
+    append_checkpoint(0x72FFU, 0x7300U, kImplied);
+    load_y(registers.accumulator);
+    append_checkpoint(0x7300U, 0x7301U, kImplied);
+
+    load_accumulator(0x00U);
+    append_checkpoint(0x7301U, 0x7303U, kImmediateCycles);
+    store(0x7303U, zp(0x06U), registers.accumulator);
+    append_checkpoint(0x7303U, 0x7305U, kZeroPage);
+    store_port(0x7305U, 0x0000U, registers.accumulator);
+    append_checkpoint(0x7305U, 0x7308U, kPortStore, kPortSampleBack);
+    load_accumulator(read_ram(zp(0x35U)));
+    append_checkpoint(0x7308U, 0x730AU, kZeroPage);
+    store_port(0x730AU, 0x0002U, registers.accumulator);
+    append_checkpoint(0x730AU, 0x730DU, kPortStore, kPortSampleBack);
+    load_accumulator(read_ram(zp(0x36U)));
+    append_checkpoint(0x730DU, 0x730FU, kZeroPage);
+    store_port(0x730FU, 0x0003U, registers.accumulator);
+    append_checkpoint(0x730FU, 0x7312U, kPortStore, kPortSampleBack);
+
+    load_accumulator(0x02U);
+    append_checkpoint(0x7312U, 0x7314U, kImmediateCycles);
+    store(0x7314U, zp(0x06U), registers.accumulator);
+    append_checkpoint(0x7314U, 0x7316U, kZeroPage);
+    store_port(0x7316U, 0x0000U, registers.accumulator);
+    append_checkpoint(0x7316U, 0x7319U, kPortStore, kPortSampleBack);
+    load_accumulator(read_rom(static_cast<std::uint16_t>(0x7390U + registers.y)));
+    append_checkpoint(0x7319U, 0x731CU, kAbsoluteCycles);
+    store_port(0x731CU, 0x0002U, registers.accumulator);
+    append_checkpoint(0x731CU, 0x731FU, kPortStore, kPortSampleBack);
+    load_accumulator(read_ram(0x2D6FU));
+    append_checkpoint(0x731FU, 0x7322U, kAbsoluteCycles);
+    store_port(0x7322U, 0x0003U, registers.accumulator);
+    append_checkpoint(0x7322U, 0x7325U, kPortStore, kPortSampleBack);
+    load_accumulator(read_rom(static_cast<std::uint16_t>(0x7391U + registers.y)));
+    append_checkpoint(0x7325U, 0x7328U, kAbsoluteCycles);
+    store_port(0x7328U, 0x0002U, registers.accumulator);
+    append_checkpoint(0x7328U, 0x732BU, kPortStore, kPortSampleBack);
+    load_accumulator(read_ram(0x2D6FU));
+    append_checkpoint(0x732BU, 0x732EU, kAbsoluteCycles);
+    store_port(0x732EU, 0x0003U, registers.accumulator);
+    append_checkpoint(0x732EU, 0x7331U, kPortStore, kPortSampleBack);
+
+    registers.status =
+        static_cast<std::uint8_t>(registers.status & ~kCarry);
+    append_checkpoint(0x7331U, 0x7332U, kImplied);
+    load_accumulator(read_ram(zp(0x35U)));
+    append_checkpoint(0x7332U, 0x7334U, kZeroPage);
+    add_with_carry(0x40U);
+    append_checkpoint(0x7334U, 0x7336U, kImmediateCycles);
+    store(0x7336U, zp(0x35U), registers.accumulator);
+    append_checkpoint(0x7336U, 0x7338U, kZeroPage);
+    registers.accumulator = 0U; // CLA does not change flags on this core.
+    append_checkpoint(0x7338U, 0x7339U, kImplied);
+    add_with_carry(read_ram(zp(0x36U)));
+    append_checkpoint(0x7339U, 0x733BU, kZeroPage);
+    store(0x733BU, zp(0x36U), registers.accumulator);
+    append_checkpoint(0x733BU, 0x733DU, kZeroPage);
+
+    load_accumulator(0x00U);
+    append_checkpoint(0x733DU, 0x733FU, kImmediateCycles);
+    store(0x733FU, zp(0x06U), registers.accumulator);
+    append_checkpoint(0x733FU, 0x7341U, kZeroPage);
+    store_port(0x7341U, 0x0000U, registers.accumulator);
+    append_checkpoint(0x7341U, 0x7344U, kPortStore, kPortSampleBack);
+    load_accumulator(read_ram(zp(0x35U)));
+    append_checkpoint(0x7344U, 0x7346U, kZeroPage);
+    store_port(0x7346U, 0x0002U, registers.accumulator);
+    append_checkpoint(0x7346U, 0x7349U, kPortStore, kPortSampleBack);
+    load_accumulator(read_ram(zp(0x36U)));
+    append_checkpoint(0x7349U, 0x734BU, kZeroPage);
+    store_port(0x734BU, 0x0003U, registers.accumulator);
+    append_checkpoint(0x734BU, 0x734EU, kPortStore, kPortSampleBack);
+
+    load_accumulator(0x02U);
+    append_checkpoint(0x734EU, 0x7350U, kImmediateCycles);
+    store(0x7350U, zp(0x06U), registers.accumulator);
+    append_checkpoint(0x7350U, 0x7352U, kZeroPage);
+    store_port(0x7352U, 0x0000U, registers.accumulator);
+    append_checkpoint(0x7352U, 0x7355U, kPortStore, kPortSampleBack);
+    load_accumulator(read_rom(static_cast<std::uint16_t>(0x7392U + registers.y)));
+    append_checkpoint(0x7355U, 0x7358U, kAbsoluteCycles);
+    store_port(0x7358U, 0x0002U, registers.accumulator);
+    append_checkpoint(0x7358U, 0x735BU, kPortStore, kPortSampleBack);
+    load_accumulator(read_ram(0x2D6FU));
+    append_checkpoint(0x735BU, 0x735EU, kAbsoluteCycles);
+    store_port(0x735EU, 0x0003U, registers.accumulator);
+    append_checkpoint(0x735EU, 0x7361U, kPortStore, kPortSampleBack);
+    load_accumulator(read_rom(static_cast<std::uint16_t>(0x7393U + registers.y)));
+    append_checkpoint(0x7361U, 0x7364U, kAbsoluteCycles);
+    store_port(0x7364U, 0x0002U, registers.accumulator);
+    append_checkpoint(0x7364U, 0x7367U, kPortStore, kPortSampleBack);
+    load_accumulator(read_ram(0x2D6FU));
+    append_checkpoint(0x7367U, 0x736AU, kAbsoluteCycles);
+    store_port(0x736AU, 0x0003U, registers.accumulator);
+    append_checkpoint(0x736AU, 0x736DU, kPortStore, kPortSampleBack);
+
+    registers.status =
+        static_cast<std::uint8_t>(registers.status | kCarry);
+    append_checkpoint(0x736DU, 0x736EU, kImplied);
+    load_accumulator(read_ram(zp(0x35U)));
+    append_checkpoint(0x736EU, 0x7370U, kZeroPage);
+    subtract_with_carry(0x42U);
+    append_checkpoint(0x7370U, 0x7372U, kImmediateCycles);
+    store(0x7372U, zp(0x35U), registers.accumulator);
+    append_checkpoint(0x7372U, 0x7374U, kZeroPage);
+    load_accumulator(read_ram(zp(0x36U)));
+    append_checkpoint(0x7374U, 0x7376U, kZeroPage);
+    subtract_with_carry(0x00U);
+    append_checkpoint(0x7376U, 0x7378U, kImmediateCycles);
+    store(0x7378U, zp(0x36U), registers.accumulator);
+    append_checkpoint(0x7378U, 0x737AU, kZeroPage);
+    load_y(pop());
+    append_checkpoint(0x737AU, 0x737BU, kPull);
+
+    if (overflow || cycle != 699U || registers.stack_pointer
+            != entry.registers.stack_pointer) {
+        return std::nullopt;
+    }
+    auto at_return = registers;
+    at_return.program_counter = 0x737BU;
+    absorb_return(
+        replacement,
+        work_ram,
+        entry.registers.stack_pointer,
+        {kBank, 0x737BU},
         cycle,
         at_return);
     return replacement;

@@ -421,6 +421,7 @@ DC_ADMITTED_ROUTINE(0x08U, 0x5977U, 177, 177, "verify_setup_screen_palette_stage
 DC_ADMITTED_ROUTINE(0x08U, 0x5982U, 177, 177, "verify_absorbed_return_trace +1")
 DC_ADMITTED_ROUTINE(0x09U, 0x60C7U, 996, 996, "verify_palette_colour_cycle_semantic")
 DC_ADMITTED_ROUTINE(0x09U, 0x7237U, 2649, 2649, "verify_score_panel_poll_semantic")
+DC_ADMITTED_ROUTINE(0x09U, 0x72FDU, 376, 376, "verify_score_panel_poll_semantic")
 DC_ADMITTED_ROUTINE(0x45U, 0x4015U, 3554, 3599, "verify_music_sequencer_semantic")
 DC_ADMITTED_ROUTINE(0x45U, 0x4044U, 1417, 1535, "verify_music_sequencer_semantic")
 DC_ADMITTED_ROUTINE(0x45U, 0x409CU, 855, 892, "verify_music_sequencer_semantic")

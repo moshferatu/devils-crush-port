@@ -184,9 +184,18 @@ replace_native_gameplay_routine_impl(
         }) {
         return detail::replace_palette_colour_cycle(entry, work_ram);
     }
-    // The score panel's redraw poll. Four work RAM gates and a dirty bit; the
-    // redraw it guards stays interpreted, which on this route is 33 calls of
-    // 2,649.
+    // The score panel's two-by-two glyph writer. It reads four tile bytes from
+    // the bank-09 ROM table, drives the VDC ports, and moves the panel cursor
+    // two columns to the left.
+    if (entry.routine
+        == RoutineKey{
+            .physical_bank = 0x09U,
+            .logical_pc = 0x72FDU,
+        }) {
+        return detail::replace_score_panel_glyph(entry, work_ram, rom);
+    }
+    // The score panel's redraw poll. Four work RAM gates and a dirty bit; its
+    // glyph-writing leaf is registered separately above.
     if (entry.routine
         == RoutineKey{
             .physical_bank = 0x09U,

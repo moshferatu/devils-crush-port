@@ -10,11 +10,14 @@ if(NOT CONFIG STREQUAL "Release")
     message(FATAL_ERROR "Unsupported score-panel configuration: ${CONFIG}")
 endif()
 
-# 09:7237-09:7268, the score panel's redraw poll. Four work RAM gates -- the
+# The bank-09 score-panel family: 09:7237-09:7268 is the redraw poll. Four
+# work RAM gates -- the
 # in-progress flag $2DBB, the session handshake $2D53, the hold-off countdown
 # $2D70 and the panel dirty bit $2CC0.0 -- in front of the redraw at 09:7266
 # that ROUTINE_MAP.md records converting the score and driving the VDC through
-# 09:72FD. On this route it declines the redraw 2,616 times out of 2,649.
+# 09:72FD. On this route the poll declines the redraw 2,616 times out of 2,649,
+# while the 09:72FD glyph writer handles all 376 two-by-two digits requested by
+# the admitted redraws.
 #
 # **A routine whose product is a decision needs an oracle for the decision, not
 # just for the bytes.** The poll writes one byte, once per redraw, thirty-three
@@ -25,9 +28,9 @@ endif()
 #
 #   the call trace     the primary oracle. It carries output_a, output_status,
 #                      body_master_cycles and return_instruction_pc for all
-#                      2,649 calls, so it compares the arm the gates chose and
-#                      the flags the walk left behind -- which is the whole of
-#                      what this routine produces. `BIT #$01` is the reason
+#                      2,649 poll and 376 glyph calls, so it compares both the
+#                      arm the gates chose and every glyph's registers, flags,
+#                      timing and absorbed return. `BIT #$01` is the reason
 #                      that matters: this core clears N and V from the operand
 #                      in immediate mode where a 65C02 leaves them alone, and
 #                      output_status is where getting that wrong would show.
@@ -75,6 +78,7 @@ function(record_route census writes bus calls)
             --bus-write-range 0000-0003
             --bus-write-trace "${bus}"
             --observe-hook "09:7237"
+            --observe-hook "09:72FD"
             --routine-call-trace "${calls}"
             ${ARGN}
             --rom "${ROM}"
@@ -101,14 +105,17 @@ record_route(
     "${replaced_census}" "${replaced_writes}" "${replaced_bus}"
     "${replaced_calls}"
     --replace-hook "09:7237@all"
+    --replace-hook "09:72FD@all"
 )
 set(replaced_output "${recorder_output}")
 
 foreach(expected_line IN ITEMS
     "State census recording complete: 3600 frames"
     "Native replacement 09:7237@all entries: 2649 of 2649"
+    "Native replacement 09:72FD@all entries: 376 of 376"
     "Observe hook 1 entries: 2649"
-    "Routine call trace complete: 2649 calls, 23184 writes"
+    "Observe hook 2 entries: 376"
+    "Routine call trace complete: 3025 calls, 28605 writes"
 )
     string(FIND "${replaced_output}" "${expected_line}" line_offset)
     if(line_offset EQUAL -1)
@@ -171,7 +178,7 @@ foreach(artifact IN ITEMS census write bus call)
     if(NOT emulated_sha256 STREQUAL replaced_sha256)
         message(
             FATAL_ERROR
-            "The replaced score-panel poll's ${artifact} differs from the "
+            "The replaced score-panel family's ${artifact} differs from the "
             "emulated route.\nEmulated: ${emulated_sha256}\n"
             "Replaced: ${replaced_sha256}\n"
             "Re-record both and diff them. A differing output_status on calls "
@@ -200,8 +207,9 @@ file(REMOVE
 
 message(
     STATUS
-    "The score panel's redraw poll runs natively on all 2,649 calls, choosing "
-    "the same arm and returning the same flags as assembly, and the route's "
+    "The score panel's redraw poll runs natively on all 2,649 calls and its "
+    "glyph writer on all 376 calls, with the same arms, registers, flags and "
+    "timing as assembly; the route's "
     "${panel_write_count} panel writes and ${panel_bus_count} VDC port writes "
     "land on the same cycles."
 )

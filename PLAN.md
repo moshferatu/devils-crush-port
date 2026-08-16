@@ -785,6 +785,13 @@ Provide an interactive monitor-assignment screen and persist display identity, g
   16/19-write shapes and replaces all 66,523 remaining calls while
   preserving the complete 1,414,954-write artifact and original interrupt
   handling.
+  Semantic `09:72FD@all` now writes all 376 score-panel glyphs natively. Its
+  56-boundary transcript resolves four tile bytes from the verified ROM,
+  drives both rows through the real VDC ports, preserves dynamic VDC wait
+  states, advances the right-to-left cursor, restores Y, and absorbs the
+  return with exact state, call, work-RAM-write, and bus-write parity. The
+  deployed registry now covers 695,369,472 master cycles (53.81% of the route,
+  97.87% outside the frame-sync wait) across 434 admitted routines.
   The larger `01:D525` controller remains a decomposition boundary: its 128
   census calls span 29-1,456 writes and 1,035-49,122 body master cycles, so
   the largest live paths exceed the bridge's independent 512-write limit.

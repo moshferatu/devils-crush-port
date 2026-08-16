@@ -1284,6 +1284,16 @@ replace_score_panel_poll(
     const emulation::RoutineEntry& entry,
     std::span<const std::byte> work_ram);
 
+// 09:72FD-09:737B, the score panel's two-by-two glyph writer. It resolves the
+// four ROM tile bytes selected by A, writes both rows through the VDC ports,
+// and advances the right-to-left cursor in $35:$36; see
+// native_replacements_score_panel.cpp.
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_score_panel_glyph(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram,
+    std::span<const std::byte> rom);
+
 // 01:C154-01:C1B5, the main session loop: the frame-sync wait, the nine calls
 // the frame is made of, and the tail that decides whether to run another. Ten
 // entry points, one per return address, each walk ending on the call it

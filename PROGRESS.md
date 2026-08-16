@@ -26,9 +26,9 @@ high byte. The deterministic 1,800-frame route now executes 18,806 of 19,648
 preserving the byte-identical gameplay artifact, complete 19,648-call trace,
 and all 180,389 ordered writes.
 
-The deployed registry now runs **695,098,752 of 1,292,371,731 master cycles
-natively, 53.78% of the route and 97.83% of everything outside the frame-sync
-wait**, across 433 admitted routines with no transcript declined at an
+The deployed registry now runs **695,369,472 of 1,292,371,731 master cycles
+natively, 53.81% of the route and 97.87% of everything outside the frame-sync
+wait**, across 434 admitted routines with no transcript declined at an
 interrupt horizon and none abandoned. The 3,600-frame state census remains
 `9036a9de0c3c9917f47bff8c04c136a4824ec12601fb457d260aa2dfe4443490`.
 
@@ -39,10 +39,19 @@ it branches over code this route never takes and the candidate analyzer groups
 contiguous *executed* addresses: it was offered as two runs that are each a
 fragment of it.
 
-Bank `09` has two registered routines. `09:60C7`-`09:612A`, the palette-block
+The score panel's glyph writer is native too. `09:72FD`-`09:737B` runs on all
+376 calls through a 56-boundary transcript, reads the four digit tiles from the
+verified bank-09 ROM table, writes both rows through the real VDC bus, advances
+the right-to-left cursor, restores Y, and absorbs its return. The state census,
+complete call/write artifacts, 2,909,119 selected work-RAM writes, and 2,036,234
+VDC writes are identical to assembly. Its 270,720 native master cycles take the
+deployed registry to 695,369,472 of 1,292,371,731 (53.81%), or 97.87% outside
+the frame-sync wait; bank `09`'s emulated remainder is now 169,008.
+
+Bank `09` has three registered routines. `09:60C7`-`09:612A`, the palette-block
 colour rotator, runs natively on all 996 calls -- fifty-nine instructions, no
 branch, 708 master cycles each. With the poll beside it the bank's emulated
-remainder outside the wait falls 1,493,322 -> 453,369.
+remainder outside the wait falls 1,493,322 -> 169,008.
 
 The main session loop is native. Its ten entry points execute all 2,649
 iterations of `01:C154`-`01:C1B5` as a chain of crossings, leaving 21 emulated
@@ -4896,8 +4905,9 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
     and `d4bf75fdea28df80ea85151ef0d4c53e10dc8767ed0dd6009e1b3fe405727de6`.
   - [x] Reprofile the preceding session/ball-count and panel boundaries after
     `01:C7E5@all`; retain `01:C786`, `01:C7B0/C7BF`, and direct-VDC
-    `09:72FD` assembly-backed until a separately composable gameplay leaf is
-    captured.
+    `09:72FD` assembly-backed at that checkpoint until a separately composable
+    gameplay leaf is captured. (`09:72FD` is now native through its own
+    device-capable transcript.)
   - [x] Add semantic `02:42F6@all` Dragon-Egg controller gating; cover all
     1,790 nonzero-count route calls through the checkpointed 21-cycle return.
   - [x] Complete semantic `02:4345@all` Dragon-Egg hit gating for all 9,857
@@ -6234,9 +6244,50 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
     the wait; 433 admitted routines, 366 entered; bank `09` 782,010 -> 453,369;
     census unchanged.
 
+- [x] Take the score panel's glyph writer, `09:72FD`-`09:737B`, 284,361
+  emulated master cycles.
+  - [x] Reproduce all 56 branchless instructions, four ROM table reads, nine
+    work-RAM/stack writes, sixteen VDC writes, cursor arithmetic, Y restore,
+    and absorbed return through exact instruction checkpoints.
+  - [x] Admit all 376 route calls, including original interrupt passages, with
+    byte-identical state census, call trace, ordered work-RAM writes, and VDC
+    bus trace.
+  - [x] Measure the VDC arbitration cost instead of pricing it from the static
+    profile: 270,720 declared native cycles versus 284,361 assembly cycles.
+  - [x] Registry cycles 695,098,752 -> **695,369,472**; 53.81%, 97.87% outside
+    the wait; 434 admitted routines, 367 entered; bank `09` 453,369 -> 169,008;
+    census unchanged.
+
 ## Active Work
 
-Current owner: Claude. Current slice: **the score panel's redraw poll**. Done.
+Current owner: Codex. Current slice: **the score panel's glyph writer**. Done.
+
+`09:72FD` is the leaf the score redraw calls once per digit. It doubles A into
+the four-byte tile-table index, selects VDC MAWR/VWR twice, emits both glyph
+rows from `$7390,Y` through `$7393,Y` with `$2D6F` as each high tile byte, and
+returns the cursor in `$35:$36` two columns to the left. All 376 calls now run
+natively. The route's state, call, work-RAM, and VDC artifacts are identical to
+assembly, and the registry admits the routine for live play.
+
+The candidate's warning was correct: two high-port writes average roughly 34
+master cycles in the profile because completing a VRAM word can wait for the
+VDC. The transcript declares the nominal eighteen-cycle instruction and lets
+the core's device bus charge the dynamic stall. Consequently the assembly
+range loses 284,361 cycles while the native census gains 270,720. That is not
+missing work; it is the device wait remaining owned by the device.
+
+| | Before | After |
+| --- | ---: | ---: |
+| Emulated in `09:72FD`-`737B` | 284,361 | **0** |
+| Registry cycles | 695,098,752 | **695,369,472** |
+| Native share | 53.78% | **53.81%** |
+| Native share outside the wait | 97.83% | **97.87%** |
+| Admitted routines | 433 | **434** |
+| Routines entered | 366 | **367** |
+| Bank `09` outside the wait | 453,369 | **169,008** |
+| Release tests | 425 | **425** |
+
+### Previous: the score panel's redraw poll
 
 **The largest thing left in bank `09` had never been ranked, and the reason is
 worth more than the routine.** The candidate analyzer groups *contiguous
@@ -9328,8 +9379,8 @@ pricing.** The remaining fragments of those two runs are `09:71EA`-`720A`
 second copy worth 44,703) and `09:727D`-`72EA` (33,987, the tail of the redraw
 this slice's poll now guards).
 
-**Take `09:72FD`-`09:737B` next**, the one candidate from that list that *is* a
-routine and now the largest single routine left anywhere: **284,361 master
+**Taken.** `09:72FD`-`09:737B` was the one candidate from that list that *is* a
+routine and was the largest single routine left anywhere: **284,361 master
 cycles, 63% of what remains in bank `09`**, 376 calls, fifty-six instructions
 and not one branch. It is the score panel's glyph writer -- the leaf the redraw
 calls once per digit. Three things are already known about it:
@@ -9353,6 +9404,14 @@ calls once per digit. Three things are already known about it:
 
 It also reads ROM -- `$7390,Y` through MPR3 -- which twenty-four replacements
 already do; `native_replacements_vblank.cpp` has the `read_rom` lambda to copy.
+
+All 376 calls now execute natively and every call, work-RAM write, and VDC bus
+write matches assembly. The declared gain is 270,720 master cycles; the other
+13,641 are dynamic VDC arbitration stalls still charged by the real device.
+The re-profile leaves 169,008 emulated master cycles in bank `09`, so that bank
+is no longer a useful unit to optimize. Select the next slice by disassembling
+the largest live non-entry runs across banks `03`, `02`, and `01`; do not port
+an address row until its enclosing routine and any declined parent are known.
 
 After bank `09`, the cheap work is the fifty jump-table rows in bank `01` that
 this route never reaches, whenever a route reaches them.
@@ -11777,9 +11836,10 @@ retained the nested continuation observers and established that preceding
 paths enter shared `00:ECFD` before the `C5EA/C5C9` coroutine handoff and
 carry 83/114/114 scoped writes, including interrupt-owned work. They remain
 assembly-backed until that helper has a composable transcript or a local
-natural branch is captured. The panel's dominant `09:72FD` form is likewise
-kept emulated because its otherwise small transcript writes VDC ports
-directly, outside the work-RAM gameplay transaction boundary. A fresh
+natural branch is captured. At that checkpoint the panel's dominant `09:72FD`
+form was kept emulated because its otherwise small transcript writes VDC ports
+directly, outside the then-current work-RAM-only gameplay transaction boundary.
+It is now native through the bounded hardware-port write channel. A fresh
 standalone screen likewise rejects `01:C5EA`: its stack-rewriting delay
 installer continues into the installed coroutine, so 73 ordinary-route
 observer scopes range from 831 cycles/22 writes to 423,162 cycles/11,369

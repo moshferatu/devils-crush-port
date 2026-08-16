@@ -1931,11 +1931,12 @@ writes) and `$27` from the later ball-count continuation (3,342 cycles, 81
 writes). This is original audio/hardware compatibility work, not a faithful
 gameplay transaction; retain `ECFD`, `C786`, `C7B0`, and `C7BF` in assembly.
 
-The same screen also classifies the repeated `09:72FD` panel helper. Its
-common 255 calls are only 699 cycles and nine scoped writes, but the routine
-directly submits VDC commands through `$0000/$0002/$0003`; it is emulated
-presentation hardware, not a work-RAM gameplay transaction. Keep it and its
-`09:7266` parent outside the native-gameplay candidate queue.
+The same screen originally classified the repeated `09:72FD` panel helper as
+presentation-only because its common 255 calls directly submit VDC commands
+through `$0000/$0002/$0003`. That classification is superseded: the bounded
+hardware-port write channel now carries all 376 natural calls through an exact
+56-boundary transcript. `09:72FD` is admitted; its larger `09:7266` parent
+remains assembly-backed.
 
 The terminal state-machine dispatch was also re-screened after the two native
 leaves. `01:C841` is the one-byte `RTS` scheduler sentinel and has no routine
