@@ -167,11 +167,12 @@ the per-routine breakdown for the session that was played. See
 [`docs/NATIVE_REGISTRY.md`](docs/NATIVE_REGISTRY.md) for the admitted set and
 its measured coverage.
 
-Cabinet mode opens a portrait playfield, a non-focusable score DMD, and a
+Cabinet mode opens a portrait playfield, a non-focusable status DMD, and a
 non-focusable backglass. Menus and bonus stages use the sharply scaled
 emulator framebuffer. A live normal session switches the playfield to the
-accepted 256-by-668 table background, while the DMD reads the active score
-directly from emulated work RAM. PNG, JPEG, and WebP backglasses are
+accepted 256-by-668 table background, while the DMD reads score, base bonus,
+and the current ball directly from emulated work RAM. It presents a large,
+unlabelled score above a smaller `Ball` / `Bonus` row. PNG, JPEG, and WebP backglasses are
 aspect-contained against black with the fixed sharp scaler; invalid or
 missing images retain the black fallback. Press F12 to pause into display
 assignment: 1/2/3 selects the playfield, DMD, or backglass; Left/Right cycles

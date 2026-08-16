@@ -1,6 +1,6 @@
 # Project Progress
 
-Last updated: 2026-08-14
+Last updated: 2026-08-16
 
 ## Current Status
 
@@ -1087,7 +1087,7 @@ progression, and group regeneration remain ROM-bounded.
 | --- | --- | --- |
 | 1. Emulated Windows baseline | Complete | Verified ROM runs through the pinned Beetle PCE fork with SDL3 video, audio, input, saves, and sharp monitor-resolution scaling |
 | 2. Instrumentation and hook bridge | Complete | Required game state is mapped and original routines can be observed, shadow-tested, and replaced |
-| 3. Cabinet preview | In progress | Three-window cabinet mode shows the stitched playfield, score DMD, native animated-logo backglass, assigned displays, and playfield-hosted bonus stages |
+| 3. Cabinet preview | In progress | Three-window cabinet mode shows the stitched playfield, two-tier status DMD, native animated-logo backglass, assigned displays, and playfield-hosted bonus stages |
 | 4. Native gameplay port | In progress | Physics, collisions, RNG, scoring, table rules, bonus stages, and session transitions execute natively |
 | 5. Final cabinet world model | Not started | Desktop and cabinet profiles share the same native gameplay state without divergence |
 | 6. Release hardening | Not started | Tested, documented, ROM-free Windows x64 package is ready for release |
@@ -1095,6 +1095,17 @@ progression, and group regeneration remain ROM-bounded.
 Status values used in this file are `Not started`, `In progress`, `Blocked`, and `Complete`.
 
 ## Completed
+
+- [x] Replaced the cabinet's score-only seven-segment DMD with a clean
+  two-tier native text display:
+  - Shows the unlabelled score as the dominant value, with smaller `Ball`
+    and `Bonus` fields sharing the row below and no borders.
+  - Decodes the original `$2D50 * 100` base bonus value and inverts the
+    standard three-ball `$2D52` countdown into current ball 1, 2, then 3.
+  - Reserves each tier's longest legal value width so neither type size
+    changes as values grow, while retaining square 5-by-7 bitmap cells.
+  - Added ROM-free state and layout coverage and passed Debug/Release core,
+    application, and cabinet smoke validation.
 
 - [x] Extend the bounded Knight movement parent through its timer-expiry and
   phase-wrap branches: `03:73A6@2` preserves the collision-free

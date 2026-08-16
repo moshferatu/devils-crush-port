@@ -173,7 +173,8 @@ Use three independently positioned borderless SDL windows:
    - Restore the full table when the bonus stage ends.
 
 2. **DMD**
-   - Render the active player's score natively at full monitor resolution.
+   - Render the score as the dominant, unlabelled value, with smaller Ball
+     and Bonus fields sharing a second native text row below it.
    - Show a P1/P2 discriminator only in two-player mode.
    - Continue updating during bonus stages.
 
@@ -299,7 +300,8 @@ Provide an interactive monitor-assignment screen and persist display identity, g
   - The first `--cabinet` vertical slice now creates non-focusable DMD and
     backglass auxiliaries, renders the accepted full-table background during
     normal sessions, restores the emulated framebuffer for menus and bonus
-    stages, displays the live score on the DMD and a native ROM-derived
+    stages, displays a dominant live score above current-ball/bonus status on
+    the DMD and a native ROM-derived
     animated logo on the backglass, and
     degrades to playfield-only operation when an auxiliary closes or fails.
   - Display identities, window geometry fallbacks, current monitor rotation,

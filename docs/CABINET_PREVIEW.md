@@ -1,6 +1,6 @@
 # Cabinet Preview
 
-Last updated: 2026-07-30
+Last updated: 2026-08-16
 
 ## Current vertical slice
 
@@ -9,8 +9,8 @@ windows:
 
 1. A resizable portrait playfield. This is the required host window and owns
    input, fullscreen toggling, and the fixed sharp-scaling pipeline.
-2. A resizable, non-focusable DMD. It draws the stored score as
-   monitor-resolution seven-segment digits in frontend and gameplay states.
+2. A resizable, non-focusable DMD. It draws a large score above a smaller
+   current-ball and bonus row in monitor-resolution bitmap text.
 3. A resizable, non-focusable backglass. It displays the native animated
    Devil's Crush logo with aspect-preserving sharp containment. A persisted
    PNG, JPEG, or WebP remains available only as a nonfatal fallback.
@@ -765,35 +765,34 @@ reads the three-byte little-endian score arrays at `$2205`, `$220C`, and
 `$2213`. Stored units are multiplied by 100, preserving the verified original
 display rule and the maximum visible score of 999,999,900.
 
+The same state view reads the base bonus from `$2D50`. The cartridge stores
+that value in hundreds, initializes it to one, and caps it at 99, so the DMD
+shows the original 100-to-9,900 bonus value. `$2D52` counts down from three
+and includes the ball currently in play. The native DMD inverts that standard
+session countdown to report current ball 1, 2, then 3; zero remains zero when
+no session is active, and counts above three saturate at ball one.
+
 The current DMD omits the P1/P2 discriminator until the two-player session
-field is dynamically mapped. The score remains live during emulated
-framebuffer and bonus-stage presentation because it is read independently
+field is dynamically mapped. All three values remain live during emulated
+framebuffer and bonus-stage presentation because they are read independently
 from work RAM.
 
-### Digit layout
+### Text layout
 
-`cabinet::calculate_dmd_digit_layout()` places the seven-segment digits. A
-digit is three units wide by five tall and neighbours are separated by a fifth
-of a digit width, so a row of `n` digits spans `0.72n - 0.12` digit heights.
-The field may use 90% of the window's width and 75% of its height.
+The host renders the score value without a label, then `Ball <value>` and
+`Bonus <value>` together on the row below. A native 5-by-7 bitmap alphabet
+supplies both labels and numbers without a runtime font dependency. There are
+no borders, rails, inactive segments, or other decoration.
 
-Both bounds have to be taken. Taking only the height bound is what made a
-fullscreen DMD illegible: at 0.75 of a 1080-pixel panel a digit is 810 pixels
-tall, and nine digits at that size span 5,152 pixels across a 1,920-pixel
-panel, so most of the score fell off both edges. The width bound was present
-but computed as `available_width / (0.72n - 0.12) * 5 / 3`. The `0.72n - 0.12`
-coefficients are already expressed in digit heights, so the trailing `5 / 3`
-applied the digit aspect a second time and inflated the width-limited height
-by 67%, leaving the field 1.5 times wider than the window whenever that bound
-did bind.
-
-Digits are sized against `kDmdScoreFieldDigits` rather than the count actually
-being drawn, so the score does not rescale itself each time it gains a digit.
-A short score is centred within the window, not left-aligned in the field. If
-a score longer than the field is ever decoded the field widens to hold it.
-`test_dmd_digit_layout` asserts that both bounds hold for one to twelve digits
-across five output shapes: the default 960-by-240 window, a 1920-by-360 DMD
-strip, fullscreen 16:9 and 16:10 panels, and a portrait-rotated panel.
+`cabinet::calculate_dmd_text_layout()` gives the score the upper two thirds
+of the output and centers it at the largest stable size allowed by the
+verified nine-digit maximum. The lower third is split horizontally between
+Ball and Bonus, which share one substantially smaller size. Fixed width
+reserves prevent value growth from resizing either tier. The layout remains
+bounded by both axes and keeps every bitmap cell square on wide, fullscreen,
+and portrait outputs. `test_dmd_text_layout` covers the exact labels, maximum
+values, common monitor shapes, size hierarchy, shared lower row, stable type
+sizes, and degenerate outputs.
 
 ## One rendered layer, measured against the emulator
 

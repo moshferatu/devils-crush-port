@@ -19,6 +19,10 @@ constexpr std::uint8_t kTableScreen = 0x00U;
 constexpr std::size_t kTableAttributeFirst = 0x0259U;
 constexpr std::size_t kTableAttributeEnd = 0x0859U;
 constexpr std::size_t kBallsInSessionOffset = 0x0D52U;
+constexpr std::uint8_t kStartingBallCount = 3U;
+// `$2D50` stores the base BP value in hundreds: play initializes it to one,
+// awards raise it one step at a time, and the original rules cap it at 99.
+constexpr std::size_t kBonusPointsHundredsOffset = 0x0D50U;
 constexpr std::size_t kScoreLowBase = 0x0205U;
 constexpr std::size_t kScoreMiddleBase = 0x020CU;
 constexpr std::size_t kScoreHighBase = 0x0213U;
@@ -67,6 +71,8 @@ std::optional<CabinetState> decode_cabinet_state(
         read_byte(work_ram, kScreenSelectorOffset);
     const auto balls_in_session =
         read_byte(work_ram, kBallsInSessionOffset);
+    const auto bonus_points = static_cast<std::uint32_t>(
+        read_byte(work_ram, kBonusPointsHundredsOffset)) * 100U;
     const bool bonus_stage =
         (session_flags & kBonusStageSessionBit) != 0U;
     const bool table_attributes_ready = std::any_of(
@@ -93,8 +99,19 @@ std::optional<CabinetState> decode_cabinet_state(
         .stored_score = stored_score,
         .displayed_score =
             static_cast<std::uint64_t>(stored_score) * 100U,
+        .bonus_points = bonus_points,
         .score_slot = score_slot,
         .balls_in_session = balls_in_session,
+        // `$2D52` counts down from three, including the ball currently in
+        // play. Inverting that countdown yields the standard session's
+        // current ball number. Saturation keeps a possible extra-ball count
+        // from wrapping below ball one.
+        .current_ball = balls_in_session == 0U
+            ? 0U
+            : static_cast<std::uint8_t>(
+                  kStartingBallCount
+                  - std::min(balls_in_session, kStartingBallCount)
+                  + 1U),
         .bonus_stage = bonus_stage,
         .screen_selector = screen_selector,
     };

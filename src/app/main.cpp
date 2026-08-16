@@ -4916,100 +4916,103 @@ void set_assignment_titles(
         || report_sdl_error("Rendering the black backglass failed");
 }
 
-[[nodiscard]] bool draw_dmd_segment(
-    SDL_Renderer* renderer,
-    const SDL_FRect& rectangle,
-    const bool active)
+using DmdGlyph = std::array<std::uint8_t, 7>;
+
+[[nodiscard]] constexpr std::optional<DmdGlyph> dmd_glyph(
+    const char character) noexcept
 {
-    if (!SDL_SetRenderDrawColor(
-            renderer,
-            active ? 255U : 40U,
-            active ? 48U : 4U,
-            0U,
-            255U)
-        || !SDL_RenderFillRect(renderer, &rectangle)) {
-        return report_sdl_error("Rendering a DMD segment failed");
+    switch (character) {
+    case ' ':
+        return DmdGlyph{};
+    case '0':
+        return DmdGlyph{0x0EU, 0x11U, 0x13U, 0x15U, 0x19U, 0x11U, 0x0EU};
+    case '1':
+        return DmdGlyph{0x04U, 0x0CU, 0x04U, 0x04U, 0x04U, 0x04U, 0x0EU};
+    case '2':
+        return DmdGlyph{0x0EU, 0x11U, 0x01U, 0x02U, 0x04U, 0x08U, 0x1FU};
+    case '3':
+        return DmdGlyph{0x1EU, 0x01U, 0x01U, 0x0EU, 0x01U, 0x01U, 0x1EU};
+    case '4':
+        return DmdGlyph{0x02U, 0x06U, 0x0AU, 0x12U, 0x1FU, 0x02U, 0x02U};
+    case '5':
+        return DmdGlyph{0x1FU, 0x10U, 0x10U, 0x1EU, 0x01U, 0x01U, 0x1EU};
+    case '6':
+        return DmdGlyph{0x06U, 0x08U, 0x10U, 0x1EU, 0x11U, 0x11U, 0x0EU};
+    case '7':
+        return DmdGlyph{0x1FU, 0x01U, 0x02U, 0x04U, 0x08U, 0x08U, 0x08U};
+    case '8':
+        return DmdGlyph{0x0EU, 0x11U, 0x11U, 0x0EU, 0x11U, 0x11U, 0x0EU};
+    case '9':
+        return DmdGlyph{0x0EU, 0x11U, 0x11U, 0x0FU, 0x01U, 0x02U, 0x0CU};
+    case 'B':
+        return DmdGlyph{0x1EU, 0x11U, 0x11U, 0x1EU, 0x11U, 0x11U, 0x1EU};
+    case 'P':
+        return DmdGlyph{0x1EU, 0x11U, 0x11U, 0x1EU, 0x10U, 0x10U, 0x10U};
+    case 'R':
+        return DmdGlyph{0x1EU, 0x11U, 0x11U, 0x1EU, 0x14U, 0x12U, 0x11U};
+    case 'S':
+        return DmdGlyph{0x0FU, 0x10U, 0x10U, 0x0EU, 0x01U, 0x01U, 0x1EU};
+    case 'a':
+        return DmdGlyph{0x00U, 0x0EU, 0x01U, 0x0FU, 0x11U, 0x13U, 0x0DU};
+    case 'c':
+        return DmdGlyph{0x00U, 0x0EU, 0x10U, 0x10U, 0x10U, 0x11U, 0x0EU};
+    case 'e':
+        return DmdGlyph{0x00U, 0x0EU, 0x11U, 0x1FU, 0x10U, 0x10U, 0x0EU};
+    case 'g':
+        return DmdGlyph{0x00U, 0x0FU, 0x11U, 0x0FU, 0x01U, 0x11U, 0x0EU};
+    case 'i':
+        return DmdGlyph{0x04U, 0x00U, 0x0CU, 0x04U, 0x04U, 0x04U, 0x0EU};
+    case 'l':
+        return DmdGlyph{0x0CU, 0x04U, 0x04U, 0x04U, 0x04U, 0x04U, 0x0EU};
+    case 'm':
+        return DmdGlyph{0x00U, 0x1AU, 0x15U, 0x15U, 0x11U, 0x11U, 0x11U};
+    case 'n':
+        return DmdGlyph{0x00U, 0x1EU, 0x11U, 0x11U, 0x11U, 0x11U, 0x11U};
+    case 'o':
+        return DmdGlyph{0x00U, 0x0EU, 0x11U, 0x11U, 0x11U, 0x11U, 0x0EU};
+    case 'r':
+        return DmdGlyph{0x00U, 0x16U, 0x19U, 0x10U, 0x10U, 0x10U, 0x10U};
+    case 's':
+        return DmdGlyph{0x00U, 0x0FU, 0x10U, 0x0EU, 0x01U, 0x01U, 0x1EU};
+    case 't':
+        return DmdGlyph{0x08U, 0x08U, 0x1EU, 0x08U, 0x08U, 0x09U, 0x06U};
+    case 'u':
+        return DmdGlyph{0x00U, 0x11U, 0x11U, 0x11U, 0x11U, 0x13U, 0x0DU};
+    default:
+        return std::nullopt;
     }
-    return true;
 }
 
-[[nodiscard]] bool draw_dmd_digit(
+[[nodiscard]] bool draw_dmd_character(
     SDL_Renderer* renderer,
-    const int digit,
-    const float x,
-    const float y,
-    const float width,
-    const float height)
+    const char character,
+    const int x,
+    const int y,
+    const int cell_size)
 {
-    constexpr std::array<std::uint8_t, 10> masks{
-        0x3FU,
-        0x06U,
-        0x5BU,
-        0x4FU,
-        0x66U,
-        0x6DU,
-        0x7DU,
-        0x07U,
-        0x7FU,
-        0x6FU,
-    };
-    if (digit < 0 || digit >= static_cast<int>(masks.size())) {
+    const auto glyph = dmd_glyph(character);
+    if (!glyph) {
         return false;
     }
-    const auto thickness = std::max(2.0F, height / 10.0F);
-    const auto half = height / 2.0F;
-    const std::array segments{
-        SDL_FRect{
-            x + thickness,
-            y,
-            width - 2.0F * thickness,
-            thickness,
-        },
-        SDL_FRect{
-            x + width - thickness,
-            y + thickness,
-            thickness,
-            half - 1.5F * thickness,
-        },
-        SDL_FRect{
-            x + width - thickness,
-            y + half + 0.5F * thickness,
-            thickness,
-            half - 1.5F * thickness,
-        },
-        SDL_FRect{
-            x + thickness,
-            y + height - thickness,
-            width - 2.0F * thickness,
-            thickness,
-        },
-        SDL_FRect{
-            x,
-            y + half + 0.5F * thickness,
-            thickness,
-            half - 1.5F * thickness,
-        },
-        SDL_FRect{
-            x,
-            y + thickness,
-            thickness,
-            half - 1.5F * thickness,
-        },
-        SDL_FRect{
-            x + thickness,
-            y + half - thickness / 2.0F,
-            width - 2.0F * thickness,
-            thickness,
-        },
-    };
-    for (std::size_t segment = 0; segment < segments.size(); ++segment) {
-        if (!draw_dmd_segment(
-                renderer,
-                segments[segment],
-                (masks[static_cast<std::size_t>(digit)]
-                 & (1U << segment))
-                    != 0U)) {
-            return false;
+    for (std::size_t row = 0; row < glyph->size(); ++row) {
+        for (int column = 0;
+             column < devils_crush::cabinet::kDmdGlyphWidth;
+             ++column) {
+            const auto mask = static_cast<std::uint8_t>(
+                1U << (devils_crush::cabinet::kDmdGlyphWidth - 1 - column));
+            if (((*glyph)[row] & mask) == 0U) {
+                continue;
+            }
+            const SDL_FRect pixel{
+                static_cast<float>(x + column * cell_size),
+                static_cast<float>(
+                    y + static_cast<int>(row) * cell_size),
+                static_cast<float>(cell_size),
+                static_cast<float>(cell_size),
+            };
+            if (!SDL_RenderFillRect(renderer, &pixel)) {
+                return report_sdl_error("Rendering DMD text failed");
+            }
         }
     }
     return true;
@@ -5017,7 +5020,9 @@ void set_assignment_titles(
 
 [[nodiscard]] bool present_dmd(
     AuxiliaryWindow& output,
-    const std::uint64_t displayed_score)
+    const std::uint64_t displayed_score,
+    const std::uint32_t bonus_points,
+    const std::uint8_t current_ball)
 {
     if (output.renderer == nullptr) {
         return true;
@@ -5038,26 +5043,36 @@ void set_assignment_titles(
         return report_sdl_error("Clearing the DMD failed");
     }
 
-    const auto digits = std::to_string(displayed_score);
-    const auto layout = devils_crush::cabinet::calculate_dmd_digit_layout(
+    const auto content = devils_crush::cabinet::make_dmd_text_content(
+        displayed_score,
+        bonus_points,
+        current_ball);
+    const auto layout = devils_crush::cabinet::calculate_dmd_text_layout(
         output_width,
         output_height,
-        digits.size());
+        content);
     if (!layout.valid()) {
         return SDL_RenderPresent(output.renderer)
             || report_sdl_error("SDL_RenderPresent (DMD) failed");
     }
 
-    for (std::size_t index = 0; index < digits.size(); ++index) {
-        if (!draw_dmd_digit(
-                output.renderer,
-                digits[index] - '0',
-                layout.origin_x
-                    + static_cast<float>(index) * layout.pitch(),
-                layout.origin_y,
-                layout.digit_width,
-                layout.digit_height)) {
-            return false;
+    if (!SDL_SetRenderDrawColor(output.renderer, 255U, 80U, 0U, 255U)) {
+        return report_sdl_error("Setting the DMD text color failed");
+    }
+    for (std::size_t line = 0; line < content.text.size(); ++line) {
+        for (std::size_t index = 0;
+             index < content.text[line].size();
+             ++index) {
+            if (!draw_dmd_character(
+                    output.renderer,
+                    content.text[line][index],
+                    layout.lines[line].origin_x
+                        + static_cast<int>(index)
+                            * layout.lines[line].character_advance,
+                    layout.lines[line].origin_y,
+                    layout.lines[line].cell_size)) {
+                return false;
+            }
         }
     }
     if (!SDL_RenderPresent(output.renderer)) {
@@ -9408,6 +9423,8 @@ int run_windows_host(
     devils_crush::render::TablePaletteCache table_palette_cache;
     SeededActorTracker seeded_actors;
     std::uint64_t dmd_score = 0U;
+    std::uint32_t dmd_bonus_points = 0U;
+    std::uint8_t dmd_current_ball = 0U;
     std::uint64_t backglass_logo_frame = 0U;
     bool assignment_active = false;
     auto assignment_role = AssignmentRole::playfield;
@@ -9760,6 +9777,8 @@ int run_windows_host(
                         work_ram);
                 if (cabinet_state) {
                     dmd_score = cabinet_state->displayed_score;
+                    dmd_bonus_points = cabinet_state->bonus_points;
+                    dmd_current_ball = cabinet_state->current_ball;
                 }
                 if (backglass_logo
                     && backglass.renderer != nullptr) {
@@ -9899,7 +9918,11 @@ int run_windows_host(
                         dmd.renderer,
                         AssignmentRole::dmd,
                         assignment_role == AssignmentRole::dmd)
-                    : present_dmd(dmd, dmd_score))) {
+                    : present_dmd(
+                        dmd,
+                        dmd_score,
+                        dmd_bonus_points,
+                        dmd_current_ball))) {
             std::cerr << "Cabinet DMD renderer lost; disabling DMD.\n";
             destroy_auxiliary_window(dmd);
         }

@@ -2,61 +2,66 @@
 
 #pragma once
 
+#include <array>
 #include <cstddef>
+#include <cstdint>
+#include <string>
 
 namespace devils_crush::cabinet {
 
-// The score field is sized for the widest score the game can reach so that
-// digit size does not change as the score grows. The verified maximum visible
-// score is 999,999,900: nine digits. The three-byte stored score could hold
-// more than the game ever awards, so `calculate_dmd_digit_layout` widens the
-// field rather than overflowing if a longer value is ever decoded.
-inline constexpr std::size_t kDmdScoreFieldDigits = 9U;
+inline constexpr std::size_t kDmdTextCount = 3U;
+inline constexpr int kDmdGlyphWidth = 5;
+inline constexpr int kDmdGlyphHeight = 7;
+inline constexpr int kDmdGlyphAdvance = 6;
 
-// A seven-segment digit is three units wide by five tall, and neighbours are
-// separated by a fifth of a digit width.
-inline constexpr float kDmdDigitAspect = 0.6F;
-inline constexpr float kDmdGapFraction = 0.2F;
+// Fixed reserves keep either tier from changing size as its values gain
+// digits. The score is nine digits at its verified maximum; "Bonus 9900" is
+// the longest lower-row field the game exposes.
+inline constexpr std::size_t kDmdMaximumScoreCharacters = 9U;
+inline constexpr std::size_t kDmdMaximumStatusCharacters = 10U;
 
-// The share of the window the field may occupy. The remainder is the quiet
-// border a real DMD carries.
-inline constexpr float kDmdWidthUsage = 0.9F;
-inline constexpr float kDmdHeightUsage = 0.75F;
+struct DmdTextContent {
+    // Score, Ball, Bonus. Ball and Bonus share the lower visual row.
+    std::array<std::string, kDmdTextCount> text;
+};
 
-struct DmdDigitLayout {
-    float origin_x = 0.0F;
-    float origin_y = 0.0F;
-    float digit_width = 0.0F;
-    float digit_height = 0.0F;
-    float gap = 0.0F;
-
-    // The advance from one digit's left edge to the next.
-    [[nodiscard]] float pitch() const noexcept
-    {
-        return digit_width + gap;
-    }
+struct DmdTextLineLayout {
+    int origin_x = 0;
+    int origin_y = 0;
+    int width = 0;
+    int cell_size = 0;
+    int glyph_height = 0;
+    int character_advance = 0;
 
     [[nodiscard]] bool valid() const noexcept
     {
-        return digit_width > 0.0F && digit_height > 0.0F;
+        return cell_size > 0 && glyph_height > 0
+            && character_advance > 0;
     }
 };
 
-// Places `digit_count` seven-segment digits centred in an output of the given
-// size.
-//
-// The height is bounded by both axes. Taking only the height bound is what
-// made a fullscreen DMD illegible: at 0.75 of a 1080-pixel panel a digit is
-// 810 pixels tall, and a full score at that size is several times wider than
-// any panel it is drawn on, so the leading digits fall off the left edge and
-// the trailing ones off the right.
-//
-// Digits are sized against `kDmdScoreFieldDigits` rather than the count
-// actually being drawn. Sizing against the live count would have the score
-// shrink each time it gains a digit, which on a scoreboard reads as a fault.
-[[nodiscard]] DmdDigitLayout calculate_dmd_digit_layout(
+struct DmdTextLayout {
+    std::array<DmdTextLineLayout, kDmdTextCount> lines{};
+
+    [[nodiscard]] bool valid() const noexcept
+    {
+        return lines[0].valid() && lines[1].valid() && lines[2].valid();
+    }
+};
+
+// Builds the exact user-facing text. Values are already expressed in display
+// units; the decoder owns the cartridge-specific representation.
+[[nodiscard]] DmdTextContent make_dmd_text_content(
+    std::uint64_t displayed_score,
+    std::uint32_t bonus_points,
+    std::uint8_t current_ball);
+
+// Centers a large score in the upper two thirds. Ball and Bonus use one
+// shared, substantially smaller size in the left and right halves of the
+// lower third. All bitmap cells remain square.
+[[nodiscard]] DmdTextLayout calculate_dmd_text_layout(
     int output_width,
     int output_height,
-    std::size_t digit_count) noexcept;
+    const DmdTextContent& content) noexcept;
 
 } // namespace devils_crush::cabinet

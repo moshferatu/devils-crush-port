@@ -7008,6 +7008,7 @@ void test_cabinet_state()
                 == PlayfieldView::emulated_framebuffer
             && frontend->displayed_score == 0U
             && frontend->balls_in_session == 0U
+            && frontend->current_ball == 0U
             && !frontend->bonus_stage,
         "frontend state keeps the emulated playfield");
 
@@ -7016,6 +7017,7 @@ void test_cabinet_state()
     work_ram[0x020DU] = std::byte{0x03};
     work_ram[0x0214U] = std::byte{0};
     work_ram[0x0858U] = std::byte{1};
+    work_ram[0x0D50U] = std::byte{37};
     work_ram[0x0D52U] = std::byte{3};
     const auto normal_table = decode_cabinet_state(work_ram);
     check(
@@ -7024,9 +7026,23 @@ void test_cabinet_state()
                 == PlayfieldView::table_background
             && normal_table->stored_score == 1020U
             && normal_table->displayed_score == 102000U
+            && normal_table->bonus_points == 3700U
             && normal_table->score_slot == 1U
-            && normal_table->balls_in_session == 3U,
-        "normal session selects the table and active-player score");
+            && normal_table->balls_in_session == 3U
+            && normal_table->current_ball == 1U,
+        "normal session decodes the table and all three DMD values");
+
+    work_ram[0x0D52U] = std::byte{2};
+    check(
+        decode_cabinet_state(work_ram)
+            && decode_cabinet_state(work_ram)->current_ball == 2U,
+        "the second live ball is reported as ball two");
+    work_ram[0x0D52U] = std::byte{1};
+    check(
+        decode_cabinet_state(work_ram)
+            && decode_cabinet_state(work_ram)->current_ball == 3U,
+        "the final live ball is reported as ball three");
+    work_ram[0x0D52U] = std::byte{3};
 
     work_ram[0x0053U] = std::byte{0x10};
     const auto bonus = decode_cabinet_state(work_ram);
@@ -7070,8 +7086,9 @@ void test_cabinet_state()
     check(
         no_balls
             && no_balls->playfield
-                == PlayfieldView::emulated_framebuffer,
-        "session end restores the emulated playfield");
+                == PlayfieldView::emulated_framebuffer
+            && no_balls->current_ball == 0U,
+        "session end restores the emulated playfield without inventing a ball");
 
     work_ram[0x0251U] = std::byte{7};
     check(
@@ -9903,16 +9920,21 @@ void test_sprite_emit_run()
         "sprite emit rejects a missing snapshot");
 }
 
-void test_dmd_digit_layout()
+void test_dmd_text_layout()
 {
-    using devils_crush::cabinet::calculate_dmd_digit_layout;
-    using devils_crush::cabinet::kDmdScoreFieldDigits;
-    using devils_crush::cabinet::kDmdWidthUsage;
+    using devils_crush::cabinet::calculate_dmd_text_layout;
+    using devils_crush::cabinet::kDmdGlyphHeight;
+    using devils_crush::cabinet::make_dmd_text_content;
+
+    const auto content = make_dmd_text_content(102000U, 3700U, 1U);
+    check(
+        content.text[0] == "102000"
+            && content.text[1] == "Ball 1"
+            && content.text[2] == "Bonus 3700",
+        "the DMD exposes the requested labels and live values");
 
     // Every shape a DMD role can take: the default window, a dedicated DMD
-    // strip, a fullscreen 16:9 panel, a fullscreen 16:10 panel, and a panel
-    // rotated into portrait. The last three are what the score used to run
-    // off the edge of.
+    // strip, fullscreen 16:9 and 16:10 panels, and a portrait rotation.
     struct Output {
         int width;
         int height;
@@ -9927,62 +9949,66 @@ void test_dmd_digit_layout()
     };
 
     for (const auto& output : outputs) {
-        for (std::size_t digits = 1U; digits <= 12U; ++digits) {
-            const auto layout = calculate_dmd_digit_layout(
-                output.width, output.height, digits);
-            check(layout.valid(), "the DMD layout is drawable");
+        const auto layout = calculate_dmd_text_layout(
+            output.width, output.height, content);
+        check(layout.valid(), "the two-tier DMD layout is drawable");
 
-            // Digits are laid left to right from the origin, so the field
-            // runs from origin_x to the right edge of the last digit.
-            const auto drawn_width =
-                static_cast<float>(digits - 1U) * layout.pitch()
-                + layout.digit_width;
+        for (const auto& line : layout.lines) {
             check(
-                layout.origin_x >= 0.0F
-                    && layout.origin_x + drawn_width
-                        <= static_cast<float>(output.width) + 0.5F,
-                "the score fits horizontally");
+                line.origin_x >= 0
+                    && line.origin_x + line.width <= output.width,
+                "each DMD text line fits horizontally");
             check(
-                layout.origin_y >= 0.0F
-                    && layout.origin_y + layout.digit_height
-                        <= static_cast<float>(output.height) + 0.5F,
-                "the score fits vertically");
+                line.origin_y >= 0
+                    && line.origin_y + line.glyph_height
+                        <= output.height,
+                "each DMD text line fits vertically");
         }
+        check(
+            layout.lines[0].cell_size > layout.lines[1].cell_size * 2
+                && layout.lines[1].cell_size
+                    == layout.lines[2].cell_size,
+            "the score is much larger than both matching status fields");
+        check(
+            layout.lines[1].origin_y == layout.lines[2].origin_y
+                && layout.lines[1].origin_x + layout.lines[1].width
+                    < layout.lines[2].origin_x,
+            "Ball and Bonus share the lower row without overlapping");
     }
 
-    // Digit size must not change as the score grows: a scoreboard that
-    // rescales itself on every carry reads as a fault.
-    const auto one_digit = calculate_dmd_digit_layout(1920, 360, 1U);
-    const auto full_field =
-        calculate_dmd_digit_layout(1920, 360, kDmdScoreFieldDigits);
+    const auto default_layout =
+        calculate_dmd_text_layout(960, 240, content);
     check(
-        one_digit.digit_height == full_field.digit_height,
-        "a short score is drawn at the same size as a full one");
+        default_layout.lines[0].glyph_height
+                == default_layout.lines[0].cell_size * kDmdGlyphHeight
+            && default_layout.lines[1].glyph_height
+                == default_layout.lines[1].cell_size * kDmdGlyphHeight,
+        "both DMD tiers retain square 5-by-7 bitmap cells");
 
-    // A score wider than the nominal field still has to fit rather than
-    // overflow, so the field grows instead.
-    const auto over_field =
-        calculate_dmd_digit_layout(1920, 360, kDmdScoreFieldDigits + 2U);
+    // Value growth must not resize either tier. The widest legal values use
+    // the same fixed reserves as the initial values.
+    const auto maximum_content =
+        make_dmd_text_content(999999900U, 9900U, 3U);
+    const auto maximum_layout =
+        calculate_dmd_text_layout(960, 240, maximum_content);
     check(
-        over_field.digit_height < full_field.digit_height,
-        "a score wider than the field shrinks to fit it");
-
-    // On a strip wide enough for the height bound to bind, the field must
-    // still be the one that binds -- this is the direction the old formula
-    // got wrong by applying the digit aspect a second time.
-    const auto strip = calculate_dmd_digit_layout(1920, 360, 10U);
-    const auto strip_width =
-        static_cast<float>(kDmdScoreFieldDigits - 1U) * strip.pitch()
-        + strip.digit_width;
-    check(
-        strip_width
-            <= static_cast<float>(1920) * kDmdWidthUsage + 0.5F,
-        "the full field stays inside its width budget");
+        maximum_layout.lines[0].cell_size
+                == default_layout.lines[0].cell_size
+            && maximum_layout.lines[1].cell_size
+                == default_layout.lines[1].cell_size,
+        "DMD tier sizes stay fixed as their numbers grow");
 
     check(
-        !calculate_dmd_digit_layout(0, 240, 4U).valid()
-            && !calculate_dmd_digit_layout(960, 0, 4U).valid()
-            && !calculate_dmd_digit_layout(960, 240, 0U).valid(),
+        maximum_layout.lines[0].origin_y
+                < maximum_layout.lines[1].origin_y
+            && maximum_layout.lines[1].origin_y
+                == maximum_layout.lines[2].origin_y,
+        "the score sits above the shared Ball and Bonus row");
+
+    check(
+        !calculate_dmd_text_layout(0, 240, content).valid()
+            && !calculate_dmd_text_layout(960, 0, content).valid()
+            && !calculate_dmd_text_layout(40, 20, content).valid(),
         "a degenerate DMD output yields no layout");
 }
 
@@ -10352,7 +10378,7 @@ int main()
     test_actor_queue_registration();
     test_collision_scan_run();
     test_sprite_emit_run();
-    test_dmd_digit_layout();
+    test_dmd_text_layout();
     test_table_palette_cache();
     test_native_registry();
     test_runtime_boundary();

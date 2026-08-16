@@ -35,8 +35,10 @@ struct CabinetState {
     PlayfieldView playfield = PlayfieldView::emulated_framebuffer;
     std::uint32_t stored_score = 0;
     std::uint64_t displayed_score = 0;
+    std::uint32_t bonus_points = 0;
     std::uint8_t score_slot = 0;
     std::uint8_t balls_in_session = 0;
+    std::uint8_t current_ball = 0;
     bool bonus_stage = false;
     // `$2054`, the cartridge's own screen selector: 0 is the table, 3 the
     // title and attract screens, 4 the High Scores screen. Only 0 may be
