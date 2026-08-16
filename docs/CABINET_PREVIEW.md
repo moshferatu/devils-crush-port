@@ -82,14 +82,15 @@ change lands inside the camera window.
 The table is decoded only after:
 
 - at least one packed table-attribute byte is initialized;
-- the live-ball count at `$2D52` is nonzero;
 - session bit `$53.4` does not request a bonus stage; and
 - the cartridge's screen selector at `$2054` reads 0, the table.
 
-Menus, session-end presentation, and bonus stages therefore fall back to the
-emulated framebuffer. This reuses original presentation and gives bonus
-stages the required full playfield window without a second simulation. The
-last of those four conditions is the one that took a defect to find; see
+Menus and bonus stages therefore fall back to the emulated framebuffer. The
+stitched table remains visible after the final ball reaches zero, throughout
+the game-over presentation, and gives way only when the screen selector moves
+back to a menu. This also gives bonus stages the required full playfield
+window without a second simulation. The last of those three conditions is
+the one that took a defect to find; see
 [Screens raised over a live session](#screens-raised-over-a-live-session).
 
 The playfield now copies Beetle's internal post-DMA HuC6270 SAT and decodes

@@ -84,16 +84,18 @@ std::optional<CabinetState> decode_cabinet_state(
             return value != std::byte{0};
         });
 
-    // A live session is not the same thing as a table on screen. The screens
-    // the cartridge can raise over a running session -- High Scores above
-    // all -- leave the ball count and the table attributes exactly as they
-    // were, and rewrite pattern VRAM for their own glyphs. Reconstructing the
-    // table from the ROM tilemap and that VRAM then draws the table's shape
-    // filled with the menu's letters. `$2054` is what separates the two.
+    // Session lifetime is not the same thing as the table's screen lifetime.
+    // In particular, the ball count reaches zero as soon as the game ends,
+    // while the cartridge continues presenting the table during its game-over
+    // sequence. Keep reconstructing it until `$2054` actually selects another
+    // screen. Conversely, screens raised over a live session -- High Scores
+    // above all -- leave the ball count and table attributes intact while
+    // rewriting pattern VRAM for their own glyphs, so `$2054` is the reliable
+    // visual-state discriminator in both directions.
     return CabinetState{
         .playfield =
-            table_attributes_ready && balls_in_session != 0U
-                && !bonus_stage && screen_selector == kTableScreen
+            table_attributes_ready && !bonus_stage
+                && screen_selector == kTableScreen
             ? PlayfieldView::table_background
             : PlayfieldView::emulated_framebuffer,
         .stored_score = stored_score,

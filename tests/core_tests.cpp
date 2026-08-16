@@ -7086,9 +7086,16 @@ void test_cabinet_state()
     check(
         no_balls
             && no_balls->playfield
-                == PlayfieldView::emulated_framebuffer
+                == PlayfieldView::table_background
             && no_balls->current_ball == 0U,
-        "session end restores the emulated playfield without inventing a ball");
+        "game over keeps the stitched table visible without inventing a ball");
+
+    work_ram[0x0054U] = std::byte{3};
+    check(
+        decode_cabinet_state(work_ram)
+            && decode_cabinet_state(work_ram)->playfield
+                == PlayfieldView::emulated_framebuffer,
+        "the main menu restores the emulated playfield after game over");
 
     work_ram[0x0251U] = std::byte{7};
     check(
