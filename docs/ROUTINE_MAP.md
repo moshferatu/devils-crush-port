@@ -3049,6 +3049,29 @@ increments `$2CFB`, sets bit 0 of `$2D20`, submits 100 stored score units
 (10,000 displayed points), and enters a timed reset sequence. These
 completion effects are not claimed as dynamically exercised.
 
+### Dragon's-Egg dormant reset-gate extension: semantic `02:4387@all`
+
+The second scheduler update at `02:4384` installs `02:4387` as the destroyed
+fixed egg's persistent dispatch. This is a routine boundary, not merely the
+tail of the one `02:4345` hit call. Slot `$22` enters it 1,154 times from
+frames 2,427-3,584. Each call loads group-reset byte `$2CF7`, masks bit 0,
+finds it clear, and returns at `02:438E`. Of those calls, 1,145 are exact
+27-cycle, zero-write bodies and nine contain only timer-interrupt writes.
+
+The typed classifier accepts any fixed egg slot `$20-$25`, distinguishes the
+dormant and reset-requested states, and leaves the unobserved requested arm in
+assembly. That arm starts at `02:438F`, clears the actor's disabled and
+collision bits, clears its activation byte, and branches to initializer
+`02:433F`. The native dormant arm retains all three instruction checkpoints
+and absorbs the return, including exact interrupt replay. Normalized replay
+`02:4387@1` verifies frame 2,427, 27 body cycles, and zero ordered writes.
+Release and Debug reproduce the canonical census and focused artifacts:
+
+- Call SHA-256:
+  `e390996962f207c344043d065ee978a662f58e18f9f7bc67ce9e4297213f8762`
+- Write SHA-256:
+  `b9aa1662e7152bd361af29a16f06a071abd3151ad5ad3babf121bcd40afe1f6c`
+
 The combined bounded trace contains 11,660 calls and 2,481 ordered writes:
 one controller initializer, 1,790 controller updates, six egg initializers,
 9,857 egg updates, one next-frame egg transition, and five hatchling

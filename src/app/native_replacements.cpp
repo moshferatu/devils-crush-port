@@ -2137,12 +2137,18 @@ replace_native_gameplay_routine_impl(
         replacement =
             detail::replace_dragon_egg_hit_continuation(entry, work_ram);
     } else if (entry.routine
-        == RoutineKey{
-            .physical_bank = 0x02U,
-            .logical_pc = 0x4371U,
-        }) {
-        replacement =
-            detail::replace_dragon_egg_post_allocation(entry, work_ram);
+                   == RoutineKey{
+                       .physical_bank = 0x02U,
+                       .logical_pc = 0x4371U,
+                   }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x02U,
+                .logical_pc = 0x4387U,
+            }) {
+        replacement = entry.routine.logical_pc == 0x4371U
+            ? detail::replace_dragon_egg_post_allocation(entry, work_ram)
+            : detail::replace_dragon_egg_reset_gate(entry, work_ram);
     } else if (entry.routine
         == RoutineKey{
             .physical_bank = 0x02U,

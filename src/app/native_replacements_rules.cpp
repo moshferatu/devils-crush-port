@@ -15591,6 +15591,88 @@ replace_dragon_egg_post_allocation(
 }
 
 [[nodiscard]] std::optional<RoutineReplacement>
+replace_dragon_egg_reset_gate(
+    const RoutineEntry& entry,
+    const std::span<const std::byte> work_ram)
+{
+    constexpr RoutineKey kRoutine{
+        .physical_bank = 0x02U,
+        .logical_pc = 0x4387U,
+    };
+    if (entry.routine != kRoutine
+        || (entry.registers.status & 0x20U) != 0U) {
+        return std::nullopt;
+    }
+
+    dc_dragon_egg_reset_gate gate{};
+    if (!dc_classify_dragon_egg_reset_gate(
+            reinterpret_cast<const std::uint8_t*>(work_ram.data()),
+            work_ram.size(),
+            entry.registers.x,
+            &gate)) {
+        return std::nullopt;
+    }
+    if (gate.path != DC_DRAGON_EGG_RESET_GATE_IDLE) {
+        return std::nullopt;
+    }
+
+    const auto set_nz = [](std::uint8_t status, const std::uint8_t value) {
+        status = static_cast<std::uint8_t>(status & 0x7DU);
+        if (value == 0U) {
+            status = static_cast<std::uint8_t>(status | 0x02U);
+        } else if ((value & 0x80U) != 0U) {
+            status = static_cast<std::uint8_t>(status | 0x80U);
+        }
+        return status;
+    };
+
+    auto after_flag_load = entry.registers;
+    after_flag_load.accumulator = gate.group_reset_flags;
+    after_flag_load.status =
+        set_nz(after_flag_load.status, after_flag_load.accumulator);
+
+    auto output = after_flag_load;
+    output.accumulator = static_cast<std::uint8_t>(
+        output.accumulator & 0x01U);
+    output.status = set_nz(output.status, output.accumulator);
+    output.program_counter = 0x438EU;
+
+    RoutineReplacement replacement{
+        .return_instruction = {
+            .physical_bank = 0x02U,
+            .logical_pc = 0x438EU,
+        },
+        .output_registers = output,
+        .body_master_cycles = 27U,
+    };
+    const auto append_checkpoint =
+        [&replacement](const std::uint16_t instruction_pc,
+                       const std::uint16_t resume_pc,
+                       const std::uint32_t master_cycle,
+                       auto registers) {
+            registers.program_counter = resume_pc;
+            replacement.checkpoints.push_back({
+                .interrupt_sample_master_cycle_offset = master_cycle - 3U,
+                .master_cycle_offset = master_cycle,
+                .instruction = {0x02U, instruction_pc},
+                .registers = registers,
+            });
+        };
+
+    append_checkpoint(0x4387U, 0x438AU, 15U, after_flag_load);
+    append_checkpoint(0x438AU, 0x438CU, 21U, output);
+    append_checkpoint(0x438CU, 0x438EU, 27U, output);
+    absorb_return(
+        replacement,
+        work_ram,
+        entry.registers.stack_pointer,
+        {0x02U, 0x438EU},
+        27U,
+        output);
+    return replacement;
+}
+
+[[nodiscard]] std::optional<RoutineReplacement>
 replace_giant_door_initializer(
     const RoutineEntry& entry,
     const std::span<const std::byte> work_ram)

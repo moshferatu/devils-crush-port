@@ -236,6 +236,7 @@ DC_ADMITTED_ROUTINE(0x02U, 0x433FU, 6, 6, "verify_dragon_egg_initializer_semanti
 DC_ADMITTED_ROUTINE(0x02U, 0x4345U, 9857, 9857, "verify_dragon_egg_hit_continuations_semantic +1")
 DC_ADMITTED_ROUTINE(0x02U, 0x4357U, 1, 1, "verify_dragon_egg_hit_continuations_semantic +1")
 DC_ADMITTED_ROUTINE(0x02U, 0x4371U, 1, 1, "verify_dragon_egg_hit_continuations_semantic +1")
+DC_ADMITTED_ROUTINE(0x02U, 0x4387U, 1154, 1154, "verify_dragon_egg_reset_gate_semantic")
 DC_ADMITTED_ROUTINE(0x02U, 0x4455U, 1, 1, "verify_little_skull_hidden_initializer_semantic")
 DC_ADMITTED_ROUTINE(0x02U, 0x445BU, 2650, 2650, "verify_big_star_feature_gate_semantic")
 DC_ADMITTED_ROUTINE(0x02U, 0x4485U, 2, 2, "verify_little_skull_pair_initializer_semantic")

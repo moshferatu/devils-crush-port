@@ -946,6 +946,11 @@ replace_dragon_egg_post_allocation(
     std::span<const std::byte> work_ram);
 
 [[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_dragon_egg_reset_gate(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram);
+
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
 replace_giant_door_initializer(
     const emulation::RoutineEntry& entry,
     std::span<const std::byte> work_ram);

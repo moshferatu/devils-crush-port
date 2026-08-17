@@ -1277,6 +1277,17 @@ typedef struct dc_dragon_egg_hit_gate {
     dc_dragon_egg_hit_gate_path path;
 } dc_dragon_egg_hit_gate;
 
+typedef enum dc_dragon_egg_reset_gate_path {
+    DC_DRAGON_EGG_RESET_GATE_IDLE = 0,
+    DC_DRAGON_EGG_RESET_GATE_REQUESTED = 1
+} dc_dragon_egg_reset_gate_path;
+
+typedef struct dc_dragon_egg_reset_gate {
+    uint8_t slot;
+    uint8_t group_reset_flags;
+    dc_dragon_egg_reset_gate_path path;
+} dc_dragon_egg_reset_gate;
+
 // Direct ROM routine 03:6294 initializes the fixed Giant Door before its
 // collision gate begins at 03:62B8.
 typedef struct dc_giant_door_initializer {
@@ -1953,6 +1964,15 @@ int dc_classify_dragon_egg_hit_gate(
     size_t work_ram_size,
     uint8_t slot,
     dc_dragon_egg_hit_gate* gate);
+
+// Native state classification for persistent dispatch 02:4387. A destroyed
+// fixed egg remains dormant while group-reset flag $2CF7.0 is clear; a set
+// flag enters the assembly-owned actor reset and initializer path.
+int dc_classify_dragon_egg_reset_gate(
+    const uint8_t* work_ram,
+    size_t work_ram_size,
+    uint8_t slot,
+    dc_dragon_egg_reset_gate* gate);
 
 int dc_classify_giant_door_initializer(
     const uint8_t* work_ram,

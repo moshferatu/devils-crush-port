@@ -825,6 +825,15 @@ Provide an interactive monitor-assignment screen and persist display identity, g
   696,498,285 master cycles (53.89%, or 98.03% outside the wait) across 439
   admitted routines, and bank `02`'s non-entry remainder falls to 507,954
   cycles.
+  Semantic `02:4387@all` now replaces all 1,154 natural calls to the dormant
+  Dragon's-Egg reset gate installed after the route's single egg hit. Three
+  exact instruction checkpoints preserve all nine timer-interrupt passages
+  before the idle arm absorbs the `RTS` at `02:438E`; the unobserved
+  group-reset/reinitialization arm remains assembly-backed. Release and Debug
+  preserve exact call, write, replay, and canonical census artifacts. The
+  deployed registry now covers 696,553,677 master cycles (53.90%, or 98.04%
+  outside the wait) across 440 admitted routines, and bank `02`'s non-entry
+  remainder falls to 452,178 cycles.
   The larger `01:D525` controller remains a decomposition boundary: its 128
   census calls span 29-1,456 writes and 1,035-49,122 body master cycles, so
   the largest live paths exceed the bridge's independent 512-write limit.

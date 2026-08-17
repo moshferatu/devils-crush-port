@@ -1719,6 +1719,13 @@ parse_logical_address_range(const std::string_view text)
                                        .logical_pc = 0x4371U,
                                    }
                            && request.all_calls;
+                       const bool proven_dragon_egg_reset_gate =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x02U,
+                                       .logical_pc = 0x4387U,
+                                   }
+                           && request.all_calls;
                        const bool proven_big_star_feature_gate =
                            request.routine
                                    == RoutineKey{
@@ -3322,6 +3329,7 @@ parse_logical_address_range(const std::string_view text)
                            && !proven_dragon_egg_hit_gate
                            && !proven_dragon_egg_hit_continuation
                            && !proven_dragon_egg_post_allocation
+                           && !proven_dragon_egg_reset_gate
                            && !proven_big_star_feature_gate
                            && !proven_big_star_pending_gate
                            && !proven_big_star_pending_helper
@@ -3545,6 +3553,7 @@ parse_logical_address_range(const std::string_view text)
             "semantic 02:42EB@all, "
             "semantic 02:42F6@all, semantic 02:4345@all, "
             "semantic 02:4357@all, semantic 02:4371@all, "
+            "semantic 02:4387@all, "
             "semantic 02:445B@all, "
             "semantic 02:570A@all, semantic 02:5674@all, "
             "semantic 02:5397@all, semantic 02:5408@all, semantic 02:53C8@all, semantic 02:53E4@all, semantic 02:5441@all, semantic 02:545D@all, semantic 02:53DD@all, semantic 02:5456@all, "

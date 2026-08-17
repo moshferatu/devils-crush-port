@@ -2383,6 +2383,27 @@ int dc_classify_dragon_egg_hit_gate(
     return 1;
 }
 
+int dc_classify_dragon_egg_reset_gate(
+    const uint8_t* const work_ram,
+    const size_t work_ram_size,
+    const uint8_t slot,
+    dc_dragon_egg_reset_gate* const gate)
+{
+    const size_t group_reset_flags_offset = 0x0CF7U;
+
+    if (work_ram == NULL || gate == NULL || slot < 0x20U || slot > 0x25U
+        || work_ram_size <= group_reset_flags_offset) {
+        return 0;
+    }
+
+    gate->slot = slot;
+    gate->group_reset_flags = work_ram[group_reset_flags_offset];
+    gate->path = (gate->group_reset_flags & 0x01U) != 0U
+        ? DC_DRAGON_EGG_RESET_GATE_REQUESTED
+        : DC_DRAGON_EGG_RESET_GATE_IDLE;
+    return 1;
+}
+
 int dc_classify_giant_door_initializer(
     const uint8_t* const work_ram,
     const size_t work_ram_size,

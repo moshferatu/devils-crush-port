@@ -6030,6 +6030,48 @@ void test_native_dragon_egg_hit_gate()
         "native 4345 rejects an out-of-range actor slot");
 }
 
+void test_native_dragon_egg_reset_gate()
+{
+    std::array<std::uint8_t, 0x2000> work_ram{};
+    dc_dragon_egg_reset_gate gate{};
+
+    work_ram[0x0CF7U] = 0x80U;
+    check(
+        dc_classify_dragon_egg_reset_gate(
+            work_ram.data(), work_ram.size(), 0x22U, &gate)
+            != 0
+            && gate.path == DC_DRAGON_EGG_RESET_GATE_IDLE
+            && gate.slot == 0x22U
+            && gate.group_reset_flags == 0x80U,
+        "native 4387 identifies a dormant destroyed egg");
+
+    work_ram[0x0CF7U] = 0x81U;
+    check(
+        dc_classify_dragon_egg_reset_gate(
+            work_ram.data(), work_ram.size(), 0x25U, &gate)
+            != 0
+            && gate.path == DC_DRAGON_EGG_RESET_GATE_REQUESTED
+            && gate.slot == 0x25U
+            && gate.group_reset_flags == 0x81U,
+        "native 4387 identifies a requested group reset");
+
+    check(
+        dc_classify_dragon_egg_reset_gate(
+            work_ram.data(), 0x0CF7U, 0x20U, &gate)
+            == 0,
+        "native 4387 rejects a truncated work-RAM snapshot");
+    check(
+        dc_classify_dragon_egg_reset_gate(
+            work_ram.data(), work_ram.size(), 0x1FU, &gate)
+            == 0,
+        "native 4387 rejects a slot below the fixed egg cluster");
+    check(
+        dc_classify_dragon_egg_reset_gate(
+            work_ram.data(), work_ram.size(), 0x26U, &gate)
+            == 0,
+        "native 4387 rejects a slot above the fixed egg cluster");
+}
+
 void test_native_giant_door_hit_gate()
 {
     std::array<std::uint8_t, 0x2000> work_ram{};
@@ -10516,6 +10558,7 @@ int main()
     test_native_fixed_marker_gate();
     test_native_scaled_word_add();
     test_native_dragon_egg_hit_gate();
+    test_native_dragon_egg_reset_gate();
     test_native_giant_door_hit_gate();
     test_native_giant_door_initializer();
     test_native_flipper_input_gate();

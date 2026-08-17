@@ -3407,9 +3407,26 @@ not alternate gameplay paths.
 Semantic `02:5590@all` retains all five instruction boundaries and absorbs the
 return. It adds 81,300 native cycles, raising the registry to 696,498,285
 (53.89%, or 98.03% outside the wait), while bank `02`'s non-entry remainder
-falls to 507,954. The next useful screen is the true boundary around
-`02:4387-438E` and its registered Dragon's-Egg parent; the larger `02:4CF1` row
-remains known handoff residue.
+falls to 507,954.
+
+## Dragon's-Egg dormant reset gate
+
+The `02:4387/438A/438C/438E` cluster is not an interior tail executed only by
+the single `02:4345` hit. The scheduler call at `02:4384` installs `02:4387`
+as destroyed egg slot `$22`'s persistent dispatch. It consequently receives
+1,154 natural calls from frames 2,427-3,584. Every call finds `$2CF7.0` clear
+and reaches the `RTS` at `02:438E`; 1,145 are exact 27-cycle, zero-write bodies
+and nine longer calls contain only original timer interrupts.
+
+Semantic `02:4387@all` retains all three instruction boundaries and absorbs
+the idle return. The reset-request arm beginning at `02:438F`, which clears
+the actor's disabled/collision state and loops to initializer `02:433F`, stays
+assembly-backed because the route never requests it. The native gate adds
+55,392 cycles, raising the registry to 696,553,677 (53.90%, or 98.04% outside
+the wait) across 440 routines. Bank `02`'s non-entry remainder falls to
+452,178. The next useful screen is the partial semantic `02:5397` charge-
+position leaf and its `539E/53A4/53A7` interior residue; the larger `02:4CF1`
+row remains known handoff residue.
 
 ## Use on future families
 

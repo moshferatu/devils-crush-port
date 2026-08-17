@@ -26,11 +26,18 @@ high byte. The deterministic 1,800-frame route now executes 18,806 of 19,648
 preserving the byte-identical gameplay artifact, complete 19,648-call trace,
 and all 180,389 ordered writes.
 
-The deployed registry now runs **696,498,285 of 1,292,371,731 master cycles
-natively, 53.89% of the route and 98.03% of everything outside the frame-sync
-wait**, across 439 admitted routines with no transcript declined at an
+The deployed registry now runs **696,553,677 of 1,292,371,731 master cycles
+natively, 53.90% of the route and 98.04% of everything outside the frame-sync
+wait**, across 440 admitted routines with no transcript declined at an
 interrupt horizon and none abandoned. The 3,600-frame state census remains
 `9036a9de0c3c9917f47bff8c04c136a4824ec12601fb457d260aa2dfe4443490`.
+
+The dormant Dragon's-Egg reset gate is native. After the route's one egg hit,
+`02:4384` schedules `02:4387` as destroyed slot `$22`'s persistent dispatch.
+All 1,154 natural calls find `$2CF7.0` clear and return at `02:438E`; three
+instruction checkpoints preserve the nine interrupt-bearing calls. The
+unobserved reset/reinitializer arm remains assembly fallback. The slice adds
+55,392 registry cycles and reduces bank `02`'s non-entry remainder to 452,178.
 
 The right Skeleton Insect's post-trigger idle controller is native.
 `02:5590` owns all 1,084 natural calls, preserves five instruction boundaries
@@ -6337,36 +6344,50 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
   - [x] Registry cycles 696,416,985 -> **696,498,285**; 53.89%, 98.03% outside
     the wait; 439 admitted routines; bank `02` non-entry remainder -> 507,954;
     zero horizon declines and zero abandonments.
+- [x] Port the dormant Dragon's-Egg reset gate `02:4387-438E`:
+  - [x] Prove `02:4387` is the scheduler-installed persistent dispatch after
+    the routed egg hit, rather than an interior fragment of `02:4345`.
+  - [x] Replace all 1,154 natural `$2CF7.0`-clear calls through three exact
+    instruction checkpoints and absorb the `02:438E` return.
+  - [x] Preserve the unobserved reset-request branch through `02:438F` and the
+    original `02:433F` initializer as assembly fallback.
+  - [x] Preserve byte-identical Release/Debug canonical census, complete
+    1,154-call/111-write artifacts, and the 27-cycle/zero-write normalized
+    sample.
+  - [x] Registry cycles 696,498,285 -> **696,553,677**; 53.90%, 98.04% outside
+    the wait; 440 admitted routines, 370 entered; bank `02` non-entry remainder
+    -> 452,178; zero horizon declines and zero abandonments.
 
 ## Active Work
 
-Current owner: Codex. Current slice: **the right Skeleton-Insect post-trigger
-idle controller**.
+Current owner: Codex. Current slice: **the dormant Dragon's-Egg reset gate**.
 Done.
 
-`02:5590` is the real dispatch entry behind the former `5592/5595/55AA/55AF`
-profile rows. Every natural call sets Y to zero, finds both `$3200,Y` and
-`$2CC7` clear, and returns at `02:55AF`. The native leaf retains all five
-instruction checkpoints, including the boundaries that hosted 17
-interrupt-extended calls, then absorbs the return. Both active continuations
-remain assembly fallback.
+`02:4387` is the persistent dispatch that the shared scheduler installs after
+the route destroys Dragon's-Egg slot `$22`; it is not an interior fragment of
+the original `02:4345` hit transaction. Every natural call loads `$2CF7`, finds
+its group-reset bit clear, and returns at `02:438E`. The native gate retains
+all three instruction checkpoints, including the boundaries that hosted nine
+interrupt-extended calls, then absorbs the return. The reset/reinitializer arm
+remains assembly fallback.
 
 Release and Debug preserve byte-identical census and the complete
-5,805-call/1,316-write family artifacts, trace, and actor timeline. The first
-post-trigger call also shadows at 54 cycles and zero ordered writes.
+1,154-call/111-write artifacts. The first dormant call also shadows at 27
+cycles and zero ordered writes.
 
 | | Before | After |
 | --- | ---: | ---: |
-| Native ownership at `02:5590` | 0 | **81,300** |
-| Registry cycles | 696,416,985 | **696,498,285** |
-| Native share | 53.89% | **53.89%** |
-| Native share outside the wait | 98.02% | **98.03%** |
-| Admitted routines | 438 | **439** |
-| Bank `02` non-entry remainder | 589,950 | **507,954** |
+| Native ownership at `02:4387` | 0 | **55,392** |
+| Registry cycles | 696,498,285 | **696,553,677** |
+| Native share | 53.89% | **53.90%** |
+| Native share outside the wait | 98.03% | **98.04%** |
+| Admitted routines | 439 | **440** |
+| Bank `02` non-entry remainder | 507,954 | **452,178** |
 
-Next: screen the remaining bank-`02` family around `02:4387-438E` with its
-registered Dragon's-Egg parent and continuations. `02:4CF1` remains known
-residue from already-bounded handoff arms, not a new entry.
+Next: revisit the partial semantic `02:5397` Devil-Shooter companion position
+leaf and determine whether exact instruction checkpoints can admit its 387
+near-horizon calls. Its `02:539E/53A4/53A7` rows are interior residue, while
+`02:4CF1` remains known residue from already-bounded handoff arms.
 
 ### Previous: the score panel's glyph writer
 
