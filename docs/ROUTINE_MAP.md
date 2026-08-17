@@ -2383,6 +2383,17 @@ assembly; servicing it after the `RTS` changes the observer's ordered-write
 scope even though final RAM is unchanged. Enabling the leaf leaves the owning
 family's existing census, RAM, call, write, trace, and actor-state hashes exact.
 
+Semantic `02:5249@all` composes the held-charge controller's real
+`JSR $52E3` frame and the existing atomic charge-position child. It admits 86
+of 156 entries; the 70 event/IRQ-horizon calls retain the child in assembly and
+resume at semantic `02:524C@all`. That tail owns all 69 ordinary compare/return
+paths plus the one `$2D15=$27` path that clears `$3800,X.7` and composes the
+shared scheduler to install `02:525F`. Release and Debug share census
+`9036a9de0c3c9917f47bff8c04c136a4824ec12601fb457d260aa2dfe4443490`,
+226-call hash `4689d208c55435d4d2cd30245686b64c6ca5bfe5620563d5405168981529b062`,
+and 1,310-write hash
+`0b0ccba457fb43d79424810d8c1a968ca764aa51050147057dd60628c1e41cdc`.
+
 Semantic `02:533B@all` covers 11 horizon-safe charge-retraction calls from
 the catch and launch-controller callers. It preserves the three coordinate
 stores, remaining-charge store, and conditional appearance store exactly.

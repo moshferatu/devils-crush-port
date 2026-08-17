@@ -918,6 +918,14 @@ Provide an interactive monitor-assignment screen and persist display identity, g
   assembly-backed. All six timer-interrupt passages remain exact. The pair
   adds 20,646 net deployed cycles after existing child credit is displaced,
   taking the registry to 696,729,615 cycles across 446 routines.
+  Semantic `02:5249@all` now composes the held-charge controller's authentic
+  call to native `02:52E3` on 86 horizon-safe entries and absorbs their
+  ordinary return. Semantic `02:524C@all` owns every one of the 70 tails left
+  exposed by the atomic child, including the final collision clear and native
+  scheduler handoff at charge `$27`. Release and Debug preserve the same
+  226-call/1,310-write artifact and canonical state. The pair adds 9,357 net
+  deployed cycles after displacing existing child credit, taking the registry
+  to 696,738,972 cycles across 448 routines.
   The larger `01:D525` controller remains a decomposition boundary: its 128
   census calls span 29-1,456 writes and 1,035-49,122 body master cycles, so
   the largest live paths exceed the bridge's independent 512-write limit.

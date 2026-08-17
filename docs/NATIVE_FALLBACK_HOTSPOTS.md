@@ -3587,6 +3587,21 @@ The pair owns 20,838 gross cycles and displaces 192 cycles of existing
 the true `02:5249` Devil-Shooter coroutine entry and its `524C/5253` residue;
 `02:4CF1` remains known handoff residue.
 
+That screen resolves a parent plus its exposed tail. `02:5249` executes 156
+times and calls the existing atomic charge-position semantic at `02:52E3`.
+Eighty-six calls fit before the next event/IRQ horizon and compose it natively;
+the other 70 retain the original child and resume at `02:524C`. The latter
+entry owns all 69 ordinary compare/return tails plus the one charge-`$27`
+collision clear and scheduler installation, so no `02:5253` instruction
+remains in the deployed profile.
+
+The pair owns 34,749 gross cycles. Coarsening removes 23,436 cycles previously
+credited to `02:52E3`, 1,764 at `02:533A`, and 192 across `01:C018/C5C9`, for
+an exact net gain of 9,357 cycles. The registry reaches 696,738,972 cycles
+across 448 routines; bank `02`'s non-entry remainder falls to 279,969. The next
+compact residue is the 144 `02:5F5B` returns immediately after registered
+Tower-Insect source countdown `02:5F4A`; `02:4CF1` remains a handoff.
+
 ## Use on future families
 
 Follow the command and interpretation rules in

@@ -1853,6 +1853,20 @@ parse_logical_address_range(const std::string_view text)
                                        .logical_pc = 0x525FU,
                                    }
                            && request.all_calls;
+                       const bool proven_devil_shooter_charge_controller =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x02U,
+                                       .logical_pc = 0x5249U,
+                                   }
+                           && request.all_calls;
+                       const bool proven_devil_shooter_charge_controller_tail =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x02U,
+                                       .logical_pc = 0x524CU,
+                                   }
+                           && request.all_calls;
                        const bool proven_devil_shooter_charge_position =
                            request.routine
                                    == RoutineKey{
@@ -3388,6 +3402,8 @@ parse_logical_address_range(const std::string_view text)
                            && !proven_devil_shooter_hit_gate
                            && !proven_devil_shooter_release_delay_gate
                            && !proven_devil_shooter_post_launch_gate
+                           && !proven_devil_shooter_charge_controller
+                           && !proven_devil_shooter_charge_controller_tail
                            && !proven_devil_shooter_charge_position
                            && !proven_devil_shooter_charge_return
                            && !proven_devil_shooter_charge_retraction
@@ -3613,6 +3629,8 @@ parse_logical_address_range(const std::string_view text)
             "semantic 02:4BD5@all, semantic 02:4C0A@all, semantic 02:4C33@all, semantic 02:4CFB@all, semantic 02:4D0B@all, "
             "semantic 02:5116@all, "
             "semantic 02:5159@all, "
+            "semantic 02:5249@all, "
+            "semantic 02:524C@all, "
             "semantic 02:525F@all, "
             "semantic 02:52E3@all, "
             "semantic 02:533A@all, "

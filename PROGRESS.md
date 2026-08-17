@@ -26,14 +26,23 @@ high byte. The deterministic 1,800-frame route now executes 18,806 of 19,648
 preserving the byte-identical gameplay artifact, complete 19,648-call trace,
 and all 180,389 ordered writes.
 
-The deployed registry now runs **696,729,615 of 1,292,371,731 master cycles
-natively, 53.91% of the route and 98.06% of everything outside the frame-sync
-wait**, across 446 admitted routines. The center Skeleton-Insect now continues
-natively through `02:5625` and all 229 observed `02:5630` idle checks,
-including six original timer-interrupt passages; the core declines no offered
-transcript and none is abandoned. The
+The deployed registry now runs **696,738,972 of 1,292,371,731 master cycles
+natively, 53.91% of the route and 98.07% of everything outside the frame-sync
+wait**, across 448 admitted routines. The Devil-Shooter charge controller now
+owns 86 horizon-safe `02:5249` parents plus all 70 exposed `02:524C` tails;
+the core declines no offered registry transcript and none is abandoned. The
 3,600-frame state census remains
 `9036a9de0c3c9917f47bff8c04c136a4824ec12601fb457d260aa2dfe4443490`.
+
+The Devil-Shooter's held-charge coroutine is native at `02:5249/524C`.
+`02:5249` reproduces the authentic `JSR $52E3` frame, composes the existing
+charge-position semantic, and absorbs the ordinary `02:5253` return on 86
+horizon-safe calls. The 70 calls whose atomic child cannot cross an event or
+interrupt horizon resume at `02:524C`; its independent transcript owns all 69
+ordinary tails plus the one `$27` full-charge collision clear and scheduler
+handoff. Release and Debug preserve the same 226-call/1,310-write artifact,
+canonical RAM, and normalized replays. The entries own 34,749 gross cycles,
+displace 25,392 cycles of existing child credit, and add 9,357 net cycles.
 
 The center Skeleton-Insect's post-delay handoff and opening gate are native at
 `02:5625/5630`. The one-time 228-cycle handoff clears presentation bit 5 and
@@ -6479,34 +6488,42 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
     preserve the 5,805-call/1,316-write family artifacts exactly.
   - [x] Registry A/B: **696,708,969 -> 696,729,615** native cycles; 20,646 net
     cycles added, 446 admitted routines, 376 entered, and no abandonments.
+- [x] Port the Devil-Shooter held-charge controller and exposed tail:
+  - [x] Compose `02:5249` with the existing atomic `02:52E3` charge-position
+    semantic on all 86 horizon-safe parent calls.
+  - [x] Replace all 70 exposed `02:524C` tails, including the one full-charge
+    collision clear and scheduler handoff, and eliminate `02:5253` residue.
+  - [x] Preserve identical Release/Debug census, RAM, 226-call/1,310-write
+    artifacts, and 312-cycle/261-cycle normalized path replays.
+  - [x] Registry A/B: **696,729,615 -> 696,738,972** native cycles; 9,357 net
+    cycles added, 448 admitted routines, 378 entered, and no abandonments.
 
 ## Active Work
 
-Current owner: Codex. Current slice: **the center Skeleton-Insect post-delay
-handoff and idle opening gate at `02:5625/5630`**. Done.
+Current owner: Codex. Current slice: **the Devil-Shooter held-charge
+controller and exposed tail at `02:5249/524C`**. Done.
 
-The `02:5625` transcript clears the presentation bit, reproduces the
-`JSR $C018` stack frame, and composes the existing coroutine scheduler at
-`01:C5C9`. The `02:5630` transcript covers the proven idle gate through every
-instruction boundary and absorbs its return. Six direct calls contain original
-timer interrupts and remain exact; active opening continues in assembly.
+The `02:5249` transcript composes its authentic charge-position call when the
+atomic child fits before the next horizon. Calls that cannot fit resume in
+assembly and are picked up at `02:524C`, whose checkpointed tail owns both the
+ordinary return and full-charge scheduler handoff.
 
 | | Before | After |
 | --- | ---: | ---: |
-| Gross native ownership at `02:5625/5630` | 0 | **20,838** |
-| Replaced child credit at `01:C018/C5C9` | 192 | **0** |
-| Registry cycles | 696,708,969 | **696,729,615** |
+| Gross native ownership at `02:5249/524C` | 0 | **34,749** |
+| Replaced child credit | 25,392 | **0** |
+| Registry cycles | 696,729,615 | **696,738,972** |
 | Native share | 53.91% | **53.91%** |
-| Native share outside the wait | 98.06% | **98.06%** |
-| Admitted routines | 444 | **446** |
-| Proven native calls | 3,607,496 | **3,607,726** |
-| Measured bank `02` non-entry remainder | 312,558 | **290,967** |
+| Native share outside the wait | 98.06% | **98.07%** |
+| Admitted routines | 446 | **448** |
+| Proven native calls | 3,607,726 | **3,607,882** |
+| Measured bank `02` non-entry remainder | 290,967 | **279,969** |
 
-Next: screen the real `02:5249` Devil-Shooter coroutine entry and its
-`02:524C/5253` residue, now the largest compact bank-`02` candidate after the
-known `02:4CF1` handoff residue.
+Next: absorb the 144 profiled `02:5F5B` Tower-Insect source countdown returns
+into the already-native `02:5F4A` parent; `02:4CF1` remains known handoff
+residue.
 
-### Previous: the center Skeleton-Insect presentation toggle
+### Previous: the center Skeleton-Insect post-delay controller
 
 The `02:561A` transcript owns the three toggle instructions, reproduces the
 `JSR $C018` stack frame, and composes the existing coroutine scheduler. Fifteen

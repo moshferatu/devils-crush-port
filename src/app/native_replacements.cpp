@@ -1142,6 +1142,21 @@ replace_native_gameplay_routine_impl(
     if (entry.routine
         == RoutineKey{
             .physical_bank = 0x02U,
+            .logical_pc = 0x5249U,
+        }) {
+        return detail::replace_devil_shooter_charge_controller(entry, work_ram);
+    }
+    if (entry.routine
+        == RoutineKey{
+            .physical_bank = 0x02U,
+            .logical_pc = 0x524CU,
+        }) {
+        return detail::replace_devil_shooter_charge_controller_tail(
+            entry, work_ram);
+    }
+    if (entry.routine
+        == RoutineKey{
+            .physical_bank = 0x02U,
             .logical_pc = 0x525FU,
         }) {
         return detail::replace_devil_shooter_post_launch_gate(entry, work_ram);

@@ -4970,6 +4970,22 @@ if(TARGET devils_crush)
         )
 
         add_test(
+            NAME dc_rom_devil_shooter_charge_controller
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/devil-shooter-charge-controller-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_devil_shooter_charge_controller.cmake"
+        )
+        set_tests_properties(
+            dc_rom_devil_shooter_charge_controller
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
             NAME dc_rom_devil_shooter_companions
             COMMAND
                 "${CMAKE_COMMAND}"
