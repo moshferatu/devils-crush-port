@@ -184,6 +184,12 @@ Assert-RomBytes $rom 0x00533B @(
     0x38, 0xBD, 0x00, 0x33, 0xFD, 0x00, 0x3E,
     0x8D, 0x15, 0x2D, 0xBD, 0x80, 0x33, 0xFD, 0x80, 0x3E
 ) "Devil-Shooter charge retraction"
+Assert-RomBytes $rom 0x00525F @(
+    0xBD, 0x00, 0x38, 0x30, 0x12,
+    0xA5, 0x53, 0x29, 0x02, 0xD0, 0x01, 0x60,
+    0xBD, 0x00, 0x38, 0x29, 0x7F, 0x9D, 0x00, 0x38,
+    0x4C, 0x11, 0x51
+) "Devil-Shooter post-launch gate"
 Assert-RomBytes $rom 0x002087 @(0x4C, 0xFD, 0xEC) "Audio-command entry"
 Assert-RomBytes $rom 0x00202A @(0x4C, 0x4F, 0xF5) "Score entry"
 
@@ -191,12 +197,12 @@ $calls = @(Import-TraceCsv $CallPath)
 $writes = @(Import-TraceCsv $WritePath)
 $actorWrites = @(Import-TraceCsv $ActorWritePath)
 if (
-    $calls.Count -ne 510 -or
-    $writes.Count -ne 10744 -or
+    $calls.Count -ne 2679 -or
+    $writes.Count -ne 11229 -or
     $actorWrites.Count -ne 3872
 ) {
     throw (
-        "Expected 510 Devil-Shooter calls, 10,744 scoped writes, and " +
+        "Expected 2,679 Devil-Shooter calls, 11,229 scoped writes, and " +
         "3,872 actor identity writes."
     )
 }
@@ -206,7 +212,7 @@ for ($index = 0; $index -lt $calls.Count; ++$index) {
     if (
         [int] $call.sequence -ne $index + 1 -or
         $call.physical_bank -ne "02" -or
-        $call.logical_pc -notin @("5116", "5159", "52E3", "533B") -or
+        $call.logical_pc -notin @("5116", "5159", "525F", "52E3", "533B") -or
         $call.input_x -ne "0E" -or
         $call.output_x -ne "0E" -or
         $call.input_sp -ne $call.output_sp
@@ -229,6 +235,13 @@ for ($index = 0; $index -lt $calls.Count; ++$index) {
         ) {
             throw "Devil-Shooter charge-retraction identity changed at sequence $($index + 1)."
         }
+    } elseif ($call.logical_pc -eq "525F") {
+        if (
+            $call.caller_pc -ne "C51D" -or $call.return_pc -ne "C520" -or
+            $call.return_instruction_pc -ne "526A"
+        ) {
+            throw "Devil-Shooter post-launch identity changed at sequence $($index + 1)."
+        }
     } elseif ($call.caller_pc -ne "C51D" -or $call.return_pc -ne "C520") {
         throw "Devil-Shooter bounded-call identity changed at sequence $($index + 1)."
     }
@@ -244,6 +257,7 @@ for ($index = 0; $index -lt $calls.Count; ++$index) {
 Assert-Histogram $calls "logical_pc" @{
     "5116" = 125
     "5159" = 101
+    "525F" = 2169
     "52E3" = 252
     "533B" = 32
 } "Devil-Shooter routine"
@@ -254,12 +268,14 @@ Assert-Histogram $calls "return_instruction_pc" @{
     "5178" = 4
     "533A" = 252
     "5393" = 32
+    "526A" = 2169
 } "Devil-Shooter return"
 
 $idleCalls = @($calls | Where-Object { $_.logical_pc -eq "5116" })
 $chargeCalls = @($calls | Where-Object { $_.logical_pc -eq "5159" })
 $chargePositionCalls = @($calls | Where-Object { $_.logical_pc -eq "52E3" })
 $chargeRetractionCalls = @($calls | Where-Object { $_.logical_pc -eq "533B" })
+$postLaunchCalls = @($calls | Where-Object { $_.logical_pc -eq "525F" })
 if (
     [int] $idleCalls[0].frame -ne 872 -or
     [int] $idleCalls[-1].frame -ne 1064 -or
@@ -272,6 +288,21 @@ if (
     })).Count -ne 123
 ) {
     throw "Devil-Shooter frame, idle-path, or replay sample changed."
+}
+
+if (
+    $postLaunchCalls.Count -ne 2169 -or
+    [int] $postLaunchCalls[0].frame -ne 1421 -or
+    [int] $postLaunchCalls[-1].frame -ne 3600 -or
+    (@($postLaunchCalls | Where-Object {
+        $_.return_instruction_pc -eq "526A" -and
+        $_.body_master_cycles -eq "45" -and
+        $_.write_count -eq "0" -and
+        $_.output_a -eq "00"
+    })).Count -ne 2132 -or
+    ($postLaunchCalls | Measure-Object -Property write_count -Sum).Sum -ne 485
+) {
+    throw "Devil-Shooter post-launch steady path changed."
 }
 
 $catchCall = $idleCalls[-1]
@@ -458,6 +489,9 @@ Write-Output (
 Write-Output (
     "Charge/release: Button-I hold frames 1085-1180; command 3D x4; " +
     "release frame 1185 uses velocity F8 and command 2B."
+)
+Write-Output (
+    "Post-launch: 2,169 collision-free/session-idle checks return at 02:526A."
 )
 Write-Output (
     "First normalized idle sample: 02:5116@1, frame 872, 27 cycles, " +

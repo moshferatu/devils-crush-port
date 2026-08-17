@@ -26,11 +26,19 @@ high byte. The deterministic 1,800-frame route now executes 18,806 of 19,648
 preserving the byte-identical gameplay artifact, complete 19,648-call trace,
 and all 180,389 ordered writes.
 
-The deployed registry now runs **696,006,024 of 1,292,371,731 master cycles
-natively, 53.85% of the route and 97.96% of everything outside the frame-sync
-wait**, across 436 admitted routines with no transcript declined at an
+The deployed registry now runs **696,149,178 of 1,292,371,731 master cycles
+natively, 53.87% of the route and 97.98% of everything outside the frame-sync
+wait**, across 437 admitted routines with no transcript declined at an
 interrupt horizon and none abandoned. The 3,600-frame state census remains
 `9036a9de0c3c9917f47bff8c04c136a4824ec12601fb457d260aa2dfe4443490`.
+
+The Devil Shooter's post-launch steady controller is native. `02:525F`
+handles all 2,169 natural collision-free/session-idle entries, retains five
+instruction checkpoints and all 37 interrupt-bearing scopes, and absorbs the
+return at `02:526A`. Assembly and native runs have byte-identical canonical
+work RAM, call, write, trace, and actor-state artifacts. The complete routine
+adds 143,154 native master cycles and reduces bank `02`'s non-entry remainder
+to 860,013 cycles.
 
 The Front- and Side-Spider steady parents are native. `03:6490/651F` compose
 the already-native collision-table and appearance children on all 2,645/2,796
@@ -6274,36 +6282,49 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
   - [x] Registry cycles 695,369,472 -> **696,006,024**; 53.85%, 97.96% outside
     the wait; 436 admitted routines, 368 entered; bank `03` 1,174,179 -> 532,035;
     zero horizon declines and zero abandonments.
+- [x] Replace the Devil-Shooter post-launch steady controller:
+  - [x] Bound `02:523F-526A` as overlapping execution from real coroutine
+    entries `02:5223`, `02:5249`, and `02:525F`.
+  - [x] Replace all 2,169 natural `02:525F` entries through five exact
+    instruction checkpoints and absorb the `02:526A` return.
+  - [x] Preserve 37 interrupt-bearing calls and byte-identical canonical work
+    RAM, call, write, trace, and actor-state artifacts in Release and Debug.
+  - [x] Registry cycles 696,006,024 -> **696,149,178**; 53.87%, 97.98% outside
+    the wait; 437 admitted routines, 369 entered; bank `02` remainder -> 860,013;
+    zero horizon declines and zero abandonments.
 
 ## Active Work
 
-Current owner: Codex. Current slice: **the Spider collision parents**. Done.
+Current owner: Codex. Current slice: **the Devil-Shooter post-launch gate**.
+Done.
 
-`03:6490` and `03:651F` are the complete nine-instruction Front- and
-Side-Spider steady parents identified by the latest non-entry profile. Their
-two children, collision-table interpreter `03:6966` and appearance helper
-`03:65A4`, were already instruction-checkpointed. The new parent transcript
-now preserves both `JSR` frames and composes those exact child writes and
-boundaries. All 2,645 Front and 2,796 Side entries run natively. The 2,642
-Front idle calls and every Side call absorb the parent `RTS`; the three live
-Front hits stop at `03:64A5`, leaving scoring and transition assembly intact.
+The profiled `02:523F-526A` run contains three real coroutine entries rather
+than one routine: `02:5223`, `02:5249`, and `02:525F`; `02:523F` is an interior
+gate. The largest complete routine is `02:525F`. All 2,169 route calls load the
+fixed slot `$0E` collision marker, reject the collision branch, mask session
+bit `$53.1`, and return at `02:526A`. The native transcript preserves all five
+instruction boundaries, including 37 original interrupt passages, and absorbs
+that return. The unobserved collision-active and launch-request arms remain in
+assembly.
 
-Release state, call, ordered-write, actor-state, and selected-state artifacts
-are byte-identical to assembly. Debug retains those same gameplay/audio
-artifacts and selects the already-documented normalized Beetle framebuffer
-placement beginning at frame 2,148: comparison against the Debug assembly
-census finds zero work-RAM and audio differences, with differences confined to
-the known presentation interval.
+Release and Debug preserve byte-identical canonical work RAM plus the complete
+2,679-call/11,229-write Shooter-family artifacts and actor timeline. Debug
+selects the already-documented normalized framebuffer placement, now guarded
+separately from the exact gameplay artifacts.
 
 | | Before | After |
 | --- | ---: | ---: |
-| Emulated in the two parent bodies | 642,144 | **0** |
-| Registry cycles | 695,369,472 | **696,006,024** |
-| Native share | 53.81% | **53.85%** |
-| Native share outside the wait | 97.87% | **97.96%** |
-| Admitted routines | 434 | **436** |
-| Routines entered | 367 | **368** |
-| Bank `03` outside the wait | 1,174,179 | **532,035** |
+| Emulated in the `525F-526A` body | 143,154 | **0** |
+| Registry cycles | 696,006,024 | **696,149,178** |
+| Native share | 53.85% | **53.87%** |
+| Native share outside the wait | 97.96% | **97.98%** |
+| Admitted routines | 436 | **437** |
+| Routines entered | 368 | **369** |
+| Bank `02` non-entry remainder | 1,004,511 | **860,013** |
+
+Next: bound the complete controller family containing the new largest useful
+bank-`02` run at `02:5EEC-5F21`; do not admit the profile's interior rows as
+independent routines.
 
 ### Previous: the score panel's glyph writer
 

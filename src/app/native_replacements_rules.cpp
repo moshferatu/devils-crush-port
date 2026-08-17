@@ -11183,6 +11183,92 @@ replace_devil_shooter_release_delay_gate(
 }
 
 [[nodiscard]] std::optional<RoutineReplacement>
+replace_devil_shooter_post_launch_gate(
+    const RoutineEntry& entry,
+    const std::span<const std::byte> work_ram)
+{
+    constexpr RoutineKey kRoutine{
+        .physical_bank = 0x02U,
+        .logical_pc = 0x525FU,
+    };
+    if (entry.routine != kRoutine) {
+        return std::nullopt;
+    }
+
+    dc_devil_shooter_post_launch_gate gate{};
+    if (!dc_classify_devil_shooter_post_launch_gate(
+            reinterpret_cast<const std::uint8_t*>(work_ram.data()),
+            work_ram.size(),
+            entry.registers.x,
+            &gate)) {
+        throw std::runtime_error(
+            "Native 525F replacement rejected the work-RAM snapshot.");
+    }
+    if (gate.returns_idle == 0U) {
+        return std::nullopt;
+    }
+
+    const auto set_nz = [](std::uint8_t status, const std::uint8_t value) {
+        status = static_cast<std::uint8_t>(status & 0x7DU);
+        if (value == 0U) {
+            status = static_cast<std::uint8_t>(status | 0x02U);
+        } else if ((value & 0x80U) != 0U) {
+            status = static_cast<std::uint8_t>(status | 0x80U);
+        }
+        return status;
+    };
+
+    auto after_collision = entry.registers;
+    after_collision.accumulator = gate.collision_state;
+    after_collision.status = set_nz(
+        after_collision.status, after_collision.accumulator);
+
+    auto after_session = after_collision;
+    after_session.accumulator = gate.session_flags;
+    after_session.status = set_nz(
+        after_session.status, after_session.accumulator);
+
+    auto output = after_session;
+    output.accumulator = static_cast<std::uint8_t>(gate.session_flags & 0x02U);
+    output.status = set_nz(output.status, output.accumulator);
+    output.program_counter = 0x526AU;
+
+    RoutineReplacement replacement{
+        .return_instruction = {.physical_bank = 0x02U, .logical_pc = 0x526AU},
+        .output_registers = output,
+        .body_master_cycles = 45U,
+    };
+    const auto append_checkpoint =
+        [&replacement](
+            const std::uint16_t instruction_pc,
+            const std::uint16_t resume_pc,
+            const std::uint32_t master_cycle,
+            auto registers) {
+            registers.program_counter = resume_pc;
+            replacement.checkpoints.push_back({
+                .interrupt_sample_master_cycle_offset = master_cycle - 3U,
+                .master_cycle_offset = master_cycle,
+                .instruction = {0x02U, instruction_pc},
+                .registers = registers,
+            });
+        };
+
+    append_checkpoint(0x525FU, 0x5262U, 15U, after_collision);
+    append_checkpoint(0x5262U, 0x5264U, 21U, after_collision);
+    append_checkpoint(0x5264U, 0x5266U, 33U, after_session);
+    append_checkpoint(0x5266U, 0x5268U, 39U, output);
+    append_checkpoint(0x5268U, 0x526AU, 45U, output);
+    absorb_return(
+        replacement,
+        work_ram,
+        entry.registers.stack_pointer,
+        {0x02U, 0x526AU},
+        45U,
+        output);
+    return replacement;
+}
+
+[[nodiscard]] std::optional<RoutineReplacement>
 replace_devil_shooter_catch_continuation(
     const RoutineEntry& entry,
     const std::span<const std::byte> work_ram)

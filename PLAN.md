@@ -801,6 +801,13 @@ Provide an interactive monitor-assignment screen and persist display identity, g
   master cycles (53.85% of the route, 97.96% outside the frame-sync wait)
   across 436 admitted routines, and bank `03`'s emulated remainder falls from
   1,174,179 to 532,035.
+  Semantic `02:525F@all` now replaces the complete observed Devil-Shooter
+  post-launch idle controller. All 2,169 natural entries preserve the five
+  instruction interrupt boundaries and absorb the return at `02:526A`; the
+  collision-active and session launch-request branches remain assembly-backed.
+  The deployed registry now covers 696,149,178 master cycles (53.87% of the
+  route, 97.98% outside the frame-sync wait) across 437 admitted routines, and
+  bank `02`'s emulated non-entry remainder falls to 860,013 cycles.
   The larger `01:D525` controller remains a decomposition boundary: its 128
   census calls span 29-1,456 writes and 1,035-49,122 body master cycles, so
   the largest live paths exceed the bridge's independent 512-write limit.

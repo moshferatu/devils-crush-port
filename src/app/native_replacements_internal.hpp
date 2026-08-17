@@ -807,6 +807,11 @@ replace_devil_shooter_release_delay_gate(
     std::span<const std::byte> work_ram);
 
 [[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_devil_shooter_post_launch_gate(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram);
+
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
 replace_devil_shooter_charge_position(
     const emulation::RoutineEntry& entry,
     std::span<const std::byte> work_ram);

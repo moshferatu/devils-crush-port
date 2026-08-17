@@ -1022,6 +1022,22 @@ int dc_classify_devil_shooter_release_delay_gate(
     uint8_t slot,
     dc_devil_shooter_release_delay_gate* gate);
 
+// ROM routine 02:525F services the fixed Devil Shooter after the launched
+// ball has left it. The observed steady path returns while the collision
+// marker is nonnegative and session launch-request bit $53.1 is clear.
+typedef struct dc_devil_shooter_post_launch_gate {
+    uint8_t slot;
+    uint8_t collision_state;
+    uint8_t session_flags;
+    uint8_t returns_idle;
+} dc_devil_shooter_post_launch_gate;
+
+int dc_classify_devil_shooter_post_launch_gate(
+    const uint8_t* work_ram,
+    size_t work_ram_size,
+    uint8_t slot,
+    dc_devil_shooter_post_launch_gate* gate);
+
 // ROM routine 02:52E3 advances the fixed Devil-Shooter charge position.
 // The bounded normal path carries its three-byte position, derives the shared
 // charge counter, and selects one of the five charge appearances.

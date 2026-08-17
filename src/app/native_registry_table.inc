@@ -270,6 +270,7 @@ DC_ADMITTED_ROUTINE(0x02U, 0x4FC1U, 7950, 7950, "verify_mercy_star_gate_semantic
 DC_ADMITTED_ROUTINE(0x02U, 0x50EEU, 1, 1, "verify_devil_shooter_initializer_semantic")
 DC_ADMITTED_ROUTINE(0x02U, 0x5116U, 125, 125, "verify_devil_shooter_hit_gate_semantic")
 DC_ADMITTED_ROUTINE(0x02U, 0x5159U, 4, 101, "verify_devil_shooter")
+DC_ADMITTED_ROUTINE(0x02U, 0x525FU, 2169, 2169, "verify_devil_shooter")
 DC_ADMITTED_ROUTINE(0x02U, 0x52B8U, 1, 1, "verify_devil_shooter_catch_continuation_semantic +1")
 DC_ADMITTED_ROUTINE(0x02U, 0x52E3U, 137, 252, "verify_devil_shooter")
 DC_ADMITTED_ROUTINE(0x02U, 0x533BU, 11, 32, "verify_devil_shooter")

@@ -1862,6 +1862,27 @@ int dc_classify_devil_shooter_release_delay_gate(
     return 1;
 }
 
+int dc_classify_devil_shooter_post_launch_gate(
+    const uint8_t* const work_ram,
+    const size_t work_ram_size,
+    const uint8_t slot,
+    dc_devil_shooter_post_launch_gate* const gate)
+{
+    const size_t collision_offset = 0x1800U + (size_t)slot;
+    if (work_ram == NULL || gate == NULL || slot != 0x0EU
+        || work_ram_size <= collision_offset || work_ram_size <= 0x0053U) {
+        return 0;
+    }
+
+    gate->slot = slot;
+    gate->collision_state = work_ram[collision_offset];
+    gate->session_flags = work_ram[0x0053U];
+    gate->returns_idle = (uint8_t)(
+        (gate->collision_state & 0x80U) == 0U
+        && (gate->session_flags & 0x02U) == 0U);
+    return 1;
+}
+
 int dc_classify_devil_shooter_charge_position(
     const uint8_t* const work_ram,
     const size_t work_ram_size,

@@ -3363,6 +3363,23 @@ through the three sites that run the interpreter in line — and residue is
 assembly that genuinely runs. Two rows can share a description and not share a
 cause.
 
+## Devil-Shooter post-launch boundary
+
+The deployed non-entry profile originally offered `02:523F-526A` as bank
+`02`'s largest live contiguous run. A four-address observer screen showed that
+the span is not one routine: coroutine entries `02:5223`, `02:5249`, and
+`02:525F` overlap it, while `02:523F` is only an interior gate. Populations are
+67, 156, and 2,169 calls respectively. The last is the complete high-value
+routine: 2,132 uninterrupted 45-cycle checks plus 37 interrupt-bearing checks,
+all returning through `$526A` with no gameplay-owned write.
+
+Semantic `02:525F@all` now admits all 2,169 calls and absorbs that return. It
+removes 143,154 emulated master cycles, raises the deployed registry to
+696,149,178 cycles (53.87%, or 97.98% outside the wait), and leaves 860,013
+non-entry cycles in bank `02`. The next bank-`02` screen should bound the
+controller family containing `02:5EEC-5F21`; its profile rows are not yet
+independent routine boundaries.
+
 ## Use on future families
 
 Follow the command and interpretation rules in

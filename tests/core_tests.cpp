@@ -4991,6 +4991,49 @@ void test_native_devil_shooter_release_delay_gate()
         "native 5159 rejects invalid slots and truncated work RAM");
 }
 
+void test_native_devil_shooter_post_launch_gate()
+{
+    std::array<std::uint8_t, 0x2000> work_ram{};
+    dc_devil_shooter_post_launch_gate gate{};
+
+    work_ram[0x180EU] = 0x00U;
+    work_ram[0x0053U] = 0x08U;
+    check(
+        dc_classify_devil_shooter_post_launch_gate(
+            work_ram.data(), work_ram.size(), 0x0EU, &gate)
+            != 0
+            && gate.returns_idle != 0U
+            && gate.collision_state == 0x00U
+            && gate.session_flags == 0x08U,
+        "native 525F recognizes the steady post-launch return");
+
+    work_ram[0x180EU] = 0x80U;
+    check(
+        dc_classify_devil_shooter_post_launch_gate(
+            work_ram.data(), work_ram.size(), 0x0EU, &gate)
+            != 0
+            && gate.returns_idle == 0U,
+        "native 525F defers the collision-active path");
+
+    work_ram[0x180EU] = 0x00U;
+    work_ram[0x0053U] = 0x02U;
+    check(
+        dc_classify_devil_shooter_post_launch_gate(
+            work_ram.data(), work_ram.size(), 0x0EU, &gate)
+            != 0
+            && gate.returns_idle == 0U,
+        "native 525F defers the launch-request path");
+
+    check(
+        dc_classify_devil_shooter_post_launch_gate(
+            work_ram.data(), work_ram.size(), 0x0DU, &gate)
+            == 0
+            && dc_classify_devil_shooter_post_launch_gate(
+                   work_ram.data(), 0x180EU, 0x0EU, &gate)
+                == 0,
+        "native 525F rejects invalid slots and truncated work RAM");
+}
+
 void test_native_devil_shooter_charge_position()
 {
     std::array<std::uint8_t, 0x2000> work_ram{};
@@ -10353,6 +10396,7 @@ int main()
     test_native_bumper_hit_gate();
     test_native_devil_shooter_hit_gate();
     test_native_devil_shooter_release_delay_gate();
+    test_native_devil_shooter_post_launch_gate();
     test_native_devil_shooter_charge_position();
     test_native_devil_shooter_charge_retraction();
     test_native_skeleton_insect_left_gate();

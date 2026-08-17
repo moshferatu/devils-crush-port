@@ -2384,6 +2384,22 @@ an event or IRQ horizon, including five original interrupt-bearing scopes,
 remain assembly-backed. The owning regression replays `02:533B@2` at frame
 1,066 with exact timing, writes, registers, and RAM parity.
 
+Semantic `02:525F@all` covers the complete observed post-launch steady
+controller. The earlier profile span `02:523F-526A` combines three coroutine
+entries: `02:5223`, `02:5249`, and `02:525F`; `$523F` itself is an interior
+session-bit gate. From frames 1,421 through 3,600, all 2,169 true `$525F`
+entries see fixed slot `$0E`'s collision marker nonnegative and session bit
+`$53.1` clear. The native adapter reproduces `LDA $3800,X`, `BMI`, `LDA $53`,
+`AND #$02`, and `BNE` through five exact checkpoints, retains all 37 original
+interrupt-bearing scopes, and absorbs the `RTS` at `$526A`. The unobserved
+collision-active and launch-request continuations at `$5276/$526B` remain in
+assembly.
+
+Release assembly and replacement runs are byte-identical across the state
+census, canonical work RAM, all 2,679 family calls, 11,229 scoped writes, and
+the actor timeline. Debug preserves the same gameplay artifacts and selects
+the repository's documented normalized framebuffer-placement census.
+
 - Call SHA-256:
   `35c847d6ba93f7cc2fc2b1157e6d8c6f3652c61271320d9c321bc06eebee393b`
 - Write SHA-256:
@@ -2399,17 +2415,19 @@ identity trace retains the subsequent pointer progression through
 `02:5223`, `02:5249`, and `02:525F`.
 
 `tools/Analyze-DevilShooterSemantics.ps1` guards the fixed layout record,
-initializer position overrides, Button-I test, catch/charge/release ROM
-signatures, call and return populations, ball placement, charge progression,
-audio schedule, launch velocity, absence of score writes, actor-pointer
-timeline, and normalized replay. Debug and Release reproduce:
+initializer position overrides, Button-I test, catch/charge/release and
+post-launch ROM signatures, call and return populations, ball placement,
+charge progression, audio schedule, launch velocity, absence of score writes,
+actor-pointer timeline, and normalized replay. Debug and Release reproduce:
 
-- Entry SHA-256:
-  `7ce4e1d5b4304b8d4e490d674a843e111b5575d5a0865830457e3182ac3ac469`
+- Trace SHA-256:
+  `7951bfdc12478f2f7a385aed2494e15d109ad264001db5d4ae369628033875ef`
 - Call SHA-256:
-  `b52db13b5af2afdf174ba1de2d739504bd78c42356395a84fa78e58c6a0ba037`
+  `305eda8844916d6357bc9d4143587b115a6f51fedff07b6f6b124b6c25bf0b53`
 - Write SHA-256:
-  `c14f3c56f8917da8eb5a1a6abbbb0152f6a2ec454248349201e6366c68051019`
+  `53d844b9f824eb2959245997e7bd736effc13e40d8a8118eddce53703e5f8c12`
+- Canonical work-RAM SHA-256:
+  `07673ea2b1101aff61f6058780a0817ec47191ea3d2abf5559a994d14db84779`
 - Actor identity SHA-256:
   `b311b7704f05b9bca07da08e71026f9415d4752d044361d026e816c9cafdc338`
 
