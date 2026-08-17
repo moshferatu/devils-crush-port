@@ -3380,6 +3380,24 @@ non-entry cycles in bank `02`. The next bank-`02` screen should bound the
 controller family containing `02:5EEC-5F21`; its profile rows are not yet
 independent routine boundaries.
 
+## Giant-Skeleton steady controller
+
+That screen establishes one routine, not a family of entries: `02:5EEC` is the
+fixed-slot Giant Skeleton controller and `02:5F21` is its terminal `RTS`.
+`02:5EFE`, `02:5F01`, and `02:5F04` are interior appearance/collision
+instructions. All 2,139 calls first reach the already-native direction helper
+`01:DAF8` through `$C06F`; 2,138 then return idle, while one continues into the
+repeatable 40-unit score/audio path.
+
+Semantic `02:5EEC@all` composes the child and absorbs the idle returns. The hit
+hands back at `02:5F06`, leaving score, audio, bonus, and presentation in the
+original assembly. It owns 1,788,819 native cycles; after replacing the
+child's separately credited entries, the registry gains 267,807 net cycles to
+696,416,985 (53.89%, or 98.02% outside the wait). Bank `02` now has 589,950
+non-entry cycles. Its next useful screens are the true boundaries around
+`02:4387-438E` and `02:5590-55AF`; the larger `02:4CF1` row remains known
+handoff residue.
+
 ## Use on future families
 
 Follow the command and interpretation rules in

@@ -1582,6 +1582,13 @@ parse_logical_address_range(const std::string_view text)
                                        .logical_pc = 0x5EE4U,
                                    }
                            && request.all_calls;
+                       const bool proven_giant_skeleton_controller =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x02U,
+                                       .logical_pc = 0x5EECU,
+                                   }
+                           && request.all_calls;
                        const bool proven_three_blobs_initializer =
                            request.routine
                                    == RoutineKey{
@@ -3289,6 +3296,7 @@ parse_logical_address_range(const std::string_view text)
                            && !proven_side_worm_active_timer_initializer
                            && !proven_dragon_head_initializer
                            && !proven_giant_skeleton_initializer
+                           && !proven_giant_skeleton_controller
                            && !proven_three_blobs_initializer
                            && !proven_three_blobs_controller_initializer
                            && !proven_undead_head_selector_gate
@@ -3532,7 +3540,7 @@ parse_logical_address_range(const std::string_view text)
             "semantic 02:570A@all, semantic 02:5674@all, "
             "semantic 02:5397@all, semantic 02:5408@all, semantic 02:53C8@all, semantic 02:53E4@all, semantic 02:5441@all, semantic 02:545D@all, semantic 02:53DD@all, semantic 02:5456@all, "
             "semantic 02:4DC8@all, semantic 02:4DD9@all, semantic 02:4DF7@all, semantic 02:4E24@all, semantic 02:4F3D@all, semantic 03:76C5@all, "
-            "semantic 03:6876@all, semantic 03:68A1@all, semantic 02:5A31@all, semantic 02:5EE4@all, semantic 03:664A@all, semantic 03:65BC@all, semantic 03:66DE@all, "
+            "semantic 03:6876@all, semantic 03:68A1@all, semantic 02:5A31@all, semantic 02:5EE4@all, semantic 02:5EEC@all, semantic 03:664A@all, semantic 03:65BC@all, semantic 03:66DE@all, "
             "semantic 02:57AD@all, "
             "semantic 02:4FC1@all, "
             "semantic 02:4A93@all, semantic 02:4AD2@all, "

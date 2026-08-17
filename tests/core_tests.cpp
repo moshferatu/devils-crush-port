@@ -2266,6 +2266,41 @@ void test_native_giant_skeleton_initializer()
         "native 5EE4 rejects a truncated work-RAM snapshot");
 }
 
+void test_native_giant_skeleton_controller()
+{
+    std::array<std::uint8_t, 0x2000> work_ram{};
+    dc_giant_skeleton_controller controller{};
+
+    work_ram[0x1830U] = 0x06U;
+    check(
+        dc_classify_giant_skeleton_controller(
+            work_ram.data(), work_ram.size(), 0x30U, &controller)
+                != 0
+            && controller.slot == 0x30U
+            && controller.collision_state == 0x06U
+            && controller.path == DC_GIANT_SKELETON_CONTROLLER_IDLE,
+        "native 5EEC identifies the Giant Skeleton animation/idle path");
+
+    work_ram[0x1830U] = 0x83U;
+    check(
+        dc_classify_giant_skeleton_controller(
+            work_ram.data(), work_ram.size(), 0x30U, &controller)
+                != 0
+            && controller.collision_state == 0x83U
+            && controller.path == DC_GIANT_SKELETON_CONTROLLER_HIT,
+        "native 5EEC identifies the Giant Skeleton repeatable hit path");
+    check(
+        dc_classify_giant_skeleton_controller(
+            work_ram.data(), work_ram.size(), 0x31U, &controller)
+            == 0,
+        "native 5EEC rejects a non-Giant-Skeleton slot");
+    check(
+        dc_classify_giant_skeleton_controller(
+            work_ram.data(), 0x1830U, 0x30U, &controller)
+            == 0,
+        "native 5EEC rejects a truncated work-RAM snapshot");
+}
+
 void test_native_three_blobs_initializer()
 {
     std::array<std::uint8_t, 0x2000> work_ram{};
@@ -10323,6 +10358,7 @@ int main()
     test_native_little_skull_hidden_initializer();
     test_native_dragon_head_initializer();
     test_native_giant_skeleton_initializer();
+    test_native_giant_skeleton_controller();
     test_native_three_blobs_initializer();
     test_native_three_blobs_controller_initializer();
     test_native_walled_star_initializer();

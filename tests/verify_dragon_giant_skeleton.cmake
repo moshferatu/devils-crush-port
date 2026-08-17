@@ -9,7 +9,7 @@ endforeach()
 if(CONFIG STREQUAL "Debug")
     set(
         expected_census_sha256
-        "a95d0c343108b107d7ec1aa3c20915540d91bb08817704776531e5696ea9b5e2"
+        "9036a9de0c3c9917f47bff8c04c136a4824ec12601fb457d260aa2dfe4443490"
     )
 elseif(CONFIG STREQUAL "Release")
     set(
@@ -25,6 +25,10 @@ set(
     "79b73ce944da1354abd514fbc6c33789ae2fab178cfd2245d18515f9654d88d0"
 )
 set(
+    expected_work_ram_sha256
+    "07673ea2b1101aff61f6058780a0817ec47191ea3d2abf5559a994d14db84779"
+)
+set(
     expected_call_sha256
     "826568621976410ee73ef68b21fdd1dab0d35c4512edb48dc4f0c332b7360a4d"
 )
@@ -38,6 +42,7 @@ set(
 )
 
 set(trace_output "${OUTPUT}.trace.csv")
+set(work_ram_output "${OUTPUT}.wram.bin")
 set(call_output "${OUTPUT}.calls.csv")
 set(write_output "${call_output}.writes.csv")
 set(actor_write_output "${OUTPUT}.actors.csv")
@@ -47,16 +52,22 @@ execute_process(
         "${APP}"
         --record-state-census
         "${OUTPUT}"
+        --canonical-work-ram
+        "${work_ram_output}"
         --observe-hook
         "02:5A4B"
         --observe-hook
         "02:5EEC"
+        --replace-hook
+        "02:5EEC@all"
         --routine-trace
         "${trace_output}"
         --routine-call-trace
         "${call_output}"
         --routine-replay
         "02:5A4B@1"
+        --routine-replay
+        "02:5EEC@1"
         --work-ram-write-range
         "3000-307F"
         --work-ram-write-range
@@ -81,10 +92,12 @@ foreach(expected_line IN ITEMS
     "State census recording complete: 3600 frames"
     "Observe hook 1 entries: 2144"
     "Observe hook 2 entries: 2139"
+    "Native replacement 02:5EEC@all entries: 2139 of 2139"
     "Routine trace complete: 4283 entries"
     "Routine call trace complete: 4283 calls, 50711 writes"
     "Routine replay 02:5A4B@1 verified: frame 872"
-    "Routine replay complete: 1 state-normalized calls"
+    "Routine replay 02:5EEC@1 verified: frame 873, 807 body cycles, 19 ordered writes"
+    "Routine replay complete: 2 state-normalized calls"
     "Work-RAM write trace complete: 3872 selected writes"
 )
     string(FIND "${recorder_output}" "${expected_line}" line_offset)
@@ -97,9 +110,11 @@ foreach(expected_line IN ITEMS
     endif()
 endforeach()
 
-foreach(artifact IN ITEMS census trace call write)
+foreach(artifact IN ITEMS census work_ram trace call write)
     if(artifact STREQUAL "census")
         set(artifact_path "${OUTPUT}")
+    elseif(artifact STREQUAL "work_ram")
+        set(artifact_path "${work_ram_output}")
     elseif(artifact STREQUAL "trace")
         set(artifact_path "${trace_output}")
     elseif(artifact STREQUAL "call")
@@ -171,6 +186,7 @@ foreach(expected_line IN ITEMS
     "Giant Skeleton: slot 30 at (224,518)"
     "Shared command 2E: three observed hits"
     "First normalized sample: 02:5A4B@1, frame 872"
+    "Native Giant-Skeleton sample: 02:5EEC@1, frame 873"
 )
     string(FIND "${semantics_output}" "${expected_line}" line_offset)
     if(line_offset EQUAL -1)

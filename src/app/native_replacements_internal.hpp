@@ -777,6 +777,12 @@ replace_dragon_head_hit_gate(
     std::span<const std::byte> work_ram);
 
 [[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_giant_skeleton_controller(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram,
+    std::span<const std::byte> rom);
+
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
 replace_dragon_head_hit_continuation(
     const emulation::RoutineEntry& entry,
     std::span<const std::byte> work_ram);

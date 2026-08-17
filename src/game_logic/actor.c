@@ -549,6 +549,27 @@ int dc_classify_giant_skeleton_initializer(
     return 1;
 }
 
+int dc_classify_giant_skeleton_controller(
+    const uint8_t* const work_ram,
+    const size_t work_ram_size,
+    const uint8_t slot,
+    dc_giant_skeleton_controller* const controller)
+{
+    const size_t collision_offset = 0x1800U + (size_t)slot;
+
+    if (work_ram == NULL || controller == NULL || slot != 0x30U
+        || work_ram_size <= collision_offset) {
+        return 0;
+    }
+
+    controller->slot = slot;
+    controller->collision_state = work_ram[collision_offset];
+    controller->path = (controller->collision_state & 0x80U) != 0U
+        ? DC_GIANT_SKELETON_CONTROLLER_HIT
+        : DC_GIANT_SKELETON_CONTROLLER_IDLE;
+    return 1;
+}
+
 int dc_classify_three_blobs_initializer(
     const uint8_t* const work_ram,
     const size_t work_ram_size,

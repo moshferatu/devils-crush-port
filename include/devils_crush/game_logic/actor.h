@@ -334,6 +334,26 @@ int dc_classify_giant_skeleton_initializer(
     uint8_t slot,
     dc_giant_skeleton_initializer* initializer);
 
+typedef enum dc_giant_skeleton_controller_path {
+    DC_GIANT_SKELETON_CONTROLLER_IDLE = 0,
+    DC_GIANT_SKELETON_CONTROLLER_HIT = 1
+} dc_giant_skeleton_controller_path;
+
+// ROM routine 02:5EEC updates the fixed Giant Skeleton's appearance from the
+// shared direction classifier, then either returns or enters its repeatable
+// 40-point hit continuation.
+typedef struct dc_giant_skeleton_controller {
+    uint8_t slot;
+    uint8_t collision_state;
+    dc_giant_skeleton_controller_path path;
+} dc_giant_skeleton_controller;
+
+int dc_classify_giant_skeleton_controller(
+    const uint8_t* work_ram,
+    size_t work_ram_size,
+    uint8_t slot,
+    dc_giant_skeleton_controller* controller);
+
 // Direct ROM routine 03:664A initializes the three fixed Three-Blobs layouts
 // before their alternating movement states begin at 03:66A3/03:66D3.
 typedef struct dc_three_blobs_initializer {

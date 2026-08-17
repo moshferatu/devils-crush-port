@@ -8786,6 +8786,205 @@ replace_dragon_head_hit_continuation(
 }
 
 [[nodiscard]] std::optional<RoutineReplacement>
+replace_giant_skeleton_controller(
+    const RoutineEntry& entry,
+    const std::span<const std::byte> work_ram,
+    const std::span<const std::byte> rom)
+{
+    constexpr RoutineKey kRoutine{
+        .physical_bank = 0x02U,
+        .logical_pc = 0x5EECU,
+    };
+    if (entry.routine != kRoutine || (entry.registers.status & 0x28U) != 0U) {
+        return std::nullopt;
+    }
+
+    dc_giant_skeleton_controller controller{};
+    if (!dc_classify_giant_skeleton_controller(
+            reinterpret_cast<const std::uint8_t*>(work_ram.data()),
+            work_ram.size(),
+            entry.registers.x,
+            &controller)) {
+        return std::nullopt;
+    }
+
+    const auto set_nz = [](std::uint8_t status, const std::uint8_t value) {
+        status = static_cast<std::uint8_t>(status & 0x7DU);
+        if (value == 0U) {
+            status = static_cast<std::uint8_t>(status | 0x02U);
+        } else if ((value & 0x80U) != 0U) {
+            status = static_cast<std::uint8_t>(status | 0x80U);
+        }
+        return status;
+    };
+    const auto compare = [&set_nz](
+                             std::uint8_t status,
+                             const std::uint8_t left,
+                             const std::uint8_t right) {
+        status = static_cast<std::uint8_t>(status & 0xFEU);
+        if (left >= right) {
+            status = static_cast<std::uint8_t>(status | 0x01U);
+        }
+        return set_nz(status, static_cast<std::uint8_t>(left - right));
+    };
+    const auto shift_right = [&set_nz](
+                                 std::uint8_t status,
+                                 const std::uint8_t value) {
+        status = static_cast<std::uint8_t>(status & 0xFEU);
+        if ((value & 0x01U) != 0U) {
+            status = static_cast<std::uint8_t>(status | 0x01U);
+        }
+        return set_nz(status, static_cast<std::uint8_t>(value >> 1U));
+    };
+
+    RoutineReplacement replacement{};
+    auto staged = std::vector<std::byte>(work_ram.begin(), work_ram.end());
+    auto checkpoint = entry.registers;
+    std::uint32_t cycle = 0U;
+    const auto append_checkpoint =
+        [&replacement, &cycle](
+            const std::uint8_t physical_bank,
+            const std::uint16_t instruction_pc,
+            const std::uint16_t resume_pc,
+            const std::uint32_t instruction_cycles,
+            auto registers) {
+            cycle += instruction_cycles;
+            registers.program_counter = resume_pc;
+            replacement.checkpoints.push_back({
+                .interrupt_sample_master_cycle_offset = cycle - 3U,
+                .master_cycle_offset = cycle,
+                .instruction = {physical_bank, instruction_pc},
+                .registers = registers,
+            });
+        };
+
+    // 02:5EEC calls the fixed-bank C06F trampoline, which jumps to the
+    // already-native direction-octant classifier at 01:DAF8. Stage the real
+    // JSR frame so that child's absorbed RTS returns to 02:5EEF.
+    const auto stack_high = checkpoint.stack_pointer;
+    const auto stack_low = static_cast<std::uint8_t>(stack_high - 1U);
+    replacement.work_ram_writes.push_back({
+        .instruction = {0x02U, 0x5EECU},
+        .logical_address = static_cast<std::uint16_t>(0x2100U + stack_high),
+        .value = 0x5EU,
+        .master_cycle_offset = 0U,
+    });
+    replacement.work_ram_writes.push_back({
+        .instruction = {0x02U, 0x5EECU},
+        .logical_address = static_cast<std::uint16_t>(0x2100U + stack_low),
+        .value = 0xEEU,
+        .master_cycle_offset = 0U,
+    });
+    staged[0x0100U + stack_high] = static_cast<std::byte>(0x5EU);
+    staged[0x0100U + stack_low] = static_cast<std::byte>(0xEEU);
+    checkpoint.stack_pointer =
+        static_cast<std::uint8_t>(checkpoint.stack_pointer - 2U);
+    append_checkpoint(0x02U, 0x5EECU, 0xC06FU, 21U, checkpoint);
+    append_checkpoint(0x01U, 0xC06FU, 0xDAF8U, 12U, checkpoint);
+
+    RoutineEntry direction_entry{
+        .routine = {
+            .physical_bank = 0x01U,
+            .logical_pc = 0xDAF8U,
+        },
+        .registers = checkpoint,
+    };
+    auto direction = replace_actor_geometry_leaf(direction_entry, staged, rom);
+    if (!direction || direction->checkpoints.empty()
+        || direction->output_registers.program_counter != 0x5EEFU
+        || direction->output_registers.stack_pointer
+            != entry.registers.stack_pointer) {
+        return std::nullopt;
+    }
+
+    constexpr std::uint32_t kDirectionOffset = 33U;
+    for (auto write : direction->work_ram_writes) {
+        write.master_cycle_offset += kDirectionOffset;
+        replacement.work_ram_writes.push_back(write);
+    }
+    for (auto child_checkpoint : direction->checkpoints) {
+        child_checkpoint.interrupt_sample_master_cycle_offset +=
+            kDirectionOffset;
+        child_checkpoint.master_cycle_offset += kDirectionOffset;
+        replacement.checkpoints.push_back(child_checkpoint);
+    }
+    cycle += direction->body_master_cycles;
+    checkpoint = direction->output_registers;
+
+    checkpoint.status = compare(
+        checkpoint.status, checkpoint.accumulator, 0x04U);
+    append_checkpoint(0x02U, 0x5EEFU, 0x5EF1U, 6U, checkpoint);
+    if (checkpoint.accumulator < 0x04U) {
+        append_checkpoint(0x02U, 0x5EF1U, 0x5EF3U, 6U, checkpoint);
+        checkpoint.accumulator = 0x04U;
+        checkpoint.status = set_nz(checkpoint.status, checkpoint.accumulator);
+        append_checkpoint(0x02U, 0x5EF3U, 0x5EF5U, 6U, checkpoint);
+        append_checkpoint(0x02U, 0x5EF5U, 0x5EFDU, 12U, checkpoint);
+    } else {
+        append_checkpoint(0x02U, 0x5EF1U, 0x5EF7U, 12U, checkpoint);
+        checkpoint.status = compare(
+            checkpoint.status, checkpoint.accumulator, 0x0DU);
+        append_checkpoint(0x02U, 0x5EF7U, 0x5EF9U, 6U, checkpoint);
+        if (checkpoint.accumulator < 0x0DU) {
+            append_checkpoint(0x02U, 0x5EF9U, 0x5EFDU, 12U, checkpoint);
+        } else {
+            append_checkpoint(0x02U, 0x5EF9U, 0x5EFBU, 6U, checkpoint);
+            checkpoint.accumulator = 0x0CU;
+            checkpoint.status = set_nz(
+                checkpoint.status, checkpoint.accumulator);
+            append_checkpoint(0x02U, 0x5EFBU, 0x5EFDU, 6U, checkpoint);
+        }
+    }
+
+    checkpoint.status = shift_right(checkpoint.status, checkpoint.accumulator);
+    checkpoint.accumulator =
+        static_cast<std::uint8_t>(checkpoint.accumulator >> 1U);
+    append_checkpoint(0x02U, 0x5EFDU, 0x5EFEU, 6U, checkpoint);
+    replacement.work_ram_writes.push_back({
+        .instruction = {0x02U, 0x5EFEU},
+        .logical_address = static_cast<std::uint16_t>(
+            0x3980U + controller.slot),
+        .value = checkpoint.accumulator,
+        .master_cycle_offset = cycle + 15U,
+    });
+    staged[0x1980U + controller.slot] =
+        static_cast<std::byte>(checkpoint.accumulator);
+    append_checkpoint(0x02U, 0x5EFEU, 0x5F01U, 15U, checkpoint);
+
+    checkpoint.accumulator = controller.collision_state;
+    checkpoint.status = set_nz(checkpoint.status, checkpoint.accumulator);
+    append_checkpoint(0x02U, 0x5F01U, 0x5F04U, 15U, checkpoint);
+    if (controller.path == DC_GIANT_SKELETON_CONTROLLER_HIT) {
+        append_checkpoint(0x02U, 0x5F04U, 0x5F06U, 6U, checkpoint);
+        replacement.return_instruction = {
+            .physical_bank = 0x02U,
+            .logical_pc = 0x5F06U,
+        };
+        replacement.output_registers = checkpoint;
+        replacement.output_registers.program_counter = 0x5F06U;
+        replacement.body_master_cycles = cycle;
+        return replacement;
+    }
+
+    append_checkpoint(0x02U, 0x5F04U, 0x5F21U, 12U, checkpoint);
+    checkpoint.program_counter = 0x5F21U;
+    replacement.return_instruction = {
+        .physical_bank = 0x02U,
+        .logical_pc = 0x5F21U,
+    };
+    replacement.output_registers = checkpoint;
+    replacement.body_master_cycles = cycle;
+    absorb_return(
+        replacement,
+        work_ram,
+        entry.registers.stack_pointer,
+        {0x02U, 0x5F21U},
+        cycle,
+        checkpoint);
+    return replacement;
+}
+
+[[nodiscard]] std::optional<RoutineReplacement>
 replace_bumper_hit_gate(
     const RoutineEntry& entry,
     const std::span<const std::byte> work_ram)

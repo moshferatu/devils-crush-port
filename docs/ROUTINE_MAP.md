@@ -8980,6 +8980,23 @@ framebuffer census hashes while reproducing identical semantic artifacts:
 - Selected-state SHA-256:
   `99cf6ab9fed4cfa976510fda30f77c20671e8f2134fc3b2842e3d90fd81d32d8`
 
+## Giant Skeleton steady controller
+
+`02:5EEC-5F21` is one fixed-slot `$30` controller. It calls the direction
+classifier through `01:C06F -> 01:DAF8`, clamps the returned direction to the
+range used by five appearance values, halves it, and stores the result at
+`$39B0`. It then tests collision state `$3830`. A nonnegative value returns at
+`02:5F21`; a negative value clears the latch and enters the repeatable 40-unit
+score, command `$2E`, bonus, and presentation helpers at `02:5F06`.
+
+The 3,600-frame route enters 2,139 times: 2,138 idle returns and one hit at
+frame 2,642. Semantic `02:5EEC@all` composes the already-native direction
+helper with its real stack frame, absorbs each idle return, and hands the hit
+back at `02:5F06`. The complete 4,283-call/50,711-write Dragon/Giant-Skeleton
+artifact, canonical work RAM, entry trace, and actor identity remain
+byte-identical in Release and Debug. Regression:
+`dc_rom_dragon_giant_skeleton`.
+
 ## Bank-01 arithmetic leaves
 
 Three routines in physical bank 01 that share no caller, no subsystem and no

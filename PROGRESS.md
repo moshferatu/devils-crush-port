@@ -26,11 +26,20 @@ high byte. The deterministic 1,800-frame route now executes 18,806 of 19,648
 preserving the byte-identical gameplay artifact, complete 19,648-call trace,
 and all 180,389 ordered writes.
 
-The deployed registry now runs **696,149,178 of 1,292,371,731 master cycles
-natively, 53.87% of the route and 97.98% of everything outside the frame-sync
-wait**, across 437 admitted routines with no transcript declined at an
+The deployed registry now runs **696,416,985 of 1,292,371,731 master cycles
+natively, 53.89% of the route and 98.02% of everything outside the frame-sync
+wait**, across 438 admitted routines with no transcript declined at an
 interrupt horizon and none abandoned. The 3,600-frame state census remains
 `9036a9de0c3c9917f47bff8c04c136a4824ec12601fb457d260aa2dfe4443490`.
+
+The Giant Skeleton's complete steady controller is native. `02:5EEC` composes
+the existing `01:DAF8` direction classifier, reproduces the direction clamp,
+appearance store, and collision gate, absorbs 2,138 idle returns at `02:5F21`,
+and hands the sole hit back to assembly at `02:5F06`. All 2,139 calls are
+admitted with exact Release and Debug census, work-RAM, call, write, trace,
+actor-state, and normalized-replay parity. The composition owns 1,788,819
+native cycles and adds 267,807 net registry cycles after replacing the child's
+previously separate credit; bank `02`'s non-entry remainder is 589,950 cycles.
 
 The Devil Shooter's post-launch steady controller is native. `02:525F`
 handles all 2,169 natural collision-free/session-idle entries, retains five
@@ -6292,39 +6301,50 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
   - [x] Registry cycles 696,006,024 -> **696,149,178**; 53.87%, 97.98% outside
     the wait; 437 admitted routines, 369 entered; bank `02` remainder -> 860,013;
     zero horizon declines and zero abandonments.
+- [x] Port the complete Giant Skeleton steady controller `02:5EEC-5F21`:
+  - [x] Prove `02:5EEC` is the routine entry and `02:5F21` its terminal `RTS`;
+    the profiled `5EFE/5F01/5F04` rows are interior instructions.
+  - [x] Compose the existing `01:DAF8` direction transcript with the exact
+    `JSR $C06F` stack frame, direction clamp, appearance store, and collision
+    gate on all 2,139 natural calls.
+  - [x] Absorb 2,138 idle returns and hand the sole hit to assembly at
+    `02:5F06`, preserving the original score, audio, bonus, and presentation
+    helpers.
+  - [x] Preserve byte-identical Release/Debug census, canonical work RAM,
+    complete 4,283-call/50,711-write artifacts, trace, actor state, and the
+    807-cycle/19-write normalized sample.
+  - [x] Registry cycles 696,149,178 -> **696,416,985**; 53.89%, 98.02% outside
+    the wait; 438 admitted routines; bank `02` non-entry remainder -> 589,950;
+    zero horizon declines and zero abandonments.
 
 ## Active Work
 
-Current owner: Codex. Current slice: **the Devil-Shooter post-launch gate**.
+Current owner: Codex. Current slice: **the Giant Skeleton steady controller**.
 Done.
 
-The profiled `02:523F-526A` run contains three real coroutine entries rather
-than one routine: `02:5223`, `02:5249`, and `02:525F`; `02:523F` is an interior
-gate. The largest complete routine is `02:525F`. All 2,169 route calls load the
-fixed slot `$0E` collision marker, reject the collision branch, mask session
-bit `$53.1`, and return at `02:526A`. The native transcript preserves all five
-instruction boundaries, including 37 original interrupt passages, and absorbs
-that return. The unobserved collision-active and launch-request arms remain in
-assembly.
+`02:5EEC` is the real entry behind the former `5EEC-5F21` profile run;
+`5EFE`, `5F01`, and `5F04` are interior instructions and `5F21` is the shared
+return. The native parent stages the `JSR $C06F` frame and composes the existing
+`01:DAF8` direction transcript before reproducing the appearance and collision
+logic. It absorbs 2,138 idle returns and resumes the one hit in assembly at
+`02:5F06`.
 
-Release and Debug preserve byte-identical canonical work RAM plus the complete
-2,679-call/11,229-write Shooter-family artifacts and actor timeline. Debug
-selects the already-documented normalized framebuffer placement, now guarded
-separately from the exact gameplay artifacts.
+Release and Debug preserve byte-identical census, canonical work RAM, complete
+4,283-call/50,711-write family artifacts, trace, and actor timeline. The first
+call also shadows at 807 cycles and 19 ordered writes.
 
 | | Before | After |
 | --- | ---: | ---: |
-| Emulated in the `525F-526A` body | 143,154 | **0** |
-| Registry cycles | 696,006,024 | **696,149,178** |
-| Native share | 53.85% | **53.87%** |
-| Native share outside the wait | 97.96% | **97.98%** |
-| Admitted routines | 436 | **437** |
-| Routines entered | 368 | **369** |
-| Bank `02` non-entry remainder | 1,004,511 | **860,013** |
+| Parent-plus-child native ownership | 1,521,012 | **1,788,819** |
+| Registry cycles | 696,149,178 | **696,416,985** |
+| Native share | 53.87% | **53.89%** |
+| Native share outside the wait | 97.98% | **98.02%** |
+| Admitted routines | 437 | **438** |
+| Bank `02` non-entry remainder | 860,013 | **589,950** |
 
-Next: bound the complete controller family containing the new largest useful
-bank-`02` run at `02:5EEC-5F21`; do not admit the profile's interior rows as
-independent routines.
+Next: screen the remaining bank-`02` families around `02:4387-438E` and
+`02:5590-55AF` with their registered parents and continuations. `02:4CF1`
+remains known residue from already-bounded handoff arms, not a new entry.
 
 ### Previous: the score panel's glyph writer
 

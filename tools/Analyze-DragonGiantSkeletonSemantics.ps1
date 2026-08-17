@@ -381,3 +381,7 @@ Write-Output (
 Write-Output (
     "First normalized sample: 02:5A4B@1, frame 872, 27 cycles, 0 writes."
 )
+Write-Output (
+    "Native Giant-Skeleton sample: 02:5EEC@1, frame 873, 807 cycles, " +
+    "19 writes."
+)

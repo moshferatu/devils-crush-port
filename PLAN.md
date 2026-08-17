@@ -808,6 +808,15 @@ Provide an interactive monitor-assignment screen and persist display identity, g
   The deployed registry now covers 696,149,178 master cycles (53.87% of the
   route, 97.98% outside the frame-sync wait) across 437 admitted routines, and
   bank `02`'s emulated non-entry remainder falls to 860,013 cycles.
+  Semantic `02:5EEC@all` now composes the complete Giant Skeleton controller
+  around the native `01:DAF8` direction classifier. All 2,139 calls retain the
+  exact direction-to-appearance clamp, appearance store, collision gate, and
+  original interrupt boundaries. The 2,138 idle calls absorb `02:5F21`; the
+  sole collision-active call resumes assembly at `02:5F06` for the original
+  score/audio/bonus continuation. Release and Debug preserve byte-identical
+  gameplay artifacts. The deployed registry now covers 696,416,985 master
+  cycles (53.89%, or 98.02% outside the wait) across 438 admitted routines,
+  and bank `02`'s non-entry remainder falls to 589,950 cycles.
   The larger `01:D525` controller remains a decomposition boundary: its 128
   census calls span 29-1,456 writes and 1,035-49,122 body master cycles, so
   the largest live paths exceed the bridge's independent 512-write limit.
