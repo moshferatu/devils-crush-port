@@ -1860,6 +1860,13 @@ parse_logical_address_range(const std::string_view text)
                                        .logical_pc = 0x52E3U,
                                    }
                            && request.all_calls;
+                       const bool proven_devil_shooter_charge_return =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x02U,
+                                       .logical_pc = 0x533AU,
+                                   }
+                           && request.all_calls;
                        const bool
                            proven_devil_shooter_catch_continuation =
                                request.routine
@@ -3360,6 +3367,7 @@ parse_logical_address_range(const std::string_view text)
                            && !proven_devil_shooter_release_delay_gate
                            && !proven_devil_shooter_post_launch_gate
                            && !proven_devil_shooter_charge_position
+                           && !proven_devil_shooter_charge_return
                            && !proven_devil_shooter_charge_retraction
                            && !proven_devil_shooter_catch_continuation
                            && !proven_skeleton_insect_left_gate
@@ -3582,6 +3590,7 @@ parse_logical_address_range(const std::string_view text)
             "semantic 02:5159@all, "
             "semantic 02:525F@all, "
             "semantic 02:52E3@all, "
+            "semantic 02:533A@all, "
             "semantic 02:533B@all, "
             "semantic 02:52B8@all, "
             "semantic 02:54B9@all, "

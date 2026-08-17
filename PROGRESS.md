@@ -1,6 +1,6 @@
 # Project Progress
 
-Last updated: 2026-08-16
+Last updated: 2026-08-17
 
 ## Current Status
 
@@ -26,11 +26,19 @@ high byte. The deterministic 1,800-frame route now executes 18,806 of 19,648
 preserving the byte-identical gameplay artifact, complete 19,648-call trace,
 and all 180,389 ordered writes.
 
-The deployed registry now runs **696,703,578 of 1,292,371,731 master cycles
+The deployed registry now runs **696,708,429 of 1,292,371,731 master cycles
 natively, 53.91% of the route and 98.06% of everything outside the frame-sync
-wait**, across 442 admitted routines with no transcript declined at an
-interrupt horizon and none abandoned. The 3,600-frame state census remains
+wait**, across 443 admitted routines. The new `02:533A` leaf self-guards 21
+pre-return timer-IRQ horizons, so the core declines no offered transcript and
+none is abandoned. The 3,600-frame state census remains
 `9036a9de0c3c9917f47bff8c04c136a4824ec12601fb457d260aa2dfe4443490`.
+
+The shared Devil-Shooter charge-position return is native at `02:533A` for
+all 231 horizon-safe calls. The remaining 21 calls service an original timer
+interrupt before the `RTS` and therefore stay in assembly. An otherwise
+identical registry A/B run attributes exactly 4,851 additional native master
+cycles to the new leaf, while the existing Shooter census, RAM, call, write,
+trace, and actor-state artifacts remain byte-identical.
 
 The shared impact-burst lifetime controller is fully native at `02:42B0`.
 All 252 calls preserve every instruction boundary across the wait, animation,
@@ -6422,32 +6430,40 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
   - [x] Registry cycles 696,498,285 -> **696,553,677**; 53.90%, 98.04% outside
     the wait; 440 admitted routines, 370 entered; bank `02` non-entry remainder
     -> 452,178; zero horizon declines and zero abandonments.
+- [x] Port the shared Devil-Shooter charge-position return at `02:533A`:
+  - [x] Confirm the standalone byte is the charge controller's shared `RTS`
+    and admit all 231 horizon-safe executions.
+  - [x] Preserve the 21 calls that service a timer interrupt before the return
+    as assembly fallback rather than moving the interrupt after the `RTS`.
+  - [x] Preserve the existing family census, canonical RAM, 2,679-call/
+    11,229-write artifacts, trace, and actor-state hashes exactly.
+  - [x] Registry A/B: **696,703,578 -> 696,708,429** native cycles;
+    4,851 cycles added solely at `02:533A`, 443 admitted routines, 373 entered,
+    and no transcript abandonments.
 
 ## Active Work
 
-Current owner: Codex. Current slice: **the shared impact-burst lifetime at
-`02:42B0-42E0`**. Done.
+Current owner: Codex. Current slice: **the shared Devil-Shooter
+charge-position return at `02:533A`**. Done.
 
-All 252 lifecycle calls now execute natively. Timer waits and nonterminal
-animation steps absorb the original return; inactive and `$FF` terminal steps
-tail into the already-native generic actor clear. The direct call and write
-artifacts remain byte-identical to assembly, including interrupts that land
-inside the controller, and the seven-instance lifecycle oracle remains exact.
+The native leaf absorbs 231 horizon-safe returns. Twenty-one calls have an
+original timer interrupt before the `RTS` and remain emulated; attempting to
+move that interrupt after the return preserves final RAM but changes call/write
+ownership, so the horizon guard is part of the faithful implementation. The
+owning family artifacts remain byte-identical.
 
 | | Before | After |
 | --- | ---: | ---: |
-| Native ownership at `02:42B0` | 0 | **30,597** |
-| Registry cycles | 696,672,981 | **696,703,578** |
+| Native ownership at `02:533A` | 0 | **4,851** |
+| Registry cycles | 696,703,578 | **696,708,429** |
 | Native share | 53.91% | **53.91%** |
 | Native share outside the wait | 98.06% | **98.06%** |
-| Admitted routines | 441 | **442** |
-| Proven native calls | 3,606,997 | **3,607,249** |
-| Interpreted instruction addresses | 4,576 | **4,557** |
-| Bank `02` non-entry remainder | 348,906 | **317,949** |
+| Admitted routines | 442 | **443** |
+| Proven native calls | 3,607,249 | **3,607,480** |
+| Bank `02` non-entry remainder | 317,949 | **313,098** |
 
-Next: absorb the shared Devil-Shooter charge-position return at `02:533A`.
-It is reached 252 times after the existing `02:52E3` semantic body and costs
-5,292 measured master cycles.
+Next: re-screen bank `02`'s remaining non-entry residue; the 21 pre-return IRQ
+cases at `02:533A` are now classified fallback rather than a port candidate.
 
 ### Previous: the score panel's glyph writer
 

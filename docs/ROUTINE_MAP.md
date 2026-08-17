@@ -2375,6 +2375,14 @@ scopes and the capped-charge path remain assembly-backed. The owning
 regression replays `02:52E3@1` at frame 1,085; manual normalized replays
 cover appearance values 0 through 4.
 
+Semantic `02:533A@all` absorbs the charge-position controller's shared `RTS`
+on 231 of 252 natural calls. Each accepted leaf costs the original 21 master
+cycles and returns through the live stack frame. The other 21 calls have a
+serviceable timer interrupt before the return and deliberately fall back to
+assembly; servicing it after the `RTS` changes the observer's ordered-write
+scope even though final RAM is unchanged. Enabling the leaf leaves the owning
+family's existing census, RAM, call, write, trace, and actor-state hashes exact.
+
 Semantic `02:533B@all` covers 11 horizon-safe charge-retraction calls from
 the catch and launch-controller callers. It preserves the three coordinate
 stores, remaining-charge store, and conditional appearance store exactly.

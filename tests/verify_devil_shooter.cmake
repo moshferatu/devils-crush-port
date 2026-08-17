@@ -73,6 +73,8 @@ execute_process(
         --replace-hook
         "02:52E3@all"
         --replace-hook
+        "02:533A@all"
+        --replace-hook
         "02:533B@all"
         --replace-hook
         "02:525F@all"
@@ -119,6 +121,7 @@ foreach(expected_line IN ITEMS
     "Observe hook 5 entries: 2169"
     "Native replacement 02:5159@all entries: 4 of 101"
     "Native replacement 02:52E3@all entries: 137 of 252"
+    "Native replacement 02:533A@all entries: 231 of 252"
     "Native replacement 02:533B@all entries: 11 of 32"
     "Native replacement 02:525F@all entries: 2169 of 2169"
     "Routine trace complete: 2679 entries"

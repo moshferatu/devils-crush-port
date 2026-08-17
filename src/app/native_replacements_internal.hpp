@@ -832,6 +832,11 @@ replace_devil_shooter_charge_position(
     std::span<const std::byte> work_ram);
 
 [[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_devil_shooter_charge_return(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram);
+
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
 replace_devil_shooter_charge_retraction(
     const emulation::RoutineEntry& entry,
     std::span<const std::byte> work_ram);

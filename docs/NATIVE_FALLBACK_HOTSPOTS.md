@@ -3549,8 +3549,13 @@ including interrupt-handler writes inside the scopes. The registry gains
 range, reaching 696,703,578 native cycles overall. Bank `02`'s non-entry
 remainder is now 317,949 cycles.
 
-The next compact boundary is the `RTS` at `02:533A`, reached 252 times after
-the existing Devil-Shooter charge-position semantic and costing 5,292 cycles.
+The next compact boundary was the `RTS` at `02:533A`, reached 252 times after
+the existing Devil-Shooter charge-position semantic. Semantic `02:533A@all`
+now absorbs 231 horizon-safe executions for 4,851 native master cycles. The
+remaining 21 service a timer interrupt before the return and stay in assembly;
+moving the interrupt behind the `RTS` changes ordered call ownership. Bank
+`02`'s non-entry remainder falls to 313,098 cycles. Re-screen that remainder
+before choosing the next slice; the 21 guarded returns are classified fallback.
 
 ## Use on future families
 

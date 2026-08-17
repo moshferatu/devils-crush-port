@@ -2043,6 +2043,35 @@ replace_devil_shooter_charge_position(
 }
 
 [[nodiscard]] std::optional<RoutineReplacement>
+replace_devil_shooter_charge_return(
+    const RoutineEntry& entry,
+    const std::span<const std::byte> work_ram)
+{
+    constexpr RoutineKey kRoutine{
+        .physical_bank = 0x02U,
+        .logical_pc = 0x533AU,
+    };
+    if (entry.routine != kRoutine
+        || !absorbed_return_fits_atomically(entry, 0U)) {
+        return std::nullopt;
+    }
+
+    RoutineReplacement replacement{
+        .return_instruction = kRoutine,
+        .output_registers = entry.registers,
+        .body_master_cycles = 0U,
+    };
+    absorb_return(
+        replacement,
+        work_ram,
+        entry.registers.stack_pointer,
+        kRoutine,
+        0U,
+        entry.registers);
+    return replacement;
+}
+
+[[nodiscard]] std::optional<RoutineReplacement>
 replace_devil_shooter_companion_appearance(
     const RoutineEntry& entry,
     const std::span<const std::byte> work_ram)
