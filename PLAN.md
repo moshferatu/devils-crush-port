@@ -792,6 +792,15 @@ Provide an interactive monitor-assignment screen and persist display identity, g
   return with exact state, call, work-RAM-write, and bus-write parity. The
   deployed registry now covers 695,369,472 master cycles (53.81% of the route,
   97.87% outside the frame-sync wait) across 434 admitted routines.
+  Semantic `03:6490/651F@all` now composes the complete Front- and Side-Spider
+  steady parents around the existing collision-table and appearance
+  transcripts. All 2,645/2,796 natural entries preserve the two nested call
+  frames and instruction interrupt boundaries; the 2,642 Front idle returns
+  and all Side returns are absorbed, while three Front hits resume at the
+  original transition code. The deployed registry now covers 696,006,024
+  master cycles (53.85% of the route, 97.96% outside the frame-sync wait)
+  across 436 admitted routines, and bank `03`'s emulated remainder falls from
+  1,174,179 to 532,035.
   The larger `01:D525` controller remains a decomposition boundary: its 128
   census calls span 29-1,456 writes and 1,035-49,122 body master cycles, so
   the largest live paths exceed the bridge's independent 512-write limit.

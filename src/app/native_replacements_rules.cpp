@@ -5530,6 +5530,252 @@ replace_front_spider_initializer(
 }
 
 [[nodiscard]] std::optional<RoutineReplacement>
+replace_spider_controller_parent(
+    const RoutineEntry& entry,
+    const std::span<const std::byte> work_ram,
+    const std::span<const std::byte> rom)
+{
+    constexpr RoutineKey kFrontRoutine{
+        .physical_bank = 0x03U,
+        .logical_pc = 0x6490U,
+    };
+    constexpr RoutineKey kSideRoutine{
+        .physical_bank = 0x03U,
+        .logical_pc = 0x651FU,
+    };
+    const bool front = entry.routine == kFrontRoutine;
+    if ((!front && entry.routine != kSideRoutine) || work_ram.size() < 0x2000U) {
+        return std::nullopt;
+    }
+
+    const auto slot = entry.registers.x;
+    const auto side = std::to_integer<std::uint8_t>(
+        work_ram[0x1C80U + static_cast<std::size_t>(slot)]);
+    if (front) {
+        dc_front_spider_initializer classification{};
+        if (!dc_classify_front_spider_initializer(
+                reinterpret_cast<const std::uint8_t*>(work_ram.data()),
+                work_ram.size(), slot, side, &classification)) {
+            return std::nullopt;
+        }
+    } else {
+        dc_side_spider_initializer classification{};
+        if (!dc_classify_side_spider_initializer(
+                reinterpret_cast<const std::uint8_t*>(work_ram.data()),
+                work_ram.size(), slot, side, &classification)) {
+            return std::nullopt;
+        }
+    }
+
+    constexpr std::size_t kMaximumCheckpoints = 2048U;
+    constexpr std::size_t kMaximumWrites = 512U;
+    constexpr std::uint8_t kZero = 0x02U;
+    constexpr std::uint8_t kNegative = 0x80U;
+    constexpr std::uint32_t kImmediate = 6U;
+    constexpr std::uint32_t kAbsoluteIndexed = 15U;
+    constexpr std::uint32_t kBranchNotTaken = 6U;
+    constexpr std::uint32_t kBranchTaken = 12U;
+    constexpr std::uint32_t kJumpToSubroutine = 21U;
+    constexpr std::uint32_t kReturnFromSubroutine = 21U;
+
+    const auto first_pc = entry.routine.logical_pc;
+    const auto load_side_pc = static_cast<std::uint16_t>(first_pc + 2U);
+    const auto side_branch_pc = static_cast<std::uint16_t>(first_pc + 5U);
+    const auto alternate_selector_pc = static_cast<std::uint16_t>(first_pc + 7U);
+    const auto collision_call_pc = static_cast<std::uint16_t>(first_pc + 9U);
+    const auto appearance_call_pc = static_cast<std::uint16_t>(first_pc + 12U);
+    const auto collision_load_pc = static_cast<std::uint16_t>(first_pc + 15U);
+    const auto collision_branch_pc = static_cast<std::uint16_t>(first_pc + 18U);
+    const auto idle_return_pc = static_cast<std::uint16_t>(first_pc + 20U);
+    const auto active_continuation_pc = static_cast<std::uint16_t>(first_pc + 21U);
+    const auto first_selector = static_cast<std::uint8_t>(front ? 0x2AU : 0x2CU);
+
+    auto staged = std::vector<std::byte>(work_ram.begin(), work_ram.end());
+    RoutineReplacement replacement{};
+    auto registers = entry.registers;
+    std::uint32_t cycle = 0U;
+
+    const auto set_nz = [](std::uint8_t status, const std::uint8_t value) {
+        status = static_cast<std::uint8_t>(status & 0x7DU);
+        if (value == 0U) {
+            status = static_cast<std::uint8_t>(status | kZero);
+        } else if ((value & kNegative) != 0U) {
+            status = static_cast<std::uint8_t>(status | kNegative);
+        }
+        return status;
+    };
+    const auto stage_write = [&staged](
+                                 const std::uint16_t address,
+                                 const std::uint8_t value) {
+        if (address < 0x2000U || address >= 0x4000U) {
+            return false;
+        }
+        staged[address - 0x2000U] = static_cast<std::byte>(value);
+        return true;
+    };
+    const auto append_checkpoint = [&replacement, &registers, &cycle](
+                                       const std::uint8_t bank,
+                                       const std::uint16_t instruction_pc,
+                                       const std::uint16_t resume_pc,
+                                       const std::uint32_t instruction_cycles) {
+        cycle += instruction_cycles;
+        registers.program_counter = resume_pc;
+        replacement.checkpoints.push_back({
+            .interrupt_sample_master_cycle_offset = cycle - 3U,
+            .master_cycle_offset = cycle,
+            .instruction = {bank, instruction_pc},
+            .registers = registers,
+        });
+    };
+    const auto push_call = [&replacement, &registers, &cycle, &stage_write,
+                               &append_checkpoint](
+                               const std::uint16_t instruction_pc,
+                               const std::uint16_t target_pc) {
+        const auto pushed = static_cast<std::uint16_t>(instruction_pc + 2U);
+        const auto high_address = static_cast<std::uint16_t>(
+            0x2100U + registers.stack_pointer);
+        const auto low_address = static_cast<std::uint16_t>(
+            0x2100U
+            + static_cast<std::uint8_t>(registers.stack_pointer - 1U));
+        const auto high = static_cast<std::uint8_t>(pushed >> 8U);
+        const auto low = static_cast<std::uint8_t>(pushed);
+        replacement.work_ram_writes.push_back({
+            .instruction = {0x03U, instruction_pc},
+            .logical_address = high_address,
+            .value = high,
+            .master_cycle_offset = cycle,
+        });
+        replacement.work_ram_writes.push_back({
+            .instruction = {0x03U, instruction_pc},
+            .logical_address = low_address,
+            .value = low,
+            .master_cycle_offset = cycle,
+        });
+        if (!stage_write(high_address, high) || !stage_write(low_address, low)) {
+            return false;
+        }
+        registers.stack_pointer = static_cast<std::uint8_t>(
+            registers.stack_pointer - 2U);
+        append_checkpoint(
+            0x03U, instruction_pc, target_pc, kJumpToSubroutine);
+        return true;
+    };
+    const auto append_child = [&replacement, &registers, &cycle, &stage_write](
+                                  const RoutineReplacement& child) {
+        if (replacement.checkpoints.size() + child.checkpoints.size()
+                >= kMaximumCheckpoints
+            || replacement.work_ram_writes.size()
+                    + child.work_ram_writes.size()
+                >= kMaximumWrites) {
+            return false;
+        }
+        const auto child_offset = cycle;
+        for (auto write : child.work_ram_writes) {
+            if (!stage_write(write.logical_address, write.value)) {
+                return false;
+            }
+            write.master_cycle_offset += child_offset;
+            replacement.work_ram_writes.push_back(write);
+        }
+        for (auto checkpoint : child.checkpoints) {
+            checkpoint.interrupt_sample_master_cycle_offset += child_offset;
+            checkpoint.master_cycle_offset += child_offset;
+            replacement.checkpoints.push_back(checkpoint);
+        }
+        cycle += child.body_master_cycles;
+        registers = child.output_registers;
+        return true;
+    };
+
+    registers.accumulator = first_selector;
+    registers.status = set_nz(registers.status, registers.accumulator);
+    append_checkpoint(0x03U, first_pc, load_side_pc, kImmediate);
+    registers.y = side;
+    registers.status = set_nz(registers.status, registers.y);
+    append_checkpoint(0x03U, load_side_pc, side_branch_pc, kAbsoluteIndexed);
+    if (side == 0U) {
+        append_checkpoint(
+            0x03U, side_branch_pc, collision_call_pc, kBranchTaken);
+    } else {
+        append_checkpoint(
+            0x03U, side_branch_pc, alternate_selector_pc, kBranchNotTaken);
+        registers.accumulator = static_cast<std::uint8_t>(first_selector + 1U);
+        registers.status = set_nz(registers.status, registers.accumulator);
+        append_checkpoint(
+            0x03U, alternate_selector_pc, collision_call_pc, kImmediate);
+    }
+
+    if (!push_call(collision_call_pc, 0x6966U)) {
+        return std::nullopt;
+    }
+    const RoutineEntry collision_entry{
+        .routine = {.physical_bank = 0x03U, .logical_pc = 0x6966U},
+        .registers = registers,
+    };
+    const auto collision = replace_collision_table_interpreter(
+        collision_entry, staged, rom);
+    if (!collision || collision->checkpoints.empty()
+        || collision->return_instruction.physical_bank != 0x03U
+        || !append_child(*collision)) {
+        return std::nullopt;
+    }
+    registers.stack_pointer = static_cast<std::uint8_t>(
+        registers.stack_pointer + 2U);
+    append_checkpoint(
+        0x03U,
+        collision->return_instruction.logical_pc,
+        appearance_call_pc,
+        kReturnFromSubroutine);
+
+    if (!push_call(appearance_call_pc, 0x65A4U)) {
+        return std::nullopt;
+    }
+    const RoutineEntry appearance_entry{
+        .routine = {.physical_bank = 0x03U, .logical_pc = 0x65A4U},
+        .registers = registers,
+    };
+    const auto appearance = replace_spider_appearance(appearance_entry, staged);
+    if (!appearance || appearance->checkpoints.empty()
+        || appearance->return_instruction
+            != RoutineKey{.physical_bank = 0x03U,
+                .logical_pc = collision_load_pc}
+        || appearance->output_registers.stack_pointer
+            != entry.registers.stack_pointer
+        || !append_child(*appearance)) {
+        return std::nullopt;
+    }
+
+    registers.accumulator = std::to_integer<std::uint8_t>(
+        staged[0x1800U + static_cast<std::size_t>(slot)]);
+    registers.status = set_nz(registers.status, registers.accumulator);
+    append_checkpoint(
+        0x03U, collision_load_pc, collision_branch_pc, kAbsoluteIndexed);
+    if ((registers.status & kNegative) != 0U) {
+        append_checkpoint(
+            0x03U,
+            collision_branch_pc,
+            active_continuation_pc,
+            kBranchTaken);
+        replacement.return_instruction = {0x03U, active_continuation_pc};
+        replacement.output_registers = registers;
+        replacement.body_master_cycles = cycle;
+        return replacement;
+    }
+
+    append_checkpoint(
+        0x03U, collision_branch_pc, idle_return_pc, kBranchNotTaken);
+    const auto at_return = registers;
+    absorb_return(
+        replacement,
+        work_ram,
+        entry.registers.stack_pointer,
+        {0x03U, idle_return_pc},
+        cycle,
+        at_return);
+    return replacement;
+}
+
+[[nodiscard]] std::optional<RoutineReplacement>
 replace_knight_waiting_parent(
     const RoutineEntry& entry,
     const std::span<const std::byte> work_ram)

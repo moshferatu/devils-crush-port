@@ -3236,7 +3236,7 @@ its Skeleton Insect terminology). Layout slots `$26/$27` use initializer
 Semantic `03:646B@all` now covers both fixed layouts through their exact
 342-cycle, fourteen-write side-parameter/collision/script setup transcript and
 final `01:C5E6` scheduler checkpoint; the collision-owning steady controller
-remains assembly-backed.
+is now native as described below.
 
 Every update selects collision ID `$2A` or `$2B` from that side parameter and
 passes through `03:6966/65A4`. A hit:
@@ -3254,6 +3254,13 @@ and 1,288 for slot `$27`. Three calls hit—right-side frames 2,182 and 2,564,
 then left-side frame 3,466—contributing 120 stored score units. The other
 2,642 return through `03:64A4` after collision processing. The normalized
 first call at frame 873 takes 903 cycles and contains 19 writes.
+
+Semantic `03:6490@all` now composes the selector prefix and both native child
+transcripts for all 2,645 calls. It absorbs all 2,642 collision-free returns;
+the three hit calls retain the exact checkpoints through the children and hand
+control back at `03:64A5`, before the original safety, score, audio, and
+transition sequence. The complete call, ordered-write, and actor-identity
+artifacts remain unchanged.
 
 `tools/Analyze-FrontSpiderSemantics.ps1` guards the two fixed layout records,
 side ownership, collision selection, every safety/score/audio write, the
@@ -3289,6 +3296,13 @@ timer, then installs `03:651F`.
 
 Native semantic `03:64FA@all` now covers both fixed layout setups through the
 exact 342-cycle, fourteen-write transcript and final `01:C5E6` checkpoint.
+
+Semantic `03:651F@all` now composes the side selector and both native child
+transcripts for all 2,796 natural calls, preserving every interrupt boundary,
+9-47 ordered-write shape, and the normalized 903-cycle first call. Every call
+is collision-free on this route, so the parent absorbs `03:6533` on all of
+them; the collision continuation remains available as an exact assembly
+handoff for other states.
 
 The steady routine converts side parameter 0/1 into collision ID `$2C/$2D`
 and passes through the shared `03:6966/65A4` collision and appearance helpers.
@@ -8206,7 +8220,9 @@ and write SHA-256 values are
 `9036a9de0c3c9917f47bff8c04c136a4824ec12601fb457d260aa2dfe4443490`,
 `7e987ec3f4faa07710a6d528d2e108ca4b5157cf8dd0f9183c701a1eb3583356`, and
 `d7c55c4dde46c9c844669f67e5a3e932d411fa8aac206d6e1d9bc284fccac210`.
-The collision-owning `03:6490` and `03:651F` parents remain assembly-backed.
+The collision-owning `03:6490` and `03:651F` parents are now native on all
+natural entries through the composed transcripts documented in their family
+sections above.
 
 ### Fifty-fifth native replacement: semantic `03:7D85/7E23@all`
 

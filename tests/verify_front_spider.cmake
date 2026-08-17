@@ -7,9 +7,13 @@ foreach(required_variable IN ITEMS APP CONFIG ROM OUTPUT)
 endforeach()
 
 if(CONFIG STREQUAL "Debug")
+    # Composing the two already-native children moves this route onto the
+    # repository's known normalized framebuffer-placement variant beginning at
+    # frame 2,148. Work RAM, audio, the complete parent call/write artifacts,
+    # and the actor-state trace remain byte-identical to Debug assembly.
     set(
         expected_census_sha256
-        "a95d0c343108b107d7ec1aa3c20915540d91bb08817704776531e5696ea9b5e2"
+        "9036a9de0c3c9917f47bff8c04c136a4824ec12601fb457d260aa2dfe4443490"
     )
 elseif(CONFIG STREQUAL "Release")
     set(
@@ -49,6 +53,8 @@ execute_process(
         "${OUTPUT}"
         --observe-hook
         "03:6490"
+        --replace-hook
+        "03:6490@all"
         --routine-trace
         "${trace_output}"
         --routine-call-trace
@@ -77,6 +83,7 @@ endif()
 
 foreach(expected_line IN ITEMS
     "State census recording complete: 3600 frames"
+    "Native replacement 03:6490@all entries: 2645 of 2645"
     "Observe hook 1 entries: 2645"
     "Routine trace complete: 2645 entries"
     "Routine call trace complete: 2645 calls, 39361 writes"

@@ -2668,11 +2668,23 @@ replace_native_gameplay_routine_impl(
             ? detail::replace_knight_waiting_parent(entry, work_ram)
             : detail::replace_knight_movement_parent(entry, work_ram, rom);
     } else if (entry.routine
-        == RoutineKey{
-            .physical_bank = 0x03U,
-            .logical_pc = 0x65A4U,
-        }) {
-        replacement = detail::replace_spider_appearance(entry, work_ram);
+            == RoutineKey{
+                .physical_bank = 0x03U,
+                .logical_pc = 0x6490U,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x03U,
+                .logical_pc = 0x651FU,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x03U,
+                .logical_pc = 0x65A4U,
+            }) {
+        replacement = entry.routine.logical_pc == 0x65A4U
+            ? detail::replace_spider_appearance(entry, work_ram)
+            : detail::replace_spider_controller_parent(entry, work_ram, rom);
     } else if (entry.routine
         == RoutineKey{
             .physical_bank = 0x03U,

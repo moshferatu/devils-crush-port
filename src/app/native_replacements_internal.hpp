@@ -702,6 +702,12 @@ replace_front_spider_initializer(
     std::span<const std::byte> work_ram);
 
 [[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_spider_controller_parent(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram,
+    std::span<const std::byte> rom);
+
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
 replace_knight_waiting_parent(
     const emulation::RoutineEntry& entry,
     std::span<const std::byte> work_ram);

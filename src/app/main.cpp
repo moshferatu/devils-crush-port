@@ -2531,6 +2531,18 @@ parse_logical_address_range(const std::string_view text)
                                        .logical_pc = 0x65A4U,
                            }
                            && request.all_calls;
+                       const bool proven_spider_controller_parents =
+                           (request.routine
+                                    == RoutineKey{
+                                        .physical_bank = 0x03U,
+                                        .logical_pc = 0x6490U,
+                                    }
+                               || request.routine
+                                    == RoutineKey{
+                                        .physical_bank = 0x03U,
+                                        .logical_pc = 0x651FU,
+                                    })
+                           && request.all_calls;
                        const bool proven_devil_shooter_charge_retraction =
                            request.routine
                                    == RoutineKey{
@@ -3414,6 +3426,7 @@ parse_logical_address_range(const std::string_view text)
                             && !proven_knight_waiting_parent
                            && !proven_knight_movement_parent
                            && !proven_spider_appearance
+                           && !proven_spider_controller_parents
                            && !proven_tower_insect_animation
                            && !proven_tower_insect_controller
                            && !proven_small_soldier_source_gates
@@ -3604,6 +3617,7 @@ parse_logical_address_range(const std::string_view text)
              "semantic 01:C5BE@all, "
              "semantic 01:C5C0@all, "
              "semantic 01:C5C7@all, "
+             "semantic 03:6490@all, semantic 03:651F@all, "
              "semantic 03:65A4@all, "
             "semantic 03:6054@all, "
             "semantic 02:5F22@all, "

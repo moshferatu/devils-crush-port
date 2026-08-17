@@ -93,10 +93,10 @@ retain the existing native-or-assembly split.
 ## Front-Spider and Knight comparison
 
 A fresh profile compared two unrelated rule families after the Side-Star
-family closed. Front-Spider parent `03:6490` is the larger raw opportunity,
-but it combines a selector setup, the large collision-table interpreter, and
-an appearance helper. Its collision-free wrapper is therefore retained in
-assembly until it has a composable parent transcript.
+family closed. At capture, Front-Spider parent `03:6490` was the larger raw
+opportunity but still combined a selector setup, the collision-table
+interpreter, and an appearance helper. The later composed-parent slice below
+now closes that former fallback.
 
 | Family / routine | Registry status at capture | Calls | Total master cycles | Writes | Weighted cost |
 | --- | --- | ---: | ---: | ---: | ---: |
@@ -304,9 +304,12 @@ either: the addresses `$6490` and `$651F` do not occur anywhere in the 384KB
 ROM image, so both are reached by computed dispatch and porting them removes
 no call boundary above.
 
-So the objection is dead and the slice is worth roughly 0.04% net. Priced, not
-deferred: it is available whenever completeness matters more than share, which
-is the position the port ends in.
+The slice is now complete. Semantic `03:6490/651F@all` admits all 2,645/2,796
+natural entries, composes both existing children with their exact stack and
+interrupt boundaries, absorbs the idle returns, and hands the three Front hits
+back at `03:64A5`. The two bodies remove all 642,144 emulated cycles and add a
+net 636,552 deployed native cycles after the separately credited child entries
+are folded into their parents.
 
 ## Small-Soldier source-gate pilot
 
@@ -1068,7 +1071,7 @@ collision-owning `03:6490` parent and cleanly admits both standard layouts.
 Semantic `03:646B@all` now ports slots `$26/$27` through the exact 342-cycle,
 fourteen-write side-parameter/collision/script transcript and final
 `01:C5E6` scheduler checkpoint. The steady collision, scoring, and transition
-controller remains assembly-backed.
+controller is now native through semantic `03:6490@all`.
 
 ## Side-Spider initializer
 
@@ -1082,7 +1085,7 @@ collision-owning `03:651F` parent and cleanly admits both standard layouts.
 Semantic `03:64FA@all` now ports slots `$28/$29` through the exact 342-cycle,
 fourteen-write side-parameter/collision/script transcript and final
 `01:C5E6` scheduler checkpoint. The steady collision, scoring, and
-transition controller remains assembly-backed.
+transition controller is now native through semantic `03:651F@all`.
 
 ## Gray-Blob initializer
 
@@ -1255,8 +1258,8 @@ initializer's neighbours were the next port candidates:
 | `02:58C2` Sorcerer orbit parent | 18,152 | 18,250,779 | 321,875 | 22,113,279 | Keep assembly: mixed collision, drawing, and IRQ work |
 | `02:5EEC` Giant-Skeleton controller | 2,139 | 2,225,988 | 49,845 | 2,824,128 | Keep assembly: depends on mixed physical-bank child `01:DAF8` |
 | `01:DAF8` Giant-Skeleton child | 2,139 | 1,834,263 | 41,651 | 2,334,075 | Keep assembly: coordinate/collision work has no isolated transcript |
-| `03:651F` Side-Spider controller | 2,796 | 1,966,554 | 41,621 | 2,466,006 | Keep assembly: requires parent-relative collision timing |
-| `03:6490` Front-Spider controller | 2,645 | 1,851,933 | 39,361 | 2,324,265 | Keep assembly: requires parent-relative collision timing |
+| `03:651F` Side-Spider controller | 2,796 | 1,966,554 | 41,621 | 2,466,006 | Superseded: native composed parent |
+| `03:6490` Front-Spider controller | 2,645 | 1,851,933 | 39,361 | 2,324,265 | Superseded: native composed parent |
 
 The same natural Sorcerer route was then split at its direct state entries.
 The broad orbit parent remains deliberately out of scope. The apparent

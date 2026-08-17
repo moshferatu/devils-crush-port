@@ -26,11 +26,18 @@ high byte. The deterministic 1,800-frame route now executes 18,806 of 19,648
 preserving the byte-identical gameplay artifact, complete 19,648-call trace,
 and all 180,389 ordered writes.
 
-The deployed registry now runs **695,369,472 of 1,292,371,731 master cycles
-natively, 53.81% of the route and 97.87% of everything outside the frame-sync
-wait**, across 434 admitted routines with no transcript declined at an
+The deployed registry now runs **696,006,024 of 1,292,371,731 master cycles
+natively, 53.85% of the route and 97.96% of everything outside the frame-sync
+wait**, across 436 admitted routines with no transcript declined at an
 interrupt horizon and none abandoned. The 3,600-frame state census remains
 `9036a9de0c3c9917f47bff8c04c136a4824ec12601fb457d260aa2dfe4443490`.
+
+The Front- and Side-Spider steady parents are native. `03:6490/651F` compose
+the already-native collision-table and appearance children on all 2,645/2,796
+natural entries, retain both stack frames and every interrupt boundary, absorb
+the collision-free returns, and hand the three Front hit continuations back to
+assembly. Their two complete bodies remove 642,144 emulated cycles and reduce
+bank `03`'s remainder from 1,174,179 to 532,035.
 
 The score panel's redraw poll is native. `09:7237`-`09:7268` runs on all 2,649
 calls -- four work RAM gates that decline the redraw 2,616 times, ten
@@ -6257,10 +6264,48 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
   - [x] Registry cycles 695,098,752 -> **695,369,472**; 53.81%, 97.87% outside
     the wait; 434 admitted routines, 367 entered; bank `09` 453,369 -> 169,008;
     census unchanged.
+- [x] Compose the Front- and Side-Spider steady parents at `03:6490/651F`.
+  - [x] Preserve both selector arms, the collision-table and appearance child
+    transcripts, both nested stack frames, and every interrupt checkpoint.
+  - [x] Absorb 2,642 Front idle returns and all 2,796 Side returns while handing
+    the three Front hit continuations back to assembly at `03:64A5`.
+  - [x] Admit all 2,645/2,796 natural entries with exact Release census, call,
+    ordered-write, actor-state, and selected-state artifacts.
+  - [x] Registry cycles 695,369,472 -> **696,006,024**; 53.85%, 97.96% outside
+    the wait; 436 admitted routines, 368 entered; bank `03` 1,174,179 -> 532,035;
+    zero horizon declines and zero abandonments.
 
 ## Active Work
 
-Current owner: Codex. Current slice: **the score panel's glyph writer**. Done.
+Current owner: Codex. Current slice: **the Spider collision parents**. Done.
+
+`03:6490` and `03:651F` are the complete nine-instruction Front- and
+Side-Spider steady parents identified by the latest non-entry profile. Their
+two children, collision-table interpreter `03:6966` and appearance helper
+`03:65A4`, were already instruction-checkpointed. The new parent transcript
+now preserves both `JSR` frames and composes those exact child writes and
+boundaries. All 2,645 Front and 2,796 Side entries run natively. The 2,642
+Front idle calls and every Side call absorb the parent `RTS`; the three live
+Front hits stop at `03:64A5`, leaving scoring and transition assembly intact.
+
+Release state, call, ordered-write, actor-state, and selected-state artifacts
+are byte-identical to assembly. Debug retains those same gameplay/audio
+artifacts and selects the already-documented normalized Beetle framebuffer
+placement beginning at frame 2,148: comparison against the Debug assembly
+census finds zero work-RAM and audio differences, with differences confined to
+the known presentation interval.
+
+| | Before | After |
+| --- | ---: | ---: |
+| Emulated in the two parent bodies | 642,144 | **0** |
+| Registry cycles | 695,369,472 | **696,006,024** |
+| Native share | 53.81% | **53.85%** |
+| Native share outside the wait | 97.87% | **97.96%** |
+| Admitted routines | 434 | **436** |
+| Routines entered | 367 | **368** |
+| Bank `03` outside the wait | 1,174,179 | **532,035** |
+
+### Previous: the score panel's glyph writer
 
 `09:72FD` is the leaf the score redraw calls once per digit. It doubles A into
 the four-byte tile-table index, selects VDC MAWR/VWR twice, emits both glyph
@@ -9409,9 +9454,11 @@ All 376 calls now execute natively and every call, work-RAM write, and VDC bus
 write matches assembly. The declared gain is 270,720 master cycles; the other
 13,641 are dynamic VDC arbitration stalls still charged by the real device.
 The re-profile leaves 169,008 emulated master cycles in bank `09`, so that bank
-is no longer a useful unit to optimize. Select the next slice by disassembling
-the largest live non-entry runs across banks `03`, `02`, and `01`; do not port
-an address row until its enclosing routine and any declined parent are known.
+is no longer a useful unit to optimize. The subsequent Spider-parent slice
+removes bank `03`'s two largest complete runs and leaves 532,035 there. Select
+the next slice by bounding the largest live non-entry runs in banks `02` and
+`01`, starting with `02:523F-526A`; do not port an address row until its
+enclosing routine and any declined parent are known.
 
 After bank `09`, the cheap work is the fifty jump-table rows in bank `01` that
 this route never reaches, whenever a route reaches them.

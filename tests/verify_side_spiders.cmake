@@ -7,9 +7,12 @@ foreach(required_variable IN ITEMS APP CONFIG ROM OUTPUT)
 endforeach()
 
 if(CONFIG STREQUAL "Debug")
+    # See verify_front_spider.cmake: the composed parent deterministically uses
+    # the known normalized framebuffer-placement variant, while every gameplay,
+    # audio, call, write, and selected-state artifact remains Debug-exact.
     set(
         expected_census_sha256
-        "a95d0c343108b107d7ec1aa3c20915540d91bb08817704776531e5696ea9b5e2"
+        "9036a9de0c3c9917f47bff8c04c136a4824ec12601fb457d260aa2dfe4443490"
     )
 elseif(CONFIG STREQUAL "Release")
     set(
@@ -51,6 +54,8 @@ execute_process(
         "03:64FA"
         --observe-hook
         "03:651F"
+        --replace-hook
+        "03:651F@all"
         --routine-trace
         "${trace_output}"
         --routine-call-trace
@@ -105,6 +110,7 @@ endif()
 
 foreach(expected_line IN ITEMS
     "State census recording complete: 3600 frames"
+    "Native replacement 03:651F@all entries: 2796 of 2796"
     "Observe hook 1 entries: 2"
     "Observe hook 2 entries: 2796"
     "Routine trace complete: 2798 entries"
