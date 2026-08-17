@@ -3698,6 +3698,19 @@ against a run with all four routines emulated, and
 `dc_rom_absorbed_return_trace_dispatched` compares the call trace. The paired
 source-gate slice completes the Tower-insect Debug family checkpoint below.
 
+The fixed source has a matching collision crossing at `02:5FFB`. It loads
+selector `$3700,X`, pushes the exact return frame for `JSR $6966`, and lands on
+the same collision-table interpreter through a 36-cycle native transcript.
+All 260 calls are admitted. Direct assembly/native traces preserve the complete
+260-call/4,016-write artifact and normalized replay `02:5FFB@1` at frame 958:
+
+- Call SHA-256:
+  `1e3173f878f158bd61715e3d1bff4736309a3f577a2fe77106dafedba38e7629`
+- Write SHA-256:
+  `cfabe3531b0ad7a5f9cf78b668c3daef05c0bb34a9143abba093d828b9cb115d`
+- Census SHA-256:
+  `9036a9de0c3c9917f47bff8c04c136a4824ec12601fb457d260aa2dfe4443490`
+
 ## Tower-insect source gate native replacement
 
 The fixed Tower-insect source runs from physical bank `02`. After the four

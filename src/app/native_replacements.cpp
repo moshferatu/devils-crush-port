@@ -1837,6 +1837,13 @@ replace_native_gameplay_routine_impl(
     }
     if (entry.routine
         == RoutineKey{
+            .physical_bank = 0x02U,
+            .logical_pc = 0x5FFBU,
+        }) {
+        return detail::replace_tower_insect_collision_call(entry, work_ram);
+    }
+    if (entry.routine
+        == RoutineKey{
             .physical_bank = 0x03U,
             .logical_pc = 0x601CU,
         }) {

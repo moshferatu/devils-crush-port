@@ -26,11 +26,18 @@ high byte. The deterministic 1,800-frame route now executes 18,806 of 19,648
 preserving the byte-identical gameplay artifact, complete 19,648-call trace,
 and all 180,389 ordered writes.
 
-The deployed registry now runs **696,663,621 of 1,292,371,731 master cycles
-natively, 53.91% of the route and 98.05% of everything outside the frame-sync
-wait**, across 440 admitted routines with no transcript declined at an
+The deployed registry now runs **696,672,981 of 1,292,371,731 master cycles
+natively, 53.91% of the route and 98.06% of everything outside the frame-sync
+wait**, across 441 admitted routines with no transcript declined at an
 interrupt horizon and none abandoned. The 3,600-frame state census remains
 `9036a9de0c3c9917f47bff8c04c136a4824ec12601fb457d260aa2dfe4443490`.
+
+The fixed Tower-Insect source controller now crosses its collision-table call
+at `02:5FFB`. All 260 entries load selector `$3700,X`, push the exact
+`JSR $6966` return frame, and land on the already-native interpreter. Direct
+assembly/native comparison preserves all 260 calls and 4,016 ordered writes;
+the family regression also preserves 4,282,022 selected writes. The slice adds
+9,360 registry cycles and reduces bank `02`'s non-entry remainder to 348,906.
 
 The right Skeleton-Insect trigger gate now absorbs its idle return at
 `02:5556`. All 335 clear-latch calls remain inside the already-admitted
@@ -6405,27 +6412,30 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
 
 ## Active Work
 
-Current owner: Codex. Current slice: **the right Skeleton-Insect trigger-gate
-idle return**. Done.
+Current owner: Codex. Current slice: **the fixed Tower-Insect source collision
+crossing at `02:5FFB`**. Done.
 
-The 335 clear-latch calls at `02:5551` now retire the gate's own `RTS` at
-`02:5556` inside the native transaction. The one active call is unchanged and
-continues through the composed score accumulator and coroutine scheduler. The
-focused 336-call/101-write artifact, canonical census, and whole-registry
-stack-page oracle remain exact.
+All 260 source-controller entries now load collision selector `$3700,X`, push
+the authentic `JSR $6966` frame, and end on the collision interpreter's first
+instruction. The interpreter stays a separate registered transaction. Direct
+assembly/native traces preserve all 260 calls and 4,016 writes, while the
+owning family oracle preserves all 4,282,022 selected writes and the canonical
+census.
 
 | | Before | After |
 | --- | ---: | ---: |
-| Native ownership at `02:5551` | 8,013 | **15,048** |
-| Registry cycles | 696,656,586 | **696,663,621** |
+| Native ownership at `02:5FFB` | 0 | **9,360** |
+| Registry cycles | 696,663,621 | **696,672,981** |
 | Native share | 53.91% | **53.91%** |
-| Native share outside the wait | 98.05% | **98.05%** |
-| Interpreted instruction addresses | 4,578 | **4,577** |
-| Bank `02` non-entry remainder | 365,469 | **358,434** |
+| Native share outside the wait | 98.05% | **98.06%** |
+| Admitted routines | 440 | **441** |
+| Proven native calls | 3,606,737 | **3,606,997** |
+| Interpreted instruction addresses | 4,577 | **4,576** |
+| Bank `02` non-entry remainder | 358,434 | **348,906** |
 
-Next: screen the remaining compact bank-`02` crossings. `02:4CF1` is still the
-largest row, but it is ordinary execution reached from the existing `02:4A93`
-handoff at `02:4A9B`, not a return that can be absorbed in isolation.
+Next: port the shared impact-burst lifetime controller at `02:42B0-42E0`.
+Its 252 calls account for 30,957 profiled non-entry cycles and already have a
+bounded seven-instance lifecycle oracle.
 
 ### Previous: the score panel's glyph writer
 

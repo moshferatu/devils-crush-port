@@ -3517,6 +3517,26 @@ remains the largest bank-`02` row, but it is reached as ordinary execution
 after the `02:4A93` wall-pocket handoff at `02:4A9B`, so it is not another
 standalone return-absorption candidate.
 
+## Fixed Tower-Insect source collision crossing
+
+The fixed source controller reaches `02:5FFB` 260 times. Each entry loads its
+collision selector from `$3700,X`, then executes `JSR $6966` into the existing
+semantic collision-table interpreter. This is the bank-`02` mirror of the
+already-native dynamic crossing at `03:6016`: the new 36-cycle transcript owns
+the load and call, publishes both stack writes, and ends on the interpreter's
+first instruction without composing its variable-length walk.
+
+Direct assembly/native traces preserve all 260 calls and 4,016 ordered writes,
+including normalized replay at frame 958. The owning-family regression keeps
+the canonical census and all 4,282,022 selected stack/counter writes exact.
+The new registry entry owns 9,360 native cycles, taking the deployed total to
+696,672,981 (53.91%, or 98.06% outside the wait). Bank `02`'s measured
+non-entry remainder falls to 348,906 and the `02:5FFE` `JSR` row disappears.
+
+The next compact complete body is the shared impact-burst lifetime controller
+at `02:42B0-42E0`: 252 calls and 30,957 profiled non-entry cycles, with its
+seven-instance lifecycle already bounded independently.
+
 ## Use on future families
 
 Follow the command and interpretation rules in

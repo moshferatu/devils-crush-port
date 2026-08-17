@@ -876,6 +876,13 @@ Provide an interactive monitor-assignment screen and persist display identity, g
   registry stack-page oracle are unchanged; the deployed registry now covers
   696,663,621 master cycles (53.91%, or 98.05% outside the wait), and bank
   `02`'s non-entry remainder falls to 358,434 cycles.
+  Semantic `02:5FFB@all` now crosses all 260 fixed Tower-Insect source
+  collision calls. It loads selector `$3700,X`, publishes the exact `JSR`
+  stack writes, and lands on existing semantic interpreter `03:6966` without
+  composing its variable-length body. Direct assembly/native traces preserve
+  all 260 calls and 4,016 writes. The deployed registry now covers 696,672,981
+  master cycles (53.91%, or 98.06% outside the wait) across 441 routines, and
+  bank `02`'s non-entry remainder falls to 348,906 cycles.
   The larger `01:D525` controller remains a decomposition boundary: its 128
   census calls span 29-1,456 writes and 1,035-49,122 body master cycles, so
   the largest live paths exceed the bridge's independent 512-write limit.

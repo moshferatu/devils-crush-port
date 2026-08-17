@@ -7023,6 +7023,7 @@ replace_tower_insect_animation(
 // walks, split exactly where the assembly leaves it:
 //
 //   03:6016  read the selector, then make the `JSR $6966`
+//   02:5FFB  do the same for the fixed source insect's selector
 //   03:601C  make the `BSR $6054`
 //   03:601E  read the hit flag, take the no-hit branch, absorb the `RTS`
 //
@@ -7044,13 +7045,25 @@ replace_tower_insect_collision_call(
     const RoutineEntry& entry,
     const std::span<const std::byte> work_ram)
 {
-    constexpr RoutineKey kRoutine{
+    constexpr RoutineKey kDynamicRoutine{
         .physical_bank = 0x03U,
         .logical_pc = 0x6016U,
     };
-    if (entry.routine != kRoutine) {
+    constexpr RoutineKey kSourceRoutine{
+        .physical_bank = 0x02U,
+        .logical_pc = 0x5FFBU,
+    };
+    if (entry.routine != kDynamicRoutine
+        && entry.routine != kSourceRoutine) {
         return std::nullopt;
     }
+
+    const bool source = entry.routine == kSourceRoutine;
+    const std::uint8_t physical_bank = source ? 0x02U : 0x03U;
+    const std::uint16_t load_pc = source ? 0x5FFBU : 0x6016U;
+    const std::uint16_t call_pc = source ? 0x5FFEU : 0x6019U;
+    const std::uint8_t return_low = source ? 0x00U : 0x1BU;
+    const std::size_t selector_offset = source ? 0x1700U : 0x1780U;
 
     const auto set_nz = [](std::uint8_t status, const std::uint8_t value) {
         status = static_cast<std::uint8_t>(status & 0x7DU);
@@ -7063,7 +7076,7 @@ replace_tower_insect_collision_call(
     };
 
     RoutineReplacement replacement{};
-    const auto append_checkpoint = [&replacement](
+    const auto append_checkpoint = [&replacement, physical_bank](
                                        const std::uint16_t instruction_pc,
                                        const std::uint16_t resume_pc,
                                        const std::uint32_t master_cycle,
@@ -7072,44 +7085,40 @@ replace_tower_insect_collision_call(
         replacement.checkpoints.push_back({
             .interrupt_sample_master_cycle_offset = master_cycle - 3U,
             .master_cycle_offset = master_cycle,
-            .instruction = {0x03U, instruction_pc},
+            .instruction = {physical_bank, instruction_pc},
             .registers = registers,
         });
     };
 
-    // `$3780,X`, the collision selector the interpreter is called with.
-    constexpr std::size_t kSelectorOffset = 0x1780U;
-
     auto checkpoint = entry.registers;
     checkpoint.accumulator = std::to_integer<std::uint8_t>(
-        work_ram[kSelectorOffset + entry.registers.x]);
+        work_ram[selector_offset + entry.registers.x]);
     checkpoint.status = set_nz(checkpoint.status, checkpoint.accumulator);
-    append_checkpoint(0x6016U, 0x6019U, 15U, checkpoint);
+    append_checkpoint(load_pc, call_pc, 15U, checkpoint);
 
     const auto stack_high = static_cast<std::uint16_t>(
         0x2100U + checkpoint.stack_pointer);
     const auto stack_low = static_cast<std::uint16_t>(
         0x2100U + static_cast<std::uint8_t>(checkpoint.stack_pointer - 1U));
     replacement.work_ram_writes.push_back({
-        .instruction = {0x03U, 0x6019U},
+        .instruction = {physical_bank, call_pc},
         .logical_address = stack_high,
         .value = 0x60U,
         .master_cycle_offset = 15U,
     });
     replacement.work_ram_writes.push_back({
-        .instruction = {0x03U, 0x6019U},
+        .instruction = {physical_bank, call_pc},
         .logical_address = stack_low,
-        .value = 0x1BU,
+        .value = return_low,
         .master_cycle_offset = 15U,
     });
     checkpoint.stack_pointer =
         static_cast<std::uint8_t>(checkpoint.stack_pointer - 2U);
-    append_checkpoint(0x6019U, 0x6966U, 36U, checkpoint);
+    append_checkpoint(call_pc, 0x6966U, 36U, checkpoint);
 
-    // The callee is in this walk's own segment, so its bank is the one the
-    // transcript is already executing from -- but it is read out of the MPRs
-    // being declared rather than assumed, because that is what the host checks
-    // the resume against.
+    // Resolve the callee through the declared MPRs rather than assuming its
+    // physical bank. The dynamic controller is already in this logical
+    // segment; the fixed source crossing enters it from bank 02 instead.
     checkpoint.program_counter = 0x6966U;
     replacement.return_instruction = {
         checkpoint.mpr[0x6966U >> 13U],

@@ -2594,6 +2594,11 @@ parse_logical_address_range(const std::string_view text)
                                    }
                                || request.routine
                                    == RoutineKey{
+                                       .physical_bank = 0x02U,
+                                       .logical_pc = 0x5FFBU,
+                                   }
+                               || request.routine
+                                   == RoutineKey{
                                        .physical_bank = 0x03U,
                                        .logical_pc = 0x601CU,
                                    }
