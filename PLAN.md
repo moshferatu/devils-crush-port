@@ -563,7 +563,8 @@ Provide an interactive monitor-assignment screen and persist display identity, g
   handler passages and the complete 1,631-call/150-write artifacts remain
   exact. Semantic `02:5551@all` handles every right Skeleton Insect trigger
   check from Front-Spider latch `$2D14`. Its two-boundary, zero-write,
-  21-cycle idle transcript covers 335 calls, while the 978-cycle routed
+  21-cycle idle body covers 335 calls and absorbs the following `RTS` at
+  `02:5556`, while the 978-cycle routed
   trigger composes the native score accumulator and coroutine scheduler to
   award 4,000 points and start the opening animation. All six original
   interrupt-handler passages and the complete 336-call/101-write artifacts
@@ -869,6 +870,12 @@ Provide an interactive monitor-assignment screen and persist display identity, g
   writes plus all 539 timer calls and 820 writes. The deployed registry now
   covers 696,656,586 master cycles (53.91%, or 98.05% outside the wait), and
   bank `02`'s non-entry remainder falls to 365,469 cycles.
+  Semantic `02:5551@all` now also absorbs its own `02:5556` return on all 335
+  clear-latch calls. Its one active trigger still follows the existing
+  composed score/scheduler transaction. The exact focused artifacts and
+  registry stack-page oracle are unchanged; the deployed registry now covers
+  696,663,621 master cycles (53.91%, or 98.05% outside the wait), and bank
+  `02`'s non-entry remainder falls to 358,434 cycles.
   The larger `01:D525` controller remains a decomposition boundary: its 128
   census calls span 29-1,456 writes and 1,035-49,122 body master cycles, so
   the largest live paths exceed the bridge's independent 512-write limit.

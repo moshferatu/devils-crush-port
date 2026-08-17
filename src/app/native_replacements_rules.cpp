@@ -12357,6 +12357,15 @@ replace_skeleton_insect_right_gate(
         replacement.body_master_cycles,
         output);
     if (gate.path == DC_SKELETON_INSECT_RIGHT_GATE_IDLE) {
+        // The idle arm stops on the routine's own `RTS`; the active arm
+        // carries on into the composed score/scheduler path instead.
+        absorb_return(
+            replacement,
+            work_ram,
+            entry.registers.stack_pointer,
+            {0x02U, 0x5556U},
+            replacement.body_master_cycles,
+            output);
         return replacement;
     }
 

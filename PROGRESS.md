@@ -26,11 +26,19 @@ high byte. The deterministic 1,800-frame route now executes 18,806 of 19,648
 preserving the byte-identical gameplay artifact, complete 19,648-call trace,
 and all 180,389 ordered writes.
 
-The deployed registry now runs **696,656,586 of 1,292,371,731 master cycles
+The deployed registry now runs **696,663,621 of 1,292,371,731 master cycles
 natively, 53.91% of the route and 98.05% of everything outside the frame-sync
 wait**, across 440 admitted routines with no transcript declined at an
 interrupt horizon and none abandoned. The 3,600-frame state census remains
 `9036a9de0c3c9917f47bff8c04c136a4824ec12601fb457d260aa2dfe4443490`.
+
+The right Skeleton-Insect trigger gate now absorbs its idle return at
+`02:5556`. All 335 clear-latch calls remain inside the already-admitted
+`02:5551` transaction through the `RTS`, while the single active trigger keeps
+its original composed score/scheduler path. The focused call/write artifacts,
+canonical census, and registry stack-page trace remain byte-identical. The
+slice adds exactly 7,035 registry cycles and reduces bank `02`'s non-entry
+remainder to 358,434.
 
 The mirrored Devil-Shooter active companion controllers and timer leaves now
 publish every original instruction boundary. `02:53C8/5441` admit 531 of 533
@@ -533,8 +541,9 @@ calls containing original interrupt handlers and the complete
 1,631-call/150-write artifacts remain byte-identical in Debug and Release.
 
 Semantic `02:5551@all` now covers all 336 right Skeleton Insect trigger
-checks. It preserves the exact two-boundary, 21-cycle clear-trigger return
-for 335 calls, then composes `00:F55C` and `01:C5C9` through the full
+checks. It preserves the exact two-boundary, 21-cycle clear-trigger body and
+absorbs `RTS` at `02:5556` for 335 calls, then composes `00:F55C` and
+`01:C5C9` through the full
 978-cycle, 23-write trigger. The routed path submits the 4,000-point award,
 sets the four-tick opening timer, and installs dispatch `02:5568`. All six
 calls containing original interrupt handlers and the complete
@@ -6396,33 +6405,27 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
 
 ## Active Work
 
-Current owner: Codex. Current slice: **the Devil-Shooter active companion
-controllers and timers**. Done.
+Current owner: Codex. Current slice: **the right Skeleton-Insect trigger-gate
+idle return**. Done.
 
-`02:53E4/545D` now publish every boundary on their 33/102/111-cycle wait,
-advance, and reset paths. `02:53C8/5441` wrap those checkpoints with the exact
-`JSR`, child `RTS`, session-flag tail, and absorbed parent return. The parents
-admit 265/266 and 266/267 routed calls; the two declined calls are the real
-alternate branch where `$53 & $09` is zero, not an interrupt horizon.
-
-Dedicated Release assembly/native comparisons are byte-identical across the
-complete 533-call/2,113-write parent population and the complete
-539-call/820-write timer population. The combined Release and Debug family
-replays retain the canonical census and matching 5,229-call/5,972-write
-artifacts.
+The 335 clear-latch calls at `02:5551` now retire the gate's own `RTS` at
+`02:5556` inside the native transaction. The one active call is unchanged and
+continues through the composed score accumulator and coroutine scheduler. The
+focused 336-call/101-write artifact, canonical census, and whole-registry
+stack-page oracle remain exact.
 
 | | Before | After |
 | --- | ---: | ---: |
-| Native ownership at `02:53C8/53E4/5441/545D` | 40,623 | **68,565** |
-| Registry cycles | 696,628,644 | **696,656,586** |
-| Native share | 53.90% | **53.91%** |
+| Native ownership at `02:5551` | 8,013 | **15,048** |
+| Registry cycles | 696,656,586 | **696,663,621** |
+| Native share | 53.91% | **53.91%** |
 | Native share outside the wait | 98.05% | **98.05%** |
-| Proven native calls | 3,606,634 | **3,606,737** |
-| Bank `02` non-entry remainder | 387,987 | **365,469** |
+| Interpreted instruction addresses | 4,578 | **4,577** |
+| Bank `02` non-entry remainder | 365,469 | **358,434** |
 
-Next: absorb the 335 routed idle returns at `02:5556` inside the already-native
-`02:5551` right Skeleton-Insect trigger gate. `02:4CF1` remains known residue
-from already-bounded handoff arms.
+Next: screen the remaining compact bank-`02` crossings. `02:4CF1` is still the
+largest row, but it is ordinary execution reached from the existing `02:4A93`
+handoff at `02:4A9B`, not a return that can be absorbed in isolation.
 
 ### Previous: the score panel's glyph writer
 
@@ -12931,7 +12934,8 @@ nine original interrupt-handler passages and the complete 150-write
 artifact remain exact.
 Semantic `02:5551@all` replaces all 336 right Skeleton-Insect trigger checks
 observed on the route. Its two-boundary transcript preserves the exact
-21-cycle clear-latch return for 335 calls; the 978-cycle, 23-write trigger
+21-cycle clear-latch body and absorbs the following `02:5556` return for 335
+calls; the 978-cycle, 23-write trigger
 composes the native score accumulator and coroutine scheduler for the
 4,000-point award, four-tick opening timer, and `02:5568` dispatch. All six
 original interrupt-handler passages and the complete 101-write artifact

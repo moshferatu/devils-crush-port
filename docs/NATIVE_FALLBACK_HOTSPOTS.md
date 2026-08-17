@@ -3502,6 +3502,21 @@ old `53D1/544A` return rows disappear. The next compact residue is the 335 idle
 returns at `02:5556`, already reached by semantic parent `02:5551`; `02:4CF1`
 remains known handoff residue.
 
+## Right Skeleton-Insect idle-return absorption
+
+The already-native `02:5551` gate used to stop after its not-taken `BNE` and
+hand all 335 clear-latch calls back on the terminal `RTS` at `02:5556`.
+Absorbing that return keeps the same two instruction checkpoints and leaves the
+single active score/scheduler call unchanged. The focused 336-call/101-write
+artifact, canonical census, and whole-registry stack-page oracle remain exact.
+
+The change adds exactly 7,035 native master cycles, taking the deployed total
+to 696,663,621 (53.91%, or 98.05% outside the wait) and bank `02`'s non-entry
+remainder to 358,434. The `02:5556` interpreter row disappears. `02:4CF1`
+remains the largest bank-`02` row, but it is reached as ordinary execution
+after the `02:4A93` wall-pocket handoff at `02:4A9B`, so it is not another
+standalone return-absorption candidate.
+
 ## Use on future families
 
 Follow the command and interpretation rules in

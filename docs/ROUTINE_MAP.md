@@ -3444,8 +3444,9 @@ Release preserve the complete 1,631-call/150-write artifacts:
 
 Semantic `02:5551@all` replaces all 336 right-target trigger checks. The
 clear-latch path remains the exact `LDA $2D14`, not-taken `BNE`, and RTS at
-`02:5556`: 335 calls take 21 body cycles, write nothing, and preserve the
-loaded accumulator and N/Z flags. The frame-2,182 nonzero latch now follows
+`02:5556`: 335 calls take 21 body cycles before the native transaction absorbs
+the 21-cycle return, write nothing, and preserve the loaded accumulator and
+N/Z flags. The frame-2,182 nonzero latch still follows
 a 978-cycle, 23-write transcript. It writes award
 `$002F:$0030 = $0028`, composes native `00:F55C` for the 4,000-point score,
 sets `$3A33 = $04`, and composes native `01:C5C9` to install dispatch

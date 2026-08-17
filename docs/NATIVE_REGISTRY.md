@@ -16,14 +16,14 @@ Release state-census route (`--native-cycle-census`, measured 2026-08-16):
 | | |
 | --- | ---: |
 | Elapsed master cycles | 1,292,371,731 |
-| Native master cycles | 696,656,586 |
+| Native master cycles | 696,663,621 |
 | **Native share** | **53.91%** |
 | **Native share of cycles outside the idle spin loop** | **98.05%** |
 | Routines installed | 440 of 440 |
 | Routines entered | 370 |
 | Calls run natively | 2,750,322 of 2,773,331 entered |
 | Calls declined at an interrupt horizon | 0 |
-| Transcripts installed inside a suspended transcript | 310,498 |
+| Transcripts installed inside a suspended transcript | 310,506 |
 | Deepest simultaneous suspension | 3 of a permitted 4 |
 | Transcripts abandoned part-way through | 0 |
 | Replacements refused for depth | 0 |
@@ -2311,6 +2311,14 @@ native cycles, adding 27,942 for a deployed total of 696,656,586 (53.91%, or
 98.05% outside the wait). The registry remains at 440 routines and bank `02`'s
 non-entry remainder falls to 365,469 cycles.
 
+`02:5551` is the right Skeleton-Insect trigger gate. Its 335 clear-latch calls
+now absorb the terminal `RTS` at `02:5556`; the single active call remains on
+the existing 978-cycle score/scheduler path. Native ownership at the entry
+rises from 8,013 to 15,048 cycles, exactly 335 returns times 21 master cycles.
+The deployed total is 696,663,621 (53.91%, or 98.05% outside the wait), and
+bank `02`'s non-entry remainder falls to 358,434 cycles. The registry remains
+at 440 routines.
+
 
 ## What is left
 
@@ -2322,7 +2330,7 @@ anything and the figure has been dropped rather than carried forward
 unverified.
 
 Set the idle spin loop aside and 710,482,755 cycles are the machine
-working; 696,656,586 of them, **98.05%**, now run natively.
+working; 696,663,621 of them, **98.05%**, now run natively.
 
 The breakdown below is a self-consistent snapshot taken before the
 interrupt dispatcher was split and the whole-palette arm with it, against
