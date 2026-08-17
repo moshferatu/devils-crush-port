@@ -1794,9 +1794,7 @@ replace_devil_shooter_companion_position(
         .physical_bank = 0x02U,
         .logical_pc = 0x5397U,
     };
-    if (entry.routine != kRoutine || (entry.registers.status & 0x20U) != 0U
-        || entry.master_cycles_until_user_event <= 75U
-        || entry.master_cycles_until_timer_interrupt <= 75U) {
+    if (entry.routine != kRoutine || (entry.registers.status & 0x20U) != 0U) {
         return std::nullopt;
     }
 
@@ -1835,6 +1833,16 @@ replace_devil_shooter_companion_position(
         return status;
     };
 
+    const auto set_nz = [](std::uint8_t status, const std::uint8_t value) {
+        status = static_cast<std::uint8_t>(status & 0x7DU);
+        if (value == 0U) {
+            status = static_cast<std::uint8_t>(status | 0x02U);
+        } else if ((value & 0x80U) != 0U) {
+            status = static_cast<std::uint8_t>(status | 0x80U);
+        }
+        return status;
+    };
+
     const auto output_status = adc_status(
         entry.registers.status,
         0U,
@@ -1863,15 +1871,74 @@ replace_devil_shooter_companion_position(
         .value = position.vertical_high,
         .master_cycle_offset = 75U,
     });
-    if (absorbed_return_fits_atomically(entry, 75U)) {
-        absorb_return(
-            replacement,
-            work_ram,
-            entry.registers.stack_pointer,
-            {0x02U, 0x53A7U},
-            75U,
-            output);
+
+    const auto append_checkpoint =
+        [&replacement](
+            const std::uint16_t instruction_pc,
+            const std::uint16_t resume_pc,
+            const std::uint32_t master_cycle,
+            auto registers) {
+            registers.program_counter = resume_pc;
+            replacement.checkpoints.push_back({
+                .interrupt_sample_master_cycle_offset = master_cycle - 3U,
+                .master_cycle_offset = master_cycle,
+                .instruction = {0x02U, instruction_pc},
+                .registers = registers,
+            });
+        };
+
+    auto checkpoint = entry.registers;
+    checkpoint.accumulator = position.charge;
+    checkpoint.status = set_nz(checkpoint.status, checkpoint.accumulator);
+    append_checkpoint(0x5397U, 0x539AU, 15U, checkpoint);
+
+    const auto charge = checkpoint.accumulator;
+    checkpoint.accumulator = static_cast<std::uint8_t>(charge >> 1U);
+    checkpoint.status = static_cast<std::uint8_t>(
+        checkpoint.status & static_cast<std::uint8_t>(~0x01U));
+    checkpoint.status = set_nz(checkpoint.status, checkpoint.accumulator);
+    if ((charge & 0x01U) != 0U) {
+        checkpoint.status = static_cast<std::uint8_t>(
+            checkpoint.status | 0x01U);
     }
+    append_checkpoint(0x539AU, 0x539BU, 21U, checkpoint);
+
+    checkpoint.status = static_cast<std::uint8_t>(
+        checkpoint.status & static_cast<std::uint8_t>(~0x01U));
+    append_checkpoint(0x539BU, 0x539CU, 27U, checkpoint);
+
+    const auto shifted_charge = checkpoint.accumulator;
+    checkpoint.accumulator = position.vertical_low;
+    checkpoint.status = adc_status(
+        checkpoint.status,
+        shifted_charge,
+        0xA8U,
+        false,
+        checkpoint.accumulator);
+    append_checkpoint(0x539CU, 0x539EU, 33U, checkpoint);
+    append_checkpoint(0x539EU, 0x53A1U, 48U, checkpoint);
+
+    // HuC6280 CLA clears A without changing any status flag.
+    checkpoint.accumulator = 0U;
+    append_checkpoint(0x53A1U, 0x53A2U, 54U, checkpoint);
+
+    checkpoint.accumulator = position.vertical_high;
+    checkpoint.status = adc_status(
+        checkpoint.status,
+        0U,
+        0x02U,
+        position.low_add_carry != 0U,
+        checkpoint.accumulator);
+    append_checkpoint(0x53A2U, 0x53A4U, 60U, checkpoint);
+    append_checkpoint(0x53A4U, 0x53A7U, 75U, checkpoint);
+
+    absorb_return(
+        replacement,
+        work_ram,
+        entry.registers.stack_pointer,
+        {0x02U, 0x53A7U},
+        75U,
+        output);
     return replacement;
 }
 

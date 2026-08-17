@@ -8421,8 +8421,8 @@ therefore replaces 929 of 1,055 left calls and 926 of 1,085 right calls; the
 `dc_rom_devil_shooter_companion_dormant_semantic` preserves the full focused
 Release census, call, and ordered-write artifacts with SHA-256
 `9036a9de0c3c9917f47bff8c04c136a4824ec12601fb457d260aa2dfe4443490`,
-`49b058b0ae5bbbac6613737c8e18cf3988c687f893af26d2a846cfb71c5edd5b`, and
-`51d767fe42b53d0cad1778ed1251c54a83b7b2d59dc808c4f3a195958c8327d0`.
+`71a87a8e3d59e242da052cd7b7c4eacf413496c715c07fb150a615950115aa3e`, and
+`e500c93431055858526410570490516a6a9058f42928fa8e72643df30d8332e0`.
 It also shadows ordinal ten at frames 2,145 and 2,141 respectively.
 
 ### Fifty-ninth native replacement: semantic `02:5397@all`
@@ -8435,14 +8435,15 @@ returning through `02:53A7`. The native classifier admits only slot `$0B` and
 derives the same low byte, carry, and high byte from the typed work-RAM view.
 
 The adapter retains the original 75-cycle body, stores at instruction
-boundaries `02:539E` and `02:53A4` at offsets 48 and 75, and reproduces the
-final ADC flags. It declines transfer-mode calls and both user-event and
-timer-IRQ horizons at or inside the body. It therefore replaces 873 of 1,260
-focused Release calls; the 387 near-horizon calls and all 47 original
-interrupt-bearing variants continue through assembly. The extended
+boundaries `02:539E` and `02:53A4` at offsets 48 and 75, and reproduces every
+intermediate and final flag state. All eight original instruction boundaries
+are checkpoints; the transcript then absorbs `RTS` at `02:53A7`. It declines
+only transfer-mode calls and therefore replaces all 1,260 focused Release
+calls, including all 47 original interrupt-bearing variants. The extended
 `dc_rom_devil_shooter_companion_dormant_semantic` family regression preserves
-the same census, call, and ordered-write SHA-256 artifacts above and shadows
-ordinal ten at frame 949 with 75 body cycles and two ordered writes.
+the same census, complete 5,406-call trace, and all 6,353 ordered writes, and
+shadows ordinal ten at frame 949 with 75 body cycles and two ordered writes.
+The deployed routine owns 120,960 native master cycles.
 
 ### Sixtieth native replacement: semantic `02:5408@all`
 

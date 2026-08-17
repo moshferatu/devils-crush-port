@@ -813,9 +813,10 @@ non-transfer, event-horizon-safe returns: 929 left and 926 right calls. The
 285 calls too close to a user event or timer IRQ retain assembly execution,
 so the complete 3,600-frame census, call, and ordered-write artifacts remain
 byte-identical. A separate fresh sibling profile then admitted the direct
-`02:5397` charge-position transcript: 873 of 1,260 calls run natively as its
-exact 75-cycle, two-write leaf, while 387 calls near an event/IRQ horizon
-retain assembly execution. A fresh expanded profile then admitted all three
+`02:5397` charge-position transcript. Its initial atomic form handled 873 of
+1,260 calls; all eight original instruction checkpoints now admit the other
+387 near-horizon calls and preserve all 47 interrupt-bearing variants before
+absorbing `RTS` at `02:53A7`. A fresh expanded profile then admitted all three
 no-interrupt `02:5408` charge-appearance branches: cached 42-cycle returns,
 105-cycle cache/advance updates, and 114-cycle cache/advance/reset updates.
 Semantic `02:5408@all` now covers 1,015 of 1,288 calls; 273 calls at an
@@ -3424,9 +3425,23 @@ the actor's disabled/collision state and loops to initializer `02:433F`, stays
 assembly-backed because the route never requests it. The native gate adds
 55,392 cycles, raising the registry to 696,553,677 (53.90%, or 98.04% outside
 the wait) across 440 routines. Bank `02`'s non-entry remainder falls to
-452,178. The next useful screen is the partial semantic `02:5397` charge-
-position leaf and its `539E/53A4/53A7` interior residue; the larger `02:4CF1`
-row remains known handoff residue.
+452,178.
+
+## Devil-Shooter companion position checkpoints
+
+The `02:5397` semantic leaf was complete but atomic: 387 of its 1,260 calls
+reached a user-event or timer-IRQ horizon within the 75-cycle body, leaving
+`539A/539B/539C/539E/53A1/53A2/53A4/53A7` as profile residue. Publishing each
+original instruction boundary admits every call and preserves all 47 original
+interrupt passages. The return is checkpointed and absorbed rather than
+registered as a false routine boundary.
+
+The routine now owns 120,960 native cycles, adding 38,307 to the deployed
+registry for 696,591,984 total (53.90%, or 98.04% outside the wait). The
+canonical census, full family call trace, and ordered writes remain exact;
+bank `02`'s non-entry remainder falls to 418,428. The next useful checkpoint
+screen is partial semantic `02:5408` and its `540B/5420` residue. The larger
+`02:4CF1` row remains known handoff residue.
 
 ## Use on future families
 

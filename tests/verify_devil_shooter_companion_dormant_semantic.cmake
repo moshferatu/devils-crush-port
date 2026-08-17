@@ -81,7 +81,7 @@ endif()
 
 foreach(expected_line IN ITEMS
     "State census recording complete: 3600 frames"
-    "Native replacement 02:5397@all entries: 873 of 1260"
+    "Native replacement 02:5397@all entries: 1260 of 1260"
     "Native replacement 02:5408@all entries: 1015 of 1288"
     "Native replacement 02:53C8@all entries: 180 of 266"
     "Native replacement 02:53E4@all entries: 34 of 92"
@@ -128,4 +128,4 @@ foreach(artifact IN ITEMS census call write)
     endif()
 endforeach()
 
-message(STATUS "Semantic 5397/5408/53C8/53E4/5441/545D/53DD/5456 Devil-Shooter companion leaves cover 4,176 event-horizon-safe calls.")
+message(STATUS "Semantic 5397/5408/53C8/53E4/5441/545D/53DD/5456 Devil-Shooter companion leaves cover 4,563 calls.")

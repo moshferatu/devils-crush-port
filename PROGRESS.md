@@ -26,11 +26,19 @@ high byte. The deterministic 1,800-frame route now executes 18,806 of 19,648
 preserving the byte-identical gameplay artifact, complete 19,648-call trace,
 and all 180,389 ordered writes.
 
-The deployed registry now runs **696,553,677 of 1,292,371,731 master cycles
+The deployed registry now runs **696,591,984 of 1,292,371,731 master cycles
 natively, 53.90% of the route and 98.04% of everything outside the frame-sync
 wait**, across 440 admitted routines with no transcript declined at an
 interrupt horizon and none abandoned. The 3,600-frame state census remains
 `9036a9de0c3c9917f47bff8c04c136a4824ec12601fb457d260aa2dfe4443490`.
+
+The Devil-Shooter companion position leaf is fully native. `02:5397` now
+publishes all eight original instruction boundaries, including the two stores,
+so all 1,260 calls and all 47 interrupt-bearing variants stay in the native
+transaction before its `02:53A7` return is absorbed. The focused census,
+5,406-call trace, and all 6,353 ordered writes remain byte-identical. The slice
+adds 38,307 registry cycles and reduces bank `02`'s non-entry remainder to
+418,428.
 
 The dormant Dragon's-Egg reset gate is native. After the route's one egg hit,
 `02:4384` schedules `02:4387` as destroyed slot `$22`'s persistent dispatch.
@@ -4421,9 +4429,12 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
 - [x] Ported the Devil-Shooter charge-position leaf `02:5397@all`:
   - Added a pure C classifier for fixed slot `$0B`, charge counter `$2D15`,
     and its carry-aware 16-bit vertical-coordinate result.
-  - Replaced 873 of 1,260 calls with the exact 75-cycle, two-write
-    transcript. The remaining 387 calls near a user-event or serviceable
-    timer-IRQ horizon remain assembly-backed.
+  - Initially replaced 873 of 1,260 calls with an atomic 75-cycle, two-write
+    transcript, leaving 387 calls near a user-event or serviceable timer-IRQ
+    horizon assembly-backed.
+  - Added all eight original instruction checkpoints and absorbed the return;
+    all 1,260 calls now run natively, including all 47 interrupt-bearing
+    variants.
   - Extended the owning Release companion regression; it shadows ordinal 10
     at frame 949 and preserves byte-identical census, call, and ordered-write
     artifacts.
@@ -6360,34 +6371,33 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
 
 ## Active Work
 
-Current owner: Codex. Current slice: **the dormant Dragon's-Egg reset gate**.
-Done.
+Current owner: Codex. Current slice: **the Devil-Shooter companion position
+leaf**. Done.
 
-`02:4387` is the persistent dispatch that the shared scheduler installs after
-the route destroys Dragon's-Egg slot `$22`; it is not an interior fragment of
-the original `02:4345` hit transaction. Every natural call loads `$2CF7`, finds
-its group-reset bit clear, and returns at `02:438E`. The native gate retains
-all three instruction checkpoints, including the boundaries that hosted nine
-interrupt-extended calls, then absorbs the return. The reset/reinitializer arm
-remains assembly fallback.
+`02:5397` is an eight-instruction fixed-slot coordinate update. The existing
+typed classifier and two-write body were already exact; only its atomic event
+horizon prevented 387 of 1,260 calls from entering. The adapter now publishes
+the original boundaries after `LDA`, `LSR`, `CLC`, both `ADC`s, `CLA`, and both
+stores, then absorbs `RTS` at `02:53A7`. This preserves all 47 original
+interrupt passages without exposing any interior address as a new routine.
 
-Release and Debug preserve byte-identical census and the complete
-1,154-call/111-write artifacts. The first dormant call also shadows at 27
-cycles and zero ordered writes.
+The Release family regression preserves its canonical census, complete
+5,406-call trace, and all 6,353 ordered writes. The existing normalized sample
+remains 75 body cycles and two writes.
 
 | | Before | After |
 | --- | ---: | ---: |
-| Native ownership at `02:4387` | 0 | **55,392** |
-| Registry cycles | 696,498,285 | **696,553,677** |
-| Native share | 53.89% | **53.90%** |
-| Native share outside the wait | 98.03% | **98.04%** |
-| Admitted routines | 439 | **440** |
-| Bank `02` non-entry remainder | 507,954 | **452,178** |
+| Native ownership at `02:5397` | 82,653 | **120,960** |
+| Registry cycles | 696,553,677 | **696,591,984** |
+| Native share | 53.90% | **53.90%** |
+| Native share outside the wait | 98.04% | **98.04%** |
+| Proven native calls | 3,605,689 | **3,606,076** |
+| Bank `02` non-entry remainder | 452,178 | **418,428** |
 
-Next: revisit the partial semantic `02:5397` Devil-Shooter companion position
-leaf and determine whether exact instruction checkpoints can admit its 387
-near-horizon calls. Its `02:539E/53A4/53A7` rows are interior residue, while
-`02:4CF1` remains known residue from already-bounded handoff arms.
+Next: apply the same checkpoint screen to partial semantic `02:5408`, the
+Devil-Shooter companion appearance leaf. It currently leaves 273 near-horizon
+calls and its `02:540B/5420` interior residue in assembly; `02:4CF1` remains
+known residue from already-bounded handoff arms.
 
 ### Previous: the score panel's glyph writer
 

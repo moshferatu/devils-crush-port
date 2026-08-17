@@ -834,6 +834,14 @@ Provide an interactive monitor-assignment screen and persist display identity, g
   deployed registry now covers 696,553,677 master cycles (53.90%, or 98.04%
   outside the wait) across 440 admitted routines, and bank `02`'s non-entry
   remainder falls to 452,178 cycles.
+  Semantic `02:5397@all` now publishes all eight original instruction
+  boundaries in the Devil-Shooter companion position leaf and absorbs its
+  `RTS` at `02:53A7`. All 1,260 natural calls run natively, including all 47
+  interrupt-bearing variants; the canonical census, complete family call
+  trace, and ordered writes remain byte-identical. The deployed registry now
+  covers 696,591,984 master cycles (53.90%, or 98.04% outside the wait) across
+  the same 440 admitted routines, and bank `02`'s non-entry remainder falls to
+  418,428 cycles.
   The larger `01:D525` controller remains a decomposition boundary: its 128
   census calls span 29-1,456 writes and 1,035-49,122 body master cycles, so
   the largest live paths exceed the bridge's independent 512-write limit.
