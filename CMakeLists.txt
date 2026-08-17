@@ -42,6 +42,7 @@ add_library(
     src/audio/pce_psg.cpp
     src/cabinet/cabinet_state.cpp
     src/cabinet/display_config.cpp
+    src/cabinet/dmd_font.cpp
     src/cabinet/dmd_layout.cpp
     src/core/atomic_file.cpp
     src/core/backup_ram.cpp

@@ -40,9 +40,13 @@ DmdTextLayout calculate_dmd_text_layout(
     }
 
     constexpr int kScoreReservedCells =
-        static_cast<int>(kDmdMaximumScoreCharacters) * kDmdGlyphAdvance - 1;
+        (static_cast<int>(kDmdMaximumScoreCharacters) - 1)
+            * kDmdGlyphAdvance
+        + kDmdGlyphWidth;
     constexpr int kStatusReservedCells =
-        static_cast<int>(kDmdMaximumStatusCharacters) * kDmdGlyphAdvance - 1;
+        (static_cast<int>(kDmdMaximumStatusCharacters) - 1)
+            * kDmdGlyphAdvance
+        + kDmdGlyphWidth;
 
     const int lower_height = output_height / 3;
     const int upper_height = output_height - lower_height;
@@ -71,7 +75,9 @@ DmdTextLayout calculate_dmd_text_layout(
                                const int center_x,
                                const int center_y) {
         const int advance = kDmdGlyphAdvance * cell_size;
-        const int width = static_cast<int>(text.size()) * advance - cell_size;
+        const int width =
+            (static_cast<int>(text.size()) - 1) * advance
+            + kDmdGlyphWidth * cell_size;
         const int height = kDmdGlyphHeight * cell_size;
         return DmdTextLineLayout{
             .origin_x = center_x - width / 2,

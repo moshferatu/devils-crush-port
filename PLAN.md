@@ -175,6 +175,8 @@ Use three independently positioned borderless SDL windows:
 2. **DMD**
    - Render the score as the dominant, unlabelled value, with smaller Ball
      and Bonus fields sharing a second native text row below it.
+   - Use the cartridge's original 8-by-8 alphanumeric font for every label
+     and value, decoded from its resident ROM-to-VRAM stream at startup.
    - Show a P1/P2 discriminator only in two-player mode.
    - Continue updating during bonus stages.
 

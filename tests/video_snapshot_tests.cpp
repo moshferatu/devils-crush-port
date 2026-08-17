@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+#include "devils_crush/cabinet/dmd_font.hpp"
 #include "devils_crush/core/rom_image.hpp"
 #include "devils_crush/emulation/pce_runtime.hpp"
 #include "devils_crush/render/pce_background.hpp"
@@ -1044,6 +1045,18 @@ int main(const int argc, char** const argv)
     if (!rom_input) {
         return EXIT_FAILURE;
     }
+
+    const auto dmd_font =
+        devils_crush::cabinet::DmdFont::decode(rom_bytes);
+    check(
+        dmd_font.has_value(),
+        "the cartridge's resident DMD font stream decodes");
+    check(
+        dmd_font
+            && dmd_font->glyph('B') == dmd_font->glyph('b')
+            && dmd_font->glyph(' ') == devils_crush::cabinet::DmdGlyph{}
+            && !dmd_font->glyph('-'),
+        "the DMD font maps host labels onto the game's upper-case alphabet");
 
     const auto pattern_atlas =
         devils_crush::render::decode_pce_pattern_atlas(
@@ -2217,6 +2230,49 @@ int main(const int argc, char** const argv)
             }
         }
         if (frame_number == 900) {
+            bool dmd_font_matches_vram = dmd_font.has_value();
+            constexpr std::string_view dmd_characters =
+                "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+            for (std::size_t glyph_index = 0;
+                 glyph_index < dmd_characters.size();
+                 ++glyph_index) {
+                devils_crush::cabinet::DmdGlyph live_glyph{};
+                const auto tile_word =
+                    (0x0790U + glyph_index) * 16U;
+                for (int row = 0;
+                     row < devils_crush::cabinet::kDmdGlyphHeight;
+                     ++row) {
+                    const auto plane_01 = snapshot->vram_words[
+                        tile_word + static_cast<std::size_t>(row)];
+                    const auto plane_23 = snapshot->vram_words[
+                        tile_word + 8U + static_cast<std::size_t>(row)];
+                    for (int column = 0;
+                         column < devils_crush::cabinet::kDmdGlyphWidth;
+                         ++column) {
+                        const auto bit = static_cast<unsigned>(7 - column);
+                        const auto color = static_cast<std::uint16_t>(
+                            ((plane_01 >> bit) & 0x01U)
+                            | (((plane_01 >> (bit + 8U)) & 0x01U) << 1U)
+                            | (((plane_23 >> bit) & 0x01U) << 2U)
+                            | (((plane_23 >> (bit + 8U)) & 0x01U) << 3U));
+                        if (color != 0U) {
+                            live_glyph[static_cast<std::size_t>(row)] =
+                                static_cast<std::uint8_t>(
+                                    live_glyph[
+                                        static_cast<std::size_t>(row)]
+                                    | (1U << bit));
+                        }
+                    }
+                }
+                dmd_font_matches_vram =
+                    dmd_font_matches_vram && dmd_font
+                    && dmd_font->glyph(dmd_characters[glyph_index])
+                        == live_glyph;
+            }
+            check(
+                dmd_font_matches_vram,
+                "ROM-derived DMD glyphs match all 36 live VRAM font tiles");
+
             const bool resident_pack_matches_live_vram =
                 pattern_atlas
                 && !pattern_atlas->resident_uploads.empty()

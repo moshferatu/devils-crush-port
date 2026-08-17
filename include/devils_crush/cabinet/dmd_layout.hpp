@@ -2,6 +2,8 @@
 
 #pragma once
 
+#include "devils_crush/cabinet/dmd_font.hpp"
+
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -10,10 +12,6 @@
 namespace devils_crush::cabinet {
 
 inline constexpr std::size_t kDmdTextCount = 3U;
-inline constexpr int kDmdGlyphWidth = 5;
-inline constexpr int kDmdGlyphHeight = 7;
-inline constexpr int kDmdGlyphAdvance = 6;
-
 // Fixed reserves keep either tier from changing size as its values gain
 // digits. The score is nine digits at its verified maximum; "Bonus 9900" is
 // the longest lower-row field the game exposes.

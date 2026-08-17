@@ -10190,7 +10190,7 @@ void test_dmd_text_layout()
                 == default_layout.lines[0].cell_size * kDmdGlyphHeight
             && default_layout.lines[1].glyph_height
                 == default_layout.lines[1].cell_size * kDmdGlyphHeight,
-        "both DMD tiers retain square 5-by-7 bitmap cells");
+        "both DMD tiers retain square 8-by-8 bitmap cells");
 
     // Value growth must not resize either tier. The widest legal values use
     // the same fixed reserves as the initial values.

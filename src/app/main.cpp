@@ -4987,81 +4987,15 @@ void set_assignment_titles(
         || report_sdl_error("Rendering the black backglass failed");
 }
 
-using DmdGlyph = std::array<std::uint8_t, 7>;
-
-[[nodiscard]] constexpr std::optional<DmdGlyph> dmd_glyph(
-    const char character) noexcept
-{
-    switch (character) {
-    case ' ':
-        return DmdGlyph{};
-    case '0':
-        return DmdGlyph{0x0EU, 0x11U, 0x13U, 0x15U, 0x19U, 0x11U, 0x0EU};
-    case '1':
-        return DmdGlyph{0x04U, 0x0CU, 0x04U, 0x04U, 0x04U, 0x04U, 0x0EU};
-    case '2':
-        return DmdGlyph{0x0EU, 0x11U, 0x01U, 0x02U, 0x04U, 0x08U, 0x1FU};
-    case '3':
-        return DmdGlyph{0x1EU, 0x01U, 0x01U, 0x0EU, 0x01U, 0x01U, 0x1EU};
-    case '4':
-        return DmdGlyph{0x02U, 0x06U, 0x0AU, 0x12U, 0x1FU, 0x02U, 0x02U};
-    case '5':
-        return DmdGlyph{0x1FU, 0x10U, 0x10U, 0x1EU, 0x01U, 0x01U, 0x1EU};
-    case '6':
-        return DmdGlyph{0x06U, 0x08U, 0x10U, 0x1EU, 0x11U, 0x11U, 0x0EU};
-    case '7':
-        return DmdGlyph{0x1FU, 0x01U, 0x02U, 0x04U, 0x08U, 0x08U, 0x08U};
-    case '8':
-        return DmdGlyph{0x0EU, 0x11U, 0x11U, 0x0EU, 0x11U, 0x11U, 0x0EU};
-    case '9':
-        return DmdGlyph{0x0EU, 0x11U, 0x11U, 0x0FU, 0x01U, 0x02U, 0x0CU};
-    case 'B':
-        return DmdGlyph{0x1EU, 0x11U, 0x11U, 0x1EU, 0x11U, 0x11U, 0x1EU};
-    case 'P':
-        return DmdGlyph{0x1EU, 0x11U, 0x11U, 0x1EU, 0x10U, 0x10U, 0x10U};
-    case 'R':
-        return DmdGlyph{0x1EU, 0x11U, 0x11U, 0x1EU, 0x14U, 0x12U, 0x11U};
-    case 'S':
-        return DmdGlyph{0x0FU, 0x10U, 0x10U, 0x0EU, 0x01U, 0x01U, 0x1EU};
-    case 'a':
-        return DmdGlyph{0x00U, 0x0EU, 0x01U, 0x0FU, 0x11U, 0x13U, 0x0DU};
-    case 'c':
-        return DmdGlyph{0x00U, 0x0EU, 0x10U, 0x10U, 0x10U, 0x11U, 0x0EU};
-    case 'e':
-        return DmdGlyph{0x00U, 0x0EU, 0x11U, 0x1FU, 0x10U, 0x10U, 0x0EU};
-    case 'g':
-        return DmdGlyph{0x00U, 0x0FU, 0x11U, 0x0FU, 0x01U, 0x11U, 0x0EU};
-    case 'i':
-        return DmdGlyph{0x04U, 0x00U, 0x0CU, 0x04U, 0x04U, 0x04U, 0x0EU};
-    case 'l':
-        return DmdGlyph{0x0CU, 0x04U, 0x04U, 0x04U, 0x04U, 0x04U, 0x0EU};
-    case 'm':
-        return DmdGlyph{0x00U, 0x1AU, 0x15U, 0x15U, 0x11U, 0x11U, 0x11U};
-    case 'n':
-        return DmdGlyph{0x00U, 0x1EU, 0x11U, 0x11U, 0x11U, 0x11U, 0x11U};
-    case 'o':
-        return DmdGlyph{0x00U, 0x0EU, 0x11U, 0x11U, 0x11U, 0x11U, 0x0EU};
-    case 'r':
-        return DmdGlyph{0x00U, 0x16U, 0x19U, 0x10U, 0x10U, 0x10U, 0x10U};
-    case 's':
-        return DmdGlyph{0x00U, 0x0FU, 0x10U, 0x0EU, 0x01U, 0x01U, 0x1EU};
-    case 't':
-        return DmdGlyph{0x08U, 0x08U, 0x1EU, 0x08U, 0x08U, 0x09U, 0x06U};
-    case 'u':
-        return DmdGlyph{0x00U, 0x11U, 0x11U, 0x11U, 0x11U, 0x13U, 0x0DU};
-    default:
-        return std::nullopt;
-    }
-}
-
 [[nodiscard]] bool draw_dmd_character(
     SDL_Renderer* renderer,
+    const devils_crush::cabinet::DmdFont& font,
     const char character,
     const int x,
     const int y,
     const int cell_size)
 {
-    const auto glyph = dmd_glyph(character);
+    const auto glyph = font.glyph(character);
     if (!glyph) {
         return false;
     }
@@ -5091,6 +5025,7 @@ using DmdGlyph = std::array<std::uint8_t, 7>;
 
 [[nodiscard]] bool present_dmd(
     AuxiliaryWindow& output,
+    const devils_crush::cabinet::DmdFont& font,
     const std::uint64_t displayed_score,
     const std::uint32_t bonus_points,
     const std::uint8_t current_ball)
@@ -5136,6 +5071,7 @@ using DmdGlyph = std::array<std::uint8_t, 7>;
              ++index) {
             if (!draw_dmd_character(
                     output.renderer,
+                    font,
                     content.text[line][index],
                     layout.lines[line].origin_x
                         + static_cast<int>(index)
@@ -9475,6 +9411,15 @@ int run_windows_host(
         ? devils_crush::render::TitleLogoAnimation::decode(
               *cabinet_rom)
         : std::nullopt;
+    auto dmd_font =
+        cabinet_rom
+        ? devils_crush::cabinet::DmdFont::decode(*cabinet_rom)
+        : std::nullopt;
+    if (cabinet_mode && !dmd_font) {
+        std::cerr
+            << "Original DMD font decode failed; disabling DMD.\n";
+        destroy_auxiliary_window(dmd);
+    }
     if (cabinet_mode && !backglass_logo) {
         std::cerr
             << "Native title-logo decode failed; the backglass will "
@@ -9976,7 +9921,7 @@ int run_windows_host(
                     cabinet_mode ? kPureBlack : kDesktopFrameColor);
             }
         }
-        if (running && dmd.renderer != nullptr
+        if (running && dmd.renderer != nullptr && dmd_font
             && !(assignment_active
                     ? present_assignment(
                         dmd.renderer,
@@ -9984,6 +9929,7 @@ int run_windows_host(
                         assignment_role == AssignmentRole::dmd)
                     : present_dmd(
                         dmd,
+                        *dmd_font,
                         dmd_score,
                         dmd_bonus_points,
                         dmd_current_ball))) {

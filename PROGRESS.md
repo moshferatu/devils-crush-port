@@ -1208,9 +1208,13 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
   - Decodes the original `$2D50 * 100` base bonus value and inverts the
     standard three-ball `$2D52` countdown into current ball 1, 2, then 3.
   - Reserves each tier's longest legal value width so neither type size
-    changes as values grow, while retaining square 5-by-7 bitmap cells.
-  - Added ROM-free state and layout coverage and passed Debug/Release core,
-    application, and cabinet smoke validation.
+    changes as values grow, while retaining square 8-by-8 bitmap cells.
+  - Replaced the hand-authored host alphabet with the cartridge's own font,
+    decoded from the `11:A9C0` stream that table setup uploads to VRAM
+    `$7900`; all 36 numeral/letter glyphs match the live font tiles exactly.
+  - Added ROM-free state/layout coverage plus ROM-backed font parity coverage
+    and passed Debug/Release core, application, video, and cabinet smoke
+    validation.
 
 - [x] Extend the bounded Knight movement parent through its timer-expiry and
   phase-wrap branches: `03:73A6@2` preserves the collision-free

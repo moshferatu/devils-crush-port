@@ -781,8 +781,11 @@ from work RAM.
 ### Text layout
 
 The host renders the score value without a label, then `Ball <value>` and
-`Bonus <value>` together on the row below. A native 5-by-7 bitmap alphabet
-supplies both labels and numbers without a runtime font dependency. There are
+`Bonus <value>` together on the row below. Both labels and values use the
+cartridge's own 8-by-8 alphanumeric font: cabinet startup decodes the same
+ROM stream that table setup uploads from `11:A9C0` to VRAM `$7900`. The game
+stores upper-case forms, so the mixed-case host labels intentionally render
+with those original capitals. There is no host-font dependency and there are
 no borders, rails, inactive segments, or other decoration.
 
 `cabinet::calculate_dmd_text_layout()` gives the score the upper two thirds
