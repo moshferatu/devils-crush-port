@@ -3482,6 +3482,26 @@ return residue disappears. The next compact checkpoint screen is the mirrored
 near-horizon calls in assembly. The larger `02:4CF1` row remains known handoff
 residue.
 
+## Devil-Shooter active companion checkpoints
+
+The mirrored `02:53C8/5441` parents and `02:53E4/545D` timer leaves were
+semantically exact but atomic. The timer leaves now publish every instruction
+boundary on their 33/102/111-cycle wait, advance, and reset paths. Each parent
+composes those checkpoints with its authentic `JSR`, the child's `RTS`, the
+`LDA $53` / `AND #$09` / not-taken `BEQ` tail, and its absorbed return at
+`02:53D1/544A`.
+
+The parents now admit 265 of 266 left calls and 266 of 267 right calls. The two
+remaining calls take the genuine alternate branch where `$53 & $09` is zero;
+there are no horizon declines. Independent assembly/native comparisons remain
+byte-identical across all 533 parent calls and 2,113 writes, and across all 539
+timer calls and 820 writes. The four entries own 68,565 native cycles, adding
+27,942 to the deployed registry for 696,656,586 total (53.91%, or 98.05%
+outside the wait). Bank `02`'s non-entry remainder falls to 365,469 and the
+old `53D1/544A` return rows disappear. The next compact residue is the 335 idle
+returns at `02:5556`, already reached by semantic parent `02:5551`; `02:4CF1`
+remains known handoff residue.
+
 ## Use on future families
 
 Follow the command and interpretation rules in

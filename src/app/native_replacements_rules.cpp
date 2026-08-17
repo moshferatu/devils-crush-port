@@ -2255,10 +2255,6 @@ replace_devil_shooter_companion_active_timer(
     const bool is_reset = timer.path
         == DC_DEVIL_SHOOTER_COMPANION_ACTIVE_TIMER_RESET;
     const std::uint32_t body_cycles = is_wait ? 33U : is_reset ? 111U : 102U;
-    if (entry.master_cycles_until_user_event <= body_cycles
-        || entry.master_cycles_until_timer_interrupt <= body_cycles) {
-        return std::nullopt;
-    }
 
     const auto nz_status = [](
                                std::uint8_t status,
@@ -2349,6 +2345,77 @@ replace_devil_shooter_companion_active_timer(
             });
         }
     }
+
+    const auto append_checkpoint = [&replacement](
+                                       const std::uint16_t instruction_pc,
+                                       const std::uint16_t resume_pc,
+                                       const std::uint32_t master_cycle,
+                                       auto registers) {
+        registers.program_counter = resume_pc;
+        replacement.checkpoints.push_back({
+            .interrupt_sample_master_cycle_offset = master_cycle - 3U,
+            .master_cycle_offset = master_cycle,
+            .instruction = {0x02U, instruction_pc},
+            .registers = registers,
+        });
+    };
+
+    const auto decrement_pc = entry.routine.logical_pc;
+    const auto branch_pc = static_cast<std::uint16_t>(decrement_pc + 3U);
+    const auto load_pc = static_cast<std::uint16_t>(decrement_pc + 5U);
+    const auto store_timer_pc = static_cast<std::uint16_t>(decrement_pc + 7U);
+    const auto increment_pc = static_cast<std::uint16_t>(decrement_pc + 10U);
+    const auto load_appearance_pc = static_cast<std::uint16_t>(decrement_pc + 13U);
+    const auto compare_pc = static_cast<std::uint16_t>(decrement_pc + 16U);
+    const auto terminal_branch_pc = static_cast<std::uint16_t>(decrement_pc + 18U);
+    const auto clear_appearance_pc = static_cast<std::uint16_t>(decrement_pc + 20U);
+
+    auto checkpoint = entry.registers;
+    checkpoint.status = nz_status(checkpoint.status, timer.decremented_timer);
+    append_checkpoint(decrement_pc, branch_pc, 21U, checkpoint);
+    if (is_wait) {
+        append_checkpoint(branch_pc, return_pc, 33U, checkpoint);
+        return replacement;
+    }
+
+    append_checkpoint(branch_pc, load_pc, 27U, checkpoint);
+    checkpoint.accumulator = 0x08U;
+    checkpoint.status = nz_status(checkpoint.status, checkpoint.accumulator);
+    append_checkpoint(load_pc, store_timer_pc, 33U, checkpoint);
+    append_checkpoint(store_timer_pc, increment_pc, 48U, checkpoint);
+    checkpoint.status = nz_status(checkpoint.status, timer.advanced_appearance);
+    append_checkpoint(increment_pc, load_appearance_pc, 69U, checkpoint);
+    checkpoint.accumulator = timer.advanced_appearance;
+    checkpoint.status = nz_status(checkpoint.status, checkpoint.accumulator);
+    append_checkpoint(load_appearance_pc, compare_pc, 84U, checkpoint);
+    checkpoint.status = cmp_status(
+        checkpoint.status,
+        checkpoint.accumulator,
+        terminal_appearance);
+    append_checkpoint(
+        compare_pc,
+        terminal_branch_pc,
+        90U,
+        checkpoint);
+    if (!is_reset) {
+        append_checkpoint(
+            terminal_branch_pc,
+            return_pc,
+            102U,
+            checkpoint);
+        return replacement;
+    }
+
+    append_checkpoint(
+        terminal_branch_pc,
+        clear_appearance_pc,
+        96U,
+        checkpoint);
+    append_checkpoint(
+        clear_appearance_pc,
+        return_pc,
+        111U,
+        checkpoint);
     return replacement;
 }
 
@@ -2365,7 +2432,6 @@ replace_devil_shooter_companion_active_controller(
         .physical_bank = 0x02U,
         .logical_pc = 0x5441U,
     };
-    constexpr std::uint32_t kPreludeAndTailCycles = 66U;
     if ((entry.routine != kLeftRoutine && entry.routine != kRightRoutine)
         || entry.registers.x != (entry.routine == kLeftRoutine ? 0x0AU : 0x0DU)
         || (entry.registers.status & 0x20U) != 0U || work_ram.size() <= 0x53U
@@ -2374,8 +2440,9 @@ replace_devil_shooter_companion_active_controller(
     }
 
     // These parents are the normal active paths: JSR timer, then the $53 flag
-    // remains nonzero and immediately returns.  Keep its child and RTS
-    // entirely inside the same no-interrupt window.
+    // remains nonzero and immediately returns. The child now supplies every
+    // instruction boundary through its own body; this wrapper adds the JSR,
+    // the child's RTS, and the four-instruction controller tail around it.
     auto child_entry = entry;
     const auto is_left = entry.routine == kLeftRoutine;
     const auto child_pc = static_cast<std::uint16_t>(is_left ? 0x53E4U : 0x545DU);
@@ -2389,10 +2456,12 @@ replace_devil_shooter_companion_active_controller(
     if (!child.has_value()) {
         return std::nullopt;
     }
-
-    const auto body_cycles = child->body_master_cycles + kPreludeAndTailCycles;
-    if (entry.master_cycles_until_user_event <= body_cycles
-        || entry.master_cycles_until_timer_interrupt <= body_cycles) {
+    const auto child_return_pc = static_cast<std::uint16_t>(
+        is_left ? 0x53FBU : 0x5474U);
+    if (child->checkpoints.empty()
+        || child->return_instruction
+            != RoutineKey{.physical_bank = 0x02U,
+                          .logical_pc = child_return_pc}) {
         return std::nullopt;
     }
 
@@ -2409,16 +2478,11 @@ replace_devil_shooter_companion_active_controller(
     auto output = child->output_registers;
     const auto return_pc = static_cast<std::uint16_t>(
         is_left ? 0x53D1U : 0x544AU);
-    output.program_counter = return_pc;
-    output.stack_pointer = entry.registers.stack_pointer;
-    output.accumulator = static_cast<std::uint8_t>(
-        std::to_integer<std::uint8_t>(work_ram[0x53U]) & 0x09U);
-    output.status = set_nz(output.status, output.accumulator);
 
     RoutineReplacement replacement{
         .return_instruction = {.physical_bank = 0x02U, .logical_pc = return_pc},
         .output_registers = output,
-        .body_master_cycles = body_cycles,
+        .body_master_cycles = 0U,
     };
     // The entry instruction is the `JSR` to the timer, and a `JSR` on this core
     // pushes both bytes before it charges a single cycle: the opcode body runs
@@ -2441,10 +2505,88 @@ replace_devil_shooter_companion_active_controller(
         .value = is_left ? 0xCAU : 0x43U,
         .master_cycle_offset = 0U,
     });
+
+    const auto append_checkpoint = [&replacement](
+                                       const std::uint16_t instruction_pc,
+                                       const std::uint16_t resume_pc,
+                                       const std::uint32_t master_cycle,
+                                       auto registers) {
+        registers.program_counter = resume_pc;
+        replacement.checkpoints.push_back({
+            .interrupt_sample_master_cycle_offset = master_cycle - 3U,
+            .master_cycle_offset = master_cycle,
+            .instruction = {0x02U, instruction_pc},
+            .registers = registers,
+        });
+    };
+
+    std::uint32_t cycle = 21U;
+    append_checkpoint(
+        entry.routine.logical_pc,
+        child_pc,
+        cycle,
+        child_entry.registers);
     for (auto write : child->work_ram_writes) {
-        write.master_cycle_offset += 21U;
+        write.master_cycle_offset += cycle;
         replacement.work_ram_writes.push_back(write);
     }
+    for (auto checkpoint : child->checkpoints) {
+        checkpoint.interrupt_sample_master_cycle_offset += cycle;
+        checkpoint.master_cycle_offset += cycle;
+        replacement.checkpoints.push_back(checkpoint);
+    }
+
+    cycle += child->body_master_cycles;
+    output = child->output_registers;
+    output.stack_pointer = entry.registers.stack_pointer;
+    const auto controller_load_pc = static_cast<std::uint16_t>(
+        entry.routine.logical_pc + 3U);
+    cycle += 21U;
+    append_checkpoint(
+        child_return_pc,
+        controller_load_pc,
+        cycle,
+        output);
+
+    const auto session_flags = std::to_integer<std::uint8_t>(work_ram[0x53U]);
+    output.accumulator = session_flags;
+    output.status = set_nz(output.status, output.accumulator);
+    const auto controller_and_pc = static_cast<std::uint16_t>(
+        controller_load_pc + 2U);
+    cycle += 12U;
+    append_checkpoint(
+        controller_load_pc,
+        controller_and_pc,
+        cycle,
+        output);
+
+    output.accumulator = static_cast<std::uint8_t>(session_flags & 0x09U);
+    output.status = set_nz(output.status, output.accumulator);
+    const auto controller_branch_pc = static_cast<std::uint16_t>(
+        controller_and_pc + 2U);
+    cycle += 6U;
+    append_checkpoint(
+        controller_and_pc,
+        controller_branch_pc,
+        cycle,
+        output);
+
+    cycle += 6U;
+    append_checkpoint(
+        controller_branch_pc,
+        return_pc,
+        cycle,
+        output);
+    output.program_counter = return_pc;
+    replacement.output_registers = output;
+    replacement.body_master_cycles = cycle;
+    absorb_return(
+        replacement,
+        work_ram,
+        entry.registers.stack_pointer,
+        {0x02U, return_pc},
+        cycle,
+        output);
     return replacement;
 }
 

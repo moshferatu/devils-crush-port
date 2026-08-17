@@ -8422,8 +8422,8 @@ paths remain assembly-backed.
 `dc_rom_devil_shooter_companion_dormant_semantic` preserves the full focused
 Release census, call, and ordered-write artifacts with SHA-256
 `9036a9de0c3c9917f47bff8c04c136a4824ec12601fb457d260aa2dfe4443490`,
-`71a87a8e3d59e242da052cd7b7c4eacf413496c715c07fb150a615950115aa3e`, and
-`e500c93431055858526410570490516a6a9058f42928fa8e72643df30d8332e0`.
+`ac711b3b5d4781da6841ce2dc4b85583605a83e64e5f682ffece4b2f2183b6e0`, and
+`93ae519370adfbceb08bc4b84812d1f7d17ed5e2601f612ade3c21238f1768e6`.
 It also shadows ordinal ten at frames 2,145 and 2,141 respectively.
 The deployed pair owns 96,300 native master cycles.
 
@@ -8478,12 +8478,11 @@ The adapter preserves the 33-cycle decrement/wait, 102-cycle
 reload/advance, and 111-cycle reload/advance/reset transcripts. Its writes
 remain anchored at `02:545D`, `02:5464`, `02:5467`, and (on reset) `02:5471`,
 with offsets 21, 48, 69, and 111. It preserves DEC or final CMP flags and
-declines transfer-mode or event/IRQ-horizon calls. The owning Release
-companion regression replaces 45 of the 93 direct leaf calls left visible by
-its native parent; all alternate or horizon-bound parent/leaf paths continue
-through assembly. It shadows ordinal ten at frame 965 with the 33-cycle, one-write
-wait path while preserving the refreshed call/write artifacts above and the
-unchanged state census.
+declines only transfer-mode or wrong-slot calls. Every instruction boundary is
+published, so all 267 fixed-slot calls in an isolated assembly/native sweep
+execute natively with an identical 267-call/410-write artifact. In the owning
+combined regression its native parent leaves one direct call visible, which is
+replaced and shadowed at frame 2,131 with the 33-cycle, one-write wait path.
 
 ### Left Devil-Shooter companion active timer
 
@@ -8495,15 +8494,12 @@ appearance at frame four. Its equivalent 33/102/111-cycle paths return at
 reset) `02:53F8` at offsets 21, 48, 69, and 111.
 
 `53E4` is also a shared code entry for other caller/slot combinations, so the
-adapter declines every non-`$0A` invocation and every user- or timer-IRQ
-horizon inside the selected body. The extended Release companion regression
-replaces 34 of the 92 direct leaf entries that remain visible after its native
-parent scope, preserves the state census
-`9036a9de0c3c9917f47bff8c04c136a4824ec12601fb457d260aa2dfe4443490`, and
-pins replay `02:53E4@3` at frame 941 (33 cycles, one ordered write). Its
-refreshed call/write SHA-256 values are
-`52fbd5e2533d138b77155540a1c84b51ab3f0b9337d1a091f4707501d51a269d` and
-`bd6cd40867e55b0b47dd82ababa4735f0b7f647f81776f6cf7d96b4bd279253e`.
+adapter still declines non-`$0A` and transfer-mode invocations. It no longer
+declines at an event or interrupt horizon: every original instruction boundary
+is checkpointed. An isolated assembly/native sweep admits 269 of 272 calls,
+leaving only three transfer-mode entries, and preserves the complete combined
+539-call/820-write timer artifact with right leaf `02:545D`. The owning family
+regression pins replay `02:53E4@3` at frame 941 (33 cycles, one ordered write).
 
 ### Left Devil-Shooter active controller
 
@@ -8516,13 +8512,12 @@ at `$01FB/$01FA` with values `$53/$CA`, shifts child writes by 21 master
 cycles, restores the caller stack, and preserves the child carry/overflow
 state while updating the final AND-derived N/Z flags.
 
-The adapter requires fixed slot `$0A`, non-transfer execution, a nonzero
-`$53 & $09` result, and a user/timer IRQ horizon beyond the complete composed
-body. It therefore replaces 180 of 266 observed controller entries and leaves
-alternate or horizon-bound paths in assembly. Replay `02:53C8@3` pins the
-frame-945 ordinary wait at 99 cycles and three ordered writes; together with
-the remaining direct leaf replacement it covers the same 214 safe left timer
-updates without changing the Release state census.
+The adapter requires fixed slot `$0A`, non-transfer execution, and a nonzero
+`$53 & $09` result. It publishes every child and parent boundary and absorbs
+the final `RTS` at `02:53D1`, so no complete-body horizon guard remains. It
+replaces 265 of 266 controller entries; the sole fallback is the genuine
+zero-flag alternate path. Replay `02:53C8@3` pins the frame-945 ordinary wait
+at 99 observed body cycles and three ordered writes.
 
 ### Right Devil-Shooter active controller
 
@@ -8531,12 +8526,19 @@ keeps its right slot `$0D`, five-frame terminal comparison, return instruction
 `02:544A`, and JSR stack bytes `$54/$43` at `$01FB/$01FA`. Its exact normal
 wait/advance/reset paths are likewise 99/168/177 cycles, preserving the
 child’s carry/overflow state and final `$53 & $09` N/Z flags. It admits 174
-of 267 controller entries under the same non-transfer and complete-horizon
-requirements, leaving 45 of 93 observed direct leaf entries for `02:545D`.
-Replay `02:5441@3` fixes the frame-945 ordinary wait at 99 cycles and three
-ordered writes. The complete focused call/write SHA-256 values are
-`71a87a8e3d59e242da052cd7b7c4eacf413496c715c07fb150a615950115aa3e` and
-`a8360bc0a52acb86ba1ee5e928241359891d17e6fe0377a7774eef4827479100`.
+of 267 controller entries in the old atomic form. With every child and parent
+boundary published and the final `RTS` at `02:544A` absorbed, it now admits 266
+of 267; the sole fallback is the genuine zero-flag alternate path. Replay
+`02:5441@3` fixes the frame-945 ordinary wait at 99 observed body cycles and
+three ordered writes.
+
+An independent assembly/native sweep over both parents preserves all 533 calls
+and 2,113 writes exactly. Its call/write SHA-256 values are
+`6b6d832cc1c55a7044429e9d1f3e03123023fb72931db7fab9ef22ab77628ead` and
+`5e087253cfd8a2b57507d316827a40c4d8af45935f2bf39cb61fc38fdb0bc159`.
+The combined family regression has 5,229 calls and 5,972 writes with SHA-256
+values `ac711b3b5d4781da6841ce2dc4b85583605a83e64e5f682ffece4b2f2183b6e0`
+and `93ae519370adfbceb08bc4b84812d1f7d17ed5e2601f612ade3c21238f1768e6`.
 
 ### Sixty-second native replacement: semantic `02:5674@all`
 

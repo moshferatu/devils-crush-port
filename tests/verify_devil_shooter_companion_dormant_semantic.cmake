@@ -11,7 +11,12 @@ if(NOT CONFIG STREQUAL "Release")
 endif()
 
 set(expected_census_sha256 "9036a9de0c3c9917f47bff8c04c136a4824ec12601fb457d260aa2dfe4443490")
-set(expected_call_sha256 "71a87a8e3d59e242da052cd7b7c4eacf413496c715c07fb150a615950115aa3e")
+# The active parents now remain native across their timer calls, so those
+# children no longer appear as separate execution-hook entries inside this
+# combined run. Dedicated assembly/native sweeps over all 533 parent calls and
+# all 539 timer calls keep their respective call and write artifacts identical;
+# this digest pins the resulting combined-hook shape.
+set(expected_call_sha256 "ac711b3b5d4781da6841ce2dc4b85583605a83e64e5f682ffece4b2f2183b6e0")
 # Refreshed after the actor-loop and SAT slices moved where a transcript
 # credits a write within its instruction. The census and call artifacts above
 # pin the behaviour that matters and both still match: the call trace carries
@@ -38,7 +43,7 @@ set(expected_call_sha256 "71a87a8e3d59e242da052cd7b7c4eacf413496c715c07fb150a615
 # say whichever one the emulator would have said. This hash agreed with the
 # mistake too; what found it was requiring the whole route's writes to
 # $2100-21FF to match pure assembly, where all 4,205,699 now do.
-set(expected_write_sha256 "e500c93431055858526410570490516a6a9058f42928fa8e72643df30d8332e0")
+set(expected_write_sha256 "93ae519370adfbceb08bc4b84812d1f7d17ed5e2601f612ade3c21238f1768e6")
 set(call_output "${OUTPUT}.calls.csv")
 set(write_output "${call_output}.writes.csv")
 
@@ -66,7 +71,7 @@ execute_process(
         --routine-replay "02:53C8@3"
         --routine-replay "02:5441@3"
         --routine-replay "02:53E4@3"
-        --routine-replay "02:545D@10"
+        --routine-replay "02:545D@1"
         --routine-replay "02:5397@10"
         --routine-replay "02:53DD@10"
         --routine-replay "02:5456@10"
@@ -83,25 +88,25 @@ foreach(expected_line IN ITEMS
     "State census recording complete: 3600 frames"
     "Native replacement 02:5397@all entries: 1260 of 1260"
     "Native replacement 02:5408@all entries: 1288 of 1288"
-    "Native replacement 02:53C8@all entries: 180 of 266"
-    "Native replacement 02:53E4@all entries: 34 of 92"
-    "Native replacement 02:5441@all entries: 174 of 267"
-    "Native replacement 02:545D@all entries: 45 of 93"
+    "Native replacement 02:53C8@all entries: 265 of 266"
+    "Native replacement 02:53E4@all entries: 4 of 7"
+    "Native replacement 02:5441@all entries: 266 of 267"
+    "Native replacement 02:545D@all entries: 1 of 1"
     "Native replacement 02:53DD@all entries: 1055 of 1055"
     "Native replacement 02:5456@all entries: 1085 of 1085"
     "Observe hook 1 entries: 1055"
     "Observe hook 2 entries: 1260"
     "Observe hook 3 entries: 1288"
     "Observe hook 4 entries: 266"
-    "Observe hook 5 entries: 92"
+    "Observe hook 5 entries: 7"
     "Observe hook 6 entries: 267"
-    "Observe hook 7 entries: 93"
+    "Observe hook 7 entries: 1"
     "Observe hook 8 entries: 1085"
     "Routine replay 02:5408@10 verified: frame 949, 42 body cycles, 0 ordered writes"
     "Routine replay 02:53C8@3 verified: frame 945, 99 body cycles, 3 ordered writes"
     "Routine replay 02:5441@3 verified: frame 945, 99 body cycles, 3 ordered writes"
     "Routine replay 02:53E4@3 verified: frame 941, 33 body cycles, 1 ordered writes"
-    "Routine replay 02:545D@10 verified: frame 965, 33 body cycles, 1 ordered writes"
+    "Routine replay 02:545D@1 verified: frame 2131, 33 body cycles, 1 ordered writes"
     "Routine replay 02:5397@10 verified: frame 949, 75 body cycles, 2 ordered writes"
     "Routine replay 02:53DD@10 verified: frame 2145, 24 body cycles, 0 ordered writes"
     "Routine replay 02:5456@10 verified: frame 2141, 24 body cycles, 0 ordered writes"
@@ -128,4 +133,4 @@ foreach(artifact IN ITEMS census call write)
     endif()
 endforeach()
 
-message(STATUS "Semantic 5397/5408/53C8/53E4/5441/545D/53DD/5456 Devil-Shooter companion leaves cover 4,563 calls.")
+message(STATUS "Semantic 5397/5408/53C8/53E4/5441/545D/53DD/5456 Devil-Shooter companion routes admit 5,224 recorded hook entries.")
