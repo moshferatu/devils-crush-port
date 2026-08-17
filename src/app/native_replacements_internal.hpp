@@ -843,6 +843,11 @@ replace_skeleton_insect_right_gate(
     std::span<const std::byte> work_ram);
 
 [[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_skeleton_insect_right_post_trigger(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram);
+
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
 replace_skeleton_insect_center_gate(
     const emulation::RoutineEntry& entry,
     std::span<const std::byte> work_ram);

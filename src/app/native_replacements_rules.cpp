@@ -12302,6 +12302,90 @@ replace_skeleton_insect_right_gate(
 }
 
 [[nodiscard]] std::optional<RoutineReplacement>
+replace_skeleton_insect_right_post_trigger(
+    const RoutineEntry& entry,
+    const std::span<const std::byte> work_ram)
+{
+    constexpr RoutineKey kRoutine{
+        .physical_bank = 0x02U,
+        .logical_pc = 0x5590U,
+    };
+    if (entry.routine != kRoutine) {
+        return std::nullopt;
+    }
+
+    dc_skeleton_insect_right_post_trigger post_trigger{};
+    if (!dc_classify_skeleton_insect_right_post_trigger(
+            reinterpret_cast<const std::uint8_t*>(work_ram.data()),
+            work_ram.size(),
+            entry.registers.x,
+            &post_trigger)) {
+        return std::nullopt;
+    }
+    if (post_trigger.path != DC_SKELETON_INSECT_RIGHT_POST_TRIGGER_IDLE) {
+        return std::nullopt;
+    }
+
+    const auto set_nz = [](std::uint8_t status, const std::uint8_t value) {
+        status = static_cast<std::uint8_t>(
+            status & static_cast<std::uint8_t>(~0x82U));
+        if (value == 0U) {
+            status = static_cast<std::uint8_t>(status | 0x02U);
+        } else if ((value & 0x80U) != 0U) {
+            status = static_cast<std::uint8_t>(status | 0x80U);
+        }
+        return status;
+    };
+    const auto append_checkpoint =
+        [](RoutineReplacement& replacement,
+           const std::uint16_t instruction_pc,
+           const std::uint16_t resume_pc,
+           const std::uint32_t master_cycle,
+           auto registers) {
+            registers.program_counter = resume_pc;
+            replacement.checkpoints.push_back({
+                .interrupt_sample_master_cycle_offset = master_cycle - 3U,
+                .master_cycle_offset = master_cycle,
+                .instruction = {0x02U, instruction_pc},
+                .registers = registers,
+            });
+        };
+
+    auto checkpoint = entry.registers;
+    checkpoint.y = 0U;
+    checkpoint.status = set_nz(checkpoint.status, checkpoint.y);
+
+    RoutineReplacement replacement{};
+    append_checkpoint(replacement, 0x5590U, 0x5592U, 6U, checkpoint);
+
+    checkpoint.accumulator = post_trigger.secondary_state;
+    checkpoint.status = set_nz(checkpoint.status, checkpoint.accumulator);
+    append_checkpoint(replacement, 0x5592U, 0x5595U, 21U, checkpoint);
+    append_checkpoint(replacement, 0x5595U, 0x55AAU, 33U, checkpoint);
+
+    checkpoint.accumulator = post_trigger.tower_state;
+    checkpoint.status = set_nz(checkpoint.status, checkpoint.accumulator);
+    append_checkpoint(replacement, 0x55AAU, 0x55ADU, 48U, checkpoint);
+    append_checkpoint(replacement, 0x55ADU, 0x55AFU, 54U, checkpoint);
+
+    replacement.return_instruction = {
+        .physical_bank = 0x02U,
+        .logical_pc = 0x55AFU,
+    };
+    replacement.output_registers = checkpoint;
+    replacement.output_registers.program_counter = 0x55AFU;
+    replacement.body_master_cycles = 54U;
+    absorb_return(
+        replacement,
+        work_ram,
+        entry.registers.stack_pointer,
+        {0x02U, 0x55AFU},
+        54U,
+        replacement.output_registers);
+    return replacement;
+}
+
+[[nodiscard]] std::optional<RoutineReplacement>
 replace_skeleton_insect_center_gate(
     const RoutineEntry& entry,
     const std::span<const std::byte> work_ram)

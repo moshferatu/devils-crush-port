@@ -26,11 +26,18 @@ high byte. The deterministic 1,800-frame route now executes 18,806 of 19,648
 preserving the byte-identical gameplay artifact, complete 19,648-call trace,
 and all 180,389 ordered writes.
 
-The deployed registry now runs **696,416,985 of 1,292,371,731 master cycles
-natively, 53.89% of the route and 98.02% of everything outside the frame-sync
-wait**, across 438 admitted routines with no transcript declined at an
+The deployed registry now runs **696,498,285 of 1,292,371,731 master cycles
+natively, 53.89% of the route and 98.03% of everything outside the frame-sync
+wait**, across 439 admitted routines with no transcript declined at an
 interrupt horizon and none abandoned. The 3,600-frame state census remains
 `9036a9de0c3c9917f47bff8c04c136a4824ec12601fb457d260aa2dfe4443490`.
+
+The right Skeleton Insect's post-trigger idle controller is native.
+`02:5590` owns all 1,084 natural calls, preserves five instruction boundaries
+and every timer-interrupt passage, and absorbs the return at `02:55AF`. Both
+shared gates are clear throughout the route; the unobserved secondary-collision
+and Tower-active animation branches remain assembly-backed. The slice adds
+81,300 registry cycles and reduces bank `02`'s non-entry remainder to 507,954.
 
 The Giant Skeleton's complete steady controller is native. `02:5EEC` composes
 the existing `01:DAF8` direction classifier, reproduces the direction clamp,
@@ -6316,35 +6323,50 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
   - [x] Registry cycles 696,149,178 -> **696,416,985**; 53.89%, 98.02% outside
     the wait; 438 admitted routines; bank `02` non-entry remainder -> 589,950;
     zero horizon declines and zero abandonments.
+- [x] Port the right Skeleton-Insect post-trigger idle controller
+  `02:5590-55AF`:
+  - [x] Prove `02:5590` is the dispatch entry behind profile rows
+    `5592/5595/55AA/55AF`, not four independent routines.
+  - [x] Replace all 1,084 natural clear-gate calls through five exact
+    instruction checkpoints and absorb the `02:55AF` return.
+  - [x] Preserve the inactive `$3200,Y` secondary-collision arm and `$2CC7`
+    Tower-active animation arm as assembly fallback.
+  - [x] Preserve byte-identical Release/Debug census, complete
+    5,805-call/1,316-write family artifacts, trace, actor state, and the
+    54-cycle/zero-write normalized sample.
+  - [x] Registry cycles 696,416,985 -> **696,498,285**; 53.89%, 98.03% outside
+    the wait; 439 admitted routines; bank `02` non-entry remainder -> 507,954;
+    zero horizon declines and zero abandonments.
 
 ## Active Work
 
-Current owner: Codex. Current slice: **the Giant Skeleton steady controller**.
+Current owner: Codex. Current slice: **the right Skeleton-Insect post-trigger
+idle controller**.
 Done.
 
-`02:5EEC` is the real entry behind the former `5EEC-5F21` profile run;
-`5EFE`, `5F01`, and `5F04` are interior instructions and `5F21` is the shared
-return. The native parent stages the `JSR $C06F` frame and composes the existing
-`01:DAF8` direction transcript before reproducing the appearance and collision
-logic. It absorbs 2,138 idle returns and resumes the one hit in assembly at
-`02:5F06`.
+`02:5590` is the real dispatch entry behind the former `5592/5595/55AA/55AF`
+profile rows. Every natural call sets Y to zero, finds both `$3200,Y` and
+`$2CC7` clear, and returns at `02:55AF`. The native leaf retains all five
+instruction checkpoints, including the boundaries that hosted 17
+interrupt-extended calls, then absorbs the return. Both active continuations
+remain assembly fallback.
 
-Release and Debug preserve byte-identical census, canonical work RAM, complete
-4,283-call/50,711-write family artifacts, trace, and actor timeline. The first
-call also shadows at 807 cycles and 19 ordered writes.
+Release and Debug preserve byte-identical census and the complete
+5,805-call/1,316-write family artifacts, trace, and actor timeline. The first
+post-trigger call also shadows at 54 cycles and zero ordered writes.
 
 | | Before | After |
 | --- | ---: | ---: |
-| Parent-plus-child native ownership | 1,521,012 | **1,788,819** |
-| Registry cycles | 696,149,178 | **696,416,985** |
-| Native share | 53.87% | **53.89%** |
-| Native share outside the wait | 97.98% | **98.02%** |
-| Admitted routines | 437 | **438** |
-| Bank `02` non-entry remainder | 860,013 | **589,950** |
+| Native ownership at `02:5590` | 0 | **81,300** |
+| Registry cycles | 696,416,985 | **696,498,285** |
+| Native share | 53.89% | **53.89%** |
+| Native share outside the wait | 98.02% | **98.03%** |
+| Admitted routines | 438 | **439** |
+| Bank `02` non-entry remainder | 589,950 | **507,954** |
 
-Next: screen the remaining bank-`02` families around `02:4387-438E` and
-`02:5590-55AF` with their registered parents and continuations. `02:4CF1`
-remains known residue from already-bounded handoff arms, not a new entry.
+Next: screen the remaining bank-`02` family around `02:4387-438E` with its
+registered Dragon's-Egg parent and continuations. `02:4CF1` remains known
+residue from already-bounded handoff arms, not a new entry.
 
 ### Previous: the score panel's glyph writer
 

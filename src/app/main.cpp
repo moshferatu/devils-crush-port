@@ -1875,6 +1875,14 @@ parse_logical_address_range(const std::string_view text)
                                        .logical_pc = 0x5551U,
                                    }
                            && request.all_calls;
+                       const bool
+                           proven_skeleton_insect_right_post_trigger =
+                               request.routine
+                                       == RoutineKey{
+                                           .physical_bank = 0x02U,
+                                           .logical_pc = 0x5590U,
+                                       }
+                               && request.all_calls;
                        const bool proven_skeleton_insect_center_gate =
                            request.routine
                                    == RoutineKey{
@@ -3336,6 +3344,7 @@ parse_logical_address_range(const std::string_view text)
                            && !proven_devil_shooter_catch_continuation
                            && !proven_skeleton_insect_left_gate
                            && !proven_skeleton_insect_right_gate
+                           && !proven_skeleton_insect_right_post_trigger
                            && !proven_skeleton_insect_center_gate
                            && !proven_skeleton_insect_center_continuation
                            && !proven_devils_coffin_gate
@@ -3555,6 +3564,7 @@ parse_logical_address_range(const std::string_view text)
             "semantic 02:52B8@all, "
             "semantic 02:54B9@all, "
             "semantic 02:5551@all, "
+            "semantic 02:5590@all, "
             "semantic 02:55F9@all, "
             "semantic 02:5604@all, "
             "semantic 02:5A4B@all, "

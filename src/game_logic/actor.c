@@ -2050,6 +2050,32 @@ int dc_classify_skeleton_insect_right_gate(
     return 1;
 }
 
+int dc_classify_skeleton_insect_right_post_trigger(
+    const uint8_t* const work_ram,
+    const size_t work_ram_size,
+    const uint8_t slot,
+    dc_skeleton_insect_right_post_trigger* const post_trigger)
+{
+    if (work_ram == NULL || post_trigger == NULL || slot != 0x33U
+        || work_ram_size <= 0x1200U) {
+        return 0;
+    }
+
+    post_trigger->slot = slot;
+    post_trigger->secondary_state = work_ram[0x1200U];
+    post_trigger->tower_state = work_ram[0x0CC7U];
+    if (post_trigger->secondary_state != 0U) {
+        post_trigger->path =
+            DC_SKELETON_INSECT_RIGHT_POST_TRIGGER_SECONDARY_ACTIVE;
+    } else if (post_trigger->tower_state != 0U) {
+        post_trigger->path =
+            DC_SKELETON_INSECT_RIGHT_POST_TRIGGER_TOWER_ACTIVE;
+    } else {
+        post_trigger->path = DC_SKELETON_INSECT_RIGHT_POST_TRIGGER_IDLE;
+    }
+    return 1;
+}
+
 int dc_classify_skeleton_insect_center_gate(
     const uint8_t* const work_ram,
     const size_t work_ram_size,

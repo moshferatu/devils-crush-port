@@ -2244,12 +2244,20 @@ replace_native_gameplay_routine_impl(
         replacement =
             detail::replace_skeleton_insect_left_gate(entry, work_ram);
     } else if (entry.routine
-        == RoutineKey{
-            .physical_bank = 0x02U,
-            .logical_pc = 0x5551U,
-        }) {
-        replacement =
-            detail::replace_skeleton_insect_right_gate(entry, work_ram);
+            == RoutineKey{
+                .physical_bank = 0x02U,
+                .logical_pc = 0x5551U,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x02U,
+                .logical_pc = 0x5590U,
+            }) {
+        replacement = entry.routine.logical_pc == 0x5551U
+            ? detail::replace_skeleton_insect_right_gate(entry, work_ram)
+            : detail::replace_skeleton_insect_right_post_trigger(
+                  entry,
+                  work_ram);
     } else if (entry.routine
         == RoutineKey{
             .physical_bank = 0x02U,

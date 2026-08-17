@@ -817,6 +817,14 @@ Provide an interactive monitor-assignment screen and persist display identity, g
   gameplay artifacts. The deployed registry now covers 696,416,985 master
   cycles (53.89%, or 98.02% outside the wait) across 438 admitted routines,
   and bank `02`'s non-entry remainder falls to 589,950 cycles.
+  Semantic `02:5590@all` now replaces all 1,084 natural calls to the right
+  Skeleton-Insect post-trigger idle controller. Its five instruction
+  checkpoints preserve every timer-interrupt passage before absorbing the
+  `RTS` at `02:55AF`; the inactive secondary-collision and Tower-active
+  animation branches remain assembly-backed. The deployed registry now covers
+  696,498,285 master cycles (53.89%, or 98.03% outside the wait) across 439
+  admitted routines, and bank `02`'s non-entry remainder falls to 507,954
+  cycles.
   The larger `01:D525` controller remains a decomposition boundary: its 128
   census calls span 29-1,456 writes and 1,035-49,122 body master cycles, so
   the largest live paths exceed the bridge's independent 512-write limit.

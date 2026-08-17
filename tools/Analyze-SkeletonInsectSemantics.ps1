@@ -254,6 +254,7 @@ Assert-Histogram $calls "logical_pc" @{
 
 $leftWait = @($calls | Where-Object { $_.logical_pc -eq "54B9" })
 $rightWait = @($calls | Where-Object { $_.logical_pc -eq "5551" })
+$rightPostTrigger = @($calls | Where-Object { $_.logical_pc -eq "5590" })
 $centerWait = @($calls | Where-Object { $_.logical_pc -eq "55F9" })
 Assert-Histogram $leftWait "return_instruction_pc" @{
     "54BE" = 1630
@@ -267,6 +268,25 @@ Assert-Histogram $centerWait "return_instruction_pc" @{
     "55FE" = 2402
     "C5E9" = 1
 } "Center Skeleton-Insect return"
+Assert-Histogram $rightPostTrigger "return_instruction_pc" @{
+    "55AF" = 1084
+} "Right Skeleton-Insect post-trigger return"
+if (
+    @(
+        $rightPostTrigger |
+            Where-Object {
+                $_.input_x -ne "33" -or
+                $_.output_a -ne "00" -or
+                $_.output_y -ne "00" -or
+                $_.output_status -ne "02"
+            }
+    ).Count -ne 0
+) {
+    throw "Right Skeleton-Insect post-trigger idle state changed."
+}
+Assert-Call $rightPostTrigger[0] 1953 2191 "5590" "33" "55AF" 54 0 (
+    "Right Skeleton-Insect post-trigger native sample"
+)
 
 Assert-Call (
     @($rightWait | Where-Object { $_.return_instruction_pc -eq "C5E9" })[0]
@@ -443,4 +463,8 @@ Write-Output (
 Write-Output (
     "Normalized idle samples: 02:54B9@1 and 02:5551@1 at frame 873; " +
     "02:55F9@1 at frame 942."
+)
+Write-Output (
+    "Native right post-trigger sample: 02:5590@1, frame 2191, " +
+    "1,084 idle returns."
 )

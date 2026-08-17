@@ -3394,9 +3394,22 @@ hands back at `02:5F06`, leaving score, audio, bonus, and presentation in the
 original assembly. It owns 1,788,819 native cycles; after replacing the
 child's separately credited entries, the registry gains 267,807 net cycles to
 696,416,985 (53.89%, or 98.02% outside the wait). Bank `02` now has 589,950
-non-entry cycles. Its next useful screens are the true boundaries around
-`02:4387-438E` and `02:5590-55AF`; the larger `02:4CF1` row remains known
-handoff residue.
+non-entry cycles.
+
+## Right Skeleton-Insect post-trigger idle controller
+
+The apparent `02:5592/5595/55AA/55AF` cluster is the interior of the complete
+dispatch target at `02:5590`. All 1,084 natural calls set Y to zero, read clear
+shared gates at `$3200,Y` and `$2CC7`, and reach the `RTS` at `02:55AF` without
+a gameplay write. The variable 711-1,071-cycle samples are timer interrupts,
+not alternate gameplay paths.
+
+Semantic `02:5590@all` retains all five instruction boundaries and absorbs the
+return. It adds 81,300 native cycles, raising the registry to 696,498,285
+(53.89%, or 98.03% outside the wait), while bank `02`'s non-entry remainder
+falls to 507,954. The next useful screen is the true boundary around
+`02:4387-438E` and its registered Dragon's-Egg parent; the larger `02:4CF1` row
+remains known handoff residue.
 
 ## Use on future families
 

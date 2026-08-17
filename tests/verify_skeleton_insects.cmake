@@ -9,7 +9,7 @@ endforeach()
 if(CONFIG STREQUAL "Debug")
     set(
         expected_census_sha256
-        "a95d0c343108b107d7ec1aa3c20915540d91bb08817704776531e5696ea9b5e2"
+        "9036a9de0c3c9917f47bff8c04c136a4824ec12601fb457d260aa2dfe4443490"
     )
 elseif(CONFIG STREQUAL "Release")
     set(
@@ -63,6 +63,8 @@ execute_process(
         "02:5568"
         --observe-hook
         "02:5590"
+        --replace-hook
+        "02:5590@all"
         --observe-hook
         "02:55D3"
         --observe-hook
@@ -85,6 +87,8 @@ execute_process(
         "02:54B9@1"
         --routine-replay
         "02:5551@1"
+        --routine-replay
+        "02:5590@1"
         --routine-replay
         "02:55F9@1"
         --work-ram-write-range
@@ -128,12 +132,14 @@ endforeach()
 
 foreach(expected_line IN ITEMS
     "State census recording complete: 3600 frames"
+    "Native replacement 02:5590@all entries: 1084 of 1084"
     "Routine trace complete: 5805 entries"
     "Routine call trace complete: 5805 calls, 1316 writes"
     "Routine replay 02:54B9@1 verified: frame 873"
     "Routine replay 02:5551@1 verified: frame 873"
+    "Routine replay 02:5590@1 verified: frame 2191, 54 body cycles, 0 ordered writes"
     "Routine replay 02:55F9@1 verified: frame 942"
-    "Routine replay complete: 3 state-normalized calls"
+    "Routine replay complete: 4 state-normalized calls"
     "Work-RAM write trace complete: 3882 selected writes"
 )
     string(FIND "${recorder_output}" "${expected_line}" line_offset)
@@ -218,6 +224,7 @@ foreach(expected_line IN ITEMS
     "Tower latch 2CFC triggers +100 stored units"
     "The three target scopes add no audio command"
     "Normalized idle samples: 02:54B9@1 and 02:5551@1"
+    "Native right post-trigger sample: 02:5590@1, frame 2191"
 )
     string(FIND "${semantics_output}" "${expected_line}" line_offset)
     if(line_offset EQUAL -1)

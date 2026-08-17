@@ -3392,6 +3392,13 @@ The capture contains 5,805 calls and 1,316 scoped writes. Normalized first
 steady-state replays for `02:54B9`, `02:5551`, and `02:55F9` each take 21
 cycles and make no writes.
 
+The post-trigger `02:5590` state is one complete routine behind the profiled
+interior rows at `5592`, `5595`, `55AA`, and terminal `RTS` `55AF`. All 1,084
+natural calls use fixed slot `$33`, set Y to zero, find both `$3200,Y` and
+Tower state `$2CC7` clear, and return without a gameplay write. Seventeen calls
+are lengthened only by original timer interrupts sampled at those five
+instruction boundaries.
+
 Semantic `02:54B9@all` replaces all 1,631 left-target trigger checks. The
 clear-latch path remains the exact `LDA $2D13`, not-taken `BNE`, and RTS at
 `02:54BE`: 1,630 calls take 21 body cycles, write nothing, and preserve the
@@ -3432,6 +3439,14 @@ artifacts:
   `9036a9de0c3c9917f47bff8c04c136a4824ec12601fb457d260aa2dfe4443490`
 - Debug census SHA-256:
   `a95d0c343108b107d7ec1aa3c20915540d91bb08817704776531e5696ea9b5e2`
+
+Semantic `02:5590@all` replaces all 1,084 right-target post-trigger idle calls.
+Its exact five-checkpoint transcript reproduces `LDY #0`, both shared-gate
+loads and branches, and absorbs the `RTS` at `02:55AF`. The unobserved
+secondary-collision and Tower-active animation paths remain assembly-backed.
+Normalized replay `02:5590@1` verifies frame 2,191, 54 body cycles before the
+return, and zero ordered writes. Release and Debug preserve the complete family
+census, call, write, trace, and selected actor-state artifacts.
 
 Semantic `02:55F9@all` replaces all 2,403 center-target trigger checks. The
 2,402 clear-latch calls execute `LDA $2CFC`, the not-taken `BNE`, and the

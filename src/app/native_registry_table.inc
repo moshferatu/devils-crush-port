@@ -284,6 +284,7 @@ DC_ADMITTED_ROUTINE(0x02U, 0x5456U, 926, 1085, "verify_devil_shooter_companion_d
 DC_ADMITTED_ROUTINE(0x02U, 0x545DU, 45, 93, "verify_devil_shooter_companion_dormant_semantic")
 DC_ADMITTED_ROUTINE(0x02U, 0x54B9U, 1631, 1631, "verify_skeleton_insect_left_gate_semantic")
 DC_ADMITTED_ROUTINE(0x02U, 0x5551U, 336, 336, "verify_skeleton_insect_right_gate_semantic")
+DC_ADMITTED_ROUTINE(0x02U, 0x5590U, 1084, 1084, "verify_skeleton_insects")
 DC_ADMITTED_ROUTINE(0x02U, 0x55F9U, 2403, 2403, "verify_skeleton_insect_center_gate_semantic")
 DC_ADMITTED_ROUTINE(0x02U, 0x5604U, 1, 1, "verify_skeleton_insect_center_continuation_semantic +1")
 DC_ADMITTED_ROUTINE(0x02U, 0x565CU, 1, 1, "verify_big_star_initializer_semantic")

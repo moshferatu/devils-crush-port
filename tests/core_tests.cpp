@@ -5316,6 +5316,70 @@ void test_native_skeleton_insect_right_gate()
         "native 5551 rejects an out-of-range actor slot");
 }
 
+void test_native_skeleton_insect_right_post_trigger()
+{
+    std::array<std::uint8_t, 0x2000> work_ram{};
+    dc_skeleton_insect_right_post_trigger post_trigger{};
+
+    check(
+        dc_classify_skeleton_insect_right_post_trigger(
+            work_ram.data(),
+            work_ram.size(),
+            0x33U,
+            &post_trigger)
+            != 0
+            && post_trigger.path
+                == DC_SKELETON_INSECT_RIGHT_POST_TRIGGER_IDLE
+            && post_trigger.slot == 0x33U
+            && post_trigger.secondary_state == 0x00U
+            && post_trigger.tower_state == 0x00U,
+        "native 5590 identifies the idle right Skeleton-Insect return");
+
+    work_ram[0x1200U] = 0x01U;
+    check(
+        dc_classify_skeleton_insect_right_post_trigger(
+            work_ram.data(),
+            work_ram.size(),
+            0x33U,
+            &post_trigger)
+            != 0
+            && post_trigger.path
+                == DC_SKELETON_INSECT_RIGHT_POST_TRIGGER_SECONDARY_ACTIVE
+            && post_trigger.secondary_state == 0x01U,
+        "native 5590 preserves the secondary-active assembly branch");
+
+    work_ram[0x1200U] = 0x00U;
+    work_ram[0x0CC7U] = 0x80U;
+    check(
+        dc_classify_skeleton_insect_right_post_trigger(
+            work_ram.data(),
+            work_ram.size(),
+            0x33U,
+            &post_trigger)
+            != 0
+            && post_trigger.path
+                == DC_SKELETON_INSECT_RIGHT_POST_TRIGGER_TOWER_ACTIVE
+            && post_trigger.tower_state == 0x80U,
+        "native 5590 preserves the Tower-active assembly branch");
+
+    check(
+        dc_classify_skeleton_insect_right_post_trigger(
+            work_ram.data(),
+            0x1200U,
+            0x33U,
+            &post_trigger)
+            == 0,
+        "native 5590 rejects a truncated work-RAM snapshot");
+    check(
+        dc_classify_skeleton_insect_right_post_trigger(
+            work_ram.data(),
+            work_ram.size(),
+            0x32U,
+            &post_trigger)
+            == 0,
+        "native 5590 rejects the wrong actor slot");
+}
+
 void test_native_skeleton_insect_center_gate()
 {
     std::array<std::uint8_t, 0x2000> work_ram{};
@@ -10437,6 +10501,7 @@ int main()
     test_native_devil_shooter_charge_retraction();
     test_native_skeleton_insect_left_gate();
     test_native_skeleton_insect_right_gate();
+    test_native_skeleton_insect_right_post_trigger();
     test_native_skeleton_insect_center_gate();
     test_native_devils_coffin_gate();
     test_native_devils_coffin_initializer();

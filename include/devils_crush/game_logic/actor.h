@@ -1119,6 +1119,19 @@ typedef struct dc_skeleton_insect_right_gate {
     dc_skeleton_insect_right_gate_path path;
 } dc_skeleton_insect_right_gate;
 
+typedef enum dc_skeleton_insect_right_post_trigger_path {
+    DC_SKELETON_INSECT_RIGHT_POST_TRIGGER_IDLE = 0,
+    DC_SKELETON_INSECT_RIGHT_POST_TRIGGER_SECONDARY_ACTIVE = 1,
+    DC_SKELETON_INSECT_RIGHT_POST_TRIGGER_TOWER_ACTIVE = 2
+} dc_skeleton_insect_right_post_trigger_path;
+
+typedef struct dc_skeleton_insect_right_post_trigger {
+    uint8_t slot;
+    uint8_t secondary_state;
+    uint8_t tower_state;
+    dc_skeleton_insect_right_post_trigger_path path;
+} dc_skeleton_insect_right_post_trigger;
+
 typedef enum dc_skeleton_insect_center_gate_path {
     DC_SKELETON_INSECT_CENTER_GATE_IDLE = 0,
     DC_SKELETON_INSECT_CENTER_GATE_TRIGGERED = 1
@@ -1822,6 +1835,16 @@ int dc_classify_skeleton_insect_right_gate(
     size_t work_ram_size,
     uint8_t slot,
     dc_skeleton_insect_right_gate* gate);
+
+// Native state classification for ROM routine 02:5590. The right Skeleton
+// Insect returns after its opening animation while both shared follow-up gates
+// are clear. Either active gate enters an assembly-owned collision/animation
+// continuation that is deliberately left outside the admitted native path.
+int dc_classify_skeleton_insect_right_post_trigger(
+    const uint8_t* work_ram,
+    size_t work_ram_size,
+    uint8_t slot,
+    dc_skeleton_insect_right_post_trigger* post_trigger);
 
 // Native state classification for ROM routine 02:55F9. The center Skeleton
 // Insect returns while its Center-Spider trigger latch is clear; nonzero
