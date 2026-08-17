@@ -909,6 +909,15 @@ Provide an interactive monitor-assignment screen and persist display identity, g
   gross cycles while replacing 2,103 cycles of existing `01:C018/C5C9` child
   credit. The exact net gain is 540 cycles, taking the registry to 696,708,969
   across 444 routines and bank `02`'s remainder to 312,558 cycles.
+  Semantic `02:5625@all` now owns the center Skeleton-Insect's one-time
+  post-delay handoff. It clears `$3080,X.5`, reproduces `JSR $C018`, and
+  composes native scheduler `01:C5C9` to install `02:5630` in an exact
+  228-cycle/eight-write transcript. Semantic `02:5630@all` owns all 229
+  observed idle opening checks, publishes every instruction boundary, and
+  absorbs the `RTS` at `02:5641`; the unobserved opening branch stays
+  assembly-backed. All six timer-interrupt passages remain exact. The pair
+  adds 20,646 net deployed cycles after existing child credit is displaced,
+  taking the registry to 696,729,615 cycles across 446 routines.
   The larger `01:D525` controller remains a decomposition boundary: its 128
   census calls span 29-1,456 writes and 1,035-49,122 body master cycles, so
   the largest live paths exceed the bridge's independent 512-write limit.

@@ -1919,6 +1919,21 @@ parse_logical_address_range(const std::string_view text)
                                        .logical_pc = 0x561AU,
                                    }
                            && request.all_calls;
+                       const bool
+                           proven_skeleton_insect_center_post_delay_handoff =
+                               request.routine
+                                       == RoutineKey{
+                                           .physical_bank = 0x02U,
+                                           .logical_pc = 0x5625U,
+                                       }
+                               && request.all_calls;
+                       const bool proven_skeleton_insect_center_opening_gate =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x02U,
+                                       .logical_pc = 0x5630U,
+                                   }
+                           && request.all_calls;
                        const bool proven_devils_coffin_gate =
                            request.routine
                                    == RoutineKey{
@@ -3383,6 +3398,8 @@ parse_logical_address_range(const std::string_view text)
                            && !proven_skeleton_insect_center_gate
                            && !proven_skeleton_insect_center_continuation
                            && !proven_skeleton_insect_center_toggle
+                           && !proven_skeleton_insect_center_post_delay_handoff
+                           && !proven_skeleton_insect_center_opening_gate
                            && !proven_devils_coffin_gate
                            && !proven_devils_coffin_initializer
                            && !proven_devils_coffin_opening
@@ -3607,6 +3624,8 @@ parse_logical_address_range(const std::string_view text)
             "semantic 02:55F9@all, "
             "semantic 02:5604@all, "
             "semantic 02:561A@all, "
+            "semantic 02:5625@all, "
+            "semantic 02:5630@all, "
             "semantic 02:5A4B@all, "
             "semantic 02:5A6E@all, "
             "semantic 03:63F1@all, "

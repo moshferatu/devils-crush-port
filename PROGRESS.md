@@ -26,13 +26,24 @@ high byte. The deterministic 1,800-frame route now executes 18,806 of 19,648
 preserving the byte-identical gameplay artifact, complete 19,648-call trace,
 and all 180,389 ordered writes.
 
-The deployed registry now runs **696,708,969 of 1,292,371,731 master cycles
+The deployed registry now runs **696,729,615 of 1,292,371,731 master cycles
 natively, 53.91% of the route and 98.06% of everything outside the frame-sync
-wait**, across 444 admitted routines. All 15 independently entered deployed
-calls at `02:561A` now execute natively, including the original timer-interrupt
-passage; the core declines no offered transcript and none is abandoned. The
+wait**, across 446 admitted routines. The center Skeleton-Insect now continues
+natively through `02:5625` and all 229 observed `02:5630` idle checks,
+including six original timer-interrupt passages; the core declines no offered
+transcript and none is abandoned. The
 3,600-frame state census remains
 `9036a9de0c3c9917f47bff8c04c136a4824ec12601fb457d260aa2dfe4443490`.
+
+The center Skeleton-Insect's post-delay handoff and opening gate are native at
+`02:5625/5630`. The one-time 228-cycle handoff clears presentation bit 5 and
+composes the existing scheduler to install `02:5630`. All 229 gate calls take
+the observed idle return in 69 cycles before the absorbed `RTS`; every original
+instruction boundary is published so six timer interrupts retain their exact
+placement. The unobserved opening branch remains assembly-backed. The two
+entries add 20,646 net deployed cycles after replacing existing scheduler
+child credit, while the complete Skeleton-Insect artifacts remain
+byte-identical.
 
 The center Skeleton-Insect's post-award presentation toggle is native at
 `02:561A`. Direct replacement covers all 16 calls: fifteen exact 171-cycle
@@ -6459,31 +6470,48 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
     actor-state writes exactly.
   - [x] Registry A/B: **696,708,429 -> 696,708,969** native cycles; 540 net
     cycles added, 444 admitted routines, 374 entered, and no abandonments.
+- [x] Port the center Skeleton-Insect post-delay handoff and idle opening gate:
+  - [x] Replace the one natural `02:5625` call through its exact 228-cycle,
+    eight-write scheduler installation of `02:5630`.
+  - [x] Replace all 229 observed `02:5630` idle checks, absorb `02:5641`, and
+    preserve all six timer interrupts at their original instruction boundaries.
+  - [x] Keep the unobserved opening branch at `02:5642` assembly-backed and
+    preserve the 5,805-call/1,316-write family artifacts exactly.
+  - [x] Registry A/B: **696,708,969 -> 696,729,615** native cycles; 20,646 net
+    cycles added, 446 admitted routines, 376 entered, and no abandonments.
 
 ## Active Work
 
-Current owner: Codex. Current slice: **the center Skeleton-Insect presentation
-toggle at `02:561A`**. Done.
+Current owner: Codex. Current slice: **the center Skeleton-Insect post-delay
+handoff and idle opening gate at `02:5625/5630`**. Done.
 
-The standalone transcript owns the three toggle instructions, reproduces the
+The `02:5625` transcript clears the presentation bit, reproduces the
 `JSR $C018` stack frame, and composes the existing coroutine scheduler at
-`01:C5C9`. Fifteen calls decrement the delay; the last installs `02:5625`.
-One direct call contains the original timer interrupt and remains exact.
+`01:C5C9`. The `02:5630` transcript covers the proven idle gate through every
+instruction boundary and absorbs its return. Six direct calls contain original
+timer interrupts and remain exact; active opening continues in assembly.
 
 | | Before | After |
 | --- | ---: | ---: |
-| Gross native ownership at `02:561A` | 0 | **2,643** |
-| Replaced child credit at `01:C018/C5C9` | 2,103 | **0** |
-| Registry cycles | 696,708,429 | **696,708,969** |
+| Gross native ownership at `02:5625/5630` | 0 | **20,838** |
+| Replaced child credit at `01:C018/C5C9` | 192 | **0** |
+| Registry cycles | 696,708,969 | **696,729,615** |
 | Native share | 53.91% | **53.91%** |
 | Native share outside the wait | 98.06% | **98.06%** |
-| Admitted routines | 443 | **444** |
-| Proven native calls | 3,607,480 | **3,607,496** |
-| Bank `02` non-entry remainder | 313,098 | **312,558** |
+| Admitted routines | 444 | **446** |
+| Proven native calls | 3,607,496 | **3,607,726** |
+| Measured bank `02` non-entry remainder | 312,558 | **290,967** |
 
-Next: continue through the installed center-target continuations at
-`02:5625/5630`, now the adjacent 20,835-cycle residue, or re-screen the larger
-bank-`02` boundaries if those continuations yield mostly existing child credit.
+Next: screen the real `02:5249` Devil-Shooter coroutine entry and its
+`02:524C/5253` residue, now the largest compact bank-`02` candidate after the
+known `02:4CF1` handoff residue.
+
+### Previous: the center Skeleton-Insect presentation toggle
+
+The `02:561A` transcript owns the three toggle instructions, reproduces the
+`JSR $C018` stack frame, and composes the existing coroutine scheduler. Fifteen
+calls decrement the delay; the last installs `02:5625`. One direct call
+contains the original timer interrupt and remains exact.
 
 ### Previous: the shared Devil-Shooter charge-position return
 

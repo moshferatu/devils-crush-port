@@ -877,6 +877,16 @@ replace_skeleton_insect_center_toggle(
     std::span<const std::byte> work_ram);
 
 [[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_skeleton_insect_center_post_delay_handoff(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram);
+
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_skeleton_insect_center_opening_gate(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram);
+
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
 replace_devils_coffin_gate(
     const emulation::RoutineEntry& entry,
     std::span<const std::byte> work_ram);

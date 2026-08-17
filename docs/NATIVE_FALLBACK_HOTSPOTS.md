@@ -3570,6 +3570,23 @@ so the measured net gain is 540 cycles. The registry reaches 696,708,969 and
 bank `02`'s non-entry remainder falls to 312,558. The adjacent
 `02:5625-5641` continuation is now the compact 20,835-cycle residue to screen.
 
+That screen resolves two genuine coroutine boundaries. `02:5625` executes
+once, clears `$3080,X.5`, and composes the existing scheduler to install
+`02:5630`; its exact transcript is 228 cycles and eight writes. `02:5630`
+executes 229 times. Every observed call finds `$53.1`, `$53.3`, and `$2CC7`
+clear and returns at `02:5641`; six calls contain original timer interrupts at
+different instruction boundaries.
+
+Semantic `02:5625@all` owns the handoff, while semantic `02:5630@all` publishes
+all eight idle-gate boundaries and absorbs the return. The active opening arm
+at `02:5642` remains assembly-backed because the route does not exercise it.
+The pair owns 20,838 gross cycles and displaces 192 cycles of existing
+`01:C018/C5C9` child credit, adding 20,646 net cycles. The registry reaches
+696,729,615 cycles across 446 routines; a fresh deployed profile measures
+290,967 remaining non-entry cycles in bank `02`. The next compact screen is
+the true `02:5249` Devil-Shooter coroutine entry and its `524C/5253` residue;
+`02:4CF1` remains known handoff residue.
+
 ## Use on future families
 
 Follow the command and interpretation rules in

@@ -2352,6 +2352,17 @@ they own 2,643 cycles while displacing 2,103 cycles formerly credited to
 native children `01:C018/C5C9`. The net gain is 540 cycles, taking the
 deployed total to 696,708,969 and bank `02`'s remainder to 312,558 cycles.
 
+`02:5625` is the center Skeleton-Insect's one-time post-delay handoff. Its
+228-cycle/eight-write transcript clears `$3080,X.5`, reproduces the scheduler
+call frame, and composes native `01:C5C9` to install `02:5630`. `02:5630`
+then owns all 229 observed idle opening checks through eight exact instruction
+boundaries and absorbs `RTS` at `02:5641`. Six calls retain their original
+timer interrupts; the unobserved opening branch at `02:5642` stays in assembly.
+Together the entries own 20,838 gross cycles, displace 192 cycles of existing
+child credit, and add 20,646 net cycles. The deployed registry reaches
+696,729,615 cycles across 446 admitted routines with zero horizon declines or
+abandonments.
+
 
 ## What is left
 
@@ -2831,8 +2842,12 @@ accept a call.
 | `02:545D` | 1 | 1 | `verify_devil_shooter_companion_dormant_semantic` |
 | `02:54B9` | 1,631 | 1,631 | `verify_skeleton_insect_left_gate_semantic` |
 | `02:5551` | 336 | 336 | `verify_skeleton_insect_right_gate_semantic` |
+| `02:5590` | 1,084 | 1,084 | `verify_skeleton_insects` |
 | `02:55F9` | 2,403 | 2,403 | `verify_skeleton_insect_center_gate_semantic` |
 | `02:5604` | 1 | 1 | `verify_skeleton_insect_center_continuation_semantic`, `verify_skeleton_insect_center_gate_semantic` |
+| `02:561A` | 16 | 16 | `verify_skeleton_insects` |
+| `02:5625` | 1 | 1 | `verify_skeleton_insects` |
+| `02:5630` | 229 | 229 | `verify_skeleton_insects` |
 | `02:565C` | 1 | 1 | `verify_big_star_initializer_semantic` |
 | `02:5674` | 199 | 490 | `verify_big_star_pending_gate_semantic` (patched route) |
 | `02:570A` | 290 | 291 | `verify_big_star_pending_gate_semantic` (patched route) |

@@ -3518,6 +3518,19 @@ countdown path; the final 249-cycle call installs dispatch `02:5625` in
 the same original instructions. Focused replay `02:561A@1` verifies its six
 ordered writes and the family regression preserves all 16 direct calls.
 
+Semantic `02:5625@all` owns the one-time post-delay handoff. It loads the
+center target's presentation state, clears bit 5, writes the exact `JSR $C018`
+stack frame, and composes native scheduler `01:C5C9` to install `02:5630`.
+Focused replay `02:5625@1` verifies frame 3,371's 228 body cycles and eight
+ordered writes.
+
+Semantic `02:5630@all` owns the subsequent idle opening gate. All 229 observed
+calls find session bits `$53.1/$53.3` and global gate `$2CC7` clear, traverse
+eight exact instruction boundaries, and return through absorbed `02:5641`.
+Six timer-interrupt passages remain at their original boundaries. Focused
+replay `02:5630@1` verifies frame 3,372's 69-cycle, zero-write body. The
+unobserved opening branch at `02:5642` remains assembly-backed.
+
 All 23 idle interrupt-handler passages and the one interrupt inside the
 assembly-owned drawing helper remain exact. Debug and Release preserve the
 complete outer 2,403-call/391-write artifacts:

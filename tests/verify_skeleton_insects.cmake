@@ -79,8 +79,12 @@ execute_process(
         "02:561A@all"
         --observe-hook
         "02:5625"
+        --replace-hook
+        "02:5625@all"
         --observe-hook
         "02:5630"
+        --replace-hook
+        "02:5630@all"
         --routine-trace
         "${trace_output}"
         --routine-call-trace
@@ -95,6 +99,10 @@ execute_process(
         "02:55F9@1"
         --routine-replay
         "02:561A@1"
+        --routine-replay
+        "02:5625@1"
+        --routine-replay
+        "02:5630@1"
         --work-ram-write-range
         "2CFC-2CFC"
         --work-ram-write-range
@@ -138,6 +146,8 @@ foreach(expected_line IN ITEMS
     "State census recording complete: 3600 frames"
     "Native replacement 02:5590@all entries: 1084 of 1084"
     "Native replacement 02:561A@all entries: 16 of 16"
+    "Native replacement 02:5625@all entries: 1 of 1"
+    "Native replacement 02:5630@all entries: 229 of 229"
     "Routine trace complete: 5805 entries"
     "Routine call trace complete: 5805 calls, 1316 writes"
     "Routine replay 02:54B9@1 verified: frame 873"
@@ -145,7 +155,9 @@ foreach(expected_line IN ITEMS
     "Routine replay 02:5590@1 verified: frame 2191, 54 body cycles, 0 ordered writes"
     "Routine replay 02:55F9@1 verified: frame 942"
     "Routine replay 02:561A@1 verified: frame 3353, 171 body cycles, 6 ordered writes"
-    "Routine replay complete: 5 state-normalized calls"
+    "Routine replay 02:5625@1 verified: frame 3371, 228 body cycles, 8 ordered writes"
+    "Routine replay 02:5630@1 verified: frame 3372, 69 body cycles, 0 ordered writes"
+    "Routine replay complete: 7 state-normalized calls"
     "Work-RAM write trace complete: 3882 selected writes"
 )
     string(FIND "${recorder_output}" "${expected_line}" line_offset)
