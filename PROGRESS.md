@@ -26,11 +26,19 @@ high byte. The deterministic 1,800-frame route now executes 18,806 of 19,648
 preserving the byte-identical gameplay artifact, complete 19,648-call trace,
 and all 180,389 ordered writes.
 
-The deployed registry now runs **696,591,984 of 1,292,371,731 master cycles
-natively, 53.90% of the route and 98.04% of everything outside the frame-sync
+The deployed registry now runs **696,611,766 of 1,292,371,731 master cycles
+natively, 53.90% of the route and 98.05% of everything outside the frame-sync
 wait**, across 440 admitted routines with no transcript declined at an
 interrupt horizon and none abandoned. The 3,600-frame state census remains
 `9036a9de0c3c9917f47bff8c04c136a4824ec12601fb457d260aa2dfe4443490`.
+
+The Devil-Shooter companion appearance leaf is fully native. `02:5408` now
+publishes every original instruction boundary on its cached, advance, and
+reset paths, so all 1,288 calls and all 22 interrupt-bearing variants stay in
+the native transaction before `02:5420` is absorbed. The focused census,
+5,406-call trace, and all 6,353 ordered writes remain byte-identical. The slice
+adds 19,782 registry cycles and reduces bank `02`'s non-entry remainder to
+402,093.
 
 The Devil-Shooter companion position leaf is fully native. `02:5397` now
 publishes all eight original instruction boundaries, including the two stores,
@@ -6371,33 +6379,35 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
 
 ## Active Work
 
-Current owner: Codex. Current slice: **the Devil-Shooter companion position
+Current owner: Codex. Current slice: **the Devil-Shooter companion appearance
 leaf**. Done.
 
-`02:5397` is an eight-instruction fixed-slot coordinate update. The existing
-typed classifier and two-write body were already exact; only its atomic event
-horizon prevented 387 of 1,260 calls from entering. The adapter now publishes
-the original boundaries after `LDA`, `LSR`, `CLC`, both `ADC`s, `CLA`, and both
-stores, then absorbs `RTS` at `02:53A7`. This preserves all 47 original
-interrupt passages without exposing any interior address as a new routine.
+`02:5408` is a fixed-slot appearance update with 42-cycle cached, 105-cycle
+advance, and 114-cycle reset paths. The existing typed classifier and three
+write transcript were already exact; only its atomic event horizon prevented
+273 of 1,288 calls from entering. The adapter now publishes every original
+boundary after `LDA`, `CMP`, both branches, `STA`, `INC`, the second `LDA/CMP`,
+and optional `STZ`, then absorbs `RTS` at `02:5420`. This preserves all 22
+original interrupt passages without exposing an interior address as a new
+routine.
 
 The Release family regression preserves its canonical census, complete
 5,406-call trace, and all 6,353 ordered writes. The existing normalized sample
-remains 75 body cycles and two writes.
+remains 42 body cycles and zero writes.
 
 | | Before | After |
 | --- | ---: | ---: |
-| Native ownership at `02:5397` | 82,653 | **120,960** |
-| Registry cycles | 696,553,677 | **696,591,984** |
+| Native ownership at `02:5408` | 65,187 | **84,969** |
+| Registry cycles | 696,591,984 | **696,611,766** |
 | Native share | 53.90% | **53.90%** |
-| Native share outside the wait | 98.04% | **98.04%** |
-| Proven native calls | 3,605,689 | **3,606,076** |
-| Bank `02` non-entry remainder | 452,178 | **418,428** |
+| Native share outside the wait | 98.04% | **98.05%** |
+| Proven native calls | 3,606,076 | **3,606,349** |
+| Bank `02` non-entry remainder | 418,428 | **402,093** |
 
-Next: apply the same checkpoint screen to partial semantic `02:5408`, the
-Devil-Shooter companion appearance leaf. It currently leaves 273 near-horizon
-calls and its `02:540B/5420` interior residue in assembly; `02:4CF1` remains
-known residue from already-bounded handoff arms.
+Next: apply the same checkpoint screen to the shared `02:53DD/5456`
+Devil-Shooter dormant companion leaf pair. Their two-instruction idle paths
+currently leave 285 near-horizon calls and the `02:53E3/545C` return residue in
+assembly; `02:4CF1` remains known residue from already-bounded handoff arms.
 
 ### Previous: the score panel's glyph writer
 

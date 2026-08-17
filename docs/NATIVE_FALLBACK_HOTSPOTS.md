@@ -819,9 +819,9 @@ byte-identical. A separate fresh sibling profile then admitted the direct
 absorbing `RTS` at `02:53A7`. A fresh expanded profile then admitted all three
 no-interrupt `02:5408` charge-appearance branches: cached 42-cycle returns,
 105-cycle cache/advance updates, and 114-cycle cache/advance/reset updates.
-Semantic `02:5408@all` now covers 1,015 of 1,288 calls; 273 calls at an
-event/IRQ horizon, including all 22 interrupt-bearing variants, remain in
-assembly.
+All three paths now publish their original instruction boundaries, so semantic
+`02:5408@all` covers all 1,288 calls, including all 22 interrupt-bearing
+variants, and absorbs the return at `02:5420`.
 
 ## Devil-Shooter right active-timer leaf
 
@@ -3442,6 +3442,26 @@ canonical census, full family call trace, and ordered writes remain exact;
 bank `02`'s non-entry remainder falls to 418,428. The next useful checkpoint
 screen is partial semantic `02:5408` and its `540B/5420` residue. The larger
 `02:4CF1` row remains known handoff residue.
+
+## Devil-Shooter companion appearance checkpoints
+
+The `02:5408` appearance semantic was exact but atomic: 273 of 1,288 calls
+reached a user-event or timer-IRQ horizon within its 42/105/114-cycle cached,
+advance, or reset body. Publishing all retired instruction boundaries admits
+every call and preserves all 22 original interrupt passages. In particular,
+the checkpoint after indexed `INC $3980,X` carries the incremented memory
+value's temporary N/Z flags before the following load replaces A and N/Z. The
+return is checkpointed and absorbed rather than registered as a false routine
+boundary.
+
+The routine now owns 84,969 native cycles, adding 19,782 to the deployed
+registry for 696,611,766 total (53.90%, or 98.05% outside the wait). The
+canonical census, full family call trace, and ordered writes remain exact;
+bank `02`'s non-entry remainder falls to 402,093, and the old `540B/5420`
+interior rows disappear. The next compact checkpoint screen is the shared
+`02:53DD/5456` dormant companion leaf pair, which currently leaves 285
+near-horizon calls in assembly. The larger `02:4CF1` row remains known
+handoff residue.
 
 ## Use on future families
 

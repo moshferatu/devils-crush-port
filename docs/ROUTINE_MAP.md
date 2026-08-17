@@ -8457,12 +8457,12 @@ zero-to-two source appearance state.
 The adapter preserves the 42-cycle cached return, 105-cycle cache/advance,
 and 114-cycle cache/advance/reset transcripts. Its writes remain anchored at
 `02:5410`, `02:5413`, and (on reset) `02:541D`, with offsets 51, 72, and 114.
-It preserves the original CMP flags and declines transfer-mode or event/IRQ
-horizon calls. It therefore replaces 1,015 of 1,288 focused Release calls;
-the 273 near-horizon calls, including all 22 interrupt-bearing variants,
-continue through assembly. The extended companion regression preserves the
-same byte-identical artifacts and shadows ordinal ten at frame 949 with the
-42-cycle, zero-write cached path.
+It publishes every retired-instruction boundary on all three paths, including
+the indexed increment's temporary N/Z result, and absorbs `RTS` at `02:5420`.
+Only transfer mode remains outside the contract. All 1,288 focused Release
+calls now execute natively, including all 22 interrupt-bearing variants. The
+extended companion regression preserves the same byte-identical artifacts and
+shadows ordinal ten at frame 949 with the 42-cycle, zero-write cached path.
 
 ### Sixty-first native replacement: semantic `02:545D@all`
 

@@ -82,7 +82,7 @@ endif()
 foreach(expected_line IN ITEMS
     "State census recording complete: 3600 frames"
     "Native replacement 02:5397@all entries: 1260 of 1260"
-    "Native replacement 02:5408@all entries: 1015 of 1288"
+    "Native replacement 02:5408@all entries: 1288 of 1288"
     "Native replacement 02:53C8@all entries: 180 of 266"
     "Native replacement 02:53E4@all entries: 34 of 92"
     "Native replacement 02:5441@all entries: 174 of 267"

@@ -279,7 +279,7 @@ DC_ADMITTED_ROUTINE(0x02U, 0x5397U, 1260, 1260, "verify_devil_shooter_companion_
 DC_ADMITTED_ROUTINE(0x02U, 0x53C8U, 180, 266, "verify_devil_shooter_companion_dormant_semantic")
 DC_ADMITTED_ROUTINE(0x02U, 0x53DDU, 929, 1055, "verify_devil_shooter_companion_dormant_semantic")
 DC_ADMITTED_ROUTINE(0x02U, 0x53E4U, 34, 92, "verify_devil_shooter_companion_dormant_semantic")
-DC_ADMITTED_ROUTINE(0x02U, 0x5408U, 1015, 1288, "verify_devil_shooter_companion_dormant_semantic")
+DC_ADMITTED_ROUTINE(0x02U, 0x5408U, 1288, 1288, "verify_devil_shooter_companion_dormant_semantic")
 DC_ADMITTED_ROUTINE(0x02U, 0x5441U, 174, 267, "verify_devil_shooter_companion_dormant_semantic")
 DC_ADMITTED_ROUTINE(0x02U, 0x5456U, 926, 1085, "verify_devil_shooter_companion_dormant_semantic")
 DC_ADMITTED_ROUTINE(0x02U, 0x545DU, 45, 93, "verify_devil_shooter_companion_dormant_semantic")

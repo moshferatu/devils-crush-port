@@ -2072,10 +2072,6 @@ replace_devil_shooter_companion_appearance(
     const bool is_reset = appearance.path
         == DC_DEVIL_SHOOTER_COMPANION_APPEARANCE_RESET;
     const std::uint32_t body_cycles = is_idle ? 42U : is_reset ? 114U : 105U;
-    if (entry.master_cycles_until_user_event <= body_cycles
-        || entry.master_cycles_until_timer_interrupt <= body_cycles) {
-        return std::nullopt;
-    }
 
     auto output = entry.registers;
     output.program_counter = 0x5420U;
@@ -2128,15 +2124,81 @@ replace_devil_shooter_companion_appearance(
             });
         }
     }
-    if (absorbed_return_fits_atomically(entry, body_cycles)) {
-        absorb_return(
-            replacement,
-            work_ram,
-            entry.registers.stack_pointer,
-            {0x02U, 0x5420U},
-            body_cycles,
-            output);
+
+    const auto set_nz = [](std::uint8_t status, const std::uint8_t value) {
+        status = static_cast<std::uint8_t>(status & 0x7DU);
+        if (value == 0U) {
+            status = static_cast<std::uint8_t>(status | 0x02U);
+        } else if ((value & 0x80U) != 0U) {
+            status = static_cast<std::uint8_t>(status | 0x80U);
+        }
+        return status;
+    };
+    const auto append_checkpoint =
+        [&replacement](
+            const std::uint16_t instruction_pc,
+            const std::uint16_t resume_pc,
+            const std::uint32_t master_cycle,
+            auto registers) {
+            registers.program_counter = resume_pc;
+            replacement.checkpoints.push_back({
+                .interrupt_sample_master_cycle_offset = master_cycle - 3U,
+                .master_cycle_offset = master_cycle,
+                .instruction = {0x02U, instruction_pc},
+                .registers = registers,
+            });
+        };
+
+    auto checkpoint = entry.registers;
+    checkpoint.accumulator = appearance.charge;
+    checkpoint.status = set_nz(checkpoint.status, checkpoint.accumulator);
+    append_checkpoint(0x5408U, 0x540BU, 15U, checkpoint);
+
+    checkpoint.status = cmp_status(
+        checkpoint.status,
+        appearance.charge,
+        appearance.cached_charge);
+    append_checkpoint(0x540BU, 0x540EU, 30U, checkpoint);
+    append_checkpoint(
+        0x540EU,
+        is_idle ? 0x5420U : 0x5410U,
+        is_idle ? 42U : 36U,
+        checkpoint);
+
+    if (!is_idle) {
+        append_checkpoint(0x5410U, 0x5413U, 51U, checkpoint);
+
+        checkpoint.status = set_nz(
+            checkpoint.status,
+            appearance.advanced_appearance);
+        append_checkpoint(0x5413U, 0x5416U, 72U, checkpoint);
+
+        checkpoint.accumulator = appearance.advanced_appearance;
+        checkpoint.status = set_nz(checkpoint.status, checkpoint.accumulator);
+        append_checkpoint(0x5416U, 0x5419U, 87U, checkpoint);
+
+        checkpoint.status = cmp_status(
+            checkpoint.status,
+            appearance.advanced_appearance,
+            0x03U);
+        append_checkpoint(0x5419U, 0x541BU, 93U, checkpoint);
+        append_checkpoint(
+            0x541BU,
+            is_reset ? 0x541DU : 0x5420U,
+            is_reset ? 99U : 105U,
+            checkpoint);
+        if (is_reset) {
+            append_checkpoint(0x541DU, 0x5420U, 114U, checkpoint);
+        }
     }
+
+    absorb_return(
+        replacement,
+        work_ram,
+        entry.registers.stack_pointer,
+        {0x02U, 0x5420U},
+        body_cycles,
+        output);
     return replacement;
 }
 
