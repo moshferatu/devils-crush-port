@@ -1722,9 +1722,7 @@ replace_devil_shooter_companion_dormant(
         .logical_pc = 0x5456U,
     };
     if ((entry.routine != kLeftRoutine && entry.routine != kRightRoutine)
-        || (entry.registers.status & 0x20U) != 0U
-        || entry.master_cycles_until_user_event <= 24U
-        || entry.master_cycles_until_timer_interrupt <= 24U) {
+        || (entry.registers.status & 0x20U) != 0U) {
         return std::nullopt;
     }
 
@@ -1769,19 +1767,36 @@ replace_devil_shooter_companion_dormant(
         .output_registers = output,
         .body_master_cycles = 24U,
     };
+    const auto load_pc = entry.routine.logical_pc;
+    const auto and_pc = static_cast<std::uint16_t>(load_pc + 2U);
+    const auto branch_pc = static_cast<std::uint16_t>(and_pc + 2U);
+    const auto append_checkpoint =
+        [&replacement](
+            const std::uint16_t instruction_pc,
+            const std::uint16_t resume_pc,
+            const std::uint32_t master_cycle,
+            auto registers) {
+            registers.program_counter = resume_pc;
+            replacement.checkpoints.push_back({
+                .interrupt_sample_master_cycle_offset = master_cycle - 3U,
+                .master_cycle_offset = master_cycle,
+                .instruction = {0x02U, instruction_pc},
+                .registers = registers,
+            });
+        };
+    append_checkpoint(load_pc, and_pc, 12U, checkpoint);
+    append_checkpoint(and_pc, branch_pc, 18U, output);
+    append_checkpoint(branch_pc, return_pc, 24U, output);
     // Both dormant arms end on their own routine's `RTS`, one per companion.
-    // The transcript has no checkpoints, so absorbing the return adds none
-    // either: an atomic body stays atomic across the seam, and has to fit
-    // inside the same horizon it already fits inside.
-    if (absorbed_return_fits_atomically(entry, 24U)) {
-        absorb_return(
-            replacement,
-            work_ram,
-            entry.registers.stack_pointer,
-            {0x02U, return_pc},
-            24U,
-            output);
-    }
+    // The instruction transcript above permits an interrupt or user event at
+    // every retired boundary, including the seam before that return.
+    absorb_return(
+        replacement,
+        work_ram,
+        entry.registers.stack_pointer,
+        {0x02U, return_pc},
+        24U,
+        output);
     return replacement;
 }
 

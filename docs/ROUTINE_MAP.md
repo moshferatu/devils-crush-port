@@ -8414,16 +8414,18 @@ initializer only when that bit is set, and otherwise reaches a 24-cycle,
 zero-write return.
 
 The native classifier admits only slots `$0A/$0D` with session bit three
-clear and a non-transfer CPU state. To retain original interrupt ordering, it
-also requires both core event horizons to lie beyond the 24-cycle body. It
-therefore replaces 929 of 1,055 left calls and 926 of 1,085 right calls; the
-285 near-horizon calls and all active-loop paths remain assembly-backed.
+clear and a non-transfer CPU state. The adapter publishes exact checkpoints
+after the 12-cycle `LDA`, 18-cycle `AND`, and 24-cycle not-taken branch, then
+absorbs each leaf's own `RTS`. It therefore replaces all 1,055 left calls and
+all 1,085 right calls, including 20 interrupt-bearing variants; active-loop
+paths remain assembly-backed.
 `dc_rom_devil_shooter_companion_dormant_semantic` preserves the full focused
 Release census, call, and ordered-write artifacts with SHA-256
 `9036a9de0c3c9917f47bff8c04c136a4824ec12601fb457d260aa2dfe4443490`,
 `71a87a8e3d59e242da052cd7b7c4eacf413496c715c07fb150a615950115aa3e`, and
 `e500c93431055858526410570490516a6a9058f42928fa8e72643df30d8332e0`.
 It also shadows ordinal ten at frames 2,145 and 2,141 respectively.
+The deployed pair owns 96,300 native master cycles.
 
 ### Fifty-ninth native replacement: semantic `02:5397@all`
 

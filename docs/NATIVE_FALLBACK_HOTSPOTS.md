@@ -808,11 +808,12 @@ the two session-dormant leaves are compact, state-derived returns.
 | `02:53DD` left dormant leaf | 1,055 | 33,573 | 152 | 35,397 |
 | `02:5456` right dormant leaf | 1,085 | 32,316 | 115 | 33,696 |
 
-Semantic `02:53DD/5456@all` now replaces their session-bit-three-clear,
-non-transfer, event-horizon-safe returns: 929 left and 926 right calls. The
-285 calls too close to a user event or timer IRQ retain assembly execution,
-so the complete 3,600-frame census, call, and ordered-write artifacts remain
-byte-identical. A separate fresh sibling profile then admitted the direct
+Semantic `02:53DD/5456@all` now replaces every session-bit-three-clear,
+non-transfer return: all 1,055 left and 1,085 right calls. Three exact
+instruction checkpoints preserve all 20 user-event or timer-IRQ passages
+before the paired returns are absorbed, so the complete 3,600-frame census,
+call, and ordered-write artifacts remain byte-identical. A separate fresh
+sibling profile then admitted the direct
 `02:5397` charge-position transcript. Its initial atomic form handled 873 of
 1,260 calls; all eight original instruction checkpoints now admit the other
 387 near-horizon calls and preserve all 47 interrupt-bearing variants before
@@ -3462,6 +3463,24 @@ interior rows disappear. The next compact checkpoint screen is the shared
 `02:53DD/5456` dormant companion leaf pair, which currently leaves 285
 near-horizon calls in assembly. The larger `02:4CF1` row remains known
 handoff residue.
+
+## Devil-Shooter dormant companion checkpoints
+
+The mirrored `02:53DD/5456` dormant semantics were exact but atomic: 285 of
+2,140 calls reached a user-event or timer-IRQ horizon within the 24-cycle
+`LDA $53` / `AND #$08` / not-taken `BNE` body. Publishing the boundaries at
+12, 18, and 24 master cycles admits every call and preserves all 20 original
+interrupt passages. Each transcript absorbs its own return at `02:53E3/545C`;
+the active, taken-branch path remains assembly-owned.
+
+The two routines now own 96,300 native cycles, adding 16,878 to the deployed
+registry for 696,628,644 total (53.90%, or 98.05% outside the wait). The
+canonical census, full family call trace, and ordered writes remain exact;
+bank `02`'s non-entry remainder falls to 387,987, and the old dormant-body and
+return residue disappears. The next compact checkpoint screen is the mirrored
+`02:53C8/5441` active companion controller pair, which currently leaves 179
+near-horizon calls in assembly. The larger `02:4CF1` row remains known handoff
+residue.
 
 ## Use on future families
 
