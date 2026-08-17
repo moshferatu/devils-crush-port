@@ -728,6 +728,15 @@ replace_tower_insect_animation(
     const emulation::RoutineEntry& entry,
     std::span<const std::byte> work_ram);
 
+// Shared type-$8F impact-burst lifetime controller at 02:42B0. The waiting
+// and animation paths absorb their RTS; inactive and terminal effects hand
+// off to the registered generic actor clear through 01:C027.
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_impact_burst_lifetime(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram,
+    std::span<const std::byte> rom);
+
 [[nodiscard]] std::optional<emulation::RoutineReplacement>
 replace_tower_insect_collision_call(
     const emulation::RoutineEntry& entry,

@@ -230,6 +230,7 @@ DC_ADMITTED_ROUTINE(0x02U, 0x425AU, 1, 14, "verify_knight_terminal_release_helpe
 DC_ADMITTED_ROUTINE(0x02U, 0x425DU, 1, 14, "verify_knight_terminal_release_helper_post_return_actor_field_constant_load_prefix")
 DC_ADMITTED_ROUTINE(0x02U, 0x425FU, 1, 14, "verify_knight_terminal_release_helper_post_return_actor_field_constant_store_prefix")
 DC_ADMITTED_ROUTINE(0x02U, 0x4262U, 1, 14, "verify_knight_terminal_release_helper_post_return_actor_field_second_constant_load_prefix")
+DC_ADMITTED_ROUTINE(0x02U, 0x42B0U, 252, 252, "verify_impact_burst")
 DC_ADMITTED_ROUTINE(0x02U, 0x42EBU, 1, 1, "verify_dragon_egg_controller_initializer_semantic")
 DC_ADMITTED_ROUTINE(0x02U, 0x42F6U, 1790, 1790, "verify_dragon_egg_controller_semantic")
 DC_ADMITTED_ROUTINE(0x02U, 0x433FU, 6, 6, "verify_dragon_egg_initializer_semantic")

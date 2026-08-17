@@ -883,6 +883,14 @@ Provide an interactive monitor-assignment screen and persist display identity, g
   all 260 calls and 4,016 writes. The deployed registry now covers 696,672,981
   master cycles (53.91%, or 98.06% outside the wait) across 441 routines, and
   bank `02`'s non-entry remainder falls to 348,906 cycles.
+  Semantic `02:42B0@all` now owns the complete shared impact-burst lifetime.
+  All 252 calls preserve the timer, phase, ROM-table appearance, and terminal
+  actor-clear paths at every instruction boundary. The two clear paths compose
+  registered `01:C027`/`01:C574`; the other paths absorb `RTS` at `02:42E0`.
+  Direct assembly/native traces preserve all 252 calls and 1,502 writes. The
+  deployed registry now covers 696,703,578 master cycles (53.91%, or 98.06%
+  outside the wait) across 442 routines, and bank `02`'s non-entry remainder
+  falls to 317,949 cycles.
   The larger `01:D525` controller remains a decomposition boundary: its 128
   census calls span 29-1,456 writes and 1,035-49,122 body master cycles, so
   the largest live paths exceed the bridge's independent 512-write limit.

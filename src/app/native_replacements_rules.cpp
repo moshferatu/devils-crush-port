@@ -6787,6 +6787,222 @@ replace_spider_appearance(
 }
 
 [[nodiscard]] std::optional<RoutineReplacement>
+replace_impact_burst_lifetime(
+    const RoutineEntry& entry,
+    const std::span<const std::byte> work_ram,
+    const std::span<const std::byte> rom)
+{
+    constexpr RoutineKey kRoutine{
+        .physical_bank = 0x02U,
+        .logical_pc = 0x42B0U,
+    };
+    constexpr std::size_t kFlagsOffset = 0x1080U;
+    constexpr std::size_t kTimerOffset = 0x1A00U;
+    constexpr std::size_t kPhaseOffset = 0x1A80U;
+    constexpr std::size_t kPointerLowOffset = 0x1E00U;
+    constexpr std::size_t kPointerHighOffset = 0x1E80U;
+    if (entry.routine != kRoutine || entry.registers.x > 0x7FU
+        || work_ram.size() < 0x2000U || rom.empty()) {
+        return std::nullopt;
+    }
+
+    const auto set_nz = [](std::uint8_t status, const std::uint8_t value) {
+        status = static_cast<std::uint8_t>(status & 0x7DU);
+        if (value == 0U) {
+            status = static_cast<std::uint8_t>(status | 0x02U);
+        } else if ((value & 0x80U) != 0U) {
+            status = static_cast<std::uint8_t>(status | 0x80U);
+        }
+        return status;
+    };
+    const auto compare = [&set_nz](
+                             std::uint8_t status,
+                             const std::uint8_t left,
+                             const std::uint8_t right) {
+        status = static_cast<std::uint8_t>(status & 0xFEU);
+        if (left >= right) {
+            status = static_cast<std::uint8_t>(status | 0x01U);
+        }
+        return set_nz(status, static_cast<std::uint8_t>(left - right));
+    };
+
+    RoutineReplacement replacement{};
+    const auto append_checkpoint = [&replacement](
+                                       const std::uint16_t instruction_pc,
+                                       const std::uint16_t resume_pc,
+                                       const std::uint32_t master_cycle,
+                                       auto registers) {
+        registers.program_counter = resume_pc;
+        replacement.checkpoints.push_back({
+            .interrupt_sample_master_cycle_offset = master_cycle - 3U,
+            .master_cycle_offset = master_cycle,
+            .instruction = {0x02U, instruction_pc},
+            .registers = registers,
+        });
+    };
+    const auto add_write = [&replacement](
+                               const std::uint16_t instruction_pc,
+                               const std::uint16_t logical_address,
+                               const std::uint8_t value,
+                               const std::uint32_t master_cycle) {
+        replacement.work_ram_writes.push_back({
+            .instruction = {0x02U, instruction_pc},
+            .logical_address = logical_address,
+            .value = value,
+            .master_cycle_offset = master_cycle,
+        });
+    };
+    const auto handoff_to_clear = [&replacement, &entry](
+                                      const std::uint32_t body_cycles,
+                                      auto registers) {
+        registers.program_counter = 0xC027U;
+        replacement.return_instruction = {
+            entry.registers.mpr[0xC027U >> 13U],
+            0xC027U,
+        };
+        replacement.output_registers = registers;
+        replacement.body_master_cycles = body_cycles;
+    };
+
+    const auto slot = entry.registers.x;
+    auto checkpoint = entry.registers;
+    checkpoint.accumulator = std::to_integer<std::uint8_t>(
+        work_ram[kFlagsOffset + slot]);
+    checkpoint.status = set_nz(checkpoint.status, checkpoint.accumulator);
+    append_checkpoint(0x42B0U, 0x42B3U, 15U, checkpoint);
+
+    if ((checkpoint.accumulator & 0x80U) == 0U) {
+        append_checkpoint(0x42B3U, 0x42B5U, 21U, checkpoint);
+        append_checkpoint(0x42B5U, 0xC027U, 33U, checkpoint);
+        handoff_to_clear(33U, checkpoint);
+        return replacement;
+    }
+    append_checkpoint(0x42B3U, 0x42B8U, 27U, checkpoint);
+
+    const auto decremented_timer = static_cast<std::uint8_t>(
+        std::to_integer<std::uint8_t>(work_ram[kTimerOffset + slot]) - 1U);
+    checkpoint.status = set_nz(checkpoint.status, decremented_timer);
+    add_write(
+        0x42B8U,
+        static_cast<std::uint16_t>(0x3A00U + slot),
+        decremented_timer,
+        48U);
+    append_checkpoint(0x42B8U, 0x42BBU, 48U, checkpoint);
+
+    if (decremented_timer != 0U) {
+        append_checkpoint(0x42BBU, 0x42E0U, 60U, checkpoint);
+        absorb_return(
+            replacement,
+            work_ram,
+            entry.registers.stack_pointer,
+            {0x02U, 0x42E0U},
+            60U,
+            checkpoint);
+        return replacement;
+    }
+    append_checkpoint(0x42BBU, 0x42BDU, 54U, checkpoint);
+
+    checkpoint.accumulator = 0x04U;
+    checkpoint.status = set_nz(checkpoint.status, checkpoint.accumulator);
+    append_checkpoint(0x42BDU, 0x42BFU, 60U, checkpoint);
+    add_write(
+        0x42BFU,
+        static_cast<std::uint16_t>(0x3A00U + slot),
+        checkpoint.accumulator,
+        75U);
+    append_checkpoint(0x42BFU, 0x42C2U, 75U, checkpoint);
+
+    checkpoint.y = std::to_integer<std::uint8_t>(
+        work_ram[kPhaseOffset + slot]);
+    checkpoint.status = set_nz(checkpoint.status, checkpoint.y);
+    append_checkpoint(0x42C2U, 0x42C5U, 90U, checkpoint);
+    checkpoint.y = static_cast<std::uint8_t>(checkpoint.y + 1U);
+    checkpoint.status = set_nz(checkpoint.status, checkpoint.y);
+    append_checkpoint(0x42C5U, 0x42C6U, 96U, checkpoint);
+    checkpoint.accumulator = checkpoint.y;
+    checkpoint.status = set_nz(checkpoint.status, checkpoint.accumulator);
+    append_checkpoint(0x42C6U, 0x42C7U, 102U, checkpoint);
+    add_write(
+        0x42C7U,
+        static_cast<std::uint16_t>(0x3A80U + slot),
+        checkpoint.accumulator,
+        117U);
+    append_checkpoint(0x42C7U, 0x42CAU, 117U, checkpoint);
+
+    const auto pointer_low = std::to_integer<std::uint8_t>(
+        work_ram[kPointerLowOffset + slot]);
+    checkpoint.accumulator = pointer_low;
+    checkpoint.status = set_nz(checkpoint.status, checkpoint.accumulator);
+    append_checkpoint(0x42CAU, 0x42CDU, 132U, checkpoint);
+    add_write(0x42CDU, 0x202FU, pointer_low, 144U);
+    append_checkpoint(0x42CDU, 0x42CFU, 144U, checkpoint);
+
+    const auto pointer_high = std::to_integer<std::uint8_t>(
+        work_ram[kPointerHighOffset + slot]);
+    checkpoint.accumulator = pointer_high;
+    checkpoint.status = set_nz(checkpoint.status, checkpoint.accumulator);
+    append_checkpoint(0x42CFU, 0x42D2U, 159U, checkpoint);
+    add_write(0x42D2U, 0x2030U, pointer_high, 171U);
+    append_checkpoint(0x42D2U, 0x42D4U, 171U, checkpoint);
+
+    const auto table_address = static_cast<std::uint16_t>(
+        static_cast<std::uint16_t>(pointer_low)
+        | (static_cast<std::uint16_t>(pointer_high) << 8U));
+    const auto selected_address = static_cast<std::uint16_t>(
+        table_address + checkpoint.y);
+    const auto selected_bank = entry.registers.mpr[selected_address >> 13U];
+    std::uint8_t selected_value = 0U;
+    if (selected_bank == 0xF8U) {
+        selected_value = std::to_integer<std::uint8_t>(
+            work_ram[selected_address & 0x1FFFU]);
+    } else {
+        // The supported 384-KiB HuCard mirrors banks $40-$7F onto its final
+        // 128 KiB. Resolve the live MPR exactly as the core does; hardware
+        // pages decline rather than fabricating a device read.
+        if (selected_bank >= 0x80U || rom.size() != 0x60000U) {
+            return std::nullopt;
+        }
+        const auto rom_bank = selected_bank < 0x40U
+            ? static_cast<std::size_t>(selected_bank & 0x1FU)
+            : static_cast<std::size_t>((selected_bank & 0x0FU) + 0x20U);
+        const auto selected_offset = rom_bank * 0x2000U
+            + static_cast<std::size_t>(selected_address & 0x1FFFU);
+        if (selected_offset >= rom.size()) {
+            return std::nullopt;
+        }
+        selected_value = std::to_integer<std::uint8_t>(rom[selected_offset]);
+    }
+    checkpoint.accumulator = selected_value;
+    checkpoint.status = set_nz(checkpoint.status, checkpoint.accumulator);
+    append_checkpoint(0x42D4U, 0x42D6U, 192U, checkpoint);
+    checkpoint.status = compare(checkpoint.status, checkpoint.accumulator, 0xFFU);
+    append_checkpoint(0x42D6U, 0x42D8U, 198U, checkpoint);
+
+    if (checkpoint.accumulator == 0xFFU) {
+        append_checkpoint(0x42D8U, 0x42DAU, 204U, checkpoint);
+        append_checkpoint(0x42DAU, 0xC027U, 216U, checkpoint);
+        handoff_to_clear(216U, checkpoint);
+        return replacement;
+    }
+
+    append_checkpoint(0x42D8U, 0x42DDU, 210U, checkpoint);
+    add_write(
+        0x42DDU,
+        static_cast<std::uint16_t>(0x3980U + slot),
+        checkpoint.accumulator,
+        225U);
+    append_checkpoint(0x42DDU, 0x42E0U, 225U, checkpoint);
+    absorb_return(
+        replacement,
+        work_ram,
+        entry.registers.stack_pointer,
+        {0x02U, 0x42E0U},
+        225U,
+        checkpoint);
+    return replacement;
+}
+
+[[nodiscard]] std::optional<RoutineReplacement>
 replace_tower_insect_animation(
     const RoutineEntry& entry,
     const std::span<const std::byte> work_ram)

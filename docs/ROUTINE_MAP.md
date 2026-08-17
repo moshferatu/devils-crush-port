@@ -3241,6 +3241,19 @@ The combined trace contains 14 calls and 1,231 ordered writes: five default
 spawns, two alternate spawns, and seven activations. The first normalized
 sample is `02:4290@1` at frame 1,852 with 4,362 cycles and 114 writes.
 
+Semantic `02:42B0@all` now covers all 252 steady-state lifetime calls. It
+reproduces the negative actor gate, four-tick timer, phase increment, indirect
+`$42E1,Y` animation-table read, appearance store, and `$FF` release at every
+instruction boundary. Its seven terminal paths compose the registered
+`01:C027` jump and `01:C574` actor reset; its wait and advance paths absorb
+the return at `02:42E0`. Assembly and native runs retain the canonical census
+and byte-identical direct artifacts:
+
+- Lifetime call SHA-256:
+  `02d0567d62b5130c74a6a310762badcb9b882bf03abe5d4983edd0415ee0f06d`
+- Lifetime write SHA-256:
+  `93774afdee74412026678a8e86f9cb969fc18ab8bf7924477ab25c3255d6dcae`
+
 The cabinet presentation route now closes the same effect at the copied SAT
 boundary. At frame 2,100, the Tower-insect result in dynamic slot `$71` is
 type `$8F`, appearance `$10`, phase 5, camera-active, and dispatched through

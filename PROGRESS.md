@@ -26,11 +26,20 @@ high byte. The deterministic 1,800-frame route now executes 18,806 of 19,648
 preserving the byte-identical gameplay artifact, complete 19,648-call trace,
 and all 180,389 ordered writes.
 
-The deployed registry now runs **696,672,981 of 1,292,371,731 master cycles
+The deployed registry now runs **696,703,578 of 1,292,371,731 master cycles
 natively, 53.91% of the route and 98.06% of everything outside the frame-sync
-wait**, across 441 admitted routines with no transcript declined at an
+wait**, across 442 admitted routines with no transcript declined at an
 interrupt horizon and none abandoned. The 3,600-frame state census remains
 `9036a9de0c3c9917f47bff8c04c136a4824ec12601fb457d260aa2dfe4443490`.
+
+The shared impact-burst lifetime controller is fully native at `02:42B0`.
+All 252 calls preserve every instruction boundary across the wait, animation,
+inactive-clear, and terminal-clear paths. Its indirect animation byte is read
+through the live MPR mapping, normal returns at `02:42E0` are absorbed, and
+clear paths compose the existing `01:C027` jump and `01:C574` actor reset.
+Assembly/native comparison preserves all 252 calls and 1,502 ordered writes,
+including the original interrupt interleavings. The slice removes 30,957
+profiled non-entry cycles and reduces bank `02`'s remainder to 317,949.
 
 The fixed Tower-Insect source controller now crosses its collision-table call
 at `02:5FFB`. All 260 entries load selector `$3700,X`, push the exact
@@ -6412,30 +6421,29 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
 
 ## Active Work
 
-Current owner: Codex. Current slice: **the fixed Tower-Insect source collision
-crossing at `02:5FFB`**. Done.
+Current owner: Codex. Current slice: **the shared impact-burst lifetime at
+`02:42B0-42E0`**. Done.
 
-All 260 source-controller entries now load collision selector `$3700,X`, push
-the authentic `JSR $6966` frame, and end on the collision interpreter's first
-instruction. The interpreter stays a separate registered transaction. Direct
-assembly/native traces preserve all 260 calls and 4,016 writes, while the
-owning family oracle preserves all 4,282,022 selected writes and the canonical
-census.
+All 252 lifecycle calls now execute natively. Timer waits and nonterminal
+animation steps absorb the original return; inactive and `$FF` terminal steps
+tail into the already-native generic actor clear. The direct call and write
+artifacts remain byte-identical to assembly, including interrupts that land
+inside the controller, and the seven-instance lifecycle oracle remains exact.
 
 | | Before | After |
 | --- | ---: | ---: |
-| Native ownership at `02:5FFB` | 0 | **9,360** |
-| Registry cycles | 696,663,621 | **696,672,981** |
+| Native ownership at `02:42B0` | 0 | **30,597** |
+| Registry cycles | 696,672,981 | **696,703,578** |
 | Native share | 53.91% | **53.91%** |
-| Native share outside the wait | 98.05% | **98.06%** |
-| Admitted routines | 440 | **441** |
-| Proven native calls | 3,606,737 | **3,606,997** |
-| Interpreted instruction addresses | 4,577 | **4,576** |
-| Bank `02` non-entry remainder | 358,434 | **348,906** |
+| Native share outside the wait | 98.06% | **98.06%** |
+| Admitted routines | 441 | **442** |
+| Proven native calls | 3,606,997 | **3,607,249** |
+| Interpreted instruction addresses | 4,576 | **4,557** |
+| Bank `02` non-entry remainder | 348,906 | **317,949** |
 
-Next: port the shared impact-burst lifetime controller at `02:42B0-42E0`.
-Its 252 calls account for 30,957 profiled non-entry cycles and already have a
-bounded seven-instance lifecycle oracle.
+Next: absorb the shared Devil-Shooter charge-position return at `02:533A`.
+It is reached 252 times after the existing `02:52E3` semantic body and costs
+5,292 measured master cycles.
 
 ### Previous: the score panel's glyph writer
 

@@ -3533,9 +3533,24 @@ The new registry entry owns 9,360 native cycles, taking the deployed total to
 696,672,981 (53.91%, or 98.06% outside the wait). Bank `02`'s measured
 non-entry remainder falls to 348,906 and the `02:5FFE` `JSR` row disappears.
 
-The next compact complete body is the shared impact-burst lifetime controller
-at `02:42B0-42E0`: 252 calls and 30,957 profiled non-entry cycles, with its
-seven-instance lifecycle already bounded independently.
+## Shared impact-burst lifetime controller
+
+`02:42B0-42E0` is the complete four-tick lifetime controller shared by all
+seven observed type-`$8F` impact bursts. Its 252 calls split into timer waits,
+56 nonterminal animation advances, and seven `$FF` terminal releases. The
+native walk publishes every original instruction boundary, including the
+indirect ROM-table load through the live MPR mapping. Wait and advance paths
+absorb `RTS`; terminal or inactive actors hand off through registered
+`01:C027` to the generic actor reset at `01:C574`.
+
+Direct assembly/native traces preserve all 252 calls and 1,502 ordered writes,
+including interrupt-handler writes inside the scopes. The registry gains
+30,597 native cycles and removes all 30,957 profiled non-entry cycles from the
+range, reaching 696,703,578 native cycles overall. Bank `02`'s non-entry
+remainder is now 317,949 cycles.
+
+The next compact boundary is the `RTS` at `02:533A`, reached 252 times after
+the existing Devil-Shooter charge-position semantic and costing 5,292 cycles.
 
 ## Use on future families
 

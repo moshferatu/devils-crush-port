@@ -1830,6 +1830,13 @@ replace_native_gameplay_routine_impl(
     }
     if (entry.routine
         == RoutineKey{
+            .physical_bank = 0x02U,
+            .logical_pc = 0x42B0U,
+        }) {
+        return detail::replace_impact_burst_lifetime(entry, work_ram, rom);
+    }
+    if (entry.routine
+        == RoutineKey{
             .physical_bank = 0x03U,
             .logical_pc = 0x6016U,
         }) {
