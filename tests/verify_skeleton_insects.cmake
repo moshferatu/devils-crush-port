@@ -75,6 +75,8 @@ execute_process(
         "02:55F9"
         --observe-hook
         "02:561A"
+        --replace-hook
+        "02:561A@all"
         --observe-hook
         "02:5625"
         --observe-hook
@@ -91,6 +93,8 @@ execute_process(
         "02:5590@1"
         --routine-replay
         "02:55F9@1"
+        --routine-replay
+        "02:561A@1"
         --work-ram-write-range
         "2CFC-2CFC"
         --work-ram-write-range
@@ -133,13 +137,15 @@ endforeach()
 foreach(expected_line IN ITEMS
     "State census recording complete: 3600 frames"
     "Native replacement 02:5590@all entries: 1084 of 1084"
+    "Native replacement 02:561A@all entries: 16 of 16"
     "Routine trace complete: 5805 entries"
     "Routine call trace complete: 5805 calls, 1316 writes"
     "Routine replay 02:54B9@1 verified: frame 873"
     "Routine replay 02:5551@1 verified: frame 873"
     "Routine replay 02:5590@1 verified: frame 2191, 54 body cycles, 0 ordered writes"
     "Routine replay 02:55F9@1 verified: frame 942"
-    "Routine replay complete: 4 state-normalized calls"
+    "Routine replay 02:561A@1 verified: frame 3353, 171 body cycles, 6 ordered writes"
+    "Routine replay complete: 5 state-normalized calls"
     "Work-RAM write trace complete: 3882 selected writes"
 )
     string(FIND "${recorder_output}" "${expected_line}" line_offset)

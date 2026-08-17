@@ -901,6 +901,14 @@ Provide an interactive monitor-assignment screen and persist display identity, g
   attributes 4,851 additional native master cycles solely to this leaf, taking
   the total to 696,708,429 across 443 routines and reducing bank `02`'s
   non-entry remainder to 313,098 cycles.
+  Semantic `02:561A@all` now ports all 16 center Skeleton-Insect presentation
+  toggles. Fifteen calls decrement the post-award delay in 171 cycles and the
+  last installs `02:5625` in 249 cycles; the original timer interrupt remains
+  at its exact instruction boundary. In the composed registry the first call
+  is already owned by parent `02:5604`, so the 15 independent entries add 2,643
+  gross cycles while replacing 2,103 cycles of existing `01:C018/C5C9` child
+  credit. The exact net gain is 540 cycles, taking the registry to 696,708,969
+  across 444 routines and bank `02`'s remainder to 312,558 cycles.
   The larger `01:D525` controller remains a decomposition boundary: its 128
   census calls span 29-1,456 writes and 1,035-49,122 body master cycles, so
   the largest live paths exceed the bridge's independent 512-write limit.

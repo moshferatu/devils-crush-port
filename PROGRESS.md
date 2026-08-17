@@ -26,12 +26,22 @@ high byte. The deterministic 1,800-frame route now executes 18,806 of 19,648
 preserving the byte-identical gameplay artifact, complete 19,648-call trace,
 and all 180,389 ordered writes.
 
-The deployed registry now runs **696,708,429 of 1,292,371,731 master cycles
+The deployed registry now runs **696,708,969 of 1,292,371,731 master cycles
 natively, 53.91% of the route and 98.06% of everything outside the frame-sync
-wait**, across 443 admitted routines. The new `02:533A` leaf self-guards 21
-pre-return timer-IRQ horizons, so the core declines no offered transcript and
-none is abandoned. The 3,600-frame state census remains
+wait**, across 444 admitted routines. All 15 independently entered deployed
+calls at `02:561A` now execute natively, including the original timer-interrupt
+passage; the core declines no offered transcript and none is abandoned. The
+3,600-frame state census remains
 `9036a9de0c3c9917f47bff8c04c136a4824ec12601fb457d260aa2dfe4443490`.
+
+The center Skeleton-Insect's post-award presentation toggle is native at
+`02:561A`. Direct replacement covers all 16 calls: fifteen exact 171-cycle
+countdown ticks and the 249-cycle handoff that installs `02:5625`. In the full
+registry the first call is already contained by native parent `02:5604`, so 15
+calls enter this address independently and own 2,643 cycles. Replacing them
+removes 2,103 cycles previously credited to child wrappers `01:C018/C5C9`, for
+an exact net gain of 540 cycles; the complete Skeleton-Insect artifacts remain
+byte-identical.
 
 The shared Devil-Shooter charge-position return is native at `02:533A` for
 all 231 horizon-safe calls. The remaining 21 calls service an original timer
@@ -6440,30 +6450,47 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
   - [x] Registry A/B: **696,703,578 -> 696,708,429** native cycles;
     4,851 cycles added solely at `02:533A`, 443 admitted routines, 373 entered,
     and no transcript abandonments.
+- [x] Port the center Skeleton-Insect presentation toggle at `02:561A`:
+  - [x] Cover all 16 direct calls through the toggle, scheduler countdown, and
+    final `02:5625` dispatch installation.
+  - [x] Preserve the timer interrupt inside call nine at the exact published
+    instruction boundary.
+  - [x] Preserve the 5,805-call/1,316-write family artifacts and 3,882 selected
+    actor-state writes exactly.
+  - [x] Registry A/B: **696,708,429 -> 696,708,969** native cycles; 540 net
+    cycles added, 444 admitted routines, 374 entered, and no abandonments.
 
 ## Active Work
 
-Current owner: Codex. Current slice: **the shared Devil-Shooter
-charge-position return at `02:533A`**. Done.
+Current owner: Codex. Current slice: **the center Skeleton-Insect presentation
+toggle at `02:561A`**. Done.
 
-The native leaf absorbs 231 horizon-safe returns. Twenty-one calls have an
-original timer interrupt before the `RTS` and remain emulated; attempting to
-move that interrupt after the return preserves final RAM but changes call/write
-ownership, so the horizon guard is part of the faithful implementation. The
-owning family artifacts remain byte-identical.
+The standalone transcript owns the three toggle instructions, reproduces the
+`JSR $C018` stack frame, and composes the existing coroutine scheduler at
+`01:C5C9`. Fifteen calls decrement the delay; the last installs `02:5625`.
+One direct call contains the original timer interrupt and remains exact.
 
 | | Before | After |
 | --- | ---: | ---: |
-| Native ownership at `02:533A` | 0 | **4,851** |
-| Registry cycles | 696,703,578 | **696,708,429** |
+| Gross native ownership at `02:561A` | 0 | **2,643** |
+| Replaced child credit at `01:C018/C5C9` | 2,103 | **0** |
+| Registry cycles | 696,708,429 | **696,708,969** |
 | Native share | 53.91% | **53.91%** |
 | Native share outside the wait | 98.06% | **98.06%** |
-| Admitted routines | 442 | **443** |
-| Proven native calls | 3,607,249 | **3,607,480** |
-| Bank `02` non-entry remainder | 317,949 | **313,098** |
+| Admitted routines | 443 | **444** |
+| Proven native calls | 3,607,480 | **3,607,496** |
+| Bank `02` non-entry remainder | 313,098 | **312,558** |
 
-Next: re-screen bank `02`'s remaining non-entry residue; the 21 pre-return IRQ
-cases at `02:533A` are now classified fallback rather than a port candidate.
+Next: continue through the installed center-target continuations at
+`02:5625/5630`, now the adjacent 20,835-cycle residue, or re-screen the larger
+bank-`02` boundaries if those continuations yield mostly existing child credit.
+
+### Previous: the shared Devil-Shooter charge-position return
+
+The native `02:533A` leaf absorbs 231 horizon-safe returns. Twenty-one calls
+have an original timer interrupt before the `RTS` and remain emulated; moving
+that interrupt after the return changes call/write ownership. The owning
+family artifacts remain byte-identical.
 
 ### Previous: the score panel's glyph writer
 

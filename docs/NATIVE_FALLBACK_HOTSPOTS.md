@@ -3557,6 +3557,19 @@ moving the interrupt behind the `RTS` changes ordered call ownership. Bank
 `02`'s non-entry remainder falls to 313,098 cycles. Re-screen that remainder
 before choosing the next slice; the 21 guarded returns are classified fallback.
 
+That screen selected the center Skeleton-Insect coroutine entry at `02:561A`.
+All 16 natural calls toggle `$3080,X.5`, cross `01:C018`, and compose the
+already-native scheduler at `01:C5C9`: fifteen 171-cycle countdown calls and
+one 249-cycle dispatch installation at `02:5625`. Call nine retains its
+original timer interrupt through the published instruction checkpoints.
+
+The direct route proves all 16 calls, while the deployed registry enters 15
+because parent `02:5604` already owns the first toggle. Those 15 calls own
+2,643 gross cycles but replace 180 cycles at `01:C018` and 1,923 at `01:C5C9`,
+so the measured net gain is 540 cycles. The registry reaches 696,708,969 and
+bank `02`'s non-entry remainder falls to 312,558. The adjacent
+`02:5625-5641` continuation is now the compact 20,835-cycle residue to screen.
+
 ## Use on future families
 
 Follow the command and interpretation rules in

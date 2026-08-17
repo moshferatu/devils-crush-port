@@ -3510,6 +3510,14 @@ while retaining the `02:561A` loop that eventually installs `02:5625`.
 Focused replay `02:5604@1` verifies exact register, cycle, stack,
 write-order, and complete-RAM parity.
 
+Semantic `02:561A@all` owns every subsequent center-target presentation
+toggle. It flips `$3080,X.5`, reproduces the `JSR $C018` return frame, and
+composes native scheduler `01:C5C9`. Fifteen calls take the 171-cycle
+countdown path; the final 249-cycle call installs dispatch `02:5625` in
+`$3F00:$3F80,X`. The ninth direct call's timer interrupt is delivered between
+the same original instructions. Focused replay `02:561A@1` verifies its six
+ordered writes and the family regression preserves all 16 direct calls.
+
 All 23 idle interrupt-handler passages and the one interrupt inside the
 assembly-owned drawing helper remain exact. Debug and Release preserve the
 complete outer 2,403-call/391-write artifacts:

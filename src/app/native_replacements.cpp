@@ -2292,15 +2292,14 @@ replace_native_gameplay_routine_impl(
         }) {
         replacement =
             detail::replace_skeleton_insect_center_gate(entry, work_ram);
-    } else if (entry.routine
-        == RoutineKey{
-            .physical_bank = 0x02U,
-            .logical_pc = 0x5604U,
-        }) {
-        replacement =
-            detail::replace_skeleton_insect_center_continuation(
-                entry,
-                work_ram);
+    } else if (entry.routine.physical_bank == 0x02U
+               && (entry.routine.logical_pc == 0x5604U
+                   || entry.routine.logical_pc == 0x561AU)) {
+        replacement = entry.routine.logical_pc == 0x5604U
+            ? detail::replace_skeleton_insect_center_continuation(
+                  entry,
+                  work_ram)
+            : detail::replace_skeleton_insect_center_toggle(entry, work_ram);
     } else if (entry.routine
         == RoutineKey{
             .physical_bank = 0x02U,
