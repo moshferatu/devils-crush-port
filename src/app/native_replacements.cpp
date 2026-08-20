@@ -50,6 +50,25 @@ replace_native_gameplay_routine_impl(
         }) {
         return detail::replace_motion_substep_split(entry, work_ram);
     }
+    // The active-flipper continuation is split at both crossed calls so the
+    // admitted D500 and collision-route owners can run between these seams.
+    if (entry.routine
+            == RoutineKey{
+                .physical_bank = 0x01U,
+                .logical_pc = 0xD4C6U,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x01U,
+                .logical_pc = 0xD4C9U,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x01U,
+                .logical_pc = 0xD4CCU,
+            }) {
+        return detail::replace_flipper_active_update(entry, work_ram);
+    }
     // The loop that spends what the split above hands it. Eleven entry points:
     // the head the coroutine scheduler resumes at, and the ten addresses this
     // family's eight crossed calls and one handed-back `BBR` arrive at. They

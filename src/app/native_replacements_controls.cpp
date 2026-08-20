@@ -573,6 +573,155 @@ replace_flipper_release_arm(
 }
 
 [[nodiscard]] std::optional<RoutineReplacement>
+replace_flipper_active_update(
+    const RoutineEntry& entry,
+    const std::span<const std::byte> work_ram)
+{
+    constexpr std::uint8_t kBank = 0x01U;
+    const auto pc = entry.routine.logical_pc;
+    if (entry.routine.physical_bank != kBank
+        || (pc != 0xD4C6U && pc != 0xD4C9U && pc != 0xD4CCU)) {
+        return std::nullopt;
+    }
+
+    const auto set_nz = [](std::uint8_t status, const std::uint8_t value) {
+        status = static_cast<std::uint8_t>(
+            status & static_cast<std::uint8_t>(~0xA2U));
+        if (value == 0U) {
+            status = static_cast<std::uint8_t>(status | 0x02U);
+        } else if ((value & 0x80U) != 0U) {
+            status = static_cast<std::uint8_t>(status | 0x80U);
+        }
+        return status;
+    };
+    const auto append_checkpoint = [](
+                                       RoutineReplacement& replacement,
+                                       const std::uint16_t instruction_pc,
+                                       const std::uint16_t resume_pc,
+                                       const std::uint32_t cycle,
+                                       auto registers) {
+        registers.program_counter = resume_pc;
+        replacement.checkpoints.push_back({
+            .interrupt_sample_master_cycle_offset = cycle - 3U,
+            .master_cycle_offset = cycle,
+            .instruction = {kBank, instruction_pc},
+            .registers = registers,
+        });
+    };
+
+    // D4C6 and D4C9 are deliberately crossed calls. D500 and the CBAB
+    // collision route already have admitted native owners, while CBAB's full
+    // canonical scope is too large for one transaction. Staging an ordinary
+    // JSR frame lets those owners run and return to the next admitted seam.
+    if (pc == 0xD4C6U || pc == 0xD4C9U) {
+        const auto target = static_cast<std::uint16_t>(
+            pc == 0xD4C6U ? 0xD500U : 0xCBABU);
+        const auto pushed = static_cast<std::uint16_t>(pc + 2U);
+        const auto stack_high = entry.registers.stack_pointer;
+        const auto stack_low = static_cast<std::uint8_t>(stack_high - 1U);
+        auto output = entry.registers;
+        output.program_counter = target;
+        output.stack_pointer = static_cast<std::uint8_t>(stack_high - 2U);
+
+        RoutineReplacement replacement{
+            .return_instruction = {kBank, target},
+            .output_registers = output,
+            .body_master_cycles = 21U,
+        };
+        replacement.work_ram_writes = {
+            {
+                .instruction = {kBank, pc},
+                .logical_address = static_cast<std::uint16_t>(
+                    0x2100U + stack_high),
+                .value = static_cast<std::uint8_t>(pushed >> 8U),
+                .master_cycle_offset = 0U,
+            },
+            {
+                .instruction = {kBank, pc},
+                .logical_address = static_cast<std::uint16_t>(
+                    0x2100U + stack_low),
+                .value = static_cast<std::uint8_t>(pushed & 0x00FFU),
+                .master_cycle_offset = 0U,
+            },
+        };
+        append_checkpoint(replacement, pc, target, 21U, output);
+        return replacement;
+    }
+
+    dc_flipper_active_tail tail{};
+    if (!dc_classify_flipper_active_tail(
+            reinterpret_cast<const std::uint8_t*>(work_ram.data()),
+            work_ram.size(),
+            entry.registers.x,
+            &tail)) {
+        throw std::runtime_error(
+            "Native D4CC replacement rejected the work-RAM snapshot.");
+    }
+
+    RoutineReplacement replacement{};
+    auto checkpoint = entry.registers;
+    checkpoint.accumulator = tail.phase;
+    checkpoint.status = set_nz(checkpoint.status, checkpoint.accumulator);
+    append_checkpoint(replacement, 0xD4CCU, 0xD4CFU, 15U, checkpoint);
+
+    if (tail.path == DC_FLIPPER_ACTIVE_TAIL_RELEASE) {
+        append_checkpoint(replacement, 0xD4CFU, 0xD4D1U, 21U, checkpoint);
+        checkpoint.program_counter = 0xD458U;
+        append_checkpoint(replacement, 0xD4D1U, 0xD458U, 33U, checkpoint);
+        replacement.return_instruction = {kBank, 0xD458U};
+        replacement.output_registers = checkpoint;
+        replacement.body_master_cycles = 33U;
+        return replacement;
+    }
+
+    append_checkpoint(replacement, 0xD4CFU, 0xD4D4U, 27U, checkpoint);
+    checkpoint.accumulator = tail.global_input;
+    checkpoint.status = set_nz(checkpoint.status, checkpoint.accumulator);
+    append_checkpoint(replacement, 0xD4D4U, 0xD4D7U, 42U, checkpoint);
+    checkpoint.accumulator = tail.matched_input;
+    checkpoint.status = set_nz(checkpoint.status, checkpoint.accumulator);
+    append_checkpoint(replacement, 0xD4D7U, 0xD4DAU, 57U, checkpoint);
+
+    if (tail.path == DC_FLIPPER_ACTIVE_TAIL_IDLE_RETURN) {
+        checkpoint.program_counter = 0xD4DCU;
+        append_checkpoint(replacement, 0xD4DAU, 0xD4DCU, 63U, checkpoint);
+        replacement.return_instruction = {kBank, 0xD4DCU};
+        replacement.output_registers = checkpoint;
+        replacement.body_master_cycles = 63U;
+        absorb_return(
+            replacement,
+            work_ram,
+            entry.registers.stack_pointer,
+            {kBank, 0xD4DCU},
+            63U,
+            checkpoint);
+        return replacement;
+    }
+
+    append_checkpoint(replacement, 0xD4DAU, 0xD4DDU, 69U, checkpoint);
+    checkpoint.accumulator = tail.state_before;
+    checkpoint.status = set_nz(checkpoint.status, checkpoint.accumulator);
+    append_checkpoint(replacement, 0xD4DDU, 0xD4E0U, 84U, checkpoint);
+    checkpoint.accumulator = tail.state_after;
+    checkpoint.status = set_nz(checkpoint.status, checkpoint.accumulator);
+    append_checkpoint(replacement, 0xD4E0U, 0xD4E2U, 90U, checkpoint);
+    replacement.work_ram_writes.push_back({
+        .instruction = {kBank, 0xD4E2U},
+        .logical_address = static_cast<std::uint16_t>(
+            0x3C80U + entry.registers.x),
+        .value = tail.state_after,
+        .master_cycle_offset = 105U,
+    });
+    append_checkpoint(replacement, 0xD4E2U, 0xD4E5U, 105U, checkpoint);
+    checkpoint.program_counter = 0xD46FU;
+    append_checkpoint(replacement, 0xD4E5U, 0xD46FU, 117U, checkpoint);
+    replacement.return_instruction = {kBank, 0xD46FU};
+    replacement.output_registers = checkpoint;
+    replacement.body_master_cycles = 117U;
+    return replacement;
+}
+
+[[nodiscard]] std::optional<RoutineReplacement>
 replace_flipper_phase_step(
     const RoutineEntry& entry,
     const std::span<const std::byte> work_ram)

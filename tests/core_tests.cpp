@@ -6702,6 +6702,49 @@ void test_native_flipper_release_arm()
         "native D4B3 rejects a truncated work-RAM snapshot");
 }
 
+void test_native_flipper_active_tail()
+{
+    std::array<std::uint8_t, 0x2000> work_ram{};
+    constexpr std::uint8_t slot = 0x07U;
+    work_ram[0x1C80U + slot] = 0xA5U;
+
+    dc_flipper_active_tail tail{};
+    check(
+        dc_classify_flipper_active_tail(
+            work_ram.data(), work_ram.size(), slot, &tail)
+                != 0
+            && tail.path == DC_FLIPPER_ACTIVE_TAIL_RELEASE
+            && tail.state_after == 0xA5U,
+        "native D4CC releases a flipper whose phase reached zero");
+
+    work_ram[0x1980U + slot] = 2U;
+    work_ram[0x0CEEU] = 0x01U;
+    work_ram[0x1B80U + slot] = 0x02U;
+    check(
+        dc_classify_flipper_active_tail(
+            work_ram.data(), work_ram.size(), slot, &tail)
+                != 0
+            && tail.path == DC_FLIPPER_ACTIVE_TAIL_IDLE_RETURN
+            && tail.matched_input == 0U
+            && tail.state_after == 0xA5U,
+        "native D4CC returns while the flipper input is inactive");
+
+    work_ram[0x0CEEU] = 0x02U;
+    check(
+        dc_classify_flipper_active_tail(
+            work_ram.data(), work_ram.size(), slot, &tail)
+                != 0
+            && tail.path == DC_FLIPPER_ACTIVE_TAIL_REARM
+            && tail.matched_input == 0x02U
+            && tail.state_after == 0x25U,
+        "native D4CC clears reverse motion before rearming input");
+    check(
+        dc_classify_flipper_active_tail(
+            work_ram.data(), work_ram.size() - 1U, slot, &tail)
+            == 0,
+        "native D4CC rejects a truncated work-RAM snapshot");
+}
+
 void test_native_flipper_geometry()
 {
     std::array<std::uint8_t, 0x80> geometry_table{};
@@ -10999,6 +11042,7 @@ int main()
     test_native_ball_drain_threshold();
     test_native_bank7_mode_gate();
     test_native_flipper_release_arm();
+    test_native_flipper_active_tail();
     test_native_flipper_phase_step();
     test_native_flipper_geometry();
     test_native_coroutine_schedule();

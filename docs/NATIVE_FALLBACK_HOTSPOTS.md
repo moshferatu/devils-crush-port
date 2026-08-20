@@ -4002,6 +4002,22 @@ the largest produce 562-932 work-RAM writes while repeatedly calling VDC
 writer `08:5B01`. The child is the next separable bank-8 boundary; the outer
 decoder must first be decomposed below the bridge's 512-write limit.
 
+## Active-flipper continuation seams
+
+Keyed observation rejected `01:D4C6` as one atomic transaction even though its
+own static tail is short. Its `CBAB` child reaches 41,235 cycles and 1,181
+writes; the enclosing scope reaches 41,709 cycles and 1,197 writes. The safe
+boundary is the established crossed-call design: admit `D4C6`, return from
+native `D500` into admitted `D4C9`, return from the chunked native collision
+route into admitted `D4CC`, and only then classify the local terminal branch.
+
+Each seam receives 490 natural entries. The terminal seam hands 246 phase-zero
+calls to `D458` and absorbs 244 idle returns. Together the three keys add
+49,194 cycles, bringing deployed ownership to 697,941,849 cycles and leaving
+5,216,439 unregistered non-wait cycles across 263 clusters. The next coherent
+flipper residue is `01:D469-D4A3`; `08:5B01` remains the hardware-facing leaf
+to assess before decomposing its oversized `08:5ABF` parent.
+
 ## Use on future families
 
 Follow the command and interpretation rules in

@@ -79,6 +79,34 @@ int dc_prepare_flipper_release_arm(
     return 1;
 }
 
+int dc_classify_flipper_active_tail(
+    const uint8_t* const work_ram,
+    const size_t work_ram_size,
+    const uint8_t slot,
+    dc_flipper_active_tail* const tail)
+{
+    if (work_ram == NULL || tail == NULL || work_ram_size < 0x2000U) {
+        return 0;
+    }
+
+    tail->phase = work_ram[0x1980U + (size_t)slot];
+    tail->global_input = work_ram[0x0CEEU];
+    tail->piece_mask = work_ram[0x1B80U + (size_t)slot];
+    tail->matched_input =
+        (uint8_t)(tail->global_input & tail->piece_mask);
+    tail->state_before = work_ram[0x1C80U + (size_t)slot];
+    tail->state_after = tail->state_before;
+    if (tail->phase == 0U) {
+        tail->path = DC_FLIPPER_ACTIVE_TAIL_RELEASE;
+    } else if (tail->matched_input == 0U) {
+        tail->path = DC_FLIPPER_ACTIVE_TAIL_IDLE_RETURN;
+    } else {
+        tail->path = DC_FLIPPER_ACTIVE_TAIL_REARM;
+        tail->state_after = (uint8_t)(tail->state_before & 0x7FU);
+    }
+    return 1;
+}
+
 int dc_advance_flipper_phase(
     const uint8_t* const work_ram,
     const size_t work_ram_size,

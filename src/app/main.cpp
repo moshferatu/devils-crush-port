@@ -1326,6 +1326,12 @@ parse_logical_address_range(const std::string_view text)
                                        .logical_pc = 0xD4B3U,
                                    }
                            && request.all_calls;
+                       const bool proven_flipper_active_update =
+                           request.routine.physical_bank == 0x01U
+                           && (request.routine.logical_pc == 0xD4C6U
+                               || request.routine.logical_pc == 0xD4C9U
+                               || request.routine.logical_pc == 0xD4CCU)
+                           && request.all_calls;
                        const bool proven_collision_scan_vertical_reject =
                            request.routine
                                    == RoutineKey{
@@ -3590,6 +3596,7 @@ parse_logical_address_range(const std::string_view text)
                            && !proven_actor_slot_reset
                            && !proven_flipper_input_gate
                            && !proven_flipper_release_arm
+                           && !proven_flipper_active_update
                            && !proven_collision_scan_vertical_reject
                            && !proven_collision_mask_lookup
                            && !proven_collision_geometry
@@ -3876,6 +3883,8 @@ parse_logical_address_range(const std::string_view text)
             "semantic 01:CFD8@all, "
             "semantic 00:F4FC@all, semantic "
             "01:C574@all, semantic 01:D466@all, semantic 01:D4B3@all, "
+            "semantic 01:D4C6@all, semantic 01:D4C9@all, "
+            "semantic 01:D4CC@all, "
             "semantic 01:CC1A@all, "
             "01:CC1A@19176, "
             "semantic 01:CC98@all, "

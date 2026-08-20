@@ -35,6 +35,22 @@ typedef struct dc_flipper_release_arm {
     uint8_t installs_dispatch;
 } dc_flipper_release_arm;
 
+typedef enum dc_flipper_active_tail_path {
+    DC_FLIPPER_ACTIVE_TAIL_RELEASE = 0,
+    DC_FLIPPER_ACTIVE_TAIL_IDLE_RETURN = 1,
+    DC_FLIPPER_ACTIVE_TAIL_REARM = 2
+} dc_flipper_active_tail_path;
+
+typedef struct dc_flipper_active_tail {
+    uint8_t phase;
+    uint8_t global_input;
+    uint8_t piece_mask;
+    uint8_t matched_input;
+    uint8_t state_before;
+    uint8_t state_after;
+    dc_flipper_active_tail_path path;
+} dc_flipper_active_tail;
+
 typedef struct dc_flipper_phase_step {
     uint8_t countdown;
     uint8_t reload;
@@ -170,6 +186,16 @@ int dc_prepare_flipper_release_arm(
     size_t work_ram_size,
     uint8_t slot,
     dc_flipper_release_arm* release);
+
+// Native classification of D4CC after the active flipper has advanced its
+// phase and completed its collision probe. A zero phase hands control to the
+// release tail, an inactive input returns, and active input clears the reverse
+// bit before handing control back to the input response.
+int dc_classify_flipper_active_tail(
+    const uint8_t* work_ram,
+    size_t work_ram_size,
+    uint8_t slot,
+    dc_flipper_active_tail* tail);
 
 // Native equivalent of D500's timer-expiry phase step. Non-expiring timers
 // and endpoint phases remain assembly-owned until their surrounding

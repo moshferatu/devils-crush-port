@@ -778,6 +778,11 @@ Provide an interactive monitor-assignment screen and persist display identity, g
   through the shared scheduler with exact stack, scratch, interrupt, and
   ordered-write parity. Controlled fixtures also cover countdown expiry and
   the still-counting scheduler return.
+  Semantic `01:D4C6/D4C9/D4CC@all` now owns the active-flipper continuation
+  around its already-native phase step and collision children. Both crossed
+  calls stage exact JSR frames, while the terminal seam models release, idle
+  return, and rearm outcomes. All 490 passes through each seam preserve the
+  canonical 1,470-call/46,125-write transcript and state census.
   Semantic `01:DD09@all` composes the signed `E905` divider for either nonzero motion
   component, subtracts its signed quotient, and applies the second-axis
   acceleration. All 753 calls are native, including the 669 previously

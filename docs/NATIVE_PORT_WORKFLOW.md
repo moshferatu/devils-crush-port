@@ -3567,6 +3567,15 @@ RTS returns directly to the original actor-scan caller. The following `D4C6`
 bytes are a separately scheduled continuation, not fall-through work owned by
 the `D4B3` transaction.
 
+That continuation demonstrates how to port a parent whose child is too large
+to compose. `D4C6` and `D4C9` do not inline `D500` or `CBAB`; each native seam
+only stages its JSR frame and crosses into the existing registry owner. The
+return address is itself admitted, so execution resumes natively after the
+child completes. This preserves the collision route's bounded chunks while
+recovering every instruction in the small parent. The canonical parent can
+therefore contain a 1,197-write call without any individual replacement
+exceeding the bridge's 512-write channel.
+
 For global screening, `Analyze-InstructionProfile.ps1 -UnregisteredOnly
 -ExcludeFrameSyncWait` now reports only deployed non-entry residue outside the
 `00:E321-E32B` wait. Pair it with the native-cycle census's

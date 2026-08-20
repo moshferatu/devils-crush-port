@@ -9632,3 +9632,26 @@ their SHA-256 values are respectively
 `9036a9de0c3c9917f47bff8c04c136a4824ec12601fb457d260aa2dfe4443490`,
 `7d695bf99a8e6bdd43179693d3d5270a14416b21c8771233055aecbc4d45656b`, and
 `cd7de400e8c59f91f0b3352bc58cb3a15450c71b3d3077382b97f1c59631253b`.
+
+## Active-flipper continuation: semantic `01:D4C6/D4C9/D4CC@all`
+
+The dispatch installed by `D4B3` resumes at `D4C6`, calls phase step `D500`,
+then resumes at `D4C9` and calls the single-slot collision probe at `CBAB`.
+The collision route is deliberately chunked across admitted call/branch seams;
+observing the complete parent found calls as large as 41,709 master cycles and
+1,197 ordered writes, beyond the bridge's 512-write transaction capacity.
+
+The native route therefore admits three seams. `D4C6` and `D4C9` each stage
+the exact two-byte JSR frame and hand execution to the existing child owner.
+`D4CC` reads the updated phase: phase zero jumps to release tail `D458`, an
+inactive control mask returns at `D4DC`, and an active mask clears `$3C80,X.7`
+before jumping to `D46F`. The canonical route takes 246 release paths and 244
+idle returns; the pure model also covers rearm.
+
+All 490 entries at each seam are native. Release and Debug reproduce census
+SHA-256 `9036a9de0c3c9917f47bff8c04c136a4824ec12601fb457d260aa2dfe4443490`,
+1,470-call SHA-256
+`ad67adeb347cf26ef3caa4fbc39cd3428e59764c3e765ccb5d33e96410745592`, and
+46,125-write SHA-256
+`ffe42ed3fa01c1d13c5d86332632383ada1878a416ef4372b08f85497da5c367`.
+The seams add 49,194 deployed native master cycles.

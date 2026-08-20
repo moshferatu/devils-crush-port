@@ -6811,30 +6811,39 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
     canonical state census.
   - [x] Registry A/B: **697,869,777 -> 697,892,655** native cycles; 22,878
     cycles added, 478 admitted routines, 362 entered, and no abandonments.
+- [x] Port the active-flipper continuation at `01:D4C6/D4C9/D4CC`:
+  - [x] Split both JSRs at admitted child boundaries so `D500` and the
+    chunked `CBAB` collision route remain independently owned.
+  - [x] Model all terminal release, idle-return, and rearm branches; preserve
+    all 490 calls at each seam, 46,125 aggregate writes, interrupts, and the
+    canonical state census.
+  - [x] Registry A/B: **697,892,655 -> 697,941,849** native cycles; 49,194
+    cycles added, 481 admitted routines, 365 entered, and no abandonments.
+  - [x] Passed all 441 Release tests as the cross-family checkpoint.
 
 ## Active Work
 
-Current owner: Codex. Current slice: **flipper release-arm coroutine**.
+Current owner: Codex. Current slice: **active-flipper continuation**.
 Done.
 
-The actor scheduler naturally enters `01:D4B3` 246 times. The routine sets
-`$3C80,X.7`, writes 1 to `$3A00,X/$3E00,X`, stages `JSR $C5C9`, and lets that
-shared scheduler consume the nested return to install continuation `D4C6`.
-All canonical calls use the 252-cycle zero-countdown body; 23 scopes also
-carry original interrupts. Controlled calls prove the 273-cycle countdown-one
-expiry and 195-cycle still-counting return.
+The actor scheduler enters `01:D4C6` 490 times. That continuation calls the
+already-native `D500` phase step, resumes at `D4C9`, and calls the already
+chunked `CBAB` collision route before resuming at `D4CC`. Capturing the whole
+parent proved why it cannot be atomic: collision-bearing calls reach 41,709
+cycles and 1,197 writes. Three admitted seams instead stage both exact JSR
+frames and model the terminal release, idle-return, and rearm branches.
 
-The fresh deployed profile retains the canonical census, 697,892,655 native
-cycles, 478 installed routines, 362 entered routines, zero horizon declines,
-zero depth refusals, and zero abandonments. Filtering admitted entry points and
-the `00:E321-E32B` frame wait leaves 5,266,137 profile-attributed cycles across
-264 clusters.
+All three seams accept 490 of 490 canonical entries. `D4CC` hands 246
+phase-zero paths to `D458` and absorbs 244 direct idle returns; its rearm path
+is modeled but not reached by the canonical route. The exact census,
+1,470-call artifact, 46,125 ordered writes, and zero-abandonment census match
+assembly. The deployed registry now owns 697,941,849 cycles across 481
+installed and 365 entered routines, with zero horizon/depth refusals.
 
-The screened `08:5ABF` text/tile decoder remains assembly-owned: its longest
-natural calls produce 562-932 ordered work-RAM writes and repeatedly invoke a
-VDC-register writer, so it is not one bounded transaction. Next: screen the
-natural `01:D4C6-D4DC` continuation and the separable `08:5B01` VDC-write leaf,
-while continuing to reject hardware strobes and already-attributed handoffs.
+Filtering the new profile leaves 5,216,439 addressable cycles in 263 clusters.
+Next: screen the residual flipper input/activation body at `01:D469-D4A3` and
+the separable `08:5B01` VDC-write leaf; keep `08:5ABF` decomposed because its
+largest text/tile calls exceed the 512-write transaction limit.
 
 ### Previous: the impact-burst allocator success return
 
