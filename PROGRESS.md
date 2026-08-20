@@ -6803,28 +6803,38 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
   - [x] Registry A/B: **697,615,473 -> 697,869,777** native cycles; 254,304
     cycles added, 477 admitted routines, 361 entered, and no abandonments.
   - [x] Passed all 439 Release tests as the cross-family checkpoint.
+- [x] Port flipper release-arm coroutine `01:D4B3-C5E9`:
+  - [x] Model reverse-orientation and active-state writes plus all three
+    shared-scheduler countdown outcomes.
+  - [x] Preserve all 246 canonical calls, 2,759 aggregate writes, 23
+    interrupt-bearing scopes, three direct scheduler fixtures, and the
+    canonical state census.
+  - [x] Registry A/B: **697,869,777 -> 697,892,655** native cycles; 22,878
+    cycles added, 478 admitted routines, 362 entered, and no abandonments.
 
 ## Active Work
 
-Current owner: Codex. Current slice: **exported bank-7 mode gate**.
+Current owner: Codex. Current slice: **flipper release-arm coroutine**.
 Done.
 
-The `07:4003` export jumps directly to `07:4634`. The native walk retains that
-12-cycle seam, every comparison and branch checkpoint, exact zero-page writes,
-and the common `07:466B` return. All 2,649 canonical calls take the 75-cycle
-inactive-mode body. Controlled direct fixtures prove the 102/114-cycle range
-rejects, 141-cycle persisted-form reject, 135-cycle already-armed return, and
-219-cycle arming path as well.
+The actor scheduler naturally enters `01:D4B3` 246 times. The routine sets
+`$3C80,X.7`, writes 1 to `$3A00,X/$3E00,X`, stages `JSR $C5C9`, and lets that
+shared scheduler consume the nested return to install continuation `D4C6`.
+All canonical calls use the 252-cycle zero-countdown body; 23 scopes also
+carry original interrupts. Controlled calls prove the 273-cycle countdown-one
+expiry and 195-cycle still-counting return.
 
-The fresh deployed profile retains the canonical census, 697,869,777 native
-cycles, 477 installed routines, 361 entered routines, zero horizon declines,
+The fresh deployed profile retains the canonical census, 697,892,655 native
+cycles, 478 installed routines, 362 entered routines, zero horizon declines,
 zero depth refusals, and zero abandonments. Filtering admitted entry points and
-the `00:E321-E32B` frame wait leaves 5,289,207 profile-attributed cycles across
+the `00:E321-E32B` frame wait leaves 5,266,137 profile-attributed cycles across
 264 clusters.
 
-Next: screen `08:5ABF-5B43` and `01:D4B3-D4DC` as separate high-residue
-boundaries, while continuing to reject hardware strobes, block transfers, and
-already-attributed parent returns that cannot form independent native work.
+The screened `08:5ABF` text/tile decoder remains assembly-owned: its longest
+natural calls produce 562-932 ordered work-RAM writes and repeatedly invoke a
+VDC-register writer, so it is not one bounded transaction. Next: screen the
+natural `01:D4C6-D4DC` continuation and the separable `08:5B01` VDC-write leaf,
+while continuing to reject hardware strobes and already-attributed handoffs.
 
 ### Previous: the impact-burst allocator success return
 

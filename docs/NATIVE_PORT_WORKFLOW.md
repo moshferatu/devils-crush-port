@@ -3553,6 +3553,20 @@ leaving a hot entry seam interpreted. One canonical corpus covers the ordinary
 path; a four-exit corpus plus a separately clean arming corpus covers every
 branch without using an interrupt-bearing call as a normalized fixture.
 
+Flipper release entry `01:D4B3` demonstrates the inverse accounting case: a
+new parent can be semantically complete while adding only its prefix to the
+deployed cycle total. Its 252-cycle body calls `01:C5C9`, whose 159-cycle body
+and 21-cycle return were already native. Absorbing the complete parent and its
+return therefore adds 273 - 180 = 93 cycles per call, not 273. Always use the
+registry A/B cycle census for the claimed gain; a standalone observer's body
+cost double-counts any child the deployed registry already owns.
+
+It also demonstrates why a static contiguous range is not necessarily one
+routine. `D4B3` stages a JSR frame that `C5C9` consumes, then the scheduler's
+RTS returns directly to the original actor-scan caller. The following `D4C6`
+bytes are a separately scheduled continuation, not fall-through work owned by
+the `D4B3` transaction.
+
 For global screening, `Analyze-InstructionProfile.ps1 -UnregisteredOnly
 -ExcludeFrameSyncWait` now reports only deployed non-entry residue outside the
 `00:E321-E32B` wait. Pair it with the native-cycle census's

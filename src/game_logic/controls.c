@@ -51,6 +51,34 @@ int dc_prepare_flipper_activation(
     return 1;
 }
 
+int dc_prepare_flipper_release_arm(
+    const uint8_t* const work_ram,
+    const size_t work_ram_size,
+    const uint8_t slot,
+    dc_flipper_release_arm* const release)
+{
+    if (work_ram == NULL || release == NULL || work_ram_size < 0x2000U) {
+        return 0;
+    }
+
+    release->orientation_before = work_ram[0x1C80U + (size_t)slot];
+    release->orientation_after =
+        (uint8_t)(release->orientation_before | 0x80U);
+    release->coroutine_countdown = work_ram[0x1D80U + (size_t)slot];
+    release->decrements_countdown =
+        (uint8_t)(release->coroutine_countdown != 0U);
+    release->coroutine_countdown_after =
+        release->decrements_countdown != 0U
+        ? (uint8_t)(release->coroutine_countdown - 1U)
+        : 0U;
+    release->installs_dispatch = (uint8_t)(
+        release->coroutine_countdown == 0U
+        || release->coroutine_countdown_after == 0U);
+    release->dispatch_low = 0xC6U;
+    release->dispatch_high = 0xD4U;
+    return 1;
+}
+
 int dc_advance_flipper_phase(
     const uint8_t* const work_ram,
     const size_t work_ram_size,

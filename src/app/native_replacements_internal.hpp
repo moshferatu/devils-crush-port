@@ -1342,6 +1342,11 @@ replace_flipper_input_gate(
     std::span<const std::byte> work_ram);
 
 [[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_flipper_release_arm(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram);
+
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
 replace_flipper_phase_step(
     const emulation::RoutineEntry& entry,
     std::span<const std::byte> work_ram);

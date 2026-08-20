@@ -24,6 +24,17 @@ typedef struct dc_flipper_activation {
     uint8_t supported;
 } dc_flipper_activation;
 
+typedef struct dc_flipper_release_arm {
+    uint8_t orientation_before;
+    uint8_t orientation_after;
+    uint8_t coroutine_countdown;
+    uint8_t coroutine_countdown_after;
+    uint8_t dispatch_low;
+    uint8_t dispatch_high;
+    uint8_t decrements_countdown;
+    uint8_t installs_dispatch;
+} dc_flipper_release_arm;
+
 typedef struct dc_flipper_phase_step {
     uint8_t countdown;
     uint8_t reload;
@@ -150,6 +161,15 @@ int dc_prepare_flipper_activation(
     uint8_t slot,
     const dc_flipper_input_gate* gate,
     dc_flipper_activation* activation);
+
+// Native model of D4B3's release-arm transaction. It marks the indexed
+// control piece as reversing and active, then models the in-line C5C9
+// coroutine handoff whose staged return address installs dispatch D4C6.
+int dc_prepare_flipper_release_arm(
+    const uint8_t* work_ram,
+    size_t work_ram_size,
+    uint8_t slot,
+    dc_flipper_release_arm* release);
 
 // Native equivalent of D500's timer-expiry phase step. Non-expiring timers
 // and endpoint phases remain assembly-owned until their surrounding

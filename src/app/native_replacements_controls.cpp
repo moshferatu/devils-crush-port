@@ -328,6 +328,251 @@ replace_flipper_input_gate(
 }
 
 [[nodiscard]] std::optional<RoutineReplacement>
+replace_flipper_release_arm(
+    const RoutineEntry& entry,
+    const std::span<const std::byte> work_ram)
+{
+    constexpr RoutineKey kRoutine{
+        .physical_bank = 0x01U,
+        .logical_pc = 0xD4B3U,
+    };
+    if (entry.routine != kRoutine) {
+        return std::nullopt;
+    }
+
+    dc_flipper_release_arm release{};
+    if (!dc_prepare_flipper_release_arm(
+            reinterpret_cast<const std::uint8_t*>(work_ram.data()),
+            work_ram.size(),
+            entry.registers.x,
+            &release)) {
+        throw std::runtime_error(
+            "Native D4B3 replacement rejected the work-RAM snapshot.");
+    }
+
+    const auto set_nz = [](std::uint8_t status, const std::uint8_t value) {
+        status = static_cast<std::uint8_t>(
+            status & static_cast<std::uint8_t>(~0xA2U));
+        if (value == 0U) {
+            status = static_cast<std::uint8_t>(status | 0x02U);
+        } else if ((value & 0x80U) != 0U) {
+            status = static_cast<std::uint8_t>(status | 0x80U);
+        }
+        return status;
+    };
+
+    const std::uint32_t scheduler_increment_cycle =
+        release.decrements_countdown != 0U ? 207U : 186U;
+    const std::uint32_t body_cycles =
+        release.installs_dispatch == 0U
+        ? 195U
+        : (release.decrements_countdown != 0U ? 273U : 252U);
+
+    auto output = entry.registers;
+    output.program_counter = 0xC5E9U;
+    if (release.installs_dispatch != 0U) {
+        output.accumulator = release.dispatch_high;
+        output.status = set_nz(output.status, output.accumulator);
+    } else {
+        output.accumulator = release.coroutine_countdown;
+        output.status =
+            set_nz(output.status, release.coroutine_countdown_after);
+    }
+
+    const auto stack_high = entry.registers.stack_pointer;
+    const auto stack_low = static_cast<std::uint8_t>(stack_high - 1U);
+    RoutineReplacement replacement{
+        .return_instruction = {
+            .physical_bank = 0x01U,
+            .logical_pc = 0xC5E9U,
+        },
+        .output_registers = output,
+        .body_master_cycles = body_cycles,
+    };
+    replacement.work_ram_writes = {
+        {
+            .instruction = {0x01U, 0xD4B8U},
+            .logical_address = static_cast<std::uint16_t>(
+                0x3C80U + entry.registers.x),
+            .value = release.orientation_after,
+            .master_cycle_offset = 36U,
+        },
+        {
+            .instruction = {0x01U, 0xD4BDU},
+            .logical_address = static_cast<std::uint16_t>(
+                0x3A00U + entry.registers.x),
+            .value = 0x01U,
+            .master_cycle_offset = 57U,
+        },
+        {
+            .instruction = {0x01U, 0xD4C0U},
+            .logical_address = static_cast<std::uint16_t>(
+                0x3E00U + entry.registers.x),
+            .value = 0x01U,
+            .master_cycle_offset = 72U,
+        },
+        {
+            .instruction = {0x01U, 0xD4C3U},
+            .logical_address = static_cast<std::uint16_t>(
+                0x2100U + stack_high),
+            .value = 0xD4U,
+            .master_cycle_offset = 72U,
+        },
+        {
+            .instruction = {0x01U, 0xD4C3U},
+            .logical_address = static_cast<std::uint16_t>(
+                0x2100U + stack_low),
+            .value = 0xC5U,
+            .master_cycle_offset = 72U,
+        },
+        {
+            .instruction = {0x01U, 0xC5CAU},
+            .logical_address = 0x2026U,
+            .value = 0xC5U,
+            .master_cycle_offset = 117U,
+        },
+        {
+            .instruction = {0x01U, 0xC5CDU},
+            .logical_address = 0x2027U,
+            .value = 0xD4U,
+            .master_cycle_offset = 141U,
+        },
+    };
+    if (release.decrements_countdown != 0U) {
+        replacement.work_ram_writes.push_back({
+            .instruction = {0x01U, 0xC5D4U},
+            .logical_address = static_cast<std::uint16_t>(
+                0x3D80U + entry.registers.x),
+            .value = release.coroutine_countdown_after,
+            .master_cycle_offset = 183U,
+        });
+    }
+    if (release.installs_dispatch != 0U) {
+        replacement.work_ram_writes.push_back({
+            .instruction = {0x01U, 0xC5D9U},
+            .logical_address = 0x2026U,
+            .value = release.dispatch_low,
+            .master_cycle_offset = scheduler_increment_cycle,
+        });
+        replacement.work_ram_writes.push_back({
+            .instruction = {0x01U, 0xC5E1U},
+            .logical_address = static_cast<std::uint16_t>(
+                0x3F00U + entry.registers.x),
+            .value = release.dispatch_low,
+            .master_cycle_offset = scheduler_increment_cycle + 39U,
+        });
+        replacement.work_ram_writes.push_back({
+            .instruction = {0x01U, 0xC5E6U},
+            .logical_address = static_cast<std::uint16_t>(
+                0x3F80U + entry.registers.x),
+            .value = release.dispatch_high,
+            .master_cycle_offset = scheduler_increment_cycle + 66U,
+        });
+    }
+
+    const auto append_checkpoint =
+        [&replacement](
+            const std::uint16_t instruction_pc,
+            const std::uint16_t resume_pc,
+            const std::uint32_t master_cycle,
+            auto registers) {
+            registers.program_counter = resume_pc;
+            replacement.checkpoints.push_back({
+                .interrupt_sample_master_cycle_offset = master_cycle - 3U,
+                .master_cycle_offset = master_cycle,
+                .instruction = {0x01U, instruction_pc},
+                .registers = registers,
+            });
+        };
+
+    auto checkpoint = entry.registers;
+    checkpoint.accumulator = release.orientation_before;
+    checkpoint.status = set_nz(checkpoint.status, checkpoint.accumulator);
+    append_checkpoint(0xD4B3U, 0xD4B6U, 15U, checkpoint);
+    checkpoint.accumulator = release.orientation_after;
+    checkpoint.status = set_nz(checkpoint.status, checkpoint.accumulator);
+    append_checkpoint(0xD4B6U, 0xD4B8U, 21U, checkpoint);
+    append_checkpoint(0xD4B8U, 0xD4BBU, 36U, checkpoint);
+
+    checkpoint.accumulator = 0x01U;
+    checkpoint.status = set_nz(checkpoint.status, checkpoint.accumulator);
+    append_checkpoint(0xD4BBU, 0xD4BDU, 42U, checkpoint);
+    append_checkpoint(0xD4BDU, 0xD4C0U, 57U, checkpoint);
+    append_checkpoint(0xD4C0U, 0xD4C3U, 72U, checkpoint);
+
+    checkpoint.stack_pointer =
+        static_cast<std::uint8_t>(checkpoint.stack_pointer - 2U);
+    append_checkpoint(0xD4C3U, 0xC5C9U, 93U, checkpoint);
+
+    checkpoint.stack_pointer =
+        static_cast<std::uint8_t>(checkpoint.stack_pointer + 1U);
+    checkpoint.accumulator = 0xC5U;
+    checkpoint.status = set_nz(checkpoint.status, checkpoint.accumulator);
+    append_checkpoint(0xC5C9U, 0xC5CAU, 105U, checkpoint);
+    append_checkpoint(0xC5CAU, 0xC5CCU, 117U, checkpoint);
+
+    checkpoint.stack_pointer =
+        static_cast<std::uint8_t>(checkpoint.stack_pointer + 1U);
+    checkpoint.accumulator = 0xD4U;
+    checkpoint.status = set_nz(checkpoint.status, checkpoint.accumulator);
+    append_checkpoint(0xC5CCU, 0xC5CDU, 129U, checkpoint);
+    append_checkpoint(0xC5CDU, 0xC5CFU, 141U, checkpoint);
+
+    checkpoint.accumulator = release.coroutine_countdown;
+    checkpoint.status = set_nz(checkpoint.status, checkpoint.accumulator);
+    append_checkpoint(0xC5CFU, 0xC5D2U, 156U, checkpoint);
+    if (release.decrements_countdown == 0U) {
+        append_checkpoint(0xC5D2U, 0xC5D9U, 168U, checkpoint);
+    } else {
+        append_checkpoint(0xC5D2U, 0xC5D4U, 162U, checkpoint);
+        checkpoint.status =
+            set_nz(checkpoint.status, release.coroutine_countdown_after);
+        append_checkpoint(0xC5D4U, 0xC5D7U, 183U, checkpoint);
+        if (release.installs_dispatch == 0U) {
+            append_checkpoint(0xC5D7U, 0xC5E9U, 195U, output);
+            absorb_return(
+                replacement,
+                work_ram,
+                entry.registers.stack_pointer,
+                {0x01U, 0xC5E9U},
+                body_cycles,
+                output);
+            return replacement;
+        }
+        append_checkpoint(0xC5D7U, 0xC5D9U, 189U, checkpoint);
+    }
+
+    checkpoint.status = set_nz(checkpoint.status, release.dispatch_low);
+    append_checkpoint(
+        0xC5D9U, 0xC5DBU, scheduler_increment_cycle, checkpoint);
+    append_checkpoint(
+        0xC5DBU, 0xC5DFU, scheduler_increment_cycle + 12U, checkpoint);
+
+    checkpoint.accumulator = release.dispatch_low;
+    checkpoint.status = set_nz(checkpoint.status, checkpoint.accumulator);
+    append_checkpoint(
+        0xC5DFU, 0xC5E1U, scheduler_increment_cycle + 24U, checkpoint);
+    append_checkpoint(
+        0xC5E1U, 0xC5E4U, scheduler_increment_cycle + 39U, checkpoint);
+
+    checkpoint.accumulator = release.dispatch_high;
+    checkpoint.status = set_nz(checkpoint.status, checkpoint.accumulator);
+    append_checkpoint(
+        0xC5E4U, 0xC5E6U, scheduler_increment_cycle + 51U, checkpoint);
+    append_checkpoint(
+        0xC5E6U, 0xC5E9U, scheduler_increment_cycle + 66U, output);
+
+    absorb_return(
+        replacement,
+        work_ram,
+        entry.registers.stack_pointer,
+        {0x01U, 0xC5E9U},
+        body_cycles,
+        output);
+    return replacement;
+}
+
+[[nodiscard]] std::optional<RoutineReplacement>
 replace_flipper_phase_step(
     const RoutineEntry& entry,
     const std::span<const std::byte> work_ram)

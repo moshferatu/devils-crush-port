@@ -185,6 +185,7 @@ DC_ADMITTED_ROUTINE(0x01U, 0xD081U, 540, 540, "verify_flipper_geometry_semantic"
 DC_ADMITTED_ROUTINE(0x01U, 0xD09EU, 540, 540, "verify_flipper_projection_semantic")
 DC_ADMITTED_ROUTINE(0x01U, 0xD1A2U, 354, 354, "verify_motion_rotation_semantic")
 DC_ADMITTED_ROUTINE(0x01U, 0xD466U, 7468, 7470, "verify_flipper_input_gate_semantic")
+DC_ADMITTED_ROUTINE(0x01U, 0xD4B3U, 246, 246, "verify_flipper_release_arm_semantic")
 DC_ADMITTED_ROUTINE(0x01U, 0xD500U, 980, 980, "verify_flipper_phase_step_semantic")
 DC_ADMITTED_ROUTINE(0x01U, 0xD612U, 62, 62, "verify_flipper_radius_projection_semantic")
 DC_ADMITTED_ROUTINE(0x01U, 0xD62EU, 62, 62, "verify_flipper_angle_projection_semantic")

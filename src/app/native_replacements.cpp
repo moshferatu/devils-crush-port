@@ -2080,9 +2080,15 @@ replace_native_gameplay_routine_impl(
         == RoutineKey{
             .physical_bank = 0x01U,
             .logical_pc = 0xD466U,
-        }) {
-        replacement =
-            detail::replace_flipper_input_gate(entry, work_ram);
+        }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x01U,
+                .logical_pc = 0xD4B3U,
+            }) {
+        replacement = entry.routine.logical_pc == 0xD466U
+            ? detail::replace_flipper_input_gate(entry, work_ram)
+            : detail::replace_flipper_release_arm(entry, work_ram);
     } else if (entry.routine
         == RoutineKey{
             .physical_bank = 0x01U,

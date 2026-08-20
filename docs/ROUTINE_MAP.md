@@ -9609,3 +9609,26 @@ SHA-256 `9036a9de0c3c9917f47bff8c04c136a4824ec12601fb457d260aa2dfe4443490`,
 call SHA-256 `799723c75cca1ad3860a1f82a28fbf73781691f3796857ff74145cc3916a9dee`,
 and ordered-write SHA-256
 `c29f5be6dc7c7196fb3e855c26ff85fe21c7ccc24cfccfb42eaa8547fa0e2b8d`.
+
+## Flipper release-arm coroutine: semantic `01:D4B3@all`
+
+The actor scheduler reaches `01:D4B3` through the slot dispatch table. The
+entry sets bit 7 in indexed orientation `$3C80,X`, writes active value 1 to
+`$3A00,X` and `$3E00,X`, then calls shared coroutine scheduler `01:C5C9`.
+That scheduler consumes the staged `D4C5` return address and, when its indexed
+countdown is zero or expires, stores the following address `01:D4C6` in
+`$3F00,X/$3F80,X`. Its final `RTS` therefore returns directly to D4B3's caller.
+
+All 246 canonical entries have a zero countdown and a 252-cycle body with ten
+ordered writes. Twenty-three scopes include original interrupts and expand to
+774-1,209 cycles without changing the transaction. Controlled frame-1,267
+fixtures prove countdown one (273 cycles, 11 writes) and countdown two
+(195 cycles, eight writes) as well as the ordinary zero path.
+
+The adapter retains every instruction boundary, both JSR stack writes, the
+`$26/$27` scratch transcript, the three scheduler outcomes, and the live-stack
+return at `01:C5E9`. Census, 246-call, and 2,759-write artifacts remain exact;
+their SHA-256 values are respectively
+`9036a9de0c3c9917f47bff8c04c136a4824ec12601fb457d260aa2dfe4443490`,
+`7d695bf99a8e6bdd43179693d3d5270a14416b21c8771233055aecbc4d45656b`, and
+`cd7de400e8c59f91f0b3352bc58cb3a15450c71b3d3077382b97f1c59631253b`.

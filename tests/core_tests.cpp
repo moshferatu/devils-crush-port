@@ -6658,6 +6658,50 @@ void test_native_flipper_phase_step()
         "native D500 rejects a truncated work-RAM snapshot");
 }
 
+void test_native_flipper_release_arm()
+{
+    std::array<std::uint8_t, 0x2000> work_ram{};
+    constexpr std::uint8_t slot = 0x05U;
+    work_ram[0x1C80U + slot] = 0x21U;
+
+    dc_flipper_release_arm release{};
+    check(
+        dc_prepare_flipper_release_arm(
+            work_ram.data(), work_ram.size(), slot, &release)
+            != 0
+            && release.orientation_before == 0x21U
+            && release.orientation_after == 0xA1U
+            && release.installs_dispatch != 0U
+            && release.decrements_countdown == 0U
+            && release.dispatch_low == 0xC6U
+            && release.dispatch_high == 0xD4U,
+        "native D4B3 arms reverse motion and installs its continuation");
+
+    work_ram[0x1D80U + slot] = 1U;
+    check(
+        dc_prepare_flipper_release_arm(
+            work_ram.data(), work_ram.size(), slot, &release)
+            != 0
+            && release.decrements_countdown != 0U
+            && release.coroutine_countdown_after == 0U
+            && release.installs_dispatch != 0U,
+        "native D4B3 installs its continuation when countdown one expires");
+
+    work_ram[0x1D80U + slot] = 2U;
+    check(
+        dc_prepare_flipper_release_arm(
+            work_ram.data(), work_ram.size(), slot, &release)
+            != 0
+            && release.coroutine_countdown_after == 1U
+            && release.installs_dispatch == 0U,
+        "native D4B3 preserves the prior dispatch while its countdown runs");
+    check(
+        dc_prepare_flipper_release_arm(
+            work_ram.data(), work_ram.size() - 1U, slot, &release)
+            == 0,
+        "native D4B3 rejects a truncated work-RAM snapshot");
+}
+
 void test_native_flipper_geometry()
 {
     std::array<std::uint8_t, 0x80> geometry_table{};
@@ -10954,6 +10998,7 @@ int main()
     test_native_session_input_gate();
     test_native_ball_drain_threshold();
     test_native_bank7_mode_gate();
+    test_native_flipper_release_arm();
     test_native_flipper_phase_step();
     test_native_flipper_geometry();
     test_native_coroutine_schedule();

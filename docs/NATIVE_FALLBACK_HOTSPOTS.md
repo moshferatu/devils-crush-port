@@ -3980,6 +3980,28 @@ write SHA-256 values are
 The replacement adds exactly 254,304 deployed native cycles, reaching
 697,869,777 cycles overall and 98.22% of cycles outside frame wait.
 
+## Flipper release-arm coroutine
+
+The residual `01:D4B3-D4DC` cluster contained more than one coroutine. A keyed
+capture showed 246 natural scheduler entries at `01:D4B3`; every one ends at
+shared scheduler return `01:C5E9`, before execution can reach `D4C6`. That
+makes `D4B3` a complete independent boundary even though the static listing
+looks like one longer controller.
+
+The 246-call trace contains 2,759 ordered writes. Ordinary calls execute a
+252-cycle body; 23 interrupt-bearing scopes reach 774-1,209 cycles. Semantic
+`01:D4B3@all` preserves all of them, plus controlled countdown-one and
+countdown-two scheduler paths. It adds 22,878 deployed native cycles: the new
+parent owns 273 cycles including its return, but the already-native `C5C9`
+child previously owned 180 of those, leaving a measured 93-cycle gain per
+call. Registry ownership is 697,892,655 cycles, or 98.23% outside frame wait.
+
+The other screened candidate, `08:5ABF`, is not admitted as one transaction.
+Its 18 natural text/tile decoder calls range from 3,882 to 53,454 cycles, and
+the largest produce 562-932 work-RAM writes while repeatedly calling VDC
+writer `08:5B01`. The child is the next separable bank-8 boundary; the outer
+decoder must first be decomposed below the bridge's 512-write limit.
+
 ## Use on future families
 
 Follow the command and interpretation rules in

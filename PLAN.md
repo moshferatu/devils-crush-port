@@ -773,6 +773,11 @@ Provide an interactive monitor-assignment screen and persist display identity, g
   one-write inactive-mode path and absorb the common return. Five controlled
   fixtures additionally cover both range rejects, the form reject, the
   already-armed return, and the 219-cycle three-write arming path.
+  Semantic `01:D4B3@all` now owns the flipper release-arm coroutine entry.
+  All 246 canonical calls set reverse/active state and hand dispatch `D4C6`
+  through the shared scheduler with exact stack, scratch, interrupt, and
+  ordered-write parity. Controlled fixtures also cover countdown expiry and
+  the still-counting scheduler return.
   Semantic `01:DD09@all` composes the signed `E905` divider for either nonzero motion
   component, subtracts its signed quotient, and applies the second-axis
   acceleration. All 753 calls are native, including the 669 previously
