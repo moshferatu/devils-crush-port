@@ -7316,6 +7316,31 @@ directly replays its frame-874, 3,123-cycle, 101-write call. Release preserves:
 - Write SHA-256:
   `cb32774ea1c72400d67db014ae3337605d7a63b4cbc44fb532021a5a9b4d57d0`
 
+### Shared unsigned byte divider: semantic `00:E6DC@all`
+
+The byte-width sibling reads dividend `$30` and divisor `$2F`, saves X, clears
+remainder `$42`, and rolls the dividend once through the inherited carry. Its
+eight restoring rounds shift `$42`, conditionally subtract `$2F`, and roll the
+quotient bit into `$30`. The quotient replaces `$30`; A and `$2F` receive the
+remainder before X and the live stack-derived return are restored.
+
+`dc_divide_unsigned_byte` exposes every shifted remainder, subtraction
+decision, post-subtraction remainder, and rolled quotient. The checkpointed
+adapter reproduces all zero-page and stack writes, compare/subtract flags,
+branch timing, PHX/PLX traffic, and division-by-zero ROM behavior.
+
+All 46 route calls execute natively. Thirty-three are uninterrupted and 13
+contain original handler passages; complete scopes span 795-1,899 master
+cycles and preserve 1,108 aggregate writes. Ordinal 3 directly replays the
+last frame-874 call at 795 cycles and 20 writes. Release preserves:
+
+- Census SHA-256:
+  `9036a9de0c3c9917f47bff8c04c136a4824ec12601fb457d260aa2dfe4443490`
+- Call SHA-256:
+  `d0b4d0891016f40c8d1768b703294374b9436e7413734c3a05170d51b848d31e`
+- Write SHA-256:
+  `94a4d92c6600323147e3c2e2b65760fa83d2ff891fcaa167384eae3f424b1ced`
+
 ### Twenty-fourth native replacement: semantic `00:E905@all`
 
 This shared signed divider reads the 16-bit dividend at `$2F:$30` and the

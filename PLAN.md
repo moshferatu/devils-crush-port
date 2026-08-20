@@ -759,6 +759,10 @@ Provide an interactive monitor-assignment screen and persist display identity, g
   divider. All 105 calls execute natively through the fixed 24-round walk,
   including 82 interrupt-bearing scopes, while the exact 13,975 ordered writes
   and canonical state census remain unchanged.
+  Semantic `00:E6DC@all` now implements the sibling unsigned byte restoring
+  divider. All 46 calls execute natively through the fixed eight-round walk,
+  including 13 interrupt-bearing scopes, while the exact 1,108 ordered writes
+  and canonical state census remain unchanged.
   Semantic `01:DD09@all` composes the signed `E905` divider for either nonzero motion
   component, subtracts its signed quotient, and applies the second-axis
   acceleration. All 753 calls are native, including the 669 previously

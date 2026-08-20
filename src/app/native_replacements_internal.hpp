@@ -1265,6 +1265,11 @@ replace_signed_division(
     std::span<const std::byte> work_ram);
 
 [[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_unsigned_byte_division(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram);
+
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
 replace_unsigned_24_division(
     const emulation::RoutineEntry& entry,
     std::span<const std::byte> work_ram);

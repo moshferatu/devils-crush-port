@@ -12,6 +12,7 @@ extern "C" {
 enum {
     DC_CACHED_POSITION_BYTE_COUNT = 6,
     DC_INTEGRATED_POSITION_BYTE_COUNT = 6,
+    DC_UNSIGNED_BYTE_DIVIDE_STEP_COUNT = 8,
     DC_UNSIGNED_DIVIDE_STEP_COUNT = 16,
     DC_UNSIGNED_24_DIVIDE_STEP_COUNT = 24,
     DC_UNSIGNED_MULTIPLY_STEP_COUNT = 8,
@@ -81,6 +82,26 @@ typedef struct dc_unsigned_divide_step {
     uint8_t remainder_after_subtract;
     uint8_t subtracts_divisor;
 } dc_unsigned_divide_step;
+
+typedef struct dc_unsigned_byte_divide_step {
+    uint8_t quotient_after_roll;
+    uint8_t remainder_after_shift;
+    uint8_t remainder_after_subtract;
+    uint8_t subtracts_divisor;
+} dc_unsigned_byte_divide_step;
+
+typedef struct dc_unsigned_byte_division {
+    uint8_t dividend_input;
+    uint8_t dividend_after_initial_roll;
+    uint8_t quotient;
+    uint8_t divisor;
+    uint8_t remainder;
+    uint8_t initial_carry;
+    uint8_t initial_roll_carry;
+    uint8_t subtraction_count;
+    dc_unsigned_byte_divide_step
+        steps[DC_UNSIGNED_BYTE_DIVIDE_STEP_COUNT];
+} dc_unsigned_byte_division;
 
 typedef struct dc_signed_division {
     uint16_t dividend_input;
@@ -275,6 +296,17 @@ int dc_divide_signed_word(
     size_t work_ram_size,
     uint8_t carry_in,
     dc_signed_division* division);
+
+// Native equivalent of ROM routine 00:E6DC. It performs the cartridge's
+// preliminary inherited-carry roll and eight restoring rounds over the
+// unsigned dividend at 30 and divisor at 2F. The quotient replaces the
+// dividend and the remainder replaces the divisor. A zero divisor retains
+// the original loop behavior instead of being rejected.
+int dc_divide_unsigned_byte(
+    const uint8_t* work_ram,
+    size_t work_ram_size,
+    uint8_t carry_in,
+    dc_unsigned_byte_division* division);
 
 // Native equivalent of ROM routine 00:E7D7. It performs the cartridge's
 // preliminary inherited-carry roll and 24 restoring rounds over the unsigned

@@ -6776,30 +6776,40 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
     state census.
   - [x] Registry A/B: **697,120,455 -> 697,453,617** native cycles; 333,162
     cycles added, 474 admitted routines, 358 entered, and no abandonments.
+- [x] Port the shared unsigned byte divider at `00:E6DC-E6F9`:
+  - [x] Preserve the inherited-carry preliminary roll, all eight restoring
+    quotient/remainder rounds, zero-divisor behavior, PHX/PLX scratch state,
+    remainder write-back over the divisor, and the live stack-derived return.
+  - [x] Preserve all 46 natural calls, 13 interrupt-bearing scopes, the exact
+    46-call/1,108-write artifacts, direct corpus replay, and the canonical
+    state census.
+  - [x] Registry A/B: **697,453,617 -> 697,491,153** native cycles; 37,536
+    cycles added, 475 admitted routines, 359 entered, and no abandonments.
 
 ## Active Work
 
-Current owner: Codex. Current slice: **shared unsigned 24-bit divider**.
+Current owner: Codex. Current slice: **shared unsigned byte divider**.
 Done.
 
-The divider's 105 natural scopes span 3,123-48,450 master cycles including
-original interrupt handlers. Eighty-two calls contain handler passages; all
+The divider's 46 natural scopes span 795-1,899 master cycles including
+original interrupt handlers. Thirteen calls contain handler passages; all
 execute natively without a horizon decline or abandonment. The pure model and
 instruction transcript preserve the preliminary carry-sensitive roll, the
-fixed 24 rounds, all 13,975 ordered writes, and the exact call and post-call
-RAM artifacts. An uninterrupted frame-874 corpus fixture gives the fast direct
-replay while the owning route proves every subtraction density and interrupt.
+fixed eight rounds, divisor-to-remainder write-back, all 1,108 ordered writes,
+and the exact call and post-call RAM artifacts. The last frame-874 call gives
+an uninterrupted 795-cycle/20-write direct replay fixture, avoiding two later
+calls in that frame while the owning route proves every interrupt placement.
 
-The fresh deployed profile retains the canonical census, 697,453,617 native
-cycles, 474 installed routines, 358 entered routines, zero horizon declines,
+The fresh deployed profile retains the canonical census, 697,491,153 native
+cycles, 475 installed routines, 359 entered routines, zero horizon declines,
 zero depth refusals, and zero abandonments. Filtering admitted entry points and
-the `00:E321-E32B` frame wait leaves 5,709,525 profile-attributed cycles across
-268 clusters.
+the `00:E321-E32B` frame wait leaves 5,671,677 profile-attributed cycles across
+266 clusters.
 
-Next: screen sibling unsigned-byte divider `00:E6DC-E6F9`. It has 46 natural
-entries, exactly eight restoring rounds per call, and 37,848 interpreted
-profile cycles. Its state and checkpoint shape are a smaller direct reuse of
-the now-proven `E7D7` family.
+Next: screen the shared Small-Soldier allocator/controller at
+`03:7E87-7F28`. It is a coherent gameplay candidate responsible for 136,491
+remaining profile-attributed cycles; the existing source-family route already
+captures its natural allocation and completion context.
 
 ### Previous: the impact-burst allocator success return
 

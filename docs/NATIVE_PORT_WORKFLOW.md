@@ -3530,6 +3530,14 @@ owning route proves all 105 calls, zero through six subtraction stores, and 82
 interrupt-bearing scopes. The pure model includes the ROM's zero-divisor
 behavior even though the natural route does not request it.
 
+Its sibling at `00:E6DC` uses the same proof shape at byte width. Ordinal 3 is
+the cached direct fixture because it is the last of three calls in frame 874;
+using ordinal 1 would correctly replay the requested call and then observe the
+two later replacements in the same frame. The owning route proves all 46 calls,
+13 interrupt-bearing scopes, and 1,108 ordered writes. This is why a direct
+fixture should be the last suitable call in its frame when an `@all` hook is
+used for replay.
+
 For global screening, `Analyze-InstructionProfile.ps1 -UnregisteredOnly
 -ExcludeFrameSyncWait` now reports only deployed non-entry residue outside the
 `00:E321-E32B` wait. Pair it with the native-cycle census's

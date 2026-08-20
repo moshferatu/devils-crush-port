@@ -845,6 +845,54 @@ void test_native_signed_division()
         "native E905 rejects a truncated work-RAM snapshot");
 }
 
+void test_native_unsigned_byte_division()
+{
+    std::array<std::uint8_t, 0x2000> work_ram{};
+    work_ram[0x002FU] = 0x07U;
+    work_ram[0x0030U] = 0xB6U;
+
+    dc_unsigned_byte_division division{};
+    check(
+        dc_divide_unsigned_byte(
+            work_ram.data(),
+            work_ram.size(),
+            0U,
+            &division)
+                != 0
+            && division.dividend_input == 0xB6U
+            && division.dividend_after_initial_roll == 0x6CU
+            && division.divisor == 0x07U
+            && division.quotient == 0x1AU
+            && division.remainder == 0U
+            && division.subtraction_count == 3U,
+        "native E6DC divides the byte after its preliminary roll");
+
+    work_ram[0x002FU] = 0U;
+    work_ram[0x0030U] = 0x12U;
+    check(
+        dc_divide_unsigned_byte(
+            work_ram.data(),
+            work_ram.size(),
+            1U,
+            &division)
+                != 0
+            && division.dividend_after_initial_roll == 0x25U
+            && division.quotient == 0xFFU
+            && division.remainder == 0x12U
+            && division.subtraction_count
+                == DC_UNSIGNED_BYTE_DIVIDE_STEP_COUNT,
+        "native E6DC preserves the zero-divisor loop semantics");
+
+    check(
+        dc_divide_unsigned_byte(
+            work_ram.data(),
+            work_ram.size() - 1U,
+            0U,
+            &division)
+            == 0,
+        "native E6DC rejects a truncated work-RAM snapshot");
+}
+
 void test_native_unsigned_24_division()
 {
     std::array<std::uint8_t, 0x2000> work_ram{};
@@ -10700,6 +10748,7 @@ int main()
     test_native_motion_damping();
     test_native_motion_substep_split();
     test_native_signed_division();
+    test_native_unsigned_byte_division();
     test_native_unsigned_24_division();
     test_native_motion_rotation();
     test_native_collision_table_pass();
