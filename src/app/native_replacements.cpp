@@ -3153,8 +3153,13 @@ replace_native_gameplay_routine_impl(
     } else if (entry.routine
         == RoutineKey{
             .physical_bank = 0x03U,
-            .logical_pc = 0x7F57U,
-        }) {
+            .logical_pc = 0x7F1AU,
+        }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x03U,
+                .logical_pc = 0x7F57U,
+            }) {
         replacement = detail::replace_collision_consumer_no_hit(
             entry,
             work_ram,

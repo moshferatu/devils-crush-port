@@ -6785,31 +6785,39 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
     state census.
   - [x] Registry A/B: **697,453,617 -> 697,491,153** native cycles; 37,536
     cycles added, 475 admitted routines, 359 entered, and no abandonments.
+- [x] Port the initial Small-Soldier no-hit collision tail at `03:7F1A-7F45`:
+  - [x] Parameterize the existing `03:7F57` composition for the initial
+    collision-selector field, extra carry branch, JSR return addresses, and
+    distinct live-stack return.
+  - [x] Preserve 1,120 no-hit calls, every interrupt-bearing scope, the exact
+    1,130-call/21,255-write artifacts, direct corpus replay, and the canonical
+    state census; retain ten scheduler transitions in assembly.
+  - [x] Registry A/B: **697,491,153 -> 697,615,473** native cycles; 124,320
+    cycles added, 476 admitted routines, 360 entered, and no abandonments.
 
 ## Active Work
 
-Current owner: Codex. Current slice: **shared unsigned byte divider**.
+Current owner: Codex. Current slice: **initial Small-Soldier collision tail**.
 Done.
 
-The divider's 46 natural scopes span 795-1,899 master cycles including
-original interrupt handlers. Thirteen calls contain handler passages; all
-execute natively without a horizon decline or abandonment. The pure model and
-instruction transcript preserve the preliminary carry-sensitive roll, the
-fixed eight rounds, divisor-to-remainder write-back, all 1,108 ordered writes,
-and the exact call and post-call RAM artifacts. The last frame-874 call gives
-an uninterrupted 795-cycle/20-write direct replay fixture, avoiding two later
-calls in that frame while the owning route proves every interrupt placement.
+The `03:7F1A` composition shares the native collision-table interpreter and
+Small-Soldier response helper already used by steady state `03:7F57`, while
+retaining the initial state's selector field, carry branch, stack frames, and
+return at `03:7F45`. It replaces all 1,120 no-hit calls. The ten calls that
+transition through the actor scheduler remain assembly-owned. Ordinal 4 gives
+an uninterrupted 423-cycle/11-write direct replay; the owning route proves the
+longer interrupt-bearing scopes through 19,131 cycles.
 
-The fresh deployed profile retains the canonical census, 697,491,153 native
-cycles, 475 installed routines, 359 entered routines, zero horizon declines,
+The fresh deployed profile retains the canonical census, 697,615,473 native
+cycles, 476 installed routines, 360 entered routines, zero horizon declines,
 zero depth refusals, and zero abandonments. Filtering admitted entry points and
-the `00:E321-E32B` frame wait leaves 5,671,677 profile-attributed cycles across
-266 clusters.
+the `00:E321-E32B` frame wait leaves 5,545,887 profile-attributed cycles across
+267 clusters.
 
-Next: screen the shared Small-Soldier allocator/controller at
-`03:7E87-7F28`. It is a coherent gameplay candidate responsible for 136,491
-remaining profile-attributed cycles; the existing source-family route already
-captures its natural allocation and completion context.
+Next: screen the shared Small-Soldier spawner at `03:7E87-7EF9` and its
+initial scheduler setup at `03:7EFA-7F17` as separate boundaries. The existing
+source-family route captures all ten natural allocations, while the new
+collision-tail route establishes the state reached after setup.
 
 ### Previous: the impact-burst allocator success return
 

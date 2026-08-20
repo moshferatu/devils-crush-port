@@ -1219,6 +1219,13 @@ parse_logical_address_range(const std::string_view text)
                                        .logical_pc = 0x7F57U,
                                    }
                            && request.all_calls;
+                       const bool proven_initial_collision_consumer =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x03U,
+                                       .logical_pc = 0x7F1AU,
+                                   }
+                           && request.all_calls;
                        const bool proven_score_accumulator =
                            request.routine
                                    == RoutineKey{
@@ -3554,6 +3561,7 @@ parse_logical_address_range(const std::string_view text)
                            && !proven_collision_motion_adjustment
                            && !proven_collision_response
                            && !proven_collision_consumer
+                           && !proven_initial_collision_consumer
                            && !proven_score_accumulator
                            && !proven_rng_update
                            && !proven_signed_word_negation
@@ -3838,7 +3846,8 @@ parse_logical_address_range(const std::string_view text)
             "03:6966@14, 03:6966@15, 03:6966@16, 03:6966@17, "
             "03:6966@18, 03:6966@19, 03:6966@20, 03:6966@21, "
             "03:6966@22, 03:6966@23, semantic 03:6966@all, semantic "
-            "03:7FB1@all, semantic 03:7F57@all, semantic 00:F55C@all, "
+            "03:7FB1@all, semantic 03:7F1A@all, semantic 03:7F57@all, "
+            "semantic 00:F55C@all, "
             "semantic 00:E8B3@all, semantic 00:E837@all, "
             "semantic 00:E905@all, semantic 00:E7D7@all, "
             "semantic 00:E6DC@all, "

@@ -3538,6 +3538,14 @@ two later replacements in the same frame. The owning route proves all 46 calls,
 fixture should be the last suitable call in its frame when an `@all` hook is
 used for replay.
 
+The initial Small-Soldier collision tail at `03:7F1A` demonstrates the other
+useful kind of reuse: parameterize a proven caller-level composition when two
+states differ only in field addresses, branch seams, stack return bytes, and
+the outer return. Its steady sibling `03:7F57` kept the same child models and
+regression unchanged. An uninterrupted ordinal-4 corpus supplied the fast
+inner loop; the full route remained responsible for the interrupt-bearing
+scopes and the ten deliberately unhandled scheduler transitions.
+
 For global screening, `Analyze-InstructionProfile.ps1 -UnregisteredOnly
 -ExcludeFrameSyncWait` now reports only deployed non-entry residue outside the
 `00:E321-E32B` wait. Pair it with the native-cycle census's

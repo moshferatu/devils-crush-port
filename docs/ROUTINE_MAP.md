@@ -7341,6 +7341,34 @@ last frame-874 call at 795 cycles and 20 writes. Release preserves:
 - Write SHA-256:
   `94a4d92c6600323147e3c2e2b65760fa83d2ff891fcaa167384eae3f424b1ced`
 
+### Initial Small-Soldier collision tail: semantic `03:7F1A@all`
+
+The Small-Soldier's initial controller resumes at `03:7F1A` after its
+scheduler step. It loads collision selector `$3700,X`, calls the shared
+`03:6966` collision-table interpreter, rejects the transition branch at
+`03:7F20`, calls response helper `03:7FB1`, and returns at `03:7F45` while
+collision byte `$3800,X` remains nonnegative. The ten transition calls branch
+into actor-state setup and remain assembly-owned.
+
+The native path parameterizes the established steady-state `03:7F57`
+composition rather than duplicating its child semantics. It stages both JSR
+frames, composes the collision interpreter and response helper against their
+ordered work-RAM effects, adds the initial state's six-cycle carry branch, and
+absorbs the distinct live-stack return. Every child and parent instruction
+checkpoint remains available for original timer interrupts.
+
+All 1,120 no-hit calls execute natively out of 1,130 entries. Their scopes span
+423-19,131 master cycles, preserve all 21,255 writes in the aggregate trace,
+and produce zero horizon declines or abandonments. Interrupt-free ordinal 4
+directly replays its frame-958, 423-cycle, 11-write call. Release preserves:
+
+- Census SHA-256:
+  `9036a9de0c3c9917f47bff8c04c136a4824ec12601fb457d260aa2dfe4443490`
+- Call SHA-256:
+  `dd9c01d2a5145c96bebdf856212c6acdcd11d1af64c65c0d7fd5e6c802bfb693`
+- Write SHA-256:
+  `5111f1e67085f9bb4b2d4b39efd5a2bd2fde51c23892b751cd797609beb5f05a`
+
 ### Twenty-fourth native replacement: semantic `00:E905@all`
 
 This shared signed divider reads the 16-bit dividend at `$2F:$30` and the

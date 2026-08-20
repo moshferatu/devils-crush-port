@@ -3270,13 +3270,37 @@ replace_collision_consumer_no_hit(
     const std::span<const std::byte> work_ram,
     const std::span<const std::byte> rom)
 {
-    constexpr RoutineKey kRoutine{
+    constexpr RoutineKey kInitialRoutine{
+        .physical_bank = 0x03U,
+        .logical_pc = 0x7F1AU,
+    };
+    constexpr RoutineKey kSteadyRoutine{
         .physical_bank = 0x03U,
         .logical_pc = 0x7F57U,
     };
-    if (entry.routine != kRoutine || work_ram.size() < 0x2000U) {
+    const auto initial = entry.routine == kInitialRoutine;
+    if ((!initial && entry.routine != kSteadyRoutine)
+        || work_ram.size() < 0x2000U) {
         return std::nullopt;
     }
+
+    const auto entry_pc = static_cast<std::uint16_t>(
+        initial ? 0x7F1AU : 0x7F57U);
+    const auto first_jsr_pc = static_cast<std::uint16_t>(
+        initial ? 0x7F1DU : 0x7F5AU);
+    const auto after_table_pc = static_cast<std::uint16_t>(
+        initial ? 0x7F20U : 0x7F5DU);
+    const auto second_jsr_pc = static_cast<std::uint16_t>(
+        initial ? 0x7F22U : 0x7F5DU);
+    const auto after_response_pc = static_cast<std::uint16_t>(
+        initial ? 0x7F25U : 0x7F60U);
+    const auto collision_load_pc = after_response_pc;
+    const auto collision_branch_pc = static_cast<std::uint16_t>(
+        initial ? 0x7F28U : 0x7F63U);
+    const auto return_pc = static_cast<std::uint16_t>(
+        initial ? 0x7F45U : 0x7F80U);
+    const auto collision_source_offset = static_cast<std::size_t>(
+        (initial ? 0x1700U : 0x1780U) + entry.registers.x);
 
     const auto slot = entry.registers.x;
     const auto collision = std::to_integer<std::uint8_t>(
@@ -3292,7 +3316,7 @@ replace_collision_consumer_no_hit(
     };
     table_entry.registers.program_counter = 0x6966U;
     table_entry.registers.accumulator =
-        std::to_integer<std::uint8_t>(work_ram[0x1780U + slot]);
+        std::to_integer<std::uint8_t>(work_ram[collision_source_offset]);
     table_entry.registers.stack_pointer = static_cast<std::uint8_t>(
         entry.registers.stack_pointer - 2U);
     table_entry.registers.status = static_cast<std::uint8_t>(
@@ -3362,11 +3386,11 @@ replace_collision_consumer_no_hit(
         return std::nullopt;
     }
 
-    // The state on the `RTS` at $7F80's own boundary. This used to be the
+    // The state on the selected outer `RTS` boundary. This used to be the
     // transcript's output; it is now the instant before the return rather than
     // the end of the walk, because the walk goes past it.
     auto at_return = entry.registers;
-    at_return.program_counter = 0x7F80U;
+    at_return.program_counter = return_pc;
     at_return.accumulator = collision;
     at_return.y = response->output_registers.y;
     at_return.status = static_cast<std::uint8_t>(
@@ -3381,20 +3405,21 @@ replace_collision_consumer_no_hit(
     }
 
     constexpr std::uint32_t kFirstChildOffset = 36U;
-    const auto second_jsr_offset = static_cast<std::uint32_t>(
+    const auto table_return_end = static_cast<std::uint32_t>(
         kFirstChildOffset + table->body_master_cycles + 21U);
+    const auto second_jsr_offset = static_cast<std::uint32_t>(
+        table_return_end + (initial ? 6U : 0U));
     const auto response_child_offset = static_cast<std::uint32_t>(
         second_jsr_offset + 21U);
     const auto response_end = static_cast<std::uint32_t>(
         response_child_offset + response->body_master_cycles);
-    // Where the `RTS` at $7F80 begins. The `BPL` at $7F63 lands on it, so this
-    // is the last boundary of the no-hit arm and what the whole transcript used
-    // to be worth.
+    // Where the selected outer `RTS` begins. The terminal `BPL` lands on it,
+    // making this the last boundary of either no-hit arm.
     const auto return_offset = static_cast<std::uint32_t>(response_end + 48U);
     RoutineReplacement replacement{
         .return_instruction = {
             .physical_bank = 0x03U,
-            .logical_pc = 0x7F80U,
+            .logical_pc = return_pc,
         },
         .output_registers = at_return,
         .body_master_cycles = return_offset,
@@ -3407,17 +3432,17 @@ replace_collision_consumer_no_hit(
     const auto outer_stack_low = static_cast<std::uint8_t>(
         entry.registers.stack_pointer - 1U);
     replacement.work_ram_writes.push_back({
-        .instruction = {0x03U, 0x7F5AU},
+        .instruction = {0x03U, first_jsr_pc},
         .logical_address =
             static_cast<std::uint16_t>(0x2100U + outer_stack_high),
-        .value = 0x7FU,
+        .value = static_cast<std::uint8_t>(first_jsr_pc >> 8U),
         .master_cycle_offset = 15U,
     });
     replacement.work_ram_writes.push_back({
-        .instruction = {0x03U, 0x7F5AU},
+        .instruction = {0x03U, first_jsr_pc},
         .logical_address =
             static_cast<std::uint16_t>(0x2100U + outer_stack_low),
-        .value = 0x5CU,
+        .value = static_cast<std::uint8_t>(first_jsr_pc + 2U),
         .master_cycle_offset = 15U,
     });
     for (auto write : table->work_ram_writes) {
@@ -3425,17 +3450,17 @@ replace_collision_consumer_no_hit(
         replacement.work_ram_writes.push_back(write);
     }
     replacement.work_ram_writes.push_back({
-        .instruction = {0x03U, 0x7F5DU},
+        .instruction = {0x03U, second_jsr_pc},
         .logical_address =
             static_cast<std::uint16_t>(0x2100U + outer_stack_high),
-        .value = 0x7FU,
+        .value = static_cast<std::uint8_t>(second_jsr_pc >> 8U),
         .master_cycle_offset = second_jsr_offset,
     });
     replacement.work_ram_writes.push_back({
-        .instruction = {0x03U, 0x7F5DU},
+        .instruction = {0x03U, second_jsr_pc},
         .logical_address =
             static_cast<std::uint16_t>(0x2100U + outer_stack_low),
-        .value = 0x5FU,
+        .value = static_cast<std::uint8_t>(second_jsr_pc + 2U),
         .master_cycle_offset = second_jsr_offset,
     });
     for (auto write : response->work_ram_writes) {
@@ -3478,18 +3503,18 @@ replace_collision_consumer_no_hit(
         auto checkpoint = entry.registers;
         checkpoint.accumulator =
             std::to_integer<std::uint8_t>(
-                work_ram[0x1780U + slot]);
+                work_ram[collision_source_offset]);
         checkpoint.status =
             set_nz(checkpoint.status, checkpoint.accumulator);
         append_checkpoint(
-            0x7F57U,
-            0x7F5AU,
+            entry_pc,
+            first_jsr_pc,
             12U,
             15U,
             checkpoint);
 
         append_checkpoint(
-            0x7F5AU,
+            first_jsr_pc,
             0x6966U,
             33U,
             kFirstChildOffset,
@@ -3507,13 +3532,22 @@ replace_collision_consumer_no_hit(
         after_table_rts.stack_pointer = entry.registers.stack_pointer;
         append_checkpoint(
             table->return_instruction.logical_pc,
-            0x7F5DU,
-            second_jsr_offset - 3U,
-            second_jsr_offset,
+            after_table_pc,
+            table_return_end - 3U,
+            table_return_end,
             after_table_rts);
 
+        if (initial) {
+            append_checkpoint(
+                0x7F20U,
+                second_jsr_pc,
+                second_jsr_offset - 3U,
+                second_jsr_offset,
+                after_table_rts);
+        }
+
         append_checkpoint(
-            0x7F5DU,
+            second_jsr_pc,
             0x7FB1U,
             response_child_offset - 3U,
             response_child_offset,
@@ -3532,7 +3566,7 @@ replace_collision_consumer_no_hit(
             entry.registers.stack_pointer;
         append_checkpoint(
             response->return_instruction.logical_pc,
-            0x7F60U,
+            after_response_pc,
             response_end + 18U,
             response_end + 21U,
             after_response_rts);
@@ -3542,14 +3576,14 @@ replace_collision_consumer_no_hit(
         checkpoint.status =
             set_nz(checkpoint.status, checkpoint.accumulator);
         append_checkpoint(
-            0x7F60U,
-            0x7F63U,
+            collision_load_pc,
+            collision_branch_pc,
             response_end + 33U,
             response_end + 36U,
             checkpoint);
         append_checkpoint(
-            0x7F63U,
-            0x7F80U,
+            collision_branch_pc,
+            return_pc,
             response_end + 45U,
             response_end + 48U,
             at_return);
@@ -3576,7 +3610,7 @@ replace_collision_consumer_no_hit(
         replacement,
         work_ram,
         entry.registers.stack_pointer,
-        {0x03U, 0x7F80U},
+        {0x03U, return_pc},
         return_offset,
         at_return);
     return replacement;

@@ -763,6 +763,11 @@ Provide an interactive monitor-assignment screen and persist display identity, g
   divider. All 46 calls execute natively through the fixed eight-round walk,
   including 13 interrupt-bearing scopes, while the exact 1,108 ordered writes
   and canonical state census remain unchanged.
+  Semantic `03:7F1A@all` now composes the initial Small-Soldier collision
+  no-hit tail from the same collision-table and response models as steady
+  state `03:7F57`. It replaces 1,120 of 1,130 calls, preserves all 21,255
+  ordered writes and interrupt placements, and leaves the ten scheduler
+  transitions in assembly.
   Semantic `01:DD09@all` composes the signed `E905` divider for either nonzero motion
   component, subtracts its signed quotient, and applies the second-axis
   acceleration. All 753 calls are native, including the 669 previously
