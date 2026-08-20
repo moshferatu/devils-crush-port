@@ -580,7 +580,8 @@ replace_flipper_active_update(
     constexpr std::uint8_t kBank = 0x01U;
     const auto pc = entry.routine.logical_pc;
     if (entry.routine.physical_bank != kBank
-        || (pc != 0xD4C6U && pc != 0xD4C9U && pc != 0xD4CCU)) {
+        || (pc != 0xD48EU && pc != 0xD491U && pc != 0xD494U
+            && pc != 0xD4C6U && pc != 0xD4C9U && pc != 0xD4CCU)) {
         return std::nullopt;
     }
 
@@ -609,13 +610,14 @@ replace_flipper_active_update(
         });
     };
 
-    // D4C6 and D4C9 are deliberately crossed calls. D500 and the CBAB
-    // collision route already have admitted native owners, while CBAB's full
-    // canonical scope is too large for one transaction. Staging an ordinary
-    // JSR frame lets those owners run and return to the next admitted seam.
-    if (pc == 0xD4C6U || pc == 0xD4C9U) {
+    // D48E/D491 and D4C6/D4C9 are deliberately crossed calls. D500 and the
+    // CBAB collision route already have admitted native owners, while CBAB's
+    // full canonical scope is too large for one transaction. Staging an
+    // ordinary JSR frame lets those owners run and return to the next seam.
+    if (pc == 0xD48EU || pc == 0xD491U
+        || pc == 0xD4C6U || pc == 0xD4C9U) {
         const auto target = static_cast<std::uint16_t>(
-            pc == 0xD4C6U ? 0xD500U : 0xCBABU);
+            pc == 0xD48EU || pc == 0xD4C6U ? 0xD500U : 0xCBABU);
         const auto pushed = static_cast<std::uint16_t>(pc + 2U);
         const auto stack_high = entry.registers.stack_pointer;
         const auto stack_low = static_cast<std::uint8_t>(stack_high - 1U);
@@ -645,6 +647,81 @@ replace_flipper_active_update(
             },
         };
         append_checkpoint(replacement, pc, target, 21U, output);
+        return replacement;
+    }
+
+    if (pc == 0xD494U) {
+        dc_flipper_active_head head{};
+        if (!dc_classify_flipper_active_head(
+                reinterpret_cast<const std::uint8_t*>(work_ram.data()),
+                work_ram.size(),
+                entry.registers.x,
+                &head)) {
+            throw std::runtime_error(
+                "Native D494 replacement rejected the work-RAM snapshot.");
+        }
+
+        RoutineReplacement replacement{};
+        auto checkpoint = entry.registers;
+        checkpoint.accumulator = head.phase;
+        checkpoint.status = set_nz(checkpoint.status, checkpoint.accumulator);
+        append_checkpoint(replacement, 0xD494U, 0xD497U, 15U, checkpoint);
+
+        const auto compare_result = static_cast<std::uint8_t>(
+            head.phase - 3U);
+        checkpoint.status = static_cast<std::uint8_t>(
+            checkpoint.status & static_cast<std::uint8_t>(~0x83U));
+        if (compare_result == 0U) {
+            checkpoint.status = static_cast<std::uint8_t>(
+                checkpoint.status | 0x02U);
+        } else if ((compare_result & 0x80U) != 0U) {
+            checkpoint.status = static_cast<std::uint8_t>(
+                checkpoint.status | 0x80U);
+        }
+        if (head.phase >= 3U) {
+            checkpoint.status = static_cast<std::uint8_t>(
+                checkpoint.status | 0x01U);
+        }
+        append_checkpoint(replacement, 0xD497U, 0xD499U, 21U, checkpoint);
+
+        if (head.path == DC_FLIPPER_ACTIVE_HEAD_ENDPOINT) {
+            checkpoint.program_counter = 0xD4A4U;
+            append_checkpoint(replacement, 0xD499U, 0xD4A4U, 33U, checkpoint);
+            replacement.return_instruction = {kBank, 0xD4A4U};
+            replacement.output_registers = checkpoint;
+            replacement.body_master_cycles = 33U;
+            return replacement;
+        }
+
+        append_checkpoint(replacement, 0xD499U, 0xD49BU, 27U, checkpoint);
+        checkpoint.accumulator = head.global_input;
+        checkpoint.status = set_nz(checkpoint.status, checkpoint.accumulator);
+        append_checkpoint(replacement, 0xD49BU, 0xD49EU, 42U, checkpoint);
+        checkpoint.accumulator = head.matched_input;
+        checkpoint.status = set_nz(checkpoint.status, checkpoint.accumulator);
+        append_checkpoint(replacement, 0xD49EU, 0xD4A1U, 57U, checkpoint);
+
+        if (head.path == DC_FLIPPER_ACTIVE_HEAD_RELEASE) {
+            checkpoint.program_counter = 0xD4B3U;
+            append_checkpoint(replacement, 0xD4A1U, 0xD4B3U, 69U, checkpoint);
+            replacement.return_instruction = {kBank, 0xD4B3U};
+            replacement.output_registers = checkpoint;
+            replacement.body_master_cycles = 69U;
+            return replacement;
+        }
+
+        checkpoint.program_counter = 0xD4A3U;
+        append_checkpoint(replacement, 0xD4A1U, 0xD4A3U, 63U, checkpoint);
+        replacement.return_instruction = {kBank, 0xD4A3U};
+        replacement.output_registers = checkpoint;
+        replacement.body_master_cycles = 63U;
+        absorb_return(
+            replacement,
+            work_ram,
+            entry.registers.stack_pointer,
+            {kBank, 0xD4A3U},
+            63U,
+            checkpoint);
         return replacement;
     }
 

@@ -3576,6 +3576,12 @@ recovering every instruction in the small parent. The canonical parent can
 therefore contain a 1,197-write call without any individual replacement
 exceeding the bridge's 512-write channel.
 
+The matching `D48E/D491/D494` leading pass confirms that the seam pattern is
+reusable within one state machine. Its phase and collision children stay
+independently credited, while `D494` owns only the local post-collision
+decision. The measured registry delta is the sum of those previously
+interpreted seams, not either enclosing observer scope.
+
 For global screening, `Analyze-InstructionProfile.ps1 -UnregisteredOnly
 -ExcludeFrameSyncWait` now reports only deployed non-entry residue outside the
 `00:E321-E32B` wait. Pair it with the native-cycle census's

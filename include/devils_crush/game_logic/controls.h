@@ -35,6 +35,20 @@ typedef struct dc_flipper_release_arm {
     uint8_t installs_dispatch;
 } dc_flipper_release_arm;
 
+typedef enum dc_flipper_active_head_path {
+    DC_FLIPPER_ACTIVE_HEAD_ENDPOINT = 0,
+    DC_FLIPPER_ACTIVE_HEAD_RELEASE = 1,
+    DC_FLIPPER_ACTIVE_HEAD_RETURN = 2
+} dc_flipper_active_head_path;
+
+typedef struct dc_flipper_active_head {
+    uint8_t phase;
+    uint8_t global_input;
+    uint8_t piece_mask;
+    uint8_t matched_input;
+    dc_flipper_active_head_path path;
+} dc_flipper_active_head;
+
 typedef enum dc_flipper_active_tail_path {
     DC_FLIPPER_ACTIVE_TAIL_RELEASE = 0,
     DC_FLIPPER_ACTIVE_TAIL_IDLE_RETURN = 1,
@@ -186,6 +200,15 @@ int dc_prepare_flipper_release_arm(
     size_t work_ram_size,
     uint8_t slot,
     dc_flipper_release_arm* release);
+
+// Native classification of D494 after the active flipper has advanced its
+// phase and completed its collision probe. Phase three enters the endpoint
+// scheduler, released input arms reverse motion, and held input returns.
+int dc_classify_flipper_active_head(
+    const uint8_t* work_ram,
+    size_t work_ram_size,
+    uint8_t slot,
+    dc_flipper_active_head* head);
 
 // Native classification of D4CC after the active flipper has advanced its
 // phase and completed its collision probe. A zero phase hands control to the

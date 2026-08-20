@@ -1328,7 +1328,10 @@ parse_logical_address_range(const std::string_view text)
                            && request.all_calls;
                        const bool proven_flipper_active_update =
                            request.routine.physical_bank == 0x01U
-                           && (request.routine.logical_pc == 0xD4C6U
+                           && (request.routine.logical_pc == 0xD48EU
+                               || request.routine.logical_pc == 0xD491U
+                               || request.routine.logical_pc == 0xD494U
+                               || request.routine.logical_pc == 0xD4C6U
                                || request.routine.logical_pc == 0xD4C9U
                                || request.routine.logical_pc == 0xD4CCU)
                            && request.all_calls;
@@ -3883,6 +3886,8 @@ parse_logical_address_range(const std::string_view text)
             "semantic 01:CFD8@all, "
             "semantic 00:F4FC@all, semantic "
             "01:C574@all, semantic 01:D466@all, semantic 01:D4B3@all, "
+            "semantic 01:D48E@all, semantic 01:D491@all, "
+            "semantic 01:D494@all, "
             "semantic 01:D4C6@all, semantic 01:D4C9@all, "
             "semantic 01:D4CC@all, "
             "semantic 01:CC1A@all, "

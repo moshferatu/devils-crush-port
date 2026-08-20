@@ -4002,7 +4002,7 @@ the largest produce 562-932 work-RAM writes while repeatedly calling VDC
 writer `08:5B01`. The child is the next separable bank-8 boundary; the outer
 decoder must first be decomposed below the bridge's 512-write limit.
 
-## Active-flipper continuation seams
+## Active-flipper controller seams
 
 Keyed observation rejected `01:D4C6` as one atomic transaction even though its
 own static tail is short. Its `CBAB` child reaches 41,235 cycles and 1,181
@@ -4012,11 +4012,19 @@ native `D500` into admitted `D4C9`, return from the chunked native collision
 route into admitted `D4CC`, and only then classify the local terminal branch.
 
 Each seam receives 490 natural entries. The terminal seam hands 246 phase-zero
-calls to `D458` and absorbs 244 idle returns. Together the three keys add
-49,194 cycles, bringing deployed ownership to 697,941,849 cycles and leaving
-5,216,439 unregistered non-wait cycles across 263 clusters. The next coherent
-flipper residue is `01:D469-D4A3`; `08:5B01` remains the hardware-facing leaf
-to assess before decomposing its oversized `08:5ABF` parent.
+calls to `D458` and absorbs 244 idle returns. Together those three keys add
+49,194 cycles.
+
+The matching leading pass at `D48E/D491/D494` uses the same crossed-call
+shape. Its enclosing scopes reach 37,797 cycles and 1,157 writes, while the
+three seams remain bounded. `D494` hands 246 released-input paths to native
+`D4B3`, absorbs 244 held-input returns, and implements the route-unreached
+phase-three handoff. These entries add another 58,050 cycles, bringing
+deployed ownership to 697,999,899 cycles. The consistent non-wait profile has
+5,157,861 unregistered cycles across 263 clusters. The next clean flipper
+boundary is release prefix `01:D458-D463`; `08:5B01` remains the
+hardware-facing leaf to assess before decomposing its oversized `08:5ABF`
+parent.
 
 ## Use on future families
 

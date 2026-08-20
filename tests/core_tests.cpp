@@ -6708,7 +6708,42 @@ void test_native_flipper_active_tail()
     constexpr std::uint8_t slot = 0x07U;
     work_ram[0x1C80U + slot] = 0xA5U;
 
+    dc_flipper_active_head head{};
+    work_ram[0x1980U + slot] = 3U;
+    check(
+        dc_classify_flipper_active_head(
+            work_ram.data(), work_ram.size(), slot, &head)
+                != 0
+            && head.path == DC_FLIPPER_ACTIVE_HEAD_ENDPOINT,
+        "native D494 enters the endpoint scheduler at phase three");
+
+    work_ram[0x1980U + slot] = 2U;
+    work_ram[0x0CEEU] = 0x01U;
+    work_ram[0x1B80U + slot] = 0x02U;
+    check(
+        dc_classify_flipper_active_head(
+            work_ram.data(), work_ram.size(), slot, &head)
+                != 0
+            && head.path == DC_FLIPPER_ACTIVE_HEAD_RELEASE
+            && head.matched_input == 0U,
+        "native D494 arms release when flipper input is absent");
+
+    work_ram[0x0CEEU] = 0x02U;
+    check(
+        dc_classify_flipper_active_head(
+            work_ram.data(), work_ram.size(), slot, &head)
+                != 0
+            && head.path == DC_FLIPPER_ACTIVE_HEAD_RETURN
+            && head.matched_input == 0x02U,
+        "native D494 returns while flipper input remains held");
+    check(
+        dc_classify_flipper_active_head(
+            work_ram.data(), work_ram.size() - 1U, slot, &head)
+            == 0,
+        "native D494 rejects a truncated work-RAM snapshot");
+
     dc_flipper_active_tail tail{};
+    work_ram[0x1980U + slot] = 0U;
     check(
         dc_classify_flipper_active_tail(
             work_ram.data(), work_ram.size(), slot, &tail)

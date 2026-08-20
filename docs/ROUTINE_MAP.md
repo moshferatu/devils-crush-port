@@ -9633,7 +9633,7 @@ their SHA-256 values are respectively
 `7d695bf99a8e6bdd43179693d3d5270a14416b21c8771233055aecbc4d45656b`, and
 `cd7de400e8c59f91f0b3352bc58cb3a15450c71b3d3077382b97f1c59631253b`.
 
-## Active-flipper continuation: semantic `01:D4C6/D4C9/D4CC@all`
+## Active-flipper passes: semantic `01:D48E/D491/D494@all` and `01:D4C6/D4C9/D4CC@all`
 
 The dispatch installed by `D4B3` resumes at `D4C6`, calls phase step `D500`,
 then resumes at `D4C9` and calls the single-slot collision probe at `CBAB`.
@@ -9641,17 +9641,25 @@ The collision route is deliberately chunked across admitted call/branch seams;
 observing the complete parent found calls as large as 41,709 master cycles and
 1,197 ordered writes, beyond the bridge's 512-write transaction capacity.
 
-The native route therefore admits three seams. `D4C6` and `D4C9` each stage
+The continuation therefore admits three seams. `D4C6` and `D4C9` each stage
 the exact two-byte JSR frame and hand execution to the existing child owner.
 `D4CC` reads the updated phase: phase zero jumps to release tail `D458`, an
 inactive control mask returns at `D4DC`, and an active mask clears `$3C80,X.7`
 before jumping to `D46F`. The canonical route takes 246 release paths and 244
 idle returns; the pure model also covers rearm.
 
-All 490 entries at each seam are native. Release and Debug reproduce census
-SHA-256 `9036a9de0c3c9917f47bff8c04c136a4824ec12601fb457d260aa2dfe4443490`,
-1,470-call SHA-256
-`ad67adeb347cf26ef3caa4fbc39cd3428e59764c3e765ccb5d33e96410745592`, and
-46,125-write SHA-256
-`ffe42ed3fa01c1d13c5d86332632383ada1878a416ef4372b08f85497da5c367`.
-The seams add 49,194 deployed native master cycles.
+The leading pass has the same structure: `D48E` crosses into `D500`, `D491`
+crosses into `CBAB`, and `D494` classifies the local terminal state. Phase
+three hands off to endpoint scheduler `D4A4`, released input hands off to
+release arm `D4B3`, and held input returns at `D4A3`. The canonical route
+takes 246 release paths and 244 held-input returns; the pure model additionally
+covers the phase-three handoff.
+
+All 490 entries at all six seams are native. Release reproduces census SHA-256
+`9036a9de0c3c9917f47bff8c04c136a4824ec12601fb457d260aa2dfe4443490`,
+2,940-call SHA-256
+`1b6da67a7477eee13d3949c5db91d967a1cebf5c8868eba6328bdcc8e10f2a92`, and
+122,869-write SHA-256
+`0f959a71c21196a28977d261f4ff985c02772ac86cfc0893530d8224f56fdc7f`.
+The continuation seams add 49,194 deployed native master cycles; the leading
+seams add another 58,050.

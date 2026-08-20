@@ -783,6 +783,12 @@ Provide an interactive monitor-assignment screen and persist display identity, g
   calls stage exact JSR frames, while the terminal seam models release, idle
   return, and rearm outcomes. All 490 passes through each seam preserve the
   canonical 1,470-call/46,125-write transcript and state census.
+  Semantic `01:D48E/D491/D494@all` now owns the matching leading
+  active-flipper pass. Its two crossed calls likewise preserve the independent
+  phase-step and collision owners; the terminal seam models phase-three,
+  released-input, and held-input outcomes. All 490 passes through each new
+  seam preserve the combined six-key 2,940-call/122,869-write transcript and
+  state census.
   Semantic `01:DD09@all` composes the signed `E905` divider for either nonzero motion
   component, subtracts its signed quotient, and applies the second-axis
   acceleration. All 753 calls are native, including the 669 previously

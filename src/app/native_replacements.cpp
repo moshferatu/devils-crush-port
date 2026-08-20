@@ -50,9 +50,24 @@ replace_native_gameplay_routine_impl(
         }) {
         return detail::replace_motion_substep_split(entry, work_ram);
     }
-    // The active-flipper continuation is split at both crossed calls so the
+    // The active-flipper controller is split at its crossed calls so the
     // admitted D500 and collision-route owners can run between these seams.
     if (entry.routine
+            == RoutineKey{
+                .physical_bank = 0x01U,
+                .logical_pc = 0xD48EU,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x01U,
+                .logical_pc = 0xD491U,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x01U,
+                .logical_pc = 0xD494U,
+            }
+        || entry.routine
             == RoutineKey{
                 .physical_bank = 0x01U,
                 .logical_pc = 0xD4C6U,
