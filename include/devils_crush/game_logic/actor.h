@@ -1042,6 +1042,29 @@ int dc_classify_devil_shooter_release_delay_gate(
     uint8_t slot,
     dc_devil_shooter_release_delay_gate* gate);
 
+// ROM routine 02:5223 services the fixed Devil Shooter immediately before
+// charging begins. A nonnegative collision marker reaches the session-bit
+// gate: bit $08 returns idle, while a clear bit schedules charge controller
+// 02:5249. Collision-active reset handling remains assembly-owned.
+typedef enum dc_devil_shooter_charge_entry_gate_path {
+    DC_DEVIL_SHOOTER_CHARGE_ENTRY_COLLISION_ACTIVE = 0,
+    DC_DEVIL_SHOOTER_CHARGE_ENTRY_IDLE = 1,
+    DC_DEVIL_SHOOTER_CHARGE_ENTRY_SCHEDULE = 2
+} dc_devil_shooter_charge_entry_gate_path;
+
+typedef struct dc_devil_shooter_charge_entry_gate {
+    uint8_t slot;
+    uint8_t collision_state;
+    uint8_t session_flags;
+    dc_devil_shooter_charge_entry_gate_path path;
+} dc_devil_shooter_charge_entry_gate;
+
+int dc_classify_devil_shooter_charge_entry_gate(
+    const uint8_t* work_ram,
+    size_t work_ram_size,
+    uint8_t slot,
+    dc_devil_shooter_charge_entry_gate* gate);
+
 // ROM routine 02:525F services the fixed Devil Shooter after the launched
 // ball has left it. The observed steady path returns while the collision
 // marker is nonnegative and session launch-request bit $53.1 is clear.
@@ -1058,17 +1081,20 @@ int dc_classify_devil_shooter_post_launch_gate(
     uint8_t slot,
     dc_devil_shooter_post_launch_gate* gate);
 
-// ROM routine 02:52E3 advances the fixed Devil-Shooter charge position.
-// The bounded normal path carries its three-byte position, derives the shared
-// charge counter, and selects one of the five charge appearances.
+// ROM routine 02:52E3 advances the fixed Devil-Shooter charge position,
+// clamps a fully drawn shooter to its configured rest coordinate plus $27,
+// derives the shared charge counter, and selects one of five appearances.
 typedef struct dc_devil_shooter_charge_position {
     uint8_t slot;
     uint8_t vertical_low;
+    uint8_t advanced_vertical_middle;
+    uint8_t advanced_vertical_high;
     uint8_t vertical_middle;
     uint8_t vertical_high;
     uint8_t charge;
     uint8_t appearance;
     uint8_t subtract_overflow;
+    uint8_t coordinate_capped;
 } dc_devil_shooter_charge_position;
 
 int dc_classify_devil_shooter_charge_position(
@@ -1078,17 +1104,22 @@ int dc_classify_devil_shooter_charge_position(
     dc_devil_shooter_charge_position* position);
 
 // ROM routine 02:533B retracts the fixed Devil-Shooter charge position.
-// The bounded normal path subtracts two vertical units, derives the remaining
-// charge, and updates the corresponding charge appearance when nonzero.
+// It subtracts two vertical units, derives the remaining charge, clamps a
+// coordinate that crossed its rest position, and updates the corresponding
+// charge appearance when the remaining charge is nonzero.
 typedef struct dc_devil_shooter_charge_retraction {
     uint8_t slot;
     uint8_t vertical_low;
+    uint8_t advanced_vertical_middle;
+    uint8_t advanced_vertical_high;
     uint8_t vertical_middle;
     uint8_t vertical_high;
+    uint8_t unclamped_charge;
     uint8_t charge;
     uint8_t appearance;
     uint8_t has_appearance_write;
     uint8_t high_subtract_overflow;
+    uint8_t coordinate_clamped;
 } dc_devil_shooter_charge_retraction;
 
 int dc_classify_devil_shooter_charge_retraction(

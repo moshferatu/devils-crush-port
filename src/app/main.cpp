@@ -1860,12 +1860,95 @@ parse_logical_address_range(const std::string_view text)
                                        .logical_pc = 0x5197U,
                                    }
                            && request.all_calls;
+                       const bool
+                           proven_devil_shooter_appearance_submission_prefix =
+                               request.routine
+                                       == RoutineKey{
+                                           .physical_bank = 0x02U,
+                                           .logical_pc = 0x5475U,
+                                       }
+                               && request.all_calls;
+                       const bool
+                           proven_devil_shooter_appearance_submission_tail =
+                               request.routine
+                                       == RoutineKey{
+                                           .physical_bank = 0x02U,
+                                           .logical_pc = 0x5481U,
+                                       }
+                               && request.all_calls;
                        const bool proven_devil_shooter_post_launch_gate =
                            request.routine
                                    == RoutineKey{
                                        .physical_bank = 0x02U,
                                        .logical_pc = 0x525FU,
                                    }
+                           && request.all_calls;
+                       const bool proven_devil_shooter_launch_continuation =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x02U,
+                                       .logical_pc = 0x520BU,
+                                   }
+                           && request.all_calls;
+                       const bool
+                           proven_devil_shooter_charge_retraction_calls =
+                               (request.routine
+                                        == RoutineKey{
+                                            .physical_bank = 0x02U,
+                                            .logical_pc = 0x5208U,
+                                        }
+                                   || request.routine
+                                        == RoutineKey{
+                                            .physical_bank = 0x02U,
+                                            .logical_pc = 0x52C3U,
+                                        })
+                               && request.all_calls;
+                       const bool
+                           proven_devil_shooter_charge_entry_controller =
+                               request.routine
+                                       == RoutineKey{
+                                           .physical_bank = 0x02U,
+                                           .logical_pc = 0x5223U,
+                                       }
+                               && request.all_calls;
+                       const bool proven_scene_layout_record_loop =
+                           (request.routine
+                                    == RoutineKey{
+                                        .physical_bank = 0x02U,
+                                        .logical_pc = 0x4090U,
+                                    }
+                               || request.routine
+                                    == RoutineKey{
+                                        .physical_bank = 0x02U,
+                                        .logical_pc = 0x4099U,
+                                    })
+                           && request.all_calls;
+                       const bool proven_scene_layout_record_loader =
+                           (request.routine
+                                    == RoutineKey{
+                                        .physical_bank = 0x02U,
+                                        .logical_pc = 0x40F6U,
+                                    }
+                               || request.routine
+                                    == RoutineKey{
+                                        .physical_bank = 0x02U,
+                                        .logical_pc = 0x40FEU,
+                                    }
+                               || request.routine
+                                    == RoutineKey{
+                                        .physical_bank = 0x02U,
+                                        .logical_pc = 0x4096U,
+                                    }
+                               || request.routine
+                                    == RoutineKey{
+                                        .physical_bank = 0x02U,
+                                        .logical_pc = 0x40FBU,
+                                    }
+                               || request.routine
+                                    == RoutineKey{
+                                        .physical_bank = 0x02U,
+                                        .logical_pc = 0x40A7U,
+                                    })
                            && request.all_calls;
                        const bool proven_devil_shooter_charge_controller =
                            request.routine
@@ -1903,6 +1986,14 @@ parse_logical_address_range(const std::string_view text)
                                            .logical_pc = 0x52B8U,
                                        }
                                && request.all_calls;
+                       const bool
+                           proven_devil_shooter_catch_retraction_tail =
+                               request.routine
+                                       == RoutineKey{
+                                           .physical_bank = 0x02U,
+                                           .logical_pc = 0x52C6U,
+                                       }
+                               && request.all_calls;
                        const bool proven_skeleton_insect_left_gate =
                            request.routine
                                    == RoutineKey{
@@ -1910,6 +2001,21 @@ parse_logical_address_range(const std::string_view text)
                                        .logical_pc = 0x54B9U,
                                    }
                            && request.all_calls;
+                       const bool proven_skeleton_insect_startup_countdown =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x02U,
+                                       .logical_pc = 0x54D0U,
+                                   }
+                           && request.all_calls;
+                       const bool
+                           proven_skeleton_insect_left_post_trigger =
+                               request.routine
+                                       == RoutineKey{
+                                           .physical_bank = 0x02U,
+                                           .logical_pc = 0x5500U,
+                                       }
+                               && request.all_calls;
                        const bool proven_skeleton_insect_right_gate =
                            request.routine
                                    == RoutineKey{
@@ -1917,6 +2023,14 @@ parse_logical_address_range(const std::string_view text)
                                        .logical_pc = 0x5551U,
                                    }
                            && request.all_calls;
+                       const bool
+                           proven_skeleton_insect_right_startup_countdown =
+                               request.routine
+                                       == RoutineKey{
+                                           .physical_bank = 0x02U,
+                                           .logical_pc = 0x5568U,
+                                       }
+                               && request.all_calls;
                        const bool
                            proven_skeleton_insect_right_post_trigger =
                                request.routine
@@ -2649,6 +2763,32 @@ parse_logical_address_range(const std::string_view text)
                                        .physical_bank = 0x02U,
                                        .logical_pc = 0x42B0U,
                                    }
+                           && request.all_calls;
+                       const bool proven_impact_burst_audio_command_call =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x02U,
+                                       .logical_pc = 0x42A3U,
+                                   }
+                           && request.all_calls;
+                       const bool proven_impact_burst_allocator_success_return =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x02U,
+                                       .logical_pc = 0x427CU,
+                                   }
+                           && request.all_calls;
+                       const bool proven_tower_insect_initial_controller =
+                           (request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x02U,
+                                       .logical_pc = 0x5FDBU,
+                                   }
+                               || request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x02U,
+                                       .logical_pc = 0x5FE6U,
+                                   })
                            && request.all_calls;
                        const bool proven_tower_insect_controller =
                            (request.routine
@@ -3424,15 +3564,26 @@ parse_logical_address_range(const std::string_view text)
                            && !proven_devil_shooter_release_delay_gate
                            && !proven_devil_shooter_charge_after_audio
                            && !proven_devil_shooter_charge_tail
+                           && !proven_devil_shooter_appearance_submission_prefix
+                           && !proven_devil_shooter_appearance_submission_tail
                            && !proven_devil_shooter_post_launch_gate
+                           && !proven_devil_shooter_launch_continuation
+                           && !proven_devil_shooter_charge_retraction_calls
+                           && !proven_devil_shooter_charge_entry_controller
+                           && !proven_scene_layout_record_loop
+                           && !proven_scene_layout_record_loader
                            && !proven_devil_shooter_charge_controller
                            && !proven_devil_shooter_charge_controller_tail
                            && !proven_devil_shooter_charge_position
                            && !proven_devil_shooter_charge_return
                            && !proven_devil_shooter_charge_retraction
                            && !proven_devil_shooter_catch_continuation
+                           && !proven_devil_shooter_catch_retraction_tail
                            && !proven_skeleton_insect_left_gate
+                           && !proven_skeleton_insect_startup_countdown
+                           && !proven_skeleton_insect_left_post_trigger
                            && !proven_skeleton_insect_right_gate
+                           && !proven_skeleton_insect_right_startup_countdown
                            && !proven_skeleton_insect_right_post_trigger
                            && !proven_skeleton_insect_center_gate
                            && !proven_skeleton_insect_center_continuation
@@ -3546,6 +3697,9 @@ parse_logical_address_range(const std::string_view text)
                            && !proven_spider_controller_parents
                            && !proven_tower_insect_animation
                            && !proven_impact_burst_lifetime
+                           && !proven_impact_burst_audio_command_call
+                           && !proven_impact_burst_allocator_success_return
+                           && !proven_tower_insect_initial_controller
                            && !proven_tower_insect_controller
                            && !proven_small_soldier_source_gates
                            && !proven_small_soldier_source_initializers
@@ -3636,6 +3790,7 @@ parse_logical_address_range(const std::string_view text)
             "semantic 09:60C7@all, "
             "semantic 09:7237@all, semantic 09:72FD@all, "
             "semantic 01:C80A@all, semantic 01:C7F4@all, semantic 01:C7EF@all, semantic 01:C7F9@all, semantic 01:C7FC@all, semantic 01:C804@all, semantic 01:C812@all, semantic 01:C7EA@all, semantic 01:C7E5@all, "
+            "semantic 02:427C@all, semantic 02:42A3@all, semantic 02:42B0@all, "
             "semantic 02:42EB@all, "
             "semantic 02:42F6@all, semantic 02:4345@all, "
             "semantic 02:4357@all, semantic 02:4371@all, "
@@ -3647,6 +3802,7 @@ parse_logical_address_range(const std::string_view text)
             "semantic 03:6876@all, semantic 03:68A1@all, semantic 02:5A31@all, semantic 02:5EE4@all, semantic 02:5EEC@all, semantic 03:664A@all, semantic 03:65BC@all, semantic 03:66DE@all, "
             "semantic 02:57AD@all, "
             "semantic 02:4FC1@all, "
+            "semantic 02:4090@all, semantic 02:4096@all, semantic 02:4099@all, semantic 02:40A7@all, semantic 02:40F6@all, semantic 02:40FB@all, semantic 02:40FE@all, "
             "semantic 02:4A93@all, semantic 02:4AD2@all, "
             "semantic 02:4AE5@all, semantic 02:4AEB@all, "
             "semantic 02:4B3F@all, "
@@ -3655,6 +3811,8 @@ parse_logical_address_range(const std::string_view text)
             "semantic 02:5159@all, "
             "semantic 02:518D@all, "
             "semantic 02:5197@all, "
+            "semantic 02:5475@all, semantic 02:5481@all, "
+            "semantic 02:5208@all, semantic 02:520B@all, "
             "semantic 02:5249@all, "
             "semantic 02:524C@all, "
             "semantic 02:525F@all, "
@@ -3662,8 +3820,12 @@ parse_logical_address_range(const std::string_view text)
             "semantic 02:533A@all, "
             "semantic 02:533B@all, "
             "semantic 02:52B8@all, "
+            "semantic 02:52C3@all, semantic 02:52C6@all, "
             "semantic 02:54B9@all, "
+            "semantic 02:54D0@all, "
+            "semantic 02:5500@all, "
             "semantic 02:5551@all, "
+            "semantic 02:5568@all, "
             "semantic 02:5590@all, "
             "semantic 02:55F9@all, "
             "semantic 02:5604@all, "
@@ -3754,6 +3916,7 @@ parse_logical_address_range(const std::string_view text)
             "semantic 02:5F4A@all, "
             "semantic 02:5F5B@all, "
             "semantic 02:5F5F@all, "
+            "semantic 02:5FDB@all, semantic 02:5FE6@all, "
             "semantic 03:7D85@all, semantic 03:7E23@all, "
             "semantic 03:7D4D@all, semantic 03:7DE9@all, "
             "semantic 03:7D6F@all, semantic 03:7E0D@all, "

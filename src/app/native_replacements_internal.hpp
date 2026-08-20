@@ -320,7 +320,8 @@ replace_devil_shooter_companion_appearance(
 [[nodiscard]] std::optional<emulation::RoutineReplacement>
 replace_devil_shooter_companion_active_timer(
     const emulation::RoutineEntry& entry,
-    std::span<const std::byte> work_ram);
+    std::span<const std::byte> work_ram,
+    bool absorb_rts = true);
 
 [[nodiscard]] std::optional<emulation::RoutineReplacement>
 replace_devil_shooter_companion_active_controller(
@@ -733,9 +734,26 @@ replace_tower_insect_animation(
     const emulation::RoutineEntry& entry,
     std::span<const std::byte> work_ram);
 
+// Dynamic Tower-insect startup coroutine at 02:5FDB/5FE6. Both entries
+// compose the shared coroutine scheduler while the subsequent collision
+// controller remains at its already-proven native boundaries.
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_tower_insect_initial_controller(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram);
+
 // Shared type-$8F impact-burst lifetime controller at 02:42B0. The waiting
 // and animation paths absorb their RTS; inactive and terminal effects hand
 // off to the registered generic actor clear through 01:C027.
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_impact_burst_audio_command_call(
+    const emulation::RoutineEntry& entry);
+
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_impact_burst_allocator_success_return(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram);
+
 [[nodiscard]] std::optional<emulation::RoutineReplacement>
 replace_impact_burst_lifetime(
     const emulation::RoutineEntry& entry,
@@ -837,12 +855,54 @@ replace_devil_shooter_charge_tail(
     std::span<const std::byte> work_ram);
 
 [[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_devil_shooter_appearance_submission_prefix(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram);
+
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_devil_shooter_appearance_submission_tail(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram);
+
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
 replace_devil_shooter_post_launch_gate(
     const emulation::RoutineEntry& entry,
     std::span<const std::byte> work_ram);
 
 [[nodiscard]] std::optional<emulation::RoutineReplacement>
 replace_devil_shooter_charge_position(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram);
+
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_devil_shooter_launch_continuation(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram);
+
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_devil_shooter_charge_retraction_calls(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram);
+
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_devil_shooter_charge_entry_controller(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram);
+
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_scene_layout_record_loop(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram,
+    std::span<const std::byte> rom);
+
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_scene_layout_record_loader(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram,
+    std::span<const std::byte> rom);
+
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_scene_layout_record_calls(
     const emulation::RoutineEntry& entry,
     std::span<const std::byte> work_ram);
 
@@ -872,12 +932,32 @@ replace_devil_shooter_catch_continuation(
     std::span<const std::byte> work_ram);
 
 [[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_devil_shooter_catch_retraction_tail(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram);
+
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
 replace_skeleton_insect_left_gate(
     const emulation::RoutineEntry& entry,
     std::span<const std::byte> work_ram);
 
 [[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_skeleton_insect_startup_countdown(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram);
+
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_skeleton_insect_left_post_trigger(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram);
+
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
 replace_skeleton_insect_right_gate(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram);
+
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_skeleton_insect_right_startup_countdown(
     const emulation::RoutineEntry& entry,
     std::span<const std::byte> work_ram);
 

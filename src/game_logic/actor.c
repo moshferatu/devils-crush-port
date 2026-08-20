@@ -1883,6 +1883,31 @@ int dc_classify_devil_shooter_release_delay_gate(
     return 1;
 }
 
+int dc_classify_devil_shooter_charge_entry_gate(
+    const uint8_t* const work_ram,
+    const size_t work_ram_size,
+    const uint8_t slot,
+    dc_devil_shooter_charge_entry_gate* const gate)
+{
+    const size_t collision_offset = 0x1800U + (size_t)slot;
+    if (work_ram == NULL || gate == NULL || slot != 0x0EU
+        || work_ram_size <= collision_offset || work_ram_size <= 0x0053U) {
+        return 0;
+    }
+
+    gate->slot = slot;
+    gate->collision_state = work_ram[collision_offset];
+    gate->session_flags = work_ram[0x0053U];
+    if ((gate->collision_state & 0x80U) != 0U) {
+        gate->path = DC_DEVIL_SHOOTER_CHARGE_ENTRY_COLLISION_ACTIVE;
+    } else if ((gate->session_flags & 0x08U) != 0U) {
+        gate->path = DC_DEVIL_SHOOTER_CHARGE_ENTRY_IDLE;
+    } else {
+        gate->path = DC_DEVIL_SHOOTER_CHARGE_ENTRY_SCHEDULE;
+    }
+    return 1;
+}
+
 int dc_classify_devil_shooter_post_launch_gate(
     const uint8_t* const work_ram,
     const size_t work_ram_size,
@@ -1914,9 +1939,10 @@ int dc_classify_devil_shooter_charge_position(
     const size_t middle_offset = 0x1300U + (size_t)slot;
     const size_t high_offset = 0x1380U + (size_t)slot;
     const size_t charge_base_offset = 0x1E00U + (size_t)slot;
+    const size_t charge_high_base_offset = 0x1E80U + (size_t)slot;
 
     if (work_ram == NULL || position == NULL || slot != 0x0EU
-        || work_ram_size <= charge_base_offset) {
+        || work_ram_size <= charge_high_base_offset) {
         return 0;
     }
 
@@ -1924,20 +1950,27 @@ int dc_classify_devil_shooter_charge_position(
     const uint8_t vertical_low = (uint8_t)low_sum;
     const uint16_t middle_sum = (uint16_t)work_ram[middle_offset]
         + (uint16_t)(low_sum >> 8U);
-    const uint8_t vertical_middle = (uint8_t)middle_sum;
-    const uint8_t vertical_high = (uint8_t)(work_ram[high_offset]
+    const uint8_t advanced_vertical_middle = (uint8_t)middle_sum;
+    const uint8_t advanced_vertical_high = (uint8_t)(work_ram[high_offset]
         + (uint8_t)(middle_sum >> 8U));
-    const uint8_t charge =
-        (uint8_t)(vertical_middle - work_ram[charge_base_offset]);
-
-    // Charge values at and above $27 enter the separate coordinate-clamp
-    // branch, which is intentionally left with original assembly.
-    if (charge >= 0x27U) {
-        return 0;
-    }
+    const uint8_t uncapped_charge = (uint8_t)(
+        advanced_vertical_middle - work_ram[charge_base_offset]);
+    const uint8_t coordinate_capped = uncapped_charge >= 0x27U ? 1U : 0U;
+    const uint8_t charge = coordinate_capped != 0U ? 0x27U : uncapped_charge;
+    const uint16_t capped_middle_sum =
+        (uint16_t)work_ram[charge_base_offset] + 0x27U;
+    const uint8_t vertical_middle = coordinate_capped != 0U
+        ? (uint8_t)capped_middle_sum
+        : advanced_vertical_middle;
+    const uint8_t vertical_high = coordinate_capped != 0U
+        ? (uint8_t)(work_ram[charge_high_base_offset]
+            + (uint8_t)(capped_middle_sum >> 8U))
+        : advanced_vertical_high;
 
     position->slot = slot;
     position->vertical_low = vertical_low;
+    position->advanced_vertical_middle = advanced_vertical_middle;
+    position->advanced_vertical_high = advanced_vertical_high;
     position->vertical_middle = vertical_middle;
     position->vertical_high = vertical_high;
     position->charge = charge;
@@ -1947,9 +1980,10 @@ int dc_classify_devil_shooter_charge_position(
         : charge < 0x20U               ? 3U
                                       : 4U;
     position->subtract_overflow =
-        ((vertical_middle ^ work_ram[charge_base_offset])
-         & (vertical_middle ^ charge) & 0x80U)
+        ((advanced_vertical_middle ^ work_ram[charge_base_offset])
+         & (advanced_vertical_middle ^ uncapped_charge) & 0x80U)
         != 0U;
+    position->coordinate_capped = coordinate_capped;
     return 1;
 }
 
@@ -1973,30 +2007,34 @@ int dc_classify_devil_shooter_charge_retraction(
     const uint8_t vertical_low = work_ram[low_offset];
     const uint16_t middle_difference = (uint16_t)work_ram[middle_offset]
         - 0x02U;
-    const uint8_t vertical_middle = (uint8_t)middle_difference;
-    const uint8_t vertical_high = (uint8_t)(work_ram[high_offset]
+    const uint8_t advanced_vertical_middle = (uint8_t)middle_difference;
+    const uint8_t advanced_vertical_high = (uint8_t)(work_ram[high_offset]
         - (middle_difference > 0xFFU ? 1U : 0U));
-    const uint8_t charge =
-        (uint8_t)(vertical_middle - work_ram[charge_base_offset]);
-    const uint8_t charge_borrow = vertical_middle
+    const uint8_t unclamped_charge =
+        (uint8_t)(advanced_vertical_middle - work_ram[charge_base_offset]);
+    const uint8_t charge_borrow = advanced_vertical_middle
         < work_ram[charge_base_offset]
         ? 1U
         : 0U;
     const uint8_t high_difference =
-        (uint8_t)(vertical_high - work_ram[high_base_offset]
+        (uint8_t)(advanced_vertical_high - work_ram[high_base_offset]
             - charge_borrow);
-
-    // The BPL after the high-byte subtraction takes the bounded path only
-    // when bit seven is clear. The negative path clamps to the base position
-    // and is intentionally left with original assembly.
-    if ((high_difference & 0x80U) != 0U) {
-        return 0;
-    }
+    const uint8_t coordinate_clamped = (high_difference & 0x80U) != 0U;
+    const uint8_t vertical_middle = coordinate_clamped != 0U
+        ? work_ram[charge_base_offset]
+        : advanced_vertical_middle;
+    const uint8_t vertical_high = coordinate_clamped != 0U
+        ? work_ram[high_base_offset]
+        : advanced_vertical_high;
+    const uint8_t charge = coordinate_clamped != 0U ? 0U : unclamped_charge;
 
     retraction->slot = slot;
     retraction->vertical_low = vertical_low;
+    retraction->advanced_vertical_middle = advanced_vertical_middle;
+    retraction->advanced_vertical_high = advanced_vertical_high;
     retraction->vertical_middle = vertical_middle;
     retraction->vertical_high = vertical_high;
+    retraction->unclamped_charge = unclamped_charge;
     retraction->charge = charge;
     retraction->has_appearance_write = charge != 0U;
     retraction->appearance = charge < 0x07U ? 0U
@@ -2005,10 +2043,11 @@ int dc_classify_devil_shooter_charge_retraction(
         : charge < 0x20U               ? 3U
                                       : 4U;
     retraction->high_subtract_overflow =
-        ((vertical_high
+        ((advanced_vertical_high
           ^ (uint8_t)(work_ram[high_base_offset] + charge_borrow))
-         & (vertical_high ^ high_difference) & 0x80U)
+         & (advanced_vertical_high ^ high_difference) & 0x80U)
         != 0U;
+    retraction->coordinate_clamped = coordinate_clamped;
     return 1;
 }
 

@@ -1156,6 +1156,92 @@ replace_native_gameplay_routine_impl(
     if (entry.routine
         == RoutineKey{
             .physical_bank = 0x02U,
+            .logical_pc = 0x5475U,
+        }) {
+        return detail::replace_devil_shooter_appearance_submission_prefix(
+            entry, work_ram);
+    }
+    if (entry.routine
+        == RoutineKey{
+            .physical_bank = 0x02U,
+            .logical_pc = 0x5481U,
+        }) {
+        return detail::replace_devil_shooter_appearance_submission_tail(
+            entry, work_ram);
+    }
+    if (entry.routine
+        == RoutineKey{
+            .physical_bank = 0x02U,
+            .logical_pc = 0x520BU,
+        }) {
+        return detail::replace_devil_shooter_launch_continuation(
+            entry, work_ram);
+    }
+    if (entry.routine
+            == RoutineKey{
+                .physical_bank = 0x02U,
+                .logical_pc = 0x5208U,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x02U,
+                .logical_pc = 0x52C3U,
+            }) {
+        return detail::replace_devil_shooter_charge_retraction_calls(
+            entry, work_ram);
+    }
+    if (entry.routine
+        == RoutineKey{
+            .physical_bank = 0x02U,
+            .logical_pc = 0x5223U,
+        }) {
+        return detail::replace_devil_shooter_charge_entry_controller(
+            entry, work_ram);
+    }
+    if (entry.routine
+            == RoutineKey{
+                .physical_bank = 0x02U,
+                .logical_pc = 0x4090U,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x02U,
+                .logical_pc = 0x4099U,
+            }) {
+        return detail::replace_scene_layout_record_loop(entry, work_ram, rom);
+    }
+    if (entry.routine
+            == RoutineKey{
+                .physical_bank = 0x02U,
+                .logical_pc = 0x40F6U,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x02U,
+                .logical_pc = 0x40FEU,
+            }) {
+        return detail::replace_scene_layout_record_loader(entry, work_ram, rom);
+    }
+    if (entry.routine
+            == RoutineKey{
+                .physical_bank = 0x02U,
+                .logical_pc = 0x4096U,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x02U,
+                .logical_pc = 0x40FBU,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x02U,
+                .logical_pc = 0x40A7U,
+            }) {
+        return detail::replace_scene_layout_record_calls(entry, work_ram);
+    }
+    if (entry.routine
+        == RoutineKey{
+            .physical_bank = 0x02U,
             .logical_pc = 0x5249U,
         }) {
         return detail::replace_devil_shooter_charge_controller(entry, work_ram);
@@ -1203,6 +1289,14 @@ replace_native_gameplay_routine_impl(
             .logical_pc = 0x533BU,
         }) {
         return detail::replace_devil_shooter_charge_retraction(entry, work_ram);
+    }
+    if (entry.routine
+        == RoutineKey{
+            .physical_bank = 0x02U,
+            .logical_pc = 0x52C6U,
+        }) {
+        return detail::replace_devil_shooter_catch_retraction_tail(
+            entry, work_ram);
     }
     if (entry.routine
         == RoutineKey{
@@ -1876,9 +1970,38 @@ replace_native_gameplay_routine_impl(
     if (entry.routine
         == RoutineKey{
             .physical_bank = 0x02U,
+            .logical_pc = 0x427CU,
+        }) {
+        return detail::replace_impact_burst_allocator_success_return(
+            entry,
+            work_ram);
+    }
+    if (entry.routine
+        == RoutineKey{
+            .physical_bank = 0x02U,
+            .logical_pc = 0x42A3U,
+        }) {
+        return detail::replace_impact_burst_audio_command_call(entry);
+    }
+    if (entry.routine
+        == RoutineKey{
+            .physical_bank = 0x02U,
             .logical_pc = 0x42B0U,
         }) {
         return detail::replace_impact_burst_lifetime(entry, work_ram, rom);
+    }
+    if (entry.routine
+            == RoutineKey{
+                .physical_bank = 0x02U,
+                .logical_pc = 0x5FDBU,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x02U,
+                .logical_pc = 0x5FE6U,
+            }) {
+        return detail::replace_tower_insect_initial_controller(
+            entry, work_ram);
     }
     if (entry.routine
         == RoutineKey{
@@ -2301,13 +2424,19 @@ replace_native_gameplay_routine_impl(
             detail::replace_devil_shooter_catch_continuation(
                 entry,
                 work_ram);
-    } else if (entry.routine
-        == RoutineKey{
-            .physical_bank = 0x02U,
-            .logical_pc = 0x54B9U,
-        }) {
-        replacement =
-            detail::replace_skeleton_insect_left_gate(entry, work_ram);
+    } else if (entry.routine.physical_bank == 0x02U
+               && (entry.routine.logical_pc == 0x54B9U
+                   || entry.routine.logical_pc == 0x54D0U
+                   || entry.routine.logical_pc == 0x5500U)) {
+        replacement = entry.routine.logical_pc == 0x54B9U
+            ? detail::replace_skeleton_insect_left_gate(entry, work_ram)
+            : entry.routine.logical_pc == 0x54D0U
+            ? detail::replace_skeleton_insect_startup_countdown(
+                  entry,
+                  work_ram)
+            : detail::replace_skeleton_insect_left_post_trigger(
+                  entry,
+                  work_ram);
     } else if (entry.routine
             == RoutineKey{
                 .physical_bank = 0x02U,
@@ -2316,10 +2445,19 @@ replace_native_gameplay_routine_impl(
         || entry.routine
             == RoutineKey{
                 .physical_bank = 0x02U,
+                .logical_pc = 0x5568U,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x02U,
                 .logical_pc = 0x5590U,
             }) {
         replacement = entry.routine.logical_pc == 0x5551U
             ? detail::replace_skeleton_insect_right_gate(entry, work_ram)
+            : entry.routine.logical_pc == 0x5568U
+            ? detail::replace_skeleton_insect_right_startup_countdown(
+                  entry,
+                  work_ram)
             : detail::replace_skeleton_insect_right_post_trigger(
                   entry,
                   work_ram);

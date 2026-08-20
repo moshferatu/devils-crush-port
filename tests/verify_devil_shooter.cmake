@@ -50,6 +50,7 @@ set(work_ram_output "${OUTPUT}.wram.bin")
 set(call_output "${OUTPUT}.calls.csv")
 set(write_output "${call_output}.writes.csv")
 set(actor_write_output "${OUTPUT}.actors.csv")
+set(instruction_profile_output "${OUTPUT}.profile.csv")
 
 execute_process(
     COMMAND
@@ -75,11 +76,23 @@ execute_process(
         --replace-hook
         "02:5197@all"
         --replace-hook
+        "02:5475@all"
+        --replace-hook
+        "02:5481@all"
+        --replace-hook
+        "02:5208@all"
+        --replace-hook
+        "02:520B@all"
+        --replace-hook
         "02:52E3@all"
         --replace-hook
         "02:533A@all"
         --replace-hook
         "02:533B@all"
+        --replace-hook
+        "02:52C3@all"
+        --replace-hook
+        "02:52C6@all"
         --replace-hook
         "02:525F@all"
         --routine-trace
@@ -102,6 +115,8 @@ execute_process(
         "3F00-3FFF"
         --work-ram-write-trace
         "${actor_write_output}"
+        --instruction-profile
+        "${instruction_profile_output}"
         --rom
         "${ROM}"
     RESULT_VARIABLE recorder_result
@@ -126,9 +141,15 @@ foreach(expected_line IN ITEMS
     "Native replacement 02:5159@all entries: 100 of 101"
     "Native replacement 02:518D@all entries: 4 of 4"
     "Native replacement 02:5197@all entries: 96 of 96"
-    "Native replacement 02:52E3@all entries: 137 of 252"
+    "Native replacement 02:5475@all entries: 107 of 107"
+    "Native replacement 02:5481@all entries: 107 of 107"
+    "Native replacement 02:5208@all entries: 12 of 12"
+    "Native replacement 02:520B@all entries: 12 of 12"
+    "Native replacement 02:52E3@all entries: 252 of 252"
     "Native replacement 02:533A@all entries: 231 of 252"
-    "Native replacement 02:533B@all entries: 11 of 32"
+    "Native replacement 02:533B@all entries: 32 of 32"
+    "Native replacement 02:52C3@all entries: 20 of 20"
+    "Native replacement 02:52C6@all entries: 20 of 20"
     "Native replacement 02:525F@all entries: 2169 of 2169"
     "Routine trace complete: 2679 entries"
     "Routine call trace complete: 2679 calls, 11229 writes"
@@ -149,6 +170,26 @@ foreach(expected_line IN ITEMS
         )
     endif()
 endforeach()
+
+# The charge-retraction transcript owns its final RTS, but the absorbed-return
+# observer must still report every 02:533B call as ending on that original
+# boundary. The pinned call artifact above proves the latter; the instruction
+# profile proves the core did not execute the return a second time.
+file(READ "${instruction_profile_output}" instruction_profile)
+string(FIND "${instruction_profile}" "02,5393," return_tail_offset)
+if(NOT return_tail_offset EQUAL -1)
+    message(
+        FATAL_ERROR
+        "Devil-Shooter charge-retraction RTS 02:5393 remains emulated."
+    )
+endif()
+string(FIND "${instruction_profile}" "02,52E2," catch_return_tail_offset)
+if(NOT catch_return_tail_offset EQUAL -1)
+    message(
+        FATAL_ERROR
+        "Devil-Shooter catch-retraction RTS 02:52E2 remains emulated."
+    )
+endif()
 
 foreach(artifact IN ITEMS census work_ram trace call write)
     if(artifact STREQUAL "census")

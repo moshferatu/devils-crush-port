@@ -2064,9 +2064,11 @@ released-input arms now have compact state-derived transcripts.
 | `02:5159` Button-I dispatcher | 101 | 432,330 | 8,883 | Native for 96 held prefixes and four released-input returns |
 | `02:518D` post-audio continuation | 4 | 16,548 | 332 | Native for all four calls |
 | `02:5197` post-charge continuation | 96 | 367,200 | 7,296 | Native for all 96 calls through the `02:5475` handoff |
-| `02:52E3` charge-position helper | 252 | 81,228 | 1,514 | Native for 137 horizon-safe normal paths |
-| `02:533B` charge-retraction helper | 32 | 13,662 | 231 | Native for 11 horizon-safe normal paths |
-| `02:5208` launch controller | 12 | 42,378 | 877 | Assembly-backed |
+| `02:5475` appearance-submission prefix | 107 | 7,062 local | 428 local | Native through the `01:C042` resolver crossing |
+| `02:5481` post-resolver continuation | 107 | 24,396 local | 856 local | Native through the `01:C05D` / `00:EBA5` tail |
+| `02:52E3` charge-position helper | 252 | 81,228 | 1,514 | Native for all 252 paths |
+| `02:533B` charge-retraction helper | 32 | 13,662 | 231 | Native for all 32 paths |
+| `02:5208` launch controller | 12 | 42,378 | 877 | Native 21-cycle call seam; body decomposed |
 
 Semantic `02:5159@all` admits fixed slot `$0E` in normal-table mode for both
 the 96 held-input calls and the four clear-input/nonnegative-collision delays.
@@ -2076,23 +2078,23 @@ original command-`$3D` calls through `01:C087`, and cross `02:52E3` without
 hiding that child's observer boundary. Semantic `02:518D` resumes the four
 audio calls; `02:5197` resumes all 96 charge calls and hands the shared
 appearance submission back to assembly at `02:5475`. The sole launch call
-remains original assembly. The charge-position helper has two natural callers, 231 normal five-store paths,
-and 21 event/interrupt-bearing scopes. Semantic `02:52E3@all` admits 137
-normal paths only when the event and IRQ horizons lie beyond the 243-, 261-,
-279-, or 297-cycle body, reproducing the three coordinate stores, charge
-store, and appearance store. Charge values `$27` and above still take the
-original capped-coordinate path. A fresh `02:51FA` probe was instead a
+remains original assembly. The charge-position helper has two natural callers,
+231 normal five-store paths, and 21 event/interrupt-bearing scopes. Semantic
+`02:52E3@all` now admits all 252 calls through exact instruction checkpoints,
+reproducing the 243-, 261-, 279-, and 297-cycle ordinary paths plus the
+390-cycle/eight-write capped-coordinate path. A fresh `02:51FA` probe was instead a
 single 4,443-cycle, 107-write scheduler transaction, so it remains
 assembly-backed.
 
-The fresh launch-controller screen rejects `02:5208` itself: its twelve
-calls span 543--4,614 cycles and 15--93 writes, composing the retraction,
-companion animation, presentation, scheduler, and interrupt work. Its direct
-`02:533B` child is independently bounded instead. Across its catch and
-launch callers, 28 calls follow the four-/five-store 234/273/291/309/327-cycle
-retraction transcript; semantic `02:533B@all` admits 11 once event and IRQ
-horizons are respected. The remaining 21 calls, including five interrupted
-transactions, retain original assembly execution.
+The original launch-controller screen rejected the complete `02:5208` scope:
+its twelve calls span 543--4,614 cycles and 15--93 writes, composing the
+retraction, companion animation, presentation, scheduler, and interrupt work.
+The entry's single `JSR $533B` seam is now native while that larger body stays
+decomposed. Across its catch and
+launch callers, 31 calls follow the four-/five-store 234/273/291/309/327-cycle
+retraction transcript and the final call takes the 303-cycle/seven-write
+coordinate clamp. Semantic `02:533B@all` publishes every instruction boundary,
+so all 32 calls remain native across their event and IRQ passages.
 
 ## Sprite attribute-table emitter
 
@@ -3639,10 +3641,324 @@ registry to 696,770,976 cycles across 451 entries, and reduces bank `02`'s
 non-entry profile remainder to 249,117 cycles without changing the canonical
 census or focused Release/Debug artifacts.
 
-The next coherent residue is shared appearance-submission helper `02:5475`.
-Its 107 route calls retain 31,626 local interpreted cycles through `02:54A0`
-around the already-native `01:C042` resolver and tail through already-native
-`01:C05D` / `00:EBA5`. `02:4CF1` remains handoff attribution.
+Shared appearance submission is now native on all 107 route calls. `02:5475`
+owns the 66-cycle prefix and authentic resolver call frame; `02:5481` owns the
+228-cycle displacement tail. The existing `01:C042` / `00:E1FD` resolver and
+`01:C05D` / `00:EBA5` palette stager retain their own observer boundaries.
+The pair adds 31,458 native cycles and removes all 31,626 profiled local
+non-entry cycles, reducing bank `02`'s remainder to 217,491 without changing
+the focused Release/Debug artifacts or canonical census.
+
+The 115 former `02:52E3` fallbacks are now native. The instruction-boundary
+walk preserves all event/IRQ placements and the full-charge coordinate clamp,
+removing exactly 30,600 profiled bank-`02` non-entry cycles. Parent `02:5249`
+can consequently compose all 156 calls, while `02:524C` receives no independent
+route entry. Recomputed parent/child credit adds 32,562 net deployed cycles for
+696,834,996 total and reduces bank `02`'s remainder to 186,891. The next
+same-family slice ports the 21 assembly-backed `02:533B` charge-retraction
+calls described below. `02:4CF1` remains handoff attribution.
+
+The charge-retraction helper now publishes every original boundary from
+`02:533B` through `02:5390`. This admits all 32 calls, including five interrupted
+transactions and the final coordinate clamp, without moving any interrupt or
+store. The 21 former fallbacks remove 6,216 profiled bank-`02` non-entry cycles
+and add 6,246 deployed cycles for 696,841,242 total, reducing bank `02`'s
+remainder to 180,675. The next same-family screen is the preceding `02:5223`
+controller and its 66 idle `02:5245` returns.
+
+That controller is now native on all 67 entries. Sixty-six calls see a
+nonnegative collision marker and `$53.3` set, cross five exact checkpoints,
+and return through absorbed `02:5245`; checkpoints preserve the timer
+interrupts inside calls 24 and 50. The final clear-bit call pushes `$5248`,
+crosses `01:C018`, and composes the existing `01:C5C9` scheduler to install
+`02:5249`. The focused 67-call/32-write artifacts and canonical census remain
+exact. Gross ownership at `02:5223` is 5,001 cycles; one formerly independent
+scheduler entry loses 180 cycles of credit, for a 4,809-cycle net gain to
+696,846,051. The bank-`02` non-entry profile falls by 4,926 cycles to 175,749.
+The next compact cluster is the normal-table scene-layout record loop at
+`02:4090/4099`; its `02:40F6` record loader remains a distinct composition
+boundary. `02:4CF1` is still handoff attribution.
+
+The scene-layout loop is now split at those two exact boundaries.
+`02:4090` owns 2,943 cycles across 89 heads: 88 category reads and
+nonterminal branches stop in front of the original `JSR $40F6`, while the
+terminal `$FF` branch stops in front of `02:40A7`. `02:4099` owns 6,864 cycles
+across 88 continuations, including both zero-page pointer writes and the
+branch back to the registered head. The assembly/native routes preserve all
+177 overlapping call scopes and 988,433 ordered writes byte-for-byte.
+
+The exact 9,807-cycle gain takes the registry to 696,855,858 cycles across 456
+routines and reduces bank `02`'s non-entry remainder to 165,942. The remaining
+`02:4096/40F6-4137` cluster is 44,109 cycles: screen the per-record loader at
+`02:40F6`, keeping its shared `01:C574` reset and record-selected initializer
+calls as explicit composition boundaries. `02:4CF1` remains handoff
+attribution.
+
+That loader is now split at those boundaries. `02:40F6` owns all 88 exact
+33-cycle `LDY/LDA/TAX` prefixes and stops before `JSR $C027`, while
+`02:40FE` owns all 88 exact 426-cycle record-copy suffixes and stops after
+`JMP ($2CBE)` at the selected initializer. The assembly/native routes preserve
+all 176 overlapping call scopes and 12,722 ordered writes byte-for-byte.
+
+The exact 40,392-cycle gain takes the registry to 696,896,250 cycles across
+458 routines and reduces bank `02`'s non-entry remainder to 125,550. Only the
+two child-composition calls at `02:4096/40FB` (3,696 cycles) and terminal
+`02:40A7` return (21 cycles) remain in this local loader family. `02:4CF1`
+remains handoff attribution.
+
+Those final seams are now native. `02:4096` and `02:40FB` reproduce all 176
+JSRs, including the high/low return-address writes at cycle zero, and stop at
+their registered children. Their assembly/native route preserves the exact
+176-entry, 176-call, and 510,770-write artifacts. `02:40A7` absorbs the single
+terminal RTS through the original banked-call frame while preserving the
+canonical RAM, census, and entry trace.
+
+The exact 3,717-cycle gain completes the local scene-layout loader family,
+takes the registry to 696,899,967 cycles across 461 routines, and reduces bank
+`02`'s non-entry remainder to 121,833. `02:4CF1` remains handoff attribution;
+the next compact executable residue begins around `02:5500-551F`.
+
+## Left Skeleton-Insect post-trigger idle controller
+
+The `02:5500-551F` residue is one complete dispatch target, not nine separate
+profile candidates. All 80 natural calls use slot `$31`, find presentation bit
+`$3800,X.7`, session bits `$53.1/$53.3`, and Tower state `$2CC7` clear, and
+reach the terminal `RTS` without a gameplay write. Calls 10 and 32 contain
+original timer interrupts after `02:5518` and `02:551D`; an exact checkpoint at
+every instruction boundary preserves both passages.
+
+Semantic `02:5500@all` executes the 84-cycle idle body and absorbs the 21-cycle
+return at `02:551F`. The sign-bit collision/award arm and the three active-gate
+branches remain assembly-backed. Assembly and native recordings preserve the
+same census and exact focused artifacts:
+
+- Entry SHA-256: `4c0d5ded1079ecab6327af70db54176bd01732cc6b002fbc6096777c5f25b0ae`
+- Call SHA-256: `2cb007495b265059d30ecccf79f8b920306455656d0c4e12841ffd9225fb841f`
+- Write SHA-256: `607743197bb2007cd46edbd8cbdcb429ebbf8a8ea09b8bf47ce16bf357ce496d`
+
+The replacement adds exactly 8,400 deployed native cycles, taking the registry
+to 696,908,367 cycles across 462 routines. Collapsing its interior instruction
+rows removes 8,472 profiled bank-`02` non-entry cycles and leaves 113,361.
+`02:4CF1` remains handoff attribution; the next compact executable family is
+the four-instance type-`$82` initial controller beginning at `02:5FDB`.
+
+## Tower-Insect startup coroutine
+
+The `02:5FDB` dispatch is shared by dynamic slots `$64/$67/$6A/$6D`. Each
+slot enters with indexed coroutine countdown `$3D80,X=$10`, toggles direction
+bit `$3080,X.5` once per frame, and crosses `01:C018/C5C9`. Fifteen calls per
+slot take the 171-cycle decrement/yield path; the sixteenth takes 249 cycles
+and installs continuation `02:5FE6`. That continuation clears direction bits
+5/6, initializes collision state `$3880,X=$80` and timer `$3A00,X=4`, then
+uses the same scheduler to install existing controller `02:5FFB` in 270
+cycles.
+
+Semantic `02:5FDB@all` and `02:5FE6@all` retain every instruction boundary
+and compose the existing scheduler against staged stack and actor state. All
+64 countdown calls and four setup calls execute natively. Assembly and native
+runs preserve census `9036a9de...`, 68-call SHA-256
+`e22cb671f237cffc58374b00759f2a5440ad882b788f21ae200071e379c0cb5f`,
+and 481-write SHA-256
+`6b924a26c4eada468c6e23229e54e13fad955380a1eb396dc4edee6e68512b89`.
+
+The two parents own 12,336 gross native cycles, but replace scheduler and
+bank-one child credit already counted by the registry; their exact net gain is
+2,616 cycles. Deployed ownership reaches 696,910,983 cycles across 464
+routines. Their collapsed instruction rows remove 4,068 profiled bank-`02`
+non-entry cycles and leave 109,293. The post-collision continuation at
+`03:6001` remains assembly-backed: it is reached after the `02:5FFB` collision
+scope crosses into bank `03`, so the current standalone observer does not
+provide a stable call boundary for admission. At that measurement checkpoint,
+the next compact bank-`02` residue was the unabsorbed `RTS` at `02:5393`;
+`02:4CF1` remained handoff attribution.
+
+## Devil-Shooter charge-retraction return tail
+
+The existing semantic `02:533B@all` transcript now continues through the
+previously emulated `RTS` at `02:5393`. Before admission it reads the live
+stack frame and accepts only the two natural pushed return addresses,
+`02:52C5` from the catch controller and `02:520A` from the launch controller.
+It declares `02:5393` as an absorbed observer boundary, pops the real frame,
+and resumes at `02:52C6` or `02:520B` through a 21-cycle checkpoint. This
+keeps the return's interrupt sample exact while preventing a stale or foreign
+stack frame from being consumed natively.
+
+All 32 returns disappear from the interpreted instruction profile, removing
+672 bank-`02` non-entry cycles and raising deployed ownership to 696,911,655.
+The bank's non-entry remainder is now 108,621 cycles. The pinned Devil-Shooter
+call/write artifacts remain unchanged because absorbed-return reporting still
+closes each `02:533B` call at the original `02:5393` boundary; the full
+registry also retains exact stack-page parity with assembly. The next compact
+same-family residue begins at the catch continuation `02:52C3`; `02:4CF1`
+remains handoff attribution.
+
+## Devil-Shooter catch-retraction continuation
+
+At this slice the installed catch coroutine entered at `02:52C3`, whose
+`JSR $533B` was still assembly-backed so the separately observed and registered
+retraction leaf could own its return. Semantic `02:52C6@all` starts at the
+stable post-child boundary instead. It reproduces `SEC`, the two-byte subtract
+of nine, the original
+absolute `$3300/$3380` slot-zero stores, and the `$2D15` charge branch through
+an instruction checkpoint at every boundary.
+
+Nineteen nonzero-charge calls reach `02:52E2` after 105 body cycles and absorb
+that 21-cycle `RTS` only after validating the live `01:C51D` dispatcher stack
+frame. The final zero-charge call clears `$3C80` and jumps to cleanup at
+`02:5124`; it does not consume the dispatcher frame. Assembly and native runs
+share the canonical census plus exact 20-call and 119-write artifacts with
+SHA-256 values
+`cbfa183a7196791a216c7da5faaacfdda5a05e80a6933308f8f595a9de6e1aaa`
+and
+`959a19129762f206f6a8b31f7191ebb28776e09f04e5ff635e0ca7d2999c3e50`.
+
+The 20 transcripts add 2,520 deployed native cycles, reaching 696,914,175
+across 465 routines. Collapsing their checkpointed rows removes 2,616 cycles
+from bank `02`'s non-entry profile and leaves 106,005. At this checkpoint the
+remaining `02:52C3` row was the 20-call, 444-cycle child handoff; `02:4CF1`
+remained the bank's dominant handoff attribution.
+
+## Devil-Shooter launch continuation
+
+The launch controller has the same parent/child seam: `02:5208` calls the
+separately registered `02:533B` charge-retraction helper, which owns its return
+and resumes at `02:520B`. Semantic `02:520B@all` begins at that stable
+post-child boundary. It checkpoints `LDA $2D15` and the charge branch; eleven
+nonzero-charge calls load `$3980,X` and jump directly to the existing native
+appearance submitter at `02:5475`, while the final zero-charge call resumes
+assembly cleanup at `02:5216`.
+
+The eleven presentation handoffs take 48 cycles and the cleanup handoff takes
+27, for 555 exact native cycles across all 12 calls. Assembly and native runs
+share the canonical census, the 12-call artifact
+`48b37d777b5c4f1c76ba3bdd9f725a973727f677e93ab8dcf9f93453076d3c99`,
+and the 794-write artifact
+`cbd4200c162c161e5232ef6676286fe2e59303a8d5a18047f3b543d20ee5efe9`.
+The clean fifth call replays at frame 1,190 with 2,913 body cycles and 61
+ordered writes.
+
+Registry ownership reaches 696,914,730 cycles across 466 routines. Bank `02`'s
+non-entry remainder falls by 555 cycles to 105,450; at this checkpoint
+`02:5208` was still the 12-call, 252-cycle child handoff.
+
+## Skeleton-Insect startup countdown
+
+The left Skeleton-Insect trigger installs continuation `02:54D0` after its
+scheduler returns. It runs three four-tick rounds in fixed slot `$31`.
+Semantic `02:54D0@all` owns `DEC $3A00,X` and `BNE $54EC` at their exact
+21/27-or-33-cycle boundaries. Nine nonzero calls also absorb the plain `RTS`
+at `02:54EC`; three zero calls resume the original appearance transition at
+`02:54D5`, preserving the final round's immediate timer interrupt.
+
+Assembly and native runs share the canonical census, 12-call artifact
+`4967774d010215354a92ed7dc47f69707feebc3067d6c2c847e7b00912598dc2`,
+and 44-write artifact
+`bd022874aab2d8e8256f76de0e9d78cc580cb04405c47c38d8b9e7f6723cc41e`.
+The first zero transition replays at frame 3,470 with 132 body cycles and four
+ordered writes. The countdown and its wait returns own 567 native cycles.
+The mirrored right-target continuation `02:5568` runs two four-tick rounds in
+fixed slot `$33`. Semantic `02:5568@all` owns its indexed decrement and branch
+on all eight calls. Six nonzero calls absorb the plain `RTS` at `02:5584`; two
+zero calls resume the original appearance transition at `02:556D`, so the
+final scheduler handoff remains emulated. Assembly and native runs share the
+canonical census, 8-call artifact
+`b958c25a1d1950616223a0c52d9310faa23ed6fbf2e774fe2086a4e933b0d2c0`,
+and 22-write artifact
+`5b8c6dd68f3a53567abfd0999f9ff6b936de507854be7cd5682b4714d68e306b`.
+The first zero transition replays at frame 2,186 with 132 body cycles and four
+ordered writes. The right countdown and its wait returns own 378 native cycles.
+Across both handlers the absorbed returns add 315 cycles, reaching 696,915,675
+cycles across 468 routines and reducing bank `02`'s non-entry remainder to
+104,505. Only two left and one right transition-body returns remain profiled.
+
+## Devil-Shooter charge-retraction call sites
+
+The two remaining caller seams are single `JSR $533B` instructions at
+`02:5208` and `02:52C3`. Their semantic replacements reproduce the HuC6280's
+high-byte-first pushes of `$520A` and `$52C5` to the live stack page, decrement
+the real stack pointer twice, and publish the original 21-cycle LastCycle
+checkpoint. Each stops at `02:533B`, preserving that helper as an independent
+observer and registry entry; its absorbed `RTS` still resumes at native
+`02:520B` or `02:52C6`.
+
+All 12 launch calls and 20 catch calls are admitted. The existing full-family
+census, RAM, call/write, replay, and actor-identity artifacts remain exact,
+including all 64 stack writes. The wrappers add 672 deployed native cycles,
+reaching 696,916,347 across 470 routines. Their former instruction-profile
+rows total 696 cycles; the catch row includes 24 cycles of interrupt-resumption
+attribution outside the exact JSR body. Reclassifying both rows reduces bank
+`02`'s non-entry remainder to 103,809 while the measured outside-wait remainder
+falls to 13,566,408 cycles.
+
+## Devil-Shooter companion active-timer returns
+
+The context-constrained active timers at `02:53E4/545D` now absorb their
+terminal `RTS` at `02:53FB/5474` when invoked as direct registry entries. The
+shared implementation retains a non-absorbing mode for composition inside the
+native `02:53C8/5441` parent controllers: those parents already stage the
+child `JSR` frame and account for the child return themselves, so their stack
+writes, checkpoints, and cycle attribution remain unchanged.
+
+Four admitted left calls and the single admitted right call add exactly 105
+native cycles. The three left calls rejected by the timer's fixed-slot/context
+contract remain assembly-backed at `02:53FB`; the right return row disappears.
+The canonical census and companion call/write/replay artifacts remain exact.
+Registry ownership reaches 696,916,452 cycles, the outside-wait remainder falls
+to 13,566,303, and bank `02`'s non-entry remainder falls to 103,704.
+
+## Impact-burst audio-command JSR seam
+
+The seven shared type-`$8F` impact-burst activations load their source-selected
+command at `02:42A0`, then call the common audio trampoline at `02:42A3`.
+Semantic `02:42A3@all` now owns that single JSR instruction: it preserves the
+live `$2D/$34/$39` accumulator, writes return address `$42A5` high byte first
+through the live stack pointer, samples interrupts at master cycle 18, and
+hands execution to registered `01:C087` at cycle 21. The audio handler and the
+rest of activation remain original code.
+
+The seven-call trace, 872-write call scope, and normalized frame-1,852 replay
+remain exact, as do the canonical census and registry stack-page comparison.
+This adds 147 native cycles. Registry ownership reaches 696,916,599 cycles,
+the outside-wait remainder falls to 13,566,156, and bank `02`'s non-entry
+remainder falls to 103,557.
+
+## Impact-burst allocator success return
+
+The allocator's seven successful paths clear carry at `02:427B` and execute
+the shared `RTS` at `02:427C`. Semantic `02:427C@all` now owns that return,
+reading the live stack page so the varied Small-Soldier, Tower-insect, and
+Dragon's-Egg callers retain their original resume addresses. The seventh
+return is timer-adjacent; an explicit master-cycle-18/21 checkpoint preserves
+the original LastCycle interrupt passage while the other six cross directly.
+
+All seven entries are accepted. Their entry trace, zero-cycle observer scopes,
+zero ordered writes, normalized frame-1,852 replay, and canonical census are
+stable in the owning impact-burst regression. The return adds 147 native
+cycles. Registry ownership reaches 696,916,746 cycles across 472 routines, the
+outside-wait remainder falls to 13,566,009, and bank `02`'s non-entry remainder
+falls to 103,410 with no horizon decline or abandonment.
+
+## Impact-burst successful allocator tail
+
+The seven natural successful allocations all enter `02:420E` with carry clear,
+then execute the common type-`$8F` slot initializer through the `02:427C`
+return. Semantic `02:420E@all` owns that complete path: 522 master cycles and
+16 ordered writes before the return, with a checkpoint at every original
+instruction boundary. The second call's direct scope contains a timer interrupt
+and therefore spans 1,407 cycles and 30 writes; its assembly and native call
+and write rows remain byte-identical rather than hiding that nested work.
+
+All seven calls are accepted and pop their source-specific live stack frames.
+The canonical census, entry trace, direct-call artifact, ordered-write artifact,
+and normalized frame-1,852 replay remain exact. Their SHA-256 values are
+`c5a73149b4b1c91d1b5c1e67b77c761a5c6b509efdd941c990add4ea98b258dc`,
+`1b3333a23c5db108a6cefeb91e86fe201f26ea439a11813e97c569baf23a0ea1`, and
+`0ac675f2f114fd14cc7cd7802982ddbd26804da70d44a611ae077399ca3c1f9b`.
+The tail owns 3,801 cycles; because its return previously owned 147 separately,
+the deployed net gain is 3,654 cycles. Registry ownership reaches 696,920,400
+cycles across 473 routines, the outside-wait remainder falls to 13,562,355,
+and bank `02`'s non-entry remainder falls to 102,633. The old `02:427C` entry
+remains valid and installed, but this route no longer enters it independently.
 
 ## Use on future families
 

@@ -1651,6 +1651,70 @@ if(TARGET devils_crush)
         )
 
         add_test(
+            NAME dc_rom_devil_shooter_launch_continuation_semantic
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/devil-shooter-launch-continuation-semantic-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_devil_shooter_launch_continuation_semantic.cmake"
+        )
+        set_tests_properties(
+            dc_rom_devil_shooter_launch_continuation_semantic
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_skeleton_insect_startup_countdown_semantic
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/skeleton-insect-startup-countdown-semantic-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_skeleton_insect_startup_countdown_semantic.cmake"
+        )
+        set_tests_properties(
+            dc_rom_skeleton_insect_startup_countdown_semantic
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_skeleton_insect_right_startup_countdown_semantic
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/skeleton-insect-right-startup-countdown-semantic-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_skeleton_insect_right_startup_countdown_semantic.cmake"
+        )
+        set_tests_properties(
+            dc_rom_skeleton_insect_right_startup_countdown_semantic
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_devil_shooter_catch_retraction_tail_semantic
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/devil-shooter-catch-retraction-tail-semantic-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_devil_shooter_catch_retraction_tail_semantic.cmake"
+        )
+        set_tests_properties(
+            dc_rom_devil_shooter_catch_retraction_tail_semantic
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
             NAME dc_rom_skeleton_insect_left_gate_semantic
             COMMAND
                 "${CMAKE_COMMAND}"
@@ -2377,6 +2441,23 @@ if(TARGET devils_crush)
         )
         set_tests_properties(
             dc_rom_tower_insect_controller_semantic
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_tower_insect_startup_controller_semantic
+            CONFIGURATIONS Release
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/tower-insect-startup-controller-semantic-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_tower_insect_startup_controller_semantic.cmake"
+        )
+        set_tests_properties(
+            dc_rom_tower_insect_startup_controller_semantic
             PROPERTIES LABELS rom_required
         )
 
@@ -4981,6 +5062,22 @@ if(TARGET devils_crush)
         )
         set_tests_properties(
             dc_rom_devil_shooter_charge_controller
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_devil_shooter_charge_entry_controller
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/devil-shooter-charge-entry-controller-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_devil_shooter_charge_entry_controller.cmake"
+        )
+        set_tests_properties(
+            dc_rom_devil_shooter_charge_entry_controller
             PROPERTIES LABELS rom_required
         )
 

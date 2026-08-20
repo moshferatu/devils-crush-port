@@ -5069,6 +5069,48 @@ void test_native_devil_shooter_post_launch_gate()
         "native 525F rejects invalid slots and truncated work RAM");
 }
 
+void test_native_devil_shooter_charge_entry_gate()
+{
+    std::array<std::uint8_t, 0x2000> work_ram{};
+    dc_devil_shooter_charge_entry_gate gate{};
+
+    work_ram[0x180EU] = 0x00U;
+    work_ram[0x0053U] = 0x08U;
+    check(
+        dc_classify_devil_shooter_charge_entry_gate(
+            work_ram.data(), work_ram.size(), 0x0EU, &gate)
+            != 0
+            && gate.path == DC_DEVIL_SHOOTER_CHARGE_ENTRY_IDLE
+            && gate.collision_state == 0x00U
+            && gate.session_flags == 0x08U,
+        "native 5223 recognizes the pre-charge idle return");
+
+    work_ram[0x0053U] = 0x00U;
+    check(
+        dc_classify_devil_shooter_charge_entry_gate(
+            work_ram.data(), work_ram.size(), 0x0EU, &gate)
+            != 0
+            && gate.path == DC_DEVIL_SHOOTER_CHARGE_ENTRY_SCHEDULE,
+        "native 5223 recognizes the charge-controller schedule path");
+
+    work_ram[0x180EU] = 0x80U;
+    check(
+        dc_classify_devil_shooter_charge_entry_gate(
+            work_ram.data(), work_ram.size(), 0x0EU, &gate)
+            != 0
+            && gate.path == DC_DEVIL_SHOOTER_CHARGE_ENTRY_COLLISION_ACTIVE,
+        "native 5223 defers collision-active reset handling");
+
+    check(
+        dc_classify_devil_shooter_charge_entry_gate(
+            work_ram.data(), work_ram.size(), 0x0DU, &gate)
+            == 0
+            && dc_classify_devil_shooter_charge_entry_gate(
+                   work_ram.data(), 0x180EU, 0x0EU, &gate)
+                == 0,
+        "native 5223 rejects invalid slots and truncated work RAM");
+}
+
 void test_native_devil_shooter_charge_position()
 {
     std::array<std::uint8_t, 0x2000> work_ram{};
@@ -5078,6 +5120,7 @@ void test_native_devil_shooter_charge_position()
     work_ram[0x130EU] = 0x78U;
     work_ram[0x138EU] = 0x02U;
     work_ram[0x1E0EU] = 0x78U;
+    work_ram[0x1E8EU] = 0x02U;
     check(
         dc_classify_devil_shooter_charge_position(
             work_ram.data(), work_ram.size(), 0x0EU, &position)
@@ -5124,8 +5167,15 @@ void test_native_devil_shooter_charge_position()
     check(
         dc_classify_devil_shooter_charge_position(
             work_ram.data(), work_ram.size(), 0x0EU, &position)
-            == 0,
-        "native 52E3 defers the coordinate-clamp branch");
+            != 0
+            && position.advanced_vertical_middle == 0x79U
+            && position.advanced_vertical_high == 0x02U
+            && position.vertical_middle == 0x77U
+            && position.vertical_high == 0x02U
+            && position.charge == 0x27U
+            && position.appearance == 4U
+            && position.coordinate_capped != 0U,
+        "native 52E3 reproduces the coordinate-clamp branch");
     check(
         dc_classify_devil_shooter_charge_position(
             work_ram.data(), 0x1E0EU, 0x0EU, &position)
@@ -5151,9 +5201,13 @@ void test_native_devil_shooter_charge_retraction()
             work_ram.data(), work_ram.size(), 0x0EU, &retraction)
             != 0
             && retraction.vertical_low == 0x00U
+            && retraction.advanced_vertical_middle == 0x8CU
+            && retraction.advanced_vertical_high == 0x02U
             && retraction.vertical_middle == 0x8CU
             && retraction.vertical_high == 0x02U
+            && retraction.unclamped_charge == 0x14U
             && retraction.charge == 0x14U && retraction.appearance == 2U
+            && retraction.coordinate_clamped == 0U
             && retraction.has_appearance_write != 0U,
         "native 533B retracts the Shooter charge position");
 
@@ -5202,22 +5256,33 @@ void test_native_devil_shooter_charge_retraction()
     check(
         dc_classify_devil_shooter_charge_retraction(
             work_ram.data(), work_ram.size(), 0x0EU, &retraction)
-            == 0
+            != 0
+            && retraction.advanced_vertical_middle == 0x8CU
+            && retraction.advanced_vertical_high == 0x02U
+            && retraction.vertical_middle == 0x8CU
+            && retraction.vertical_high == 0x03U
+            && retraction.unclamped_charge == 0U
+            && retraction.charge == 0U
+            && retraction.has_appearance_write == 0U
+            && retraction.coordinate_clamped != 0U
             && dc_classify_devil_shooter_charge_retraction(
                    work_ram.data(), 0x1E8EU, 0x0EU, &retraction)
                 == 0
             && dc_classify_devil_shooter_charge_retraction(
                    work_ram.data(), work_ram.size(), 0x0DU, &retraction)
                 == 0,
-        "native 533B defers the clamp path and rejects invalid snapshots");
+        "native 533B reproduces the clamp path and rejects invalid snapshots");
 
     work_ram[0x1E0EU] = 0x8DU;
     work_ram[0x1E8EU] = 0x02U;
     check(
         dc_classify_devil_shooter_charge_retraction(
             work_ram.data(), work_ram.size(), 0x0EU, &retraction)
-            == 0,
-        "native 533B carries a charge-byte borrow into the clamp comparison");
+            != 0
+            && retraction.unclamped_charge == 0xFFU
+            && retraction.charge == 0U
+            && retraction.coordinate_clamped != 0U,
+        "native 533B carries a charge-byte borrow into the coordinate clamp");
 }
 
 void test_native_skeleton_insect_left_gate()
@@ -10538,6 +10603,7 @@ int main()
     test_native_bumper_hit_gate();
     test_native_devil_shooter_hit_gate();
     test_native_devil_shooter_release_delay_gate();
+    test_native_devil_shooter_charge_entry_gate();
     test_native_devil_shooter_post_launch_gate();
     test_native_devil_shooter_charge_position();
     test_native_devil_shooter_charge_retraction();

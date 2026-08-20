@@ -46,6 +46,7 @@ set(expected_call_sha256 "ac711b3b5d4781da6841ce2dc4b85583605a83e64e5f682ffece4b
 set(expected_write_sha256 "93ae519370adfbceb08bc4b84812d1f7d17ed5e2601f612ade3c21238f1768e6")
 set(call_output "${OUTPUT}.calls.csv")
 set(write_output "${call_output}.writes.csv")
+set(instruction_profile_output "${OUTPUT}.profile.csv")
 
 execute_process(
     COMMAND "${APP}"
@@ -75,6 +76,7 @@ execute_process(
         --routine-replay "02:5397@10"
         --routine-replay "02:53DD@10"
         --routine-replay "02:5456@10"
+        --instruction-profile "${instruction_profile_output}"
         --rom "${ROM}"
     RESULT_VARIABLE recorder_result
     OUTPUT_VARIABLE recorder_output
@@ -117,6 +119,16 @@ foreach(expected_line IN ITEMS
         message(FATAL_ERROR "Semantic Devil-Shooter companion output omitted '${expected_line}'.\n${recorder_output}${recorder_error}")
     endif()
 endforeach()
+
+file(READ "${instruction_profile_output}" instruction_profile)
+string(FIND "${instruction_profile}" "02,53FB,3,63," remaining_left_return_offset)
+if(remaining_left_return_offset EQUAL -1)
+    message(FATAL_ERROR "Devil-Shooter left companion return profile changed.")
+endif()
+string(FIND "${instruction_profile}" "02,5474," remaining_right_return_offset)
+if(NOT remaining_right_return_offset EQUAL -1)
+    message(FATAL_ERROR "Devil-Shooter right companion return remains emulated.")
+endif()
 
 foreach(artifact IN ITEMS census call write)
     if(artifact STREQUAL "census")
