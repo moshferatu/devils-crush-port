@@ -2056,23 +2056,27 @@ extension of the dormant gate; no replacement was added.
 
 The same ordinary state-census route then profiled the fixed Shooter's direct
 Button-I dispatcher with its charge, launch, and catch-continuation siblings.
-The high-cost parent and charge helper remain mixed state machines, but the
-released-input return is a compact, state-derived leaf.
+The high-cost parent remains a mixed state machine, but its held and
+released-input arms now have compact state-derived transcripts.
 
 | Routine | Calls | Total master cycles | Writes | Decision |
 | --- | ---: | ---: | ---: | --- |
-| `02:5159` Button-I dispatcher | 101 | 432,330 | 8,883 | Native only for four released-input returns |
+| `02:5159` Button-I dispatcher | 101 | 432,330 | 8,883 | Native for 96 held prefixes and four released-input returns |
+| `02:518D` post-audio continuation | 4 | 16,548 | 332 | Native for all four calls |
+| `02:5197` post-charge continuation | 96 | 367,200 | 7,296 | Native for all 96 calls through the `02:5475` handoff |
 | `02:52E3` charge-position helper | 252 | 81,228 | 1,514 | Native for 137 horizon-safe normal paths |
 | `02:533B` charge-retraction helper | 32 | 13,662 | 231 | Native for 11 horizon-safe normal paths |
 | `02:5208` launch controller | 12 | 42,378 | 877 | Assembly-backed |
 
-Semantic `02:5159@all` admits only fixed slot `$0E` in normal-table mode when
-the active player's Button-I bit is clear and the indexed collision state is
-nonnegative. All four calls at frames 1,181--1,184 return at `$5178` after
-the exact eight-instruction, 96-cycle, zero-write transcript. The 96 held
-charge calls enter `02:52E3`, while the later launch states remain original
-assembly; neither parent is treated as a safe composition target. The
-charge-position helper has two natural callers, 231 normal five-store paths,
+Semantic `02:5159@all` admits fixed slot `$0E` in normal-table mode for both
+the 96 held-input calls and the four clear-input/nonnegative-collision delays.
+The delay calls retain their exact 96-cycle transcript and absorbed `$5178`
+return. Held calls clear the ball collision/appearance scratch, preserve four
+original command-`$3D` calls through `01:C087`, and cross `02:52E3` without
+hiding that child's observer boundary. Semantic `02:518D` resumes the four
+audio calls; `02:5197` resumes all 96 charge calls and hands the shared
+appearance submission back to assembly at `02:5475`. The sole launch call
+remains original assembly. The charge-position helper has two natural callers, 231 normal five-store paths,
 and 21 event/interrupt-bearing scopes. Semantic `02:52E3@all` admits 137
 normal paths only when the event and IRQ horizons lie beyond the 243-, 261-,
 279-, or 297-cycle body, reproducing the three coordinate stores, charge
@@ -3629,10 +3633,16 @@ drops by 2,736 bank-`02` cycles to 274,185; the 48-cycle difference is profile
 attribution at the old `5123` boundary, while the native cycle census is the
 authoritative ownership measurement.
 
-The next coherent residue is the held-Button-I arm of registered `02:5159`:
-96 calls still interpret the charge controller through `02:5194`'s call to
-the existing `02:52E3` semantic. The currently interpreted `515C-51AC` span
-accounts for 25,176 cycles. `02:4CF1` remains handoff attribution.
+The held-Button-I arm is now fully split across registered `02:5159`,
+`02:518D`, and `02:5197`. It adds exactly 26,292 native cycles, takes the
+registry to 696,770,976 cycles across 451 entries, and reduces bank `02`'s
+non-entry profile remainder to 249,117 cycles without changing the canonical
+census or focused Release/Debug artifacts.
+
+The next coherent residue is shared appearance-submission helper `02:5475`.
+Its 107 route calls retain 31,626 local interpreted cycles through `02:54A0`
+around the already-native `01:C042` resolver and tail through already-native
+`01:C05D` / `00:EBA5`. `02:4CF1` remains handoff attribution.
 
 ## Use on future families
 

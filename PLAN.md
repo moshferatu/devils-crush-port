@@ -939,6 +939,13 @@ Provide an interactive monitor-assignment screen and persist display identity, g
   released-input returns at `02:5178`. The unchanged focused artifacts and
   canonical census prove all 128 returns; their 2,688 cycles take the registry
   to 696,744,684 native cycles without adding another entry point.
+  The same `02:5159@all` semantic now owns all 96 held-Button-I prefixes,
+  crossing the original `$3D` audio dispatcher on the first four and the
+  existing `02:52E3` charge-position child on every call. New `02:518D` and
+  `02:5197` continuations resume after those calls and hand the shared
+  appearance submission back at `02:5475`. The exact 26,292-cycle gain takes
+  the registry to 696,770,976 cycles across 451 admitted routines with the
+  canonical census and complete Devil-Shooter artifacts unchanged.
   The larger `01:D525` controller remains a decomposition boundary: its 128
   census calls span 29-1,456 writes and 1,035-49,122 body master cycles, so
   the largest live paths exceed the bridge's independent 512-write limit.

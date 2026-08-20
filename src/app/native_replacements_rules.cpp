@@ -12289,7 +12289,12 @@ replace_devil_shooter_release_delay_gate(
         throw std::runtime_error(
             "Native 5159 replacement rejected the work-RAM snapshot.");
     }
-    if (gate.returns_idle == 0U) {
+    const bool is_idle = gate.returns_idle != 0U;
+    const bool is_held = gate.table_mode == 0U
+        && (gate.button_input & 0x01U) != 0U;
+    if (!is_idle && (!is_held || (entry.registers.status & 0x20U) != 0U
+            || work_ram.size() <= 0x0D15U
+            || std::to_integer<std::uint8_t>(work_ram[0x0D15U]) >= 0x27U)) {
         return std::nullopt;
     }
 
@@ -12302,6 +12307,22 @@ replace_devil_shooter_release_delay_gate(
         }
         return status;
     };
+    const auto compare_status = [](std::uint8_t status,
+                                   const std::uint8_t left,
+                                   const std::uint8_t right) {
+        const auto difference = static_cast<std::uint8_t>(left - right);
+        status = static_cast<std::uint8_t>(status & ~0x83U);
+        if (difference == 0U) {
+            status = static_cast<std::uint8_t>(status | 0x02U);
+        }
+        if ((difference & 0x80U) != 0U) {
+            status = static_cast<std::uint8_t>(status | 0x80U);
+        }
+        if (left >= right) {
+            status = static_cast<std::uint8_t>(status | 0x01U);
+        }
+        return status;
+    };
 
     auto after_table_mode = entry.registers;
     after_table_mode.accumulator = gate.table_mode;
@@ -12311,6 +12332,7 @@ replace_devil_shooter_release_delay_gate(
 
     auto after_player = after_table_mode;
     after_player.y = gate.active_player;
+    after_player.status = set_nz(after_player.status, after_player.y);
 
     auto after_button = after_player;
     after_button.accumulator = gate.button_input;
@@ -12322,6 +12344,131 @@ replace_devil_shooter_release_delay_gate(
     after_button_mask.status = set_nz(
         after_button_mask.status,
         after_button_mask.accumulator);
+
+    if (!is_idle) {
+        // The held arm has two genuine child boundaries. The first four calls
+        // leave through the original audio thunk and resume at $518D; every
+        // call leaves through the separately observed $52E3 charge helper and
+        // resumes at $5197. Crossing them keeps both original call artifacts.
+        RoutineReplacement replacement{};
+        auto checkpoint = after_button_mask;
+        std::uint32_t cycle = 0U;
+        const auto append_checkpoint =
+            [&replacement, &checkpoint, &cycle](
+                const std::uint8_t physical_bank,
+                const std::uint16_t instruction_pc,
+                const std::uint16_t resume_pc,
+                const std::uint32_t instruction_cycles) {
+                cycle += instruction_cycles;
+                checkpoint.program_counter = resume_pc;
+                replacement.checkpoints.push_back({
+                    .interrupt_sample_master_cycle_offset = cycle - 3U,
+                    .master_cycle_offset = cycle,
+                    .instruction = {physical_bank, instruction_pc},
+                    .registers = checkpoint,
+                });
+            };
+        const auto add_write =
+            [&replacement, &cycle](
+                const std::uint8_t physical_bank,
+                const std::uint16_t instruction_pc,
+                const std::uint16_t logical_address,
+                const std::uint8_t value) {
+                replacement.work_ram_writes.push_back({
+                    .instruction = {physical_bank, instruction_pc},
+                    .logical_address = logical_address,
+                    .value = value,
+                    .master_cycle_offset = cycle,
+                });
+            };
+
+        checkpoint = after_table_mode;
+        append_checkpoint(0x02U, 0x5159U, 0x515CU, 15U);
+        append_checkpoint(0x02U, 0x515CU, 0x5161U, 12U);
+        checkpoint = after_player;
+        append_checkpoint(0x02U, 0x5161U, 0x5164U, 15U);
+        checkpoint = after_button;
+        append_checkpoint(0x02U, 0x5164U, 0x5167U, 15U);
+        checkpoint = after_button_mask;
+        append_checkpoint(0x02U, 0x5167U, 0x5169U, 6U);
+        append_checkpoint(0x02U, 0x5169U, 0x5179U, 12U);
+
+        checkpoint.accumulator = gate.collision_state;
+        checkpoint.status = set_nz(checkpoint.status, checkpoint.accumulator);
+        append_checkpoint(0x02U, 0x5179U, 0x517CU, 15U);
+        checkpoint.accumulator = static_cast<std::uint8_t>(
+            checkpoint.accumulator & 0x7FU);
+        checkpoint.status = set_nz(checkpoint.status, checkpoint.accumulator);
+        append_checkpoint(0x02U, 0x517CU, 0x517EU, 6U);
+        append_checkpoint(0x02U, 0x517EU, 0x5181U, 15U);
+        add_write(
+            0x02U,
+            0x517EU,
+            static_cast<std::uint16_t>(0x3800U + entry.registers.x),
+            checkpoint.accumulator);
+        append_checkpoint(0x02U, 0x5181U, 0x5183U, 12U);
+        add_write(0x02U, 0x5181U, 0x20BDU, 0x00U);
+
+        const auto charge = std::to_integer<std::uint8_t>(work_ram[0x0D15U]);
+        checkpoint.accumulator = charge;
+        checkpoint.status = set_nz(checkpoint.status, checkpoint.accumulator);
+        append_checkpoint(0x02U, 0x5183U, 0x5186U, 15U);
+        if (charge == 0U) {
+            append_checkpoint(0x02U, 0x5186U, 0x5188U, 6U);
+            checkpoint.accumulator = 0x3DU;
+            checkpoint.status = set_nz(checkpoint.status, checkpoint.accumulator);
+            append_checkpoint(0x02U, 0x5188U, 0x518AU, 6U);
+
+            const auto stack_high = checkpoint.stack_pointer;
+            const auto stack_low = static_cast<std::uint8_t>(stack_high - 1U);
+            add_write(
+                0x02U,
+                0x518AU,
+                static_cast<std::uint16_t>(0x2100U + stack_high),
+                0x51U);
+            add_write(
+                0x02U,
+                0x518AU,
+                static_cast<std::uint16_t>(0x2100U + stack_low),
+                0x8CU);
+            checkpoint.stack_pointer = static_cast<std::uint8_t>(
+                checkpoint.stack_pointer - 2U);
+            append_checkpoint(0x02U, 0x518AU, 0xC087U, 21U);
+            replacement.return_instruction = {0x01U, 0xC087U};
+            replacement.output_registers = checkpoint;
+            replacement.body_master_cycles = cycle;
+            return replacement;
+        }
+
+        append_checkpoint(0x02U, 0x5186U, 0x518DU, 12U);
+        checkpoint.accumulator = charge;
+        checkpoint.status = set_nz(checkpoint.status, checkpoint.accumulator);
+        append_checkpoint(0x02U, 0x518DU, 0x5190U, 15U);
+        checkpoint.status = compare_status(
+            checkpoint.status, checkpoint.accumulator, 0x27U);
+        append_checkpoint(0x02U, 0x5190U, 0x5192U, 6U);
+        append_checkpoint(0x02U, 0x5192U, 0x5194U, 6U);
+
+        const auto stack_high = checkpoint.stack_pointer;
+        const auto stack_low = static_cast<std::uint8_t>(stack_high - 1U);
+        add_write(
+            0x02U,
+            0x5194U,
+            static_cast<std::uint16_t>(0x2100U + stack_high),
+            0x51U);
+        add_write(
+            0x02U,
+            0x5194U,
+            static_cast<std::uint16_t>(0x2100U + stack_low),
+            0x96U);
+        checkpoint.stack_pointer = static_cast<std::uint8_t>(
+            checkpoint.stack_pointer - 2U);
+        append_checkpoint(0x02U, 0x5194U, 0x52E3U, 21U);
+        replacement.return_instruction = {0x02U, 0x52E3U};
+        replacement.output_registers = checkpoint;
+        replacement.body_master_cycles = cycle;
+        return replacement;
+    }
 
     auto output = after_button_mask;
     output.accumulator = gate.collision_state;
@@ -12363,6 +12510,211 @@ replace_devil_shooter_release_delay_gate(
         {0x02U, 0x5178U},
         96U,
         output);
+    return replacement;
+}
+
+[[nodiscard]] std::optional<RoutineReplacement>
+replace_devil_shooter_charge_after_audio(
+    const RoutineEntry& entry,
+    const std::span<const std::byte> work_ram)
+{
+    constexpr RoutineKey kRoutine{0x02U, 0x518DU};
+    if (entry.routine != kRoutine || entry.registers.x != 0x0EU
+        || work_ram.size() <= 0x0D15U
+        || (entry.registers.status & 0x20U) != 0U) {
+        return std::nullopt;
+    }
+    const auto charge = std::to_integer<std::uint8_t>(work_ram[0x0D15U]);
+    if (charge >= 0x27U) {
+        return std::nullopt;
+    }
+
+    const auto set_nz = [](std::uint8_t status, const std::uint8_t value) {
+        status = static_cast<std::uint8_t>(status & 0x7DU);
+        if (value == 0U) {
+            status = static_cast<std::uint8_t>(status | 0x02U);
+        } else if ((value & 0x80U) != 0U) {
+            status = static_cast<std::uint8_t>(status | 0x80U);
+        }
+        return status;
+    };
+    const auto compare_status = [](std::uint8_t status,
+                                   const std::uint8_t left,
+                                   const std::uint8_t right) {
+        const auto difference = static_cast<std::uint8_t>(left - right);
+        status = static_cast<std::uint8_t>(status & ~0x83U);
+        if (difference == 0U) {
+            status = static_cast<std::uint8_t>(status | 0x02U);
+        }
+        if ((difference & 0x80U) != 0U) {
+            status = static_cast<std::uint8_t>(status | 0x80U);
+        }
+        if (left >= right) {
+            status = static_cast<std::uint8_t>(status | 0x01U);
+        }
+        return status;
+    };
+
+    RoutineReplacement replacement{};
+    auto checkpoint = entry.registers;
+    const auto append_checkpoint =
+        [&replacement](
+            const std::uint16_t instruction_pc,
+            const std::uint16_t resume_pc,
+            const std::uint32_t cycle,
+            auto registers) {
+            registers.program_counter = resume_pc;
+            replacement.checkpoints.push_back({
+                .interrupt_sample_master_cycle_offset = cycle - 3U,
+                .master_cycle_offset = cycle,
+                .instruction = {0x02U, instruction_pc},
+                .registers = registers,
+            });
+        };
+
+    checkpoint.accumulator = charge;
+    checkpoint.status = set_nz(checkpoint.status, checkpoint.accumulator);
+    append_checkpoint(0x518DU, 0x5190U, 15U, checkpoint);
+    checkpoint.status = compare_status(
+        checkpoint.status, checkpoint.accumulator, 0x27U);
+    append_checkpoint(0x5190U, 0x5192U, 21U, checkpoint);
+    append_checkpoint(0x5192U, 0x5194U, 27U, checkpoint);
+
+    const auto stack_high = checkpoint.stack_pointer;
+    const auto stack_low = static_cast<std::uint8_t>(stack_high - 1U);
+    replacement.work_ram_writes.push_back({
+        .instruction = {0x02U, 0x5194U},
+        .logical_address = static_cast<std::uint16_t>(0x2100U + stack_high),
+        .value = 0x51U,
+        .master_cycle_offset = 27U,
+    });
+    replacement.work_ram_writes.push_back({
+        .instruction = {0x02U, 0x5194U},
+        .logical_address = static_cast<std::uint16_t>(0x2100U + stack_low),
+        .value = 0x96U,
+        .master_cycle_offset = 27U,
+    });
+    checkpoint.stack_pointer = static_cast<std::uint8_t>(
+        checkpoint.stack_pointer - 2U);
+    append_checkpoint(0x5194U, 0x52E3U, 48U, checkpoint);
+    checkpoint.program_counter = 0x52E3U;
+    replacement.return_instruction = {0x02U, 0x52E3U};
+    replacement.output_registers = checkpoint;
+    replacement.body_master_cycles = 48U;
+    return replacement;
+}
+
+[[nodiscard]] std::optional<RoutineReplacement>
+replace_devil_shooter_charge_tail(
+    const RoutineEntry& entry,
+    const std::span<const std::byte> work_ram)
+{
+    constexpr RoutineKey kRoutine{0x02U, 0x5197U};
+    if (entry.routine != kRoutine || entry.registers.x != 0x0EU
+        || work_ram.size() <= 0x198EU
+        || (entry.registers.status & 0x20U) != 0U) {
+        return std::nullopt;
+    }
+
+    const auto set_nz = [](std::uint8_t status, const std::uint8_t value) {
+        status = static_cast<std::uint8_t>(status & 0x7DU);
+        if (value == 0U) {
+            status = static_cast<std::uint8_t>(status | 0x02U);
+        } else if ((value & 0x80U) != 0U) {
+            status = static_cast<std::uint8_t>(status | 0x80U);
+        }
+        return status;
+    };
+    const auto compare_status = [](std::uint8_t status,
+                                   const std::uint8_t left,
+                                   const std::uint8_t right) {
+        const auto difference = static_cast<std::uint8_t>(left - right);
+        status = static_cast<std::uint8_t>(status & ~0x83U);
+        if (difference == 0U) {
+            status = static_cast<std::uint8_t>(status | 0x02U);
+        }
+        if ((difference & 0x80U) != 0U) {
+            status = static_cast<std::uint8_t>(status | 0x80U);
+        }
+        if (left >= right) {
+            status = static_cast<std::uint8_t>(status | 0x01U);
+        }
+        return status;
+    };
+
+    // $5197 is STZ absolute, not indexed: it clears slot zero's ball
+    // appearance. The later LDA $3980,X reads the Shooter's own appearance.
+    constexpr std::uint16_t kBallAppearanceAddress = 0x3980U;
+    const auto shooter_appearance_address = static_cast<std::uint16_t>(
+        0x3980U + entry.registers.x);
+    const auto state_address = static_cast<std::uint16_t>(
+        0x3A80U + entry.registers.x);
+    const auto charge = std::to_integer<std::uint8_t>(work_ram[0x0D15U]);
+    RoutineReplacement replacement{};
+    auto checkpoint = entry.registers;
+    const auto append_checkpoint =
+        [&replacement](
+            const std::uint16_t instruction_pc,
+            const std::uint16_t resume_pc,
+            const std::uint32_t cycle,
+            auto registers) {
+            registers.program_counter = resume_pc;
+            replacement.checkpoints.push_back({
+                .interrupt_sample_master_cycle_offset = cycle - 3U,
+                .master_cycle_offset = cycle,
+                .instruction = {0x02U, instruction_pc},
+                .registers = registers,
+            });
+        };
+    const auto add_write =
+        [&replacement](
+            const std::uint16_t instruction_pc,
+            const std::uint16_t address,
+            const std::uint8_t value,
+            const std::uint32_t cycle) {
+            replacement.work_ram_writes.push_back({
+                .instruction = {0x02U, instruction_pc},
+                .logical_address = address,
+                .value = value,
+                .master_cycle_offset = cycle,
+            });
+        };
+
+    append_checkpoint(0x5197U, 0x519AU, 15U, checkpoint);
+    add_write(0x5197U, kBallAppearanceAddress, 0x00U, 15U);
+    checkpoint.accumulator = charge;
+    checkpoint.status = set_nz(checkpoint.status, checkpoint.accumulator);
+    append_checkpoint(0x519AU, 0x519DU, 30U, checkpoint);
+    checkpoint.status = compare_status(checkpoint.status, charge, 0x27U);
+    append_checkpoint(0x519DU, 0x519FU, 36U, checkpoint);
+
+    std::uint32_t cycle = 0U;
+    if (charge == 0x27U) {
+        append_checkpoint(0x519FU, 0x51A1U, 42U, checkpoint);
+        checkpoint.accumulator = 0x07U;
+        checkpoint.status = set_nz(checkpoint.status, checkpoint.accumulator);
+        append_checkpoint(0x51A1U, 0x51A3U, 48U, checkpoint);
+        append_checkpoint(0x51A3U, 0x51A6U, 63U, checkpoint);
+        add_write(0x51A3U, kBallAppearanceAddress, 0x07U, 63U);
+        append_checkpoint(0x51A6U, 0x51A9U, 78U, checkpoint);
+        add_write(0x51A6U, state_address, 0x07U, 78U);
+        cycle = 78U;
+    } else {
+        append_checkpoint(0x519FU, 0x51A9U, 48U, checkpoint);
+        cycle = 48U;
+    }
+
+    checkpoint.accumulator = std::to_integer<std::uint8_t>(
+        work_ram[shooter_appearance_address & 0x1FFFU]);
+    checkpoint.status = set_nz(checkpoint.status, checkpoint.accumulator);
+    cycle += 15U;
+    append_checkpoint(0x51A9U, 0x51ACU, cycle, checkpoint);
+    cycle += 12U;
+    append_checkpoint(0x51ACU, 0x5475U, cycle, checkpoint);
+    checkpoint.program_counter = 0x5475U;
+    replacement.return_instruction = {0x02U, 0x5475U};
+    replacement.output_registers = checkpoint;
+    replacement.body_master_cycles = cycle;
     return replacement;
 }
 

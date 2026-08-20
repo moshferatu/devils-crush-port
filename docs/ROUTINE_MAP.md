@@ -2353,18 +2353,24 @@ their census hashes are respectively
 and
 `a95d0c343108b107d7ec1aa3c20915540d91bb08817704776531e5696ea9b5e2`.
 
-Semantic `02:5159@all` additionally covers the four released-input delay
-returns at frames 1,181--1,184. The fixed slot `$0E` adapter admits only
-normal-table mode, a clear active-player Button-I bit, and a nonnegative
-collision state. It reproduces the original `LDA $2254`, active-player load,
-input mask, collision load, and `BPL $5178` through eight instruction
-checkpoints, preserving `A=0`, `Y=0`, N/Z, no writes, and the exact 96-cycle
-body before absorbing the 21-cycle RTS at `02:5178`. All held-input charge,
-occupied-shooter, alternate-mode, and launch
-states continue through original assembly. The owning Release Devil-Shooter
-regression replays `02:5159@97` at frame 1,181 with exact timing and complete
-RAM parity while preserving its existing census, trace, call, and write
-artifacts.
+Semantic `02:5159@all` covers 100 of 101 calls: the four released-input delay
+returns at frames 1,181--1,184 and all 96 held-Button-I prefixes. The delay
+path preserves its exact eight-checkpoint, 96-cycle body and absorbs the
+21-cycle RTS at `02:5178`. The held path clears bit 7 at `$3800,X`, clears
+collision scratch `$BD`, and reproduces both original call frames. The first
+four zero-charge calls hand command `$3D` to original `01:C087` and resume at
+semantic `02:518D`; every held call hands charge positioning to the separately
+observed `02:52E3` child and resumes at semantic `02:5197`.
+
+`02:518D` reproduces the 48-cycle load/compare/`JSR $52E3` continuation on
+all four audio returns. `02:5197` covers all 96 post-charge calls through the
+75-cycle ordinary tail (and the state-derived 105-cycle full-charge variant):
+it clears absolute ball appearance `$3980`, preserves the indexed Shooter
+appearance at `$3980,X`, and hands shared presentation back at `02:5475`.
+Alternate table mode and the one launch call remain assembly-backed. The
+owning Release and required Debug Devil-Shooter regressions preserve the
+existing census, complete 101-call/8,883-write outer artifact, work RAM,
+trace, and actor state. The three entries add exactly 26,292 native cycles.
 
 Semantic `02:52E3@all` covers 137 horizon-safe normal charge-position calls
 from the fixed Shooter's held-button and post-launch-animation callers. It
