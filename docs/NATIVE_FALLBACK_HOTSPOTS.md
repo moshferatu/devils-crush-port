@@ -3619,6 +3619,21 @@ remainder to 276,921. The next compact residue is the 124 `02:5123` idle
 returns after registered Devil-Shooter hit gate `02:5116`; `02:4CF1` remains a
 handoff.
 
+Semantic `02:5116` now absorbs all 124 of those idle returns and still resumes
+the sole catch path at original `02:511B`. Semantic `02:5159` also absorbs the
+four already-proven released-input returns at `02:5178`. The focused hit-gate
+and full Devil-Shooter family artifacts remain unchanged, as does canonical
+state. The 128 returns add exactly 2,688 native cycles, taking the registry to
+696,744,684 cycles across the same 449 entry points. The instruction profile
+drops by 2,736 bank-`02` cycles to 274,185; the 48-cycle difference is profile
+attribution at the old `5123` boundary, while the native cycle census is the
+authoritative ownership measurement.
+
+The next coherent residue is the held-Button-I arm of registered `02:5159`:
+96 calls still interpret the charge controller through `02:5194`'s call to
+the existing `02:52E3` semantic. The currently interpreted `515C-51AC` span
+accounts for 25,176 cycles. `02:4CF1` remains handoff attribution.
+
 ## Use on future families
 
 Follow the command and interpretation rules in

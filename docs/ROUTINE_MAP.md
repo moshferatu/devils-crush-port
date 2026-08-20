@@ -2340,7 +2340,8 @@ Semantic `02:5116@all` replaces all 125 checks through two exact,
 two-instruction paths: `LDA $3800,X` plus taken `BPL` reaches the RTS at
 `02:5123` after 27 body cycles, while the untaken catch branch reaches
 `02:511B` after 21. Both paths have zero direct writes and preserve the
-loaded accumulator and N/Z flags. The frame-1,064 catch resumes assembly for
+loaded accumulator and N/Z flags. The 124 idle paths now absorb the 21-cycle
+RTS at `02:5123`; the frame-1,064 catch resumes assembly for
 the occupied latch and shared `00:C087` ball-position/audio helper. After
 that helper's original interrupt-bearing scope returns, semantic
 `02:52B8@all` writes `$3180=$0E` and `$3200=$01`, reproduces both JSR stack
@@ -2358,7 +2359,8 @@ normal-table mode, a clear active-player Button-I bit, and a nonnegative
 collision state. It reproduces the original `LDA $2254`, active-player load,
 input mask, collision load, and `BPL $5178` through eight instruction
 checkpoints, preserving `A=0`, `Y=0`, N/Z, no writes, and the exact 96-cycle
-return. All held-input charge, occupied-shooter, alternate-mode, and launch
+body before absorbing the 21-cycle RTS at `02:5178`. All held-input charge,
+occupied-shooter, alternate-mode, and launch
 states continue through original assembly. The owning Release Devil-Shooter
 regression replays `02:5159@97` at frame 1,181 with exact timing and complete
 RAM parity while preserving its existing census, trace, call, and write

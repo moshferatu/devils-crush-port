@@ -933,6 +933,12 @@ Provide an interactive monitor-assignment screen and persist display identity, g
   checkpoint. Release and Debug preserve the same 148-call/500-write artifact
   and canonical state. The 144 returns add exactly 3,024 native cycles, taking
   the registry to 696,741,996 cycles across 449 routines.
+  Semantic `02:5116@all` now absorbs the Devil-Shooter hit gate's 124 idle
+  returns at `02:5123`, while its one catch path still resumes assembly at
+  `02:511B`. Semantic `02:5159@all` likewise absorbs the four already-proven
+  released-input returns at `02:5178`. The unchanged focused artifacts and
+  canonical census prove all 128 returns; their 2,688 cycles take the registry
+  to 696,744,684 native cycles without adding another entry point.
   The larger `01:D525` controller remains a decomposition boundary: its 128
   census calls span 29-1,456 writes and 1,035-49,122 body master cycles, so
   the largest live paths exceed the bridge's independent 512-write limit.

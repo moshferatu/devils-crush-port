@@ -103,5 +103,6 @@ endforeach()
 
 message(
     STATUS
-    "Semantic 5116 gate covers all 125 calls; 52B8 owns the catch continuation."
+    "Semantic 5116 gate covers all 125 calls and absorbs 124 idle returns; "
+    "52B8 owns the catch continuation."
 )

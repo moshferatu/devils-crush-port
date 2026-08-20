@@ -1,6 +1,6 @@
 # Project Progress
 
-Last updated: 2026-08-17
+Last updated: 2026-08-19
 
 ## Current Status
 
@@ -26,14 +26,22 @@ high byte. The deterministic 1,800-frame route now executes 18,806 of 19,648
 preserving the byte-identical gameplay artifact, complete 19,648-call trace,
 and all 180,389 ordered writes.
 
-The deployed registry now runs **696,741,996 of 1,292,371,731 master cycles
+The deployed registry now runs **696,744,684 of 1,292,371,731 master cycles
 natively, 53.91% of the route and 98.07% of everything outside the frame-sync
-wait**, across 449 admitted routines. All 144 Tower-Insect source countdown
-returns at `02:5F5B` are now native: 141 are absorbed into `02:5F4A`, and the
-three expiry-path returns use an independent checkpointed tail. The core
-declines no offered registry transcript and none is abandoned. The
-3,600-frame state census remains
+wait**, across 449 admitted routines. The 124 Devil-Shooter idle returns at
+`02:5123` and four released-input returns at `02:5178` are now absorbed into
+their existing native parents. The core declines no offered registry
+transcript and none is abandoned. The 3,600-frame state census remains
 `9036a9de0c3c9917f47bff8c04c136a4824ec12601fb457d260aa2dfe4443490`.
+
+The Devil-Shooter's two proven return leaves are fully native. Semantic
+`02:5116@all` absorbs all 124 idle `02:5123` returns but still hands the one
+catch call to original assembly at `02:511B`. Semantic `02:5159@all` absorbs
+the four released-input `02:5178` returns while leaving held charge and launch
+states assembly-backed. The focused hit-gate and full-family routes retain
+their existing census, call, write, work-RAM, trace, and actor artifacts. The
+128 returns add exactly 2,688 native cycles and reduce bank `02`'s measured
+non-entry remainder to 274,185 cycles.
 
 The Tower-Insect source countdown return is fully native at `02:5F5B`.
 Semantic `02:5F4A@all` retains its two decrement/branch checkpoints and now
@@ -5091,6 +5099,9 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
     route calls through checkpointed 27-cycle idle or 21-cycle catch
     branches, then replace the post-helper `02:52B8` continuation through
     its exact 228-cycle state/scheduler transcript.
+  - [x] Absorb all 124 `02:5123` idle returns into semantic `02:5116` and
+    all four `02:5178` released-input returns into semantic `02:5159`,
+    preserving both focused Devil-Shooter family artifacts.
   - [x] Add semantic `02:54B9@all` left Skeleton-Insect trigger gating;
     cover all 1,631 route calls through the checkpointed 21-cycle return
     and 978-cycle score/scheduler trigger.
@@ -6510,24 +6521,25 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
 
 ## Active Work
 
-Current owner: Codex. Current slice: **the Devil-Shooter held-charge
-controller and exposed tail at `02:5249/524C`**. Done.
+Current owner: Codex. Current slice: **the Devil-Shooter idle and released-input
+returns at `02:5123/5178`**. Done.
 
-The `02:5249` transcript composes its authentic charge-position call when the
-atomic child fits before the next horizon. Calls that cannot fit resume in
-assembly and are picked up at `02:524C`, whose checkpointed tail owns both the
-ordinary return and full-charge scheduler handoff.
+The existing `02:5116` hit gate now owns the RTS on all 124 idle calls and
+continues to resume the catch in assembly. The existing `02:5159` released-
+input semantic owns its four RTS instructions as well. Both paths use the
+stack-driven return adapter and preserve the original boundary in their
+focused replay artifacts.
 
 | | Before | After |
 | --- | ---: | ---: |
-| Gross native ownership at `02:5249/524C` | 0 | **34,749** |
-| Replaced child credit | 25,392 | **0** |
-| Registry cycles | 696,729,615 | **696,738,972** |
+| Native ownership at `02:5123/5178` | 0 | **2,688** |
+| Interpreted return instructions | 128 | **0** |
+| Registry cycles | 696,741,996 | **696,744,684** |
 | Native share | 53.91% | **53.91%** |
-| Native share outside the wait | 98.06% | **98.07%** |
-| Admitted routines | 446 | **448** |
-| Proven native calls | 3,607,726 | **3,607,882** |
-| Measured bank `02` non-entry remainder | 290,967 | **279,969** |
+| Native share outside the wait | 98.07% | **98.07%** |
+| Admitted routines | 449 | **449** |
+| Registry calls | 2,751,265 | **2,751,265** |
+| Measured bank `02` non-entry remainder | 276,921 | **274,185** |
 
 The 144 profiled `02:5F5B` Tower-Insect source countdown returns are now fully
 native. The 141 non-expiry calls are absorbed into `02:5F4A`; the three
@@ -6535,8 +6547,10 @@ assembly expiry paths use a checkpointed `02:5F5B` tail. Their exact
 3,024-cycle gain takes the registry to 696,741,996 cycles across 449 routines
 and bank `02`'s non-entry remainder to 276,921.
 
-Next: absorb the 124 profiled `02:5123` idle returns into registered
-Devil-Shooter hit gate `02:5116`; `02:4CF1` remains known handoff residue.
+Next: extend semantic `02:5159` across its 96 held-Button-I calls. The
+currently interpreted `02:515C-51AC` controller span accounts for 25,176
+cycles; `02:4CF1` remains known handoff attribution rather than a standalone
+routine target.
 
 ### Previous: the center Skeleton-Insect post-delay controller
 

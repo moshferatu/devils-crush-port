@@ -11,12 +11,12 @@ state it has not been proven against.
 ## Measured cycle share
 
 Deploying the registry with `--replace-registry` over the 3,600-frame
-Release state-census route (`--native-cycle-census`, measured 2026-08-17):
+Release state-census route (`--native-cycle-census`, measured 2026-08-19):
 
 | | |
 | --- | ---: |
 | Elapsed master cycles | 1,292,371,731 |
-| Native master cycles | 696,741,996 |
+| Native master cycles | 696,744,684 |
 | **Native share** | **53.91%** |
 | **Native share of cycles outside the idle spin loop** | **98.07%** |
 | Routines installed | 449 of 449 |
@@ -2384,6 +2384,15 @@ artifacts and the canonical census. The 144 returns add exactly 3,024 native
 cycles, taking the registry to 696,741,996 cycles across 449 routines and
 reducing bank `02`'s non-entry remainder to 276,921 cycles.
 
+`02:5116` now absorbs all 124 idle Devil-Shooter returns at `02:5123`, while
+its one catch call retains the original continuation at `02:511B`. `02:5159`
+absorbs the four already-admitted released-input returns at `02:5178`; held
+charge and launch states remain assembly-backed. Existing focused census,
+call, write, trace, work-RAM, and actor artifacts remain byte-identical. The
+128 return instructions add 2,688 native cycles without changing the admitted
+entry-point count, taking the registry to 696,744,684 cycles and reducing bank
+`02`'s non-entry profile remainder to 274,185 cycles.
+
 
 ## What is left
 
@@ -2395,7 +2404,7 @@ anything and the figure has been dropped rather than carried forward
 unverified.
 
 Set the idle spin loop aside and 710,482,755 cycles are the machine
-working; 696,738,972 of them, **98.07%**, now run natively.
+working; 696,744,684 of them, **98.07%**, now run natively.
 
 The breakdown below is a self-consistent snapshot taken before the
 interrupt dispatcher was split and the whole-palette arm with it, against

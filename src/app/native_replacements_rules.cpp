@@ -12255,6 +12255,15 @@ replace_devil_shooter_hit_gate(
         output.program_counter,
         replacement.body_master_cycles,
         output);
+    if (gate.path == DC_DEVIL_SHOOTER_HIT_GATE_IDLE) {
+        absorb_return(
+            replacement,
+            work_ram,
+            entry.registers.stack_pointer,
+            {0x02U, 0x5123U},
+            27U,
+            output);
+    }
     return replacement;
 }
 
@@ -12347,6 +12356,13 @@ replace_devil_shooter_release_delay_gate(
     append_checkpoint(0x5169U, 0x516BU, 69U, after_button_mask);
     append_checkpoint(0x516BU, 0x516EU, 84U, output);
     append_checkpoint(0x516EU, 0x5178U, 96U, output);
+    absorb_return(
+        replacement,
+        work_ram,
+        entry.registers.stack_pointer,
+        {0x02U, 0x5178U},
+        96U,
+        output);
     return replacement;
 }
 
