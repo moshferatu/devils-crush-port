@@ -8,29 +8,20 @@ Last updated: 2026-08-20
 
 **Current milestone:** 4. Native gameplay port
 
-**Milestone 4 current gate:** native collision-table work is now measured by
-semantic and dynamic-call coverage rather than an ordinal count.
-`--replace-hook 03:6966@all` reads every selector pointer from the verified
-user ROM and handles both the four-write alternate-pass early return and
-ordinary headerless record steps for any selector and actor slot. The record
-walker resolves the collision-list cursor, motion pointer, and motion cursor
-from ROM, then emits one- or two-axis signed movement with exact carry/borrow
-timing. The four-write alternate-pass return now supplies all 17 original
-instruction boundaries, allowing Beetle to execute and return from original
-interrupt handlers inside that native transaction. Other paths still use
-core-provided master-cycle horizons to fall back before a user/video event or
-serviceable timer interrupt. Exact checkpointing now covers both one-axis
-records and two-axis records that do not carry or borrow into a position
-high byte. The deterministic 1,800-frame route now executes 18,806 of 19,648
-`03:6966` calls natively (95.7%) while
-preserving the byte-identical gameplay artifact, complete 19,648-call trace,
-and all 180,389 ordered writes.
+**Milestone 4 current gate:** normalized routine replay is now persistent.
+`--routine-replay-corpus-out` writes versioned, checksummed, ROM/core-bound
+assembly fixtures containing the opaque pre-call state, complete expected call,
+and pre/post work RAM. `--routine-replay-corpus` restores one or more fixtures
+and compares a semantic native adapter directly, without route startup. A
+single 1,800-frame route now captures multiple ordinals of one routine; the
+two-call `00:F241` proof reuses its verified local corpus in 0.08 seconds in
+Release and 0.21 seconds in Debug.
 
-The deployed registry now runs **696,916,746 of 1,292,371,731 master cycles
+The deployed registry now runs **696,920,400 of 1,292,371,731 master cycles
 natively, 53.93% of the route and 98.09% of everything outside the frame-sync
-wait**, across 472 admitted routines. The shared impact-burst allocator now
-owns all seven successful `RTS` seams, including the timer-adjacent seventh
-call, while the activation body stays with the original code.
+wait**, across 473 admitted routines. The shared impact-burst allocator owns
+all seven complete successful tails, including the interrupt-bearing second
+call and each source-specific live return frame.
 The core declines no offered registry transcript and none is abandoned. The
 3,600-frame state census remains
 `9036a9de0c3c9917f47bff8c04c136a4824ec12601fb457d260aa2dfe4443490`.
@@ -1398,6 +1389,22 @@ progression, and group regeneration remain ROM-bounded.
 Status values used in this file are `Not started`, `In progress`, `Blocked`, and `Complete`.
 
 ## Completed
+
+- [x] Add a persisted normalized routine-replay corpus:
+  - Added a stable little-endian `.dcrr` format with payload checksum, strict
+    bounds, ROM SHA-256 and core-revision binding, opaque savestate, complete
+    normalized call oracle, and pre/post work RAM.
+  - Added authoritative assembly-only export and standalone assembly/native
+    replay commands. Native replay must execute the requested replacement
+    exactly once; a declined adapter cannot pass by silently falling back.
+  - Allowed multiple ordinals of the same routine in one capture, so sibling
+    states share one route and one installed direct-replay hook.
+  - Added corruption, truncation, inconsistency, Release, Debug, cold-capture,
+    cached-assembly, and direct-native coverage using `00:F241@1/@2`.
+  - Re-profiled the deployed 473-routine registry and added an analyzer view
+    for unregistered residue outside `00:E321-E32B` frame waiting. It reports
+    6,046,539 profile-attributed cycles; the leading `00:EB46` `TIA` and
+    `00:F423` `BBR` are already documented deliberate hardware boundaries.
 
 - [x] Replaced the cabinet's score-only seven-segment DMD with a clean
   two-tier native text display:
@@ -6749,35 +6756,29 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
 
 ## Active Work
 
-Current owner: Codex. Current slice: **the successful impact-burst allocator
-tail at `02:420E`**. Done.
+Current owner: Codex. Current slice: **persisted normalized routine replay and
+global recoverable-work re-ranking**. Done.
 
-Semantic `02:420E@all` initializes the selected type-`$8F` slot on all seven
-successful shared-effect allocations and absorbs the common return. Forty-six
-instruction checkpoints preserve the interrupt nested inside call two. The
-patched Knight proof at the same logical address retains its granular path.
+The corpus proof captures assembly `00:F241@1` and `@2` in one 1,800-frame
+route, persists both calls atomically, then restores them directly against the
+semantic native adapter. A cold Release test takes about 2.9 seconds on this
+machine; the verified cache path takes 0.08 seconds, and the same Release-made
+fixtures pass Debug in 0.21 seconds. The format rejects corruption, truncation,
+inconsistent RAM sizes, another ROM, and another core revision.
 
-| | Before | After |
-| --- | ---: | ---: |
-| Net native ownership in this slice | 0 | **3,654** |
-| Native impact-burst allocator tails | 0 | **7** |
-| Registry cycles | 696,916,746 | **696,920,400** |
-| Native share | 53.93% | **53.93%** |
-| Native share outside the wait | 98.09% | **98.09%** |
-| Admitted routines | 472 | **473** |
-| Registry calls | 2,752,386 | **2,752,386** |
-| Measured bank `02` non-entry remainder | 103,410 | **102,633** |
+The fresh deployed profile retains the canonical census, 696,920,400 native
+cycles, 473 installed routines, 367 entered routines, zero horizon declines,
+zero depth refusals, and zero abandonments. Filtering admitted entry points and
+the `00:E321-E32B` frame wait leaves 6,046,539 profile-attributed cycles. The
+largest two rows are already understood non-transcript boundaries: the
+625,095-cycle whole-palette `TIA` at `00:EB46` and the 365,664-cycle two-sample
+`BBR` at `00:F423`.
 
-Assembly and native runs share the canonical census and the exact seven-entry,
-seven-call, 126-write, and replay artifacts. The deployed registry installs
-all 473 routines, enters 367, runs 2,752,386 of 2,774,934 entered calls natively,
-nests 310,658 transcripts to depth three, and records zero horizon declines,
-depth refusals, or abandonments. The lower entered-routine count is expected:
-the longer `02:420E` transcript consumes the instruction-sized registry seams
-inside the allocator instead of entering them separately.
-
-Next: screen the remaining compact impact-burst activation/caller seams;
-`02:4CF1` remains known handoff attribution rather than a standalone target.
+Next: use a multi-ordinal corpus to screen the natural shared actor-slot
+allocator at `01:C5AB-C5C7` as one family. Its 44 calls and scan loop account
+for 200,883 profiled cycles; the installed entries currently describe only a
+patched Knight route and admit none of the natural calls. Keep `02:4CF1` as
+known handoff attribution rather than returning to tiny bank-`02` seams.
 
 ### Previous: the impact-burst allocator success return
 

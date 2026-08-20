@@ -12,6 +12,7 @@
 #include "devils_crush/core/rom_image.hpp"
 #include "devils_crush/core/save_state.hpp"
 #include "devils_crush/emulation/pce_runtime.hpp"
+#include "devils_crush/emulation/routine_replay_corpus.hpp"
 #include "devils_crush/input/pce_pad.hpp"
 #include "devils_crush/input/plunger.hpp"
 #include "devils_crush/game_logic/actor.h"
@@ -9023,6 +9024,114 @@ void test_save_state_container()
     check(invalid_rejected, "invalid save-state metadata is rejected");
 }
 
+void test_routine_replay_corpus()
+{
+    using namespace devils_crush::emulation;
+
+    const RoutineEntry checkpoint_entry{
+        .routine = {.physical_bank = 0x02U, .logical_pc = 0x420EU},
+        .registers = {
+            .program_counter = 0x420EU,
+            .accumulator = 0x12U,
+            .x = 0x62U,
+            .y = 0x70U,
+            .stack_pointer = 0xF9U,
+            .status = 0x02U,
+            .mpr = {0xFFU, 0xF8U, 0x02U, 0x03U,
+                    0x04U, 0x05U, 0x06U, 0x07U},
+        },
+        .input = {.player_one = 0x0081U, .player_two = 0x0002U},
+        .frame_number = 1852U,
+        .master_cycle = 12345U,
+        .absolute_master_cycle = 987654321U,
+        .master_cycles_until_user_event = 4567U,
+        .master_cycles_until_timer_interrupt = 890U,
+    };
+    const RoutineReplayCorpusEntry source{
+        .format_version = kRoutineReplayCorpusFormatVersion,
+        .rom_sha256 =
+            "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        .core_revision = "ae99235c2139c176c1a8d0fde2957bf701d3cab0",
+        .ordinal = 7U,
+        .checkpoint_entry = checkpoint_entry,
+        .checkpoint = {
+            .core_state = {
+                std::byte{0x00}, std::byte{0x7F}, std::byte{0x80},
+                std::byte{0xFF}},
+            .frame_number = checkpoint_entry.frame_number - 1U,
+        },
+        .pre_call_work_ram = {
+            std::byte{0x10}, std::byte{0x20}, std::byte{0x30}},
+        .expected_call = {
+            .entry = checkpoint_entry,
+            .return_instruction = {
+                .physical_bank = 0x02U,
+                .logical_pc = 0x427CU,
+            },
+            .output_registers = {
+                .program_counter = 0x427CU,
+                .accumulator = 0x8FU,
+                .x = 0x62U,
+                .y = 0x70U,
+                .stack_pointer = 0xF9U,
+                .status = 0x00U,
+                .mpr = checkpoint_entry.registers.mpr,
+            },
+            .caller_pc = 0x4429U,
+            .return_pc = 0x442CU,
+            .return_master_cycle = 12867U,
+            .return_absolute_master_cycle =
+                checkpoint_entry.absolute_master_cycle + 522U,
+            .body_master_cycles = 522U,
+            .work_ram_writes = {{
+                .instruction = {
+                    .physical_bank = 0x02U,
+                    .logical_pc = 0x4215U,
+                },
+                .logical_address = 0x3E70U,
+                .work_ram_offset = 0x1E70U,
+                .value = 0x34U,
+                .frame_number = checkpoint_entry.frame_number,
+                .master_cycle = 12402U,
+                .absolute_master_cycle =
+                    checkpoint_entry.absolute_master_cycle + 57U,
+            }},
+        },
+        .post_call_work_ram = {
+            std::byte{0x10}, std::byte{0x21}, std::byte{0x30}},
+    };
+
+    const auto encoded = encode_routine_replay_corpus(source);
+    const auto decoded = decode_routine_replay_corpus(encoded);
+    check(decoded.decoded, "routine-replay corpus round trip decodes");
+    check(
+        decoded.entry == source,
+        "routine-replay corpus round trip preserves every field");
+
+    auto corrupted = encoded;
+    corrupted.back() ^= std::byte{0x01};
+    check(
+        !decode_routine_replay_corpus(corrupted).decoded,
+        "routine-replay corpus corruption is rejected");
+    check(
+        !decode_routine_replay_corpus(
+             std::span<const std::byte>(encoded).first(20U))
+             .decoded,
+        "truncated routine-replay corpus is rejected");
+
+    auto inconsistent = source;
+    inconsistent.post_call_work_ram.pop_back();
+    bool invalid_rejected = false;
+    try {
+        (void)encode_routine_replay_corpus(inconsistent);
+    } catch (const std::invalid_argument&) {
+        invalid_rejected = true;
+    }
+    check(
+        invalid_rejected,
+        "inconsistent routine-replay corpus is rejected before encoding");
+}
+
 void test_backup_ram_storage()
 {
     const auto path =
@@ -10645,6 +10754,7 @@ int main()
     test_background_stitch_and_crop();
     test_pce_sprite_overlay();
     test_save_state_container();
+    test_routine_replay_corpus();
     test_backup_ram_storage();
     test_atomic_commit();
     test_high_score_table();

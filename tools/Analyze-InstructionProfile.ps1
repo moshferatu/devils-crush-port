@@ -21,6 +21,14 @@
     not a porting target so the ranking reflects addressable work -- most
     importantly the frame-sync spin loop, which is the single largest consumer
     of master cycles in the game and is the machine waiting, not working.
+
+.PARAMETER UnregisteredOnly
+    Drop admitted registry entry points so the result is the instruction work
+    still interpreted by the deployed registry.
+
+.PARAMETER ExcludeFrameSyncWait
+    Drop 00:E321-E32B, whose cycles represent waiting for the raster rather
+    than computation available to port.
 #>
 
 [CmdletBinding()]
@@ -35,7 +43,15 @@ param(
     # Two executed addresses closer than this are treated as one routine.
     [int] $MaximumGap = 4,
 
-    [string[]] $ExcludeAddress = @()
+    [string[]] $ExcludeAddress = @(),
+
+    # Show only instructions that are not admitted registry entry points.
+    # This is the deployed-residue view used after the registry is mature.
+    [switch] $UnregisteredOnly,
+
+    # The game spends most of its time polling the frame boundary at
+    # 00:E321-E32B. Those cycles are real machine time but not porting work.
+    [switch] $ExcludeFrameSyncWait
 )
 
 Set-StrictMode -Version Latest
@@ -80,6 +96,13 @@ foreach ($row in $rows) {
     $address = "{0}:{1}" -f
         $row.physical_bank.ToUpperInvariant(),
         $row.logical_pc.ToUpperInvariant()
+    $isFrameSyncWait =
+        $row.physical_bank.ToUpperInvariant() -eq "00" -and
+        [Convert]::ToInt32($row.logical_pc, 16) -ge 0xE321 -and
+        [Convert]::ToInt32($row.logical_pc, 16) -le 0xE32B
+    $profileRegistry =
+        $row.PSObject.Properties.Name -contains "registry_entry" -and
+        $row.registry_entry -eq "1"
     $samples.Add(
         [pscustomobject] @{
             Address = $address
@@ -87,21 +110,31 @@ foreach ($row in $rows) {
             Pc = [Convert]::ToInt32($row.logical_pc, 16)
             Cycles = [uint64] $row.master_cycles
             Executions = [uint64] $row.executions
-            Registry = $registry.Contains($address)
-            Excluded = $excluded.Contains($address)
+            Registry = $profileRegistry -or $registry.Contains($address)
+            Excluded = $excluded.Contains($address) -or
+                ($ExcludeFrameSyncWait -and $isFrameSyncWait)
         }) | Out-Null
 }
 
 $total = ($samples | Measure-Object -Property Cycles -Sum).Sum
-$ranked = @($samples | Where-Object { -not $_.Excluded })
+$ranked = @(
+    $samples |
+        Where-Object {
+            -not $_.Excluded -and
+            (-not $UnregisteredOnly -or -not $_.Registry)
+        }
+)
 $addressable = ($ranked | Measure-Object -Property Cycles -Sum).Sum
 
 Write-Host ("Addresses executed : {0:N0}" -f $samples.Count)
 Write-Host ("Total cycles       : {0:N0}" -f $total)
-if ($excluded.Count -ne 0) {
-    Write-Host ("Excluded cycles    : {0:N0} ({1:N1}%)" -f
+if ($excluded.Count -ne 0 -or $ExcludeFrameSyncWait -or $UnregisteredOnly) {
+    Write-Host ("Filtered cycles    : {0:N0} ({1:N1}%)" -f
         ($total - $addressable), (100.0 * ($total - $addressable) / $total))
-    Write-Host ("Addressable cycles : {0:N0}" -f $addressable)
+}
+Write-Host ("Addressable cycles : {0:N0}" -f $addressable)
+if ($UnregisteredOnly) {
+    Write-Host "View              : unregistered deployed residue"
 }
 
 # Group contiguous executed addresses within a bank into one candidate.
@@ -151,10 +184,21 @@ foreach ($cluster in @($clusters | Sort-Object Cycles -Descending |
         $(if ($cluster.Registry) { "entered" } else { "--" }))
 }
 
-$coveredClusters = @($clusters | Where-Object Registry)
-$covered = ($coveredClusters | Measure-Object -Property Cycles -Sum).Sum
 Write-Host ""
-Write-Host ("Clusters entered by the registry: {0} of {1}, {2:N1}% of addressable cycles" -f
-    $coveredClusters.Count,
-    $clusters.Count,
-    (100.0 * $covered / $addressable))
+if ($UnregisteredOnly) {
+    Write-Host ("Unregistered deployed-residue clusters: {0}" -f
+        $clusters.Count)
+} else {
+    $coveredClusters = @($clusters | Where-Object Registry)
+    $coveredMeasure = $coveredClusters |
+        Measure-Object -Property Cycles -Sum
+    $covered = if ($null -eq $coveredMeasure.Sum) {
+        [uint64] 0
+    } else {
+        [uint64] $coveredMeasure.Sum
+    }
+    Write-Host ("Clusters entered by the registry: {0} of {1}, {2:N1}% of addressable cycles" -f
+        $coveredClusters.Count,
+        $clusters.Count,
+        (100.0 * $covered / $addressable))
+}

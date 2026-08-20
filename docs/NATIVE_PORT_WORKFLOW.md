@@ -3472,10 +3472,53 @@ evidence. The mechanism evidence is `test_atomic_commit`, which is
 deterministic. To watch an absorption directly, run a recorder command by hand
 rather than through CTest.
 
-## Future acceleration work
+## Persisted routine-replay corpus
 
-The next infrastructure improvement is a persisted routine-replay corpus:
-record normalized pre-call save states and expected artifacts from an
-authoritative family route, then replay adapters directly without booting the
-entire 3,600-frame scenario. Until that corpus exists, batching sibling work
-against a single Release family route provides the best speed/fidelity trade.
+The normalized replay boundary is persistent now. Add one or more
+`--routine-replay BANK:PC@ORDINAL` arguments to an authoritative assembly
+family recording and name a directory with `--routine-replay-corpus-out`.
+Multiple ordinals of the same routine are deliberately allowed: one route can
+capture the distinct states a sibling batch needs.
+
+```powershell
+.\devils-crush.exe --record-gameplay out\family.csv `
+  --observe-hook 00:F241 `
+  --routine-call-trace out\family.calls.csv `
+  --routine-replay 00:F241@1 --routine-replay 00:F241@2 `
+  --routine-replay-corpus-out out\family-corpus `
+  --rom "Devil's Crush.pce"
+```
+
+Corpus export is refused if the target has an explicit replacement or the
+registry is deployed. The `.dcrr` entry is therefore an assembly oracle, not a
+native adapter certifying itself. It contains the opaque pre-call machine
+state, entry input and horizons, complete expected call and ordered writes,
+and pre/post work RAM. The stable little-endian container is checksummed and
+bound to both the supported ROM SHA-256 and exact Beetle revision.
+
+During implementation, replay those calls directly with one semantic hook:
+
+```powershell
+.\devils-crush.exe `
+  --routine-replay-corpus out\family-corpus\00-F241-1.dcrr `
+  --routine-replay-corpus out\family-corpus\00-F241-2.dcrr `
+  --replace-hook 00:F241@all --rom "Devil's Crush.pce"
+```
+
+The host restores at each call, requires the requested native adapter to run
+exactly once, and compares output registers, return state, relative cycles,
+ordered work-RAM writes, and complete post-call work RAM. A decline cannot
+pass by falling back to assembly. `dc_rom_routine_replay_corpus` proves cold
+capture, verified cache reuse, assembly replay, and native replay for two
+`00:F241` calls; its cached path takes 0.08 seconds in Release and 0.21 seconds
+in Debug on the development machine.
+
+This is the inner edit loop, not the closure proof. Run the owning-family
+Release route again before admitting a replacement so aggregate call coverage,
+interrupt placement, artifact hashes, and the canonical census remain guarded.
+
+For global screening, `Analyze-InstructionProfile.ps1 -UnregisteredOnly
+-ExcludeFrameSyncWait` now reports only deployed non-entry residue outside the
+`00:E321-E32B` wait. Pair it with the native-cycle census's
+`entries - native_calls` screen: specialized or guarded registry entries can
+hide the next coherent family from a non-entry-only ranking.

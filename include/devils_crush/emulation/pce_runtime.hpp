@@ -78,6 +78,8 @@ struct RuntimeInfo {
 struct SaveState {
     std::vector<std::byte> core_state;
     std::uint64_t frame_number = 0;
+
+    [[nodiscard]] bool operator==(const SaveState&) const = default;
 };
 
 struct VideoMemorySnapshot {

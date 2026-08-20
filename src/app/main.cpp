@@ -11,6 +11,7 @@
 #include "devils_crush/core/rom_image.hpp"
 #include "devils_crush/core/save_state.hpp"
 #include "devils_crush/emulation/pce_runtime.hpp"
+#include "devils_crush/emulation/routine_replay_corpus.hpp"
 #include "devils_crush/input/plunger.hpp"
 #include "devils_crush/render/pce_background.hpp"
 #include "devils_crush/render/pce_sprite_overlay.hpp"
@@ -95,6 +96,8 @@ const std::filesystem::path kHighScoreCheckPath =
     std::filesystem::path("portable-data") / "high-score-check.hiscore";
 constexpr std::uintmax_t kMaximumSaveStateFileSize =
     64U * 1024U * 1024U + 4096U;
+constexpr std::uintmax_t kMaximumRoutineReplayCorpusFileSize =
+    96U * 1024U * 1024U + 4096U;
 
 using devils_crush::emulation::AudioView;
 using devils_crush::emulation::Button;
@@ -207,6 +210,8 @@ struct CommandLine {
     std::filesystem::path routine_trace_path;
     std::filesystem::path routine_call_trace_path;
     std::vector<RoutineReplayRequest> routine_replays;
+    std::filesystem::path routine_replay_corpus_output_directory;
+    std::vector<std::filesystem::path> routine_replay_corpus_paths;
     std::vector<WorkRamPatch> work_ram_patches;
     std::vector<LogicalAddressRange> work_ram_write_ranges;
     std::filesystem::path work_ram_write_trace_path;
@@ -685,14 +690,29 @@ parse_logical_address_range(const std::string_view text)
                 options.routine_replays.begin(),
                 options.routine_replays.end(),
                 [request](const RoutineReplayRequest& existing) {
-                    return existing.routine == request->routine;
+                    return existing.routine == request->routine
+                        && existing.ordinal == request->ordinal;
                 });
             if (duplicate != options.routine_replays.end()) {
                 options.error =
-                    "Each routine may have only one replay ordinal.";
+                    "Each routine replay BANK:PC@ORDINAL must be unique.";
                 return options;
             }
             options.routine_replays.push_back(*request);
+        } else if (argument == "--routine-replay-corpus-out") {
+            if (index + 1 >= argc) {
+                options.error =
+                    "--routine-replay-corpus-out requires a directory.";
+                return options;
+            }
+            options.routine_replay_corpus_output_directory = argv[++index];
+        } else if (argument == "--routine-replay-corpus") {
+            if (index + 1 >= argc) {
+                options.error =
+                    "--routine-replay-corpus requires a fixture path.";
+                return options;
+            }
+            options.routine_replay_corpus_paths.emplace_back(argv[++index]);
         } else if (argument == "--work-ram-patch") {
             if (index + 1 >= argc) {
                 options.error =
@@ -971,6 +991,7 @@ parse_logical_address_range(const std::string_view text)
         + static_cast<int>(options.record_canonical)
         + static_cast<int>(options.record_gameplay)
         + static_cast<int>(options.record_state_census)
+        + static_cast<int>(!options.routine_replay_corpus_paths.empty())
         + static_cast<int>(options.backup_ram_test);
     const bool recording_selected =
         options.record_canonical || options.record_gameplay
@@ -1021,10 +1042,11 @@ parse_logical_address_range(const std::string_view text)
     } else if ((!options.pass_through_hooks.empty()
                 || !options.observe_hooks.empty()
                 || !options.replace_hooks.empty())
-               && !recording_selected) {
+               && !recording_selected
+               && options.routine_replay_corpus_paths.empty()) {
         options.error =
             "Individual execution hooks currently require a recording "
-            "operation.";
+            "or routine-replay corpus operation.";
     } else if (options.emulate_only && !host_selected) {
         options.error =
             "--emulate-only is available only for the interactive host.";
@@ -1032,10 +1054,59 @@ parse_logical_address_range(const std::string_view text)
         options.error =
             "--emulate-only and --replace-registry are mutually exclusive.";
     } else if (
-        options.replace_registry && !recording_selected && !host_registry) {
+        options.replace_registry && !recording_selected && !host_registry
+        && options.routine_replay_corpus_paths.empty()) {
         options.error =
             "--replace-registry requires a recording operation or the "
             "interactive host.";
+    } else if (!options.routine_replay_corpus_output_directory.empty()
+               && (!recording_selected || options.routine_replays.empty())) {
+        options.error =
+            "--routine-replay-corpus-out requires a recording and at least "
+            "one --routine-replay.";
+    } else if (!options.routine_replay_corpus_output_directory.empty()
+               && (options.replace_registry
+                   || std::any_of(
+                       options.routine_replays.begin(),
+                       options.routine_replays.end(),
+                       [&options](const RoutineReplayRequest& replay) {
+                           return std::find_if(
+                                      options.replace_hooks.begin(),
+                                      options.replace_hooks.end(),
+                                      [&replay](
+                                          const RoutineReplayRequest& replace) {
+                                          return replace.routine
+                                              == replay.routine;
+                                      })
+                               != options.replace_hooks.end();
+                       }))) {
+        options.error =
+            "Routine-replay corpus exports must be captured from original "
+            "assembly, without replacing the target or deploying the "
+            "registry.";
+    } else if (!options.routine_replay_corpus_paths.empty()
+               && (recording_selected || !options.routine_replays.empty()
+                   || !options.pass_through_hooks.empty()
+                   || !options.observe_hooks.empty())) {
+        options.error =
+            "--routine-replay-corpus is a standalone operation; it cannot "
+            "be combined with recording, transient replay, pass-through, "
+            "or observe options.";
+    } else if (!options.routine_replay_corpus_paths.empty()
+               && options.replace_registry) {
+        options.error =
+            "Direct corpus replay currently accepts explicit semantic @all "
+            "replacement hooks, not --replace-registry.";
+    } else if (!options.routine_replay_corpus_paths.empty()
+               && std::any_of(
+                   options.replace_hooks.begin(),
+                   options.replace_hooks.end(),
+                   [](const RoutineReplayRequest& request) {
+                       return !request.all_calls;
+                   })) {
+        options.error =
+            "Direct corpus replay accepts only semantic @all replacement "
+            "hooks.";
     } else if (!options.native_cycle_census_path.empty()
                && !options.replace_registry && !host_registry) {
         options.error =
@@ -4045,6 +4116,7 @@ void print_usage()
            "      [--routine-trace <entries.csv>]\n"
            "      [--routine-call-trace <calls.csv>]\n"
            "      [--routine-replay <bank:pc@ordinal>]...\n"
+           "      [--routine-replay-corpus-out <directory>]\n"
            "      [--work-ram-patch <frame:address:value>]...\n"
            "      [--work-ram-write-range <start-end>]...\n"
            "      [--work-ram-write-trace <writes.csv>]\n"
@@ -4059,6 +4131,7 @@ void print_usage()
            "      [--routine-trace <entries.csv>]\n"
            "      [--routine-call-trace <calls.csv>]\n"
            "      [--routine-replay <bank:pc@ordinal>]...\n"
+           "      [--routine-replay-corpus-out <directory>]\n"
            "      [--work-ram-patch <frame:address:value>]...\n"
            "      [--work-ram-write-range <start-end>]...\n"
            "      [--work-ram-write-trace <writes.csv>]\n"
@@ -4079,12 +4152,15 @@ void print_usage()
            "      [--routine-trace <entries.csv>]\n"
            "      [--routine-call-trace <calls.csv>]\n"
            "      [--routine-replay <bank:pc@ordinal>]...\n"
+           "      [--routine-replay-corpus-out <directory>]\n"
            "      [--work-ram-patch <frame:address:value>]...\n"
            "      [--work-ram-write-range <start-end>]...\n"
            "      [--work-ram-write-trace <writes.csv>]\n"
            "      [--bus-write-range <start-end>]...\n"
            "      [--bus-write-trace <writes.csv>]\n"
            "      [--rom <path>]\n"
+        << "  devils-crush --routine-replay-corpus <fixture.dcrr>...\n"
+           "      [--replace-hook <bank:pc@all>]... [--rom <path>]\n"
         << "  devils-crush --backup-ram-test [output.sav] [--rom <path>]\n"
         << "  devils-crush --high-score-check [--rom <path>]\n"
         << "  devils-crush --cabinet-view-probe <directory> "
@@ -8814,6 +8890,316 @@ int verify_routine_replays(
     return EXIT_SUCCESS;
 }
 
+[[nodiscard]] std::filesystem::path routine_replay_corpus_path(
+    const std::filesystem::path& directory,
+    const RoutineReplayRequest& request)
+{
+    std::ostringstream name;
+    name << std::uppercase << std::hex << std::setfill('0')
+         << std::setw(2)
+         << static_cast<unsigned>(request.routine.physical_bank)
+         << '-' << std::setw(4) << request.routine.logical_pc
+         << std::dec << '-' << request.ordinal << ".dcrr";
+    return directory / name.str();
+}
+
+[[nodiscard]] bool write_routine_replay_corpora(
+    const std::filesystem::path& directory,
+    const std::span<const RoutineReplayCapture> captures,
+    const std::string_view core_revision)
+{
+    std::error_code error;
+    std::filesystem::create_directories(directory, error);
+    if (error) {
+        std::cerr << "Could not create routine-replay corpus directory: "
+                  << error.message() << '\n';
+        return false;
+    }
+
+    for (const auto& capture : captures) {
+        if (!capture.original_call
+            || capture.checkpoint.core_state.empty()
+            || capture.pre_call_work_ram.empty()
+            || capture.original_post_call_work_ram.empty()) {
+            std::cerr << "Cannot persist incomplete routine replay "
+                      << routine_replay_name(capture.request) << ".\n";
+            return false;
+        }
+
+        std::vector<std::byte> bytes;
+        try {
+            bytes = devils_crush::emulation::encode_routine_replay_corpus({
+                .format_version = devils_crush::emulation::
+                    kRoutineReplayCorpusFormatVersion,
+                .rom_sha256 =
+                    std::string(devils_crush::rom::kSupportedSha256),
+                .core_revision = std::string(core_revision),
+                .ordinal = capture.request.ordinal,
+                .checkpoint_entry = capture.checkpoint_entry,
+                .checkpoint = capture.checkpoint,
+                .pre_call_work_ram = capture.pre_call_work_ram,
+                .expected_call = *capture.original_call,
+                .post_call_work_ram =
+                    capture.original_post_call_work_ram,
+            });
+        } catch (const std::exception& exception) {
+            std::cerr << "Could not encode routine replay "
+                      << routine_replay_name(capture.request) << ": "
+                      << exception.what() << '\n';
+            return false;
+        }
+
+        const auto path = routine_replay_corpus_path(
+            directory, capture.request);
+        auto temporary_path = path;
+        temporary_path += ".tmp";
+        {
+            std::ofstream output(
+                temporary_path,
+                std::ios::binary | std::ios::trunc);
+            output.write(
+                reinterpret_cast<const char*>(bytes.data()),
+                static_cast<std::streamsize>(bytes.size()));
+            output.flush();
+            if (!output) {
+                std::cerr << "Could not write routine-replay corpus: "
+                          << temporary_path.string() << '\n';
+                return false;
+            }
+        }
+        if (!commit_artifact(
+                temporary_path, path, "routine-replay corpus")) {
+            return false;
+        }
+        std::cout << "Routine replay corpus "
+                  << routine_replay_name(capture.request)
+                  << " persisted: " << path.string() << '\n';
+    }
+    std::cout << "Routine replay corpus complete: " << captures.size()
+              << " authoritative assembly calls\n";
+    return true;
+}
+
+[[nodiscard]] std::optional<
+    devils_crush::emulation::RoutineReplayCorpusEntry>
+read_routine_replay_corpus(const std::filesystem::path& path)
+{
+    std::error_code error;
+    const auto size = std::filesystem::file_size(path, error);
+    if (error || size == 0U
+        || size > kMaximumRoutineReplayCorpusFileSize) {
+        std::cerr << "Routine-replay corpus file size is invalid: "
+                  << path.string() << '\n';
+        return std::nullopt;
+    }
+    std::vector<std::byte> bytes(static_cast<std::size_t>(size));
+    std::ifstream input(path, std::ios::binary);
+    input.read(
+        reinterpret_cast<char*>(bytes.data()),
+        static_cast<std::streamsize>(bytes.size()));
+    if (!input) {
+        std::cerr << "Could not read routine-replay corpus: "
+                  << path.string() << '\n';
+        return std::nullopt;
+    }
+    auto decoded =
+        devils_crush::emulation::decode_routine_replay_corpus(bytes);
+    if (!decoded.decoded) {
+        std::cerr << "Could not decode routine-replay corpus "
+                  << path.string() << ": " << decoded.message << '\n';
+        return std::nullopt;
+    }
+    return std::move(decoded.entry);
+}
+
+struct DirectRoutineReplay {
+    devils_crush::emulation::RoutineReplayCorpusEntry corpus;
+    std::optional<RoutineEntry> actual_entry;
+    std::optional<RoutineCall> actual_call;
+    std::vector<std::byte> actual_post_call_work_ram;
+    std::uint64_t replacement_hits = 0U;
+};
+
+[[nodiscard]] int run_routine_replay_corpus(
+    PceRuntime& runtime,
+    const CommandLine& options,
+    const std::span<const std::byte> rom,
+    const std::string_view core_revision)
+{
+    std::vector<DirectRoutineReplay> replays;
+    replays.reserve(options.routine_replay_corpus_paths.size());
+    for (const auto& path : options.routine_replay_corpus_paths) {
+        auto corpus = read_routine_replay_corpus(path);
+        if (!corpus) {
+            return EXIT_FAILURE;
+        }
+        if (corpus->rom_sha256 != devils_crush::rom::kSupportedSha256) {
+            std::cerr << "Routine-replay corpus targets a different ROM: "
+                      << path.string() << '\n';
+            return EXIT_FAILURE;
+        }
+        if (corpus->core_revision != core_revision) {
+            std::cerr << "Routine-replay corpus targets core revision "
+                      << corpus->core_revision << ", not " << core_revision
+                      << ": " << path.string() << '\n';
+            return EXIT_FAILURE;
+        }
+        replays.push_back({.corpus = std::move(*corpus)});
+    }
+    for (const auto& replacement : options.replace_hooks) {
+        if (std::none_of(
+                replays.begin(),
+                replays.end(),
+                [&replacement](const DirectRoutineReplay& replay) {
+                    return replay.corpus.checkpoint_entry.routine
+                        == replacement.routine;
+                })) {
+            std::cerr << "Replacement target "
+                      << format_routine_key(replacement.routine)
+                      << " has no supplied corpus entry.\n";
+            return EXIT_FAILURE;
+        }
+    }
+
+    DirectRoutineReplay* active = nullptr;
+    std::set<std::pair<std::uint8_t, std::uint16_t>> installed;
+    for (const auto& replay : replays) {
+        const auto routine = replay.corpus.checkpoint_entry.routine;
+        if (!installed.emplace(
+                routine.physical_bank, routine.logical_pc).second) {
+            continue;
+        }
+        const auto replacement = std::find_if(
+            options.replace_hooks.begin(),
+            options.replace_hooks.end(),
+            [routine](const RoutineReplayRequest& request) {
+                return request.routine == routine;
+            });
+        const bool replaces = replacement != options.replace_hooks.end();
+        devils_crush::emulation::ExecutionHook hook{
+            .routine = routine,
+            .mode = replaces ? HookMode::replace : HookMode::observe,
+            .callback = [&active, routine](const RoutineEntry& entry) {
+                if (active != nullptr
+                    && active->corpus.checkpoint_entry.routine == routine
+                    && !active->actual_entry) {
+                    active->actual_entry = entry;
+                }
+            },
+        };
+        if (replaces) {
+            hook.replacement_callback =
+                [&active, routine, rom](
+                    const RoutineEntry& entry,
+                    const std::span<const std::byte> work_ram) {
+                    if (active == nullptr
+                        || active->corpus.checkpoint_entry.routine
+                            != routine) {
+                        return std::optional<RoutineReplacement>{};
+                    }
+                    auto result = replace_native_gameplay_routine(
+                        entry, work_ram, rom);
+                    if (result && result->checkpoints.empty()
+                        && result->body_master_cycles
+                            >= std::min(
+                                entry.master_cycles_until_user_event,
+                                entry.master_cycles_until_timer_interrupt)) {
+                        result.reset();
+                    }
+                    if (result) {
+                        ++active->replacement_hits;
+                    }
+                    return result;
+                };
+        }
+        if (!runtime.install_execution_hook(std::move(hook))) {
+            std::cerr << "Could not install direct corpus execution hook "
+                      << format_routine_key(routine) << ".\n";
+            return EXIT_FAILURE;
+        }
+        if (!runtime.install_routine_call_observer({
+                .routine = routine,
+                .callback = [&runtime, &active, routine](
+                    const RoutineCall& call) {
+                    if (active != nullptr
+                        && active->corpus.checkpoint_entry.routine == routine
+                        && !active->actual_call) {
+                        active->actual_call = call;
+                        active->actual_post_call_work_ram =
+                            runtime.export_work_ram();
+                    }
+                },
+            })) {
+            std::cerr << "Could not install direct corpus call observer "
+                      << format_routine_key(routine) << ".\n";
+            return EXIT_FAILURE;
+        }
+    }
+
+    for (auto& replay : replays) {
+        active = &replay;
+        const auto& expected = replay.corpus.expected_call;
+        const auto name = format_routine_key(expected.entry.routine)
+            + '@' + std::to_string(replay.corpus.ordinal);
+        if (!runtime.deserialize(replay.corpus.checkpoint)) {
+            std::cerr << "Direct routine replay " << name
+                      << " could not restore its corpus state.\n";
+            return EXIT_FAILURE;
+        }
+        if (runtime.export_work_ram()
+            != replay.corpus.pre_call_work_ram) {
+            std::cerr << "Direct routine replay " << name
+                      << " restored different pre-call work RAM.\n";
+            return EXIT_FAILURE;
+        }
+        const auto frame = runtime.run_frame(expected.entry.input);
+        if (frame.frame_number != expected.entry.frame_number
+            || !replay.actual_entry || !replay.actual_call
+            || replay.actual_post_call_work_ram.empty()) {
+            std::cerr << "Direct routine replay " << name
+                      << " did not complete in its restored frame.\n";
+            return EXIT_FAILURE;
+        }
+        const bool replacement_requested = std::any_of(
+            options.replace_hooks.begin(),
+            options.replace_hooks.end(),
+            [&expected](const RoutineReplayRequest& request) {
+                return request.routine == expected.entry.routine;
+            });
+        if (replacement_requested && replay.replacement_hits != 1U) {
+            std::cerr << "Direct routine replay " << name
+                      << " expected one native replacement, observed "
+                      << replay.replacement_hits << ".\n";
+            return EXIT_FAILURE;
+        }
+        if (!routine_calls_match_after_clock_normalization(
+                expected, *replay.actual_call)) {
+            std::cerr << "Direct routine replay " << name
+                      << " changed registers, return state, relative "
+                         "cycles, or ordered work-RAM writes.\n";
+            report_routine_call_difference(expected, *replay.actual_call);
+            return EXIT_FAILURE;
+        }
+        if (replay.actual_post_call_work_ram
+            != replay.corpus.post_call_work_ram) {
+            std::cerr << "Direct routine replay " << name
+                      << " changed post-call work RAM.\n";
+            return EXIT_FAILURE;
+        }
+        std::cout << "Direct routine replay " << name << " verified: frame "
+                  << expected.entry.frame_number << ", "
+                  << expected.body_master_cycles << " body cycles, "
+                  << expected.work_ram_writes.size() << " ordered writes, "
+                  << (replacement_requested ? "native" : "assembly")
+                  << '\n';
+        active = nullptr;
+    }
+
+    std::cout << "Direct routine replay corpus complete: " << replays.size()
+              << " calls without route startup\n";
+    return EXIT_SUCCESS;
+}
+
 int run_smoke_test(PceRuntime& runtime)
 {
     EmulatedFrame frame;
@@ -13275,6 +13661,14 @@ int main(const int argc, char* argv[])
             return EXIT_FAILURE;
         }
 
+        if (!options.routine_replay_corpus_paths.empty()) {
+            return run_routine_replay_corpus(
+                *runtime,
+                options,
+                *replacement_rom,
+                runtime_info.upstream_revision);
+        }
+
         if (!options.cabinet_state_dump_directory.empty()) {
             return run_state_dump(
                 *runtime, options.rom_path, kQuickStatePath,
@@ -13473,20 +13867,18 @@ int main(const int argc, char* argv[])
                             || suppress_recording_observers) {
                             return;
                         }
-                        const auto replay = std::find_if(
-                            routine_replays.begin(),
-                            routine_replays.end(),
-                            [&entry](const RoutineReplayCapture& capture) {
-                                return capture.request.routine
-                                    == entry.routine;
-                            });
-                        if (replay != routine_replays.end()
-                            && ++replay->natural_entry_count
-                                == replay->request.ordinal) {
-                            replay->checkpoint_entry = entry;
-                            replay->checkpoint = runtime->serialize();
-                            replay->pre_call_work_ram =
-                                runtime->export_work_ram();
+                        for (auto& replay : routine_replays) {
+                            if (replay.request.routine != entry.routine) {
+                                continue;
+                            }
+                            ++replay.natural_entry_count;
+                            if (replay.natural_entry_count
+                                == replay.request.ordinal) {
+                                replay.checkpoint_entry = entry;
+                                replay.checkpoint = runtime->serialize();
+                                replay.pre_call_work_ram =
+                                    runtime->export_work_ram();
+                            }
                         }
                         observed_entries.push_back(entry);
                     },
@@ -13893,6 +14285,13 @@ int main(const int argc, char* argv[])
                     suppress_recording_observers);
                 if (replay_result != EXIT_SUCCESS) {
                     return replay_result;
+                }
+                if (!options.routine_replay_corpus_output_directory.empty()
+                    && !write_routine_replay_corpora(
+                        options.routine_replay_corpus_output_directory,
+                        routine_replays,
+                        runtime_info.upstream_revision)) {
+                    return EXIT_FAILURE;
                 }
             }
             return EXIT_SUCCESS;

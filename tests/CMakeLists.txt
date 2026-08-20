@@ -6790,5 +6790,21 @@ if(TARGET devils_crush)
             dc_rom_native_replacement
             PROPERTIES LABELS rom_required
         )
+
+        add_test(
+            NAME dc_rom_routine_replay_corpus
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/routine-replay-corpus-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_routine_replay_corpus.cmake"
+        )
+        set_tests_properties(
+            dc_rom_routine_replay_corpus
+            PROPERTIES LABELS rom_required
+        )
     endif()
 endif()

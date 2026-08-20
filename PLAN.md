@@ -1123,6 +1123,14 @@ duplicate full-route tests. The full Release suite is the family, milestone,
 and cross-family checkpoint; it runs in parallel in under three minutes, so it
 is not narrowed.
 
+Persist authoritative assembly calls with `--routine-replay-corpus-out` when
+a family route is first recorded. During adapter development, replay one or
+more `.dcrr` fixtures with `--routine-replay-corpus` and semantic `@all`
+replacement hooks; this restores directly at the call and compares registers,
+return state, relative cycles, ordered writes, and post-call work RAM without
+traversing the route. Re-run the owning-family route for aggregate admission,
+artifact, and coverage proof before closing the slice.
+
 Debug ROM regressions are deliberately exceptional. The ROM-free Debug tests
 carry what a Debug build catches that a Release build cannot, and they cover
 the native models where such a fault would live. A Debug ROM route adds only

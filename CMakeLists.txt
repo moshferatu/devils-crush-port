@@ -124,7 +124,12 @@ target_include_directories(
 target_compile_features(dc_native_registry PUBLIC cxx_std_20)
 dc_enable_strict_warnings(dc_native_registry)
 
-add_library(dc_emulation STATIC "${dc_emulation_source}")
+add_library(
+    dc_emulation
+    STATIC
+    "${dc_emulation_source}"
+    src/emulation/routine_replay_corpus.cpp
+)
 
 add_library(DevilsCrush::Emulation ALIAS dc_emulation)
 

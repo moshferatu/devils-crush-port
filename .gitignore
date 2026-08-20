@@ -8,6 +8,7 @@
 /traces/
 *.dcpack
 *.state
+*.dcrr
 
 # CMake and compiler output
 /out/
@@ -30,4 +31,3 @@ Thumbs.db
 # Runtime-local files
 /logs/
 /portable-data/
-
