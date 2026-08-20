@@ -8,20 +8,21 @@ Last updated: 2026-08-20
 
 **Current milestone:** 4. Native gameplay port
 
-**Milestone 4 current gate:** normalized routine replay is now persistent.
-`--routine-replay-corpus-out` writes versioned, checksummed, ROM/core-bound
-assembly fixtures containing the opaque pre-call state, complete expected call,
-and pre/post work RAM. `--routine-replay-corpus` restores one or more fixtures
-and compares a semantic native adapter directly, without route startup. A
-single 1,800-frame route now captures multiple ordinals of one routine; the
-two-call `00:F241` proof reuses its verified local corpus in 0.08 seconds in
-Release and 0.21 seconds in Debug.
+**Milestone 4 current gate:** semantic `01:C5AB@all` now replaces the complete
+shared actor-slot allocator. All 44 natural calls and all 64 calls on the
+patched Knight stress route execute natively through a state-derived scan of
+slots `$04-$7B`, both reservation modes, pool exhaustion, and the exact return.
+Six persisted replay fixtures cover the natural uninterrupted scan lengths;
+two forced fixtures additionally lock the dormant `$C0` reservation and
+carry-set exhausted returns. The owning route preserves 72 original
+interrupt-handler passages through the allocator's instruction-boundary
+transcript.
 
-The deployed registry now runs **696,920,400 of 1,292,371,731 master cycles
-natively, 53.93% of the route and 98.09% of everything outside the frame-sync
-wait**, across 473 admitted routines. The shared impact-burst allocator owns
-all seven complete successful tails, including the interrupt-bearing second
-call and each source-specific live return frame.
+The deployed registry now runs **697,120,455 of 1,292,371,731 master cycles
+natively, 53.94% of the route and 98.12% of everything outside the frame-sync
+wait**, across 473 admitted routines. The allocator adds 200,055 native cycles
+without adding a registry key because its former terminal-only prefix was
+already admitted.
 The core declines no offered registry transcript and none is abandoned. The
 3,600-frame state census remains
 `9036a9de0c3c9917f47bff8c04c136a4824ec12601fb457d260aa2dfe4443490`.
@@ -6753,32 +6754,45 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
     artifacts, normalized replay, and registry stack-page parity.
   - [x] Registry A/B: **696,916,746 -> 696,920,400** native cycles; 3,654 net
     cycles added, 473 admitted routines, 367 entered, and no abandonments.
+- [x] Port the complete shared actor-slot allocator at `01:C5AB-C5C8`:
+  - [x] Scan occupancy slots `$04-$7B`, reserve the first free slot as `$80`
+    or `$C0` from mode `$2055`, and retain the carry-set exhausted return.
+  - [x] Reproduce every instruction boundary, both possible reservation
+    writes, and the live stack-derived `RTS` instead of the old six-cycle
+    Knight-only initializer prefix.
+  - [x] Preserve all 44 natural calls, 72 interrupt-handler passages, the
+    exact 44-call/1,077-write artifacts, six natural plus two forced direct
+    corpus replays, the patched 64-call stress route, and the canonical census.
+  - [x] Registry A/B: **696,920,400 -> 697,120,455** native cycles; 200,055
+    cycles added, 473 admitted routines, 357 entered, and no abandonments.
 
 ## Active Work
 
-Current owner: Codex. Current slice: **persisted normalized routine replay and
-global recoverable-work re-ranking**. Done.
+Current owner: Codex. Current slice: **complete shared actor-slot allocator**.
+Done.
 
-The corpus proof captures assembly `00:F241@1` and `@2` in one 1,800-frame
-route, persists both calls atomically, then restores them directly against the
-semantic native adapter. A cold Release test takes about 2.9 seconds on this
-machine; the verified cache path takes 0.08 seconds, and the same Release-made
-fixtures pass Debug in 0.21 seconds. The format rejects corruption, truncation,
-inconsistent RAM sizes, another ROM, and another core revision.
+The allocator's 44 natural scopes span 4,314-8,562 master cycles and 256,242
+cycles including original interrupt handlers. Thirty-seven calls contain 72
+handler passages. The semantic transcript contributes 200,055 native cycles,
+executes all 44 calls without a horizon decline or abandonment, and preserves
+the exact census, call, write, and post-call RAM artifacts. The six cached
+natural fixtures cover first-free slots `$62`, `$63`, `$64`, and `$70`; two
+forced fixtures prove the 4,374-cycle `$C0` overwrite and 5,406-cycle exhausted
+return. The complete family regression takes 20.97 seconds for its one-time
+cold captures and 7.77 seconds with all eight fixtures cached.
 
-The fresh deployed profile retains the canonical census, 696,920,400 native
-cycles, 473 installed routines, 367 entered routines, zero horizon declines,
-zero depth refusals, and zero abandonments. Filtering admitted entry points and
-the `00:E321-E32B` frame wait leaves 6,046,539 profile-attributed cycles. The
-largest two rows are already understood non-transcript boundaries: the
-625,095-cycle whole-palette `TIA` at `00:EB46` and the 365,664-cycle two-sample
-`BBR` at `00:F423`.
+The fresh deployed profile retains the canonical census, 697,120,455 native
+cycles, 473 installed routines, 357 entered routines, zero horizon declines,
+zero depth refusals, and zero abandonments. The lower entered-routine count is
+expected: the complete allocator absorbs ten formerly visible interior prefix
+keys. Filtering admitted entry points and the `00:E321-E32B` frame wait leaves
+6,045,615 profile-attributed cycles across 269 clusters.
 
-Next: use a multi-ordinal corpus to screen the natural shared actor-slot
-allocator at `01:C5AB-C5C7` as one family. Its 44 calls and scan loop account
-for 200,883 profiled cycles; the installed entries currently describe only a
-patched Knight route and admit none of the natural calls. Keep `02:4CF1` as
-known handoff attribution rather than returning to tiny bank-`02` seams.
+Next: screen `00:E7D7-E7FA` as the next coherent arithmetic family. It has 105
+natural entries, exactly 24 loop rounds per call, and 336,090 profiled cycles.
+The ROM body is a bounded 24-bit shift/subtract division walk, making it a much
+better semantic candidate than the known palette `TIA`, PSG `BBR`, startup
+`TII`, or broad mixed collision-response regions above it.
 
 ### Previous: the impact-burst allocator success return
 

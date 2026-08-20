@@ -628,7 +628,7 @@ replace_knight_terminal_release_helper_post_return_actor_field_second_constant_s
     std::span<const std::byte> work_ram);
 
 [[nodiscard]] std::optional<emulation::RoutineReplacement>
-replace_knight_terminal_release_helper_shared_scan_initializer_prefix(
+replace_actor_slot_allocator(
     const emulation::RoutineEntry& entry,
     std::span<const std::byte> work_ram);
 

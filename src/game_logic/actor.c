@@ -263,6 +263,35 @@ int dc_prepare_actor_slot_reset(
     return 1;
 }
 
+int dc_classify_actor_slot_allocation(
+    const uint8_t* const work_ram,
+    const size_t work_ram_size,
+    dc_actor_slot_allocation* const allocation)
+{
+    uint8_t slot;
+
+    if (work_ram == NULL || allocation == NULL
+        || work_ram_size <= 0x107BU) {
+        return 0;
+    }
+
+    allocation->mode = work_ram[0x0055U];
+    allocation->reservation = allocation->mode == 0U ? 0x80U : 0xC0U;
+    allocation->occupied_slots = 0U;
+    for (slot = 0x04U; slot < 0x7CU; ++slot) {
+        if (work_ram[0x1000U + (size_t)slot] == 0U) {
+            allocation->slot = slot;
+            allocation->path = DC_ACTOR_SLOT_ALLOCATION_RESERVED;
+            return 1;
+        }
+        ++allocation->occupied_slots;
+    }
+
+    allocation->slot = 0x7CU;
+    allocation->path = DC_ACTOR_SLOT_ALLOCATION_EXHAUSTED;
+    return 1;
+}
+
 int dc_classify_giant_skeleton_eyeball_gate(
     const uint8_t* const work_ram,
     const size_t work_ram_size,

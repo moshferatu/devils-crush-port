@@ -158,6 +158,23 @@ typedef struct dc_actor_slot_reset {
     uint8_t slot;
 } dc_actor_slot_reset;
 
+typedef enum dc_actor_slot_allocation_path {
+    DC_ACTOR_SLOT_ALLOCATION_RESERVED = 0,
+    DC_ACTOR_SLOT_ALLOCATION_EXHAUSTED = 1
+} dc_actor_slot_allocation_path;
+
+// Native result of the shared 01:C5AB allocator. The original scans the
+// occupancy array from slot $04 through $7B and reserves the first zero byte.
+// A nonzero global mode at $2055 changes the provisional reservation from
+// $80 to $C0.
+typedef struct dc_actor_slot_allocation {
+    uint8_t slot;
+    uint8_t occupied_slots;
+    uint8_t mode;
+    uint8_t reservation;
+    dc_actor_slot_allocation_path path;
+} dc_actor_slot_allocation;
+
 typedef enum dc_giant_skeleton_eyeball_gate_path {
     DC_GIANT_SKELETON_EYEBALL_DORMANT = 0,
     DC_GIANT_SKELETON_EYEBALL_ACTIVATE = 1,
@@ -1468,6 +1485,11 @@ int dc_classify_actor_camera_activation(
 int dc_prepare_actor_slot_reset(
     uint8_t slot,
     dc_actor_slot_reset* reset);
+
+int dc_classify_actor_slot_allocation(
+    const uint8_t* work_ram,
+    size_t work_ram_size,
+    dc_actor_slot_allocation* allocation);
 
 // Native state classification for the ROM routine 02:4DD9 activation gate.
 // The Dragon's-Egg completion latch starts the opening sequence; otherwise

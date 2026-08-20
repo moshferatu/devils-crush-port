@@ -117,7 +117,7 @@ DC_ADMITTED_ROUTINE(0x01U, 0xC520U, 171734, 171734, "verify_actor_loop_linkage_s
 DC_ADMITTED_ROUTINE(0x01U, 0xC523U, 446976, 446976, "verify_actor_scan_advance_semantic")
 DC_ADMITTED_ROUTINE(0x01U, 0xC52CU, 171734, 171734, "verify_actor_dispatch_vector_semantic")
 DC_ADMITTED_ROUTINE(0x01U, 0xC574U, 132, 132, "verify_actor_slot_reset_semantic")
-DC_ADMITTED_ROUTINE(0x01U, 0xC5ABU, 1, 64, "verify_knight_terminal_release_helper_shared_scan_initializer_prefix")
+DC_ADMITTED_ROUTINE(0x01U, 0xC5ABU, 64, 64, "verify_actor_slot_allocator_semantic +1")
 DC_ADMITTED_ROUTINE(0x01U, 0xC5ADU, 3, 6572, "verify_knight_terminal_release_helper_shared_scan_read_prefix")
 DC_ADMITTED_ROUTINE(0x01U, 0xC5B0U, 3, 6572, "verify_knight_terminal_release_helper_shared_scan_nonzero_branch_prefix")
 DC_ADMITTED_ROUTINE(0x01U, 0xC5B2U, 3, 6508, "verify_knight_terminal_release_helper_shared_scan_increment_prefix")

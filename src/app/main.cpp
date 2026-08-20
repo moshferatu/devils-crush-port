@@ -8701,6 +8701,29 @@ void report_routine_call_difference(
                 ? "yes" : "no") << '\n'
         << "  ordered writes: " << original.work_ram_writes.size()
         << " vs " << replayed.work_ram_writes.size() << '\n';
+    if (original.output_registers != replayed.output_registers) {
+        const auto print_registers = [](
+            const devils_crush::emulation::CpuRegisters& registers) {
+            std::ostringstream output;
+            output << std::uppercase << std::hex << std::setfill('0')
+                   << "A=" << std::setw(2)
+                   << static_cast<unsigned>(registers.accumulator)
+                   << " X=" << std::setw(2)
+                   << static_cast<unsigned>(registers.x)
+                   << " Y=" << std::setw(2)
+                   << static_cast<unsigned>(registers.y)
+                   << " SP=" << std::setw(2)
+                   << static_cast<unsigned>(registers.stack_pointer)
+                   << " P=" << std::setw(2)
+                   << static_cast<unsigned>(registers.status)
+                   << " PC=" << std::setw(4)
+                   << registers.program_counter;
+            return output.str();
+        };
+        std::cerr << "  output registers: "
+                  << print_registers(original.output_registers) << " vs "
+                  << print_registers(replayed.output_registers) << '\n';
+    }
     const auto common_count = std::min(
         original.work_ram_writes.size(),
         replayed.work_ram_writes.size());

@@ -300,6 +300,17 @@ first empty slot by writing a provisional occupied value; although that
 allocator has a wider legal range, this route's 44 allocations and 35 frees
 remain within `$62-$71`.
 
+Semantic `01:C5AB@all` now owns that complete allocator. Its state-derived
+instruction transcript covers every occupied-slot iteration, the `$80`
+reservation, the alternate `$C0` reservation selected by `$2055`, the
+carry-set exhausted return, and the live stack-derived `RTS`. All 44 natural
+calls execute natively, including 72 original interrupt-handler passages;
+the exact 44-call/1,077-write artifacts and canonical census remain unchanged.
+Six persisted uninterrupted fixtures cover the natural scan lengths. Forced
+fixtures additionally prove the 4,374-cycle `$C0` overwrite and the 5,406-cycle
+carry-set exhausted return, while the existing patched Knight route verifies
+all 64 of its calls.
+
 The state census observes 132 `C574` calls: 88 fixed-layout resets, 35
 session/actor releases from `01:C51D`, six paired-flipper setup resets, and
 three setup-screen resets. Ninety-seven calls run uninterrupted at 3,627

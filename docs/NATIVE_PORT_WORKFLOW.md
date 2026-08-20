@@ -3517,6 +3517,13 @@ This is the inner edit loop, not the closure proof. Run the owning-family
 Release route again before admitting a replacement so aggregate call coverage,
 interrupt placement, artifact hashes, and the canonical census remain guarded.
 
+The first family selected with this loop was the shared actor-slot allocator
+at `01:C5AB`. Six cacheable uninterrupted calls cover its distinct natural
+scan lengths, and two forced fixtures cover alternate reservation and pool
+exhaustion, while the owning 3,600-frame route verifies all 44 calls and 72
+interrupt-handler passages. That split keeps iteration fast without mistaking
+the corpus for interrupt-placement or aggregate-coverage proof.
+
 For global screening, `Analyze-InstructionProfile.ps1 -UnregisteredOnly
 -ExcludeFrameSyncWait` now reports only deployed non-entry residue outside the
 `00:E321-E32B` wait. Pair it with the native-cycle census's

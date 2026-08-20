@@ -1090,6 +1090,14 @@ Provide an interactive monitor-assignment screen and persist display identity, g
   The former standalone `02:427C` return remains registered but is no longer
   entered on this route. Net ownership grows by 3,654 cycles to 696,920,400
   across 473 routines; bank `02`'s non-entry remainder falls to 102,633.
+  Semantic `01:C5AB@all` now replaces the complete shared actor-slot allocator
+  instead of its former patched-route-only six-cycle prefix. It scans slots
+  `$04-$7B`, handles `$80/$C0` reservation and pool exhaustion, preserves 72
+  interrupt-handler passages across all 44 natural calls, and absorbs the live
+  return. Six natural corpus calls, forced alternate-mode and exhausted-pool
+  fixtures, plus the 64-call patched Knight stress route remain exact. Registry
+  ownership grows by 200,055 cycles to 697,120,455 while the canonical state
+  census remains unchanged.
   The larger `01:D525` controller remains a decomposition boundary: its 128
   census calls span 29-1,456 writes and 1,035-49,122 body master cycles, so
   the largest live paths exceed the bridge's independent 512-write limit.

@@ -1831,6 +1831,51 @@ void test_native_actor_slot_reset()
         "native C574 rejects a slot outside the actor array");
 }
 
+void test_native_actor_slot_allocator()
+{
+    std::array<std::uint8_t, 0x2000> work_ram{};
+    dc_actor_slot_allocation allocation{};
+
+    for (std::size_t slot = 0x04U; slot < 0x62U; ++slot) {
+        work_ram[0x1000U + slot] = 0x80U;
+    }
+    check(
+        dc_classify_actor_slot_allocation(
+            work_ram.data(), work_ram.size(), &allocation)
+                != 0
+            && allocation.path == DC_ACTOR_SLOT_ALLOCATION_RESERVED
+            && allocation.slot == 0x62U
+            && allocation.occupied_slots == 0x5EU
+            && allocation.mode == 0U
+            && allocation.reservation == 0x80U,
+        "native C5AB selects the first free generic actor slot");
+
+    work_ram[0x0055U] = 1U;
+    check(
+        dc_classify_actor_slot_allocation(
+            work_ram.data(), work_ram.size(), &allocation)
+                != 0
+            && allocation.reservation == 0xC0U,
+        "native C5AB preserves the alternate reservation mode");
+
+    for (std::size_t slot = 0x62U; slot < 0x7CU; ++slot) {
+        work_ram[0x1000U + slot] = 0x80U;
+    }
+    check(
+        dc_classify_actor_slot_allocation(
+            work_ram.data(), work_ram.size(), &allocation)
+                != 0
+            && allocation.path == DC_ACTOR_SLOT_ALLOCATION_EXHAUSTED
+            && allocation.slot == 0x7CU
+            && allocation.occupied_slots == 0x78U,
+        "native C5AB reports an exhausted generic actor pool");
+    check(
+        dc_classify_actor_slot_allocation(
+            work_ram.data(), 0x107BU, &allocation)
+                == 0,
+        "native C5AB rejects a truncated work-RAM view");
+}
+
 void test_native_giant_skeleton_eyeball_gate()
 {
     std::array<std::uint8_t, 0x2000> work_ram{};
@@ -10624,6 +10669,7 @@ int main()
     test_native_flipper_projection();
     test_native_actor_camera_activation();
     test_native_actor_slot_reset();
+    test_native_actor_slot_allocator();
     test_native_giant_skeleton_eyeball_gate();
     test_native_giant_skeleton_eyeball_initializer();
     test_native_giant_skeleton_eyeball_opening_wait();

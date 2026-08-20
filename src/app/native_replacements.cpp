@@ -1873,7 +1873,7 @@ replace_native_gameplay_routine_impl(
             .physical_bank = 0x01U,
             .logical_pc = 0xC5ABU,
         }) {
-        return detail::replace_knight_terminal_release_helper_shared_scan_initializer_prefix(
+        return detail::replace_actor_slot_allocator(
             entry,
             work_ram);
     }

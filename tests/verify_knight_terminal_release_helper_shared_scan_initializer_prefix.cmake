@@ -6,7 +6,7 @@ foreach(required_variable IN ITEMS APP CONFIG ROM OUTPUT)
     endif()
 endforeach()
 if(NOT CONFIG STREQUAL "Release")
-    message(FATAL_ERROR "Knight-terminal-release-helper-shared-scan-initializer-prefix regression is Release-only.")
+    message(FATAL_ERROR "Knight-terminal-release-helper shared-allocator stress regression is Release-only.")
 endif()
 
 set(expected_census_sha256 "5bee19b564a4e54444f444fdaf156fcec1385fbca952abf8b531b910eeb75243")
@@ -36,7 +36,7 @@ if(NOT recorder_result EQUAL 0)
 endif()
 foreach(expected_line IN ITEMS
     "Work-RAM patches applied: 17"
-    "Native replacement 01:C5AB@all entries: 1 of 64"
+    "Native replacement 01:C5AB@all entries: 64 of 64"
     "Observe hook 1 entries: 64"
     "Routine call trace complete: 64 calls, 1713 writes"
 )
