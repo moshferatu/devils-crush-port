@@ -2746,6 +2746,13 @@ parse_logical_address_range(const std::string_view text)
                                        .logical_pc = 0x5F4AU,
                                    }
                            && request.all_calls;
+                       const bool proven_tower_insect_source_countdown_return =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x02U,
+                                       .logical_pc = 0x5F5BU,
+                                   }
+                           && request.all_calls;
                        const bool proven_tower_insect_source_initializer =
                            request.routine
                                    == RoutineKey{
@@ -3533,6 +3540,7 @@ parse_logical_address_range(const std::string_view text)
                            && !proven_giant_face_mouth_initializer
                            && !proven_tower_insect_source_gate
                            && !proven_tower_insect_source_countdown_wait
+                           && !proven_tower_insect_source_countdown_return
                            && !proven_tower_insect_source_initializer
                            && !proven_sorcerer_color_gate
                            && !proven_tower_hit_continuation
@@ -3726,6 +3734,7 @@ parse_logical_address_range(const std::string_view text)
             "semantic 03:6054@all, "
             "semantic 02:5F22@all, "
             "semantic 02:5F4A@all, "
+            "semantic 02:5F5B@all, "
             "semantic 02:5F5F@all, "
             "semantic 03:7D85@all, semantic 03:7E23@all, "
             "semantic 03:7D4D@all, semantic 03:7DE9@all, "

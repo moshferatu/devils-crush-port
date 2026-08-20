@@ -3599,8 +3599,25 @@ The pair owns 34,749 gross cycles. Coarsening removes 23,436 cycles previously
 credited to `02:52E3`, 1,764 at `02:533A`, and 192 across `01:C018/C5C9`, for
 an exact net gain of 9,357 cycles. The registry reaches 696,738,972 cycles
 across 448 routines; bank `02`'s non-entry remainder falls to 279,969. The next
-compact residue is the 144 `02:5F5B` returns immediately after registered
-Tower-Insect source countdown `02:5F4A`; `02:4CF1` remains a handoff.
+compact residue was the 144 `02:5F5B` returns immediately after registered
+Tower-Insect source countdown `02:5F4A`.
+
+The 141 non-expiry waits now absorb that return inside the checkpointed parent.
+Four expiry/spawn calls remain assembly-backed; three return through `5F5B`
+and are handled by an independent stack-driven tail. One of those returns
+coincides with an event horizon, so the tail publishes the authentic cycle-21
+interrupt boundary instead of treating the instruction atomically. Release
+and Debug share census
+`9036a9de0c3c9917f47bff8c04c136a4824ec12601fb457d260aa2dfe4443490`,
+148-call hash
+`2f7675e5cbfb81c42af154daf980793e568c3bc6b47d3c7395a3da9646339c26`,
+and 500-write hash
+`272538f08055c250b8d15e359440a20d9691b3ed27232b814e1e288604c0b809`.
+The 144 returns add exactly 3,024 native cycles, taking the registry to
+696,741,996 cycles across 449 routines and reducing bank `02`'s non-entry
+remainder to 276,921. The next compact residue is the 124 `02:5123` idle
+returns after registered Devil-Shooter hit gate `02:5116`; `02:4CF1` remains a
+handoff.
 
 ## Use on future families
 

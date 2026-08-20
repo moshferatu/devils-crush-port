@@ -329,6 +329,7 @@ DC_ADMITTED_ROUTINE(0x02U, 0x5EE4U, 1, 1, "verify_giant_skeleton_initializer_sem
 DC_ADMITTED_ROUTINE(0x02U, 0x5EECU, 2139, 2139, "verify_dragon_giant_skeleton")
 DC_ADMITTED_ROUTINE(0x02U, 0x5F22U, 1, 1, "verify_tower_insect_native_family_debug +1")
 DC_ADMITTED_ROUTINE(0x02U, 0x5F4AU, 141, 145, "verify_tower_insect_source_countdown_wait_semantic")
+DC_ADMITTED_ROUTINE(0x02U, 0x5F5BU, 3, 3, "verify_tower_insect_source_countdown_wait_semantic")
 DC_ADMITTED_ROUTINE(0x02U, 0x5F5FU, 2504, 2504, "verify_tower_insect_native_family_debug +1")
 DC_ADMITTED_ROUTINE(0x02U, 0x5FFBU, 260, 260, "verify_tower_insect_controller_semantic")
 DC_ADMITTED_ROUTINE(0x03U, 0x6016U, 6494, 6494, "verify_tower_insect_controller_semantic")

@@ -926,6 +926,13 @@ Provide an interactive monitor-assignment screen and persist display identity, g
   226-call/1,310-write artifact and canonical state. The pair adds 9,357 net
   deployed cycles after displacing existing child credit, taking the registry
   to 696,738,972 cycles across 448 routines.
+  Semantic `02:5F4A@all` now absorbs the Tower-Insect source countdown's
+  terminal `RTS` on all 141 native wait calls. Semantic `02:5F5B@all` owns the
+  three returns reached through the assembly-backed expiry paths, including
+  the one coincident with an event horizon through an exact cycle-21
+  checkpoint. Release and Debug preserve the same 148-call/500-write artifact
+  and canonical state. The 144 returns add exactly 3,024 native cycles, taking
+  the registry to 696,741,996 cycles across 449 routines.
   The larger `01:D525` controller remains a decomposition boundary: its 128
   census calls span 29-1,456 writes and 1,035-49,122 body master cycles, so
   the largest live paths exceed the bridge's independent 512-write limit.

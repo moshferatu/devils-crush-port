@@ -8436,6 +8436,47 @@ replace_tower_insect_source_countdown_wait(
         .instruction = {0x02U, 0x5F4DU},
         .registers = checkpoint,
     });
+    absorb_return(
+        replacement,
+        work_ram,
+        entry.registers.stack_pointer,
+        {0x02U, 0x5F5BU},
+        kBodyCycles,
+        output);
+    return replacement;
+}
+
+[[nodiscard]] std::optional<RoutineReplacement>
+replace_tower_insect_source_countdown_return(
+    const RoutineEntry& entry,
+    const std::span<const std::byte> work_ram)
+{
+    constexpr RoutineKey kRoutine{
+        .physical_bank = 0x02U,
+        .logical_pc = 0x5F5BU,
+    };
+    if (entry.routine != kRoutine) {
+        return std::nullopt;
+    }
+
+    RoutineReplacement replacement{
+        .return_instruction = kRoutine,
+        .output_registers = entry.registers,
+        .body_master_cycles = 0U,
+    };
+    absorb_return(
+        replacement,
+        work_ram,
+        entry.registers.stack_pointer,
+        kRoutine,
+        0U,
+        entry.registers);
+    replacement.checkpoints.push_back({
+        .interrupt_sample_master_cycle_offset = 18U,
+        .master_cycle_offset = 21U,
+        .instruction = kRoutine,
+        .registers = replacement.output_registers,
+    });
     return replacement;
 }
 

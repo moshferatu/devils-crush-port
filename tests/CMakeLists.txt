@@ -1492,7 +1492,6 @@ if(TARGET devils_crush)
 
         add_test(
             NAME dc_rom_tower_insect_source_countdown_wait_semantic
-            CONFIGURATIONS Release
             COMMAND "${CMAKE_COMMAND}"
                 "-DAPP=$<TARGET_FILE:devils_crush>" "-DCONFIG=$<CONFIG>"
                 "-DROM=${DC_ROM_PATH}"

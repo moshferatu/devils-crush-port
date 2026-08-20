@@ -293,6 +293,11 @@ replace_tower_insect_source_countdown_wait(
     std::span<const std::byte> work_ram);
 
 [[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_tower_insect_source_countdown_return(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram);
+
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
 replace_big_star_rotation_wait(
     const emulation::RoutineEntry& entry,
     std::span<const std::byte> work_ram);

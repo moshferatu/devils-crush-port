@@ -26,13 +26,23 @@ high byte. The deterministic 1,800-frame route now executes 18,806 of 19,648
 preserving the byte-identical gameplay artifact, complete 19,648-call trace,
 and all 180,389 ordered writes.
 
-The deployed registry now runs **696,738,972 of 1,292,371,731 master cycles
+The deployed registry now runs **696,741,996 of 1,292,371,731 master cycles
 natively, 53.91% of the route and 98.07% of everything outside the frame-sync
-wait**, across 448 admitted routines. The Devil-Shooter charge controller now
-owns 86 horizon-safe `02:5249` parents plus all 70 exposed `02:524C` tails;
-the core declines no offered registry transcript and none is abandoned. The
+wait**, across 449 admitted routines. All 144 Tower-Insect source countdown
+returns at `02:5F5B` are now native: 141 are absorbed into `02:5F4A`, and the
+three expiry-path returns use an independent checkpointed tail. The core
+declines no offered registry transcript and none is abandoned. The
 3,600-frame state census remains
 `9036a9de0c3c9917f47bff8c04c136a4824ec12601fb457d260aa2dfe4443490`.
+
+The Tower-Insect source countdown return is fully native at `02:5F5B`.
+Semantic `02:5F4A@all` retains its two decrement/branch checkpoints and now
+absorbs the return on all 141 non-expiry waits. Four expiry paths remain
+assembly-backed; three reach `5F5B` and are absorbed by a stack-driven tail
+whose cycle-21 checkpoint preserves the return coincident with an event
+horizon. Release and Debug preserve the same canonical census and
+148-call/500-write artifact. The 144 returns add exactly 3,024 native cycles
+and reduce bank `02`'s measured non-entry remainder to 276,921 cycles.
 
 The Devil-Shooter's held-charge coroutine is native at `02:5249/524C`.
 `02:5249` reproduces the authentic `JSR $52E3` frame, composes the existing
@@ -6519,9 +6529,14 @@ ordinary return and full-charge scheduler handoff.
 | Proven native calls | 3,607,726 | **3,607,882** |
 | Measured bank `02` non-entry remainder | 290,967 | **279,969** |
 
-Next: absorb the 144 profiled `02:5F5B` Tower-Insect source countdown returns
-into the already-native `02:5F4A` parent; `02:4CF1` remains known handoff
-residue.
+The 144 profiled `02:5F5B` Tower-Insect source countdown returns are now fully
+native. The 141 non-expiry calls are absorbed into `02:5F4A`; the three
+assembly expiry paths use a checkpointed `02:5F5B` tail. Their exact
+3,024-cycle gain takes the registry to 696,741,996 cycles across 449 routines
+and bank `02`'s non-entry remainder to 276,921.
+
+Next: absorb the 124 profiled `02:5123` idle returns into registered
+Devil-Shooter hit gate `02:5116`; `02:4CF1` remains known handoff residue.
 
 ### Previous: the center Skeleton-Insect post-delay controller
 

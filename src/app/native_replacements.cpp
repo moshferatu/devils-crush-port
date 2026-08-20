@@ -1427,6 +1427,15 @@ replace_native_gameplay_routine_impl(
     if (entry.routine
         == RoutineKey{
             .physical_bank = 0x02U,
+            .logical_pc = 0x5F5BU,
+        }) {
+        return detail::replace_tower_insect_source_countdown_return(
+            entry,
+            work_ram);
+    }
+    if (entry.routine
+        == RoutineKey{
+            .physical_bank = 0x02U,
             .logical_pc = 0x5CCDU,
         }) {
         return detail::replace_side_worm_selector_gate(entry, work_ram);

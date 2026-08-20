@@ -8823,24 +8823,27 @@ the entry, call, and ordered-write artifacts match Release and assembly.
 
 The Tower-insect source controller begins with a direct countdown leaf.
 Semantic `02:5F4A@all` admits fixed slot `$2C` only while `$3A2C` exceeds
-one, decrements it at cycle 21, and returns through the original `02:5F5B`
-RTS after exactly 33 cycles. Expiry continues into the original spawn/reload
-path.
+one, decrements it at cycle 21, branches at cycle 33, and now absorbs the
+`02:5F5B` RTS for a 54-cycle native transcript. Expiry continues into the
+original spawn/reload path.
 
 Of 145 natural source entries, the replacement covers 141 non-expiry waits,
 including two calls with original interrupt passages reproduced at its two
-instruction checkpoints. Release census, entry, call, and ordered-write
-SHA-256 values are respectively:
+instruction checkpoints. Three of the four expiry paths return through
+`5F5B`; semantic `02:5F5B@all` handles those with a direct stack-driven RTS
+transcript and publishes the cycle-21 boundary needed by the event-coincident
+third call. Release and Debug census, trace, call, and ordered-write SHA-256
+values are respectively:
 
 - `9036a9de0c3c9917f47bff8c04c136a4824ec12601fb457d260aa2dfe4443490`
-- `0c161dfffbbbbad52c7cee879079b2ed6bab513ab5fc737453223c14e4463f15`
-- `41b7e85077693f97ee39b03a2416978c77becf0659fd8c1211864c8297b20f18`
-- `d3d2b806dd923a6451f47a9995305aa4ad3375ca7236fcdfaf01f92d80ffe8b4`
+- `926e0960db22ad0d9155e2763441554e5698f847003c58ebee1cb88838b203e4`
+- `2f7675e5cbfb81c42af154daf980793e568c3bc6b47d3c7395a3da9646339c26`
+- `272538f08055c250b8d15e359440a20d9691b3ed27232b814e1e288604c0b809`
 
-Normalized replay `02:5F4A@2` returns at frame 942 after 33 body cycles and
-one ordered write. The required Debug checkpoint has census SHA-256
-`a95d0c343108b107d7ec1aa3c20915540d91bb08817704776531e5696ea9b5e2`;
-the remaining artifacts match Release and assembly.
+Normalized replay `02:5F4A@2` records the original call boundary at frame 942
+after 33 body cycles and one ordered write; the parent then owns the 21-cycle
+return. Replay `02:5F5B@1` records the absorbed boundary at frame 941 with zero
+body cycles and writes. The complete 144-return slice adds 3,024 native cycles.
 
 ### Seventy-sixth native replacement: semantic `02:4C33@all`
 
