@@ -6534,6 +6534,75 @@ void test_native_ball_drain_threshold()
         "native DD6E rejects a truncated work-RAM snapshot");
 }
 
+void test_native_bank7_mode_gate()
+{
+    std::array<std::uint8_t, 0x2000> work_ram{};
+    dc_bank7_mode_gate gate{};
+
+    work_ram[0x00CBU] = 0xA5U;
+    check(
+        dc_classify_bank7_mode_gate(
+            work_ram.data(), work_ram.size(), &gate)
+                != 0
+            && gate.path == DC_BANK7_MODE_GATE_INACTIVE_MODE
+            && gate.latch_after == 0xA4U,
+        "native 07:4003 clears the latch outside mode nine");
+
+    work_ram[0x0D51U] = 9U;
+    work_ram[0x0D4FU] = 0x3BU;
+    check(
+        dc_classify_bank7_mode_gate(
+            work_ram.data(), work_ram.size(), &gate)
+                != 0
+            && gate.path == DC_BANK7_MODE_GATE_BELOW_RANGE,
+        "native 07:4003 rejects the value below its active range");
+
+    work_ram[0x0D4FU] = 0x46U;
+    check(
+        dc_classify_bank7_mode_gate(
+            work_ram.data(), work_ram.size(), &gate)
+                != 0
+            && gate.path == DC_BANK7_MODE_GATE_ABOVE_RANGE,
+        "native 07:4003 rejects the value above its active range");
+
+    work_ram[0x0D4FU] = 0x3CU;
+    work_ram[0x0258U] = 5U;
+    check(
+        dc_classify_bank7_mode_gate(
+            work_ram.data(), work_ram.size(), &gate)
+                != 0
+            && gate.path == DC_BANK7_MODE_GATE_FORM_MISMATCH,
+        "native 07:4003 requires persisted form six");
+
+    work_ram[0x0258U] = 6U;
+    check(
+        dc_classify_bank7_mode_gate(
+            work_ram.data(), work_ram.size(), &gate)
+                != 0
+            && gate.path == DC_BANK7_MODE_GATE_ALREADY_ARMED
+            && gate.latch_after == 0xA5U,
+        "native 07:4003 preserves an already armed latch");
+
+    work_ram[0x00CBU] = 0xA4U;
+    work_ram[0x0053U] = 0x08U;
+    work_ram[0x00CAU] = 0x11U;
+    check(
+        dc_classify_bank7_mode_gate(
+            work_ram.data(), work_ram.size(), &gate)
+                != 0
+            && gate.path == DC_BANK7_MODE_GATE_ARM
+            && gate.counter_after == 0x64U
+            && gate.session_flags_after == 0x0CU
+            && gate.latch_after == 0xA5U,
+        "native 07:4003 arms the active mode-nine state");
+
+    check(
+        dc_classify_bank7_mode_gate(
+            work_ram.data(), 0x0D51U, &gate)
+            == 0,
+        "native 07:4003 rejects a truncated work-RAM snapshot");
+}
+
 void test_native_flipper_phase_step()
 {
     std::array<std::uint8_t, 0x2000> work_ram{};
@@ -10884,6 +10953,7 @@ int main()
     test_native_nudge_input_gate();
     test_native_session_input_gate();
     test_native_ball_drain_threshold();
+    test_native_bank7_mode_gate();
     test_native_flipper_phase_step();
     test_native_flipper_geometry();
     test_native_coroutine_schedule();

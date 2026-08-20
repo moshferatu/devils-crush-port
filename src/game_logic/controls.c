@@ -259,3 +259,42 @@ int dc_classify_ball_drain_threshold(
         : DC_BALL_DRAIN_THRESHOLD_NORMAL;
     return 1;
 }
+
+int dc_classify_bank7_mode_gate(
+    const uint8_t* const work_ram,
+    const size_t work_ram_size,
+    dc_bank7_mode_gate* const gate)
+{
+    if (work_ram == NULL || gate == NULL || work_ram_size <= 0x0D51U) {
+        return 0;
+    }
+
+    gate->mode = work_ram[0x0D51U];
+    gate->range_value = work_ram[0x0D4FU];
+    gate->persisted_form = work_ram[0x0258U];
+    gate->latch_before = work_ram[0x00CBU];
+    gate->latch_after = (uint8_t)(gate->latch_before & 0xFEU);
+    gate->session_flags_before = work_ram[0x0053U];
+    gate->session_flags_after = gate->session_flags_before;
+    gate->counter_after = work_ram[0x00CAU];
+
+    if (gate->mode != 9U) {
+        gate->path = DC_BANK7_MODE_GATE_INACTIVE_MODE;
+    } else if (gate->range_value < 0x3CU) {
+        gate->path = DC_BANK7_MODE_GATE_BELOW_RANGE;
+    } else if (gate->range_value >= 0x46U) {
+        gate->path = DC_BANK7_MODE_GATE_ABOVE_RANGE;
+    } else if (gate->persisted_form != 6U) {
+        gate->path = DC_BANK7_MODE_GATE_FORM_MISMATCH;
+    } else if ((gate->latch_before & 0x01U) != 0U) {
+        gate->path = DC_BANK7_MODE_GATE_ALREADY_ARMED;
+        gate->latch_after = gate->latch_before;
+    } else {
+        gate->path = DC_BANK7_MODE_GATE_ARM;
+        gate->counter_after = 0x64U;
+        gate->session_flags_after =
+            (uint8_t)(gate->session_flags_before | 0x04U);
+        gate->latch_after = (uint8_t)(gate->latch_before | 0x01U);
+    }
+    return 1;
+}

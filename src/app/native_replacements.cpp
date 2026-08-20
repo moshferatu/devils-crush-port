@@ -22,6 +22,13 @@ replace_native_gameplay_routine_impl(
 {
     if (entry.routine
         == RoutineKey{
+            .physical_bank = 0x07U,
+            .logical_pc = 0x4003U,
+        }) {
+        return detail::replace_bank7_mode_gate(entry, work_ram);
+    }
+    if (entry.routine
+        == RoutineKey{
             .physical_bank = 0x03U,
             .logical_pc = 0x7B1FU,
         }) {

@@ -6794,30 +6794,37 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
     state census; retain ten scheduler transitions in assembly.
   - [x] Registry A/B: **697,491,153 -> 697,615,473** native cycles; 124,320
     cycles added, 476 admitted routines, 360 entered, and no abandonments.
+- [x] Port exported bank-7 mode gate `07:4003/4634-466B`:
+  - [x] Model all six paths selected by `$2D51`, `$2D4F`, `$2258`, and
+    `$CB.0`, including the `$CA=100`, `$53.2`, and latch arming writes.
+  - [x] Preserve all 2,649 canonical calls, their 3,602 aggregate writes,
+    exact interrupt-bearing scopes, six direct branch fixtures, and the
+    canonical state census.
+  - [x] Registry A/B: **697,615,473 -> 697,869,777** native cycles; 254,304
+    cycles added, 477 admitted routines, 361 entered, and no abandonments.
+  - [x] Passed all 439 Release tests as the cross-family checkpoint.
 
 ## Active Work
 
-Current owner: Codex. Current slice: **initial Small-Soldier collision tail**.
+Current owner: Codex. Current slice: **exported bank-7 mode gate**.
 Done.
 
-The `03:7F1A` composition shares the native collision-table interpreter and
-Small-Soldier response helper already used by steady state `03:7F57`, while
-retaining the initial state's selector field, carry branch, stack frames, and
-return at `03:7F45`. It replaces all 1,120 no-hit calls. The ten calls that
-transition through the actor scheduler remain assembly-owned. Ordinal 4 gives
-an uninterrupted 423-cycle/11-write direct replay; the owning route proves the
-longer interrupt-bearing scopes through 19,131 cycles.
+The `07:4003` export jumps directly to `07:4634`. The native walk retains that
+12-cycle seam, every comparison and branch checkpoint, exact zero-page writes,
+and the common `07:466B` return. All 2,649 canonical calls take the 75-cycle
+inactive-mode body. Controlled direct fixtures prove the 102/114-cycle range
+rejects, 141-cycle persisted-form reject, 135-cycle already-armed return, and
+219-cycle arming path as well.
 
-The fresh deployed profile retains the canonical census, 697,615,473 native
-cycles, 476 installed routines, 360 entered routines, zero horizon declines,
+The fresh deployed profile retains the canonical census, 697,869,777 native
+cycles, 477 installed routines, 361 entered routines, zero horizon declines,
 zero depth refusals, and zero abandonments. Filtering admitted entry points and
-the `00:E321-E32B` frame wait leaves 5,545,887 profile-attributed cycles across
-267 clusters.
+the `00:E321-E32B` frame wait leaves 5,289,207 profile-attributed cycles across
+264 clusters.
 
-Next: screen the shared Small-Soldier spawner at `03:7E87-7EF9` and its
-initial scheduler setup at `03:7EFA-7F17` as separate boundaries. The existing
-source-family route captures all ten natural allocations, while the new
-collision-tail route establishes the state reached after setup.
+Next: screen `08:5ABF-5B43` and `01:D4B3-D4DC` as separate high-residue
+boundaries, while continuing to reject hardware strobes, block transfers, and
+already-attributed parent returns that cannot form independent native work.
 
 ### Previous: the impact-burst allocator success return
 

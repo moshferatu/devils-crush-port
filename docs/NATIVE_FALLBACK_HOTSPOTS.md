@@ -3960,6 +3960,26 @@ cycles across 473 routines, the outside-wait remainder falls to 13,562,355,
 and bank `02`'s non-entry remainder falls to 102,633. The old `02:427C` entry
 remains valid and installed, but this route no longer enters it independently.
 
+## Exported bank-7 mode gate
+
+The deployed-residue profile separated `07:4003`, `07:4634-4639`, and
+`07:4665-466B` because their executed addresses are not contiguous. ROM
+inspection joins them into one actual routine: export `07:4003` jumps directly
+to body `07:4634`, and every branch converges on return `07:466B`. Together
+they accounted for 256,680 profile-attributed cycles, making the complete
+export boundary a better target than the nearby mixed gameplay parents.
+
+Semantic `07:4003@all` models the mode, range, persisted-form, and latch gates.
+All 2,649 canonical calls take the 75-cycle inactive-mode body and absorb the
+21-cycle return. Controlled fixtures prove 102/114-cycle range rejects, the
+141-cycle form reject, the 135-cycle already-armed return, and the 219-cycle
+arming path that writes `$CA`, `$53`, and `$CB`. The canonical call and ordered
+write SHA-256 values are
+`799723c75cca1ad3860a1f82a28fbf73781691f3796857ff74145cc3916a9dee` and
+`c29f5be6dc7c7196fb3e855c26ff85fe21c7ccc24cfccfb42eaa8547fa0e2b8d`.
+The replacement adds exactly 254,304 deployed native cycles, reaching
+697,869,777 cycles overall and 98.22% of cycles outside frame wait.
+
 ## Use on future families
 
 Follow the command and interpretation rules in

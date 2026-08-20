@@ -106,6 +106,31 @@ typedef struct dc_ball_drain_threshold {
     dc_ball_drain_threshold_path path;
 } dc_ball_drain_threshold;
 
+typedef enum dc_bank7_mode_gate_path {
+    DC_BANK7_MODE_GATE_INACTIVE_MODE = 0,
+    DC_BANK7_MODE_GATE_BELOW_RANGE = 1,
+    DC_BANK7_MODE_GATE_ABOVE_RANGE = 2,
+    DC_BANK7_MODE_GATE_FORM_MISMATCH = 3,
+    DC_BANK7_MODE_GATE_ALREADY_ARMED = 4,
+    DC_BANK7_MODE_GATE_ARM = 5
+} dc_bank7_mode_gate_path;
+
+// Export 07:4003 jumps to a compact scene-mode gate at 07:4634. It arms
+// session flag $53.2 and a 100-tick counter only for mode 9, values $3C-$45,
+// persisted form 6, and a clear $CB.0 latch. Every other completed path either
+// clears that latch or returns with it already set.
+typedef struct dc_bank7_mode_gate {
+    uint8_t mode;
+    uint8_t range_value;
+    uint8_t persisted_form;
+    uint8_t latch_before;
+    uint8_t latch_after;
+    uint8_t session_flags_before;
+    uint8_t session_flags_after;
+    uint8_t counter_after;
+    dc_bank7_mode_gate_path path;
+} dc_bank7_mode_gate;
+
 // Native equivalent of the input test at ROM routine 01:D466. It intersects
 // the scheduler's held-input byte with the indexed flipper/control-piece
 // mask. The function is pure; callers choose the no-input exit or continue
@@ -179,6 +204,12 @@ int dc_classify_ball_drain_threshold(
     size_t work_ram_size,
     uint8_t slot,
     dc_ball_drain_threshold* threshold);
+
+// Classifies every return path through exported ROM routine 07:4003/4634.
+int dc_classify_bank7_mode_gate(
+    const uint8_t* work_ram,
+    size_t work_ram_size,
+    dc_bank7_mode_gate* gate);
 
 #ifdef __cplusplus
 } // extern "C"

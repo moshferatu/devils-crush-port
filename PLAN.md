@@ -768,6 +768,11 @@ Provide an interactive monitor-assignment screen and persist display identity, g
   state `03:7F57`. It replaces 1,120 of 1,130 calls, preserves all 21,255
   ordered writes and interrupt placements, and leaves the ten scheduler
   transitions in assembly.
+  Semantic `07:4003@all` now owns the exported bank-7 mode gate and its
+  `07:4634-466B` body. All 2,649 canonical calls execute the exact 75-cycle,
+  one-write inactive-mode path and absorb the common return. Five controlled
+  fixtures additionally cover both range rejects, the form reject, the
+  already-armed return, and the 219-cycle three-write arming path.
   Semantic `01:DD09@all` composes the signed `E905` divider for either nonzero motion
   component, subtracts its signed quotient, and applies the second-axis
   acceleration. All 753 calls are native, including the 669 previously

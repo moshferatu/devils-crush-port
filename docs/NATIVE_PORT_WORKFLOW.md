@@ -3546,6 +3546,13 @@ regression unchanged. An uninterrupted ordinal-4 corpus supplied the fast
 inner loop; the full route remained responsible for the interrupt-bearing
 scopes and the ten deliberately unhandled scheduler transitions.
 
+Exported bank-7 gate `07:4003` demonstrates why candidate boundaries should
+include a public trampoline when it is part of every call. The export is only
+`JMP $4634`, but beginning there owns another 12 cycles per call and avoids
+leaving a hot entry seam interpreted. One canonical corpus covers the ordinary
+path; a four-exit corpus plus a separately clean arming corpus covers every
+branch without using an interrupt-bearing call as a normalized fixture.
+
 For global screening, `Analyze-InstructionProfile.ps1 -UnregisteredOnly
 -ExcludeFrameSyncWait` now reports only deployed non-entry residue outside the
 `00:E321-E32B` wait. Pair it with the native-cycle census's

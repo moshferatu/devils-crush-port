@@ -9583,3 +9583,29 @@ mirror bytes, the two zero-page pointers and the stack page: 6,563,673 writes,
 byte-identical hooked and unhooked. Regression:
 `dc_rom_collision_table_semantic`, and `dc_rom_collision_consumer_semantic` for
 the composition at `03:7F57` that depends on it.
+
+## Exported bank-7 mode gate: semantic `07:4003@all`
+
+Physical bank 7 exports a per-frame gate at `07:4003`, a `JMP $4634`. The
+body compares mode `$2D51` with 9, accepts range byte `$2D4F` only from `$3C`
+through `$45`, requires persisted form `$2258=6`, and tests latch `$CB.0`.
+The active clear-latch case sets counter `$CA` to 100, raises session flag
+`$53.2`, sets `$CB.0`, and returns. An already-set latch returns unchanged;
+all mode/range/form rejects clear `$CB.0` before returning.
+
+The canonical route enters the export 2,649 times at frames 941-3,600. Every
+call takes the 75-cycle inactive-mode path; periodic interrupts expand 57 call
+scopes to 720-1,086 cycles while leaving the routine's own instruction timing
+unchanged. The complete trace contains 3,602 ordered writes. Controlled
+frame-1,200 fixtures cover the two range rejects (102/114 cycles), form reject
+(141), already-armed return (135), and clean one-shot arm (219 cycles, three
+writes). All six fixtures replay natively from authoritative assembly corpus
+states.
+
+The native adapter retains the export jump, every instruction sampling
+boundary, exact N/Z/C results, all zero-page writes, and the live-stack return
+at `07:466B`. Release assembly/native artifacts reproduce canonical census
+SHA-256 `9036a9de0c3c9917f47bff8c04c136a4824ec12601fb457d260aa2dfe4443490`,
+call SHA-256 `799723c75cca1ad3860a1f82a28fbf73781691f3796857ff74145cc3916a9dee`,
+and ordered-write SHA-256
+`c29f5be6dc7c7196fb3e855c26ff85fe21c7ccc24cfccfb42eaa8547fa0e2b8d`.

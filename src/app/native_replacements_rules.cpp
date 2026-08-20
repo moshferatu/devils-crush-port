@@ -2,6 +2,7 @@
 
 #include "native_replacements_internal.hpp"
 #include "devils_crush/game_logic/actor.h"
+#include "devils_crush/game_logic/controls.h"
 #include "devils_crush/game_logic/rng.h"
 #include "devils_crush/game_logic/score.h"
 
@@ -25340,6 +25341,187 @@ replace_score_accumulator(
     checkpoint.status = set_nz(checkpoint.status, checkpoint.accumulator);
     append_checkpoint(0xF5A3U, 0xF5A5U, 543U, checkpoint);
     append_checkpoint(0xF5A5U, 0xF5A8U, 558U, output);
+    return replacement;
+}
+
+std::optional<RoutineReplacement> replace_bank7_mode_gate(
+    const RoutineEntry& entry,
+    const std::span<const std::byte> work_ram)
+{
+    constexpr RoutineKey kRoutine{
+        .physical_bank = 0x07U,
+        .logical_pc = 0x4003U,
+    };
+    if (entry.routine != kRoutine || (entry.registers.status & 0x20U) != 0U) {
+        return std::nullopt;
+    }
+
+    dc_bank7_mode_gate gate{};
+    if (!dc_classify_bank7_mode_gate(
+            reinterpret_cast<const std::uint8_t*>(work_ram.data()),
+            work_ram.size(),
+            &gate)) {
+        return std::nullopt;
+    }
+
+    const auto set_nz = [](std::uint8_t status, const std::uint8_t value) {
+        status = static_cast<std::uint8_t>(status & 0x7DU);
+        if (value == 0U) {
+            status = static_cast<std::uint8_t>(status | 0x02U);
+        } else if ((value & 0x80U) != 0U) {
+            status = static_cast<std::uint8_t>(status | 0x80U);
+        }
+        return status;
+    };
+    const auto compare_status = [&set_nz](
+                                    std::uint8_t status,
+                                    const std::uint8_t left,
+                                    const std::uint8_t right) {
+        status = set_nz(
+            static_cast<std::uint8_t>(status & 0xFEU),
+            static_cast<std::uint8_t>(left - right));
+        if (left >= right) {
+            status = static_cast<std::uint8_t>(status | 0x01U);
+        }
+        return status;
+    };
+
+    RoutineReplacement replacement{};
+    auto registers = entry.registers;
+    std::uint32_t cycle = 0U;
+    const auto append_checkpoint = [&replacement, &registers, &cycle](
+                                       const std::uint16_t instruction_pc,
+                                       const std::uint16_t resume_pc,
+                                       const std::uint32_t instruction_cycles) {
+        cycle += instruction_cycles;
+        registers.program_counter = resume_pc;
+        replacement.checkpoints.push_back({
+            .interrupt_sample_master_cycle_offset = cycle - 3U,
+            .master_cycle_offset = cycle,
+            .instruction = {0x07U, instruction_pc},
+            .registers = registers,
+        });
+    };
+    const auto load = [&registers, &set_nz](const std::uint8_t value) {
+        registers.accumulator = value;
+        registers.status = set_nz(registers.status, value);
+    };
+    const auto compare = [&registers, &compare_status](
+                             const std::uint8_t value) {
+        registers.status = compare_status(
+            registers.status, registers.accumulator, value);
+    };
+    const auto store = [&replacement, &registers, &append_checkpoint, &cycle](
+                           const std::uint16_t instruction_pc,
+                           const std::uint16_t resume_pc,
+                           const std::uint16_t address,
+                           const std::uint8_t value) {
+        append_checkpoint(instruction_pc, resume_pc, 12U);
+        replacement.work_ram_writes.push_back({
+            .instruction = {0x07U, instruction_pc},
+            .logical_address = address,
+            .value = value,
+            .master_cycle_offset = cycle,
+        });
+    };
+
+    append_checkpoint(0x4003U, 0x4634U, 12U);  // JMP $4634
+    load(gate.mode);
+    append_checkpoint(0x4634U, 0x4637U, 15U);
+    compare(9U);
+    append_checkpoint(0x4637U, 0x4639U, 6U);
+
+    if (gate.path == DC_BANK7_MODE_GATE_INACTIVE_MODE) {
+        append_checkpoint(0x4639U, 0x4665U, 12U);
+    } else {
+        append_checkpoint(0x4639U, 0x463BU, 6U);
+        load(gate.range_value);
+        append_checkpoint(0x463BU, 0x463EU, 15U);
+        compare(0x3CU);
+        append_checkpoint(0x463EU, 0x4640U, 6U);
+
+        if (gate.path == DC_BANK7_MODE_GATE_BELOW_RANGE) {
+            append_checkpoint(0x4640U, 0x4665U, 12U);
+        } else {
+            append_checkpoint(0x4640U, 0x4642U, 6U);
+            compare(0x46U);
+            append_checkpoint(0x4642U, 0x4644U, 6U);
+
+            if (gate.path == DC_BANK7_MODE_GATE_ABOVE_RANGE) {
+                append_checkpoint(0x4644U, 0x4665U, 12U);
+            } else {
+                append_checkpoint(0x4644U, 0x4646U, 6U);
+                load(gate.persisted_form);
+                append_checkpoint(0x4646U, 0x4649U, 15U);
+                compare(6U);
+                append_checkpoint(0x4649U, 0x464BU, 6U);
+
+                if (gate.path == DC_BANK7_MODE_GATE_FORM_MISMATCH) {
+                    append_checkpoint(0x464BU, 0x4665U, 12U);
+                } else {
+                    append_checkpoint(0x464BU, 0x464DU, 6U);
+                    load(gate.latch_before);
+                    append_checkpoint(0x464DU, 0x464FU, 12U);
+                    load(static_cast<std::uint8_t>(
+                        registers.accumulator & 0x01U));
+                    append_checkpoint(0x464FU, 0x4651U, 6U);
+
+                    if (gate.path == DC_BANK7_MODE_GATE_ALREADY_ARMED) {
+                        append_checkpoint(0x4651U, 0x466BU, 12U);
+                        absorb_return(
+                            replacement,
+                            work_ram,
+                            entry.registers.stack_pointer,
+                            {0x07U, 0x466BU},
+                            cycle,
+                            registers);
+                        return replacement;
+                    }
+
+                    append_checkpoint(0x4651U, 0x4653U, 6U);
+                    load(0x64U);
+                    append_checkpoint(0x4653U, 0x4655U, 6U);
+                    store(0x4655U, 0x4657U, 0x20CAU, gate.counter_after);
+                    load(gate.session_flags_before);
+                    append_checkpoint(0x4657U, 0x4659U, 12U);
+                    load(gate.session_flags_after);
+                    append_checkpoint(0x4659U, 0x465BU, 6U);
+                    store(
+                        0x465BU,
+                        0x465DU,
+                        0x2053U,
+                        gate.session_flags_after);
+                    load(gate.latch_before);
+                    append_checkpoint(0x465DU, 0x465FU, 12U);
+                    load(gate.latch_after);
+                    append_checkpoint(0x465FU, 0x4661U, 6U);
+                    store(0x4661U, 0x4663U, 0x20CBU, gate.latch_after);
+                    append_checkpoint(0x4663U, 0x466BU, 12U);
+                    absorb_return(
+                        replacement,
+                        work_ram,
+                        entry.registers.stack_pointer,
+                        {0x07U, 0x466BU},
+                        cycle,
+                        registers);
+                    return replacement;
+                }
+            }
+        }
+    }
+
+    load(gate.latch_before);
+    append_checkpoint(0x4665U, 0x4667U, 12U);
+    load(gate.latch_after);
+    append_checkpoint(0x4667U, 0x4669U, 6U);
+    store(0x4669U, 0x466BU, 0x20CBU, gate.latch_after);
+    absorb_return(
+        replacement,
+        work_ram,
+        entry.registers.stack_pointer,
+        {0x07U, 0x466BU},
+        cycle,
+        registers);
     return replacement;
 }
 } // namespace devils_crush::app::detail

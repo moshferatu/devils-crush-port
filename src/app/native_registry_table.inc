@@ -452,6 +452,7 @@ DC_ADMITTED_ROUTINE(0x03U, 0x7E23U, 2457, 2457, "verify_small_soldier_source_gat
 DC_ADMITTED_ROUTINE(0x03U, 0x7F1AU, 1120, 1130, "verify_small_soldier_initial_collision_semantic")
 DC_ADMITTED_ROUTINE(0x03U, 0x7F57U, 20862, 20867, "verify_collision_consumer_semantic")
 DC_ADMITTED_ROUTINE(0x03U, 0x7FB1U, 21987, 21987, "verify_collision_response_semantic")
+DC_ADMITTED_ROUTINE(0x07U, 0x4003U, 2649, 2649, "verify_bank7_mode_gate_semantic")
 DC_ADMITTED_ROUTINE(0x08U, 0x4036U, 3492, 3492, "verify_sat_submission_semantic")
 DC_ADMITTED_ROUTINE(0x08U, 0x4063U, 4427, 4427, "verify_sat_submission_semantic")
 DC_ADMITTED_ROUTINE(0x08U, 0x4075U, 16576, 16576, "verify_sat_submission_semantic")

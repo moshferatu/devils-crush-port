@@ -228,6 +228,11 @@ replace_three_blobs_direct_continuation(
     std::span<const std::byte> work_ram);
 
 [[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_bank7_mode_gate(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram);
+
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
 replace_sorcerer_live_controller_gate(
     const emulation::RoutineEntry& entry,
     std::span<const std::byte> work_ram);
