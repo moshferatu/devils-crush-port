@@ -3088,9 +3088,15 @@ replace_native_gameplay_routine_impl(
         == RoutineKey{
             .physical_bank = 0x00U,
             .logical_pc = 0xE905U,
-        }) {
-        replacement =
-            detail::replace_signed_division(entry, work_ram);
+        }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x00U,
+                .logical_pc = 0xE7D7U,
+            }) {
+        replacement = entry.routine.logical_pc == 0xE905U
+            ? detail::replace_signed_division(entry, work_ram)
+            : detail::replace_unsigned_24_division(entry, work_ram);
     } else if (entry.routine
         == RoutineKey{
             .physical_bank = 0x00U,

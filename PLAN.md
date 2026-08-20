@@ -755,7 +755,11 @@ Provide an interactive monitor-assignment screen and persist display identity, g
   through its fixed 16-round unsigned core. All 752 calls are native,
   including 583 calls with original handler writes, while all 52,804
   ordered writes remain exact.
-  Semantic `01:DD09@all` composes that divider for either nonzero motion
+  Semantic `00:E7D7@all` now implements the shared unsigned 24-bit restoring
+  divider. All 105 calls execute natively through the fixed 24-round walk,
+  including 82 interrupt-bearing scopes, while the exact 13,975 ordered writes
+  and canonical state census remain unchanged.
+  Semantic `01:DD09@all` composes the signed `E905` divider for either nonzero motion
   component, subtracts its signed quotient, and applies the second-axis
   acceleration. All 753 calls are native, including the 669 previously
   deferred interrupt-bearing calls, while all 61,291 ordered writes remain

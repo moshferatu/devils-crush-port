@@ -3524,6 +3524,12 @@ exhaustion, while the owning 3,600-frame route verifies all 44 calls and 72
 interrupt-handler passages. That split keeps iteration fast without mistaking
 the corpus for interrupt-placement or aggregate-coverage proof.
 
+The next selected family, unsigned divider `00:E7D7`, reinforced the same
+split. One uninterrupted cached call covers fast direct replay, while the
+owning route proves all 105 calls, zero through six subtraction stores, and 82
+interrupt-bearing scopes. The pure model includes the ROM's zero-divisor
+behavior even though the natural route does not request it.
+
 For global screening, `Analyze-InstructionProfile.ps1 -UnregisteredOnly
 -ExcludeFrameSyncWait` now reports only deployed non-entry residue outside the
 `00:E321-E32B` wait. Pair it with the native-cycle census's

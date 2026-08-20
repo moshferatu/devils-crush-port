@@ -6765,34 +6765,41 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
     corpus replays, the patched 64-call stress route, and the canonical census.
   - [x] Registry A/B: **696,920,400 -> 697,120,455** native cycles; 200,055
     cycles added, 473 admitted routines, 357 entered, and no abandonments.
+- [x] Port the shared unsigned 24-bit divider at `00:E7D7-E7FA`:
+  - [x] Preserve the inherited-carry preliminary roll, all 24 restoring
+    quotient/remainder rounds, zero-divisor behavior, PHX/PLX scratch state,
+    and the live stack-derived return.
+  - [x] Reproduce zero through six natural subtraction stores at exact
+    3,123-3,213-cycle uninterrupted budgets and every instruction checkpoint.
+  - [x] Preserve all 105 natural calls, 82 interrupt-bearing scopes, the exact
+    105-call/13,975-write artifacts, direct corpus replay, and the canonical
+    state census.
+  - [x] Registry A/B: **697,120,455 -> 697,453,617** native cycles; 333,162
+    cycles added, 474 admitted routines, 358 entered, and no abandonments.
 
 ## Active Work
 
-Current owner: Codex. Current slice: **complete shared actor-slot allocator**.
+Current owner: Codex. Current slice: **shared unsigned 24-bit divider**.
 Done.
 
-The allocator's 44 natural scopes span 4,314-8,562 master cycles and 256,242
-cycles including original interrupt handlers. Thirty-seven calls contain 72
-handler passages. The semantic transcript contributes 200,055 native cycles,
-executes all 44 calls without a horizon decline or abandonment, and preserves
-the exact census, call, write, and post-call RAM artifacts. The six cached
-natural fixtures cover first-free slots `$62`, `$63`, `$64`, and `$70`; two
-forced fixtures prove the 4,374-cycle `$C0` overwrite and 5,406-cycle exhausted
-return. The complete family regression takes 20.97 seconds for its one-time
-cold captures and 7.77 seconds with all eight fixtures cached.
+The divider's 105 natural scopes span 3,123-48,450 master cycles including
+original interrupt handlers. Eighty-two calls contain handler passages; all
+execute natively without a horizon decline or abandonment. The pure model and
+instruction transcript preserve the preliminary carry-sensitive roll, the
+fixed 24 rounds, all 13,975 ordered writes, and the exact call and post-call
+RAM artifacts. An uninterrupted frame-874 corpus fixture gives the fast direct
+replay while the owning route proves every subtraction density and interrupt.
 
-The fresh deployed profile retains the canonical census, 697,120,455 native
-cycles, 473 installed routines, 357 entered routines, zero horizon declines,
-zero depth refusals, and zero abandonments. The lower entered-routine count is
-expected: the complete allocator absorbs ten formerly visible interior prefix
-keys. Filtering admitted entry points and the `00:E321-E32B` frame wait leaves
-6,045,615 profile-attributed cycles across 269 clusters.
+The fresh deployed profile retains the canonical census, 697,453,617 native
+cycles, 474 installed routines, 358 entered routines, zero horizon declines,
+zero depth refusals, and zero abandonments. Filtering admitted entry points and
+the `00:E321-E32B` frame wait leaves 5,709,525 profile-attributed cycles across
+268 clusters.
 
-Next: screen `00:E7D7-E7FA` as the next coherent arithmetic family. It has 105
-natural entries, exactly 24 loop rounds per call, and 336,090 profiled cycles.
-The ROM body is a bounded 24-bit shift/subtract division walk, making it a much
-better semantic candidate than the known palette `TIA`, PSG `BBR`, startup
-`TII`, or broad mixed collision-response regions above it.
+Next: screen sibling unsigned-byte divider `00:E6DC-E6F9`. It has 46 natural
+entries, exactly eight restoring rounds per call, and 37,848 interpreted
+profile cycles. Its state and checkpoint shape are a smaller direct reuse of
+the now-proven `E7D7` family.
 
 ### Previous: the impact-burst allocator success return
 

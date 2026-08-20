@@ -7288,6 +7288,34 @@ two-write half-scale path. Debug and Release preserve:
 - Write SHA-256:
   `0f9ec94cd10cc59a8f0cbc9d70bfdd06c8ff2a3bea9623f76c6e662dc00b30ec`
 
+### Shared unsigned 24-bit divider: semantic `00:E7D7@all`
+
+This arithmetic helper reads the unsigned 24-bit dividend at `$2E:$2F:$30`
+and the byte divisor at `$2D`. It saves X, clears remainder `$42`, rolls the
+dividend once through the inherited carry, and then executes exactly 24
+restoring division rounds. Each round shifts the remainder, conditionally
+subtracts the divisor, and rolls the resulting quotient bit through the three
+dividend bytes. The quotient replaces `$2E:$30`; A and `$42` hold the remainder.
+
+`dc_divide_unsigned_24` exposes every round's shifted remainder, subtraction
+decision, post-subtraction remainder, and rolled quotient. The host recreates
+the PHX/PLX stack traffic, all 101-125 routine-owned writes, binary compare and
+subtract flags, branch timing, and every interrupt checkpoint before absorbing
+the live stack-derived `RTS`. Division by zero intentionally retains the ROM's
+24 subtract/store decisions and all-one quotient instead of being rejected.
+
+All 105 route calls execute natively. Twenty-three are uninterrupted and 82
+contain original handler passages; the complete scopes span 3,123-48,450
+master cycles and preserve 13,975 aggregate writes. Interrupt-free ordinal 1
+directly replays its frame-874, 3,123-cycle, 101-write call. Release preserves:
+
+- Census SHA-256:
+  `9036a9de0c3c9917f47bff8c04c136a4824ec12601fb457d260aa2dfe4443490`
+- Call SHA-256:
+  `9163eaedd115dda2148b6c2c3e6d045dcfaaa1ff674629946d38fbba3d2207f0`
+- Write SHA-256:
+  `cb32774ea1c72400d67db014ae3337605d7a63b4cbc44fb532021a5a9b4d57d0`
+
 ### Twenty-fourth native replacement: semantic `00:E905@all`
 
 This shared signed divider reads the 16-bit dividend at `$2F:$30` and the

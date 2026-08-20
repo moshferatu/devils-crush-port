@@ -405,6 +405,76 @@ int dc_divide_signed_word(
     return 1;
 }
 
+int dc_divide_unsigned_24(
+    const uint8_t* const work_ram,
+    const size_t work_ram_size,
+    const uint8_t carry_in,
+    dc_unsigned_24_division* const division)
+{
+    uint32_t quotient;
+    uint8_t carry;
+    uint8_t remainder;
+    size_t index;
+
+    if (work_ram == NULL || division == NULL
+        || work_ram_size < 0x2000U) {
+        return 0;
+    }
+
+    division->dividend_input = (uint32_t)work_ram[0x002EU]
+        | ((uint32_t)work_ram[0x002FU] << 8U)
+        | ((uint32_t)work_ram[0x0030U] << 16U);
+    division->divisor = work_ram[0x002DU];
+    division->initial_carry = (uint8_t)(carry_in != 0U);
+    division->initial_roll_carry = (uint8_t)(
+        (division->dividend_input & 0x800000U) != 0U);
+    quotient = (uint32_t)(
+        ((division->dividend_input << 1U)
+         | division->initial_carry)
+        & 0xFFFFFFU);
+    division->dividend_after_initial_roll = quotient;
+    carry = division->initial_roll_carry;
+    remainder = 0U;
+    division->subtraction_count = 0U;
+
+    for (index = 0U;
+         index < DC_UNSIGNED_24_DIVIDE_STEP_COUNT;
+         ++index) {
+        dc_unsigned_24_divide_step* const step =
+            &division->steps[index];
+        const uint8_t next_remainder_carry = (uint8_t)(
+            (remainder & 0x80U) != 0U);
+        remainder = (uint8_t)(
+            (uint8_t)(remainder << 1U) | carry);
+        carry = next_remainder_carry;
+        step->remainder_after_shift = remainder;
+        step->subtracts_divisor = (uint8_t)(
+            remainder >= division->divisor);
+        if (step->subtracts_divisor != 0U) {
+            remainder = (uint8_t)(remainder - division->divisor);
+            carry = 1U;
+            division->subtraction_count = (uint8_t)(
+                division->subtraction_count + 1U);
+        } else {
+            carry = 0U;
+        }
+        step->remainder_after_subtract = remainder;
+
+        {
+            const uint8_t next_quotient_carry = (uint8_t)(
+                (quotient & 0x800000U) != 0U);
+            quotient = (uint32_t)(
+                ((quotient << 1U) | carry) & 0xFFFFFFU);
+            carry = next_quotient_carry;
+        }
+        step->quotient_after_roll = quotient;
+    }
+
+    division->quotient = quotient;
+    division->remainder = remainder;
+    return 1;
+}
+
 int dc_rotate_motion(
     const uint8_t* const work_ram,
     const size_t work_ram_size,

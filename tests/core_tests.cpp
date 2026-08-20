@@ -845,6 +845,54 @@ void test_native_signed_division()
         "native E905 rejects a truncated work-RAM snapshot");
 }
 
+void test_native_unsigned_24_division()
+{
+    std::array<std::uint8_t, 0x2000> work_ram{};
+    work_ram[0x002DU] = 0x07U;
+    work_ram[0x002EU] = 0x56U;
+    work_ram[0x002FU] = 0x34U;
+    work_ram[0x0030U] = 0x12U;
+
+    dc_unsigned_24_division division{};
+    check(
+        dc_divide_unsigned_24(
+            work_ram.data(),
+            work_ram.size(),
+            0U,
+            &division)
+                != 0
+            && division.dividend_input == 0x123456U
+            && division.dividend_after_initial_roll == 0x2468ACU
+            && division.divisor == 0x07U
+            && division.quotient == 0x0299C3U
+            && division.remainder == 0x01U,
+        "native E7D7 divides the 24-bit dividend after its preliminary roll");
+
+    work_ram[0x002DU] = 0U;
+    check(
+        dc_divide_unsigned_24(
+            work_ram.data(),
+            work_ram.size(),
+            1U,
+            &division)
+                != 0
+            && division.dividend_after_initial_roll == 0x2468ADU
+            && division.quotient == 0xFFFFFFU
+            && division.remainder == 0x56U
+            && division.subtraction_count
+                == DC_UNSIGNED_24_DIVIDE_STEP_COUNT,
+        "native E7D7 preserves the zero-divisor loop semantics");
+
+    check(
+        dc_divide_unsigned_24(
+            work_ram.data(),
+            work_ram.size() - 1U,
+            0U,
+            &division)
+            == 0,
+        "native E7D7 rejects a truncated work-RAM snapshot");
+}
+
 void test_native_collision_response()
 {
     std::array<std::uint8_t, 0x2000> work_ram{};
@@ -10652,6 +10700,7 @@ int main()
     test_native_motion_damping();
     test_native_motion_substep_split();
     test_native_signed_division();
+    test_native_unsigned_24_division();
     test_native_motion_rotation();
     test_native_collision_table_pass();
     test_native_collision_response();
