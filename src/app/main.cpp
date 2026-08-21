@@ -1328,7 +1328,8 @@ parse_logical_address_range(const std::string_view text)
                            && request.all_calls;
                        const bool proven_flipper_active_update =
                            request.routine.physical_bank == 0x01U
-                           && (request.routine.logical_pc == 0xD48EU
+                           && (request.routine.logical_pc == 0xD458U
+                               || request.routine.logical_pc == 0xD48EU
                                || request.routine.logical_pc == 0xD491U
                                || request.routine.logical_pc == 0xD494U
                                || request.routine.logical_pc == 0xD4C6U
@@ -3392,6 +3393,20 @@ parse_logical_address_range(const std::string_view text)
                            && (request.routine.logical_pc == 0x5977U
                                || request.routine.logical_pc == 0x5982U)
                            && request.all_calls;
+                       const bool proven_text_tile_write =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x08U,
+                                       .logical_pc = 0x5B01U,
+                                   }
+                           && request.all_calls;
+                       const bool proven_video_update_idle_gate =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x08U,
+                                       .logical_pc = 0x5E42U,
+                                   }
+                           && request.all_calls;
                        const bool proven_bank_call_wrappers =
                            request.routine.physical_bank == 0x00U
                            && (request.routine.logical_pc == 0xE1FDU
@@ -3568,6 +3583,8 @@ parse_logical_address_range(const std::string_view text)
                            && !proven_music_sequencer
                            && !proven_palette_shadow
                            && !proven_setup_screen_palette_stager
+                           && !proven_text_tile_write
+                           && !proven_video_update_idle_gate
                            && !proven_bank_call_wrappers
                            && !proven_vblank_handler
                            && !proven_vram_upload
@@ -3886,7 +3903,7 @@ parse_logical_address_range(const std::string_view text)
             "semantic 01:CFD8@all, "
             "semantic 00:F4FC@all, semantic "
             "01:C574@all, semantic 01:D466@all, semantic 01:D4B3@all, "
-            "semantic 01:D48E@all, semantic 01:D491@all, "
+            "semantic 01:D458@all, semantic 01:D48E@all, semantic 01:D491@all, "
             "semantic 01:D494@all, "
             "semantic 01:D4C6@all, semantic 01:D4C9@all, "
             "semantic 01:D4CC@all, "

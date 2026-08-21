@@ -18,6 +18,7 @@
 #include "devils_crush/game_logic/actor.h"
 #include "devils_crush/game_logic/collision.h"
 #include "devils_crush/game_logic/sprite.h"
+#include "devils_crush/game_logic/video.h"
 #include "devils_crush/render/table_palette_cache.hpp"
 #include "devils_crush/game_logic/controls.h"
 #include "devils_crush/game_logic/physics.h"
@@ -6702,6 +6703,30 @@ void test_native_flipper_release_arm()
         "native D4B3 rejects a truncated work-RAM snapshot");
 }
 
+void test_native_flipper_release_prefix()
+{
+    std::array<std::uint8_t, 0x2000> work_ram{};
+    constexpr std::uint8_t slot = 0x06U;
+    work_ram[0x1C80U + slot] = 0xA5U;
+    work_ram[0x1E00U + slot] = 0x01U;
+
+    dc_flipper_release_prefix release{};
+    check(
+        dc_prepare_flipper_release_prefix(
+            work_ram.data(), work_ram.size(), slot, &release)
+                != 0
+            && release.orientation_before == 0xA5U
+            && release.orientation_after == 0x25U
+            && release.active_before == 0x01U
+            && release.active_after == 0U,
+        "native D458 clears reverse orientation and the active latch");
+    check(
+        dc_prepare_flipper_release_prefix(
+            work_ram.data(), work_ram.size() - 1U, slot, &release)
+            == 0,
+        "native D458 rejects a truncated work-RAM snapshot");
+}
+
 void test_native_flipper_active_tail()
 {
     std::array<std::uint8_t, 0x2000> work_ram{};
@@ -10633,6 +10658,44 @@ void test_sprite_emit_run()
         "sprite emit rejects a missing snapshot");
 }
 
+void test_text_tile_write()
+{
+    dc_text_tile_write write{};
+    check(
+        dc_prepare_text_tile_write(0x41U, 0x02CCU, &write) == 1,
+        "text tile writer accepts a letter");
+    check(
+        write.character == 0x41U && write.tile_low == 0x8AU
+            && write.tile_high == 0x02U && write.next_address == 0x02CDU,
+        "text tile writer maps a letter and advances its VDC address");
+
+    check(
+        dc_prepare_text_tile_write(0x30U, 0x12FFU, &write) == 1
+            && write.character == 0x30U && write.tile_low == 0x80U
+            && write.tile_high == 0x02U && write.next_address == 0x1300U,
+        "text tile writer maps a digit and carries the VDC address");
+    check(
+        dc_prepare_text_tile_write(0x20U, 0xFFFFU, &write) == 1
+            && write.character == 0x5BU && write.tile_low == 0xA4U
+            && write.tile_high == 0x02U && write.next_address == 0x0000U,
+        "text tile writer maps a space to the blank glyph and wraps cleanly");
+    check(
+        dc_prepare_text_tile_write(0xFFU, 0U, &write) == 1
+            && write.tile_low == 0x48U && write.tile_high == 0x03U,
+        "text tile writer preserves the tile-index carry in the high byte");
+    check(
+        dc_prepare_text_tile_write(0x41U, 0U, nullptr) == 0,
+        "text tile writer rejects a missing result");
+
+    check(
+        dc_video_update_gate_is_idle(0U, 0U) == 1,
+        "video update gate recognizes the idle return");
+    check(
+        dc_video_update_gate_is_idle(1U, 0U) == 0
+            && dc_video_update_gate_is_idle(0U, 1U) == 0,
+        "video update gate preserves both active renderer paths");
+}
+
 void test_dmd_text_layout()
 {
     using devils_crush::cabinet::calculate_dmd_text_layout;
@@ -11076,8 +11139,9 @@ int main()
     test_native_session_input_gate();
     test_native_ball_drain_threshold();
     test_native_bank7_mode_gate();
-    test_native_flipper_release_arm();
-    test_native_flipper_active_tail();
+      test_native_flipper_release_arm();
+      test_native_flipper_release_prefix();
+      test_native_flipper_active_tail();
     test_native_flipper_phase_step();
     test_native_flipper_geometry();
     test_native_coroutine_schedule();
@@ -11103,6 +11167,7 @@ int main()
     test_actor_queue_registration();
     test_collision_scan_run();
     test_sprite_emit_run();
+    test_text_tile_write();
     test_dmd_text_layout();
     test_table_palette_cache();
     test_native_registry();

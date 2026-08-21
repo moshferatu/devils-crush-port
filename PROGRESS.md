@@ -6829,32 +6829,51 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
   - [x] Registry A/B: **697,941,849 -> 697,999,899** native cycles; 58,050
     cycles added, 484 admitted routines, 368 entered, and no abandonments.
   - [x] Passed all 441 Release tests as the cross-family checkpoint.
+- [x] Port release prefix `01:D458-D463`:
+  - [x] Model reverse-orientation and active-latch clears, then stage the exact
+    `JSR C5C9` frame across the already-native coroutine scheduler into native
+    continuation `D466`.
+  - [x] Preserve all 246 calls, including interrupt-bearing scopes, and the
+    expanded seven-key 3,186-call/125,371-write artifact.
+  - [x] Registry A/B: **697,999,899 -> 698,017,611** native cycles; 17,712
+    cycles added, 485 admitted routines, 369 entered, and no abandonments.
+- [x] Port bank-8 text/tile VDC writer `08:5B01`:
+  - [x] Model the space, digit, and letter glyph mappings plus the 16-bit VDC
+    address advance and carry.
+  - [x] Preserve all 283 calls, 1,325 ordered call writes, 868,259 selected
+    work-RAM writes, all 2,036,234 VDC writes, interrupts, and the canonical
+    state census.
+  - [x] Registry A/B: **698,017,611 -> 698,108,892** native cycles; 91,281
+    cycles added, 486 admitted routines, 370 entered, and no abandonments.
+  - [x] Passed all 442 Release tests as the cross-family checkpoint.
+- [x] Port bank-8 video-update idle gate `08:5E42-5E4C`:
+  - [x] Model the two-byte idle predicate and deliberately decline either
+    active-update state into the original renderer.
+  - [x] Preserve all 2,649 calls, 582 interrupt-owned call writes, six selected
+    gate-byte writes, live returns, and the canonical state census.
+  - [x] Registry A/B: **698,108,892 -> 698,275,779** native cycles; 166,887
+    cycles added, 487 admitted routines, 371 entered, and no abandonments.
+  - [x] Passed all 443 Release tests as the cross-family checkpoint.
 
 ## Active Work
 
-Current owner: Codex. Current slice: **leading active-flipper pass**.
+Current owner: Codex. Current slice: **bank-8 video-update idle gate**.
 Done.
 
-The actor scheduler enters `01:D48E` 490 times. The leading active pass calls
-already-native phase step `D500`, resumes at `D491`, and calls the chunked
-`CBAB` collision route before resuming at `D494`. Like the later `D4C6` pass,
-it cannot be one transaction because collision-bearing calls reach 37,797
-cycles and 1,157 writes. Three seams instead stage both exact JSR frames and
-model the terminal phase-three, released-input, and held-input branches.
+The release path enters `08:5E42` 2,649 times from bank-call wrapper `E252`.
+Every canonical call finds `$2254` and `$2D53` clear and returns after two
+loads and two untaken branches. The native instruction transcript retains all
+four interrupt boundaries and the live-stack return; either active gate byte
+declines safely to assembly. Direct ordinal-1 replay and route-level census,
+call, interrupt-write, and selected-RAM artifacts all match assembly exactly.
 
-Each new seam accepts 490 of 490 canonical entries. `D494` hands 246 released
-input paths to native release arm `D4B3` and absorbs 244 held-input returns;
-the pure model also covers the phase-three endpoint scheduler. The combined
-six-key census, 2,940-call artifact, 122,869 ordered writes, and
-zero-abandonment census match assembly. The deployed registry now owns
-697,999,899 cycles across 484 installed and 368 entered routines, with zero
-horizon/depth refusals.
-
-The consistent non-wait residue view now contains 5,157,861 cycles in 263
-clusters. Next: port the clean 246-call `01:D458-D463` release prefix across
-native scheduler `C5C9` into native `D466`; the two oversized current-slot
-`D466` calls remain decomposed at controller `D525`. Keep `08:5ABF` decomposed
-because its largest text/tile calls exceed the 512-write transaction limit.
+The deployed registry now owns 698,275,779 cycles across 487 installed and 371
+entered routines, with zero horizon/depth refusals. The consistent non-wait
+residue contains 4,880,469 cycles in 261 clusters. Next: assess bank-8 video
+leaf `08:584C-585A`, now the largest coherent bank-8 residue; keep text/tile
+parent `08:5ABF` decomposed because its largest calls exceed the 512-write
+transaction limit. The two oversized current-slot `D466` calls remain
+decomposed at controller `D525`.
 
 ### Previous: the impact-burst allocator success return
 

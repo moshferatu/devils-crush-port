@@ -789,6 +789,19 @@ Provide an interactive monitor-assignment screen and persist display identity, g
   released-input, and held-input outcomes. All 490 passes through each new
   seam preserve the combined six-key 2,940-call/122,869-write transcript and
   state census.
+  Semantic `01:D458@all` now owns the release prefix reached by the terminal
+  continuation. It clears reverse orientation and active state, stages the
+  exact `JSR C5C9` frame, and crosses into the existing native scheduler,
+  which installs native continuation `D466`. All 246 calls preserve the
+  expanded seven-key 3,186-call/125,371-write transcript and state census.
+  Semantic `08:5B01@all` now owns the bounded VDC writer inside oversized
+  text/tile decoder `08:5ABF`. All 283 calls map spaces, digits and letters,
+  write the same six hardware-port values, advance the tilemap address, and
+  preserve exact interrupt, RAM, VDC-bus, return, and state-census behavior.
+  Semantic `08:5E42@all` now owns the hot idle return at the head of the
+  deferred video-update routine. All 2,649 canonical calls observe both gate
+  bytes clear, preserve four instruction boundaries and the live return, and
+  leave either unobserved active-update state in assembly by design.
   Semantic `01:DD09@all` composes the signed `E905` divider for either nonzero motion
   component, subtracts its signed quotient, and applies the second-axis
   acceleration. All 753 calls are native, including the 669 previously

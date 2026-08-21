@@ -9633,7 +9633,7 @@ their SHA-256 values are respectively
 `7d695bf99a8e6bdd43179693d3d5270a14416b21c8771233055aecbc4d45656b`, and
 `cd7de400e8c59f91f0b3352bc58cb3a15450c71b3d3077382b97f1c59631253b`.
 
-## Active-flipper passes: semantic `01:D48E/D491/D494@all` and `01:D4C6/D4C9/D4CC@all`
+## Active-flipper passes and release prefix: semantic `01:D458@all`, `01:D48E/D491/D494@all`, and `01:D4C6/D4C9/D4CC@all`
 
 The dispatch installed by `D4B3` resumes at `D4C6`, calls phase step `D500`,
 then resumes at `D4C9` and calls the single-slot collision probe at `CBAB`.
@@ -9655,11 +9655,63 @@ release arm `D4B3`, and held input returns at `D4A3`. The canonical route
 takes 246 release paths and 244 held-input returns; the pure model additionally
 covers the phase-three handoff.
 
-All 490 entries at all six seams are native. Release reproduces census SHA-256
+The release branch reaches `D458`, which clears `$3C80,X.7` and `$3E00,X`
+before staging the exact `JSR C5C9` stack frame. The existing scheduler owner
+consumes return `D465`, installs `D466`, and returns to the actor-scan caller.
+All 246 calls use this shape; the direct ordinal-246 corpus proves the ordinary
+231-cycle, nine-write scope independently of route startup.
+
+All 490 entries at the six active seams and all 246 release-prefix entries are
+native. Release reproduces census SHA-256
 `9036a9de0c3c9917f47bff8c04c136a4824ec12601fb457d260aa2dfe4443490`,
-2,940-call SHA-256
-`1b6da67a7477eee13d3949c5db91d967a1cebf5c8868eba6328bdcc8e10f2a92`, and
-122,869-write SHA-256
-`0f959a71c21196a28977d261f4ff985c02772ac86cfc0893530d8224f56fdc7f`.
+3,186-call SHA-256
+`a0c7a2bb9faac585503c80f421b884e198f70eaaf9121aa36a2cd479f9eacba8`, and
+125,371-write SHA-256
+`e90b88651b51114389be9d5c613ec2a70787920cc6829f04f676953ae955e626`.
 The continuation seams add 49,194 deployed native master cycles; the leading
-seams add another 58,050.
+seams add another 58,050; the release prefix adds 17,712.
+
+## Bank-8 text/tile VDC writer: semantic `08:5B01@all`
+
+`08:5B01` consumes one character in A and the current tilemap word address in
+`$2D:$2E`. It first selects VDC MAWR and writes that address. It then selects
+VWR, maps space to `$5B`, maps bytes below `A` relative to `0`, maps letters
+relative to `7`, adds tile base `$0280`, and writes the low/high tile bytes.
+Finally it increments `$2D:$2E` and returns. The natural route contains 175
+spaces, six digits, and 102 letters across 283 calls.
+
+The native transcript retains all instruction boundaries and six hardware
+stores, including the VDC wait each store incurs. Assembly and native routes
+share census SHA-256
+`9036a9de0c3c9917f47bff8c04c136a4824ec12601fb457d260aa2dfe4443490`,
+call SHA-256
+`a98aaf960558c2761cd68c286fc097a41cb653d630ee77ab221223ebbb9e6885`,
+call-write SHA-256
+`d9d4e2fcb0ff485a28d2827b79c1554dbb4ddf5ed9e12ecb90ba54e9d9100838`,
+and VDC-bus SHA-256
+`1221e1687b256ca6621bd2088de29a1ceed4c0ad0d05d7c75d9107df825d7005`.
+All 283 calls add 91,281 deployed native master cycles with no decline or
+abandonment.
+
+## Bank-8 deferred video-update idle gate: semantic `08:5E42@all`
+
+`08:5E42` reads global video-busy byte `$2254`. If clear, it reads deferred
+update byte `$2D53`; when that is also clear, it returns at `08:5E4C`. A
+nonzero first byte clears `$2D53`, while a nonzero second byte continues into
+the longer renderer, so those active states are intentionally outside this
+replacement.
+
+The canonical route enters from bank-call wrapper `00:E252` 2,649 times at
+frames 941-3,600. Every call takes the 42-cycle idle prefix; periodic original
+interrupts expand 44 scopes and account for all 582 ordered call writes. The
+checkpointed adapter preserves both absolute loads, both untaken branches,
+and the live-stack return. Assembly and native routes share census SHA-256
+`9036a9de0c3c9917f47bff8c04c136a4824ec12601fb457d260aa2dfe4443490`,
+call SHA-256
+`fe732c10eb0018ec193df7cb87d98ca8201af219145a36db44570bc55334d5e7`,
+call-write SHA-256
+`919781dfa04779d8ba035dbea74f75d2b6dc2c1c3b9803b38594b2e46c00ace3`,
+and selected-RAM SHA-256
+`79b945c4c1e462d065d815ba0ebe42db4652d8fae4a6916b1728863000e0435a`.
+The gate adds 166,887 deployed native master cycles with no decline or
+abandonment.

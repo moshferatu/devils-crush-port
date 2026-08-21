@@ -79,6 +79,28 @@ int dc_prepare_flipper_release_arm(
     return 1;
 }
 
+int dc_prepare_flipper_release_prefix(
+    const uint8_t* const work_ram,
+    const size_t work_ram_size,
+    const uint8_t slot,
+    dc_flipper_release_prefix* const release)
+{
+    const size_t orientation_offset = 0x1C80U + (size_t)slot;
+    const size_t active_offset = 0x1E00U + (size_t)slot;
+    if (work_ram == NULL || release == NULL || work_ram_size < 0x2000U
+        || orientation_offset >= work_ram_size
+        || active_offset >= work_ram_size) {
+        return 0;
+    }
+
+    release->orientation_before = work_ram[orientation_offset];
+    release->orientation_after =
+        (uint8_t)(release->orientation_before & 0x7FU);
+    release->active_before = work_ram[active_offset];
+    release->active_after = 0U;
+    return 1;
+}
+
 int dc_classify_flipper_active_head(
     const uint8_t* const work_ram,
     const size_t work_ram_size,

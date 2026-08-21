@@ -1713,6 +1713,21 @@ replace_sprite_emit_run(
     std::span<const std::byte> work_ram,
     std::span<const std::byte> rom);
 
+// Bank 08's one-character text/tile writer. It selects the VDC address and
+// data registers, maps a space/digit/letter to the game's tile encoding, and
+// advances the word address for the next call.
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_text_tile_write(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram);
+
+// The naturally hot idle return at the head of bank 08's deferred video
+// update routine. Active-update states deliberately remain in assembly.
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_video_update_idle_gate(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram);
+
 // 03:6966 as an instruction-boundary transcript. The semantic replacement below
 // calls this first and keeps its own paths for the calls this one refuses, so
 // every caller of the interpreter gets the transcript without knowing about it.

@@ -4019,12 +4019,45 @@ The matching leading pass at `D48E/D491/D494` uses the same crossed-call
 shape. Its enclosing scopes reach 37,797 cycles and 1,157 writes, while the
 three seams remain bounded. `D494` hands 246 released-input paths to native
 `D4B3`, absorbs 244 held-input returns, and implements the route-unreached
-phase-three handoff. These entries add another 58,050 cycles, bringing
-deployed ownership to 697,999,899 cycles. The consistent non-wait profile has
-5,157,861 unregistered cycles across 263 clusters. The next clean flipper
-boundary is release prefix `01:D458-D463`; `08:5B01` remains the
-hardware-facing leaf to assess before decomposing its oversized `08:5ABF`
-parent.
+phase-three handoff. These entries add another 58,050 cycles.
+
+Release prefix `01:D458-D463` now clears reverse orientation and active state
+before crossing through an exact JSR frame into native scheduler `C5C9`. All
+246 entries are native and add 17,712 cycles, bringing deployed ownership to
+698,017,611 cycles. The consistent non-wait profile has 5,139,957 unregistered
+cycles across 262 clusters. `08:5B01` is the next hardware-facing leaf to
+assess before decomposing its oversized `08:5ABF` parent.
+
+## Bank-8 text/tile VDC writer
+
+Semantic `08:5B01@all` now owns the bounded child repeatedly called by
+oversized decoder `08:5ABF`. Its 283 canonical calls have 294-cycle letter,
+300-cycle digit, and 306-cycle space bodies before interrupts. Each performs
+six VDC writes: select MAWR, write `$2D:$2E`, select VWR, and write the mapped
+tile word. The routine then increments `$2D:$2E` and returns.
+
+The checkpointed adapter preserves each hardware write and the VDC's stolen
+cycle rather than treating the device effect as RAM. Ordinal 38 supplies the
+uninterrupted direct fixture. The aggregate regression locks all 283 calls,
+1,325 call writes, 868,259 selected work-RAM writes, and the route's complete
+2,036,234-write VDC stream; every artifact and the state census is identical
+to assembly. The leaf adds 91,281 deployed cycles, bringing ownership to
+698,108,892 cycles across 486 routines. Unregistered non-wait residue is now
+5,048,628 cycles; `08:5E42-5E4C` is the next bank-8 video leaf to assess.
+
+## Bank-8 video-update idle gate
+
+Observation split the `08:5E42` entry from its longer renderer. All 2,649
+canonical calls arrive from wrapper `00:E252`, find `$2254=$2D53=0`, and take
+the four-instruction, 42-cycle prefix plus its return. The remaining paths
+clear deferred state or perform a larger update and are not naturally entered.
+
+Semantic `08:5E42@all` therefore owns only the proven idle predicate and live
+return, declining either active byte. Its checkpoints preserve the 44
+interrupt-bearing scopes and all 582 interrupt-owned writes. The gate adds
+166,887 cycles, bringing ownership to 698,275,779 cycles across 487 routines.
+The new deployed profile leaves 4,880,469 unregistered non-wait cycles in 261
+clusters; `08:584C-585A` is the next coherent bank-8 residue to assess.
 
 ## Use on future families
 

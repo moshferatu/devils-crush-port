@@ -2849,6 +2849,40 @@ if(TARGET devils_crush)
         )
 
         add_test(
+            NAME dc_rom_text_tile_write_semantic
+            CONFIGURATIONS Release
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/text-tile-write-semantic-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_text_tile_write_semantic.cmake"
+        )
+        set_tests_properties(
+            dc_rom_text_tile_write_semantic
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_video_update_idle_gate_semantic
+            CONFIGURATIONS Release
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/video-update-idle-gate-semantic-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_video_update_idle_gate_semantic.cmake"
+        )
+        set_tests_properties(
+            dc_rom_video_update_idle_gate_semantic
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
             NAME dc_rom_side_star_initializers_semantic
             CONFIGURATIONS Release
             COMMAND

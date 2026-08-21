@@ -3582,6 +3582,28 @@ independently credited, while `D494` owns only the local post-collision
 decision. The measured registry delta is the sum of those previously
 interpreted seams, not either enclosing observer scope.
 
+Release prefix `D458-D463` shows the same seam at a scheduler boundary. Own the
+51-cycle state prefix plus the 21-cycle `JSR`, stage return `D465`, and hand
+execution to the admitted `C5C9` entry. The child consumes that frame and
+absorbs its own final return; the new parent gains exactly 72 cycles per call
+without duplicating the scheduler's 180 already-native cycles.
+
+Hardware-facing leaf `08:5B01` shows how to decompose an oversized producer
+without hiding device behavior. Keep its six VDC stores in the ordinary
+ordered-write channel, checkpoint every instruction, and validate the whole
+`0000-0003` bus stream in addition to RAM and call artifacts. The VDC applies
+its stolen cycle through the bus at each store; checkpoint reconciliation
+keeps that cost inside the original instruction timing. This turns a parent
+whose calls exceed 512 RAM writes into a bounded 283-call child without
+pretending hardware writes are ordinary memory.
+
+Guarded idle entry `08:5E42` shows when partial semantic coverage is the
+honest boundary. The canonical route proves 2,649 two-zero returns, but never
+enters the state-changing renderer beyond the prefix. Model the idle predicate
+in pure C, checkpoint and absorb that complete return, and decline either
+active byte. A hot measured path can be fully removed without treating an
+unobserved continuation as understood.
+
 For global screening, `Analyze-InstructionProfile.ps1 -UnregisteredOnly
 -ExcludeFrameSyncWait` now reports only deployed non-entry residue outside the
 `00:E321-E32B` wait. Pair it with the native-cycle census's

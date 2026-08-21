@@ -35,6 +35,13 @@ typedef struct dc_flipper_release_arm {
     uint8_t installs_dispatch;
 } dc_flipper_release_arm;
 
+typedef struct dc_flipper_release_prefix {
+    uint8_t orientation_before;
+    uint8_t orientation_after;
+    uint8_t active_before;
+    uint8_t active_after;
+} dc_flipper_release_prefix;
+
 typedef enum dc_flipper_active_head_path {
     DC_FLIPPER_ACTIVE_HEAD_ENDPOINT = 0,
     DC_FLIPPER_ACTIVE_HEAD_RELEASE = 1,
@@ -200,6 +207,14 @@ int dc_prepare_flipper_release_arm(
     size_t work_ram_size,
     uint8_t slot,
     dc_flipper_release_arm* release);
+
+// Native model of D458's release prefix. It clears reverse orientation and
+// the indexed active latch before the following C5C9 scheduler installs D466.
+int dc_prepare_flipper_release_prefix(
+    const uint8_t* work_ram,
+    size_t work_ram_size,
+    uint8_t slot,
+    dc_flipper_release_prefix* release);
 
 // Native classification of D494 after the active flipper has advanced its
 // phase and completed its collision probe. Phase three enters the endpoint

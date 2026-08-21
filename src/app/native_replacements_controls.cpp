@@ -580,7 +580,7 @@ replace_flipper_active_update(
     constexpr std::uint8_t kBank = 0x01U;
     const auto pc = entry.routine.logical_pc;
     if (entry.routine.physical_bank != kBank
-        || (pc != 0xD48EU && pc != 0xD491U && pc != 0xD494U
+        || (pc != 0xD458U && pc != 0xD48EU && pc != 0xD491U && pc != 0xD494U
             && pc != 0xD4C6U && pc != 0xD4C9U && pc != 0xD4CCU)) {
         return std::nullopt;
     }
@@ -609,6 +609,75 @@ replace_flipper_active_update(
             .registers = registers,
         });
     };
+
+    // D458 owns the local release-state update and crosses into the existing
+    // C5C9 scheduler owner. The scheduler consumes this JSR frame, installs
+    // D466 as the slot continuation, and returns to the actor-scan caller.
+    if (pc == 0xD458U) {
+        dc_flipper_release_prefix release{};
+        if (!dc_prepare_flipper_release_prefix(
+                reinterpret_cast<const std::uint8_t*>(work_ram.data()),
+                work_ram.size(),
+                entry.registers.x,
+                &release)) {
+            throw std::runtime_error(
+                "Native D458 replacement rejected the work-RAM snapshot.");
+        }
+
+        const auto stack_high = entry.registers.stack_pointer;
+        const auto stack_low = static_cast<std::uint8_t>(stack_high - 1U);
+        auto checkpoint = entry.registers;
+        RoutineReplacement replacement{};
+
+        checkpoint.accumulator = release.orientation_before;
+        checkpoint.status = set_nz(checkpoint.status, checkpoint.accumulator);
+        append_checkpoint(replacement, 0xD458U, 0xD45BU, 15U, checkpoint);
+
+        checkpoint.accumulator = release.orientation_after;
+        checkpoint.status = set_nz(checkpoint.status, checkpoint.accumulator);
+        append_checkpoint(replacement, 0xD45BU, 0xD45DU, 21U, checkpoint);
+        replacement.work_ram_writes = {
+            {
+                .instruction = {kBank, 0xD45DU},
+                .logical_address = static_cast<std::uint16_t>(
+                    0x3C80U + entry.registers.x),
+                .value = release.orientation_after,
+                .master_cycle_offset = 36U,
+            },
+            {
+                .instruction = {kBank, 0xD460U},
+                .logical_address = static_cast<std::uint16_t>(
+                    0x3E00U + entry.registers.x),
+                .value = release.active_after,
+                .master_cycle_offset = 51U,
+            },
+            {
+                .instruction = {kBank, 0xD463U},
+                .logical_address = static_cast<std::uint16_t>(
+                    0x2100U + stack_high),
+                .value = 0xD4U,
+                .master_cycle_offset = 51U,
+            },
+            {
+                .instruction = {kBank, 0xD463U},
+                .logical_address = static_cast<std::uint16_t>(
+                    0x2100U + stack_low),
+                .value = 0x65U,
+                .master_cycle_offset = 51U,
+            },
+        };
+        append_checkpoint(replacement, 0xD45DU, 0xD460U, 36U, checkpoint);
+        append_checkpoint(replacement, 0xD460U, 0xD463U, 51U, checkpoint);
+
+        checkpoint.stack_pointer =
+            static_cast<std::uint8_t>(checkpoint.stack_pointer - 2U);
+        append_checkpoint(replacement, 0xD463U, 0xC5C9U, 72U, checkpoint);
+        checkpoint.program_counter = 0xC5C9U;
+        replacement.return_instruction = {kBank, 0xC5C9U};
+        replacement.output_registers = checkpoint;
+        replacement.body_master_cycles = 72U;
+        return replacement;
+    }
 
     // D48E/D491 and D4C6/D4C9 are deliberately crossed calls. D500 and the
     // CBAB collision route already have admitted native owners, while CBAB's

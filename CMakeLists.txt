@@ -85,6 +85,7 @@ add_library(
     src/game_logic/rng.c
     src/game_logic/score.c
     src/game_logic/sprite.c
+    src/game_logic/video.c
 )
 
 add_library(DevilsCrush::GameLogic ALIAS dc_game_logic)

@@ -2,6 +2,7 @@
 
 #include "native_replacements_internal.hpp"
 #include "devils_crush/game_logic/sprite.h"
+#include "devils_crush/game_logic/video.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -632,6 +633,255 @@ replace_sprite_emit_run(
         {kRoutine.physical_bank, kReturnPc},
         cycle,
         registers);
+    return replacement;
+}
+
+[[nodiscard]] std::optional<RoutineReplacement>
+replace_text_tile_write(
+    const RoutineEntry& entry,
+    const std::span<const std::byte> work_ram)
+{
+    // 08:5B01 writes one character to the background tilemap. Six bounded
+    // VDC stores point MAWR at $2D:$2E, select VWR, and emit the translated
+    // tile word. A checkpoint per original instruction keeps timer IRQs at
+    // the same boundaries and lets the hardware bus charge each VDC wait.
+    constexpr RoutineKey kRoutine{0x08U, 0x5B01U};
+    constexpr std::uint16_t kReturnPc = 0x5B43U;
+    constexpr std::uint8_t kCarry = 0x01U;
+    constexpr std::uint32_t kImplied = 6U;
+    constexpr std::uint32_t kImmediate = 6U;
+    constexpr std::uint32_t kZeroPage = 12U;
+    constexpr std::uint32_t kZeroPageRmw = 18U;
+    constexpr std::uint32_t kPortStore = 18U;
+    constexpr std::uint32_t kBranchTaken = 12U;
+    constexpr std::uint32_t kBranchNotTaken = 6U;
+
+    if (entry.routine != kRoutine || work_ram.size() < 0x2000U
+        || (entry.registers.status & kUnsupportedFlags) != 0U
+        || entry.registers.mpr[0] != 0xFFU
+        || entry.registers.mpr[1] != 0xF8U) {
+        return std::nullopt;
+    }
+
+    const auto read = [&work_ram](const std::uint8_t address) {
+        return std::to_integer<std::uint8_t>(work_ram[address]);
+    };
+    dc_text_tile_write tile{};
+    const auto address = static_cast<std::uint16_t>(
+        read(0x2DU) | (static_cast<std::uint16_t>(read(0x2EU)) << 8U));
+    if (!dc_prepare_text_tile_write(
+            entry.registers.accumulator,
+            address,
+            &tile)) {
+        return std::nullopt;
+    }
+
+    auto registers = entry.registers;
+    std::uint32_t cycle = 0U;
+    RoutineReplacement replacement{};
+    replacement.checkpoints.reserve(32U);
+    replacement.work_ram_writes.reserve(11U);
+
+    const auto boundary =
+        [&](const std::uint16_t instruction_pc,
+            const std::uint16_t resume_pc,
+            const std::uint32_t sample_back) {
+            registers.program_counter = resume_pc;
+            replacement.checkpoints.push_back({
+                .interrupt_sample_master_cycle_offset = cycle - sample_back,
+                .master_cycle_offset = cycle,
+                .instruction = {kRoutine.physical_bank, instruction_pc},
+                .registers = registers,
+            });
+        };
+    const auto step =
+        [&](const std::uint16_t instruction_pc,
+            const std::uint16_t resume_pc,
+            const std::uint32_t cycles) {
+            cycle += cycles;
+            boundary(instruction_pc, resume_pc, 3U);
+        };
+    const auto write =
+        [&](const std::uint16_t instruction_pc,
+            const std::uint16_t resume_pc,
+            const std::uint32_t cycles,
+            const std::uint16_t logical_address,
+            const std::uint8_t value) {
+            cycle += cycles;
+            replacement.work_ram_writes.push_back({
+                .instruction = {kRoutine.physical_bank, instruction_pc},
+                .logical_address = logical_address,
+                .value = value,
+                .master_cycle_offset = cycle,
+            });
+            boundary(
+                instruction_pc,
+                resume_pc,
+                logical_address <= 0x0003U ? 6U : 3U);
+        };
+    const auto load =
+        [&](const std::uint16_t instruction_pc,
+            const std::uint16_t resume_pc,
+            const std::uint8_t value,
+            const std::uint32_t cycles) {
+            registers.accumulator = value;
+            registers.status = set_nz(registers.status, value);
+            step(instruction_pc, resume_pc, cycles);
+        };
+
+    write(0x5B01U, 0x5B03U, kZeroPage, 0x202BU, registers.accumulator);
+    registers.status = compare(registers.status, registers.accumulator, 0x20U);
+    step(0x5B03U, 0x5B05U, kImmediate);
+    if (registers.accumulator == 0x20U) {
+        step(0x5B05U, 0x5B07U, kBranchNotTaken);
+        load(0x5B07U, 0x5B09U, tile.character, kImmediate);
+        write(0x5B09U, 0x5B0BU, kZeroPage, 0x202BU, registers.accumulator);
+    } else {
+        step(0x5B05U, 0x5B0BU, kBranchTaken);
+    }
+
+    load(0x5B0BU, 0x5B0DU, 0x00U, kImmediate);
+    write(0x5B0DU, 0x5B0FU, kZeroPage, 0x2006U, registers.accumulator);
+    write(0x5B0FU, 0x5B12U, kPortStore, 0x0000U, registers.accumulator);
+    load(0x5B12U, 0x5B14U, read(0x2DU), kZeroPage);
+    write(0x5B14U, 0x5B17U, kPortStore, 0x0002U, registers.accumulator);
+    load(0x5B17U, 0x5B19U, read(0x2EU), kZeroPage);
+    write(0x5B19U, 0x5B1CU, kPortStore, 0x0003U, registers.accumulator);
+    load(0x5B1CU, 0x5B1EU, 0x02U, kImmediate);
+    write(0x5B1EU, 0x5B20U, kZeroPage, 0x2006U, registers.accumulator);
+    write(0x5B20U, 0x5B23U, kPortStore, 0x0000U, registers.accumulator);
+    load(0x5B23U, 0x5B25U, tile.character, kZeroPage);
+    registers.status = compare(registers.status, registers.accumulator, 0x41U);
+    step(0x5B25U, 0x5B27U, kImmediate);
+    if (registers.accumulator >= 0x41U) {
+        step(0x5B27U, 0x5B2EU, kBranchTaken);
+        registers.status = static_cast<std::uint8_t>(registers.status | kCarry);
+        step(0x5B2EU, 0x5B2FU, kImplied);
+        registers.accumulator = subtract_with_borrow(
+            registers.status, registers.accumulator, 0x37U);
+        step(0x5B2FU, 0x5B31U, kImmediate);
+    } else {
+        step(0x5B27U, 0x5B29U, kBranchNotTaken);
+        registers.status = static_cast<std::uint8_t>(registers.status | kCarry);
+        step(0x5B29U, 0x5B2AU, kImplied);
+        registers.accumulator = subtract_with_borrow(
+            registers.status, registers.accumulator, 0x30U);
+        step(0x5B2AU, 0x5B2CU, kImmediate);
+        step(0x5B2CU, 0x5B31U, kBranchTaken);
+    }
+    registers.status = static_cast<std::uint8_t>(registers.status & ~kCarry);
+    step(0x5B31U, 0x5B32U, kImplied);
+    registers.accumulator = add_with_carry(
+        registers.status, registers.accumulator, 0x80U);
+    step(0x5B32U, 0x5B34U, kImmediate);
+    write(0x5B34U, 0x5B37U, kPortStore, 0x0002U, registers.accumulator);
+    registers.accumulator = 0U; // CLA leaves flags unchanged on this core.
+    step(0x5B37U, 0x5B38U, kImplied);
+    registers.accumulator = add_with_carry(
+        registers.status, registers.accumulator, 0x02U);
+    step(0x5B38U, 0x5B3AU, kImmediate);
+    write(0x5B3AU, 0x5B3DU, kPortStore, 0x0003U, registers.accumulator);
+
+    const auto next_low = static_cast<std::uint8_t>(read(0x2DU) + 1U);
+    auto next_high = read(0x2EU);
+    registers.status = set_nz(registers.status, next_low);
+    write(0x5B3DU, 0x5B3FU, kZeroPageRmw, 0x202DU, next_low);
+    if (next_low != 0U) {
+        step(0x5B3FU, kReturnPc, kBranchTaken);
+    } else {
+        step(0x5B3FU, 0x5B41U, kBranchNotTaken);
+        next_high = static_cast<std::uint8_t>(next_high + 1U);
+        registers.status = set_nz(registers.status, next_high);
+        write(0x5B41U, kReturnPc, kZeroPageRmw, 0x202EU, next_high);
+    }
+
+    if (registers.accumulator != tile.tile_high
+        || next_low != static_cast<std::uint8_t>(tile.next_address)
+        || next_high != static_cast<std::uint8_t>(tile.next_address >> 8U)) {
+        return std::nullopt;
+    }
+    auto at_return = registers;
+    at_return.program_counter = kReturnPc;
+    absorb_return(
+        replacement,
+        work_ram,
+        entry.registers.stack_pointer,
+        {kRoutine.physical_bank, kReturnPc},
+        cycle,
+        at_return);
+    return replacement;
+}
+
+[[nodiscard]] std::optional<RoutineReplacement>
+replace_video_update_idle_gate(
+    const RoutineEntry& entry,
+    const std::span<const std::byte> work_ram)
+{
+    // 08:5E42 is the head of a deferred video-update routine. The canonical
+    // route enters it once per active frame, and all 2,649 calls find both
+    // gate bytes clear and return after four instructions. If either byte is
+    // active, the routine has state-changing work beyond this prefix; leave
+    // that unobserved path to the original code.
+    constexpr RoutineKey kRoutine{0x08U, 0x5E42U};
+    constexpr std::uint16_t kReturnPc = 0x5E4CU;
+    constexpr std::uint32_t kAbsolute = 15U;
+    constexpr std::uint32_t kBranchNotTaken = 6U;
+
+    if (entry.routine != kRoutine || work_ram.size() < 0x2000U
+        || (entry.registers.status & kUnsupportedFlags) != 0U
+        || entry.registers.mpr[1] != 0xF8U) {
+        return std::nullopt;
+    }
+
+    const auto video_busy =
+        std::to_integer<std::uint8_t>(work_ram[0x0254U]);
+    const auto deferred_update =
+        std::to_integer<std::uint8_t>(work_ram[0x0D53U]);
+    if (!dc_video_update_gate_is_idle(video_busy, deferred_update)) {
+        return std::nullopt;
+    }
+
+    auto registers = entry.registers;
+    std::uint32_t cycle = 0U;
+    RoutineReplacement replacement{};
+    replacement.checkpoints.reserve(5U);
+
+    const auto step =
+        [&](const std::uint16_t instruction_pc,
+            const std::uint16_t resume_pc,
+            const std::uint32_t cycles) {
+            cycle += cycles;
+            registers.program_counter = resume_pc;
+            replacement.checkpoints.push_back({
+                .interrupt_sample_master_cycle_offset = cycle - 3U,
+                .master_cycle_offset = cycle,
+                .instruction = {kRoutine.physical_bank, instruction_pc},
+                .registers = registers,
+            });
+        };
+    const auto load =
+        [&](const std::uint16_t instruction_pc,
+            const std::uint16_t resume_pc,
+            const std::uint8_t value) {
+            registers.accumulator = value;
+            registers.status = set_nz(registers.status, value);
+            step(instruction_pc, resume_pc, kAbsolute);
+        };
+
+    load(0x5E42U, 0x5E45U, video_busy);
+    step(0x5E45U, 0x5E47U, kBranchNotTaken);
+    load(0x5E47U, 0x5E4AU, deferred_update);
+    step(0x5E4AU, kReturnPc, kBranchNotTaken);
+
+    auto at_return = registers;
+    at_return.program_counter = kReturnPc;
+    absorb_return(
+        replacement,
+        work_ram,
+        entry.registers.stack_pointer,
+        {kRoutine.physical_bank, kReturnPc},
+        cycle,
+        at_return);
     return replacement;
 }
 
