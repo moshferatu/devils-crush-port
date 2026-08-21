@@ -39,10 +39,12 @@ endif()
 #
 # All twelve calls this family makes are crossed rather than stopped in front
 # of, so a transcript pushes the two return bytes itself and ends on the
-# callee's first instruction. Eleven land on a registered entry; 01:CB7B lands
-# on 01:CF33, which no replacement owns, and is crossed anyway because a
-# crossing converts the twenty-one cycles the `JSR` costs whatever is on the far
-# side of it.
+# callee's first instruction. The former unowned target at 01:CF33 is now the
+# confirmed-contact response: nine bounded continuations cross its four
+# already-native physics helpers, preserve both motion arms, and hand the two
+# terminal jumps to native 01:DC95. The negative-motion cleanup absorbs its
+# local RTS at 01:CF99. The 42 routed position-retry calls are further split at
+# 01:CDF8/CE22/CEB5/CE4D around cached-position restore and the bounds probe.
 #
 # The zero page here is shared with the rest of the game: $2D-$30 is the general
 # pointer scratch, $26 a tile-id temporary, $64-$67 the sweep cursor and
@@ -68,8 +70,17 @@ set(
     expected_write_sha256
     "99dbdf8397ebc3098692a948a0de881682059fb30b174cbf768bc4f783947bd1"
 )
+set(
+    expected_response_call_sha256
+    "b80c66e7d32e38c6290e76908bc3fdf436730bb3bb56f413630ed83d8aa39dfe"
+)
+set(
+    expected_response_call_write_sha256
+    "22e95e29434ed9c7e7e30850c49eb33d81ae61dd92c4ebb9d1f45d0052835484"
+)
 
 set(write_output "${OUTPUT}.writes.csv")
+set(response_call_output "${OUTPUT}.response.calls.csv")
 
 execute_process(
     COMMAND
@@ -116,6 +127,36 @@ execute_process(
         "01:CBCF@all"
         --replace-hook
         "01:CD74@all"
+        --replace-hook
+        "01:CDF8@all"
+        --replace-hook
+        "01:CE22@all"
+        --replace-hook
+        "01:CE4D@all"
+        --replace-hook
+        "01:CEB5@all"
+        --replace-hook
+        "01:CF33@all"
+        --replace-hook
+        "01:CF42@all"
+        --replace-hook
+        "01:CF45@all"
+        --replace-hook
+        "01:CF53@all"
+        --replace-hook
+        "01:CF56@all"
+        --replace-hook
+        "01:CF60@all"
+        --replace-hook
+        "01:CF63@all"
+        --replace-hook
+        "01:CF6A@all"
+        --replace-hook
+        "01:CF8C@all"
+        --observe-hook
+        "01:CF33"
+        --routine-call-trace
+        "${response_call_output}"
         --work-ram-write-range
         "2026-2026"
         --work-ram-write-range
@@ -178,6 +219,21 @@ foreach(expected_line IN ITEMS
     "Native replacement 01:CBCA@all entries: 19 of 19"
     "Native replacement 01:CBCF@all entries: 270 of 270"
     "Native replacement 01:CD74@all entries: 3233 of 3233"
+    "Native replacement 01:CDF8@all entries: 42 of 42"
+    "Native replacement 01:CE22@all entries: 42 of 42"
+    "Native replacement 01:CE4D@all entries: 42 of 42"
+    "Native replacement 01:CEB5@all entries: 42 of 42"
+    "Native replacement 01:CF33@all entries: 520 of 520"
+    "Native replacement 01:CF42@all entries: 85 of 85"
+    "Native replacement 01:CF45@all entries: 85 of 85"
+    "Native replacement 01:CF53@all entries: 85 of 85"
+    "Native replacement 01:CF56@all entries: 85 of 85"
+    "Native replacement 01:CF60@all entries: 393 of 393"
+    "Native replacement 01:CF63@all entries: 393 of 393"
+    "Native replacement 01:CF6A@all entries: 228 of 228"
+    "Native replacement 01:CF8C@all entries: 228 of 228"
+    "Observe hook 1 entries: 520"
+    "Routine call trace complete: 520 calls, 251090 writes"
     "Work-RAM write trace complete: 6906417 selected writes"
 )
     string(FIND "${recorder_output}" "${expected_line}" line_offset)
@@ -186,6 +242,18 @@ foreach(expected_line IN ITEMS
             FATAL_ERROR
             "Semantic collision-tail output omitted '${expected_line}'.\n"
             "${recorder_output}${recorder_error}"
+        )
+    endif()
+endforeach()
+
+file(SHA256 "${response_call_output}" actual_response_call_sha256)
+file(SHA256 "${response_call_output}.writes.csv" actual_response_call_write_sha256)
+foreach(response_artifact IN ITEMS response_call response_call_write)
+    if(NOT actual_${response_artifact}_sha256 STREQUAL expected_${response_artifact}_sha256)
+        message(FATAL_ERROR
+            "Contact-response ${response_artifact} artifact differs from assembly.\n"
+            "Expected: ${expected_${response_artifact}_sha256}\n"
+            "Actual:   ${actual_${response_artifact}_sha256}"
         )
     endif()
 endforeach()
@@ -211,7 +279,8 @@ endforeach()
 
 message(
     STATUS
-    "Semantic collision tail runs all twenty entry points natively across "
-    "29,080 admitted entries, with the family's shared zero page, its whole "
+    "Semantic collision tail and contact response run all twenty-nine entry "
+    "points natively across 31,097 admitted entries, with the family's shared "
+    "zero page, its whole "
     "output, the stack page and the state census identical to assembly."
 )

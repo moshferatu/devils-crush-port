@@ -14,11 +14,10 @@ using emulation::RoutineEntry;
 using emulation::RoutineKey;
 using emulation::RoutineReplacement;
 
-// The graphics driver's three port-streaming loops. All of 00:E3C0-E47C is one
-// idiom: point a VDC or VCE write pointer at a base address, then push words
-// through the data ports until a counter runs out. Nothing in the region reads
-// a device register, so unlike the interrupt dispatcher above it the whole
-// region is expressible.
+// The graphics driver's four port-streaming loops and adjacent work-RAM
+// stream decoder. All five consume MPR-mapped byte streams without reading a
+// device register, so unlike the interrupt dispatcher above they are fully
+// expressible.
 //
 //   00:E3C0  clear 512 VRAM words from $7800 through the VDC data ports
 //   00:E3FC  clear 1,024 VCE colour entries through $0404/$0405
@@ -27,6 +26,14 @@ using emulation::RoutineReplacement;
 //            terminates, $01-$7F copies that many literal little-endian words,
 //            and $81-$FF repeats the following word (command & $7F) times --
 //            $80 repeating it 256 times.
+//   00:E4E3  the byte-stream decoder: the same pointer pair names a work-RAM
+//            destination and MPR-mapped source. Positive commands copy that
+//            many literal bytes, negative commands repeat the following byte,
+//            and zero terminates.
+//   00:FA40  the one-shot title/setup tile uploader: copy one 64-byte source
+//            row plus its packed attribute nibbles to the VDC, then advance
+//            the source, attribute, and VRAM pointers. The outer loop has 26
+//            rows; FA6A/FA6E are the two sides of its hardware-executed BBR0.
 //
 // The decoder is 6.9M of the region's 7.0M master cycles across 41 calls, which
 // is 167,000 cycles a call: 3,400 port writes and 12,400 instructions against a
@@ -106,16 +113,18 @@ constexpr std::size_t kCheckpointBudget = 1980U;
 {
     return logical_pc == 0xE3C0U || logical_pc == 0xE3D7U
         || logical_pc == 0xE3FCU || logical_pc == 0xE403U
-        || logical_pc == 0xE41FU || logical_pc == 0xE439U;
+        || logical_pc == 0xE41FU || logical_pc == 0xE439U
+        || logical_pc == 0xE4E3U || logical_pc == 0xFA40U
+        || logical_pc == 0xFA6AU || logical_pc == 0xFA6EU;
 }
 
-// The three RTS instructions the core executes itself, as everywhere else in
+// The four RTS instructions the core executes itself, as everywhere else in
 // the port.
 [[nodiscard]] constexpr bool is_return_instruction(
     const std::uint16_t logical_pc)
 {
     return logical_pc == 0xE3E6U || logical_pc == 0xE41EU
-        || logical_pc == 0xE47CU;
+        || logical_pc == 0xE47CU || logical_pc == 0xE532U;
 }
 
 } // namespace
@@ -140,6 +149,11 @@ std::optional<RoutineReplacement> replace_vram_upload(
     // mapped at segment 0 -- the same condition the core's write validator
     // imposes.
     if (entry.registers.mpr[0] != 0xFFU) {
+        return std::nullopt;
+    }
+    if ((entry.routine.logical_pc == 0xE4E3U
+         || entry.routine.logical_pc >= 0xFA40U)
+        && entry.registers.mpr[1] != 0xF8U) {
         return std::nullopt;
     }
 
@@ -293,10 +307,63 @@ std::optional<RoutineReplacement> replace_vram_upload(
         return read_mapped(
             static_cast<std::uint16_t>(pointer + registers.y));
     };
+    const auto indexed_pointer_byte =
+        [&read_ram, &read_mapped, &registers, &zp](
+            const std::uint8_t pointer_zp) {
+            const auto pointer = static_cast<std::uint16_t>(
+                read_ram(zp(pointer_zp))
+                | static_cast<std::uint16_t>(
+                    read_ram(zp(static_cast<std::uint8_t>(pointer_zp + 1U)))
+                    << 8U));
+            return read_mapped(
+                static_cast<std::uint16_t>(pointer + registers.y));
+        };
+    const auto destination_address = [&read_ram, &registers, &zp]() {
+        const auto pointer = static_cast<std::uint16_t>(
+            read_ram(zp(0x2DU))
+            | static_cast<std::uint16_t>(read_ram(zp(0x2EU)) << 8U));
+        return static_cast<std::uint16_t>(pointer + registers.y);
+    };
 
     const auto load_accumulator = [&registers](const std::uint8_t value) {
         registers.accumulator = value;
         registers.status = set_nz(registers.status, value);
+    };
+    const auto load_y = [&registers](const std::uint8_t value) {
+        registers.y = value;
+        registers.status = set_nz(registers.status, value);
+    };
+
+    const auto shift_right_accumulator = [&registers, &load_accumulator]() {
+        const auto carry = static_cast<std::uint8_t>(
+            registers.accumulator & 0x01U);
+        registers.status = static_cast<std::uint8_t>(
+            registers.status & static_cast<std::uint8_t>(~kCarry));
+        registers.status = static_cast<std::uint8_t>(
+            registers.status | carry);
+        load_accumulator(
+            static_cast<std::uint8_t>(registers.accumulator >> 1U));
+    };
+    const auto shift_left_accumulator = [&registers, &load_accumulator]() {
+        const bool carry = (registers.accumulator & 0x80U) != 0U;
+        registers.status = static_cast<std::uint8_t>(
+            registers.status & static_cast<std::uint8_t>(~kCarry));
+        if (carry) {
+            registers.status = static_cast<std::uint8_t>(
+                registers.status | kCarry);
+        }
+        load_accumulator(
+            static_cast<std::uint8_t>(registers.accumulator << 1U));
+    };
+    const auto compare_y = [&registers](const std::uint8_t operand) {
+        const auto difference = static_cast<std::uint8_t>(registers.y - operand);
+        registers.status = static_cast<std::uint8_t>(
+            registers.status & static_cast<std::uint8_t>(~kCarry));
+        if (registers.y >= operand) {
+            registers.status = static_cast<std::uint8_t>(
+                registers.status | kCarry);
+        }
+        registers.status = set_nz(registers.status, difference);
     };
 
     // ADC in binary mode, with the overflow bit the core computes. Nothing in
@@ -345,6 +412,14 @@ std::optional<RoutineReplacement> replace_vram_upload(
             finish(pc);
             return replacement;
         }
+        // BBR0 is internally two independently sampled core operations and
+        // cannot be represented by one checkpoint without shifting a VDC
+        // event. The core executes it and re-enters at the selected arm. The
+        // outer BNE is the natural row boundary and likewise re-enters FA40.
+        if (pc == 0xFA67U || pc == 0xFAA5U) {
+            finish(pc);
+            return replacement;
+        }
         // A clear loop chunks whenever either channel is full. The core takes
         // the branch and re-enters at the loop head.
         if ((pc == 0xE3E4U || pc == 0xE41CU)
@@ -378,6 +453,247 @@ std::optional<RoutineReplacement> replace_vram_upload(
         }
 
         switch (pc) {
+        // ---- 00:FA40  title/setup tile row upload ------------------------
+        case 0xFA40U:  // LDA #$00 -- select MAWR
+            load_accumulator(0x00U);
+            append_checkpoint(0xFA40U, 0xFA42U, 6U);
+            pc = 0xFA42U;
+            break;
+        case 0xFA42U:  // STA $06
+            store(0xFA42U, zp(0x06U), registers.accumulator);
+            append_checkpoint(0xFA42U, 0xFA44U, 12U);
+            pc = 0xFA44U;
+            break;
+        case 0xFA44U:  // STA $0000
+            store_port(0xFA44U, 0x0000U, registers.accumulator);
+            append_checkpoint(0xFA44U, 0xFA47U, 18U, 6U);
+            pc = 0xFA47U;
+            break;
+        case 0xFA47U:  // LDA $2D
+            load_accumulator(read_ram(zp(0x2DU)));
+            append_checkpoint(0xFA47U, 0xFA49U, 12U);
+            pc = 0xFA49U;
+            break;
+        case 0xFA49U:  // STA $0002
+            store_port(0xFA49U, 0x0002U, registers.accumulator);
+            append_checkpoint(0xFA49U, 0xFA4CU, 18U, 6U);
+            pc = 0xFA4CU;
+            break;
+        case 0xFA4CU:  // LDA $2E
+            load_accumulator(read_ram(zp(0x2EU)));
+            append_checkpoint(0xFA4CU, 0xFA4EU, 12U);
+            pc = 0xFA4EU;
+            break;
+        case 0xFA4EU:  // STA $0003
+            store_port(0xFA4EU, 0x0003U, registers.accumulator);
+            append_checkpoint(0xFA4EU, 0xFA51U, 18U, 6U);
+            pc = 0xFA51U;
+            break;
+        case 0xFA51U:  // LDA #$02 -- select VWR
+            load_accumulator(0x02U);
+            append_checkpoint(0xFA51U, 0xFA53U, 6U);
+            pc = 0xFA53U;
+            break;
+        case 0xFA53U:  // STA $06
+            store(0xFA53U, zp(0x06U), registers.accumulator);
+            append_checkpoint(0xFA53U, 0xFA55U, 12U);
+            pc = 0xFA55U;
+            break;
+        case 0xFA55U:  // STA $0000
+            store_port(0xFA55U, 0x0000U, registers.accumulator);
+            append_checkpoint(0xFA55U, 0xFA58U, 18U, 6U);
+            pc = 0xFA58U;
+            break;
+        case 0xFA58U:  // CLY -- no flags
+            registers.y = 0U;
+            append_checkpoint(0xFA58U, 0xFA59U, 6U);
+            pc = 0xFA59U;
+            break;
+        case 0xFA59U:  // LDA ($2F),Y -- tile low byte
+            load_accumulator(indexed_pointer_byte(0x2FU));
+            append_checkpoint(0xFA59U, 0xFA5BU, 21U);
+            pc = 0xFA5BU;
+            break;
+        case 0xFA5BU:  // STA $0002
+            store_port(0xFA5BU, 0x0002U, registers.accumulator);
+            append_checkpoint(0xFA5BU, 0xFA5EU, 18U, 6U);
+            pc = 0xFA5EU;
+            break;
+        case 0xFA5EU:  // PHY
+            push(0xFA5EU, registers.y);
+            append_checkpoint(0xFA5EU, 0xFA5FU, 9U);
+            pc = 0xFA5FU;
+            break;
+        case 0xFA5FU:  // TYA
+            load_accumulator(registers.y);
+            append_checkpoint(0xFA5FU, 0xFA60U, 6U);
+            pc = 0xFA60U;
+            break;
+        case 0xFA60U:  // LSR A -- word index
+            shift_right_accumulator();
+            append_checkpoint(0xFA60U, 0xFA61U, 6U);
+            pc = 0xFA61U;
+            break;
+        case 0xFA61U:  // STA $26 -- low bit selects packed nibble
+            store(0xFA61U, zp(0x26U), registers.accumulator);
+            append_checkpoint(0xFA61U, 0xFA63U, 12U);
+            pc = 0xFA63U;
+            break;
+        case 0xFA63U:  // LSR A -- attribute byte index
+            shift_right_accumulator();
+            append_checkpoint(0xFA63U, 0xFA64U, 6U);
+            pc = 0xFA64U;
+            break;
+        case 0xFA64U:  // TAY
+            load_y(registers.accumulator);
+            append_checkpoint(0xFA64U, 0xFA65U, 6U);
+            pc = 0xFA65U;
+            break;
+        case 0xFA65U:  // LDA ($35),Y -- packed attribute byte
+            load_accumulator(indexed_pointer_byte(0x35U));
+            append_checkpoint(0xFA65U, 0xFA67U, 21U);
+            pc = 0xFA67U;
+            break;
+
+        // The core executes BBR0 $26 at FA67, preserving every event sample.
+        case 0xFA6AU:  // ASL A -- odd word uses the high nibble
+        case 0xFA6BU:
+        case 0xFA6CU:
+        case 0xFA6DU: {
+            const auto next = static_cast<std::uint16_t>(pc + 1U);
+            shift_left_accumulator();
+            append_checkpoint(pc, next, 6U);
+            pc = next;
+            break;
+        }
+        case 0xFA6EU:  // AND #$F0
+            load_accumulator(
+                static_cast<std::uint8_t>(registers.accumulator & 0xF0U));
+            append_checkpoint(0xFA6EU, 0xFA70U, 6U);
+            pc = 0xFA70U;
+            break;
+        case 0xFA70U:  // STA $26
+            store(0xFA70U, zp(0x26U), registers.accumulator);
+            append_checkpoint(0xFA70U, 0xFA72U, 12U);
+            pc = 0xFA72U;
+            break;
+        case 0xFA72U:  // PLY -- restore byte-stream index
+            load_y(pop());
+            append_checkpoint(0xFA72U, 0xFA73U, 12U);
+            pc = 0xFA73U;
+            break;
+        case 0xFA73U:  // INY
+            load_y(static_cast<std::uint8_t>(registers.y + 1U));
+            append_checkpoint(0xFA73U, 0xFA74U, 6U);
+            pc = 0xFA74U;
+            break;
+        case 0xFA74U:  // LDA ($2F),Y -- tile high byte
+            load_accumulator(indexed_pointer_byte(0x2FU));
+            append_checkpoint(0xFA74U, 0xFA76U, 21U);
+            pc = 0xFA76U;
+            break;
+        case 0xFA76U:  // ORA $26
+            load_accumulator(static_cast<std::uint8_t>(
+                registers.accumulator | read_ram(zp(0x26U))));
+            append_checkpoint(0xFA76U, 0xFA78U, 12U);
+            pc = 0xFA78U;
+            break;
+        case 0xFA78U:  // STA $0003 -- complete the VDC word
+            store_port(0xFA78U, 0x0003U, registers.accumulator);
+            append_checkpoint(0xFA78U, 0xFA7BU, 18U, 6U);
+            pc = 0xFA7BU;
+            break;
+        case 0xFA7BU:  // INY
+            load_y(static_cast<std::uint8_t>(registers.y + 1U));
+            append_checkpoint(0xFA7BU, 0xFA7CU, 6U);
+            pc = 0xFA7CU;
+            break;
+        case 0xFA7CU:  // CPY #$40
+            compare_y(0x40U);
+            append_checkpoint(0xFA7CU, 0xFA7EU, 6U);
+            pc = 0xFA7EU;
+            break;
+        case 0xFA7EU: {  // BNE $FA59
+            const bool taken = (registers.status & kZero) == 0U;
+            const auto next = static_cast<std::uint16_t>(
+                taken ? 0xFA59U : 0xFA80U);
+            append_checkpoint(0xFA7EU, next, taken ? 12U : 6U);
+            pc = next;
+            break;
+        }
+        case 0xFA80U:  // CLC -- advance source by 64 bytes
+        case 0xFA8CU:
+        case 0xFA98U:
+            registers.status = static_cast<std::uint8_t>(
+                registers.status & static_cast<std::uint8_t>(~kCarry));
+            append_checkpoint(pc, static_cast<std::uint16_t>(pc + 1U), 6U);
+            pc = static_cast<std::uint16_t>(pc + 1U);
+            break;
+        case 0xFA81U:  // LDA $2F
+        case 0xFA8DU:  // LDA $2D
+        case 0xFA99U: { // LDA $35
+            const auto address = pc == 0xFA81U ? 0x2FU
+                : (pc == 0xFA8DU ? 0x2DU : 0x35U);
+            load_accumulator(read_ram(zp(static_cast<std::uint8_t>(address))));
+            append_checkpoint(pc, static_cast<std::uint16_t>(pc + 2U), 12U);
+            pc = static_cast<std::uint16_t>(pc + 2U);
+            break;
+        }
+        case 0xFA83U:  // ADC #$40
+        case 0xFA8FU:
+            add_with_carry(0x40U);
+            append_checkpoint(pc, static_cast<std::uint16_t>(pc + 2U), 6U);
+            pc = static_cast<std::uint16_t>(pc + 2U);
+            break;
+        case 0xFA9BU:  // ADC #$10
+            add_with_carry(0x10U);
+            append_checkpoint(0xFA9BU, 0xFA9DU, 6U);
+            pc = 0xFA9DU;
+            break;
+        case 0xFA85U:  // STA $2F
+        case 0xFA91U:  // STA $2D
+        case 0xFA9DU: { // STA $35
+            const auto address = pc == 0xFA85U ? 0x2FU
+                : (pc == 0xFA91U ? 0x2DU : 0x35U);
+            store(pc, zp(static_cast<std::uint8_t>(address)), registers.accumulator);
+            append_checkpoint(pc, static_cast<std::uint16_t>(pc + 2U), 12U);
+            pc = static_cast<std::uint16_t>(pc + 2U);
+            break;
+        }
+        case 0xFA87U:  // CLA -- carry survives into high-byte add
+        case 0xFA93U:
+        case 0xFA9FU:
+            registers.accumulator = 0U;
+            append_checkpoint(pc, static_cast<std::uint16_t>(pc + 1U), 6U);
+            pc = static_cast<std::uint16_t>(pc + 1U);
+            break;
+        case 0xFA88U:  // ADC $30
+        case 0xFA94U:  // ADC $2E
+        case 0xFAA0U: { // ADC $36
+            const auto address = pc == 0xFA88U ? 0x30U
+                : (pc == 0xFA94U ? 0x2EU : 0x36U);
+            add_with_carry(read_ram(zp(static_cast<std::uint8_t>(address))));
+            append_checkpoint(pc, static_cast<std::uint16_t>(pc + 2U), 12U);
+            pc = static_cast<std::uint16_t>(pc + 2U);
+            break;
+        }
+        case 0xFA8AU:  // STA $30
+        case 0xFA96U:  // STA $2E
+        case 0xFAA2U: { // STA $36
+            const auto address = pc == 0xFA8AU ? 0x30U
+                : (pc == 0xFA96U ? 0x2EU : 0x36U);
+            store(pc, zp(static_cast<std::uint8_t>(address)), registers.accumulator);
+            append_checkpoint(pc, static_cast<std::uint16_t>(pc + 2U), 12U);
+            pc = static_cast<std::uint16_t>(pc + 2U);
+            break;
+        }
+        case 0xFAA4U:  // DEX -- BNE $FA40 is executed by the core
+            registers.x = static_cast<std::uint8_t>(registers.x - 1U);
+            registers.status = set_nz(registers.status, registers.x);
+            append_checkpoint(0xFAA4U, 0xFAA5U, 6U);
+            pc = 0xFAA5U;
+            break;
+
         // ---- 00:E3C0  clear 512 VRAM words from $7800 --------------------
         case 0xE3C0U:  // LDA #$00
             load_accumulator(0x00U);
@@ -880,6 +1196,344 @@ std::optional<RoutineReplacement> replace_vram_upload(
             append_checkpoint(0xE47BU, 0xE47CU, 12U);
             pc = 0xE47CU;
             break;
+
+        // ---- 00:E4E3  byte stream into work RAM --------------------------
+        // One transcript owns exactly one stream record. The backward BRA at
+        // E530 re-enters this registered address, which keeps the largest
+        // literal record below both transaction-channel limits.
+        case 0xE4E3U:  // CLY
+            registers.y = 0U;
+            append_checkpoint(0xE4E3U, 0xE4E4U, 6U);
+            pc = 0xE4E4U;
+            break;
+
+        case 0xE4E4U:  // LDA ($2F),Y -- command byte
+            load_accumulator(source_byte());
+            append_checkpoint(0xE4E4U, 0xE4E6U, 21U);
+            pc = 0xE4E6U;
+            break;
+
+        case 0xE4E6U: {  // BEQ $E532 -- end of stream
+            const bool taken = (registers.status & kZero) != 0U;
+            const auto next = static_cast<std::uint16_t>(
+                taken ? 0xE532U : 0xE4E8U);
+            append_checkpoint(0xE4E6U, next, taken ? 12U : 6U);
+            pc = next;
+            break;
+        }
+
+        case 0xE4E8U: {  // BMI $E508 -- repeated byte record
+            const bool taken = (registers.status & kNegative) != 0U;
+            const auto next = static_cast<std::uint16_t>(
+                taken ? 0xE508U : 0xE4EAU);
+            append_checkpoint(0xE4E8U, next, taken ? 12U : 6U);
+            pc = next;
+            break;
+        }
+
+        case 0xE4EAU:  // STA $37 -- literal byte count
+            store(0xE4EAU, zp(0x37U), registers.accumulator);
+            append_checkpoint(0xE4EAU, 0xE4ECU, 12U);
+            pc = 0xE4ECU;
+            break;
+
+        case 0xE4ECU:  // CLX
+            registers.x = 0U;
+            append_checkpoint(0xE4ECU, 0xE4EDU, 6U);
+            pc = 0xE4EDU;
+            break;
+
+        case 0xE4EDU:  // INY
+            registers.y = static_cast<std::uint8_t>(registers.y + 1U);
+            registers.status = set_nz(registers.status, registers.y);
+            append_checkpoint(0xE4EDU, 0xE4EEU, 6U);
+            pc = 0xE4EEU;
+            break;
+
+        case 0xE4EEU:  // LDA ($2F),Y
+            load_accumulator(source_byte());
+            append_checkpoint(0xE4EEU, 0xE4F0U, 21U);
+            pc = 0xE4F0U;
+            break;
+
+        case 0xE4F0U: {  // SXY -- destination index into Y
+            const auto swapped = registers.x;
+            registers.x = registers.y;
+            registers.y = swapped;
+            append_checkpoint(0xE4F0U, 0xE4F1U, 9U);
+            pc = 0xE4F1U;
+            break;
+        }
+
+        case 0xE4F1U:  // STA ($2D),Y
+            store(0xE4F1U, destination_address(), registers.accumulator);
+            append_checkpoint(0xE4F1U, 0xE4F3U, 21U);
+            pc = 0xE4F3U;
+            break;
+
+        case 0xE4F3U:  // INY -- destination index
+            registers.y = static_cast<std::uint8_t>(registers.y + 1U);
+            registers.status = set_nz(registers.status, registers.y);
+            append_checkpoint(0xE4F3U, 0xE4F4U, 6U);
+            pc = 0xE4F4U;
+            break;
+
+        case 0xE4F4U:  // INX -- source index
+            registers.x = static_cast<std::uint8_t>(registers.x + 1U);
+            registers.status = set_nz(registers.status, registers.x);
+            append_checkpoint(0xE4F4U, 0xE4F5U, 6U);
+            pc = 0xE4F5U;
+            break;
+
+        case 0xE4F5U: {  // SXY -- restore source Y and destination X
+            const auto swapped = registers.x;
+            registers.x = registers.y;
+            registers.y = swapped;
+            append_checkpoint(0xE4F5U, 0xE4F6U, 9U);
+            pc = 0xE4F6U;
+            break;
+        }
+
+        case 0xE4F6U: {  // DEC $37
+            const auto value = static_cast<std::uint8_t>(
+                read_ram(zp(0x37U)) - 1U);
+            store(0xE4F6U, zp(0x37U), value);
+            registers.status = set_nz(registers.status, value);
+            append_checkpoint(0xE4F6U, 0xE4F8U, 18U);
+            pc = 0xE4F8U;
+            break;
+        }
+
+        case 0xE4F8U: {  // BNE $E4EE
+            const bool taken = (registers.status & kZero) == 0U;
+            const auto next = static_cast<std::uint16_t>(
+                taken ? 0xE4EEU : 0xE4FAU);
+            append_checkpoint(0xE4F8U, next, taken ? 12U : 6U);
+            pc = next;
+            break;
+        }
+
+        case 0xE4FAU:  // TXA -- literal count advances destination
+            load_accumulator(registers.x);
+            append_checkpoint(0xE4FAU, 0xE4FBU, 6U);
+            pc = 0xE4FBU;
+            break;
+
+        case 0xE4FBU:  // CLC
+            registers.status = static_cast<std::uint8_t>(
+                registers.status & static_cast<std::uint8_t>(~kCarry));
+            append_checkpoint(0xE4FBU, 0xE4FCU, 6U);
+            pc = 0xE4FCU;
+            break;
+
+        case 0xE4FCU:  // ADC $2D
+            add_with_carry(read_ram(zp(0x2DU)));
+            append_checkpoint(0xE4FCU, 0xE4FEU, 12U);
+            pc = 0xE4FEU;
+            break;
+
+        case 0xE4FEU:  // STA $2D
+            store(0xE4FEU, zp(0x2DU), registers.accumulator);
+            append_checkpoint(0xE4FEU, 0xE500U, 12U);
+            pc = 0xE500U;
+            break;
+
+        case 0xE500U:  // LDA $2E
+            load_accumulator(read_ram(zp(0x2EU)));
+            append_checkpoint(0xE500U, 0xE502U, 12U);
+            pc = 0xE502U;
+            break;
+
+        case 0xE502U:  // ADC #$00
+            add_with_carry(0x00U);
+            append_checkpoint(0xE502U, 0xE504U, 6U);
+            pc = 0xE504U;
+            break;
+
+        case 0xE504U:  // STA $2E
+            store(0xE504U, zp(0x2EU), registers.accumulator);
+            append_checkpoint(0xE504U, 0xE506U, 12U);
+            pc = 0xE506U;
+            break;
+
+        case 0xE506U:  // BRA $E524
+            append_checkpoint(0xE506U, 0xE524U, 12U);
+            pc = 0xE524U;
+            break;
+
+        case 0xE508U:  // AND #$7F -- repeat count, zero means 256
+            load_accumulator(static_cast<std::uint8_t>(
+                registers.accumulator & 0x7FU));
+            append_checkpoint(0xE508U, 0xE50AU, 6U);
+            pc = 0xE50AU;
+            break;
+
+        case 0xE50AU:  // TAX
+            registers.x = registers.accumulator;
+            registers.status = set_nz(registers.status, registers.x);
+            append_checkpoint(0xE50AU, 0xE50BU, 6U);
+            pc = 0xE50BU;
+            break;
+
+        case 0xE50BU:  // INY
+            registers.y = static_cast<std::uint8_t>(registers.y + 1U);
+            registers.status = set_nz(registers.status, registers.y);
+            append_checkpoint(0xE50BU, 0xE50CU, 6U);
+            pc = 0xE50CU;
+            break;
+
+        case 0xE50CU:  // LDA ($2F),Y -- repeated value
+            load_accumulator(source_byte());
+            append_checkpoint(0xE50CU, 0xE50EU, 21U);
+            pc = 0xE50EU;
+            break;
+
+        case 0xE50EU:  // INY
+            registers.y = static_cast<std::uint8_t>(registers.y + 1U);
+            registers.status = set_nz(registers.status, registers.y);
+            append_checkpoint(0xE50EU, 0xE50FU, 6U);
+            pc = 0xE50FU;
+            break;
+
+        case 0xE50FU:  // PHY -- preserve the two-byte source length
+            push(0xE50FU, registers.y);
+            append_checkpoint(0xE50FU, 0xE510U, 9U);
+            pc = 0xE510U;
+            break;
+
+        case 0xE510U:  // CLY
+            registers.y = 0U;
+            append_checkpoint(0xE510U, 0xE511U, 6U);
+            pc = 0xE511U;
+            break;
+
+        case 0xE511U:  // STA ($2D),Y
+            store(0xE511U, destination_address(), registers.accumulator);
+            append_checkpoint(0xE511U, 0xE513U, 21U);
+            pc = 0xE513U;
+            break;
+
+        case 0xE513U:  // INY
+            registers.y = static_cast<std::uint8_t>(registers.y + 1U);
+            registers.status = set_nz(registers.status, registers.y);
+            append_checkpoint(0xE513U, 0xE514U, 6U);
+            pc = 0xE514U;
+            break;
+
+        case 0xE514U:  // DEX
+            registers.x = static_cast<std::uint8_t>(registers.x - 1U);
+            registers.status = set_nz(registers.status, registers.x);
+            append_checkpoint(0xE514U, 0xE515U, 6U);
+            pc = 0xE515U;
+            break;
+
+        case 0xE515U: {  // BNE $E511
+            const bool taken = (registers.status & kZero) == 0U;
+            const auto next = static_cast<std::uint16_t>(
+                taken ? 0xE511U : 0xE517U);
+            append_checkpoint(0xE515U, next, taken ? 12U : 6U);
+            pc = next;
+            break;
+        }
+
+        case 0xE517U:  // TYA -- repeat count advances destination
+            load_accumulator(registers.y);
+            append_checkpoint(0xE517U, 0xE518U, 6U);
+            pc = 0xE518U;
+            break;
+
+        case 0xE518U:  // CLC
+            registers.status = static_cast<std::uint8_t>(
+                registers.status & static_cast<std::uint8_t>(~kCarry));
+            append_checkpoint(0xE518U, 0xE519U, 6U);
+            pc = 0xE519U;
+            break;
+
+        case 0xE519U:  // ADC $2D
+            add_with_carry(read_ram(zp(0x2DU)));
+            append_checkpoint(0xE519U, 0xE51BU, 12U);
+            pc = 0xE51BU;
+            break;
+
+        case 0xE51BU:  // STA $2D
+            store(0xE51BU, zp(0x2DU), registers.accumulator);
+            append_checkpoint(0xE51BU, 0xE51DU, 12U);
+            pc = 0xE51DU;
+            break;
+
+        case 0xE51DU:  // LDA $2E
+            load_accumulator(read_ram(zp(0x2EU)));
+            append_checkpoint(0xE51DU, 0xE51FU, 12U);
+            pc = 0xE51FU;
+            break;
+
+        case 0xE51FU:  // ADC #$00
+            add_with_carry(0x00U);
+            append_checkpoint(0xE51FU, 0xE521U, 6U);
+            pc = 0xE521U;
+            break;
+
+        case 0xE521U:  // STA $2E
+            store(0xE521U, zp(0x2EU), registers.accumulator);
+            append_checkpoint(0xE521U, 0xE523U, 12U);
+            pc = 0xE523U;
+            break;
+
+        case 0xE523U:  // PLY -- restore source-record length
+            registers.y = pop();
+            registers.status = set_nz(registers.status, registers.y);
+            append_checkpoint(0xE523U, 0xE524U, 12U);
+            pc = 0xE524U;
+            break;
+
+        case 0xE524U:  // TYA -- advance source pointer
+            load_accumulator(registers.y);
+            append_checkpoint(0xE524U, 0xE525U, 6U);
+            pc = 0xE525U;
+            break;
+
+        case 0xE525U:  // CLC
+            registers.status = static_cast<std::uint8_t>(
+                registers.status & static_cast<std::uint8_t>(~kCarry));
+            append_checkpoint(0xE525U, 0xE526U, 6U);
+            pc = 0xE526U;
+            break;
+
+        case 0xE526U:  // ADC $2F
+            add_with_carry(read_ram(zp(0x2FU)));
+            append_checkpoint(0xE526U, 0xE528U, 12U);
+            pc = 0xE528U;
+            break;
+
+        case 0xE528U:  // STA $2F
+            store(0xE528U, zp(0x2FU), registers.accumulator);
+            append_checkpoint(0xE528U, 0xE52AU, 12U);
+            pc = 0xE52AU;
+            break;
+
+        case 0xE52AU:  // LDA $30
+            load_accumulator(read_ram(zp(0x30U)));
+            append_checkpoint(0xE52AU, 0xE52CU, 12U);
+            pc = 0xE52CU;
+            break;
+
+        case 0xE52CU:  // ADC #$00
+            add_with_carry(0x00U);
+            append_checkpoint(0xE52CU, 0xE52EU, 6U);
+            pc = 0xE52EU;
+            break;
+
+        case 0xE52EU:  // STA $30
+            store(0xE52EU, zp(0x30U), registers.accumulator);
+            append_checkpoint(0xE52EU, 0xE530U, 12U);
+            pc = 0xE530U;
+            break;
+
+        case 0xE530U:  // BRA $E4E3 -- next record is a new transaction
+            append_checkpoint(0xE530U, 0xE4E3U, 12U);
+            pc = 0xE4E3U;
+            finish(pc);
+            return replacement;
 
         default:
             return std::nullopt;

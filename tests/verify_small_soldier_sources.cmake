@@ -9,7 +9,7 @@ endforeach()
 if(CONFIG STREQUAL "Debug")
     set(
         expected_census_sha256
-        "a95d0c343108b107d7ec1aa3c20915540d91bb08817704776531e5696ea9b5e2"
+        "9036a9de0c3c9917f47bff8c04c136a4824ec12601fb457d260aa2dfe4443490"
     )
 elseif(CONFIG STREQUAL "Release")
     set(
@@ -74,6 +74,16 @@ execute_process(
         "03:7D6F@all"
         --replace-hook
         "03:7E0D@all"
+        --replace-hook
+        "03:7E87@all"
+        --replace-hook
+        "03:7E8A@all"
+        --replace-hook
+        "03:7EEE@all"
+        --replace-hook
+        "03:7EFA@all"
+        --replace-hook
+        "03:7F05@all"
         --routine-trace
         "${trace_output}"
         --routine-call-trace
@@ -137,6 +147,11 @@ foreach(expected_line IN ITEMS
     "Native replacement 03:7DE9@all entries: 1 of 1"
     "Native replacement 03:7D6F@all entries: 155 of 193"
     "Native replacement 03:7E0D@all entries: 161 of 193"
+    "Native replacement 03:7E87@all entries: 10 of 10"
+    "Native replacement 03:7E8A@all entries: 10 of 10"
+    "Native replacement 03:7EEE@all entries: 10 of 10"
+    "Native replacement 03:7EFA@all entries: 160 of 160"
+    "Native replacement 03:7F05@all entries: 10 of 10"
     "Routine trace complete: 5322 entries"
     "Routine call trace complete: 5322 calls, 3324 writes"
     "Routine replay 03:7D4D@1 verified: frame 872, 327 body cycles, 14 ordered writes"
@@ -247,3 +262,110 @@ foreach(expected_line IN ITEMS
     endif()
 endforeach()
 message(STATUS "${semantics_output}")
+
+# The child startup is a distinct coroutine scope from the source/spawner
+# artifact above. Observe it separately so its 170 calls and 1,290 writes can
+# be pinned without changing the long-standing source-semantics sequence
+# numbers consumed by Analyze-SmallSoldierSourceSemantics.ps1.
+set(deployment_output "${OUTPUT}.deployment.csv")
+set(deployment_call_output "${deployment_output}.calls.csv")
+set(deployment_write_output "${deployment_call_output}.writes.csv")
+set(deployment_abandonment_output "${deployment_output}.abandonments.csv")
+set(expected_deployment_call_sha256 "fa079a81def9c6bcce62ef43c2dc85b0b77976b6743e26eb7f142415f89aacb2")
+set(expected_deployment_write_sha256 "6cba36d5308d349cf3b07c45e56012aa2f245c207988deca8c3ac5787559b96e")
+
+execute_process(
+    COMMAND
+        "${APP}"
+        --record-state-census
+        "${deployment_output}"
+        --observe-hook
+        "03:7EFA"
+        --observe-hook
+        "03:7F05"
+        --replace-hook
+        "03:7D4D@all"
+        --replace-hook
+        "03:7DE9@all"
+        --replace-hook
+        "03:7D6F@all"
+        --replace-hook
+        "03:7E0D@all"
+        --replace-hook
+        "03:7E87@all"
+        --replace-hook
+        "03:7E8A@all"
+        --replace-hook
+        "03:7EEE@all"
+        --replace-hook
+        "03:7EFA@all"
+        --replace-hook
+        "03:7F05@all"
+        --routine-call-trace
+        "${deployment_call_output}"
+        --routine-replay
+        "03:7EFA@1"
+        --routine-replay
+        "03:7EFA@16"
+        --routine-replay
+        "03:7F05@1"
+        --abandonment-census
+        "${deployment_abandonment_output}"
+        --rom
+        "${ROM}"
+    RESULT_VARIABLE deployment_result
+    OUTPUT_VARIABLE deployment_stdout
+    ERROR_VARIABLE deployment_stderr
+)
+if(NOT deployment_result EQUAL 0)
+    message(
+        FATAL_ERROR
+        "Small-Soldier deployment recorder failed (${deployment_result}).\n"
+        "${deployment_stdout}${deployment_stderr}"
+    )
+endif()
+foreach(expected_line IN ITEMS
+    "State census recording complete: 3600 frames"
+    "Native replacement 03:7EFA@all entries: 160 of 160"
+    "Native replacement 03:7F05@all entries: 10 of 10"
+    "Observe hook 1 entries: 160"
+    "Observe hook 2 entries: 10"
+    "Routine call trace complete: 170 calls, 1290 writes"
+    "Routine replay 03:7EFA@1 verified: frame 873, 171 body cycles, 6 ordered writes"
+    "Routine replay 03:7EFA@16 verified: frame 947, 171 body cycles, 6 ordered writes"
+    "Routine replay 03:7F05@1 verified: frame 956, 270 body cycles, 10 ordered writes"
+    "Routine replay complete: 3 state-normalized calls"
+    "Abandonment census complete: no transcript was abandoned"
+)
+    string(FIND "${deployment_stdout}" "${expected_line}" line_offset)
+    if(line_offset EQUAL -1)
+        message(
+            FATAL_ERROR
+            "Small-Soldier deployment output omitted '${expected_line}'.\n"
+            "${deployment_stdout}${deployment_stderr}"
+        )
+    endif()
+endforeach()
+
+foreach(artifact IN ITEMS census call write)
+    if(artifact STREQUAL "census")
+        set(artifact_path "${deployment_output}")
+        set(expected_sha256 "${expected_census_sha256}")
+    elseif(artifact STREQUAL "call")
+        set(artifact_path "${deployment_call_output}")
+        set(expected_sha256 "${expected_deployment_call_sha256}")
+    else()
+        set(artifact_path "${deployment_write_output}")
+        set(expected_sha256 "${expected_deployment_write_sha256}")
+    endif()
+    file(SHA256 "${artifact_path}" actual_sha256)
+    if(NOT actual_sha256 STREQUAL expected_sha256)
+        message(
+            FATAL_ERROR
+            "Small-Soldier deployment ${artifact} artifact changed.\n"
+            "Expected: ${expected_sha256}\n"
+            "Actual:   ${actual_sha256}\n"
+        )
+    endif()
+endforeach()
+message(STATUS "Small-Soldier deployment verified: 170 native calls, 1,290 exact writes.")

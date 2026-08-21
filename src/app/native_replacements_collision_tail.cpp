@@ -99,6 +99,7 @@ constexpr std::uint32_t kBranchTaken = 12U;
 constexpr std::uint32_t kBranchNotTaken = 6U;
 constexpr std::uint32_t kSwapXY = 9U;
 constexpr std::uint32_t kPushAccumulator = 9U;
+constexpr std::uint32_t kJump = 12U;
 // JSR is seven CPU cycles: both return bytes pushed, then ADDCYC(6) and the
 // LastCycle. Both writes carry the instruction's start offset, since the core
 // pushes before it charges anything.
@@ -130,19 +131,24 @@ constexpr std::uint32_t kCall = 21U;
         || logical_pc == 0xCB8AU || logical_pc == 0xCBABU
         || logical_pc == 0xCBB6U || logical_pc == 0xCBC2U
         || logical_pc == 0xCBCAU || logical_pc == 0xCBCFU
-        || logical_pc == 0xCD74U;
+        || logical_pc == 0xCD74U || logical_pc == 0xCDF8U
+        || logical_pc == 0xCE22U || logical_pc == 0xCE4DU
+        || logical_pc == 0xCEB5U || logical_pc == 0xCF33U
+        || logical_pc == 0xCF42U || logical_pc == 0xCF45U
+        || logical_pc == 0xCF53U || logical_pc == 0xCF56U
+        || logical_pc == 0xCF60U || logical_pc == 0xCF63U
+        || logical_pc == 0xCF6AU || logical_pc == 0xCF8CU;
 }
 
-// Where each walk stops. Eleven are RTS instructions; none is a call. All
-// twelve calls this family makes are crossed rather than stopped in front of --
-// see the `call` lambda below.
+// Where each walk stops. The original tail contributes its RTS and hardware-
+// timing seams; the response adds the 01:CDF8/01:DC95 handoffs and its local
+// RTS at 01:CF99. All calls are crossed rather than stopped in front of -- see
+// the `call` lambda below.
 //
-// Eleven of the twelve land on an address that is itself a registered entry.
-// The twelfth, 01:CB7B, goes to 01:CF33, which no replacement owns, and it is
-// crossed anyway: a crossing converts the twenty-one cycles the `JSR` itself
-// costs whatever is on the far side, and what a registered callee adds is its
-// own body rather than this instruction. Measured at 6,678 over 318 calls,
-// with 01:CF33 still interpreted exactly as before.
+// All twelve now land on registered entries. The last, 01:CB7B, originally
+// crossed into an assembly-owned 01:CF33 and proved that a crossing converts
+// the JSR independently of the target. The confirmed-contact response is now
+// part of this walk as nine bounded continuations around its native children.
 //
 // Two are neither. 01:CB46 is the STA $64 that ends the sweep setup: handing
 // it back leaves the core at 01:CB48, where the sweep's own replacement picks
@@ -166,12 +172,15 @@ constexpr std::uint32_t kCall = 21U;
         || logical_pc == 0xCB89U || logical_pc == 0xCB92U
         || logical_pc == 0xCBB2U || logical_pc == 0xCBC6U
         || logical_pc == 0xCBCEU || logical_pc == 0xCBF9U
-        || logical_pc == 0xCDF1U || logical_pc == 0xCDF7U;
+        || logical_pc == 0xCDF1U || logical_pc == 0xCDF7U
+        || logical_pc == 0xCDF8U || logical_pc == 0xCE94U
+        || logical_pc == 0xCEF8U
+        || logical_pc == 0xCF99U
+        || logical_pc == 0xDC95U;
 }
 
-// Which of those stops is a return the walk can run past. Eleven of the
-// thirteen are `RTS` and ten of those are returns. The eleventh, 01:CBF9,
-// is not a return at all. It is
+// Which of those stops is a return the walk can run past. `01:CBF9` is not a
+// return at all. It is
 // the tail dispatch described above: 01:CBF4 and 01:CBF8 push a vector read out
 // of the tables at 01:CBFA and 01:CBFF, and the `RTS` jumps to it. The word it
 // pops is one this routine wrote two instructions earlier rather than the frame
@@ -189,7 +198,9 @@ constexpr std::uint32_t kCall = 21U;
         || logical_pc == 0xCB29U || logical_pc == 0xCB89U
         || logical_pc == 0xCB92U || logical_pc == 0xCBB2U
         || logical_pc == 0xCBC6U || logical_pc == 0xCBCEU
-        || logical_pc == 0xCDF1U || logical_pc == 0xCDF7U;
+        || logical_pc == 0xCDF1U || logical_pc == 0xCDF7U
+        || logical_pc == 0xCE94U || logical_pc == 0xCEF8U
+        || logical_pc == 0xCF99U;
 }
 
 } // namespace
@@ -449,6 +460,20 @@ std::optional<RoutineReplacement> replace_collision_tail(
         registers.accumulator = result;
         registers.status = set_nz(registers.status, result);
     };
+    const auto rotate_accumulator_left = [&registers]() {
+        const auto value = registers.accumulator;
+        const auto result = static_cast<std::uint8_t>(
+            static_cast<std::uint8_t>(value << 1U)
+            | (registers.status & kCarry));
+        registers.status = static_cast<std::uint8_t>(
+            registers.status & static_cast<std::uint8_t>(~kCarry));
+        if ((value & kNegative) != 0U) {
+            registers.status =
+                static_cast<std::uint8_t>(registers.status | kCarry);
+        }
+        registers.accumulator = result;
+        registers.status = set_nz(registers.status, result);
+    };
     const auto rotate_memory_left =
         [&registers, &read_ram, &store, &zp](
             const std::uint16_t instruction_pc,
@@ -493,6 +518,18 @@ std::optional<RoutineReplacement> replace_collision_tail(
                 zp(address),
                 static_cast<std::uint8_t>(
                     value & static_cast<std::uint8_t>(~(1U << bit))));
+        };
+    // SMB sets one bit of a zero-page byte and, like RMB, touches no flag.
+    const auto set_memory_bit =
+        [&read_ram, &store, &zp](
+            const std::uint16_t instruction_pc,
+            const std::uint8_t address,
+            const std::uint8_t bit) {
+            const auto value = read_ram(zp(address));
+            store(
+                instruction_pc,
+                zp(address),
+                static_cast<std::uint8_t>(value | (1U << bit)));
         };
 
     // A relative branch costs a cycle more when it is taken, and the address
@@ -545,7 +582,9 @@ std::optional<RoutineReplacement> replace_collision_tail(
             return std::nullopt;
         }
 
-        if (is_stop_instruction(pc)) {
+        // CDF8 is both the parent response's explicit handoff and the head of
+        // the next bounded segment. Every other stop remains a non-entry.
+        if (is_stop_instruction(pc) && pc != entry.routine.logical_pc) {
             registers.program_counter = pc;
             replacement.return_instruction = {kBank, pc};
             replacement.output_registers = registers;
@@ -1858,6 +1897,642 @@ std::optional<RoutineReplacement> replace_collision_tail(
                 static_cast<std::uint8_t>(registers.status | kCarry);
             append_checkpoint(0xCDF6U, 0xCDF7U, kImplied);
             pc = 0xCDF7U;
+            break;
+
+        // ---- 01:CDF8  confirmed-contact position retry -------------------
+        // The routed type-response arm derives one of eight direction vectors,
+        // restores the cached ball position, applies the vector, and asks the
+        // bounded playfield probe whether the result is clear. The two calls
+        // split this path into four registry entries so their authentic stack
+        // frames and every interruptible boundary remain in the core.
+        case 0xCDF8U:  // STZ $6D
+            store(0xCDF8U, zp(0x6DU), 0x00U);
+            append_checkpoint(0xCDF8U, 0xCDFAU, kZeroPage);
+            pc = 0xCDFAU;
+            break;
+
+        case 0xCDFAU:  // STZ $6F
+            store(0xCDFAU, zp(0x6FU), 0x00U);
+            append_checkpoint(0xCDFAU, 0xCDFCU, kZeroPage);
+            pc = 0xCDFCU;
+            break;
+
+        case 0xCDFCU:  // STZ $70
+            store(0xCDFCU, zp(0x70U), 0x00U);
+            append_checkpoint(0xCDFCU, 0xCDFEU, kZeroPage);
+            pc = 0xCDFEU;
+            break;
+
+        case 0xCDFEU:  // LDA $3480,X
+            load_accumulator(read_ram(
+                static_cast<std::uint16_t>(0x3480U + registers.x)));
+            append_checkpoint(0xCDFEU, 0xCE01U, kAbsoluteIndexed);
+            pc = 0xCE01U;
+            break;
+
+        case 0xCE01U:  // ROL A
+            rotate_accumulator_left();
+            append_checkpoint(0xCE01U, 0xCE02U, kImplied);
+            pc = 0xCE02U;
+            break;
+
+        case 0xCE02U:  // ROL $6F
+            rotate_memory_left(0xCE02U, 0x6FU);
+            append_checkpoint(0xCE02U, 0xCE04U, kZeroPageReadModifyWrite);
+            pc = 0xCE04U;
+            break;
+
+        case 0xCE04U:  // LDA $3580,X
+            load_accumulator(read_ram(
+                static_cast<std::uint16_t>(0x3580U + registers.x)));
+            append_checkpoint(0xCE04U, 0xCE07U, kAbsoluteIndexed);
+            pc = 0xCE07U;
+            break;
+
+        case 0xCE07U:  // ROL A
+            rotate_accumulator_left();
+            append_checkpoint(0xCE07U, 0xCE08U, kImplied);
+            pc = 0xCE08U;
+            break;
+
+        case 0xCE08U:  // ROL $6F
+            rotate_memory_left(0xCE08U, 0x6FU);
+            append_checkpoint(0xCE08U, 0xCE0AU, kZeroPageReadModifyWrite);
+            pc = 0xCE0AU;
+            break;
+
+        case 0xCE0AU:  // LDA $6F
+            load_accumulator(read_ram(zp(0x6FU)));
+            append_checkpoint(0xCE0AU, 0xCE0CU, kZeroPage);
+            pc = 0xCE0CU;
+            break;
+
+        case 0xCE0CU:  // STA $6E
+            store(0xCE0CU, zp(0x6EU), registers.accumulator);
+            append_checkpoint(0xCE0CU, 0xCE0EU, kZeroPage);
+            pc = 0xCE0EU;
+            break;
+
+        case 0xCE0EU:  // ASL A
+            shift_accumulator_left();
+            append_checkpoint(0xCE0EU, 0xCE0FU, kImplied);
+            pc = 0xCE0FU;
+            break;
+
+        case 0xCE0FU:  // ASL A
+            shift_accumulator_left();
+            append_checkpoint(0xCE0FU, 0xCE10U, kImplied);
+            pc = 0xCE10U;
+            break;
+
+        case 0xCE10U:  // STA $6F
+            store(0xCE10U, zp(0x6FU), registers.accumulator);
+            append_checkpoint(0xCE10U, 0xCE12U, kZeroPage);
+            pc = 0xCE12U;
+            break;
+
+        case 0xCE12U:  // ASL A
+            shift_accumulator_left();
+            append_checkpoint(0xCE12U, 0xCE13U, kImplied);
+            pc = 0xCE13U;
+            break;
+
+        case 0xCE13U:  // CLC
+            registers.status = static_cast<std::uint8_t>(
+                registers.status & static_cast<std::uint8_t>(~kCarry));
+            append_checkpoint(0xCE13U, 0xCE14U, kImplied);
+            pc = 0xCE14U;
+            break;
+
+        case 0xCE14U:  // ADC $6F
+            add_with_carry(read_ram(zp(0x6FU)));
+            append_checkpoint(0xCE14U, 0xCE16U, kZeroPage);
+            pc = 0xCE16U;
+            break;
+
+        case 0xCE16U:  // STA $6F
+            store(0xCE16U, zp(0x6FU), registers.accumulator);
+            append_checkpoint(0xCE16U, 0xCE18U, kZeroPage);
+            pc = 0xCE18U;
+            break;
+
+        case 0xCE18U:  // LDY $6E
+            load_y(read_ram(zp(0x6EU)));
+            append_checkpoint(0xCE18U, 0xCE1AU, kZeroPage);
+            pc = 0xCE1AU;
+            break;
+
+        case 0xCE1AU:  // LDA $CF2B,Y
+            load_accumulator(read_mapped(
+                static_cast<std::uint16_t>(0xCF2BU + registers.y)));
+            append_checkpoint(0xCE1AU, 0xCE1DU, kAbsoluteIndexed);
+            pc = 0xCE1DU;
+            break;
+
+        case 0xCE1DU:  // STA $70
+            store(0xCE1DU, zp(0x70U), registers.accumulator);
+            append_checkpoint(0xCE1DU, 0xCE1FU, kZeroPage);
+            pc = 0xCE1FU;
+            break;
+
+        case 0xCE1FU:  // JSR $F241
+            call(0xCE1FU, 0xF241U);
+            break;
+
+        case 0xCE22U:  // LDY $6F
+            load_y(read_ram(zp(0x6FU)));
+            append_checkpoint(0xCE22U, 0xCE24U, kZeroPage);
+            pc = 0xCE24U;
+            break;
+
+        case 0xCE24U:  // CLC
+            registers.status = static_cast<std::uint8_t>(
+                registers.status & static_cast<std::uint8_t>(~kCarry));
+            append_checkpoint(0xCE24U, 0xCE25U, kImplied);
+            pc = 0xCE25U;
+            break;
+
+        case 0xCE25U:  // LDA $CEFB,Y
+            load_accumulator(read_mapped(
+                static_cast<std::uint16_t>(0xCEFBU + registers.y)));
+            append_checkpoint(0xCE25U, 0xCE28U, kAbsoluteIndexed);
+            pc = 0xCE28U;
+            break;
+
+        case 0xCE28U:  // ADC $3180,X
+            add_with_carry(read_ram(
+                static_cast<std::uint16_t>(0x3180U + registers.x)));
+            append_checkpoint(0xCE28U, 0xCE2BU, kAbsoluteIndexed);
+            pc = 0xCE2BU;
+            break;
+
+        case 0xCE2BU:  // STA $3180,X
+            store(
+                0xCE2BU,
+                static_cast<std::uint16_t>(0x3180U + registers.x),
+                registers.accumulator);
+            append_checkpoint(0xCE2BU, 0xCE2EU, kAbsoluteIndexed);
+            pc = 0xCE2EU;
+            break;
+
+        case 0xCE2EU:  // LDA $CEFC,Y
+            load_accumulator(read_mapped(
+                static_cast<std::uint16_t>(0xCEFCU + registers.y)));
+            append_checkpoint(0xCE2EU, 0xCE31U, kAbsoluteIndexed);
+            pc = 0xCE31U;
+            break;
+
+        case 0xCE31U:  // ADC $3200,X
+            add_with_carry(read_ram(static_cast<std::uint16_t>(0x3200U + registers.x)));
+            append_checkpoint(0xCE31U, 0xCE34U, kAbsoluteIndexed);
+            pc = 0xCE34U;
+            break;
+
+        case 0xCE34U:  // STA $3200,X
+            store(
+                0xCE34U,
+                static_cast<std::uint16_t>(0x3200U + registers.x),
+                registers.accumulator);
+            append_checkpoint(0xCE34U, 0xCE37U, kAbsoluteIndexed);
+            pc = 0xCE37U;
+            break;
+
+        case 0xCE37U:  // CLC
+            registers.status = static_cast<std::uint8_t>(
+                registers.status & static_cast<std::uint8_t>(~kCarry));
+            append_checkpoint(0xCE37U, 0xCE38U, kImplied);
+            pc = 0xCE38U;
+            break;
+
+        case 0xCE38U:  // LDA $CEFD,Y
+            load_accumulator(read_mapped(
+                static_cast<std::uint16_t>(0xCEFDU + registers.y)));
+            append_checkpoint(0xCE38U, 0xCE3BU, kAbsoluteIndexed);
+            pc = 0xCE3BU;
+            break;
+
+        case 0xCE3BU:  // ADC $3300,X
+            add_with_carry(read_ram(static_cast<std::uint16_t>(0x3300U + registers.x)));
+            append_checkpoint(0xCE3BU, 0xCE3EU, kAbsoluteIndexed);
+            pc = 0xCE3EU;
+            break;
+
+        case 0xCE3EU:  // STA $3300,X
+            store(
+                0xCE3EU,
+                static_cast<std::uint16_t>(0x3300U + registers.x),
+                registers.accumulator);
+            append_checkpoint(0xCE3EU, 0xCE41U, kAbsoluteIndexed);
+            pc = 0xCE41U;
+            break;
+
+        case 0xCE41U:  // LDA $CEFE,Y
+            load_accumulator(read_mapped(
+                static_cast<std::uint16_t>(0xCEFEU + registers.y)));
+            append_checkpoint(0xCE41U, 0xCE44U, kAbsoluteIndexed);
+            pc = 0xCE44U;
+            break;
+
+        case 0xCE44U:  // ADC $3380,X
+            add_with_carry(read_ram(static_cast<std::uint16_t>(0x3380U + registers.x)));
+            append_checkpoint(0xCE44U, 0xCE47U, kAbsoluteIndexed);
+            pc = 0xCE47U;
+            break;
+
+        case 0xCE47U:  // STA $3380,X
+            store(
+                0xCE47U,
+                static_cast<std::uint16_t>(0x3380U + registers.x),
+                registers.accumulator);
+            append_checkpoint(0xCE47U, 0xCE4AU, kAbsoluteIndexed);
+            pc = 0xCE4AU;
+            break;
+
+        case 0xCE4AU:  // JSR $CEB5
+            call(0xCE4AU, 0xCEB5U);
+            break;
+
+        case 0xCE4DU:  // BCC $CE8B
+            pc = branch(0xCE4DU, 0xCE8BU, 0xCE4FU, (registers.status & kCarry) == 0U);
+            break;
+
+        case 0xCE8BU:  // LDA $3800,X
+            load_accumulator(read_ram(
+                static_cast<std::uint16_t>(0x3800U + registers.x)));
+            append_checkpoint(0xCE8BU, 0xCE8EU, kAbsoluteIndexed);
+            pc = 0xCE8EU;
+            break;
+
+        case 0xCE8EU:  // AND #$7F
+            and_accumulator(0x7FU);
+            append_checkpoint(0xCE8EU, 0xCE90U, kImmediate);
+            pc = 0xCE90U;
+            break;
+
+        case 0xCE90U:  // STA $3800,X
+            store(
+                0xCE90U,
+                static_cast<std::uint16_t>(0x3800U + registers.x),
+                registers.accumulator);
+            append_checkpoint(0xCE90U, 0xCE93U, kAbsoluteIndexed);
+            pc = 0xCE93U;
+            break;
+
+        case 0xCE93U:  // CLC
+            registers.status = static_cast<std::uint8_t>(
+                registers.status & static_cast<std::uint8_t>(~kCarry));
+            append_checkpoint(0xCE93U, 0xCE94U, kImplied);
+            pc = 0xCE94U;
+            break;
+
+        // The observed bounds probe takes its early clear-carry return: the
+        // ball's high X byte is zero while the high scroll byte is nonzero.
+        // Other geometry enters the existing full scanner and remains in
+        // assembly until that state has a natural transcript.
+        case 0xCEB5U:  // RMB0 $77
+            reset_memory_bit(0xCEB5U, 0x77U, 0U);
+            append_checkpoint(0xCEB5U, 0xCEB7U, kZeroPageBitSet);
+            pc = 0xCEB7U;
+            break;
+
+        case 0xCEB7U:  // LDA $3180,X
+            load_accumulator(read_ram(
+                static_cast<std::uint16_t>(0x3180U + registers.x)));
+            append_checkpoint(0xCEB7U, 0xCEBAU, kAbsoluteIndexed);
+            pc = 0xCEBAU;
+            break;
+
+        case 0xCEBAU:  // SBC #$20
+            subtract_with_carry(0x20U);
+            append_checkpoint(0xCEBAU, 0xCEBCU, kImmediate);
+            pc = 0xCEBCU;
+            break;
+
+        case 0xCEBCU:  // STA $65
+            store(0xCEBCU, zp(0x65U), registers.accumulator);
+            append_checkpoint(0xCEBCU, 0xCEBEU, kZeroPage);
+            pc = 0xCEBEU;
+            break;
+
+        case 0xCEBEU:  // LDA $3200,X
+            load_accumulator(read_ram(
+                static_cast<std::uint16_t>(0x3200U + registers.x)));
+            append_checkpoint(0xCEBEU, 0xCEC1U, kAbsoluteIndexed);
+            pc = 0xCEC1U;
+            break;
+
+        case 0xCEC1U:  // SBC #$00
+            subtract_with_carry(0x00U);
+            append_checkpoint(0xCEC1U, 0xCEC3U, kImmediate);
+            pc = 0xCEC3U;
+            break;
+
+        case 0xCEC3U:  // BEQ $CEC8
+            pc = branch(0xCEC3U, 0xCEC8U, 0xCEC5U, (registers.status & kZero) != 0U);
+            break;
+
+        case 0xCEC8U:  // LDA $3300,X
+            load_accumulator(read_ram(
+                static_cast<std::uint16_t>(0x3300U + registers.x)));
+            append_checkpoint(0xCEC8U, 0xCECBU, kAbsoluteIndexed);
+            pc = 0xCECBU;
+            break;
+
+        case 0xCECBU:  // STA $66
+            store(0xCECBU, zp(0x66U), registers.accumulator);
+            append_checkpoint(0xCECBU, 0xCECDU, kZeroPage);
+            pc = 0xCECDU;
+            break;
+
+        case 0xCECDU:  // BEQ $CED2
+            pc = branch(0xCECDU, 0xCED2U, 0xCECFU, (registers.status & kZero) != 0U);
+            break;
+
+        case 0xCECFU:  // JMP $CEF7
+            append_checkpoint(0xCECFU, 0xCEF7U, kJump);
+            pc = 0xCEF7U;
+            break;
+
+        case 0xCEF7U:  // CLC
+            registers.status = static_cast<std::uint8_t>(
+                registers.status & static_cast<std::uint8_t>(~kCarry));
+            append_checkpoint(0xCEF7U, 0xCEF8U, kImplied);
+            pc = 0xCEF8U;
+            break;
+
+        // ---- 01:CF33  confirmed-contact type response --------------------
+        // Four already-native physics helpers divide this response into
+        // bounded continuations. Each call is crossed with its authentic
+        // stack writes; the child absorbs its own return and lands on the next
+        // registered continuation below.
+        case 0xCF33U:  // LDA $78
+            load_accumulator(read_ram(zp(0x78U)));
+            append_checkpoint(0xCF33U, 0xCF35U, kZeroPage);
+            pc = 0xCF35U;
+            break;
+
+        case 0xCF35U:  // BPL $CF5B
+            pc = branch(
+                0xCF35U, 0xCF5BU, 0xCF37U,
+                (registers.status & kNegative) == 0U);
+            break;
+
+        case 0xCF37U:  // LDA $3800,X
+            load_accumulator(read_ram(
+                static_cast<std::uint16_t>(0x3800U + registers.x)));
+            append_checkpoint(0xCF37U, 0xCF3AU, kAbsoluteIndexed);
+            pc = 0xCF3AU;
+            break;
+
+        case 0xCF3AU:  // BPL $CF3F
+            pc = branch(
+                0xCF3AU, 0xCF3FU, 0xCF3CU,
+                (registers.status & kNegative) == 0U);
+            break;
+
+        case 0xCF3CU:  // JMP $CDF8
+            append_checkpoint(0xCF3CU, 0xCDF8U, kJump);
+            pc = 0xCDF8U;
+            break;
+
+        case 0xCF3FU:  // JSR $D081
+            call(0xCF3FU, 0xD081U);
+            break;
+
+        case 0xCF42U:  // JSR $D09E
+            call(0xCF42U, 0xD09EU);
+            break;
+
+        case 0xCF45U:  // SEC
+            registers.status =
+                static_cast<std::uint8_t>(registers.status | kCarry);
+            append_checkpoint(0xCF45U, 0xCF46U, kImplied);
+            pc = 0xCF46U;
+            break;
+
+        case 0xCF46U:  // CLA -- no flags
+            registers.accumulator = 0x00U;
+            append_checkpoint(0xCF46U, 0xCF47U, kImplied);
+            pc = 0xCF47U;
+            break;
+
+        case 0xCF47U:  // SBC $BE
+            subtract_with_carry(read_ram(zp(0xBEU)));
+            append_checkpoint(0xCF47U, 0xCF49U, kZeroPage);
+            pc = 0xCF49U;
+            break;
+
+        case 0xCF49U:  // STA $BE
+            store(0xCF49U, zp(0xBEU), registers.accumulator);
+            append_checkpoint(0xCF49U, 0xCF4BU, kZeroPage);
+            pc = 0xCF4BU;
+            break;
+
+        case 0xCF4BU:  // CLA -- no flags
+            registers.accumulator = 0x00U;
+            append_checkpoint(0xCF4BU, 0xCF4CU, kImplied);
+            pc = 0xCF4CU;
+            break;
+
+        case 0xCF4CU:  // SBC $BF
+            subtract_with_carry(read_ram(zp(0xBFU)));
+            append_checkpoint(0xCF4CU, 0xCF4EU, kZeroPage);
+            pc = 0xCF4EU;
+            break;
+
+        case 0xCF4EU:  // STA $BF
+            store(0xCF4EU, zp(0xBFU), registers.accumulator);
+            append_checkpoint(0xCF4EU, 0xCF50U, kZeroPage);
+            pc = 0xCF50U;
+            break;
+
+        case 0xCF50U:  // JSR $CFD8
+            call(0xCF50U, 0xCFD8U);
+            break;
+
+        case 0xCF53U:  // JSR $D1A2
+            call(0xCF53U, 0xD1A2U);
+            break;
+
+        case 0xCF56U:  // SMB3 $77
+            set_memory_bit(0xCF56U, 0x77U, 3U);
+            append_checkpoint(0xCF56U, 0xCF58U, kZeroPageBitSet);
+            pc = 0xCF58U;
+            break;
+
+        case 0xCF58U:  // JMP $DC95
+            append_checkpoint(0xCF58U, 0xDC95U, kJump);
+            pc = 0xDC95U;
+            break;
+
+        case 0xCF5BU:  // STZ $84
+            store(0xCF5BU, zp(0x84U), 0x00U);
+            append_checkpoint(0xCF5BU, 0xCF5DU, kZeroPage);
+            pc = 0xCF5DU;
+            break;
+
+        case 0xCF5DU:  // JSR $D081
+            call(0xCF5DU, 0xD081U);
+            break;
+
+        case 0xCF60U:  // JSR $D09E
+            call(0xCF60U, 0xD09EU);
+            break;
+
+        case 0xCF63U:  // LDA $BF
+            load_accumulator(read_ram(zp(0xBFU)));
+            append_checkpoint(0xCF63U, 0xCF65U, kZeroPage);
+            pc = 0xCF65U;
+            break;
+
+        case 0xCF65U:  // BMI $CF8F
+            pc = branch(
+                0xCF65U, 0xCF8FU, 0xCF67U,
+                (registers.status & kNegative) != 0U);
+            break;
+
+        case 0xCF67U:  // JSR $CFD8
+            call(0xCF67U, 0xCFD8U);
+            break;
+
+        case 0xCF6AU:  // SMB3 $77
+            set_memory_bit(0xCF6AU, 0x77U, 3U);
+            append_checkpoint(0xCF6AU, 0xCF6CU, kZeroPageBitSet);
+            pc = 0xCF6CU;
+            break;
+
+        case 0xCF6CU:  // LDA $BE
+            load_accumulator(read_ram(zp(0xBEU)));
+            append_checkpoint(0xCF6CU, 0xCF6EU, kZeroPage);
+            pc = 0xCF6EU;
+            break;
+
+        case 0xCF6EU:  // ORA $BF
+            or_accumulator(read_ram(zp(0xBFU)));
+            append_checkpoint(0xCF6EU, 0xCF70U, kZeroPage);
+            pc = 0xCF70U;
+            break;
+
+        case 0xCF70U:  // BNE $CF7A
+            pc = branch(
+                0xCF70U, 0xCF7AU, 0xCF72U,
+                (registers.status & kZero) == 0U);
+            break;
+
+        case 0xCF72U:  // LDA $C0
+            load_accumulator(read_ram(zp(0xC0U)));
+            append_checkpoint(0xCF72U, 0xCF74U, kZeroPage);
+            pc = 0xCF74U;
+            break;
+
+        case 0xCF74U:  // ORA $C1
+            or_accumulator(read_ram(zp(0xC1U)));
+            append_checkpoint(0xCF74U, 0xCF76U, kZeroPage);
+            pc = 0xCF76U;
+            break;
+
+        case 0xCF76U:  // BEQ $CF7A
+            pc = branch(
+                0xCF76U, 0xCF7AU, 0xCF78U,
+                (registers.status & kZero) != 0U);
+            break;
+
+        case 0xCF78U:  // RMB3 $77
+            reset_memory_bit(0xCF78U, 0x77U, 3U);
+            append_checkpoint(0xCF78U, 0xCF7AU, kZeroPageBitSet);
+            pc = 0xCF7AU;
+            break;
+
+        case 0xCF7AU:  // LDA $BF
+            load_accumulator(read_ram(zp(0xBFU)));
+            append_checkpoint(0xCF7AU, 0xCF7CU, kZeroPage);
+            pc = 0xCF7CU;
+            break;
+
+        case 0xCF7CU:  // STA $84
+            store(0xCF7CU, zp(0x84U), registers.accumulator);
+            append_checkpoint(0xCF7CU, 0xCF7EU, kZeroPage);
+            pc = 0xCF7EU;
+            break;
+
+        case 0xCF7EU:  // SEC
+            registers.status =
+                static_cast<std::uint8_t>(registers.status | kCarry);
+            append_checkpoint(0xCF7EU, 0xCF7FU, kImplied);
+            pc = 0xCF7FU;
+            break;
+
+        case 0xCF7FU:  // CLA -- no flags
+            registers.accumulator = 0x00U;
+            append_checkpoint(0xCF7FU, 0xCF80U, kImplied);
+            pc = 0xCF80U;
+            break;
+
+        case 0xCF80U:  // SBC $BE
+            subtract_with_carry(read_ram(zp(0xBEU)));
+            append_checkpoint(0xCF80U, 0xCF82U, kZeroPage);
+            pc = 0xCF82U;
+            break;
+
+        case 0xCF82U:  // STA $BE
+            store(0xCF82U, zp(0xBEU), registers.accumulator);
+            append_checkpoint(0xCF82U, 0xCF84U, kZeroPage);
+            pc = 0xCF84U;
+            break;
+
+        case 0xCF84U:  // CLA -- no flags
+            registers.accumulator = 0x00U;
+            append_checkpoint(0xCF84U, 0xCF85U, kImplied);
+            pc = 0xCF85U;
+            break;
+
+        case 0xCF85U:  // SBC $BF
+            subtract_with_carry(read_ram(zp(0xBFU)));
+            append_checkpoint(0xCF85U, 0xCF87U, kZeroPage);
+            pc = 0xCF87U;
+            break;
+
+        case 0xCF87U:  // STA $BF
+            store(0xCF87U, zp(0xBFU), registers.accumulator);
+            append_checkpoint(0xCF87U, 0xCF89U, kZeroPage);
+            pc = 0xCF89U;
+            break;
+
+        case 0xCF89U:  // JSR $D1A2
+            call(0xCF89U, 0xD1A2U);
+            break;
+
+        case 0xCF8CU:  // JMP $DC95
+            append_checkpoint(0xCF8CU, 0xDC95U, kJump);
+            pc = 0xDC95U;
+            break;
+
+        case 0xCF8FU:  // RMB3 $77
+            reset_memory_bit(0xCF8FU, 0x77U, 3U);
+            append_checkpoint(0xCF8FU, 0xCF91U, kZeroPageBitSet);
+            pc = 0xCF91U;
+            break;
+
+        case 0xCF91U:  // LDA $3800,X
+            load_accumulator(read_ram(
+                static_cast<std::uint16_t>(0x3800U + registers.x)));
+            append_checkpoint(0xCF91U, 0xCF94U, kAbsoluteIndexed);
+            pc = 0xCF94U;
+            break;
+
+        case 0xCF94U:  // AND #$7F
+            and_accumulator(0x7FU);
+            append_checkpoint(0xCF94U, 0xCF96U, kImmediate);
+            pc = 0xCF96U;
+            break;
+
+        case 0xCF96U:  // STA $3800,X
+            store(
+                0xCF96U,
+                static_cast<std::uint16_t>(0x3800U + registers.x),
+                registers.accumulator);
+            append_checkpoint(0xCF96U, 0xCF99U, kAbsoluteIndexed);
+            pc = 0xCF99U;
             break;
 
         default:

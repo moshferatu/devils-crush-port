@@ -223,6 +223,40 @@ replace_three_blobs_first_movement_prefix(
     std::span<const std::byte> work_ram);
 
 [[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_three_blobs_rng_initialization(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram);
+
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_three_blobs_first_movement_continuation(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram);
+
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_three_blobs_y_expiry_negation_prefix(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram);
+
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_three_blobs_alternate_motion_reset_prefix(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram);
+
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_three_blobs_alternate_motion_arithmetic(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram);
+
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_three_blobs_collision_marker(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram);
+
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_three_blobs_movement_call_seam(
+    const emulation::RoutineEntry& entry);
+
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
 replace_three_blobs_direct_continuation(
     const emulation::RoutineEntry& entry,
     std::span<const std::byte> work_ram);
@@ -254,6 +288,11 @@ replace_three_blobs_appearance_gate(
 
 [[nodiscard]] std::optional<emulation::RoutineReplacement>
 replace_three_blobs_collision_gate(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram);
+
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_three_blobs_collision_continuation(
     const emulation::RoutineEntry& entry,
     std::span<const std::byte> work_ram);
 
@@ -380,6 +419,21 @@ replace_small_soldier_source_initializers(
 
 [[nodiscard]] std::optional<emulation::RoutineReplacement>
 replace_small_soldier_delayed_spawn_gates(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram);
+
+// The shared Small-Soldier child allocator is split at both of its existing
+// native children: 7E87 crosses the actor-slot allocator, 7E8A initializes the
+// reserved child and crosses camera activation, and 7EEE restores the source
+// slot, advances its group count, and absorbs the original return.
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_small_soldier_child_allocation_seam(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram);
+
+// Shared collision-effect allocator used after a confirmed actor hit.
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_collision_effect_allocator(
     const emulation::RoutineEntry& entry,
     std::span<const std::byte> work_ram);
 
@@ -719,6 +773,11 @@ replace_spider_controller_parent(
     std::span<const std::byte> rom);
 
 [[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_front_spider_scheduler_call_seam(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram);
+
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
 replace_knight_waiting_parent(
     const emulation::RoutineEntry& entry,
     std::span<const std::byte> work_ram);
@@ -739,11 +798,12 @@ replace_tower_insect_animation(
     const emulation::RoutineEntry& entry,
     std::span<const std::byte> work_ram);
 
-// Dynamic Tower-insect startup coroutine at 02:5FDB/5FE6. Both entries
-// compose the shared coroutine scheduler while the subsequent collision
+// Shared dynamic-actor startup coroutine used by Tower insects at
+// 02:5FDB/5FE6 and Small Soldiers at 03:7EFA/7F05. Each countdown/setup pair
+// composes the shared coroutine scheduler while the subsequent collision
 // controller remains at its already-proven native boundaries.
 [[nodiscard]] std::optional<emulation::RoutineReplacement>
-replace_tower_insect_initial_controller(
+replace_dynamic_actor_initial_controller(
     const emulation::RoutineEntry& entry,
     std::span<const std::byte> work_ram);
 
@@ -1060,6 +1120,15 @@ replace_fixed_marker_helper_segment(
     std::span<const std::byte> work_ram);
 
 [[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_fixed_marker_helper_call(
+    const emulation::RoutineEntry& entry);
+
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_fixed_marker_outer_segment(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram);
+
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
 replace_scaled_word_add(
     const emulation::RoutineEntry& entry,
     std::span<const std::byte> work_ram);
@@ -1289,8 +1358,9 @@ replace_motion_substep_split(
     const emulation::RoutineEntry& entry,
     std::span<const std::byte> work_ram);
 
-// 01:C721-01:C770, the loop that spends the substeps 01:DC95 splits out.
-// Eleven entry points, eight crossed calls and no return of its own; see
+// 01:C6C2-01:C71D and 01:C721-01:C770, the initial and resumed loops that
+// spend the substeps 01:DC95 splits out. Twenty entry points, fifteen crossed
+// calls and no native return of their own; see
 // native_replacements_substep_loop.cpp.
 [[nodiscard]] std::optional<emulation::RoutineReplacement>
 replace_ball_substep_loop(
@@ -1348,6 +1418,11 @@ replace_flipper_release_arm(
 
 [[nodiscard]] std::optional<emulation::RoutineReplacement>
 replace_flipper_active_update(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram);
+
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_flipper_collision_response_continuation(
     const emulation::RoutineEntry& entry,
     std::span<const std::byte> work_ram);
 
@@ -1466,6 +1541,23 @@ replace_palette_colour_cycle(
 // 2,649. Ten instructions and forty-two per cent of bank 09's remainder; see
 // native_replacements_score_panel.cpp.
 [[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_score_animation_left_schedule(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram);
+
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_score_animation_left_step(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram,
+    std::span<const std::byte> rom);
+
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_score_animation_right_step(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram,
+    std::span<const std::byte> rom);
+
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
 replace_score_panel_poll(
     const emulation::RoutineEntry& entry,
     std::span<const std::byte> work_ram);
@@ -1528,9 +1620,9 @@ replace_sound_timer_driver(
     std::span<const std::byte> work_ram,
     std::span<const std::byte> rom);
 
-// The bank-45 music sequencer's sample/envelope group. One walk shared by
-// seven subroutine entry points, each stopping in front of its own RTS; a
-// nested call the walk makes is inlined into the same transcript.
+// The bank-45 music sequencer's sample/envelope group. One walk is shared by
+// all registered entry points, each stopping in front of its own RTS; a nested
+// call the walk makes is inlined into the same transcript.
 [[nodiscard]] std::optional<emulation::RoutineReplacement>
 replace_music_sequencer(
     const emulation::RoutineEntry& entry,
@@ -1601,13 +1693,11 @@ replace_vblank_handler(
     std::span<const std::byte> work_ram,
     std::span<const std::byte> rom);
 
-// The graphics driver's three port-streaming loops: the VRAM clear at 00:E3C0,
-// the VCE clear at 00:E3FC and the generic word-stream decoder at 00:E41F. One
-// walk shared by six entry points -- each routine's head and the head of the
-// loop its transcripts chunk inside, because a single decoder call is 3,400
-// port writes against a 512-write channel. Every transcript stops either in
-// front of an RTS or in front of the backward branch that closes a loop, and
-// the core executes that branch and re-enters here for the next chunk.
+// The graphics driver's four port-streaming loops plus the work-RAM byte
+// decoder at 00:E4E3. One walk shared by ten entry points -- each streaming
+// routine's head and its chunk/record continuation, plus 00:FA40 and the two
+// arms after its hardware-executed BBR0. Every transcript stops at a bounded
+// loop boundary, in front of the BBR0, or in front of an RTS.
 [[nodiscard]] std::optional<emulation::RoutineReplacement>
 replace_vram_upload(
     const emulation::RoutineEntry& entry,
@@ -1629,10 +1719,9 @@ replace_tilemap_upload(
 // The frame around the collision scanner: the playfield-tile probe at 01:CD74,
 // the ball/table gate at 01:CA84, the sweep setup at 01:CB2A and its tail, the
 // single-slot probe at 01:CBAB and the contact dispatcher at 01:CBCF. One walk
-// shared by twenty entry points -- four routine heads, the probe, eleven
-// addresses a call this family makes returns to, the two arms of the BBR at
-// 01:CB7E, which a checkpoint cannot express, and both arms of the BBS at
-// 01:CB71, one of which is a single JSR.
+// shared by twenty-nine entry points -- the original twenty collision-tail
+// entries plus nine bounded 01:CF33 confirmed-contact response continuations
+// split around four already-native physics calls.
 [[nodiscard]] std::optional<emulation::RoutineReplacement>
 replace_collision_tail(
     const emulation::RoutineEntry& entry,
@@ -1725,6 +1814,14 @@ replace_text_tile_write(
 // update routine. Active-update states deliberately remain in assembly.
 [[nodiscard]] std::optional<emulation::RoutineReplacement>
 replace_video_update_idle_gate(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram);
+
+// The bounded seams around bank 08's boot-time 4 KiB work-RAM clear. The
+// central TII remains emulated because one instruction exceeds the bridge's
+// ordered-write capacity; the two calls, setup prefix and VDC tail do not.
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_boot_work_ram_clear_seam(
     const emulation::RoutineEntry& entry,
     std::span<const std::byte> work_ram);
 

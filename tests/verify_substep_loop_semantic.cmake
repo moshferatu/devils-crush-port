@@ -10,27 +10,31 @@ if(NOT CONFIG STREQUAL "Release")
     message(FATAL_ERROR "Unsupported substep-loop configuration: ${CONFIG}")
 endif()
 
-# 01:C721-01:C770, the ball's substep loop, across eleven entry points. It is
-# the consumer of the substep split at 01:DC95: `$57` is the number of substeps
-# the split asked for this frame, `$56` counts them off, `$59` caps the loop at
+# 01:C6C2-01:C71D and 01:C721-01:C770, the ball's initial and resumed substep
+# loops, across twenty entry points. They consume the split at 01:DC95: `$57`
+# is the number of substeps the split asked for this frame, `$56` counts them
+# off, `$59` caps the loop at
 # sixteen times round, and the far end runs the path-length accumulator at
 # 01:C8F3, the damping at 01:DD09 and the drain test at 01:DD6E before
 # tail-jumping back into 01:DC95 to arm the next frame.
 #
 # Every routine it calls was already in the registry, so what this walk converts
 # is the control flow between them. It is the first family in the port whose
-# value is mostly in its calls rather than in its arithmetic: eight of its
-# thirty-one instructions are `JSR`s, all eight are crossed, and all eight land
-# on a registered entry, so the machine leaves each transcript already standing
-# on the next one.
+# value is mostly in its calls rather than in its arithmetic: the resumed loop
+# has eight `JSR`s and the initial pass has seven. All fifteen are crossed and
+# land on registered entries, so the machine leaves each transcript already
+# standing on the next one.
 #
 # Ten of the eleven entry points are the address one of those calls returns to.
 # The eleventh is the head at 01:C721, which is not reached by a call at all --
 # 01:C711 writes it into `$3F00,X`/`$3F80,X`, where the coroutine scheduler at
 # 01:C5C9 keeps this actor's resume address.
 #
-# Three things are handed back on purpose:
+# The core keeps two compound branches, one rare return, and three unobserved
+# branch arms on purpose:
 #
+#   01:C6E3  the initial pass's `BBR3 <$77>`, with native continuations at
+#            01:C6E6 and 01:C6EB.
 #   01:C756  the `BBR3 <$77`. `BBR` is `LD_ZP` wrapping `JR`, so the core
 #            crosses it in four clock steps where a checkpoint crosses it in
 #            two, and those steps are where it tests `next_event`. Both of its
@@ -38,6 +42,8 @@ endif()
 #            resolves the instruction itself. It is the only opcode in the range
 #            with a low nibble of `F`, and leaving it interpreted costs about
 #            64,000 master cycles.
+#   01:C70A  the carry-set `RTS`, reached once; the native `C708` branch stops
+#            on it so its original LastCycle remains the return boundary.
 #   01:C728, 01:C753, 01:C773
 #            branch arms this route never takes -- the off-table exit through
 #            01:C8D7 twice over, and the drain test reporting a drained ball.
@@ -51,15 +57,15 @@ endif()
 # the VDC handler, the timer driver or the music sequencer writes any of it, so
 # no interrupt taken inside one of these windows can change what the walk read.
 #
-# The ranges below are the loop's own two counters, the whole stack page, and
-# the ball's four signed sixteen-bit motion components. The stack page is the
-# range that matters most here: a crossed `JSR` pushes its two return bytes at
-# the instruction's start offset, so every one of the eight crossings appears in
-# the trace with its address, its value and its master cycle, and a cycle model
-# that were wrong by one would move them. `$3400-$35FF` is what the loop exists
-# to integrate, and it is written by the callees rather than by the walk, so it
-# is the arm that would catch a transcript that produced its own artifacts
-# exactly and still shifted the machine's event phase around them.
+# The ranges below include the initial loop's `$2D-$30` comparison scratch,
+# both counters, its `$3900/$3980` timers, its `$3F00/$3F80` coroutine address,
+# the whole stack page, and the ball's four signed sixteen-bit motion
+# components. The stack page is the range that matters most here: a crossed
+# `JSR` pushes its two return bytes at the instruction's start offset, so every
+# one of the fifteen crossings appears in the trace with its address, its value
+# and its master cycle. `$3400-$35FF` is what the loop exists to integrate and
+# is written by the callees, so it catches a transcript whose own writes match
+# but which shifts the machine's event phase around them.
 #
 # The write filter matches the effective address, so zero page is named as
 # $2056 and $2059 rather than $56 and $59; written the short way the two ranges
@@ -71,7 +77,7 @@ set(
 )
 set(
     expected_write_sha256
-    "43b11e2704651031c6dbeb9ddde5c30957f64d90f63d9fa0a7debb304be574e4"
+    "f726809454286a6fb6e6e908cf853f98c67f3a677b09f7d6e618b60a28e2ed09"
 )
 
 set(write_output "${OUTPUT}.writes.csv")
@@ -81,6 +87,24 @@ execute_process(
         "${APP}"
         --record-state-census
         "${OUTPUT}"
+        --replace-hook
+        "01:C6C2@all"
+        --replace-hook
+        "01:C6C5@all"
+        --replace-hook
+        "01:C6D9@all"
+        --replace-hook
+        "01:C6E6@all"
+        --replace-hook
+        "01:C6E9@all"
+        --replace-hook
+        "01:C6EB@all"
+        --replace-hook
+        "01:C6F2@all"
+        --replace-hook
+        "01:C6F5@all"
+        --replace-hook
+        "01:C708@all"
         --replace-hook
         "01:C721@all"
         --replace-hook
@@ -104,6 +128,8 @@ execute_process(
         --replace-hook
         "01:C76E@all"
         --work-ram-write-range
+        "202D-2030"
+        --work-ram-write-range
         "2056-2056"
         --work-ram-write-range
         "2059-2059"
@@ -111,6 +137,10 @@ execute_process(
         "2100-21FF"
         --work-ram-write-range
         "3400-35FF"
+        --work-ram-write-range
+        "3900-39FF"
+        --work-ram-write-range
+        "3F00-3FFF"
         --work-ram-write-trace
         "${write_output}"
         --rom
@@ -129,6 +159,15 @@ endif()
 
 foreach(expected_line IN ITEMS
     "State census recording complete: 3600 frames"
+    "Native replacement 01:C6C2@all entries: 200 of 200"
+    "Native replacement 01:C6C5@all entries: 200 of 200"
+    "Native replacement 01:C6D9@all entries: 301 of 301"
+    "Native replacement 01:C6E6@all entries: 25 of 25"
+    "Native replacement 01:C6E9@all entries: 25 of 25"
+    "Native replacement 01:C6EB@all entries: 169 of 169"
+    "Native replacement 01:C6F2@all entries: 200 of 200"
+    "Native replacement 01:C6F5@all entries: 200 of 200"
+    "Native replacement 01:C708@all entries: 200 of 200"
     "Native replacement 01:C721@all entries: 2342 of 2342"
     "Native replacement 01:C72E@all entries: 2342 of 2342"
     "Native replacement 01:C742@all entries: 3267 of 3267"
@@ -140,7 +179,7 @@ foreach(expected_line IN ITEMS
     "Native replacement 01:C768@all entries: 2340 of 2340"
     "Native replacement 01:C76B@all entries: 2340 of 2340"
     "Native replacement 01:C76E@all entries: 2340 of 2340"
-    "Work-RAM write trace complete: 4239583 selected writes"
+    "Work-RAM write trace complete: 6104460 selected writes"
 )
     string(FIND "${recorder_output}" "${expected_line}" line_offset)
     if(line_offset EQUAL -1)
@@ -173,7 +212,8 @@ endforeach()
 
 message(
     STATUS
-    "The ball's substep loop runs all eleven entry points natively across "
-    "24,316 admitted entries, with its counters, every return address its "
-    "eight crossings push and the motion it integrates identical to assembly."
+    "The ball's initial and resumed substep loops run all twenty entry points "
+    "natively across 25,836 admitted entries, with their counters, every "
+    "return address their crossings push and the motion they integrate "
+    "identical to assembly."
 )

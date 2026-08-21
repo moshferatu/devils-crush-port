@@ -859,6 +859,54 @@ if(TARGET devils_crush)
         )
 
         add_test(
+            NAME dc_rom_flipper_collision_response_continuation_semantic
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/flipper-collision-response-continuation-semantic-$<CONFIG>-v1"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_flipper_collision_response_continuation_semantic.cmake"
+        )
+        set_tests_properties(
+            dc_rom_flipper_collision_response_continuation_semantic
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_flipper_post_response_continuation_semantic
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/flipper-post-response-continuation-semantic-$<CONFIG>-v1"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_flipper_post_response_continuation_semantic.cmake"
+        )
+        set_tests_properties(
+            dc_rom_flipper_post_response_continuation_semantic
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_flipper_controller_prefix_semantic
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/flipper-controller-prefix-semantic-$<CONFIG>-v1"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_flipper_controller_prefix_semantic.cmake"
+        )
+        set_tests_properties(
+            dc_rom_flipper_controller_prefix_semantic
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
             NAME dc_rom_flipper_geometry_semantic
             COMMAND
                 "${CMAKE_COMMAND}"
@@ -2879,6 +2927,40 @@ if(TARGET devils_crush)
         )
         set_tests_properties(
             dc_rom_video_update_idle_gate_semantic
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_boot_work_ram_clear_seams_semantic
+            CONFIGURATIONS Release
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/boot-work-ram-clear-seams-semantic-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_boot_work_ram_clear_seams_semantic.cmake"
+        )
+        set_tests_properties(
+            dc_rom_boot_work_ram_clear_seams_semantic
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_work_ram_stream_semantic
+            CONFIGURATIONS Release
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/work-ram-stream-semantic-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_work_ram_stream_semantic.cmake"
+        )
+        set_tests_properties(
+            dc_rom_work_ram_stream_semantic
             PROPERTIES LABELS rom_required
         )
 
@@ -5181,6 +5263,23 @@ if(TARGET devils_crush)
         )
 
         add_test(
+            NAME dc_rom_front_spider_scheduler_call_seams_semantic
+            CONFIGURATIONS Release
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/front-spider-scheduler-call-seams-semantic-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_front_spider_scheduler_call_seams_semantic.cmake"
+        )
+        set_tests_properties(
+            dc_rom_front_spider_scheduler_call_seams_semantic
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
             NAME dc_rom_devil_shooter
             COMMAND
                 "${CMAKE_COMMAND}"
@@ -5685,6 +5784,91 @@ if(TARGET devils_crush)
         )
         set_tests_properties(
             dc_rom_three_blobs_first_movement_prefix_semantic
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_three_blobs_rng_initialization_semantic
+            CONFIGURATIONS Release Debug
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/three-blobs-rng-initialization-semantic-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_three_blobs_rng_initialization_semantic.cmake"
+        )
+        set_tests_properties(
+            dc_rom_three_blobs_rng_initialization_semantic
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_three_blobs_first_movement_continuation_semantic
+            CONFIGURATIONS Release Debug
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/three-blobs-first-movement-continuation-semantic-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_three_blobs_first_movement_continuation_semantic.cmake"
+        )
+        set_tests_properties(
+            dc_rom_three_blobs_first_movement_continuation_semantic
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_three_blobs_movement_call_seams_semantic
+            CONFIGURATIONS Release
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/three-blobs-movement-call-seams-semantic-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_three_blobs_movement_call_seams_semantic.cmake"
+        )
+        set_tests_properties(
+            dc_rom_three_blobs_movement_call_seams_semantic
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_three_blobs_collision_marker_semantic
+            CONFIGURATIONS Release
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/three-blobs-collision-marker-semantic-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_three_blobs_collision_marker_semantic.cmake"
+        )
+        set_tests_properties(
+            dc_rom_three_blobs_collision_marker_semantic
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_collision_effect_allocator_semantic
+            CONFIGURATIONS Release
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/collision-effect-allocator-semantic-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_collision_effect_allocator_semantic.cmake"
+        )
+        set_tests_properties(
+            dc_rom_collision_effect_allocator_semantic
             PROPERTIES LABELS rom_required
         )
 

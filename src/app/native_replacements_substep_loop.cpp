@@ -14,10 +14,10 @@ using emulation::RoutineEntry;
 using emulation::RoutineKey;
 using emulation::RoutineReplacement;
 
-// 01:C721-01:C770, the ball's substep loop. It is the consumer of the substep
-// split at 01:DC95 and the last unported piece of the ball's physics driver:
-// every routine it calls is already in the registry, so what was left running
-// interpreted was the control flow between them.
+// 01:C6C2-01:C71D and 01:C721-01:C770, the ball's initial and resumed substep
+// loops. They consume the substep split at 01:DC95. Every routine they call is
+// already in the registry, so what was left running interpreted was the
+// control flow between them.
 //
 // `$57` is the substep count 01:DC95 wrote for this frame and `$56` counts the
 // substeps taken against it. `$59` is a cap of sixteen on the number of times
@@ -27,8 +27,11 @@ using emulation::RoutineReplacement;
 // and the drain test at 01:DD6E, then tail-jumps back into 01:DC95 to split the
 // next frame's motion.
 //
-// Eleven entry points, and every one of them is an address a call this family
-// makes returns to, except the head:
+// Twenty entry points. The initial pass contributes nine: C6C2 crosses the
+// bank-call wrapper; C6C5/C6D9/C6E9/C6F2/C6F5/C708 continue crossed calls;
+// and C6E6/C6EB are the two arms after the core executes the compound BBR3.
+// The resumed loop contributes the eleven below, every one an address a call
+// returns to except the head:
 //
 //   01:C721  the head. It is not reached by a `JSR` at all -- 01:C711 writes
 //            $21/$C7 into `$3F00,X`/`$3F80,X`, which is where the coroutine
@@ -48,9 +51,9 @@ using emulation::RoutineReplacement;
 //   01:C76B  after `JSR $DD09` -- one crossed `JSR $DD6E`.
 //   01:C76E  after `JSR $DD6E`, the drain test, and the loop's exit.
 //
-// All eight calls are crossed rather than stopped in front of, and all eight
-// land on a registered entry, so the machine leaves each transcript already
-// standing on the next one.
+// All fifteen calls across the two loops are crossed rather than stopped in
+// front of, and all fifteen land on a registered entry, so the machine leaves
+// each transcript already standing on the next one.
 //
 // Shared state was measured on a pure-assembly write trace of every write to
 // `$56`, `$57`, `$59` and `$3C80-$3CFF` across the whole route. `$56` is
@@ -109,7 +112,12 @@ constexpr std::uint32_t kCall = 21U;
 
 [[nodiscard]] constexpr bool is_owned_entry(const std::uint16_t logical_pc)
 {
-    return logical_pc == 0xC721U || logical_pc == 0xC72EU
+    return logical_pc == 0xC6C2U || logical_pc == 0xC6C5U
+        || logical_pc == 0xC6D9U || logical_pc == 0xC6E6U
+        || logical_pc == 0xC6E9U || logical_pc == 0xC6EBU
+        || logical_pc == 0xC6F2U || logical_pc == 0xC6F5U
+        || logical_pc == 0xC708U
+        || logical_pc == 0xC721U || logical_pc == 0xC72EU
         || logical_pc == 0xC742U || logical_pc == 0xC74CU
         || logical_pc == 0xC759U || logical_pc == 0xC75CU
         || logical_pc == 0xC75EU || logical_pc == 0xC761U
@@ -142,7 +150,8 @@ constexpr std::uint32_t kCall = 21U;
 // the `JMP` in front of it is worth its twelve cycles either way.
 [[nodiscard]] constexpr bool is_stop_instruction(const std::uint16_t logical_pc)
 {
-    return logical_pc == 0xC728U || logical_pc == 0xC753U
+    return logical_pc == 0xC6E3U || logical_pc == 0xC70AU
+        || logical_pc == 0xC728U || logical_pc == 0xC753U
         || logical_pc == 0xC756U || logical_pc == 0xC773U
         || logical_pc == 0xC8C2U || logical_pc == 0xDC95U;
 }
@@ -348,6 +357,220 @@ std::optional<RoutineReplacement> replace_ball_substep_loop(
         }
 
         switch (pc) {
+        // ---- 01:C6C2  initial pass before the scheduled loop -------------
+        case 0xC6C2U:  // JSR $E219 -- crossed into the bank-call wrapper
+            call(0xC6C2U, 0xE219U);
+            break;
+
+        case 0xC6C5U:  // LDA #$10 -- sixteen attempts at most
+            load_accumulator(0x10U);
+            append_checkpoint(0xC6C5U, 0xC6C7U, kImmediate);
+            pc = 0xC6C7U;
+            break;
+
+        case 0xC6C7U:  // STA $59
+            store(0xC6C7U, zp(0x59U), registers.accumulator);
+            append_checkpoint(0xC6C7U, 0xC6C9U, kZeroPage);
+            pc = 0xC6C9U;
+            break;
+
+        case 0xC6C9U:  // LDA $56
+            load_accumulator(read_ram(zp(0x56U)));
+            append_checkpoint(0xC6C9U, 0xC6CBU, kZeroPage);
+            pc = 0xC6CBU;
+            break;
+
+        case 0xC6CBU:  // CMP $57
+            compare_accumulator(read_ram(zp(0x57U)));
+            append_checkpoint(0xC6CBU, 0xC6CDU, kZeroPage);
+            pc = 0xC6CDU;
+            break;
+
+        case 0xC6CDU:  // BCS $C6EF -- every requested step is complete
+            pc = branch(
+                0xC6CDU, 0xC6EFU, 0xC6CFU,
+                (registers.status & kCarry) != 0U);
+            break;
+
+        case 0xC6CFU:  // DEC $59
+            add_to_memory(0xC6CFU, zp(0x59U), 0xFFU);
+            append_checkpoint(0xC6CFU, 0xC6D1U, kZeroPageReadModifyWrite);
+            pc = 0xC6D1U;
+            break;
+
+        case 0xC6D1U:  // BNE $C6D6
+            pc = branch(
+                0xC6D1U, 0xC6D6U, 0xC6D3U,
+                (registers.status & kZero) == 0U);
+            break;
+
+        case 0xC6D3U:  // JMP $C8C2 -- attempt cap exhausted
+            append_checkpoint(0xC6D3U, 0xC8C2U, kJump);
+            pc = 0xC8C2U;
+            break;
+
+        case 0xC6D6U:  // JSR $F1B4 -- crossed into position integration
+            call(0xC6D6U, 0xF1B4U);
+            break;
+
+        case 0xC6D9U:  // LDA $3C80,X
+            load_accumulator(read_ram(
+                static_cast<std::uint16_t>(0x3C80U + registers.x)));
+            append_checkpoint(0xC6D9U, 0xC6DCU, kAbsoluteIndexed);
+            pc = 0xC6DCU;
+            break;
+
+        case 0xC6DCU:  // AND #$02
+            and_accumulator(0x02U);
+            append_checkpoint(0xC6DCU, 0xC6DEU, kImmediate);
+            pc = 0xC6DEU;
+            break;
+
+        case 0xC6DEU:  // BNE $C6EB
+            pc = branch(
+                0xC6DEU, 0xC6EBU, 0xC6E0U,
+                (registers.status & kZero) == 0U);
+            break;
+
+        case 0xC6E0U:  // JSR $CB2A -- crossed into the collision sweep
+            call(0xC6E0U, 0xCB2AU);
+            break;
+
+        // C6E3 is the compound-sampled BBR3 <$77. The core executes it and
+        // re-enters this walk at either C6E6 or C6EB.
+        case 0xC6E6U:  // JSR $F241 -- restore the cached position
+            call(0xC6E6U, 0xF241U);
+            break;
+
+        case 0xC6E9U:  // BRA $C6C9 -- retry without consuming a substep
+            append_checkpoint(0xC6E9U, 0xC6C9U, kBranchAlways);
+            pc = 0xC6C9U;
+            break;
+
+        case 0xC6EBU:  // INC $56 -- one substep consumed
+            add_to_memory(0xC6EBU, zp(0x56U), 0x01U);
+            append_checkpoint(0xC6EBU, 0xC6EDU, kZeroPageReadModifyWrite);
+            pc = 0xC6EDU;
+            break;
+
+        case 0xC6EDU:  // BRA $C6C9
+            append_checkpoint(0xC6EDU, 0xC6C9U, kBranchAlways);
+            pc = 0xC6C9U;
+            break;
+
+        case 0xC6EFU:  // JSR $DD09 -- crossed into motion damping
+            call(0xC6EFU, 0xDD09U);
+            break;
+
+        case 0xC6F2U:  // JSR $DC95 -- split the damped motion
+            call(0xC6F2U, 0xDC95U);
+            break;
+
+        case 0xC6F5U:  // LDA $3180,X -- stage the first integer position
+            load_accumulator(read_ram(
+                static_cast<std::uint16_t>(0x3180U + registers.x)));
+            append_checkpoint(0xC6F5U, 0xC6F8U, kAbsoluteIndexed);
+            pc = 0xC6F8U;
+            break;
+
+        case 0xC6F8U:  // STA $2F
+            store(0xC6F8U, zp(0x2FU), registers.accumulator);
+            append_checkpoint(0xC6F8U, 0xC6FAU, kZeroPage);
+            pc = 0xC6FAU;
+            break;
+
+        case 0xC6FAU:  // LDA $3200,X
+            load_accumulator(read_ram(
+                static_cast<std::uint16_t>(0x3200U + registers.x)));
+            append_checkpoint(0xC6FAU, 0xC6FDU, kAbsoluteIndexed);
+            pc = 0xC6FDU;
+            break;
+
+        case 0xC6FDU:  // STA $30
+            store(0xC6FDU, zp(0x30U), registers.accumulator);
+            append_checkpoint(0xC6FDU, 0xC6FFU, kZeroPage);
+            pc = 0xC6FFU;
+            break;
+
+        case 0xC6FFU:  // LDA #$F0
+            load_accumulator(0xF0U);
+            append_checkpoint(0xC6FFU, 0xC701U, kImmediate);
+            pc = 0xC701U;
+            break;
+
+        case 0xC701U:  // STA $2D
+            store(0xC701U, zp(0x2DU), registers.accumulator);
+            append_checkpoint(0xC701U, 0xC703U, kZeroPage);
+            pc = 0xC703U;
+            break;
+
+        case 0xC703U:  // STZ $2E
+            store(0xC703U, zp(0x2EU), 0U);
+            append_checkpoint(0xC703U, 0xC705U, kZeroPage);
+            pc = 0xC705U;
+            break;
+
+        case 0xC705U:  // JSR $E93C -- crossed into the signed comparison
+            call(0xC705U, 0xE93CU);
+            break;
+
+        case 0xC708U:  // BCC $C70B; carry-set returns through core at C70A
+            pc = branch(
+                0xC708U, 0xC70BU, 0xC70AU,
+                (registers.status & kCarry) == 0U);
+            break;
+
+        case 0xC70BU:  // STZ $3900,X
+            store(
+                0xC70BU,
+                static_cast<std::uint16_t>(0x3900U + registers.x), 0U);
+            append_checkpoint(0xC70BU, 0xC70EU, kAbsoluteIndexed);
+            pc = 0xC70EU;
+            break;
+
+        case 0xC70EU:  // STZ $3980,X
+            store(
+                0xC70EU,
+                static_cast<std::uint16_t>(0x3980U + registers.x), 0U);
+            append_checkpoint(0xC70EU, 0xC711U, kAbsoluteIndexed);
+            pc = 0xC711U;
+            break;
+
+        case 0xC711U:  // LDA #$21 -- install the scheduled resume address
+            load_accumulator(0x21U);
+            append_checkpoint(0xC711U, 0xC713U, kImmediate);
+            pc = 0xC713U;
+            break;
+
+        case 0xC713U:  // STA $3F00,X
+            store(
+                0xC713U,
+                static_cast<std::uint16_t>(0x3F00U + registers.x),
+                registers.accumulator);
+            append_checkpoint(0xC713U, 0xC716U, kAbsoluteIndexed);
+            pc = 0xC716U;
+            break;
+
+        case 0xC716U:  // LDA #$C7
+            load_accumulator(0xC7U);
+            append_checkpoint(0xC716U, 0xC718U, kImmediate);
+            pc = 0xC718U;
+            break;
+
+        case 0xC718U:  // STA $3F80,X
+            store(
+                0xC718U,
+                static_cast<std::uint16_t>(0x3F80U + registers.x),
+                registers.accumulator);
+            append_checkpoint(0xC718U, 0xC71BU, kAbsoluteIndexed);
+            pc = 0xC71BU;
+            break;
+
+        case 0xC71BU:  // JMP $DC95 -- tail handoff to the substep split
+            append_checkpoint(0xC71BU, 0xDC95U, kJump);
+            pc = 0xDC95U;
+            break;
+
         // ---- 01:C721  the head: is this actor still on the table? ---------
         // Bit 0 of `$3C80,X` is the actor's off-table flag. It was clear on all
         // 2,342 arrivals, so 01:C728 has never run.

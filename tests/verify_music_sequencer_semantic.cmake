@@ -15,7 +15,7 @@ endif()
 # what they are, programming the PSG register file and maintaining the
 # per-voice records in $2E00-$2FFF.
 #
-# Fifteen entry points share one walk: the per-frame tick at `4015`, which
+# Twenty-four entry points share one walk: the per-frame tick at `4015`, which
 # is the bank's top level, and the subroutines it calls.
 #
 # The tick was recorded as unportable for four slices, on the arithmetic that
@@ -46,7 +46,7 @@ endif()
 # balance programmer `4522`, the note-to-period conversion `46D7`, and the
 # handlers themselves -- so none of those is a separate entry.
 #
-# Every one of the twenty-five stops in `is_return_instruction` is absorbed
+# Every one of the twenty-six stops in `is_return_instruction` is absorbed
 # rather than handed to the core: the walk runs the `RTS` itself and the
 # transcript ends on the caller's side of it. That took the bank from 644,397
 # emulated return cycles to 68,481 in a single condition, and it moves nothing
@@ -80,7 +80,7 @@ endif()
 #     period, so about half of them do not fit. That is an argument about one
 #     transcript, not about the routine. `4142` is a loop as well -- `4143` is
 #     its head and `41F7` closes it with a `JMP $4143` -- so it chunks the same
-#     way, and `4143` is the fifteenth entry point. It is a legal boundary
+#     way, and `4143` is the loop-head entry point. It is a legal boundary
 #     rather than an invented one: ROM's own `PLP` at `41F1` has already
 #     restored the caller's mask before control reaches `41F7`, so the top of
 #     an iteration is somewhere the hardware may take an interrupt anyway.
@@ -105,6 +105,17 @@ endif()
 # driver range $20DD-$20FB covers the sample trigger at $4776, which writes
 # the driver's whole per-channel zero page. Neither the state census nor the
 # device-write trace saw either fault.
+#
+# The pitch-slide stepper at `4936` is observed beside the command descriptor
+# loader at `4BCC`. The loader composes the proven `4C42` record initializer,
+# so the combined call artifact covers all 548 pitch-slide calls plus all 66
+# complete command-loader calls from descriptor lookup through record setup.
+#
+# `469B` is intentionally replacement-only here. It is an internal branch
+# target inside `457A`, not a JSR entry, so a standalone observer would match
+# it to an unrelated outer return. The existing whole-family census, selected
+# work-RAM trace, and PSG/timer bus trace are the correct assembly oracle for
+# its note-duration, envelope-restart, cursor-advance, and final-return tail.
 set(
     expected_census_sha256
     "9036a9de0c3c9917f47bff8c04c136a4824ec12601fb457d260aa2dfe4443490"
@@ -117,9 +128,18 @@ set(
     expected_bus_sha256
     "b54d5c4ff41430623b0af9fe596d296aff7b84b4c5dd1ddc1af73eee26a6585e"
 )
+set(
+    expected_call_sha256
+    "e0d9b34c80d2a0dd8fc61a2a1859b0bc664a9092f01256b7f35c0f5b8cee2d2b"
+)
+set(
+    expected_call_write_sha256
+    "0f0314437896872b6646a8f74279b3045e0f7a7045490d3ed87005e66c69e2b2"
+)
 
 set(write_output "${OUTPUT}.writes.csv")
 set(bus_output "${OUTPUT}.bus.csv")
+set(call_output "${OUTPUT}.calls.csv")
 
 execute_process(
     COMMAND
@@ -149,6 +169,8 @@ execute_process(
         --replace-hook
         "45:457A@all"
         --replace-hook
+        "45:469B@all"
+        --replace-hook
         "45:47E0@all"
         --replace-hook
         "45:485E@all"
@@ -156,6 +178,10 @@ execute_process(
         "45:4883@all"
         --replace-hook
         "45:48F6@all"
+        --observe-hook
+        "45:4936"
+        --replace-hook
+        "45:4936@all"
         --replace-hook
         "45:49A2@all"
         --replace-hook
@@ -164,6 +190,16 @@ execute_process(
         "45:49E4@all"
         --replace-hook
         "45:49F9@all"
+        --observe-hook
+        "45:4BCC"
+        --replace-hook
+        "45:4BCC@all"
+        --routine-call-trace
+        "${call_output}"
+        --routine-replay
+        "45:4936@548"
+        --routine-replay
+        "45:4BCC@66"
         --work-ram-write-range
         "20D2-20D8"
         --work-ram-write-range
@@ -221,14 +257,23 @@ foreach(expected_line IN ITEMS
     "Native replacement 45:4211@all entries: 89 of 89"
     "Native replacement 45:4228@all entries: 12 of 12"
     "Native replacement 45:457A@all entries: 4 of 51"
+    "Native replacement 45:469B@all entries: 224 of 224"
     "Native replacement 45:47E0@all entries: 36 of 36"
     "Native replacement 45:485E@all entries: 308 of 308"
     "Native replacement 45:4883@all entries: 344 of 344"
     "Native replacement 45:48F6@all entries: 37 of 37"
+    "Native replacement 45:4936@all entries: 548 of 548"
     "Native replacement 45:49A2@all entries: 37 of 37"
     "Native replacement 45:49B6@all entries: 50 of 50"
     "Native replacement 45:49E4@all entries: 289 of 289"
     "Native replacement 45:49F9@all entries: 35 of 37"
+    "Native replacement 45:4BCC@all entries: 66 of 66"
+    "Observe hook 1 entries: 548"
+    "Observe hook 2 entries: 66"
+    "Routine call trace complete: 614 calls, 5896 writes"
+    "Routine replay 45:4936@548 verified: frame 3407, 168 body cycles, 1 ordered writes"
+    "Routine replay 45:4BCC@66 verified: frame 3466, 1800 body cycles, 45 ordered writes"
+    "Routine replay complete: 2 state-normalized calls"
     "Work-RAM write trace complete: 5458568 selected writes"
     "Bus write trace complete: 699251 selected writes"
 )
@@ -263,11 +308,32 @@ foreach(artifact IN ITEMS census write bus)
     endif()
 endforeach()
 
+file(SHA256 "${call_output}" actual_call_sha256)
+if(NOT actual_call_sha256 STREQUAL expected_call_sha256)
+    message(
+        FATAL_ERROR
+        "Semantic music-sequencer call artifact changed.\n"
+        "Expected: ${expected_call_sha256}\n"
+        "Actual:   ${actual_call_sha256}\n"
+    )
+endif()
+
+file(SHA256 "${call_output}.writes.csv" actual_call_write_sha256)
+if(NOT actual_call_write_sha256 STREQUAL expected_call_write_sha256)
+    message(
+        FATAL_ERROR
+        "Semantic music-sequencer call-write artifact changed.\n"
+        "Expected: ${expected_call_write_sha256}\n"
+        "Actual:   ${actual_call_write_sha256}\n"
+    )
+endif()
+
 message(
     STATUS
     "Semantic bank-45 music sequencer runs its per-frame tick, command "
     "interpreter, sample/envelope group, portamento stepper and PSG register "
-    "programmer natively across 36,721 admitted entries as instruction-boundary "
+    "programmer and command descriptor/record loader natively across 36,787 admitted "
+    "entries as instruction-boundary "
     "transcripts, the tick chunked at its voice loop and the PSG programmer at "
     "its channel loop so each chunk lands "
     "inside the timer horizon, with its voice records, the zero-page command "

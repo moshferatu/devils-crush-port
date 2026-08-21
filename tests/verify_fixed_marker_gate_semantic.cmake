@@ -9,7 +9,7 @@ endforeach()
 if(CONFIG STREQUAL "Debug")
     set(
         expected_census_sha256
-        "a95d0c343108b107d7ec1aa3c20915540d91bb08817704776531e5696ea9b5e2"
+        "9036a9de0c3c9917f47bff8c04c136a4824ec12601fb457d260aa2dfe4443490"
     )
 elseif(CONFIG STREQUAL "Release")
     set(
@@ -45,13 +45,31 @@ execute_process(
         --replace-hook
         "03:7B7A@all"
         --replace-hook
+        "03:7BB1@all"
+        --replace-hook
+        "03:7BB5@all"
+        --replace-hook
         "03:7BBB@all"
+        --replace-hook
+        "03:7BC3@all"
+        --replace-hook
+        "03:7BC7@all"
         --replace-hook
         "03:7BCD@all"
         --replace-hook
+        "03:7BD5@all"
+        --replace-hook
+        "03:7BD9@all"
+        --replace-hook
+        "03:7BDF@all"
+        --replace-hook
         "03:7BE0@all"
         --replace-hook
+        "03:7BE5@all"
+        --replace-hook
         "03:7BE8@all"
+        --replace-hook
+        "03:7BE9@all"
         --replace-hook
         "03:7BEC@all"
         --replace-hook
@@ -77,10 +95,19 @@ endif()
 foreach(expected_line IN ITEMS
     "State census recording complete: 3600 frames"
     "Native replacement 03:7B7A@all entries: 2650 of 2650"
+    "Native replacement 03:7BB1@all entries: 332 of 332"
+    "Native replacement 03:7BB5@all entries: 332 of 332"
     "Native replacement 03:7BBB@all entries: 332 of 332"
+    "Native replacement 03:7BC3@all entries: 332 of 332"
+    "Native replacement 03:7BC7@all entries: 332 of 332"
     "Native replacement 03:7BCD@all entries: 332 of 332"
+    "Native replacement 03:7BD5@all entries: 332 of 332"
+    "Native replacement 03:7BD9@all entries: 332 of 332"
+    "Native replacement 03:7BDF@all entries: 332 of 332"
     "Native replacement 03:7BE0@all entries: 996 of 996"
+    "Native replacement 03:7BE5@all entries: 996 of 996"
     "Native replacement 03:7BE8@all entries: 996 of 996"
+    "Native replacement 03:7BE9@all entries: 996 of 996"
     "Native replacement 03:7BEC@all entries: 996 of 996"
     "Native replacement 02:5955@all entries: 997 of 997"
     "Observe hook 1 entries: 2650"
@@ -121,5 +148,5 @@ endforeach()
 
 message(
     STATUS
-    "Semantic 7B7A through 7BEC covers all 2,650 calls and marker wrappers."
+    "Semantic 7B7A through 7BEC covers all 2,650 calls, marker submissions, wrappers, and helper calls."
 )

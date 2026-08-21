@@ -772,7 +772,7 @@ had answered wrong from the profile.
 **Do not check the target against the registry, and do not skip a crossing
 because nothing owns the far side.** This file said the opposite for two
 slices, and the collision-tail slice measured it: crossing `01:CB7B` into
-`01:CF33`, which is not registered and is still interpreted instruction for
+`01:CF33`, which at the time was not registered and was still interpreted
 instruction, is worth 6,678 cycles over 318 calls — exactly 21 each, exactly
 what every other crossing pays. The reasoning behind the old rule confused two
 different things. A crossing converts the `JSR` *itself*, and that conversion
@@ -3603,6 +3603,23 @@ enters the state-changing renderer beyond the prefix. Model the idle predicate
 in pure C, checkpoint and absorb that complete return, and decline either
 active byte. A hot measured path can be fully removed without treating an
 unobserved continuation as understood.
+
+Boot initializer `08:584C` shows the matching split when the wall is in the
+middle of a routine. Its `TII $3000,$3001,$0FFF` is one instruction and 4,095
+ordered writes, so neither a 512-write transcript nor instruction-boundary
+chunking can own it. Cross both calls before it, stop the clear prefix on the
+TII, and register the first address after it for the VDC tail and final return.
+That moves only 183 cycles, but makes the capacity decision explicit and lets
+one outer-call artifact prove that the emulated instruction stayed in exactly
+the same place.
+
+`00:E4E3` shows a different oversized-call shape: its backward branch lands on
+the routine's own registered entry after every compressed record. Treat that
+re-entry as the transaction boundary. The outer observer remains deliberately
+nested, so exact outer and inner call/write artifacts prove that record-level
+transactions preserve the whole call even though direct replay is practical
+only for the terminal record (a nonterminal replay invokes more than one
+replacement by design).
 
 For global screening, `Analyze-InstructionProfile.ps1 -UnregisteredOnly
 -ExcludeFrameSyncWait` now reports only deployed non-entry residue outside the

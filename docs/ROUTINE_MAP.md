@@ -940,7 +940,7 @@ because a walk stopped short. Seven of the twelve go to the same place, the
 compare helper at `00:E93C`.
 
 `01:CB7B`, the `JSR $CF33` on the contact path, is the one that corrected the
-rule. `01:CF33` is not a registered routine and is still interpreted
+rule. `01:CF33` was not yet registered and was still interpreted
 instruction for instruction, and the workflow notes said for two slices that a
 crossing onto such an address buys nothing. It is worth 6,678 over 318 calls,
 21 apiece, which is what every crossing pays: the conversion is of the `JSR`
@@ -2102,6 +2102,11 @@ queue:
 6. Every observed descriptor has a nonzero first byte and follows the data
    parser that populates driver channel state in logical `$2E00-$2FFF`.
 
+Semantic `45:4BCC@all` now owns that descriptor-selection prefix and composes
+the existing native `45:4C42` record initializer. All 66 routed calls preserve
+the complete 5,163-write scope; zero-tag descriptors still fall back to the
+original push/RTS dispatch.
+
 The outer `ED18` scope is the useful replacement-facing boundary because it
 includes bank mapping, the original audio driver, and restoration of the
 caller's X, Y, SP, and all eight MPRs. Its 66 calls span frames 7-3,466, take
@@ -2926,6 +2931,16 @@ initial states 0/1/2. The six internal states select the appearance sequence
 visual IDs. RNG calls at `03:6678/6697` seed the motion timers before the
 actors enter alternating dispatches `03:66A3/66D3`.
 
+That RNG initialization chain is now native as four bounded transactions.
+Semantic `03:6678/6697@all` preserves both authentic `JSR $C081` frames and
+hands the existing native jump-table/RNG child back to execution. Semantic
+`03:667B@all` consumes the first result, initializes `$3B00/$3980/$3A00/$3800`
+for the selected slot, and stops on the second RNG call. Semantic `03:669A@all`
+maps the second result to `1 + (A & $1F)`, stores `$3B80,X`, and crosses the
+authentic `JSR $C018` scheduler handoff. All 9/9/69/69 route arrivals execute
+natively; Release and Debug preserve the exact overlapping 156-call/2,509-
+write assembly artifact and canonical census.
+
 Semantic `03:664A@all` now replaces the three fixed setup calls through their
 exact 396-cycle, 16-write transcript. The typed adapter accepts only slots
 `$58-$5A` with their matching layout parameter `0/1/2`, installs the observed
@@ -2963,6 +2978,16 @@ the original mixed movement, reset, and coroutine tails as the only assembly
 work after their respective prefixes. The complete Release state census,
 call trace, and ordered-write artifact remain byte-identical to assembly.
 
+Semantic `03:66B5@all` now owns the continuation that remains exposed when the
+timer-expiry arm of that parent reloads the four-tick timer and toggles the
+phase bit. It decrements indexed `$3B00,X`, conditionally decrements
+`$3B80,X`, and resumes at direct-motion caller `03:66DE`, x-expiry reset
+`03:66E2`, or y-expiry negation `03:66BF`. The standalone route proves all
+1,107 arrivals (1,025 direct, 13 x-expiry, and 69 y-expiry) against the exact
+9,595-write assembly artifact; the deployed parent exposes 272 of those calls
+for 16,230 additional native master cycles. Release and Debug retain the
+canonical census and normalized ordinal-1 249-cycle/five-write replay.
+
 Semantic `03:676B@all` composes the scene-clear shared-motion leaf used by
 both movement phases. It accepts only clear group latch `$2CFD`, clear scene
 latch `$2D3C`, and the existing collision-free appearance-gate state. The
@@ -2980,6 +3005,29 @@ The exact 189-cycle, three-write composition admits 1,034 of 1,041 current
 calls; non-idle child states retain the original assembly path. The focused
 Release census, call, and ordered-write artifacts remain byte-identical, and
 `03:66DE@1` replays at frame 1,229 with three writes.
+
+The alternate-motion coroutine is now completely decomposed at its bounded
+instruction seams. Semantic `03:670F@all` owns all 204 signed destination-
+delta tests: 198 take the nonnegative handoff to `03:694A`, while six take the
+negative handoff to `03:6678`. Semantic `03:6729@all` stages the four live
+coordinate bytes in `$2D/$2E/$2F/$30` before handing the already-owned
+`03:673D` direction child back to execution. Semantic `03:6740@all` resumes
+after that child on all 204 calls, covering six zero-result returns, 192
+carry-clear additions, and six carry-set subtractions before absorbing the
+authentic `03:676A` return. Every instruction and LastCycle sample remains
+checkpointed around the child and actor-scan suspension. The three entries
+add exactly 69,102 deployed cycles; the canonical census, complete nested
+call/write artifact, and 4.2-million-write selected stack-page stream remain
+byte-identical to assembly.
+
+The nonnegative handoff's banked collision-marker leaf is now native too.
+Semantic `03:694A@all` admits all 198 natural calls from `01:C51D`, classifies
+live scratch `$2D` into marker one outside `$02-$0E`, marker zero at `$02-$03`
+and `$0D-$0E`, and marker two at `$04-$0C`, then writes the result to indexed
+`$3980,X`. Exact instruction checkpoints cover its 57/69/87/99-cycle pre-RTS
+paths and all eleven original interrupt-handler passages. The canonical
+census, complete 198-call/337-write artifact, and selected marker/stack-page
+stream remain byte-identical to assembly; deployment adds 20,844 native cycles.
 
 Semantic `03:67C0@all` now replaces every direct final collision-latch gate
 call for the fixed Three-Blobs slots `$58-$5A`. It reloads `$3800,X`, derives
@@ -3556,6 +3604,14 @@ the three hit calls retain the exact checkpoints through the children and hand
 control back at `03:64A5`, before the original safety, score, audio, and
 transition sequence. The complete call, ordered-write, and actor-identity
 artifacts remain unchanged.
+
+Semantic `03:64D2/64DD/64ED@all` now owns the three repeated scheduler call
+seams inside that transition. All 36/36/144 natural arrivals push the original
+two-byte return frame and enter the mapped bank-1 `C018` trampoline through an
+exact 21-cycle checkpoint. The timer-expiry bodies after each scheduler return
+remain assembly-owned, so copied RAM is never held across a coroutine yield.
+Release and Debug preserve the exact 216-call/1,172-write overlapping artifact
+and the 135-cycle/five-write first replay for every seam.
 
 `tools/Analyze-FrontSpiderSemantics.ps1` guards the two fixed layout records,
 side ownership, collision selection, every safety/score/audio write, the
@@ -4155,6 +4211,30 @@ without applying the rule. On a hit it:
    completion helpers, decrements `$2D2B`, and tail-calls the generic
    32-array slot clear at `01:C574`.
 
+### Shared type-`$8F` collision-effect allocator
+
+`03:7BF6-7C33` is shared by the Tower insects, Small Soldiers, and other
+confirmed-hit controllers. It checks the low nibble of `$3D00,X`: `$0F`
+means a collision effect is already associated and returns immediately.
+Otherwise it calls the generic actor-slot allocator through `01:C024/C5AB`.
+On success, Y names the reserved child and the routine writes:
+
+- source slot X to `$3E00,Y` and source `$3D00,X` to `$3E80,Y`;
+- lifetime `$08` to `$3D80,Y`, while marking the source's low nibble `$0F`;
+- source `$3900,X` to `$3900,Y`;
+- attribute `$E0` to `$3080,Y` and dispatch `03:7C34` to `$3F00/$3F80,Y`.
+
+Semantic `03:7BF6/7C02/7C05@all` preserves all 20/19/19 natural arrivals,
+the authentic allocator JSR frame, both returns, eight child/source writes,
+and every instruction boundary. Release and Debug reproduce the same artifacts:
+
+| Artifact | SHA-256 |
+| --- | --- |
+| Census | `9036a9de0c3c9917f47bff8c04c136a4824ec12601fb457d260aa2dfe4443490` |
+| Calls | `86387f4a5b221cd174e234bfd2f9811c567e35a42590d52ddf742f5275919d5b` |
+| Scoped writes | `e7ea0189b9f5500508db51e5dc64473b62e17f70b2d091517bb884bd0498ece3` |
+| Actor/stack writes | `b9a110dffc53902a67614f4d3aac7a50d63b809b395563e4d6f8a01a1bef27bf` |
+
 The seven hits therefore contribute 220 stored score units: seven 10-unit hit
 awards plus three 50-unit completion awards. Each hit has exactly one `$29`
 command. The three terminal calls clear slots `$64/$6A/$6D` across all 32
@@ -4212,6 +4292,26 @@ original collision IDs, group-count clear, source state, subtype, child
 budget, stack, and `01:C5E6` scheduler writes. Delayed spawning, allocation,
 and source waiting remain in their existing assembly/native-gate split.
 
+Semantic `03:7E87/7E8A/7EEE@all` now splits the shared child allocator around
+its existing native children. `7E87` stages the authentic `JSR $C024` frame;
+on each of the ten successful allocations, `7E8A` performs the sixteen child-
+field writes and crosses the original `JSR $C06C` camera-helper boundary with
+the source index still saved on the stack. `7EEE` restores that source,
+increments `$2D16` or `$2D17`, and absorbs the original return. The three
+checkpointed seams contribute 21, 483, and 84 cycles per spawn respectively,
+or exactly 5,880 deployed cycles, without claiming either existing child.
+
+Semantic `03:7EFA/7F05@all` now owns the spawned children's shared startup
+coroutine. All 160 `7EFA` calls toggle `$3080,X.5`, preserve the authentic
+`JSR $C018` frame, and compose the indexed `01:C5C9` countdown in exact
+171-cycle, six-write transcripts. On the ten expiries, dispatch advances to
+`7F05`; those one-time 270-cycle, ten-write transcripts clear direction bits
+5/6, set `$3880,X=$80`, set collision timer `$3A00,X=4`, and compose the same
+scheduler to install the existing `03:7F1A` initial collision controller. The
+separate deployment artifact pins all 170 calls and 1,290 writes in both
+Release and Debug (call SHA-256 `fa079a81...9aacb2`, write SHA-256
+`6cba36d5...59b96e`).
+
 Both child completion forms converge on `03:7F81`. Slot `$62` takes its
 non-`$0F` exit immediately at frame 1,852. Slot `$69` enters with subtype
 `$0F`, rewrites the holding dispatch on eight calls across frames
@@ -4236,9 +4336,9 @@ awards, decrements, exact frees, and the inactive all-five path. Debug and
 Release reproduce:
 
 - Entry SHA-256:
-  `c186bd9b395371e22a41e66f832561bd21c0632f349cdf44b00cf7a9b7bcd707`
+  `11a88d0196446e3f16a81c7a1cdc81de66ca4016ed06abc09dc3e15a0fcfc8b1`
 - Call SHA-256:
-  `575c226bcdfbbae6ea4f889e9b4cbac75f25e7d508e210776bb92d550e5b61f4`
+  `c65e2679394e1dea185519f6dbff45ac0c129bc195a695d66a469c0dd6c2d8ff`
 - Write SHA-256:
   `336a25613adff3f64c608761a9cf6c1cea74053704cf6625067d9d1bb41ee774`
 - Selected-state SHA-256:
@@ -5719,7 +5819,15 @@ The repeated score-panel leaf `09:72FD` was originally screened out because
 its dominant 255-call, 699-cycle/9-work-RAM-write form directly emits VDC-port
 commands through `$0000/$0002/$0003`. The bounded hardware-port channel now
 supports it: all 376 natural calls execute through an exact 56-boundary native
-transcript. Its `09:7266` parent remains in assembly.
+transcript. Its redraw poll is now native at `09:7237`, including all four
+work-RAM gates, dirty-bit consumption, and the common absorbed idle return.
+
+The panel's two ornament actors are native as well. `09:70C1` performs the
+left actor's one-shot coroutine handoff, which installs `09:70C4`; that entry
+and the right actor's `09:71EA` entry decrement their eight-tick countdowns,
+advance ROM phase tables at `09:70E5/720B`, wrap on `$FF`, and update
+`$3980,X`. The route covers all 1/669/670 handoff/left/right calls with exact
+180-cycle and 33/132/156-cycle shapes.
 
 `tools/Analyze-SessionScoringRoute.ps1` and `dc_rom_session_scoring` guard the
 ROM gates, complete work-RAM timeline, 400 globally ordered entries and
@@ -7689,6 +7797,30 @@ not raised for this parent. The two remaining `01:D466` calls are concrete
 examples: their current-slot paths enter `D525` at frames 1,820 and 2,255
 and emit 823 and 868 ordered writes.
 
+The first such split is native at `01:D594/D599/D5A9`. The 41 routed
+collision-active passes set `$78.6`, cross the existing `01:CFD8` motion
+adjustment, add `$C2:$C3` into `$BE:$BF`, cross the existing `01:D1A2`
+rotation, set `$77.3`, clear the selected actor's `$3800,Y.7`, and jump into
+existing native `01:DC95`. Each child keeps its authentic JSR stack frame and
+every instruction supplies an interrupt checkpoint. Release and Debug retain
+the exact 123-call/33,075-write assembly artifact; deployment adds 9,102
+native cycles with no decline or abandonment. Other `D525` branches remain
+split candidates rather than part of this bounded continuation.
+
+The controller's bounded prefix is now native at
+`01:D525/D52C/D53B/D54A/D54D/D550/D553/D556/D589`. The first three entries
+split the selected actor's live-state gate and collision scratch setup; the
+next four preserve the authentic `D62E`, `D081`, `D612`, and `D09E` JSR
+frames; `D556` resolves every natural post-projection response arm; and `D589`
+performs the signed motion negation before handing execution to existing native
+`D594`. Every instruction supplies an interrupt checkpoint. Release and Debug
+retain the exact 379-call/271,266-write artifact with call/write SHA-256 values
+`65dcc001d1839ea60a216c926c358a9e293bf850dd214988d0445e89935024bb` and
+`d5c8882a7ee9e87155ab0f02d467e15b9674fc32bfc928e914023e7614b060c9`.
+Deployment adds 19,296 native cycles with no decline or abandonment and leaves
+the two 512-write-overflow whole-parent calls as the unchanged decomposition
+boundary.
+
 ### Thirty-first native replacement: semantic `02:4FC1@all`
 
 The three Mercy Stars share a compact normal-table activation gate. It first
@@ -9451,6 +9583,13 @@ completion branch: a further 50-unit award produces stored score `$000096`,
 The frame-boundary image therefore records zero type, collision, counter,
 and dispatch fields for the completed actor.
 
+The confirmed-contact response is now native at nine bounded entry points:
+`01:CF33/CF42/CF45/CF53/CF56/CF60/CF63/CF6A/CF8C`. The split follows the
+authentic calls to `01:D081`, `01:D09E`, `01:CFD8`, and `01:D1A2`; both
+motion arms then hand `01:DC95` back at the original jump. All 520 route calls
+match assembly across registers, cycles, return ownership, and 251,090 ordered
+writes. The negative-motion cleanup retains the absorbed `01:CF99` return.
+
 `tools/Analyze-CollisionBoundaryRoute.ps1` and
 `dc_rom_collision_boundary` guard the ROM contact/response vectors, complete
 work-RAM timeline, 97,379 ordered calls, 1,163,259 scoped writes, 8,893
@@ -9715,3 +9854,164 @@ and selected-RAM SHA-256
 `79b945c4c1e462d065d815ba0ebe42db4652d8fae4a6916b1728863000e0435a`.
 The gate adds 166,887 deployed native master cycles with no decline or
 abandonment.
+
+## Title/setup VDC row uploader: semantic `00:FA40/FA6A/FA6E@all`
+
+The instruction profiler originally merged `00:F9A2-FAC5` into one 217,395-
+cycle range. ROM control flow and a bounded observer split it into six owners;
+the repeated work is `FA40-FAA6`, a 26-row upload that writes 64 tile bytes and
+their packed attribute nibbles to the VDC per row. `$2F:$30` names the tile
+stream, `$35:$36` the attribute stream, and `$2D:$2E` the destination VRAM
+word. Each completed row advances those pointers by `$0040`, `$0010`, and
+`$0040` respectively.
+
+`FA67` is a HuC6280 `BBR0` assembled from independently sampled zero-page-read
+and branch operations. As at `00:F423`, replacing it with one checkpoint can
+shift a VDC event, so the core executes it. `FA40` stops before that boundary;
+`FA6A` owns the high-nibble shift arm and `FA6E` the shared masked continuation.
+Both finish the VDC word, and the terminal inner iteration advances the three
+pointers and stops before `FAA5`'s outer `BNE`, which re-enters `FA40` for the
+next row.
+
+The VRAM/VCE family oracle admits all 26 row heads and 416 entries on each
+nibble arm. It preserves census SHA-256
+`9036a9de0c3c9917f47bff8c04c136a4824ec12601fb457d260aa2dfe4443490`,
+selected work-RAM SHA-256
+`8806527d038f5ff9e152a59bc3e97b93a68b9cfb15b42a93a8ddda6860a90d88`,
+and VDC/VCE bus SHA-256
+`01dc69cb955be192d0f63bb334e4a475fc5454ae5bd0ce6ba8aefae6394313d2`.
+Deployment adds 198,432 native master cycles with no decline or abandonment.
+
+## Three-Blobs movement child calls: semantic `03:66D3/66D6/66D9@all`
+
+The y-expiry Three-Blobs coroutine reaches three stable child-call
+continuations on every movement pass: `66D3` calls bank-1 motion trampoline
+`C012`, `66D6` calls the mapped shared appearance leaf at `676B`, and `66D9`
+calls coroutine scheduler trampoline `C018`. Each site executes 720 times on
+the canonical route.
+
+The enclosing observer beginning at `66BF` remains open across twelve actor
+scans per entry, so it is not a safe copied-RAM transaction. The three native
+seams instead reproduce only their individual JSR: high and low return bytes
+are written to the live stack page at the instruction's start cycle, the stack
+pointer and target PC advance at the exact LastCycle checkpoint, and the
+physical target bank is resolved through the live MPR.
+
+The assembly/native oracle admits 720/720 entries at each address and compares
+the canonical census plus the complete selected stack-page write stream. The
+seams add exactly 45,360 deployed native master cycles with no decline or
+abandonment; the rest of the suspended coroutine remains assembly-backed.
+
+## Three-Blobs y-expiry negation prefix: semantic `03:66BF@all`
+
+The bounded head of the suspended y-expiry scope is independently native.
+`66BF-66CE` negates the slot's little-endian `$3400/$3480` word in place by
+carrying borrow from the low-byte `SBC` into the high byte. Its two HuC6280
+`CLA` instructions clear only the accumulator, so the transaction preserves
+carry and all other flags exactly at each instruction boundary.
+
+After loading `$0C`, the prefix crosses `JSR $C021`: it writes the authentic
+`$66D2` return address to the live stack at the JSR's start cycle, publishes
+the LastCycle interrupt sample, and hands the bank-1 trampoline to its existing
+native owner. It does not retain copied RAM across that child or the later
+actor-scan suspension.
+
+All 60 natural entries execute natively. The assembly/native oracle compares
+the complete 60-call outer scopes and their ordered writes as well as the
+canonical census and full selected stack-page stream. Deployment gains exactly
+6,300 cycles with no decline, depth refusal, or abandonment. The alternate
+reset/motion coroutine at `03:66E2-676A` was the next decomposition target and
+is split further below.
+
+## Three-Blobs alternate motion: semantic `03:66E2/670A/670C/670F/6726/6729/673D/6740@all`
+
+The alternate arm is transaction-scoped at the scheduler and child-call
+boundaries instead of being represented as one suspended routine. `03:66E2`
+owns the six natural reset entries through the exact `$3800/$3300/$3380/`
+`$3500/$3580/$3980` updates and the original `JSR $C018` return frame. It
+hands the coroutine scheduler back to normal execution after 186 cycles.
+
+On the 204 resumed passes, `03:670A` preserves the HuC6280 24-cycle
+`BSR $6726` frame, while `03:6726`, `03:673D`, and `03:670C` preserve the
+21-cycle JSR frames for `$C012`, `$C03C`, and `$676B`. Every target is resolved
+through the live MPR and every LastCycle interrupt sample remains at the
+original boundary. All five entries admit every natural call; the canonical
+census, complete outer call/write artifact, and selected stack-page stream
+are byte-identical to assembly. The entries add 18,864 deployed cycles. The
+three arithmetic continuations described above complete the alternate arm
+without ever holding one copied-RAM transaction across an actor-scan
+suspension.
+
+## Confirmed-contact position retry: semantic `01:CDF8/CE22/CEB5/CE4D@all`
+
+The negative fixed-contact response jumps from `01:CF33` into a bounded
+position retry. It derives an octant from `$3480/$3580`, restores the cached
+ball position through existing native `00:F241`, selects four signed offsets
+from the bank-1 tables, and applies them to `$3180/$3200/$3300/$3380`.
+
+All 42 natural calls take the playfield probe's bounded early-out: the ball's
+high X byte is zero while the high scroll byte is nonzero. The probe clears
+carry, the caller clears the collision bit in `$3800,X`, and the original outer
+return completes the response. Four native entries preserve both JSR stack
+frames and every instruction boundary around the two children. Other geometry
+continues through the full scanner in assembly until a natural route proves
+that branch.
+
+The owning collision oracle keeps the canonical census, complete 520-call and
+251,090-write response artifacts, and 6,906,417 selected writes byte-identical
+to assembly. The entries add exactly 30,114 deployed native master cycles with
+no horizon/depth refusal or abandonment.
+
+## Three-Blobs post-audio hit continuation: semantic `03:67CF@all`
+
+The collision-active `03:67C0` prefix clears the hit bit and crosses the
+original `$44` audio command through `01:C087`. Execution resumes at `03:67CF`,
+where the selected Blob's `$2D39,Y` colour advances modulo six. The resulting
+index selects the exact ROM appearance sequence `$8A,$82,$85,$8A,$8E,$85`,
+which is written to `$3D00,X` before the controller returns at `03:67E5`.
+
+All 15 canonical calls execute natively. The transcript publishes every
+instruction checkpoint, both ordered writes, the compare/wrap carry result,
+the final N/Z state from the appearance load, and the absorbed RTS. Direct
+assembly corpus `03:67CF@15` verifies frame 1,609 with 105 body cycles and two
+writes; the absorbed return makes each deployed call 126 cycles.
+
+The expanded `03:67C0/67CF` family oracle compares assembly and native across
+1,980 calls and 1,435 writes. Its call and write SHA-256 values are
+`cae03bdf122b2c74313477cb4252e4d1b951e21d0783df27771c06f794ce5672` and
+`300e6622584d925d6e1e66258d196aec0210e6b0e7978709a6ae76322f4725c9`;
+Debug assembly/native and Release reproduce both hashes exactly, and the
+canonical census remains `9036a9de0c3c9917f47bff8c04c136a4824ec12601fb457d260aa2dfe4443490`.
+Deployment adds exactly 1,890 master cycles. The separately profiled
+`03:67E5` residue is shared-return attribution from paths that do not enter
+this continuation.
+
+## Fixed-marker helper child calls: semantic `03:7BE5/7BE9@all`
+
+The fixed-marker phase helper is already split into native stack-aware
+segments at `03:7BE0`, `03:7BE8`, and `03:7BEC`. The two instructions between
+those segments remain authentic calls: `03:7BE5` invokes native phase-stride
+addition `02:5955`, and `03:7BE9` invokes native sprite submission `01:C05D`.
+
+Both new semantic entries reproduce the real high/low return-address writes
+at the live stack depth, decrement S by two, resolve the physical child bank
+through the current MPR, and publish the original 21-cycle LastCycle sample.
+All 996 arrivals at each address execute natively. Release and Debug preserve
+the canonical census and the complete 2,650-call/88,480-write fixed-marker
+artifact exactly.
+
+## Fixed-marker outer submissions: semantic `03:7BB1/7BB5/7BC3/7BC7/7BD5/7BD9/7BDF@all`
+
+The three phase-wave descriptors now cross their complete routed submission
+sequence through bounded transactions. Entries `7BB1/7BC3/7BD5` preserve the
+original `PHY` and `JSR $C042` stack writes before handing the position wrapper
+to its existing native jump-table owner. Entries `7BB5/7BC7/7BD9` restore Y,
+select modes `$04/$09/$0A`, and preserve each authentic `JSR $7BE0` frame
+before the existing helper family resumes at `7BBB/7BCD/7BDF`.
+
+All six call segments admit 332 arrivals apiece. The final `7BDF` `RTS` uses
+an explicit instruction checkpoint: its LastCycle sample preserves all 36
+timer-interrupt horizons that an atomic return would decline. Release and Debug
+retain the canonical census and exact 2,650-call/88,480-write artifact.
+Deployment gains 75,696 cycles, reaches 699,670,263 native cycles across 576
+routines, and leaves 3,479,817 addressable cycles in 244 clusters.

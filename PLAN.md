@@ -625,6 +625,8 @@ Provide an interactive monitor-assignment screen and persist display identity, g
   continuations apiece. Semantic `03:7BE0/7BE8/7BEC@all` replaces all 996
   marker-wrapper prologues, post-draw accumulator restores, and epilogues
   through exact 33/12/12-cycle stack-aware segments. Semantic
+  `03:7BE5/7BE9@all` preserves all 996 authentic child-call frames apiece
+  around the independently native phase-stride and drawing children. Semantic
   `02:5955@all` now executes all 997 routed phase-stride additions, including
   the 996 marker calls, through a 15-checkpoint, eight-write, 198-cycle
   transcript; the remaining shared `01:C05D` drawing submission retains its
@@ -802,6 +804,105 @@ Provide an interactive monitor-assignment screen and persist display identity, g
   deferred video-update routine. All 2,649 canonical calls observe both gate
   bytes clear, preserve four instruction boundaries and the live return, and
   leave either unobserved active-update state in assembly by design.
+  Semantic `08:584C/584F/5852/5861@all` now splits the boot-time gameplay
+  work-RAM initializer around its unchunkable `TII $3000,$3001,$0FFF`.
+  The two calls, three-store clear prefix, post-transfer VDC setup, and final
+  return execute natively, while the single 4,095-write transfer remains
+  emulated under the bridge's 512-write contract. The complete 2.94-million-
+  cycle outer call, 49,993 ordered writes, selected RAM, VDC bus, and state
+  census remain exact.
+  Semantic `00:E4E3@all` now expands the adjacent byte stream into gameplay
+  work RAM one bounded record at a time. All 257 literal/repeat records plus
+  the terminator execute through 258 native entries; the complete nested
+  258-call/481,291-write artifact, interrupt placement, and canonical census
+  remain exact.
+  Semantic `45:4C42@all` now owns the music pending-event command-record
+  initializer. All 66 routed calls consume their one-or-more voice records,
+  clear transient per-voice state, cross the existing native balance helper,
+  and absorb the final return with exact checkpoints. The complete
+  66-call/4,965-write artifact matches assembly in Release and Debug; the
+  unobserved active-teardown and tail-dispatch arms remain assembly-backed.
+  Deployment adds 204,027 native master cycles, reaching 698,636,661 cycles
+  overall (54.06% of the route and 98.33% outside frame wait) across 493
+  routines, with no horizon declines or abandonments.
+  Semantic `45:4936@all` now owns all 548 routed music pitch-slide calls. Its
+  instruction-checkpointed two-byte stepping preserves upward/downward motion,
+  high-byte carry/borrow, destination clamps, all three returns, and original
+  interrupt passages. The exact Release/Debug 548-call/733-write artifact and
+  focused final replay match assembly. Deployment adds 92,871 native master cycles, reaching
+  698,729,532 cycles overall (54.07% of the route and 98.35% outside frame
+  wait) across 494 routines, with no horizon declines or abandonments.
+  Semantic `45:4BCC@all` now composes the `45:4C42` initializer with the
+  command descriptor loader. All 66 routed calls preserve the accepted command
+  latch, doubled table index, little-endian `$5D81` descriptor pointer,
+  nonzero tag branch, complete record initialization, interrupt passages, and
+  final return. The exact 66-call/5,163-write Release/Debug artifact and
+  focused 1,800-cycle replay match assembly. Replacing the child registry entry
+  with the parent adds 7,722 deployed native cycles, reaching 698,737,254
+  cycles overall (54.07% of the route and 98.35% outside frame wait) across
+  494 routines, with no horizon declines or abandonments.
+  Semantic `09:70C1/70C4/71EA@all` now owns both score-panel ornament
+  animations. The left one-shot handoff composes the existing coroutine
+  scheduler, while the two repeated entries share exact 33/132/156-cycle
+  phase-table transcripts including `$FF` sentinel wraps. All 1/669/670 calls,
+  the expanded 4,365-call/30,486-write score-family artifact, selected work
+  RAM, VDC bus traffic, and canonical census match assembly. The two steppers
+  add 89,682 deployed native cycles, reaching 698,826,936 cycles overall
+  (54.07% of the route and 98.36% outside frame wait) across 497 routines,
+  with no horizon/depth declines or abandonments.
+  Semantic `45:469B@all` now owns all 224 natural entries into the command
+  interpreter's post-duration continuation. The existing instruction walk
+  preserves the duration-table lookup, note and envelope state, cursor
+  advance, and real `45:46D6` return. Because this is an internal branch
+  target rather than a subroutine, the enclosing music-family oracle proves
+  it without inventing a false call scope. Deployment adds 68,082 native
+  cycles, reaching 698,895,018 overall (54.08% of the route and 98.37%
+  outside frame wait) across 498 routines, with no horizon/depth declines or
+  abandonments.
+  The merged `00:F9A2-FAC5` profile range is now split by ownership. Its
+  `00:FA40-FAA6` title/setup VDC row uploader is native at the row head and
+  both post-`BBR0` arms: all 26 rows and 416 entries per nibble arm preserve
+  the canonical census, selected work RAM, and VDC bus stream. The core keeps
+  the compound-sampled `BBR0` and outer `BNE`, while deployment adds 198,432
+  cycles and reaches 699,093,450 overall (54.09% of the route and 98.40%
+  outside frame wait) across 501 routines with no declines or abandonments.
+  Semantic `03:66D3/66D6/66D9@all` now owns the Three-Blobs y-expiry
+  coroutine's three repeated child-call seams. Each preserves its real JSR
+  stack writes and LastCycle sample before handing execution to the existing
+  motion, appearance, or scheduler owner. All three admit 720/720 natural
+  entries; the canonical census and complete selected stack-page trace match
+  assembly. Deployment adds exactly 45,360 cycles and reaches 699,138,810
+  overall (54.10% of the route and 98.40% outside frame wait) across 504
+  routines with no horizon/depth declines or abandonments. The suspended
+  `03:66BF-C5E9` outer scope remains assembly-backed and must be decomposed at
+  further internal boundaries.
+  Semantic `03:66BF@all` now owns the bounded negation prefix at the head of
+  that suspended scope. All 60 natural entries reproduce the two-byte
+  `$3400/$3480` in-place negation at every instruction boundary, preserve the
+  HuC6280-specific flag behavior, and cross the original `JSR $C021` with its
+  real stack frame before handing execution to the existing bank-1 owner. The
+  complete 60-call outer artifact, its ordered writes, the global stack-page
+  stream, and the canonical census match assembly. Deployment adds exactly
+  6,300 cycles and reaches 699,145,110 overall across 505 routines with no
+  declines or abandonments. The alternate arm is now decomposed further:
+  semantic `03:66E2@all` owns its six-call reset prefix and authentic
+  `JSR $C018`, while `03:670A/670C/6726/673D@all` owns all 204 repeated
+  BSR/JSR seams apiece. The expanded outer-call, ordered-write, census, and
+  selected stack-page artifacts remain exact. These five entries add 18,864
+  cycles and reach 699,163,974 overall across 510 routines with zero declines
+  or abandonments. Semantic `03:670F/6729/6740@all` now completes the bounded
+  alternate-motion arithmetic around those call seams. All 204 signed
+  destination tests, scratch-staging passes, and post-child velocity updates
+  execute through exact instruction checkpoints, including the authentic
+  `03:676A` return. The three entries add 69,102 cycles and reach 699,233,076
+  overall across 513 routines, with zero declines or abandonments and exact
+  census, nested-call/write, and selected stack-page artifacts.
+  Semantic `01:CF33/CF42/CF45/CF53/CF56/CF60/CF63/CF6A/CF8C@all` now owns
+  the bounded confirmed-contact response around four existing native physics
+  children. All 520 outer calls and 251,090 ordered writes match assembly.
+  The nine entries add 120,378 cycles and reach 699,353,454 overall across 522
+  routines, with zero declines or abandonments; fresh residue is 3,799,770
+  cycles in 255 clusters.
   Semantic `01:DD09@all` composes the signed `E905` divider for either nonzero motion
   component, subtracts its signed quotient, and applies the second-axis
   acceleration. All 753 calls are native, including the 669 previously
@@ -1148,6 +1249,34 @@ Provide an interactive monitor-assignment screen and persist display identity, g
   The larger `01:D525` controller remains a decomposition boundary: its 128
   census calls span 29-1,456 writes and 1,035-49,122 body master cycles, so
   the largest live paths exceed the bridge's independent 512-write limit.
+  Semantic `03:6678/667B/6697/669A@all` now replaces the complete bounded
+  Three-Blobs RNG initialization chain through both RNG frames, movement-state
+  setup, timer transform, and scheduler handoff. All 156 overlapping route
+  calls and 2,509 writes remain exact in Release and Debug; deployment reaches
+  699,512,130 native cycles across 546 routines with a 3,639,366-cycle residue.
+  Semantic `03:64D2/64DD/64ED@all` now replaces all 216 Front-Spider
+  transition scheduler call seams through their authentic stack frames and
+  interruptible LastCycle checkpoints. The exact 216-call/1,172-write artifact
+  remains identical in Release and Debug; deployment reaches 699,516,666
+  native cycles across 549 routines with a 3,634,830-cycle residue.
+  Semantic `01:D594/D599/D5A9@all` now replaces all 123 bounded flipper
+  collision-response continuations around the existing native motion children.
+  The exact 123-call/33,075-write artifact remains identical in Release and
+  Debug; deployment reaches 699,525,768 native cycles across 552 routines with
+  a 3,625,608-cycle residue.
+  Semantic `01:D5B8/D5BB/D5BE/D5C1/D5C4/D5D8@all` now replaces the bounded
+  flipper post-response continuation, and semantic
+  `01:D525/D52C/D53B/D54A/D54D/D550/D553/D556/D589@all` replaces the stable
+  controller prefix around four existing native physics children. Their exact
+  235-call/160,392-write and 379-call/271,266-write artifacts remain identical
+  in Release and Debug. Semantic `03:7BE5/7BE9@all` then replaces both
+  fixed-marker helper child-call seams across all 996 arrivals apiece while
+  retaining the exact 2,650-call/88,480-write family artifact; deployment
+  reaches 699,594,567 native cycles across 569 routines. Semantic
+  `03:7BB1/7BB5/7BC3/7BC7/7BD5/7BD9/7BDF@all` then replaces all three routed
+  fixed-marker descriptor submissions and their final interruptible return.
+  The exact family artifact remains unchanged; deployment reaches 699,670,263
+  native cycles across 576 routines with a 3,479,817-cycle residue.
   Unimplemented `03:6966` semantic paths remain emulated.**
 - Port RNG, physics, collision, table actors/rules, bonus stages, and session transitions.
 - For each routine: observe, document, shadow-test, then replace.

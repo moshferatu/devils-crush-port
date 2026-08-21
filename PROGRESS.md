@@ -1,6 +1,6 @@
 # Project Progress
 
-Last updated: 2026-08-20
+Last updated: 2026-08-21
 
 ## Current Status
 
@@ -8,24 +8,28 @@ Last updated: 2026-08-20
 
 **Current milestone:** 4. Native gameplay port
 
-**Milestone 4 current gate:** semantic `01:C5AB@all` now replaces the complete
-shared actor-slot allocator. All 44 natural calls and all 64 calls on the
-patched Knight stress route execute natively through a state-derived scan of
-slots `$04-$7B`, both reservation modes, pool exhaustion, and the exact return.
-Six persisted replay fixtures cover the natural uninterrupted scan lengths;
-two forced fixtures additionally lock the dormant `$C0` reservation and
-carry-set exhausted returns. The owning route preserves 72 original
-interrupt-handler passages through the allocator's instruction-boundary
-transcript.
+**Milestone 4 current gate:** the shared collision-effect allocator is native.
+Semantic `03:7BF6/7C02/7C05@all` preserves the low-nibble suppression gate,
+crosses the existing bank-one actor-slot allocator through its authentic JSR
+frame, and initializes the reserved type-`$8F` effect before absorbing the
+original return.
 
-The deployed registry now runs **697,120,455 of 1,292,371,731 master cycles
-natively, 53.94% of the route and 98.12% of everything outside the frame-sync
-wait**, across 473 admitted routines. The allocator adds 200,055 native cycles
-without adding a registry key because its former terminal-only prefix was
-already admitted.
-The core declines no offered registry transcript and none is abandoned. The
-3,600-frame state census remains
+The deployed registry now runs **699,696,753 of 1,292,371,731 master cycles
+natively, 54.14% of the route and 98.48% of everything outside the frame-sync
+wait**, across 580 admitted routines. The three new entries add exactly 5,646
+deployed native cycles across 58 entered scopes, with no interrupt-horizon/
+depth declines or abandonments. The fresh deployed residue contains 3,452,871
+addressable cycles in 243 clusters. The core declines no offered registry
+transcript and none is abandoned. The 3,600-frame state census remains
 `9036a9de0c3c9917f47bff8c04c136a4824ec12601fb457d260aa2dfe4443490`.
+
+The assembly/native oracle admits all 20 outer calls, all 19 allocator-return
+continuations, and all 19 effect initializers. It preserves the direct
+low-nibble-`$0F` suppression return, every successful allocator result, eight
+effect-field writes per child, and all original interrupt passages. The
+canonical census, complete 58-call/1,022-write artifact, and 4,650,247-write
+selected actor/stack stream are byte-identical in Release and Debug. Re-rank
+the fresh residue before selecting the next bounded gameplay cluster.
 
 Semantic `02:533B@all` now validates the live stack frame, declares the
 original `02:5393` observer boundary, pops the real two-byte return, and
@@ -1391,6 +1395,389 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
 
 ## Completed
 
+- [x] Re-rank the 3,458,637-cycle residue and port the shared collision-effect
+  allocator at `03:7BF6-7C33`:
+  - Admit semantic `03:7BF6/7C02/7C05@all` on all 20/19/19 natural arrivals,
+    splitting ownership at the existing native `01:C024/C5AB` actor-slot
+    allocator.
+  - Preserve the low-nibble suppression gate, authentic JSR frame, allocator
+    carry handoff, source/child slots, eight type-`$8F` effect-field writes,
+    flags, every instruction checkpoint, and both original returns.
+  - Retain the canonical census, complete 58-call/1,022-write artifact, and
+    4,650,247 selected actor/stack writes byte-for-byte against assembly in
+    Release and Debug; normalized `03:7BF6@8` suppression and `03:7C05@19`
+    initializer replays remain exact.
+  - Add exactly 5,646 deployed native cycles, reach 580 admitted/464 entered
+    routines with zero horizon/depth declines or abandonments, and reduce the
+    addressable residue to 3,452,871 cycles in 243 clusters.
+  - Pass the owning Release semantic regression, independent Debug family
+    route, generated-registry validation, Release/Debug application and core
+    builds, both ROM-free core configurations, the complete 454-test Release
+    suite, and diff hygiene.
+- [x] Re-rank the 3,479,817-cycle residue and port the bounded Three-Blobs
+  collision-marker leaf at `03:694A-6965`:
+  - Admit semantic `03:694A@all` on all 198 natural arrivals from the banked
+    scheduler after the alternate-motion destination-delta handoff.
+  - Preserve all five compare bands, marker states zero/one/two, indexed
+    `$3980,X` write, flags, exact instruction checkpoints, and authentic
+    return across 57/69/87/99-cycle pre-return paths.
+  - Retain all eleven original interrupt-handler passages, the canonical
+    census, complete 198-call/337-write artifact, and selected marker/stack-
+    page stream byte-for-byte against assembly.
+  - Add exactly 20,844 deployed native cycles, reach 577 admitted/461 entered
+    routines with zero horizon/depth declines or abandonments, and reduce the
+    addressable residue to 3,458,637 cycles in 243 clusters.
+  - Pass the complete 17-test Release Three-Blobs/registry/core checkpoint,
+    generated-registry validation, Release/Debug application and core builds,
+    and both ROM-free core configurations.
+- [x] Re-rank the 3,556,233-cycle residue and port the complete routed fixed-
+  marker submission sequence:
+  - Admit semantic
+    `03:7BB1/7BB5/7BC3/7BC7/7BD5/7BD9/7BDF@all` on all 332 natural arrivals
+    apiece around the existing native descriptor, jump-table, helper,
+    phase-stride, and drawing owners.
+  - Preserve all six authentic JSR frames, three saved/restored Y values,
+    descriptor modes `$04/$09/$0A`, exact instruction checkpoints, and the
+    final `RTS`; the return's explicit LastCycle checkpoint admits all 36
+    timer-interrupt horizons that an atomic transcript correctly refused.
+  - Retain the canonical census and exact 2,650-call/88,480-write overlapping
+    artifact in Release and Debug; call/write SHA-256 values remain
+    `0a310f9d...0b102` and `2b78c118...301f9`.
+  - Add exactly 75,696 deployed native cycles, reach 576 admitted/460 entered
+    routines with zero horizon/depth declines or abandonments, and reduce the
+    addressable residue to 3,479,817 cycles in 244 clusters.
+  - Pass the owning Release and Debug family oracle, generated-registry
+    validation, both ROM-free suites, the complete 452-test Release suite,
+    Release/Debug application builds, and diff hygiene.
+- [x] Re-rank the 3,617,913-cycle residue and port the bounded flipper-
+  controller prefix at `01:D525-D594`:
+  - Admit semantic `01:D525/D52C/D53B/D54A/D54D/D550/D553/D556/D589@all`
+    on all 128/74/62/19/19/19/19/19/20 natural arrivals, splitting the
+    oversized parent at its state branches and four authentic JSR frames.
+  - Preserve actor-state release, scratch initialization, all routed response
+    arms, signed motion negation, flags, exact instruction checkpoints, and
+    handoffs to existing native `01:CF33`, `01:D5B8`, `01:D594`, and
+    `01:D599` owners.
+  - Retain the canonical census and exact 379-call/271,266-write overlapping
+    assembly artifact in Release and Debug; call/write SHA-256 values are
+    `65dcc001...024bb` and `d5c8882a...060c9`.
+  - Add exactly 19,296 deployed native cycles, reach 567 admitted/451 entered
+    routines with zero horizon/depth declines or abandonments, and reduce the
+    addressable residue to 3,598,425 cycles in 248 clusters.
+  - Pass the owning and preceding Release/Debug flipper oracles, flipper
+    projection/geometry, motion-rotation, collision-adjustment, generated-
+    registry validation, both ROM-free core suites, and Release/Debug
+    application/core builds.
+- [x] Re-rank the 3,625,608-cycle residue and port the bounded flipper
+  post-response continuation at `01:D5B8-D5FE`:
+  - Admit semantic `01:D5B8/D5BB/D5BE/D5C1/D5C4/D5D8@all` on all
+    43/43/43/43/43/20 natural arrivals, splitting four authentic JSRs from
+    their existing native physics children and the enclosing oversized
+    `01:D525` controller.
+  - Preserve all four JSR stack frames, exact instruction checkpoints, both
+    signed-response directions, actor-state branches, arithmetic flags, and
+    handoffs to native `01:D594/D599` or exact assembly return boundaries.
+  - Retain the canonical census and exact 235-call/160,392-write overlapping
+    assembly artifact in Release and Debug.
+  - Add exactly 7,671 deployed native cycles, reach 558 admitted/442 entered
+    routines with zero horizon/depth declines or abandonments, and reduce the
+    addressable residue to 3,617,913 cycles in 251 clusters.
+  - Pass the owning Release/Debug oracle, preceding collision-response,
+    flipper projection/geometry, motion-rotation, collision-adjustment, and
+    generated-registry regressions, both 38-test ROM-free suites, and
+    Release/Debug application/core builds.
+- [x] Re-rank the 3,634,830-cycle residue and port the bounded flipper
+  collision-response continuation at `01:D594-D5B7`:
+  - Admit semantic `01:D594/D599/D5A9@all` on all 41 natural arrivals apiece,
+    splitting the owner at the existing native `01:CFD8`, `01:D1A2`, and
+    `01:DC95` children instead of spanning the oversized `01:D525` parent.
+  - Preserve the collision-orientation and response bits, both signed motion
+    words, authentic JSR stack frames, actor-state release, flags, and every
+    instruction checkpoint.
+  - Retain the canonical census and exact 123-call/33,075-write overlapping
+    assembly artifact in Release and Debug.
+  - Add exactly 9,102 deployed native cycles, reach 552 admitted/436 entered
+    routines with zero horizon/depth declines or abandonments, and reduce the
+    addressable residue to 3,625,608 cycles in 252 clusters.
+  - Pass the owning Release/Debug oracle, existing flipper, motion-rotation,
+    collision-adjustment, and host-registry Release regressions, generated-
+    registry validation, both 38-test ROM-free suites, and Release/Debug
+    application/core builds.
+- [x] Re-rank the 3,639,366-cycle residue and port the Front-Spider transition
+  scheduler call seams at `03:64D2/64DD/64ED`:
+  - Admit semantic `03:64D2/64DD/64ED@all` on all 36/36/144 natural arrivals.
+  - Preserve each authentic `JSR $C018` stack frame, target-bank mapping, and
+    interruptible LastCycle checkpoint while leaving the three timer-expiry
+    continuations with their existing assembly owners.
+  - Retain the canonical census and exact 216-call/1,172-write overlapping
+    artifact plus all three 135-cycle/five-write normalized replays in Release
+    and Debug.
+  - Add exactly 4,536 deployed native cycles, reach 549 admitted/433 entered
+    routines with zero horizon/depth declines or abandonments, and reduce the
+    addressable residue to 3,634,830 cycles in 251 clusters.
+  - Pass the owning Release Front-Spider regression, focused Release and Debug
+    seam oracle, generated-registry validation, both ROM-free suites, and
+    Release/Debug application builds.
+- [x] Re-rank the 3,645,465-cycle residue and port the Three-Blobs RNG
+  initialization chain at `03:6678-66A2`:
+  - Admit semantic `03:6678/667B/6697/669A@all` on all 9/9/69/69 natural
+    arrivals, splitting both RNG calls and their continuations at the authentic
+    return addresses.
+  - Preserve both `JSR $C081` stack frames, every movement-state write, the
+    second-result timer transform, the `JSR $C018` scheduler frame, flags, and
+    every instruction checkpoint.
+  - Retain the canonical census and exact 156-call/2,509-write overlapping
+    assembly artifact in Release and Debug.
+  - Add exactly 6,003 deployed native cycles, reach 546 admitted/430 entered
+    routines with zero horizon/depth declines or abandonments, and reduce the
+    addressable residue to 3,639,366 cycles in 248 clusters.
+  - Pass the 16-test Release Three-Blobs/registry/core checkpoint, the focused
+    Debug oracle, generated-registry validation, both ROM-free suites, and
+    Release/Debug application builds.
+- [x] Re-rank the 3,661,935-cycle residue and port the Three-Blobs
+  first-movement continuation at `03:66B5-66BD`:
+  - Admit semantic `03:66B5@all` on all 1,107 standalone calls and all 272
+    deployed arrivals left exposed by the existing native `03:66A3` parent.
+  - Preserve the indexed x/y decrements, N/Z flags, direct and x/y-expiry
+    branches, ordered writes, and exact instruction checkpoints before handing
+    execution to native `03:66DE`, `03:66E2`, or `03:66BF`.
+  - Retain the canonical census and exact 1,107-call/9,595-write artifact plus
+    the 249-cycle/5-write direct replay in Release and Debug.
+  - Add exactly 16,230 deployed native cycles, reach 542 admitted/426 entered
+    routines with zero horizon/depth declines or abandonments, and reduce the
+    addressable residue to 3,645,465 cycles in 249 clusters.
+  - Pass the 15-test Release Three-Blobs/registry/core checkpoint, the focused
+    Debug oracle and core test, generated-registry validation, and Release/Debug
+    application builds.
+- [x] Re-rank the 3,668,571-cycle residue and port the Small-Soldier startup
+  coroutine at `03:7EFA-7F19`:
+  - Admit semantic `03:7EFA/7F05@all` on all 160 countdown and ten setup calls,
+    composing the existing native `01:C5C9` scheduler at both authentic
+    `01:C018` handoffs.
+  - Preserve the direction-bit toggle, indexed sixteen-tick countdown,
+    collision-state normalization, four-tick collision timer, both real JSR
+    frames, flags, and every instruction checkpoint.
+  - Retain the canonical census and exact 5,322-call/3,324-write source-family
+    plus 3,888 selected actor-state artifacts; separately pin the deployment
+    scope's 170 calls and 1,290 writes in Release and Debug.
+  - Add exactly 6,540 deployed native cycles, reach 541 admitted/425 entered
+    routines with zero horizon/depth declines or abandonments, and reduce the
+    addressable residue to 3,661,935 cycles in 250 clusters.
+  - Pass the owning Release and Debug family oracles, the generalized Tower-
+    insect sibling regression, generated-registry validation, Release/Debug
+    application and core builds, and both ROM-free suites.
+- [x] Re-rank the 3,674,475-cycle residue and port the Small-Soldier child
+  allocator at `03:7E87-7EF9`:
+  - Admit semantic `03:7E87/7E8A/7EEE@all` on all ten paired spawns and split
+    ownership at the existing native allocator and camera-helper children.
+  - Preserve both authentic JSR stack frames, sixteen child-field writes,
+    source/child index exchange, side-selected group-count increment, flags,
+    every instruction boundary, and the original return.
+  - Retain the canonical census and exact 5,322-call/3,324-write source-family
+    artifact plus all 3,888 selected actor-state writes in Release and Debug.
+  - Add exactly 5,880 deployed native cycles, reach 539 admitted/423 entered
+    routines with zero horizon/depth declines or abandonments, and reduce the
+    addressable residue to 3,668,571 cycles in 251 clusters.
+  - Pass the owning Release and Debug family oracles, generated-registry
+    validation, Release/Debug application and core builds, and both 38-test
+    ROM-free suites.
+- [x] Re-rank the 3,676,365-cycle residue and port the Three-Blobs post-audio
+  hit continuation at `03:67CF-67E5`:
+  - Admit semantic `03:67CF@all` on all 15 natural calls and preserve the
+    phase-selected colour byte, modulo-six wrap, exact six-entry ROM
+    appearance map, two ordered writes, flags, and every instruction boundary.
+  - Absorb the authentic `03:67E5` return while retaining timer-interrupt
+    placement through the checkpointed transcript.
+  - Compare assembly and native over the complete 1,980-call/1,435-write
+    Three-Blobs collision-family artifacts and retain the canonical census;
+    normalized `03:67CF@15` direct replay remains exact.
+  - Add exactly 1,890 deployed native cycles, reach 536 admitted/420 entered
+    routines with zero horizon/depth declines or abandonments, and reduce the
+    addressable residue to 3,674,475 cycles in 251 clusters.
+  - Pass the owning Release oracle, generated-registry validation, Release
+    application/core builds, the independent owning-family Debug route with
+    identical census/call/write hashes, and Release plus Debug ROM-free core
+    suites.
+- [x] Re-rank the 3,706,815-cycle residue and port the confirmed-contact
+  position retry at `01:CDF8-CE94` plus bounds probe `01:CEB5-CEF8`:
+  - Split the route at native cached-position restore `00:F241` and the bounds
+    probe, admitting `01:CDF8/CE22/CEB5/CE4D@all` on 42 of 42 calls apiece.
+  - Preserve direction-vector derivation, the four signed position updates,
+    both authentic JSR stack frames, every instruction checkpoint, the
+    collision-latch clear, and the original outer return.
+  - Retain the canonical census and the collision family's exact 520-call,
+    251,090-write response artifacts and 6,906,417 selected writes.
+  - Add exactly 30,114 deployed native cycles, reach 535 admitted/419 entered
+    routines with zero horizon/depth declines or abandonments, and reduce the
+    addressable residue to 3,676,365 cycles in 251 clusters.
+  - Pass the owning Release collision oracle, generated-registry validation,
+    Release application build, and 38-test Release plus 3-test Debug ROM-free
+    suites.
+- [x] Re-rank the 3,799,770-cycle residue and port the ball's initial substep
+  loop at `01:C6C2-C71D`:
+  - Split the loop at its seven existing native children and admit all nine
+    bounded entry/continuation segments on 1,520 of 1,520 natural entries.
+  - Preserve the attempt and substep counters, exact JSR stack writes, every
+    ordinary instruction checkpoint, both collision arms, damping, coroutine
+    installation, and the final `01:DC95` handoff.
+  - Keep compound-sampled `BBR3` at `01:C6E3` and the single carry-set `RTS`
+    at `01:C70A` in the core, re-entering natively on every proven continuation.
+  - Retain the canonical census and the owning ball-loop family's exact
+    6,104,460-write artifact across 25,836 initial/resumed-loop entries.
+  - Add exactly 92,019 deployed native cycles, reach 531 admitted/415 entered
+    routines with zero horizon/depth declines or abandonments, and reduce the
+    addressable residue to 3,706,815 cycles in 256 clusters.
+  - Pass the owning Release ball-loop oracle, generated-registry validation,
+    Release application and core builds, and Release/Debug ROM-free core
+    suites.
+- [x] Re-rank the 3,921,108-cycle residue and port the confirmed-contact
+  response at `01:CF33-CF99`:
+  - Split the response at its four existing native physics calls and admit all
+    nine bounded entry/continuation segments on 2,017 of 2,017 natural entries.
+  - Preserve both contact-motion arms, exact JSR stack writes, all instruction
+    checkpoints, the `01:CF99` cleanup return, and both `01:DC95` handoffs.
+  - Match all 520 complete response calls and 251,090 ordered writes against
+    authoritative assembly artifacts while retaining the canonical census and
+    the collision family's 6,906,417 selected writes.
+  - Add exactly 120,378 deployed native cycles, reach 522 admitted/406 entered
+    routines with zero horizon/depth declines or abandonments, and reduce the
+    addressable residue to 3,799,770 cycles in 255 clusters.
+  - Pass the owning Release collision oracle, generated-registry validation,
+    Release application build, and Release/Debug ROM-free core suites.
+- [x] Complete the bounded Three-Blobs alternate-motion arithmetic:
+  - Port `03:670F` on all 204 signed destination-delta tests, preserving the
+    198 nonnegative and six negative branches and their `$2D` scratch writes.
+  - Port `03:6729` on all 204 four-byte scratch-staging passes before the
+    independently owned `03:673D` direction child.
+  - Port `03:6740` on all 204 post-child continuations: six zero returns, 192
+    carry-clear velocity additions, and six carry-set subtractions, followed
+    by the authentic absorbed `03:676A` return.
+  - Add exactly 69,102 deployed native cycles, reach 513 admitted/397 entered
+    routines with zero horizon/depth declines or abandonments, and reduce the
+    addressable residue to 3,921,108 cycles in 256 clusters.
+  - Pass the 16-test Three-Blobs/jump-table/registry Release checkpoint, the
+    owning assembly/native census/call/write/stack oracle, generated-registry
+    validation, the Release application build, and the 38-test Release plus
+    3-test Debug ROM-free suites.
+- [x] Decompose the Three-Blobs alternate-motion reset and child-call seams:
+  - Port the six natural `03:66E2` reset prefixes through all fifteen exact
+    instruction boundaries and the authentic `JSR $C018` scheduler handoff.
+  - Preserve the 24-cycle `BSR $6726` at `03:670A` and the three 21-cycle JSR
+    seams at `03:670C/6726/673D`, including every return-frame write, live-MPR
+    target, and LastCycle interrupt sample on all 204 calls apiece.
+  - Keep the bounded arithmetic continuations and the enclosing actor-scan
+    suspension in assembly instead of holding copied RAM across frames.
+  - Add exactly 18,864 deployed native cycles, reach 510 admitted/394 entered
+    routines with zero horizon/depth declines or abandonments, and pass the
+    16-test Three-Blobs/jump-table/registry Release checkpoint plus ROM-free
+    Release and Debug validation.
+- [x] Port the bounded Three-Blobs y-expiry negation prefix at `03:66BF`:
+  - Reproduce the carry-linked little-endian `$3400/$3480` negate and
+    HuC6280-specific `CLA` flag behavior at every original instruction boundary.
+  - Cross `JSR $C021` with the authentic `$66D2` stack frame and LastCycle
+    sample, then hand the independently owned bank-1 child back to execution.
+  - Admit all 60 natural entries and compare all 60 suspended outer calls,
+    their ordered writes, the canonical census, and the million-plus selected
+    stack-page stream byte-for-byte with assembly.
+  - Add exactly 6,300 deployed native cycles, reach 505 admitted/389 entered
+    routines with zero horizon/depth declines or abandonments, and pass the
+    15-test owning/registry Release checkpoint plus all 38 ROM-free tests.
+- [x] Re-rank the post-uploader residue and port the Three-Blobs movement call
+  seams at `03:66D3/66D6/66D9`:
+  - Bound the apparent `03:66BF-C5E9` routine as a coroutine that remains open
+    across repeated actor scans, rather than a single transaction-safe call.
+  - Preserve each real `JSR` return frame, stack-write cycle, LastCycle
+    interrupt sample, MPR-qualified target, and normal child return.
+  - Admit all three seams on 720/720 natural entries and compare the canonical
+    census plus every stack-page write byte-for-byte with assembly.
+  - Add exactly 45,360 deployed native cycles, reach 504 admitted/388 entered
+    routines with zero horizon/depth declines or abandonments, and pass the
+    six owning-family Release regressions plus all 38 ROM-free Release tests.
+- [x] Split the merged `00:F9A2-FAC5` startup range and port its repeated VDC
+  row uploader at `00:FA40/FA6A/FA6E`:
+  - Attribute 315 direct cycles to the `D32E/D36F` setup scheduler, 372 to the
+    first asset-loader chain, 333 to the row-loader prefix, 216,210 to the VDC
+    row loop, 105 to its resolver tail, and 60 to the audio dispatcher.
+  - Keep the timing-sensitive `BBR0` at `FA67` in the core, re-enter the native
+    walk on both arms, and stop at the outer `BNE` after advancing all three
+    source/destination pointer pairs.
+  - Preserve all 26 row heads, 832 nibble-arm entries, the canonical census,
+    selected work RAM, and complete VDC/VCE bus artifacts against assembly.
+  - Add 198,432 deployed native cycles, reach 501 admitted/385 entered routines
+    with zero declines or abandonments, regenerate the registry, and pass the
+    owning Release oracle plus all ROM-free Release/Debug tests.
+- [x] Admit bank `45`'s note-command continuation at `45:469B-46D6`:
+  - Resolve the profiler range as an internal continuation of command
+    interpreter `45:457A`, not a separate ROM routine, and reuse its complete
+    instruction walk from the post-duration table lookup through the real
+    return.
+  - Preserve all 224 routed entries, exact duration/envelope/cursor writes,
+    canonical census, selected work-RAM trace, PSG/timer bus trace, and the
+    callable music-family artifacts against assembly.
+  - Add 68,082 deployed native cycles, reach 498 admitted/382 entered routines
+    with zero declines or abandonments, and re-rank the residue from the fresh
+    deployed profile.
+  - Pass the owning Release oracle, isolated Debug 777/777 assembly/native A/B,
+    deployed-registry and stack-page ROM tests, generated-registry check, and
+    all ROM-free Release/Debug tests (with the shared-temp core test rerun
+    sequentially).
+- [x] Port both score-panel ornament animation steppers and their scheduler
+  handoff at `09:70C1/70C4/71EA`:
+  - Preserve the left ornament's one-shot `01:C5C9` coroutine installation and
+    all 669/670 left/right eight-tick animation updates, phase-table reads,
+    `$FF` wraps, appearance writes, returns, and instruction boundaries.
+  - Extend the score-panel assembly/native oracle to all five family entries;
+    its census, 4,365 calls, 30,486 scoped writes, selected work RAM, and VDC
+    bus artifact are byte-identical.
+  - Admit all three entries, adding 89,682 deployed native cycles with zero
+    horizon/depth declines or abandonments; pass ROM-free Release/Debug tests
+    and the full 445-test Release checkpoint.
+- [x] Port music command descriptor loader `45:4BCC-4BE0` and compose its
+  existing `45:4C42-4CB8` record-initializer tail:
+  - Preserve all 66 routed command IDs, descriptor pointer reads, nonzero tag
+    branches, voice-record initialization, original interrupt passages, and
+    the final absorbed return through exact instruction checkpoints.
+  - Preserve identical Release/Debug canonical census, selected work-RAM,
+    PSG/timer bus, call, and call-write artifacts; focused replay `45:4BCC@66`
+    is exact at 1,800 cycles and 45 writes.
+  - Replace the child registry entry with the composed parent, adding 7,722
+    deployed native cycles with zero declines or abandonments.
+- [x] Port music pitch-slide stepper `45:4936-49A1`:
+  - Preserve all 548 routed calls across the exact current/destination
+    high-byte and low-byte comparisons, upward/downward stepping, carry/borrow
+    propagation, destination clamps, and three return sites.
+  - Preserve identical Release/Debug canonical census, call, call-write, and
+    selected work-RAM hashes, including all 733 scoped writes and original
+    interrupt passages, the complete selected work-RAM trace, and focused
+    replay `45:4936@548` at 168 cycles and one write.
+  - Add the route to the owning music regression and deployed registry,
+    gaining 92,871 cycles with zero declines or abandonments.
+- [x] Port music pending-event command-record initializer `45:4C42-4CB8`:
+  - Preserve all 66 calls and 4,965 ordered writes across ordinary and
+    inactive-voice records, while leaving unobserved teardown/dispatch arms
+    in assembly.
+  - Preserve identical assembly, Release, and Debug census/call/write hashes
+    and replay `45:4C42@66` at its exact 1,683 cycles and 42 writes.
+  - Add the route to the owning music regression and deployed registry,
+    gaining 204,027 cycles with zero declines or abandonments.
+- [x] Port work-RAM byte-stream decoder `00:E4E3-E532`:
+  - Split the oversized outer call into one transaction per natural stream
+    record, covering all 106 literal records, 151 repeat records, and the
+    terminator through 258 bounded entries.
+  - Preserved the complete 258-call/481,291-write nested artifact, all source
+    and destination pointer updates, interrupt passages, and canonical census.
+  - Added a persisted direct terminal replay, owning-family ROM regression,
+    registry admission, ROM-free Debug/Release checks, and a 445-test Release
+    cross-family checkpoint.
+- [x] Split boot initializer `08:584C-5870` around its unchunkable work-RAM
+  clear transfer:
+  - Added four instruction-checkpointed seams for both crossed calls, the
+    three-store pre-transfer prefix, and the post-transfer VDC tail/return.
+  - Left `TII $3000,$3001,$0FFF` in assembly because its 4,095 writes cannot
+    fit the 512-write channel and it has no internal chunk boundary.
+  - Added persisted direct replay, full outer-call/write parity, selected RAM,
+    global VDC-bus, abandonment, canonical-census, registry, and Release-test
+    coverage.
 - [x] Add a persisted normalized routine-replay corpus:
   - Added a stable little-endian `.dcrr` format with payload checksum, strict
     bounds, ROM SHA-256 and core-revision binding, opaque savestate, complete
@@ -4894,10 +5281,12 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
   - Replaced all 996 executions apiece of the phase-table/stack prologue,
     post-first-helper `PLA`, and post-second-helper `PLY` through exact
     33/12/12-cycle segments.
+  - Replaced all 996 authentic `JSR` frames apiece at `03:7BE5` and
+    `03:7BE9`, preserving live stack depth and LastCycle interrupt samples
+    around the independently native `02:5955` and `01:C05D` children.
   - Replaced all 997 routed `02:5955` phase-stride additions, including all
     996 marker-owned calls, through exact 198-cycle, eight-write,
-    15-checkpoint transcripts while retaining `01:C05D` drawing submission
-    in assembly.
+    15-checkpoint transcripts while retaining independent child ownership.
   - Shadowed ordinal 1 at frame 873 with exact 48-cycle, zero-write parity;
     preserved the remaining shared drawing helper, Debug/Release state
     censuses, and the complete 88,480-write artifact.
@@ -4917,6 +5306,70 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
 
 ## Next Actions
 
+- [x] Re-rank the post-uploader residue and port the first bounded repeated
+  Three-Blobs movement seams without spanning coroutine suspension.
+- [x] Continue the Three-Blobs owner through the bounded `03:66BF` negation
+  prefix and its authentic `JSR $C021` handoff while keeping the suspended
+  outer scope assembly-backed.
+- [x] Continue the same Three-Blobs owner by decomposing the alternate-motion
+  reset prefix and four BSR/JSR seams around its existing native children;
+  keep the suspended outer scope assembly-backed.
+- [x] Continue the Three-Blobs alternate arm through the bounded
+  `03:670F-6725` and `03:6729-676A` instruction blocks without spanning its
+  actor-scan suspension or already-native children.
+- [x] Re-rank the fresh 3,921,108-cycle deployed residue and port the highest-
+  value bounded gameplay cluster after excluding the documented hardware-
+  timing seams.
+- [x] Re-rank the fresh 3,799,770-cycle deployed residue and port the next
+  highest-value bounded gameplay cluster after excluding the documented
+  hardware-timing seams.
+- [x] Re-rank the fresh 3,706,815-cycle deployed residue and port the next
+  highest-value bounded gameplay cluster after excluding the documented
+  hardware-timing seams.
+- [x] Re-rank the fresh 3,676,365-cycle deployed residue and port the next
+  highest-value bounded gameplay cluster after excluding the documented
+  hardware-timing seams.
+- [x] Re-rank the fresh 3,674,475-cycle deployed residue and port the next
+  bounded gameplay cluster after excluding documented hardware seams, shared
+  handoff attribution, and interrupt cycles charged to the entry row.
+- [x] Re-rank the fresh 3,668,571-cycle deployed residue and port the next
+  bounded gameplay cluster after excluding documented hardware seams, shared
+  handoff attribution, and interrupt cycles charged to the entry row.
+- [x] Re-rank the fresh 3,661,935-cycle deployed residue and port the next
+  bounded gameplay cluster after excluding documented hardware seams, shared
+  handoff attribution, and interrupt cycles charged to the entry row.
+- [x] Re-rank the fresh 3,645,465-cycle deployed residue and port the next
+  bounded gameplay cluster after excluding documented hardware seams, shared
+  handoff attribution, and interrupt cycles charged to the entry row.
+- [x] Re-rank the fresh 3,639,366-cycle deployed residue and port the next
+  bounded gameplay cluster after excluding documented hardware seams, shared
+  handoff attribution, and interrupt cycles charged to the entry row.
+- [x] Re-rank the fresh 3,634,830-cycle deployed residue and port the next
+  bounded gameplay cluster after excluding documented hardware seams, shared
+  handoff attribution, and interrupt cycles charged to the entry row.
+- [x] Re-rank the fresh 3,625,608-cycle deployed residue and port the next
+  bounded gameplay cluster after excluding documented hardware seams, shared
+  handoff attribution, and interrupt cycles charged to the entry row.
+- [x] Re-rank the fresh 3,617,913-cycle deployed residue and port the next
+  bounded gameplay cluster after excluding documented hardware seams, shared
+  handoff attribution, and interrupt cycles charged to the entry row.
+- [x] Re-rank the fresh 3,598,425-cycle deployed residue and port the next
+  bounded gameplay cluster after excluding documented hardware seams, shared
+  handoff attribution, and interrupt cycles charged to the entry row.
+- [x] Re-rank the fresh 3,556,233-cycle deployed residue and port the next
+  bounded gameplay cluster after excluding documented hardware seams, shared
+  handoff attribution, and interrupt cycles charged to the entry row.
+- [x] Re-rank the fresh 3,479,817-cycle deployed residue and port the next
+  bounded gameplay cluster after excluding documented hardware seams, shared
+  handoff attribution, and interrupt cycles charged to the entry row.
+- [x] Re-rank the fresh 3,458,637-cycle deployed residue and port the next
+  bounded gameplay cluster after excluding documented hardware seams, shared
+  handoff attribution, and interrupt cycles charged to the entry row.
+- [ ] Re-rank the fresh 3,452,871-cycle deployed residue and port the next
+  bounded gameplay cluster after excluding documented hardware seams, shared
+  handoff attribution, and interrupt cycles charged to the entry row.
+- [x] Split `00:F9A2-FAC5` by actual owner and port its repeated bounded VDC
+  row loop without absorbing either compound-sampled branch instruction.
 - [x] Add repository hygiene for ROMs, generated assets, traces, build products, and local configuration.
 - [x] Extract the native replacement adapters and dispatcher from
   `src/app/main.cpp` behind one compiled module interface; reduce the file
@@ -5047,6 +5500,19 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
   - [ ] **Deferred at user request:** map the two-player/current-player RAM
     contract and add the P1/P2 discriminator to the DMD.
 - [ ] Port gameplay routines behind the transactional replacement boundary:
+  - [x] Admit semantic `45:469B@all` across all 224 routed note-command
+    continuations, including exact duration-table, envelope, cursor, final
+    return, and enclosing music-family artifacts.
+  - [x] Port semantic `09:70C1/70C4/71EA@all` score-panel ornament scheduling
+    and animation across all 1/669/670 routed calls, including exact phase
+    table sentinel wraps, appearance writes, returns, and family artifacts.
+  - [x] Port semantic `45:4BCC@all` command descriptor loading across all 66
+    routed calls and compose the existing `45:4C42` record initializer,
+    including exact pointer selection, voice-record writes, interrupt
+    passages, final return, and focused replay.
+  - [x] Port semantic `45:4936@all` pitch-slide stepping across all 548 routed
+    calls, including both directions, high-byte carry/borrow, destination
+    clamps, three returns, interrupt passages, and focused replay.
   - [x] Replace and shadow-test bounded `00:F1B4@17` position integration.
   - [x] Replace and shadow-test interrupt-free `00:F1B4@1` nonnegative
     position integration.
@@ -6184,7 +6650,7 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
     3,233 arrivals went round the crossing installed two bytes earlier.
     **+5,187**, and it is what took the site from 2,986 crossings to all
     3,233.
-  - [x] Cross `01:CB7B` into `01:CF33`, which is *not* registered, against the
+  - [x] Cross `01:CB7B` into `01:CF33`, which was *not then* registered, against the
     recorded rule that such a crossing buys nothing. **+6,678 = 318 x 21**,
     the same 21 a crossing onto a native routine pays. The rule was wrong: a
     crossing converts the `JSR` itself whatever is on the far side, and what a
@@ -6854,26 +7320,291 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
   - [x] Registry A/B: **698,108,892 -> 698,275,779** native cycles; 166,887
     cycles added, 487 admitted routines, 371 entered, and no abandonments.
   - [x] Passed all 443 Release tests as the cross-family checkpoint.
+- [x] Split the bank-8 boot work-RAM clear at `08:584C-5870`:
+  - [x] Cross the `ED4D` and `EA77` calls, model the three-store clear prefix,
+    hand the 4,095-write `TII` back to assembly, and resume at `08:5861` for
+    the VDC setup and absorbed final return.
+  - [x] Preserve the complete 2,936,556-cycle outer call, 49,993 ordered call
+    writes, 444,555 selected work-RAM writes, 2,036,234 VDC-bus writes, and
+    canonical state census; direct-replay the 78-cycle VDC tail.
+  - [x] Registry A/B: **698,275,779 -> 698,275,962** native cycles; 183 cycles
+    added, 491 admitted routines, 375 entered, and no abandonments.
+  - [x] Passed all 444 Release tests as the cross-family checkpoint.
+- [x] Port work-RAM byte-stream decoder `00:E4E3-E532`:
+  - [x] Execute one natural literal/repeat record per bounded transaction and
+    re-enter at `E4E3`; leave the final `E532` return as the assembly boundary.
+  - [x] Preserve all 258 nested calls and 481,291 ordered writes, including
+    interrupt-owned writes, plus the canonical state census and terminal
+    direct replay.
+  - [x] Registry A/B: **698,275,962 -> 698,432,634** native cycles; 156,672
+    cycles added, 492 admitted routines, 376 entered, and no abandonments.
+  - [x] Passed all 445 Release tests as the cross-family checkpoint.
+- [x] Port music pending-event command-record initializer `45:4C42-4CB8`:
+  - [x] Model the routed record loop, inactive-voice arm, eleven-field copy,
+    balance-helper composition, record advance, and absorbed return at exact
+    instruction boundaries.
+  - [x] Preserve the canonical census and exact 66-call/4,965-write artifact
+    in assembly, Release, and Debug; direct-replay ordinal 66.
+  - [x] Registry A/B: **698,432,634 -> 698,636,661** native cycles; 204,027
+    cycles added, 493 admitted routines, 377 entered, and no abandonments.
+  - [x] Pass the owning Release semantic regression, direct Debug route,
+    Debug/Release core tests, generated-registry manifest, and diff hygiene.
 
 ## Active Work
 
-Current owner: Codex. Current slice: **bank-8 video-update idle gate**.
+Current owner: Codex. Current slice: **shared collision-effect allocator**.
 Done.
 
-The release path enters `08:5E42` 2,649 times from bank-call wrapper `E252`.
-Every canonical call finds `$2254` and `$2D53` clear and returns after two
-loads and two untaken branches. The native instruction transcript retains all
-four interrupt boundaries and the live-stack return; either active gate byte
-declines safely to assembly. Direct ordinal-1 replay and route-level census,
-call, interrupt-write, and selected-RAM artifacts all match assembly exactly.
+The attribution-aware residue ranking excludes palette and boot block
+transfers, compound-sampled branches, interrupt/device acknowledgement, frame
+loop glue, shared returns, driver resumption, and cycles charged to an entry by
+an original interrupt. The first substantial gameplay-owned cluster after
+those exclusions was the shared collision-effect allocator at `03:7BF6-7C33`.
+Its outer gate suppresses sources whose low appearance nibble is `$0F`; every
+other routed call crosses the existing native actor-slot allocator and resumes
+at a separate native continuation before initializing the reserved child.
 
-The deployed registry now owns 698,275,779 cycles across 487 installed and 371
-entered routines, with zero horizon/depth refusals. The consistent non-wait
-residue contains 4,880,469 cycles in 261 clusters. Next: assess bank-8 video
-leaf `08:584C-585A`, now the largest coherent bank-8 residue; keep text/tile
-parent `08:5ABF` decomposed because its largest calls exceed the 512-write
-transaction limit. The two oversized current-slot `D466` calls remain
-decomposed at controller `D525`.
+Deployment adds exactly 5,646 cycles for 699,696,753 total across 580 installed
+and 464 entered routines, with zero horizon/depth refusals or abandonments. The
+fresh deployed profile contains 3,452,871 addressable cycles in 243 clusters.
+The three instruction transcripts preserve the one direct suppression return,
+all 19 allocator-success continuations, eight ordered child writes apiece, and
+all original interrupt passages. The canonical census, exact 58-call/1,022-
+write artifact, and 4,650,247-write actor/stack stream remain identical to
+assembly in Release and Debug. The owning Release regression, generated
+registry, Release/Debug builds, both ROM-free core configurations, and diff
+hygiene pass, as does the complete 454-test Release suite.
+Next: re-rank the fresh residue before choosing the next bounded gameplay
+cluster.
+
+### Previous: Three-Blobs collision marker
+
+Semantic `03:694A@all` preserves all 198 routed signed-delta classifications,
+all eleven original interrupt passages, the exact 198-call/337-write artifact,
+and the four 57/69/87/99-cycle pre-return paths. Deployment added 20,844 cycles
+for 699,691,107 total and left 3,458,637 addressable cycles in 243 clusters.
+
+### Previous: fixed-marker outer submissions
+
+Semantic `03:7BB1/7BB5/7BC3/7BC7/7BD5/7BD9/7BDF@all` preserves all 332
+arrivals at each boundary and all 36 final-return timer horizons. Deployment
+added 75,696 cycles for 699,670,263 total across 576 installed and 460 entered
+routines, leaving 3,479,817 addressable cycles in 244 clusters while retaining
+the exact 2,650-call/88,480-write Release/Debug artifact.
+
+### Previous: flipper-controller prefix
+
+Semantic `01:D525/D52C/D53B/D54A/D54D/D550/D553/D556/D589@all` preserves
+all 128/74/62/19/19/19/19/19/20 arrivals. Deployment added 19,296 cycles for
+699,552,735 total across 567 installed and 451 entered routines, leaving
+3,598,425 addressable cycles in 248 clusters and retaining the exact
+379-call/271,266-write Release/Debug artifact.
+
+### Previous: flipper post-response continuation
+
+Semantic `01:D5B8/D5BB/D5BE/D5C1/D5C4/D5D8@all` preserves all
+43/43/43/43/43/20 post-response arrivals. Deployment added 7,671 cycles for
+699,533,439 total across 558 installed and 442 entered routines, leaving
+3,617,913 addressable cycles in 251 clusters and retaining the exact
+235-call/160,392-write Release/Debug artifact.
+
+### Previous: flipper collision-response continuation
+
+Semantic `01:D594/D599/D5A9@all` preserves all 41 collision-response arrivals
+at each entry and splits the oversized controller at native `01:CFD8`,
+`01:D1A2`, and `01:DC95`. Deployment added 9,102 cycles for 699,525,768 total
+across 552 installed and 436 entered routines, leaving 3,625,608 addressable
+cycles in 252 clusters and retaining the exact 123-call/33,075-write
+Release/Debug artifact.
+
+### Previous: Front-Spider scheduler call seams
+
+Semantic `03:64D2/64DD/64ED@all` preserves all 36/36/144 authentic scheduler
+call frames and their LastCycle samples. Deployment added 4,536 cycles for
+699,516,666 total across 549 installed and 433 entered routines, leaving
+3,634,830 addressable cycles in 251 clusters and retaining the exact
+216-call/1,172-write Release/Debug artifact.
+
+### Previous: Three-Blobs RNG initialization
+
+The attribution-aware residue ranking selected `03:6678-66A2`, immediately
+before the already-native first-movement prefix. Semantic
+`03:6678/667B/6697/669A@all` splits both authentic RNG calls, applies the exact
+movement-state and timer transforms, and crosses the final scheduler handoff.
+All 9/9/69/69 natural arrivals admit. Deployment added 6,003 cycles for
+699,512,130 total across 546 installed and 430 entered routines, leaving
+3,639,366 addressable cycles in 248 clusters with the exact
+156-call/2,509-write Release/Debug artifact.
+
+### Previous: Three-Blobs first-movement continuation
+
+The attribution-aware residue ranking selected `03:66B5-66BD`, the bounded
+remainder of the first Three-Blobs movement phase after timer expiry. Semantic
+`03:66B5@all` preserves both indexed decrements and their direct, x-expiry, and
+y-expiry branches, then resumes at the already-native `03:66DE`, `03:66E2`, or
+`03:66BF` continuation. Its standalone oracle admits all 1,107 calls across
+1,025 direct, 13 x-expiry, and 69 y-expiry paths; the deployed parent exposes
+272 calls.
+
+Deployment adds exactly 16,230 cycles for 699,506,127 total across 542
+installed and 426 entered routines, with zero horizon/depth refusals or
+abandonments. The fresh deployed profile contains 3,645,465 addressable cycles
+in 249 clusters. The canonical census and exact 1,107-call/9,595-write artifact
+remain identical in Release and Debug, and direct ordinal 1 replays at 249
+cycles and five writes. The 15-test Release Three-Blobs/registry/core
+checkpoint, focused Debug oracle/core test, generated registry, and both
+application builds pass.
+
+### Previous: Small-Soldier startup coroutine
+
+The attribution-aware residue ranking selected `03:7EFA-7F19`, the two-stage
+Small-Soldier startup coroutine immediately after the completed child
+allocator. Semantic `03:7EFA/7F05@all` admits all 160 direction-toggle
+countdowns and all ten one-time collision setups. Both entries reproduce their
+real JSR frames and compose the existing `01:C5C9` scheduler, preserving the
+indexed sixteen-tick countdown, collision-state normalization, four-tick
+timer, flags, and every original instruction boundary.
+
+Deployment adds exactly 6,540 cycles for 699,489,897 total across 541 installed
+and 425 entered routines, with zero horizon/depth refusals or abandonments. The
+fresh deployed profile contains 3,661,935 addressable cycles in 250 clusters.
+The owning Release and Debug family oracles retain the canonical census, exact
+5,322-call/3,324-write source artifact, 3,888 selected actor-state writes, and
+the separate 170-call/1,290-write deployment artifact. The generalized Tower-
+insect sibling regression, generated registry, Release/Debug builds, and both
+ROM-free suites also pass. Next: re-rank the fresh residue before choosing the
+next bounded gameplay cluster.
+
+### Previous: Three-Blobs post-audio hit continuation
+
+The fresh residue ranking selected the compact `03:67CF-67E5` gameplay body
+behind the Three-Blobs collision gate after excluding device/capacity seams,
+compound-sampled branches, and the known `02:4CF1`/collision-scan handoffs.
+Semantic `03:67CF@all` admits all 15 natural calls, advances the shared colour
+modulo six, maps it through the exact ROM appearance table, performs both
+ordered writes, and absorbs the controller return with every original
+instruction checkpoint.
+
+Deployment adds exactly 1,890 cycles for 699,477,477 total across 536 installed
+and 420 entered routines, with zero horizon/depth refusals or abandonments. The
+fresh deployed profile contains 3,674,475 addressable cycles in 251 clusters.
+The remainder makes the attribution explicit: 19,380 cycles at shared
+`03:67E5` belong to other paths and are not part of this continuation. The
+owning Release assembly/native oracle, normalized direct replay, canonical
+census, generated registry, Release builds, independent Debug family artifact
+comparison, and Release/Debug ROM-free suites pass. Next: re-rank the fresh
+residue with shared-return and interrupt-at-entry attribution excluded before
+choosing the next bounded gameplay cluster.
+
+### Previous: confirmed-contact position retry
+
+The fresh residue ranking selected `01:CDF8-CE94` plus its `01:CEB5-CEF8`
+bounds probe after excluding device/capacity seams, compound-sampled branches,
+and known handoff/resumption attribution. Four semantic entries split all 42
+natural calls at existing native `00:F241` and the probe's authentic return.
+All 168 segment entries admit while preserving the direction-vector scratch,
+four position words, collision latch, stack writes, flags, and instruction
+checkpoints.
+
+Deployment adds exactly 30,114 cycles for 699,475,587 total across 535
+installed and 419 entered routines, with zero horizon/depth refusals or
+abandonments. The fresh deployed profile contains 3,676,365 addressable cycles
+in 251 clusters. The collision-family Release oracle, canonical census,
+520-call/251,090-write response artifacts, 6,906,417 selected-write golden,
+generated registry, Release build, and Release/Debug ROM-free suites pass.
+
+### Previous: ball initial substep loop
+
+The fresh residue ranking selected `01:C6C2-C71D`, the initial ball substep
+loop, after excluding the larger hardware and compound-branch seams. Nine
+semantic entries split it at seven already-native children. All 1,520 external
+entries admit; the other 107 executions at `C6EB` are internal branches already
+contained by the preceding native segment. The core retains compound-sampled
+`BBR3` at `C6E3` and the single carry-set `RTS` at `C70A`.
+
+Deployment adds exactly 92,019 cycles for 699,445,473 total across 531
+installed and 415 entered routines, with zero horizon/depth refusals or
+abandonments. The fresh deployed profile contains 3,706,815 addressable cycles
+in 256 clusters. The ball-loop Release oracle, canonical census, 6,104,460-
+write assembly golden, generated registry, Release build, and Release/Debug ROM-free
+core suites pass. Next: re-rank that fresh residue and take the next bounded
+gameplay cluster after excluding the documented hardware-timing seams.
+
+### Previous: confirmed-contact type response
+
+The fresh residue ranking selected `01:CF33-CF99`, the confirmed-contact type
+response, after excluding the larger VCE/VDC/frame-loop timing seams. Nine
+semantic entries now split its two motion arms at the four already-native
+physics calls. All 2,017 segment entries admit, and all 520 outer response
+calls preserve exact call, register, cycle, return, and 251,090 ordered-write
+artifacts against assembly.
+
+Deployment adds exactly 120,378 cycles for 699,353,454 total across 522
+installed and 406 entered routines, with zero horizon/depth refusals or
+abandonments. The fresh deployed profile contains 3,799,770 addressable cycles
+in 255 clusters. The collision-family Release oracle, generated registry,
+Release build, and Release/Debug ROM-free core suites pass. Next: re-rank that
+fresh residue and take the next bounded gameplay cluster after excluding the
+documented hardware-timing seams.
+
+### Previous: Three-Blobs alternate-motion arithmetic
+
+The signed destination test at `03:670F`, the four-byte scratch staging at
+`03:6729`, and the post-direction velocity update at `03:6740` now own all 204
+natural entries apiece. Exact instruction checkpoints cover the 198/6
+destination branches and the six/192/six zero/add/subtract result paths around
+the existing `03:673D` child seam. The last continuation absorbs the authentic
+`03:676A` return without spanning the actor-scan suspension.
+
+The expanded assembly/native oracle compares the canonical census, complete
+nested call and ordered-write artifacts, and 4.2 million selected stack-page
+writes byte-for-byte. Deployment adds exactly 69,102 cycles for 699,233,076
+total across 513 installed and 397 entered routines, with zero horizon/depth
+refusals or abandonments. The fresh deployed profile contains 3,921,108
+addressable cycles in 256 clusters.
+
+Verification: the 16-test Three-Blobs/jump-table/registry Release checkpoint,
+owning ROM oracle, generated registry manifest, and Release application build
+pass, as do the 38-test Release and 3-test Debug ROM-free suites. The deployed
+census remains `9036a9de...`. Next: re-rank the fresh residue and take the
+highest-value bounded gameplay cluster after excluding the documented
+hardware-timing seams.
+
+### Previous: the bank-45 note-command continuation
+
+Semantic `45:469B` owns all 224 post-duration continuations and added the
+previous 68,082 native cycles while preserving the music-family artifacts.
+
+### Previous: the score-panel ornament animations
+
+Semantic `09:70C1` composes the existing coroutine scheduler for the left
+ornament's one-shot handoff. Semantic `09:70C4/71EA` share the two ROM-backed
+frame-table walks and own every routed update. The expanded score-panel oracle
+proves byte-identical census, calls, scoped writes, selected RAM, and VDC bus
+output; the full 445-test Release checkpoint and ROM-free Release/Debug suites
+pass.
+
+### Previous: the music command descriptor loader
+
+Semantic `45:4BCC` owned all 66 routed descriptor loads, composed the existing
+record initializer, and added the previous 7,722 native cycles while preserving
+5,163 ordered writes.
+
+### Previous: the music pitch-slide stepper
+
+Semantic `45:4936` owned all 548 routed slide updates and added the previous
+92,871 native cycles while preserving 733 ordered writes.
+
+### Previous: the music pending-event command-record initializer
+
+Semantic `45:4C42` owned all 66 routed pending-event records and added the
+previous 204,027 native cycles while preserving 4,965 ordered writes.
+
+### Previous: the work-RAM byte-stream decoder
+
+Semantic `00:E4E3` owned all 258 bounded literal/repeat/terminal record entries
+and added the previous 156,672 native cycles while preserving 481,291 ordered
+writes.
 
 ### Previous: the impact-burst allocator success return
 
@@ -7965,7 +8696,7 @@ into the native sweep, and the `BBR` at `01:CB7E`.
 | `01:CB01` | `00:E93C` | yes | 2,121 | 44,541 |
 | `01:CBBF` | `01:CC1A` | yes | 980 | 20,580 |
 | `01:CBB3` | `00:E219` | yes | 980 | 20,580 |
-| `01:CB7B` | `01:CF33` | **no** | 318 | 6,678 |
+| `01:CB7B` | `01:CF33` | **no (then)** | 318 | 6,678 |
 | `01:CAD0` | `00:E93C` | yes | 194 | 4,074 |
 | `01:CAB3` | `00:E93C` | yes | 194 | 4,074 |
 | `01:CADD` | `00:E93C` | yes | 50 | 1,050 |
@@ -7977,7 +8708,7 @@ than as 6,678 cycles.** `docs/NATIVE_PORT_WORKFLOW.md` had said for two slices
 that a crossing onto an unregistered address costs its twenty-one cycles and
 buys nothing -- "the one way this edit can be worthless". It was crossed here
 to test that, and it paid exactly 21 a call, the same as every crossing onto a
-native routine. `01:CF33` is still interpreted instruction for instruction and
+native routine. `01:CF33` was still interpreted instruction for instruction and
 that changed nothing, because the two things had been confused: a crossing
 converts the `JSR` *itself*, which happens whatever is on the far side, while
 what a registered callee adds is the callee's own body, which was never the
@@ -13670,6 +14401,27 @@ replacement vertical slice.
 
 ## Blockers
 
+`01:C6E3` and `01:C756` are the two ball-loop compound-sampled HuC6280 `BBR3`
+boundaries. The core executes each zero-page read/relative branch and re-enters
+native code on both proven arms. Moving either instruction requires a bridge
+checkpoint that preserves the core's four-step event sampling; an ordinary
+two-boundary transcript is not sufficient and is not required to continue
+porting adjacent gameplay code.
+
+`00:FA67` is the same compound-sampled HuC6280 `BBR0` boundary already proven
+at `00:F423`: collapsing its zero-page read and relative branch into one native
+checkpoint shifts VDC event handling. The core therefore executes all 832
+instances and re-enters native code at `FA6A` or `FA6E`; this is a deliberate
+hardware-timing seam, not missing semantic coverage. The outer `FAA5` branch is
+also retained as the row transaction boundary.
+
+The boot work-RAM clear at `08:585A` is a deliberate hybrid-boundary capacity
+wall: one `TII` emits 4,095 ordered writes against a 512-write transaction
+channel and offers no interior instruction boundary. The bounded code on both
+sides is native; moving the transfer itself requires a future compact block-
+transfer transaction primitive or a wider bridge contract, not another
+instruction-checkpoint transcript.
+
 No external blocker prevents continuing Milestone 3 cabinet composition.
 The accepted background source is rows 20-687 of the
 packed 256-by-768 envelope; cabinet code must not display the guard, prefetch,
@@ -13715,7 +14467,9 @@ independent write capacity remains 512.
 The same write bound explains the two `01:D466` fallbacks: their current-slot
 paths enter `D525` at frames 1,820 and 2,255 and emit 823/868 writes. They
 remain part of the `D525` decomposition boundary rather than an unresolved
-`D466` branch.
+`D466` branch. The bounded `D525-D594` prefix is now native; resolving these
+two whole-parent calls still specifically requires decomposing the remaining
+callee-owned segments below 512 ordered writes, not widening this prefix.
 The shared signed multiply wrapper `00:E65C` is now fully native across all
 3,700 route calls by composing the existing semantic `E624` transaction.
 Its 921-27,306-cycle observed range is explained by original interrupt

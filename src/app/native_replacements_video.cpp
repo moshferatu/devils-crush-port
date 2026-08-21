@@ -886,6 +886,154 @@ replace_video_update_idle_gate(
 }
 
 [[nodiscard]] std::optional<RoutineReplacement>
+replace_boot_work_ram_clear_seam(
+    const RoutineEntry& entry,
+    const std::span<const std::byte> work_ram)
+{
+    // 08:584C initializes a fresh gameplay work area. Its middle instruction,
+    // `TII $3000,$3001,$0FFF`, performs 4,095 ordered writes without an
+    // instruction boundary inside it, so it cannot fit the replacement
+    // channel and cannot be chunked. The code around it is still four bounded
+    // transactions: cross both calls, stop immediately before the TII, and
+    // resume immediately after it for the VDC setup and final return.
+    constexpr std::uint8_t kBank = 0x08U;
+    constexpr std::uint16_t kFirstCallPc = 0x584CU;
+    constexpr std::uint16_t kSecondCallPc = 0x584FU;
+    constexpr std::uint16_t kClearPrefixPc = 0x5852U;
+    constexpr std::uint16_t kTransferPc = 0x585AU;
+    constexpr std::uint16_t kVdcTailPc = 0x5861U;
+    constexpr std::uint16_t kReturnPc = 0x5870U;
+    constexpr std::uint32_t kImmediate = 6U;
+    constexpr std::uint32_t kZeroPage = 12U;
+    constexpr std::uint32_t kAbsolute = 15U;
+    constexpr std::uint32_t kPortStore = 18U;
+    constexpr std::uint32_t kSubroutineCall = 21U;
+
+    const auto pc = entry.routine.logical_pc;
+    if (entry.routine.physical_bank != kBank
+        || (pc != kFirstCallPc && pc != kSecondCallPc
+            && pc != kClearPrefixPc && pc != kVdcTailPc)
+        || work_ram.size() < 0x2000U
+        || (entry.registers.status & kUnsupportedFlags) != 0U
+        || entry.registers.mpr[1] != 0xF8U) {
+        return std::nullopt;
+    }
+    if ((pc == kFirstCallPc || pc == kSecondCallPc)
+        && entry.registers.mpr[7] != 0x00U) {
+        return std::nullopt;
+    }
+    if (pc == kVdcTailPc && entry.registers.mpr[0] != 0xFFU) {
+        return std::nullopt;
+    }
+
+    auto registers = entry.registers;
+    std::uint32_t cycle = 0U;
+    RoutineReplacement replacement{};
+    replacement.checkpoints.reserve(7U);
+    replacement.work_ram_writes.reserve(3U);
+
+    const auto boundary =
+        [&](const std::uint16_t instruction_pc,
+            const std::uint16_t resume_pc,
+            const std::uint32_t sample_back) {
+            registers.program_counter = resume_pc;
+            replacement.checkpoints.push_back({
+                .interrupt_sample_master_cycle_offset = cycle - sample_back,
+                .master_cycle_offset = cycle,
+                .instruction = {kBank, instruction_pc},
+                .registers = registers,
+            });
+        };
+    const auto step =
+        [&](const std::uint16_t instruction_pc,
+            const std::uint16_t resume_pc,
+            const std::uint32_t cycles) {
+            cycle += cycles;
+            boundary(instruction_pc, resume_pc, 3U);
+        };
+    const auto write =
+        [&](const std::uint16_t instruction_pc,
+            const std::uint16_t resume_pc,
+            const std::uint32_t cycles,
+            const std::uint16_t logical_address,
+            const std::uint8_t value) {
+            cycle += cycles;
+            replacement.work_ram_writes.push_back({
+                .instruction = {kBank, instruction_pc},
+                .logical_address = logical_address,
+                .value = value,
+                .master_cycle_offset = cycle,
+            });
+            boundary(
+                instruction_pc,
+                resume_pc,
+                logical_address <= 0x0003U ? 6U : 3U);
+        };
+
+    if (pc == kFirstCallPc || pc == kSecondCallPc) {
+        const auto target = static_cast<std::uint16_t>(
+            pc == kFirstCallPc ? 0xED4DU : 0xEA77U);
+        const auto pushed = static_cast<std::uint16_t>(pc + 2U);
+        replacement.work_ram_writes.push_back({
+            .instruction = {kBank, pc},
+            .logical_address = static_cast<std::uint16_t>(
+                0x2100U + registers.stack_pointer),
+            .value = static_cast<std::uint8_t>(pushed >> 8U),
+            .master_cycle_offset = cycle,
+        });
+        replacement.work_ram_writes.push_back({
+            .instruction = {kBank, pc},
+            .logical_address = static_cast<std::uint16_t>(
+                0x2100U
+                + static_cast<std::uint8_t>(
+                    registers.stack_pointer - 1U)),
+            .value = static_cast<std::uint8_t>(pushed),
+            .master_cycle_offset = cycle,
+        });
+        registers.stack_pointer =
+            static_cast<std::uint8_t>(registers.stack_pointer - 2U);
+        cycle += kSubroutineCall;
+        boundary(pc, target, 3U);
+        replacement.return_instruction = {0x00U, target};
+        replacement.output_registers = registers;
+        replacement.body_master_cycles = cycle;
+        return replacement;
+    }
+
+    if (pc == kClearPrefixPc) {
+        write(0x5852U, 0x5854U, kZeroPage, 0x2054U, 0x00U);
+        write(0x5854U, 0x5857U, kAbsolute, 0x2D53U, 0x00U);
+        write(0x5857U, kTransferPc, kAbsolute, 0x3000U, 0x00U);
+        replacement.return_instruction = {kBank, kTransferPc};
+        replacement.output_registers = registers;
+        replacement.body_master_cycles = cycle;
+        return replacement;
+    }
+
+    registers.accumulator = 0x09U;
+    registers.status = set_nz(registers.status, registers.accumulator);
+    step(0x5861U, 0x5863U, kImmediate);
+    write(0x5863U, 0x5865U, kZeroPage, 0x2006U, registers.accumulator);
+    write(0x5865U, 0x5868U, kPortStore, 0x0000U, registers.accumulator);
+    registers.accumulator = 0x10U;
+    registers.status = set_nz(registers.status, registers.accumulator);
+    step(0x5868U, 0x586AU, kImmediate);
+    write(0x586AU, 0x586DU, kPortStore, 0x0002U, registers.accumulator);
+    write(0x586DU, kReturnPc, kPortStore, 0x0003U, 0x00U);
+
+    auto at_return = registers;
+    at_return.program_counter = kReturnPc;
+    absorb_return(
+        replacement,
+        work_ram,
+        entry.registers.stack_pointer,
+        {kBank, kReturnPc},
+        cycle,
+        at_return);
+    return replacement;
+}
+
+[[nodiscard]] std::optional<RoutineReplacement>
 replace_sat_submission_step(
     const RoutineEntry& entry,
     const std::span<const std::byte> work_ram)

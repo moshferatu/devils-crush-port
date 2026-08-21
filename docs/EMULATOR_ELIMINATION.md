@@ -114,7 +114,7 @@ prints both denominators for the same reason — see *Two shares* below.
 | `00:E2B7`–`E39C` | 584,758,197 | 45.25% | **Waiting, not work.** The frame-sync spin: the loop is `00:E321`–`E32B` (584,453,517) and all but 204,123 of *that* is the two-instruction wait at `00:E323`/`00:E325`. This row is the one entry in the table that is not a porting target and never was — the game is waiting for the raster, and there is no computation in the waiting to move. It is **done** as far as this document is concerned: phase 3 advances the machine through it rather than executing it, so 21,077,517 of the 24,248,940 turns are no longer interpreted. The cycles remain, because the wait is real machine time; what is gone is the cost of simulating it. The rest of the region is the colour encoder's initialiser and the two bit-set/bit-clear helpers around it |
 | `00:FC03`–`FC8D` | 1,538,781 | 0.12% | Sound driver — body, epilogue **and interrupt return** now native on every arrival. Two deliberate refusals account for 1,518,702 of this: the `SEI` at `FC81` (1,509,498) and the chain exit `FC89` with the `FC03` trampoline it lands on (9,204). The `RTI` at `FC8D` was the third and is gone: 5,292,108 cycles this table called a refusal until the refusal was checked. The remaining 20,079 is the body itself running emulated on the few dozen arrivals a route where the walk declines |
 | `00:FD07`–`FD81` | 24,346 | 0.00% | The driver's second arm, likewise, with its own `SEI` (16,548); its `RTI` (57,771) went with the first |
-| bank `45` (`4000`–`4A9B`) | 5,266,590 | 0.41% | Music sequencer — the tick is **native**, chunked at its voice loop, and so is the PSG programmer `45:4142`, chunked at its channel loop; what is left is `45:4936`, the track loader `45:4BCC` and the chunk boundaries |
+| bank `45` (`4000`–`4A9B`) | 5,266,590 | 0.41% | Music sequencer — the tick, PSG programmer, pitch-slide stepper `45:4936`, and composed command loader `45:4BCC` are **native**; what remains in this historical profile is conservative command-interpreter arms, chunk/resumption boundaries, and paths from declined partial entries |
 | `00:E128`–`E290` | 1,092,873 | 0.08% | Interrupt epilogue. The dispatcher at `00:E058` used to be listed here as blocked; both its halves are native now and what is left of it is the single `LDA $0000`, 129,564 cycles, whose read is the interrupt acknowledge. The two `RTI`s at `00:E135` and `00:E194` were listed here too, at the 196,293 this instrument prices them at; they are native, and the census puts their real cost at 159,285. The handler bodies, the call wrappers and the pad reader are native |
 | `01:C0FE`–`C1B5` | 1,407,828 | 0.11% | The top-level frame loop itself — glue between calls rather than a routine |
 | `03:694A`–`6A37` | 2,721,348 | 0.21% | Collision-table interpreter — **already ported**; the `RTS` instructions and the resumption after an interrupt lands on a checkpoint, see below. The returns are 442,872 of it and are now known to be answerable — but not by a one-line change, because the same walk serves three composition sites that need it to stop in front of them |
@@ -324,8 +324,10 @@ Remaining real logic, in rough order of value:
    [NATIVE_FALLBACK_HOTSPOTS.md](NATIVE_FALLBACK_HOTSPOTS.md#the-music-sequencer-and-screening-a-bank-instead-of-a-family).
 
    The per-frame tick `45:4015` (13.8M), which calls all of them, is native as
-   of the chunking slice; what is left of the bank is 6.6M, most of it
-   `45:4936`, the track loader `45:4BCC` and the chunk boundaries themselves.
+   of the chunking slice. The later pitch-slide and command-loader slices also
+   own `45:4936` and compose `45:4BCC` through its `45:4C42` record tail; the
+   remaining bank residue is now conservative command arms, chunk/resumption
+   boundaries, and paths reached after a partial entry falls back.
 
    **This entry said `45:4015` cannot be ported while the emulator is here,
    and that was wrong on both of its two grounds.** It is recorded here as it

@@ -10,7 +10,7 @@ if(NOT CONFIG STREQUAL "Release")
     message(FATAL_ERROR "Unsupported VRAM-upload configuration: ${CONFIG}")
 endif()
 
-# The graphics driver's three port-streaming loops. All of 00:E3C0-E47C points a
+# The graphics driver's four port-streaming loops. All of 00:E3C0-E47C points a
 # VDC or VCE write pointer at a base address and then pushes words through the
 # data ports until a counter runs out; nothing in the region reads a device
 # register, so unlike the interrupt dispatcher above it the whole region is
@@ -20,6 +20,7 @@ endif()
 #   00:E3FC  clear the 1,024-entry VCE colour table
 #   00:E41F  the generic word-stream decoder -- $01-$7F literal words, $81-$FF a
 #            repeated word, $00 terminates
+#   00:FA40  the one-shot 26-row title/setup tile-and-attribute uploader
 #
 # This is the first chunked family in the port. One decoder call is 167,000
 # master cycles, 3,400 port writes and 12,400 instructions, against a channel of
@@ -82,6 +83,12 @@ execute_process(
         "00:E41F@all"
         --replace-hook
         "00:E439@all"
+        --replace-hook
+        "00:FA40@all"
+        --replace-hook
+        "00:FA6A@all"
+        --replace-hook
+        "00:FA6E@all"
         --work-ram-write-range
         "2006-2006"
         --work-ram-write-range
@@ -120,6 +127,9 @@ foreach(expected_line IN ITEMS
     "Native replacement 00:E403@all entries: 16 of 16"
     "Native replacement 00:E41F@all entries: 41 of 41"
     "Native replacement 00:E439@all entries: 326 of 326"
+    "Native replacement 00:FA40@all entries: 26 of 26"
+    "Native replacement 00:FA6A@all entries: 416 of 416"
+    "Native replacement 00:FA6E@all entries: 416 of 416"
     "Work-RAM write trace complete: 6036242 selected writes"
     "Bus write trace complete: 2151922 selected writes"
 )
@@ -156,8 +166,8 @@ endforeach()
 
 message(
     STATUS
-    "Semantic VRAM and VCE upload paths run all six entry points natively "
-    "across 393 admitted entries as chunked instruction-boundary transcripts, "
+    "Semantic VRAM and VCE upload paths run all nine entry points natively "
+    "across 1,251 admitted entries as chunked instruction-boundary transcripts, "
     "with the decoder's shared zero page, the whole stack page, every VDC and "
     "VCE register write and the state census identical to assembly."
 )

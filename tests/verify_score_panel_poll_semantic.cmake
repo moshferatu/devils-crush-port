@@ -10,7 +10,9 @@ if(NOT CONFIG STREQUAL "Release")
     message(FATAL_ERROR "Unsupported score-panel configuration: ${CONFIG}")
 endif()
 
-# The bank-09 score-panel family: 09:7237-09:7268 is the redraw poll. Four
+# The bank-09 score-panel family includes both ornament animations. 09:70C1
+# hands the left actor to the coroutine scheduler, 09:70C4 and 09:71EA are the
+# left/right eight-tick frame steppers, and 09:7237-09:7268 is the redraw poll. Four
 # work RAM gates -- the
 # in-progress flag $2DBB, the session handshake $2D53, the hold-off countdown
 # $2D70 and the panel dirty bit $2CC0.0 -- in front of the redraw at 09:7266
@@ -74,9 +76,13 @@ function(record_route census writes bus calls)
             --work-ram-write-range 202D-2036
             --work-ram-write-range 2CC0-2CC0
             --work-ram-write-range 2D52-2DBB
+            --work-ram-write-range 3980-3AFF
             --work-ram-write-trace "${writes}"
             --bus-write-range 0000-0003
             --bus-write-trace "${bus}"
+            --observe-hook "09:70C1"
+            --observe-hook "09:70C4"
+            --observe-hook "09:71EA"
             --observe-hook "09:7237"
             --observe-hook "09:72FD"
             --routine-call-trace "${calls}"
@@ -104,6 +110,9 @@ set(emulated_output "${recorder_output}")
 record_route(
     "${replaced_census}" "${replaced_writes}" "${replaced_bus}"
     "${replaced_calls}"
+    --replace-hook "09:70C1@all"
+    --replace-hook "09:70C4@all"
+    --replace-hook "09:71EA@all"
     --replace-hook "09:7237@all"
     --replace-hook "09:72FD@all"
 )
@@ -111,11 +120,17 @@ set(replaced_output "${recorder_output}")
 
 foreach(expected_line IN ITEMS
     "State census recording complete: 3600 frames"
+    "Native replacement 09:70C1@all entries: 1 of 1"
+    "Native replacement 09:70C4@all entries: 669 of 669"
+    "Native replacement 09:71EA@all entries: 670 of 670"
     "Native replacement 09:7237@all entries: 2649 of 2649"
     "Native replacement 09:72FD@all entries: 376 of 376"
-    "Observe hook 1 entries: 2649"
-    "Observe hook 2 entries: 376"
-    "Routine call trace complete: 3025 calls, 28605 writes"
+    "Observe hook 1 entries: 1"
+    "Observe hook 2 entries: 669"
+    "Observe hook 3 entries: 670"
+    "Observe hook 4 entries: 2649"
+    "Observe hook 5 entries: 376"
+    "Routine call trace complete: 4365 calls, 30486 writes"
 )
     string(FIND "${replaced_output}" "${expected_line}" line_offset)
     if(line_offset EQUAL -1)
@@ -207,9 +222,10 @@ file(REMOVE
 
 message(
     STATUS
-    "The score panel's redraw poll runs natively on all 2,649 calls and its "
-    "glyph writer on all 376 calls, with the same arms, registers, flags and "
-    "timing as assembly; the route's "
+    "The score panel's ornament handoff and steppers run natively on all "
+    "1/669/670 calls, its redraw poll on all 2,649 calls, and its glyph writer "
+    "on all 376 calls, with the same arms, registers, flags and timing as "
+    "assembly; the route's "
     "${panel_write_count} panel writes and ${panel_bus_count} VDC port writes "
     "land on the same cycles."
 )

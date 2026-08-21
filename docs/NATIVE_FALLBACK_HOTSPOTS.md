@@ -43,6 +43,44 @@ table and the plan deliberately retains original graphics drivers in the
 emulated compatibility layer. The profile therefore records an explicit scope
 rejection rather than treating raw cycle count as automatic port priority.
 
+## Three-Blobs collision-marker leaf
+
+After the fixed-marker outer submissions, the exact deployed-residue profile
+contained 3,479,817 addressable cycles in 244 clusters. Excluding hardware
+sampling, device/driver work, shared handoffs, returns, and interrupt cycles
+charged to entry rows left `03:694A-6965` as the highest coherent gameplay
+leaf: 21,180 profiled cycles across 198 calls.
+
+The leaf maps signed-delta scratch `$2D` to indexed marker `$3980,X` through
+four 57/69/87/99-cycle pre-return paths. Semantic `03:694A@all` now admits all
+198 calls through exact instruction checkpoints, including eleven scopes with
+original interrupt-handler passages. The assembly/native oracle preserves the
+canonical census, all 198 calls and 337 ordered writes, plus the selected
+marker/stack-page stream. The deployed gain is 20,844 cycles—the profile's
+extra 336 cycles were interrupt attribution—and the fresh residue is 3,458,637
+cycles in 243 clusters.
+
+## Shared collision-effect allocator
+
+The next fresh residue retained `03:7BF6-7CA4` as the first substantial
+gameplay-owned cluster after the documented hardware seams and shared-return
+rows. The first routine in that approximate cluster is the common effect
+allocator at `03:7BF6-7C33`; later addresses are separate effect controllers.
+
+Semantic `03:7BF6/7C02/7C05@all` splits the routine at the existing native
+`01:C024/C5AB` actor-slot allocator. All 20 outer calls preserve the source
+appearance's low-nibble gate and authentic JSR frame. Nineteen successful
+allocator returns continue through the native child initializer, which copies
+the source identity/position fields, marks the source nibble `$0F`, initializes
+the reserved type-`$8F` effect, and absorbs `7C33`; the one already-marked
+source takes the direct `7C04` return.
+
+The assembly/native oracle is exact across the canonical census, 58 nested
+call scopes, 1,022 ordered call writes, and 4,650,247 selected actor/stack
+writes in Release and Debug. Deployment gains 5,646 cycles; the profile loses
+5,766 because 120 additional cycles had been shared-return attribution. The
+fresh residue is 3,452,871 cycles in 243 clusters.
+
 ## Walled-Star access pilot
 
 The same 3,600-frame natural state-census route then observed the access
@@ -4058,6 +4096,366 @@ interrupt-bearing scopes and all 582 interrupt-owned writes. The gate adds
 166,887 cycles, bringing ownership to 698,275,779 cycles across 487 routines.
 The new deployed profile leaves 4,880,469 unregistered non-wait cycles in 261
 clusters; `08:584C-585A` is the next coherent bank-8 residue to assess.
+
+## Bank-8 boot work-RAM clear
+
+`08:584C-5870` is one boot-time initializer whose apparent 73,968-cycle
+residue is almost entirely one instruction: `TII $3000,$3001,$0FFF` at
+`08:585A` costs 73,785 cycles and emits 4,095 ordered work-RAM writes. The
+bridge carries 512 writes, and a block transfer exposes no interior
+instruction boundary, so the transfer is a capacity wall rather than a
+candidate for transcript chunking.
+
+The routine still splits cleanly around that wall. Semantic `08:584C` and
+`08:584F` cross the two JSRs, `08:5852` owns the three clear-setup stores and
+stops on the TII, and `08:5861` resumes after it for the three VDC stores and
+absorbed return. The four one-shot entries add 183 native cycles. The complete
+outer call spans the intervening fade driver for 2,936,556 cycles and retains
+all 49,993 ordered writes exactly; selected RAM, the 2,036,234-write global VDC
+bus artifact, and the canonical census also remain byte-identical. The
+deployed profile now leaves 4,880,286 non-wait cycles in 260 clusters, with the
+TII itself still visible as the eighteenth-ranked deliberate wall.
+
+## Work-RAM byte-stream decoder
+
+`00:E4E3-E532` is a 156,720-cycle work-RAM decompressor adjacent to the
+already-native VDC/VCE stream family. Its one outer call is not a transaction:
+the observer sees 258 nested entries and 481,291 aggregate writes because each
+`BRA $E4E3` opens the next record under every earlier scope. The loop boundary
+is nevertheless the exact chunk seam. Each record emits at most 127 data bytes
+plus bounded scratch/pointer writes, then re-enters the same registered head.
+
+Semantic `00:E4E3@all` owns all 106 literal records, 151 repeat records, and
+the zero terminator through 258 exact instruction-checkpointed transactions.
+The complete nested call/write artifacts and canonical census match assembly,
+including original interrupt passages; the terminal record has a persisted
+39-cycle direct replay. Deployment adds 156,672 native cycles and leaves
+4,723,566 non-wait cycles in 260 clusters.
+
+## Music pending-event command-record initializer
+
+After excluding the documented block-transfer, branch, device-state, and
+mixed collision/audio walls, `45:4C42-4CB8` was the largest coherent bounded
+residue. The pending-event dispatcher reaches `4C42` through its push/RTS
+trampoline. The tail reads one or more records through `($D2),Y`, clears the
+selected voice's transient arrays, copies eleven interleaved fields, and calls
+the already-transcribed balance helper at `45:4527` before advancing to the
+next record.
+
+The 66 routed calls account for 4,965 ordered writes and all return at `4CB8`.
+Two zero-marker calls take the inactive-voice path at `4BE7-4C1D`; none takes
+the adjacent active teardown below `4BEF` or the `4BE6` tail dispatch, so those
+arms remain conservative assembly fallbacks. Assembly, Release native, and
+Debug native routes share census, call, and ordered-write SHA-256 values
+`9036a9de...43490`, `b908b7a8...33614`, and `6f913eaa...1377b` respectively;
+ordinal 66 replays at frame 3,466 with a 1,683-cycle body and 42 writes.
+
+Semantic `45:4C42@all` adds 204,027 deployed native cycles, bringing ownership
+to 698,636,661 cycles across 493 routines. The unregistered non-wait residue is
+now 4,519,539 cycles in 257 clusters, with no interrupt-horizon decline or
+abandoned transcript.
+
+## Music pitch-slide stepper
+
+The residue screen's next bounded routine was `45:4936-49A1`, the per-voice
+pitch-slide stepper called from the music tick. It compares the current and
+destination two-byte periods, advances by the configured low-byte step,
+propagates carry or borrow across the high byte, clamps at the destination,
+and returns through `494B`, `495E`, or `496C`.
+
+Semantic `45:4936@all` publishes every original instruction boundary and owns
+all 548 routed calls. The exact call artifact contains 733 ordered writes,
+including every interrupt-handler passage; the focused final call replays at
+frame 3,407 with a 168-cycle body and one write. Assembly and native routes
+share the canonical census, call, call-write, and selected work-RAM hashes.
+
+Deployment adds 92,871 native cycles, bringing ownership to 698,729,532 cycles
+across 494 routines. The routine removes 93,495 cycles from the unregistered
+instruction profile; the remaining non-wait residue is 4,426,044 cycles in
+255 clusters, with no interrupt-horizon decline or abandoned transcript.
+
+## Music command descriptor loader
+
+The next bank-45 residue was `45:4BCC-4BE0`, the descriptor-selection prefix
+in front of the already-native `45:4C42` command-record initializer. It stores
+the accepted command at `$D4`, doubles it into the `$5D81` little-endian
+pointer table, installs `$D2:$D3`, and tests the descriptor tag. Every one of
+the 66 routed commands has a nonzero tag and branches into `4C42`; the
+unobserved zero-tag push/RTS dispatch remains a conservative assembly fallback.
+
+Semantic `45:4BCC@all` composes the entire existing initializer. Its complete
+call artifact contains 66 scopes and 5,163 ordered writes; ordinal 66 replays
+at frame 3,466 with a 1,800-cycle body and 45 writes. Assembly, Release native,
+and Debug native routes share the canonical census, selected work-RAM,
+PSG/timer-bus, call, and call-write artifacts.
+
+The generated registry replaces the child `4C42` entry with its `4BCC` parent,
+so the admitted-routine count remains 494 while deployed ownership gains the
+117-cycle prefix on every call: exactly 7,722 cycles, for 698,737,254 total.
+The refreshed deployed residue is 4,418,322 cycles in 254 clusters, with zero
+interrupt-horizon declines or abandoned transcripts.
+
+## Score-panel ornament animations
+
+The next two bounded presentation residues were the left and right ornament
+frame steppers at `09:70C4-70E4` and `09:71EA-720A`. The profiler's original
+`70C1-70E4` range hid a seam: `70C1` runs once, calls the coroutine scheduler,
+and returns to the actor scan; the scheduler later dispatches 669 repeated
+entries at `70C4`. The right stepper is entered directly 670 times at `71EA`.
+
+Semantic `09:70C1@all` composes the existing scheduler without double-crediting
+it. Semantic `09:70C4/71EA@all` share exact 33/132/156-cycle transcripts for
+countdown waits, ordinary phase advances, and `$FF` sentinel wraps. Their
+1/4/5-write shapes preserve the actor countdown, phase, and appearance bytes.
+The expanded score-panel family oracle compares all 4,365 calls, 30,486 scoped
+writes, selected work RAM, VDC bus output, and the canonical census.
+
+The repeated steppers add 89,682 deployed native cycles, bringing ownership to
+698,826,936 cycles across 497 routines. The remaining non-wait residue is
+4,328,640 cycles in 252 clusters, with no horizon/depth decline or abandoned
+transcript.
+
+## Music note-command continuation
+
+The next profiler range, `45:469B-46D6`, is not a routine. It is the stable
+tail of command interpreter `45:457A` after the optional duration byte has
+already been resolved. The interpreter is conservatively handed back on most
+of its entries, which left this already-modelled tail running in assembly.
+
+Semantic `45:469B@all` admits all 224 natural branch arrivals through the
+existing music walk. It preserves the duration-table lookup and stores, clears
+the note transient state, conditionally restarts the envelope, advances the
+stored sequence cursor, and absorbs the interpreter's real `46D6` return.
+A standalone observer is deliberately not used: no `JSR` opens a frame at
+`469B`, so treating it as a call associates it with an unrelated outer return.
+The enclosing music oracle instead compares the canonical census, selected
+work-RAM writes, PSG/timer bus writes, and the legitimate callable-family
+artifacts directly against assembly.
+
+The continuation adds 68,082 deployed native cycles, bringing ownership to
+698,895,018 cycles across 498 routines. The remaining non-wait residue is
+4,260,414 cycles in 252 clusters, with no horizon/depth decline or abandoned
+transcript. The next largest coherent candidate range is `00:F9A2-FAC5`, but
+it contains a scheduler, asset loader, VDC row loop, and audio dispatcher; its
+217,395 cycles must be split by owner before choosing another port.
+
+### The merged startup range, split
+
+The split makes the choice unambiguous. Direct instruction-profile cycles are
+315 at `F9A2-F9B6`, 372 at `F9B7-F9FD`, 333 at `F9FE-FA3F`, 216,210 at
+`FA40-FAA6`, 105 at `FAA7-FABC`, and 60 at `FABD-FAC5`. The first, second,
+third, fifth, and sixth owners execute once. `FA40` executes 26 rows, and its
+packed attribute branch has 416 entries on each arm.
+
+Semantic `00:FA40/FA6A/FA6E@all` therefore takes the repeated owner. It uses
+the established tilemap seam: stop before the compound-sampled `BBR0`, let the
+core run it, and resume either arm. Each arm completes the current VDC word;
+the final arm in a row advances `$2F:$30`, `$2D:$2E`, and `$35:$36`, then stops
+at the outer `BNE`. The owning VRAM/VCE oracle admits 26/26, 416/416, and
+416/416 entries with unchanged census, selected work-RAM, and bus hashes.
+
+Deployment gains 198,432 cycles, reaching 699,093,450 cycles across 501
+routines (54.09% overall and 98.40% outside the frame wait). The remaining
+non-wait residue is 4,061,982 cycles in 254 clusters, with zero declines or
+abandonments. The five one-shot owners remain assembly-backed: together they
+offer only 1,185 direct cycles, and one state sample cannot establish a generic
+transcript.
+
+## Three-Blobs suspended movement prefix and call seams
+
+The post-uploader re-rank put `03:66E1-676E` first among repeated gameplay
+owners below the retained hardware and timing boundaries. Observing internal
+entry `03:66BF` establishes why its apparent enclosing routine is the wrong
+transaction: sixty entries stay open across twelve actor-scan passes apiece
+before returning through the scheduler, with 1,293-4,599-cycle and 34-119-write
+outer scopes.
+
+The stable pieces are the three repeated child calls at `03:66D3`, `03:66D6`,
+and `03:66D9`. Each is one JSR, reached 720 times, into already-owned motion,
+appearance, and coroutine-scheduler entries. One shared adapter preserves the
+two return-frame writes, LastCycle interrupt sample, and live-MPR target, then
+hands the child back to normal execution. The canonical census and every
+selected stack-page write match assembly.
+
+Deployment gains exactly 45,360 cycles, reaching 699,138,810 cycles across 504
+routines (54.10% overall and 98.40% outside the frame wait). The remaining
+non-wait residue is 4,016,238 cycles in 255 clusters, with zero horizon/depth
+declines or abandonments. Continue the owner through bounded internal seams;
+do not hold copied RAM across the suspended `03:66BF-C5E9` outer scope.
+
+The next bounded seam is now native at `03:66BF`. Its 60 natural entries own
+the 84-cycle carry-linked `$3400/$3480` negate and the 21-cycle `JSR $C021`
+handoff, preserving every instruction checkpoint and the authentic stack
+frame. The complete outer call/write comparison, global stack trace, and
+canonical census remain exact. Deployment gains another 6,300 cycles, reaching
+699,145,110 cycles across 505 routines; the fresh unregistered residue is
+4,009,866 cycles in 255 clusters. Continue at the separately bounded
+`03:66E2-676A` alternate path rather than spanning scheduler suspension.
+
+That alternate arm is now split at its real call boundaries. Semantic
+`03:66E2@all` owns the six-call reset prefix through its authentic
+`JSR $C018` handoff: it updates the motion-mode byte, copies the destination
+coordinates, initializes the signed velocity and phase fields, and preserves
+all fifteen instruction boundaries plus the live return frame. Semantic
+`03:670A/670C/6726/673D@all` then owns the repeated BSR/JSR seams into the
+internal motion helper, shared appearance leaf, bank-1 motion trampoline, and
+direction calculator. Each repeated seam admits 204/204 natural entries.
+
+The expanded oracle compares the complete six outer reset calls, every
+ordered write, the canonical census, and the selected stack-page stream
+against assembly. Deployment gains exactly 18,864 cycles, reaching
+699,163,974 cycles across 510 routines (54.10% overall and 98.41% outside the
+frame wait) with zero horizon/depth declines or abandonments. The fresh
+unregistered residue was 3,990,810 cycles in 258 clusters.
+
+Those bounded instruction blocks are now native at `03:670F`, `03:6729`, and
+`03:6740`. All three admit 204/204 natural entries and preserve the signed
+destination branch, four-byte scratch staging, both velocity directions, and
+the authentic `03:676A` return around the already-owned child seams. They add
+69,102 cycles, reaching 699,233,076 cycles across 513 routines (54.10%
+overall and 98.42% outside frame wait), with zero horizon/depth declines or
+abandonments. The fresh unregistered residue is 3,921,108 cycles in 256
+clusters. Re-rank that profile before selecting the next bounded gameplay
+owner; the remaining leading rows include deliberate hardware-timing seams.
+
+That re-rank selected the first non-hardware bounded gameplay cluster,
+`01:CF33-CF99`, at 121,338 profiled cycles. Nine semantic entry points split
+the confirmed-contact response at four already-native physics calls. All 520
+outer calls and all 2,017 continuation entries now execute natively with exact
+assembly call and 251,090-write artifacts. Deployment gains 120,378 cycles,
+reaching 699,353,454 across 522 routines with no declines or abandonments; the
+fresh unregistered residue is 3,799,770 cycles in 255 clusters.
+
+The next re-rank selected `01:C6C2-C71D`, the initial ball substep loop. Nine
+entries split it at seven existing native children while leaving compound-
+sampled `BBR3` at `01:C6E3` in the core. All 1,520 external entries preserve
+the loop counters, child stack frames, both collision arms, and final motion
+handoff. Deployment gains 92,019 cycles, reaching 699,445,473 across 531
+routines; the fresh residue is 3,706,815 cycles in 256 clusters.
+
+That profile's first bounded gameplay owner after known handoff/resumption
+attribution is the 42-call confirmed-contact position retry at
+`01:CDF8-CE94`. Semantic `01:CDF8/CE22/CEB5/CE4D@all` splits it at native
+cached-position restore `00:F241` and the early-out playfield probe. The four
+entries preserve direction-vector derivation, four position-word updates, both
+real stack frames, collision-latch cleanup, and all instruction checkpoints.
+The existing 520-call/251,090-write response artifacts and canonical census
+remain exact. Deployment gains 30,114 cycles, reaching 699,475,587 across 535
+routines with no declines or abandonments; the fresh residue is 3,676,365
+cycles in 251 clusters.
+
+That re-rank selected `03:67CF`, the bounded Three-Blobs continuation reached
+after the original audio command returns. All 15 calls advance the shared
+colour modulo six, map the result to the ROM's appearance table, write the
+colour and actor appearance, and return through `03:67E5`. The checkpointed
+native transcript preserves all interrupt passages and matches the complete
+1,980-call/1,435-write collision-family assembly artifact.
+
+Deployment gains exactly 1,890 cycles, reaching 699,477,477 across 536
+routines with no declines or abandonments; the fresh residue is 3,674,475
+cycles in 251 clusters. The former `03:67CF-67E5` profile cluster overstated
+the body: 19,380 cycles remain at shared `03:67E5` from paths that do not enter
+`67CF`. Profile rows that include an interrupt passage or a shared return must
+be repriced from the new registry A/B census, not treated as available body
+cycles.
+
+The next attribution-aware re-rank selected the Small-Soldier child allocator
+at `03:7E87-7EF9`. Three semantic entries split its authentic allocator and
+camera-helper calls without taking ownership of the already-native children.
+All ten spawns preserve the two JSR frames, sixteen child-field writes, source
+index save/exchange/restore, side-selected group count, final return, and every
+instruction checkpoint. Deployment gains exactly 5,880 cycles, reaching
+699,483,357 across 539 routines with no declines or abandonments; the fresh
+residue is 3,668,571 cycles in 251 clusters.
+
+The following re-rank selected the two-stage Small-Soldier startup coroutine
+at `03:7EFA-7F19`. Semantic `03:7EFA/7F05@all` composes the existing native
+coroutine scheduler for all 160 direction-toggle countdowns and ten one-time
+collision setups. The exact 171/270-cycle transcripts preserve both JSR
+frames, indexed countdown, collision-state normalization, four-tick timer,
+flags, and every original instruction boundary. Deployment gains exactly
+6,540 cycles, reaching 699,489,897 across 541 routines with no declines or
+abandonments; the fresh attribution-aware residue is 3,661,935 cycles in 250
+clusters.
+
+The next attribution-aware re-rank selected the remaining Three-Blobs
+first-movement continuation at `03:66B5-66BD`. Semantic `03:66B5@all`
+preserves the indexed x/y decrements and exact direct, x-expiry, and y-expiry
+instruction checkpoints before handing execution to existing native entries
+at `03:66DE`, `03:66E2`, or `03:66BF`. Its standalone oracle admits all 1,107
+calls with an exact 9,595-write artifact; the deployed `03:66A3` parent leaves
+272 arrivals. Deployment gains exactly 16,230 cycles, reaching 699,506,127
+across 542 routines with no declines or abandonments; the fresh residue is
+3,645,465 cycles in 249 clusters.
+
+The following re-rank excluded the leading palette/boot block transfers,
+compound-sampled branches, frame-loop and interrupt/device glue, shared
+returns, and music resumption. It selected the coherent `03:6678-66A2`
+Three-Blobs RNG initialization chain. Four entries split the two authentic
+`JSR $C081` calls, the first movement-state initializer, the second-result
+timer transform, and the final `JSR $C018` scheduler handoff. All 9/9/69/69
+arrivals preserve the exact 156-call/2,509-write assembly artifact in Release
+and Debug. Deployment gains exactly 6,003 cycles, reaching 699,512,130 across
+546 routines with no declines or abandonments; the fresh residue is 3,639,366
+cycles in 248 clusters.
+
+The next attribution-aware re-rank selected the three authentic Front-Spider
+transition scheduler calls at `03:64D2/64DD/64ED`. They account for 4,536 of
+the `03:64A5-64F8` cluster's 5,670 cycles and split cleanly from the score/audio
+prefix and timer-expiry continuations. All 36/36/144 arrivals preserve their
+real two-byte JSR frames and interruptible LastCycle samples. Deployment gains
+exactly 4,536 cycles, reaching 699,516,666 across 549 routines with no declines
+or abandonments; the fresh residue is 3,634,830 cycles in 251 clusters.
+
+The following re-rank selected the bounded collision-active flipper
+continuation at `01:D594-D5B7`. The enclosing `01:D525` controller remains
+oversized, but `01:D594`, `01:D599`, and `01:D5A9` split it exactly around
+existing native children `01:CFD8`, `01:D1A2`, and `01:DC95`. All 41 arrivals
+at each entry preserve both call frames, the collision-orientation and response
+bits, both motion-word additions, actor-state release, flags, and every
+instruction checkpoint. Deployment gains exactly 9,102 cycles, reaching
+699,525,768 across 552 routines with no declines or abandonments; the exact
+123-call/33,075-write artifact is unchanged in Release and Debug. The fresh
+residue is 3,625,608 cycles in 252 clusters.
+
+The next attribution-aware re-rank selected the bounded flipper post-response
+continuation at `01:D5B8-D5FE`. Four semantic entries split the authentic
+`01:D62E`, `01:D081`, `01:D612`, and `01:D09E` call frames; `01:D5C4` and
+`01:D5D8` preserve the state-derived actor and signed-response branches before
+handing execution to existing native `01:D594/D599` or exact assembly return
+boundaries. All 43/43/43/43/43/20 arrivals execute natively with the exact
+235-call/160,392-write Release/Debug artifact. Deployment gains exactly 7,671
+cycles, reaching 699,533,439 across 558 routines with no declines or
+abandonments; the fresh residue is 3,617,913 cycles in 251 clusters.
+
+The following attribution-aware re-rank selected the bounded flipper-
+controller prefix at `01:D525-D594`. Semantic
+`01:D525/D52C/D53B/D54A/D54D/D550/D553/D556/D589@all` splits the actor-state
+gate, four authentic physics-child calls, state-derived response continuation,
+and signed motion negation without spanning either oversized whole-parent
+scope. All 128/74/62/19/19/19/19/19/20 arrivals execute natively with the
+exact 379-call/271,266-write Release/Debug artifact. Deployment gains exactly
+19,296 cycles, reaching 699,552,735 across 567 routines with no declines or
+abandonments; the fresh residue is 3,598,425 cycles in 248 clusters.
+
+The next attribution-aware re-rank selected the two fixed-marker helper call
+seams at `03:7BE5/7BE9`. Each is one authentic 21-cycle `JSR` between existing
+native stack segments and independently owned native children. All 996
+arrivals apiece preserve the live return-address writes, MPR-selected target,
+and LastCycle interrupt sample. Deployment gains exactly 41,832 cycles,
+reaching 699,594,567 across 569 routines with no declines or abandonments; the
+fresh residue is 3,556,233 cycles in 247 clusters. The profiled rows carried
+42,192 cycles because 360 original interrupt cycles were attributed to their
+entry instructions rather than to portable body work.
+
+The next attribution-aware re-rank selected the remaining fixed-marker outer
+submission sequence at `03:7BB1/7BB5`, `03:7BC3/7BC7`, and `03:7BD5/7BD9`,
+plus routed return `03:7BDF`. All seven entries admit 332 arrivals apiece while
+preserving the six authentic child-call frames and all 36 interrupt-bearing
+final returns. Deployment gains exactly 75,696 cycles, reaches 699,670,263
+across 576 routines with no declines or abandonments, and leaves 3,479,817
+cycles in 244 clusters. The 76,416-cycle profile total included 720 original
+interrupt cycles charged to the entry rows.
 
 ## Use on future families
 

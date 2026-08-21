@@ -41,9 +41,11 @@ using emulation::RoutineReplacement;
 //   45:48B4  sequence-data fetch, the shared command decoder
 //   45:4883  pitch/period update           (inlines 48B4)
 //   45:48F6  sweep accumulator update      (inlines 48B4)
+//   45:4936  pitch-slide stepper
 //   45:49A2  vibrato accumulator update
 //   45:49B6  voice-latch clear
 //   45:49F9  voice commit, which programs $0800/$0804
+//   45:4BCC  command descriptor loader      (inlines 4C42)
 //   45:4211  the two pending-event gates
 //   45:4142  the PSG register programmer, which pushes six voices out to
 //            $0800-$0809 and uploads a 32-byte waveform when one changes
@@ -55,7 +57,7 @@ using emulation::RoutineReplacement;
 //
 //   45:4015  the per-frame tick, entered once a frame from outside the bank
 //   45:4044  the head of its voice loop, and the chunk head
-//   45:409C  where it resumes after 45:4936, which is not transcribed here
+//   45:409C  where it resumes after 45:4936 when the tick hands the call back
 //   45:413B  where it resumes after 45:4142
 //
 // Five more are not subroutines at all. Each of the bank's SEIs is emulated
@@ -65,6 +67,13 @@ using emulation::RoutineReplacement;
 //   45:4154  the channel-release arm       45:47E0  the sample trigger
 //   45:4169  each channel of 45:4142       45:485E  its bank-map arm
 //   45:49E4  the voice commit
+//
+// 45:469B is a different internal boundary. The command interpreter reaches
+// it after resolving the optional note-duration byte. Most 457A calls are
+// deliberately handed back before this point, so admitting the continuation
+// lets the already-modelled note commit and real 46D6 return run natively.
+// It is not a subroutine and therefore must be proved by the enclosing music
+// family trace rather than by a standalone routine observer.
 constexpr std::uint8_t kBank = 0x45U;
 
 constexpr std::uint8_t kCarry = 0x01U;
@@ -192,16 +201,20 @@ constexpr std::uint32_t kChannelIterationMasterCycles = 2304U;
         || logical_pc == 0x4211U
         || logical_pc == 0x4228U
         || logical_pc == 0x457AU
+        || logical_pc == 0x469BU
         || logical_pc == 0x47E0U
         || logical_pc == 0x482EU
         || logical_pc == 0x485EU
         || logical_pc == 0x4883U
         || logical_pc == 0x48B4U
         || logical_pc == 0x48F6U
+        || logical_pc == 0x4936U
         || logical_pc == 0x49A2U
         || logical_pc == 0x49B6U
         || logical_pc == 0x49E4U
-        || logical_pc == 0x49F9U;
+        || logical_pc == 0x49F9U
+        || logical_pc == 0x4BCCU
+        || logical_pc == 0x4C42U;
 }
 
 // Every SEI in the ported span. A checkpoint cannot describe one: the core
@@ -237,7 +250,7 @@ constexpr std::uint32_t kChannelIterationMasterCycles = 2304U;
 // one of these; deeper than that it executes the RTS outright, because the
 // matching JSR was one of its own.
 //
-// All twenty-five are ordinary returns rather than dispatches, checked against
+// All twenty-six are ordinary returns rather than dispatches, checked against
 // the ROM, so a stop can be absorbed -- run as the last instruction of the
 // transcript instead of being handed to the core -- and the runtime test is
 // that the pointer still stands where the entry left it. That is the whole of
@@ -260,11 +273,13 @@ constexpr std::uint32_t kChannelIterationMasterCycles = 2304U;
         || pc == 0x48B8U || pc == 0x48C0U || pc == 0x48CDU || pc == 0x48D6U
         || pc == 0x48E5U || pc == 0x48F5U
         || pc == 0x4935U
+        || pc == 0x494BU || pc == 0x495EU || pc == 0x496CU
         || pc == 0x49B5U
         || pc == 0x49D1U
         || pc == 0x49F8U
         || pc == 0x4A28U
-        || pc == 0x4A9BU;
+        || pc == 0x4A9BU
+        || pc == 0x4CB8U;
 }
 
 }  // namespace
@@ -2711,6 +2726,287 @@ std::optional<RoutineReplacement> replace_music_sequencer(
             store(0x4932U, indexed_x(0x2F2CU), registers.accumulator);
             append_checkpoint(0x4932U, 0x4935U, 15U);
             pc = 0x4935U;
+            break;
+
+        // ---- 45:4936  pitch-slide stepper -------------------------------
+        case 0x4936U:  // LDA $2F04,X -- no note means no slide
+            load_accumulator(read_ram(indexed_x(0x2F04U)));
+            append_checkpoint(0x4936U, 0x4939U, 15U);
+            pc = 0x4939U;
+            break;
+
+        case 0x4939U:  // BEQ $494B
+            pc = branch(
+                0x4939U,
+                0x494BU,
+                0x493BU,
+                (registers.status & kZero) != 0U);
+            break;
+
+        case 0x493BU:  // LDA $2F2C,X -- current pitch high byte
+            load_accumulator(read_ram(indexed_x(0x2F2CU)));
+            append_checkpoint(0x493BU, 0x493EU, 15U);
+            pc = 0x493EU;
+            break;
+
+        case 0x493EU:  // CMP $2F68,X -- destination high byte
+            compare(registers.accumulator, read_ram(indexed_x(0x2F68U)));
+            append_checkpoint(0x493EU, 0x4941U, 15U);
+            pc = 0x4941U;
+            break;
+
+        case 0x4941U:  // BNE $496D -- cross a high-byte boundary
+            pc = branch(
+                0x4941U,
+                0x496DU,
+                0x4943U,
+                (registers.status & kZero) == 0U);
+            break;
+
+        case 0x4943U:  // LDA $2F22,X -- current pitch low byte
+            load_accumulator(read_ram(indexed_x(0x2F22U)));
+            append_checkpoint(0x4943U, 0x4946U, 15U);
+            pc = 0x4946U;
+            break;
+
+        case 0x4946U:  // CMP $2F5E,X -- destination low byte
+            compare(registers.accumulator, read_ram(indexed_x(0x2F5EU)));
+            append_checkpoint(0x4946U, 0x4949U, 15U);
+            pc = 0x4949U;
+            break;
+
+        case 0x4949U:  // BNE $494C
+            pc = branch(
+                0x4949U,
+                0x494CU,
+                0x494BU,
+                (registers.status & kZero) == 0U);
+            break;
+
+        case 0x494CU:  // BCC $495F -- select upward or downward motion
+            pc = branch(
+                0x494CU,
+                0x495FU,
+                0x494EU,
+                (registers.status & kCarry) == 0U);
+            break;
+
+        case 0x494EU:  // SBC $2F86,X -- downward pitch step
+            subtract_with_carry(read_ram(indexed_x(0x2F86U)));
+            append_checkpoint(0x494EU, 0x4951U, 15U);
+            pc = 0x4951U;
+            break;
+
+        case 0x4951U:  // BCC $4958 -- clamp on underflow
+            pc = branch(
+                0x4951U,
+                0x4958U,
+                0x4953U,
+                (registers.status & kCarry) == 0U);
+            break;
+
+        case 0x4953U:  // CMP $2F5E,X -- clamp when the step crossed target
+            compare(registers.accumulator, read_ram(indexed_x(0x2F5EU)));
+            append_checkpoint(0x4953U, 0x4956U, 15U);
+            pc = 0x4956U;
+            break;
+
+        case 0x4956U:  // BCS $4969
+            pc = branch(
+                0x4956U,
+                0x4969U,
+                0x4958U,
+                (registers.status & kCarry) != 0U);
+            break;
+
+        case 0x4958U:  // LDA $2F5E,X -- exact destination low byte
+            load_accumulator(read_ram(indexed_x(0x2F5EU)));
+            append_checkpoint(0x4958U, 0x495BU, 15U);
+            pc = 0x495BU;
+            break;
+
+        case 0x495BU:  // STA $2F22,X
+            store(0x495BU, indexed_x(0x2F22U), registers.accumulator);
+            append_checkpoint(0x495BU, 0x495EU, 15U);
+            pc = 0x495EU;
+            break;
+
+        case 0x495FU:  // ADC $2F86,X -- upward pitch step
+            add_with_carry(read_ram(indexed_x(0x2F86U)));
+            append_checkpoint(0x495FU, 0x4962U, 15U);
+            pc = 0x4962U;
+            break;
+
+        case 0x4962U:  // BCS $4958 -- clamp on overflow
+            pc = branch(
+                0x4962U,
+                0x4958U,
+                0x4964U,
+                (registers.status & kCarry) != 0U);
+            break;
+
+        case 0x4964U:  // CMP $2F5E,X -- clamp when the step crossed target
+            compare(registers.accumulator, read_ram(indexed_x(0x2F5EU)));
+            append_checkpoint(0x4964U, 0x4967U, 15U);
+            pc = 0x4967U;
+            break;
+
+        case 0x4967U:  // BCS $4958
+            pc = branch(
+                0x4967U,
+                0x4958U,
+                0x4969U,
+                (registers.status & kCarry) != 0U);
+            break;
+
+        case 0x4969U:  // STA $2F22,X
+            store(0x4969U, indexed_x(0x2F22U), registers.accumulator);
+            append_checkpoint(0x4969U, 0x496CU, 15U);
+            pc = 0x496CU;
+            break;
+
+        case 0x496DU:  // LDA $2F22,X -- step across a high-byte boundary
+            load_accumulator(read_ram(indexed_x(0x2F22U)));
+            append_checkpoint(0x496DU, 0x4970U, 15U);
+            pc = 0x4970U;
+            break;
+
+        case 0x4970U:  // BCC $498A -- high byte is below destination
+            pc = branch(
+                0x4970U,
+                0x498AU,
+                0x4972U,
+                (registers.status & kCarry) == 0U);
+            break;
+
+        case 0x4972U:  // SBC $2F86,X
+            subtract_with_carry(read_ram(indexed_x(0x2F86U)));
+            append_checkpoint(0x4972U, 0x4975U, 15U);
+            pc = 0x4975U;
+            break;
+
+        case 0x4975U:  // STA $2F22,X
+            store(0x4975U, indexed_x(0x2F22U), registers.accumulator);
+            append_checkpoint(0x4975U, 0x4978U, 15U);
+            pc = 0x4978U;
+            break;
+
+        case 0x4978U:  // BCS $496C -- no borrow from the high byte
+            pc = branch(
+                0x4978U,
+                0x496CU,
+                0x497AU,
+                (registers.status & kCarry) != 0U);
+            break;
+
+        case 0x497AU: {  // DEC $2F2C,X
+            const auto address = indexed_x(0x2F2CU);
+            const auto value = static_cast<std::uint8_t>(
+                read_ram(address) - 1U);
+            registers.status = set_nz(registers.status, value);
+            store(0x497AU, address, value);
+            append_checkpoint(0x497AU, 0x497DU, 21U);
+            pc = 0x497DU;
+            break;
+        }
+
+        case 0x497DU:  // LDA $2F2C,X
+            load_accumulator(read_ram(indexed_x(0x2F2CU)));
+            append_checkpoint(0x497DU, 0x4980U, 15U);
+            pc = 0x4980U;
+            break;
+
+        case 0x4980U:  // CMP $2F68,X
+            compare(registers.accumulator, read_ram(indexed_x(0x2F68U)));
+            append_checkpoint(0x4980U, 0x4983U, 15U);
+            pc = 0x4983U;
+            break;
+
+        case 0x4983U:  // BNE $496C
+            pc = branch(
+                0x4983U,
+                0x496CU,
+                0x4985U,
+                (registers.status & kZero) == 0U);
+            break;
+
+        case 0x4985U:  // LDA $2F22,X -- final low-byte clamp after borrow
+            load_accumulator(read_ram(indexed_x(0x2F22U)));
+            append_checkpoint(0x4985U, 0x4988U, 15U);
+            pc = 0x4988U;
+            break;
+
+        case 0x4988U:  // BCS $4953
+            pc = branch(
+                0x4988U,
+                0x4953U,
+                0x498AU,
+                (registers.status & kCarry) != 0U);
+            break;
+
+        case 0x498AU:  // ADC $2F86,X
+            add_with_carry(read_ram(indexed_x(0x2F86U)));
+            append_checkpoint(0x498AU, 0x498DU, 15U);
+            pc = 0x498DU;
+            break;
+
+        case 0x498DU:  // STA $2F22,X
+            store(0x498DU, indexed_x(0x2F22U), registers.accumulator);
+            append_checkpoint(0x498DU, 0x4990U, 15U);
+            pc = 0x4990U;
+            break;
+
+        case 0x4990U:  // BCC $496C -- no carry into the high byte
+            pc = branch(
+                0x4990U,
+                0x496CU,
+                0x4992U,
+                (registers.status & kCarry) == 0U);
+            break;
+
+        case 0x4992U: {  // INC $2F2C,X
+            const auto address = indexed_x(0x2F2CU);
+            const auto value = static_cast<std::uint8_t>(
+                read_ram(address) + 1U);
+            registers.status = set_nz(registers.status, value);
+            store(0x4992U, address, value);
+            append_checkpoint(0x4992U, 0x4995U, 21U);
+            pc = 0x4995U;
+            break;
+        }
+
+        case 0x4995U:  // LDA $2F2C,X
+            load_accumulator(read_ram(indexed_x(0x2F2CU)));
+            append_checkpoint(0x4995U, 0x4998U, 15U);
+            pc = 0x4998U;
+            break;
+
+        case 0x4998U:  // CMP $2F68,X
+            compare(registers.accumulator, read_ram(indexed_x(0x2F68U)));
+            append_checkpoint(0x4998U, 0x499BU, 15U);
+            pc = 0x499BU;
+            break;
+
+        case 0x499BU:  // BNE $496C
+            pc = branch(
+                0x499BU,
+                0x496CU,
+                0x499DU,
+                (registers.status & kZero) == 0U);
+            break;
+
+        case 0x499DU:  // LDA $2F22,X -- final low-byte clamp after carry
+            load_accumulator(read_ram(indexed_x(0x2F22U)));
+            append_checkpoint(0x499DU, 0x49A0U, 15U);
+            pc = 0x49A0U;
+            break;
+
+        case 0x49A0U:  // BCS $4964
+            pc = branch(
+                0x49A0U,
+                0x4964U,
+                0x49A2U,
+                (registers.status & kCarry) != 0U);
             break;
 
         // ---- 45:49A2  vibrato accumulator update ------------------------
@@ -6995,6 +7291,463 @@ std::optional<RoutineReplacement> replace_music_sequencer(
                 (registers.status & kZero) != 0U);
             break;
 
+        // ---- 45:4BCC  command descriptor loader ------------------------
+        // Every routed game-to-audio command has a nonzero descriptor tag,
+        // so the loader selects its little-endian pointer and falls directly
+        // into the proven 4C42 record initializer below. A zero tag reaches
+        // the adjacent push/RTS dispatch and remains an assembly fallback.
+        case 0x4BCCU:  // STA $D4 -- accepted command ID
+            store(0x4BCCU, zp(0xD4U), registers.accumulator);
+            append_checkpoint(0x4BCCU, 0x4BCEU, 12U);
+            pc = 0x4BCEU;
+            break;
+
+        case 0x4BCEU: {  // ASL A -- two-byte descriptor pointer index
+            const auto carry = static_cast<std::uint8_t>(
+                (registers.accumulator >> 7U) & kCarry);
+            registers.accumulator = static_cast<std::uint8_t>(
+                registers.accumulator << 1U);
+            registers.status = set_nz(
+                static_cast<std::uint8_t>(
+                    registers.status
+                    & static_cast<std::uint8_t>(~kCarry)),
+                registers.accumulator);
+            registers.status = static_cast<std::uint8_t>(
+                registers.status | carry);
+            append_checkpoint(0x4BCEU, 0x4BCFU, 6U);
+            pc = 0x4BCFU;
+            break;
+        }
+
+        case 0x4BCFU:  // TAX
+            registers.x = registers.accumulator;
+            registers.status = set_nz(registers.status, registers.x);
+            append_checkpoint(0x4BCFU, 0x4BD0U, 6U);
+            pc = 0x4BD0U;
+            break;
+
+        case 0x4BD0U:  // LDA $5D81,X -- descriptor pointer low byte
+            load_accumulator(read_mapped(indexed_x(0x5D81U)));
+            append_checkpoint(0x4BD0U, 0x4BD3U, 15U);
+            pc = 0x4BD3U;
+            break;
+
+        case 0x4BD3U:  // STA $D2
+            store(0x4BD3U, zp(0xD2U), registers.accumulator);
+            append_checkpoint(0x4BD3U, 0x4BD5U, 12U);
+            pc = 0x4BD5U;
+            break;
+
+        case 0x4BD5U:  // LDA $5D82,X -- descriptor pointer high byte
+            load_accumulator(read_mapped(indexed_x(0x5D82U)));
+            append_checkpoint(0x4BD5U, 0x4BD8U, 15U);
+            pc = 0x4BD8U;
+            break;
+
+        case 0x4BD8U:  // STA $D3
+            store(0x4BD8U, zp(0xD3U), registers.accumulator);
+            append_checkpoint(0x4BD8U, 0x4BDAU, 12U);
+            pc = 0x4BDAU;
+            break;
+
+        case 0x4BDAU:  // LDY #$00
+            registers.y = 0U;
+            registers.status = set_nz(registers.status, registers.y);
+            append_checkpoint(0x4BDAU, 0x4BDCU, 6U);
+            pc = 0x4BDCU;
+            break;
+
+        case 0x4BDCU:  // LDA ($D2),Y -- descriptor tag
+            load_accumulator(read_mapped(command_pointer()));
+            append_checkpoint(0x4BDCU, 0x4BDEU, 21U);
+            pc = 0x4BDEU;
+            break;
+
+        case 0x4BDEU:  // BNE $4C42 -- ordinary record descriptor
+            pc = branch(
+                0x4BDEU, 0x4C42U, 0x4BE0U,
+                (registers.status & kZero) == 0U);
+            break;
+
+        // ---- 45:4C42  event command-record initializer -----------------
+        // The pending-event dispatcher reaches this entry through the
+        // push/RTS trampoline at 4BE0-4BE6. The command byte already sits in
+        // A; this tail consumes one or more voice records through ($D2),Y,
+        // clears their transient state, and reuses the proven balance helper
+        // at 4527. The two route calls with a zero record byte take the
+        // ordinary inactive-voice arm at 4BE7-4C1D. Active driver teardown
+        // below 4BEF and the 4BE6 tail dispatch are not observed here and
+        // deliberately fall through to the conservative default.
+        case 0x4C42U:  // INY -- record count follows the command byte
+            registers.y = static_cast<std::uint8_t>(registers.y + 1U);
+            registers.status = set_nz(registers.status, registers.y);
+            append_checkpoint(0x4C42U, 0x4C43U, 6U);
+            pc = 0x4C43U;
+            break;
+
+        case 0x4C43U:  // STA $D5 -- remaining record count
+            store(0x4C43U, zp(0xD5U), registers.accumulator);
+            append_checkpoint(0x4C43U, 0x4C45U, 12U);
+            pc = 0x4C45U;
+            break;
+
+        case 0x4C45U:  // LDA ($D2),Y -- record presence byte
+            load_accumulator(read_mapped(command_pointer()));
+            append_checkpoint(0x4C45U, 0x4C47U, 21U);
+            pc = 0x4C47U;
+            break;
+
+        case 0x4C47U:  // INY
+            registers.y = static_cast<std::uint8_t>(registers.y + 1U);
+            registers.status = set_nz(registers.status, registers.y);
+            append_checkpoint(0x4C47U, 0x4C48U, 6U);
+            pc = 0x4C48U;
+            break;
+
+        case 0x4C48U:  // TAX -- voice index
+            registers.x = registers.accumulator;
+            registers.status = set_nz(registers.status, registers.x);
+            append_checkpoint(0x4C48U, 0x4C49U, 6U);
+            pc = 0x4C49U;
+            break;
+
+        case 0x4C49U:  // LDA ($D2),Y -- voice payload marker
+            load_accumulator(read_mapped(command_pointer()));
+            append_checkpoint(0x4C49U, 0x4C4BU, 21U);
+            pc = 0x4C4BU;
+            break;
+
+        case 0x4C4BU:  // BEQ $4BE7 -- inactive voice
+            pc = branch(
+                0x4C4BU, 0x4BE7U, 0x4C4DU,
+                (registers.status & kZero) != 0U);
+            break;
+
+        case 0x4BE7U:  // LDA $2E46,X
+            load_accumulator(read_ram(indexed_x(0x2E46U)));
+            append_checkpoint(0x4BE7U, 0x4BEAU, 15U);
+            pc = 0x4BEAU;
+            break;
+
+        case 0x4BEAU:  // AND $2EA0,X
+            load_accumulator(static_cast<std::uint8_t>(
+                registers.accumulator
+                & read_ram(indexed_x(0x2EA0U))));
+            append_checkpoint(0x4BEAU, 0x4BEDU, 15U);
+            pc = 0x4BEDU;
+            break;
+
+        case 0x4BEDU:  // BPL $4C19 -- active teardown remains emulated
+            pc = branch(
+                0x4BEDU, 0x4C19U, 0x4BEFU,
+                (registers.status & kNegative) == 0U);
+            break;
+
+        case 0x4C19U:  // STZ $2E46,X
+            store(0x4C19U, indexed_x(0x2E46U), 0x00U);
+            append_checkpoint(0x4C19U, 0x4C1CU, 15U);
+            pc = 0x4C1CU;
+            break;
+
+        case 0x4C1CU:  // INY
+            registers.y = static_cast<std::uint8_t>(registers.y + 1U);
+            registers.status = set_nz(registers.status, registers.y);
+            append_checkpoint(0x4C1CU, 0x4C1DU, 6U);
+            pc = 0x4C1DU;
+            break;
+
+        case 0x4C1DU:  // JMP $4CB1
+            append_checkpoint(0x4C1DU, 0x4CB1U, 12U);
+            pc = 0x4CB1U;
+            break;
+
+        case 0x4C4DU:  // LDA $2E46,X
+            load_accumulator(read_ram(indexed_x(0x2E46U)));
+            append_checkpoint(0x4C4DU, 0x4C50U, 15U);
+            pc = 0x4C50U;
+            break;
+
+        case 0x4C50U:  // AND #$40
+            load_accumulator(static_cast<std::uint8_t>(
+                registers.accumulator & 0x40U));
+            append_checkpoint(0x4C50U, 0x4C52U, 6U);
+            pc = 0x4C52U;
+            break;
+
+        case 0x4C52U:  // BNE $4BE6 -- tail dispatch remains emulated
+            pc = branch(
+                0x4C52U, 0x4BE6U, 0x4C54U,
+                (registers.status & kZero) == 0U);
+            break;
+
+        case 0x4C54U:
+        case 0x4C57U:
+        case 0x4C5AU:
+        case 0x4C5DU:
+        case 0x4C60U:
+        case 0x4C63U:
+        case 0x4C66U:
+        case 0x4C69U: {  // clear the voice's transient state arrays
+            constexpr std::uint16_t kBases[] = {
+                0x2EC8U, 0x2F18U, 0x2F90U, 0x2F04U,
+                0x2F5EU, 0x2F68U, 0x2EB4U, 0x2EBEU,
+            };
+            const auto index = static_cast<std::size_t>(
+                (pc - 0x4C54U) / 3U);
+            const auto store_pc = pc;
+            const auto next = static_cast<std::uint16_t>(pc + 3U);
+            store(store_pc, indexed_x(kBases[index]), registers.accumulator);
+            append_checkpoint(store_pc, next, 15U);
+            pc = next;
+            break;
+        }
+
+        case 0x4C6CU:  // LDA $D4
+            load_accumulator(read_ram(zp(0xD4U)));
+            append_checkpoint(0x4C6CU, 0x4C6EU, 12U);
+            pc = 0x4C6EU;
+            break;
+
+        case 0x4C6EU:  // CMP $2F0E,X
+            compare(
+                registers.accumulator,
+                read_ram(indexed_x(0x2F0EU)));
+            append_checkpoint(0x4C6EU, 0x4C71U, 15U);
+            pc = 0x4C71U;
+            break;
+
+        case 0x4C71U:  // BNE $4C7F
+            pc = branch(
+                0x4C71U, 0x4C7FU, 0x4C73U,
+                (registers.status & kZero) == 0U);
+            break;
+
+        case 0x4C73U:  // LDA $2E46,X
+            load_accumulator(read_ram(indexed_x(0x2E46U)));
+            append_checkpoint(0x4C73U, 0x4C76U, 15U);
+            pc = 0x4C76U;
+            break;
+
+        case 0x4C76U:  // BEQ $4C82
+            pc = branch(
+                0x4C76U, 0x4C82U, 0x4C78U,
+                (registers.status & kZero) != 0U);
+            break;
+
+        case 0x4C78U:  // LDA #$04
+            load_accumulator(0x04U);
+            append_checkpoint(0x4C78U, 0x4C7AU, 6U);
+            pc = 0x4C7AU;
+            break;
+
+        case 0x4C7AU:  // STA $2EBE,X
+            store(0x4C7AU, indexed_x(0x2EBEU), registers.accumulator);
+            append_checkpoint(0x4C7AU, 0x4C7DU, 15U);
+            pc = 0x4C7DU;
+            break;
+
+        case 0x4C7DU:  // BNE $4C82
+            pc = branch(
+                0x4C7DU, 0x4C82U, 0x4C7FU,
+                (registers.status & kZero) == 0U);
+            break;
+
+        case 0x4C7FU:  // STA $2F0E,X
+            store(0x4C7FU, indexed_x(0x2F0EU), registers.accumulator);
+            append_checkpoint(0x4C7FU, 0x4C82U, 15U);
+            pc = 0x4C82U;
+            break;
+
+        case 0x4C82U:  // TXA
+            load_accumulator(registers.x);
+            append_checkpoint(0x4C82U, 0x4C83U, 6U);
+            pc = 0x4C83U;
+            break;
+
+        case 0x4C83U:  // PHA
+            push(0x4C83U, registers.accumulator);
+            append_checkpoint(0x4C83U, 0x4C84U, 9U);
+            pc = 0x4C84U;
+            break;
+
+        case 0x4C84U:  // LDA #$0B
+            load_accumulator(0x0BU);
+            append_checkpoint(0x4C84U, 0x4C86U, 6U);
+            pc = 0x4C86U;
+            break;
+
+        case 0x4C86U:  // STA $D4 -- eleven interleaved voice bytes
+            store(0x4C86U, zp(0xD4U), registers.accumulator);
+            append_checkpoint(0x4C86U, 0x4C88U, 12U);
+            pc = 0x4C88U;
+            break;
+
+        case 0x4C88U:  // LDA ($D2),Y
+            load_accumulator(read_mapped(command_pointer()));
+            append_checkpoint(0x4C88U, 0x4C8AU, 21U);
+            pc = 0x4C8AU;
+            break;
+
+        case 0x4C8AU:  // INY
+            registers.y = static_cast<std::uint8_t>(registers.y + 1U);
+            registers.status = set_nz(registers.status, registers.y);
+            append_checkpoint(0x4C8AU, 0x4C8BU, 6U);
+            pc = 0x4C8BU;
+            break;
+
+        case 0x4C8BU:  // STA $2E46,X
+            store(0x4C8BU, indexed_x(0x2E46U), registers.accumulator);
+            append_checkpoint(0x4C8BU, 0x4C8EU, 15U);
+            pc = 0x4C8EU;
+            break;
+
+        case 0x4C8EU:  // TXA
+            load_accumulator(registers.x);
+            append_checkpoint(0x4C8EU, 0x4C8FU, 6U);
+            pc = 0x4C8FU;
+            break;
+
+        case 0x4C8FU:  // CLC
+            registers.status = static_cast<std::uint8_t>(
+                registers.status & static_cast<std::uint8_t>(~kCarry));
+            append_checkpoint(0x4C8FU, 0x4C90U, 6U);
+            pc = 0x4C90U;
+            break;
+
+        case 0x4C90U:  // ADC #$0A -- next interleaved voice field
+            add_with_carry(0x0AU);
+            append_checkpoint(0x4C90U, 0x4C92U, 6U);
+            pc = 0x4C92U;
+            break;
+
+        case 0x4C92U:  // TAX
+            registers.x = registers.accumulator;
+            registers.status = set_nz(registers.status, registers.x);
+            append_checkpoint(0x4C92U, 0x4C93U, 6U);
+            pc = 0x4C93U;
+            break;
+
+        case 0x4C93U: {  // DEC $D4
+            const auto value = static_cast<std::uint8_t>(
+                read_ram(zp(0xD4U)) - 1U);
+            store(0x4C93U, zp(0xD4U), value);
+            registers.status = set_nz(registers.status, value);
+            append_checkpoint(0x4C93U, 0x4C95U, 18U);
+            pc = 0x4C95U;
+            break;
+        }
+
+        case 0x4C95U:  // BNE $4C88
+            pc = branch(
+                0x4C95U, 0x4C88U, 0x4C97U,
+                (registers.status & kZero) == 0U);
+            break;
+
+        case 0x4C97U:  // PLA -- restore the voice index
+            load_accumulator(pull());
+            append_checkpoint(0x4C97U, 0x4C98U, 12U);
+            pc = 0x4C98U;
+            break;
+
+        case 0x4C98U:  // TAX
+            registers.x = registers.accumulator;
+            registers.status = set_nz(registers.status, registers.x);
+            append_checkpoint(0x4C98U, 0x4C99U, 6U);
+            pc = 0x4C99U;
+            break;
+
+        case 0x4C99U:  // LDA $2F0E,X
+            load_accumulator(read_ram(indexed_x(0x2F0EU)));
+            append_checkpoint(0x4C99U, 0x4C9CU, 15U);
+            pc = 0x4C9CU;
+            break;
+
+        case 0x4C9CU:  // STA $D4
+            store(0x4C9CU, zp(0xD4U), registers.accumulator);
+            append_checkpoint(0x4C9CU, 0x4C9EU, 12U);
+            pc = 0x4C9EU;
+            break;
+
+        case 0x4C9EU:  // LDA #$01
+            load_accumulator(0x01U);
+            append_checkpoint(0x4C9EU, 0x4CA0U, 6U);
+            pc = 0x4CA0U;
+            break;
+
+        case 0x4CA0U:  // STA $2ED2,X
+            store(0x4CA0U, indexed_x(0x2ED2U), registers.accumulator);
+            append_checkpoint(0x4CA0U, 0x4CA3U, 15U);
+            pc = 0x4CA3U;
+            break;
+
+        case 0x4CA3U:  // CLC -- ROM intentionally subtracts with borrow
+            registers.status = static_cast<std::uint8_t>(
+                registers.status & static_cast<std::uint8_t>(~kCarry));
+            append_checkpoint(0x4CA3U, 0x4CA4U, 6U);
+            pc = 0x4CA4U;
+            break;
+
+        case 0x4CA4U:  // SBC $2E78,X
+            subtract_with_carry(read_ram(indexed_x(0x2E78U)));
+            append_checkpoint(0x4CA4U, 0x4CA7U, 15U);
+            pc = 0x4CA7U;
+            break;
+
+        case 0x4CA7U:  // STA $2EDC,X
+            store(0x4CA7U, indexed_x(0x2EDCU), registers.accumulator);
+            append_checkpoint(0x4CA7U, 0x4CAAU, 15U);
+            pc = 0x4CAAU;
+            break;
+
+        case 0x4CAAU:  // LDA ($D2),Y -- stereo balance
+            load_accumulator(read_mapped(command_pointer()));
+            append_checkpoint(0x4CAAU, 0x4CACU, 21U);
+            pc = 0x4CACU;
+            break;
+
+        case 0x4CACU:
+        case 0x4CADU: {  // INY x2
+            const auto increment_pc = pc;
+            registers.y = static_cast<std::uint8_t>(registers.y + 1U);
+            registers.status = set_nz(registers.status, registers.y);
+            append_checkpoint(
+                increment_pc,
+                static_cast<std::uint16_t>(increment_pc + 1U),
+                6U);
+            pc = static_cast<std::uint16_t>(increment_pc + 1U);
+            break;
+        }
+
+        case 0x4CAEU:  // JSR $4527 -- apply the balance
+            push(0x4CAEU, 0x4CU);
+            push(0x4CAEU, 0xB0U);
+            commit_pending_writes(cycle);
+            ++depth;
+            append_checkpoint(0x4CAEU, 0x4527U, 21U);
+            pc = 0x4527U;
+            break;
+
+        case 0x4CB1U: {  // DEC $D5 -- next command record
+            const auto value = static_cast<std::uint8_t>(
+                read_ram(zp(0xD5U)) - 1U);
+            store(0x4CB1U, zp(0xD5U), value);
+            registers.status = set_nz(registers.status, value);
+            append_checkpoint(0x4CB1U, 0x4CB3U, 18U);
+            pc = 0x4CB3U;
+            break;
+        }
+
+        case 0x4CB3U:  // BEQ $4CB8
+            pc = branch(
+                0x4CB3U, 0x4CB8U, 0x4CB5U,
+                (registers.status & kZero) != 0U);
+            break;
+
+        case 0x4CB5U:  // JMP $4C45
+            append_checkpoint(0x4CB5U, 0x4C45U, 12U);
+            pc = 0x4C45U;
+            break;
+
         // ---- nested returns ---------------------------------------------
         // Only reached with depth > 0; the depth-zero case terminated the
         // walk above, in front of the RTS.
@@ -7054,7 +7807,8 @@ std::optional<RoutineReplacement> replace_music_sequencer(
         case 0x49D1U:
         case 0x49F8U:
         case 0x4A28U:
-        case 0x4A9BU: {
+        case 0x4A9BU:
+        case 0x4CB8U: {
             const auto low = pull();
             const auto high = pull();
             const auto return_pc = static_cast<std::uint16_t>(

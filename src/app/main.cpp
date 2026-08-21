@@ -1365,6 +1365,27 @@ parse_logical_address_range(const std::string_view text)
                                        .logical_pc = 0xD500U,
                                    }
                            && request.all_calls;
+                       const bool proven_flipper_collision_response_continuation =
+                           request.routine.physical_bank == 0x01U
+                           && (request.routine.logical_pc == 0xD525U
+                               || request.routine.logical_pc == 0xD52CU
+                               || request.routine.logical_pc == 0xD53BU
+                               || request.routine.logical_pc == 0xD54AU
+                               || request.routine.logical_pc == 0xD54DU
+                               || request.routine.logical_pc == 0xD550U
+                               || request.routine.logical_pc == 0xD553U
+                               || request.routine.logical_pc == 0xD556U
+                               || request.routine.logical_pc == 0xD589U
+                               || request.routine.logical_pc == 0xD594U
+                               || request.routine.logical_pc == 0xD599U
+                               || request.routine.logical_pc == 0xD5A9U
+                               || request.routine.logical_pc == 0xD5B8U
+                               || request.routine.logical_pc == 0xD5BBU
+                               || request.routine.logical_pc == 0xD5BEU
+                               || request.routine.logical_pc == 0xD5C1U
+                               || request.routine.logical_pc == 0xD5C4U
+                               || request.routine.logical_pc == 0xD5D8U)
+                           && request.all_calls;
                        const bool proven_flipper_geometry =
                            request.routine
                                    == RoutineKey{
@@ -1409,7 +1430,16 @@ parse_logical_address_range(const std::string_view text)
                            && request.all_calls;
                        const bool proven_ball_substep_loop =
                            request.routine.physical_bank == 0x01U
-                           && (request.routine.logical_pc == 0xC721U
+                           && (request.routine.logical_pc == 0xC6C2U
+                               || request.routine.logical_pc == 0xC6C5U
+                               || request.routine.logical_pc == 0xC6D9U
+                               || request.routine.logical_pc == 0xC6E6U
+                               || request.routine.logical_pc == 0xC6E9U
+                               || request.routine.logical_pc == 0xC6EBU
+                               || request.routine.logical_pc == 0xC6F2U
+                               || request.routine.logical_pc == 0xC6F5U
+                               || request.routine.logical_pc == 0xC708U
+                               || request.routine.logical_pc == 0xC721U
                                || request.routine.logical_pc == 0xC72EU
                                || request.routine.logical_pc == 0xC742U
                                || request.routine.logical_pc == 0xC74CU
@@ -2859,6 +2889,23 @@ parse_logical_address_range(const std::string_view text)
                                         .logical_pc = 0x651FU,
                                     })
                            && request.all_calls;
+                       const bool proven_front_spider_scheduler_call_seams =
+                           (request.routine
+                                    == RoutineKey{
+                                        .physical_bank = 0x03U,
+                                        .logical_pc = 0x64D2U,
+                                    }
+                               || request.routine
+                                    == RoutineKey{
+                                        .physical_bank = 0x03U,
+                                        .logical_pc = 0x64DDU,
+                                    }
+                               || request.routine
+                                    == RoutineKey{
+                                        .physical_bank = 0x03U,
+                                        .logical_pc = 0x64EDU,
+                                    })
+                           && request.all_calls;
                        const bool proven_devil_shooter_charge_retraction =
                            request.routine
                                    == RoutineKey{
@@ -2962,6 +3009,41 @@ parse_logical_address_range(const std::string_view text)
                                    == RoutineKey{
                                        .physical_bank = 0x03U,
                                        .logical_pc = 0x7E0DU,
+                                   })
+                           && request.all_calls;
+                       const bool proven_small_soldier_child_allocation_seams =
+                           (request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x03U,
+                                       .logical_pc = 0x7E87U,
+                                   }
+                               || request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x03U,
+                                       .logical_pc = 0x7E8AU,
+                                   }
+                               || request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x03U,
+                                       .logical_pc = 0x7EEEU,
+                                   })
+                           && request.all_calls;
+                       const bool proven_collision_effect_allocator =
+                           request.routine.physical_bank == 0x03U
+                           && (request.routine.logical_pc == 0x7BF6U
+                               || request.routine.logical_pc == 0x7C02U
+                               || request.routine.logical_pc == 0x7C05U)
+                           && request.all_calls;
+                       const bool proven_small_soldier_initial_controller =
+                           (request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x03U,
+                                       .logical_pc = 0x7EFAU,
+                                   }
+                               || request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x03U,
+                                       .logical_pc = 0x7F05U,
                                    })
                            && request.all_calls;
                        const bool proven_giant_face_controller_initializers =
@@ -3147,6 +3229,50 @@ parse_logical_address_range(const std::string_view text)
                                         .logical_pc = 0x66A3U,
                                     }
                             && request.all_calls;
+                        const bool proven_three_blobs_rng_initialization =
+                            request.routine.physical_bank == 0x03U
+                            && (request.routine.logical_pc == 0x6678U
+                                || request.routine.logical_pc == 0x667BU
+                                || request.routine.logical_pc == 0x6697U
+                                || request.routine.logical_pc == 0x669AU)
+                            && request.all_calls;
+                        const bool proven_three_blobs_first_movement_continuation =
+                            request.routine
+                                    == RoutineKey{
+                                        .physical_bank = 0x03U,
+                                        .logical_pc = 0x66B5U,
+                                    }
+                            && request.all_calls;
+                        const bool proven_three_blobs_y_expiry_negation_prefix =
+                            request.routine
+                                    == RoutineKey{
+                                        .physical_bank = 0x03U,
+                                        .logical_pc = 0x66BFU,
+                                    }
+                            && request.all_calls;
+                        const bool proven_three_blobs_alternate_motion_reset_prefix =
+                            request.routine
+                                    == RoutineKey{
+                                        .physical_bank = 0x03U,
+                                        .logical_pc = 0x66E2U,
+                                    }
+                            && request.all_calls;
+                        const bool proven_three_blobs_alternate_motion_arithmetic =
+                            request.routine.physical_bank == 0x03U
+                            && (request.routine.logical_pc == 0x670FU
+                                || request.routine.logical_pc == 0x6729U
+                                || request.routine.logical_pc == 0x6740U)
+                            && request.all_calls;
+                        const bool proven_three_blobs_movement_call_seam =
+                            request.routine.physical_bank == 0x03U
+                            && (request.routine.logical_pc == 0x66D3U
+                                || request.routine.logical_pc == 0x66D6U
+                                || request.routine.logical_pc == 0x66D9U
+                                || request.routine.logical_pc == 0x670AU
+                                || request.routine.logical_pc == 0x670CU
+                                || request.routine.logical_pc == 0x6726U
+                                || request.routine.logical_pc == 0x673DU)
+                            && request.all_calls;
                         const bool proven_three_blobs_direct_continuation =
                             request.routine
                                     == RoutineKey{
@@ -3162,10 +3288,15 @@ parse_logical_address_range(const std::string_view text)
                                     }
                             && request.all_calls;
                         const bool proven_three_blobs_collision_gate =
+                            request.routine.physical_bank == 0x03U
+                            && (request.routine.logical_pc == 0x67C0U
+                                || request.routine.logical_pc == 0x67CFU)
+                            && request.all_calls;
+                        const bool proven_three_blobs_collision_marker =
                             request.routine
                                     == RoutineKey{
                                         .physical_bank = 0x03U,
-                                        .logical_pc = 0x67C0U,
+                                        .logical_pc = 0x694AU,
                                     }
                             && request.all_calls;
                         const bool proven_fixed_scheduler_submission =
@@ -3208,13 +3339,33 @@ parse_logical_address_range(const std::string_view text)
                                 || request.routine
                                     == RoutineKey{
                                         .physical_bank = 0x03U,
+                                        .logical_pc = 0x7BE5U,
+                                    }
+                                || request.routine
+                                    == RoutineKey{
+                                        .physical_bank = 0x03U,
                                         .logical_pc = 0x7BE8U,
+                                    }
+                                || request.routine
+                                    == RoutineKey{
+                                        .physical_bank = 0x03U,
+                                        .logical_pc = 0x7BE9U,
                                     }
                                 || request.routine
                                     == RoutineKey{
                                         .physical_bank = 0x03U,
                                         .logical_pc = 0x7BECU,
                                     })
+                           && request.all_calls;
+                       const bool proven_fixed_marker_outer_segment =
+                           request.routine.physical_bank == 0x03U
+                           && (request.routine.logical_pc == 0x7BB1U
+                               || request.routine.logical_pc == 0x7BB5U
+                               || request.routine.logical_pc == 0x7BC3U
+                               || request.routine.logical_pc == 0x7BC7U
+                               || request.routine.logical_pc == 0x7BD5U
+                               || request.routine.logical_pc == 0x7BD9U
+                               || request.routine.logical_pc == 0x7BDFU)
                            && request.all_calls;
                        const bool proven_scaled_word_add =
                            request.routine
@@ -3306,6 +3457,12 @@ parse_logical_address_range(const std::string_view text)
                                        .logical_pc = 0x7237U,
                                    }
                            && request.all_calls;
+                       const bool proven_score_animation =
+                           request.routine.physical_bank == 0x09U
+                           && (request.routine.logical_pc == 0x70C1U
+                               || request.routine.logical_pc == 0x70C4U
+                               || request.routine.logical_pc == 0x71EAU)
+                           && request.all_calls;
                        const bool proven_score_panel_glyph =
                            request.routine
                                    == RoutineKey{
@@ -3371,12 +3528,16 @@ parse_logical_address_range(const std::string_view text)
                                || request.routine.logical_pc == 0x4211U
                                || request.routine.logical_pc == 0x4228U
                                || request.routine.logical_pc == 0x457AU
+                               || request.routine.logical_pc == 0x469BU
                                || request.routine.logical_pc == 0x4883U
                                || request.routine.logical_pc == 0x48B4U
                                || request.routine.logical_pc == 0x48F6U
+                               || request.routine.logical_pc == 0x4936U
                                || request.routine.logical_pc == 0x49A2U
                                || request.routine.logical_pc == 0x49B6U
-                               || request.routine.logical_pc == 0x49F9U)
+                               || request.routine.logical_pc == 0x49F9U
+                               || request.routine.logical_pc == 0x4BCCU
+                               || request.routine.logical_pc == 0x4C42U)
                            && request.all_calls;
                        const bool proven_palette_shadow =
                            request.routine.physical_bank == 0x00U
@@ -3406,6 +3567,13 @@ parse_logical_address_range(const std::string_view text)
                                        .physical_bank = 0x08U,
                                        .logical_pc = 0x5E42U,
                                    }
+                           && request.all_calls;
+                       const bool proven_boot_work_ram_clear_seams =
+                           request.routine.physical_bank == 0x08U
+                           && (request.routine.logical_pc == 0x584CU
+                               || request.routine.logical_pc == 0x584FU
+                               || request.routine.logical_pc == 0x5852U
+                               || request.routine.logical_pc == 0x5861U)
                            && request.all_calls;
                        const bool proven_bank_call_wrappers =
                            request.routine.physical_bank == 0x00U
@@ -3442,7 +3610,11 @@ parse_logical_address_range(const std::string_view text)
                                || request.routine.logical_pc == 0xE3FCU
                                || request.routine.logical_pc == 0xE403U
                                || request.routine.logical_pc == 0xE41FU
-                               || request.routine.logical_pc == 0xE439U)
+                               || request.routine.logical_pc == 0xE439U
+                               || request.routine.logical_pc == 0xE4E3U
+                               || request.routine.logical_pc == 0xFA40U
+                               || request.routine.logical_pc == 0xFA6AU
+                               || request.routine.logical_pc == 0xFA6EU)
                            && request.all_calls;
                        const bool proven_tilemap_upload =
                            request.routine.physical_bank == 0x00U
@@ -3478,7 +3650,20 @@ parse_logical_address_range(const std::string_view text)
                                || request.routine.logical_pc == 0xCBC2U
                                || request.routine.logical_pc == 0xCBCAU
                                || request.routine.logical_pc == 0xCBCFU
-                               || request.routine.logical_pc == 0xCD74U)
+                               || request.routine.logical_pc == 0xCD74U
+                               || request.routine.logical_pc == 0xCDF8U
+                               || request.routine.logical_pc == 0xCE22U
+                               || request.routine.logical_pc == 0xCE4DU
+                               || request.routine.logical_pc == 0xCEB5U
+                               || request.routine.logical_pc == 0xCF33U
+                               || request.routine.logical_pc == 0xCF42U
+                               || request.routine.logical_pc == 0xCF45U
+                               || request.routine.logical_pc == 0xCF53U
+                               || request.routine.logical_pc == 0xCF56U
+                               || request.routine.logical_pc == 0xCF60U
+                               || request.routine.logical_pc == 0xCF63U
+                               || request.routine.logical_pc == 0xCF6AU
+                               || request.routine.logical_pc == 0xCF8CU)
                            && request.all_calls;
                        const bool proven_sorcerer_tick =
                            request.routine.physical_bank == 0x02U
@@ -3566,8 +3751,9 @@ parse_logical_address_range(const std::string_view text)
                            && !proven_actor_scan_preamble
                            && !proven_main_session_loop
                            && !proven_bank_one_jump_table
-                           && !proven_palette_colour_cycle
-                           && !proven_score_panel_poll
+                             && !proven_palette_colour_cycle
+                             && !proven_score_animation
+                             && !proven_score_panel_poll
                            && !proven_score_panel_glyph
                            && !proven_actor_scan_run
                            && !proven_actor_dispatch_vector
@@ -3585,6 +3771,7 @@ parse_logical_address_range(const std::string_view text)
                            && !proven_setup_screen_palette_stager
                            && !proven_text_tile_write
                            && !proven_video_update_idle_gate
+                           && !proven_boot_work_ram_clear_seams
                            && !proven_bank_call_wrappers
                            && !proven_vblank_handler
                            && !proven_vram_upload
@@ -3621,6 +3808,7 @@ parse_logical_address_range(const std::string_view text)
                            && !proven_collision_mask_lookup
                            && !proven_collision_geometry
                            && !proven_flipper_phase_step
+                           && !proven_flipper_collision_response_continuation
                            && !proven_flipper_geometry
                            && !proven_coroutine_scheduler
                            && !proven_nudge_input_gate
@@ -3833,6 +4021,7 @@ parse_logical_address_range(const std::string_view text)
                            && !proven_knight_movement_parent
                            && !proven_spider_appearance
                            && !proven_spider_controller_parents
+                           && !proven_front_spider_scheduler_call_seams
                            && !proven_tower_insect_animation
                            && !proven_impact_burst_lifetime
                            && !proven_impact_burst_audio_command_call
@@ -3842,6 +4031,9 @@ parse_logical_address_range(const std::string_view text)
                            && !proven_small_soldier_source_gates
                            && !proven_small_soldier_source_initializers
                            && !proven_small_soldier_delayed_spawn_gates
+                           && !proven_small_soldier_child_allocation_seams
+                           && !proven_collision_effect_allocator
+                           && !proven_small_soldier_initial_controller
                            && !proven_giant_face_controller_initializers
                            && !proven_giant_face_animator_initializer
                            && !proven_giant_face_crown_initializer
@@ -3865,14 +4057,22 @@ parse_logical_address_range(const std::string_view text)
                             && !proven_fixed_marker_initializer
                             && !proven_fixed_response_initializer
                             && !proven_dragon_egg_controller_initializer
+                            && !proven_three_blobs_rng_initialization
                             && !proven_three_blobs_first_movement_prefix
+                            && !proven_three_blobs_first_movement_continuation
+                            && !proven_three_blobs_y_expiry_negation_prefix
+                            && !proven_three_blobs_alternate_motion_reset_prefix
+                            && !proven_three_blobs_alternate_motion_arithmetic
+                            && !proven_three_blobs_movement_call_seam
                             && !proven_three_blobs_direct_continuation
                             && !proven_three_blobs_shared_motion_idle
                             && !proven_three_blobs_collision_gate
+                            && !proven_three_blobs_collision_marker
                             && !proven_fixed_scheduler_submission
                            && !proven_fixed_marker_gate
                            && !proven_fixed_marker_submission
                            && !proven_fixed_marker_helper
+                           && !proven_fixed_marker_outer_segment
                            && !proven_scaled_word_add
                            && !proven_three_blobs_controller
                            && !proven_three_blobs_appearance_gate
@@ -3891,6 +4091,8 @@ parse_logical_address_range(const std::string_view text)
             "03:6966@22, 03:6966@23, semantic 03:6966@all, semantic "
             "03:7FB1@all, semantic 03:7F1A@all, semantic 03:7F57@all, "
             "semantic 07:4003@all, "
+            "semantic 08:584C@all, semantic 08:584F@all, "
+            "semantic 08:5852@all, semantic 08:5861@all, "
             "semantic 00:F55C@all, "
             "semantic 00:E8B3@all, semantic 00:E837@all, "
             "semantic 00:E905@all, semantic 00:E7D7@all, "
@@ -3901,6 +4103,8 @@ parse_logical_address_range(const std::string_view text)
             "semantic 01:D09E@all, semantic 01:D612@all, "
             "semantic 01:D62E@all, "
             "semantic 01:CFD8@all, "
+            "semantic 01:CDF8/CE22/CE4D/CEB5@all, semantic "
+            "01:CF33/CF42/CF45/CF53/CF56/CF60/CF63/CF6A/CF8C@all, "
             "semantic 00:F4FC@all, semantic "
             "01:C574@all, semantic 01:D466@all, semantic 01:D4B3@all, "
             "semantic 01:D458@all, semantic 01:D48E@all, semantic 01:D491@all, "
@@ -3912,9 +4116,13 @@ parse_logical_address_range(const std::string_view text)
             "semantic 01:CC98@all, "
             "semantic 01:CCD5@all, "
             "semantic "
-            "01:D500@all, semantic 01:D081@all, semantic 01:C5C9@all, "
+            "01:D500@all, semantic 01:D525/D52C/D53B/D54A/D54D/D550/D553/"
+            "D556/D589/D594/D599/D5A9/D5B8/D5BB/D5BE/"
+            "D5C1/D5C4/D5D8@all, "
+            "semantic 01:D081@all, semantic 01:C5C9@all, "
             "semantic 01:C3CB@all, semantic 01:C49E@all, semantic 01:DD6E@all, "
             "semantic 01:DC95@all, "
+            "semantic 01:C6C2/C6C5/C6D9/C6E6/C6E9/C6EB/C6F2/C6F5/C708@all, "
             "semantic 01:C721@all, semantic 01:C72E@all, semantic 01:C742@all, "
             "semantic 01:C74C@all, semantic 01:C759@all, semantic 01:C75C@all, "
             "semantic 01:C75E@all, semantic 01:C761@all, semantic 01:C768@all, "
@@ -3935,7 +4143,9 @@ parse_logical_address_range(const std::string_view text)
             "semantic 01:C06C@all, semantic 01:C06F@all, semantic 01:C081@all, "
             "semantic 01:C087@all, semantic 01:C09F@all, semantic 01:C0A2@all, "
             "semantic 09:60C7@all, "
-            "semantic 09:7237@all, semantic 09:72FD@all, "
+            "semantic 09:70C1@all, semantic 09:70C4@all, "
+            "semantic 09:71EA@all, semantic 09:7237@all, "
+            "semantic 09:72FD@all, "
             "semantic 01:C80A@all, semantic 01:C7F4@all, semantic 01:C7EF@all, semantic 01:C7F9@all, semantic 01:C7FC@all, semantic 01:C804@all, semantic 01:C812@all, semantic 01:C7EA@all, semantic 01:C7E5@all, "
             "semantic 02:427C@all, semantic 02:42A3@all, semantic 02:42B0@all, "
             "semantic 02:42EB@all, "
@@ -4057,7 +4267,7 @@ parse_logical_address_range(const std::string_view text)
              "semantic 01:C5C0@all, "
              "semantic 01:C5C7@all, "
              "semantic 03:6490@all, semantic 03:651F@all, "
-             "semantic 03:65A4@all, "
+             "semantic 03:65A4@all, semantic 03:64D2/64DD/64ED@all, "
             "semantic 03:6054@all, "
             "semantic 02:5F22@all, "
             "semantic 02:5F4A@all, "
@@ -4086,8 +4296,10 @@ parse_logical_address_range(const std::string_view text)
             "semantic 03:7B27@all, "
             "semantic 03:7B4E@all, semantic 03:7B5D@all, "
             "semantic 03:7B7A@all, "
+            "semantic 03:7BB1/7BB5/7BC3/7BC7/7BD5/7BD9/7BDF@all, "
             "semantic 03:7BBB@all, semantic 03:7BCD@all, "
-            "semantic 03:7BE0@all, semantic 03:7BE8@all, "
+            "semantic 03:7BE0@all, semantic 03:7BE5@all, "
+            "semantic 03:7BE8@all, semantic 03:7BE9@all, "
             "semantic 03:7BEC@all, "
             "semantic 02:5955@all, "
             "semantic 02:5972@all, semantic 02:5975@all, semantic 02:5991@all, "
@@ -4098,7 +4310,12 @@ parse_logical_address_range(const std::string_view text)
               "semantic 02:5A0B@all, "
               "semantic 02:5A1B@all, "
             "semantic 03:65BC@all, semantic 03:65C2@all, semantic 03:67B3@all, "
-            "semantic 03:66A3@all, and semantic 03:676B@all, "
+            "semantic 03:6678/667B/6697/669A@all, "
+            "semantic 03:66A3/66B5@all, semantic 03:670F@all, "
+            "semantic 03:6729@all, semantic 03:6740@all, and semantic "
+            "03:676B@all, semantic 03:67C0/67CF@all, semantic 03:694A@all, "
+            "semantic 03:7BF6/7C02/7C05@all, semantic "
+            "03:7E87/7E8A/7EEE@all, semantic 03:7EFA/7F05@all, "
             "the proven 03:7FB1@1, 03:7FB1@3, 03:7FB1@7, 00:F55C@1, "
             "and 00:E8B3@1 calls.";
     } else if (!options.work_ram_patches.empty() && !recording_selected) {
