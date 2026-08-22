@@ -8653,6 +8653,21 @@ fixed-Bumper collision continuation: the frame-1,469 `03:78CC` call enters
 from `01:C51D`, reaches existing controller `03:7C33`, and spans 16,128
 cycles/258 ordered writes. It is not a new caller-and-return transaction;
 keep it assembly-backed and select another materially different natural route.
+The new input-only weave route is also screened: its delayed launcher release,
+613-frame alternating recovery cadence, and neutral-window directional/Button-II
+impulses produce byte-identical assembly, Release, and Debug recordings,
+instruction profiles, native-cycle censuses, and abandonment censuses
+(`a3f53fa8...f1b1fd23`, `e73fc214...8f14b6da`,
+`90a7759b...d7cd6eed8`, and `b74517d6...9669bc46`). It executes 8,781
+assembly addresses, installs all 593 admissions, enters 443 routines, and
+runs 681,776,985 of 1,292,371,731 elapsed master cycles natively (98.45%
+outside the frame-sync wait) with zero horizon declines or abandonments. Its
+only new table-bank rows are the existing Dragon's-Egg scheduler dispatch
+`02:438A-438E` and collision-interpreter/banked-wrapper interiors
+`03:6989-6994`: 1,757 calls flow to `01:C654`, while the 657 interpreter
+passes either join at `03:6994` or return through `00:E20C`. Neither group
+has its own caller-and-return contract; keep both assembly-backed and select a
+further materially different natural route.
 The twist fidelity gate is closed:
 `02:570A` retains its Big-Star timer-horizon fallback, while `03:66A3` now
 leaves its post-handoff timer-sensitive calls in assembly. The fully deployed

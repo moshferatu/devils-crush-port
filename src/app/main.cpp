@@ -90,6 +90,7 @@ constexpr int kGameplayCascadeRecordingFrames = 3600;
 constexpr int kGameplayHigharcRecordingFrames = 3600;
 constexpr int kGameplayTwistRecordingFrames = 3600;
 constexpr int kGameplaySidestepRecordingFrames = 3600;
+constexpr int kGameplayWeaveRecordingFrames = 3600;
 constexpr int kStateCensusRecordingFrames = 3600;
 constexpr int kMaximumAudioLatencyMilliseconds = 150;
 const std::filesystem::path kBackupRamPath =
@@ -144,6 +145,8 @@ const std::filesystem::path kGameplayTwistRecordingPath =
     std::filesystem::path("portable-data") / "gameplay-twist-v1.csv";
 const std::filesystem::path kGameplaySidestepRecordingPath =
     std::filesystem::path("portable-data") / "gameplay-sidestep-v1.csv";
+const std::filesystem::path kGameplayWeaveRecordingPath =
+    std::filesystem::path("portable-data") / "gameplay-weave-v1.csv";
 const std::filesystem::path kStateCensusRecordingPath =
     std::filesystem::path("portable-data") / "state-census-v1.csv";
 const std::filesystem::path kBackupRamTestPath =
@@ -372,6 +375,11 @@ struct CommandLine {
     bool record_gameplay_sidestep = false;
     std::filesystem::path gameplay_sidestep_path =
         kGameplaySidestepRecordingPath;
+    // A twenty-second input-only route. It interleaves longer left/right
+    // recovery windows after a delayed launch, with nudges only while both
+    // flippers are released, to explore a wider natural table trajectory.
+    bool record_gameplay_weave = false;
+    std::filesystem::path gameplay_weave_path = kGameplayWeaveRecordingPath;
     bool record_state_census = false;
     std::filesystem::path state_census_path = kStateCensusRecordingPath;
     std::filesystem::path canonical_work_ram_path;
@@ -872,6 +880,14 @@ parse_logical_address_range(const std::string_view text)
             if (!next.empty() && next.front() != '-') {
                 options.gameplay_sidestep_path = argv[++index];
             }
+        } else if (argument == "--record-gameplay-weave") {
+            options.record_gameplay_weave = true;
+            const std::string_view next =
+                index + 1 < argc ? std::string_view(argv[index + 1])
+                                 : std::string_view{};
+            if (!next.empty() && next.front() != '-') {
+                options.gameplay_weave_path = argv[++index];
+            }
         } else if (argument == "--record-state-census") {
             options.record_state_census = true;
             const std::string_view next =
@@ -1343,6 +1359,7 @@ parse_logical_address_range(const std::string_view text)
         + static_cast<int>(options.record_gameplay_higharc)
         + static_cast<int>(options.record_gameplay_twist)
         + static_cast<int>(options.record_gameplay_sidestep)
+        + static_cast<int>(options.record_gameplay_weave)
         + static_cast<int>(options.record_state_census)
         + static_cast<int>(!options.routine_replay_corpus_paths.empty())
         + static_cast<int>(options.backup_ram_test);
@@ -1368,6 +1385,7 @@ parse_logical_address_range(const std::string_view text)
         || options.record_gameplay_higharc
         || options.record_gameplay_twist
         || options.record_gameplay_sidestep
+        || options.record_gameplay_weave
         || options.record_state_census;
     // Both interactive entry points run the same host loop, and both deploy
     // the admitted-routine registry unless told to emulate the original.
@@ -1424,6 +1442,8 @@ parse_logical_address_range(const std::string_view text)
             ? kGameplayTwistRecordingFrames
         : options.record_gameplay_sidestep
             ? kGameplaySidestepRecordingFrames
+        : options.record_gameplay_weave
+            ? kGameplayWeaveRecordingFrames
         : options.record_gameplay
             ? kGameplayRecordingFrames
             : options.record_canonical
@@ -5036,12 +5056,19 @@ void print_usage()
            "      [--routine-call-trace <calls.csv>]\n"
            "      [--rom <path>]\n"
         << "  devils-crush --record-gameplay-sidestep [output.csv]\n"
-           "      [--replace-registry]\n"
-           "      [--native-cycle-census <census.csv>]\n"
-           "      [--instruction-profile <profile.csv>]\n"
-           "      [--observe-hook <bank:pc>]...\n"
-           "      [--routine-call-trace <calls.csv>]\n"
-           "      [--rom <path>]\n"
+            "      [--replace-registry]\n"
+            "      [--native-cycle-census <census.csv>]\n"
+            "      [--instruction-profile <profile.csv>]\n"
+            "      [--observe-hook <bank:pc>]...\n"
+            "      [--routine-call-trace <calls.csv>]\n"
+            "      [--rom <path>]\n"
+        << "  devils-crush --record-gameplay-weave [output.csv]\n"
+            "      [--replace-registry]\n"
+            "      [--native-cycle-census <census.csv>]\n"
+            "      [--instruction-profile <profile.csv>]\n"
+            "      [--observe-hook <bank:pc>]...\n"
+            "      [--routine-call-trace <calls.csv>]\n"
+            "      [--rom <path>]\n"
         << "  devils-crush --record-state-census [output.csv]\n"
            "      [--canonical-work-ram <output.bin>]\n"
            "      [--canonical-framebuffer <output.rgb>]\n"
@@ -8386,6 +8413,57 @@ struct ProbedAxis {
     return input;
 }
 
+[[nodiscard]] InputFrame gameplay_weave_input_for_frame(const int frame_number)
+{
+    InputFrame input;
+    const auto press = [&input](const Button button) {
+        input.player_one |= static_cast<std::uint16_t>(button);
+    };
+    const auto is_pair = [frame_number](const int first_frame) {
+        return frame_number == first_frame
+            || frame_number == first_frame + 1;
+    };
+
+    // Hold the launcher longer than the usual early-release probes, then
+    // alternate broad saves on a prime cadence. The directional impulses lie
+    // outside both saves, which keeps the route wholly input-driven while
+    // steering a different sequence of natural rebounds.
+    if (is_pair(180) || is_pair(300)) {
+        press(Button::run);
+    }
+    if (is_pair(420) || is_pair(700)
+        || (frame_number >= 850 && frame_number <= 880)
+        || (frame_number >= 1000 && frame_number <= 1395)) {
+        press(Button::one);
+    }
+    if (frame_number >= 1452) {
+        const int phase = (frame_number - 1452) % 613;
+        if (phase >= 51 && phase <= 72) {
+            press(Button::left);
+        }
+        if (phase >= 347 && phase <= 373) {
+            press(Button::right);
+        }
+        if (phase >= 506 && phase <= 511) {
+            press(Button::one);
+        }
+        if (phase == 138 || phase == 139 || phase == 282 || phase == 283
+            || phase == 445 || phase == 446 || phase == 578 || phase == 579) {
+            press(Button::two);
+        }
+        if (phase == 19 || phase == 20) {
+            press(Button::up);
+        } else if (phase == 206 || phase == 207) {
+            press(Button::right);
+        } else if (phase == 425 || phase == 426) {
+            press(Button::down);
+        } else if (phase == 596 || phase == 597) {
+            press(Button::left);
+        }
+    }
+    return input;
+}
+
 [[nodiscard]] InputFrame state_census_input_for_frame(const int frame_number)
 {
     InputFrame input;
@@ -8764,6 +8842,20 @@ constexpr RecordingPlan kGameplaySidestepRecordingPlan{
         "up:1493-1494+947n;down:2237-2238+947n",
     .frame_count = kGameplaySidestepRecordingFrames,
     .input_for_frame = &gameplay_sidestep_input_for_frame,
+};
+
+constexpr RecordingPlan kGameplayWeaveRecordingPlan{
+    .format = "devils-crush-gameplay-weave-v1",
+    .label = "Gameplay weave",
+    .input_script =
+        "run:180-181,300-301;"
+        "one:420-421,700-701,850-880,1000-1395,1958-1963+613n;"
+        "left:1503-1524+613n;right:1799-1825+613n;"
+        "up:1471-1472+613n;right:1658-1659+613n;"
+        "down:1877-1878+613n;left:2048-2049+613n;"
+        "two:1590-1591+613n,1734-1735+613n,1897-1898+613n,2030-2031+613n",
+    .frame_count = kGameplayWeaveRecordingFrames,
+    .input_for_frame = &gameplay_weave_input_for_frame,
 };
 
 constexpr RecordingPlan kStateCensusRecordingPlan{
@@ -16027,6 +16119,7 @@ int main(const int argc, char* argv[])
             || options.record_gameplay_higharc
             || options.record_gameplay_twist
             || options.record_gameplay_sidestep
+            || options.record_gameplay_weave
             || options.record_state_census) {
             const auto& recording_plan = options.record_state_census
                 ? kStateCensusRecordingPlan
@@ -16070,6 +16163,8 @@ int main(const int argc, char* argv[])
                     ? kGameplayTwistRecordingPlan
                 : options.record_gameplay_sidestep
                     ? kGameplaySidestepRecordingPlan
+                : options.record_gameplay_weave
+                    ? kGameplayWeaveRecordingPlan
                 : options.record_gameplay
                     ? kGameplayRecordingPlan
                     : kCanonicalRecordingPlan;
@@ -16115,6 +16210,8 @@ int main(const int argc, char* argv[])
                     ? options.gameplay_twist_path
                 : options.record_gameplay_sidestep
                     ? options.gameplay_sidestep_path
+                : options.record_gameplay_weave
+                    ? options.gameplay_weave_path
                 : options.record_gameplay
                     ? options.gameplay_path
                     : options.canonical_path;
