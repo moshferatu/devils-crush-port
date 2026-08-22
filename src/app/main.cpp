@@ -91,6 +91,7 @@ constexpr int kGameplayHigharcRecordingFrames = 3600;
 constexpr int kGameplayTwistRecordingFrames = 3600;
 constexpr int kGameplaySidestepRecordingFrames = 3600;
 constexpr int kGameplayWeaveRecordingFrames = 3600;
+constexpr int kGameplayBankshotRecordingFrames = 3600;
 constexpr int kStateCensusRecordingFrames = 3600;
 constexpr int kMaximumAudioLatencyMilliseconds = 150;
 const std::filesystem::path kBackupRamPath =
@@ -147,6 +148,8 @@ const std::filesystem::path kGameplaySidestepRecordingPath =
     std::filesystem::path("portable-data") / "gameplay-sidestep-v1.csv";
 const std::filesystem::path kGameplayWeaveRecordingPath =
     std::filesystem::path("portable-data") / "gameplay-weave-v1.csv";
+const std::filesystem::path kGameplayBankshotRecordingPath =
+    std::filesystem::path("portable-data") / "gameplay-bankshot-v1.csv";
 const std::filesystem::path kStateCensusRecordingPath =
     std::filesystem::path("portable-data") / "state-census-v1.csv";
 const std::filesystem::path kBackupRamTestPath =
@@ -380,6 +383,12 @@ struct CommandLine {
     // flippers are released, to explore a wider natural table trajectory.
     bool record_gameplay_weave = false;
     std::filesystem::path gameplay_weave_path = kGameplayWeaveRecordingPath;
+    // A twenty-third input-only route. It holds a medium launch, then makes
+    // sparse, offset bank saves and only nudges in neutral windows to probe
+    // long side-wall rebounds absent from the dense recovery plans.
+    bool record_gameplay_bankshot = false;
+    std::filesystem::path gameplay_bankshot_path =
+        kGameplayBankshotRecordingPath;
     bool record_state_census = false;
     std::filesystem::path state_census_path = kStateCensusRecordingPath;
     std::filesystem::path canonical_work_ram_path;
@@ -888,6 +897,14 @@ parse_logical_address_range(const std::string_view text)
             if (!next.empty() && next.front() != '-') {
                 options.gameplay_weave_path = argv[++index];
             }
+        } else if (argument == "--record-gameplay-bankshot") {
+            options.record_gameplay_bankshot = true;
+            const std::string_view next =
+                index + 1 < argc ? std::string_view(argv[index + 1])
+                                 : std::string_view{};
+            if (!next.empty() && next.front() != '-') {
+                options.gameplay_bankshot_path = argv[++index];
+            }
         } else if (argument == "--record-state-census") {
             options.record_state_census = true;
             const std::string_view next =
@@ -1360,6 +1377,7 @@ parse_logical_address_range(const std::string_view text)
         + static_cast<int>(options.record_gameplay_twist)
         + static_cast<int>(options.record_gameplay_sidestep)
         + static_cast<int>(options.record_gameplay_weave)
+        + static_cast<int>(options.record_gameplay_bankshot)
         + static_cast<int>(options.record_state_census)
         + static_cast<int>(!options.routine_replay_corpus_paths.empty())
         + static_cast<int>(options.backup_ram_test);
@@ -1386,6 +1404,7 @@ parse_logical_address_range(const std::string_view text)
         || options.record_gameplay_twist
         || options.record_gameplay_sidestep
         || options.record_gameplay_weave
+        || options.record_gameplay_bankshot
         || options.record_state_census;
     // Both interactive entry points run the same host loop, and both deploy
     // the admitted-routine registry unless told to emulate the original.
@@ -1444,6 +1463,8 @@ parse_logical_address_range(const std::string_view text)
             ? kGameplaySidestepRecordingFrames
         : options.record_gameplay_weave
             ? kGameplayWeaveRecordingFrames
+        : options.record_gameplay_bankshot
+            ? kGameplayBankshotRecordingFrames
         : options.record_gameplay
             ? kGameplayRecordingFrames
             : options.record_canonical
@@ -5069,6 +5090,13 @@ void print_usage()
             "      [--observe-hook <bank:pc>]...\n"
             "      [--routine-call-trace <calls.csv>]\n"
             "      [--rom <path>]\n"
+        << "  devils-crush --record-gameplay-bankshot [output.csv]\n"
+            "      [--replace-registry]\n"
+            "      [--native-cycle-census <census.csv>]\n"
+            "      [--instruction-profile <profile.csv>]\n"
+            "      [--observe-hook <bank:pc>]...\n"
+            "      [--routine-call-trace <calls.csv>]\n"
+            "      [--rom <path>]\n"
         << "  devils-crush --record-state-census [output.csv]\n"
            "      [--canonical-work-ram <output.bin>]\n"
            "      [--canonical-framebuffer <output.rgb>]\n"
@@ -8464,6 +8492,60 @@ struct ProbedAxis {
     return input;
 }
 
+[[nodiscard]] InputFrame gameplay_bankshot_input_for_frame(
+    const int frame_number)
+{
+    InputFrame input;
+    const auto press = [&input](const Button button) {
+        input.player_one |= static_cast<std::uint16_t>(button);
+    };
+    const auto is_pair = [frame_number](const int first_frame) {
+        return frame_number == first_frame
+            || frame_number == first_frame + 1;
+    };
+
+    // This plan deliberately lands between the existing early and delayed
+    // launch probes. Its 1,091-frame cadence leaves broad neutral windows
+    // around asymmetric bank saves, letting Button-II steer only free travel
+    // rather than duplicate a held-flipper trajectory.
+    if (is_pair(180) || is_pair(300)) {
+        press(Button::run);
+    }
+    if (is_pair(420) || is_pair(700)
+        || (frame_number >= 850 && frame_number <= 880)
+        || (frame_number >= 1000 && frame_number <= 1310)) {
+        press(Button::one);
+    }
+    if (frame_number >= 1373) {
+        const int phase = (frame_number - 1373) % 1091;
+        if ((phase >= 47 && phase <= 61)
+            || (phase >= 721 && phase <= 732)) {
+            press(Button::left);
+        }
+        if ((phase >= 284 && phase <= 304)
+            || (phase >= 882 && phase <= 891)) {
+            press(Button::right);
+        }
+        if (phase >= 514 && phase <= 518) {
+            press(Button::one);
+        }
+        if (phase == 146 || phase == 147 || phase == 426 || phase == 427
+            || phase == 650 || phase == 651 || phase == 972 || phase == 973) {
+            press(Button::two);
+        }
+        if (phase == 19 || phase == 20) {
+            press(Button::up);
+        } else if (phase == 201 || phase == 202) {
+            press(Button::right);
+        } else if (phase == 470 || phase == 471) {
+            press(Button::down);
+        } else if (phase == 805 || phase == 806) {
+            press(Button::left);
+        }
+    }
+    return input;
+}
+
 [[nodiscard]] InputFrame state_census_input_for_frame(const int frame_number)
 {
     InputFrame input;
@@ -8856,6 +8938,22 @@ constexpr RecordingPlan kGameplayWeaveRecordingPlan{
         "two:1590-1591+613n,1734-1735+613n,1897-1898+613n,2030-2031+613n",
     .frame_count = kGameplayWeaveRecordingFrames,
     .input_for_frame = &gameplay_weave_input_for_frame,
+};
+
+constexpr RecordingPlan kGameplayBankshotRecordingPlan{
+    .format = "devils-crush-gameplay-bankshot-v1",
+    .label = "Gameplay bankshot",
+    .input_script =
+        "run:180-181,300-301;"
+        "one:420-421,700-701,850-880,1000-1310,1887-1891+1091n;"
+        "left:1420-1434+1091n,2094-2105+1091n;"
+        "right:1657-1677+1091n,2255-2264+1091n;"
+        "up:1392-1393+1091n;right:1574-1575+1091n;"
+        "down:1843-1844+1091n;left:2178-2179+1091n;"
+        "two:1519-1520+1091n,1799-1800+1091n,2023-2024+1091n,"
+        "2345-2346+1091n",
+    .frame_count = kGameplayBankshotRecordingFrames,
+    .input_for_frame = &gameplay_bankshot_input_for_frame,
 };
 
 constexpr RecordingPlan kStateCensusRecordingPlan{
@@ -16120,6 +16218,7 @@ int main(const int argc, char* argv[])
             || options.record_gameplay_twist
             || options.record_gameplay_sidestep
             || options.record_gameplay_weave
+            || options.record_gameplay_bankshot
             || options.record_state_census) {
             const auto& recording_plan = options.record_state_census
                 ? kStateCensusRecordingPlan
@@ -16165,6 +16264,8 @@ int main(const int argc, char* argv[])
                     ? kGameplaySidestepRecordingPlan
                 : options.record_gameplay_weave
                     ? kGameplayWeaveRecordingPlan
+                : options.record_gameplay_bankshot
+                    ? kGameplayBankshotRecordingPlan
                 : options.record_gameplay
                     ? kGameplayRecordingPlan
                     : kCanonicalRecordingPlan;
@@ -16212,6 +16313,8 @@ int main(const int argc, char* argv[])
                     ? options.gameplay_sidestep_path
                 : options.record_gameplay_weave
                     ? options.gameplay_weave_path
+                : options.record_gameplay_bankshot
+                    ? options.gameplay_bankshot_path
                 : options.record_gameplay
                     ? options.gameplay_path
                     : options.canonical_path;

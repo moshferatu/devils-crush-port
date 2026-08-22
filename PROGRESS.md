@@ -1525,6 +1525,26 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
   - Rebuilt Release/Debug applications and core-test targets; both ROM-free
     `dc_core_tests` executables pass.
 
+- [x] Add and screen the input-only bankshot natural gameplay route without
+  patching emulated work RAM:
+  - `--record-gameplay-bankshot` preserves the visible startup, releases a
+    medium-strength launch at frame 1,310, then uses a 1,091-frame asymmetric
+    side-bank cadence with Button-II only in neutral travel windows.
+  - Assembly, deployed Release, and deployed Debug recordings are
+    byte-identical at `8f330a99...c65b095`; the Release/Debug deployed
+    instruction profiles, native-cycle censuses, and abandonment censuses are
+    likewise identical (`3a6614e1...0c23c395`,
+    `2b6b1d73...eff3b18`, and `b74517d6...9669bc46`). The deployed route
+    installs all 593 admissions, enters 417 routines, executes 690,884,520 of
+    1,292,372,157 master cycles natively (98.50% outside the frame-sync wait),
+    and records zero horizon declines or abandoned transcripts.
+  - Its complete 8,242-address assembly profile exactly matches sidestep, so
+    it reaches no new table-rule address or caller-and-return scope. Keep the
+    existing scheduler and collision ownership assembly-backed; no replacement
+    is admitted.
+  - Rebuilt the Release and Debug application targets and verified identical
+    assembly/Release/Debug recording and deployed-artifact hashes.
+
 - [x] Isolate and close the independent frame-1,845 audio-only twist-route
   drift:
   - A full PSG bus-write bisection shows that the audible 12-cycle early
@@ -6386,6 +6406,10 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
   new rows (`03:78CC-78F8`) are the existing fixed-Bumper hit continuation:
   the one natural `03:78CC` scope starts from scheduler `01:C51D` and returns
   at controller `03:7C33`. Do not split this owner-inclusive continuation.
+  The bankshot route's medium launch and 1,091-frame asymmetric bank-save
+  cadence is likewise deterministic in assembly, Release, and Debug, but its
+  complete 8,242-address assembly profile is exactly the sidestep set. It
+  contributes no observer target or independent transaction.
 - [ ] Select and screen the next materially different input-only natural
   gameplay route for an unobserved table-rule transaction whose natural scope
   has its own caller and return. Keep all known scheduler, collision,
@@ -8644,7 +8668,7 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
 
 Current owner: Codex. Current slice: **screen the next materially different
 input-only natural gameplay route for an unobserved table-rule transaction with
-its own caller-and-return contract after sidestep**. Sidestep is now screened:
+its own caller-and-return contract after bankshot**. Sidestep is now screened:
 its middle-strength launch, 947-frame asymmetric side saves, and neutral-only
 Button-II impulses preserve byte-identical assembly/Release/Debug recordings
 (`30cce23f...05d82a`), profiles, native-cycle censuses, and abandonment
@@ -8668,6 +8692,17 @@ only new table-bank rows are the existing Dragon's-Egg scheduler dispatch
 passes either join at `03:6994` or return through `00:E20C`. Neither group
 has its own caller-and-return contract; keep both assembly-backed and select a
 further materially different natural route.
+The bankshot route is also screened: its frame-1,310 medium launch,
+1,091-frame asymmetric side-bank saves, and neutral-only Button-II/directional
+impulses preserve byte-identical assembly/Release/Debug recordings
+(`8f330a99...c65b095`), while the Release/Debug deployed profile, native-cycle,
+and abandonment hashes agree (`3a6614e1...0c23c395`,
+`2b6b1d73...eff3b18`, and `b74517d6...9669bc46`). All 593 admissions install,
+417 routines enter, and 690,884,520 of 1,292,372,157 elapsed master cycles run
+natively (98.50% outside frame-sync) with no horizon declines or abandonments.
+Its full 8,242-address assembly profile is exactly the sidestep address set;
+it yields no new table-rule transaction. Keep every reached owner
+assembly-backed and select a further materially different natural route.
 The twist fidelity gate is closed:
 `02:570A` retains its Big-Star timer-horizon fallback, while `03:66A3` now
 leaves its post-handoff timer-sensitive calls in assembly. The fully deployed
