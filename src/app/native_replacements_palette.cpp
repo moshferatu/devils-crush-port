@@ -2502,7 +2502,10 @@ namespace {
 // they are resolved through the MPRs the transcript is declaring rather than
 // assumed -- the same discipline 00:EBA5's own source read has always used.
 //
-// The resolver is crossed, not composed. It is a bank switch: `TAM #$10` and
+// The scheduler reaches the cadence controller at 08:5961. Its ordinary path
+// decrements the four-tick delay and returns immediately; expiry reloads that
+// delay, flips the colour-set phase, and crosses into the stager below. The
+// resolver is crossed, not composed. It is a bank switch: `TAM #$10` and
 // `TAM #$20` are the point of it, and its own two halves at 00:E20D and 00:E200
 // have been native since the call-wrapper slice, so bringing eleven instructions
 // in line would transcribe a routine that is already transcribed and take the
@@ -2519,16 +2522,16 @@ namespace {
 // absorbed return belongs to a call another transcript opened -- the shape
 // 00:ECE2 established and 03:601E repeated. It is watched at 08:5977.
 //
-// The copy loop is 160 checkpoints and the whole walk is 183 against a channel
-// of 2,048, and 42 writes against 512, so it needs no chunking. And no interrupt
-// lands anywhere in this routine on the census route: every profile row is an
-// exact multiple of its own instruction cost, which is why 2,247 master cycles a
-// call times 177 calls is exactly the 397,719 the profile attributes to it.
+// The copy loop is 160 checkpoints and the complete cadence/stager walk is
+// bounded well below the 2,048-checkpoint and 512-write channels, so it needs
+// no chunking. The cadence controller leaves its own final RTS to the core;
+// the stager still absorbs only the JSR frame it opened itself.
 constexpr std::uint8_t kSetupBank = 0x08U;
 
 [[nodiscard]] constexpr bool is_setup_entry(const std::uint16_t logical_pc)
 {
-    return logical_pc == 0x5977U || logical_pc == 0x5982U;
+    return logical_pc == 0x5961U || logical_pc == 0x5977U
+        || logical_pc == 0x5982U;
 }
 
 } // namespace
@@ -2759,6 +2762,89 @@ std::optional<RoutineReplacement> replace_setup_screen_palette_stager(
         }
 
         switch (pc) {
+        // ---- 08:5961  the setup-screen palette cadence -------------------
+        case 0x5961U: {  // DEC $3A00,X
+            const auto address = indexed_x(0x3A00U);
+            const auto decremented = static_cast<std::uint8_t>(
+                read_ram(address) - 1U);
+            store(0x5961U, address, decremented);
+            registers.status = set_nz(registers.status, decremented);
+            append_checkpoint(0x5961U, 0x5964U, 21U);
+            pc = 0x5964U;
+            break;
+        }
+
+        case 0x5964U:  // BNE $5976 -- ordinary cadence wait
+            pc = branch(
+                0x5964U,
+                0x5976U,
+                0x5966U,
+                (registers.status & kZero) == 0U);
+            if (pc == 0x5976U) {
+                // This is the scheduler call's RTS, not a frame this
+                // transcript opened. Keep it in the core, exactly as the
+                // observer's return boundary does.
+                finish(0x5976U);
+                return replacement;
+            }
+            break;
+
+        case 0x5966U:  // LDA #$04 -- reload the four-tick cadence
+            load_accumulator(0x04U);
+            append_checkpoint(0x5966U, 0x5968U, 6U);
+            pc = 0x5968U;
+            break;
+
+        case 0x5968U:  // STA $3A00,X
+            store(0x5968U, indexed_x(0x3A00U), registers.accumulator);
+            append_checkpoint(0x5968U, 0x596BU, 15U);
+            pc = 0x596BU;
+            break;
+
+        case 0x596BU:  // LDA $3A80,X -- current colour-set phase
+            load_accumulator(read_ram(indexed_x(0x3A80U)));
+            append_checkpoint(0x596BU, 0x596EU, 15U);
+            pc = 0x596EU;
+            break;
+
+        case 0x596EU:  // EOR #$01 -- flip between the two colour sets
+            registers.accumulator = static_cast<std::uint8_t>(
+                registers.accumulator ^ 0x01U);
+            registers.status = set_nz(
+                registers.status,
+                registers.accumulator);
+            append_checkpoint(0x596EU, 0x5970U, 6U);
+            pc = 0x5970U;
+            break;
+
+        case 0x5970U:  // STA $3A80,X
+            store(0x5970U, indexed_x(0x3A80U), registers.accumulator);
+            append_checkpoint(0x5970U, 0x5973U, 15U);
+            pc = 0x5973U;
+            break;
+
+        case 0x5973U: {  // JSR $5977 -- cross into the existing stager
+            // HuC6280 pushes the high byte first, then the low byte of the
+            // JSR's final-byte address ($5975), before the instruction's
+            // remaining cycles elapse.
+            store(
+                0x5973U,
+                static_cast<std::uint16_t>(kStackBase + registers.stack_pointer),
+                0x59U);
+            store(
+                0x5973U,
+                static_cast<std::uint16_t>(
+                    kStackBase
+                    + static_cast<std::uint8_t>(registers.stack_pointer - 1U)),
+                0x75U);
+            commit_pending_writes(cycle);
+            registers.stack_pointer =
+                static_cast<std::uint8_t>(registers.stack_pointer - 2U);
+            append_checkpoint(0x5973U, 0x5977U, 21U);
+            finish(0x5977U);
+            return replacement;
+        }
+
         // ---- 08:5977  the asset reference and the resolver call -----------
         case 0x5977U:  // LDA #$04
             load_accumulator(0x04U);

@@ -13,6 +13,9 @@ endif()
 # The setup screen's block stager, and the palette shadow buffer's only
 # producer outside bank 00.
 #
+# 08:5961 is the scheduler-owned four-tick cadence controller. It either
+# decrements the indexed delay and leaves its RTS to the core, or reloads that
+# delay, flips the colour-set phase, and crosses its authentic JSR into 08:5977.
 # 08:5977 stages thirty-two bytes into block zero of the buffer at $27B9 and
 # raises the dirty flags at $2CCC and $2CCB, which is 00:EBA5's job for the one
 # block the title, play-mode, speed and data-load screens animate. Its caller
@@ -27,6 +30,7 @@ endif()
 # that a call one instruction earlier put in MPR4 and MPR5, resolved through the
 # MPRs the transcript declares rather than assumed.
 #
+#   08:5961  cadence decrement/reload and the `JSR $5977`
 #   08:5977  build the asset reference, then make the `JSR $E1FD`
 #   08:5982  the displacement, the copy, the two flags, and the `RTS`
 #
@@ -66,6 +70,8 @@ execute_process(
         --record-state-census
         "${OUTPUT}"
         --replace-hook
+        "08:5961@all"
+        --replace-hook
         "08:5977@all"
         --replace-hook
         "08:5982@all"
@@ -95,6 +101,7 @@ endif()
 
 foreach(expected_line IN ITEMS
     "State census recording complete: 3600 frames"
+    "Native replacement 08:5961@all entries: 670 of 670"
     "Native replacement 08:5977@all entries: 177 of 177"
     "Native replacement 08:5982@all entries: 177 of 177"
     "Work-RAM write trace complete: 5763953 selected writes"
@@ -130,9 +137,9 @@ endforeach()
 
 message(
     STATUS
-    "Semantic setup-screen palette stager runs all 177 calls natively, makes "
-    "the resolver call the routine exists to make and lands on the callee, and "
-    "stages block zero from the phase-selected colour set with the whole shadow "
-    "buffer, every dirty flag, the pointer it builds, the whole stack page and "
-    "the state census identical to assembly."
+    "Semantic setup-screen palette cadence/stager runs all 670 cadence and "
+    "177 stager calls natively, crosses both authentic JSRs, leaves the "
+    "scheduler RTS to the core, and preserves the phase-selected block-zero "
+    "shadow-buffer writes, dirty flags, pointer, stack page, and state census "
+    "exactly."
 )

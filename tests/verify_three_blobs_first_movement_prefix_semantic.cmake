@@ -16,7 +16,7 @@ execute_process(COMMAND "${APP}" --record-state-census "${OUTPUT}" --observe-hoo
 if(NOT result EQUAL 0)
     message(FATAL_ERROR "Semantic Three-Blobs first-movement prefix recorder failed (${result}).\n${out}${err}")
 endif()
-foreach(line IN ITEMS "Native replacement 03:66A3@all entries: 1107 of 1107" "Routine call trace complete: 1107 calls, 11396 writes" "Routine replay 03:66A3@1 verified: frame 1229, 282 body cycles, 6 ordered writes")
+foreach(line IN ITEMS "Native replacement 03:66A3@all entries: 998 of 1107" "Routine call trace complete: 1107 calls, 11396 writes" "Routine replay 03:66A3@1 verified: frame 1229, 282 body cycles, 6 ordered writes")
     string(FIND "${out}" "${line}" offset)
     if(offset EQUAL -1)
         message(FATAL_ERROR "Semantic Three-Blobs first-movement prefix output omitted '${line}'.\n${out}${err}")

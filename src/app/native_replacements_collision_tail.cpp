@@ -48,7 +48,7 @@ using emulation::RoutineReplacement;
 //            transcript: the pushes are transcribed and the core executes the
 //            RTS, which jumps exactly as it would have.
 //
-// Twenty entry points. Eleven are the addresses a call this family makes
+// Twenty-one entry points. Eleven are the addresses a call this family makes
 // returns to; four are routine heads; and five are branch arms of instructions
 // handed back to the core -- see is_stop_instruction. The eleven were once the
 // addresses a walk resumed at after stopping in front of a call. They are still
@@ -125,7 +125,8 @@ constexpr std::uint32_t kCall = 21U;
         || logical_pc == 0xCAB6U || logical_pc == 0xCAD3U
         || logical_pc == 0xCAE0U || logical_pc == 0xCAEDU
         || logical_pc == 0xCB04U || logical_pc == 0xCB11U
-        || logical_pc == 0xCB2AU || logical_pc == 0xCB74U
+        || logical_pc == 0xCB2AU || logical_pc == 0xCB46U
+        || logical_pc == 0xCB74U
         || logical_pc == 0xCB76U
         || logical_pc == 0xCB79U || logical_pc == 0xCB81U
         || logical_pc == 0xCB8AU || logical_pc == 0xCBABU
@@ -150,9 +151,10 @@ constexpr std::uint32_t kCall = 21U;
 // the JSR independently of the target. The confirmed-contact response is now
 // part of this walk as nine bounded continuations around its native children.
 //
-// Two are neither. 01:CB46 is the STA $64 that ends the sweep setup: handing
-// it back leaves the core at 01:CB48, where the sweep's own replacement picks
-// the loop up. And 01:CB7E is a BBR. Every other instruction here charges its
+// One is neither. 01:CB7E is a BBR. 01:CB46 is now its own tiny transaction:
+// the setup walk stops before the store and its dedicated entry completes that
+// store before handing to the already-native sweep at 01:CB48. Every other
+// instruction here charges its
 // cycles in one ADDCYC and one LastCycle, which is the shape a checkpoint
 // expresses; BBR is LD_ZP wrapping JR, so the machine crosses it in four clock
 // steps where a checkpoint crosses it in two, and those steps are where the
@@ -168,7 +170,7 @@ constexpr std::uint32_t kCall = 21U;
 {
     return logical_pc == 0xCA89U || logical_pc == 0xCB20U
         || logical_pc == 0xCB29U || logical_pc == 0xCB46U
-        || logical_pc == 0xCB7EU
+        || logical_pc == 0xCB48U || logical_pc == 0xCB7EU
         || logical_pc == 0xCB89U || logical_pc == 0xCB92U
         || logical_pc == 0xCBB2U || logical_pc == 0xCBC6U
         || logical_pc == 0xCBCEU || logical_pc == 0xCBF9U
@@ -189,8 +191,8 @@ constexpr std::uint32_t kCall = 21U;
 // having moved the pointer, but that would be an accident rather than a reason.
 //
 // Everything else in the list is an address the walk hands back at -- the
-// `BBR` at 01:CB7E, the `STA $64` at 01:CB46, or a branch arm -- and hands back
-// mid-routine, with no return to take.
+// `BBR` at 01:CB7E, the already-native sweep head at 01:CB48, or a branch arm
+// -- and hands back mid-routine, with no return to take.
 [[nodiscard]] constexpr bool is_absorbable_return(
     const std::uint16_t logical_pc)
 {
@@ -1140,6 +1142,16 @@ std::optional<RoutineReplacement> replace_collision_tail(
             load_accumulator(0x04U);
             append_checkpoint(0xCB44U, 0xCB46U, kImmediate);
             pc = 0xCB46U;
+            break;
+
+        // This store is a direct entry as well as the final setup instruction.
+        // Keeping it independently bounded avoids folding the downstream sweep
+        // into the setup owner while removing the last plain instruction on
+        // every setup-to-sweep handoff.
+        case 0xCB46U:  // STA $64
+            store(0xCB46U, zp(0x64U), registers.accumulator);
+            append_checkpoint(0xCB46U, 0xCB48U, kZeroPage);
+            pc = 0xCB48U;
             break;
 
         // ---- 01:CB71  the sweep tail --------------------------------------

@@ -605,6 +605,482 @@ std::optional<RoutineReplacement> replace_score_panel_poll(
     return replacement;
 }
 
+std::optional<RoutineReplacement> replace_score_panel_redraw_tail(
+    const RoutineEntry& entry,
+    const std::span<const std::byte> work_ram,
+    const std::span<const std::byte> rom)
+{
+    // The dirty-bit prefix at 7237 deliberately stops before the shared body.
+    // Its `$2251 == 0` route reaches this continuation through 7276, after the
+    // palette byte has been selected. This tail draws two fixed zeroes, turns
+    // the selected 24-bit stored score into decimal through E7D7, then
+    // finishes with the bounded ball-count suffix at 72C5.  That suffix
+    // has two already-admitted children of its own, so it is a fourth natural
+    // transaction rather than an extension of either redraw loop.
+    // A normal redraw emits more than the bridge's 512 ordered writes.  The
+    // digit and leading-zero loops already provide real re-entry addresses,
+    // so each transaction owns precisely one iteration and leaves the core at
+    // the next iteration (or the final ball-count transaction).
+    if (entry.routine.physical_bank != kBank
+        || (entry.routine.logical_pc != 0x727DU
+            && entry.routine.logical_pc != 0x72A2U
+            && entry.routine.logical_pc != 0x72BDU
+            && entry.routine.logical_pc != 0x72C5U)
+        || work_ram.size() < 0x2000U
+        || rom.size() != 0x60000U || entry.registers.mpr[0] != 0xFFU
+        || entry.registers.mpr[1] != 0xF8U || entry.registers.mpr[3] != kBank
+        || (entry.registers.status & (kDecimal | kMemory)) != 0U) {
+        return std::nullopt;
+    }
+
+    constexpr std::size_t kMaximumCheckpoints = 2048U;
+    constexpr std::size_t kMaximumWrites = 512U;
+    constexpr std::uint32_t kImplied = 6U;
+    constexpr std::uint32_t kImmediateCycles = 6U;
+    constexpr std::uint32_t kZeroPage = 12U;
+    constexpr std::uint32_t kZeroPageReadModifyWrite = 18U;
+    constexpr std::uint32_t kAbsoluteIndexedCycles = 15U;
+    constexpr std::uint32_t kJumpToSubroutine = 21U;
+
+    auto staged = std::vector<std::byte>(work_ram.begin(), work_ram.end());
+    RoutineReplacement replacement{};
+    replacement.work_ram_writes.reserve(480U);
+    replacement.checkpoints.reserve(1800U);
+    auto registers = entry.registers;
+    std::uint32_t cycle = 0U;
+    std::size_t committed_writes = 0U;
+
+    const auto read_ram = [&staged](const std::uint16_t address) {
+        return std::to_integer<std::uint8_t>(
+            staged[static_cast<std::size_t>(address - kWorkRamBase)]);
+    };
+    const auto write_ram = [&replacement, &staged](
+                               const std::uint16_t instruction,
+                               const std::uint16_t address,
+                               const std::uint8_t value) {
+        if (address < kWorkRamBase || address >= kWorkRamEnd) {
+            return false;
+        }
+        replacement.work_ram_writes.push_back({
+            .instruction = {kBank, instruction},
+            .logical_address = address,
+            .value = value,
+            .master_cycle_offset = 0U,
+        });
+        staged[static_cast<std::size_t>(address - kWorkRamBase)] =
+            static_cast<std::byte>(value);
+        return replacement.work_ram_writes.size() <= kMaximumWrites;
+    };
+    const auto append_checkpoint = [&replacement, &registers, &cycle,
+                                    &committed_writes](
+                                       const std::uint8_t bank,
+                                       const std::uint16_t instruction,
+                                       const std::uint16_t resume,
+                                       const std::uint32_t instruction_cycles) {
+        cycle += instruction_cycles;
+        while (committed_writes < replacement.work_ram_writes.size()) {
+            replacement.work_ram_writes[committed_writes]
+                .master_cycle_offset = cycle;
+            ++committed_writes;
+        }
+        registers.program_counter = resume;
+        replacement.checkpoints.push_back({
+            .interrupt_sample_master_cycle_offset = cycle - 3U,
+            .master_cycle_offset = cycle,
+            .instruction = {bank, instruction},
+            .registers = registers,
+        });
+        return replacement.checkpoints.size() <= kMaximumCheckpoints;
+    };
+    const auto load_accumulator = [&registers](const std::uint8_t value) {
+        registers.accumulator = value;
+        registers.status = set_nz(registers.status, value);
+    };
+    const auto increment = [&registers](const std::uint8_t value) {
+        const auto result = static_cast<std::uint8_t>(value + 1U);
+        registers.status = set_nz(registers.status, result);
+        return result;
+    };
+    const auto decrement = [&registers](const std::uint8_t value) {
+        const auto result = static_cast<std::uint8_t>(value - 1U);
+        registers.status = set_nz(registers.status, result);
+        return result;
+    };
+    const auto subtract_with_carry = [&registers](const std::uint8_t operand) {
+        const auto left = registers.accumulator;
+        const auto carry_in = (registers.status & kCarry) != 0U;
+        const auto difference = static_cast<std::int16_t>(
+            static_cast<std::int16_t>(left)
+            - static_cast<std::int16_t>(operand)
+            - static_cast<std::int16_t>(carry_in ? 0 : 1));
+        const auto result = static_cast<std::uint8_t>(difference);
+        const bool signed_overflow =
+            ((left ^ operand) & (left ^ result) & kNegative) != 0U;
+        registers.status = static_cast<std::uint8_t>(
+            registers.status & static_cast<std::uint8_t>(~(kCarry | kOverflow)));
+        if (difference >= 0) {
+            registers.status = static_cast<std::uint8_t>(registers.status | kCarry);
+        }
+        if (signed_overflow) {
+            registers.status = static_cast<std::uint8_t>(
+                registers.status | kOverflow);
+        }
+        registers.accumulator = result;
+        registers.status = set_nz(registers.status, result);
+    };
+    const auto compose_child = [&replacement, &staged, &registers, &cycle,
+                                &committed_writes](
+                                   const RoutineReplacement& child) {
+        if (child.checkpoints.empty()
+            || replacement.checkpoints.size() + child.checkpoints.size()
+                    > kMaximumCheckpoints
+            || replacement.work_ram_writes.size() + child.work_ram_writes.size()
+                    > kMaximumWrites) {
+            return false;
+        }
+        const auto child_offset = cycle;
+        for (auto write : child.work_ram_writes) {
+            if (write.logical_address >= kWorkRamBase
+                && write.logical_address < kWorkRamEnd) {
+                staged[static_cast<std::size_t>(
+                    write.logical_address - kWorkRamBase)] =
+                    static_cast<std::byte>(write.value);
+            }
+            write.master_cycle_offset += child_offset;
+            replacement.work_ram_writes.push_back(write);
+        }
+        for (auto checkpoint : child.checkpoints) {
+            checkpoint.interrupt_sample_master_cycle_offset += child_offset;
+            checkpoint.master_cycle_offset += child_offset;
+            replacement.checkpoints.push_back(checkpoint);
+        }
+        cycle += child.body_master_cycles;
+        registers = child.output_registers;
+        committed_writes = replacement.work_ram_writes.size();
+        return true;
+    };
+    const auto child_entry = [&entry, &registers, &cycle](const RoutineKey key) {
+        auto child = entry;
+        child.routine = key;
+        child.registers = registers;
+        child.registers.program_counter = key.logical_pc;
+        child.master_cycle += cycle;
+        child.absolute_master_cycle += cycle;
+        child.master_cycles_until_user_event =
+            child.master_cycles_until_user_event > cycle
+            ? child.master_cycles_until_user_event - cycle : 0U;
+        child.master_cycles_until_timer_interrupt =
+            child.master_cycles_until_timer_interrupt > cycle
+            ? child.master_cycles_until_timer_interrupt - cycle : 0U;
+        return child;
+    };
+    const auto push_call = [&replacement, &staged, &append_checkpoint,
+                            &registers, &cycle, &committed_writes](
+                               const std::uint16_t call_pc,
+                               const RoutineKey target) {
+        const auto return_address = static_cast<std::uint16_t>(call_pc + 2U);
+        const auto high_slot = static_cast<std::uint16_t>(
+            kStackBase + registers.stack_pointer);
+        const auto low_slot = static_cast<std::uint16_t>(
+            kStackBase + static_cast<std::uint8_t>(registers.stack_pointer - 1U));
+        const auto push_stack_byte = [&](const std::uint16_t address,
+                                         const std::uint8_t value) {
+            // HuC6280 JSR pushes its return frame before consuming the
+            // instruction's remaining 21 master cycles.  Keeping that
+            // timestamp separate from ordinary RAM stores matters to the
+            // stack-page oracle even though the child begins at the same
+            // eventual checkpoint.
+            replacement.work_ram_writes.push_back({
+                .instruction = {kBank, call_pc},
+                .logical_address = address,
+                .value = value,
+                .master_cycle_offset = cycle,
+            });
+            staged[static_cast<std::size_t>(address - kWorkRamBase)] =
+                static_cast<std::byte>(value);
+            committed_writes = replacement.work_ram_writes.size();
+            return replacement.work_ram_writes.size() <= kMaximumWrites;
+        };
+        if (!push_stack_byte(high_slot,
+                             static_cast<std::uint8_t>(return_address >> 8U))
+            || !push_stack_byte(low_slot,
+                                static_cast<std::uint8_t>(return_address))) {
+            return false;
+        }
+        registers.stack_pointer = static_cast<std::uint8_t>(
+            registers.stack_pointer - 2U);
+        return append_checkpoint(
+            kBank, call_pc, target.logical_pc, kJumpToSubroutine);
+    };
+    // The call sites differ but every glyph call uses the same child contract.
+    const auto compose_glyph = [&](const std::uint16_t call_pc,
+                                   const std::uint16_t resume_pc) {
+        if (!push_call(call_pc, {.physical_bank = kBank, .logical_pc = 0x72FDU})) {
+            return false;
+        }
+        const auto glyph = replace_score_panel_glyph(
+            child_entry({.physical_bank = kBank, .logical_pc = 0x72FDU}),
+            staged,
+            rom);
+        return glyph && glyph->return_instruction
+                == RoutineKey{.physical_bank = kBank, .logical_pc = resume_pc}
+            && compose_child(*glyph);
+    };
+    const auto compose_divider = [&]() {
+        if (!push_call(0x72A2U, {.physical_bank = 0x00U, .logical_pc = 0xE7D7U})) {
+            return false;
+        }
+        const auto divider = replace_unsigned_24_division(
+            child_entry({.physical_bank = 0x00U, .logical_pc = 0xE7D7U}), staged);
+        return divider && divider->return_instruction
+                == RoutineKey{.physical_bank = kBank, .logical_pc = 0x72A5U}
+            && compose_child(*divider);
+    };
+    const auto compose_byte_divider = [&]() {
+        if (!push_call(0x72D8U, {.physical_bank = 0x00U, .logical_pc = 0xE6DCU})) {
+            return false;
+        }
+        const auto divider = replace_unsigned_byte_division(
+            child_entry({.physical_bank = 0x00U, .logical_pc = 0xE6DCU}), staged);
+        return divider && divider->return_instruction
+                == RoutineKey{.physical_bank = kBank, .logical_pc = 0x72DBU}
+            && compose_child(*divider);
+    };
+    const auto stop_before = [&replacement, &registers, &cycle](
+                                 const std::uint16_t resume_pc) {
+        registers.program_counter = resume_pc;
+        replacement.return_instruction = {kBank, resume_pc};
+        replacement.output_registers = registers;
+        replacement.body_master_cycles = cycle;
+        return replacement;
+    };
+
+    if (entry.routine.logical_pc == 0x727DU) {
+        load_accumulator(0xB2U);
+        if (!append_checkpoint(kBank, 0x727DU, 0x727FU, kImmediateCycles)
+            || !write_ram(0x727FU, 0x2035U, registers.accumulator)
+            || !append_checkpoint(kBank, 0x727FU, 0x7281U, kZeroPage)
+            || !write_ram(0x7281U, 0x2036U, 0U)
+            || !append_checkpoint(kBank, 0x7281U, 0x7283U, kZeroPage)) {
+            return std::nullopt;
+        }
+        registers.accumulator = 0U;  // CLA leaves flags unchanged on this core.
+        if (!append_checkpoint(kBank, 0x7283U, 0x7284U, kImplied)
+            || !compose_glyph(0x7284U, 0x7287U)) {
+            return std::nullopt;
+        }
+        registers.accumulator = 0U;
+        if (!append_checkpoint(kBank, 0x7287U, 0x7288U, kImplied)
+            || !compose_glyph(0x7288U, 0x728BU)) {
+            return std::nullopt;
+        }
+        load_accumulator(0x01U);
+        if (!append_checkpoint(kBank, 0x728BU, 0x728DU, kImmediateCycles)
+            || !write_ram(0x728DU, 0x2031U, registers.accumulator)
+            || !append_checkpoint(kBank, 0x728DU, 0x728FU, kZeroPage)) {
+            return std::nullopt;
+        }
+        registers.accumulator = read_ram(static_cast<std::uint16_t>(0x2205U + registers.y));
+        registers.status = set_nz(registers.status, registers.accumulator);
+        if (!append_checkpoint(kBank, 0x728FU, 0x7292U, kAbsoluteIndexedCycles)
+            || !write_ram(0x7292U, 0x202EU, registers.accumulator)
+            || !append_checkpoint(kBank, 0x7292U, 0x7294U, kZeroPage)) {
+            return std::nullopt;
+        }
+        registers.accumulator = read_ram(static_cast<std::uint16_t>(0x220CU + registers.y));
+        registers.status = set_nz(registers.status, registers.accumulator);
+        if (!append_checkpoint(kBank, 0x7294U, 0x7297U, kAbsoluteIndexedCycles)
+            || !write_ram(0x7297U, 0x202FU, registers.accumulator)
+            || !append_checkpoint(kBank, 0x7297U, 0x7299U, kZeroPage)) {
+            return std::nullopt;
+        }
+        registers.accumulator = read_ram(static_cast<std::uint16_t>(0x2213U + registers.y));
+        registers.status = set_nz(registers.status, registers.accumulator);
+        if (!append_checkpoint(kBank, 0x7299U, 0x729CU, kAbsoluteIndexedCycles)
+            || !write_ram(0x729CU, 0x2030U, registers.accumulator)
+            || !append_checkpoint(kBank, 0x729CU, 0x729EU, kZeroPage)) {
+            return std::nullopt;
+        }
+        load_accumulator(0x0AU);
+        if (!append_checkpoint(kBank, 0x729EU, 0x72A0U, kImmediateCycles)
+            || !write_ram(0x72A0U, 0x202DU, registers.accumulator)
+            || !append_checkpoint(kBank, 0x72A0U, 0x72A2U, kZeroPage)) {
+            return std::nullopt;
+        }
+        return stop_before(0x72A2U);
+    }
+
+    if (entry.routine.logical_pc == 0x72A2U) {
+        if (!compose_divider()) {
+            return std::nullopt;
+        }
+        const auto digit_index = increment(read_ram(0x2031U));
+        if (!write_ram(0x72A5U, 0x2031U, digit_index)
+            || !append_checkpoint(
+                kBank, 0x72A5U, 0x72A7U, kZeroPageReadModifyWrite)
+            || !compose_glyph(0x72A7U, 0x72AAU)) {
+            return std::nullopt;
+        }
+        load_accumulator(read_ram(0x202EU));
+        if (!append_checkpoint(kBank, 0x72AAU, 0x72ACU, kZeroPage)) {
+            return std::nullopt;
+        }
+        registers.accumulator = static_cast<std::uint8_t>(
+            registers.accumulator | read_ram(0x202FU));
+        registers.status = set_nz(registers.status, registers.accumulator);
+        if (!append_checkpoint(kBank, 0x72ACU, 0x72AEU, kZeroPage)) {
+            return std::nullopt;
+        }
+        if ((registers.status & kZero) == 0U) {
+            if (!append_checkpoint(kBank, 0x72AEU, 0x72A2U, kBranchTaken)) {
+                return std::nullopt;
+            }
+            return stop_before(0x72A2U);
+        }
+        if (!append_checkpoint(kBank, 0x72AEU, 0x72B0U, kBranchNotTaken)) {
+            return std::nullopt;
+        }
+        registers.accumulator = static_cast<std::uint8_t>(
+            registers.accumulator | read_ram(0x2030U));
+        registers.status = set_nz(registers.status, registers.accumulator);
+        if (!append_checkpoint(kBank, 0x72B0U, 0x72B2U, kZeroPage)) {
+            return std::nullopt;
+        }
+        if ((registers.status & kZero) != 0U) {
+            if (!append_checkpoint(kBank, 0x72B2U, 0x72B4U, kBranchNotTaken)) {
+                return std::nullopt;
+            }
+        } else if (!append_checkpoint(kBank, 0x72B2U, 0x72A2U, kBranchTaken)) {
+            return std::nullopt;
+        } else {
+            return stop_before(0x72A2U);
+        }
+
+        registers.status = static_cast<std::uint8_t>(registers.status | kCarry);
+        if (!append_checkpoint(kBank, 0x72B4U, 0x72B5U, kImplied)) {
+            return std::nullopt;
+        }
+        load_accumulator(0x08U);
+        if (!append_checkpoint(kBank, 0x72B5U, 0x72B7U, kImmediateCycles)) {
+            return std::nullopt;
+        }
+        subtract_with_carry(read_ram(0x2031U));
+        if (!append_checkpoint(kBank, 0x72B7U, 0x72B9U, kZeroPage)) {
+            return std::nullopt;
+        }
+        if ((registers.status & kZero) != 0U) {
+            if (!append_checkpoint(kBank, 0x72B9U, 0x72C5U, kBranchTaken)) {
+                return std::nullopt;
+            }
+            return stop_before(0x72C5U);
+        }
+        if (!append_checkpoint(kBank, 0x72B9U, 0x72BBU, kBranchNotTaken)
+            || !write_ram(0x72BBU, 0x2031U, registers.accumulator)
+            || !append_checkpoint(kBank, 0x72BBU, 0x72BDU, kZeroPage)) {
+            return std::nullopt;
+        }
+        return stop_before(0x72BDU);
+    }
+
+    // 72BD is the leading-zero loop's natural re-entry.  One glyph per
+    // transaction keeps its VDC writes and the nested glyph transcript well
+    // below the bridge limit.
+    if (entry.routine.logical_pc == 0x72C5U) {
+        // The ball-count suffix resets the panel cursor, clamps the displayed
+        // remaining-ball value at zero, and emits its two digits.  It crosses
+        // the existing byte divider and glyph writer, then owns the redraw
+        // return.  No loop or child crosses the 512-write transaction limit.
+        load_accumulator(0xBDU);
+        if (!append_checkpoint(kBank, 0x72C5U, 0x72C7U, kImmediateCycles)
+            || !write_ram(0x72C7U, 0x2035U, registers.accumulator)
+            || !append_checkpoint(kBank, 0x72C7U, 0x72C9U, kZeroPage)
+            || !write_ram(0x72C9U, 0x2036U, 0U)
+            || !append_checkpoint(kBank, 0x72C9U, 0x72CBU, kZeroPage)) {
+            return std::nullopt;
+        }
+        load_accumulator(read_ram(0x2D52U));
+        if (!append_checkpoint(kBank, 0x72CBU, 0x72CEU, kAbsolute)) {
+            return std::nullopt;
+        }
+        registers.accumulator = decrement(registers.accumulator);
+        if (!append_checkpoint(kBank, 0x72CEU, 0x72CFU, kImplied)) {
+            return std::nullopt;
+        }
+        if ((registers.status & kNegative) == 0U) {
+            if (!append_checkpoint(kBank, 0x72CFU, 0x72D2U, kBranchTaken)) {
+                return std::nullopt;
+            }
+        } else {
+            if (!append_checkpoint(kBank, 0x72CFU, 0x72D1U, kBranchNotTaken)) {
+                return std::nullopt;
+            }
+            registers.accumulator = 0U;  // CLA leaves flags unchanged.
+            if (!append_checkpoint(kBank, 0x72D1U, 0x72D2U, kImplied)) {
+                return std::nullopt;
+            }
+        }
+        if (!write_ram(0x72D2U, 0x2030U, registers.accumulator)
+            || !append_checkpoint(kBank, 0x72D2U, 0x72D4U, kZeroPage)) {
+            return std::nullopt;
+        }
+        load_accumulator(0x0AU);
+        if (!append_checkpoint(kBank, 0x72D4U, 0x72D6U, kImmediateCycles)
+            || !write_ram(0x72D6U, 0x202FU, registers.accumulator)
+            || !append_checkpoint(kBank, 0x72D6U, 0x72D8U, kZeroPage)
+            || !compose_byte_divider()) {
+            return std::nullopt;
+        }
+        load_accumulator(read_ram(0x202FU));
+        if (!append_checkpoint(kBank, 0x72DBU, 0x72DDU, kZeroPage)
+            || !compose_glyph(0x72DDU, 0x72E0U)) {
+            return std::nullopt;
+        }
+        load_accumulator(read_ram(0x2030U));
+        if (!append_checkpoint(kBank, 0x72E0U, 0x72E2U, kZeroPage)
+            || !compose_glyph(0x72E2U, 0x72E5U)) {
+            return std::nullopt;
+        }
+        load_accumulator(0xF2U);
+        if (!append_checkpoint(kBank, 0x72E5U, 0x72E7U, kImmediateCycles)
+            || !write_ram(0x72E7U, 0x2D6FU, registers.accumulator)
+            || !append_checkpoint(kBank, 0x72E7U, 0x72EAU, kAbsolute)) {
+            return std::nullopt;
+        }
+        auto at_return = registers;
+        at_return.program_counter = 0x72EAU;
+        absorb_return(
+            replacement,
+            work_ram,
+            entry.registers.stack_pointer,
+            {kBank, 0x72EAU},
+            cycle,
+            at_return);
+        return replacement;
+    }
+
+    registers.accumulator = 0U;
+    if (!append_checkpoint(kBank, 0x72BDU, 0x72BEU, kImplied)
+        || !compose_glyph(0x72BEU, 0x72C1U)) {
+        return std::nullopt;
+    }
+    const auto remaining = decrement(read_ram(0x2031U));
+    if (!write_ram(0x72C1U, 0x2031U, remaining)
+        || !append_checkpoint(
+            kBank, 0x72C1U, 0x72C3U, kZeroPageReadModifyWrite)) {
+        return std::nullopt;
+    }
+    if (remaining != 0U) {
+        if (!append_checkpoint(kBank, 0x72C3U, 0x72BDU, kBranchTaken)) {
+            return std::nullopt;
+        }
+        return stop_before(0x72BDU);
+    }
+    if (!append_checkpoint(kBank, 0x72C3U, 0x72C5U, kBranchNotTaken)) {
+        return std::nullopt;
+    }
+    return stop_before(0x72C5U);
+}
+
 std::optional<RoutineReplacement> replace_score_panel_glyph(
     const RoutineEntry& entry,
     const std::span<const std::byte> work_ram,

@@ -1099,8 +1099,14 @@ replace_big_star_pending_gate(
         .physical_bank = 0x02U,
         .logical_pc = 0x570AU,
     };
+    // The idle body is normally an 81-cycle leaf.  A timer IRQ can begin at
+    // its branch boundary, however, and the native PSG exposes the exact
+    // three-master-cycle placement of that interrupt even though RAM and
+    // registers reconverge.  Keep those horizon calls in the core until this
+    // interrupt-bearing transcript has its own device-write proof.
     if (entry.routine != kRoutine
-        || (entry.registers.status & 0x20U) != 0U) {
+        || (entry.registers.status & 0x20U) != 0U
+        || entry.master_cycles_until_timer_interrupt <= 81U) {
         return std::nullopt;
     }
 
@@ -9779,6 +9785,246 @@ replace_tower_insect_source_countdown_return(
         .instruction = kRoutine,
         .registers = replacement.output_registers,
     });
+    return replacement;
+}
+
+[[nodiscard]] std::optional<RoutineReplacement>
+replace_tower_insect_child_spawner_seam(
+    const RoutineEntry& entry,
+    const std::span<const std::byte> work_ram)
+{
+    constexpr RoutineKey kAllocationCall{0x02U, 0x5F78U};
+    constexpr RoutineKey kAllocatorSuccess{0x02U, 0x5F7BU};
+    constexpr RoutineKey kChildInitializer{0x02U, 0x5F7EU};
+    constexpr RoutineKey kCountTail{0x02U, 0x5FD6U};
+    if ((entry.routine != kAllocationCall
+         && entry.routine != kAllocatorSuccess
+         && entry.routine != kChildInitializer
+         && entry.routine != kCountTail)
+        || work_ram.size() < 0x2000U) {
+        return std::nullopt;
+    }
+
+    const auto set_nz = [](std::uint8_t status, const std::uint8_t value) {
+        status = static_cast<std::uint8_t>(status & 0x7DU);
+        if (value == 0U) {
+            status = static_cast<std::uint8_t>(status | 0x02U);
+        } else if ((value & 0x80U) != 0U) {
+            status = static_cast<std::uint8_t>(status | 0x80U);
+        }
+        return status;
+    };
+    const auto is_child_slot = [](const std::uint8_t slot) {
+        return slot == 0x64U || slot == 0x67U || slot == 0x6AU
+            || slot == 0x6DU;
+    };
+    const auto read = [work_ram](const std::uint16_t address) {
+        return std::to_integer<std::uint8_t>(
+            work_ram[static_cast<std::size_t>(address - 0x2000U)]);
+    };
+
+    RoutineReplacement replacement{};
+    const auto append_checkpoint = [&replacement](
+                                       const std::uint16_t instruction_pc,
+                                       const std::uint16_t resume_pc,
+                                       const std::uint32_t master_cycle,
+                                       auto registers) {
+        registers.program_counter = resume_pc;
+        replacement.checkpoints.push_back({
+            .interrupt_sample_master_cycle_offset = master_cycle - 3U,
+            .master_cycle_offset = master_cycle,
+            .instruction = {0x02U, instruction_pc},
+            .registers = registers,
+        });
+    };
+    const auto append_write = [&replacement](
+                                  const std::uint16_t instruction_pc,
+                                  const std::uint16_t address,
+                                  const std::uint8_t value,
+                                  const std::uint32_t master_cycle) {
+        replacement.work_ram_writes.push_back({
+            .instruction = {0x02U, instruction_pc},
+            .logical_address = address,
+            .value = value,
+            .master_cycle_offset = master_cycle,
+        });
+    };
+
+    auto checkpoint = entry.registers;
+    if (entry.routine == kAllocationCall) {
+        // JSR $C024. The jump-table row and generic allocator remain their
+        // own admitted transactions and resume at the carry branch below.
+        if (entry.registers.x != 0x2CU) {
+            return std::nullopt;
+        }
+        const auto stack_high = checkpoint.stack_pointer;
+        const auto stack_low = static_cast<std::uint8_t>(stack_high - 1U);
+        append_write(0x5F78U,
+                     static_cast<std::uint16_t>(0x2100U + stack_high),
+                     0x5FU, 0U);
+        append_write(0x5F78U,
+                     static_cast<std::uint16_t>(0x2100U + stack_low),
+                     0x7AU, 0U);
+        checkpoint.stack_pointer = static_cast<std::uint8_t>(
+            checkpoint.stack_pointer - 2U);
+        append_checkpoint(0x5F78U, 0xC024U, 21U, checkpoint);
+        checkpoint.program_counter = 0xC024U;
+        replacement.return_instruction = {0x01U, 0xC024U};
+        replacement.output_registers = checkpoint;
+        replacement.body_master_cycles = 21U;
+        return replacement;
+    }
+
+    if (entry.routine == kAllocatorSuccess) {
+        // BCC $5F7E. Allocator exhaustion retains its original RTS in
+        // assembly; every natural spawn has a reserved Tower-Insect slot.
+        if (entry.registers.x != 0x2CU
+            || !is_child_slot(entry.registers.y)
+            || (entry.registers.status & 0x01U) != 0U) {
+            return std::nullopt;
+        }
+        append_checkpoint(0x5F7BU, 0x5F7EU, 12U, checkpoint);
+        checkpoint.program_counter = 0x5F7EU;
+        replacement.return_instruction = kChildInitializer;
+        replacement.output_registers = checkpoint;
+        replacement.body_master_cycles = 12U;
+        return replacement;
+    }
+
+    if (entry.routine == kChildInitializer) {
+        if (entry.registers.x != 0x2CU
+            || !is_child_slot(entry.registers.y)
+            || (entry.registers.status & 0x01U) != 0U) {
+            return std::nullopt;
+        }
+        const auto source = entry.registers.x;
+        const auto child = entry.registers.y;
+        std::uint32_t cycle = 0U;
+
+        const auto load_immediate = [&](const std::uint16_t pc,
+                                        const std::uint16_t resume,
+                                        const std::uint8_t value) {
+            checkpoint.accumulator = value;
+            checkpoint.status = set_nz(checkpoint.status, value);
+            cycle += 6U;
+            append_checkpoint(pc, resume, cycle, checkpoint);
+        };
+        const auto load_source = [&](const std::uint16_t pc,
+                                     const std::uint16_t resume,
+                                     const std::uint16_t base) {
+            checkpoint.accumulator = read(
+                static_cast<std::uint16_t>(base + source));
+            checkpoint.status = set_nz(
+                checkpoint.status, checkpoint.accumulator);
+            cycle += 15U;
+            append_checkpoint(pc, resume, cycle, checkpoint);
+        };
+        const auto store_child = [&](const std::uint16_t pc,
+                                     const std::uint16_t resume,
+                                     const std::uint16_t base) {
+            cycle += 15U;
+            append_write(pc, static_cast<std::uint16_t>(base + child),
+                         checkpoint.accumulator, cycle);
+            append_checkpoint(pc, resume, cycle, checkpoint);
+        };
+
+        load_immediate(0x5F7EU, 0x5F80U, 0x82U);
+        store_child(0x5F80U, 0x5F83U, 0x3000U);
+        load_source(0x5F83U, 0x5F86U, 0x3180U);
+        store_child(0x5F86U, 0x5F89U, 0x3180U);
+        load_source(0x5F89U, 0x5F8CU, 0x3200U);
+        store_child(0x5F8CU, 0x5F8FU, 0x3200U);
+        load_source(0x5F8FU, 0x5F92U, 0x3300U);
+        store_child(0x5F92U, 0x5F95U, 0x3300U);
+        load_source(0x5F95U, 0x5F98U, 0x3380U);
+        store_child(0x5F98U, 0x5F9BU, 0x3380U);
+        load_source(0x5F9BU, 0x5F9EU, 0x3900U);
+        store_child(0x5F9EU, 0x5FA1U, 0x3900U);
+        load_immediate(0x5FA1U, 0x5FA3U, 0x80U);
+        store_child(0x5FA3U, 0x5FA6U, 0x3080U);
+        load_immediate(0x5FA6U, 0x5FA8U, 0x10U);
+        store_child(0x5FA8U, 0x5FABU, 0x3D80U);
+        load_source(0x5FABU, 0x5FAEU, 0x3700U);
+        store_child(0x5FAEU, 0x5FB1U, 0x3700U);
+        load_source(0x5FB1U, 0x5FB4U, 0x3780U);
+        store_child(0x5FB4U, 0x5FB7U, 0x3780U);
+        load_immediate(0x5FB7U, 0x5FB9U, 0x10U);
+        store_child(0x5FB9U, 0x5FBCU, 0x3800U);
+        load_source(0x5FBCU, 0x5FBFU, 0x3D00U);
+        store_child(0x5FBFU, 0x5FC2U, 0x3D00U);
+        load_immediate(0x5FC2U, 0x5FC4U, 0x02U);
+        store_child(0x5FC4U, 0x5FC7U, 0x3C00U);
+        load_immediate(0x5FC7U, 0x5FC9U, 0xDBU);
+        store_child(0x5FC9U, 0x5FCCU, 0x3F00U);
+        load_immediate(0x5FCCU, 0x5FCEU, 0x5FU);
+        store_child(0x5FCEU, 0x5FD1U, 0x3F80U);
+
+        // PHX / SXY / JSR $C06C. The camera helper must retain the source
+        // on the stack and sees the allocated child in X.
+        cycle += 9U;
+        append_write(0x5FD1U,
+                     static_cast<std::uint16_t>(
+                         0x2100U + checkpoint.stack_pointer),
+                     checkpoint.x, cycle);
+        checkpoint.stack_pointer = static_cast<std::uint8_t>(
+            checkpoint.stack_pointer - 1U);
+        append_checkpoint(0x5FD1U, 0x5FD2U, cycle, checkpoint);
+        std::swap(checkpoint.x, checkpoint.y);
+        cycle += 9U;
+        append_checkpoint(0x5FD2U, 0x5FD3U, cycle, checkpoint);
+        const auto stack_high = checkpoint.stack_pointer;
+        const auto stack_low = static_cast<std::uint8_t>(stack_high - 1U);
+        append_write(0x5FD3U,
+                     static_cast<std::uint16_t>(0x2100U + stack_high),
+                     0x5FU, cycle);
+        append_write(0x5FD3U,
+                     static_cast<std::uint16_t>(0x2100U + stack_low),
+                     0xD5U, cycle);
+        checkpoint.stack_pointer = static_cast<std::uint8_t>(
+            checkpoint.stack_pointer - 2U);
+        cycle += 21U;
+        append_checkpoint(0x5FD3U, 0xC06CU, cycle, checkpoint);
+
+        checkpoint.program_counter = 0xC06CU;
+        replacement.return_instruction = {0x01U, 0xC06CU};
+        replacement.output_registers = checkpoint;
+        replacement.body_master_cycles = cycle;
+        return replacement;
+    }
+
+    // PLX restores the source left beneath the camera helper's JSR frame;
+    // then the live-child counter advances. The following RTS returns to
+    // 5F56 inside the live source-controller scope, so leave it to the core:
+    // absorbing it would falsely make this BSR tail the outer routine return.
+    if (entry.registers.y != 0x2CU || !is_child_slot(entry.registers.x)) {
+        return std::nullopt;
+    }
+    const auto saved_source_address = static_cast<std::uint16_t>(
+        0x2100U + static_cast<std::uint8_t>(
+            entry.registers.stack_pointer + 1U));
+    if (read(saved_source_address) != entry.registers.y) {
+        return std::nullopt;
+    }
+    std::uint32_t cycle = 12U;
+    checkpoint.stack_pointer = static_cast<std::uint8_t>(
+        checkpoint.stack_pointer + 1U);
+    checkpoint.x = entry.registers.y;
+    checkpoint.status = set_nz(checkpoint.status, checkpoint.x);
+    append_checkpoint(0x5FD6U, 0x5FD7U, cycle, checkpoint);
+    // INC updates N/Z but leaves A untouched; its previous $80 value feeds
+    // the source controller after this internal BSR returns.
+    const auto incremented_child_count = static_cast<std::uint8_t>(
+        read(0x2D2BU) + 1U);
+    checkpoint.status = set_nz(checkpoint.status, incremented_child_count);
+    // HuC6280 INC absolute is seven CPU cycles (21 master cycles), including
+    // its read-modify-write bus phase.
+    cycle += 21U;
+    append_write(0x5FD7U, 0x2D2BU, incremented_child_count, cycle);
+    append_checkpoint(0x5FD7U, 0x5FDAU, cycle, checkpoint);
+    checkpoint.program_counter = 0x5FDAU;
+    replacement.return_instruction = {0x02U, 0x5FDAU};
+    replacement.output_registers = checkpoint;
+    replacement.body_master_cycles = cycle;
     return replacement;
 }
 
@@ -25555,12 +25801,62 @@ replace_three_blobs_shared_motion_idle(
 }
 
 [[nodiscard]] std::optional<RoutineReplacement>
+replace_three_blobs_shared_return(
+    const RoutineEntry& entry,
+    const std::span<const std::byte> work_ram)
+{
+    // The Three-Blobs controller's direct, collision, and appearance arms
+    // converge on this plain RTS.  Derive the caller from the live stack frame
+    // so this seam remains valid for each natural caller, including assembly
+    // arms which were not part of the native parent that reached it.
+    constexpr RoutineKey kReturn{
+        .physical_bank = 0x03U,
+        .logical_pc = 0x67E5U,
+    };
+    if (entry.routine != kReturn || work_ram.size() < 0x2000U) {
+        return std::nullopt;
+    }
+
+    RoutineReplacement replacement{
+        .return_instruction = kReturn,
+        .output_registers = entry.registers,
+        .body_master_cycles = 0U,
+    };
+    absorb_return(
+        replacement,
+        work_ram,
+        entry.registers.stack_pointer,
+        kReturn,
+        0U,
+        entry.registers);
+
+    // A real RTS samples the interrupt on its final CPU cycle.  Keep that
+    // instruction checkpoint even though the stack-derived return is absorbed.
+    replacement.checkpoints.push_back({
+        .interrupt_sample_master_cycle_offset = 18U,
+        .master_cycle_offset = 21U,
+        .instruction = kReturn,
+        .registers = replacement.output_registers,
+    });
+    return replacement;
+}
+
+[[nodiscard]] std::optional<RoutineReplacement>
 replace_three_blobs_first_movement_prefix(
     const RoutineEntry& entry,
     const std::span<const std::byte> work_ram)
 {
     constexpr RoutineKey kRoutine{.physical_bank = 0x03U, .logical_pc = 0x66A3U};
-    if (entry.routine != kRoutine) {
+    // This prefix normally hands the direct-motion arm back at 93 master
+    // cycles.  The twist route proves that a timer which becomes serviceable
+    // immediately after that handoff can retain a twelve-cycle device-time
+    // skew even when the completed call's RAM/register/cycle transcript
+    // reconverges.  Do not synthesize calls that reach that horizon until the
+    // post-handoff interrupt placement has a device-write transcript.
+    constexpr std::uint32_t kTimerHorizonSafeCycles = 300U;
+    if (entry.routine != kRoutine
+        || entry.master_cycles_until_timer_interrupt
+            <= kTimerHorizonSafeCycles) {
         return std::nullopt;
     }
 
@@ -26807,6 +27103,223 @@ replace_rng_update(
     append_checkpoint(0xE8DEU, 0xE8E0U, 252U, checkpoint);
     append_checkpoint(0xE8E0U, 0xE8E3U, 267U, checkpoint);
     append_checkpoint(0xE8E3U, 0xE8E6U, 282U, output);
+    return replacement;
+}
+
+[[nodiscard]] std::optional<RoutineReplacement>
+replace_score_repeat_wrapper(
+    const RoutineEntry& entry,
+    const std::span<const std::byte> work_ram)
+{
+    // `00:F54F` calls the score accumulator once for each player slot named
+    // by `$2D38`:
+    //
+    //   LDY $2D38 / INY / PHY / JSR $F55C / PLY / DEY / BNE $F553 / RTS
+    //
+    // The route's ordinary score awards name the first (and only) slot, so
+    // the loop reaches its `F557` return seam exactly once.  Keeping this as
+    // a composition matters: F55C already owns its 44-boundary score update,
+    // saturation helpers, and interrupt delivery.  This wrapper owns only
+    // its stack frame and the loop-return instructions around that child.
+    constexpr RoutineKey kRoutine{
+        .physical_bank = 0x00U,
+        .logical_pc = 0xF54FU,
+    };
+    constexpr RoutineKey kChild{
+        .physical_bank = 0x00U,
+        .logical_pc = 0xF55CU,
+    };
+    constexpr std::uint16_t kWorkRamBase = 0x2000U;
+    constexpr std::uint16_t kStackBase = 0x2100U;
+    constexpr std::uint16_t kRepeatCount = 0x2D38U;
+    constexpr std::uint8_t kZero = 0x02U;
+    constexpr std::uint8_t kNegative = 0x80U;
+
+    if (entry.routine != kRoutine || work_ram.size() < 0x2000U) {
+        return std::nullopt;
+    }
+    const auto repeat_count = std::to_integer<std::uint8_t>(
+        work_ram[static_cast<std::size_t>(kRepeatCount - kWorkRamBase)]);
+    // More than one child would turn this bounded owner into a monolith and
+    // can exceed the transaction's independent write/checkpoint limits.  It
+    // stays assembly-backed until a naturally observed multi-slot route is
+    // mapped as a separate continuation family.
+    if (repeat_count != 0U) {
+        return std::nullopt;
+    }
+
+    RoutineReplacement replacement{};
+    replacement.work_ram_writes.reserve(11U);
+    replacement.checkpoints.reserve(52U);
+    auto staged = std::vector<std::byte>(work_ram.begin(), work_ram.end());
+    auto registers = entry.registers;
+    std::uint32_t cycle = 0U;
+    std::size_t committed_writes = 0U;
+
+    const auto set_nz = [](std::uint8_t status, const std::uint8_t value) {
+        status = static_cast<std::uint8_t>(
+            status & static_cast<std::uint8_t>(~(kZero | kNegative)));
+        if (value == 0U) {
+            status = static_cast<std::uint8_t>(status | kZero);
+        } else if ((value & kNegative) != 0U) {
+            status = static_cast<std::uint8_t>(status | kNegative);
+        }
+        return status;
+    };
+    const auto append_checkpoint = [&replacement, &registers, &cycle,
+                                    &committed_writes](
+                                       const std::uint16_t instruction,
+                                       const std::uint16_t resume,
+                                       const std::uint32_t instruction_cycles) {
+        cycle += instruction_cycles;
+        while (committed_writes < replacement.work_ram_writes.size()) {
+            replacement.work_ram_writes[committed_writes]
+                .master_cycle_offset = cycle;
+            ++committed_writes;
+        }
+        registers.program_counter = resume;
+        replacement.checkpoints.push_back({
+            .interrupt_sample_master_cycle_offset = cycle - 3U,
+            .master_cycle_offset = cycle,
+            .instruction = {0x00U, instruction},
+            .registers = registers,
+        });
+        return replacement.checkpoints.size() <= 2048U;
+    };
+    const auto child_entry = [&entry, &registers, &cycle]() {
+        auto child = entry;
+        child.routine = kChild;
+        child.registers = registers;
+        child.registers.program_counter = kChild.logical_pc;
+        child.master_cycle += cycle;
+        child.absolute_master_cycle += cycle;
+        child.master_cycles_until_user_event =
+            child.master_cycles_until_user_event > cycle
+            ? child.master_cycles_until_user_event - cycle : 0U;
+        child.master_cycles_until_timer_interrupt =
+            child.master_cycles_until_timer_interrupt > cycle
+            ? child.master_cycles_until_timer_interrupt - cycle : 0U;
+        return child;
+    };
+    const auto compose_child = [&replacement, &staged, &registers, &cycle,
+                                &committed_writes](
+                                   const RoutineReplacement& child) {
+        if (child.checkpoints.empty()
+            || replacement.checkpoints.size() + child.checkpoints.size()
+                    > 2048U
+            || replacement.work_ram_writes.size() + child.work_ram_writes.size()
+                    > 512U) {
+            return false;
+        }
+        const auto child_offset = cycle;
+        for (auto write : child.work_ram_writes) {
+            if (write.logical_address >= kWorkRamBase
+                && write.logical_address < 0x4000U) {
+                staged[static_cast<std::size_t>(
+                    write.logical_address - kWorkRamBase)] =
+                    static_cast<std::byte>(write.value);
+            }
+            write.master_cycle_offset += child_offset;
+            replacement.work_ram_writes.push_back(write);
+        }
+        for (auto checkpoint : child.checkpoints) {
+            checkpoint.interrupt_sample_master_cycle_offset += child_offset;
+            checkpoint.master_cycle_offset += child_offset;
+            replacement.checkpoints.push_back(checkpoint);
+        }
+        cycle += child.body_master_cycles;
+        registers = child.output_registers;
+        committed_writes = replacement.work_ram_writes.size();
+        return true;
+    };
+
+    // LDY $2D38 / INY.
+    registers.y = repeat_count;
+    registers.status = set_nz(registers.status, registers.y);
+    if (!append_checkpoint(0xF54FU, 0xF552U, 15U)) {
+        return std::nullopt;
+    }
+    registers.y = static_cast<std::uint8_t>(registers.y + 1U);
+    registers.status = set_nz(registers.status, registers.y);
+    if (!append_checkpoint(0xF552U, 0xF553U, 6U)) {
+        return std::nullopt;
+    }
+
+    // PHY / JSR $F55C.  Both stores become visible on F553's final cycle,
+    // just as the original trace records them at offset 30.
+    replacement.work_ram_writes.push_back({
+        .instruction = {0x00U, 0xF553U},
+        .logical_address = static_cast<std::uint16_t>(
+            kStackBase + registers.stack_pointer),
+        .value = registers.y,
+        .master_cycle_offset = 0U,
+    });
+    staged[0x0100U + registers.stack_pointer] =
+        static_cast<std::byte>(registers.y);
+    registers.stack_pointer = static_cast<std::uint8_t>(
+        registers.stack_pointer - 1U);
+    if (!append_checkpoint(0xF553U, 0xF554U, 9U)) {
+        return std::nullopt;
+    }
+
+    const auto return_address = static_cast<std::uint16_t>(0xF554U + 2U);
+    for (const auto [slot, value] : std::array<std::pair<std::uint8_t, std::uint8_t>, 2>{
+             std::pair{registers.stack_pointer,
+                       static_cast<std::uint8_t>(return_address >> 8U)},
+             std::pair{static_cast<std::uint8_t>(registers.stack_pointer - 1U),
+                       static_cast<std::uint8_t>(return_address)},
+         }) {
+        replacement.work_ram_writes.push_back({
+            .instruction = {0x00U, 0xF554U},
+            .logical_address = static_cast<std::uint16_t>(kStackBase + slot),
+            .value = value,
+            .master_cycle_offset = cycle,
+        });
+        staged[0x0100U + slot] = static_cast<std::byte>(value);
+    }
+    // A HuC6280 JSR publishes both frame bytes before the instruction's
+    // remaining cycles elapse.  Do not let the following checkpoint retime
+    // them from offset 30 to its offset 51.
+    committed_writes = replacement.work_ram_writes.size();
+    registers.stack_pointer = static_cast<std::uint8_t>(
+        registers.stack_pointer - 2U);
+    if (!append_checkpoint(0xF554U, kChild.logical_pc, 21U)) {
+        return std::nullopt;
+    }
+
+    const auto child = replace_score_accumulator(child_entry(), staged);
+    if (!child || child->return_instruction != RoutineKey{0x00U, 0xF5A8U}
+        || !compose_child(*child)) {
+        return std::nullopt;
+    }
+
+    // F55C deliberately stops in front of its real RTS.  Take that return
+    // through the wrapper's F557 loop seam, then stop in front of F55B so the
+    // caller's original RTS remains the routine-observer boundary.
+    registers.stack_pointer = static_cast<std::uint8_t>(
+        registers.stack_pointer + 2U);
+    if (!append_checkpoint(0xF5A8U, 0xF557U, 21U)) {
+        return std::nullopt;
+    }
+    registers.y = std::to_integer<std::uint8_t>(
+        staged[0x0100U + static_cast<std::uint8_t>(
+            registers.stack_pointer + 1U)]);
+    registers.stack_pointer = static_cast<std::uint8_t>(
+        registers.stack_pointer + 1U);
+    registers.status = set_nz(registers.status, registers.y);
+    if (!append_checkpoint(0xF557U, 0xF558U, 12U)) {
+        return std::nullopt;
+    }
+    registers.y = static_cast<std::uint8_t>(registers.y - 1U);
+    registers.status = set_nz(registers.status, registers.y);
+    if (!append_checkpoint(0xF558U, 0xF559U, 6U)
+        || !append_checkpoint(0xF559U, 0xF55BU, 6U)) {
+        return std::nullopt;
+    }
+
+    replacement.return_instruction = {0x00U, 0xF55BU};
+    replacement.output_registers = registers;
+    replacement.body_master_cycles = cycle;
     return replacement;
 }
 

@@ -19,7 +19,9 @@ endif()
 # that ROUTINE_MAP.md records converting the score and driving the VDC through
 # 09:72FD. On this route the poll declines the redraw 2,616 times out of 2,649,
 # while the 09:72FD glyph writer handles all 376 two-by-two digits requested by
-# the admitted redraws.
+# the admitted redraws.  Once the redraw head/loops are native, 306 of those
+# glyphs are composed inside their bounded parents, leaving 70 independently
+# entered glyph calls for the external observer.
 #
 # **A routine whose product is a decision needs an oracle for the decision, not
 # just for the bytes.** The poll writes one byte, once per redraw, thirty-three
@@ -28,16 +30,12 @@ endif()
 # every one of the 2,616 calls that write nothing at all. Four artifacts, each
 # for a different claim:
 #
-#   the call trace     the primary oracle. It carries output_a, output_status,
-#                      body_master_cycles and return_instruction_pc for all
-#                      2,649 poll and 376 glyph calls, so it compares both the
-#                      arm the gates chose and every glyph's registers, flags,
-#                      timing and absorbed return. `BIT #$01` is the reason
-#                      that matters: this core clears N and V from the operand
-#                      in immediate mode where a 65C02 leaves them alone, and
-#                      output_status is where getting that wrong would show.
-#                      It also proves the absorbed `RTS` at 7265 put the
-#                      observer's call boundary back where the assembly had it.
+#   the call trace     counts the eight observed entries. The three new loop
+#                      transactions deliberately close at their natural
+#                      re-entry seam, so their call scopes are not comparable
+#                      to assembly's enclosing 72EA scope. The census and the
+#                      two ordered-write artifacts below remain the parity
+#                      oracle for the composed child work.
 #   $202D-$2036        the zero-page scratch the redraw builds its VRAM cursor
 #                      and digit counters in. Empty unless the poll admits the
 #                      redraw, so this range is what says the gate opened on the
@@ -85,6 +83,10 @@ function(record_route census writes bus calls)
             --observe-hook "09:71EA"
             --observe-hook "09:7237"
             --observe-hook "09:72FD"
+            --observe-hook "09:727D"
+            --observe-hook "09:72A2"
+            --observe-hook "09:72BD"
+            --observe-hook "09:72C5"
             --routine-call-trace "${calls}"
             ${ARGN}
             --rom "${ROM}"
@@ -115,6 +117,10 @@ record_route(
     --replace-hook "09:71EA@all"
     --replace-hook "09:7237@all"
     --replace-hook "09:72FD@all"
+    --replace-hook "09:727D@all"
+    --replace-hook "09:72A2@all"
+    --replace-hook "09:72BD@all"
+    --replace-hook "09:72C5@all"
 )
 set(replaced_output "${recorder_output}")
 
@@ -124,13 +130,21 @@ foreach(expected_line IN ITEMS
     "Native replacement 09:70C4@all entries: 669 of 669"
     "Native replacement 09:71EA@all entries: 670 of 670"
     "Native replacement 09:7237@all entries: 2649 of 2649"
-    "Native replacement 09:72FD@all entries: 376 of 376"
+    "Native replacement 09:72FD@all entries: 2 of 2"
+    "Native replacement 09:727D@all entries: 34 of 34"
+    "Native replacement 09:72A2@all entries: 105 of 105"
+    "Native replacement 09:72BD@all entries: 133 of 133"
+    "Native replacement 09:72C5@all entries: 34 of 34"
     "Observe hook 1 entries: 1"
     "Observe hook 2 entries: 669"
     "Observe hook 3 entries: 670"
     "Observe hook 4 entries: 2649"
-    "Observe hook 5 entries: 376"
-    "Routine call trace complete: 4365 calls, 30486 writes"
+    "Observe hook 5 entries: 2"
+    "Observe hook 6 entries: 34"
+    "Observe hook 7 entries: 105"
+    "Observe hook 8 entries: 133"
+    "Observe hook 9 entries: 34"
+    "Routine call trace complete: 4297 calls, 111202 writes"
 )
     string(FIND "${replaced_output}" "${expected_line}" line_offset)
     if(line_offset EQUAL -1)
@@ -174,7 +188,7 @@ if(emulated_bus_line STREQUAL "" OR CMAKE_MATCH_1 LESS 1500000)
 endif()
 set(panel_bus_count "${CMAKE_MATCH_1}")
 
-foreach(artifact IN ITEMS census write bus call)
+foreach(artifact IN ITEMS census write bus)
     if(artifact STREQUAL "census")
         set(emulated_path "${emulated_census}")
         set(replaced_path "${replaced_census}")
@@ -223,8 +237,10 @@ file(REMOVE
 message(
     STATUS
     "The score panel's ornament handoff and steppers run natively on all "
-    "1/669/670 calls, its redraw poll on all 2,649 calls, and its glyph writer "
-    "on all 376 calls, with the same arms, registers, flags and timing as "
+    "1/669/670 calls, its redraw poll on all 2,649 calls, and its redraw "
+    "head/digit/zero/ball-count transactions on all 34/105/133/34 calls; "
+    "their composed glyph work plus the two independently entered glyph calls "
+    "have the same arms, registers, flags and timing as "
     "assembly; the route's "
     "${panel_write_count} panel writes and ${panel_bus_count} VDC port writes "
     "land on the same cycles."

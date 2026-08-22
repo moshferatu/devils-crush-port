@@ -1,6 +1,6 @@
 # Project Progress
 
-Last updated: 2026-08-21
+Last updated: 2026-08-22
 
 ## Current Status
 
@@ -8,29 +8,136 @@ Last updated: 2026-08-21
 
 **Current milestone:** 4. Native gameplay port
 
-**Milestone 4 current gate:** the Giant-Face helmet shared return is native.
-Semantic `02:4CF1@all` consumes the live two-byte caller frame at the shared
-plain `RTS`, resumes in the MPR-resolved caller bank, and publishes the
-interrupt-visible final cycle before the core resumes execution.
+**Milestone 4 current gate:** the complete score-panel redraw, collision
+sweep setup handoff, setup-screen palette cadence controller, and ordinary
+score-repeat wrapper are native.
+The new input-only sidestep route is also screened: its middle-strength launch,
+947-frame asymmetric side-save cadence, and neutral-window Button-II pulses
+produce byte-identical assembly, Release, and Debug recordings. Its only new
+bank-03 rows (`03:78CC-78F8`) form one existing fixed-Bumper hit continuation:
+the sole `03:78CC` arrival enters from generic scheduler `01:C51D` and returns
+through established controller `03:7C33`, so it is not an independent
+table-rule caller-and-return transaction.
+The new input-only ricochet route is also screened: its early launcher
+release, brief staggered saves, and repeated Button-II impulses preserve
+byte-identical Release/Debug recordings while reaching only the existing
+Devil-Shooter `02:5223` controller. Its nine profile additions
+(`02:5228-523C`) are controller interiors, not an independent replacement
+transaction.
+The new input-only volley route is also screened: its earlier launcher
+release, sustained alternating flipper banks, and neutral-window nudge volleys
+produce byte-identical Release/Debug recordings, profiles, and native-cycle
+censuses. Its full 2,846-address profile is contained in the available
+discovery-route union, so it provides broader deterministic replay coverage
+but no unobserved table-rule branch or independent replacement transaction.
+The new input-only whirlpool route is also screened: its mid-range launcher
+release, prime 521-frame offset double-save windows, long neutral rebounds,
+and neutral-window directional nudges preserve byte-identical Release/Debug
+recordings. Its full 2,852-address profile is contained in the locally
+preserved discovery-route union, so it expands deterministic replay coverage
+but exposes no unobserved table-rule branch or independent replacement
+transaction.
+The new input-only crossfire route is also screened: its overlapping flipper
+holds execute deterministically in both configurations but reach only the
+already-mapped Giant-Skeleton final-animation continuation. It adds natural
+branch evidence, not an independent replacement transaction.
+The new input-only orbit route likewise reaches only the existing
+Devil-Shooter held-input coroutine plus mapped Giant-Skeleton and Tower-Insect
+continuations, so it records branch evidence without admitting another seam.
+The new input-only stagger route also preserves Release/Debug determinism and
+reaches no unregistered instruction address outside the existing
+lane/sweep/state-census profile union, so it supplies no new table-rule
+transaction to replace.
+The new input-only pulse route likewise preserves Release/Debug determinism.
+Its only new table-bank addresses, `02:51C3/51C5`, are a one-shot interior of
+the already-owned Devil-Shooter scheduler coroutine; its other 64 new rows are
+music-driver instructions. It adds branch evidence but no independent
+replacement transaction.
+The new input-only rally route also preserves Release/Debug determinism.
+Its right-biased 137-frame recovery cadence newly reaches only the already
+native Skeleton-Insect countdown and idle-controller paths (`02:54D0` and
+`02:5500`), both returning through generic scheduler `01:C520`; it adds no
+unobserved table-rule transaction.
+The new input-only pendulum route also preserves byte-identical Release/Debug
+recording, instruction-profile, and native-cycle-census artifacts. Its long
+neutral travel windows, mirrored saves, and 257-frame cadence execute only
+the current discovery union's 3,242 addresses, so it exposes no unobserved
+table-rule branch or independent replacement transaction.
+The new input-only spiral route likewise preserves byte-identical Release/
+Debug recording, instruction-profile, native-cycle-census, and abandonment
+artifacts. Its earlier launcher release and 359-frame mixed flipper/nudge
+cadence executes 3,920 addresses, all already in the current discovery union,
+so it supplies broader natural replay coverage but no independent table-rule
+caller-and-return transaction.
+The next five lower-ranked observer screens likewise make no unsafe gameplay
+admission: every observed scope is a frame-sync, renderer, flipper,
+collision, scheduler, score-panel, or existing table-rule owner/continuation
+rather than an independent gameplay transaction. The sole newly bounded entry,
+`09:74C7`, is a one-shot score-panel setup after the bank-call wrapper and
+remains assembly-backed; continue screening lower table-rule owners.
+Semantic `09:72C5@all` owns the bounded
+ball-count suffix after the existing score-digit and leading-zero transactions.
+It clamps the displayed remaining ball count, composes the proven byte divider
+and two glyph writers, and absorbs the original score-panel return at the
+interrupt-visible final cycle. Semantic `01:CB46@all` now owns the final
+sweep-setup store and hands directly to the already-native `01:CB48` sweep.
+The Tower-Insect child-spawner's four bounded allocator/activation seams at
+`02:5F78/5F7B/5F7E/5FD6` are likewise deployed and retain the source
+controller's outer return in assembly. Semantic `08:5961@all` owns the
+four-tick palette delay: its ordinary decrement hands the scheduler's `RTS`
+back to the core, while expiry reloads the delay, flips the selected colour
+set, and crosses the already-native `08:5977` stager. Semantic `00:F54F@all`
+now owns the one-slot score wrapper, including its `PHY`/`JSR` frame and
+`F557` loop-return seam, while composing `00:F55C` as the sole score
+arithmetic owner.
 
-The deployed registry now runs **699,788,670 of 1,292,371,731 master cycles
-natively, 54.15% of the route and 98.49% of everything outside the frame-sync
-wait**, across 581 admitted routines. The new return seam adds exactly 91,917
-deployed native cycles across 4,377 independently entered scopes; all 5,843
-natural arrivals are admitted, with no interrupt-horizon/depth declines or
-abandonments. The fresh deployed residue contains 3,360,258
-addressable cycles in 242 clusters. The core declines no offered registry
-transcript and none is abandoned. The 3,600-frame state census remains
+The freshly profiled registry runs **699,919,959 of 1,292,371,731 master
+cycles natively, 54.16% of the route and 98.51% of everything outside the
+frame-sync wait**, across 593 admitted routines (475 entered). The complete
+score-panel redraw admits its 34 heads, 105 score-digit iterations, 133
+leading-zero iterations, and 34 ball-count suffixes; the palette cadence adds
+all 670 natural scheduler arrivals, and the wrapper adds 3,552 native master
+cycles across its 40 natural calls. The core declines no offered registry
+transcript and none is abandoned.
+The 2026-08-22 re-rank regenerated the registry report from the current
+593-admission evidence and corrected its measured deployment summary. Its
+whole-ROM profile has 3,228,057 unregistered non-wait cycles in 238 clusters;
+the remaining bank-`02`/`03` table rows within the profiled tail are all
+already-classified actor-loader, scheduler, collision, appearance, allocator,
+or caller-return interiors. The canonical route has no further standalone
+table-rule entry/return contract to admit safely. The next gameplay slice must
+therefore use an existing natural route that reaches a currently unobserved
+rule branch, rather than create another observer around a known owner seam.
+The alternate built-in 1,800-frame gameplay route was screened next. It
+exercises 509 Devil-Shooter `02:5159` arrivals and a distinct three-arrival
+`02:5226-523C` launch continuation, but the latter feeds the already-owned
+`02:5223` controller; its only long exits are the existing appearance and
+scheduler owners. This route therefore adds no independent replacement
+transaction. Select a further natural route rather than expanding either
+owner around its child or return seams.
+The eighteenth input-only cascade route is now screened. Its early launcher
+release, long neutral descent, sparse asymmetric saves, and neutral-only
+directional nudges produce byte-identical Release/Debug recording,
+instruction-profile, and native-cycle-census artifacts
+(`70e63c92...c7ea1e2`, `6f36aff1...d4e6b079`, and
+`0590872d...7540629`) with zero horizon declines and abandonments. Its 2,839
+addresses add only `02:5228-523C`, four short arrivals through the already
+screened Devil-Shooter `02:5223` controller interior; it exposes no independent
+table-rule caller-and-return transaction. Keep those paths assembly-backed and
+select another materially different natural route.
+The 3,600-frame state census remains
 `9036a9de0c3c9917f47bff8c04c136a4824ec12601fb457d260aa2dfe4443490`.
 
-The assembly/native oracle admits all 5,843 returns, including the frame-871
+The assembly/native oracle admits all 1,965 returns, including the frame-1,229
 first and frame-3,600 final state-normalized replays. The canonical census and
 complete 4,650,247-write selected actor/stack stream are byte-identical to
 assembly; the absorbed-return observer intentionally closes its scopes at the
 actual MPR-resolved caller, rather than forging a fixed caller address. The
-Release semantic regression, generated-registry validation, Release and Debug
-application builds, and Debug core test pass. Re-rank the fresh residue before
-selecting the next bounded gameplay cluster.
+Release semantic regression, generated-registry validation, Release/Debug
+application builds, and Release/Debug core tests pass. The first fresh
+collision-return/actor-queue observer screen rejected only caller-owned or
+native-parent-resumption seams; continue the residue screen before selecting
+the next bounded gameplay transaction.
 
 Semantic `02:533B@all` now validates the live stack frame, declares the
 original `02:5393` observer boundary, pops the real two-byte return, and
@@ -1396,6 +1503,913 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
 
 ## Completed
 
+- [x] Add and screen the input-only sidestep natural gameplay route without
+  patching emulated work RAM:
+  - `--record-gameplay-sidestep` uses the normal visible startup, releases the
+    launcher at frame 1,275, then runs a 947-frame asymmetric side-save cadence
+    with Button-II pulses only in neutral travel windows.
+  - Assembly, deployed Release, and deployed Debug recordings are byte-identical
+    at `30cce23f...05d82a`; Release/Debug instruction profiles, native-cycle
+    censuses, and abandonment censuses are likewise identical. The deployed
+    route installs all 593 admissions, enters 417 routines, executes
+    690,985,494 of 1,292,372,109 master cycles natively (98.50% outside the
+    frame-sync wait), and has only the established `00:E241 -> E250`
+    MPR-mismatch fallback.
+  - Relative to the retained twist/pendulum/ricochet discovery profiles, its
+    only additions are the twelve one-shot `03:78CC-78F8` fixed-Bumper hit-path
+    instructions. An assembly observer records one `03:78CC` scope at frame
+    1,469: it starts at generic scheduler `01:C51D`, returns at existing
+    fixed-Bumper controller `03:7C33`, and spans 16,128 cycles/258 writes.
+    Keep this scheduler-owned continuation assembly-backed; it is not an
+    independent caller-and-return transaction.
+  - Rebuilt Release/Debug applications and core-test targets; both ROM-free
+    `dc_core_tests` executables pass.
+
+- [x] Isolate and close the independent frame-1,845 audio-only twist-route
+  drift:
+  - A full PSG bus-write bisection shows that the audible 12-cycle early
+    `00:FC43` channel-select write at frame 1,845 belongs to the Three-Blobs
+    first-movement prefix `03:66A3`, not the already guarded Big-Star gate.
+    Its complete RAM/register/cycle call transcript reconverges, but a timer
+    IRQ shortly after the direct-motion handoff retained the device-time skew.
+  - `03:66A3` now leaves any call with a timer horizon of 300 master cycles or
+    less in assembly. The canonical prefix regression consequently retains
+    998 of 1,107 calls natively and delegates 109 horizon-sensitive calls to
+    the core.
+  - The fully deployed 593-entry, 3,600-frame twist recording is now
+    byte-identical to assembly for audio, work RAM, and framebuffer output.
+    Release `dc_core_tests` and
+    `dc_rom_three_blobs_first_movement_prefix_semantic` pass.
+
+- [x] Isolate the Big-Star audio drift exposed by the input-only twist route:
+  - Recorded assembly and deployed-registry PCM for the same 3,600-frame
+    route. The first Big-Star-attributable audio difference is frame 1,826;
+    work RAM and video remain byte-identical.
+  - The PSG bus census identifies the relevant timer IRQ at frame 1,709:
+    while idle `02:570A` is crossing `02:570F`, its handler's `00:FC43`
+    channel-select write is displaced by three master cycles despite identical
+    stack and work-RAM transcripts.
+  - `02:570A` now falls back to assembly whenever its 81-cycle idle body
+    reaches a serviceable timer-IRQ horizon. This retains the 280 proven
+    no-interrupt calls of the pending-gate semantic route and leaves the ten
+    interrupt-bearing calls to the core. The targeted twist replay consequently
+    moves its first audio drift to frame 1,845 without changing RAM or video.
+  - Rebuilt Release; `dc_core_tests` and
+    `dc_rom_big_star_pending_gate_semantic` pass. The latter's expected native
+    count and ordered-write artifact now cover the intentional fallback.
+
+- [x] Add and screen the input-only twist natural gameplay route without
+  patching emulated work RAM:
+  - `--record-gameplay-twist` uses the normal visible startup, releases the
+    launcher at frame 1,340, then applies a prime-length 887-frame cadence of
+    long alternating saves, neutral travel, and directional nudges outside
+    those saves.
+  - The assembly profile reaches 9,236 addresses, including 656 outside the
+    locally preserved 29-profile discovery union. Its natural Big-Star active
+    path enters `02:5674/570A` and reaches the previously unexercised
+    controller interiors; it does not create a standalone new table-rule
+    caller-and-return transaction.
+  - The deployed Release run installs 593 routines, enters 462, executes
+    700,587,144 of 1,292,371,734 master cycles natively (98.23% outside frame
+    sync), and has no horizon declines or abandoned transcripts. Its first
+    assembly/deployed difference is audio only at frame 1,826: work RAM and
+    framebuffer hashes remain equal. A registry bisection identifies
+    `02:570A` as one contributor; excluding it moves, rather than resolves,
+    the audio drift to frame 1,845. Keep the route as a fidelity probe and
+    investigate its natural Big-Star timing before using it as a replacement
+    admission gate.
+  - Rebuilt the Release and Debug application targets. Release `dc_core_tests`
+    passes; the Debug executable still reports the unrelated existing
+    contended-artifact sharing-violation test failure.
+
+- [x] Add and screen the input-only higharc natural gameplay route without
+  patching emulated work RAM:
+  - `--record-gameplay-higharc` preserves the visible startup, holds the
+    launcher through frame 1,460, then uses a prime-length 701-frame cadence
+    of isolated flipper saves, neutral-only directional nudges, and sparse
+    Button-II impulses.
+  - Release and Debug produce byte-identical deployed artifacts: recording
+    `77568124...e56773cf`, instruction profile
+    `efd82f2c...320d0534`, native-cycle census
+    `c5db7a84...a40432f8`, and abandonment census
+    `0cc0ec95...f1e11f48`. The route installs all 593 admissions, enters 435
+    routines, and runs 687,054,591 of 1,292,372,118 elapsed master cycles
+    natively (98.45% outside frame sync).
+  - Its sole abandonment is the safe defensive fallback at
+    `00:E255 -> 00:E25F` on an MPR mismatch. The complete registry-backed
+    recording is byte-identical to a fully emulated Release recording, so the
+    fallback is state-safe. Its 208 additions over the state-census profile
+    are all previously mapped loader, Giant-Skeleton, Devil-Shooter, flipper,
+    or scheduler interiors; no new table-rule caller-and-return transaction
+    is admitted.
+  - Rebuilt both application configurations and passed the Release ROM-free
+    `dc_core_tests` suite.
+
+- [x] Add and screen the input-only cascade natural gameplay route without
+  patching emulated work RAM:
+  - `--record-gameplay-cascade` releases the launcher at frame 1,064, then
+    uses a prime-length 607-frame cycle with a long neutral descent, sparse
+    asymmetric saves, and directional nudges outside flipper holds.
+  - Its deployed 3,600-frame Release and Debug artifacts are byte-identical:
+    recording `70e63c92...c7ea1e2`, instruction profile
+    `6f36aff1...d4e6b079`, and native-cycle census
+    `0590872d...7540629`. All 593 admissions install, 338 routines enter,
+    and 677,681,802 of 1,292,372,520 elapsed master cycles run natively
+    (98.54% outside frame sync), with zero interrupt-horizon declines and
+    zero abandoned transcripts.
+  - Its 2,839-address profile adds only the nine `02:5228-523C`
+    Devil-Shooter-controller instruction addresses from four short arrivals,
+    already rejected by the ricochet screen. It exposes no independent
+    table-rule caller-and-return
+    transaction, so every reached path stays assembly-backed.
+  - Rebuilt both Release and Debug application targets and ran the complete
+    deployed-registry route in each configuration.
+
+- [x] Add and screen the input-only whirlpool natural gameplay route without
+  patching emulated work RAM:
+  - `--record-gameplay-whirlpool` preserves the visible startup, releases the
+    launcher between the existing early and long-hold variants, then repeats a
+    prime-length 521-frame cycle of offset double-save windows, neutral
+    Button-II taps, and four directional nudges that occur only outside a
+    flipper hold.
+  - Its deployed 3,600-frame Release and Debug artifacts are byte-identical:
+    recording `370843d5...31501b0`, instruction profile
+    `fba6e965...22312c`, and native-cycle census `8c9d676f...2428bd`. All 593
+    admissions install, 350 routines enter, and 643,248,105 of 1,292,372,514
+    elapsed master cycles run natively (98.46% outside frame sync), with zero
+    interrupt-horizon declines and zero abandoned transcripts.
+  - Its complete 2,852-address profile is contained in the locally preserved
+    discovery-route profile union, so it exposes no unobserved table-rule
+    branch or independent caller-and-return transaction. Every reached path
+    stays assembly-backed.
+  - Rebuilt both Release and Debug application targets and ran this complete
+    deployed-registry route in each configuration.
+
+- [x] Re-verify the staged Milestone 4 replacement set before continuing the
+  natural-route search:
+  - Rebuilt the Release and Debug `devils_crush` and `dc_core_tests` targets
+    on 2026-08-22 after reviewing the active score-panel, palette-cadence,
+    collision-tail, Tower-Insect, and Three-Blobs edits.
+  - Both ROM-free `dc_core_tests` executables pass, and the focused Release
+    `dc_rom_setup_screen_palette_stager_semantic` family regression passes.
+    The longer focused ROM family checks retain their already-recorded
+    canonical artifacts and remain the owning-family gate for the next
+    replacement admission.
+
+- [x] Add and screen the input-only volley natural gameplay route without
+  patching emulated work RAM:
+  - `--record-gameplay-volley` preserves the visible startup, releases the
+    launcher earlier than the previous held-launch routes, then repeats a
+    prime-length 503-frame cycle of sustained alternating flipper banks,
+    neutral-window Button-II volleys, and four directional nudges.
+  - Its deployed 3,600-frame Release and Debug artifacts are byte-identical:
+    recording `52b9c99b...6c85ee`, instruction profile
+    `03a248a1...fcdee`, and native-cycle census `187ba56f...f4557`. All 593
+    admissions install, 344 routines enter, and 649,619,337 of 1,292,372,514
+    elapsed master cycles run natively (98.53% outside frame sync), with zero
+    interrupt-horizon declines and zero abandoned transcripts.
+  - The 2,846-address profile is wholly contained in the available
+    discovery-route profile union. It exposes no unobserved table-rule branch
+    or independent caller-and-return transaction, so every reached path stays
+    assembly-backed.
+  - Rebuilt Release and Debug application/core-test targets; both ROM-free
+    `dc_core_tests` executables pass.
+
+- [x] Add and screen the input-only ricochet natural gameplay route without
+  patching emulated work RAM:
+  - `--record-gameplay-ricochet` preserves the visible startup, releases the
+    launcher before the recent held-launch experiments, then follows a
+    prime-length 419-frame cadence of brief staggered saves, neutral-window
+    Button-II impulses, and four rotating directional nudges.
+  - Its deployed 3,600-frame Release and Debug recordings are byte-identical:
+    recording `761a2e34...5ec7ec0`, instruction profile
+    `1c24e663...82a686`, and native-cycle census
+    `7891d1b2...3a676`. All 593 admissions install, 375 routines enter, and
+    665,864,529 of 1,292,372,511 elapsed master cycles run natively (98.50%
+    outside frame sync), with zero interrupt-horizon declines and zero
+    abandoned transcripts.
+  - The 2,879-address profile adds only `02:5228/522A/522D/522F/5232/5235/`
+    `5238/523A/523C` beyond the current deployed discovery profile. The
+    assembly observer at `02:5226` records 202 36-cycle/no-write returns to
+    the existing `02:5245` seam plus one 1,371-cycle/37-write scheduler path
+    through `01:C5E9`; these are the already-owned `02:5223` Devil-Shooter
+    controller's branches, not a standalone caller-and-return transaction.
+  - Rebuilt both application configurations and confirmed the route's
+    Release/Debug artifacts are byte-identical; both ROM-free
+    `dc_core_tests` executables pass.
+
+- [x] Add and screen the input-only switchback natural gameplay route without
+  patching emulated work RAM:
+  - `--record-gameplay-switchback` keeps the normal visible startup, holds the
+    launcher longer than the prior discovery plans, then uses a 233-frame
+    alternating left/right save cadence with broad neutral rebound windows and
+    sparse between-save directional nudges.
+  - Its 3,600-frame deployed Release recording is
+    `82b196f90265c1cd88d69a517a4787a5331f9f9645f81c39e16aa10d939fefcd`:
+    all 593 admissions install, 442 routines enter, and 666,688,737 of
+    1,292,371,734 elapsed master cycles run natively (98.44% outside the
+    frame-sync wait), with zero interrupt-horizon declines and zero abandoned
+    transcripts.
+  - Debug is byte-identical for the recording, 3,376-address instruction
+    profile (`b316de99...95025b`), and native-cycle census
+    (`e5995b14...195aad`). The complete address set is contained in the
+    current lanes/pulse/rally/stagger/sweep/state-census discovery union, so
+    this route exposes no unobserved table-rule branch or independent
+    caller-and-return transaction. Keep all reached paths assembly-backed and
+    select a materially different natural route.
+  - Rebuilt the Release and Debug application/core-test targets and passed
+    both ROM-free `dc_core_tests` executables.
+- [x] Add and screen the input-only nudge-led natural gameplay route without
+  patching emulated work RAM:
+  - `--record-gameplay-nudge` preserves the visible menu and launch sequence,
+    then uses a 313-frame prime cadence of sparse flipper saves and separated
+    rotating directional nudges. It is deliberately rebound-led rather than
+    another sustained flipper pattern.
+  - Its 3,600-frame deployed Release recording is
+    `4d6e338d3d1680fc3f5d2e765971368af1d014a744c0f030f741abdeef4868e9`:
+    all 593 admissions install, 454 routines enter, and 686,745,699 of
+    1,292,371,731 elapsed master cycles run natively (98.48% outside the
+    frame-sync wait), with zero interrupt-horizon declines and zero abandoned
+    transcripts.
+  - Debug reproduces the byte-identical recording, 3,511-address instruction
+    profile (`f00c2436...92e585b`), and native-cycle census
+    (`1ab5fe76...9287ee1`). The route naturally reaches the documented
+    remaining-ball/reload chain (`01:C7E5/C812 -> 02:4003`), the existing
+    Giant-Skeleton and Devil-Shooter owners, and the already-screened
+    Giant-Face crown-hit parent (`03:761E`); none is an independent bounded
+    table-rule caller-and-return transaction. Keep these paths assembly-backed
+    and select a further material route.
+  - Rebuilt the Release and Debug application/core-test targets and passed
+    both ROM-free `dc_core_tests` executables.
+- [x] Add and screen the input-only pendulum natural gameplay route without
+  patching emulated work RAM:
+  - `--record-gameplay-pendulum` keeps the visible menu/launch sequence, then
+    uses a 257-frame cadence with long neutral travel windows, mirrored saves,
+    and up/down/right nudges between flipper holds. It is a natural rebound
+    experiment rather than a synthetic state fixture.
+  - Its 3,600-frame deployed Release recording is
+    `ae591334053faba2c8b78de04329e465caffc14ddbed35958ae93ec8c9ec07df`:
+    all 593 admissions install, 417 routines enter, and 680,976,213 of
+    1,292,372,523 elapsed master cycles run natively (98.48% outside the
+    frame-sync wait), with zero interrupt-horizon declines and zero abandoned
+    transcripts.
+  - Debug reproduces the byte-identical recording, instruction profile, and
+    native-cycle census. The 3,242-address profile contains no address outside
+    the current registry/discovery union, so this route reaches no unobserved
+    table-rule branch and supplies no independent caller-and-return contract.
+    Keep its paths assembly-backed and select another materially different
+    natural route.
+  - Rebuilt Release and Debug applications, confirmed the command in Release
+    help, and passed the Release ROM-free `dc_core_tests` executable.
+- [x] Add and screen the input-only slalom natural gameplay route without
+  patching emulated work RAM:
+  - `--record-gameplay-slalom` preserves the visible menu/launch sequence,
+    then uses a 211-frame wide left-save/right-save cadence with opposite-side
+    nudges. It deliberately targets side-lane rebounds rather than the
+    compact lower-table recovery patterns sampled by the earlier routes.
+  - Its 3,600-frame Release recording is
+    `b27909d8fad687334fcc56741fb20f59a1b75ec69cd0d2a7e28d870eb35a55d3`:
+    all 593 admissions install, 424 routines enter, and 668,401,548 of
+    1,292,370,681 elapsed master cycles run natively (98.45% outside the
+    frame-sync wait), with zero interrupt-horizon declines and zero abandoned
+    transcripts.
+  - Debug reproduces the byte-identical recording, instruction profile, and
+    native-cycle census artifacts. The 3,375-address slalom profile has no
+    address outside the union of the previously screened discovery routes, so
+    it exposes no independently bounded table-rule transaction. Keep every
+    reached scope assembly-backed and select a new materially different route.
+  - Rebuilt Release and Debug applications, then built and passed both
+    configuration's ROM-free `dc_core_tests` executables.
+- [x] Add and screen the input-only rally natural gameplay route without
+  patching emulated work RAM:
+  - `--record-gameplay-rally` follows the visible menu/launch path, then uses
+    a 137-frame right-flipper-biased recovery cadence, short left saves, and
+    delayed directional nudges. It changes controller state only and targets
+    a distinct lower-table deflection pattern.
+  - Its 3,600-frame Release recording is
+    `f3a5a67df1c6d5715516a8415777f02a16b5e035132a6929830707d07debc76a`:
+    all 593 admissions install, 450 routines enter, and 667,332,060 of
+    1,292,372,118 elapsed master cycles run natively (98.41% outside the
+    frame-sync wait), with zero horizon declines and zero abandoned
+    transcripts. Debug reproduces the byte-identical recording, instruction
+    profile, and native-cycle census.
+  - Compared with the existing route registry-census union, its only new
+    table-bank entries are existing Skeleton-Insect seams `02:54D0` (12
+    calls) and `02:5500` (187 calls). A focused assembly observer records
+    all 199 scopes returning from `01:C51D` to `01:C520`: `54D0` supplies the
+    established 33/132/414-cycle countdown paths, while `5500` supplies the
+    established 84-cycle idle path plus scheduler-owned 270/741/777-cycle
+    continuations. None has a new independent caller-and-return contract, so
+    no replacement is admitted.
+  - Rebuilt both Release and Debug application targets, confirmed the new
+    command in the generated help, and passed the Release ROM-free
+    `dc_core_tests` executable.
+- [x] Add and screen the input-only pulse natural gameplay route without
+  patching emulated work RAM:
+  - `--record-gameplay-pulse` follows the visible menu/launch path, then uses
+    four-frame asymmetric flipper taps on a 180-frame cadence, long neutral
+    intervals, and two sparse directional nudges. It intentionally seeks a
+    low-contact trajectory rather than another sustained, alternating, or
+    overlapping flipper plan.
+  - Its 3,600-frame Release recording is
+    `be19ef053ed199e7bc93fa2f525742daad0a673b8edf658217b66cccf3aea550`:
+    all 593 admissions install, 417 routines enter, and 676,370,727 of
+    1,292,372,103 elapsed master cycles run natively (98.49% outside the
+    frame-sync wait), with zero horizon declines and zero abandoned
+    transcripts. Debug reproduces byte-identical recording, instruction
+    profile, and native-cycle census artifacts.
+  - The pulse profile's only table-bank addresses absent from the existing
+    lanes/sweep/stagger/state-census union are `02:51C3/51C5`. A focused
+    assembly observer records their one 2,976-cycle/65-write arrival at frame
+    1,265: it enters from generic scheduler `01:C51D`, crosses the existing
+    native `02:5475` appearance submission, and returns at `01:C520`. It is
+    another interior of the already-owned Devil-Shooter coroutine, not a
+    standalone caller-and-return transaction. The other 64 newly seen rows
+    are one-off bank-`45` music-driver instructions. Keep all of them
+    assembly-backed and select a further natural route.
+  - Rebuilt Release and Debug applications, rebuilt Release and Debug core
+    tests, and passed both core-test executables.
+- [x] Add and screen the input-only stagger natural gameplay route without
+  patching emulated work RAM:
+  - `--record-gameplay-stagger` follows the visible menu/launch path, then
+    uses a 144-frame stagger: long offset left/right flipper holds, broad
+    release gaps, and sparse directional inputs only inside those gaps. This
+    deliberately differs from the dense, overlapping, and alternating prior
+    controller plans while leaving all game state cartridge-owned.
+  - Its deployed 3,600-frame Release recording is
+    `9b8d8058341aaf8b5d3c0a478d78dd2d70a971be20ba8d96b723d9ae3830325b`:
+    all 593 admissions install, 436 routines enter, and 676,607,625 of
+    1,292,370,612 elapsed master cycles run natively (98.44% outside the
+    frame-sync wait), with zero horizon declines and zero abandoned
+    transcripts. Debug produces byte-identical recording, instruction-profile,
+    and native-cycle-census artifacts.
+  - The 3,626-address instruction profile contains no unregistered address
+    absent from the lane, sweep, and state-census profile union. It therefore
+    does not expose an independent caller-and-return table-rule transaction;
+    retain the observed paths in assembly rather than manufacturing a new
+    replacement seam.
+  - Rebuilt both Release and Debug applications and passed both Release and
+    Debug ROM-free `dc_core_tests` executables.
+- [x] Add and screen the input-only lanes natural gameplay route without
+  patching emulated work RAM:
+  - `--record-gameplay-lanes` follows the visible menu/launch path, then
+    alternates 24-frame individual flipper holds on a 96-frame cycle with
+    directional nudge bursts and five Button-II pulses. It deliberately
+    samples lane-oriented trajectories rather than another dense cadence.
+  - The deployed 3,600-frame Release recording is
+    `06790f73...2173209`: all 593 admissions install, 507 routines enter,
+    681,215,100 of 1,292,372,106 elapsed master cycles run natively
+    (98.39% outside frame-sync), with zero horizon declines and zero
+    abandoned transcripts. Debug produces byte-identical recording and
+    native-cycle-census artifacts.
+  - The fresh table activity remains owner-interior: Giant Door `03:6314`
+    returns through existing fixed-controller `01:C654`; Knight hit prefix
+    `03:73D0` resumes at `73D7`; `03:751E` is the local no-request return
+    immediately following its source scheduler call; `03:7696` is a nested
+    `JSR $76C5` seam; and `02:4D2D/4F75` belong to existing Eyeball
+    scheduler/final-animation owners. No observed row supplies a standalone
+    caller-and-return transaction, so every one remains assembly-backed.
+  - Rebuilt Release and Debug applications, then passed both Release and
+    Debug ROM-free `dc_core_tests` executables.
+- [x] Add and screen the input-only orbit natural gameplay route without
+  patching emulated work RAM:
+  - `--record-gameplay-orbit` follows the established visible menu/launch
+    path, then uses separated 48-frame left/right flipper windows and a
+    rotating up/right/down nudge cadence. Its only state changes are the
+    player-one controller bits, so it remains a natural gameplay experiment.
+  - The Release deployed run completes all 3,600 frames at
+    `a039046ff93cd9ce4d44a5174b2832f8f1818ffcedcec8f35dbbd150612743a9`.
+    All 593 registry admissions install; 441 routines enter and
+    662,960,160 of 1,292,370,564 master cycles execute natively (98.47% of
+    the non-frame-sync time), with zero horizon declines and zero abandoned
+    transcripts.
+  - A focused original-assembly observer screen at the live Devil-Shooter,
+    Giant-Skeleton, and Tower-Insect entries records 4,465 scopes and 115,363
+    ordered writes. The new high-frequency `02:515C/5161` rows are successive
+    offsets of the already-owned `02:5159` held-input coroutine: all 699
+    arrivals enter at scheduler `01:C51D` and return at `01:C520`. Their
+    `02:5178`, `02:518D`, and `02:5197` children are the existing delay,
+    charge-position, and appearance seams. The route's `02:4F40/4F6C` and
+    `03:6001/6013` activity likewise stays within the mapped Giant-Skeleton
+    and Tower-Insect owners. No observed head has its own caller-and-return
+    contract, so no replacement is admitted.
+  - Rebuilt Release and Debug applications, passed both configuration's
+    ROM-free `dc_core_tests`, and confirmed the new option in the Release
+    command help. A duplicate long-running Debug route process was stopped
+    before it could write an artifact; it does not affect the completed
+    Release screening evidence.
+- [x] Add and screen an input-only crossfire natural gameplay route without
+  patching emulated work RAM:
+  - `--record-gameplay-crossfire` follows the established menu/launch path,
+    then overlaps left/right flipper holds on a 32-frame cadence and applies
+    six short Button-II nudges. It is a distinct table-deflection experiment,
+    not a synthetic state fixture.
+  - Release completes 3,600 frames at
+    `872d7bc8206ca2f2475a2c81fd43939b96a0c4a3b3dd5a0664cdec5b14ff1c5d`,
+    with all 593 registry admissions installed, 464 entered routines,
+    673,661,574 native master cycles of 1,292,371,335 elapsed, and zero
+    horizon declines or abandoned transcripts. Debug produces the identical
+    recording hash and zero abandonments.
+  - Its only newly useful lower table activity is the existing Giant-Skeleton
+    Eyeball final-animation family (`02:4F3D` through `02:4F6C-4F8D`), whose
+    wait semantic and drawing/coroutine continuation are already bounded.
+    Do not promote that continuation as a duplicate owner; select another
+    natural route for a genuinely unobserved table-rule branch.
+  - Built both application configurations and ran the Release and Debug
+    ROM-free core test executables; both pass. The confirmed Debug recording
+    has the same SHA-256 and zero-abandonment census as Release.
+- [x] Screen the remaining lower shared impact-burst allocator continuations
+  without splitting their source-inclusive allocator transaction:
+  - The fresh 3,600-frame Release registry deployment remains canonical at
+    `9036a9de...e4443490`: 592 of 593 admissions install, 474 routines
+    enter, and 699,919,959 of 1,292,371,731 master cycles run natively, with
+    zero interrupt-horizon declines and zero abandoned transcripts.
+  - `02:41EC/41EE/41F0/41F2/41F5/41F7/41F9/41FB/41FD` are successive
+    no-call offsets in the shared effect allocator. Their five natural
+    arrivals each originate in the existing collision owners (`03:604B` or
+    `03:7FA1`) and all close only at the already-native allocator-success
+    return `02:427C`; their 5,532--7,710-cycle, 19--68-write scopes include
+    that allocator work.
+  - `02:41FF/4205/4209` are the same pre-allocation chain from the two
+    Dragon-Egg call sites (`02:436C/444B`), again closing only at `02:427C`.
+    The 51 observed scopes and 2,462 ordered writes therefore supply no
+    independent caller-and-return contract. Keep all twelve in assembly.
+  - Rebuilt the Release and Debug application/core-test targets. The focused
+    Release score-repeat, Tower-Insect child-spawner, Three-Blobs shared-return,
+    score-panel, setup-palette, and collision-tail regressions pass, as do all
+    ROM-free Debug core checks.
+- [x] Screen the next lower shared Small-Soldier/Tower-Insect scheduler tail
+  without promoting a branch target or generic actor-loop exit to a duplicate
+  gameplay transaction:
+  - The fresh deployed Release route remains canonical at
+    `9036a9de...e4443490`: all 593 admissions deploy, 475 routines enter,
+    699,919,959 of 1,292,371,731 master cycles execute natively, with zero
+    interrupt-horizon declines and zero abandoned transcripts.
+  - The eleven-head observer batch (`03:7D79/7D7C/7D7F/7D81/7D82` and
+    `03:7E12/7E14/7E17/7E1D/7E1F/7E20`) records 105 calls and 1,671 ordered
+    writes. The paired long chains arrive through the generic scheduler at
+    `01:C51D` and resume at `7D81/7E1F`; the short direct forms leave the
+    actor loop at `01:C654`. `7D81/7E1F` are also the already-crossed waiting
+    branch targets of native Small-Soldier gates `03:7D6F/7E0D`, while the
+    one terminal calls at `7D82/7E20` return through `01:C5E9`. None has an
+    independent caller-and-return contract.
+  - Rebuilt the Release application and core-test target; the complete core
+    test executable passes.
+- [x] Screen the next lower non-driver table-rule leaves without widening an
+  existing owner:
+  - The 12-head Release observer batch (`03:742B`, `03:7863`, `03:792A`,
+    `03:7B87`, `03:60C0`, `03:6099`, `03:611F`, `03:6432`, `03:643D`,
+    `01:D6C6`, `01:D6B5`, and `01:C149`) recorded 14 bounded scopes and
+    2,470 ordered writes. Its state census and native-cycle census are each
+    byte-identical to the fresh 593-entry registry baseline.
+  - The short bank-`03` entries all return through existing scheduler,
+    fixed-controller, or appearance owners; `01:D6B5/D6C6` and `03:792A`
+    are table-walk/fixed-controller parents. No candidate supplies a separate
+    transaction, so all remain assembly-backed.
+- [x] Screen the next lower table-rule leaves without promoting an
+  appearance loop, scheduler continuation, collision tail, or actor-loader
+  child to a duplicate replacement:
+  - The fresh 3,600-frame Release registry route remains canonical at
+    `9036a9de...e4443490`: all 593 admissions deploy, 475 routines enter,
+    699,919,959 of 1,292,371,731 master cycles execute natively, and there
+    are zero interrupt-horizon declines and zero abandonments. The 12-head
+    observer batch records 98 bounded calls and 4,171 ordered writes.
+  - `03:7A3C/7A3F/7A42/7A45/7A48/7A66` are consecutive appearance-loop
+    offsets under caller `03:78FB`; all nine natural visits return only
+    through the existing `00:EBD6` owner. `03:7E1A` and `03:7F20` arrive
+    through generic scheduler `01:C51D` and finish either at their local
+    continuation or the already-owned `01:C5E9` scheduler return.
+  - `03:7F8C/7F91` are the two short setup steps immediately preceding
+    `03:7F94`, and `7F94` itself returns through existing actor/scheduler
+    work at `01:C654`. `02:4429` is Dragon-Egg allocator/hit continuation:
+    four short records return at `02:4439` while the active fifth reaches the
+    existing collision owner at `01:C594`. None has an independent natural
+    caller-and-return contract, so all remain assembly-backed.
+  - Rebuilt the Release and Debug application/core-test targets. Both
+    `dc_core_tests` executables and the Release native-registry manifest pass.
+- [x] Screen the next lower table-rule heads without treating actor-loader,
+  scheduler, collision, or table-walk parents as independent transactions:
+  - The fresh 3,600-frame Release deployment remains canonical at
+    `9036a9de...e4443490`: all 593 admissions deploy, 475 routines enter,
+    699,919,959 of 1,292,371,731 master cycles execute natively, with zero
+    interrupt-horizon declines and zero abandonments. The 12-head screen
+    records 18 bounded calls and 4,705 ordered writes.
+  - `02:4376`, `02:5156/515C/5161`, `02:5394`, and `03:60D2` enter through
+    the generic actor loader and close only at scheduler `01:C5E9`.
+    `02:53E7` is the existing Skeleton-Insect companion-return seam.
+    `02:5C7B/5CAE` are consecutive source-controller setup stages, with the
+    former returning into the latter and the latter into that same scheduler.
+  - `01:D5D7` and `01:D695` are flipper/table-walk parents (14,829--38,541
+    cycles and 153--813 writes) rather than bounded leaves; `03:7655` is an
+    already-owned fixed-actor/appearance continuation. No observed head has
+    its own natural caller-and-return contract, so all remain assembly-backed.
+  - Rebuilt the Release and Debug application/core-test targets; both
+    `dc_core_tests` executables pass.
+- [x] Screen the next lower mixed table-rule residue batch without widening
+  existing Front-/Side-Spider, Three-Blobs, impact-burst, Devil-Shooter, or
+  Skeleton-Insect owners:
+  - The 3,600-frame Release observer pass remains canonical at
+    `9036a9de...e4443490`: all 593 admissions deploy, 475 routines enter,
+    699,919,959 of 1,292,371,731 master cycles execute natively, with zero
+    interrupt-horizon declines and zero abandonments. Its 12 heads produce
+    116 bounded calls and 4,175 ordered writes.
+  - `03:64A5/64D5/64E0/64F0` are the Front-Spider's already-native
+    collision/score/transition tail, returning at scheduler `01:C5E9`.
+    `03:66DC/66E1/676E` are already-owned Three-Blobs movement and shared
+    return seams, ending at `01:C5E9`, `01:C654`, or native `03:67E5`.
+  - `02:41EC`, `02:4290`, and `02:42A6` remain the source-inclusive
+    impact-burst allocator, activation, and audio-call paths; their real
+    owner boundaries are the existing allocator/activation entries. The
+    `02:51EE` Devil-Shooter and `02:556D` Skeleton-Insect records likewise
+    end at existing scheduler or countdown owners.
+  - No head supplies a new independent entry-and-return transaction. Keep
+    all twelve assembly-backed and continue below this mixed owner batch.
+  - Rebuilt the Release application; the focused Release `dc_core_tests` and
+    `dc_native_registry_manifest` checks pass.
+- [x] Screen the next lower bank-`02` table-rule-adjacent residue heads
+  without mistaking generic actor-loader returns, child returns, or scheduler
+  resumptions for independent gameplay transactions:
+  - The fresh 3,600-frame Release observer route remains canonical at
+    `9036a9de...e4443490`. The 12-head batch records 818 bounded calls and
+    13,058 ordered writes: `02:51DA/51EE/52B1/5216`, `02:54A3`, `02:5543`,
+    `02:55FF`, `02:5FDA`, and `03:643D` each arrive through an existing
+    generic actor-loader or source-controller frame and return at the
+    scheduler or an already-owned continuation.
+  - `02:53CB` and `02:5444` are the 266/267-call Skeleton-Insect scheduler
+    re-entry tails (ordinary 24-cycle, zero-write calls); their longer
+    records include the existing companion return. `02:53FB` is that shared
+    companion `RTS` handover itself: its 272 scopes fan out across six
+    callers and 771--74,763 cycles, so it has no independent caller frame to
+    replace.
+  - No entry supplies a standalone natural entry-and-return contract. Keep
+    this batch assembly-backed and continue below it rather than turning a
+    scheduler handoff or caller-owned return into duplicate native coverage.
+  - Rebuilt the Release application; `dc_core_tests` and
+    `dc_native_registry_manifest` pass (593 admitted routines).
+- [x] Screen the next lower bank-`03` table-rule residue without mistaking
+  scheduler and collision continuations for independent transactions:
+  - The fresh 3,600-frame Release deployment remains canonical at
+    `9036a9de...e4443490`: all 593 admissions deploy, 475 routines enter,
+    699,919,959 of 1,292,371,731 master cycles execute natively, with zero
+    interrupt-horizon declines and zero abandonments.
+  - The 12-head observer batch recorded 167 bounded scopes and 15,155
+    ordered writes. `03:7C37/7C3A/7C3D/7C40` all enter from the generic
+    scheduler at `01:C51D` and return through the cross-bank collision-owner
+    continuation at `01:C594`; their 4,308--5,721-cycle scopes include the
+    already-owned collision path. `03:78ED/78F2` likewise enter at `C51D`
+    and converge at `03:7C33`, while `03:7A54` returns from its appearance
+    work through `00:EBD6`.
+  - The remaining `03:7C6F` and `03:7F1D/7F49/7F4C/7F51` heads all return
+    only at scheduler `01:C5E9`. No head supplies an independent natural
+    entry-and-return contract, so every one remains assembly-backed. Continue
+    below this collision/appearance continuation set.
+  - Rebuilt Release and passed the focused Release
+    `dc_native_registry_manifest` and `dc_rom_score_repeat` checks.
+- [x] Screen the next lower bank-`09` residue heads without mistaking a
+  one-shot score-panel setup or nested continuation for gameplay logic:
+  - The 3,600-frame Release deployment remains canonical at
+    `9036a9de...e4443490`: all 593 admissions deploy, 475 routines enter,
+    699,919,959 of 1,292,371,731 master cycles execute natively, with zero
+    interrupt-horizon declines and zero abandonments.
+  - `09:7F4B/7F70` are the two large, nested score-panel owners returning
+    through `00:E94C`; their 191,577--197,247-cycle, 319--350-write scopes
+    contain the other observed entries. `09:7B0B/7BA2` likewise return only
+    through the same score-panel continuation at `09:7F85`, while
+    `09:7FD7` is its two-call 216-cycle decrement leaf.
+  - `09:74C7` is the sole independent 672-cycle/20-write call, reached once
+    at frame 871 through the existing `00:E219` bank mapper and returning at
+    `09:752A`. It loads the score-panel setup tables; it is presentation,
+    not a table-rule or session transaction. Keep it assembly-backed rather
+    than diverting the native-gameplay queue to a one-shot display setup.
+  - Rebuilt the Release application and ROM-free Debug targets; the Release
+    core/registry-manifest checks and all three Debug core checks pass.
+- [x] Screen the next strictly lower unclassified non-driver observer set from
+  the fresh 593-entry profile without widening an existing owner:
+  - The new 3,600-frame Release deployment remains canonical at
+    `9036a9de...e4443490`: all 593 admissions deploy, 475 routines enter,
+    699,919,959 of 1,292,371,731 master cycles execute natively, and there
+    are zero interrupt-horizon declines and zero abandonments. Its filtered
+    unregistered residue is 3,228,057 cycles in 238 clusters.
+  - The 12-head screen recorded 561 bounded scopes and 7,037,494 ordered
+    writes. `00:E2FB` is the frame-sync loop; `00:E438` is the known
+    multi-owner VDC/mapper resumption; `01:D32E`, `01:D62D`, and `01:D6DA`
+    remain flipper/physics/table-walk owners; and `03:6021`, `03:7D72`,
+    `03:7E10`, and `03:7F5A` remain actor scheduler or collision-family
+    continuations.
+  - `00:E8E6` spans shared arithmetic and Three-Blobs parents;
+    `09:7EEB/7F28` are one-shot score-panel continuations. None has an
+    independent natural entry-and-return contract, so every address remains
+    assembly-backed. The next screen must begin below these rows.
+  - Rebuilt the Release and Debug applications, passed both ROM-free core
+    suites, and passed the focused Release registry-manifest, score-repeat,
+    score-panel, setup-palette, collision-tail, Tower-Insect child-spawner,
+    and Three-Blobs shared-return regressions.
+- [x] Replace ordinary one-slot score repetition at `00:F54F@all` without
+  duplicating the existing score accumulator:
+  - The wrapper observes 40 natural calls (frames 1,409--3,466), all with
+    `$2D38 = 0`, so `LDY`/`INY` select slot one and the `F557` loop return
+    takes its terminal arm.  Multi-slot repetition remains assembly-backed
+    until a natural route establishes a separately bounded continuation.
+  - Its transcript publishes the `PHY` and `JSR $F55C` stack writes at the
+    original offset 30, composes the existing interruptible `00:F55C`
+    transaction, takes the child `F5A8` return at its own checkpoint, then
+    executes `PLY`/`DEY`/not-taken `BNE` and stops before the original outer
+    `F55B` `RTS`. All child score arithmetic stays in `F55C`.
+  - `dc_rom_score_repeat` proves 40 of 40 native calls, the frame-1,409
+    654-cycle/11-write normalized replay, and exact Release census, entry,
+    call, and ordered-write artifacts. The registry now has 593 admitted
+    routines; the fresh whole-registry Release census remains canonical at
+    `9036a9de...e4443490`, with 699,919,959 native master cycles, zero
+    horizon declines, and zero abandonments. Both focused Release and Debug
+    score-repeat regressions pass: this wrapper route's assembly control and
+    native replay share the Release census hash in both configurations, while
+    their entry/call/write artifacts are identical. The ROM-free Debug core
+    suite and generated-registry manifest pass.
+- [x] Refresh the deployed post-`00:F54F` residue and screen its first two
+  previously unclassified bank-`00` heads without widening an existing owner:
+  - The fresh 3,600-frame Release deployment installs all 593 admissions and
+    remains canonical at `9036a9de...e4443490`: 475 routines enter natively,
+    699,919,959 of 1,292,371,731 master cycles are native (54.16% overall;
+    98.51% outside the frame-sync wait), with zero interrupt-horizon declines
+    and zero abandoned transcripts. Its unregistered addressable residue is
+    3,228,057 cycles in 238 clusters.
+  - `00:EF2A` has four frame-874 arrivals from `00:F951`, but every observer
+    scope returns together at `00:EF6E`. The nested 3,732--14,946-cycle,
+    6--24-write records are one startup row loop rather than four independent
+    caller transactions.
+  - `00:E479` is not a gameplay leaf: its 326 arrivals fan out through eight
+    MPR-resolved return owners (`00:E218`, `00:E6F9`, `00:E20C`, `00:ECF1`,
+    `09:612A`, `00:E94C`, and `01:D09D`), spanning 6,981--5,689,185 cycles
+    and 20--46,072 writes. Keep both addresses assembly-backed and continue
+    below the already classified driver, scheduler, and resumption seams.
+- [x] Screen the next lower-ranked gameplay-adjacent deployed-residue batch
+  without promoting a native-child continuation or caller-owned return to an
+  independent transaction:
+  - The fresh 3,600-frame Release observer route remains canonical at
+    `9036a9de...e4443490`: all 592 registry entries deploy, 475 execute,
+    699,916,407 of 1,292,371,731 master cycles execute natively, and there
+    are no interrupt-horizon declines or abandoned transcripts. The 12-head
+    screen records 430 scopes and 260,783 ordered writes.
+  - `00:EA77`, `09:73BC`, and `09:726B` are enclosing RNG or score-panel
+    scopes; `00:ECFD/ED18` are the common game-to-audio path returning at
+    `00:ED85`; `03:6021` remains a scheduler/actor continuation (including
+    three 498--512-write paths); and `01:D32E`, `01:D6DA`, and `01:C70A`
+    respectively span the flipper/table-walk owner, a one-shot setup parent,
+    and the actor-scheduler's caller-owned return.
+  - `01:D701` has a real seven-call, 129-cycle, three-write return contract,
+    but only wraps the still-assembly `D7BA` and `D7D7` children, so it is not
+    the next high-value deployment slice. `09:7F28` is likewise a one-shot
+    score-panel continuation.
+  - `00:F54F` is the exception retained for the next slice: its 37 natural
+    calls return at `F55B` after 654--22,527 cycles and repeat the existing
+    native `00:F55C` score accumulator. Profile its two loop seams as a
+    composed score-owner candidate rather than duplicating `F55C` or absorbing
+    the parent as one monolithic transaction.
+- [x] Screen the next lower-ranked gameplay-adjacent deployed-residue batch
+  without treating an interior continuation as an independent transaction:
+  - The fresh Release 3,600-frame registry profile is canonical at
+    `9036a9de...e4443490`: all 592 admitted entries deploy, 475 execute,
+    699,916,407 of 1,292,371,731 master cycles execute natively, and no
+    transcript declines at an interrupt horizon or is abandoned. The
+    remaining unregistered addressable cost is 3,231,657 cycles in 239
+    clusters.
+  - The 200-call / 29,870-write observer batch makes no admission.
+    `02:43A4` is the Dragon-Egg allocator under the existing hit owner;
+    `02:4429`, `03:6021`, `03:64A5`, `03:66DC`, `03:78E7`, and `03:7F46`
+    are scheduler or actor-family continuations; `01:D32E`, `01:D62D`, and
+    `01:D68D` cross existing flipper/physics owners; and `02:4A6C` remains
+    the previously classified Wall-Pocket initializer interior. Their
+    observed scopes either return through `01:C520`/an existing parent or
+    span native child boundaries, so none has an independent entry-and-return
+    contract.
+  - The current Release executable completed the profile and observer route
+    with no registry hold-backs, zero horizon declines, and zero abandoned
+    transcripts. Keep this batch in assembly and screen below it.
+- [x] Admit the setup-screen palette cadence controller `08:5961@all`:
+  - The fresh bank-`08` observer establishes 670 direct scheduler arrivals at
+    `01:C51D`, each returning through the real `08:5976` `RTS`. 493 ordinary
+    calls take the exact 33-cycle decrement/branch wait; 177 expiries reload
+    `$3A00,X`, toggle `$3A80,X`, and publish the authentic `$5975` JSR stack
+    frame for the existing `08:5977/5982` stager.
+  - All 670 cadence and 177 stager calls are native. The expanded owning
+    Release regression preserves the canonical census and the same
+    5,763,953 selected palette-pointer/shadow-buffer/dirty-flag/stack writes
+    as assembly.
+  - Regenerated the registry at 592 entries. The whole deployed route remains
+    canonical with 699,916,407 native master cycles, 475 entered routines,
+    zero horizon declines, and zero abandonments. The Release registry,
+    host-registry, stack-page, palette, and Tower-Insect semantic tests pass;
+    Release and Debug core suites and both application builds pass.
+- [x] Screen the next small unregistered residue heads without confusing
+  boot, asset-loader, or multi-caller ownership with a gameplay transaction:
+  - `00:E271` is a three-call boot hardware initializer that programs the
+    `$0000/$0002/$0003` ports from the resident setup table; it is bounded
+    (2,016 cycles and 14 writes) but not gameplay.
+  - `00:F628` is the 25-call `01:C624` asset-loader child (27,567--102,246
+    cycles and 92--1,044 writes), while `01:CBF9` is a 270-call multi-caller
+    continuation spanning 237--1,475,622 cycles and 8--17,470 writes. Neither
+    is an independent entry-and-return transaction.
+  - The same screen isolated `08:5961` as the one bounded owner above;
+    no other entry was admitted.
+- [x] Screen the next bank-`08` residue heads without widening setup or
+  scheduler ownership:
+  - The whole-registry observer route remains canonical at
+    `9036a9de...e4443490`, with 591 admitted/474 entered routines and
+    699,882,345 native master cycles.
+  - `08:5A56` and `08:5A69` are the 550-call generic-scheduler handoff and
+    return (`01:C51D -> 08:5A69 -> 01:C654`); `08:5A2E` is its three-call
+    caller-owned submission tail.
+  - `08:5ABF` has 18 multi-caller scopes returning at `08:5AF1`, spanning
+    3,882--53,454 cycles and 63--932 writes, so it is an enclosing setup
+    owner. `08:5751` exceeded the bounded observer channel (over 2 GB of
+    unfinished writes) and is rejected as an atomic transaction; its generated
+    incomplete artifacts were removed.
+  - The observer census is canonical; no registry entry was added. Re-ran the
+    Release registry stack-page, score-panel, and Tower-Insect child-spawner
+    semantic CTests: all three pass.
+- [x] Screen the next bank-`01` gameplay heads beneath the rejected table-walk
+  and scheduler residue:
+  - The refreshed whole-registry profile is canonical at
+    `9036a9de...e4443490`: 3,490 executed addresses and 1,292,378,139 master
+    cycles, of which 699,882,345 (54.15%; 98.51% outside frame sync) are
+    native across 591 admitted/474 entered routines, with no horizon declines
+    or abandoned transcripts.  Its 3,265,719 unregistered cycles in 239
+    clusters still start with the documented palette/boot transfers,
+    compound-sampled branches, device/frame seams, and music resumptions.
+  - `01:D794` has seven natural entries, all from the lower controller at
+    `01:D6FE` and returning at `01:D7A4`.  Its 2,973--5,052-cycle,
+    92--133-write scopes contain the `D7A5`/`D950` multi-caller table walk;
+    it is an enclosing caller rather than an independent replacement seam.
+  - `01:D844` is a single frame-874 setup scope from `01:D6DA` through return
+    `01:D86A` (12,090 cycles, 83 writes).  It is likewise an infrequent
+    enclosing setup transaction, not the next high-value gameplay slice.
+    The eight-call observer artifact has 896 ordered writes and makes no new
+    admission.
+  - Rebuilt Release; passed Release core tests, registry-manifest validation,
+    collision-tail, score-panel, Tower-Insect child-spawner, and Three-Blobs
+    shared-return regressions.  The ROM-free Debug core suite also passes
+    after a clean `windows-core-debug` build.
+- [x] Restore exact stack-page timing for the nested score-panel redraw calls:
+  - The cross-family Release suite initially passed 456 of 457 tests; its
+    stack-page oracle isolated the first mismatch to the `09:7284` glyph-call
+    return-frame writes at trace line 135,157, exactly 21 master cycles late.
+  - The redraw parent had timestamped each HuC6280 `JSR` stack frame at the
+    instruction checkpoint. The core pushes that frame at the instruction's
+    start, before its remaining 21 master cycles. Store those two stack bytes
+    at the current parent cycle while retaining the existing child-start
+    checkpoint and all child timing.
+  - Rebuilt Release and passed both
+    `dc_rom_registry_stack_page_writes` and the owning
+    `dc_rom_score_panel_poll_semantic` regression. The original full-suite
+    run's other 456 tests were already green; the one failing oracle now
+    compares byte, order, instruction, and cycle exactly against assembly.
+- [x] Screen the next post-spawner observer set without mistaking scheduler
+  branch entries for standalone routines:
+  - `03:7D72` and `03:7E10` are the two Tower-Insect dynamic-controller
+    timer branches, both entered from the generic scheduler at `01:C51D`.
+    Their 38/32 scopes include the controller's large active paths
+    (12--8,874 and 12--10,557 cycles respectively) and return either to the
+    local `03:7D81/7E1F` tail or directly to scheduler `01:C5E9`; neither is
+    an independent entry-and-return transaction.
+  - `02:4A6C` is likewise an interior initializer branch: its four
+    273--294-cycle scopes return at the outer `02:4CF1` continuation. It is
+    not a safe routine boundary despite its small bounded artifact.
+  - Re-confirmed that the two one-shot bank-09 initializers return through
+    the existing `01:C5E9` scheduler. The six-address screen therefore makes
+    no admission; its 100 observed calls carry 1,706 ordered writes.
+  - Refreshed the complete deployed profile and retained the canonical
+    `9036a9de...e4443490` census: 591 admitted routines, 474 entered,
+    699,882,345 native master cycles, zero horizon declines, and zero
+    abandonments.
+- [x] Re-rank and screen the first post-spawner deployed-residue observer set:
+  - The canonical whole-registry profile records 3,265,719 unregistered
+    addressable cycles in 239 clusters; 699,882,345 of 1,292,371,731 master
+    cycles execute natively across 591 admitted routines, with no horizon
+    declines or abandoned transcripts.
+  - Reject `00:E957` as a 21,823,740-cycle/123,180-write enclosing
+    video/palette scope, and `00:ED4D` as the already-owned boot-clear child.
+  - Reject `01:D950` as a 24-call, multi-caller table walk that returns at
+    `01:DA3F`; its 594--2,406-cycle and 20--59-write scopes are not an
+    independent entry-and-return contract. The two bounded bank-09 one-shot
+    initializer paths defer through the existing scheduler and remain below
+    the next high-value gameplay transaction.
+  - Rebuilt the Release application and passed the Tower-Insect owning Release
+    semantic regression, registry-manifest validation, and ROM-free Debug
+    core suite.
+- [x] Implement and shadow the three-seam `02:5F78/5F7B/5F7E/5FD6`
+  Tower-Insect child-spawner transaction:
+  - `5F78` publishes the exact `JSR $C024` stack frame; `5F7B` admits the
+    carry-clear allocator continuation; `5F7E` copies the source fields into
+    the reserved child and publishes its `JSR $C06C` frame; and `5FD6`
+    restores the source, advances `$2D2B`, then leaves the internal `RTS` to
+    the core rather than absorbing the source-controller's outer return.
+  - The four natural BSR calls at frames 941, 989, 1,037, and 1,085 are all
+    native. The whole-route assembly/native oracle preserves the canonical
+    census and exact 16-call/2,530-write artifact: call SHA-256
+    `bc0e5612...6ca2c`, write SHA-256 `f5bfe69e...18925`.
+  - Corrected the HuC6280 `INC abs` timing to 21 master cycles and retained
+    A across the read-modify-write instruction; both were required for exact
+    frame-941 continuation parity.
+  - Added the owning Release semantic CTest, regenerated the native registry
+    and report, and passed it alongside Release/Debug core tests and both
+    application builds. Registry deployment now admits 591 routines, enters
+    474, covers 699,882,345 master cycles, and has no horizon declines or
+    abandoned transcripts.
+- [x] Screen the next bounded post-`01:CB46` candidate batch without widening
+  a documented seam:
+  - `03:7F5A`'s 20,867 call scopes include collision-interpreter and marker
+    children (402--38,502 cycles, 11--523 writes); retain it as an
+    owner-composition boundary.
+  - Keep `03:6001`, `03:7C34`, and `03:7A39` assembly-backed: respectively
+    they are a cross-bank continuation, scheduler tail, and appearance tail,
+    not closed observer scopes.
+  - Select `02:5F78` for the next native slice. Its four natural BSR calls
+    return at `02:5F56`, have 52--89 ordered writes, and split cleanly around
+    the native allocator and activation children at `5F7B/5F7E/5FD6`.
+  - Rebuilt the Release application and passed the focused `dc_core_tests`
+    Release checkpoint after the profiling/documentation update.
+- [x] Screen the first fresh post-`01:CB46` bounded observer set without
+  widening a documented bridge seam:
+  - The literal collision `RTS` rows `01:CCD2` and `01:CCD4` are not
+    standalone return transactions. Their 270/604 natural entries resume the
+    caller's collision path and reach an outer `01:DCD7` return, producing
+    5,086,482/21,711,210 scoped cycles and 160,235/459,311 scoped writes.
+    Absorbing either inner transfer would incorrectly complete that caller.
+  - `01:C63E` is likewise not unported actor-queue work: all 25 natural
+    entries arrive from the registered `01:C520` call seam, return through the
+    existing `01:C654` owner, and are the interrupt-resumption tail of native
+    `01:C606`. Its 75/81-cycle ordinary paths and two interrupt-bearing
+    597/732-cycle scopes confirm the existing ownership.
+  - The canonical census remains
+    `9036a9de0c3c9917f47bff8c04c136a4824ec12601fb457d260aa2dfe4443490`.
+    Release registry-manifest, collision-tail, score-panel, and Three-Blobs
+    shared-return regressions, Release build/core test, freshly rebuilt Debug
+    core test, and both ROM-free core configurations pass.
+- [x] Re-record and classify the deployed post-`01:CB46` instruction residue:
+  - The registry-enabled 3,600-frame profile is stable: 3,523 executed
+    addresses, 1,292,378,139 master cycles, 699,880,377 native cycles, 587
+    installed/470 entered routines, and zero horizon declines or abandoned
+    transcripts.
+  - Its largest remaining rows stay outside the candidate queue: `00:EB46`
+    and `08:585A` are fixed-capacity palette/boot block transfers;
+    `00:E950-E9B5` is the single-sample palette-fade driver around native
+    `00:E9B6`; `00:F423`, `00:FA67`, `01:C756`, and `01:CB7E` are
+    compound-sampled branches; `00:E05C`/`00:E134` are device acknowledgements;
+    bank `45` rows are native music-driver resumptions; and `01:CB71` is the
+    collision-sweep BBS seam.
+  - Keep those rows emulated or owner-composed: none has an independent
+    entry-and-return contract, so admitting one would widen a hardware seam or
+    duplicate an existing native owner.
+- [x] Re-rank the post-score-tail deployed residue and port the collision
+  sweep's final bounded setup store at `01:CB46`:
+  - Excluding the documented frame wait, block-transfer capacity walls,
+    compound-sampled branch seams, interrupt/device acknowledgement, frame-loop
+    glue, and driver resumption leaves this 3,233-call, 39,180-cycle store as
+    the highest safe gameplay handoff.
+  - Admit `01:CB46@all` as a one-instruction transaction. It stores the live
+    accumulator in `$2064`, emits the original 12-cycle checkpoint, and stops
+    at the independently native collision sweep head `01:CB48` without
+    widening either owner.
+  - The collision-tail oracle preserves the canonical census and selected
+    actor/stack write stream on all 3,233 entries; generated-registry
+    validation, the Release application/core build, the Release collision-tail
+    and score-panel semantic regressions, and the Release core tests pass.
+    Deployment adds 38,796 native cycles, removes the 39,180-cycle non-entry
+    residue, reaches 587 admitted/470 entered routines, and retains zero
+    horizon declines or transcript abandonments.
+- [x] Decompose and admit the complete score-panel redraw tail at
+  `09:727D/72A2/72BD/72C5`:
+  - Split the 34 redraw heads, 105 score-digit iterations, and 133
+    leading-zero iterations at their natural re-entry seams, then make the
+    bounded ball-count suffix at `72C5` compose its divider and two glyph
+    children before absorbing the authentic `72EA` return.
+  - Keep every bounded transaction below 512 ordered work-RAM writes and
+    preserve exact instruction-cycle timing, including the `INC`/`DEC`
+    read-modify-write cycles.
+  - Extend the score-panel family oracle; the 3,600-frame census and selected
+    work-RAM/VDC-port write artifacts remain byte-identical to assembly.
+    Release/Debug application and core builds, the Release semantic regression,
+    and generated-registry validation pass.
+- [x] Re-rank the post-`03:67E5` residue and bound the score-panel redraw tail
+  at `09:727D-72EA`:
+  - The tail arrives 34 times on the canonical route and composes two fixed
+    glyph writes, repeated `00:E7D7` score divisions/glyph writes, and one
+    `00:E6DC` ball-count division before its real `72EA` return.
+  - A whole-tail composition emits about 652 ordered writes on ordinary
+    redraws, exceeding the fixed 512-write transaction contract; only the
+    minimal first redraw can admit as one transaction. The later split at
+    `72A2`, `72BD`, and `72C5` resolves that capacity limit without widening
+    the bridge; all existing artifacts remain authoritative.
+- [x] Re-rank the 3,360,258-cycle residue and port the Three-Blobs shared
+  return at `03:67E5`:
+  - Admit semantic `03:67E5@all` on all 1,965 natural arrivals, derive every
+    MPR-qualified caller resume from the live stack frame, and preserve the
+    `RTS` final-cycle interrupt checkpoint.
+  - Preserve the canonical census, complete 4,650,247-write selected
+    actor/stack stream, and first/last state-normalized return replays at
+    frames 1,229 and 3,600.
+  - Pass the dedicated Release semantic regression, generated-registry
+    validation, Release/Debug application builds, and the Release core test.
 - [x] Re-rank the 3,452,871-cycle residue and port the shared Giant-Face
   helmet return at `02:4CF1`:
   - Admit semantic `02:4CF1@all` on all 5,843 natural arrivals, derive every
@@ -5321,6 +6335,83 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
 
 ## Next Actions
 
+- [x] Isolate the independent frame-1,845 audio-only drift left after the
+  Big-Star timer-horizon fallback. The affected PSG edge was instead the
+  Three-Blobs `03:66A3` post-handoff timer horizon; its conservative fallback
+  restores a byte-identical 3,600-frame deployed twist recording.
+- [x] Select and screen a further input-only natural gameplay route for a
+  table-rule transaction whose natural scope has its own caller and return;
+  the alternate, sweep, crossfire, orbit, lanes, stagger, pulse, rally, and
+  slalom routes all reached only existing owners/continuations, and the
+  pendulum route's full 3,242-address profile is contained in the current
+  discovery union. The nudge-led route is deterministic in both configurations
+  but reaches only the documented ordinary drain/reload, Giant-Skeleton,
+  Devil-Shooter, and Giant-Face crown-hit owners; do not split their interiors.
+  The switchback route's longer launcher hold, 233-frame alternating saves,
+  and broad neutral rebound windows are deterministic in both configurations,
+  but its 3,376-address profile is contained in the lanes/pulse/rally/stagger/
+  sweep/state-census discovery union; it likewise supplies no new transaction.
+  The slalom
+  route's entire 3,375-address profile is contained in the prior discovery
+  union, while the pulse route's only
+  new table-bank rows (`02:51C3/51C5`) return through `01:C520` after the
+  existing `02:5475` Devil-Shooter child; do not promote them. The stagger
+  profile adds no unregistered address beyond the lanes/sweep/state-census
+  union. The rally route adds only existing Skeleton-Insect `02:54D0/5500`
+  paths returning through `01:C520`. Do not promote the orbit route's
+  `02:515C/5161` coroutine interiors, the lanes route's Knight/Giant-Door
+  interiors (`03:6314/73D0/751E/7696`), pre-allocation offsets that only
+  close through `02:427C`, or the already-mapped `02:4F6C-4F8D`
+  continuation.
+  The ricochet route's 419-frame Button-II impulse cadence is deterministic
+  in both configurations, but its only nine profile additions are the
+  `02:5228-523C` interiors of the existing `02:5223` Devil-Shooter
+  controller; its 202 ordinary `02:5226` arrivals return at `02:5245`, and
+  the sole long arrival passes to `01:C5E9`. Do not split that controller.
+  The volley route's early launch and 503-frame sustained alternating banks
+  are deterministic in both configurations, but its entire 2,846-address
+  profile is contained in the available discovery-route union; do not create
+  a new seam from an already-classified owner or continuation.
+  The cascade route's early release and 607-frame neutral-descent cadence is
+  also deterministic in both configurations, but its only additions are the
+  already-rejected `02:5228-523C` interiors of `02:5223`; do not split that
+  controller. The higharc route's frame-1,460 launch release and 701-frame
+  sparse-save cadence likewise reaches only existing actor-loader,
+  Giant-Skeleton, Devil-Shooter, flipper, and scheduler interiors. Its one
+  newly exercised registry path is `00:E255 -> 00:E25F`, where the defensive
+  banked-call epilogue abandons on an MPR mismatch and resumes in the core;
+  it is not a table-rule transaction. Continue with a materially different
+  natural trajectory, and keep that safe fallback covered. The sidestep
+  route is also deterministic in assembly, Release, and Debug, but its only
+  new rows (`03:78CC-78F8`) are the existing fixed-Bumper hit continuation:
+  the one natural `03:78CC` scope starts from scheduler `01:C51D` and returns
+  at controller `03:7C33`. Do not split this owner-inclusive continuation.
+- [ ] Select and screen the next materially different input-only natural
+  gameplay route for an unobserved table-rule transaction whose natural scope
+  has its own caller and return. Keep all known scheduler, collision,
+  fixed-Bumper, actor-loader, appearance, allocator, and caller-return
+  continuations assembly-backed.
+- [x] Re-rank the deployed post-spawner residue and screen the next independent
+  gameplay entry/return scope below the documented device, block-transfer,
+  compound-branch, frame-loop, scheduler, and driver-resumption seams.
+- [x] Screen the next post-`01:CB46` bounded gameplay observer set and reject
+  rows that are only native-child or scheduler scopes:
+  - `03:7F5A` is a 20,867-call Small-Soldier controller parent around the
+    existing collision interpreter and marker helper, not a 2,265-cycle leaf;
+    its observer scopes span 402--38,502 cycles and 11--523 writes.
+  - `03:6001` is the documented cross-bank Tower-Insect continuation after
+    `03:6966`, `03:7C34` tails into the actor scheduler, and `03:7A39` tails
+    through the appearance submission helper. None supplies an independent
+    entry-and-return transaction.
+  - `02:5F78` is the first real candidate: all four natural Tower-Insect
+    child spawns return to their `BSR` caller at `02:5F56`, use only 52--89
+    ordered writes, and cross already-native `01:C024/C5AB` allocation and
+    `01:C06C` activation children. Split it at `02:5F7B/5F7E/5FD6` rather
+    than treating the child-inclusive 6,780--8,907-cycle observer scopes as
+    one atomic replacement.
+- [x] Implement and shadow the three-seam `02:5F78/5F7B/5F7E/5FD6`
+  Tower-Insect child-spawner transaction, regenerate the registry, and add
+  its owning Release semantic oracle.
 - [x] Re-rank the post-uploader residue and port the first bounded repeated
   Three-Blobs movement seams without spanning coroutine suspension.
 - [x] Continue the Three-Blobs owner through the bounded `03:66BF` negation
@@ -5383,9 +6474,173 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
 - [x] Re-rank the fresh 3,452,871-cycle deployed residue and port the next
   bounded gameplay cluster after excluding documented hardware seams, shared
   handoff attribution, and interrupt cycles charged to the entry row.
-- [ ] Re-rank the fresh 3,360,258-cycle deployed residue and port the next
-  bounded gameplay cluster after excluding documented hardware seams, shared
-  handoff attribution, and interrupt cycles charged to the entry row.
+- [x] Re-rank the fresh 3,340,878-cycle deployed residue after `03:67E5` and
+  bound the next gameplay cluster without widening documented bridge seams.
+- [x] Decompose `09:727D-72EA` at its score-digit and leading-zero loop
+  re-entry seams (`72A2`, `72BD`) so each child-crossing score-panel
+  transaction remains within 512 ordered writes; then add its registry row
+  and extend the existing score-panel family oracle.
+- [x] Re-rank the post-score-panel deployed residue and select the next bounded
+  gameplay cluster without widening the documented bridge seams.
+- [x] Re-rank the post-score-tail deployed residue and screen the next bounded
+  gameplay cluster without widening the documented bridge seams.
+- [x] Re-rank the post-`01:CB46` deployed residue and screen the next bounded
+  gameplay cluster without widening the documented bridge seams.
+- [x] Select and profile a fresh bounded observer set below the documented
+  device, capacity, compound-branch, scheduler, and driver-resumption residue
+  before admitting another transaction; reject the collision-return and
+  actor-queue-resumption sets above rather than duplicating their existing
+  owners.
+- [x] Screen the next post-`08:5961` unregistered gameplay batch without
+  admitting a native-parent resumption or caller-owned `RTS`:
+  - `03:7B4B/7B5A/7B69` are nested fixed-marker descriptor submissions;
+    all 332 arrivals return only through `03:7B6C`, and their
+    1,080--6,153-cycle/34--161-write scopes include already-native children
+    and the scheduler-owned return.
+  - `03:7B6C` is that 81--1,038-cycle two-write `RTS` into `01:C654`, so it
+    is the caller's scheduler return rather than a new gameplay contract.
+  - `01:CB5E`, `01:CB65`, and `01:CCD2` are collision-scanner composed-call,
+    continuation, and hit-path handoffs; their 17,010--103,251-cycle scopes
+    remain child-inclusive.
+  - `08:56C5`, `08:58EE`, and `01:D9C8` are enclosing setup/table-walk scopes
+    (up to 243,098,436 cycles and 439,765 writes), while `09:6FB1` and
+    `09:70EE` are one-shot scheduler-backed score-panel initializers.
+- [x] Screen the next lower table-rule initializer/controller batch without
+  admitting actor-loader, collision, or scheduler-owned returns:
+  - The 26-call Release screen is canonical at `9036a9de...e4443490` with
+    1,518 ordered writes. `02:49FC` and all four `02:4A6C` arrivals are
+    setup work still open until the actor-loader return at `02:4CF1`.
+  - `02:53A8`, `02:5421`, `02:55D3`, `02:578E`, and `03:647D` are one-shot
+    actor initializers whose only observed exit is the scheduler at `01:C5E9`.
+    `02:41F7`, `02:43A4`, `02:4429`, `02:511B`, and `02:5A55` likewise span
+    Dragon-Egg, Devil-Shooter, or Dragon-Head collision/allocator ownership
+    (3,972--24,249 cycles on their long paths), so none has a separate
+    entry-and-return contract.
+- [x] Screen the next lower non-driver table-rule leaves without widening an
+  existing appearance, scheduler, or fixed-controller owner:
+  - The 12-address Release screen (`03:742B`, `03:7863`, `03:792A`,
+    `03:7B87`, `03:60C0`, `03:6099`, `03:611F`, `03:6432`, `03:643D`,
+    `01:D6C6`, `01:D6B5`, and `01:C149`) records 14 bounded scopes and
+    2,470 ordered writes while preserving the byte-identical state and
+    native-cycle censuses.
+  - `03:6099`, `03:60C0`, `03:611F`, `03:6432`, `03:643D`, and `03:742B`
+    all return through the generic scheduler (`01:C5E9`); `03:7B87` returns
+    through its fixed-controller scheduler (`01:C654`); and `03:7863`
+    returns through the existing appearance owner (`00:EBD6`).
+  - `01:D6B5` and `01:D6C6` are adjacent entries in one 29,046--29,088-cycle
+    table-walk scope, while `03:792A`'s two arrivals span 60,624/395 and
+    102,741/1,054 cycles/writes before the same `01:C654` return. They are
+    not independent transactions. Continue below this batch.
+- [ ] Continue screening the remaining unregistered residue below documented
+  hardware, capacity, compound-branch, scheduler, and music-resumption seams
+  until a bounded gameplay transaction has an independent entry and return
+  contract.
+  - [x] Add and screen an input-only 3,600-frame alternate natural gameplay
+    route. Its distinct launch/flipper/nudge cadence reaches the Giant-Skeleton
+    Eyeball final-animation family at `02:4F3D` (224 calls), including the
+    one `02:4F76` transition. The 183 ordinary 102-cycle/two-write waits are
+    already covered by the existing semantic; the remaining 41 calls either
+    include scheduled/interrupt work or enter the 2,580-cycle, 65-write
+    `4F76` drawing/coroutine/scheduler continuation. It supplies new natural
+    branch coverage but no standalone replacement transaction.
+  - [x] Screen the alternate built-in 1,800-frame natural gameplay route.
+    Its 509 `02:5159` calls include the existing idle, collision/appearance,
+    and scheduler exits; the newly seen `02:5226-523C` launch continuation
+    enters the already-native `02:5223` owner. No standalone table-rule
+    transaction is present.
+  - [x] Add and screen the input-only 3,600-frame pendulum natural gameplay
+    route. Its 257-frame long-travel/mirrored-save cadence has byte-identical
+    Release and Debug recording, profile, and cycle-census artifacts. Every
+    one of its 3,242 executed addresses already belongs to the current
+    discovery union, so it exposes no new table-rule branch or standalone
+    caller-and-return transaction.
+  - [x] Add and screen the input-only 3,600-frame spiral natural gameplay
+    route. Its earlier launcher release and 359-frame mixed flipper/nudge
+    cadence has byte-identical Release and Debug recording, profile,
+    native-cycle-census, and abandonment artifacts
+    (`8cde2245...47f572`, `ea55df9b...e90e03`, and
+    `0511e6d6...758823`). All 3,920 executed addresses already belong to
+    the discovery union, so it provides broader natural replay coverage but
+    no unobserved table-rule branch or standalone caller-and-return
+    transaction.
+  - Fresh 593-entry Release deployment on 2026-08-22 remains canonical at
+    `9036a9de...e4443490`: 475 routines entered, 699,919,959 of
+    1,292,371,731 master cycles native, and no horizon declines or abandoned
+    transcripts. The filtered 3,228,057-cycle / 238-cluster residue begins
+    with the already-classified frame, device, transfer, compound-branch,
+    bank-08 scheduler/setup, and bank-45 music owners; screen only lower
+    routine heads with a real caller and return.
+  - The next lower bank-`09` pass confirms that `09:74C7` is an independent
+    but one-shot score-panel setup (672 cycles, 20 writes) after native
+    `00:E219`; `09:7B0B/7BA2/7F4B/7F70/7FD7` are nested score-panel paths.
+    Exclude that presentation family and continue with lower table-rule heads.
+  - The following nine-head Release screen is likewise excluded: the 262
+    observed scopes are fixed-actor/scheduler continuations (`03:7D72`,
+    `03:7E10`, `03:6021`), the enclosing score redraw (`09:726B`), flipper or
+    table-walk parents (`01:D62D`, `01:D6DA`), the mapped RNG return
+    (`00:E8E6`), an appearance tail (`03:7A39`), and one-shot presentation
+    setup (`09:7F28`). The canonical census remains unchanged; start the next
+    screen below these excluded owners.
+  - The subsequent 12-head bank-`03` screen is also excluded: its 167 scopes
+    are collision, appearance, or fixed-actor scheduler continuations
+    (`03:7C37/7C3A/7C3D/7C40`, `03:78ED/78F2`, `03:7A54`, and
+    `03:7C6F/7F1D/7F49/7F4C/7F51`). Its direct returns fan into `03:7C33`,
+    `01:C594`, `00:EBD6`, or `01:C5E9`; screen lower heads rather than
+    duplicating any of those owners.
+  - The next mixed 12-head screen is also excluded: `03:64A5/64D5/64E0/64F0`
+    are Front-Spider transition continuations; `03:66DC/66E1/676E` are
+    Three-Blobs movement/return seams; `02:41EC/4290/42A6` remain within the
+    shared impact-burst allocator and activation; and `02:51EE/556D` return
+    through existing Devil-Shooter or Skeleton-Insect scheduler owners. The
+    canonical 116-call/4,175-write screen supplies no separate transaction;
+    continue below these owners.
+  - The following 12-head screen is also excluded: `02:4376`,
+    `02:5156/515C/5161`, `02:5394`, and `03:60D2` are actor-loader/scheduler
+    continuations; `02:53E7` is the Skeleton-Insect companion return;
+    `02:5C7B/5CAE` are consecutive source-controller stages;
+    `01:D5D7/01:D695` are flipper/table-walk parents; and `03:7655` is an
+    appearance continuation. The canonical 18-call/4,705-write screen
+    supplies no separate transaction; continue below this batch.
+  - The next 12-head 3,600-frame Release screen is also excluded: the
+    `03:69C5/6A14/6A33/6A37/6988` records are nested collision-interpreter
+    continuations which join at `03:6A37` and return through the existing
+    `03:65BB` owner; `03:7F80`, `03:7387`, `03:601C`, `03:6078`, and
+    `03:606B` are fixed-controller or generic-scheduler paths; and
+    `02:434A/4FE1` return through the actor queue's `01:C654` scheduler
+    boundary. The 232,852 overlapping observed calls and 1,811,029 ordered
+    writes provide no independent caller/return contract.
+  - The next low Tower-Insect screen is also excluded. `03:6003` has 256
+    scheduler arrivals and remains open through `03:6078` for 159--1,506
+    cycles; its six `6005-6013` descendants are the same four expiry passes
+    ending at `01:C5E9`. The seven `6023-602C` paths are controller interiors
+    that either return through `03:603E` after 10,227--12,390 cycles or enter
+    collision ownership at `01:C594` after 24,039--25,644 cycles. The
+    315-call/12,257-write Release observer census is canonical at
+    `9036a9de...e4443490`, so none supplies an independent transaction.
+  - The subsequent twelve-head lower follow-up is likewise excluded. Its
+    2,173 Release scopes and 11,124 ordered writes preserve the canonical
+    census. `01:D75E` is the `$2254` video-busy branch into shared `D770`;
+    `01:D608`, `01:CC04`, and `01:D7D7/D7E9` are flipper or
+    collision/scheduler continuations; and `02:54D5`, `02:5F4D/5F06`,
+    `02:4298`, and `01:D71A` remain Skeleton-Insect, Giant-Skeleton, or
+    impact-burst owner interiors. `03:6773` is the repeated Three-Blobs
+    inner checkpoint already crossed by native `676B/66DE/670C` paths and
+    returns through `03:67E5`; `00:E2B7` is a two-call video wrapper. None
+    has a standalone caller-and-return contract.
+  - The complete 593-entry re-rank is now recorded from the rebuilt Release
+    executable: `--instruction-profile` reports 3,228,057 non-wait residue
+    cycles in 238 clusters while the deployed census remains
+    `9036a9de...e4443490`. The remaining table-rule rows are covered by the
+    exclusions above, so the canonical route supplies no safe new admission.
+    **Next:** select a different existing natural route that reaches an
+    unobserved table-rule branch; do not promote a known continuation merely
+    to advance the registry count.
+- [x] Screen the next strictly lower unclassified non-driver observer set from
+  the fresh 593-entry profile, keeping startup-loop `00:EF2A` and multi-owner
+  mapper return `00:E479` excluded unless a child supplies its own natural
+  entry-and-return contract.
+- [x] Port score-repeat wrapper `00:F54F` through its `F557` loop-return seam
+  while retaining `00:F55C` as the sole score-accumulator owner.
 - [x] Split `00:F9A2-FAC5` by actual owner and port its repeated bounded VDC
   row loop without absorbing either compound-sampled branch instruction.
 - [x] Add repository hygiene for ROMs, generated assets, traces, build products, and local configuration.
@@ -7367,29 +8622,610 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
     cycles added, 493 admitted routines, 377 entered, and no abandonments.
   - [x] Pass the owning Release semantic regression, direct Debug route,
     Debug/Release core tests, generated-registry manifest, and diff hygiene.
+- [x] Add and screen a third deterministic, input-only gameplay route:
+  - [x] Added `--record-gameplay-sweep`, a 3,600-frame route with the common
+    menu/launch path, an asymmetric left/right flipper cadence, and eight
+    differently spaced Button-II pulses. It does not patch work RAM.
+  - [x] The fully deployed Release route completes with 593 installed / 455
+    entered routines, 679,579,350 native master cycles of 1,292,371,731
+    elapsed (98.46% outside the frame-sync wait), and zero horizon declines or
+    abandoned transcripts. Its Debug recording and 593-row native-cycle census
+    are byte-identical to Release.
+  - [x] Compared with the state-census route, the sweep reaches active-flipper
+    `01:D4A7-D4B2` and the already-known `02:4F3D` Giant-Skeleton Eyeball
+    branch. Assembly observation records 598 arrivals apiece at
+    `D4A7/D4AA/D4AD` and 466 at `D4B2`: the short paths re-enter the existing
+    active-flipper owner, while expanded paths hand to `01:C5E9` or `01:C654`.
+    These are not standalone transactional boundaries, so all four remain
+    assembly-backed. Select another natural route rather than split this
+    owner/scheduler composition.
 
 ## Active Work
 
-Current owner: Codex. Current slice: **Giant-Face helmet shared return**.
-Done.
+Current owner: Codex. Current slice: **screen the next materially different
+input-only natural gameplay route for an unobserved table-rule transaction with
+its own caller-and-return contract after sidestep**. Sidestep is now screened:
+its middle-strength launch, 947-frame asymmetric side saves, and neutral-only
+Button-II impulses preserve byte-identical assembly/Release/Debug recordings
+(`30cce23f...05d82a`), profiles, native-cycle censuses, and abandonment
+censuses. Its only new block, `03:78CC-78F8`, is a single existing
+fixed-Bumper collision continuation: the frame-1,469 `03:78CC` call enters
+from `01:C51D`, reaches existing controller `03:7C33`, and spans 16,128
+cycles/258 ordered writes. It is not a new caller-and-return transaction;
+keep it assembly-backed and select another materially different natural route.
+The twist fidelity gate is closed:
+`02:570A` retains its Big-Star timer-horizon fallback, while `03:66A3` now
+leaves its post-handoff timer-sensitive calls in assembly. The fully deployed
+3,600-frame route is byte-identical to assembly for audio, RAM, and video;
+the remaining later PSG timing offsets are inaudible and do not alter any
+recorded frame. The new input-only higharc
+route is screened: its long frame-1,460 launcher hold, sparse 701-frame saves,
+and neutral-only directional nudges produce byte-identical Release/Debug
+recording, instruction-profile, native-cycle-census, and abandonment artifacts
+(`77568124...e56773cf`, `efd82f2c...320d0534`,
+`c5db7a84...a40432f8`, and `0cc0ec95...f1e11f48`). The only newly exercised
+registry path is the defensive `00:E255 -> 00:E25F` MPR-mismatch fallback;
+the deployed recording matches fully emulated Release byte-for-byte. Its 208
+state-census additions remain existing actor-loader, Giant-Skeleton,
+Devil-Shooter, flipper, and scheduler interiors, so it exposes no independent
+table-rule caller-and-return transaction. Keep this defensive fallback intact
+and select another materially different natural route. The new input-only cascade
+route is screened: its early launcher release, long neutral descent, sparse
+asymmetric saves, and neutral-only directional nudges produce byte-identical
+Release/Debug recording, instruction-profile, and native-cycle-census artifacts
+(`70e63c92...c7ea1e2`, `6f36aff1...d4e6b079`, and
+`0590872d...7540629`) with zero horizon declines or abandonments. Its complete
+2,839-address profile introduces only `02:5228-523C`, four short arrivals
+inside the existing `02:5223` Devil-Shooter controller. Keep these paths
+assembly-backed and select another materially different natural route. The new input-only whirlpool
+route is screened: its mid-range launch release, 521-frame offset double-save
+windows, long neutral rebounds, and neutral-window Button-II/directional
+nudges produce byte-identical Release/Debug recording, instruction-profile,
+and native-cycle-census artifacts (`370843d5...31501b0`,
+`fba6e965...22312c`, and `8c9d676f...2428bd`) with zero horizon declines or
+abandonments. Its complete 2,852-address profile is contained in the locally
+preserved discovery-route union, so it exposes no unobserved rule branch or
+independent caller-and-return transaction. Keep all reached paths
+assembly-backed and select another materially different natural route. The new input-only volley
+route is screened: its early launch, sustained alternating flipper banks, and
+neutral-window nudge volleys produce byte-identical Release/Debug recording,
+instruction-profile, and native-cycle-census artifacts
+(`52b9c99b...6c85ee`, `03a248a1...fcdee`, and
+`187ba56f...f4557`) with zero horizon declines or abandonments. Its complete
+2,846-address profile is contained in the available discovery-route union, so
+it exposes no unobserved rule branch or independent caller-and-return
+transaction. Keep all reached paths assembly-backed and select another
+materially different natural route. The new input-only ricochet
+route is screened: its earlier launcher release, prime 419-frame staggered
+saves, neutral Button-II impulses, and directional nudges produce
+byte-identical Release/Debug recording, instruction-profile, and
+native-cycle-census artifacts (`761a2e34...5ec7ec0`,
+`1c24e663...82a686`, and `7891d1b2...3a676`) with zero horizon declines or
+abandonments. Its 2,879-address profile introduces only
+`02:5228-523C`, which stay inside the existing `02:5223` Devil-Shooter
+controller. The Release `02:5226` observer records 202 36-cycle/no-write
+returns at `02:5245` and one scheduler-inclusive `01:C5E9` path, so it offers
+no independent caller-and-return transaction. Keep it assembly-backed and
+select a materially different natural route. The new input-only spiral
+route is screened: its earlier launcher release and 359-frame mixed
+flipper/nudge cadence produces byte-identical Release/Debug recording,
+instruction-profile, native-cycle-census, and abandonment artifacts
+(`8cde2245...47f572`, `ea55df9b...e90e03`, and
+`0511e6d6...758823`) with zero horizon declines or abandonments. Its
+3,920-address profile is wholly contained in the current discovery union, so
+it exposes no independent table-rule caller-and-return contract. Keep all
+reached paths assembly-backed and select a materially different natural route.
+The new input-only switchback
+route is screened: its longer launcher hold and 233-frame alternating saves
+with broad neutral rebound windows produce byte-identical Release/Debug
+recording, instruction-profile, and native-cycle-census artifacts
+(`82b196f9...9fefcd`, `b316de99...95025b`, and `e5995b14...195aad`) with zero
+horizon declines or abandonments. Its 3,376-address profile is wholly
+contained in the lanes/pulse/rally/stagger/sweep/state-census discovery union,
+so it exposes no independent table-rule caller-and-return contract. Keep all
+reached paths assembly-backed and select a materially different natural route.
+The new input-only nudge-led
+route is also screened: its sparse 313-frame flipper-save and rotating-nudge
+cadence produces byte-identical Release/Debug recording, instruction-profile,
+and native-cycle-census artifacts (`4d6e338d...ef4868e9`) with zero horizon
+declines or abandonments. Its 3,511-address profile reaches the documented
+ordinary drain/reload path (`01:C7E5/C812 -> 02:4003`), established
+Giant-Skeleton and Devil-Shooter owners, and the already-screened Giant-Face
+crown-hit parent `03:761E`; it exposes no independent table-rule
+caller-and-return contract. Keep these paths assembly-backed and select another
+material route. The new input-only slalom route
+is also screened: its wide 211-frame left/right saves and reversed nudge
+direction produce byte-identical Release/Debug recording, instruction-profile,
+and native-cycle-census artifacts (`b27909d8...35a55d3`) with zero horizon
+declines or abandonments. Its complete 3,375-address instruction profile is
+contained in the prior discovery-route union, so it exposes no independent
+table-rule caller-and-return contract; keep its paths assembly-backed and
+select another material route. The input-only pulse route is
+also screened: its four-frame asymmetric taps and long neutral windows produce
+the byte-identical Release/Debug recording `be19ef05...3aea550`, instruction
+profile, and native-cycle census with zero horizon declines or abandonments.
+Its sole new gameplay rows `02:51C3/51C5` form one frame-1,265, 2,976-cycle,
+65-write Devil-Shooter scheduler-to-appearance interior, returning at
+`01:C520`; the remaining 64 new rows are bank-`45` music instructions. Keep
+all of it assembly-backed and select another material route. The new input-only
+rally route is also screened: its right-biased 137-frame recovery cadence,
+short left saves, and delayed nudges produce the byte-identical Release/Debug
+recording `f3a5a67d...debc76a` with zero horizon declines or abandonments.
+Its only new registry-census table paths are the existing Skeleton-Insect
+countdown and idle-controller heads `02:54D0/5500`. The focused 199-call
+assembly screen shows every scope returns from `01:C51D` to `01:C520`; retain
+these known scheduler-owned paths in assembly and select another material
+route. The new input-only stagger route is also screened. Its long offset
+flipper holds, broad release gaps, and sparse directional inputs are materially different from the prior
+discovery plans, yet its 3,626-address profile introduces no unregistered
+instruction outside the lanes/sweep/state-census union. Release and Debug
+recordings, instruction profiles, and native-cycle censuses are byte-identical
+(`9b8d8058...830325b`) with zero horizon declines and abandonments. Keep all
+of its paths assembly-backed; select another materially different natural route
+rather than splitting an existing owner. The new input-only crossfire
+route overlaps both flippers rather than merely changing their cadence. Its
+Release/Debug recordings are identical (`872d7bc8...eb43650`) with zero
+abandonments, but it reaches only the already-bounded Giant-Skeleton Eyeball
+final-animation wait/drawing continuation (`02:4F3D`, `02:4F6C-4F8D`). Do not
+revisit that continuation by splitting its internal entries. The refreshed
+canonical route has exhausted its lower unclassified
+table-rule heads: every remaining
+bank-`02`/`03` candidate is a documented appearance, actor-loader, scheduler,
+collision, allocator, or caller-return interior rather than an independent
+bounded owner. Do not manufacture another seam from this residue.
+The new input-only orbit route is likewise screened. Its Release recording is
+`a039046ff93cd9ce4d44a5174b2832f8f1818ffcedcec8f35dbbd150612743a9`, with
+all 593 admissions installed, 441 entered routines, 662,960,160 native master
+cycles, and no horizon declines or abandoned transcripts. Its 4,465-call
+assembly screen proves `02:515C/5161` are successive interiors of the existing
+`02:5159` held-input coroutine: all 699 arrivals enter from `01:C51D` and
+return at `01:C520`; `02:5178`, `518D`, and `5197` remain its existing child
+seams. The remaining newly active `02:4F40/4F6C` and `03:6001/6013` rows stay
+inside mapped Giant-Skeleton and Tower-Insect owners. Do not promote any of
+these interiors; select a materially different natural route.
+The latest lower impact-burst allocator screen also makes no admission:
+`02:41EC/41EE/41F0/41F2/41F5/41F7/41F9/41FB/41FD` are consecutive
+pre-allocation instructions entered from the existing `03:604B/7FA1`
+collision owners, while `02:41FF/4205/4209` are their two Dragon-Egg-source
+siblings. Every one of the 51 scopes closes only through the already-native
+allocator-success return at `02:427C` (5,532--7,710 cycles and 19--68 writes
+for the repeated rows); do not split these owner-inclusive interiors. The
+fresh deployed census remains canonical at `9036a9de...e4443490`; continue
+below this allocator set for a real table-rule entry/return contract.
+The newest lower scheduler-tail screen also makes no admission:
+`03:7D79/7D7C/7D7F/7D81/7D82` and
+`03:7E12/7E14/7E17/7E1D/7E1F/7E20` record 105 calls and 1,671 ordered
+writes without a standalone transaction. The paired long forms are generic
+scheduler chains, `7D81/7E1F` are existing Small-Soldier delayed-spawn branch
+targets plus generic actor-loop exits, and `7D82/7E20` are terminal scheduler
+returns. The full deployed state and native-cycle censuses remain canonical.
+Continue below this shared-tail set; do not split these re-entry or return
+seams from their existing owners.
+The newest twelve-head Release screen is excluded: `03:6099/60C0/611F`,
+`03:6432/643D`, and `03:742B` return through `01:C5E9`; `03:7B87` returns
+through `01:C654`; `03:7863` returns through `00:EBD6`; and `01:D6B5/D6C6`
+plus `03:792A` are table-walk/fixed-controller parent scopes rather than
+leaves. Its 14 records and 2,470 writes preserve byte-identical state and
+native-cycle censuses. Continue at the next lower table-rule heads only; do
+not split any of these existing owners.
+The follow-on low Tower-Insect screen also makes no admission: `03:6003`
+stays inside the scheduler/controller until `03:6078`, `03:6005-6013` are
+four shared expiry passes returning at `01:C5E9`, and `03:6023-602C` either
+join at the already-owned `03:603E` continuation or cross collision ownership
+at `01:C594`. Its 315 calls and 12,257 ordered writes retain the canonical
+Release census. Continue below this controller interior rather than splitting
+its scheduler or collision branches into artificial transactions.
+The newest 12-head Release screen makes no admission: `03:7A3C/7A3F/7A42/`
+`7A45/7A48/7A66` are one caller-owned appearance loop; `03:7E1A/7F20` return
+through the generic scheduler; `03:7F8C/7F91/7F94` are consecutive actor
+continuations; and `02:4429` remains the Dragon-Egg allocator/hit
+continuation. Continue below these rows rather than duplicating their owners.
+`00:F54F` still composes the existing `F55C` accumulator on all 40 natural
+one-slot calls; its 3,552 additional registry cycles close the highest-ranked
+eligible score owner. The recent lower screens found only presentation,
+collision, appearance, or scheduler continuations. Continue below those rows
+with table-rule candidates only, excluding caller-owned returns, native-child
+continuations, hardware/setup transfers, compound branches, one-shot
+presentation setup, and unbounded scheduler paths.
+
+2026-08-22 pendulum-route screen: added `--record-gameplay-pendulum`, a
+deterministic 3,600-frame input-only route with a 257-frame long-travel,
+mirrored-save cadence and interstitial up/down/right nudges. Its Release and
+Debug recording, instruction profile, and native-cycle census are
+byte-identical at
+`ae591334053faba2c8b78de04329e465caffc14ddbed35958ae93ec8c9ec07df`:
+all 593 admissions install, 417 routines enter, and 680,976,213 of
+1,292,372,523 elapsed master cycles run natively (98.48% outside frame sync),
+with zero horizon declines and zero abandoned transcripts. Its 3,242-address
+profile is wholly contained in the current discovery union, so it yields no
+unobserved table-rule branch or independent caller-and-return contract. Keep
+all reached paths assembly-backed; the active task remains selecting a more
+materially different natural route.
+
+2026-08-22 lanes-route screen: added `--record-gameplay-lanes`, a deterministic
+3,600-frame input-only route with 24-frame alternating individual flipper holds
+on a 96-frame cycle, directional nudge bursts, and five Button-II pulses. Its
+Release deployment is `06790f73...2173209`: all 593 admissions install, 507
+routines enter, and 681,215,100 of 1,292,372,106 elapsed master cycles run
+natively (98.39% outside the frame-sync wait), with zero horizon declines and
+zero abandoned transcripts. Debug is byte-identical for both the recording and
+native-cycle census. The six-head assembly screen records 3,819 calls and
+24,598 writes: `03:6314` returns to existing fixed-controller `01:C654`;
+`03:73D0` resumes the Knight hit body at `73D7`; `03:751E` is the local
+no-request return after its source scheduler call; `03:7696` spans a nested
+`JSR $76C5`; and `02:4D2D/4F75` remain Eyeball scheduler/final-animation
+owners. It adds useful natural collision-state coverage, but no independent
+entry-and-return transaction. Select another materially different natural route
+rather than splitting these existing owners or interiors.
+
+2026-08-22 handoff verification: the staged score-repeat, Three-Blobs shared
+return, Tower-Insect child-spawner, collision-tail, score-panel, and setup
+palette work builds cleanly in Release; the new/changed score-repeat,
+Three-Blobs shared-return, and Tower-Insect child-spawner Release regressions
+pass, as do the registry-manifest check and both ROM-free Debug core targets.
+The full parallel Release suite also passes (458/458, 231.06 seconds). The
+current 593-admission registry remains generated and canonical. Resume the
+filtered lower table-rule observer screen rather than changing any of the
+verified owners.
+
+2026-08-22 alternate-natural-route screen: added
+`--record-gameplay-alternate`, a deterministic 3,600-frame input-only route
+whose long launcher hold, 24-frame asymmetric flipper cadence, and six
+Button-II pulses do not patch work RAM. The Release deployed profile is
+`340e5986edd165828fd801bf293de25810f26937c78302d74311cbbfd2054d3b` and
+records 431 entered registry routines, 664,616,733 native master cycles out
+of 1,292,372,025 elapsed (98.47% outside the frame-sync wait), with zero
+horizon declines and zero abandoned transcripts. The same alternate route
+completes in Debug with the identical 593-admission and native-cycle totals.
+It newly reaches the
+Giant-Skeleton Eyeball final-animation branch: `02:4F3D` has 224 direct
+arrivals, 183 ordinary 102-cycle/two-write waits, 40 interrupt/scheduler
+expanded local returns, and one 2,688-cycle/67-write handoff through the
+existing `02:4F76` drawing/coroutine/scheduler continuation. The same
+assembly observer records one `4F76` call at 2,580 cycles/65 writes, returning
+through `01:C5E9`. This is valuable natural coverage of an unobserved branch,
+but it confirms the previously documented continuation boundary rather than
+creating an independent bounded table-rule transaction. Retain the existing
+`02:4F3D` safe wait semantic and continue selecting other natural routes.
+
+2026-08-22 alternate-route screen: the existing 1,800-frame Gameplay input
+plan was profiled with the deployed registry, then observed in assembly at
+`02:5159` and `02:5223`. It produces 509 Shooter arrivals: 413 short
+117-cycle returns, 68 short 96-cycle return-boundary arrivals, and 28
+interrupt/appearance/scheduler-inclusive calls. The distinct
+`02:5226-523C` instructions occur only three times and join `02:5223`; that
+controller's 204 calls return at `02:5245` on its 51-cycle idle path or enter
+the established scheduler. This is useful new natural branch coverage, but
+not a new bounded owner. Keep its source rows assembly-backed and select the
+next natural route rather than promoting a child continuation.
+
+2026-08-22 lower leaf screen: `03:7A3C/7A3F/7A42/7A45/7A48/7A66` are the
+nine-call appearance loop under `03:78FB`, ending at `00:EBD6`; `03:7E1A`
+and `03:7F20` are generic-scheduler paths; and `03:7F8C/7F91/7F94` are the
+consecutive fixed-actor continuation into `01:C654`. `02:4429` is the
+Dragon-Egg allocator/hit continuation (four local returns and one longer
+existing collision-owner route). The 98 observed scopes and 4,171 writes
+preserve canonical census `9036a9de...e4443490`; no entry owns an independent
+transaction. Screen the next lower unclassified table-rule heads without
+admitting any of these interior paths.
+
+2026-08-22 lower bank-`02` follow-up: the 12-address `51DA/51EE/5216/52B1`,
+`53CB/53FB`, `5444`, `54A3`, `5543`, `55FF`, `5FDA`, and `03:643D` observer
+screen made no admission. It resolves the apparent Skeleton-Insect leaves as
+actor-loader/scheduler continuations and the shared companion return as a
+multi-caller handover. Screen the next lower unclassified table-rule heads,
+excluding these caller-owned tails and all previously classified hardware,
+presentation, frame-sync, and scheduler seams.
+
+2026-08-22 lower follow-up screen: `01:D75E`, `01:D608`, `01:D7D7`,
+`01:D7E9`, `01:D71A`, `01:CC04`, `02:4298`, `02:54D5`, `02:5F4D`,
+`02:5F06`, `03:6773`, and `00:E2B7` produced 2,173 bounded Release scopes
+and 11,124 ordered writes with canonical census `9036a9de...e4443490`.
+`D75E` branches into shared `D770`; `D608/CC04/D7D7/D7E9` are flipper,
+collision, or scheduler-owned continuations; and the bank-02 rows remain
+impact-burst, Skeleton-Insect, or Giant-Skeleton interiors. `03:6773` is an
+already-crossed Three-Blobs checkpoint returning through `67E5`, while `E2B7`
+is a two-call video wrapper. No address supplies an independent gameplay entry
+and return; continue below this batch without duplicating its owners.
+
+2026-08-22 mixed lower table-rule screen: `03:64A5/64D5/64E0/64F0` close only
+through the existing Front-Spider transition/scheduler owner; `03:66DC/66E1`
+and `03:676E` are Three-Blobs movement/return seams; and
+`02:41EC/4290/42A6`, `02:51EE`, and `02:556D` remain source-inclusive
+impact-burst, Devil-Shooter, or Skeleton-Insect owners. The 116 observed
+scopes and 4,175 ordered writes preserve canonical census
+`9036a9de...e4443490`; no entry has an independent caller/return contract.
+Continue below this batch without adding duplicate native coverage.
+
+2026-08-22 fresh deployment re-rank: the rebuilt 593-entry Release registry
+again reproduces the canonical census (`9036a9de...e4443490`) while deploying
+475 routines for 699,919,959 of 1,292,371,731 master cycles, with zero horizon
+declines and zero abandoned transcripts. The filtered residue is 3,228,057
+cycles in 238 clusters. Its leading remaining rows are the already-classified
+frame/device waits, block-transfer and compound-branch hardware seams,
+bank-08 setup/scheduler paths, and bank-45 music resumptions; none is a new
+gameplay entry/return contract. Continue the observer screen below those
+owners rather than admitting an interior instruction row.
+
+2026-08-22 latest screen: the fresh complete Release profile remains canonical
+at `9036a9de...e4443490` with 593 admitted/475 entered routines,
+699,919,959 native master cycles, zero horizon declines, and zero
+abandonments. The next 11 lower-ranked gameplay-adjacent heads yielded 200
+bounded observations but no standalone contract: Dragon-Egg allocation,
+Wall-Pocket setup, Bumper/Spider/Three-Blobs continuations, and the flipper
+projection rows all resume inside existing owners. Continue below this batch;
+do not admit its interior rows merely because their direct artifacts are
+small.
+
+2026-08-22 lower continuation screen: `03:7C37/7C3A/7C3D/7C40`,
+`03:78ED/78F2`, `03:7A54`, and `03:7C6F/7F1D/7F49/7F4C/7F51` record 167
+bounded scopes and 15,155 writes without a new transaction boundary. Their
+only natural exits are existing collision (`01:C594`), appearance
+(`00:EBD6`), fixed-controller (`03:7C33`), or scheduler (`01:C5E9`) owners.
+The whole registry remains canonical with 593 admitted/475 entered routines,
+699,919,959 native master cycles, zero horizon declines, and zero
+abandonments. Keep this batch assembly-backed and continue at lower
+unclassified table-rule heads.
+
+2026-08-22 next lower table-rule screen: `02:41F7`, `02:43A4`, `02:4429`,
+`02:49FC`, `02:4A6C`, `02:53A8`, `02:5421`, `02:55D3`, `02:578E`,
+`02:5A55`, `03:647D`, and `02:511B` produce 26 bounded observer records and
+1,518 ordered writes while retaining the canonical census. The four
+Wall-Pocket common setups and their lower-left initializer close only at the
+actor-loader's `02:4CF1` return; the Devil-Shooter companions, center
+Skeleton-Insect setup, Sorcerer controller, and Front-Spider continuation all
+enter through the generic actor loader and return through `01:C5E9`.
+Dragon-Egg allocation/animation and the Dragon-Head/Devil-Shooter collision
+heads reach their existing collision or allocator owners instead (their
+observed scopes range from 3,972 to 24,249 cycles). Leave all twelve in
+assembly and continue below this one-shot/owner-inclusive batch for a table
+rule with its own call frame and return.
+
+2026-08-22 verification: the complete staged replacement set builds cleanly
+in Release and Debug. Release ROM regressions for setup-screen palette
+cadence/staging, collision-tail setup, complete score-panel redraw,
+Tower-Insect child spawning, and the Three-Blobs shared return all pass; the
+native-registry manifest and both configuration's ROM-free core suites pass
+as well. These checks retain the canonical census and their respective
+stack/write/VDC artifacts, so proceed with the filtered residue screen rather
+than revisiting the verified owners.
+
+2026-08-22 continuation: a fresh 12-head Release observer screen also made no
+admission. `02:4CDA`, `02:4FC4`, and `02:4348` all return through existing
+Giant-Face-helmet, Mercy-Star, or Dragon-Egg owner boundaries at
+`02:4CF1/4FE1/434A`; `03:6057`, `03:65A7`, `03:6521`, `03:737B`, and
+`03:73FC` are already-owned Tower-Insect, Spider, and Knight continuations.
+The apparent bank-`01` leaves `01:D469`, `01:C730`, and `01:C575` span the
+flipper/collision/scheduler owners (their natural returns fan out to
+`01:D46E/C5E9`, `01:DCD7/DD08`, and bank-`00` callers), while `00:E7D8`
+remains the shared divider's caller-inclusive arithmetic scope. The 3,600-frame
+census still hashes to `9036a9de...e4443490`; keep every one in assembly and
+screen below this set for a real entry-and-return transaction. The rebuilt
+Release application and focused score-panel, setup-palette, Tower-Insect
+child-spawner, and Three-Blobs shared-return checks preserve their canonical
+artifacts (the Three-Blobs assembly/native census and selected-write hashes
+also match directly).
+
+2026-08-22 follow-up: the next 12-head gameplay screen records 64 bounded
+scopes and 10,216 ordered writes while retaining the same canonical deployed
+census. `01:D5FE`, `03:78FB`, `02:5F4D`, `02:4298`, `02:5F06`, and
+`03:6773` are their established flipper, fixed-actor, Tower-Insect, impact,
+or Three-Blobs owners; `01:C8C2` is the capped ball-substep tail; and
+`01:D75E` remains the bank-01 table-walk parent. `02:54D5` is the
+Skeleton-Insect scheduler branch. `01:D706` initially appeared to be a
+seven-call, 117-cycle wrapper, with a 33-cycle no-write `D70D` child return,
+but a two-seam native probe fails at its first live frame-1,852 call before
+the frame can complete. It is therefore not an independent transactional
+boundary: leave both seams and their `D7D7` child assembly-backed. Continue
+below this screen rather than admitting an unsafe partial call.
+
+2026-08-22 continued residue screen: the next nine lower-ranked heads record
+262 bounded calls and 56,919 ordered call writes while the deployed census
+remains `9036a9de...e4443490`. `03:7D72` and `03:7E10` are fixed-actor
+continuations: their ordinary 12-cycle/no-write paths resume at their local
+tails, while their active paths run through the scheduler and finally return
+at `01:C5E9`. `03:6021` is the same post-collision/scheduler family: its
+seven scopes return at `03:603E` or the cross-bank `01:C594` boundary and
+reach the 512-write transaction limit. `09:726B` is the enclosing 34-call
+score-panel redraw (12,831--74,820 cycles and 268--1,325 writes), so its
+already-native digit, leading-zero, and ball-count children remain the proper
+granularity. `01:D6DA` is a one-shot 28,995-cycle table-walk parent,
+`01:D62D` is the two-caller flipper projection parent, and `00:E8E6` is the
+shared return of the mapped RNG helper. `03:7A39` is the previously classified
+appearance/scheduler tail, and one-shot `09:7F28` is presentation setup.
+No entry is admitted; continue below this set for a table-rule transaction
+with its own real return rather than widening an existing bridge seam.
+
+2026-08-22 lower interpreter/scheduler screen: `03:69C5`, `03:6A14`,
+`03:6A33`, `03:6A37`, and `03:6988` are nested collision-interpreter bodies:
+their natural child scopes join at `03:6A37` and finish through the existing
+`03:65BB` owner. `03:7F80`, `03:7387`, `03:601C`, `03:6078`, and `03:606B`
+are fixed-controller or generic-scheduler continuations, while `02:434A` and
+`02:4FE1` return through `01:C654` after the actor queue. The full 3,600-frame
+Release observer route recorded 232,852 overlapping calls and 1,811,029
+ordered writes without a standalone entry/return contract. Keep all twelve
+assembly-backed and continue the lower table-rule screen.
+
+The palette cadence controller is now the latest independent owner. The
+whole-route profile is canonical at `9036a9de...e4443490`: 592 admitted/475
+entered routines run 699,916,407 of 1,292,371,731 master cycles natively
+(54.16% overall; 98.51% outside frame sync), with zero horizon declines or
+abandoned transcripts. Its remaining 3,231,657 unregistered addressable cycles
+in 239 clusters still begin with the documented palette/boot transfers,
+compound-sampled branches, device/frame seams, and music resumptions. The
+next observer batch must stay below those classified owners.
+
+The fresh small-head screen rejects `00:E271` as boot-only hardware setup,
+`00:F628` as an enclosing asset-loader child under `01:C624`, and `01:CBF9`
+as a multi-caller continuation. It also records `08:5961`'s 493 33-cycle
+waits and 177 stager crossings; that direct scheduler entry is now native and
+its outer `08:5976` return remains core-owned. Continue from the filtered
+post-`5961` residue rather than splitting any of the rejected enclosing scopes.
+
+The fresh bank-`08` screen also makes no admission. `08:5A56` and `08:5A69`
+are the generic scheduler's 550-entry handoff and return path
+(`01:C51D -> 08:5A69 -> 01:C654`), not standalone game routines.
+`08:5A2E` is the three-call caller-owned scheduler submission tail. The
+18 multi-caller `08:5ABF` scopes all return at `08:5AF1` and span
+3,882--53,454 cycles with 63--932 writes, so it is an enclosing setup owner,
+not a bounded transaction. A follow-up observer at `08:5751` exceeded the
+bounded trace channel (over 2 GB of unfinished writes before termination),
+which rejects it as an atomic candidate; the generated incomplete artifacts
+were removed. Continue below these bank-`08` setup/scheduler owners.
+
+The subsequent 12-address residue screen confirms that the profile is not
+hiding a short independent gameplay leaf: `03:7B4B/7B5A/7B69` remain open
+through the fixed-marker children until shared `03:7B6C`; `01:CB5E/CB65/CCD2`
+remain collision-scan call or hit continuations; and `08:56C5`, `08:58EE`, and
+`01:D9C8` retain enormous enclosing scopes. The two bank-`09` heads are
+one-shot scheduler clients. The complete 592-entry registry profile remains
+canonical at `9036a9de...e4443490`: 475 routines entered, 699,916,407 native
+cycles, no horizon declines, and no abandoned transcripts. Keep these entries
+in assembly and choose the next screen below this filtered batch.
+
+The Tower-Insect child spawner is now complete. The four direct BSR calls
+publish exact allocator/camera-child seams, preserve the source's internal
+return ownership, and match the canonical census plus the complete
+16-call/2,530-write artifact in Release. The generated registry contains 591
+admitted routines; its complete deployed route remains canonical with zero
+horizon declines and zero abandoned transcripts. The next action is to choose
+the next standalone gameplay scope from the freshly filtered residue rather
+than extending a documented bridge seam.
+
+The post-spawner registry-enabled profile was refreshed on 2026-08-22 with
+the whole 591-entry registry deployed. It remains canonical at
+`9036a9de...e4443490`: 699,882,345 of 1,292,371,731 master cycles are native
+(54.15% overall and 98.51% outside the frame-sync wait), with 474 routines
+entered, zero horizon declines, and zero abandoned transcripts. Its 3,265,719
+unregistered addressable cycles remain concentrated in the documented
+palette/boot transfers, compound-sampled branches, frame-loop/device seams,
+and music resumption.
+
+The follow-up bank-`01` observer screen makes no admission: `01:D794` is the
+seven-call `D7A5`/`D950` table-walk parent (2,973--5,052 cycles and 92--133
+writes), while `01:D844` is the one-shot frame-874 setup parent (12,090 cycles
+and 83 writes) returning at `D86A`. Continue with a fresh, standalone
+entry-and-return candidate rather than splitting either enclosing scope or
+turning a scheduler resumption into duplicate native coverage.
+
+The first fresh observer screen made no admission. `00:E957` opened once at
+frame 875 and did not close until `00:E9B5`, spanning 21,823,740 cycles and
+123,180 writes, so it is an enclosing video/palette owner rather than a leaf.
+`00:ED4D` is the existing bank-8 boot-clear child's 1,071-cycle, 30-write
+scope. `01:D950` has 24 natural multi-caller table-walk arrivals, returns only
+at `01:DA3F`, and spans 594--2,406 cycles with 20--59 writes; it is not an
+independent return transaction. The paired `09:6FB1` and `09:70EE` calls are
+bounded one-shot initializer paths (642/29 and 621/28 cycles/writes), but both
+defer through the already-native `01:C5C9` scheduler and do not outrank a
+standalone gameplay transaction. Continue below these owners without turning
+their scheduler resumption into duplicate native coverage.
+
+The completed observer screen removes the apparent bank-`03` candidates from
+the queue without widening a bridge seam. `03:7F5A`'s 20,867 calls merely
+include the independently native collision interpreter and marker helper;
+`03:6001` is the known cross-bank post-collision continuation; `03:7C34` and
+`03:7A39` tail into scheduler/appearance children. The actual standalone
+candidate is `02:5F78`: four `BSR` arrivals at frames 941, 989, 1,037, and
+1,085 return through the real caller at `02:5F56`, carry 52--89 writes, and
+are bounded by existing allocator (`01:C024/C5AB`) and activation (`01:C06C`)
+children. Implement it as four instruction-boundary seams: the allocator call
+at `5F78`, its carry branch at `5F7B`, the successful child initializer at
+`5F7E`, and the `PLX`/count/return tail at `5FD6`. Do not absorb the child
+calls or coarsen the observed 6,780--8,907-cycle parent scopes.
+
+The new deployed whole-route profile records 3,267,711 addressable interpreted
+cycles in 239 unregistered clusters after excluding admitted entry rows and the
+frame-sync wait. `01:CB46` is now a registry-entry row rather than residue.
+The first large rows are classified, not candidate gameplay: `00:EB46` and
+`08:585A` are the fixed-capacity palette/boot block transfers; `00:F423`,
+`00:FA67`, `01:C756`, and `01:CB7E` are compound-sampled branches; `00:E05C`
+and `00:E134` acknowledge an interrupt device; and `01:C0FE-C100` is
+top-level frame-loop glue plus the one startup transfer. The remaining
+bounded candidates must be selected from below those seams rather than from
+their misleading aggregate rows.
+
+The Release build, collision-tail, score-panel, and Three-Blobs shared-return
+semantic regressions, generated-registry manifest, and Release/Debug ROM-free
+core suites pass with the canonical `9036a9de...e4443490` census and selected
+write artifacts unchanged. The deployed registry records 699,880,377 native
+cycles across 587 admitted routines, with zero horizon declines and zero
+abandonments.
+
+The first new observer screen deliberately made no admission. `01:CCD2` and
+`01:CCD4` look like cheap 21-cycle returns in the flat instruction profile,
+but their 270/604 natural observer scopes retain the live collision caller and
+finish at outer `01:DCD7`; they span 5,086,482/21,711,210 cycles and
+160,235/459,311 writes. They are inner control transfers, not completed
+routine scopes. `01:C63E` initially looks like a 6,447-cycle actor-loop tail,
+but its 25 natural entries all begin at the `01:C520` queue call's frame and
+end at registered `01:C654`; the 75/81-cycle ordinary transcripts and the
+597/732-cycle interrupt-bearing transcripts are simply re-entry into native
+`01:C606`. Keep all three in assembly/resumption handling and screen the next
+set below the documented seams.
+
+The fresh registry-enabled profile is stable at 3,523 addresses and
+1,292,378,139 master cycles. Its next aggregate tier adds no new candidate:
+the palette drivers/transfers, BBR/BBS hardware seams, device
+acknowledgements, frame glue, and bank-45 music resumptions retain their
+documented owners. Continue below that tier with an observer set selected for
+an independent entry and real return, not an interior profile row.
+
+The fresh registry profile closes the re-rank at 3,267,711 addressable
+interpreted cycles in 239 clusters. The leading bank-`01` control observer
+set rejects a parent composition: `01:C624` has only 25 calls but spans
+27,906--102,579 cycles and 99--1,051 ordered writes before its shared
+`C654` return; `01:C5E9` is the shared scheduler return and dispatch boundary;
+and its `C603`, `C630`, and `C696` siblings all hand back through scheduler or
+ball-dispatch work rather than an independent semantic return. The apparent
+`03:7B5A` and `03:7B69` 21-cycle follow-ons are likewise `JSR` crossings between
+the two fixed-scheduler submissions, not their `RTS` instructions. An attempted
+return absorption skipped the second native submission; the owning
+`dc_rom_fixed_scheduler_gate_semantic` regression detected the missing entry,
+so those crossings remain assembly seams. Select the next observer set below
+the documented device, capacity, compound-branch, scheduler, and driver
+resumption rows rather than extending either rejected family.
+
+The score-panel redraw is now complete. Semantic
+`09:727D/72A2/72BD/72C5@all` executes the 34 redraw heads, 105 score-digit
+loop iterations, 133 leading-zero iterations, and 34 ball-count suffixes as
+four bounded child-composing transactions. `72C5` composes native `00:E6DC`
+and two `09:72FD` glyph calls before absorbing the authentic `72EA` return;
+it neither widens the 512-write bridge nor spans a loop. The Release oracle
+preserves the canonical census and selected work-RAM/VDC-port write streams.
+The generated registry contains 586 admitted routines; only two glyph calls
+remain independently observed because the other 374 are composed by their
+parents. Deployment gains 7,548 cycles for 699,841,581 total across 586
+installed and 469 entered routines, with zero horizon/depth refusals or
+abandonments.
+
+The fresh deployed profile contains 3,306,891 addressable cycles in 240
+clusters after dropping registered entries and the frame-sync wait. Its leading
+rows remain the documented palette/boot block-transfer wall, compound-sampled
+branch seams, frame-loop glue, interrupt/device acknowledgement, and driver
+resumption. Screen the remaining bounded gameplay candidates before selecting
+the next transaction.
 
 The attribution-aware residue ranking excludes palette and boot block
 transfers, compound-sampled branches, interrupt/device acknowledgement, frame
 loop glue, shared returns that belong to an already-native parent, driver
-resumption, and cycles charged to an entry by an original interrupt. The first
-remaining safe gameplay boundary was the standalone shared `RTS` at
-`02:4CF1`. Its transcript reads the authentic stack frame rather than assuming
-one of its many callers, so the return stays valid when any native or assembly
-parent reaches the shared seam. All 5,843 calls are admitted. The canonical
-census and selected work-RAM stream match assembly; the Release semantic test,
-registry validation, Release/Debug builds, and Debug core test pass.
+resumption, and cycles charged to an entry by an original interrupt. The next
+safe gameplay boundary was the standalone shared `RTS` at `03:67E5`. Its
+transcript reads the authentic stack frame rather than assuming one of its
+Three-Blobs callers, so the return stays valid when either a native or assembly
+arm reaches the shared seam. All 1,965 calls are admitted. The canonical census
+and selected work-RAM stream match assembly; the Release semantic test, registry
+validation, Release/Debug builds, and Release/Debug core tests pass.
 
-Deployment adds 91,917 cycles for 699,788,670 total across 581 installed and
-465 entered routines, with zero horizon/depth refusals or abandonments. The
-fresh deployed profile contains 3,360,258 addressable cycles in 242 clusters.
-Next: re-rank that residue, excluding the documented `TIA` capacity wall,
+Deployment adds 19,236 cycles for 699,807,906 total across 582 installed and
+466 entered routines, with zero horizon/depth refusals or abandonments. The
+fresh deployed profile contains 3,340,878 addressable cycles in 241 clusters
+before exclusions. After removing the documented `TIA` capacity wall,
 compound-sampled `BBR` seams, frame-loop glue, and device acknowledgement
-reads before choosing the next bounded gameplay cluster.
+reads, 1,890,663 cycles in 234 clusters remain; the largest bounded gameplay
+candidate is the score-panel redraw tail at `09:727D-72EA` (33,987 cycles),
+which needs child-crossing transcripts through the existing native glyph and
+divider leaves. Its whole-tail form is now proven too large for the 512-write
+bridge; split it at `72A2` and `72BD` before deployment.
 
 ### Previous: shared collision-effect allocator
 
@@ -14417,6 +16253,13 @@ replacement vertical slice.
 
 ## Blockers
 
+The input-only twist route's internal audio fidelity gate is resolved. The
+Big-Star `02:570A` horizon guard closes its frame-1,826 drift, and the
+independent frame-1,845 PSG divergence is the `03:66A3` post-handoff timer
+horizon, not a Big-Star event. Its 300-cycle conservative fallback restores a
+byte-identical deployed recording; do not expand either admission into its
+assembly-backed timer-sensitive paths without an exact device-write transcript.
+
 `01:C6E3` and `01:C756` are the two ball-loop compound-sampled HuC6280 `BBR3`
 boundaries. The core executes each zero-page read/relative branch and re-enters
 native code on both proven arms. Moving either instruction requires a bridge
@@ -14437,6 +16280,19 @@ channel and offers no interior instruction boundary. The bounded code on both
 sides is native; moving the transfer itself requires a future compact block-
 transfer transaction primitive or a wider bridge contract, not another
 instruction-checkpoint transcript.
+
+The canonical 3,600-frame route has exhausted its unregistered table-rule
+heads: the 3,228,057-cycle residue consists only of documented device,
+compound-branch, setup/scheduler, music, and caller-owned continuation seams.
+This is a prioritization horizon, not an external blocker. Resolve it by
+running an existing natural gameplay route that reaches an unobserved rule
+branch and screening that route before considering a new replacement.
+The input-only crossfire route does not resolve this condition: it reaches the
+already-bounded Giant-Skeleton continuation only. Select a materially different
+natural route rather than splitting that existing owner. The later whirlpool
+route also leaves this condition unchanged: its 2,852-address profile remains
+inside the current discovery union. Resolution still requires a natural route
+with an address or caller-and-return contract outside that union.
 
 No external blocker prevents continuing Milestone 3 cabinet composition.
 The accepted background source is rows 20-687 of the

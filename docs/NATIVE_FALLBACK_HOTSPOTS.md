@@ -576,9 +576,11 @@ formerly timer-IRQ-adjacent entries.
 The partial count is now superseded. The direct no-zero prefix gained exact
 33/60/93-cycle branch checkpoints, admitting its 249 horizon-adjacent calls
 without changing the Release census, call, or ordered-write artifacts.
-Semantic `03:66A3@all` therefore covers all 1,107 observed first-movement
-calls; only the post-prefix mixed movement, reset, and coroutine tails remain
-assembly-backed.
+Semantic `03:66A3@all` covered all 1,107 observed first-movement calls until
+the twist-route PSG census exposed a post-handoff timer seam. The 109 calls
+with a serviceable timer horizon of 300 master cycles or less now remain in
+assembly; the other 998 prefixes remain native. The mixed movement, reset,
+and coroutine tails also remain assembly-backed.
 
 The shared child `03:676B` was then profiled alongside the rejected
 second-phase parent. It has 1,857 ordinary 147-cycle, one-write scene-clear

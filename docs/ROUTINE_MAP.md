@@ -2969,14 +2969,16 @@ directly to the original reset/scheduler tail at `03:66E2`; four exact
 instruction checkpoints preserve timer-IRQ delivery for the two formerly
 near-horizon calls.
 
-That partial coverage is now superseded: semantic `03:66A3@all` replaces all
-1,107 observed first-movement calls. The direct no-zero transcript has six
-exact instruction checkpoints: the timer branch is taken at 33 cycles, the X
-condition falls through at 60 cycles, and the Y branch is taken at 93 cycles.
-Those boundaries preserve the 249 formerly horizon-adjacent calls, leaving
-the original mixed movement, reset, and coroutine tails as the only assembly
-work after their respective prefixes. The complete Release state census,
-call trace, and ordered-write artifact remain byte-identical to assembly.
+That partial coverage was then extended to all 1,107 observed first-movement
+calls. The direct no-zero transcript has six exact instruction checkpoints:
+the timer branch is taken at 33 cycles, the X condition falls through at 60
+cycles, and the Y branch is taken at 93 cycles. The twist route subsequently
+identified a distinct device-timing seam after that handoff: a serviceable
+timer IRQ within 300 master cycles can advance the PSG-visible handler despite
+the call's RAM/register/cycle transcript reconverging. Semantic `03:66A3@all`
+therefore keeps those 109 horizon-sensitive state-census calls in assembly and
+replaces the remaining 998. The complete Release state census, call trace,
+and ordered-write artifact remain byte-identical to assembly.
 
 Semantic `03:66B5@all` now owns the continuation that remains exposed when the
 timer-expiry arm of that parent reloads the four-tick timer and toggles the
@@ -5590,6 +5592,21 @@ and Release reproduce:
   `a8932210562ebfb1b4195fbc1b27e9094a604fa10a9255c8364726d6bf01650e`
 
 ## Score accumulator
+
+### Score-repeat wrapper
+
+`00:F54F` wraps ordinary score awards with `LDY $2D38`, `INY`, `PHY`, and
+`JSR $F55C`; after the child's `F5A8` return, `F557` restores and decrements
+the loop index before reaching the outer `F55B` return. All 40 natural calls
+on the census route have `$2D38 = 0`, so they select one slot and take the
+terminal `F557` branch. `00:F54F@all` therefore owns the wrapper's exact
+654-cycle base path and composes the existing `F55C` score transaction rather
+than restating its arithmetic. Its `PHY` and `JSR` frame writes occur together
+at offset 30; the child and original interrupt handlers retain their own
+instruction checkpoints. The wrapper stops before `F55B`, preserving the
+original caller-visible return boundary. The 40-entry focused Release
+regression and normalized `F54F@1` replay preserve the canonical census plus
+the exact entry, call, and ordered-write artifacts.
 
 The broader route also reaches the first definitive scoring boundary.
 `00:F55C` is called through the wrapper at `00:F54D`; the observed JSR is at

@@ -336,6 +336,32 @@ replace_native_gameplay_routine_impl(
         }) {
         return detail::replace_score_panel_glyph(entry, work_ram, rom);
     }
+    // The score redraw's head and two bounded, natural re-entry loops.  Each
+    // segment leaves the following iteration to the core; the bounded
+    // ball-count suffix is a fourth transaction, avoiding one over-capacity
+    // VDC transaction.
+    if (entry.routine
+            == RoutineKey{
+                .physical_bank = 0x09U,
+                .logical_pc = 0x727DU,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x09U,
+                .logical_pc = 0x72A2U,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x09U,
+                .logical_pc = 0x72BDU,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x09U,
+                .logical_pc = 0x72C5U,
+            }) {
+        return detail::replace_score_panel_redraw_tail(entry, work_ram, rom);
+    }
     // The score panel's redraw poll. Four work RAM gates and a dirty bit; its
     // glyph-writing leaf is registered separately above.
     if (entry.routine
@@ -724,10 +750,15 @@ replace_native_gameplay_routine_impl(
             }) {
         return detail::replace_palette_shadow(entry, work_ram, rom);
     }
-    // The same job in bank 08, for the block the setup screens flash. Two
-    // entry points, because the walk crosses the resolver call that turns its
-    // asset reference into a source pointer.
+    // The same job in bank 08, for the block the setup screens flash. The
+    // cadence controller starts the walk, which then crosses the resolver call
+    // that turns its asset reference into a source pointer.
     if (entry.routine
+            == RoutineKey{
+                .physical_bank = 0x08U,
+                .logical_pc = 0x5961U,
+            }
+        || entry.routine
             == RoutineKey{
                 .physical_bank = 0x08U,
                 .logical_pc = 0x5977U,
@@ -1036,6 +1067,11 @@ replace_native_gameplay_routine_impl(
             == RoutineKey{
                 .physical_bank = 0x01U,
                 .logical_pc = 0xCB2AU,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x01U,
+                .logical_pc = 0xCB46U,
             }
         || entry.routine
             == RoutineKey{
@@ -1738,6 +1774,13 @@ replace_native_gameplay_routine_impl(
     if (entry.routine
         == RoutineKey{
             .physical_bank = 0x03U,
+            .logical_pc = 0x67E5U,
+        }) {
+        return detail::replace_three_blobs_shared_return(entry, work_ram);
+    }
+    if (entry.routine
+        == RoutineKey{
+            .physical_bank = 0x03U,
             .logical_pc = 0x67C0U,
         }) {
         return detail::replace_three_blobs_collision_gate(entry, work_ram);
@@ -1979,6 +2022,28 @@ replace_native_gameplay_routine_impl(
         return detail::replace_tower_insect_source_countdown_return(
             entry,
             work_ram);
+    }
+    if (entry.routine
+            == RoutineKey{
+                .physical_bank = 0x02U,
+                .logical_pc = 0x5F78U,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x02U,
+                .logical_pc = 0x5F7BU,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x02U,
+                .logical_pc = 0x5F7EU,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x02U,
+                .logical_pc = 0x5FD6U,
+            }) {
+        return detail::replace_tower_insect_child_spawner_seam(entry, work_ram);
     }
     if (entry.routine
         == RoutineKey{
@@ -2703,10 +2768,16 @@ replace_native_gameplay_routine_impl(
     } else if (entry.routine
         == RoutineKey{
             .physical_bank = 0x00U,
-            .logical_pc = 0xF55CU,
-        }) {
-        replacement =
-            detail::replace_score_accumulator(entry, work_ram);
+            .logical_pc = 0xF54FU,
+        }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x00U,
+                .logical_pc = 0xF55CU,
+            }) {
+        replacement = entry.routine.logical_pc == 0xF54FU
+            ? detail::replace_score_repeat_wrapper(entry, work_ram)
+            : detail::replace_score_accumulator(entry, work_ram);
     } else if (entry.routine
         == RoutineKey{
             .physical_bank = 0x02U,

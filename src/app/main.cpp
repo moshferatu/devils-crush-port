@@ -70,6 +70,26 @@ constexpr double kEmulationFramesPerSecond = 59.8261;
 constexpr int kSmokeTestFrames = 10;
 constexpr int kCanonicalRecordingFrames = 600;
 constexpr int kGameplayRecordingFrames = 1800;
+constexpr int kGameplayAlternateRecordingFrames = 3600;
+constexpr int kGameplaySweepRecordingFrames = 3600;
+constexpr int kGameplayCrossfireRecordingFrames = 3600;
+constexpr int kGameplayOrbitRecordingFrames = 3600;
+constexpr int kGameplayLanesRecordingFrames = 3600;
+constexpr int kGameplayStaggerRecordingFrames = 3600;
+constexpr int kGameplayPulseRecordingFrames = 3600;
+constexpr int kGameplayRallyRecordingFrames = 3600;
+constexpr int kGameplaySlalomRecordingFrames = 3600;
+constexpr int kGameplayPendulumRecordingFrames = 3600;
+constexpr int kGameplayNudgeRecordingFrames = 3600;
+constexpr int kGameplaySwitchbackRecordingFrames = 3600;
+constexpr int kGameplaySpiralRecordingFrames = 3600;
+constexpr int kGameplayRicochetRecordingFrames = 3600;
+constexpr int kGameplayVolleyRecordingFrames = 3600;
+constexpr int kGameplayWhirlpoolRecordingFrames = 3600;
+constexpr int kGameplayCascadeRecordingFrames = 3600;
+constexpr int kGameplayHigharcRecordingFrames = 3600;
+constexpr int kGameplayTwistRecordingFrames = 3600;
+constexpr int kGameplaySidestepRecordingFrames = 3600;
 constexpr int kStateCensusRecordingFrames = 3600;
 constexpr int kMaximumAudioLatencyMilliseconds = 150;
 const std::filesystem::path kBackupRamPath =
@@ -84,6 +104,46 @@ const std::filesystem::path kCanonicalRecordingPath =
     std::filesystem::path("portable-data") / "canonical-v1.csv";
 const std::filesystem::path kGameplayRecordingPath =
     std::filesystem::path("portable-data") / "gameplay-v1.csv";
+const std::filesystem::path kGameplayAlternateRecordingPath =
+    std::filesystem::path("portable-data") / "gameplay-alternate-v1.csv";
+const std::filesystem::path kGameplaySweepRecordingPath =
+    std::filesystem::path("portable-data") / "gameplay-sweep-v1.csv";
+const std::filesystem::path kGameplayCrossfireRecordingPath =
+    std::filesystem::path("portable-data") / "gameplay-crossfire-v1.csv";
+const std::filesystem::path kGameplayOrbitRecordingPath =
+    std::filesystem::path("portable-data") / "gameplay-orbit-v1.csv";
+const std::filesystem::path kGameplayLanesRecordingPath =
+    std::filesystem::path("portable-data") / "gameplay-lanes-v1.csv";
+const std::filesystem::path kGameplayStaggerRecordingPath =
+    std::filesystem::path("portable-data") / "gameplay-stagger-v1.csv";
+const std::filesystem::path kGameplayPulseRecordingPath =
+    std::filesystem::path("portable-data") / "gameplay-pulse-v1.csv";
+const std::filesystem::path kGameplayRallyRecordingPath =
+    std::filesystem::path("portable-data") / "gameplay-rally-v1.csv";
+const std::filesystem::path kGameplaySlalomRecordingPath =
+    std::filesystem::path("portable-data") / "gameplay-slalom-v1.csv";
+const std::filesystem::path kGameplayPendulumRecordingPath =
+    std::filesystem::path("portable-data") / "gameplay-pendulum-v1.csv";
+const std::filesystem::path kGameplayNudgeRecordingPath =
+    std::filesystem::path("portable-data") / "gameplay-nudge-v1.csv";
+const std::filesystem::path kGameplaySwitchbackRecordingPath =
+    std::filesystem::path("portable-data") / "gameplay-switchback-v1.csv";
+const std::filesystem::path kGameplaySpiralRecordingPath =
+    std::filesystem::path("portable-data") / "gameplay-spiral-v1.csv";
+const std::filesystem::path kGameplayRicochetRecordingPath =
+    std::filesystem::path("portable-data") / "gameplay-ricochet-v1.csv";
+const std::filesystem::path kGameplayVolleyRecordingPath =
+    std::filesystem::path("portable-data") / "gameplay-volley-v1.csv";
+const std::filesystem::path kGameplayWhirlpoolRecordingPath =
+    std::filesystem::path("portable-data") / "gameplay-whirlpool-v1.csv";
+const std::filesystem::path kGameplayCascadeRecordingPath =
+    std::filesystem::path("portable-data") / "gameplay-cascade-v1.csv";
+const std::filesystem::path kGameplayHigharcRecordingPath =
+    std::filesystem::path("portable-data") / "gameplay-higharc-v1.csv";
+const std::filesystem::path kGameplayTwistRecordingPath =
+    std::filesystem::path("portable-data") / "gameplay-twist-v1.csv";
+const std::filesystem::path kGameplaySidestepRecordingPath =
+    std::filesystem::path("portable-data") / "gameplay-sidestep-v1.csv";
 const std::filesystem::path kStateCensusRecordingPath =
     std::filesystem::path("portable-data") / "state-census-v1.csv";
 const std::filesystem::path kBackupRamTestPath =
@@ -199,6 +259,119 @@ struct CommandLine {
     std::filesystem::path canonical_path = kCanonicalRecordingPath;
     bool record_gameplay = false;
     std::filesystem::path gameplay_path = kGameplayRecordingPath;
+    // A second input-only table pass.  Unlike the state census it does not
+    // patch work RAM, so it can establish a new natural rule branch before a
+    // semantic replacement is admitted.
+    bool record_gameplay_alternate = false;
+    std::filesystem::path gameplay_alternate_path =
+        kGameplayAlternateRecordingPath;
+    // A third input-only table pass. It deliberately uses both directional
+    // flippers and a different nudge cadence from the first alternate pass
+    // so it can reach a naturally selected table-rule branch.
+    bool record_gameplay_sweep = false;
+    std::filesystem::path gameplay_sweep_path = kGameplaySweepRecordingPath;
+    // A fourth input-only pass that holds each flipper through the other's
+    // release window.  It deliberately changes ball deflection, rather than
+    // merely the cadence of an already-screened input plan.
+    bool record_gameplay_crossfire = false;
+    std::filesystem::path gameplay_crossfire_path =
+        kGameplayCrossfireRecordingPath;
+    // A fifth input-only pass that separates the flipper holds with an
+    // asymmetric directional-nudge cadence.  This samples a different live
+    // table trajectory from the cadence, sweep, and crossfire routes.
+    bool record_gameplay_orbit = false;
+    std::filesystem::path gameplay_orbit_path = kGameplayOrbitRecordingPath;
+    // A sixth input-only route with long, alternating flipper holds and
+    // directional nudge bursts.  It favors lane and orbit trajectories that
+    // the short cadence routes do not hold long enough to sample.
+    bool record_gameplay_lanes = false;
+    std::filesystem::path gameplay_lanes_path = kGameplayLanesRecordingPath;
+    // A seventh input-only route. Its long, offset flipper holds and sparse
+    // direction inputs intentionally avoid the dense periodic patterns used
+    // by the earlier discovery routes.
+    bool record_gameplay_stagger = false;
+    std::filesystem::path gameplay_stagger_path =
+        kGameplayStaggerRecordingPath;
+    // Short, uneven flipper bursts and long neutral windows deliberately
+    // explore a low-contact trajectory distinct from the sustained routes.
+    bool record_gameplay_pulse = false;
+    std::filesystem::path gameplay_pulse_path = kGameplayPulseRecordingPath;
+    // A ninth input-only route that holds the right flipper through a longer
+    // recovery window, then alternates short left saves.  This biases a
+    // different set of natural lower-table deflections than the symmetric
+    // discovery routes.
+    bool record_gameplay_rally = false;
+    std::filesystem::path gameplay_rally_path = kGameplayRallyRecordingPath;
+    // A tenth input-only route.  Its wide, alternating saves and reversed
+    // nudge direction deliberately target side-lane rebounds rather than the
+    // lower-table recovery patterns sampled by rally.
+    bool record_gameplay_slalom = false;
+    std::filesystem::path gameplay_slalom_path = kGameplaySlalomRecordingPath;
+    // An eleventh input-only route.  Long neutral travel between mirrored
+    // saves and three distinct nudge directions favors rebounds that are not
+    // sampled by the dense or sustained discovery patterns.
+    bool record_gameplay_pendulum = false;
+    std::filesystem::path gameplay_pendulum_path =
+        kGameplayPendulumRecordingPath;
+    // A twelfth input-only route. Sparse flipper saves combined with a
+    // rotating nudge pattern deliberately prioritize rebound timing rather
+    // than the sustained flipper rhythms of the existing discovery plans.
+    bool record_gameplay_nudge = false;
+    std::filesystem::path gameplay_nudge_path = kGameplayNudgeRecordingPath;
+    // A thirteenth input-only route.  Its long, alternating holds leave wide
+    // neutral rebound windows and vary the launch timing from every existing
+    // discovery plan.
+    bool record_gameplay_switchback = false;
+    std::filesystem::path gameplay_switchback_path =
+        kGameplaySwitchbackRecordingPath;
+    // A fourteenth input-only route. Its 359-frame mixed flipper/nudge cycle
+    // starts the live table earlier and visits the four directions while the
+    // opposite flipper is held, selecting a trajectory none of the prior
+    // discovery plans repeats.
+    bool record_gameplay_spiral = false;
+    std::filesystem::path gameplay_spiral_path =
+        kGameplaySpiralRecordingPath;
+    // A fifteenth input-only route. It trades the prior long held-launch
+    // plans for repeated short Button-II impulses between staggered saves,
+    // targeting collision rebounds rather than a flipper-only orbit.
+    bool record_gameplay_ricochet = false;
+    std::filesystem::path gameplay_ricochet_path =
+        kGameplayRicochetRecordingPath;
+    // A sixteenth input-only route. Its early launch, sustained alternating
+    // flipper banks, and uneven nudge volleys seek a table trajectory that
+    // cannot be reached by the short-tap or long-neutral discovery plans.
+    bool record_gameplay_volley = false;
+    std::filesystem::path gameplay_volley_path = kGameplayVolleyRecordingPath;
+    // A seventeenth input-only route that makes long, deliberately offset
+    // double-save windows between wide neutral rebounds.
+    bool record_gameplay_whirlpool = false;
+    std::filesystem::path gameplay_whirlpool_path =
+        kGameplayWhirlpoolRecordingPath;
+    // An eighteenth input-only route.  It releases the launcher well before
+    // the current discovery routes, then makes sparse, asymmetric saves after
+    // a long neutral descent to pursue a distinct upper-to-lower trajectory.
+    bool record_gameplay_cascade = false;
+    std::filesystem::path gameplay_cascade_path =
+        kGameplayCascadeRecordingPath;
+    // A nineteenth input-only route. It uses the longest launcher hold of the
+    // discovery set, then saves sparsely and nudges only while neutral so the
+    // ball has a materially different chance to reach the upper table.
+    bool record_gameplay_higharc = false;
+    std::filesystem::path gameplay_higharc_path =
+        kGameplayHigharcRecordingPath;
+    // A twentieth input-only route. Its delayed launch and long alternating
+    // saves are separated by neutral travel, while every directional nudge is
+    // outside a held-flipper window. This probes a distinct natural table
+    // trajectory without mutating emulated gameplay state.
+    bool record_gameplay_twist = false;
+    std::filesystem::path gameplay_twist_path = kGameplayTwistRecordingPath;
+    // A twenty-first input-only route.  It releases from a middle-strength
+    // launcher charge, then uses deliberately asymmetric side saves and
+    // Button-II pulses to pursue side-wall contacts before the ball settles
+    // into the lower-table rhythms sampled by the existing routes.
+    bool record_gameplay_sidestep = false;
+    std::filesystem::path gameplay_sidestep_path =
+        kGameplaySidestepRecordingPath;
     bool record_state_census = false;
     std::filesystem::path state_census_path = kStateCensusRecordingPath;
     std::filesystem::path canonical_work_ram_path;
@@ -538,6 +711,166 @@ parse_logical_address_range(const std::string_view text)
                                  : std::string_view{};
             if (!next.empty() && next.front() != '-') {
                 options.gameplay_path = argv[++index];
+            }
+        } else if (argument == "--record-gameplay-alternate") {
+            options.record_gameplay_alternate = true;
+            const std::string_view next =
+                index + 1 < argc ? std::string_view(argv[index + 1])
+                                 : std::string_view{};
+            if (!next.empty() && next.front() != '-') {
+                options.gameplay_alternate_path = argv[++index];
+            }
+        } else if (argument == "--record-gameplay-sweep") {
+            options.record_gameplay_sweep = true;
+            const std::string_view next =
+                index + 1 < argc ? std::string_view(argv[index + 1])
+                                 : std::string_view{};
+            if (!next.empty() && next.front() != '-') {
+                options.gameplay_sweep_path = argv[++index];
+            }
+        } else if (argument == "--record-gameplay-crossfire") {
+            options.record_gameplay_crossfire = true;
+            const std::string_view next =
+                index + 1 < argc ? std::string_view(argv[index + 1])
+                                 : std::string_view{};
+            if (!next.empty() && next.front() != '-') {
+                options.gameplay_crossfire_path = argv[++index];
+            }
+        } else if (argument == "--record-gameplay-orbit") {
+            options.record_gameplay_orbit = true;
+            const std::string_view next =
+                index + 1 < argc ? std::string_view(argv[index + 1])
+                                 : std::string_view{};
+            if (!next.empty() && next.front() != '-') {
+                options.gameplay_orbit_path = argv[++index];
+            }
+        } else if (argument == "--record-gameplay-lanes") {
+            options.record_gameplay_lanes = true;
+            const std::string_view next =
+                index + 1 < argc ? std::string_view(argv[index + 1])
+                                 : std::string_view{};
+            if (!next.empty() && next.front() != '-') {
+                options.gameplay_lanes_path = argv[++index];
+            }
+        } else if (argument == "--record-gameplay-stagger") {
+            options.record_gameplay_stagger = true;
+            const std::string_view next =
+                index + 1 < argc ? std::string_view(argv[index + 1])
+                                 : std::string_view{};
+            if (!next.empty() && next.front() != '-') {
+                options.gameplay_stagger_path = argv[++index];
+            }
+        } else if (argument == "--record-gameplay-pulse") {
+            options.record_gameplay_pulse = true;
+            const std::string_view next =
+                index + 1 < argc ? std::string_view(argv[index + 1])
+                                 : std::string_view{};
+            if (!next.empty() && next.front() != '-') {
+                options.gameplay_pulse_path = argv[++index];
+            }
+        } else if (argument == "--record-gameplay-rally") {
+            options.record_gameplay_rally = true;
+            const std::string_view next =
+                index + 1 < argc ? std::string_view(argv[index + 1])
+                                 : std::string_view{};
+            if (!next.empty() && next.front() != '-') {
+                options.gameplay_rally_path = argv[++index];
+            }
+        } else if (argument == "--record-gameplay-slalom") {
+            options.record_gameplay_slalom = true;
+            const std::string_view next =
+                index + 1 < argc ? std::string_view(argv[index + 1])
+                                 : std::string_view{};
+            if (!next.empty() && next.front() != '-') {
+                options.gameplay_slalom_path = argv[++index];
+            }
+        } else if (argument == "--record-gameplay-pendulum") {
+            options.record_gameplay_pendulum = true;
+            const std::string_view next =
+                index + 1 < argc ? std::string_view(argv[index + 1])
+                                 : std::string_view{};
+            if (!next.empty() && next.front() != '-') {
+                options.gameplay_pendulum_path = argv[++index];
+            }
+        } else if (argument == "--record-gameplay-nudge") {
+            options.record_gameplay_nudge = true;
+            const std::string_view next =
+                index + 1 < argc ? std::string_view(argv[index + 1])
+                                 : std::string_view{};
+            if (!next.empty() && next.front() != '-') {
+                options.gameplay_nudge_path = argv[++index];
+            }
+        } else if (argument == "--record-gameplay-switchback") {
+            options.record_gameplay_switchback = true;
+            const std::string_view next =
+                index + 1 < argc ? std::string_view(argv[index + 1])
+                                 : std::string_view{};
+            if (!next.empty() && next.front() != '-') {
+                options.gameplay_switchback_path = argv[++index];
+            }
+        } else if (argument == "--record-gameplay-spiral") {
+            options.record_gameplay_spiral = true;
+            const std::string_view next =
+                index + 1 < argc ? std::string_view(argv[index + 1])
+                                 : std::string_view{};
+            if (!next.empty() && next.front() != '-') {
+                options.gameplay_spiral_path = argv[++index];
+            }
+        } else if (argument == "--record-gameplay-ricochet") {
+            options.record_gameplay_ricochet = true;
+            const std::string_view next =
+                index + 1 < argc ? std::string_view(argv[index + 1])
+                                 : std::string_view{};
+            if (!next.empty() && next.front() != '-') {
+                options.gameplay_ricochet_path = argv[++index];
+            }
+        } else if (argument == "--record-gameplay-volley") {
+            options.record_gameplay_volley = true;
+            const std::string_view next =
+                index + 1 < argc ? std::string_view(argv[index + 1])
+                                 : std::string_view{};
+            if (!next.empty() && next.front() != '-') {
+                options.gameplay_volley_path = argv[++index];
+            }
+        } else if (argument == "--record-gameplay-whirlpool") {
+            options.record_gameplay_whirlpool = true;
+            const std::string_view next =
+                index + 1 < argc ? std::string_view(argv[index + 1])
+                                 : std::string_view{};
+            if (!next.empty() && next.front() != '-') {
+                options.gameplay_whirlpool_path = argv[++index];
+            }
+        } else if (argument == "--record-gameplay-cascade") {
+            options.record_gameplay_cascade = true;
+            const std::string_view next =
+                index + 1 < argc ? std::string_view(argv[index + 1])
+                                 : std::string_view{};
+            if (!next.empty() && next.front() != '-') {
+                options.gameplay_cascade_path = argv[++index];
+            }
+        } else if (argument == "--record-gameplay-higharc") {
+            options.record_gameplay_higharc = true;
+            const std::string_view next =
+                index + 1 < argc ? std::string_view(argv[index + 1])
+                                 : std::string_view{};
+            if (!next.empty() && next.front() != '-') {
+                options.gameplay_higharc_path = argv[++index];
+            }
+        } else if (argument == "--record-gameplay-twist") {
+            options.record_gameplay_twist = true;
+            const std::string_view next =
+                index + 1 < argc ? std::string_view(argv[index + 1])
+                                 : std::string_view{};
+            if (!next.empty() && next.front() != '-') {
+                options.gameplay_twist_path = argv[++index];
+            }
+        } else if (argument == "--record-gameplay-sidestep") {
+            options.record_gameplay_sidestep = true;
+            const std::string_view next =
+                index + 1 < argc ? std::string_view(argv[index + 1])
+                                 : std::string_view{};
+            if (!next.empty() && next.front() != '-') {
+                options.gameplay_sidestep_path = argv[++index];
             }
         } else if (argument == "--record-state-census") {
             options.record_state_census = true;
@@ -990,11 +1323,51 @@ parse_logical_address_range(const std::string_view text)
         + static_cast<int>(options.cabinet_smoke_test)
         + static_cast<int>(options.record_canonical)
         + static_cast<int>(options.record_gameplay)
+        + static_cast<int>(options.record_gameplay_alternate)
+        + static_cast<int>(options.record_gameplay_sweep)
+        + static_cast<int>(options.record_gameplay_crossfire)
+        + static_cast<int>(options.record_gameplay_orbit)
+        + static_cast<int>(options.record_gameplay_lanes)
+        + static_cast<int>(options.record_gameplay_stagger)
+        + static_cast<int>(options.record_gameplay_pulse)
+        + static_cast<int>(options.record_gameplay_rally)
+        + static_cast<int>(options.record_gameplay_slalom)
+        + static_cast<int>(options.record_gameplay_pendulum)
+        + static_cast<int>(options.record_gameplay_nudge)
+        + static_cast<int>(options.record_gameplay_switchback)
+        + static_cast<int>(options.record_gameplay_spiral)
+        + static_cast<int>(options.record_gameplay_ricochet)
+        + static_cast<int>(options.record_gameplay_volley)
+        + static_cast<int>(options.record_gameplay_whirlpool)
+        + static_cast<int>(options.record_gameplay_cascade)
+        + static_cast<int>(options.record_gameplay_higharc)
+        + static_cast<int>(options.record_gameplay_twist)
+        + static_cast<int>(options.record_gameplay_sidestep)
         + static_cast<int>(options.record_state_census)
         + static_cast<int>(!options.routine_replay_corpus_paths.empty())
         + static_cast<int>(options.backup_ram_test);
     const bool recording_selected =
         options.record_canonical || options.record_gameplay
+        || options.record_gameplay_alternate
+        || options.record_gameplay_sweep
+        || options.record_gameplay_crossfire
+        || options.record_gameplay_orbit
+        || options.record_gameplay_lanes
+        || options.record_gameplay_stagger
+        || options.record_gameplay_pulse
+        || options.record_gameplay_rally
+        || options.record_gameplay_slalom
+        || options.record_gameplay_pendulum
+        || options.record_gameplay_nudge
+        || options.record_gameplay_switchback
+        || options.record_gameplay_spiral
+        || options.record_gameplay_ricochet
+        || options.record_gameplay_volley
+        || options.record_gameplay_whirlpool
+        || options.record_gameplay_cascade
+        || options.record_gameplay_higharc
+        || options.record_gameplay_twist
+        || options.record_gameplay_sidestep
         || options.record_state_census;
     // Both interactive entry points run the same host loop, and both deploy
     // the admitted-routine registry unless told to emulate the original.
@@ -1011,6 +1384,46 @@ parse_logical_address_range(const std::string_view text)
         && !options.emulate_only;
     const int recording_frame_count = options.record_state_census
         ? kStateCensusRecordingFrames
+        : options.record_gameplay_alternate
+            ? kGameplayAlternateRecordingFrames
+        : options.record_gameplay_sweep
+            ? kGameplaySweepRecordingFrames
+        : options.record_gameplay_crossfire
+            ? kGameplayCrossfireRecordingFrames
+        : options.record_gameplay_orbit
+            ? kGameplayOrbitRecordingFrames
+        : options.record_gameplay_lanes
+            ? kGameplayLanesRecordingFrames
+        : options.record_gameplay_stagger
+            ? kGameplayStaggerRecordingFrames
+        : options.record_gameplay_pulse
+            ? kGameplayPulseRecordingFrames
+        : options.record_gameplay_rally
+            ? kGameplayRallyRecordingFrames
+        : options.record_gameplay_slalom
+            ? kGameplaySlalomRecordingFrames
+        : options.record_gameplay_pendulum
+            ? kGameplayPendulumRecordingFrames
+        : options.record_gameplay_nudge
+            ? kGameplayNudgeRecordingFrames
+        : options.record_gameplay_switchback
+            ? kGameplaySwitchbackRecordingFrames
+        : options.record_gameplay_spiral
+            ? kGameplaySpiralRecordingFrames
+        : options.record_gameplay_ricochet
+            ? kGameplayRicochetRecordingFrames
+        : options.record_gameplay_volley
+            ? kGameplayVolleyRecordingFrames
+        : options.record_gameplay_whirlpool
+            ? kGameplayWhirlpoolRecordingFrames
+        : options.record_gameplay_cascade
+            ? kGameplayCascadeRecordingFrames
+        : options.record_gameplay_higharc
+            ? kGameplayHigharcRecordingFrames
+        : options.record_gameplay_twist
+            ? kGameplayTwistRecordingFrames
+        : options.record_gameplay_sidestep
+            ? kGameplaySidestepRecordingFrames
         : options.record_gameplay
             ? kGameplayRecordingFrames
             : options.record_canonical
@@ -1240,6 +1653,13 @@ parse_logical_address_range(const std::string_view text)
                                        .logical_pc = 0xF55CU,
                                    }
                            && (request.all_calls || request.ordinal == 1U);
+                       const bool proven_score_repeat_wrapper =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x00U,
+                                       .logical_pc = 0xF54FU,
+                                   }
+                           && request.all_calls;
                        const bool proven_rng_update =
                            request.routine
                                    == RoutineKey{
@@ -3112,6 +3532,28 @@ parse_logical_address_range(const std::string_view text)
                                        .logical_pc = 0x5F5BU,
                                    }
                            && request.all_calls;
+                       const bool proven_tower_insect_child_spawner_seams =
+                           (request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x02U,
+                                       .logical_pc = 0x5F78U,
+                                   }
+                               || request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x02U,
+                                       .logical_pc = 0x5F7BU,
+                                   }
+                               || request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x02U,
+                                       .logical_pc = 0x5F7EU,
+                                   }
+                               || request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x02U,
+                                       .logical_pc = 0x5FD6U,
+                                   })
+                           && request.all_calls;
                        const bool proven_tower_insect_source_initializer =
                            request.routine
                                    == RoutineKey{
@@ -3292,6 +3734,13 @@ parse_logical_address_range(const std::string_view text)
                                     == RoutineKey{
                                         .physical_bank = 0x03U,
                                         .logical_pc = 0x676BU,
+                                    }
+                            && request.all_calls;
+                        const bool proven_three_blobs_shared_return =
+                            request.routine
+                                    == RoutineKey{
+                                        .physical_bank = 0x03U,
+                                        .logical_pc = 0x67E5U,
                                     }
                             && request.all_calls;
                         const bool proven_three_blobs_collision_gate =
@@ -3477,6 +3926,13 @@ parse_logical_address_range(const std::string_view text)
                                        .logical_pc = 0x72FDU,
                                    }
                            && request.all_calls;
+                       const bool proven_score_panel_redraw =
+                           request.routine.physical_bank == 0x09U
+                           && (request.routine.logical_pc == 0x727DU
+                               || request.routine.logical_pc == 0x72A2U
+                               || request.routine.logical_pc == 0x72BDU
+                               || request.routine.logical_pc == 0x72C5U)
+                           && request.all_calls;
                        const bool proven_actor_scan_run =
                            request.routine
                                    == RoutineKey{
@@ -3558,7 +4014,8 @@ parse_logical_address_range(const std::string_view text)
                            && request.all_calls;
                        const bool proven_setup_screen_palette_stager =
                            request.routine.physical_bank == 0x08U
-                           && (request.routine.logical_pc == 0x5977U
+                           && (request.routine.logical_pc == 0x5961U
+                               || request.routine.logical_pc == 0x5977U
                                || request.routine.logical_pc == 0x5982U)
                            && request.all_calls;
                        const bool proven_text_tile_write =
@@ -3647,6 +4104,7 @@ parse_logical_address_range(const std::string_view text)
                                || request.routine.logical_pc == 0xCB04U
                                || request.routine.logical_pc == 0xCB11U
                                || request.routine.logical_pc == 0xCB2AU
+                               || request.routine.logical_pc == 0xCB46U
                                || request.routine.logical_pc == 0xCB74U
                                || request.routine.logical_pc == 0xCB76U
                                || request.routine.logical_pc == 0xCB79U
@@ -3759,9 +4217,10 @@ parse_logical_address_range(const std::string_view text)
                            && !proven_main_session_loop
                            && !proven_bank_one_jump_table
                              && !proven_palette_colour_cycle
-                             && !proven_score_animation
-                             && !proven_score_panel_poll
+                            && !proven_score_animation
+                            && !proven_score_panel_poll
                            && !proven_score_panel_glyph
+                           && !proven_score_panel_redraw
                            && !proven_actor_scan_run
                            && !proven_actor_dispatch_vector
                            && !proven_actor_queue_registration
@@ -3798,6 +4257,7 @@ parse_logical_address_range(const std::string_view text)
                            && !proven_initial_collision_consumer
                            && !proven_bank7_mode_gate
                            && !proven_score_accumulator
+                           && !proven_score_repeat_wrapper
                            && !proven_rng_update
                            && !proven_signed_word_negation
                            && !proven_signed_division
@@ -4049,6 +4509,7 @@ parse_logical_address_range(const std::string_view text)
                            && !proven_tower_insect_source_gate
                            && !proven_tower_insect_source_countdown_wait
                            && !proven_tower_insect_source_countdown_return
+                           && !proven_tower_insect_child_spawner_seams
                            && !proven_tower_insect_source_initializer
                            && !proven_sorcerer_color_gate
                            && !proven_tower_hit_continuation
@@ -4074,13 +4535,14 @@ parse_logical_address_range(const std::string_view text)
                             && !proven_three_blobs_movement_call_seam
                             && !proven_three_blobs_direct_continuation
                             && !proven_three_blobs_shared_motion_idle
+                            && !proven_three_blobs_shared_return
                             && !proven_three_blobs_collision_gate
                             && !proven_three_blobs_collision_marker
                             && !proven_fixed_scheduler_submission
                            && !proven_fixed_marker_gate
                            && !proven_fixed_marker_submission
                            && !proven_fixed_marker_helper
-                           && !proven_fixed_marker_outer_segment
+                            && !proven_fixed_marker_outer_segment
                            && !proven_scaled_word_add
                            && !proven_three_blobs_controller
                            && !proven_three_blobs_appearance_gate
@@ -4101,7 +4563,7 @@ parse_logical_address_range(const std::string_view text)
             "semantic 07:4003@all, "
             "semantic 08:584C@all, semantic 08:584F@all, "
             "semantic 08:5852@all, semantic 08:5861@all, "
-            "semantic 00:F55C@all, "
+            "semantic 00:F54F@all, semantic 00:F55C@all, "
             "semantic 00:E8B3@all, semantic 00:E837@all, "
             "semantic 00:E905@all, semantic 00:E7D7@all, "
             "semantic 00:E6DC@all, "
@@ -4153,6 +4615,7 @@ parse_logical_address_range(const std::string_view text)
             "semantic 09:60C7@all, "
             "semantic 09:70C1@all, semantic 09:70C4@all, "
             "semantic 09:71EA@all, semantic 09:7237@all, "
+            "semantic 09:727D/72A2/72BD/72C5@all, "
             "semantic 09:72FD@all, "
             "semantic 01:C80A@all, semantic 01:C7F4@all, semantic 01:C7EF@all, semantic 01:C7F9@all, semantic 01:C7FC@all, semantic 01:C804@all, semantic 01:C812@all, semantic 01:C7EA@all, semantic 01:C7E5@all, "
             "semantic 02:427C@all, semantic 02:42A3@all, semantic 02:42B0@all, "
@@ -4280,6 +4743,7 @@ parse_logical_address_range(const std::string_view text)
             "semantic 02:5F22@all, "
             "semantic 02:5F4A@all, "
             "semantic 02:5F5B@all, "
+            "semantic 02:5F78/5F7B/5F7E/5FD6@all, "
             "semantic 02:5F5F@all, "
             "semantic 02:5FDB@all, semantic 02:5FE6@all, "
             "semantic 03:7D85@all, semantic 03:7E23@all, "
@@ -4321,7 +4785,8 @@ parse_logical_address_range(const std::string_view text)
             "semantic 03:6678/667B/6697/669A@all, "
             "semantic 03:66A3/66B5@all, semantic 03:670F@all, "
             "semantic 03:6729@all, semantic 03:6740@all, and semantic "
-            "03:676B@all, semantic 03:67C0/67CF@all, semantic 03:694A@all, "
+            "03:676B@all, semantic 03:67E5@all, semantic 03:67C0/67CF@all, "
+            "semantic 03:694A@all, "
             "semantic 03:7BF6/7C02/7C05@all, semantic "
             "03:7E87/7E8A/7EEE@all, semantic 03:7EFA/7F05@all, "
             "the proven 03:7FB1@1, 03:7FB1@3, 03:7FB1@7, 00:F55C@1, "
@@ -4436,6 +4901,146 @@ void print_usage()
            "      [--work-ram-patch <frame:address:value>]...\n"
            "      [--work-ram-write-range <start-end>]...\n"
            "      [--work-ram-write-trace <writes.csv>]\n"
+           "      [--rom <path>]\n"
+        << "  devils-crush --record-gameplay-alternate [output.csv]\n"
+           "      [--replace-registry]\n"
+           "      [--native-cycle-census <census.csv>]\n"
+           "      [--instruction-profile <profile.csv>]\n"
+           "      [--observe-hook <bank:pc>]...\n"
+           "      [--routine-call-trace <calls.csv>]\n"
+           "      [--rom <path>]\n"
+        << "  devils-crush --record-gameplay-sweep [output.csv]\n"
+           "      [--replace-registry]\n"
+           "      [--native-cycle-census <census.csv>]\n"
+           "      [--instruction-profile <profile.csv>]\n"
+           "      [--observe-hook <bank:pc>]...\n"
+           "      [--routine-call-trace <calls.csv>]\n"
+           "      [--rom <path>]\n"
+        << "  devils-crush --record-gameplay-crossfire [output.csv]\n"
+           "      [--replace-registry]\n"
+           "      [--native-cycle-census <census.csv>]\n"
+           "      [--instruction-profile <profile.csv>]\n"
+           "      [--observe-hook <bank:pc>]...\n"
+           "      [--routine-call-trace <calls.csv>]\n"
+           "      [--rom <path>]\n"
+        << "  devils-crush --record-gameplay-orbit [output.csv]\n"
+           "      [--replace-registry]\n"
+           "      [--native-cycle-census <census.csv>]\n"
+           "      [--instruction-profile <profile.csv>]\n"
+           "      [--observe-hook <bank:pc>]...\n"
+           "      [--routine-call-trace <calls.csv>]\n"
+           "      [--rom <path>]\n"
+        << "  devils-crush --record-gameplay-lanes [output.csv]\n"
+           "      [--replace-registry]\n"
+           "      [--native-cycle-census <census.csv>]\n"
+           "      [--instruction-profile <profile.csv>]\n"
+           "      [--observe-hook <bank:pc>]...\n"
+           "      [--routine-call-trace <calls.csv>]\n"
+           "      [--rom <path>]\n"
+        << "  devils-crush --record-gameplay-stagger [output.csv]\n"
+           "      [--replace-registry]\n"
+           "      [--native-cycle-census <census.csv>]\n"
+           "      [--instruction-profile <profile.csv>]\n"
+           "      [--observe-hook <bank:pc>]...\n"
+           "      [--routine-call-trace <calls.csv>]\n"
+           "      [--rom <path>]\n"
+        << "  devils-crush --record-gameplay-pulse [output.csv]\n"
+           "      [--replace-registry]\n"
+           "      [--native-cycle-census <census.csv>]\n"
+           "      [--instruction-profile <profile.csv>]\n"
+           "      [--observe-hook <bank:pc>]...\n"
+           "      [--routine-call-trace <calls.csv>]\n"
+           "      [--rom <path>]\n"
+        << "  devils-crush --record-gameplay-rally [output.csv]\n"
+           "      [--replace-registry]\n"
+           "      [--native-cycle-census <census.csv>]\n"
+           "      [--instruction-profile <profile.csv>]\n"
+           "      [--observe-hook <bank:pc>]...\n"
+           "      [--routine-call-trace <calls.csv>]\n"
+           "      [--rom <path>]\n"
+        << "  devils-crush --record-gameplay-slalom [output.csv]\n"
+           "      [--replace-registry]\n"
+           "      [--native-cycle-census <census.csv>]\n"
+           "      [--instruction-profile <profile.csv>]\n"
+           "      [--observe-hook <bank:pc>]...\n"
+           "      [--routine-call-trace <calls.csv>]\n"
+           "      [--rom <path>]\n"
+        << "  devils-crush --record-gameplay-pendulum [output.csv]\n"
+           "      [--replace-registry]\n"
+           "      [--native-cycle-census <census.csv>]\n"
+           "      [--instruction-profile <profile.csv>]\n"
+           "      [--observe-hook <bank:pc>]...\n"
+           "      [--routine-call-trace <calls.csv>]\n"
+           "      [--rom <path>]\n"
+        << "  devils-crush --record-gameplay-nudge [output.csv]\n"
+           "      [--replace-registry]\n"
+           "      [--native-cycle-census <census.csv>]\n"
+           "      [--instruction-profile <profile.csv>]\n"
+           "      [--observe-hook <bank:pc>]...\n"
+           "      [--routine-call-trace <calls.csv>]\n"
+           "      [--rom <path>]\n"
+        << "  devils-crush --record-gameplay-switchback [output.csv]\n"
+           "      [--replace-registry]\n"
+           "      [--native-cycle-census <census.csv>]\n"
+           "      [--instruction-profile <profile.csv>]\n"
+           "      [--observe-hook <bank:pc>]...\n"
+           "      [--routine-call-trace <calls.csv>]\n"
+           "      [--rom <path>]\n"
+        << "  devils-crush --record-gameplay-spiral [output.csv]\n"
+           "      [--replace-registry]\n"
+           "      [--native-cycle-census <census.csv>]\n"
+           "      [--instruction-profile <profile.csv>]\n"
+           "      [--observe-hook <bank:pc>]...\n"
+           "      [--routine-call-trace <calls.csv>]\n"
+           "      [--rom <path>]\n"
+        << "  devils-crush --record-gameplay-ricochet [output.csv]\n"
+           "      [--replace-registry]\n"
+           "      [--native-cycle-census <census.csv>]\n"
+           "      [--instruction-profile <profile.csv>]\n"
+           "      [--observe-hook <bank:pc>]...\n"
+           "      [--routine-call-trace <calls.csv>]\n"
+           "      [--rom <path>]\n"
+        << "  devils-crush --record-gameplay-volley [output.csv]\n"
+           "      [--replace-registry]\n"
+           "      [--native-cycle-census <census.csv>]\n"
+           "      [--instruction-profile <profile.csv>]\n"
+           "      [--observe-hook <bank:pc>]...\n"
+           "      [--routine-call-trace <calls.csv>]\n"
+           "      [--rom <path>]\n"
+        << "  devils-crush --record-gameplay-whirlpool [output.csv]\n"
+           "      [--replace-registry]\n"
+           "      [--native-cycle-census <census.csv>]\n"
+           "      [--instruction-profile <profile.csv>]\n"
+           "      [--observe-hook <bank:pc>]...\n"
+           "      [--routine-call-trace <calls.csv>]\n"
+           "      [--rom <path>]\n"
+        << "  devils-crush --record-gameplay-cascade [output.csv]\n"
+           "      [--replace-registry]\n"
+           "      [--native-cycle-census <census.csv>]\n"
+           "      [--instruction-profile <profile.csv>]\n"
+           "      [--observe-hook <bank:pc>]...\n"
+           "      [--routine-call-trace <calls.csv>]\n"
+           "      [--rom <path>]\n"
+        << "  devils-crush --record-gameplay-higharc [output.csv]\n"
+           "      [--replace-registry]\n"
+           "      [--native-cycle-census <census.csv>]\n"
+           "      [--instruction-profile <profile.csv>]\n"
+           "      [--observe-hook <bank:pc>]...\n"
+           "      [--routine-call-trace <calls.csv>]\n"
+           "      [--rom <path>]\n"
+        << "  devils-crush --record-gameplay-twist [output.csv]\n"
+           "      [--replace-registry]\n"
+           "      [--native-cycle-census <census.csv>]\n"
+           "      [--instruction-profile <profile.csv>]\n"
+           "      [--observe-hook <bank:pc>]...\n"
+           "      [--routine-call-trace <calls.csv>]\n"
+           "      [--rom <path>]\n"
+        << "  devils-crush --record-gameplay-sidestep [output.csv]\n"
+           "      [--replace-registry]\n"
+           "      [--native-cycle-census <census.csv>]\n"
+           "      [--instruction-profile <profile.csv>]\n"
+           "      [--observe-hook <bank:pc>]...\n"
+           "      [--routine-call-trace <calls.csv>]\n"
            "      [--rom <path>]\n"
         << "  devils-crush --record-state-census [output.csv]\n"
            "      [--canonical-work-ram <output.bin>]\n"
@@ -6784,6 +7389,1003 @@ struct ProbedAxis {
     return input;
 }
 
+[[nodiscard]] InputFrame gameplay_alternate_input_for_frame(
+    const int frame_number)
+{
+    InputFrame input;
+    const auto press = [&input](const Button button) {
+        input.player_one |= static_cast<std::uint16_t>(button);
+    };
+    const auto is_pair = [frame_number](const int first_frame) {
+        return frame_number == first_frame
+            || frame_number == first_frame + 1;
+    };
+
+    // Start through the same visible menus as the baseline, then use a
+    // different, sustained flipper rhythm and six short nudge windows.
+    // It deliberately changes only player input: any rule it reaches is a
+    // natural table branch, not a RAM-forced fixture.
+    if (is_pair(180) || is_pair(300)) {
+        press(Button::run);
+    }
+    if (is_pair(420) || is_pair(700)
+        || (frame_number >= 850 && frame_number <= 880)) {
+        press(Button::one);
+    }
+    if (frame_number >= 1000 && frame_number <= 1195) {
+        press(Button::one);
+    }
+    if (frame_number >= 1225) {
+        const int flipper_phase = (frame_number - 1225) % 24;
+        if (flipper_phase <= 2) {
+            press(Button::left);
+        }
+        if (flipper_phase >= 10 && flipper_phase <= 12) {
+            press(Button::one);
+        }
+    }
+    if (is_pair(1425) || is_pair(1825) || is_pair(2225)
+        || is_pair(2625) || is_pair(3025) || is_pair(3425)) {
+        press(Button::two);
+    }
+    return input;
+}
+
+[[nodiscard]] InputFrame gameplay_sweep_input_for_frame(
+    const int frame_number)
+{
+    InputFrame input;
+    const auto press = [&input](const Button button) {
+        input.player_one |= static_cast<std::uint16_t>(button);
+    };
+    const auto is_pair = [frame_number](const int first_frame) {
+        return frame_number == first_frame
+            || frame_number == first_frame + 1;
+    };
+
+    // Start through the same visible menus, then sweep both flippers through
+    // a deliberately different cadence.  This route remains input-only: its
+    // purpose is to discover a naturally selected rule branch, not to force
+    // one by changing the emulated game state.
+    if (is_pair(180) || is_pair(300)) {
+        press(Button::run);
+    }
+    if (is_pair(420) || is_pair(700)
+        || (frame_number >= 850 && frame_number <= 880)
+        || (frame_number >= 1000 && frame_number <= 1215)) {
+        press(Button::one);
+    }
+    if (frame_number >= 1240) {
+        const int flipper_phase = (frame_number - 1240) % 40;
+        if (flipper_phase <= 4 || (flipper_phase >= 22 && flipper_phase <= 26)) {
+            press(Button::left);
+        }
+        if ((flipper_phase >= 10 && flipper_phase <= 14)
+            || flipper_phase >= 32) {
+            press(Button::right);
+        }
+        if (flipper_phase == 18 || flipper_phase == 19) {
+            press(Button::one);
+        }
+    }
+    if (is_pair(1375) || is_pair(1675) || is_pair(1975)
+        || is_pair(2275) || is_pair(2575) || is_pair(2875)
+        || is_pair(3175) || is_pair(3475)) {
+        press(Button::two);
+    }
+    return input;
+}
+
+[[nodiscard]] InputFrame gameplay_crossfire_input_for_frame(
+    const int frame_number)
+{
+    InputFrame input;
+    const auto press = [&input](const Button button) {
+        input.player_one |= static_cast<std::uint16_t>(button);
+    };
+    const auto is_pair = [frame_number](const int first_frame) {
+        return frame_number == first_frame
+            || frame_number == first_frame + 1;
+    };
+
+    // This pass starts through the established menus and launch sequence,
+    // then gives the ball a materially different table trajectory: each
+    // flipper remains held across the opposite flipper's release.  As with
+    // the other discovery routes, only controller state is changed.
+    if (is_pair(180) || is_pair(300)) {
+        press(Button::run);
+    }
+    if (is_pair(420) || is_pair(700)
+        || (frame_number >= 850 && frame_number <= 880)
+        || (frame_number >= 1000 && frame_number <= 1225)) {
+        press(Button::one);
+    }
+    if (frame_number >= 1260) {
+        const int flipper_phase = (frame_number - 1260) % 32;
+        if (flipper_phase <= 15 || flipper_phase >= 24) {
+            press(Button::left);
+        }
+        if (flipper_phase >= 8 && flipper_phase <= 23) {
+            press(Button::right);
+        }
+        if (flipper_phase == 6 || flipper_phase == 7
+            || flipper_phase == 22 || flipper_phase == 23) {
+            press(Button::one);
+        }
+    }
+    if (is_pair(1510) || is_pair(1910) || is_pair(2310)
+        || is_pair(2710) || is_pair(3110) || is_pair(3510)) {
+        press(Button::two);
+    }
+    return input;
+}
+
+[[nodiscard]] InputFrame gameplay_orbit_input_for_frame(const int frame_number)
+{
+    InputFrame input;
+    const auto press = [&input](const Button button) {
+        input.player_one |= static_cast<std::uint16_t>(button);
+    };
+    const auto is_pair = [frame_number](const int first_frame) {
+        return frame_number == first_frame
+            || frame_number == first_frame + 1;
+    };
+
+    // Enter the same visible menus and launch the first ball normally.  Once
+    // it is live, use a 48-frame orbit with separated flipper windows and a
+    // rotating set of directional nudges.  No work-RAM state is patched: any
+    // rule path reached here is selected by the game itself.
+    if (is_pair(180) || is_pair(300)) {
+        press(Button::run);
+    }
+    if (is_pair(420) || is_pair(700)
+        || (frame_number >= 850 && frame_number <= 880)
+        || (frame_number >= 1000 && frame_number <= 1235)) {
+        press(Button::one);
+    }
+    if (frame_number >= 1260) {
+        const int phase = (frame_number - 1260) % 48;
+        if (phase <= 7 || (phase >= 32 && phase <= 35)) {
+            press(Button::left);
+        }
+        if ((phase >= 12 && phase <= 19) || phase >= 40) {
+            press(Button::right);
+        }
+        if (phase == 8 || phase == 9 || phase == 28 || phase == 29) {
+            press(Button::one);
+        }
+        if (phase == 4 || phase == 5) {
+            press(Button::up);
+        } else if (phase == 20 || phase == 21) {
+            press(Button::right);
+        } else if (phase == 36 || phase == 37) {
+            press(Button::down);
+        }
+    }
+    if (is_pair(1540) || is_pair(2020) || is_pair(2500)
+        || is_pair(2980) || is_pair(3460)) {
+        press(Button::two);
+    }
+    return input;
+}
+
+[[nodiscard]] InputFrame gameplay_lanes_input_for_frame(const int frame_number)
+{
+    InputFrame input;
+    const auto press = [&input](const Button button) {
+        input.player_one |= static_cast<std::uint16_t>(button);
+    };
+    const auto is_pair = [frame_number](const int first_frame) {
+        return frame_number == first_frame
+            || frame_number == first_frame + 1;
+    };
+
+    // Use the normal visible menu and launch sequence, then alternate long
+    // individual flipper holds.  The 96-frame pattern intentionally leaves
+    // wide unheld windows and injects directional nudge bursts, producing a
+    // lane-oriented trajectory instead of another dense flipper cadence.
+    if (is_pair(180) || is_pair(300)) {
+        press(Button::run);
+    }
+    if (is_pair(420) || is_pair(700)
+        || (frame_number >= 850 && frame_number <= 880)
+        || (frame_number >= 1000 && frame_number <= 1245)) {
+        press(Button::one);
+    }
+    if (frame_number >= 1280) {
+        const int phase = (frame_number - 1280) % 96;
+        if (phase <= 23) {
+            press(Button::left);
+        } else if (phase >= 48 && phase <= 71) {
+            press(Button::right);
+        }
+        if (phase == 30 || phase == 31 || phase == 78 || phase == 79) {
+            press(Button::one);
+        }
+        if (phase == 12 || phase == 13) {
+            press(Button::up);
+        } else if (phase == 40 || phase == 41) {
+            press(Button::left);
+        } else if (phase == 60 || phase == 61) {
+            press(Button::right);
+        } else if (phase == 88 || phase == 89) {
+            press(Button::down);
+        }
+    }
+    if (is_pair(1460) || is_pair(1940) || is_pair(2420)
+        || is_pair(2900) || is_pair(3380)) {
+        press(Button::two);
+    }
+    return input;
+}
+
+[[nodiscard]] InputFrame gameplay_stagger_input_for_frame(
+    const int frame_number)
+{
+    InputFrame input;
+    const auto press = [&input](const Button button) {
+        input.player_one |= static_cast<std::uint16_t>(button);
+    };
+    const auto is_pair = [frame_number](const int first_frame) {
+        return frame_number == first_frame
+            || frame_number == first_frame + 1;
+    };
+
+    // Follow the normal visible menu and launch path, then use a 144-frame
+    // stagger. Each flipper owns a long, deliberately offset window and both
+    // release for 64 frames between them. Sparse directional presses happen
+    // only in those release gaps, producing a trajectory unlike the dense,
+    // overlapping, or alternating patterns in the existing discovery plans.
+    if (is_pair(180) || is_pair(300)) {
+        press(Button::run);
+    }
+    if (is_pair(420) || is_pair(700)
+        || (frame_number >= 850 && frame_number <= 880)
+        || (frame_number >= 1000 && frame_number <= 1255)) {
+        press(Button::one);
+    }
+    if (frame_number >= 1296) {
+        const int phase = (frame_number - 1296) % 144;
+        if (phase <= 19) {
+            press(Button::left);
+        } else if (phase >= 84 && phase <= 103) {
+            press(Button::right);
+        }
+        if (phase == 44 || phase == 45 || phase == 124 || phase == 125) {
+            press(Button::one);
+        }
+        if (phase == 34 || phase == 35) {
+            press(Button::up);
+        } else if (phase == 68 || phase == 69) {
+            press(Button::right);
+        } else if (phase == 114 || phase == 115) {
+            press(Button::down);
+        }
+    }
+    if (is_pair(1580) || is_pair(2180) || is_pair(2780)
+        || is_pair(3380)) {
+        press(Button::two);
+    }
+    return input;
+}
+
+[[nodiscard]] InputFrame gameplay_pulse_input_for_frame(const int frame_number)
+{
+    InputFrame input;
+    const auto press = [&input](const Button button) {
+        input.player_one |= static_cast<std::uint16_t>(button);
+    };
+    const auto is_pair = [frame_number](const int first_frame) {
+        return frame_number == first_frame
+            || frame_number == first_frame + 1;
+    };
+
+    // Keep the visible boot/menu/launch sequence, then use brief, asymmetric
+    // flipper pulses separated by long neutral intervals. The short presses
+    // aim for a low-contact ball path rather than another held-flipper orbit;
+    // only controller bits change, so every reached rule remains natural.
+    if (is_pair(180) || is_pair(300)) {
+        press(Button::run);
+    }
+    if (is_pair(420) || is_pair(700)
+        || (frame_number >= 850 && frame_number <= 880)
+        || (frame_number >= 1000 && frame_number <= 1270)) {
+        press(Button::one);
+    }
+    if (frame_number >= 1320) {
+        const int phase = (frame_number - 1320) % 180;
+        if (phase <= 3 || (phase >= 54 && phase <= 57)) {
+            press(Button::left);
+        }
+        if ((phase >= 24 && phase <= 27) || (phase >= 114 && phase <= 117)) {
+            press(Button::right);
+        }
+        if (phase == 39 || phase == 40 || phase == 144 || phase == 145) {
+            press(Button::one);
+        }
+        if (phase == 72 || phase == 73) {
+            press(Button::up);
+        } else if (phase == 159 || phase == 160) {
+            press(Button::down);
+        }
+    }
+    if (is_pair(1710) || is_pair(2430) || is_pair(3150)) {
+        press(Button::two);
+    }
+    return input;
+}
+
+[[nodiscard]] InputFrame gameplay_rally_input_for_frame(const int frame_number)
+{
+    InputFrame input;
+    const auto press = [&input](const Button button) {
+        input.player_one |= static_cast<std::uint16_t>(button);
+    };
+    const auto is_pair = [frame_number](const int first_frame) {
+        return frame_number == first_frame
+            || frame_number == first_frame + 1;
+    };
+
+    // Preserve the same visible boot, menu, and launch path.  Once the ball
+    // is live, favor extended right-flipper recovery windows and short left
+    // saves on a prime-length cadence; the changing phase avoids repeating
+    // any of the symmetric discovery patterns already screened.
+    if (is_pair(180) || is_pair(300)) {
+        press(Button::run);
+    }
+    if (is_pair(420) || is_pair(700)
+        || (frame_number >= 850 && frame_number <= 880)
+        || (frame_number >= 1000 && frame_number <= 1290)) {
+        press(Button::one);
+    }
+    if (frame_number >= 1332) {
+        const int phase = (frame_number - 1332) % 137;
+        if (phase <= 8 || (phase >= 71 && phase <= 77)) {
+            press(Button::left);
+        }
+        if (phase >= 20 && phase <= 51) {
+            press(Button::right);
+        }
+        if (phase == 58 || phase == 59 || phase == 114 || phase == 115) {
+            press(Button::one);
+        }
+        if (phase == 12 || phase == 13) {
+            press(Button::down);
+        } else if (phase == 91 || phase == 92) {
+            press(Button::up);
+        }
+    }
+    if (is_pair(1680) || is_pair(2365) || is_pair(3050)) {
+        press(Button::two);
+    }
+    return input;
+}
+
+[[nodiscard]] InputFrame gameplay_slalom_input_for_frame(
+    const int frame_number)
+{
+    InputFrame input;
+    const auto press = [&input](const Button button) {
+        input.player_one |= static_cast<std::uint16_t>(button);
+    };
+    const auto is_pair = [frame_number](const int first_frame) {
+        return frame_number == first_frame
+            || frame_number == first_frame + 1;
+    };
+
+    // Keep the visible boot, menu, and launch sequence.  Once live, make a
+    // wide left save, let the ball travel, then make a mirrored right save on
+    // a prime-length cadence.  The nudge direction follows the opposite
+    // side, which samples side-lane rebounds without writing any game RAM.
+    if (is_pair(180) || is_pair(300)) {
+        press(Button::run);
+    }
+    if (is_pair(420) || is_pair(700)
+        || (frame_number >= 850 && frame_number <= 880)
+        || (frame_number >= 1000 && frame_number <= 1305)) {
+        press(Button::one);
+    }
+    if (frame_number >= 1350) {
+        const int phase = (frame_number - 1350) % 211;
+        if (phase <= 27) {
+            press(Button::left);
+        } else if (phase >= 108 && phase <= 135) {
+            press(Button::right);
+        }
+        if (phase == 42 || phase == 43 || phase == 151 || phase == 152) {
+            press(Button::one);
+        }
+        if (phase == 31 || phase == 32) {
+            press(Button::right);
+        } else if (phase == 141 || phase == 142) {
+            press(Button::left);
+        } else if (phase == 86 || phase == 87) {
+            press(Button::up);
+        }
+    }
+    if (is_pair(1630) || is_pair(2263) || is_pair(2896)
+        || is_pair(3529)) {
+        press(Button::two);
+    }
+    return input;
+}
+
+[[nodiscard]] InputFrame gameplay_pendulum_input_for_frame(
+    const int frame_number)
+{
+    InputFrame input;
+    const auto press = [&input](const Button button) {
+        input.player_one |= static_cast<std::uint16_t>(button);
+    };
+    const auto is_pair = [frame_number](const int first_frame) {
+        return frame_number == first_frame
+            || frame_number == first_frame + 1;
+    };
+
+    // This deliberately leaves long travel windows between two mirrored
+    // saves.  Its 257-frame cadence is relatively prime to all prior discovery
+    // cadences, and its directional nudges occur away from flipper holds, so
+    // it explores natural rebound timing rather than only another release
+    // pattern.  No emulated RAM is changed.
+    if (is_pair(180) || is_pair(300)) {
+        press(Button::run);
+    }
+    if (is_pair(420) || is_pair(700)
+        || (frame_number >= 850 && frame_number <= 880)
+        || (frame_number >= 1000 && frame_number <= 1320)) {
+        press(Button::one);
+    }
+    if (frame_number >= 1350) {
+        const int phase = (frame_number - 1350) % 257;
+        if (phase <= 14 || (phase >= 171 && phase <= 185)) {
+            press(Button::left);
+        }
+        if ((phase >= 78 && phase <= 92)
+            || (phase >= 214 && phase <= 228)) {
+            press(Button::right);
+        }
+        if (phase == 25 || phase == 26 || phase == 195 || phase == 196) {
+            press(Button::one);
+        }
+        if (phase == 43 || phase == 44) {
+            press(Button::up);
+        } else if (phase == 120 || phase == 121) {
+            press(Button::down);
+        } else if (phase == 241 || phase == 242) {
+            press(Button::right);
+        }
+    }
+    if (is_pair(1764) || is_pair(2535) || is_pair(3306)) {
+        press(Button::two);
+    }
+    return input;
+}
+
+[[nodiscard]] InputFrame gameplay_nudge_input_for_frame(const int frame_number)
+{
+    InputFrame input;
+    const auto press = [&input](const Button button) {
+        input.player_one |= static_cast<std::uint16_t>(button);
+    };
+    const auto is_pair = [frame_number](const int first_frame) {
+        return frame_number == first_frame
+            || frame_number == first_frame + 1;
+    };
+
+    // The normal visible startup and launcher stay untouched. Once the ball
+    // is live, a 313-frame prime cadence rotates sparse saves with separated
+    // directional nudges. This makes a collision/rebound-led route rather
+    // than another continuous flipper orbit, and remains entirely input-only.
+    if (is_pair(180) || is_pair(300)) {
+        press(Button::run);
+    }
+    if (is_pair(420) || is_pair(700)
+        || (frame_number >= 850 && frame_number <= 880)
+        || (frame_number >= 1000 && frame_number <= 1335)) {
+        press(Button::one);
+    }
+    if (frame_number >= 1380) {
+        const int phase = (frame_number - 1380) % 313;
+        if ((phase >= 18 && phase <= 23)
+            || (phase >= 208 && phase <= 213)) {
+            press(Button::left);
+        }
+        if ((phase >= 104 && phase <= 109)
+            || (phase >= 272 && phase <= 277)) {
+            press(Button::right);
+        }
+        if (phase == 52 || phase == 53 || phase == 244 || phase == 245) {
+            press(Button::one);
+        }
+        if (phase == 0 || phase == 1) {
+            press(Button::up);
+        } else if (phase == 76 || phase == 77) {
+            press(Button::right);
+        } else if (phase == 156 || phase == 157) {
+            press(Button::down);
+        } else if (phase == 300 || phase == 301) {
+            press(Button::left);
+        }
+    }
+    if (is_pair(1848) || is_pair(2787)) {
+        press(Button::two);
+    }
+    return input;
+}
+
+[[nodiscard]] InputFrame gameplay_switchback_input_for_frame(
+    const int frame_number)
+{
+    InputFrame input;
+    const auto press = [&input](const Button button) {
+        input.player_one |= static_cast<std::uint16_t>(button);
+    };
+    const auto is_pair = [frame_number](const int first_frame) {
+        return frame_number == first_frame
+            || frame_number == first_frame + 1;
+    };
+
+    // Use the normal visible startup, but keep the launcher held longer than
+    // the other discovery routes.  The live-table section then has a
+    // 233-frame switchback: long left and right saves alternate around broad
+    // neutral intervals, while sparse opposite-direction nudges happen only
+    // between saves.  It remains strictly input-only.
+    if (is_pair(180) || is_pair(300)) {
+        press(Button::run);
+    }
+    if (is_pair(420) || is_pair(700)
+        || (frame_number >= 850 && frame_number <= 880)
+        || (frame_number >= 1000 && frame_number <= 1410)) {
+        press(Button::one);
+    }
+    if (frame_number >= 1450) {
+        const int phase = (frame_number - 1450) % 233;
+        if (phase >= 12 && phase <= 47) {
+            press(Button::left);
+        } else if (phase >= 132 && phase <= 167) {
+            press(Button::right);
+        }
+        if (phase == 62 || phase == 63 || phase == 186 || phase == 187) {
+            press(Button::one);
+        }
+        if (phase == 0 || phase == 1) {
+            press(Button::down);
+        } else if (phase == 92 || phase == 93) {
+            press(Button::right);
+        } else if (phase == 202 || phase == 203) {
+            press(Button::left);
+        }
+    }
+    if (is_pair(1733) || is_pair(2432) || is_pair(3131)) {
+        press(Button::two);
+    }
+    return input;
+}
+
+[[nodiscard]] InputFrame gameplay_spiral_input_for_frame(
+    const int frame_number)
+{
+    InputFrame input;
+    const auto press = [&input](const Button button) {
+        input.player_one |= static_cast<std::uint16_t>(button);
+    };
+    const auto is_pair = [frame_number](const int first_frame) {
+        return frame_number == first_frame
+            || frame_number == first_frame + 1;
+    };
+
+    // This route releases the launcher sooner, then runs a prime-length
+    // spiral of separated saves. Each directional nudge occurs while the
+    // opposite flipper is held, changing both the timing and orientation of
+    // a possible recovery. It deliberately remains input-only.
+    if (is_pair(180) || is_pair(300)) {
+        press(Button::run);
+    }
+    if (is_pair(420) || is_pair(700)
+        || (frame_number >= 850 && frame_number <= 880)
+        || (frame_number >= 1000 && frame_number <= 1180)) {
+        press(Button::one);
+    }
+    if (frame_number >= 1210) {
+        const int phase = (frame_number - 1210) % 359;
+        if ((phase >= 8 && phase <= 25)
+            || (phase >= 206 && phase <= 217)) {
+            press(Button::left);
+        }
+        if ((phase >= 79 && phase <= 96)
+            || (phase >= 285 && phase <= 296)) {
+            press(Button::right);
+        }
+        if ((phase >= 40 && phase <= 45)
+            || (phase >= 248 && phase <= 253)) {
+            press(Button::one);
+        }
+        if (phase == 12 || phase == 13) {
+            press(Button::up);
+        } else if (phase == 84 || phase == 85) {
+            press(Button::right);
+        } else if (phase == 210 || phase == 211) {
+            press(Button::down);
+        } else if (phase == 289 || phase == 290) {
+            press(Button::left);
+        }
+    }
+    if (is_pair(1569) || is_pair(2646) || is_pair(3364)) {
+        press(Button::two);
+    }
+    return input;
+}
+
+[[nodiscard]] InputFrame gameplay_ricochet_input_for_frame(
+    const int frame_number)
+{
+    InputFrame input;
+    const auto press = [&input](const Button button) {
+        input.player_one |= static_cast<std::uint16_t>(button);
+    };
+    const auto is_pair = [frame_number](const int first_frame) {
+        return frame_number == first_frame
+            || frame_number == first_frame + 1;
+    };
+
+    // Preserve the visible startup, then release the launcher before the
+    // recent long-hold routes. A 419-frame prime cycle uses brief, separated
+    // saves but repeatedly taps Button II in neutral travel windows. The
+    // four rotating directions bias each rebound differently while remaining
+    // an entirely player-input-driven route.
+    if (is_pair(180) || is_pair(300)) {
+        press(Button::run);
+    }
+    if (is_pair(420) || is_pair(700)
+        || (frame_number >= 850 && frame_number <= 880)
+        || (frame_number >= 1000 && frame_number <= 1160)) {
+        press(Button::one);
+    }
+    if (frame_number >= 1195) {
+        const int phase = (frame_number - 1195) % 419;
+        if ((phase >= 15 && phase <= 20)
+            || (phase >= 268 && phase <= 273)) {
+            press(Button::left);
+        }
+        if ((phase >= 112 && phase <= 117)
+            || (phase >= 342 && phase <= 347)) {
+            press(Button::right);
+        }
+        if (phase == 56 || phase == 57 || phase == 190 || phase == 191
+            || phase == 306 || phase == 307 || phase == 386 || phase == 387) {
+            press(Button::two);
+        }
+        if (phase == 0 || phase == 1) {
+            press(Button::up);
+        } else if (phase == 151 || phase == 152) {
+            press(Button::right);
+        } else if (phase == 229 || phase == 230) {
+            press(Button::down);
+        } else if (phase == 371 || phase == 372) {
+            press(Button::left);
+        }
+    }
+    return input;
+}
+
+[[nodiscard]] InputFrame gameplay_volley_input_for_frame(const int frame_number)
+{
+    InputFrame input;
+    const auto press = [&input](const Button button) {
+        input.player_one |= static_cast<std::uint16_t>(button);
+    };
+    const auto is_pair = [frame_number](const int first_frame) {
+        return frame_number == first_frame
+            || frame_number == first_frame + 1;
+    };
+
+    // Release the launcher before every previous long-launch route, then use
+    // a 503-frame prime cycle of sustained alternating flipper banks. The
+    // nudge volleys land midway through the neutral travel gaps, rather than
+    // during a save, to change the ball's next contact without synthesizing
+    // or patching any game state.
+    if (is_pair(180) || is_pair(300)) {
+        press(Button::run);
+    }
+    if (is_pair(420) || is_pair(700)
+        || (frame_number >= 850 && frame_number <= 880)
+        || (frame_number >= 1000 && frame_number <= 1090)) {
+        press(Button::one);
+    }
+    if (frame_number >= 1130) {
+        const int phase = (frame_number - 1130) % 503;
+        if ((phase >= 5 && phase <= 44)
+            || (phase >= 261 && phase <= 302)) {
+            press(Button::one);
+        }
+        if ((phase >= 67 && phase <= 108)
+            || (phase >= 324 && phase <= 369)) {
+            press(Button::left);
+        }
+        if ((phase >= 132 && phase <= 135)
+            || (phase >= 211 && phase <= 214)
+            || (phase >= 405 && phase <= 408)
+            || (phase >= 468 && phase <= 471)) {
+            press(Button::two);
+        }
+        if (phase == 154 || phase == 155) {
+            press(Button::up);
+        } else if (phase == 237 || phase == 238) {
+            press(Button::right);
+        } else if (phase == 387 || phase == 388) {
+            press(Button::down);
+        } else if (phase == 487 || phase == 488) {
+            press(Button::left);
+        }
+    }
+    return input;
+}
+
+[[nodiscard]] InputFrame gameplay_whirlpool_input_for_frame(
+    const int frame_number)
+{
+    InputFrame input;
+    const auto press = [&input](const Button button) {
+        input.player_one |= static_cast<std::uint16_t>(button);
+    };
+    const auto is_pair = [frame_number](const int first_frame) {
+        return frame_number == first_frame
+            || frame_number == first_frame + 1;
+    };
+
+    // The normal boot and menu inputs remain unchanged.  After a mid-range
+    // launcher release, this prime-length cycle keeps both flippers down in
+    // two offset windows, then lets the ball travel through long neutral
+    // sections.  The directional inputs occur only while neither flipper is
+    // held, making this a rebound-led route rather than a variation on the
+    // existing overlapping-save plans.  It changes no emulated RAM.
+    if (is_pair(180) || is_pair(300)) {
+        press(Button::run);
+    }
+    if (is_pair(420) || is_pair(700)
+        || (frame_number >= 850 && frame_number <= 880)
+        || (frame_number >= 1000 && frame_number <= 1140)) {
+        press(Button::one);
+    }
+    if (frame_number >= 1188) {
+        const int phase = (frame_number - 1188) % 521;
+        if ((phase >= 9 && phase <= 28)
+            || (phase >= 278 && phase <= 297)) {
+            press(Button::left);
+        }
+        if ((phase >= 71 && phase <= 94)
+            || (phase >= 365 && phase <= 390)) {
+            press(Button::right);
+        }
+        if ((phase >= 154 && phase <= 159)
+            || (phase >= 451 && phase <= 456)) {
+            press(Button::one);
+        }
+        if (phase == 122 || phase == 123 || phase == 425 || phase == 426) {
+            press(Button::two);
+        }
+        if (phase == 46 || phase == 47) {
+            press(Button::up);
+        } else if (phase == 226 || phase == 227) {
+            press(Button::right);
+        } else if (phase == 331 || phase == 332) {
+            press(Button::down);
+        } else if (phase == 493 || phase == 494) {
+            press(Button::left);
+        }
+    }
+    return input;
+}
+
+[[nodiscard]] InputFrame gameplay_cascade_input_for_frame(
+    const int frame_number)
+{
+    InputFrame input;
+    const auto press = [&input](const Button button) {
+        input.player_one |= static_cast<std::uint16_t>(button);
+    };
+    const auto is_pair = [frame_number](const int first_frame) {
+        return frame_number == first_frame
+            || frame_number == first_frame + 1;
+    };
+
+    // Start from the normal boot/menu path, but release the launcher early.
+    // A prime-length cycle then waits through a long neutral descent before
+    // alternating short, asymmetric saves.  Directional nudges occur only in
+    // the neutral intervals, so this route is a natural trajectory probe and
+    // does not seed gameplay state.
+    if (is_pair(180) || is_pair(300)) {
+        press(Button::run);
+    }
+    if (is_pair(420) || is_pair(700)
+        || (frame_number >= 850 && frame_number <= 880)
+        || (frame_number >= 1000 && frame_number <= 1064)) {
+        press(Button::one);
+    }
+    if (frame_number >= 1111) {
+        const int phase = (frame_number - 1111) % 607;
+        if (phase >= 84 && phase <= 95) {
+            press(Button::left);
+        }
+        if (phase >= 303 && phase <= 320) {
+            press(Button::right);
+        }
+        if (phase >= 512 && phase <= 517) {
+            press(Button::one);
+        }
+        if (phase == 178 || phase == 179 || phase == 424 || phase == 425) {
+            press(Button::two);
+        }
+        if (phase == 31 || phase == 32) {
+            press(Button::down);
+        } else if (phase == 236 || phase == 237) {
+            press(Button::left);
+        } else if (phase == 389 || phase == 390) {
+            press(Button::up);
+        } else if (phase == 569 || phase == 570) {
+            press(Button::right);
+        }
+    }
+    return input;
+}
+
+[[nodiscard]] InputFrame gameplay_higharc_input_for_frame(
+    const int frame_number)
+{
+    InputFrame input;
+    const auto press = [&input](const Button button) {
+        input.player_one |= static_cast<std::uint16_t>(button);
+    };
+    const auto is_pair = [frame_number](const int first_frame) {
+        return frame_number == first_frame
+            || frame_number == first_frame + 1;
+    };
+
+    // Keep the visible startup unchanged, but give the launcher a much longer
+    // charge than the early-release routes. The 701-frame prime cadence that
+    // follows favors isolated recovery saves and lets the ball travel between
+    // them. Directional nudges fall only in neutral intervals, preserving an
+    // entirely natural trajectory without any state mutation.
+    if (is_pair(180) || is_pair(300)) {
+        press(Button::run);
+    }
+    if (is_pair(420) || is_pair(700)
+        || (frame_number >= 850 && frame_number <= 880)
+        || (frame_number >= 1000 && frame_number <= 1460)) {
+        press(Button::one);
+    }
+    if (frame_number >= 1508) {
+        const int phase = (frame_number - 1508) % 701;
+        if (phase >= 73 && phase <= 80) {
+            press(Button::left);
+        }
+        if (phase >= 414 && phase <= 423) {
+            press(Button::right);
+        }
+        if (phase >= 260 && phase <= 264) {
+            press(Button::one);
+        }
+        if (phase == 128 || phase == 129 || phase == 553 || phase == 554) {
+            press(Button::two);
+        }
+        if (phase == 19 || phase == 20) {
+            press(Button::up);
+        } else if (phase == 196 || phase == 197) {
+            press(Button::left);
+        } else if (phase == 349 || phase == 350) {
+            press(Button::down);
+        } else if (phase == 628 || phase == 629) {
+            press(Button::right);
+        }
+    }
+    return input;
+}
+
+[[nodiscard]] InputFrame gameplay_twist_input_for_frame(const int frame_number)
+{
+    InputFrame input;
+    const auto press = [&input](const Button button) {
+        input.player_one |= static_cast<std::uint16_t>(button);
+    };
+    const auto is_pair = [frame_number](const int first_frame) {
+        return frame_number == first_frame
+            || frame_number == first_frame + 1;
+    };
+
+    // Deliberately release the launcher between the early and higharc plans,
+    // then alternate two long saves on an 887-frame cadence.  Directional
+    // input falls only in the neutral travel intervals, making this another
+    // strictly input-only probe for a naturally selected rule branch.
+    if (is_pair(180) || is_pair(300)) {
+        press(Button::run);
+    }
+    if (is_pair(420) || is_pair(700)
+        || (frame_number >= 850 && frame_number <= 880)
+        || (frame_number >= 1000 && frame_number <= 1340)) {
+        press(Button::one);
+    }
+    if (frame_number >= 1397) {
+        const int phase = (frame_number - 1397) % 887;
+        if (phase >= 68 && phase <= 91) {
+            press(Button::left);
+        }
+        if (phase >= 315 && phase <= 343) {
+            press(Button::right);
+        }
+        if (phase >= 526 && phase <= 531) {
+            press(Button::one);
+        }
+        if (phase == 185 || phase == 186 || phase == 747 || phase == 748) {
+            press(Button::two);
+        }
+        if (phase == 17 || phase == 18) {
+            press(Button::up);
+        } else if (phase == 221 || phase == 222) {
+            press(Button::left);
+        } else if (phase == 468 || phase == 469) {
+            press(Button::down);
+        } else if (phase == 702 || phase == 703) {
+            press(Button::right);
+        }
+    }
+    return input;
+}
+
+[[nodiscard]] InputFrame gameplay_sidestep_input_for_frame(
+    const int frame_number)
+{
+    InputFrame input;
+    const auto press = [&input](const Button button) {
+        input.player_one |= static_cast<std::uint16_t>(button);
+    };
+    const auto is_pair = [frame_number](const int first_frame) {
+        return frame_number == first_frame
+            || frame_number == first_frame + 1;
+    };
+
+    // Keep the common visible boot/menu sequence, but use a middle-strength
+    // launch and then bias the ball toward alternating side-wall recoveries.
+    // The 947-frame prime period has short, unequal saves and Button-II only
+    // in neutral windows, so it is a trajectory probe rather than a variant
+    // of a sustained flipper bank.  It never mutates emulated game state.
+    if (is_pair(180) || is_pair(300)) {
+        press(Button::run);
+    }
+    if (is_pair(420) || is_pair(700)
+        || (frame_number >= 850 && frame_number <= 880)
+        || (frame_number >= 1000 && frame_number <= 1275)) {
+        press(Button::one);
+    }
+    if (frame_number >= 1328) {
+        const int phase = (frame_number - 1328) % 947;
+        if ((phase >= 38 && phase <= 49)
+            || (phase >= 586 && phase <= 603)) {
+            press(Button::left);
+        }
+        if ((phase >= 217 && phase <= 223)
+            || (phase >= 758 && phase <= 783)) {
+            press(Button::right);
+        }
+        if (phase >= 404 && phase <= 409) {
+            press(Button::one);
+        }
+        if (phase == 116 || phase == 117 || phase == 341 || phase == 342
+            || phase == 690 || phase == 691 || phase == 871 || phase == 872) {
+            press(Button::two);
+        }
+        if (phase == 12 || phase == 13) {
+            press(Button::left);
+        } else if (phase == 165 || phase == 166) {
+            press(Button::up);
+        } else if (phase == 505 || phase == 506) {
+            press(Button::right);
+        } else if (phase == 909 || phase == 910) {
+            press(Button::down);
+        }
+    }
+    return input;
+}
+
 [[nodiscard]] InputFrame state_census_input_for_frame(const int frame_number)
 {
     InputFrame input;
@@ -6869,6 +8471,299 @@ constexpr RecordingPlan kGameplayRecordingPlan{
         "two:1050-1051,1250-1251,1450-1451,1650-1651",
     .frame_count = kGameplayRecordingFrames,
     .input_for_frame = &gameplay_input_for_frame,
+};
+
+constexpr RecordingPlan kGameplayAlternateRecordingPlan{
+    .format = "devils-crush-gameplay-alternate-v1",
+    .label = "Gameplay alternate",
+    .input_script =
+        "run:180-181,300-301;"
+        "one:420-421,700-701,850-880,1000-1195,"
+        "1235-1237+24n;"
+        "left:1225-1227+24n;"
+        "two:1425-1426,1825-1826,2225-2226,2625-2626,"
+        "3025-3026,3425-3426",
+    .frame_count = kGameplayAlternateRecordingFrames,
+    .input_for_frame = &gameplay_alternate_input_for_frame,
+};
+
+constexpr RecordingPlan kGameplaySweepRecordingPlan{
+    .format = "devils-crush-gameplay-sweep-v1",
+    .label = "Gameplay sweep",
+    .input_script =
+        "run:180-181,300-301;"
+        "one:420-421,700-701,850-880,1000-1215,1258-1259+40n;"
+        "left:1240-1244+40n,1262-1266+40n;"
+        "right:1250-1254+40n,1272-1279+40n;"
+        "two:1375-1376+300n",
+    .frame_count = kGameplaySweepRecordingFrames,
+    .input_for_frame = &gameplay_sweep_input_for_frame,
+};
+
+constexpr RecordingPlan kGameplayCrossfireRecordingPlan{
+    .format = "devils-crush-gameplay-crossfire-v1",
+    .label = "Gameplay crossfire",
+    .input_script =
+        "run:180-181,300-301;"
+        "one:420-421,700-701,850-880,1000-1225,1266-1267+32n,"
+        "1282-1283+32n;"
+        "left:1260-1275+32n,1284-1291+32n;"
+        "right:1268-1283+32n;"
+        "two:1510-1511,1910-1911,2310-2311,2710-2711,3110-3111,"
+        "3510-3511",
+    .frame_count = kGameplayCrossfireRecordingFrames,
+    .input_for_frame = &gameplay_crossfire_input_for_frame,
+};
+
+constexpr RecordingPlan kGameplayOrbitRecordingPlan{
+    .format = "devils-crush-gameplay-orbit-v1",
+    .label = "Gameplay orbit",
+    .input_script =
+        "run:180-181,300-301;"
+        "one:420-421,700-701,850-880,1000-1235,1268-1269+48n,"
+        "1288-1289+48n;"
+        "left:1260-1267+48n,1292-1295+48n;"
+        "right:1272-1279+48n,1300-1307+48n;"
+        "up:1264-1265+48n;right:1280-1281+48n;down:1296-1297+48n;"
+        "two:1540-1541,2020-2021,2500-2501,2980-2981,3460-3461",
+    .frame_count = kGameplayOrbitRecordingFrames,
+    .input_for_frame = &gameplay_orbit_input_for_frame,
+};
+
+constexpr RecordingPlan kGameplayLanesRecordingPlan{
+    .format = "devils-crush-gameplay-lanes-v1",
+    .label = "Gameplay lanes",
+    .input_script =
+        "run:180-181,300-301;"
+        "one:420-421,700-701,850-880,1000-1245,1310-1311+96n,"
+        "1358-1359+96n;"
+        "left:1280-1303+96n,1320-1321+96n;"
+        "right:1328-1351+96n,1340-1341+96n;"
+        "up:1292-1293+96n;down:1368-1369+96n;"
+        "two:1460-1461,1940-1941,2420-2421,2900-2901,3380-3381",
+    .frame_count = kGameplayLanesRecordingFrames,
+    .input_for_frame = &gameplay_lanes_input_for_frame,
+};
+
+constexpr RecordingPlan kGameplayStaggerRecordingPlan{
+    .format = "devils-crush-gameplay-stagger-v1",
+    .label = "Gameplay stagger",
+    .input_script =
+        "run:180-181,300-301;"
+        "one:420-421,700-701,850-880,1000-1255,1340-1341+144n,"
+        "1420-1421+144n;"
+        "left:1296-1315+144n;right:1380-1399+144n;"
+        "up:1330-1331+144n;right:1364-1365+144n;down:1410-1411+144n;"
+        "two:1580-1581,2180-2181,2780-2781,3380-3381",
+    .frame_count = kGameplayStaggerRecordingFrames,
+    .input_for_frame = &gameplay_stagger_input_for_frame,
+};
+
+constexpr RecordingPlan kGameplayPulseRecordingPlan{
+    .format = "devils-crush-gameplay-pulse-v1",
+    .label = "Gameplay pulse",
+    .input_script =
+        "run:180-181,300-301;"
+        "one:420-421,700-701,850-880,1000-1270,1359-1360+180n,"
+        "1464-1465+180n;"
+        "left:1320-1323+180n,1374-1377+180n;"
+        "right:1344-1347+180n,1434-1437+180n;"
+        "up:1392-1393+180n;down:1479-1480+180n;"
+        "two:1710-1711,2430-2431,3150-3151",
+    .frame_count = kGameplayPulseRecordingFrames,
+    .input_for_frame = &gameplay_pulse_input_for_frame,
+};
+
+constexpr RecordingPlan kGameplayRallyRecordingPlan{
+    .format = "devils-crush-gameplay-rally-v1",
+    .label = "Gameplay rally",
+    .input_script =
+        "run:180-181,300-301;"
+        "one:420-421,700-701,850-880,1000-1290,1390-1391+137n,"
+        "1446-1447+137n;"
+        "left:1332-1340+137n,1403-1409+137n;"
+        "right:1352-1383+137n;"
+        "down:1344-1345+137n;up:1423-1424+137n;"
+        "two:1680-1681,2365-2366,3050-3051",
+    .frame_count = kGameplayRallyRecordingFrames,
+    .input_for_frame = &gameplay_rally_input_for_frame,
+};
+
+constexpr RecordingPlan kGameplaySlalomRecordingPlan{
+    .format = "devils-crush-gameplay-slalom-v1",
+    .label = "Gameplay slalom",
+    .input_script =
+        "run:180-181,300-301;"
+        "one:420-421,700-701,850-880,1000-1305,1392-1393+211n,"
+        "1501-1502+211n;"
+        "left:1350-1377+211n,1491-1492+211n;"
+        "right:1381-1382+211n,1458-1485+211n;"
+        "up:1436-1437+211n;"
+        "two:1630-1631,2263-2264,2896-2897,3529-3530",
+    .frame_count = kGameplaySlalomRecordingFrames,
+    .input_for_frame = &gameplay_slalom_input_for_frame,
+};
+
+constexpr RecordingPlan kGameplayPendulumRecordingPlan{
+    .format = "devils-crush-gameplay-pendulum-v1",
+    .label = "Gameplay pendulum",
+    .input_script =
+        "run:180-181,300-301;"
+        "one:420-421,700-701,850-880,1000-1320,1375-1376+257n,"
+        "1545-1546+257n;"
+        "left:1350-1364+257n,1521-1535+257n;"
+        "right:1428-1442+257n,1564-1578+257n,1591-1592+257n;"
+        "up:1393-1394+257n;down:1470-1471+257n;"
+        "two:1764-1765,2535-2536,3306-3307",
+    .frame_count = kGameplayPendulumRecordingFrames,
+    .input_for_frame = &gameplay_pendulum_input_for_frame,
+};
+
+constexpr RecordingPlan kGameplayNudgeRecordingPlan{
+    .format = "devils-crush-gameplay-nudge-v1",
+    .label = "Gameplay nudge",
+    .input_script =
+        "run:180-181,300-301;"
+        "one:420-421,700-701,850-880,1000-1335,1432-1433+313n,"
+        "1624-1625+313n;"
+        "left:1398-1403+313n,1588-1593+313n,1680-1681+313n;"
+        "right:1456-1457+313n,1484-1489+313n,1652-1657+313n;"
+        "up:1380-1381+313n;down:1536-1537+313n;"
+        "two:1848-1849,2787-2788",
+    .frame_count = kGameplayNudgeRecordingFrames,
+    .input_for_frame = &gameplay_nudge_input_for_frame,
+};
+
+constexpr RecordingPlan kGameplaySwitchbackRecordingPlan{
+    .format = "devils-crush-gameplay-switchback-v1",
+    .label = "Gameplay switchback",
+    .input_script =
+        "run:180-181,300-301;"
+        "one:420-421,700-701,850-880,1000-1410,1512-1513+233n,"
+        "1636-1637+233n;"
+        "left:1462-1497+233n,1652-1653+233n;"
+        "right:1542-1543+233n,1582-1617+233n;"
+        "down:1450-1451+233n;"
+        "two:1733-1734,2432-2433,3131-3132",
+    .frame_count = kGameplaySwitchbackRecordingFrames,
+    .input_for_frame = &gameplay_switchback_input_for_frame,
+};
+
+constexpr RecordingPlan kGameplaySpiralRecordingPlan{
+    .format = "devils-crush-gameplay-spiral-v1",
+    .label = "Gameplay spiral",
+    .input_script =
+        "run:180-181,300-301;"
+        "one:420-421,700-701,850-880,1000-1180,1250-1255+359n,"
+        "1458-1463+359n;"
+        "left:1218-1235+359n,1416-1427+359n,1499-1500+359n;"
+        "right:1289-1306+359n,1495-1506+359n;"
+        "up:1222-1223+359n;down:1420-1421+359n;"
+        "two:1569-1570,2646-2647,3364-3365",
+    .frame_count = kGameplaySpiralRecordingFrames,
+    .input_for_frame = &gameplay_spiral_input_for_frame,
+};
+
+constexpr RecordingPlan kGameplayRicochetRecordingPlan{
+    .format = "devils-crush-gameplay-ricochet-v1",
+    .label = "Gameplay ricochet",
+    .input_script =
+        "run:180-181,300-301;"
+        "one:420-421,700-701,850-880,1000-1160;"
+        "left:1210-1215+419n,1463-1468+419n,1566-1567+419n;"
+        "right:1307-1312+419n,1537-1542+419n,1346-1347+419n;"
+        "up:1195-1196+419n;down:1424-1425+419n;"
+        "two:1251-1252+419n,1385-1386+419n,1501-1502+419n,"
+        "1581-1582+419n",
+    .frame_count = kGameplayRicochetRecordingFrames,
+    .input_for_frame = &gameplay_ricochet_input_for_frame,
+};
+
+constexpr RecordingPlan kGameplayVolleyRecordingPlan{
+    .format = "devils-crush-gameplay-volley-v1",
+    .label = "Gameplay volley",
+    .input_script =
+        "run:180-181,300-301;"
+        "one:420-421,700-701,850-880,1000-1090,1135-1174+503n,"
+        "1391-1432+503n;"
+        "left:1197-1238+503n,1454-1499+503n,1617-1618+503n;"
+        "up:1284-1285+503n;right:1367-1368+503n;"
+        "down:1517-1518+503n;"
+        "two:1262-1265+503n,1341-1344+503n,1535-1538+503n,"
+        "1598-1601+503n",
+    .frame_count = kGameplayVolleyRecordingFrames,
+    .input_for_frame = &gameplay_volley_input_for_frame,
+};
+
+constexpr RecordingPlan kGameplayWhirlpoolRecordingPlan{
+    .format = "devils-crush-gameplay-whirlpool-v1",
+    .label = "Gameplay whirlpool",
+    .input_script =
+        "run:180-181,300-301;"
+        "one:420-421,700-701,850-880,1000-1140,1342-1347+521n,"
+        "1639-1644+521n;"
+        "left:1197-1216+521n,1466-1485+521n,1681-1682+521n;"
+        "right:1259-1282+521n,1553-1578+521n,1414-1415+521n;"
+        "up:1234-1235+521n;down:1519-1520+521n;"
+        "two:1310-1311+521n,1613-1614+521n",
+    .frame_count = kGameplayWhirlpoolRecordingFrames,
+    .input_for_frame = &gameplay_whirlpool_input_for_frame,
+};
+
+constexpr RecordingPlan kGameplayCascadeRecordingPlan{
+    .format = "devils-crush-gameplay-cascade-v1",
+    .label = "Gameplay cascade",
+    .input_script =
+        "run:180-181,300-301;"
+        "one:420-421,700-701,850-880,1000-1064,1623-1628+607n;"
+        "left:1195-1206+607n,1347-1348+607n;"
+        "right:1414-1431+607n,1680-1681+607n;"
+        "down:1142-1143+607n;up:1500-1501+607n;"
+        "two:1289-1290+607n,1535-1536+607n",
+    .frame_count = kGameplayCascadeRecordingFrames,
+    .input_for_frame = &gameplay_cascade_input_for_frame,
+};
+
+constexpr RecordingPlan kGameplayHigharcRecordingPlan{
+    .format = "devils-crush-gameplay-higharc-v1",
+    .label = "Gameplay higharc",
+    .input_script =
+        "run:180-181,300-301;"
+        "one:420-421,700-701,850-880,1000-1460,1768-1772+701n;"
+        "left:1581-1588+701n,1704-1705+701n;"
+        "right:1922-1931+701n,2136-2137+701n;"
+        "up:1527-1528+701n;down:1857-1858+701n;"
+        "two:1636-1637+701n,2061-2062+701n",
+    .frame_count = kGameplayHigharcRecordingFrames,
+    .input_for_frame = &gameplay_higharc_input_for_frame,
+};
+
+constexpr RecordingPlan kGameplayTwistRecordingPlan{
+    .format = "devils-crush-gameplay-twist-v1",
+    .label = "Gameplay twist",
+    .input_script =
+        "run:180-181,300-301;"
+        "one:420-421,700-701,850-880,1000-1340,1923-1928+887n;"
+        "left:1465-1488+887n,1618-1619+887n;"
+        "right:1712-1713+887n,1931-1959+887n,2099-2100+887n;"
+        "up:1414-1415+887n;down:1865-1866+887n;"
+        "two:1582-1583+887n,2144-2145+887n",
+    .frame_count = kGameplayTwistRecordingFrames,
+    .input_for_frame = &gameplay_twist_input_for_frame,
+};
+
+constexpr RecordingPlan kGameplaySidestepRecordingPlan{
+    .format = "devils-crush-gameplay-sidestep-v1",
+    .label = "Gameplay sidestep",
+    .input_script =
+        "run:180-181,300-301;"
+        "one:420-421,700-701,850-880,1000-1275,1732-1737+947n;"
+        "left:1340-1341+947n,1366-1377+947n,1914-1931+947n;"
+        "right:1545-1551+947n,1833-1834+947n,2086-2111+947n;"
+        "two:1444-1445+947n,1669-1670+947n,2018-2019+947n,2199-2200+947n;"
+        "up:1493-1494+947n;down:2237-2238+947n",
+    .frame_count = kGameplaySidestepRecordingFrames,
+    .input_for_frame = &gameplay_sidestep_input_for_frame,
 };
 
 constexpr RecordingPlan kStateCensusRecordingPlan{
@@ -14112,14 +16007,114 @@ int main(const int argc, char* argv[])
         }
 
         if (options.record_canonical || options.record_gameplay
+            || options.record_gameplay_alternate
+            || options.record_gameplay_sweep
+            || options.record_gameplay_crossfire
+            || options.record_gameplay_orbit
+            || options.record_gameplay_lanes
+            || options.record_gameplay_stagger
+            || options.record_gameplay_pulse
+            || options.record_gameplay_rally
+            || options.record_gameplay_slalom
+            || options.record_gameplay_pendulum
+            || options.record_gameplay_nudge
+            || options.record_gameplay_switchback
+            || options.record_gameplay_spiral
+            || options.record_gameplay_ricochet
+            || options.record_gameplay_volley
+            || options.record_gameplay_whirlpool
+            || options.record_gameplay_cascade
+            || options.record_gameplay_higharc
+            || options.record_gameplay_twist
+            || options.record_gameplay_sidestep
             || options.record_state_census) {
             const auto& recording_plan = options.record_state_census
                 ? kStateCensusRecordingPlan
+                : options.record_gameplay_alternate
+                    ? kGameplayAlternateRecordingPlan
+                : options.record_gameplay_sweep
+                    ? kGameplaySweepRecordingPlan
+                : options.record_gameplay_crossfire
+                    ? kGameplayCrossfireRecordingPlan
+                : options.record_gameplay_orbit
+                    ? kGameplayOrbitRecordingPlan
+                : options.record_gameplay_lanes
+                    ? kGameplayLanesRecordingPlan
+                : options.record_gameplay_stagger
+                    ? kGameplayStaggerRecordingPlan
+                : options.record_gameplay_pulse
+                    ? kGameplayPulseRecordingPlan
+                : options.record_gameplay_rally
+                    ? kGameplayRallyRecordingPlan
+                : options.record_gameplay_slalom
+                    ? kGameplaySlalomRecordingPlan
+                : options.record_gameplay_pendulum
+                    ? kGameplayPendulumRecordingPlan
+                : options.record_gameplay_nudge
+                    ? kGameplayNudgeRecordingPlan
+                : options.record_gameplay_switchback
+                    ? kGameplaySwitchbackRecordingPlan
+                : options.record_gameplay_spiral
+                    ? kGameplaySpiralRecordingPlan
+                : options.record_gameplay_ricochet
+                    ? kGameplayRicochetRecordingPlan
+                : options.record_gameplay_volley
+                    ? kGameplayVolleyRecordingPlan
+                : options.record_gameplay_whirlpool
+                    ? kGameplayWhirlpoolRecordingPlan
+                : options.record_gameplay_cascade
+                    ? kGameplayCascadeRecordingPlan
+                : options.record_gameplay_higharc
+                    ? kGameplayHigharcRecordingPlan
+                : options.record_gameplay_twist
+                    ? kGameplayTwistRecordingPlan
+                : options.record_gameplay_sidestep
+                    ? kGameplaySidestepRecordingPlan
                 : options.record_gameplay
                     ? kGameplayRecordingPlan
                     : kCanonicalRecordingPlan;
             const auto& recording_path = options.record_state_census
                 ? options.state_census_path
+                : options.record_gameplay_alternate
+                    ? options.gameplay_alternate_path
+                : options.record_gameplay_sweep
+                    ? options.gameplay_sweep_path
+                : options.record_gameplay_crossfire
+                    ? options.gameplay_crossfire_path
+                : options.record_gameplay_orbit
+                    ? options.gameplay_orbit_path
+                : options.record_gameplay_lanes
+                    ? options.gameplay_lanes_path
+                : options.record_gameplay_stagger
+                    ? options.gameplay_stagger_path
+                : options.record_gameplay_pulse
+                    ? options.gameplay_pulse_path
+                : options.record_gameplay_rally
+                    ? options.gameplay_rally_path
+                : options.record_gameplay_slalom
+                    ? options.gameplay_slalom_path
+                : options.record_gameplay_pendulum
+                    ? options.gameplay_pendulum_path
+                : options.record_gameplay_nudge
+                    ? options.gameplay_nudge_path
+                : options.record_gameplay_switchback
+                    ? options.gameplay_switchback_path
+                : options.record_gameplay_spiral
+                    ? options.gameplay_spiral_path
+                : options.record_gameplay_ricochet
+                    ? options.gameplay_ricochet_path
+                : options.record_gameplay_volley
+                    ? options.gameplay_volley_path
+                : options.record_gameplay_whirlpool
+                    ? options.gameplay_whirlpool_path
+                : options.record_gameplay_cascade
+                    ? options.gameplay_cascade_path
+                : options.record_gameplay_higharc
+                    ? options.gameplay_higharc_path
+                : options.record_gameplay_twist
+                    ? options.gameplay_twist_path
+                : options.record_gameplay_sidestep
+                    ? options.gameplay_sidestep_path
                 : options.record_gameplay
                     ? options.gameplay_path
                     : options.canonical_path;

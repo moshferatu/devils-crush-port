@@ -53,6 +53,11 @@ replace_score_accumulator(
     std::span<const std::byte> work_ram);
 
 [[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_score_repeat_wrapper(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram);
+
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
 replace_giant_skeleton_eyeball_gate(
     const emulation::RoutineEntry& entry,
     std::span<const std::byte> work_ram);
@@ -302,6 +307,11 @@ replace_three_blobs_shared_motion_idle(
     std::span<const std::byte> work_ram);
 
 [[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_three_blobs_shared_return(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram);
+
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
 replace_dragon_egg_controller(
     const emulation::RoutineEntry& entry,
     std::span<const std::byte> work_ram);
@@ -338,6 +348,14 @@ replace_tower_insect_source_countdown_wait(
 
 [[nodiscard]] std::optional<emulation::RoutineReplacement>
 replace_tower_insect_source_countdown_return(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram);
+
+// 02:5F78 allocates one Tower-Insect child; 5F7B owns the allocator's
+// carry-clear continuation, 5F7E initializes the reserved slot before the
+// native camera helper, and 5FD6 restores the source/counts the child/returns.
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_tower_insect_child_spawner_seam(
     const emulation::RoutineEntry& entry,
     std::span<const std::byte> work_ram);
 
@@ -1416,6 +1434,7 @@ replace_flipper_input_gate(
     const emulation::RoutineEntry& entry,
     std::span<const std::byte> work_ram);
 
+
 [[nodiscard]] std::optional<emulation::RoutineReplacement>
 replace_flipper_release_arm(
     const emulation::RoutineEntry& entry,
@@ -1566,6 +1585,17 @@ replace_score_animation_right_step(
 replace_score_panel_poll(
     const emulation::RoutineEntry& entry,
     std::span<const std::byte> work_ram);
+
+// 09:727D-09:72C3, the score panel's redraw head and its two naturally
+// re-entered digit loops.  Each bounded transaction composes one existing
+// glyph/divider child and resumes at 72A2, 72BD, or 72C5.  The final bounded
+// transaction composes the byte divider and two glyphs before absorbing the
+// score-panel return; see native_replacements_score_panel.cpp.
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_score_panel_redraw_tail(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram,
+    std::span<const std::byte> rom);
 
 // 09:72FD-09:737B, the score panel's two-by-two glyph writer. It resolves the
 // four ROM tile bytes selected by A, writes both rows through the VDC ports,

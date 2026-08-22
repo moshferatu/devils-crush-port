@@ -12,7 +12,7 @@ endif()
 
 set(expected_census_sha256 "6110f853aa00423d97598e10ec1a64abe507bb6b8629e6f3768a3f40f0c3c78d")
 set(expected_call_sha256 "a898989bf2841487729b3e5491755c1b7035502bce8c407fcff4f509f53ac4e5")
-set(expected_write_sha256 "bd9583d5b639d54aaf184b89e74563b8fa725a3451e4e93a749cbb53c3610fd4")
+set(expected_write_sha256 "2b63f8c4f45981a226a38f364b286160f6a857a556e9cca895a164eed18447ba")
 set(call_output "${OUTPUT}.calls.csv")
 set(write_output "${call_output}.writes.csv")
 
@@ -43,7 +43,7 @@ foreach(expected_line IN ITEMS
     "State census recording complete: 3600 frames"
     "Work-RAM patches applied: 2"
     "Native replacement 02:5674@all entries: 199 of 490"
-    "Native replacement 02:570A@all entries: 290 of 291"
+    "Native replacement 02:570A@all entries: 280 of 291"
     "Native replacement 02:5722@all entries: 1 of 1"
     "Observe hook 1 entries: 490"
     "Observe hook 2 entries: 291"

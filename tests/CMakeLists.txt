@@ -4004,6 +4004,23 @@ if(TARGET devils_crush)
         )
 
         add_test(
+            NAME dc_rom_tower_insect_child_spawner_semantic
+            CONFIGURATIONS Release
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/tower-insect-child-spawner-semantic-v1.csv"
+                -P
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_tower_insect_child_spawner_semantic.cmake"
+        )
+        set_tests_properties(
+            dc_rom_tower_insect_child_spawner_semantic
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
             NAME dc_rom_tower_insect_native_family_debug
             CONFIGURATIONS Debug
             COMMAND
@@ -4996,6 +5013,22 @@ if(TARGET devils_crush)
         )
 
         add_test(
+            NAME dc_rom_score_repeat
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/score-repeat-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_score_repeat_semantic.cmake"
+        )
+        set_tests_properties(
+            dc_rom_score_repeat
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
             NAME dc_rom_score
             COMMAND
                 "${CMAKE_COMMAND}"
@@ -5903,6 +5936,23 @@ if(TARGET devils_crush)
         )
         set_tests_properties(
             dc_rom_three_blobs_shared_motion_idle_semantic
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_three_blobs_shared_return_semantic
+            CONFIGURATIONS Release
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/three-blobs-shared-return-semantic-v1.csv"
+                -P
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_three_blobs_shared_return_semantic.cmake"
+        )
+        set_tests_properties(
+            dc_rom_three_blobs_shared_return_semantic
             PROPERTIES LABELS rom_required
         )
 
