@@ -1612,6 +1612,25 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
   - Rebuilt the Release and Debug application targets and verified identical
     assembly/Release/Debug recording and deployed-artifact hashes.
 
+- [x] Add and screen the input-only rebound natural gameplay route without
+  patching emulated work RAM:
+  - `--record-gameplay-rebound` releases a medium-long launcher charge at
+    frame 1,235, then combines a long right rebound and early left recovery
+    on a 1,009-frame prime cadence; every Button-II/directional impulse is
+    isolated in neutral travel.
+  - Deployed Release and Debug recordings are byte-identical at
+    `7a5cc19c...91fb73`; their instruction profiles, native-cycle censuses,
+    and abandonment censuses also agree (`da9dcf58...8f44e1`,
+    `77166fdb...2cd56e`, and `b74517d6...9669bc46`). All 593 admissions
+    install, 430 routines enter, and 682,549,185 of 1,292,372,112 elapsed
+    master cycles run natively (98.48% outside frame-sync), with no horizon
+    declines or abandonments.
+  - Its 8,515-address assembly profile is a strict subset of both alley and
+    corner, so it reaches no unobserved table-rule code and requires no
+    focused call trace or replacement admission.
+  - Rebuilt the Release and Debug application targets and verified the CLI
+    help, deterministic Release/Debug artifacts, and clean diff whitespace.
+
 - [x] Isolate and close the independent frame-1,845 audio-only twist-route
   drift:
   - A full PSG bus-write bisection shows that the audible 12-cycle early
@@ -8741,7 +8760,7 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
 
 Current owner: Codex. Current slice: **screen the next materially different
 input-only natural gameplay route for an unobserved table-rule transaction with
-its own caller-and-return contract after alley**. Sidestep is now screened:
+its own caller-and-return contract after rebound**. Sidestep is now screened:
 its middle-strength launch, 947-frame asymmetric side saves, and neutral-only
 Button-II impulses preserve byte-identical assembly/Release/Debug recordings
 (`30cce23f...05d82a`), profiles, native-cycle censuses, and abandonment
@@ -8814,6 +8833,18 @@ traces keep its 96 `02:4D2D` Eyeball scheduler/final-animation calls inside
 `03:6965` table-controller seam. These remain existing owners, not independent
 caller-and-return transactions; keep them assembly-backed and select a further
 materially different natural route.
+The rebound route is also screened: its frame-1,235 medium-long release, long
+right rebound, early left recovery, and 1,009-frame prime cadence preserve
+byte-identical deployed Release/Debug recordings (`7a5cc19c...91fb73`), while
+their profiles, native-cycle censuses, and abandonment censuses agree
+(`da9dcf58...8f44e1`, `77166fdb...2cd56e`, and
+`b74517d6...9669bc46`). All 593 admissions install, 430 routines enter, and
+682,549,185 of 1,292,372,112 elapsed master cycles run natively (98.48%
+outside frame-sync) with no horizon declines or abandonments. Its entire
+8,515-address assembly profile is a strict subset of both alley and corner,
+so it exposes no unobserved table-rule transaction and needs no focused call
+trace or replacement. Keep every reached path assembly-backed and select a
+further materially different natural route.
 The twist fidelity gate is closed:
 `02:570A` retains its Big-Star timer-horizon fallback, while `03:66A3` now
 leaves its post-handoff timer-sensitive calls in assembly. The fully deployed
