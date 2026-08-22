@@ -1545,6 +1545,29 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
   - Rebuilt the Release and Debug application targets and verified identical
     assembly/Release/Debug recording and deployed-artifact hashes.
 
+- [x] Add and screen the input-only playfield natural gameplay route without
+  patching emulated work RAM:
+  - `--record-gameplay-playfield` keeps the visible startup, holds the
+    launcher through frame 1,525, then uses widely separated left/right saves
+    on a 1,277-frame cadence with every Button-II/directional impulse in a
+    neutral travel window.
+  - Assembly, deployed Release, and deployed Debug recordings are
+    byte-identical at `f3a57a56...2051ee4e`; the deployed Release/Debug
+    instruction profiles, native-cycle censuses, and abandonment censuses are
+    likewise identical (`8a2a30cb...c4a5f9a`,
+    `5e608a2e...edeb5b2d`, and `b74517d6...9669bc46`). The deployed route
+    installs all 593 admissions, enters 432 routines, executes 683,145,417 of
+    1,292,372,151 master cycles natively (98.45% outside the frame-sync wait),
+    and records zero horizon declines or abandoned transcripts.
+  - Its 8,625-address assembly profile adds 383 rows beyond sidestep, but the
+    traced paths are only the known impact-burst allocator/activation,
+    Skeleton-Insect and Devil-Shooter records, and Front-Spider/Giant-Face
+    collision-controller interiors. They return through existing scheduler or
+    controller owners and expose no independent caller-and-return transaction;
+    no replacement is admitted.
+  - Rebuilt the Release and Debug application targets and verified identical
+    assembly/Release/Debug recording and deployed-artifact hashes.
+
 - [x] Isolate and close the independent frame-1,845 audio-only twist-route
   drift:
   - A full PSG bus-write bisection shows that the audible 12-cycle early
@@ -6409,7 +6432,13 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
   The bankshot route's medium launch and 1,091-frame asymmetric bank-save
   cadence is likewise deterministic in assembly, Release, and Debug, but its
   complete 8,242-address assembly profile is exactly the sidestep set. It
-  contributes no observer target or independent transaction.
+  contributes no observer target or independent transaction. The playfield
+  route's frame-1,525 release and 1,277-frame wide-save cadence is likewise
+  deterministic in assembly, Release, and Debug, and adds 383 assembly
+  addresses beyond sidestep. Its observed `02:41EC-42E0` allocator/activation,
+  `02:526A/5557-55D2` actor records, and `03:6023/64A5/761E/7C43`
+  controller paths all join existing scheduler or collision owners; do not
+  split these interiors.
 - [ ] Select and screen the next materially different input-only natural
   gameplay route for an unobserved table-rule transaction whose natural scope
   has its own caller and return. Keep all known scheduler, collision,
@@ -8668,7 +8697,7 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
 
 Current owner: Codex. Current slice: **screen the next materially different
 input-only natural gameplay route for an unobserved table-rule transaction with
-its own caller-and-return contract after bankshot**. Sidestep is now screened:
+its own caller-and-return contract after playfield**. Sidestep is now screened:
 its middle-strength launch, 947-frame asymmetric side saves, and neutral-only
 Button-II impulses preserve byte-identical assembly/Release/Debug recordings
 (`30cce23f...05d82a`), profiles, native-cycle censuses, and abandonment
@@ -8703,6 +8732,19 @@ natively (98.50% outside frame-sync) with no horizon declines or abandonments.
 Its full 8,242-address assembly profile is exactly the sidestep address set;
 it yields no new table-rule transaction. Keep every reached owner
 assembly-backed and select a further materially different natural route.
+The playfield route is also screened: its frame-1,525 long launch and
+1,277-frame wide-save cadence preserve byte-identical assembly/Release/Debug
+recordings (`f3a57a56...2051ee4e`); its Release/Debug deployed profile,
+native-cycle, and abandonment hashes agree (`8a2a30cb...c4a5f9a`,
+`5e608a2e...edeb5b2d`, and `b74517d6...9669bc46`). All 593 admissions install,
+432 routines enter, and 683,145,417 of 1,292,372,151 elapsed master cycles run
+natively (98.45% outside frame-sync), with no horizon declines or abandonments.
+Its 8,625-address assembly profile adds 383 rows beyond sidestep, but every
+observed `02:41EC-42E0`, `02:526A/5557-55D2`, and
+`03:6023/64A5/761E/7C43` path is an existing allocator, actor, or
+collision-controller interior that joins an established scheduler/controller
+owner. Keep these paths assembly-backed and select another materially different
+natural route.
 The twist fidelity gate is closed:
 `02:570A` retains its Big-Star timer-horizon fallback, while `03:66A3` now
 leaves its post-handoff timer-sensitive calls in assembly. The fully deployed
