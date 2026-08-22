@@ -94,6 +94,7 @@ constexpr int kGameplayWeaveRecordingFrames = 3600;
 constexpr int kGameplayBankshotRecordingFrames = 3600;
 constexpr int kGameplayPlayfieldRecordingFrames = 3600;
 constexpr int kGameplayCornerRecordingFrames = 3600;
+constexpr int kGameplayAlleyRecordingFrames = 3600;
 constexpr int kStateCensusRecordingFrames = 3600;
 constexpr int kMaximumAudioLatencyMilliseconds = 150;
 const std::filesystem::path kBackupRamPath =
@@ -156,6 +157,8 @@ const std::filesystem::path kGameplayPlayfieldRecordingPath =
     std::filesystem::path("portable-data") / "gameplay-playfield-v1.csv";
 const std::filesystem::path kGameplayCornerRecordingPath =
     std::filesystem::path("portable-data") / "gameplay-corner-v1.csv";
+const std::filesystem::path kGameplayAlleyRecordingPath =
+    std::filesystem::path("portable-data") / "gameplay-alley-v1.csv";
 const std::filesystem::path kStateCensusRecordingPath =
     std::filesystem::path("portable-data") / "state-census-v1.csv";
 const std::filesystem::path kBackupRamTestPath =
@@ -406,6 +409,11 @@ struct CommandLine {
     // distant left recovery to probe a fresh natural return path.
     bool record_gameplay_corner = false;
     std::filesystem::path gameplay_corner_path = kGameplayCornerRecordingPath;
+    // A twenty-sixth input-only route. It charges past every prior route,
+    // then favors alternating alley recoveries while leaving every nudge in
+    // a neutral travel window.
+    bool record_gameplay_alley = false;
+    std::filesystem::path gameplay_alley_path = kGameplayAlleyRecordingPath;
     bool record_state_census = false;
     std::filesystem::path state_census_path = kStateCensusRecordingPath;
     std::filesystem::path canonical_work_ram_path;
@@ -938,6 +946,14 @@ parse_logical_address_range(const std::string_view text)
             if (!next.empty() && next.front() != '-') {
                 options.gameplay_corner_path = argv[++index];
             }
+        } else if (argument == "--record-gameplay-alley") {
+            options.record_gameplay_alley = true;
+            const std::string_view next =
+                index + 1 < argc ? std::string_view(argv[index + 1])
+                                 : std::string_view{};
+            if (!next.empty() && next.front() != '-') {
+                options.gameplay_alley_path = argv[++index];
+            }
         } else if (argument == "--record-state-census") {
             options.record_state_census = true;
             const std::string_view next =
@@ -1413,6 +1429,7 @@ parse_logical_address_range(const std::string_view text)
         + static_cast<int>(options.record_gameplay_bankshot)
         + static_cast<int>(options.record_gameplay_playfield)
         + static_cast<int>(options.record_gameplay_corner)
+        + static_cast<int>(options.record_gameplay_alley)
         + static_cast<int>(options.record_state_census)
         + static_cast<int>(!options.routine_replay_corpus_paths.empty())
         + static_cast<int>(options.backup_ram_test);
@@ -1442,6 +1459,7 @@ parse_logical_address_range(const std::string_view text)
         || options.record_gameplay_bankshot
         || options.record_gameplay_playfield
         || options.record_gameplay_corner
+        || options.record_gameplay_alley
         || options.record_state_census;
     // Both interactive entry points run the same host loop, and both deploy
     // the admitted-routine registry unless told to emulate the original.
@@ -1506,6 +1524,8 @@ parse_logical_address_range(const std::string_view text)
             ? kGameplayPlayfieldRecordingFrames
         : options.record_gameplay_corner
             ? kGameplayCornerRecordingFrames
+        : options.record_gameplay_alley
+            ? kGameplayAlleyRecordingFrames
         : options.record_gameplay
             ? kGameplayRecordingFrames
             : options.record_canonical
@@ -5152,6 +5172,13 @@ void print_usage()
             "      [--observe-hook <bank:pc>]...\n"
             "      [--routine-call-trace <calls.csv>]\n"
             "      [--rom <path>]\n"
+        << "  devils-crush --record-gameplay-alley [output.csv]\n"
+            "      [--replace-registry]\n"
+            "      [--native-cycle-census <census.csv>]\n"
+            "      [--instruction-profile <profile.csv>]\n"
+            "      [--observe-hook <bank:pc>]...\n"
+            "      [--routine-call-trace <calls.csv>]\n"
+            "      [--rom <path>]\n"
         << "  devils-crush --record-state-census [output.csv]\n"
            "      [--canonical-work-ram <output.bin>]\n"
            "      [--canonical-framebuffer <output.rgb>]\n"
@@ -8703,6 +8730,57 @@ struct ProbedAxis {
     return input;
 }
 
+[[nodiscard]] InputFrame gameplay_alley_input_for_frame(const int frame_number)
+{
+    InputFrame input;
+    const auto press = [&input](const Button button) {
+        input.player_one |= static_cast<std::uint16_t>(button);
+    };
+    const auto is_pair = [frame_number](const int first_frame) {
+        return frame_number == first_frame
+            || frame_number == first_frame + 1;
+    };
+
+    // Charge beyond the former maximum before releasing into an alley-first
+    // route. The paired left saves and shorter right bank use an 811-frame
+    // prime cadence, while every directional impulse falls in free travel.
+    if (is_pair(180) || is_pair(300)) {
+        press(Button::run);
+    }
+    if (is_pair(420) || is_pair(700)
+        || (frame_number >= 850 && frame_number <= 880)
+        || (frame_number >= 1000 && frame_number <= 1580)) {
+        press(Button::one);
+    }
+    if (frame_number >= 1651) {
+        const int phase = (frame_number - 1651) % 811;
+        if ((phase >= 58 && phase <= 83)
+            || (phase >= 604 && phase <= 622)) {
+            press(Button::left);
+        }
+        if (phase >= 381 && phase <= 404) {
+            press(Button::right);
+        }
+        if (phase >= 628 && phase <= 634) {
+            press(Button::one);
+        }
+        if (phase == 124 || phase == 125 || phase == 273 || phase == 274
+            || phase == 524 || phase == 525 || phase == 713 || phase == 714) {
+            press(Button::two);
+        }
+        if (phase == 18 || phase == 19) {
+            press(Button::up);
+        } else if (phase == 210 || phase == 211) {
+            press(Button::down);
+        } else if (phase == 466 || phase == 467) {
+            press(Button::right);
+        } else if (phase == 777 || phase == 778) {
+            press(Button::left);
+        }
+    }
+    return input;
+}
+
 [[nodiscard]] InputFrame state_census_input_for_frame(const int frame_number)
 {
     InputFrame input;
@@ -9143,6 +9221,21 @@ constexpr RecordingPlan kGameplayCornerRecordingPlan{
             "2242-2243+743n",
     .frame_count = kGameplayCornerRecordingFrames,
     .input_for_frame = &gameplay_corner_input_for_frame,
+};
+
+constexpr RecordingPlan kGameplayAlleyRecordingPlan{
+    .format = "devils-crush-gameplay-alley-v1",
+    .label = "Gameplay alley",
+    .input_script =
+        "run:180-181,300-301;"
+        "one:420-421,700-701,850-880,1000-1580,2279-2285+811n;"
+        "left:1709-1734+811n,2255-2273+811n,2428-2429+811n;"
+        "right:2032-2055+811n,2117-2118+811n;"
+        "up:1669-1670+811n;down:1861-1862+811n;"
+        "two:1775-1776+811n,1924-1925+811n,2175-2176+811n,"
+            "2364-2365+811n",
+    .frame_count = kGameplayAlleyRecordingFrames,
+    .input_for_frame = &gameplay_alley_input_for_frame,
 };
 
 constexpr RecordingPlan kStateCensusRecordingPlan{
@@ -16410,6 +16503,7 @@ int main(const int argc, char* argv[])
             || options.record_gameplay_bankshot
             || options.record_gameplay_playfield
             || options.record_gameplay_corner
+            || options.record_gameplay_alley
             || options.record_state_census) {
             const auto& recording_plan = options.record_state_census
                 ? kStateCensusRecordingPlan
@@ -16461,6 +16555,8 @@ int main(const int argc, char* argv[])
                     ? kGameplayPlayfieldRecordingPlan
                 : options.record_gameplay_corner
                     ? kGameplayCornerRecordingPlan
+                : options.record_gameplay_alley
+                    ? kGameplayAlleyRecordingPlan
                 : options.record_gameplay
                     ? kGameplayRecordingPlan
                     : kCanonicalRecordingPlan;
@@ -16514,6 +16610,8 @@ int main(const int argc, char* argv[])
                     ? options.gameplay_playfield_path
                 : options.record_gameplay_corner
                     ? options.gameplay_corner_path
+                : options.record_gameplay_alley
+                    ? options.gameplay_alley_path
                 : options.record_gameplay
                     ? options.gameplay_path
                     : options.canonical_path;

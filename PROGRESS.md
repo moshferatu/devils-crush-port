@@ -1589,6 +1589,29 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
   - Rebuilt the Release and Debug application targets and verified identical
     assembly/Release/Debug recording and deployed-artifact hashes.
 
+- [x] Add and screen the input-only alley natural gameplay route without
+  patching emulated work RAM:
+  - `--record-gameplay-alley` keeps the visible startup, holds the launcher
+    through frame 1,580, then applies paired left alley recoveries and a short
+    right bank on an 811-frame prime cadence; every Button-II/directional
+    impulse is in neutral travel.
+  - Assembly, deployed Release, and deployed Debug recordings are
+    byte-identical at `ba06e5a2...4a15a`; deployed Release/Debug instruction
+    profiles, native-cycle censuses, and abandonment censuses are likewise
+    identical (`6d5c906b...8cab44`, `947aadf3...7d78d3`, and
+    `b74517d6...9669bc46`). All 593 admissions install, 444 routines enter,
+    and 668,407,377 of 1,292,371,695 elapsed master cycles run natively
+    (97.89% outside frame-sync), with no horizon declines or abandonments.
+  - Its 9,589-address assembly profile adds 1,127 rows beyond corner and
+    reaches the existing Giant-Skeleton Eyeball and banked table-controller
+    owners. The focused `02:4D2D` trace records 96 calls/3,719 writes, all
+    from scheduler `01:C51D` through `01:C5E9`; `03:670A` records 102
+    calls/4,394 writes and returns through existing `03:6965`. Neither
+    supplies a separate caller-and-return transaction, so no replacement is
+    admitted.
+  - Rebuilt the Release and Debug application targets and verified identical
+    assembly/Release/Debug recording and deployed-artifact hashes.
+
 - [x] Isolate and close the independent frame-1,845 audio-only twist-route
   drift:
   - A full PSG bus-write bisection shows that the audible 12-cycle early
@@ -8718,7 +8741,7 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
 
 Current owner: Codex. Current slice: **screen the next materially different
 input-only natural gameplay route for an unobserved table-rule transaction with
-its own caller-and-return contract after corner**. Sidestep is now screened:
+its own caller-and-return contract after alley**. Sidestep is now screened:
 its middle-strength launch, 947-frame asymmetric side saves, and neutral-only
 Button-II impulses preserve byte-identical assembly/Release/Debug recordings
 (`30cce23f...05d82a`), profiles, native-cycle censuses, and abandonment
@@ -8777,7 +8800,20 @@ outside frame-sync), with no horizon declines or abandonments. Its
 `01:CDF8-CEF8` position-retry/bounds entry and `01:D066-D080` continuation is
 already native collision-response ownership, entered by known callers and
 returning through known controller paths. Keep it assembly-backed and select a
-further materially different natural route.
+further materially different natural route. The alley route is also screened:
+its frame-1,580 maximum-charge release, paired left recoveries, short right
+bank, and 811-frame prime cadence preserve byte-identical assembly/Release/
+Debug recordings (`ba06e5a2...4a15a`); Release/Debug deployed profiles,
+native-cycle, and abandonment censuses agree (`6d5c906b...8cab44`,
+`947aadf3...7d78d3`, and `b74517d6...9669bc46`). All 593 admissions install,
+444 routines enter, and 668,407,377 of 1,292,371,695 elapsed master cycles run
+natively (97.89% outside frame-sync), with no horizon declines or abandonments.
+Its 9,589-address assembly profile adds 1,127 rows beyond corner; focused
+traces keep its 96 `02:4D2D` Eyeball scheduler/final-animation calls inside
+`01:C51D -> 01:C5E9`, while 102 `03:670A` calls return through the existing
+`03:6965` table-controller seam. These remain existing owners, not independent
+caller-and-return transactions; keep them assembly-backed and select a further
+materially different natural route.
 The twist fidelity gate is closed:
 `02:570A` retains its Big-Star timer-horizon fallback, while `03:66A3` now
 leaves its post-handoff timer-sensitive calls in assembly. The fully deployed
