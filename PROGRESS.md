@@ -1568,6 +1568,27 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
   - Rebuilt the Release and Debug application targets and verified identical
     assembly/Release/Debug recording and deployed-artifact hashes.
 
+- [x] Add and screen the input-only corner natural gameplay route without
+  patching emulated work RAM:
+  - `--record-gameplay-corner` keeps the visible startup, releases its launcher
+    at frame 1,480, then makes a right-first corner save and distant left
+    recovery on a 743-frame cadence; every directional/Button-II impulse is
+    in neutral travel.
+  - Assembly, deployed Release, and deployed Debug recordings are
+    byte-identical at `d04b90ea...e893`; deployed Release/Debug instruction
+    profiles, native-cycle censuses, and abandonment censuses are likewise
+    identical (`56cb08de...ae8cfd`, `dd50ee23...390347`, and
+    `b74517d6...9669bc46`). All 593 admissions install, 430 routines enter,
+    and 675,426,963 of 1,292,371,737 elapsed master cycles run natively
+    (98.45% outside frame-sync), with no horizon declines or abandonments.
+  - Its 8,549-address assembly profile adds 72 rows beyond playfield, but
+    tracing proves those rows are the existing confirmed-contact position
+    retry/bounds path (`01:CDF8-CEF8`) and its already native `01:CF33`
+    continuation (`01:D066-D080`). Their callers and returns remain owned by
+    the known collision response; no replacement is admitted.
+  - Rebuilt the Release and Debug application targets and verified identical
+    assembly/Release/Debug recording and deployed-artifact hashes.
+
 - [x] Isolate and close the independent frame-1,845 audio-only twist-route
   drift:
   - A full PSG bus-write bisection shows that the audible 12-cycle early
@@ -8697,7 +8718,7 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
 
 Current owner: Codex. Current slice: **screen the next materially different
 input-only natural gameplay route for an unobserved table-rule transaction with
-its own caller-and-return contract after playfield**. Sidestep is now screened:
+its own caller-and-return contract after corner**. Sidestep is now screened:
 its middle-strength launch, 947-frame asymmetric side saves, and neutral-only
 Button-II impulses preserve byte-identical assembly/Release/Debug recordings
 (`30cce23f...05d82a`), profiles, native-cycle censuses, and abandonment
@@ -8744,7 +8765,19 @@ observed `02:41EC-42E0`, `02:526A/5557-55D2`, and
 `03:6023/64A5/761E/7C43` path is an existing allocator, actor, or
 collision-controller interior that joins an established scheduler/controller
 owner. Keep these paths assembly-backed and select another materially different
-natural route.
+natural route. The corner route is also screened: its frame-1,480 release,
+right-first corner save, and 743-frame distant-recovery cadence preserve
+byte-identical assembly/Release/Debug recordings (`d04b90ea...e893`), while
+its Release/Debug deployed profile, native-cycle, and abandonment hashes agree
+(`56cb08de...ae8cfd`, `dd50ee23...390347`, and
+`b74517d6...9669bc46`). All 593 admissions install, 430 routines enter, and
+675,426,963 of 1,292,371,737 elapsed master cycles run natively (98.45%
+outside frame-sync), with no horizon declines or abandonments. Its
+8,549-address assembly profile adds 72 rows beyond playfield, but every traced
+`01:CDF8-CEF8` position-retry/bounds entry and `01:D066-D080` continuation is
+already native collision-response ownership, entered by known callers and
+returning through known controller paths. Keep it assembly-backed and select a
+further materially different natural route.
 The twist fidelity gate is closed:
 `02:570A` retains its Big-Star timer-horizon fallback, while `03:66A3` now
 leaves its post-handoff timer-sensitive calls in assembly. The fully deployed

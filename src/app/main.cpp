@@ -93,6 +93,7 @@ constexpr int kGameplaySidestepRecordingFrames = 3600;
 constexpr int kGameplayWeaveRecordingFrames = 3600;
 constexpr int kGameplayBankshotRecordingFrames = 3600;
 constexpr int kGameplayPlayfieldRecordingFrames = 3600;
+constexpr int kGameplayCornerRecordingFrames = 3600;
 constexpr int kStateCensusRecordingFrames = 3600;
 constexpr int kMaximumAudioLatencyMilliseconds = 150;
 const std::filesystem::path kBackupRamPath =
@@ -153,6 +154,8 @@ const std::filesystem::path kGameplayBankshotRecordingPath =
     std::filesystem::path("portable-data") / "gameplay-bankshot-v1.csv";
 const std::filesystem::path kGameplayPlayfieldRecordingPath =
     std::filesystem::path("portable-data") / "gameplay-playfield-v1.csv";
+const std::filesystem::path kGameplayCornerRecordingPath =
+    std::filesystem::path("portable-data") / "gameplay-corner-v1.csv";
 const std::filesystem::path kStateCensusRecordingPath =
     std::filesystem::path("portable-data") / "state-census-v1.csv";
 const std::filesystem::path kBackupRamTestPath =
@@ -398,6 +401,11 @@ struct CommandLine {
     bool record_gameplay_playfield = false;
     std::filesystem::path gameplay_playfield_path =
         kGameplayPlayfieldRecordingPath;
+    // A twenty-fifth input-only route. It releases later than the dense
+    // recovery plans, then uses a short right-first corner save before a
+    // distant left recovery to probe a fresh natural return path.
+    bool record_gameplay_corner = false;
+    std::filesystem::path gameplay_corner_path = kGameplayCornerRecordingPath;
     bool record_state_census = false;
     std::filesystem::path state_census_path = kStateCensusRecordingPath;
     std::filesystem::path canonical_work_ram_path;
@@ -922,6 +930,14 @@ parse_logical_address_range(const std::string_view text)
             if (!next.empty() && next.front() != '-') {
                 options.gameplay_playfield_path = argv[++index];
             }
+        } else if (argument == "--record-gameplay-corner") {
+            options.record_gameplay_corner = true;
+            const std::string_view next =
+                index + 1 < argc ? std::string_view(argv[index + 1])
+                                 : std::string_view{};
+            if (!next.empty() && next.front() != '-') {
+                options.gameplay_corner_path = argv[++index];
+            }
         } else if (argument == "--record-state-census") {
             options.record_state_census = true;
             const std::string_view next =
@@ -1396,6 +1412,7 @@ parse_logical_address_range(const std::string_view text)
         + static_cast<int>(options.record_gameplay_weave)
         + static_cast<int>(options.record_gameplay_bankshot)
         + static_cast<int>(options.record_gameplay_playfield)
+        + static_cast<int>(options.record_gameplay_corner)
         + static_cast<int>(options.record_state_census)
         + static_cast<int>(!options.routine_replay_corpus_paths.empty())
         + static_cast<int>(options.backup_ram_test);
@@ -1424,6 +1441,7 @@ parse_logical_address_range(const std::string_view text)
         || options.record_gameplay_weave
         || options.record_gameplay_bankshot
         || options.record_gameplay_playfield
+        || options.record_gameplay_corner
         || options.record_state_census;
     // Both interactive entry points run the same host loop, and both deploy
     // the admitted-routine registry unless told to emulate the original.
@@ -1486,6 +1504,8 @@ parse_logical_address_range(const std::string_view text)
             ? kGameplayBankshotRecordingFrames
         : options.record_gameplay_playfield
             ? kGameplayPlayfieldRecordingFrames
+        : options.record_gameplay_corner
+            ? kGameplayCornerRecordingFrames
         : options.record_gameplay
             ? kGameplayRecordingFrames
             : options.record_canonical
@@ -5125,6 +5145,13 @@ void print_usage()
             "      [--observe-hook <bank:pc>]...\n"
             "      [--routine-call-trace <calls.csv>]\n"
             "      [--rom <path>]\n"
+        << "  devils-crush --record-gameplay-corner [output.csv]\n"
+            "      [--replace-registry]\n"
+            "      [--native-cycle-census <census.csv>]\n"
+            "      [--instruction-profile <profile.csv>]\n"
+            "      [--observe-hook <bank:pc>]...\n"
+            "      [--routine-call-trace <calls.csv>]\n"
+            "      [--rom <path>]\n"
         << "  devils-crush --record-state-census [output.csv]\n"
            "      [--canonical-work-ram <output.bin>]\n"
            "      [--canonical-framebuffer <output.rgb>]\n"
@@ -8626,6 +8653,56 @@ struct ProbedAxis {
     return input;
 }
 
+[[nodiscard]] InputFrame gameplay_corner_input_for_frame(const int frame_number)
+{
+    InputFrame input;
+    const auto press = [&input](const Button button) {
+        input.player_one |= static_cast<std::uint16_t>(button);
+    };
+    const auto is_pair = [frame_number](const int first_frame) {
+        return frame_number == first_frame
+            || frame_number == first_frame + 1;
+    };
+
+    // A late but not maximum charge is followed by a right-first corner save
+    // and a far-left recovery. The 743-frame cadence deliberately leaves
+    // large neutral intervals for natural table travel and directional nudges.
+    if (is_pair(180) || is_pair(300)) {
+        press(Button::run);
+    }
+    if (is_pair(420) || is_pair(700)
+        || (frame_number >= 850 && frame_number <= 880)
+        || (frame_number >= 1000 && frame_number <= 1480)) {
+        press(Button::one);
+    }
+    if (frame_number >= 1543) {
+        const int phase = (frame_number - 1543) % 743;
+        if (phase >= 84 && phase <= 103) {
+            press(Button::right);
+        }
+        if (phase >= 472 && phase <= 508) {
+            press(Button::left);
+        }
+        if (phase >= 626 && phase <= 632) {
+            press(Button::one);
+        }
+        if (phase == 173 || phase == 174 || phase == 329 || phase == 330
+            || phase == 557 || phase == 558 || phase == 699 || phase == 700) {
+            press(Button::two);
+        }
+        if (phase == 24 || phase == 25) {
+            press(Button::down);
+        } else if (phase == 251 || phase == 252) {
+            press(Button::right);
+        } else if (phase == 404 || phase == 405) {
+            press(Button::up);
+        } else if (phase == 718 || phase == 719) {
+            press(Button::left);
+        }
+    }
+    return input;
+}
+
 [[nodiscard]] InputFrame state_census_input_for_frame(const int frame_number)
 {
     InputFrame input;
@@ -9050,6 +9127,22 @@ constexpr RecordingPlan kGameplayPlayfieldRecordingPlan{
         "2762-2763+1277n",
     .frame_count = kGameplayPlayfieldRecordingFrames,
     .input_for_frame = &gameplay_playfield_input_for_frame,
+};
+
+constexpr RecordingPlan kGameplayCornerRecordingPlan{
+    .format = "devils-crush-gameplay-corner-v1",
+    .label = "Gameplay corner",
+    .input_script =
+        "run:180-181,300-301;"
+        "one:420-421,700-701,850-880,1000-1480,2169-2175+743n;"
+        "right:1627-1646+743n,1794-1795+743n;"
+        "left:2015-2051+743n,2261-2262+743n;"
+        "down:1567-1568+743n;right:1794-1795+743n;"
+        "up:1947-1948+743n;left:2261-2262+743n;"
+        "two:1716-1717+743n,1872-1873+743n,2100-2101+743n,"
+            "2242-2243+743n",
+    .frame_count = kGameplayCornerRecordingFrames,
+    .input_for_frame = &gameplay_corner_input_for_frame,
 };
 
 constexpr RecordingPlan kStateCensusRecordingPlan{
@@ -16316,6 +16409,7 @@ int main(const int argc, char* argv[])
             || options.record_gameplay_weave
             || options.record_gameplay_bankshot
             || options.record_gameplay_playfield
+            || options.record_gameplay_corner
             || options.record_state_census) {
             const auto& recording_plan = options.record_state_census
                 ? kStateCensusRecordingPlan
@@ -16365,6 +16459,8 @@ int main(const int argc, char* argv[])
                     ? kGameplayBankshotRecordingPlan
                 : options.record_gameplay_playfield
                     ? kGameplayPlayfieldRecordingPlan
+                : options.record_gameplay_corner
+                    ? kGameplayCornerRecordingPlan
                 : options.record_gameplay
                     ? kGameplayRecordingPlan
                     : kCanonicalRecordingPlan;
@@ -16416,6 +16512,8 @@ int main(const int argc, char* argv[])
                     ? options.gameplay_bankshot_path
                 : options.record_gameplay_playfield
                     ? options.gameplay_playfield_path
+                : options.record_gameplay_corner
+                    ? options.gameplay_corner_path
                 : options.record_gameplay
                     ? options.gameplay_path
                     : options.canonical_path;
