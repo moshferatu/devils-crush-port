@@ -22283,6 +22283,49 @@ replace_giant_face_helmet_initializer(
 }
 
 [[nodiscard]] std::optional<RoutineReplacement>
+replace_giant_face_helmet_shared_return(
+    const RoutineEntry& entry,
+    const std::span<const std::byte> work_ram)
+{
+    // The helmet controller, its fixed initializers, and the surrounding
+    // shared callers all converge on this one plain RTS.  Its stack frame is
+    // the caller's real frame; derive the resume dynamically so the same
+    // semantic seam remains valid for every natural caller rather than
+    // encoding the currently observed call sites.
+    constexpr RoutineKey kReturn{
+        .physical_bank = 0x02U,
+        .logical_pc = 0x4CF1U,
+    };
+    if (entry.routine != kReturn || work_ram.size() < 0x2000U) {
+        return std::nullopt;
+    }
+
+    RoutineReplacement replacement{
+        .return_instruction = kReturn,
+        .output_registers = entry.registers,
+        .body_master_cycles = 0U,
+    };
+    absorb_return(
+        replacement,
+        work_ram,
+        entry.registers.stack_pointer,
+        kReturn,
+        0U,
+        entry.registers);
+
+    // RTS samples the interrupt line on its last CPU cycle.  An explicit
+    // checkpoint retains that boundary even though the return itself is
+    // absorbed and therefore no longer fetched by the core.
+    replacement.checkpoints.push_back({
+        .interrupt_sample_master_cycle_offset = 18U,
+        .master_cycle_offset = 21U,
+        .instruction = kReturn,
+        .registers = replacement.output_registers,
+    });
+    return replacement;
+}
+
+[[nodiscard]] std::optional<RoutineReplacement>
 replace_giant_face_helmet_outer_initializers(
     const RoutineEntry& entry,
     const std::span<const std::byte> work_ram)

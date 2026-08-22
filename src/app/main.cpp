@@ -2362,6 +2362,13 @@ parse_logical_address_range(const std::string_view text)
                                        .logical_pc = 0x4C91U,
                                    }
                            && request.all_calls;
+                       const bool proven_giant_face_helmet_shared_return =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x02U,
+                                       .logical_pc = 0x4CF1U,
+                                   }
+                           && request.all_calls;
                        const bool proven_giant_face_helmet_hit_continuation =
                            request.routine
                                    == RoutineKey{
@@ -3934,6 +3941,7 @@ parse_logical_address_range(const std::string_view text)
                            && !proven_giant_face_crown_gate
                            && !proven_giant_face_mouth_gate
                            && !proven_giant_face_helmet_controller
+                           && !proven_giant_face_helmet_shared_return
                            && !proven_giant_face_helmet_hit_continuation
                            && !proven_giant_face_helmet_followup_timer
                            && !proven_four_star_wall_pocket_controller
@@ -4163,7 +4171,7 @@ parse_logical_address_range(const std::string_view text)
             "semantic 02:4A93@all, semantic 02:4AD2@all, "
             "semantic 02:4AE5@all, semantic 02:4AEB@all, "
             "semantic 02:4B3F@all, "
-            "semantic 02:4BD5@all, semantic 02:4C0A@all, semantic 02:4C33@all, semantic 02:4CFB@all, semantic 02:4D0B@all, "
+            "semantic 02:4BD5@all, semantic 02:4C0A@all, semantic 02:4C33@all, semantic 02:4CF1@all, semantic 02:4CFB@all, semantic 02:4D0B@all, "
             "semantic 02:5116@all, "
             "semantic 02:5159@all, "
             "semantic 02:518D@all, "

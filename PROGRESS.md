@@ -8,28 +8,29 @@ Last updated: 2026-08-21
 
 **Current milestone:** 4. Native gameplay port
 
-**Milestone 4 current gate:** the shared collision-effect allocator is native.
-Semantic `03:7BF6/7C02/7C05@all` preserves the low-nibble suppression gate,
-crosses the existing bank-one actor-slot allocator through its authentic JSR
-frame, and initializes the reserved type-`$8F` effect before absorbing the
-original return.
+**Milestone 4 current gate:** the Giant-Face helmet shared return is native.
+Semantic `02:4CF1@all` consumes the live two-byte caller frame at the shared
+plain `RTS`, resumes in the MPR-resolved caller bank, and publishes the
+interrupt-visible final cycle before the core resumes execution.
 
-The deployed registry now runs **699,696,753 of 1,292,371,731 master cycles
-natively, 54.14% of the route and 98.48% of everything outside the frame-sync
-wait**, across 580 admitted routines. The three new entries add exactly 5,646
-deployed native cycles across 58 entered scopes, with no interrupt-horizon/
-depth declines or abandonments. The fresh deployed residue contains 3,452,871
-addressable cycles in 243 clusters. The core declines no offered registry
+The deployed registry now runs **699,788,670 of 1,292,371,731 master cycles
+natively, 54.15% of the route and 98.49% of everything outside the frame-sync
+wait**, across 581 admitted routines. The new return seam adds exactly 91,917
+deployed native cycles across 4,377 independently entered scopes; all 5,843
+natural arrivals are admitted, with no interrupt-horizon/depth declines or
+abandonments. The fresh deployed residue contains 3,360,258
+addressable cycles in 242 clusters. The core declines no offered registry
 transcript and none is abandoned. The 3,600-frame state census remains
 `9036a9de0c3c9917f47bff8c04c136a4824ec12601fb457d260aa2dfe4443490`.
 
-The assembly/native oracle admits all 20 outer calls, all 19 allocator-return
-continuations, and all 19 effect initializers. It preserves the direct
-low-nibble-`$0F` suppression return, every successful allocator result, eight
-effect-field writes per child, and all original interrupt passages. The
-canonical census, complete 58-call/1,022-write artifact, and 4,650,247-write
-selected actor/stack stream are byte-identical in Release and Debug. Re-rank
-the fresh residue before selecting the next bounded gameplay cluster.
+The assembly/native oracle admits all 5,843 returns, including the frame-871
+first and frame-3,600 final state-normalized replays. The canonical census and
+complete 4,650,247-write selected actor/stack stream are byte-identical to
+assembly; the absorbed-return observer intentionally closes its scopes at the
+actual MPR-resolved caller, rather than forging a fixed caller address. The
+Release semantic regression, generated-registry validation, Release and Debug
+application builds, and Debug core test pass. Re-rank the fresh residue before
+selecting the next bounded gameplay cluster.
 
 Semantic `02:533B@all` now validates the live stack frame, declares the
 original `02:5393` observer boundary, pops the real two-byte return, and
@@ -1395,6 +1396,20 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
 
 ## Completed
 
+- [x] Re-rank the 3,452,871-cycle residue and port the shared Giant-Face
+  helmet return at `02:4CF1`:
+  - Admit semantic `02:4CF1@all` on all 5,843 natural arrivals, derive every
+    MPR-qualified caller resume from the live stack frame, and preserve the
+    RTS final-cycle interrupt checkpoint.
+  - Retain the canonical state census and complete 4,650,247-write selected
+    actor/stack stream byte-for-byte against assembly; normalized first and
+    final replays are exact at frames 871 and 3,600.
+  - Add 91,917 deployed native cycles across 4,377 independently entered
+    scopes, reach 581 admitted/465 entered routines with zero horizon/depth
+    declines or abandonments, and reduce the addressable residue to 3,360,258
+    cycles in 242 clusters.
+  - Pass the owning Release semantic regression, generated-registry validation,
+    Release/Debug application builds, and the Debug core test.
 - [x] Re-rank the 3,458,637-cycle residue and port the shared collision-effect
   allocator at `03:7BF6-7C33`:
   - Admit semantic `03:7BF6/7C02/7C05@all` on all 20/19/19 natural arrivals,
@@ -5365,7 +5380,10 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
 - [x] Re-rank the fresh 3,458,637-cycle deployed residue and port the next
   bounded gameplay cluster after excluding documented hardware seams, shared
   handoff attribution, and interrupt cycles charged to the entry row.
-- [ ] Re-rank the fresh 3,452,871-cycle deployed residue and port the next
+- [x] Re-rank the fresh 3,452,871-cycle deployed residue and port the next
+  bounded gameplay cluster after excluding documented hardware seams, shared
+  handoff attribution, and interrupt cycles charged to the entry row.
+- [ ] Re-rank the fresh 3,360,258-cycle deployed residue and port the next
   bounded gameplay cluster after excluding documented hardware seams, shared
   handoff attribution, and interrupt cycles charged to the entry row.
 - [x] Split `00:F9A2-FAC5` by actual owner and port its repeated bounded VDC
@@ -7352,30 +7370,28 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
 
 ## Active Work
 
-Current owner: Codex. Current slice: **shared collision-effect allocator**.
+Current owner: Codex. Current slice: **Giant-Face helmet shared return**.
 Done.
 
 The attribution-aware residue ranking excludes palette and boot block
 transfers, compound-sampled branches, interrupt/device acknowledgement, frame
-loop glue, shared returns, driver resumption, and cycles charged to an entry by
-an original interrupt. The first substantial gameplay-owned cluster after
-those exclusions was the shared collision-effect allocator at `03:7BF6-7C33`.
-Its outer gate suppresses sources whose low appearance nibble is `$0F`; every
-other routed call crosses the existing native actor-slot allocator and resumes
-at a separate native continuation before initializing the reserved child.
+loop glue, shared returns that belong to an already-native parent, driver
+resumption, and cycles charged to an entry by an original interrupt. The first
+remaining safe gameplay boundary was the standalone shared `RTS` at
+`02:4CF1`. Its transcript reads the authentic stack frame rather than assuming
+one of its many callers, so the return stays valid when any native or assembly
+parent reaches the shared seam. All 5,843 calls are admitted. The canonical
+census and selected work-RAM stream match assembly; the Release semantic test,
+registry validation, Release/Debug builds, and Debug core test pass.
 
-Deployment adds exactly 5,646 cycles for 699,696,753 total across 580 installed
-and 464 entered routines, with zero horizon/depth refusals or abandonments. The
-fresh deployed profile contains 3,452,871 addressable cycles in 243 clusters.
-The three instruction transcripts preserve the one direct suppression return,
-all 19 allocator-success continuations, eight ordered child writes apiece, and
-all original interrupt passages. The canonical census, exact 58-call/1,022-
-write artifact, and 4,650,247-write actor/stack stream remain identical to
-assembly in Release and Debug. The owning Release regression, generated
-registry, Release/Debug builds, both ROM-free core configurations, and diff
-hygiene pass, as does the complete 454-test Release suite.
-Next: re-rank the fresh residue before choosing the next bounded gameplay
-cluster.
+Deployment adds 91,917 cycles for 699,788,670 total across 581 installed and
+465 entered routines, with zero horizon/depth refusals or abandonments. The
+fresh deployed profile contains 3,360,258 addressable cycles in 242 clusters.
+Next: re-rank that residue, excluding the documented `TIA` capacity wall,
+compound-sampled `BBR` seams, frame-loop glue, and device acknowledgement
+reads before choosing the next bounded gameplay cluster.
+
+### Previous: shared collision-effect allocator
 
 ### Previous: Three-Blobs collision marker
 

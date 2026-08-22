@@ -64,6 +64,13 @@ replace_native_gameplay_routine_impl(
     // routines are matched here, where each arm returns instead of nesting.
     if (entry.routine
         == RoutineKey{
+            .physical_bank = 0x02U,
+            .logical_pc = 0x4CF1U,
+        }) {
+        return detail::replace_giant_face_helmet_shared_return(entry, work_ram);
+    }
+    if (entry.routine
+        == RoutineKey{
             .physical_bank = 0x01U,
             .logical_pc = 0xDC95U,
         }) {

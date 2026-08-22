@@ -5584,6 +5584,23 @@ if(TARGET devils_crush)
         )
 
         add_test(
+            NAME dc_rom_giant_face_helmet_shared_return_semantic
+            CONFIGURATIONS Release
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/giant_face_helmet_shared_return.csv"
+                -P
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_giant_face_helmet_shared_return_semantic.cmake"
+        )
+        set_tests_properties(
+            dc_rom_giant_face_helmet_shared_return_semantic
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
             NAME dc_rom_giant_face_helmet_initializer_semantic
             CONFIGURATIONS Release
             COMMAND
