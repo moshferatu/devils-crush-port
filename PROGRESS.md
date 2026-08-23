@@ -1631,6 +1631,27 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
   - Rebuilt the Release and Debug application targets and verified the CLI
     help, deterministic Release/Debug artifacts, and clean diff whitespace.
 
+- [x] Add and screen the input-only skew natural gameplay route without
+  patching emulated work RAM:
+  - `--record-gameplay-skew` releases a delayed launcher charge at frame
+    1,400, then favors a wide left return ahead of a short right bank on a
+    1,201-frame prime cadence; every Button-II/directional impulse is
+    isolated in neutral travel.
+  - Assembly, deployed Release, and deployed Debug recordings are
+    byte-identical at `4ee92187...f3afbd`; Release/Debug instruction profiles,
+    native-cycle censuses, and abandonment censuses also agree
+    (`1be56218...a29f215`, `65b66f8e...274fa8`, and
+    `b74517d6...9669bc46`). All 593 admissions install, 460 routines enter,
+    and 688,270,206 of 1,292,371,695 elapsed master cycles run natively
+    (98.46% outside frame-sync), with no horizon declines or abandonments.
+  - Its 8,791-address assembly profile reaches one scheduler-owned
+    `01:D47B` continuation (frame 1,702, `01:C51D -> 01:C5E9`, 26,910
+    cycles/828 ordered writes) and one one-write `01:D000` local continuation
+    (`01:CF67 -> 01:D004`). Neither has an independent caller-and-return
+    contract, so no replacement is admitted.
+  - Rebuilt the Release and Debug application targets and verified CLI help,
+    deterministic artifacts, focused trace output, and clean diff whitespace.
+
 - [x] Isolate and close the independent frame-1,845 audio-only twist-route
   drift:
   - A full PSG bus-write bisection shows that the audible 12-cycle early
@@ -8760,7 +8781,7 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
 
 Current owner: Codex. Current slice: **screen the next materially different
 input-only natural gameplay route for an unobserved table-rule transaction with
-its own caller-and-return contract after rebound**. Sidestep is now screened:
+its own caller-and-return contract after skew**. Sidestep is now screened:
 its middle-strength launch, 947-frame asymmetric side saves, and neutral-only
 Button-II impulses preserve byte-identical assembly/Release/Debug recordings
 (`30cce23f...05d82a`), profiles, native-cycle censuses, and abandonment
@@ -8844,6 +8865,19 @@ outside frame-sync) with no horizon declines or abandonments. Its entire
 8,515-address assembly profile is a strict subset of both alley and corner,
 so it exposes no unobserved table-rule transaction and needs no focused call
 trace or replacement. Keep every reached path assembly-backed and select a
+further materially different natural route.
+The skew route is also screened: its frame-1,400 delayed release, wide
+left-first return, short right bank, and 1,201-frame prime cadence preserve
+byte-identical assembly/Release/Debug recordings (`4ee92187...f3afbd`), while
+the Release/Debug deployed profiles, native-cycle censuses, and abandonment
+censuses agree (`1be56218...a29f215`, `65b66f8e...274fa8`, and
+`b74517d6...9669bc46`). All 593 admissions install, 460 routines enter, and
+688,270,206 of 1,292,371,695 elapsed master cycles run natively (98.46%
+outside frame-sync) with no horizon declines or abandonments. Its 8,791-address
+assembly profile reaches only a frame-1,702 scheduler-owned `01:D47B` scope
+that runs `01:C51D -> 01:C5E9` in 26,910 cycles/828 writes and the one-write
+local `01:D000` continuation (`01:CF67 -> 01:D004`); neither has an independent
+caller-and-return contract. Keep these paths assembly-backed and select a
 further materially different natural route.
 The twist fidelity gate is closed:
 `02:570A` retains its Big-Star timer-horizon fallback, while `03:66A3` now

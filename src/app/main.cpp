@@ -96,6 +96,7 @@ constexpr int kGameplayPlayfieldRecordingFrames = 3600;
 constexpr int kGameplayCornerRecordingFrames = 3600;
 constexpr int kGameplayAlleyRecordingFrames = 3600;
 constexpr int kGameplayReboundRecordingFrames = 3600;
+constexpr int kGameplaySkewRecordingFrames = 3600;
 constexpr int kStateCensusRecordingFrames = 3600;
 constexpr int kMaximumAudioLatencyMilliseconds = 150;
 const std::filesystem::path kBackupRamPath =
@@ -162,6 +163,8 @@ const std::filesystem::path kGameplayAlleyRecordingPath =
     std::filesystem::path("portable-data") / "gameplay-alley-v1.csv";
 const std::filesystem::path kGameplayReboundRecordingPath =
     std::filesystem::path("portable-data") / "gameplay-rebound-v1.csv";
+const std::filesystem::path kGameplaySkewRecordingPath =
+    std::filesystem::path("portable-data") / "gameplay-skew-v1.csv";
 const std::filesystem::path kStateCensusRecordingPath =
     std::filesystem::path("portable-data") / "state-census-v1.csv";
 const std::filesystem::path kBackupRamTestPath =
@@ -423,6 +426,11 @@ struct CommandLine {
     bool record_gameplay_rebound = false;
     std::filesystem::path gameplay_rebound_path =
         kGameplayReboundRecordingPath;
+    // A twenty-eighth input-only route. Its delayed launch and skewed
+    // left-first recovery seek a separate high-table return without any RAM
+    // patching or overlapping directional inputs.
+    bool record_gameplay_skew = false;
+    std::filesystem::path gameplay_skew_path = kGameplaySkewRecordingPath;
     bool record_state_census = false;
     std::filesystem::path state_census_path = kStateCensusRecordingPath;
     std::filesystem::path canonical_work_ram_path;
@@ -971,6 +979,14 @@ parse_logical_address_range(const std::string_view text)
             if (!next.empty() && next.front() != '-') {
                 options.gameplay_rebound_path = argv[++index];
             }
+        } else if (argument == "--record-gameplay-skew") {
+            options.record_gameplay_skew = true;
+            const std::string_view next =
+                index + 1 < argc ? std::string_view(argv[index + 1])
+                                 : std::string_view{};
+            if (!next.empty() && next.front() != '-') {
+                options.gameplay_skew_path = argv[++index];
+            }
         } else if (argument == "--record-state-census") {
             options.record_state_census = true;
             const std::string_view next =
@@ -1448,6 +1464,7 @@ parse_logical_address_range(const std::string_view text)
         + static_cast<int>(options.record_gameplay_corner)
         + static_cast<int>(options.record_gameplay_alley)
         + static_cast<int>(options.record_gameplay_rebound)
+        + static_cast<int>(options.record_gameplay_skew)
         + static_cast<int>(options.record_state_census)
         + static_cast<int>(!options.routine_replay_corpus_paths.empty())
         + static_cast<int>(options.backup_ram_test);
@@ -1479,6 +1496,7 @@ parse_logical_address_range(const std::string_view text)
         || options.record_gameplay_corner
         || options.record_gameplay_alley
         || options.record_gameplay_rebound
+        || options.record_gameplay_skew
         || options.record_state_census;
     // Both interactive entry points run the same host loop, and both deploy
     // the admitted-routine registry unless told to emulate the original.
@@ -1547,6 +1565,8 @@ parse_logical_address_range(const std::string_view text)
             ? kGameplayAlleyRecordingFrames
         : options.record_gameplay_rebound
             ? kGameplayReboundRecordingFrames
+        : options.record_gameplay_skew
+            ? kGameplaySkewRecordingFrames
         : options.record_gameplay
             ? kGameplayRecordingFrames
             : options.record_canonical
@@ -5201,6 +5221,13 @@ void print_usage()
             "      [--routine-call-trace <calls.csv>]\n"
             "      [--rom <path>]\n"
         << "  devils-crush --record-gameplay-rebound [output.csv]\n"
+            "      [--replace-registry]\n"
+            "      [--native-cycle-census <census.csv>]\n"
+            "      [--instruction-profile <profile.csv>]\n"
+            "      [--observe-hook <bank:pc>]...\n"
+            "      [--routine-call-trace <calls.csv>]\n"
+            "      [--rom <path>]\n"
+        << "  devils-crush --record-gameplay-skew [output.csv]\n"
             "      [--replace-registry]\n"
             "      [--native-cycle-census <census.csv>]\n"
             "      [--instruction-profile <profile.csv>]\n"
@@ -8862,6 +8889,58 @@ struct ProbedAxis {
     return input;
 }
 
+[[nodiscard]] InputFrame gameplay_skew_input_for_frame(const int frame_number)
+{
+    InputFrame input;
+    const auto press = [&input](const Button button) {
+        input.player_one |= static_cast<std::uint16_t>(button);
+    };
+    const auto is_pair = [frame_number](const int first_frame) {
+        return frame_number == first_frame
+            || frame_number == first_frame + 1;
+    };
+
+    // The late launch creates a different initial arc, then a 1,201-frame
+    // prime cadence biases a wide left return before the short right bank.
+    // Button-II and directional impulses remain in neutral travel windows.
+    if (is_pair(180) || is_pair(300)) {
+        press(Button::run);
+    }
+    if (is_pair(420) || is_pair(700)
+        || (frame_number >= 850 && frame_number <= 880)
+        || (frame_number >= 1000 && frame_number <= 1400)) {
+        press(Button::one);
+    }
+    if (frame_number >= 1469) {
+        const int phase = (frame_number - 1469) % 1201;
+        if ((phase >= 71 && phase <= 113)
+            || (phase >= 844 && phase <= 865)) {
+            press(Button::left);
+        }
+        if (phase >= 352 && phase <= 374) {
+            press(Button::right);
+        }
+        if (phase >= 568 && phase <= 574) {
+            press(Button::one);
+        }
+        if (phase == 146 || phase == 147 || phase == 440 || phase == 441
+            || phase == 695 || phase == 696 || phase == 1049
+            || phase == 1050) {
+            press(Button::two);
+        }
+        if (phase == 24 || phase == 25) {
+            press(Button::up);
+        } else if (phase == 233 || phase == 234) {
+            press(Button::right);
+        } else if (phase == 612 || phase == 613) {
+            press(Button::down);
+        } else if (phase == 988 || phase == 989) {
+            press(Button::left);
+        }
+    }
+    return input;
+}
+
 [[nodiscard]] InputFrame state_census_input_for_frame(const int frame_number)
 {
     InputFrame input;
@@ -9332,6 +9411,21 @@ constexpr RecordingPlan kGameplayReboundRecordingPlan{
             "2196-2197+1009n",
     .frame_count = kGameplayReboundRecordingFrames,
     .input_for_frame = &gameplay_rebound_input_for_frame,
+};
+
+constexpr RecordingPlan kGameplaySkewRecordingPlan{
+    .format = "devils-crush-gameplay-skew-v1",
+    .label = "Gameplay skew",
+    .input_script =
+        "run:180-181,300-301;"
+        "one:420-421,700-701,850-880,1000-1400,2037-2043+1201n;"
+        "left:1540-1582+1201n,2313-2334+1201n,2457-2458+1201n;"
+        "right:1702-1703+1201n,1821-1843+1201n;"
+        "up:1493-1494+1201n;down:2081-2082+1201n;"
+        "two:1615-1616+1201n,1909-1910+1201n,2164-2165+1201n,"
+            "2518-2519+1201n",
+    .frame_count = kGameplaySkewRecordingFrames,
+    .input_for_frame = &gameplay_skew_input_for_frame,
 };
 
 constexpr RecordingPlan kStateCensusRecordingPlan{
@@ -16601,6 +16695,7 @@ int main(const int argc, char* argv[])
             || options.record_gameplay_corner
             || options.record_gameplay_alley
             || options.record_gameplay_rebound
+            || options.record_gameplay_skew
             || options.record_state_census) {
             const auto& recording_plan = options.record_state_census
                 ? kStateCensusRecordingPlan
@@ -16656,6 +16751,8 @@ int main(const int argc, char* argv[])
                     ? kGameplayAlleyRecordingPlan
                 : options.record_gameplay_rebound
                     ? kGameplayReboundRecordingPlan
+                : options.record_gameplay_skew
+                    ? kGameplaySkewRecordingPlan
                 : options.record_gameplay
                     ? kGameplayRecordingPlan
                     : kCanonicalRecordingPlan;
@@ -16713,6 +16810,8 @@ int main(const int argc, char* argv[])
                     ? options.gameplay_alley_path
                 : options.record_gameplay_rebound
                     ? options.gameplay_rebound_path
+                : options.record_gameplay_skew
+                    ? options.gameplay_skew_path
                 : options.record_gameplay
                     ? options.gameplay_path
                     : options.canonical_path;
