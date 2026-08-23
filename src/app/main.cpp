@@ -97,6 +97,9 @@ constexpr int kGameplayCornerRecordingFrames = 3600;
 constexpr int kGameplayAlleyRecordingFrames = 3600;
 constexpr int kGameplayReboundRecordingFrames = 3600;
 constexpr int kGameplaySkewRecordingFrames = 3600;
+constexpr int kGameplayHelixRecordingFrames = 3600;
+constexpr int kGameplayVectorRecordingFrames = 3600;
+constexpr int kGameplayRadialRecordingFrames = 3600;
 constexpr int kStateCensusRecordingFrames = 3600;
 constexpr int kMaximumAudioLatencyMilliseconds = 150;
 const std::filesystem::path kBackupRamPath =
@@ -165,6 +168,12 @@ const std::filesystem::path kGameplayReboundRecordingPath =
     std::filesystem::path("portable-data") / "gameplay-rebound-v1.csv";
 const std::filesystem::path kGameplaySkewRecordingPath =
     std::filesystem::path("portable-data") / "gameplay-skew-v1.csv";
+const std::filesystem::path kGameplayHelixRecordingPath =
+    std::filesystem::path("portable-data") / "gameplay-helix-v1.csv";
+const std::filesystem::path kGameplayVectorRecordingPath =
+    std::filesystem::path("portable-data") / "gameplay-vector-v1.csv";
+const std::filesystem::path kGameplayRadialRecordingPath =
+    std::filesystem::path("portable-data") / "gameplay-radial-v1.csv";
 const std::filesystem::path kStateCensusRecordingPath =
     std::filesystem::path("portable-data") / "state-census-v1.csv";
 const std::filesystem::path kBackupRamTestPath =
@@ -431,6 +440,21 @@ struct CommandLine {
     // patching or overlapping directional inputs.
     bool record_gameplay_skew = false;
     std::filesystem::path gameplay_skew_path = kGameplaySkewRecordingPath;
+    // A twenty-ninth input-only route. Its late high launch, right-first
+    // recovery, then alternating wide saves use a longer prime cadence to
+    // screen a fresh natural table trajectory without state patching.
+    bool record_gameplay_helix = false;
+    std::filesystem::path gameplay_helix_path = kGameplayHelixRecordingPath;
+    // A thirtieth input-only route. Its medium-high launch and staggered
+    // short/long side banks run on a distinct prime cadence, leaving every
+    // Button-II and directional impulse in neutral travel.
+    bool record_gameplay_vector = false;
+    std::filesystem::path gameplay_vector_path = kGameplayVectorRecordingPath;
+    // A thirty-first input-only route. Its late release and left-right-left
+    // recovery pattern run on a new prime cadence while keeping all nudge
+    // and Button-II impulses in neutral travel.
+    bool record_gameplay_radial = false;
+    std::filesystem::path gameplay_radial_path = kGameplayRadialRecordingPath;
     bool record_state_census = false;
     std::filesystem::path state_census_path = kStateCensusRecordingPath;
     std::filesystem::path canonical_work_ram_path;
@@ -987,6 +1011,30 @@ parse_logical_address_range(const std::string_view text)
             if (!next.empty() && next.front() != '-') {
                 options.gameplay_skew_path = argv[++index];
             }
+        } else if (argument == "--record-gameplay-helix") {
+            options.record_gameplay_helix = true;
+            const std::string_view next =
+                index + 1 < argc ? std::string_view(argv[index + 1])
+                                 : std::string_view{};
+            if (!next.empty() && next.front() != '-') {
+                options.gameplay_helix_path = argv[++index];
+            }
+        } else if (argument == "--record-gameplay-vector") {
+            options.record_gameplay_vector = true;
+            const std::string_view next =
+                index + 1 < argc ? std::string_view(argv[index + 1])
+                                 : std::string_view{};
+            if (!next.empty() && next.front() != '-') {
+                options.gameplay_vector_path = argv[++index];
+            }
+        } else if (argument == "--record-gameplay-radial") {
+            options.record_gameplay_radial = true;
+            const std::string_view next =
+                index + 1 < argc ? std::string_view(argv[index + 1])
+                                 : std::string_view{};
+            if (!next.empty() && next.front() != '-') {
+                options.gameplay_radial_path = argv[++index];
+            }
         } else if (argument == "--record-state-census") {
             options.record_state_census = true;
             const std::string_view next =
@@ -1465,6 +1513,9 @@ parse_logical_address_range(const std::string_view text)
         + static_cast<int>(options.record_gameplay_alley)
         + static_cast<int>(options.record_gameplay_rebound)
         + static_cast<int>(options.record_gameplay_skew)
+        + static_cast<int>(options.record_gameplay_helix)
+        + static_cast<int>(options.record_gameplay_vector)
+        + static_cast<int>(options.record_gameplay_radial)
         + static_cast<int>(options.record_state_census)
         + static_cast<int>(!options.routine_replay_corpus_paths.empty())
         + static_cast<int>(options.backup_ram_test);
@@ -1497,6 +1548,9 @@ parse_logical_address_range(const std::string_view text)
         || options.record_gameplay_alley
         || options.record_gameplay_rebound
         || options.record_gameplay_skew
+        || options.record_gameplay_helix
+        || options.record_gameplay_vector
+        || options.record_gameplay_radial
         || options.record_state_census;
     // Both interactive entry points run the same host loop, and both deploy
     // the admitted-routine registry unless told to emulate the original.
@@ -1567,6 +1621,12 @@ parse_logical_address_range(const std::string_view text)
             ? kGameplayReboundRecordingFrames
         : options.record_gameplay_skew
             ? kGameplaySkewRecordingFrames
+        : options.record_gameplay_helix
+            ? kGameplayHelixRecordingFrames
+        : options.record_gameplay_vector
+            ? kGameplayVectorRecordingFrames
+        : options.record_gameplay_radial
+            ? kGameplayRadialRecordingFrames
         : options.record_gameplay
             ? kGameplayRecordingFrames
             : options.record_canonical
@@ -5228,6 +5288,27 @@ void print_usage()
             "      [--routine-call-trace <calls.csv>]\n"
             "      [--rom <path>]\n"
         << "  devils-crush --record-gameplay-skew [output.csv]\n"
+            "      [--replace-registry]\n"
+            "      [--native-cycle-census <census.csv>]\n"
+            "      [--instruction-profile <profile.csv>]\n"
+            "      [--observe-hook <bank:pc>]...\n"
+            "      [--routine-call-trace <calls.csv>]\n"
+            "      [--rom <path>]\n"
+        << "  devils-crush --record-gameplay-helix [output.csv]\n"
+            "      [--replace-registry]\n"
+            "      [--native-cycle-census <census.csv>]\n"
+            "      [--instruction-profile <profile.csv>]\n"
+            "      [--observe-hook <bank:pc>]...\n"
+            "      [--routine-call-trace <calls.csv>]\n"
+            "      [--rom <path>]\n"
+        << "  devils-crush --record-gameplay-vector [output.csv]\n"
+            "      [--replace-registry]\n"
+            "      [--native-cycle-census <census.csv>]\n"
+            "      [--instruction-profile <profile.csv>]\n"
+            "      [--observe-hook <bank:pc>]...\n"
+            "      [--routine-call-trace <calls.csv>]\n"
+            "      [--rom <path>]\n"
+        << "  devils-crush --record-gameplay-radial [output.csv]\n"
             "      [--replace-registry]\n"
             "      [--native-cycle-census <census.csv>]\n"
             "      [--instruction-profile <profile.csv>]\n"
@@ -8941,6 +9022,162 @@ struct ProbedAxis {
     return input;
 }
 
+[[nodiscard]] InputFrame gameplay_helix_input_for_frame(const int frame_number)
+{
+    InputFrame input;
+    const auto press = [&input](const Button button) {
+        input.player_one |= static_cast<std::uint16_t>(button);
+    };
+    const auto is_pair = [frame_number](const int first_frame) {
+        return frame_number == first_frame
+            || frame_number == first_frame + 1;
+    };
+
+    // This late high launch enters a right-first wide-save pattern on a
+    // 1,237-frame prime cadence. Every Button-II and directional impulse is
+    // isolated in neutral travel so the route remains natural and input-only.
+    if (is_pair(180) || is_pair(300)) {
+        press(Button::run);
+    }
+    if (is_pair(420) || is_pair(700)
+        || (frame_number >= 850 && frame_number <= 880)
+        || (frame_number >= 1000 && frame_number <= 1515)) {
+        press(Button::one);
+    }
+    if (frame_number >= 1589) {
+        const int phase = (frame_number - 1589) % 1237;
+        if ((phase >= 47 && phase <= 89)
+            || (phase >= 761 && phase <= 789)) {
+            press(Button::right);
+        }
+        if (phase >= 301 && phase <= 328) {
+            press(Button::left);
+        }
+        if (phase >= 531 && phase <= 537) {
+            press(Button::one);
+        }
+        if (phase == 150 || phase == 151 || phase == 405 || phase == 406
+            || phase == 671 || phase == 672 || phase == 998
+            || phase == 999) {
+            press(Button::two);
+        }
+        if (phase == 21 || phase == 22) {
+            press(Button::up);
+        } else if (phase == 242 || phase == 243) {
+            press(Button::left);
+        } else if (phase == 583 || phase == 584) {
+            press(Button::down);
+        } else if (phase == 1109 || phase == 1110) {
+            press(Button::right);
+        }
+    }
+    return input;
+}
+
+[[nodiscard]] InputFrame gameplay_vector_input_for_frame(const int frame_number)
+{
+    InputFrame input;
+    const auto press = [&input](const Button button) {
+        input.player_one |= static_cast<std::uint16_t>(button);
+    };
+    const auto is_pair = [frame_number](const int first_frame) {
+        return frame_number == first_frame
+            || frame_number == first_frame + 1;
+    };
+
+    // A medium-high launch leads into long right, left, then short right
+    // banks. The 1,271-frame prime cadence avoids repeating prior save
+    // timing, while non-flipper impulses remain in neutral travel.
+    if (is_pair(180) || is_pair(300)) {
+        press(Button::run);
+    }
+    if (is_pair(420) || is_pair(700)
+        || (frame_number >= 850 && frame_number <= 880)
+        || (frame_number >= 1000 && frame_number <= 1330)) {
+        press(Button::one);
+    }
+    if (frame_number >= 1411) {
+        const int phase = (frame_number - 1411) % 1271;
+        if ((phase >= 69 && phase <= 100)
+            || (phase >= 803 && phase <= 816)) {
+            press(Button::right);
+        }
+        if (phase >= 361 && phase <= 383) {
+            press(Button::left);
+        }
+        if (phase >= 574 && phase <= 580) {
+            press(Button::one);
+        }
+        if (phase == 159 || phase == 160 || phase == 434 || phase == 435
+            || phase == 703 || phase == 704 || phase == 1025
+            || phase == 1026) {
+            press(Button::two);
+        }
+        if (phase == 24 || phase == 25) {
+            press(Button::up);
+        } else if (phase == 265 || phase == 266) {
+            press(Button::left);
+        } else if (phase == 619 || phase == 620) {
+            press(Button::down);
+        } else if (phase == 1145 || phase == 1146) {
+            press(Button::right);
+        }
+    }
+    return input;
+}
+
+[[nodiscard]] InputFrame gameplay_radial_input_for_frame(const int frame_number)
+{
+    InputFrame input;
+    const auto press = [&input](const Button button) {
+        input.player_one |= static_cast<std::uint16_t>(button);
+    };
+    const auto is_pair = [frame_number](const int first_frame) {
+        return frame_number == first_frame
+            || frame_number == first_frame + 1;
+    };
+
+    // The late launch and 1,301-frame prime cadence make long left, right,
+    // then short left saves. Directional and Button-II impulses stay between
+    // held-flipper windows to retain an input-only natural trajectory.
+    if (is_pair(180) || is_pair(300)) {
+        press(Button::run);
+    }
+    if (is_pair(420) || is_pair(700)
+        || (frame_number >= 850 && frame_number <= 880)
+        || (frame_number >= 1000 && frame_number <= 1445)) {
+        press(Button::one);
+    }
+    if (frame_number >= 1517) {
+        const int phase = (frame_number - 1517) % 1301;
+        if ((phase >= 53 && phase <= 75)
+            || (phase >= 812 && phase <= 830)) {
+            press(Button::left);
+        }
+        if (phase >= 319 && phase <= 347) {
+            press(Button::right);
+        }
+        if (phase >= 600 && phase <= 606) {
+            press(Button::one);
+        }
+        if (phase == 145 || phase == 146 || phase == 454 || phase == 455
+            || phase == 711 || phase == 712 || phase == 1091
+            || phase == 1092) {
+            press(Button::two);
+        }
+        if (phase == 22 || phase == 23) {
+            press(Button::up);
+        } else if (phase == 227 || phase == 228) {
+            press(Button::right);
+        } else if (phase == 528 || phase == 529) {
+            press(Button::down);
+        } else if (phase == 1220 || phase == 1221) {
+            press(Button::left);
+        }
+    }
+    return input;
+}
+
 [[nodiscard]] InputFrame state_census_input_for_frame(const int frame_number)
 {
     InputFrame input;
@@ -9426,6 +9663,51 @@ constexpr RecordingPlan kGameplaySkewRecordingPlan{
             "2518-2519+1201n",
     .frame_count = kGameplaySkewRecordingFrames,
     .input_for_frame = &gameplay_skew_input_for_frame,
+};
+
+constexpr RecordingPlan kGameplayHelixRecordingPlan{
+    .format = "devils-crush-gameplay-helix-v1",
+    .label = "Gameplay helix",
+    .input_script =
+        "run:180-181,300-301;"
+        "one:420-421,700-701,850-880,1000-1515,2120-2126+1237n;"
+        "right:1636-1678+1237n,2350-2378+1237n,2698-2699+1237n;"
+        "left:1831-1832+1237n,1890-1917+1237n;"
+        "up:1610-1611+1237n;down:2172-2173+1237n;"
+        "two:1739-1740+1237n,1994-1995+1237n,2260-2261+1237n,"
+            "2587-2588+1237n",
+    .frame_count = kGameplayHelixRecordingFrames,
+    .input_for_frame = &gameplay_helix_input_for_frame,
+};
+
+constexpr RecordingPlan kGameplayVectorRecordingPlan{
+    .format = "devils-crush-gameplay-vector-v1",
+    .label = "Gameplay vector",
+    .input_script =
+        "run:180-181,300-301;"
+        "one:420-421,700-701,850-880,1000-1330,1985-1991+1271n;"
+        "right:1480-1511+1271n,2214-2227+1271n,2556-2557+1271n;"
+        "left:1676-1677+1271n,1772-1794+1271n;"
+        "up:1435-1436+1271n;down:2030-2031+1271n;"
+        "two:1570-1571+1271n,1845-1846+1271n,2114-2115+1271n,"
+            "2436-2437+1271n",
+    .frame_count = kGameplayVectorRecordingFrames,
+    .input_for_frame = &gameplay_vector_input_for_frame,
+};
+
+constexpr RecordingPlan kGameplayRadialRecordingPlan{
+    .format = "devils-crush-gameplay-radial-v1",
+    .label = "Gameplay radial",
+    .input_script =
+        "run:180-181,300-301;"
+        "one:420-421,700-701,850-880,1000-1445,2117-2123+1301n;"
+        "left:1570-1592+1301n,2329-2347+1301n,2737-2738+1301n;"
+        "right:1744-1745+1301n,1836-1864+1301n;"
+        "up:1539-1540+1301n;down:2045-2046+1301n;"
+        "two:1662-1663+1301n,1971-1972+1301n,2228-2229+1301n,"
+            "2608-2609+1301n",
+    .frame_count = kGameplayRadialRecordingFrames,
+    .input_for_frame = &gameplay_radial_input_for_frame,
 };
 
 constexpr RecordingPlan kStateCensusRecordingPlan{
@@ -16696,6 +16978,9 @@ int main(const int argc, char* argv[])
             || options.record_gameplay_alley
             || options.record_gameplay_rebound
             || options.record_gameplay_skew
+            || options.record_gameplay_helix
+            || options.record_gameplay_vector
+            || options.record_gameplay_radial
             || options.record_state_census) {
             const auto& recording_plan = options.record_state_census
                 ? kStateCensusRecordingPlan
@@ -16753,6 +17038,12 @@ int main(const int argc, char* argv[])
                     ? kGameplayReboundRecordingPlan
                 : options.record_gameplay_skew
                     ? kGameplaySkewRecordingPlan
+                : options.record_gameplay_helix
+                    ? kGameplayHelixRecordingPlan
+                : options.record_gameplay_vector
+                    ? kGameplayVectorRecordingPlan
+                : options.record_gameplay_radial
+                    ? kGameplayRadialRecordingPlan
                 : options.record_gameplay
                     ? kGameplayRecordingPlan
                     : kCanonicalRecordingPlan;
@@ -16812,6 +17103,12 @@ int main(const int argc, char* argv[])
                     ? options.gameplay_rebound_path
                 : options.record_gameplay_skew
                     ? options.gameplay_skew_path
+                : options.record_gameplay_helix
+                    ? options.gameplay_helix_path
+                : options.record_gameplay_vector
+                    ? options.gameplay_vector_path
+                : options.record_gameplay_radial
+                    ? options.gameplay_radial_path
                 : options.record_gameplay
                     ? options.gameplay_path
                     : options.canonical_path;

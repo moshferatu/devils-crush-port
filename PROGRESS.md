@@ -1652,6 +1652,65 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
   - Rebuilt the Release and Debug application targets and verified CLI help,
     deterministic artifacts, focused trace output, and clean diff whitespace.
 
+- [x] Add and screen the input-only helix natural gameplay route without
+  patching emulated work RAM:
+  - `--record-gameplay-helix` releases a late high launcher charge at frame
+    1,515, then uses a right-first wide-save pattern on a 1,237-frame prime
+    cadence; every Button-II/directional impulse is isolated in neutral
+    travel.
+  - Assembly, deployed Release, and deployed Debug recordings are
+    byte-identical at `edfb657b...e871d6`; Release/Debug instruction profiles,
+    native-cycle censuses, and abandonment censuses also agree
+    (`8307e4a5...c149da4`, `826c7b77...3d3b60f`, and
+    `b74517d6...9669bc46`). All 593 admissions install, 417 routines enter,
+    and 691,100,913 of 1,292,371,731 elapsed master cycles run natively
+    (98.48% outside frame-sync), with no horizon declines or abandonments.
+  - Its 8,403-address assembly profile is a strict subset of alley, so it
+    reaches no unobserved table-rule code and requires no focused call trace
+    or replacement admission.
+  - Rebuilt the Release and Debug application targets and verified CLI help,
+    deterministic artifacts, and clean diff whitespace.
+
+- [x] Add and screen the input-only vector natural gameplay route without
+  patching emulated work RAM:
+  - `--record-gameplay-vector` releases a medium-high launcher charge at
+    frame 1,330, then uses staggered long-right, left, and short-right banks
+    on a 1,271-frame prime cadence; every Button-II/directional impulse is
+    isolated in neutral travel.
+  - Assembly, deployed Release, and deployed Debug recordings are
+    byte-identical at `312a5884...69e18f`; Release/Debug instruction profiles,
+    native-cycle censuses, and abandonment censuses also agree
+    (`a3a8592b...3318617`, `c6a12f07...6879c4`, and
+    `b74517d6...9669bc46`). All 593 admissions install, 420 routines enter,
+    and 689,837,430 of 1,292,372,109 elapsed master cycles run natively
+    (98.49% outside frame-sync), with no horizon declines or abandonments.
+  - Its 8,266-address assembly profile is a strict subset of alley, so it
+    reaches no unobserved table-rule code and requires no focused call trace
+    or replacement admission.
+  - Rebuilt the Release and Debug application targets and verified CLI help,
+    deterministic artifacts, and clean diff whitespace.
+
+- [x] Add and screen the input-only radial natural gameplay route without
+  patching emulated work RAM:
+  - `--record-gameplay-radial` releases a late launcher charge at frame
+    1,445, then uses long-left, right, and short-left recovery banks on a
+    1,301-frame prime cadence; every Button-II/directional impulse is
+    isolated in neutral travel.
+  - Assembly, deployed Release, and deployed Debug recordings are
+    byte-identical at `9fa5025a...95a460`; Release/Debug instruction profiles,
+    native-cycle censuses, and abandonment censuses also agree
+    (`5f84a758...62a98`, `93d1d113...6b100`, and
+    `cf9facaa...7dc42b`). All 593 admissions install, 472 routines enter,
+    and 689,508,723 of 1,292,372,115 elapsed master cycles run natively
+    (98.44% outside frame-sync), with no horizon declines.
+  - Its one deterministic abandonment is the existing defensive
+    `00:E241 -> 00:E250` MPR-mismatch handoff; it is reproduced by
+    both deployed configurations. Its 8,944-address assembly profile is a
+    strict subset of alley, so it requires no focused trace or replacement
+    admission.
+  - Rebuilt the Release and Debug application targets and verified CLI help,
+    deterministic artifacts, and clean diff whitespace.
+
 - [x] Isolate and close the independent frame-1,845 audio-only twist-route
   drift:
   - A full PSG bus-write bisection shows that the audible 12-cycle early
@@ -8781,7 +8840,7 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
 
 Current owner: Codex. Current slice: **screen the next materially different
 input-only natural gameplay route for an unobserved table-rule transaction with
-its own caller-and-return contract after skew**. Sidestep is now screened:
+its own caller-and-return contract after radial**. Sidestep is now screened:
 its middle-strength launch, 947-frame asymmetric side saves, and neutral-only
 Button-II impulses preserve byte-identical assembly/Release/Debug recordings
 (`30cce23f...05d82a`), profiles, native-cycle censuses, and abandonment
@@ -8879,6 +8938,43 @@ that runs `01:C51D -> 01:C5E9` in 26,910 cycles/828 writes and the one-write
 local `01:D000` continuation (`01:CF67 -> 01:D004`); neither has an independent
 caller-and-return contract. Keep these paths assembly-backed and select a
 further materially different natural route.
+The helix route is also screened: its frame-1,515 high release, right-first
+wide saves, and 1,237-frame prime cadence preserve byte-identical
+assembly/Release/Debug recordings (`edfb657b...e871d6`), while the Release/
+Debug deployed profiles, native-cycle censuses, and abandonment censuses agree
+(`8307e4a5...c149da4`, `826c7b77...3d3b60f`, and
+`b74517d6...9669bc46`). All 593 admissions install, 417 routines enter, and
+691,100,913 of 1,292,371,731 elapsed master cycles run natively (98.48%
+outside frame-sync) with no horizon declines or abandonments. Its complete
+8,403-address assembly profile is a strict subset of alley, so it exposes no
+unobserved table-rule transaction and needs no focused trace or replacement.
+Keep every reached path assembly-backed and select a further materially
+different natural route.
+The vector route is also screened: its frame-1,330 medium-high release,
+staggered long-right, left, and short-right banks, and 1,271-frame prime
+cadence preserve byte-identical assembly/Release/Debug recordings
+(`312a5884...69e18f`), while the Release/Debug deployed profiles, native-cycle
+censuses, and abandonment censuses agree (`a3a8592b...3318617`,
+`c6a12f07...6879c4`, and `b74517d6...9669bc46`). All 593 admissions
+install, 420 routines enter, and 689,837,430 of 1,292,372,109 elapsed master
+cycles run natively (98.49% outside frame-sync) with no horizon declines or
+abandonments. Its complete 8,266-address assembly profile is a strict subset
+of alley, so it exposes no unobserved table-rule transaction and needs no
+focused trace or replacement. Keep every reached path assembly-backed and
+select a further materially different natural route.
+The radial route is also screened: its frame-1,445 late release, long-left,
+right, and short-left recovery banks, and 1,301-frame prime cadence preserve
+byte-identical assembly/Release/Debug recordings (`9fa5025a...95a460`), while
+the Release/Debug deployed profiles, native-cycle censuses, and abandonment
+censuses agree (`5f84a758...62a98`, `93d1d113...6b100`, and
+`cf9facaa...7dc42b`). All 593 admissions install, 472 routines enter, and
+689,508,723 of 1,292,372,115 elapsed master cycles run natively (98.44%
+outside frame-sync) with no horizon declines. The single reproduced
+`00:E241 -> 00:E250` MPR-mismatch abandonment is the existing defensive
+handoff. Its complete 8,944-address assembly profile is a strict subset of
+alley, so it exposes no unobserved table-rule transaction and needs no
+focused trace or replacement. Keep every reached path assembly-backed and
+select a further materially different natural route.
 The twist fidelity gate is closed:
 `02:570A` retains its Big-Star timer-horizon fallback, while `03:66A3` now
 leaves its post-handoff timer-sensitive calls in assembly. The fully deployed
