@@ -1,6 +1,6 @@
 # Project Progress
 
-Last updated: 2026-08-22
+Last updated: 2026-08-23
 
 ## Current Status
 
@@ -1710,6 +1710,19 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
     admission.
   - Rebuilt the Release and Debug application targets and verified CLI help,
     deterministic artifacts, and clean diff whitespace.
+
+- [x] Add interactive player-session capture for coverage-led port work:
+  - `--capture-session <directory>` runs the ordinary desktop or cabinet
+    host and, on exit, writes exact processed per-frame pad and plunger
+    inputs to `inputs.csv`, alongside `instruction-profile.csv`,
+    `abandonment-census.csv`, and the deployed host's
+    `native-cycle-census.csv`.
+  - Capture enables instruction profiling without changing the live host's
+    default native registry. Quick-state restore is disabled during capture,
+    preserving a replayable power-on input stream.
+  - Validated Debug CLI help and rejection of incompatible smoke-test or
+    missing-directory invocations; rebuilt Debug and Release application
+    targets and checked diff whitespace.
 
 - [x] Isolate and close the independent frame-1,845 audio-only twist-route
   drift:
@@ -8838,9 +8851,12 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
 
 ## Active Work
 
-Current owner: Codex. Current slice: **screen the next materially different
-input-only natural gameplay route for an unobserved table-rule transaction with
-its own caller-and-return contract after radial**. Sidestep is now screened:
+Current owner: Codex. Current slice: **collect and rank a player-led interactive
+capture for an unobserved table-rule transaction with its own caller-and-return
+contract**. The capture mode records exact per-frame processed pad and plunger
+inputs and the deployed host's instruction profile, native-cycle census, and
+abandonment census on exit; quick-state restore is disabled so the input stream
+remains a replayable power-on session. Sidestep is now screened:
 its middle-strength launch, 947-frame asymmetric side saves, and neutral-only
 Button-II impulses preserve byte-identical assembly/Release/Debug recordings
 (`30cce23f...05d82a`), profiles, native-cycle censuses, and abandonment

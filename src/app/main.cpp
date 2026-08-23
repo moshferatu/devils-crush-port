@@ -281,6 +281,9 @@ struct CommandLine {
     bool smoke_test = false;
     bool cabinet_smoke_test = false;
     bool cabinet = false;
+    // Records an interactive, power-on play session as exact per-frame pad
+    // masks plus the runtime coverage artifacts needed to rank new code.
+    std::filesystem::path capture_session_directory;
     // Diagnostic: draw only one of the stitched playfield's layers.
     CabinetLayers cabinet_layers = CabinetLayers::all;
     // Diagnostic: report retained-overlay composition once a second.
@@ -779,6 +782,12 @@ parse_logical_address_range(const std::string_view text)
             options.cabinet_smoke_test = true;
         } else if (argument == "--cabinet") {
             options.cabinet = true;
+        } else if (argument == "--capture-session") {
+            if (index + 1 >= argc) {
+                options.error = "--capture-session requires a directory.";
+                return options;
+            }
+            options.capture_session_directory = argv[++index];
         } else if (argument == "--record-canonical") {
             options.record_canonical = true;
             const std::string_view next =
@@ -1639,6 +1648,10 @@ parse_logical_address_range(const std::string_view text)
         options.cabinet && (operation_count != 0 || options.validate_only)) {
         options.error =
             "--cabinet is available only for the interactive host.";
+    } else if (!options.capture_session_directory.empty()
+               && (!host_selected || options.cabinet_smoke_test)) {
+        options.error =
+            "--capture-session requires the interactive host.";
     } else if (options.cabinet_overlay_stats && !options.cabinet
                && !options.cabinet_smoke_test) {
         options.error =
@@ -5069,9 +5082,11 @@ void print_usage()
         << "Devil's Crush PC port - Milestone 4\n\n"
         << "Usage:\n"
         << "  devils-crush [--rom <path>]\n"
-           "      [--emulate-only] [--native-cycle-census <census.csv>]\n"
+           "      [--emulate-only] [--capture-session <directory>]\n"
+           "      [--native-cycle-census <census.csv>]\n"
         << "  devils-crush --cabinet [--rom <path>]\n"
-           "      [--emulate-only] [--native-cycle-census <census.csv>]\n"
+           "      [--emulate-only] [--capture-session <directory>]\n"
+           "      [--native-cycle-census <census.csv>]\n"
         << "  devils-crush --validate-rom [path]\n"
         << "  devils-crush --smoke-test [--rom <path>]\n"
         << "  devils-crush --cabinet-smoke-test [--rom <path>]\n"
@@ -5420,6 +5435,13 @@ void print_usage()
            "  installed. --emulated-pad hands the port back, and\n"
            "  --report-pad-coverage prints which of its paths a route\n"
            "  drove.\n\n"
+        << "Interactive capture:\n"
+           "  --capture-session <directory> records a live power-on session\n"
+           "  when it exits. The directory receives pad and plunger inputs,\n"
+           "  in inputs.csv, plus an\n"
+           "  instruction profile, an abandonment census, and (for the\n"
+           "  default deployed host) a native-cycle census. F9 restore is\n"
+           "  disabled during capture so the input stream remains replayable.\n\n"
         << "Controls (defaults; see input.* in portable-data/cabinet.ini):\n"
         << "  Left Shift / Left    Left flipper (PCE d-pad left)\n"
         << "  Right / Right Shift  Right flipper (PCE d-pad right)\n"
@@ -5434,7 +5456,7 @@ void print_usage()
         << "  Plunger              Launches from the shooter, at the power\n"
            "                       the rod was drawn to\n"
         << "  F5                   Save quick state\n"
-        << "  F9                   Restore quick state\n"
+        << "  F9                   Restore quick state (disabled while capturing)\n"
         << "  F10                  Reload custom gamepad mappings\n"
         << "  F11                  Toggle borderless fullscreen\n"
         << "  F8                   Capture 4 playfield frames as BMP\n"
@@ -10550,6 +10572,73 @@ void report_pad_coverage(
     }
 }
 
+struct InteractiveCaptureFrame {
+    InputFrame input;
+    devils_crush::input::PlungerSample plunger;
+    // The host only modifies the shooter after the cartridge accepts the
+    // draw. Keeping this result distinguishes a raw axis position from a
+    // gameplay-visible plunger movement during replay.
+    bool plunger_engaged = false;
+};
+
+// Interactive sessions need a replayable input stream, not a description of
+// what a person remembers pressing. The pad mask is exactly the value sent to
+// the runtime after launcher suppression and opposing-direction resolution.
+// The plunger fields retain the only host-side input that is not a pad bit.
+[[nodiscard]] bool write_interactive_input_capture(
+    const std::filesystem::path& directory,
+    const std::span<const InteractiveCaptureFrame> inputs,
+    const std::string_view core_revision)
+{
+    std::error_code error;
+    std::filesystem::create_directories(directory, error);
+    if (error) {
+        std::cerr << "Could not create interactive capture directory: "
+                  << error.message() << '\n';
+        return false;
+    }
+
+    const auto path = directory / "inputs.csv";
+    auto temporary_path = path;
+    temporary_path += ".tmp";
+    std::ofstream output(
+        temporary_path,
+        std::ios::binary | std::ios::trunc);
+    if (!output) {
+        std::cerr << "Could not create interactive input capture: "
+                  << temporary_path.string() << '\n';
+        return false;
+    }
+
+    output << "# format=devils-crush-interactive-input-v1\n"
+           << "# rom_sha256=" << devils_crush::rom::kSupportedSha256 << '\n'
+           << "# core_revision=" << core_revision << '\n'
+           << "# frame_count=" << inputs.size() << '\n'
+           << "frame,player_one,player_two,plunger_draw,plunger_drawn,"
+              "plunger_released,plunger_engaged\n";
+    for (std::size_t index = 0U; index < inputs.size(); ++index) {
+        const auto& captured = inputs[index];
+        output << index + 1U << ',' << captured.input.player_one << ','
+               << captured.input.player_two << ','
+               << static_cast<unsigned>(captured.plunger.draw) << ','
+               << (captured.plunger.drawn ? 1 : 0) << ','
+               << (captured.plunger.released ? 1 : 0) << ','
+               << (captured.plunger_engaged ? 1 : 0) << '\n';
+    }
+    output.close();
+    if (!output) {
+        std::cerr << "Could not finalize interactive input capture.\n";
+        return false;
+    }
+    if (!commit_artifact(temporary_path, path, "interactive input capture")) {
+        return false;
+    }
+
+    std::cout << "Interactive input capture complete: " << inputs.size()
+              << " frames\nOutput: " << path.string() << '\n';
+    return true;
+}
+
 [[nodiscard]] bool write_instruction_profile(
     const std::filesystem::path& path,
     const std::span<const devils_crush::emulation::InstructionProfileEntry>
@@ -13050,7 +13139,8 @@ int run_windows_host(
     const int frame_limit = 0,
     const CommandLine* native_registry = nullptr,
     const CabinetLayers layers = CabinetLayers::all,
-    const bool overlay_stats = false)
+    const bool overlay_stats = false,
+    const std::filesystem::path& capture_session_directory = {})
 {
     // Joystick as well as gamepad: the plunger is an anonymous HID axis that
     // SDL's gamepad database has no mapping for, so it is only visible through
@@ -13265,6 +13355,8 @@ int run_windows_host(
     bool host_ok = true;
     int emulated_frames = 0;
     int playfield_dump_remaining = 0;
+    const bool capture_session = !capture_session_directory.empty();
+    std::vector<InteractiveCaptureFrame> captured_inputs;
 
     // The registry is installed last, once every fallible setup step has
     // succeeded, so no early return can leave a hook pointing at a dead
@@ -13330,6 +13422,21 @@ int run_windows_host(
         std::cerr << "Could not carry the high-score table across runs.\n";
         running = false;
         host_ok = false;
+    }
+    if (host_ok && capture_session
+        && !runtime.set_instruction_profiling(true)) {
+        std::cerr
+            << "Could not enable instruction profiling for interactive "
+               "capture.\n";
+        running = false;
+        host_ok = false;
+    }
+    if (host_ok && capture_session) {
+        std::cout << "Interactive capture armed: per-frame input, instruction "
+                     "profile, and deployment censuses will be written to "
+                  << capture_session_directory.string()
+                  << " when this session closes. Quick-state restore is "
+                     "disabled while capturing.\n";
     }
     while (running && host_ok) {
         claim_startup_focus(window, focus_claim);
@@ -13467,7 +13574,10 @@ int run_windows_host(
             } else if (
                 event.type == SDL_EVENT_KEY_DOWN && !event.key.repeat
                 && event.key.key == SDLK_F9) {
-                if (load_quick_state(runtime, kQuickStatePath)) {
+                if (capture_session) {
+                    std::cerr << "Quick-state restore is disabled during "
+                                 "interactive capture.\n";
+                } else if (load_quick_state(runtime, kQuickStatePath)) {
                     if (audio.stream != nullptr
                         && !SDL_ClearAudioStream(audio.stream)) {
                         report_sdl_error("SDL_ClearAudioStream failed");
@@ -13556,12 +13666,20 @@ int run_windows_host(
             // dispatching to its charge script, and refuses otherwise.
             const bool rod_engaged = ball_in_launcher && rod.drawn
                 && apply_plunger_draw(runtime, rod.draw);
-            const auto frame = runtime.run_frame(read_input(
+            const auto input = read_input(
                 gamepad,
                 key_bindings,
                 ball_in_launcher,
                 cabinet_config.input.flippers,
-                rod_engaged && !rod.released));
+                rod_engaged && !rod.released);
+            if (capture_session) {
+                captured_inputs.push_back({
+                    .input = input,
+                    .plunger = rod,
+                    .plunger_engaged = rod_engaged,
+                });
+            }
+            const auto frame = runtime.run_frame(input);
             ++emulated_frames;
             poll_high_scores(runtime, high_scores, emulated_frames);
             if (!cabinet_mode) {
@@ -13801,6 +13919,34 @@ int run_windows_host(
                 registry_deployment.span,
                 runtime.info().upstream_revision)) {
             host_ok = false;
+        }
+    }
+    if (capture_session) {
+        const auto core_revision = runtime.info().upstream_revision;
+        if (!write_interactive_input_capture(
+                capture_session_directory,
+                captured_inputs,
+                core_revision)
+            || (!captured_inputs.empty()
+                && !write_instruction_profile(
+                    capture_session_directory / "instruction-profile.csv",
+                    runtime.export_instruction_profile(),
+                    core_revision))
+            || !write_abandonment_census(
+                capture_session_directory / "abandonment-census.csv",
+                runtime.export_abandonment_census(),
+                core_revision)
+            || (native_registry != nullptr
+                && !write_native_cycle_census(
+                    capture_session_directory / "native-cycle-census.csv",
+                    registry_deployment.rows,
+                    registry_deployment.span,
+                    core_revision))) {
+            host_ok = false;
+        }
+        if (captured_inputs.empty()) {
+            std::cerr << "Interactive capture closed before an emulated "
+                         "frame; no instruction profile was written.\n";
         }
     }
     if (host_ok && frame_limit > 0) {
@@ -17642,7 +17788,8 @@ int main(const int argc, char* argv[])
             0,
             host_registry,
             options.cabinet_layers,
-            options.cabinet_overlay_stats);
+            options.cabinet_overlay_stats,
+            options.capture_session_directory);
         const bool save_succeeded =
             save_backup_ram(*runtime, kBackupRamPath);
         return host_result == EXIT_SUCCESS && save_succeeded
