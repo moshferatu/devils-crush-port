@@ -167,6 +167,13 @@ divider. Forced and default registry replays preserve every frame hash; the
 default registry adds 1,334,988 native master cycles and raises non-wait
 coverage to 97.48%.
 
+The next post-divider profile residue, `03:7525`, is not another leaf. Its ROM
+byte is a bare `RTS`, and all 19,656 session-6 observations share the
+`01:C520 -> 01:C523` continuation through the existing `01:C654` actor
+dispatch (153 master cycles and only the caller's two stack writes). Keep this
+return landing pad within its actor owner; registering it would manufacture a
+boundary where the game has none.
+
 `05:6D27` is the first independently bounded session-6 residue to clear the
 screen. Its 7,728 calls all arrive from `05:C565` and return through `05:C568`.
 The 7,719 live orbit arms return at `05:6D7E` after exactly 450 master cycles
