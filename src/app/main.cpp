@@ -28,6 +28,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cctype>
 #include <charconv>
 #include <chrono>
 #include <cstdint>
@@ -284,6 +285,9 @@ struct CommandLine {
     // Records an interactive, power-on play session as exact per-frame pad
     // masks plus the runtime coverage artifacts needed to rank new code.
     std::filesystem::path capture_session_directory;
+    // Replays the pad stream from an interactive capture through the ordinary
+    // deterministic recording and trace machinery.
+    std::filesystem::path replay_session_input_path;
     // Diagnostic: draw only one of the stitched playfield's layers.
     CabinetLayers cabinet_layers = CabinetLayers::all;
     // Diagnostic: report retained-overlay composition once a second.
@@ -533,6 +537,7 @@ struct CommandLine {
     bool cabinet_launch_flipper_probe = false;
     bool cabinet_plunger_probe = false;
     bool cabinet_plunger_check = false;
+    bool verify_unsigned_square_root = false;
     bool high_score_check = false;
     std::filesystem::path cabinet_view_probe_directory;
     bool cabinet_seed_check = false;
@@ -788,6 +793,12 @@ parse_logical_address_range(const std::string_view text)
                 return options;
             }
             options.capture_session_directory = argv[++index];
+        } else if (argument == "--replay-session") {
+            if (index + 1 >= argc) {
+                options.error = "--replay-session requires an inputs.csv path.";
+                return options;
+            }
+            options.replay_session_input_path = argv[++index];
         } else if (argument == "--record-canonical") {
             options.record_canonical = true;
             const std::string_view next =
@@ -1384,6 +1395,8 @@ parse_logical_address_range(const std::string_view text)
             options.cabinet_plunger_probe = true;
         } else if (argument == "--cabinet-plunger-check") {
             options.cabinet_plunger_check = true;
+        } else if (argument == "--verify-unsigned-square-root") {
+            options.verify_unsigned_square_root = true;
         } else if (argument == "--high-score-check") {
             options.high_score_check = true;
         } else if (argument == "--cabinet-view-probe") {
@@ -1525,8 +1538,10 @@ parse_logical_address_range(const std::string_view text)
         + static_cast<int>(options.record_gameplay_helix)
         + static_cast<int>(options.record_gameplay_vector)
         + static_cast<int>(options.record_gameplay_radial)
+        + static_cast<int>(!options.replay_session_input_path.empty())
         + static_cast<int>(options.record_state_census)
         + static_cast<int>(!options.routine_replay_corpus_paths.empty())
+        + static_cast<int>(options.verify_unsigned_square_root)
         + static_cast<int>(options.backup_ram_test);
     const bool recording_selected =
         options.record_canonical || options.record_gameplay
@@ -1560,6 +1575,7 @@ parse_logical_address_range(const std::string_view text)
         || options.record_gameplay_helix
         || options.record_gameplay_vector
         || options.record_gameplay_radial
+        || !options.replay_session_input_path.empty()
         || options.record_state_census;
     // Both interactive entry points run the same host loop, and both deploy
     // the admitted-routine registry unless told to emulate the original.
@@ -1644,10 +1660,13 @@ parse_logical_address_range(const std::string_view text)
     if (operation_count > 1) {
         options.error =
             "Only one test or recording operation may be selected.";
-    } else if (
-        options.cabinet && (operation_count != 0 || options.validate_only)) {
+    } else if (options.cabinet
+               && ((operation_count != 0
+                    && options.replay_session_input_path.empty())
+                   || options.validate_only)) {
         options.error =
-            "--cabinet is available only for the interactive host.";
+            "--cabinet is available only for the interactive host or a "
+            "captured-session replay.";
     } else if (!options.capture_session_directory.empty()
                && (!host_selected || options.cabinet_smoke_test)) {
         options.error =
@@ -1888,6 +1907,13 @@ parse_logical_address_range(const std::string_view text)
                                    == RoutineKey{
                                        .physical_bank = 0x00U,
                                        .logical_pc = 0xE837U,
+                                   }
+                           && request.all_calls;
+                       const bool proven_unsigned_square_root =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x00U,
+                                       .logical_pc = 0xE85DU,
                                    }
                            && request.all_calls;
                        const bool proven_signed_division =
@@ -4476,6 +4502,7 @@ parse_logical_address_range(const std::string_view text)
                            && !proven_score_repeat_wrapper
                            && !proven_rng_update
                            && !proven_signed_word_negation
+                           && !proven_unsigned_square_root
                            && !proven_signed_division
                            && !proven_unsigned_24_division
                            && !proven_unsigned_byte_division
@@ -5084,6 +5111,7 @@ void print_usage()
         << "  devils-crush [--rom <path>]\n"
            "      [--emulate-only] [--capture-session <directory>]\n"
            "      [--native-cycle-census <census.csv>]\n"
+        << "  devils-crush --replay-session <inputs.csv> [--rom <path>]\n"
         << "  devils-crush --cabinet [--rom <path>]\n"
            "      [--emulate-only] [--capture-session <directory>]\n"
            "      [--native-cycle-census <census.csv>]\n"
@@ -5438,10 +5466,14 @@ void print_usage()
         << "Interactive capture:\n"
            "  --capture-session <directory> records a live power-on session\n"
            "  when it exits. The directory receives pad and plunger inputs,\n"
-           "  in inputs.csv, plus an\n"
+           "  plus per-frame work-RAM hashes in inputs.csv, an initial.state\n"
+           "  checkpoint and initial.hiscore sidecar, plus an\n"
            "  instruction profile, an abandonment census, and (for the\n"
            "  default deployed host) a native-cycle census. F9 restore is\n"
-           "  disabled during capture so the input stream remains replayable.\n\n"
+           "  disabled during capture so the input stream remains replayable.\n"
+           "  --replay-session <inputs.csv> re-runs a pad-only capture through\n"
+           "  the recording and trace options, checks each saved work-RAM hash,\n"
+           "  and writes replay.csv beside it.\n\n"
         << "Controls (defaults; see input.* in portable-data/cabinet.ini):\n"
         << "  Left Shift / Left    Left flipper (PCE d-pad left)\n"
         << "  Right / Right Shift  Right flipper (PCE d-pad right)\n"
@@ -9242,13 +9274,39 @@ struct ProbedAxis {
 
 using RecordingInputFunction = InputFrame (*)(int);
 
+[[nodiscard]] bool apply_flipper_inputs(
+    PceRuntime& runtime,
+    const devils_crush::cabinet::FlipperInputs& flippers);
+[[nodiscard]] bool install_shooter_flipper_gate(
+    PceRuntime& runtime,
+    const devils_crush::cabinet::FlipperInputs& flippers);
+void keep_fixed_actors_simulating(PceRuntime& runtime);
+
 struct RecordingPlan {
     std::string_view format;
     std::string_view label;
     std::string_view input_script;
     int frame_count = 0;
     RecordingInputFunction input_for_frame = nullptr;
+    std::span<const InputFrame> captured_inputs;
+    std::span<const std::string> expected_work_ram_sha256s;
+    // Interactive capture applies this host-side flipper setup before each
+    // emulated frame. It changes the cartridge's per-piece input masks and
+    // restores held flipper directions after the shooter gate, so it is part
+    // of the replay contract even though it is not a pad-port bit.
+    bool restore_interactive_flipper_host = false;
+    bool restore_interactive_cabinet_host = false;
 };
+
+[[nodiscard]] InputFrame input_for_recording_plan_frame(
+    const RecordingPlan& plan,
+    const int frame_number)
+{
+    if (plan.input_for_frame != nullptr) {
+        return plan.input_for_frame(frame_number);
+    }
+    return plan.captured_inputs[static_cast<std::size_t>(frame_number - 1)];
+}
 
 struct RoutineReplayCapture {
     RoutineReplayRequest request;
@@ -10579,16 +10637,225 @@ struct InteractiveCaptureFrame {
     // draw. Keeping this result distinguishes a raw axis position from a
     // gameplay-visible plunger movement during replay.
     bool plunger_engaged = false;
+    std::string work_ram_sha256;
 };
+
+// A captured pad stream becomes a regular deterministic recording plan. This
+// accepts the original three-column v1 artifact as well as the later
+// plunger-aware form, but refuses a session in which the physical rod moved:
+// replaying its button bit without its pre-frame shooter write would be a
+// misleading approximation.
+struct InteractiveSessionReplay {
+    std::vector<InputFrame> inputs;
+    std::vector<std::string> work_ram_sha256s;
+    std::filesystem::path initial_state_path;
+    std::filesystem::path initial_high_score_path;
+    bool cabinet_host = false;
+};
+
+[[nodiscard]] std::optional<InteractiveSessionReplay>
+read_interactive_session_replay(const std::filesystem::path& path)
+{
+    std::ifstream input(path, std::ios::binary);
+    if (!input) {
+        std::cerr << "Could not open interactive session input: "
+                  << path.string() << '\n';
+        return std::nullopt;
+    }
+
+    std::string format;
+    std::string rom_line;
+    std::string revision_line;
+    std::string count_line;
+    std::string header;
+    if (!std::getline(input, format) || !std::getline(input, rom_line)
+        || !std::getline(input, revision_line)
+        || !std::getline(input, count_line) || !std::getline(input, header)) {
+        std::cerr << "Interactive input header is incomplete: "
+                  << path.string() << '\n';
+        return std::nullopt;
+    }
+    constexpr std::string_view rom_prefix = "# rom_sha256=";
+    constexpr std::string_view count_prefix = "# frame_count=";
+    const bool has_work_ram_hashes =
+        format == "# format=devils-crush-interactive-input-v2"
+        || format == "# format=devils-crush-interactive-input-v3";
+    const bool has_host_mode =
+        format == "# format=devils-crush-interactive-input-v3";
+    if ((format != "# format=devils-crush-interactive-input-v1"
+         && !has_work_ram_hashes)
+        || !rom_line.starts_with(rom_prefix)
+        || rom_line.substr(rom_prefix.size())
+            != devils_crush::rom::kSupportedSha256
+        || !revision_line.starts_with("# core_revision=")
+        || !count_line.starts_with(count_prefix)) {
+        std::cerr << "Interactive input metadata is not compatible: "
+                  << path.string() << '\n';
+        return std::nullopt;
+    }
+    bool cabinet_host = false;
+    if (has_host_mode) {
+        if (header == "# host_mode=cabinet") {
+            cabinet_host = true;
+        } else if (header != "# host_mode=desktop") {
+            std::cerr << "Interactive input host mode is invalid: "
+                      << path.string() << '\n';
+            return std::nullopt;
+        }
+        if (!std::getline(input, header)) {
+            std::cerr << "Interactive input columns are missing: "
+                      << path.string() << '\n';
+            return std::nullopt;
+        }
+    }
+
+    std::uint64_t declared_count = 0U;
+    const auto [count_end, count_error] = std::from_chars(
+        count_line.data() + count_prefix.size(),
+        count_line.data() + count_line.size(),
+        declared_count);
+    if (count_error != std::errc{} || count_end != count_line.data()
+            + count_line.size()
+        || declared_count == 0U
+        || declared_count
+            > static_cast<std::uint64_t>(std::numeric_limits<int>::max())) {
+        std::cerr << "Interactive input frame count is invalid: "
+                  << path.string() << '\n';
+        return std::nullopt;
+    }
+    constexpr std::string_view kPadHeader = "frame,player_one,player_two";
+    const bool includes_plunger = header
+        == "frame,player_one,player_two,plunger_draw,plunger_drawn,"
+           "plunger_released,plunger_engaged";
+    const bool includes_work_ram_hash = header
+        == "frame,player_one,player_two,plunger_draw,plunger_drawn,"
+           "plunger_released,plunger_engaged,work_ram_sha256";
+    if (header != kPadHeader && !includes_plunger
+        && !includes_work_ram_hash) {
+        std::cerr << "Interactive input columns are not supported: "
+                  << path.string() << '\n';
+        return std::nullopt;
+    }
+    if (has_work_ram_hashes != includes_work_ram_hash) {
+        std::cerr << "Interactive input format and columns disagree: "
+                  << path.string() << '\n';
+        return std::nullopt;
+    }
+
+    const auto parse_unsigned = [](const std::string_view text,
+                                   const std::uint32_t maximum)
+        -> std::optional<std::uint32_t> {
+        std::uint32_t value = 0U;
+        const auto [end, error] = std::from_chars(
+            text.data(), text.data() + text.size(), value);
+        if (text.empty() || error != std::errc{}
+            || end != text.data() + text.size() || value > maximum) {
+            return std::nullopt;
+        }
+        return value;
+    };
+    const auto fields_for = [](const std::string& line) {
+        std::vector<std::string_view> fields;
+        std::size_t begin = 0U;
+        while (begin <= line.size()) {
+            const auto end = line.find(',', begin);
+            fields.emplace_back(
+                line.data() + begin,
+                (end == std::string::npos ? line.size() : end) - begin);
+            if (end == std::string::npos) {
+                break;
+            }
+            begin = end + 1U;
+        }
+        return fields;
+    };
+
+    InteractiveSessionReplay replay;
+    replay.cabinet_host = cabinet_host;
+    replay.initial_state_path = path.parent_path() / "initial.state";
+    std::error_code state_error;
+    if (!std::filesystem::is_regular_file(replay.initial_state_path,
+                                          state_error)
+        || state_error) {
+        std::cerr << "Interactive replay requires the capture's initial.state; "
+                     "recapture this session with the current executable: "
+                  << replay.initial_state_path.string() << '\n';
+        return std::nullopt;
+    }
+    const auto high_score_path = path.parent_path() / "initial.hiscore";
+    std::error_code high_score_error;
+    if (std::filesystem::is_regular_file(high_score_path, high_score_error)
+        && !high_score_error) {
+        replay.initial_high_score_path = high_score_path;
+    }
+    replay.inputs.reserve(static_cast<std::size_t>(declared_count));
+    if (includes_work_ram_hash) {
+        replay.work_ram_sha256s.reserve(
+            static_cast<std::size_t>(declared_count));
+    }
+    std::string line;
+    while (std::getline(input, line)) {
+        const auto fields = fields_for(line);
+        if (fields.size()
+            != (includes_work_ram_hash ? 8U : includes_plunger ? 7U : 3U)) {
+            std::cerr << "Interactive input row has the wrong column count: "
+                      << path.string() << '\n';
+            return std::nullopt;
+        }
+        const auto frame = parse_unsigned(fields[0],
+                                          std::numeric_limits<int>::max());
+        const auto player_one = parse_unsigned(
+            fields[1], std::numeric_limits<std::uint16_t>::max());
+        const auto player_two = parse_unsigned(
+            fields[2], std::numeric_limits<std::uint16_t>::max());
+        if (!frame || !player_one || !player_two
+            || *frame != replay.inputs.size() + 1U
+            || (includes_plunger && fields[6] != "0")) {
+            std::cerr << (includes_plunger && fields[6] != "0"
+                              ? "Interactive replay cannot yet reproduce a "
+                                "physical-plunger draw: "
+                              : "Interactive input row is invalid: ")
+                      << path.string() << '\n';
+            return std::nullopt;
+        }
+        replay.inputs.push_back({
+            .player_one = static_cast<std::uint16_t>(*player_one),
+            .player_two = static_cast<std::uint16_t>(*player_two),
+        });
+        if (includes_work_ram_hash) {
+            const auto hash = fields[7];
+            const bool valid_hash = hash.size() == 64U
+                && std::ranges::all_of(hash, [](const unsigned char value) {
+                    return std::isxdigit(value) != 0;
+                });
+            if (!valid_hash) {
+                std::cerr << "Interactive input work-RAM hash is invalid: "
+                          << path.string() << '\n';
+                return std::nullopt;
+            }
+            replay.work_ram_sha256s.emplace_back(hash);
+        }
+    }
+    if (!input.eof() || replay.inputs.size() != declared_count
+        || (includes_work_ram_hash
+            && replay.work_ram_sha256s.size() != replay.inputs.size())) {
+        std::cerr << "Interactive input frame count does not match metadata: "
+                  << path.string() << '\n';
+        return std::nullopt;
+    }
+    return replay;
+}
 
 // Interactive sessions need a replayable input stream, not a description of
 // what a person remembers pressing. The pad mask is exactly the value sent to
 // the runtime after launcher suppression and opposing-direction resolution.
-// The plunger fields retain the only host-side input that is not a pad bit.
+// The plunger fields retain the host input that is not a pad bit, and each
+// post-frame work-RAM hash makes a later replay prove its state trajectory.
 [[nodiscard]] bool write_interactive_input_capture(
     const std::filesystem::path& directory,
     const std::span<const InteractiveCaptureFrame> inputs,
-    const std::string_view core_revision)
+    const std::string_view core_revision,
+    const bool cabinet_mode)
 {
     std::error_code error;
     std::filesystem::create_directories(directory, error);
@@ -10610,20 +10877,27 @@ struct InteractiveCaptureFrame {
         return false;
     }
 
-    output << "# format=devils-crush-interactive-input-v1\n"
+    output << "# format=devils-crush-interactive-input-v3\n"
            << "# rom_sha256=" << devils_crush::rom::kSupportedSha256 << '\n'
            << "# core_revision=" << core_revision << '\n'
            << "# frame_count=" << inputs.size() << '\n'
+           << "# host_mode=" << (cabinet_mode ? "cabinet" : "desktop")
+           << '\n'
            << "frame,player_one,player_two,plunger_draw,plunger_drawn,"
-              "plunger_released,plunger_engaged\n";
+              "plunger_released,plunger_engaged,work_ram_sha256\n";
     for (std::size_t index = 0U; index < inputs.size(); ++index) {
         const auto& captured = inputs[index];
+        if (captured.work_ram_sha256.empty()) {
+            std::cerr << "Interactive capture is missing a work-RAM hash.\n";
+            return false;
+        }
         output << index + 1U << ',' << captured.input.player_one << ','
                << captured.input.player_two << ','
                << static_cast<unsigned>(captured.plunger.draw) << ','
                << (captured.plunger.drawn ? 1 : 0) << ','
                << (captured.plunger.released ? 1 : 0) << ','
-               << (captured.plunger_engaged ? 1 : 0) << '\n';
+               << (captured.plunger_engaged ? 1 : 0) << ','
+               << captured.work_ram_sha256 << '\n';
     }
     output.close();
     if (!output) {
@@ -11434,10 +11708,17 @@ int run_deterministic_recording(
     const RecordingPlan& plan,
     const std::span<const WorkRamPatch> work_ram_patches,
     const std::filesystem::path& table_vram_census_path = {},
-    const std::span<const std::byte> rom = {})
+    const std::span<const std::byte> rom = {},
+    const std::filesystem::path& initial_state_path = {})
 {
     if (runtime.work_ram_size() == 0U || plan.frame_count <= 0
-        || plan.input_for_frame == nullptr || plan.format.empty()
+        || (plan.input_for_frame == nullptr
+            && plan.captured_inputs.size()
+                != static_cast<std::size_t>(plan.frame_count))
+        || (!plan.expected_work_ram_sha256s.empty()
+            && plan.expected_work_ram_sha256s.size()
+                != static_cast<std::size_t>(plan.frame_count))
+        || plan.format.empty()
         || plan.label.empty()) {
         std::cerr << "The emulator did not expose work RAM for recording.\n";
         return EXIT_FAILURE;
@@ -11567,7 +11848,21 @@ int run_deterministic_recording(
            "framebuffer_width,framebuffer_height,framebuffer_sha256,"
            "audio_sample_rate,audio_stereo_samples,audio_sha256\n";
 
-    runtime.reset();
+    if (!initial_state_path.empty()) {
+        if (!load_quick_state(runtime, initial_state_path)) {
+            return EXIT_FAILURE;
+        }
+    } else {
+        runtime.reset();
+    }
+    const auto interactive_flippers =
+        devils_crush::cabinet::default_input_bindings().flippers;
+    if (plan.restore_interactive_flipper_host
+        && !install_shooter_flipper_gate(runtime, interactive_flippers)) {
+        std::cerr << "Could not restore the interactive flipper gate for "
+                     "session replay.\n";
+        return EXIT_FAILURE;
+    }
     int framebuffer_width = 0;
     int framebuffer_height = 0;
     int audio_sample_rate = 0;
@@ -11580,6 +11875,13 @@ int run_deterministic_recording(
     }
 
     for (int index = 1; index <= plan.frame_count; ++index) {
+        if (plan.restore_interactive_cabinet_host) {
+            keep_fixed_actors_simulating(runtime);
+        }
+        if (plan.restore_interactive_flipper_host) {
+            static_cast<void>(
+                apply_flipper_inputs(runtime, interactive_flippers));
+        }
         const auto first_patch = std::find_if(
             work_ram_patches.begin(),
             work_ram_patches.end(),
@@ -11610,7 +11912,7 @@ int run_deterministic_recording(
                 return EXIT_FAILURE;
             }
         }
-        const auto input = plan.input_for_frame(index);
+        const auto input = input_for_recording_plan_frame(plan, index);
         const auto frame = runtime.run_frame(input);
         const auto work_ram = runtime.export_work_ram();
         if (frame.frame_number != static_cast<std::uint64_t>(index)
@@ -11620,6 +11922,18 @@ int run_deterministic_recording(
             || work_ram.size() != runtime.work_ram_size()) {
             std::cerr << plan.label << " recording failed on frame " << index
                       << ".\n";
+            return EXIT_FAILURE;
+        }
+        const auto work_ram_hash = sha256(work_ram);
+        if (!plan.expected_work_ram_sha256s.empty()
+            && work_ram_hash
+                != plan.expected_work_ram_sha256s[static_cast<std::size_t>(
+                    index - 1)]) {
+            std::cerr << "Interactive session replay diverged at frame "
+                      << index << ": expected work-RAM SHA-256 "
+                      << plan.expected_work_ram_sha256s[
+                             static_cast<std::size_t>(index - 1)]
+                      << ", observed " << work_ram_hash << ".\n";
             return EXIT_FAILURE;
         }
 
@@ -11633,7 +11947,7 @@ int run_deterministic_recording(
         output << frame.frame_number << ',' << std::hex
                << std::setfill('0') << std::setw(4) << input.player_one
                << ',' << std::setw(4) << input.player_two << std::dec
-               << ',' << sha256(work_ram)
+               << ',' << work_ram_hash
                << ',' << frame.framebuffer.width
                << ',' << frame.framebuffer.height
                << ',' << sha256_values<std::uint32_t>(
@@ -12100,7 +12414,7 @@ int verify_routine_replays(
         const auto frame_number =
             static_cast<int>(capture.checkpoint_entry.frame_number);
         const auto frame = runtime.run_frame(
-            plan.input_for_frame(frame_number));
+            input_for_recording_plan_frame(plan, frame_number));
         if (frame.frame_number
                 != capture.checkpoint_entry.frame_number
             || !capture.replayed_call
@@ -13424,6 +13738,26 @@ int run_windows_host(
         host_ok = false;
     }
     if (host_ok && capture_session
+        && !save_quick_state(
+            runtime, capture_session_directory / "initial.state")) {
+        std::cerr << "Could not save the interactive capture's initial state.\n";
+        running = false;
+        host_ok = false;
+    }
+    if (host_ok && capture_session && high_scores.stored) {
+        const auto saved = devils_crush::backup::save_atomic(
+            capture_session_directory / "initial.hiscore",
+            devils_crush::core::encode_high_score_table(*high_scores.stored),
+            devils_crush::core::kDefaultCommitBudgetMilliseconds);
+        if (!saved.saved) {
+            std::cerr << "Could not save the interactive capture's initial "
+                         "high-score table: "
+                      << saved.message << '\n';
+            running = false;
+            host_ok = false;
+        }
+    }
+    if (host_ok && capture_session
         && !runtime.set_instruction_profiling(true)) {
         std::cerr
             << "Could not enable instruction profiling for interactive "
@@ -13432,8 +13766,9 @@ int run_windows_host(
         host_ok = false;
     }
     if (host_ok && capture_session) {
-        std::cout << "Interactive capture armed: per-frame input, instruction "
-                     "profile, and deployment censuses will be written to "
+        std::cout << "Interactive capture armed: initial state, per-frame "
+                     "input, instruction profile, and deployment censuses "
+                     "will be written to "
                   << capture_session_directory.string()
                   << " when this session closes. Quick-state restore is "
                      "disabled while capturing.\n";
@@ -13680,6 +14015,16 @@ int run_windows_host(
                 });
             }
             const auto frame = runtime.run_frame(input);
+            if (capture_session) {
+                const auto work_ram = runtime.export_work_ram();
+                if (work_ram.size() != runtime.work_ram_size()) {
+                    std::cerr << "Could not fingerprint interactive capture "
+                                 "work RAM.\n";
+                    host_ok = false;
+                    break;
+                }
+                captured_inputs.back().work_ram_sha256 = sha256(work_ram);
+            }
             ++emulated_frames;
             poll_high_scores(runtime, high_scores, emulated_frames);
             if (!cabinet_mode) {
@@ -13926,7 +14271,8 @@ int run_windows_host(
         if (!write_interactive_input_capture(
                 capture_session_directory,
                 captured_inputs,
-                core_revision)
+                core_revision,
+                cabinet_mode)
             || (!captured_inputs.empty()
                 && !write_instruction_profile(
                     capture_session_directory / "instruction-profile.csv",
@@ -16816,6 +17162,113 @@ void report_nudge_effect(
 
 } // namespace
 
+int run_unsigned_square_root_semantic_fixture()
+{
+    // This fixture is deliberately ROM-free.  It drives the public dispatcher
+    // across every possible `$30:$2F` operand, varies every restored X value,
+    // and applies the replacement's ordered writes before checking the leaf's
+    // documented result.  The player-session replay separately proves the
+    // timer-interleaved instruction checkpoints on all 665 natural calls.
+    constexpr std::array<std::byte, 0U> empty_rom{};
+    std::size_t verified = 0U;
+    for (std::uint32_t operand = 0U; operand <= 0xFFFFU; ++operand) {
+        std::vector<std::byte> work_ram(0x2000U);
+        work_ram[0x002FU] = static_cast<std::byte>(operand & 0xFFU);
+        work_ram[0x0030U] = static_cast<std::byte>(operand >> 8U);
+
+        const auto x = static_cast<std::uint8_t>(operand >> 8U);
+        const auto status = static_cast<std::uint8_t>(
+            ((operand & 0x01U) != 0U ? 0x01U : 0U)
+            | ((operand & 0x02U) != 0U ? 0x04U : 0U)
+            | ((operand & 0x04U) != 0U ? 0x40U : 0U));
+        const devils_crush::emulation::RoutineEntry entry{
+            .routine = {.physical_bank = 0x00U, .logical_pc = 0xE85DU},
+            .registers = {
+                .program_counter = 0xE85DU,
+                .accumulator = static_cast<std::uint8_t>(operand),
+                .x = x,
+                .y = static_cast<std::uint8_t>(operand >> 3U),
+                .stack_pointer = 0xF8U,
+                .status = status,
+            },
+        };
+        const auto replacement =
+            devils_crush::app::replace_native_gameplay_routine(
+                entry, work_ram, empty_rom);
+        if (!replacement || replacement->return_instruction
+                != devils_crush::emulation::RoutineKey{0x00U, 0xE8A3U}
+            || replacement->checkpoints.empty()
+            || !replacement->absorbed_returns.empty()) {
+            std::cerr << "Unsigned square-root fixture did not replace "
+                      << operand << ".\n";
+            return EXIT_FAILURE;
+        }
+
+        for (const auto& write : replacement->work_ram_writes) {
+            if (write.logical_address < 0x2000U
+                || write.logical_address >= 0x4000U) {
+                std::cerr << "Unsigned square-root fixture emitted an "
+                             "out-of-range write.\n";
+                return EXIT_FAILURE;
+            }
+            work_ram[write.logical_address - 0x2000U] =
+                static_cast<std::byte>(write.value);
+        }
+
+        std::uint16_t root = 0U;
+        while (static_cast<std::uint32_t>(root + 1U)
+                   * static_cast<std::uint32_t>(root + 1U)
+               <= operand) {
+            ++root;
+        }
+        const auto remainder = static_cast<std::uint16_t>(
+            operand - static_cast<std::uint32_t>(root) * root);
+        const auto four_times_root = static_cast<std::uint16_t>(4U * root);
+        const auto& output = replacement->output_registers;
+        const auto expected_nz = static_cast<std::uint8_t>(
+            x == 0U ? 0x02U : (x & 0x80U) != 0U ? 0x80U : 0U);
+        if (output.program_counter != 0xE8A3U || output.accumulator != root
+            || output.x != x || output.y != entry.registers.y
+            || output.stack_pointer != entry.registers.stack_pointer
+            || (output.status & 0x82U) != expected_nz
+            || std::to_integer<std::uint8_t>(work_ram[0x002FU]) != 0U
+            || std::to_integer<std::uint8_t>(work_ram[0x0030U]) != 0U
+            || std::to_integer<std::uint8_t>(work_ram[0x0042U]) != 0U
+            || std::to_integer<std::uint8_t>(work_ram[0x0043U]) != root
+            || std::to_integer<std::uint8_t>(work_ram[0x002BU])
+                != (four_times_root & 0xFFU)
+            || std::to_integer<std::uint8_t>(work_ram[0x002CU])
+                != (four_times_root >> 8U)
+            || std::to_integer<std::uint8_t>(work_ram[0x002DU])
+                != (remainder & 0xFFU)
+            || std::to_integer<std::uint8_t>(work_ram[0x002EU])
+                != (remainder >> 8U)) {
+            std::cerr << "Unsigned square-root fixture changed operand "
+                      << operand << " incorrectly.\n";
+            return EXIT_FAILURE;
+        }
+        ++verified;
+    }
+
+    std::vector<std::byte> guard_work_ram(0x2000U);
+    for (const auto status : std::array<std::uint8_t, 2U>{0x08U, 0x20U}) {
+        const devils_crush::emulation::RoutineEntry guarded_entry{
+            .routine = {.physical_bank = 0x00U, .logical_pc = 0xE85DU},
+            .registers = {.program_counter = 0xE85DU, .status = status},
+        };
+        if (devils_crush::app::replace_native_gameplay_routine(
+                guarded_entry, guard_work_ram, empty_rom)) {
+            std::cerr << "Unsigned square-root fixture accepted decimal or "
+                         "T mode.\n";
+            return EXIT_FAILURE;
+        }
+    }
+
+    std::cout << "Unsigned square-root semantic fixture verified: "
+              << verified << " exhaustive operands\n";
+    return EXIT_SUCCESS;
+}
+
 int main(const int argc, char* argv[])
 {
     const auto options = parse_command_line(argc, argv);
@@ -16835,6 +17288,9 @@ int main(const int argc, char* argv[])
     if (options.cabinet_plunger_probe) {
         return run_plunger_probe();
     }
+    if (options.verify_unsigned_square_root) {
+        return run_unsigned_square_root_semantic_fixture();
+    }
 
     const auto validation =
         devils_crush::rom::validate_file(options.rom_path);
@@ -16844,6 +17300,15 @@ int main(const int argc, char* argv[])
     }
     if (options.validate_only) {
         return EXIT_SUCCESS;
+    }
+
+    std::optional<InteractiveSessionReplay> session_replay;
+    if (!options.replay_session_input_path.empty()) {
+        session_replay = read_interactive_session_replay(
+            options.replay_session_input_path);
+        if (!session_replay) {
+            return EXIT_FAILURE;
+        }
     }
 
     try {
@@ -17096,7 +17561,8 @@ int main(const int argc, char* argv[])
                 options.cabinet_dump_route_directory);
         }
 
-        if (options.record_canonical || options.record_gameplay
+        if (!options.replay_session_input_path.empty()
+            || options.record_canonical || options.record_gameplay
             || options.record_gameplay_alternate
             || options.record_gameplay_sweep
             || options.record_gameplay_crossfire
@@ -17128,7 +17594,27 @@ int main(const int argc, char* argv[])
             || options.record_gameplay_vector
             || options.record_gameplay_radial
             || options.record_state_census) {
-            const auto& recording_plan = options.record_state_census
+            const RecordingPlan session_replay_plan{
+                .format = "devils-crush-interactive-session-replay-v1",
+                .label = "Interactive session replay",
+                .input_script = "captured processed pad stream",
+                .frame_count = session_replay
+                    ? static_cast<int>(session_replay->inputs.size())
+                    : 0,
+                .captured_inputs = session_replay
+                    ? std::span<const InputFrame>(session_replay->inputs)
+                    : std::span<const InputFrame>{},
+                .expected_work_ram_sha256s = session_replay
+                    ? std::span<const std::string>(
+                          session_replay->work_ram_sha256s)
+                    : std::span<const std::string>{},
+                .restore_interactive_flipper_host = true,
+                .restore_interactive_cabinet_host = options.cabinet
+                    || (session_replay && session_replay->cabinet_host),
+            };
+            const auto& recording_plan = !options.replay_session_input_path.empty()
+                ? session_replay_plan
+                : options.record_state_census
                 ? kStateCensusRecordingPlan
                 : options.record_gameplay_alternate
                     ? kGameplayAlternateRecordingPlan
@@ -17193,7 +17679,10 @@ int main(const int argc, char* argv[])
                 : options.record_gameplay
                     ? kGameplayRecordingPlan
                     : kCanonicalRecordingPlan;
-            const auto& recording_path = options.record_state_census
+            const auto recording_path = !options.replay_session_input_path.empty()
+                ? options.replay_session_input_path.parent_path()
+                    / "replay.csv"
+                : options.record_state_census
                 ? options.state_census_path
                 : options.record_gameplay_alternate
                     ? options.gameplay_alternate_path
@@ -17455,6 +17944,13 @@ int main(const int argc, char* argv[])
             if (options.replace_registry) {
                 std::vector<RoutineKey> claimed_routines =
                     options.observe_hooks;
+                // The live host claims the shooter's preamble so the
+                // flipper-restoration hook can run inside it. Preserve that
+                // ownership in a captured-session replay too; otherwise a
+                // registry transcript skips the hook's instruction site.
+                if (session_replay) {
+                    claimed_routines.push_back(kShooterGateOwner);
+                }
                 claimed_routines.reserve(
                     claimed_routines.size() + options.replace_hooks.size());
                 for (const auto& request : options.replace_hooks) {
@@ -17466,6 +17962,27 @@ int main(const int argc, char* argv[])
                         *replacement_rom,
                         claimed_routines,
                         registry_deployment)) {
+                    return EXIT_FAILURE;
+                }
+            }
+            // The checkpoint is intentionally taken before the ROM's boot
+            // copy at 01:C107. Reinstall the same restore hook the live host
+            // uses so frame one gets the player's table rather than ROM
+            // defaults. New captures carry that table beside initial.state;
+            // session v1 artifacts without it use the still-current host
+            // table as the best available compatibility path.
+            std::optional<HighScoreAutosave> session_replay_high_scores;
+            if (session_replay) {
+                const auto high_score_path =
+                    session_replay->initial_high_score_path.empty()
+                    ? kHighScorePath
+                    : session_replay->initial_high_score_path;
+                session_replay_high_scores.emplace(
+                    open_high_score_autosave(high_score_path));
+                if (!install_high_score_restore(
+                        *runtime, *session_replay_high_scores)) {
+                    std::cerr << "Could not restore the interactive high-score "
+                                 "hook for session replay.\n";
                     return EXIT_FAILURE;
                 }
             }
@@ -17588,7 +18105,9 @@ int main(const int argc, char* argv[])
                 recording_plan,
                 options.work_ram_patches,
                 options.table_vram_census_path,
-                *replacement_rom);
+                *replacement_rom,
+                session_replay ? session_replay->initial_state_path
+                               : std::filesystem::path{});
             if (result != EXIT_SUCCESS) {
                 return result;
             }

@@ -7,9 +7,11 @@
 .DESCRIPTION
     A native replacement is admissible for live play only when a regression has
     proven it for every naturally observed call at its address. That evidence is
-    expressed today as a `--replace-hook <bank>:<pc>@all` invocation plus an
+    normally expressed as a `--replace-hook <bank>:<pc>@all` invocation plus an
     expected `Native replacement <bank>:<pc>@all entries: <replaced> of
-    <observed>` output line inside `tests/verify_*.cmake`.
+    <observed>` output line inside `tests/verify_*.cmake`. ROM-free exhaustive
+    fixtures may instead declare their separately replay-verified natural-call
+    count with a `DC_NATIVE_ADMISSION` marker in that same test script.
 
     This script sweeps those scripts, cross-checks each address against the
     dispatch chain in `src/app/native_replacements.cpp` and the self-guarding
@@ -51,6 +53,7 @@ if (-not (Test-Path -LiteralPath $testsDirectory)) {
 
 # Shape 1: the address is written out literally in the expected output line.
 $literalPattern = 'Native replacement (?<bank>[0-9A-Fa-f]{2}):(?<pc>[0-9A-Fa-f]{4})@all entries: (?<replaced>[\d,]+)(?: of (?<observed>[\d,]+))?'
+$fixturePattern = 'DC_NATIVE_ADMISSION (?<bank>[0-9A-Fa-f]{2}):(?<pc>[0-9A-Fa-f]{4}) (?<replaced>[\d,]+) (?<observed>[\d,]+)'
 
 # Shape 2: a helper function is called once per address, so the expected line
 # interpolates the routine. Every quoted address literal in such a file is
@@ -126,6 +129,15 @@ foreach ($script in $scripts) {
         if ($observed -eq 0) {
             $observed = $replaced
         }
+        Add-Admission -Target $target -Address $address -Replaced $replaced -Observed $observed -Evidence $evidence -Patched $patched
+    }
+
+    foreach ($match in [regex]::Matches($text, $fixturePattern)) {
+        $address = "{0}:{1}" -f
+            $match.Groups["bank"].Value.ToUpperInvariant(),
+            $match.Groups["pc"].Value.ToUpperInvariant()
+        $replaced = ConvertTo-Count $match.Groups["replaced"].Value
+        $observed = ConvertTo-Count $match.Groups["observed"].Value
         Add-Admission -Target $target -Address $address -Replaced $replaced -Observed $observed -Evidence $evidence -Patched $patched
     }
 

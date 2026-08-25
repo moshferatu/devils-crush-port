@@ -1713,10 +1713,21 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
 
 - [x] Add interactive player-session capture for coverage-led port work:
   - `--capture-session <directory>` runs the ordinary desktop or cabinet
-    host and, on exit, writes exact processed per-frame pad and plunger
-    inputs to `inputs.csv`, alongside `instruction-profile.csv`,
+    host and saves its post-host-setup `initial.state`, then on exit writes
+    exact processed per-frame pad and plunger inputs plus post-frame
+    work-RAM SHA-256 fingerprints and the desktop/cabinet host mode to
+    `inputs.csv`, alongside `initial.hiscore`,
+    `instruction-profile.csv`,
     `abandonment-census.csv`, and the deployed host's
     `native-cycle-census.csv`.
+  - `--replay-session <inputs.csv>` restores that initial state and its
+    high-score sidecar, reinstates the live shooter's flipper gate and mask
+    writes plus cabinet actor simulation when the captured mode needs it,
+    then runs the saved pad stream through the existing deterministic
+    recording, registry, profile, and routine-trace machinery. New captures
+    halt at the first mismatching work-RAM fingerprint; replay refuses
+    captures without the checkpoint or with physical-plunger movement rather
+    than producing an approximate replay.
   - Capture enables instruction profiling without changing the live host's
     default native registry. Quick-state restore is disabled during capture,
     preserving a replayable power-on input stream.
@@ -8853,10 +8864,60 @@ Status values used in this file are `Not started`, `In progress`, `Blocked`, and
 
 Current owner: Codex. Current slice: **collect and rank a player-led interactive
 capture for an unobserved table-rule transaction with its own caller-and-return
-contract**. The capture mode records exact per-frame processed pad and plunger
-inputs and the deployed host's instruction profile, native-cycle census, and
-abandonment census on exit; quick-state restore is disabled so the input stream
-remains a replayable power-on session. Sidestep is now screened:
+contract**. A 7,027-frame player session reaches the previously unentered
+`00:E85D-E8B2` helper, contributing 1,103 non-wait PCs (2,883,237 cycles)
+outside the 21 retained native gameplay profiles; `E85D-E8B2` is the leading
+new cluster at 759,396 cycles. Its first capture predates the initial-state
+checkpoint and is therefore coverage evidence only. Recapture it with the
+current executable, then replay the saved `inputs.csv` plus `initial.state`
+through an `E85D` routine trace before selecting a replacement boundary.
+`player-session-4` now replays byte-identically through all 6,605 captured
+frames after restoring the cabinet actor-simulation step that first diverged
+at frame 144. Its `E85D` observer records 665 natural calls over frames
+3,614-4,542, all with caller/return contract `01:C9D3 -> 00:E85D ->
+00:E8A3`, 2,907-25,890 body cycles, and 93,990 ordered writes. Treat that as
+the verified broad transaction; isolate a narrower semantic leaf before
+adding a native replacement. That isolation is now complete: `00:E85D-E8A4`
+is a call-free, eight-pass restoring unsigned-square-root leaf. Across all
+665 natural calls, its reconstructed `$30:$2F` operands (2 through 11,629)
+produce exactly `floor(sqrt(operand))`. It clears `$2F/$30` and `$42`, leaves
+`$43` and `A` as the root, leaves `$2B:$2C` as four times the root, and leaves
+`$2D:$2E` as `operand - root^2`; `X` is restored by the final `PLX` and `Y`
+is preserved. The trace includes timer-interrupt interleavings, so a native
+candidate now transcribes instruction-boundary checkpoints rather than
+absorbing the 2,907-plus-cycle leaf atomically. Capture-mode replay with
+`--replace-registry --replace-hook 00:E85D@all` replaces all 665 calls while
+preserving all 6,605 per-frame work-RAM hashes. `E85D` is now registry-admitted:
+the portable CMake fixture drives the production dispatcher across all 65,536
+unsigned operands, checks its result scratch, restored registers, return state,
+write range, and D/T-mode refusal, while the `player-session-4` replay supplies
+the separate natural-call and timer-interleaving evidence. The default registry
+then preserves the same 6,605 per-frame work-RAM hashes with all 665 calls
+native.
+
+The longer desktop `player-session-3` v1 route is now also replayed through
+the current registry. Its 59,248 input frames reproduce the prior
+`e85d.host.profile.csv` exactly (5,732 assembly addresses and 156,972,944
+executions); the current profile hash is
+`b5e92622e0b45955a49277643b6dcf5c136aed1dd37819cebb7f4e20b1645f00`.
+The 594 admitted entries account for 11,461,567,431 of 21,269,439,732 native
+census master cycles. This v1 capture has no per-frame work-RAM hashes, so it
+is broad route coverage rather than replacement-admission evidence. Its
+leading remaining PCs are the already-classified TIA and compound-branch
+seams, VDC acknowledgements, bank-09 palette/score-panel fragments, bank-45
+music fallbacks, and actor/collision branch interiors; no new independent
+caller-and-return transaction is exposed. Keep those edges assembly-backed
+and obtain a v3 capture before admitting a new routine from this route.
+
+The initially undocumented `03:7525` residue is now specifically screened.
+The long-route trace records 33,631 arrivals, all through the actor-loop
+dispatch/queue contract `01:C520 -> 03:7525 -> 01:C523` (the call observer
+closes after the queue filer's `01:C654` return). The ROM byte at `03:7525`
+is just `$60` (`RTS`): it is a shared handler-return edge, not a routine body.
+Its varying 81--1,806-cycle observed spans belong to the dispatched handler
+and subsequent queue filing, so retain the return itself in the core rather
+than admitting a spurious bank-03 replacement.
+Sidestep is now screened:
 its middle-strength launch, 947-frame asymmetric side saves, and neutral-only
 Button-II impulses preserve byte-identical assembly/Release/Debug recordings
 (`30cce23f...05d82a`), profiles, native-cycle censuses, and abandonment

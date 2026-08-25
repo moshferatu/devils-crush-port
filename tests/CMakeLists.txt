@@ -44,6 +44,17 @@ dc_enable_strict_warnings(dc_title_logo_tests)
 
 add_test(NAME dc_core_tests COMMAND dc_core_tests)
 
+if(TARGET devils_crush)
+    add_test(
+        NAME dc_unsigned_square_root_semantic
+        COMMAND
+            "${CMAKE_COMMAND}"
+            "-DAPP=$<TARGET_FILE:devils_crush>"
+            "-P"
+            "${CMAKE_CURRENT_SOURCE_DIR}/verify_unsigned_square_root_semantic.cmake"
+    )
+endif()
+
 # The native sound generator against the emulator's own device, driven
 # directly. Needs no ROM: the stimulus is synthetic, which is the point --
 # it reaches the parts of the chip the game never asks for.

@@ -2977,6 +2977,308 @@ replace_unsigned_byte_division(
 }
 
 [[nodiscard]] std::optional<RoutineReplacement>
+replace_unsigned_square_root(
+    const RoutineEntry& entry,
+    const std::span<const std::byte> work_ram)
+{
+    // 00:E85D-E8A3 is an eight-pass restoring square-root leaf.  It has no
+    // calls, but it routinely crosses the timer horizon, so the transcript
+    // below preserves every instruction boundary instead of collapsing the
+    // arithmetic into one atomic update.
+    constexpr RoutineKey kRoutine{
+        .physical_bank = 0x00U,
+        .logical_pc = 0xE85DU,
+    };
+    if (entry.routine != kRoutine || work_ram.size() < 0x2000U
+        || (entry.registers.status & 0x28U) != 0U) {
+        return std::nullopt;
+    }
+
+    RoutineReplacement replacement{
+        .return_instruction = {
+            .physical_bank = 0x00U,
+            .logical_pc = 0xE8A3U,
+        },
+        .output_registers = entry.registers,
+    };
+    replacement.work_ram_writes.reserve(128U);
+    replacement.checkpoints.reserve(256U);
+    std::vector<std::byte> staged(work_ram.begin(), work_ram.end());
+
+    const auto set_nz = [](std::uint8_t status, const std::uint8_t value) {
+        status = static_cast<std::uint8_t>(
+            status & static_cast<std::uint8_t>(~0x82U));
+        if (value == 0U) {
+            status = static_cast<std::uint8_t>(status | 0x02U);
+        } else if ((value & 0x80U) != 0U) {
+            status = static_cast<std::uint8_t>(status | 0x80U);
+        }
+        return status;
+    };
+    const auto sbc_status = [&set_nz](
+                                std::uint8_t status,
+                                const std::uint8_t left,
+                                const std::uint8_t right,
+                                const bool carry_in,
+                                const std::uint8_t result) {
+        const auto difference = static_cast<std::int16_t>(
+            static_cast<std::int16_t>(left)
+            - static_cast<std::int16_t>(right)
+            - static_cast<std::int16_t>(carry_in ? 0 : 1));
+        status = static_cast<std::uint8_t>(
+            status & static_cast<std::uint8_t>(~0x41U));
+        status = set_nz(status, result);
+        if (difference >= 0) {
+            status = static_cast<std::uint8_t>(status | 0x01U);
+        }
+        if ((((left ^ right) & (left ^ result)) & 0x80U) != 0U) {
+            status = static_cast<std::uint8_t>(status | 0x40U);
+        }
+        return status;
+    };
+    const auto append_checkpoint = [&replacement](
+                                       const std::uint16_t instruction_pc,
+                                       const std::uint16_t resume_pc,
+                                       const std::uint32_t master_cycle,
+                                       auto registers) {
+        registers.program_counter = resume_pc;
+        replacement.checkpoints.push_back({
+            .interrupt_sample_master_cycle_offset = master_cycle - 3U,
+            .master_cycle_offset = master_cycle,
+            .instruction = {0x00U, instruction_pc},
+            .registers = registers,
+        });
+    };
+    const auto append_write = [&replacement, &staged](
+                                  const std::uint16_t instruction_pc,
+                                  const std::uint16_t logical_address,
+                                  const std::uint8_t value,
+                                  const std::uint32_t master_cycle) {
+        replacement.work_ram_writes.push_back({
+            .instruction = {0x00U, instruction_pc},
+            .logical_address = logical_address,
+            .value = value,
+            .master_cycle_offset = master_cycle,
+        });
+        staged[logical_address - 0x2000U] = static_cast<std::byte>(value);
+    };
+    const auto read_zero_page = [&staged](const std::uint16_t offset) {
+        return std::to_integer<std::uint8_t>(staged[offset]);
+    };
+
+    auto checkpoint = entry.registers;
+    std::uint32_t cycle = 9U;
+    append_write(
+        0xE85DU,
+        static_cast<std::uint16_t>(0x2100U + checkpoint.stack_pointer),
+        checkpoint.x,
+        cycle);
+    checkpoint.stack_pointer = static_cast<std::uint8_t>(
+        checkpoint.stack_pointer - 1U);
+    append_checkpoint(0xE85DU, 0xE85EU, cycle, checkpoint);
+
+    const auto store_zero = [&cycle, &checkpoint, &append_write,
+                                 &append_checkpoint](
+                                const std::uint16_t instruction_pc,
+                                const std::uint16_t resume_pc,
+                                const std::uint16_t offset) {
+        cycle += 12U;
+        append_write(
+            instruction_pc,
+            static_cast<std::uint16_t>(0x2000U + offset),
+            0U,
+            cycle);
+        append_checkpoint(instruction_pc, resume_pc, cycle, checkpoint);
+    };
+    store_zero(0xE85EU, 0xE860U, 0x002BU);
+    store_zero(0xE860U, 0xE862U, 0x002CU);
+    store_zero(0xE862U, 0xE864U, 0x002DU);
+    store_zero(0xE864U, 0xE866U, 0x002EU);
+    store_zero(0xE866U, 0xE868U, 0x0043U);
+
+    cycle += 6U;
+    checkpoint.accumulator = 8U;
+    checkpoint.status = set_nz(checkpoint.status, checkpoint.accumulator);
+    append_checkpoint(0xE868U, 0xE86AU, cycle, checkpoint);
+
+    cycle += 12U;
+    append_write(0xE86AU, 0x2042U, checkpoint.accumulator, cycle);
+    append_checkpoint(0xE86AU, 0xE86CU, cycle, checkpoint);
+
+    const auto rotate_zero_page = [&cycle, &checkpoint, &set_nz,
+                                      &append_write, &append_checkpoint,
+                                      &read_zero_page](
+                                     const std::uint16_t instruction_pc,
+                                     const std::uint16_t resume_pc,
+                                     const std::uint16_t offset,
+                                     const bool shift) {
+        const auto original = read_zero_page(offset);
+        const bool carry_in = (checkpoint.status & 0x01U) != 0U;
+        const auto value = static_cast<std::uint8_t>(
+            static_cast<std::uint8_t>(original << 1U)
+            | static_cast<std::uint8_t>(shift ? 0U : carry_in));
+        checkpoint.status = set_nz(checkpoint.status, value);
+        checkpoint.status = static_cast<std::uint8_t>(
+            checkpoint.status & static_cast<std::uint8_t>(~0x01U));
+        if ((original & 0x80U) != 0U) {
+            checkpoint.status = static_cast<std::uint8_t>(
+                checkpoint.status | 0x01U);
+        }
+        cycle += 18U;
+        append_write(
+            instruction_pc,
+            static_cast<std::uint16_t>(0x2000U + offset),
+            value,
+            cycle);
+        append_checkpoint(instruction_pc, resume_pc, cycle, checkpoint);
+    };
+    const auto increment_zero_page = [&cycle, &checkpoint, &set_nz,
+                                        &append_write, &append_checkpoint,
+                                        &read_zero_page](
+                                       const std::uint16_t instruction_pc,
+                                       const std::uint16_t resume_pc,
+                                       const std::uint16_t offset,
+                                       const bool decrement) {
+        const auto value = static_cast<std::uint8_t>(
+            read_zero_page(offset) + (decrement ? 0xFFU : 1U));
+        checkpoint.status = set_nz(checkpoint.status, value);
+        cycle += 18U;
+        append_write(
+            instruction_pc,
+            static_cast<std::uint16_t>(0x2000U + offset),
+            value,
+            cycle);
+        append_checkpoint(instruction_pc, resume_pc, cycle, checkpoint);
+    };
+    const auto load_accumulator = [&cycle, &checkpoint, &set_nz,
+                                     &append_checkpoint, &read_zero_page](
+                                    const std::uint16_t instruction_pc,
+                                    const std::uint16_t resume_pc,
+                                    const std::uint16_t offset) {
+        cycle += 12U;
+        checkpoint.accumulator = read_zero_page(offset);
+        checkpoint.status = set_nz(checkpoint.status, checkpoint.accumulator);
+        append_checkpoint(instruction_pc, resume_pc, cycle, checkpoint);
+    };
+
+    for (std::size_t pass = 0U; pass < 8U; ++pass) {
+        rotate_zero_page(0xE86CU, 0xE86EU, 0x002FU, true);
+        rotate_zero_page(0xE86EU, 0xE870U, 0x0030U, false);
+        rotate_zero_page(0xE870U, 0xE872U, 0x002DU, false);
+        rotate_zero_page(0xE872U, 0xE874U, 0x002EU, false);
+        rotate_zero_page(0xE874U, 0xE876U, 0x002FU, true);
+        rotate_zero_page(0xE876U, 0xE878U, 0x0030U, false);
+        rotate_zero_page(0xE878U, 0xE87AU, 0x002DU, false);
+        rotate_zero_page(0xE87AU, 0xE87CU, 0x002EU, false);
+        increment_zero_page(0xE87CU, 0xE87EU, 0x002BU, false);
+        load_accumulator(0xE87EU, 0xE880U, 0x002DU);
+
+        cycle += 6U;
+        checkpoint.status = static_cast<std::uint8_t>(
+            checkpoint.status | 0x01U);
+        append_checkpoint(0xE880U, 0xE881U, cycle, checkpoint);
+
+        const auto low_left = checkpoint.accumulator;
+        const auto low_right = read_zero_page(0x002BU);
+        const auto low_result = static_cast<std::uint8_t>(
+            static_cast<std::uint16_t>(low_left)
+            - static_cast<std::uint16_t>(low_right));
+        checkpoint.accumulator = low_result;
+        checkpoint.status = sbc_status(
+            checkpoint.status, low_left, low_right, true, low_result);
+        cycle += 12U;
+        append_checkpoint(0xE881U, 0xE883U, cycle, checkpoint);
+
+        cycle += 6U;
+        checkpoint.x = checkpoint.accumulator;
+        checkpoint.status = set_nz(checkpoint.status, checkpoint.x);
+        append_checkpoint(0xE883U, 0xE884U, cycle, checkpoint);
+        load_accumulator(0xE884U, 0xE886U, 0x002EU);
+
+        const auto high_left = checkpoint.accumulator;
+        const auto high_right = read_zero_page(0x002CU);
+        const bool high_carry_in = (checkpoint.status & 0x01U) != 0U;
+        const auto high_result = static_cast<std::uint8_t>(
+            static_cast<std::uint16_t>(high_left)
+            - static_cast<std::uint16_t>(high_right)
+            - static_cast<std::uint16_t>(high_carry_in ? 0U : 1U));
+        checkpoint.accumulator = high_result;
+        checkpoint.status = sbc_status(
+            checkpoint.status,
+            high_left,
+            high_right,
+            high_carry_in,
+            high_result);
+        cycle += 12U;
+        append_checkpoint(0xE886U, 0xE888U, cycle, checkpoint);
+
+        const bool subtracts = (checkpoint.status & 0x01U) != 0U;
+        cycle += subtracts ? 12U : 6U;
+        append_checkpoint(
+            0xE888U,
+            subtracts ? 0xE88FU : 0xE88AU,
+            cycle,
+            checkpoint);
+        if (subtracts) {
+            cycle += 12U;
+            append_write(0xE88FU, 0x202EU, checkpoint.accumulator, cycle);
+            append_checkpoint(0xE88FU, 0xE891U, cycle, checkpoint);
+
+            cycle += 12U;
+            append_write(0xE891U, 0x202DU, checkpoint.x, cycle);
+            append_checkpoint(0xE891U, 0xE893U, cycle, checkpoint);
+            increment_zero_page(0xE893U, 0xE895U, 0x002BU, false);
+
+            cycle += 6U;
+            checkpoint.status = static_cast<std::uint8_t>(
+                checkpoint.status | 0x01U);
+            append_checkpoint(0xE895U, 0xE896U, cycle, checkpoint);
+        } else {
+            increment_zero_page(0xE88AU, 0xE88CU, 0x002BU, true);
+
+            cycle += 6U;
+            checkpoint.status = static_cast<std::uint8_t>(
+                checkpoint.status & static_cast<std::uint8_t>(~0x01U));
+            append_checkpoint(0xE88CU, 0xE88DU, cycle, checkpoint);
+
+            cycle += 12U;
+            append_checkpoint(0xE88DU, 0xE896U, cycle, checkpoint);
+        }
+
+        rotate_zero_page(0xE896U, 0xE898U, 0x0043U, false);
+        rotate_zero_page(0xE898U, 0xE89AU, 0x002BU, true);
+        rotate_zero_page(0xE89AU, 0xE89CU, 0x002CU, false);
+        increment_zero_page(0xE89CU, 0xE89EU, 0x0042U, true);
+
+        const bool repeats = pass + 1U < 8U;
+        cycle += repeats ? 12U : 6U;
+        append_checkpoint(
+            0xE89EU,
+            repeats ? 0xE86CU : 0xE8A0U,
+            cycle,
+            checkpoint);
+    }
+
+    load_accumulator(0xE8A0U, 0xE8A2U, 0x0043U);
+    cycle += 12U;
+    checkpoint.stack_pointer = static_cast<std::uint8_t>(
+        checkpoint.stack_pointer + 1U);
+    checkpoint.x = std::to_integer<std::uint8_t>(
+        staged[0x0100U + checkpoint.stack_pointer]);
+    checkpoint.status = set_nz(checkpoint.status, checkpoint.x);
+    append_checkpoint(0xE8A2U, 0xE8A3U, cycle, checkpoint);
+
+    if (checkpoint.stack_pointer != entry.registers.stack_pointer) {
+        throw std::runtime_error(
+            "Native E85D replacement composition lost its X stack frame.");
+    }
+    checkpoint.program_counter = 0xE8A3U;
+    replacement.output_registers = checkpoint;
+    replacement.body_master_cycles = cycle;
+    return replacement;
+}
+
+[[nodiscard]] std::optional<RoutineReplacement>
 replace_unsigned_24_division(
     const RoutineEntry& entry,
     const std::span<const std::byte> work_ram)
