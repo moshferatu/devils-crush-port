@@ -1410,6 +1410,11 @@ replace_unsigned_byte_multiply(
     std::span<const std::byte> work_ram);
 
 [[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_unsigned_word_multiply_partial(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram);
+
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
 replace_unsigned_multiply_round(
     const emulation::RoutineEntry& entry,
     std::span<const std::byte> work_ram);
@@ -1813,6 +1818,12 @@ replace_collision_scan_advance(
 // at after a call this family makes.
 [[nodiscard]] std::optional<emulation::RoutineReplacement>
 replace_sorcerer_tick(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram,
+    std::span<const std::byte> rom);
+
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_bonus_stage4_orbit(
     const emulation::RoutineEntry& entry,
     std::span<const std::byte> work_ram,
     std::span<const std::byte> rom);

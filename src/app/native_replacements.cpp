@@ -29,6 +29,13 @@ replace_native_gameplay_routine_impl(
     }
     if (entry.routine
         == RoutineKey{
+            .physical_bank = 0x05U,
+            .logical_pc = 0x6D27U,
+        }) {
+        return detail::replace_bonus_stage4_orbit(entry, work_ram, rom);
+    }
+    if (entry.routine
+        == RoutineKey{
             .physical_bank = 0x03U,
             .logical_pc = 0x7B1FU,
         }) {
@@ -75,6 +82,15 @@ replace_native_gameplay_routine_impl(
             .logical_pc = 0xDC95U,
         }) {
         return detail::replace_motion_substep_split(entry, work_ram);
+    }
+    if (entry.routine
+        == RoutineKey{
+            .physical_bank = 0x00U,
+            .logical_pc = 0xE5BCU,
+        }) {
+        return detail::replace_unsigned_word_multiply_partial(
+            entry,
+            work_ram);
     }
     // The active-flipper controller is split at its crossed calls so the
     // admitted scheduler, D500 and collision-route owners can run between

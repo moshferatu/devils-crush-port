@@ -1,4 +1,9 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
+# DC_NATIVE_ADMISSION 05:6D27 7719 7728
+
+# The player-session-6 replay is the natural, unpatched witness for this
+# arm: 7,719 live orbit calls replace while the nine controller-joining calls
+# fall back before any staged write.
 
 foreach(required_variable IN ITEMS APP CONFIG ROM OUTPUT)
     if(NOT DEFINED ${required_variable} OR "${${required_variable}}" STREQUAL "")

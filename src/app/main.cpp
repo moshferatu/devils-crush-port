@@ -538,6 +538,7 @@ struct CommandLine {
     bool cabinet_plunger_probe = false;
     bool cabinet_plunger_check = false;
     bool verify_unsigned_square_root = false;
+    bool verify_unsigned_word_multiply_partial = false;
     bool high_score_check = false;
     std::filesystem::path cabinet_view_probe_directory;
     bool cabinet_seed_check = false;
@@ -1397,6 +1398,8 @@ parse_logical_address_range(const std::string_view text)
             options.cabinet_plunger_check = true;
         } else if (argument == "--verify-unsigned-square-root") {
             options.verify_unsigned_square_root = true;
+        } else if (argument == "--verify-unsigned-word-multiply-partial") {
+            options.verify_unsigned_word_multiply_partial = true;
         } else if (argument == "--high-score-check") {
             options.high_score_check = true;
         } else if (argument == "--cabinet-view-probe") {
@@ -1542,6 +1545,7 @@ parse_logical_address_range(const std::string_view text)
         + static_cast<int>(options.record_state_census)
         + static_cast<int>(!options.routine_replay_corpus_paths.empty())
         + static_cast<int>(options.verify_unsigned_square_root)
+        + static_cast<int>(options.verify_unsigned_word_multiply_partial)
         + static_cast<int>(options.backup_ram_test);
     const bool recording_selected =
         options.record_canonical || options.record_gameplay
@@ -1951,6 +1955,13 @@ parse_logical_address_range(const std::string_view text)
                                    == RoutineKey{
                                        .physical_bank = 0x00U,
                                        .logical_pc = 0xE569U,
+                                   }
+                           && request.all_calls;
+                       const bool proven_unsigned_word_multiply_partial =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x00U,
+                                       .logical_pc = 0xE5BCU,
                                    }
                            && request.all_calls;
                        const bool proven_signed_fixed_multiply =
@@ -4507,6 +4518,7 @@ parse_logical_address_range(const std::string_view text)
                            && !proven_unsigned_24_division
                            && !proven_unsigned_byte_division
                            && !proven_unsigned_byte_multiply
+                           && !proven_unsigned_word_multiply_partial
                            && !proven_unsigned_multiply_round
                            && !proven_signed_fixed_multiply
                            && !proven_actor_camera_activation
@@ -4811,6 +4823,7 @@ parse_logical_address_range(const std::string_view text)
             "semantic 00:E905@all, semantic 00:E7D7@all, "
             "semantic 00:E6DC@all, "
             "semantic 00:E569@all, "
+            "semantic 00:E5BC@all, "
             "semantic 00:E624@all, "
             "semantic 00:E65C@all, "
             "semantic 01:D09E@all, semantic 01:D612@all, "
@@ -17269,6 +17282,149 @@ int run_unsigned_square_root_semantic_fixture()
     return EXIT_SUCCESS;
 }
 
+int run_unsigned_word_multiply_partial_semantic_fixture()
+{
+    // This leaf is the eight-bit half of the cartridge's 16-bit multiply.
+    // Cover every multiplier bit pattern, plus a grid of accumulator and
+    // multiplicand words, through the public dispatcher.  The player-session
+    // replay separately covers every timer-interleaved natural call.
+    constexpr std::array<std::byte, 0U> empty_rom{};
+    constexpr std::array<std::uint16_t, 4U> values{
+        0x0000U,
+        0x0001U,
+        0x80FFU,
+        0xFFFFU,
+    };
+    constexpr std::array<std::uint8_t, 4U> statuses{
+        0x00U,
+        0x01U,
+        0x04U,
+        0x41U,
+    };
+    std::size_t verified = 0U;
+    for (const auto accumulator : values) {
+        for (const auto multiplicand : values) {
+            for (std::uint16_t multiplier_word = 0U;
+                 multiplier_word <= 0xFFU;
+                 ++multiplier_word) {
+                const auto multiplier = static_cast<std::uint8_t>(
+                    multiplier_word);
+                const auto input_status = statuses[verified % statuses.size()];
+                std::vector<std::byte> work_ram(0x2000U);
+                work_ram[0x002DU] = static_cast<std::byte>(
+                    multiplicand & 0xFFU);
+                work_ram[0x002EU] = static_cast<std::byte>(
+                    multiplicand >> 8U);
+                work_ram[0x0030U] = static_cast<std::byte>(multiplier);
+                work_ram[0x0042U] = static_cast<std::byte>(
+                    accumulator & 0xFFU);
+                work_ram[0x0043U] = static_cast<std::byte>(
+                    accumulator >> 8U);
+                const devils_crush::emulation::RoutineEntry entry{
+                    .routine = {.physical_bank = 0x00U, .logical_pc = 0xE5BCU},
+                    .registers = {
+                        .program_counter = 0xE5BCU,
+                        .accumulator = static_cast<std::uint8_t>(
+                            accumulator >> 8U),
+                        .x = 0xA5U,
+                        .y = 0x5AU,
+                        .stack_pointer = 0xF2U,
+                        .status = input_status,
+                    },
+                };
+                const auto replacement =
+                    devils_crush::app::replace_native_gameplay_routine(
+                        entry, work_ram, empty_rom);
+                if (!replacement || replacement->return_instruction
+                        != devils_crush::emulation::RoutineKey{0x00U, 0xE5EBU}
+                    || replacement->checkpoints.empty()
+                    || !replacement->absorbed_returns.empty()) {
+                    std::cerr << "Unsigned-word-multiply partial fixture did "
+                                 "not replace multiplier "
+                              << multiplier_word << ".\n";
+                    return EXIT_FAILURE;
+                }
+
+                std::uint16_t expected = accumulator;
+                std::uint8_t shifting_multiplier = multiplier;
+                std::uint8_t add_count = 0U;
+                for (std::size_t bit = 0U; bit < 8U; ++bit) {
+                    const bool add = (shifting_multiplier & 0x80U) != 0U;
+                    expected = static_cast<std::uint16_t>(expected << 1U);
+                    shifting_multiplier = static_cast<std::uint8_t>(
+                        shifting_multiplier << 1U);
+                    if (add) {
+                        expected = static_cast<std::uint16_t>(
+                            expected + multiplicand);
+                        ++add_count;
+                    }
+                }
+                const auto expected_writes = static_cast<std::size_t>(
+                    24U + 2U * add_count);
+                if (replacement->body_master_cycles
+                        != static_cast<std::uint32_t>(600U + 72U * add_count)
+                    || replacement->work_ram_writes.size() != expected_writes
+                    || replacement->output_registers.program_counter != 0xE5EBU
+                    || replacement->output_registers.x != 0U
+                    || replacement->output_registers.y != entry.registers.y
+                    || replacement->output_registers.stack_pointer
+                        != entry.registers.stack_pointer
+                    || (replacement->output_registers.status & 0x82U) != 0x02U) {
+                    std::cerr << "Unsigned-word-multiply partial transcript "
+                                 "changed accumulator "
+                              << accumulator << ", multiplicand "
+                              << multiplicand << ", multiplier "
+                              << multiplier_word << ".\n";
+                    return EXIT_FAILURE;
+                }
+                std::uint32_t previous_cycle = 0U;
+                for (const auto& write : replacement->work_ram_writes) {
+                    if (write.logical_address < 0x2000U
+                        || write.logical_address >= 0x4000U
+                        || write.master_cycle_offset < previous_cycle) {
+                        std::cerr << "Unsigned-word-multiply partial fixture "
+                                     "emitted an invalid write.\n";
+                        return EXIT_FAILURE;
+                    }
+                    previous_cycle = write.master_cycle_offset;
+                    work_ram[write.logical_address - 0x2000U] =
+                        static_cast<std::byte>(write.value);
+                }
+                const auto result = static_cast<std::uint16_t>(
+                    std::to_integer<std::uint8_t>(work_ram[0x0042U])
+                    | (static_cast<std::uint16_t>(
+                           std::to_integer<std::uint8_t>(work_ram[0x0043U]))
+                       << 8U));
+                if (result != expected
+                    || std::to_integer<std::uint8_t>(work_ram[0x0030U]) != 0U) {
+                    std::cerr << "Unsigned-word-multiply partial fixture "
+                                 "changed state incorrectly.\n";
+                    return EXIT_FAILURE;
+                }
+                ++verified;
+            }
+        }
+    }
+
+    std::vector<std::byte> guard_work_ram(0x2000U);
+    for (const auto status : std::array<std::uint8_t, 2U>{0x08U, 0x20U}) {
+        const devils_crush::emulation::RoutineEntry guarded_entry{
+            .routine = {.physical_bank = 0x00U, .logical_pc = 0xE5BCU},
+            .registers = {.program_counter = 0xE5BCU, .status = status},
+        };
+        if (devils_crush::app::replace_native_gameplay_routine(
+                guarded_entry, guard_work_ram, empty_rom)) {
+            std::cerr << "Unsigned-word-multiply partial fixture accepted "
+                         "decimal or T mode.\n";
+            return EXIT_FAILURE;
+        }
+    }
+
+    std::cout << "Unsigned-word-multiply partial semantic fixture verified: "
+              << verified << " operand cases\n";
+    return EXIT_SUCCESS;
+}
+
 int main(const int argc, char* argv[])
 {
     const auto options = parse_command_line(argc, argv);
@@ -17290,6 +17446,9 @@ int main(const int argc, char* argv[])
     }
     if (options.verify_unsigned_square_root) {
         return run_unsigned_square_root_semantic_fixture();
+    }
+    if (options.verify_unsigned_word_multiply_partial) {
+        return run_unsigned_word_multiply_partial_semantic_fixture();
     }
 
     const auto validation =

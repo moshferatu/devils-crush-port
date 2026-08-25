@@ -40,9 +40,10 @@ The last generated registry measurement (2026-08-22, 593 admissions) runs
 3,600-frame route — 54.16% of the route, 98.51% of everything outside the
 frame-sync wait** — with 475 routines entered, zero interrupt-horizon declines
 and zero abandoned transcripts, against a state census byte-identical to the
-assembly-only baseline. The `00:E85D` square root was admitted after that
-measurement, so the current registry holds 594 entries; regenerate
-[docs/NATIVE_REGISTRY.md](docs/NATIVE_REGISTRY.md) with the next census.
+assembly-only baseline. The `00:E85D` square root, `05:6D27` live orbit arm,
+and `00:E5BC` multiply partial were admitted after that measurement, so the
+current registry holds 596 entries; regenerate [docs/NATIVE_REGISTRY.md](docs/NATIVE_REGISTRY.md)
+with the next canonical census.
 
 Milestone 3 cabinet composition has no external blocker. The accepted
 background is rows 20-687 of the packed 256-by-768 envelope; camera-visited
@@ -69,8 +70,8 @@ scripted cadence. See [docs/ROUTE_SCREENING.md](docs/ROUTE_SCREENING.md).
 ## Active work
 
 **Owner:** Codex.
-**Slice:** collect and rank a player-led interactive capture for an unobserved
-table-rule transaction with its own caller-and-return contract.
+**Slice:** screen the replay-verified `player-session-6` residue, preserving
+the dynamically dispatched actor-loop and queue boundaries.
 
 The last slice closed the unsigned square root at `00:E85D-E8A4`: a call-free,
 eight-pass restoring leaf isolated from 665 natural calls in `player-session-4`,
@@ -80,16 +81,46 @@ reconstructed `$30:$2F` operands (2 through 11,629) produce exactly
 fixture across all 65,536 unsigned operands, and the default registry preserves
 all 6,605 per-frame work-RAM hashes with the calls native.
 
-Next: take a v3 capture with the current executable, replay it under a routine
-trace, and rank its non-wait residue for a scope with its own caller and return.
+`player-session-5` was a useful initial screen but no longer replays through
+the current host. The fresh cabinet-mode v3 `player-session-6` restores the
+certification boundary: all 31,971 work-RAM frame hashes and its complete
+8,799-address profile replay through the default registry. Its 1,744 calls to
+the short actor scan at `01:C539` total 117,359,643 cycles and 2,379,778
+writes. They retain the same dynamic-handler and queue-filing interior, so the
+whole scope remains assembly-backed; the current trace is recorded in
+[docs/ROUTE_SCREENING.md](docs/ROUTE_SCREENING.md).
+
+The next distinct residue, `01:C969`, also failed admission. Its 33,498
+session-6 calls take three exits and, on the active path, compose five arithmetic
+helpers. A minimal prefix transcript matched focused original calls but changed
+the deployed replay at frame 4,888, so the expansion was rejected and the
+source was restored before continuing.
+
+`05:6D27` is now admitted from the same capture: the bonus-stage-4 orbit child
+has one caller (`05:C565`) and normal return (`05:C568`), with 7,719 live arms
+that each take 450 master cycles and stage ten ordered writes. Nine calls join
+the outer controller at `05:6D7F`, so they fall back before staging work. The
+full default registry, including the new arm, preserves all 31,971 session-6
+work-RAM hashes; the owning Release BS-4 semantic regression also passes.
+
+`00:E5BC` is also admitted: it is the eight-bit partial loop inside the unsigned
+word multiply, entered 2,423 times only from `00:E5AF` and returning at
+`00:E5EB`. Its 600 + 72 x set-bit master-cycle model stages all `$42`, `$43`,
+and `$30` shifts plus each ordered add; the production fixture covers every
+byte multiplier pattern over a 16-bit operand grid and rejects decimal/T mode.
+The deployed session-6 registry again preserves all 31,971 hashes and adds
+2,000,280 native master cycles.
+
+Next: screen the next independently bounded child from the remaining session-6
+residue, without splitting the composite actor owner around its dynamic
+dispatch, queue, or arithmetic-call seams.
 
 ## Next actions
 
-- [ ] Capture a fresh player session with the current executable, replay it,
-      and rank the residue for an unobserved table-rule transaction with an
-      independent caller-and-return contract. Keep every known scheduler,
-      collision, fixed-Bumper, actor-loader, appearance, allocator, and
-      caller-return continuation assembly-backed.
+- [ ] Screen the replay-verified `player-session-6` residue for an unobserved
+      table-rule transaction with an independent caller-and-return contract.
+      Keep every known scheduler, collision, fixed-Bumper, actor-loader,
+      appearance, allocator, and caller-return continuation assembly-backed.
 - [ ] Continue screening the remaining unregistered residue below the
       documented hardware, capacity, compound-branch, scheduler, and
       music-resumption seams.

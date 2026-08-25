@@ -119,6 +119,69 @@ evidence. Its leading residue is the already-classified TIA and compound-branch
 seams, VDC acknowledgements, bank-`09` palette/score-panel fragments, bank-`45`
 music fallbacks, and actor/collision branch interiors.
 
+`player-session-5` is an 11,167-frame cabinet-mode v3 capture. Its default
+registry replay preserves every work-RAM fingerprint and exactly reproduces its
+7,778-address profile (`a8cf3988190362968f6e444dacfdb29d5e75fd41b5c6e4cbe57b395175a188e9`).
+It newly exposes the short actor scan at `01:C539`, but its 943 outer calls
+(942 from `01:C1D3`, one from `00:EEC1`) run through dynamic handlers and
+queue filing before their `01:C573` RTS: 21,675--379,866 cycles and up to
+1,734 writes per call. This is an existing composite actor owner, not a new
+atomic routine; any future extension must retain the existing dispatch and
+queue seams rather than replacing the whole scope.
+
+On 2026-08-25, a source-clean current Release build no longer reproduced that
+baseline: `player-session-5` first differed at frame 2,401 and the earlier
+v3 `player-session-4` first differed at frame 144. They remain useful for
+prioritization only.
+
+`player-session-6` replaces that certification boundary. Its 31,971-frame
+cabinet-mode v3 replay preserves every work-RAM fingerprint; the captured and
+replayed instruction profiles are byte-identical with SHA-256
+`26d754f8905c7bfbcedcad2e08a937078496c650093b8fc2c0fe44cc79b5635c`.
+The default registry executes 7,218,542,577 of 11,477,133,123 master cycles
+natively. Its focused `01:C539` trace has 1,744 calls (1,743 from `01:C1D3`,
+one from `00:EEC1`), all returning through `01:C573`; together they span
+24,228--369,078 cycles and 425--8,885 work-RAM writes per call. The 117,359,643
+cycles and 2,379,778 writes confirm that this is still a composite actor loop,
+not an atomic replacement candidate.
+
+The next distinct high-cost owner, `01:C969`, is also not ready for direct
+admission. Its 33,498 observed calls split into 7,301 returns at `01:C971`,
+26,117 at `01:C9DE`, and 80 full returns at `01:CA83`; together they cover
+18,540,300 master cycles and 517,416 writes. The active arm calls `00:E5EC`
+twice, `00:E85D`, `00:E79C` twice, `00:E728`, and `00:E65C` three times before
+the full exit. `E85D` and `E65C` are already native, but the others remain
+assembly-backed. A narrow transcript through the guard and the `C9DE` range-out
+return matched focused original calls at ordinals 6,176, 6,177, 30,155 and
+30,186, yet the default deployed session first diverged at frame 4,888. The
+prefix was rejected and reverted: preserve this parent/child schedule until
+that cross-registry interaction is understood.
+
+`05:6D27` is the first independently bounded session-6 residue to clear the
+screen. Its 7,728 calls all arrive from `05:C565` and return through `05:C568`.
+The 7,719 live orbit arms return at `05:6D7E` after exactly 450 master cycles
+and ten ordered writes: phase `$3E00,X`, four zero-page coordinate temporaries,
+and the four position bytes for the child. The remaining nine calls branch to
+the enclosing `05:6D7F` controller and deliberately decline before staging a
+write. The initial transcript charged zero-page instructions at nine master
+cycles and diverged at the first live frame (10,711); the corrected 12-cycle
+timing preserves every one of the 31,971 replay fingerprints, and
+`dc_rom_bonus_stage4` passes in Release.
+
+The next leaf, `00:E5BC`, is the eight-bit partial loop of the unsigned-word
+multiply, not another caller-owned transaction. All 2,423 session-6 entries
+come from `00:E5AF`, return through `00:E5B2`, and stop on the `00:E5EB` RTS.
+It shifts the `$42:$43` accumulator and `$30` multiplier once per half-step,
+then conditionally adds `$2D:$2E`; its uninterrupted body is exactly
+600 + 72 x population-count(initial `$30`) master cycles. The checkpointed
+replacement stages those 24 shift writes and up to 16 add writes at the
+original instruction boundaries. Forced replacement covers all 2,423 natural
+calls, focused replay verifies call 1 at frame 4,888 (744 cycles, 28 writes),
+and the default 596-entry registry preserves every session-6 fingerprint while
+contributing 2,000,280 native master cycles. The ROM-free semantic fixture
+exercises all 256 multiplier patterns across a representative 16-bit operand
+grid and refuses decimal/T mode.
+
 **Practical consequence:** prefer a fresh player capture over another scripted
 route when looking for the next admission, and capture it with the current
 executable so the per-frame fingerprints exist.
