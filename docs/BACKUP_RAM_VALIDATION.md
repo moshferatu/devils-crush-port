@@ -49,4 +49,5 @@ the host, confirm `portable-data/devils-crush.sav` is exactly 2,048 bytes,
 restart from the same directory, choose Data Load, and load the saved slot.
 
 For an automated byte-for-byte persistence check, use the
-`--backup-ram-test` command documented in the repository README.
+`--backup-ram-test` command documented in
+[INSTRUMENTATION.md](INSTRUMENTATION.md#backup-ram-persistence).
