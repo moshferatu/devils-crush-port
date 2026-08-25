@@ -539,6 +539,7 @@ struct CommandLine {
     bool cabinet_plunger_check = false;
     bool verify_unsigned_square_root = false;
     bool verify_unsigned_word_multiply_partial = false;
+    bool verify_side_gate_deadline_check = false;
     bool high_score_check = false;
     std::filesystem::path cabinet_view_probe_directory;
     bool cabinet_seed_check = false;
@@ -1400,6 +1401,8 @@ parse_logical_address_range(const std::string_view text)
             options.verify_unsigned_square_root = true;
         } else if (argument == "--verify-unsigned-word-multiply-partial") {
             options.verify_unsigned_word_multiply_partial = true;
+        } else if (argument == "--verify-side-gate-deadline-check") {
+            options.verify_side_gate_deadline_check = true;
         } else if (argument == "--high-score-check") {
             options.high_score_check = true;
         } else if (argument == "--cabinet-view-probe") {
@@ -1546,6 +1549,7 @@ parse_logical_address_range(const std::string_view text)
         + static_cast<int>(!options.routine_replay_corpus_paths.empty())
         + static_cast<int>(options.verify_unsigned_square_root)
         + static_cast<int>(options.verify_unsigned_word_multiply_partial)
+        + static_cast<int>(options.verify_side_gate_deadline_check)
         + static_cast<int>(options.backup_ram_test);
     const bool recording_selected =
         options.record_canonical || options.record_gameplay
@@ -1962,6 +1966,13 @@ parse_logical_address_range(const std::string_view text)
                                    == RoutineKey{
                                        .physical_bank = 0x00U,
                                        .logical_pc = 0xE5BCU,
+                                   }
+                           && request.all_calls;
+                       const bool proven_side_gate_deadline_check =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x02U,
+                                       .logical_pc = 0x4FC4U,
                                    }
                            && request.all_calls;
                        const bool proven_signed_fixed_multiply =
@@ -4519,6 +4530,7 @@ parse_logical_address_range(const std::string_view text)
                            && !proven_unsigned_byte_division
                            && !proven_unsigned_byte_multiply
                            && !proven_unsigned_word_multiply_partial
+                           && !proven_side_gate_deadline_check
                            && !proven_unsigned_multiply_round
                            && !proven_signed_fixed_multiply
                            && !proven_actor_camera_activation
@@ -4824,6 +4836,7 @@ parse_logical_address_range(const std::string_view text)
             "semantic 00:E6DC@all, "
             "semantic 00:E569@all, "
             "semantic 00:E5BC@all, "
+            "semantic 02:4FC4@all, "
             "semantic 00:E624@all, "
             "semantic 00:E65C@all, "
             "semantic 01:D09E@all, semantic 01:D612@all, "
@@ -17425,6 +17438,168 @@ int run_unsigned_word_multiply_partial_semantic_fixture()
     return EXIT_SUCCESS;
 }
 
+int run_side_gate_deadline_check_semantic_fixture()
+{
+    constexpr std::array<std::byte, 0U> empty_rom{};
+    constexpr std::array<std::uint8_t, 2U> input_statuses{0x00U, 0x42U};
+    constexpr std::array<std::uint8_t, 3U> deadlines{0x00U, 0x01U, 0x02U};
+    constexpr std::array<std::uint32_t, 5U> clocks{
+        0x000000U, 0x001387U, 0x001388U, 0x001389U, 0xFFFFFFU,
+    };
+    const auto set_nz = [](std::uint8_t status, const std::uint8_t value) {
+        status = static_cast<std::uint8_t>(status & ~0x82U);
+        if (value == 0U) {
+            status = static_cast<std::uint8_t>(status | 0x02U);
+        }
+        return static_cast<std::uint8_t>(status | (value & 0x80U));
+    };
+    const auto subtract = [&set_nz](
+                              std::uint8_t status,
+                              const std::uint8_t left,
+                              const std::uint8_t right) {
+        const auto difference = static_cast<std::uint16_t>(
+            static_cast<std::uint16_t>(left) - right
+            - ((status & 0x01U) != 0U ? 0U : 1U));
+        const auto result = static_cast<std::uint8_t>(difference);
+        status = static_cast<std::uint8_t>(status & ~0x41U);
+        status = set_nz(status, result);
+        if (difference < 0x100U) {
+            status = static_cast<std::uint8_t>(status | 0x01U);
+        }
+        if (((left ^ right) & (left ^ result) & 0x80U) != 0U) {
+            status = static_cast<std::uint8_t>(status | 0x40U);
+        }
+        return std::pair{result, status};
+    };
+
+    std::size_t verified = 0U;
+    for (const auto input_status : input_statuses) {
+        for (const auto deadline : deadlines) {
+            for (const auto clock : clocks) {
+                std::vector<std::byte> work_ram(0x2000U);
+                constexpr std::uint8_t y = 0x07U;
+                work_ram[0x0251U] = static_cast<std::byte>(y);
+                work_ram[0x0D52U] = static_cast<std::byte>(deadline);
+                work_ram[0x0205U + y] = static_cast<std::byte>(clock & 0xFFU);
+                work_ram[0x020CU + y] = static_cast<std::byte>(
+                    (clock >> 8U) & 0xFFU);
+                work_ram[0x0213U + y] = static_cast<std::byte>(
+                    (clock >> 16U) & 0xFFU);
+                const devils_crush::emulation::RoutineEntry entry{
+                    .routine = {.physical_bank = 0x02U, .logical_pc = 0x4FC4U},
+                    .registers = {
+                        .program_counter = 0x4FC4U,
+                        .accumulator = 0xA5U,
+                        .x = 0x5AU,
+                        .y = 0xC3U,
+                        .stack_pointer = 0xF2U,
+                        .status = input_status,
+                    },
+                };
+                const auto replacement =
+                    devils_crush::app::replace_native_gameplay_routine(
+                        entry, work_ram, empty_rom);
+                if (!replacement || !replacement->work_ram_writes.empty()
+                    || replacement->checkpoints.empty()
+                    || !replacement->absorbed_returns.empty()) {
+                    std::cerr << "Side-gate deadline fixture did not replace "
+                                 "a valid input.\n";
+                    return EXIT_FAILURE;
+                }
+
+                auto expected_status = input_status;
+                auto expected_a = entry.registers.accumulator;
+                auto expected_y = entry.registers.y;
+                std::uint16_t expected_pc = 0x4FE1U;
+                std::uint32_t expected_cycles = 12U;
+                std::size_t expected_checkpoints = 1U;
+                if ((input_status & 0x02U) != 0U) {
+                    expected_a = deadline;
+                    expected_status = set_nz(expected_status, expected_a);
+                    expected_a = static_cast<std::uint8_t>(expected_a - 1U);
+                    expected_status = set_nz(expected_status, expected_a);
+                    expected_cycles = 39U;
+                    expected_checkpoints = 4U;
+                    if (expected_a == 0U) {
+                        expected_y = y;
+                        expected_status = set_nz(expected_status, expected_y);
+                        expected_status = static_cast<std::uint8_t>(
+                            expected_status | 0x01U);
+                        constexpr std::array<std::uint8_t, 3U> kTargets{
+                            0x88U, 0x13U, 0x00U,
+                        };
+                        std::size_t byte_index = 0U;
+                        for (const auto byte : std::array<std::uint8_t, 3U>{
+                                 static_cast<std::uint8_t>(clock & 0xFFU),
+                                 static_cast<std::uint8_t>((clock >> 8U) & 0xFFU),
+                                 static_cast<std::uint8_t>((clock >> 16U) & 0xFFU),
+                             }) {
+                            const auto [result, status] = subtract(
+                                expected_status, byte, kTargets[byte_index]);
+                            expected_a = result;
+                            expected_status = status;
+                            ++byte_index;
+                        }
+                        expected_pc = (expected_status & 0x01U) == 0U
+                            ? 0x4FE2U
+                            : 0x4FE1U;
+                        expected_cycles = expected_pc == 0x4FE2U ? 129U : 123U;
+                        expected_checkpoints = 13U;
+                    }
+                }
+                if (replacement->return_instruction
+                        != devils_crush::emulation::RoutineKey{0x02U, expected_pc}
+                    || replacement->body_master_cycles != expected_cycles
+                    || replacement->checkpoints.size() != expected_checkpoints
+                    || replacement->output_registers.program_counter != expected_pc
+                    || replacement->output_registers.accumulator != expected_a
+                    || replacement->output_registers.x != entry.registers.x
+                    || replacement->output_registers.y != expected_y
+                    || replacement->output_registers.stack_pointer
+                        != entry.registers.stack_pointer
+                    || replacement->output_registers.status != expected_status) {
+                    std::cerr << "Side-gate deadline fixture produced the "
+                                 "wrong transcript: status "
+                              << static_cast<unsigned int>(input_status)
+                              << ", deadline "
+                              << static_cast<unsigned int>(deadline)
+                              << ", clock " << clock << ", expected PC "
+                              << expected_pc << ", got "
+                              << replacement->return_instruction.logical_pc
+                              << ", expected cycles " << expected_cycles
+                              << ", got "
+                              << replacement->body_master_cycles
+                              << ", expected status "
+                              << static_cast<unsigned int>(expected_status)
+                              << ", got "
+                              << static_cast<unsigned int>(
+                                     replacement->output_registers.status)
+                              << ".\n";
+                    return EXIT_FAILURE;
+                }
+                ++verified;
+            }
+        }
+    }
+
+    std::vector<std::byte> guard_work_ram(0x2000U);
+    for (const auto status : std::array<std::uint8_t, 2U>{0x08U, 0x20U}) {
+        const devils_crush::emulation::RoutineEntry entry{
+            .routine = {.physical_bank = 0x02U, .logical_pc = 0x4FC4U},
+            .registers = {.program_counter = 0x4FC4U, .status = status},
+        };
+        if (devils_crush::app::replace_native_gameplay_routine(
+                entry, guard_work_ram, empty_rom)) {
+            std::cerr << "Side-gate deadline fixture accepted decimal or T "
+                         "mode.\n";
+            return EXIT_FAILURE;
+        }
+    }
+    std::cout << "Side-gate deadline semantic fixture verified: " << verified
+              << " branch-and-clock cases\n";
+    return EXIT_SUCCESS;
+}
+
 int main(const int argc, char* argv[])
 {
     const auto options = parse_command_line(argc, argv);
@@ -17449,6 +17624,9 @@ int main(const int argc, char* argv[])
     }
     if (options.verify_unsigned_word_multiply_partial) {
         return run_unsigned_word_multiply_partial_semantic_fixture();
+    }
+    if (options.verify_side_gate_deadline_check) {
+        return run_side_gate_deadline_check_semantic_fixture();
     }
 
     const auto validation =

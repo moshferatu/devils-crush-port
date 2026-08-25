@@ -92,6 +92,13 @@ replace_native_gameplay_routine_impl(
             entry,
             work_ram);
     }
+    if (entry.routine
+        == RoutineKey{
+            .physical_bank = 0x02U,
+            .logical_pc = 0x4FC4U,
+        }) {
+        return detail::replace_side_gate_deadline_check(entry, work_ram);
+    }
     // The active-flipper controller is split at its crossed calls so the
     // admitted scheduler, D500 and collision-route owners can run between
     // these seams.

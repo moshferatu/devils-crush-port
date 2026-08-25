@@ -41,8 +41,9 @@ The last generated registry measurement (2026-08-22, 593 admissions) runs
 frame-sync wait** — with 475 routines entered, zero interrupt-horizon declines
 and zero abandoned transcripts, against a state census byte-identical to the
 assembly-only baseline. The `00:E85D` square root, `05:6D27` live orbit arm,
-and `00:E5BC` multiply partial were admitted after that measurement, so the
-current registry holds 596 entries; regenerate [docs/NATIVE_REGISTRY.md](docs/NATIVE_REGISTRY.md)
+`00:E5BC` multiply partial, and `02:4FC4` side-gate deadline check were
+admitted after that measurement, so the current registry holds 597 entries;
+regenerate [docs/NATIVE_REGISTRY.md](docs/NATIVE_REGISTRY.md)
 with the next canonical census.
 
 Milestone 3 cabinet composition has no external blocker. The accepted

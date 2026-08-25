@@ -182,6 +182,15 @@ contributing 2,000,280 native master cycles. The ROM-free semantic fixture
 exercises all 256 multiplier patterns across a representative 16-bit operand
 grid and refuses decimal/T mode.
 
+`02:4FC4` is the side gate's bounded deadline comparison. All 15,108 session-6
+entries arrive through the actor coroutine and take one of two no-write returns:
+the ordinary `02:4FE1` RTS or the state-change hand-off at `02:4FE2`. The native
+transcript preserves every branch and subtract flag through the three-byte
+`$2205,Y - $00:13:88` comparison, including the two earlier exits at `$2254`
+and `$2D52`. Its semantic fixture covers both deadline boundaries and decimal/T
+refusal; the deployed 597-entry registry preserves all 31,971 session-6 hashes
+and contributes 1,858,284 native master cycles.
+
 **Practical consequence:** prefer a fresh player capture over another scripted
 route when looking for the next admission, and capture it with the current
 executable so the per-frame fingerprints exist.

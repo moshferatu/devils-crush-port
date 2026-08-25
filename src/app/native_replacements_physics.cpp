@@ -275,7 +275,7 @@ replace_position_integration(
         });
     }
 
-    const auto set_nz = [](std::uint8_t status, const std::uint8_t value) {
+    const auto set_nz = [&](std::uint8_t status, const std::uint8_t value) {
         status = static_cast<std::uint8_t>(
             status & static_cast<std::uint8_t>(~0xA2U));
         if (value == 0U) {
@@ -5399,6 +5399,157 @@ replace_unsigned_word_multiply_partial(
     checkpoint.program_counter = 0xE5EBU;
     replacement.output_registers = checkpoint;
     return replacement;
+}
+
+[[nodiscard]] std::optional<RoutineReplacement>
+replace_side_gate_deadline_check(
+    const RoutineEntry& entry,
+    const std::span<const std::byte> work_ram)
+{
+    // 02:4FC4-02:4FE1 is the side gate's deadline test.  The falling-through
+    // path returns to the actor scan; a passed deadline hands its state-change
+    // tail back at 02:4FE2, which is deliberately outside this transcript.
+    constexpr RoutineKey kRoutine{
+        .physical_bank = 0x02U,
+        .logical_pc = 0x4FC4U,
+    };
+    constexpr std::uint8_t kCarry = 0x01U;
+    constexpr std::uint8_t kZero = 0x02U;
+    constexpr std::uint8_t kDecimal = 0x08U;
+    constexpr std::uint8_t kMemory = 0x20U;
+    constexpr std::uint8_t kOverflow = 0x40U;
+    constexpr std::uint8_t kNegative = 0x80U;
+    constexpr std::uint16_t kWorkRamBase = 0x2000U;
+    if (entry.routine != kRoutine || work_ram.size() < 0x2000U
+        || (entry.registers.status & (kDecimal | kMemory)) != 0U) {
+        return std::nullopt;
+    }
+
+    const auto read_ram = [&work_ram](const std::uint16_t address) {
+        return std::to_integer<std::uint8_t>(
+            work_ram[address - kWorkRamBase]);
+    };
+    const auto set_nz = [](std::uint8_t status, const std::uint8_t value) {
+        status = static_cast<std::uint8_t>(
+            status & static_cast<std::uint8_t>(~(kZero | kNegative)));
+        if (value == 0U) {
+            status = static_cast<std::uint8_t>(status | kZero);
+        }
+        return static_cast<std::uint8_t>(
+            status | static_cast<std::uint8_t>(value & kNegative));
+    };
+    const auto subtract = [&](
+                              std::uint8_t status,
+                              const std::uint8_t left,
+                              const std::uint8_t right) {
+        const auto difference = static_cast<std::uint16_t>(
+            static_cast<std::uint16_t>(left)
+            - static_cast<std::uint16_t>(right)
+            - ((status & kCarry) != 0U ? 0U : 1U));
+        const auto result = static_cast<std::uint8_t>(difference);
+        status = static_cast<std::uint8_t>(
+            status & static_cast<std::uint8_t>(~(kCarry | kOverflow)));
+        status = set_nz(status, result);
+        if (difference < 0x100U) {
+            status = static_cast<std::uint8_t>(status | kCarry);
+        }
+        if (((left ^ right) & (left ^ result) & kNegative) != 0U) {
+            status = static_cast<std::uint8_t>(status | kOverflow);
+        }
+        return std::pair{result, status};
+    };
+
+    auto registers = entry.registers;
+    std::uint32_t cycle = 0U;
+    RoutineReplacement replacement{};
+    const auto checkpoint = [&replacement, &registers, &cycle](
+                                const std::uint16_t instruction_pc,
+                                const std::uint16_t resume_pc,
+                                const std::uint32_t instruction_cycles) {
+        cycle += instruction_cycles;
+        registers.program_counter = resume_pc;
+        replacement.checkpoints.push_back({
+            .interrupt_sample_master_cycle_offset = cycle - 3U,
+            .master_cycle_offset = cycle,
+            .instruction = {0x02U, instruction_pc},
+            .registers = registers,
+        });
+    };
+    const auto branch = [&checkpoint](
+                            const std::uint16_t instruction_pc,
+                            const std::uint16_t taken_pc,
+                            const std::uint16_t fallthrough_pc,
+                            const bool condition) {
+        checkpoint(
+            instruction_pc,
+            condition ? taken_pc : fallthrough_pc,
+            condition ? 12U : 6U);
+        return condition ? taken_pc : fallthrough_pc;
+    };
+    const auto return_or_handoff = [&replacement, &registers, &cycle](
+                                       const std::uint16_t pc) {
+        replacement.return_instruction = {0x02U, pc};
+        registers.program_counter = pc;
+        replacement.output_registers = registers;
+        replacement.body_master_cycles = cycle;
+        return replacement;
+    };
+
+    // 4FC4 BNE $4FE1
+    registers.program_counter = branch(
+        0x4FC4U, 0x4FE1U, 0x4FC6U,
+        (registers.status & kZero) == 0U);
+    if (registers.program_counter == 0x4FE1U) {
+        return return_or_handoff(0x4FE1U);
+    }
+
+    // 4FC6 LDA $2D52 / 4FC9 DEC A / 4FCA BNE $4FE1
+    registers.accumulator = read_ram(0x2D52U);
+    registers.status = set_nz(registers.status, registers.accumulator);
+    checkpoint(0x4FC6U, 0x4FC9U, 15U);
+    registers.accumulator = static_cast<std::uint8_t>(
+        registers.accumulator - 1U);
+    registers.status = set_nz(registers.status, registers.accumulator);
+    checkpoint(0x4FC9U, 0x4FCAU, 6U);
+    registers.program_counter = branch(
+        0x4FCAU, 0x4FE1U, 0x4FCCU,
+        (registers.status & kZero) == 0U);
+    if (registers.program_counter == 0x4FE1U) {
+        return return_or_handoff(0x4FE1U);
+    }
+
+    // Compare the three-byte player clock at $2205,Y with $00:13:88.
+    registers.y = read_ram(0x2251U);
+    registers.status = set_nz(registers.status, registers.y);
+    checkpoint(0x4FCCU, 0x4FCFU, 15U);
+    registers.status = static_cast<std::uint8_t>(registers.status | kCarry);
+    checkpoint(0x4FCFU, 0x4FD0U, 6U);
+    const auto compare_byte = [&](const std::uint16_t load_pc,
+                                  const std::uint16_t address,
+                                  const std::uint16_t subtract_pc,
+                                  const std::uint8_t immediate,
+                                  const std::uint16_t next_pc) {
+        registers.accumulator = read_ram(static_cast<std::uint16_t>(
+            address + registers.y));
+        registers.status = set_nz(registers.status, registers.accumulator);
+        checkpoint(load_pc, subtract_pc, 15U);
+        const auto [result, status] = subtract(
+            registers.status, registers.accumulator, immediate);
+        registers.accumulator = result;
+        registers.status = status;
+        checkpoint(subtract_pc, next_pc, 6U);
+    };
+    compare_byte(0x4FD0U, 0x2205U, 0x4FD3U, 0x88U, 0x4FD5U);
+    compare_byte(0x4FD5U, 0x220CU, 0x4FD8U, 0x13U, 0x4FDAU);
+    compare_byte(0x4FDAU, 0x2213U, 0x4FDDU, 0x00U, 0x4FDFU);
+
+    // 4FDF BCC $4FE2.  The return instruction is either the RTS itself or
+    // the first instruction in the outside tail, so neither terminal opcode
+    // is charged by this transcript.
+    registers.program_counter = branch(
+        0x4FDFU, 0x4FE2U, 0x4FE1U,
+        (registers.status & kCarry) == 0U);
+    return return_or_handoff(registers.program_counter);
 }
 
 [[nodiscard]] std::optional<RoutineReplacement>

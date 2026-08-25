@@ -61,6 +61,14 @@ if(TARGET devils_crush)
             "-P"
             "${CMAKE_CURRENT_SOURCE_DIR}/verify_unsigned_word_multiply_partial_semantic.cmake"
     )
+    add_test(
+        NAME dc_side_gate_deadline_check_semantic
+        COMMAND
+            "${CMAKE_COMMAND}"
+            "-DAPP=$<TARGET_FILE:devils_crush>"
+            "-P"
+            "${CMAKE_CURRENT_SOURCE_DIR}/verify_side_gate_deadline_check_semantic.cmake"
+    )
 endif()
 
 # The native sound generator against the emulator's own device, driven

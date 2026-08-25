@@ -1415,6 +1415,11 @@ replace_unsigned_word_multiply_partial(
     std::span<const std::byte> work_ram);
 
 [[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_side_gate_deadline_check(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram);
+
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
 replace_unsigned_multiply_round(
     const emulation::RoutineEntry& entry,
     std::span<const std::byte> work_ram);
