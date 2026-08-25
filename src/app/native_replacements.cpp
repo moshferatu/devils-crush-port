@@ -3792,6 +3792,11 @@ replace_native_gameplay_routine_impl(
         || entry.routine
             == RoutineKey{
                 .physical_bank = 0x00U,
+                .logical_pc = 0xE728U,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x00U,
                 .logical_pc = 0xE7D7U,
             }
         || entry.routine
@@ -3804,7 +3809,11 @@ replace_native_gameplay_routine_impl(
                 .physical_bank = 0x00U,
                 .logical_pc = 0xE85DU,
             }) {
-        if (entry.routine.logical_pc == 0xE905U) {
+        if (entry.routine.logical_pc == 0xE728U) {
+            replacement = detail::replace_unsigned_fixed_division(
+                entry,
+                work_ram);
+        } else if (entry.routine.logical_pc == 0xE905U) {
             replacement = detail::replace_signed_division(entry, work_ram);
         } else if (entry.routine.logical_pc == 0xE7D7U) {
             replacement = detail::replace_unsigned_24_division(

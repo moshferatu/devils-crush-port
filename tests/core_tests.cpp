@@ -942,6 +942,49 @@ void test_native_unsigned_24_division()
         "native E7D7 rejects a truncated work-RAM snapshot");
 }
 
+void test_native_unsigned_fixed_division()
+{
+    std::array<std::uint8_t, 0x2000> work_ram{};
+    work_ram[0x002DU] = 0x02U;
+    work_ram[0x002EU] = 0x00U;
+    work_ram[0x002FU] = 0x03U;
+    work_ram[0x0030U] = 0x00U;
+
+    dc_unsigned_fixed_division division{};
+    check(
+        dc_divide_unsigned_fixed(
+            work_ram.data(), work_ram.size(), &division)
+            != 0
+            && division.dividend_input == 0x0003U
+            && division.divisor == 0x0002U
+            && division.first_quotient == 0x0001U
+            && division.first_remainder == 0x0001U
+            && division.fractional_quotient == 0x0080U
+            && division.fractional_remainder == 0U
+            && division.result == 0x0180U,
+        "native E728 retains the integer and fractional quotient bytes");
+
+    work_ram[0x002DU] = 0U;
+    work_ram[0x002EU] = 0U;
+    work_ram[0x002FU] = 0x34U;
+    work_ram[0x0030U] = 0x12U;
+    check(
+        dc_divide_unsigned_fixed(
+            work_ram.data(), work_ram.size(), &division)
+            != 0
+            && division.first_quotient == 0xFFFFU
+            && division.first_remainder == 0x1234U
+            && division.fractional_quotient == 0xFFFFU
+            && division.result == 0xFFFFU,
+        "native E728 preserves the zero-divisor restoring-loop result");
+
+    check(
+        dc_divide_unsigned_fixed(
+            work_ram.data(), work_ram.size() - 1U, &division)
+            == 0,
+        "native E728 rejects a truncated work-RAM snapshot");
+}
+
 void test_native_collision_response()
 {
     std::array<std::uint8_t, 0x2000> work_ram{};
@@ -11009,6 +11052,7 @@ int main()
     test_native_signed_division();
     test_native_unsigned_byte_division();
     test_native_unsigned_24_division();
+    test_native_unsigned_fixed_division();
     test_native_motion_rotation();
     test_native_collision_table_pass();
     test_native_collision_response();

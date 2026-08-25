@@ -42,9 +42,14 @@ frame-sync wait** — with 475 routines entered, zero interrupt-horizon declines
 and zero abandoned transcripts, against a state census byte-identical to the
 assembly-only baseline. The `00:E85D` square root, `05:6D27` live orbit arm,
 `00:E5BC` multiply partial, and `02:4FC4` side-gate deadline check were
-admitted after that measurement, so the current registry holds 597 entries;
+admitted after that measurement, so the current registry holds 598 entries;
 regenerate [docs/NATIVE_REGISTRY.md](docs/NATIVE_REGISTRY.md)
 with the next canonical census.
+
+`00:E728` unsigned fixed-point division is now also admitted from the long
+`player-session-6` capture: all 240 calls (two callsites) preserve every
+31,971-frame fingerprint, increasing that session's native non-wait coverage
+from 97.46% to 97.48%.
 
 Milestone 3 cabinet composition has no external blocker. The accepted
 background is rows 20-687 of the packed 256-by-768 envelope; camera-visited

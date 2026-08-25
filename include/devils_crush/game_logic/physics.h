@@ -119,6 +119,16 @@ typedef struct dc_signed_division {
     dc_unsigned_divide_step steps[DC_UNSIGNED_DIVIDE_STEP_COUNT];
 } dc_signed_division;
 
+typedef struct dc_unsigned_fixed_division {
+    uint16_t dividend_input;
+    uint16_t divisor;
+    uint16_t first_quotient;
+    uint16_t first_remainder;
+    uint16_t fractional_quotient;
+    uint16_t fractional_remainder;
+    uint16_t result;
+} dc_unsigned_fixed_division;
+
 typedef struct dc_unsigned_24_divide_step {
     uint32_t quotient_after_roll;
     uint8_t remainder_after_shift;
@@ -296,6 +306,16 @@ int dc_divide_signed_word(
     size_t work_ram_size,
     uint8_t carry_in,
     dc_signed_division* division);
+
+// Native equivalent of ROM routine 00:E728. It divides the unsigned 8.8
+// dividend at 2F:30 by the unsigned word divisor at 2D:2E through two
+// restoring 16-round passes, retaining the low integer byte and an 8-bit
+// fractional quotient. The function is pure: callers commit the returned
+// scratch writes. A zero divisor retains the original loop behavior.
+int dc_divide_unsigned_fixed(
+    const uint8_t* work_ram,
+    size_t work_ram_size,
+    dc_unsigned_fixed_division* division);
 
 // Native equivalent of ROM routine 00:E6DC. It performs the cartridge's
 // preliminary inherited-carry roll and eight restoring rounds over the

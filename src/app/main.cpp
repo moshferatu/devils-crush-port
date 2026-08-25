@@ -1931,6 +1931,13 @@ parse_logical_address_range(const std::string_view text)
                                        .logical_pc = 0xE905U,
                                    }
                            && request.all_calls;
+                       const bool proven_unsigned_fixed_division =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x00U,
+                                       .logical_pc = 0xE728U,
+                                   }
+                           && request.all_calls;
                        const bool proven_unsigned_24_division =
                            request.routine
                                    == RoutineKey{
@@ -4526,6 +4533,7 @@ parse_logical_address_range(const std::string_view text)
                            && !proven_signed_word_negation
                            && !proven_unsigned_square_root
                            && !proven_signed_division
+                           && !proven_unsigned_fixed_division
                            && !proven_unsigned_24_division
                            && !proven_unsigned_byte_division
                            && !proven_unsigned_byte_multiply
@@ -4833,6 +4841,7 @@ parse_logical_address_range(const std::string_view text)
             "semantic 00:F54F@all, semantic 00:F55C@all, "
             "semantic 00:E8B3@all, semantic 00:E837@all, "
             "semantic 00:E905@all, semantic 00:E7D7@all, "
+            "semantic 00:E728@all, "
             "semantic 00:E6DC@all, "
             "semantic 00:E569@all, "
             "semantic 00:E5BC@all, "

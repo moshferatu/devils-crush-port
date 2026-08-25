@@ -62,6 +62,14 @@ if(TARGET devils_crush)
             "${CMAKE_CURRENT_SOURCE_DIR}/verify_unsigned_word_multiply_partial_semantic.cmake"
     )
     add_test(
+        NAME dc_unsigned_fixed_division_semantic
+        COMMAND
+            "${CMAKE_COMMAND}"
+            "-DCORE_TESTS=$<TARGET_FILE:dc_core_tests>"
+            "-P"
+            "${CMAKE_CURRENT_SOURCE_DIR}/verify_unsigned_fixed_division_semantic.cmake"
+    )
+    add_test(
         NAME dc_side_gate_deadline_check_semantic
         COMMAND
             "${CMAKE_COMMAND}"

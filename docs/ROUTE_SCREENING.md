@@ -157,6 +157,16 @@ return matched focused original calls at ordinals 6,176, 6,177, 30,155 and
 prefix was rejected and reverted: preserve this parent/child schedule until
 that cross-registry interaction is understood.
 
+Its independent fixed-point child `00:E728` now clears the same screen. The
+31,971-frame `player-session-6` replay observes 240 calls: 160 from `00:E7C3`
+and 80 from `00:CA1D`, all returning at `E7C6`/`CA20` through the `E73C` RTS.
+It composes two 16-round restoring passes, retaining the low integer byte and
+the fractional byte. The transcript preserves its nested JSR stack writes,
+including the taken-branch timing that lets timer interrupts resume within the
+divider. Forced and default registry replays preserve every frame hash; the
+default registry adds 1,334,988 native master cycles and raises non-wait
+coverage to 97.48%.
+
 `05:6D27` is the first independently bounded session-6 residue to clear the
 screen. Its 7,728 calls all arrive from `05:C565` and return through `05:C568`.
 The 7,719 live orbit arms return at `05:6D7E` after exactly 450 master cycles

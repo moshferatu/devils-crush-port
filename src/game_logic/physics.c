@@ -405,6 +405,62 @@ int dc_divide_signed_word(
     return 1;
 }
 
+static void divide_unsigned_word_restoring(
+    const uint16_t dividend,
+    const uint16_t divisor,
+    uint16_t* const quotient_out,
+    uint16_t* const remainder_out)
+{
+    uint16_t quotient = dividend;
+    uint16_t remainder = 0U;
+    size_t index;
+
+    for (index = 0U; index < DC_UNSIGNED_DIVIDE_STEP_COUNT; ++index) {
+        const uint16_t carry = (uint16_t)(quotient >> 15U);
+        quotient = (uint16_t)(quotient << 1U);
+        remainder = (uint16_t)((remainder << 1U) | carry);
+        if (remainder >= divisor) {
+            quotient = (uint16_t)(quotient + 1U);
+            remainder = (uint16_t)(remainder - divisor);
+        }
+    }
+
+    *quotient_out = quotient;
+    *remainder_out = remainder;
+}
+
+int dc_divide_unsigned_fixed(
+    const uint8_t* const work_ram,
+    const size_t work_ram_size,
+    dc_unsigned_fixed_division* const division)
+{
+    if (work_ram == NULL || division == NULL
+        || work_ram_size < 0x2000U) {
+        return 0;
+    }
+
+    division->dividend_input = (uint16_t)(
+        (uint16_t)work_ram[0x002FU]
+        | ((uint16_t)work_ram[0x0030U] << 8U));
+    division->divisor = (uint16_t)(
+        (uint16_t)work_ram[0x002DU]
+        | ((uint16_t)work_ram[0x002EU] << 8U));
+    divide_unsigned_word_restoring(
+        division->dividend_input,
+        division->divisor,
+        &division->first_quotient,
+        &division->first_remainder);
+    divide_unsigned_word_restoring(
+        (uint16_t)((division->first_remainder & 0x00FFU) << 8U),
+        division->divisor,
+        &division->fractional_quotient,
+        &division->fractional_remainder);
+    division->result = (uint16_t)(
+        ((division->first_quotient & 0x00FFU) << 8U)
+        | (division->fractional_quotient & 0x00FFU));
+    return 1;
+}
+
 int dc_divide_unsigned_24(
     const uint8_t* const work_ram,
     const size_t work_ram_size,
