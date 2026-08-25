@@ -10,6 +10,13 @@ used during each iteration see [NATIVE_PORT_WORKFLOW.md](NATIVE_PORT_WORKFLOW.md
 The commands that produce the artifacts quoted throughout are collected in
 [INSTRUMENTATION.md](INSTRUMENTATION.md).
 
+Two companions carry the parts of this record that a future slice has to act
+on: [ROUTE_SCREENING.md](ROUTE_SCREENING.md) lists the gameplay routes already
+screened for a native seam and what each one reached, and
+[RETAINED_ASSEMBLY_SEAMS.md](RETAINED_ASSEMBLY_SEAMS.md) lists the code left
+emulated on purpose. The unedited day-by-day progress log through 2026-08-23 is
+archived in [PROGRESS_ARCHIVE.md](PROGRESS_ARCHIVE.md).
+
 ## Bounded actor families
 
 The first manual-named fixed family is the lower-table Tower:

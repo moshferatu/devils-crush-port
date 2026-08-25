@@ -178,3 +178,6 @@ check), the smoke tests, and the release staging layout.
 | [docs/NATIVE_PORT_WORKFLOW.md](docs/NATIVE_PORT_WORKFLOW.md) | The validation cadence used for each port iteration |
 | [docs/NATIVE_REGISTRY.md](docs/NATIVE_REGISTRY.md) | The admitted native routines and their measured coverage |
 | [docs/ROUTINE_MAP.md](docs/ROUTINE_MAP.md) | Mapped ROM routines, their evidence, and artifact hashes |
+| [docs/ROUTE_SCREENING.md](docs/ROUTE_SCREENING.md) | Which gameplay routes have been screened for a native seam, and what each reached |
+| [docs/RETAINED_ASSEMBLY_SEAMS.md](docs/RETAINED_ASSEMBLY_SEAMS.md) | Code deliberately left emulated, and why |
+| [docs/PROGRESS_ARCHIVE.md](docs/PROGRESS_ARCHIVE.md) | The full historical progress log through 2026-08-23 |

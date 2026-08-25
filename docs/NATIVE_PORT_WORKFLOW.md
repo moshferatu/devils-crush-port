@@ -160,7 +160,7 @@ so concurrent runs overwrite each other's outputs and CTest's own log.
   branch.
 - Add a separate focused ROM regression only when it exercises a unique route,
   branch, write scope, or artifact that the family regression cannot express.
-  Mark its reason in the test and in `PROGRESS.md`.
+  Mark its reason in the test and in the slice's commit message.
 - Keep pure-C/game-logic tests exhaustive for classifier states, malformed
   work RAM, and invalid slots. They are cheap and run on every slice.
 - Do not bless a changed hash by itself. Explain the changed behavior, inspect
@@ -2505,7 +2505,7 @@ address.
 
 ### Price a jump table by profiling its range, not by collecting the rows other notes mention
 
-`01:C000`-`01:C0CB` was carried in `PROGRESS.md` for several slices as "`01:C012`
+`01:C000`-`01:C0CB` was carried in the progress log for several slices as "`01:C012`
 and `01:C018`, 29,000 cycles for two transcribed jumps" — a poor rate, honestly
 priced, and postponed accordingly. Both figures were right and the conclusion
 was wrong. Those are simply the two rows that other notes in that file had cause
@@ -2534,7 +2534,7 @@ what was left in bank `09`. It never appeared in a ranking. It branches over an
 untaken countdown at `7249`-`725B`, so the analyzer offered `09:71EA`-`7247` and
 `09:725E`-`72EA` — the first ending in the middle of the poll and starting in the
 middle of an unrelated animation stepper, the second beginning at the poll's own
-join point. `PROGRESS.md` carried both as separate recommendations, and neither
+join point. The progress log carried both as separate recommendations, and neither
 of them is a routine.
 
 **Disassemble a candidate's range before pricing it, and price what the
@@ -2598,7 +2598,7 @@ work-RAM census can see.
 
 ### A recommendation ages against the measurement it was built on
 
-`PROGRESS.md` recommended widening bank `45`'s driver-state guard as "the
+The progress log recommended widening bank `45`'s driver-state guard as "the
 largest recoverable block", worth 476,490 master cycles in call sites plus
 6,516 of 7,724 declined entries at `45:4044`. Every number in that sentence was
 correct when it was written and none of them survived the slice that chunked the
