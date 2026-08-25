@@ -112,6 +112,12 @@ byte multiplier pattern over a 16-bit operand grid and rejects decimal/T mode.
 The deployed session-6 registry again preserves all 31,971 hashes and adds
 2,000,280 native master cycles.
 
+The existing `03:6054` frame-table animation leaf is now widened from its four
+Tower-insect slots to every session-6 actor slot with a valid table index. Its
+ordinary registry deployment preserves all 31,971 fingerprints and raises that
+key from 31,299 to 69,680 native calls, adding 6,678,228 native master cycles
+without expanding a caller-owned actor scope.
+
 Next: screen the next independently bounded child from the remaining session-6
 residue, without splitting the composite actor owner around its dynamic
 dispatch, queue, or arithmetic-call seams.

@@ -1638,8 +1638,6 @@ int dc_classify_tower_insect_animation(
     uint8_t lookup_index;
 
     if (work_ram == NULL || animation == NULL
-        || (slot != 0x64U && slot != 0x67U && slot != 0x6AU
-            && slot != 0x6DU)
         || work_ram_size <= cadence_offset || work_ram_size <= phase_offset
         || work_ram_size <= timer_offset) {
         return 0;

@@ -4500,11 +4500,16 @@ void test_native_tower_insect_animation()
             work_ram.data(), 0x1CE4U, 0x64U, &animation)
             == 0,
         "native 6054 rejects a truncated work-RAM snapshot");
+    work_ram[0x1AE5U] = 0x0EU;
+    work_ram[0x1CE5U] = 0x03U;
+    work_ram[0x1A65U] = 0x01U;
     check(
         dc_classify_tower_insect_animation(
             work_ram.data(), work_ram.size(), 0x65U, &animation)
-            == 0,
-        "native 6054 rejects another dynamic actor slot");
+                != 0
+            && animation.lookup_index == 0x1FU && animation.frame == 0x16U
+            && animation.path == DC_TOWER_INSECT_ANIMATION_ADVANCE,
+        "native 6054 shares its valid frame-table leaf with another actor slot");
     work_ram[0x1AE4U] = 0x20U;
     check(
         dc_classify_tower_insect_animation(

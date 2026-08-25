@@ -191,6 +191,17 @@ and `$2D52`. Its semantic fixture covers both deadline boundaries and decimal/T
 refusal; the deployed 597-entry registry preserves all 31,971 session-6 hashes
 and contributes 1,858,284 native master cycles.
 
+The `03:6054` animation leaf was already registered for the four dynamic
+Tower-insect slots, but the session-6 observer showed that the same direct BSR
+leaf is also used by eight other active actor slots. All 69,680 arrivals have
+the same `01:C51D -> 03:6054 -> 03:6078` instruction contract; every resulting
+cadence/phase lookup stays inside the ROM's 32-byte frame table. The classifier
+therefore now admits every slot with a valid table index and still declines an
+out-of-table cadence. The focused core fixture covers a formerly declined slot,
+and both a forced and ordinary default-registry replay preserve all 31,971
+session-6 hashes. Default deployment rises from 31,299 to 69,680 native calls
+at this existing key, adding 6,678,228 native master cycles.
+
 **Practical consequence:** prefer a fresh player capture over another scripted
 route when looking for the next admission, and capture it with the current
 executable so the per-frame fingerprints exist.

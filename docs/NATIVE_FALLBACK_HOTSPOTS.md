@@ -404,13 +404,13 @@ the direct target only selects a frame and advances a local timer/phase.
 
 The parent was rejected as a whole-routine candidate because it composes
 `03:6966`, hit scoring, audio, and child release behavior. Direct target
-`03:6054` is restricted to dynamic Tower-insect slots `$64/$67/$6A/$6D`.
-It derives a 32-byte frame-table index from cadence `$3A80,X` and phase
+`03:6054` derives a 32-byte frame-table index from cadence `$3A80,X` and phase
 `$3C80,X`, stores the frame at `$3980,X`, then decrements `$3A00,X` and
-reloads six/increments phase on expiry. Semantic `03:6054@all` now covers
-all 6,750 natural entries through exact 147-cycle waiting and 183-cycle
-phase-advance transcripts. The controller and collision/scoring paths remain
-assembly-backed.
+reloads six/increments phase on expiry. Its classifier now accepts every actor
+slot whose live lookup remains inside that table: session-6 expanded the
+existing deployment from 31,299 to 69,680 native calls, all hash-stable through
+exact 147-cycle waiting and 183-cycle phase-advance transcripts. The controller
+and collision/scoring paths remain assembly-backed.
 
 ## Tower-insect source initializer
 

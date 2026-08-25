@@ -1800,9 +1800,10 @@ int dc_classify_spider_appearance(
     uint8_t slot,
     dc_spider_appearance* appearance);
 
-// Native state classification for direct ROM branch target 03:6054. The four
-// dynamic Tower insects select a table frame from their cadence/phase state,
-// then decrement a six-tick animation timer and advance the phase on expiry.
+// Native state classification for direct ROM branch target 03:6054. Every
+// actor whose cadence/phase resolves inside its shared 32-byte frame table
+// selects a frame, then decrements a six-tick animation timer and advances the
+// phase on expiry.
 int dc_classify_tower_insect_animation(
     const uint8_t* work_ram,
     size_t work_ram_size,
