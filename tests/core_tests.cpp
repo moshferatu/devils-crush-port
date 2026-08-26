@@ -1757,6 +1757,46 @@ void test_native_signed_fixed_multiply()
         "native E65C rejects a truncated work-RAM snapshot");
 }
 
+void test_native_signed_word_multiply()
+{
+    std::array<std::uint8_t, 0x2000> work_ram{};
+    work_ram[0x002DU] = 0x00U;
+    work_ram[0x002EU] = 0xFEU;
+    work_ram[0x002FU] = 0x80U;
+    work_ram[0x0030U] = 0x01U;
+
+    dc_signed_word_multiply multiply{};
+    check(
+        dc_multiply_signed_words(work_ram.data(), work_ram.size(), &multiply)
+            != 0
+            && multiply.negates_multiplicand != 0U
+            && multiply.negates_multiplier == 0U
+            && multiply.runs_high_round != 0U
+            && multiply.multiplicand_magnitude == 0x0200U
+            && multiply.multiplier_magnitude == 0x0180U
+            && multiply.magnitude == 0x0000U
+            && multiply.result == 0x0000U,
+        "native E5EC composes signed 16-bit multiplication rounds");
+
+    work_ram[0x002DU] = 0x02U;
+    work_ram[0x002EU] = 0x00U;
+    work_ram[0x002FU] = 0xFEU;
+    work_ram[0x0030U] = 0xFFU;
+    check(
+        dc_multiply_signed_words(work_ram.data(), work_ram.size(), &multiply)
+            != 0
+            && multiply.negates_multiplicand == 0U
+            && multiply.negates_multiplier != 0U
+            && multiply.magnitude == 0x0004U
+            && multiply.result == 0xFFFCU,
+        "native E5EC restores the signed word product");
+    check(
+        dc_multiply_signed_words(
+            work_ram.data(), work_ram.size() - 1U, &multiply)
+            == 0,
+        "native E5EC rejects a truncated work-RAM snapshot");
+}
+
 void test_native_flipper_projection()
 {
     std::array<std::uint8_t, 0x2000> work_ram{};
@@ -11067,6 +11107,7 @@ int main()
     test_native_unsigned_byte_multiply();
     test_native_unsigned_multiply_round();
     test_native_signed_fixed_multiply();
+    test_native_signed_word_multiply();
     test_native_flipper_projection();
     test_native_actor_camera_activation();
     test_native_actor_slot_reset();

@@ -841,6 +841,62 @@ int dc_multiply_signed_fixed(
     return 1;
 }
 
+int dc_multiply_signed_words(
+    const uint8_t* const work_ram,
+    const size_t work_ram_size,
+    dc_signed_word_multiply* const multiply)
+{
+    if (work_ram == NULL || multiply == NULL
+        || work_ram_size < 0x2000U) {
+        return 0;
+    }
+
+    multiply->multiplicand_input = (uint16_t)(
+        (uint16_t)work_ram[0x002DU]
+        | ((uint16_t)work_ram[0x002EU] << 8U));
+    multiply->multiplier_input = (uint16_t)(
+        (uint16_t)work_ram[0x002FU]
+        | ((uint16_t)work_ram[0x0030U] << 8U));
+    multiply->negates_multiplicand = (uint8_t)(
+        (multiply->multiplicand_input & 0x8000U) != 0U);
+    multiply->negates_multiplier = (uint8_t)(
+        (multiply->multiplier_input & 0x8000U) != 0U);
+    multiply->multiplicand_magnitude =
+        multiply->negates_multiplicand != 0U
+        ? (uint16_t)(0U - multiply->multiplicand_input)
+        : multiply->multiplicand_input;
+    multiply->multiplier_magnitude =
+        multiply->negates_multiplier != 0U
+        ? (uint16_t)(0U - multiply->multiplier_input)
+        : multiply->multiplier_input;
+    multiply->sign_xor = (uint8_t)(
+        (uint8_t)(multiply->multiplicand_input >> 8U)
+        ^ (uint8_t)(multiply->multiplier_input >> 8U));
+    multiply->runs_high_round = (uint8_t)(
+        (multiply->multiplier_magnitude >> 8U) != 0U);
+    multiply->high_round = (dc_unsigned_multiply_round){0};
+
+    uint16_t accumulator = 0U;
+    if (multiply->runs_high_round != 0U) {
+        multiply_unsigned_values(
+            accumulator,
+            multiply->multiplicand_magnitude,
+            (uint8_t)(multiply->multiplier_magnitude >> 8U),
+            &multiply->high_round);
+        accumulator = multiply->high_round.result;
+    }
+    multiply_unsigned_values(
+        accumulator,
+        multiply->multiplicand_magnitude,
+        (uint8_t)multiply->multiplier_magnitude,
+        &multiply->low_round);
+    multiply->magnitude = multiply->low_round.result;
+    multiply->result = (multiply->sign_xor & 0x80U) != 0U
+        ? (uint16_t)(0U - multiply->magnitude)
+        : multiply->magnitude;
+    return 1;
+}
+
 int dc_project_flipper_vectors(
     const uint8_t* const work_ram,
     const size_t work_ram_size,

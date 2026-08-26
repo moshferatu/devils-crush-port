@@ -203,6 +203,21 @@ typedef struct dc_signed_fixed_multiply {
     dc_unsigned_multiply_round low_round;
 } dc_signed_fixed_multiply;
 
+typedef struct dc_signed_word_multiply {
+    uint16_t multiplicand_input;
+    uint16_t multiplier_input;
+    uint16_t multiplicand_magnitude;
+    uint16_t multiplier_magnitude;
+    uint16_t magnitude;
+    uint16_t result;
+    uint8_t sign_xor;
+    uint8_t negates_multiplicand;
+    uint8_t negates_multiplier;
+    uint8_t runs_high_round;
+    dc_unsigned_multiply_round high_round;
+    dc_unsigned_multiply_round low_round;
+} dc_signed_word_multiply;
+
 typedef struct dc_flipper_projection {
     uint16_t first_input;
     uint16_t second_input;
@@ -363,6 +378,15 @@ int dc_multiply_signed_fixed(
     const uint8_t* work_ram,
     size_t work_ram_size,
     dc_signed_fixed_multiply* multiply);
+
+// Native equivalent of ROM routine 00:E5EC. It multiplies the signed words in
+// 2D:2E and 2F:30, retaining the cartridge's two unsigned eight-bit rounds and
+// two's-complement result restoration. The function is pure: callers commit
+// the returned scratch writes.
+int dc_multiply_signed_words(
+    const uint8_t* work_ram,
+    size_t work_ram_size,
+    dc_signed_word_multiply* multiply);
 
 // Native equivalent of ROM routine 01:D09E. It projects the indexed pair at
 // 3400:3480 and 3500:3580 through coefficients 7D:7E and 7F:80, retaining

@@ -62,6 +62,14 @@ if(TARGET devils_crush)
             "${CMAKE_CURRENT_SOURCE_DIR}/verify_unsigned_word_multiply_partial_semantic.cmake"
     )
     add_test(
+        NAME dc_signed_word_multiply_semantic
+        COMMAND
+            "${CMAKE_COMMAND}"
+            "-DAPP=$<TARGET_FILE:devils_crush>"
+            "-P"
+            "${CMAKE_CURRENT_SOURCE_DIR}/verify_signed_word_multiply_semantic.cmake"
+    )
+    add_test(
         NAME dc_unsigned_fixed_division_semantic
         COMMAND
             "${CMAKE_COMMAND}"

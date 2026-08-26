@@ -539,6 +539,7 @@ struct CommandLine {
     bool cabinet_plunger_check = false;
     bool verify_unsigned_square_root = false;
     bool verify_unsigned_word_multiply_partial = false;
+    bool verify_signed_word_multiply = false;
     bool verify_side_gate_deadline_check = false;
     bool high_score_check = false;
     std::filesystem::path cabinet_view_probe_directory;
@@ -1401,6 +1402,8 @@ parse_logical_address_range(const std::string_view text)
             options.verify_unsigned_square_root = true;
         } else if (argument == "--verify-unsigned-word-multiply-partial") {
             options.verify_unsigned_word_multiply_partial = true;
+        } else if (argument == "--verify-signed-word-multiply") {
+            options.verify_signed_word_multiply = true;
         } else if (argument == "--verify-side-gate-deadline-check") {
             options.verify_side_gate_deadline_check = true;
         } else if (argument == "--high-score-check") {
@@ -1549,6 +1552,7 @@ parse_logical_address_range(const std::string_view text)
         + static_cast<int>(!options.routine_replay_corpus_paths.empty())
         + static_cast<int>(options.verify_unsigned_square_root)
         + static_cast<int>(options.verify_unsigned_word_multiply_partial)
+        + static_cast<int>(options.verify_signed_word_multiply)
         + static_cast<int>(options.verify_side_gate_deadline_check)
         + static_cast<int>(options.backup_ram_test);
     const bool recording_selected =
@@ -1973,6 +1977,13 @@ parse_logical_address_range(const std::string_view text)
                                    == RoutineKey{
                                        .physical_bank = 0x00U,
                                        .logical_pc = 0xE5BCU,
+                                   }
+                           && request.all_calls;
+                       const bool proven_signed_word_multiply =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x00U,
+                                       .logical_pc = 0xE5ECU,
                                    }
                            && request.all_calls;
                        const bool proven_side_gate_deadline_check =
@@ -4538,6 +4549,7 @@ parse_logical_address_range(const std::string_view text)
                            && !proven_unsigned_byte_division
                            && !proven_unsigned_byte_multiply
                            && !proven_unsigned_word_multiply_partial
+                           && !proven_signed_word_multiply
                            && !proven_side_gate_deadline_check
                            && !proven_unsigned_multiply_round
                            && !proven_signed_fixed_multiply
@@ -17447,6 +17459,99 @@ int run_unsigned_word_multiply_partial_semantic_fixture()
     return EXIT_SUCCESS;
 }
 
+int run_signed_word_multiply_semantic_fixture()
+{
+    constexpr std::array<std::byte, 0U> empty_rom{};
+    constexpr std::array<std::uint16_t, 8U> values{
+        0x0000U, 0x0001U, 0x007FU, 0x0080U,
+        0x7FFFU, 0x8000U, 0xFF80U, 0xFFFFU,
+    };
+    constexpr std::array<std::uint8_t, 4U> statuses{
+        0x00U, 0x01U, 0x04U, 0x41U,
+    };
+    std::size_t verified = 0U;
+    for (const auto multiplicand : values) {
+        for (const auto multiplier : values) {
+            std::vector<std::byte> work_ram(0x2000U);
+            work_ram[0x002DU] = static_cast<std::byte>(multiplicand & 0xFFU);
+            work_ram[0x002EU] = static_cast<std::byte>(multiplicand >> 8U);
+            work_ram[0x002FU] = static_cast<std::byte>(multiplier & 0xFFU);
+            work_ram[0x0030U] = static_cast<std::byte>(multiplier >> 8U);
+            const devils_crush::emulation::RoutineEntry entry{
+                .routine = {.physical_bank = 0x00U, .logical_pc = 0xE5ECU},
+                .registers = {
+                    .program_counter = 0xE5ECU,
+                    .accumulator = 0xA5U,
+                    .x = 0x5AU,
+                    .y = 0xC3U,
+                    .stack_pointer = 0xF2U,
+                    .status = statuses[verified % statuses.size()],
+                },
+            };
+            const auto replacement =
+                devils_crush::app::replace_native_gameplay_routine(
+                    entry, work_ram, empty_rom);
+            if (!replacement || replacement->return_instruction
+                    != devils_crush::emulation::RoutineKey{0x00U, 0xE60AU}
+                || replacement->checkpoints.empty()
+                || !replacement->absorbed_returns.empty()
+                || replacement->output_registers.program_counter != 0xE60AU
+                || replacement->output_registers.x != entry.registers.x
+                || replacement->output_registers.y != entry.registers.y
+                || replacement->output_registers.stack_pointer
+                    != entry.registers.stack_pointer) {
+                std::cerr << "Signed-word-multiply fixture did not replace "
+                             "a valid input.\n";
+                return EXIT_FAILURE;
+            }
+            std::uint32_t previous_cycle = 0U;
+            for (const auto& write : replacement->work_ram_writes) {
+                if (write.logical_address < 0x2000U
+                    || write.logical_address >= 0x4000U
+                    || write.master_cycle_offset < previous_cycle) {
+                    std::cerr << "Signed-word-multiply fixture emitted an "
+                                 "invalid write.\n";
+                    return EXIT_FAILURE;
+                }
+                previous_cycle = write.master_cycle_offset;
+                work_ram[write.logical_address - 0x2000U] =
+                    static_cast<std::byte>(write.value);
+            }
+            const auto result = static_cast<std::uint16_t>(
+                std::to_integer<std::uint8_t>(work_ram[0x002FU])
+                | (static_cast<std::uint16_t>(
+                       std::to_integer<std::uint8_t>(work_ram[0x0030U]))
+                   << 8U));
+            const auto expected = static_cast<std::uint16_t>(
+                static_cast<std::int32_t>(static_cast<std::int16_t>(multiplicand))
+                * static_cast<std::int32_t>(static_cast<std::int16_t>(multiplier)));
+            if (result != expected) {
+                std::cerr << "Signed-word-multiply fixture changed "
+                             "state incorrectly.\n";
+                return EXIT_FAILURE;
+            }
+            ++verified;
+        }
+    }
+
+    std::vector<std::byte> guard_work_ram(0x2000U);
+    for (const auto status : std::array<std::uint8_t, 2U>{0x08U, 0x20U}) {
+        const devils_crush::emulation::RoutineEntry guarded_entry{
+            .routine = {.physical_bank = 0x00U, .logical_pc = 0xE5ECU},
+            .registers = {.program_counter = 0xE5ECU, .status = status},
+        };
+        if (devils_crush::app::replace_native_gameplay_routine(
+                guarded_entry, guard_work_ram, empty_rom)) {
+            std::cerr << "Signed-word-multiply fixture accepted decimal or "
+                         "T mode.\n";
+            return EXIT_FAILURE;
+        }
+    }
+    std::cout << "Signed-word-multiply semantic fixture verified: "
+              << verified << " operand cases\n";
+    return EXIT_SUCCESS;
+}
+
 int run_side_gate_deadline_check_semantic_fixture()
 {
     constexpr std::array<std::byte, 0U> empty_rom{};
@@ -17633,6 +17738,9 @@ int main(const int argc, char* argv[])
     }
     if (options.verify_unsigned_word_multiply_partial) {
         return run_unsigned_word_multiply_partial_semantic_fixture();
+    }
+    if (options.verify_signed_word_multiply) {
+        return run_signed_word_multiply_semantic_fixture();
     }
     if (options.verify_side_gate_deadline_check) {
         return run_side_gate_deadline_check_semantic_fixture();
