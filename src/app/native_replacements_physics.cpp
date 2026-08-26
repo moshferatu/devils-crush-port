@@ -5732,6 +5732,162 @@ replace_unsigned_word_multiply_partial(
 }
 
 [[nodiscard]] std::optional<RoutineReplacement>
+replace_signed_word_normalizer(
+    const RoutineEntry& entry,
+    const std::span<const std::byte> work_ram)
+{
+    // 00:E813 and 00:E825 turn a signed scratch word into its magnitude and
+    // leave $80 in A exactly when they negated it.  E5EC calls both helpers,
+    // and player-session-6 naturally reaches each one through the two long
+    // interrupt-bearing E5EC fallbacks.  The helpers stop before their RTS so
+    // the core preserves the caller's return boundary.
+    constexpr RoutineKey kMultiplierRoutine{
+        .physical_bank = 0x00U,
+        .logical_pc = 0xE813U,
+    };
+    constexpr RoutineKey kMultiplicandRoutine{
+        .physical_bank = 0x00U,
+        .logical_pc = 0xE825U,
+    };
+    if ((entry.routine != kMultiplierRoutine
+         && entry.routine != kMultiplicandRoutine)
+        || work_ram.size() < 0x2000U
+        || (entry.registers.status & 0x28U) != 0U) {
+        return std::nullopt;
+    }
+
+    const bool multiplier = entry.routine == kMultiplierRoutine;
+    const auto entry_pc = entry.routine.logical_pc;
+    const auto branch_pc = static_cast<std::uint16_t>(entry_pc + 2U);
+    const auto negative_pc = static_cast<std::uint16_t>(entry_pc + 4U);
+    const auto clear_low_pc = static_cast<std::uint16_t>(entry_pc + 5U);
+    const auto subtract_low_pc = static_cast<std::uint16_t>(entry_pc + 6U);
+    const auto store_low_pc = static_cast<std::uint16_t>(entry_pc + 8U);
+    const auto clear_high_pc = static_cast<std::uint16_t>(entry_pc + 10U);
+    const auto subtract_high_pc = static_cast<std::uint16_t>(entry_pc + 11U);
+    const auto store_high_pc = static_cast<std::uint16_t>(entry_pc + 13U);
+    const auto sign_pc = static_cast<std::uint16_t>(entry_pc + 15U);
+    const auto rts_pc = static_cast<std::uint16_t>(entry_pc + 17U);
+    const auto low_offset = static_cast<std::uint16_t>(multiplier ? 0x002FU : 0x002DU);
+    const auto high_offset = static_cast<std::uint16_t>(low_offset + 1U);
+    const auto low = std::to_integer<std::uint8_t>(work_ram[low_offset]);
+    const auto high = std::to_integer<std::uint8_t>(work_ram[high_offset]);
+
+    const auto set_nz = [](std::uint8_t status, const std::uint8_t value) {
+        status = static_cast<std::uint8_t>(status & ~0x82U);
+        if (value == 0U) {
+            status = static_cast<std::uint8_t>(status | 0x02U);
+        }
+        return static_cast<std::uint8_t>(status | (value & 0x80U));
+    };
+    const auto sbc_status =
+        [&set_nz](
+            std::uint8_t status,
+            const std::uint8_t left,
+            const std::uint8_t right,
+            const bool carry_in,
+            const std::uint8_t result) {
+            const auto difference = static_cast<std::int16_t>(
+                static_cast<std::int16_t>(left)
+                - static_cast<std::int16_t>(right)
+                - static_cast<std::int16_t>(carry_in ? 0 : 1));
+            status = static_cast<std::uint8_t>(status & ~0x41U);
+            status = set_nz(status, result);
+            if (difference >= 0) {
+                status = static_cast<std::uint8_t>(status | 0x01U);
+            }
+            if ((((left ^ right) & (left ^ result)) & 0x80U) != 0U) {
+                status = static_cast<std::uint8_t>(status | 0x40U);
+            }
+            return status;
+        };
+
+    RoutineReplacement replacement{
+        .return_instruction = {.physical_bank = 0x00U, .logical_pc = rts_pc},
+        .output_registers = entry.registers,
+    };
+    replacement.checkpoints.reserve(10U);
+    replacement.work_ram_writes.reserve(2U);
+    auto registers = entry.registers;
+    std::uint32_t cycle = 0U;
+    const auto checkpoint =
+        [&replacement, &registers, &cycle](
+            const std::uint16_t instruction_pc,
+            const std::uint16_t resume_pc) {
+            registers.program_counter = resume_pc;
+            replacement.checkpoints.push_back({
+                .interrupt_sample_master_cycle_offset = cycle - 3U,
+                .master_cycle_offset = cycle,
+                .instruction = {0x00U, instruction_pc},
+                .registers = registers,
+            });
+        };
+    const auto store =
+        [&replacement, &cycle](
+            const std::uint16_t instruction_pc,
+            const std::uint16_t offset,
+            const std::uint8_t value) {
+            replacement.work_ram_writes.push_back({
+                .instruction = {0x00U, instruction_pc},
+                .logical_address = static_cast<std::uint16_t>(0x2000U + offset),
+                .value = value,
+                .master_cycle_offset = cycle,
+            });
+        };
+
+    cycle += 12U;
+    registers.accumulator = high;
+    registers.status = set_nz(registers.status, high);
+    checkpoint(entry_pc, branch_pc);
+    if ((high & 0x80U) == 0U) {
+        cycle += 12U;
+        checkpoint(branch_pc, rts_pc);
+        replacement.output_registers = registers;
+        replacement.body_master_cycles = cycle;
+        return replacement;
+    }
+
+    cycle += 6U;
+    checkpoint(branch_pc, negative_pc);
+    cycle += 6U;
+    registers.status = static_cast<std::uint8_t>(registers.status | 0x01U);
+    checkpoint(negative_pc, clear_low_pc);
+    cycle += 6U;
+    registers.accumulator = 0U;
+    checkpoint(clear_low_pc, subtract_low_pc);
+    const auto result_low = static_cast<std::uint8_t>(0U - low);
+    cycle += 12U;
+    registers.accumulator = result_low;
+    registers.status =
+        sbc_status(registers.status, 0U, low, true, result_low);
+    checkpoint(subtract_low_pc, store_low_pc);
+    cycle += 12U;
+    store(store_low_pc, low_offset, result_low);
+    checkpoint(store_low_pc, clear_high_pc);
+    cycle += 6U;
+    registers.accumulator = 0U;
+    checkpoint(clear_high_pc, subtract_high_pc);
+    const auto high_carry_in = (registers.status & 0x01U) != 0U;
+    const auto result_high = static_cast<std::uint8_t>(
+        static_cast<std::uint16_t>(0U) - high - (high_carry_in ? 0U : 1U));
+    cycle += 12U;
+    registers.accumulator = result_high;
+    registers.status = sbc_status(
+        registers.status, 0U, high, high_carry_in, result_high);
+    checkpoint(subtract_high_pc, store_high_pc);
+    cycle += 12U;
+    store(store_high_pc, high_offset, result_high);
+    checkpoint(store_high_pc, sign_pc);
+    cycle += 6U;
+    registers.accumulator = 0x80U;
+    registers.status = set_nz(registers.status, registers.accumulator);
+    checkpoint(sign_pc, rts_pc);
+    replacement.output_registers = registers;
+    replacement.body_master_cycles = cycle;
+    return replacement;
+}
+
+[[nodiscard]] std::optional<RoutineReplacement>
 replace_signed_word_multiply(
     const RoutineEntry& entry,
     const std::span<const std::byte> work_ram)

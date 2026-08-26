@@ -80,11 +80,13 @@ Still emulated for want of one:
   replay still detects shifted interrupt-owned writes. Keep it out of
   replacement coverage until its native semantic path supplies checkpoints, or
   a separately proven no-interrupt invocation is reproduced.
-- `00:E807`, `00:E813`, and `00:E825`, the helpers adjacent to the signed
-  multiply wrapper. No deterministic route enters them; they remain emulated
-  until a natural caller is reproduced. Their neighbour `00:E85D` was in the
-  same position until a player-session capture reached it — see
-  [ROUTE_SCREENING.md](ROUTE_SCREENING.md).
+- `00:E807`, the low-byte helper adjacent to the signed multiply wrapper. No
+  deterministic route enters it, so it remains emulated until a natural caller
+  is reproduced. The two signed-word normalizers beside it, `00:E813` and
+  `00:E825`, are now native: player-session-6 naturally reaches each 2,422
+  times through `00:E5EC`, including the wrapper states that return to the
+  core. Their neighbour `00:E85D` was in the same position until a
+  player-session capture reached it — see [ROUTE_SCREENING.md](ROUTE_SCREENING.md).
 
 Already resolved, and recorded here because the pattern recurs: `01:DD09@52`
 showed that interrupt-owned stack and controller writes can enter through

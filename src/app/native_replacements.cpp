@@ -93,6 +93,18 @@ replace_native_gameplay_routine_impl(
             work_ram);
     }
     if (entry.routine
+            == RoutineKey{
+                .physical_bank = 0x00U,
+                .logical_pc = 0xE813U,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x00U,
+                .logical_pc = 0xE825U,
+            }) {
+        return detail::replace_signed_word_normalizer(entry, work_ram);
+    }
+    if (entry.routine
         == RoutineKey{
             .physical_bank = 0x00U,
             .logical_pc = 0xE5ECU,

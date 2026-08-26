@@ -1420,6 +1420,11 @@ replace_unsigned_word_multiply_partial(
     std::span<const std::byte> work_ram);
 
 [[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_signed_word_normalizer(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram);
+
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
 replace_signed_word_multiply(
     const emulation::RoutineEntry& entry,
     std::span<const std::byte> work_ram);

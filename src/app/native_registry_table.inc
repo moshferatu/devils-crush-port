@@ -41,6 +41,8 @@ DC_ADMITTED_ROUTINE(0x00U, 0xE65CU, 3700, 3700, "verify_signed_fixed_multiply_se
 DC_ADMITTED_ROUTINE(0x00U, 0xE6DCU, 46, 46, "verify_unsigned_byte_division_semantic")
 DC_ADMITTED_ROUTINE(0x00U, 0xE728U, 240, 240, "verify_unsigned_fixed_division_semantic")
 DC_ADMITTED_ROUTINE(0x00U, 0xE7D7U, 105, 105, "verify_unsigned_24_division_semantic")
+DC_ADMITTED_ROUTINE(0x00U, 0xE813U, 2422, 2422, "verify_signed_word_normalizer_semantic")
+DC_ADMITTED_ROUTINE(0x00U, 0xE825U, 2422, 2422, "verify_signed_word_normalizer_semantic")
 DC_ADMITTED_ROUTINE(0x00U, 0xE837U, 894, 894, "verify_signed_word_negation_semantic")
 DC_ADMITTED_ROUTINE(0x00U, 0xE85DU, 665, 665, "verify_unsigned_square_root_semantic")
 DC_ADMITTED_ROUTINE(0x00U, 0xE8B3U, 78, 78, "verify_rng")

@@ -539,6 +539,7 @@ struct CommandLine {
     bool cabinet_plunger_check = false;
     bool verify_unsigned_square_root = false;
     bool verify_unsigned_word_multiply_partial = false;
+    bool verify_signed_word_normalizer = false;
     bool verify_signed_word_multiply = false;
     bool verify_side_gate_deadline_check = false;
     bool high_score_check = false;
@@ -1402,6 +1403,8 @@ parse_logical_address_range(const std::string_view text)
             options.verify_unsigned_square_root = true;
         } else if (argument == "--verify-unsigned-word-multiply-partial") {
             options.verify_unsigned_word_multiply_partial = true;
+        } else if (argument == "--verify-signed-word-normalizer") {
+            options.verify_signed_word_normalizer = true;
         } else if (argument == "--verify-signed-word-multiply") {
             options.verify_signed_word_multiply = true;
         } else if (argument == "--verify-side-gate-deadline-check") {
@@ -1552,6 +1555,7 @@ parse_logical_address_range(const std::string_view text)
         + static_cast<int>(!options.routine_replay_corpus_paths.empty())
         + static_cast<int>(options.verify_unsigned_square_root)
         + static_cast<int>(options.verify_unsigned_word_multiply_partial)
+        + static_cast<int>(options.verify_signed_word_normalizer)
         + static_cast<int>(options.verify_signed_word_multiply)
         + static_cast<int>(options.verify_side_gate_deadline_check)
         + static_cast<int>(options.backup_ram_test);
@@ -17552,6 +17556,98 @@ int run_signed_word_multiply_semantic_fixture()
     return EXIT_SUCCESS;
 }
 
+int run_signed_word_normalizer_semantic_fixture()
+{
+    constexpr std::array<std::byte, 0U> empty_rom{};
+    constexpr std::array<std::uint16_t, 2U> routines{0xE813U, 0xE825U};
+    std::size_t verified = 0U;
+    for (const auto routine : routines) {
+        const auto low_offset = static_cast<std::size_t>(
+            routine == 0xE813U ? 0x002FU : 0x002DU);
+        for (std::uint32_t value = 0U; value <= 0xFFFFU; ++value) {
+            std::vector<std::byte> work_ram(0x2000U);
+            work_ram[low_offset] = static_cast<std::byte>(value & 0xFFU);
+            work_ram[low_offset + 1U] = static_cast<std::byte>(value >> 8U);
+            const devils_crush::emulation::RoutineEntry entry{
+                .routine = {.physical_bank = 0x00U, .logical_pc = routine},
+                .registers = {
+                    .program_counter = routine,
+                    .accumulator = 0xA5U,
+                    .x = 0x5AU,
+                    .y = 0xC3U,
+                    .stack_pointer = 0xF2U,
+                    .status = static_cast<std::uint8_t>(
+                        (value & 0x03U) == 0U ? 0x00U
+                        : (value & 0x03U) == 1U ? 0x01U
+                        : (value & 0x03U) == 2U ? 0x40U : 0x41U),
+                },
+            };
+            const auto replacement =
+                devils_crush::app::replace_native_gameplay_routine(
+                    entry, work_ram, empty_rom);
+            const auto negative = (value & 0x8000U) != 0U;
+            const auto expected = static_cast<std::uint16_t>(
+                negative ? 0U - value : value);
+            const auto rts_pc = static_cast<std::uint16_t>(routine + 17U);
+            if (!replacement || replacement->return_instruction
+                    != devils_crush::emulation::RoutineKey{0x00U, rts_pc}
+                || replacement->output_registers.program_counter != rts_pc
+                || replacement->output_registers.x != entry.registers.x
+                || replacement->output_registers.y != entry.registers.y
+                || replacement->output_registers.stack_pointer
+                    != entry.registers.stack_pointer
+                || replacement->output_registers.accumulator
+                    != static_cast<std::uint8_t>(
+                        negative ? 0x80U : (value >> 8U))
+                || replacement->body_master_cycles
+                    != (negative ? 90U : 24U)
+                || replacement->checkpoints.size()
+                    != (negative ? 10U : 2U)
+                || replacement->work_ram_writes.size()
+                    != (negative ? 2U : 0U)
+                || !replacement->absorbed_returns.empty()) {
+                std::cerr << "Signed-word-normalizer fixture did not replace "
+                             "a valid input.\n";
+                return EXIT_FAILURE;
+            }
+            for (const auto& write : replacement->work_ram_writes) {
+                work_ram[write.logical_address - 0x2000U] =
+                    static_cast<std::byte>(write.value);
+            }
+            const auto normalized = static_cast<std::uint16_t>(
+                std::to_integer<std::uint8_t>(work_ram[low_offset])
+                | (static_cast<std::uint16_t>(
+                       std::to_integer<std::uint8_t>(work_ram[low_offset + 1U]))
+                   << 8U));
+            if (normalized != expected) {
+                std::cerr << "Signed-word-normalizer fixture changed state "
+                             "incorrectly.\n";
+                return EXIT_FAILURE;
+            }
+            ++verified;
+        }
+    }
+
+    std::vector<std::byte> guard_work_ram(0x2000U);
+    for (const auto routine : routines) {
+        for (const auto status : std::array<std::uint8_t, 2U>{0x08U, 0x20U}) {
+            const devils_crush::emulation::RoutineEntry guarded_entry{
+                .routine = {.physical_bank = 0x00U, .logical_pc = routine},
+                .registers = {.program_counter = routine, .status = status},
+            };
+            if (devils_crush::app::replace_native_gameplay_routine(
+                    guarded_entry, guard_work_ram, empty_rom)) {
+                std::cerr << "Signed-word-normalizer fixture accepted decimal "
+                             "or T mode.\n";
+                return EXIT_FAILURE;
+            }
+        }
+    }
+    std::cout << "Signed-word-normalizer semantic fixture verified: "
+              << verified << " operand cases\n";
+    return EXIT_SUCCESS;
+}
+
 int run_side_gate_deadline_check_semantic_fixture()
 {
     constexpr std::array<std::byte, 0U> empty_rom{};
@@ -17738,6 +17834,9 @@ int main(const int argc, char* argv[])
     }
     if (options.verify_unsigned_word_multiply_partial) {
         return run_unsigned_word_multiply_partial_semantic_fixture();
+    }
+    if (options.verify_signed_word_normalizer) {
+        return run_signed_word_normalizer_semantic_fixture();
     }
     if (options.verify_signed_word_multiply) {
         return run_signed_word_multiply_semantic_fixture();
