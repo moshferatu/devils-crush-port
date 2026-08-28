@@ -15,6 +15,83 @@
 #include "devils_crush/emulation/routine_replay_corpus.hpp"
 #include "devils_crush/input/pce_pad.hpp"
 #include "devils_crush/input/plunger.hpp"
+#include "devils_crush/native_runtime/actor_collision_geometry.hpp"
+#include "devils_crush/native_runtime/actor_collision_mask_asset.hpp"
+#include "devils_crush/native_runtime/actor_collision_mask_coordinates.hpp"
+#include "devils_crush/native_runtime/actor_collision_scan.hpp"
+#include "devils_crush/native_runtime/actor_motion.hpp"
+#include "devils_crush/native_runtime/actor_motion_capture.hpp"
+#include "devils_crush/native_runtime/actor_scheduler.hpp"
+#include "devils_crush/native_runtime/actor_state.hpp"
+#include "devils_crush/native_runtime/actor_collision_seed.hpp"
+#include "devils_crush/native_runtime/ball_capture.hpp"
+#include "devils_crush/native_runtime/ball_frame_schedule.hpp"
+#include "devils_crush/native_runtime/ball_physics.hpp"
+#include "devils_crush/native_runtime/bonus_stage_4.hpp"
+#include "devils_crush/native_runtime/bonus_stage_4_capture.hpp"
+#include "devils_crush/native_runtime/bonus_stage_4_linked_target.hpp"
+#include "devils_crush/native_runtime/bonus_stage_4_linked_target_capture.hpp"
+#include "devils_crush/native_runtime/bonus_stage_4_orbiting_child_capture.hpp"
+#include "devils_crush/native_runtime/bumper.hpp"
+#include "devils_crush/native_runtime/bumper_capture.hpp"
+#include "devils_crush/native_runtime/collision_detection.hpp"
+#include "devils_crush/native_runtime/collision_effect.hpp"
+#include "devils_crush/native_runtime/collision_effect_capture.hpp"
+#include "devils_crush/native_runtime/collision_map.hpp"
+#include "devils_crush/native_runtime/collision_map_asset.hpp"
+#include "devils_crush/native_runtime/collision_mask.hpp"
+#include "devils_crush/native_runtime/collision_reaction.hpp"
+#include "devils_crush/native_runtime/collision_retry.hpp"
+#include "devils_crush/native_runtime/collision_retry_asset.hpp"
+#include "devils_crush/native_runtime/collision_retry_placement.hpp"
+#include "devils_crush/native_runtime/collision_retry_probe.hpp"
+#include "devils_crush/native_runtime/collision_response.hpp"
+#include "devils_crush/native_runtime/collision_response_asset.hpp"
+#include "devils_crush/native_runtime/collision_table.hpp"
+#include "devils_crush/native_runtime/collision_table_asset.hpp"
+#include "devils_crush/native_runtime/collision_table_driver.hpp"
+#include "devils_crush/native_runtime/contact_dispatch.hpp"
+#include "devils_crush/native_runtime/dragon_egg.hpp"
+#include "devils_crush/native_runtime/dragon_egg_capture.hpp"
+#include "devils_crush/native_runtime/dragon_egg_hatchling.hpp"
+#include "devils_crush/native_runtime/dragon_head.hpp"
+#include "devils_crush/native_runtime/dragon_head_capture.hpp"
+#include "devils_crush/native_runtime/frame_oracle.hpp"
+#include "devils_crush/native_runtime/emulator_oracle_adapter.hpp"
+#include "devils_crush/native_runtime/front_spider.hpp"
+#include "devils_crush/native_runtime/front_spider_capture.hpp"
+#include "devils_crush/native_runtime/game_state.hpp"
+#include "devils_crush/native_runtime/gameplay_bootstrap.hpp"
+#include "devils_crush/native_runtime/gameplay_audio_dispatch.hpp"
+#include "devils_crush/native_runtime/giant_skeleton.hpp"
+#include "devils_crush/native_runtime/giant_skeleton_capture.hpp"
+#include "devils_crush/native_runtime/giant_skeleton_eyeball.hpp"
+#include "devils_crush/native_runtime/giant_skeleton_eyeball_capture.hpp"
+#include "devils_crush/native_runtime/giant_face_capture.hpp"
+#include "devils_crush/native_runtime/giant_face_helmet_capture.hpp"
+#include "devils_crush/native_runtime/mapped_rom.hpp"
+#include "devils_crush/native_runtime/native_gameplay_state.hpp"
+#include "devils_crush/native_runtime/native_gameplay_runtime.hpp"
+#include "devils_crush/native_runtime/physics_state.hpp"
+#include "devils_crush/native_runtime/playfield_collision.hpp"
+#include "devils_crush/native_runtime/score_state.hpp"
+#include "devils_crush/native_runtime/score_capture.hpp"
+#include "devils_crush/native_runtime/side_spider.hpp"
+#include "devils_crush/native_runtime/side_spider_capture.hpp"
+#include "devils_crush/native_runtime/skeleton_insect.hpp"
+#include "devils_crush/native_runtime/skeleton_insect_capture.hpp"
+#include "devils_crush/native_runtime/small_soldier.hpp"
+#include "devils_crush/native_runtime/small_soldier_capture.hpp"
+#include "devils_crush/native_runtime/small_soldier_rules.hpp"
+#include "devils_crush/native_runtime/small_soldier_scheduler.hpp"
+#include "devils_crush/native_runtime/tower.hpp"
+#include "devils_crush/native_runtime/tower_capture.hpp"
+#include "devils_crush/native_runtime/tower_guard.hpp"
+#include "devils_crush/native_runtime/tower_guard_capture.hpp"
+#include "devils_crush/native_runtime/tower_insect.hpp"
+#include "devils_crush/native_runtime/tower_insect_capture.hpp"
+#include "devils_crush/native_runtime/tower_insect_scheduler.hpp"
+#include "devils_crush/emulation/playfield_collision_adapter.hpp"
 #include "devils_crush/game_logic/actor.h"
 #include "devils_crush/game_logic/collision.h"
 #include "devils_crush/game_logic/sprite.h"
@@ -45,6 +122,7 @@
 #include <ranges>
 #include <stdexcept>
 #include <string>
+#include <type_traits>
 #include <string_view>
 #include <thread>
 #include <utility>
@@ -985,7 +1063,7 @@ void test_native_unsigned_fixed_division()
         "native E728 rejects a truncated work-RAM snapshot");
 }
 
-void test_native_collision_response()
+void test_native_runtime_collision_response()
 {
     std::array<std::uint8_t, 0x2000> work_ram{};
     constexpr std::uint8_t slot = 0x62U;
@@ -6623,6 +6701,169 @@ void test_native_ball_drain_threshold()
         "native DD6E rejects a truncated work-RAM snapshot");
 }
 
+void test_native_ball_frame_schedule()
+{
+    using devils_crush::native_runtime::BallFrameOwner;
+    using devils_crush::native_runtime::BallFrameSchedule;
+    using devils_crush::native_runtime::BallCollisionShapeSelection;
+    using devils_crush::native_runtime::BallInitialTransitionDisposition;
+    using devils_crush::native_runtime::BallState;
+    using devils_crush::native_runtime::Fixed24_8;
+    using devils_crush::native_runtime::GameStateView;
+    using devils_crush::native_runtime::capture_ball_frame_schedule;
+    using devils_crush::native_runtime::advance_initial_ball_frame_schedule;
+    using devils_crush::native_runtime::classify_ball_initial_transition;
+
+    std::array<std::byte, GameStateView::kWorkRamSize> work_ram{};
+    const auto store = [&work_ram](
+                           const std::size_t offset,
+                           const std::uint8_t value) {
+        work_ram[offset] = static_cast<std::byte>(value);
+    };
+    const auto set_handler = [&store](const std::uint16_t handler) {
+        store(0x1F00U, static_cast<std::uint8_t>(handler & 0x00FFU));
+        store(0x1F80U, static_cast<std::uint8_t>(handler >> 8U));
+    };
+    store(0x1000U, 0x80U);
+    const GameStateView state(work_ram);
+
+    set_handler(0xC721U);
+    store(0x0056U, 0x01U);
+    store(0x0057U, 0x04U);
+    store(0x00B9U, 0x40U);
+    store(0x00BAU, 0x01U);
+    store(0x00BBU, 0x80U);
+    store(0x00BCU, 0xFFU);
+    check(
+        capture_ball_frame_schedule(state).owner
+            == BallFrameOwner::normal_motion,
+        "native ball frame schedule admits the clear resumed substep loop");
+    check(
+        capture_ball_frame_schedule(state).source_handler_address == 0xC721U,
+        "native ball frame schedule retains an unported continuation only at its capture boundary");
+    const auto resumed_schedule = capture_ball_frame_schedule(state);
+    check(
+        resumed_schedule.substep_progress
+            == devils_crush::native_runtime::BallSubstepProgress{
+                .increment = {.horizontal = 0x0140, .vertical = -128},
+                .completed_steps = 1U,
+                .requested_steps = 4U,
+            },
+        "native ball frame schedule retains the prepared C721 substep cursor");
+
+    store(0x1C80U, 0x01U);
+    check(
+        capture_ball_frame_schedule(state).owner
+            == BallFrameOwner::off_table_transition,
+        "native ball frame schedule defers an off-table resumed loop");
+
+    store(0x1C80U, 0x00U);
+    set_handler(0xC7CFU);
+    check(
+        capture_ball_frame_schedule(state).owner
+            == BallFrameOwner::table_control_wait,
+        "native ball frame schedule names the table-control wait continuation");
+
+    set_handler(0xC8DAU);
+    check(
+        capture_ball_frame_schedule(state).owner
+            == BallFrameOwner::off_table_transition,
+        "native ball frame schedule names the off-table continuation");
+
+    set_handler(0xC6C2U);
+    check(
+        capture_ball_frame_schedule(state).owner
+            == BallFrameOwner::initial_substep_transition,
+        "native ball frame schedule names the initial substep transition");
+    check(
+        classify_ball_initial_transition({
+            .position_x = Fixed24_8{.raw = 239 * 256 + 255},
+        }) == devils_crush::native_runtime::BallInitialTransition{
+            .horizontal_pixels = 239U,
+            .disposition = BallInitialTransitionDisposition::schedules_normal_motion,
+        },
+        "native initial ball transition schedules C721 below its unsigned X gate");
+    check(
+        classify_ball_initial_transition({
+            .position_x = Fixed24_8{.raw = 240 * 256},
+        }) == devils_crush::native_runtime::BallInitialTransition{
+            .horizontal_pixels = 240U,
+            .disposition = BallInitialTransitionDisposition::returns_to_caller,
+        },
+        "native initial ball transition preserves C6C2's inclusive horizontal gate");
+
+    store(0x0056U, 0x04U);
+    store(0x0057U, 0x04U);
+    store(0x1180U, 0xEFU);
+    store(0x1200U, 0x00U);
+    const auto initial_schedule = capture_ball_frame_schedule(state);
+    check(
+        initial_schedule.initial_transition
+            == devils_crush::native_runtime::BallInitialTransition{
+                .horizontal_pixels = 239U,
+                .disposition = BallInitialTransitionDisposition::schedules_normal_motion,
+            },
+        "native ball frame schedule retains C6C2's normal-motion decision");
+
+    store(0x1180U, 0xF0U);
+    check(
+        capture_ball_frame_schedule(state).initial_transition
+            == devils_crush::native_runtime::BallInitialTransition{
+                .horizontal_pixels = 240U,
+                .disposition = BallInitialTransitionDisposition::returns_to_caller,
+            },
+        "native ball frame schedule retains C6C2's caller-return decision");
+
+    store(0x0056U, 0x00U);
+    store(0x0057U, 0x04U);
+    check(
+        !capture_ball_frame_schedule(state).initial_transition,
+        "native ball frame schedule waits for C6C2's cursor before classifying its gate");
+
+    store(0x0056U, 0x05U);
+    check(
+        !capture_ball_frame_schedule(state).substep_progress,
+        "native ball frame schedule rejects an incoherent prepared substep cursor");
+
+    const BallFrameSchedule initial_scheduler_state{
+        .owner = BallFrameOwner::initial_substep_transition,
+        .collision_shape = BallCollisionShapeSelection{
+            .directory_index = 0x42U,
+            .phase = 0x17U,
+        },
+    };
+    const auto scheduled_normal = advance_initial_ball_frame_schedule(
+        initial_scheduler_state,
+        {.horizontal_pixels = 239U,
+         .disposition = BallInitialTransitionDisposition::schedules_normal_motion},
+        {.increment = {.horizontal = 0x0180, .vertical = -0x0080},
+         .requested_steps = 4U});
+    const auto returned_initial = advance_initial_ball_frame_schedule(
+        initial_scheduler_state,
+        {.horizontal_pixels = 240U,
+         .disposition = BallInitialTransitionDisposition::returns_to_caller},
+        {.increment = {.horizontal = 0x0100}, .requested_steps = 1U});
+    check(
+        scheduled_normal
+            && scheduled_normal->owner == BallFrameOwner::normal_motion
+            && scheduled_normal->substep_progress
+                == devils_crush::native_runtime::BallSubstepProgress{
+                    .increment = {.horizontal = 0x0180, .vertical = -0x0080},
+                    .requested_steps = 4U,
+                }
+            && scheduled_normal->collision_shape
+                == BallCollisionShapeSelection{}
+            && returned_initial
+            && returned_initial->owner == BallFrameOwner::initial_substep_transition
+            && returned_initial->collision_shape
+                == initial_scheduler_state.collision_shape
+            && !advance_initial_ball_frame_schedule(
+                {.owner = BallFrameOwner::initial_substep_transition},
+                {.disposition = BallInitialTransitionDisposition::returns_to_caller},
+                {.requested_steps = 1U}),
+        "native C6C2 scheduler applies its typed C721 and caller-return actions");
+}
+
 void test_native_bank7_mode_gate()
 {
     std::array<std::uint8_t, 0x2000> work_ram{};
@@ -10977,6 +11218,9134 @@ void test_native_registry()
         "every admitted routine cites evidence and a proven call count");
 }
 
+void test_native_game_state_view()
+{
+    using devils_crush::native_runtime::ActorBehavior;
+    using devils_crush::native_runtime::ActorState;
+    using devils_crush::native_runtime::GameStateView;
+    using devils_crush::native_runtime::capture_active_ball;
+    using devils_crush::native_runtime::capture_collision_retry_ball;
+    using devils_crush::native_runtime::capture_active_score;
+    using devils_crush::native_runtime::capture_shared_actor_motion;
+    using devils_crush::native_runtime::seed_actor_collision_state;
+    using devils_crush::native_runtime::seed_shared_actor_motion;
+
+    std::array<std::byte, GameStateView::kWorkRamSize> work_ram{};
+    const auto store = [&work_ram](
+                           const std::size_t offset,
+                           const std::uint8_t value) {
+        work_ram[offset] = static_cast<std::byte>(value);
+    };
+    constexpr std::uint8_t kSlot = 0x2AU;
+    store(0x1000U + kSlot, 0x81U);
+    store(0x1080U + kSlot, 0x2CU);
+    store(0x1800U + kSlot, 0x80U);
+    store(0x1F00U + kSlot, 0x34U);
+    store(0x1F80U + kSlot, 0xC5U);
+    store(0x1400U + kSlot, 0x80U);
+    store(0x1480U + kSlot, 0xFEU);
+    store(0x1500U + kSlot, 0x00U);
+    store(0x1580U + kSlot, 0x02U);
+    store(0x1700U + kSlot, 0x2AU);
+    store(0x1880U + kSlot, 0x81U);
+    store(0x1900U + kSlot, 0x06U);
+    store(0x1980U + kSlot, 0x03U);
+    store(0x1C00U + kSlot, 0x02U);
+    store(0x1A00U + kSlot, 0x03U);
+    store(0x1A80U + kSlot, 0x06U);
+    store(0x1C80U + kSlot, 0x02U);
+    store(0x1D00U + kSlot, 0x8CU);
+    store(0x1E00U + kSlot, 0x04U);
+    store(0x1E80U + kSlot, 0x09U);
+    store(0x1180U + kSlot, 0x34U);
+    store(0x1200U + kSlot, 0x12U);
+    store(0x1300U + kSlot, 0xCDU);
+    store(0x1380U + kSlot, 0xABU);
+
+    const GameStateView state(work_ram);
+    check(state.valid(), "native game-state view accepts the complete RAM image");
+    const auto actor = state.actor(kSlot);
+    check(actor.has_value(), "native game-state view decodes an actor slot");
+    check(
+        actor && actor->index == kSlot && actor->activity_flags == 0x81U
+            && actor->attributes == 0x2CU && actor->collision_state == 0x80U
+            && actor->behavior_counter == 0x02U,
+        "native game-state view names actor scheduler fields");
+    check(
+        actor && actor->handler_address == 0xC534U,
+        "native game-state view decodes the actor handler vector");
+    check(
+        actor && actor->horizontal_motion.raw == -384
+            && actor->vertical_motion.raw == 512,
+        "native game-state view decodes signed 8.8 actor motion");
+    check(
+        actor && actor->collision_table_program.selector == 0x2AU
+            && actor->collision_table.pass_state == 0x81U
+            && actor->collision_table.collision_event == 0x06U
+            && actor->collision_table.orientation_flags == 0x8CU
+            && actor->collision_table.collision_entry_cursor == 0x04U
+            && actor->collision_table.record_cursor == 0x09U
+            && actor->collision_table.position_x == 0x1234U
+            && actor->collision_table.position_y == 0xABCDU
+            && actor->collision_shape_directory_index == 0x06U
+            && actor->collision_shape_phase == 0x03U
+            && actor->collision_reaction.collision_event == 0x06U
+            && actor->collision_reaction.phase == 0x02U
+            && actor->collision_reaction.ticks_until_next_phase == 0x03U,
+        "native game-state view decodes a collision-table actor seed");
+
+    store(0x1000U, 0x81U);
+
+    store(0x0251U, 0x03U);
+    store(0x0205U + 0x03U, 0x56U);
+    store(0x020CU + 0x03U, 0x34U);
+    store(0x0213U + 0x03U, 0x12U);
+    store(0x0CC0U, 0x01U);
+    const auto active_score = state.active_score();
+    check(
+        active_score && active_score->slot == 0x03U
+            && active_score->stored_units == 0x123456U
+            && active_score->display_dirty,
+        "native game-state view decodes the selected 24-bit score accumulator");
+    const auto score_capture = capture_active_score(state);
+    check(
+        score_capture && score_capture->source == *active_score
+            && score_capture->state.stored_units == 0x123456U
+            && score_capture->state.display_dirty,
+        "native score capture transfers the active accumulator and display latch");
+    store(0x0251U, 0x07U);
+    check(
+        !capture_active_score(GameStateView(work_ram)),
+        "native score capture rejects an invalid active-score slot");
+    store(0x0251U, 0x03U);
+    store(0x1100U, 0x80U);
+    store(0x1180U, 0x34U);
+    store(0x1200U, 0x12U);
+    store(0x1280U, 0x40U);
+    store(0x1300U, 0xFEU);
+    store(0x1380U, 0xFFU);
+    store(0x1400U, 0x80U);
+    store(0x1480U, 0xFEU);
+    store(0x1500U, 0x00U);
+    store(0x1580U, 0x02U);
+    store(0x1C80U, 0xA2U);
+    store(0x1800U, 0x80U);
+    store(0x00B9U, 0x80U);
+    store(0x00BAU, 0xFEU);
+    store(0x00BBU, 0x00U);
+    store(0x00BCU, 0x02U);
+    const auto ball = state.ball();
+    check(
+        ball && ball->activity_flags == 0x81U
+            && ball->position_x.raw == 0x123480
+            && ball->position_y.raw == -448
+            && ball->horizontal_motion.raw == -384
+            && ball->vertical_motion.raw == 512
+            && ball->motion_flags == 0xA2U
+            && ball->collision_state == 0x80U,
+        "native game-state view preserves the ball's signed 16.8 state and collision marker");
+    const auto ball_capture = capture_active_ball(state);
+    check(
+        ball_capture && ball_capture->source == *ball
+            && ball_capture->state.position_x.raw == 0x123480
+            && ball_capture->state.position_y.raw == -448
+            && ball_capture->state.velocity_x == -384
+            && ball_capture->state.velocity_y == 512
+            && ball_capture->state.motion_flags == 0xA2U
+            && ball_capture->state.collision_state == 0x80U,
+        "native ball capture transfers fractional position, velocity, flags, and collision marker");
+    const auto substep_motion = state.ball_substep_motion();
+    check(
+        substep_motion && substep_motion->horizontal == -384
+            && substep_motion->vertical == 512,
+        "native game-state view captures F1B4's signed split motion");
+    store(0x008BU, 0x13U);
+    store(0x008CU, 0xF8U);
+    store(0x008DU, 0x08U);
+    const auto motion_tuning = state.ball_motion_tuning();
+    check(
+        motion_tuning && motion_tuning->horizontal_drag_divisor == -8
+            && motion_tuning->vertical_drag_divisor == 8
+            && motion_tuning->vertical_gravity == 0x13U,
+        "native game-state view captures DD09's signed drag and gravity inputs");
+    store(0x0085U, 0x40U);
+    store(0x0086U, 0x34U);
+    store(0x0087U, 0x12U);
+    store(0x0088U, 0x80U);
+    store(0x0089U, 0xFEU);
+    store(0x008AU, 0xFFU);
+    const auto collision_cache = state.ball_collision_position_cache();
+    const auto retry_ball_capture = capture_collision_retry_ball(state);
+    check(
+        collision_cache && collision_cache->position_x.raw == 0x123440
+            && collision_cache->position_y.raw == -384
+            && retry_ball_capture && retry_ball_capture->impact_ball == *ball_capture
+            && retry_ball_capture->previous_position.position_x.raw == 0x123440
+            && retry_ball_capture->previous_position.position_y.raw == -384
+            && retry_ball_capture->previous_position.velocity_x == -384
+            && retry_ball_capture->previous_position.velocity_y == 512
+            && retry_ball_capture->parent_vertical_high_byte() == 0xFFU,
+        "native retry-ball capture pairs CDF8's live impact with F1B4's cached position");
+    store(0x1000U, 0x01U);
+    check(
+        !capture_active_ball(GameStateView(work_ram)),
+        "native ball capture rejects an inactive slot-zero record");
+    check(
+        !capture_collision_retry_ball(GameStateView(work_ram)),
+        "native retry-ball capture rejects an inactive live impact record");
+    store(0x1000U, 0x81U);
+
+    ActorState native_actors;
+    check(
+        native_actors.claim_dynamic_slot(kSlot, ActorBehavior::shared_motion)
+            && actor && seed_actor_collision_state(native_actors, *actor),
+        "native actor state accepts a typed collision capture seed");
+    const auto* seeded_actor = native_actors.actor(kSlot);
+    check(
+        seeded_actor && seeded_actor->collision_table_program
+            && seeded_actor->collision_table
+            && seeded_actor->collision_reaction
+            && seeded_actor->collision_table_program == actor->collision_table_program
+            && *seeded_actor->collision_table == actor->collision_table
+            && *seeded_actor->collision_reaction == actor->collision_reaction,
+        "native collision seed preserves table and reaction state exactly");
+    check(
+        !seed_actor_collision_state(native_actors, GameStateView::ActorSlot{}),
+        "native collision seed rejects an inactive destination actor");
+
+    const auto motion_capture = capture_shared_actor_motion(state, kSlot);
+    ActorState motion_actors;
+    check(
+        motion_capture && motion_capture->due_for_update
+            && motion_capture->motion.position_x.raw == 0x1234 * 256
+            && motion_capture->motion.position_y.raw == 0xABCD * 256
+            && motion_capture->motion.velocity_x == -384
+            && motion_capture->motion.velocity_y == 512
+            && motion_actors.claim_dynamic_slot(kSlot, ActorBehavior::shared_motion)
+            && seed_shared_actor_motion(motion_actors, *motion_capture),
+        "native shared-motion capture transfers typed positions, velocity, and due state");
+    const auto* seeded_motion_actor = motion_actors.actor(kSlot);
+    ActorState non_motion_actors;
+    check(
+        seeded_motion_actor && seeded_motion_actor->motion == motion_capture->motion
+            && seeded_motion_actor->due_for_update
+            && non_motion_actors.claim_dynamic_slot(
+                kSlot, ActorBehavior::small_soldier)
+            && !seed_shared_actor_motion(non_motion_actors, *motion_capture),
+        "native shared-motion capture requires an owned matching behavior");
+    store(0x1000U + kSlot, 0x01U);
+    check(
+        !capture_shared_actor_motion(GameStateView(work_ram), kSlot),
+        "native shared-motion capture rejects inactive actor records");
+    store(0x1000U + kSlot, 0x81U);
+    store(0x1080U + kSlot, 0x02U);
+    const auto deferred_motion = capture_shared_actor_motion(GameStateView(work_ram), kSlot);
+    check(
+        deferred_motion && !deferred_motion->due_for_update,
+        "native shared-motion capture preserves the scheduler's deferred turn");
+    store(0x1080U + kSlot, 0x2CU);
+
+    store(0x00C6U, 0x40U);
+    store(0x00C7U, 0x8AU);
+    store(0x00C8U, 0x80U);
+    store(0x00C9U, 0x8AU);
+    store(0x0090U, 0x00U);
+    store(0x0091U, 0xCFU);
+    const auto collision_tables = state.playfield_collision_table_pointers();
+    check(
+        collision_tables && collision_tables->tile_ids == 0x8A80U
+            && collision_tables->collision_attributes == 0x8A40U
+            && collision_tables->masks == 0xCF00U,
+        "native game-state view decodes live playfield collision table pointers");
+    store(0x0096U, 0x00U);
+    store(0x0097U, 0x80U);
+    store(0x0098U, 0x00U);
+    store(0x0099U, 0x81U);
+    store(0x009AU, 0x00U);
+    store(0x009BU, 0x82U);
+    store(0x009CU, 0x00U);
+    store(0x009DU, 0x83U);
+    const auto collision_shape_directories =
+        state.actor_collision_shape_directory_pointers();
+    check(
+        collision_shape_directories
+            && collision_shape_directories->tables
+                == std::array<std::uint16_t, 4>{
+                    0x8000U, 0x8100U, 0x8200U, 0x8300U},
+        "native game-state view captures actor collision-shape directories");
+    store(0x0074U, 0x00U);
+    store(0x0075U, 0x84U);
+    store(0x0072U, 0x00U);
+    store(0x0073U, 0x85U);
+    store(0x008EU, 0x00U);
+    store(0x008FU, 0x86U);
+    const auto collision_mask_tables = state.actor_collision_mask_table_pointers();
+    check(
+        collision_mask_tables
+            && collision_mask_tables->first_table == 0x8400U
+            && collision_mask_tables->second_table == 0x8500U
+            && collision_mask_tables->masks == 0x8600U,
+        "native game-state view captures actor collision-mask table roots");
+    store(0x0254U, 0x01U);
+    store(0x00B7U, 0xA4U);
+    const auto collision_scan_session = state.actor_collision_scan_session();
+    check(
+        collision_scan_session && collision_scan_session->active
+            && collision_scan_session->side_flags == 0xA4U,
+        "native game-state view captures the actor collision scan session");
+    store(0x0D13U, 0x01U);
+    store(0x0D14U, 0x00U);
+    store(0x0CFCU, 0x80U);
+    store(0x0D32U, 0x02U);
+    const auto table_rule_latches = state.table_rule_latches();
+    check(
+        table_rule_latches && table_rule_latches->left_front_spider_safety
+            && !table_rule_latches->right_front_spider_safety
+            && table_rule_latches->tower_completed
+            && table_rule_latches->side_spider_transition_requested,
+        "native game-state view captures typed cross-target table latches");
+    check(
+        !state.actor(GameStateView::kActorSlotCount),
+        "native game-state view rejects slots outside the actor table");
+
+    const GameStateView truncated(
+        std::span<const std::byte>(work_ram).first(work_ram.size() - 1U));
+    check(
+        !truncated.valid() && !truncated.actor(kSlot)
+            && !truncated.ball_substep_motion() && !truncated.ball_motion_tuning()
+            && !truncated.playfield_collision_table_pointers(),
+        "native game-state view rejects a truncated RAM image");
+}
+
+void test_native_small_soldier_capture()
+{
+    using devils_crush::native_runtime::ActorBehavior;
+    using devils_crush::native_runtime::ActorState;
+    using devils_crush::native_runtime::GameStateView;
+    using devils_crush::native_runtime::NativeGameplayState;
+    using devils_crush::native_runtime::NativeGameplayRuntime;
+    using devils_crush::native_runtime::SmallSoldierGroupSide;
+    using devils_crush::native_runtime::apply_native_gameplay_bootstrap;
+    using devils_crush::native_runtime::capture_native_gameplay_bootstrap;
+    using devils_crush::native_runtime::capture_collision_effect;
+    using devils_crush::native_runtime::capture_small_soldier_collision_actor;
+    using devils_crush::native_runtime::capture_small_soldier_source;
+    using devils_crush::native_runtime::seed_small_soldier_collision_actor;
+
+    std::array<std::byte, GameStateView::kWorkRamSize> work_ram{};
+    const auto store = [&work_ram](
+                           const std::size_t offset,
+                           const std::uint8_t value) {
+        work_ram[offset] = static_cast<std::byte>(value);
+    };
+    constexpr std::uint8_t kSlot = 0x62U;
+    store(0x1000U + kSlot, 0x82U);
+    store(0x1800U + kSlot, 0x90U);
+    store(0x1F00U + kSlot, 0x57U);
+    store(0x1F80U + kSlot, 0x7FU);
+    store(0x1480U + kSlot, 0x01U);
+    store(0x1C00U + kSlot, 0x01U);
+    store(0x1D00U + kSlot, 0x8FU);
+    store(0x1700U + kSlot, 0x21U);
+    store(0x1880U + kSlot, 0x80U);
+    store(0x1A00U + kSlot, 0x04U);
+    store(0x1A80U + kSlot, 0x06U);
+    store(0x1C80U + kSlot, 0x02U);
+    store(0x1E00U + kSlot, 0x03U);
+    store(0x1E80U + kSlot, 0x07U);
+
+    constexpr std::uint8_t kUpperRightSourceSlot = 0x35U;
+    store(0x1000U + kUpperRightSourceSlot, 0x82U);
+    store(0x1F00U + kUpperRightSourceSlot, 0x0DU);
+    store(0x1F80U + kUpperRightSourceSlot, 0x7EU);
+    store(0x1480U + kUpperRightSourceSlot, 0x01U);
+    store(0x1A00U + kUpperRightSourceSlot, 48U);
+    store(0x1B00U + kUpperRightSourceSlot, 4U);
+    store(0x1980U + kUpperRightSourceSlot, 2U);
+    store(0x0D17U, 1U);
+
+    constexpr std::uint8_t kEffectSlot = 0x64U;
+    store(0x1000U + kEffectSlot, 0x8FU);
+    store(0x1080U + kEffectSlot, 0xE0U);
+    store(0x1F00U + kEffectSlot, 0x34U);
+    store(0x1F80U + kEffectSlot, 0x7CU);
+    store(0x1D80U + kEffectSlot, 4U);
+    store(0x1E00U + kEffectSlot, kSlot);
+    store(0x1E80U + kEffectSlot, 0x80U);
+
+    const GameStateView state(work_ram);
+    const auto captured = capture_small_soldier_collision_actor(state, kSlot);
+    check(
+        captured && captured->actor.index == kSlot
+            && captured->rule_state.hits_remaining == 1U
+            && captured->rule_state.subtype == 0x0FU
+            && captured->rule_state.group_side == SmallSoldierGroupSide::upper_right
+            && captured->rule_state.contact_pending,
+        "native Small-Soldier capture gives overloaded actor fields their proven family meanings");
+
+    const auto source_capture = capture_small_soldier_source(
+        state, SmallSoldierGroupSide::upper_right);
+    const auto effect_capture = capture_collision_effect(state, kEffectSlot);
+    check(
+        source_capture && source_capture->actor.index == kUpperRightSourceSlot
+            && source_capture->source_state.group.pending_spawns == 4U
+            && source_capture->source_state.group.live_children == 1U
+            && source_capture->source_state.appearance == 2U
+            && source_capture->source_state.ticks_until_next_spawn == 48U,
+        "native Side-Star capture preserves the pending, live, appearance, and delay state of one generation");
+    check(
+        effect_capture && effect_capture->effect.source_slot == kSlot
+            && effect_capture->effect.ticks_remaining == 4U,
+        "native collision-effect capture identifies an active Small Soldier by its exact source slot");
+
+    ActorState actors;
+    check(
+        actors.claim_dynamic_slot(kSlot, ActorBehavior::small_soldier)
+            && captured
+            && seed_small_soldier_collision_actor(actors, *captured),
+        "native Small-Soldier capture seeds an already-owned actor");
+    const auto* seeded = actors.actor(kSlot);
+    check(
+        seeded && seeded->small_soldier
+            && *seeded->small_soldier == captured->rule_state
+            && !seeded->small_soldier_group_registered
+            && seeded->appearance == 0U
+            && seeded->collision_effect_association == 0x8FU
+            && seeded->collision_table
+            && *seeded->collision_table == captured->actor.collision_table,
+        "native Small-Soldier capture preserves collision state without inventing a Side-Star generation");
+
+    store(0x1000U, 0x81U);
+    const auto bootstrap = capture_native_gameplay_bootstrap(state);
+    NativeGameplayState bootstrapped_gameplay;
+    const bool bootstrap_applied = bootstrap
+        && apply_native_gameplay_bootstrap(bootstrapped_gameplay, *bootstrap);
+    constexpr std::size_t kBootstrapIndex = kSlot - ActorState::kFirstDynamicSlot;
+    const auto* bootstrapped = bootstrapped_gameplay.actors().actor(kSlot);
+    const auto* bootstrapped_source = bootstrapped_gameplay.actors()
+        .small_soldier_source(SmallSoldierGroupSide::upper_right);
+    check(
+        bootstrap_applied
+            && bootstrap->small_soldiers.children[kBootstrapIndex] == captured
+            && bootstrap->small_soldiers.sources[1U] == source_capture
+            && bootstrap->small_soldiers.collision_effects[kBootstrapIndex]
+                == effect_capture
+            && bootstrapped && bootstrapped->small_soldier
+            && *bootstrapped->small_soldier == captured->rule_state
+            && bootstrapped->small_soldier_group_registered
+            && bootstrapped_source
+            && *bootstrapped_source == source_capture->source_state,
+        "native gameplay bootstrap reconnects a complete Side-Star source and its collision-ready child");
+    const auto* bootstrapped_effect = bootstrapped_gameplay.actors().actor(kEffectSlot);
+    check(
+        bootstrapped_effect && bootstrapped_effect->collision_effect
+            && bootstrapped_effect->collision_effect->ticks_remaining == 4U
+            && bootstrapped && bootstrapped->collision_effect_active,
+        "native gameplay bootstrap restores a Small Soldier's explicitly captured shared effect");
+    const auto bootstrapped_source_wait =
+        bootstrapped_gameplay.advance_captured_small_soldier_source(
+            SmallSoldierGroupSide::upper_right);
+    check(
+        bootstrapped_source_wait
+            && bootstrapped_source_wait->disposition
+                == devils_crush::native_runtime::SmallSoldierSourceDisposition::waiting
+            && bootstrapped_source_wait->state.ticks_until_next_spawn == 47U,
+        "native gameplay advances a captured Side-Star countdown without inventing a dynamic slot");
+    store(0x0D17U, 2U);
+    store(0x1B00U + kUpperRightSourceSlot, 3U);
+    const auto mismatched_bootstrap = capture_native_gameplay_bootstrap(state);
+    check(
+        mismatched_bootstrap
+            && !mismatched_bootstrap->small_soldiers.sources[1U]
+            && mismatched_bootstrap->small_soldiers.children[kBootstrapIndex]
+                == captured,
+        "native gameplay bootstrap leaves a child independent when its Side-Star live count cannot be fully recovered");
+    store(0x0D17U, 1U);
+    store(0x1B00U + kUpperRightSourceSlot, 4U);
+    store(0x1000U, 0x00U);
+
+    ActorState wrong_behavior;
+    check(
+        wrong_behavior.claim_dynamic_slot(kSlot, ActorBehavior::shared_motion)
+            && captured
+            && !seed_small_soldier_collision_actor(wrong_behavior, *captured),
+        "native Small-Soldier capture rejects a destination owned by another behavior");
+
+    store(0x1F00U + kSlot, 0x81U);
+    check(
+        !capture_small_soldier_collision_actor(state, kSlot),
+        "native Small-Soldier capture refuses the deferred-completion handler");
+    store(0x1F00U + kSlot, 0x57U);
+    store(0x1480U + kSlot, 0x02U);
+    check(
+        !capture_small_soldier_collision_actor(state, kSlot),
+        "native Small-Soldier capture rejects a non-Side-Star selector");
+    store(0x1480U + kSlot, 0x01U);
+    store(0x1C00U + kSlot, 0x00U);
+    check(
+        !capture_small_soldier_collision_actor(state, kSlot),
+        "native Small-Soldier capture refuses an already-complete child");
+    store(0x1C00U + kSlot, 0x01U);
+    store(0x1000U + kSlot, 0x81U);
+    check(
+        !capture_small_soldier_collision_actor(state, kSlot),
+        "native Small-Soldier capture refuses another type's overloaded fields");
+
+    const GameStateView truncated(
+        std::span<const std::byte>(work_ram).first(work_ram.size() - 1U));
+    check(
+        !capture_small_soldier_collision_actor(truncated, kSlot),
+        "native Small-Soldier capture rejects a truncated work-RAM image");
+}
+
+void test_native_bumper_capture()
+{
+    using devils_crush::native_runtime::GameStateView;
+    using devils_crush::native_runtime::NativeGameplayState;
+    using devils_crush::native_runtime::apply_native_gameplay_bootstrap;
+    using devils_crush::native_runtime::capture_bumper_actor;
+    using devils_crush::native_runtime::capture_native_gameplay_bootstrap;
+
+    std::array<std::byte, GameStateView::kWorkRamSize> work_ram{};
+    const auto store = [&work_ram](
+                           const std::size_t offset,
+                           const std::uint8_t value) {
+        work_ram[offset] = static_cast<std::byte>(value);
+    };
+    constexpr std::uint8_t kRightSlot = 0x15U;
+    store(0x1000U + kRightSlot, 0x82U);
+    store(0x1F00U + kRightSlot, 0xC7U);
+    store(0x1F80U + kRightSlot, 0x78U);
+    store(0x1E00U + kRightSlot, 0x01U);
+    store(0x1E80U + kRightSlot, 0x08U);
+    store(0x1B00U + kRightSlot, 0x06U);
+    store(0x1B80U + kRightSlot, 0x02U);
+
+    const GameStateView state(work_ram);
+    const auto captured = capture_bumper_actor(state, kRightSlot);
+    check(
+        captured && captured->actor.index == kRightSlot
+            && captured->rule_state.side == 1U
+            && captured->rule_state.hit_phase == 8U
+            && captured->rule_state.primary_appearance == 6U
+            && captured->rule_state.secondary_damage == 2U
+            && captured->rule_state.active,
+        "native Bumper capture decodes the fixed target's proven steady progression");
+
+    NativeGameplayState gameplay;
+    check(
+        captured && gameplay.seed_bumper(captured->rule_state)
+            && gameplay.bumper(1U) != nullptr
+            && *gameplay.bumper(1U) == captured->rule_state,
+        "native Bumper capture seeds the fixed-target scheduler directly");
+
+    store(0x1000U, 0x81U);
+    const auto bootstrap = capture_native_gameplay_bootstrap(state);
+    NativeGameplayState bootstrapped_gameplay;
+    const bool bootstrap_applied = bootstrap
+        && apply_native_gameplay_bootstrap(bootstrapped_gameplay, *bootstrap);
+    check(
+        bootstrap_applied && !bootstrap->bumpers[0U]
+            && bootstrap->bumpers[1U] == captured
+            && bootstrapped_gameplay.bumper(1U)
+            && *bootstrapped_gameplay.bumper(1U) == captured->rule_state,
+        "native gameplay bootstrap restores each clear Bumper independently");
+    store(0x1000U, 0x00U);
+
+    store(0x1E00U + kRightSlot, 0x00U);
+    check(
+        !capture_bumper_actor(state, kRightSlot),
+        "native Bumper capture rejects a mismatched fixed-slot side");
+    store(0x1E00U + kRightSlot, 0x01U);
+    store(0x1B80U + kRightSlot, 0x01U);
+    check(
+        !capture_bumper_actor(state, kRightSlot),
+        "native Bumper capture rejects inconsistent phase counters");
+    store(0x1B80U + kRightSlot, 0x02U);
+    store(0x1F00U + kRightSlot, 0x2BU);
+    store(0x1F80U + kRightSlot, 0x79U);
+    check(
+        !capture_bumper_actor(state, kRightSlot),
+        "native Bumper capture excludes terminal allocation ownership");
+    store(0x1F00U + kRightSlot, 0xC7U);
+    store(0x1F80U + kRightSlot, 0x78U);
+    check(
+        !capture_bumper_actor(state, 0x16U),
+        "native Bumper capture rejects an adjacent non-Bumper slot");
+
+    const GameStateView truncated(
+        std::span<const std::byte>(work_ram).first(work_ram.size() - 1U));
+    check(
+        !capture_bumper_actor(truncated, kRightSlot),
+        "native Bumper capture rejects a truncated work-RAM image");
+}
+
+void test_native_front_spider_capture()
+{
+    using devils_crush::native_runtime::GameStateView;
+    using devils_crush::native_runtime::NativeGameplayState;
+    using devils_crush::native_runtime::apply_native_gameplay_bootstrap;
+    using devils_crush::native_runtime::capture_front_spider_actor;
+    using devils_crush::native_runtime::capture_native_gameplay_bootstrap;
+
+    std::array<std::byte, GameStateView::kWorkRamSize> work_ram{};
+    const auto store = [&work_ram](
+                           const std::size_t offset,
+                           const std::uint8_t value) {
+        work_ram[offset] = static_cast<std::byte>(value);
+    };
+    constexpr std::uint8_t kLeftSlot = 0x26U;
+    store(0x1000U + kLeftSlot, 0x83U);
+    store(0x1F00U + kLeftSlot, 0x90U);
+    store(0x1F80U + kLeftSlot, 0x64U);
+    store(0x1C80U + kLeftSlot, 0x00U);
+
+    const GameStateView state(work_ram);
+    const auto captured = capture_front_spider_actor(state, kLeftSlot);
+    check(
+        captured && captured->actor.index == kLeftSlot
+            && captured->rule_state.side == 0U
+            && captured->rule_state.collision_ready,
+        "native Front-Spider capture decodes the fixed steady target");
+
+    NativeGameplayState gameplay;
+    check(
+        captured && gameplay.seed_front_spider(captured->rule_state)
+            && gameplay.front_spider(0U) != nullptr
+            && *gameplay.front_spider(0U) == captured->rule_state,
+        "native Front-Spider capture seeds the fixed-target scheduler directly");
+
+    store(0x1000U, 0x81U);
+    const auto bootstrap = capture_native_gameplay_bootstrap(state);
+    NativeGameplayState bootstrapped_gameplay;
+    const bool bootstrap_applied = bootstrap
+        && apply_native_gameplay_bootstrap(bootstrapped_gameplay, *bootstrap);
+    check(
+        bootstrap_applied && bootstrap->front_spiders[0U] == captured
+            && !bootstrap->front_spiders[1U]
+            && bootstrapped_gameplay.front_spider(0U)
+            && *bootstrapped_gameplay.front_spider(0U) == captured->rule_state,
+        "native gameplay bootstrap restores each clear Front Spider independently");
+    store(0x1000U, 0x00U);
+
+    store(0x1C80U + kLeftSlot, 0x01U);
+    check(
+        !capture_front_spider_actor(state, kLeftSlot),
+        "native Front-Spider capture rejects a mismatched fixed-slot side");
+    store(0x1C80U + kLeftSlot, 0x00U);
+    store(0x1F00U + kLeftSlot, 0xD2U);
+    check(
+        !capture_front_spider_actor(state, kLeftSlot),
+        "native Front-Spider capture excludes appearance-transition ownership");
+    store(0x1F00U + kLeftSlot, 0x90U);
+    check(
+        !capture_front_spider_actor(state, 0x28U),
+        "native Front-Spider capture rejects the adjacent Side Spider slot");
+
+    const GameStateView truncated(
+        std::span<const std::byte>(work_ram).first(work_ram.size() - 1U));
+    check(
+        !capture_front_spider_actor(truncated, kLeftSlot),
+        "native Front-Spider capture rejects a truncated work-RAM image");
+}
+
+void test_native_side_spider_capture()
+{
+    using devils_crush::native_runtime::GameStateView;
+    using devils_crush::native_runtime::NativeGameplayState;
+    using devils_crush::native_runtime::apply_native_gameplay_bootstrap;
+    using devils_crush::native_runtime::capture_side_spider_actor;
+    using devils_crush::native_runtime::capture_native_gameplay_bootstrap;
+
+    std::array<std::byte, GameStateView::kWorkRamSize> work_ram{};
+    const auto store = [&work_ram](
+                           const std::size_t offset,
+                           const std::uint8_t value) {
+        work_ram[offset] = static_cast<std::byte>(value);
+    };
+    constexpr std::uint8_t kRightSlot = 0x29U;
+    store(0x1000U + kRightSlot, 0x83U);
+    store(0x1F00U + kRightSlot, 0x1FU);
+    store(0x1F80U + kRightSlot, 0x65U);
+    store(0x1C80U + kRightSlot, 0x01U);
+
+    const GameStateView state(work_ram);
+    const auto captured = capture_side_spider_actor(state, kRightSlot);
+    check(
+        captured && captured->actor.index == kRightSlot
+            && captured->rule_state.side == 1U
+            && captured->rule_state.collision_ready,
+        "native Side-Spider capture decodes the fixed steady target");
+
+    NativeGameplayState gameplay;
+    check(
+        captured && gameplay.seed_side_spider(captured->rule_state)
+            && gameplay.side_spider(1U) != nullptr
+            && *gameplay.side_spider(1U) == captured->rule_state,
+        "native Side-Spider capture seeds the fixed-target scheduler directly");
+
+    store(0x1000U, 0x81U);
+    const auto bootstrap = capture_native_gameplay_bootstrap(state);
+    NativeGameplayState bootstrapped_gameplay;
+    const bool bootstrap_applied = bootstrap
+        && apply_native_gameplay_bootstrap(bootstrapped_gameplay, *bootstrap);
+    check(
+        bootstrap_applied && !bootstrap->side_spiders[0U]
+            && bootstrap->side_spiders[1U] == captured
+            && bootstrapped_gameplay.side_spider(1U)
+            && *bootstrapped_gameplay.side_spider(1U) == captured->rule_state,
+        "native gameplay bootstrap restores each clear Side Spider independently");
+    store(0x1000U, 0x00U);
+
+    store(0x1C80U + kRightSlot, 0x00U);
+    check(
+        !capture_side_spider_actor(state, kRightSlot),
+        "native Side-Spider capture rejects a mismatched fixed-slot side");
+    store(0x1C80U + kRightSlot, 0x01U);
+    store(0x1F00U + kRightSlot, 0x39U);
+    store(0x1F80U + kRightSlot, 0x65U);
+    check(
+        !capture_side_spider_actor(state, kRightSlot),
+        "native Side-Spider capture excludes appearance-transition ownership");
+    store(0x1F00U + kRightSlot, 0x1FU);
+    check(
+        !capture_side_spider_actor(state, 0x27U),
+        "native Side-Spider capture rejects an adjacent Front Spider slot");
+
+    const GameStateView truncated(
+        std::span<const std::byte>(work_ram).first(work_ram.size() - 1U));
+    check(
+        !capture_side_spider_actor(truncated, kRightSlot),
+        "native Side-Spider capture rejects a truncated work-RAM image");
+}
+
+void test_native_skeleton_insect_capture()
+{
+    using devils_crush::native_runtime::GameStateView;
+    using devils_crush::native_runtime::NativeGameplayState;
+    using devils_crush::native_runtime::SkeletonInsectKind;
+    using devils_crush::native_runtime::SkeletonInsectTriggerDisposition;
+    using devils_crush::native_runtime::apply_native_gameplay_bootstrap;
+    using devils_crush::native_runtime::capture_skeleton_insect_actor;
+    using devils_crush::native_runtime::capture_native_gameplay_bootstrap;
+
+    std::array<std::byte, GameStateView::kWorkRamSize> work_ram{};
+    const auto store = [&work_ram](
+                           const std::size_t offset,
+                           const std::uint8_t value) {
+        work_ram[offset] = static_cast<std::byte>(value);
+    };
+    constexpr std::uint8_t kCenterSlot = 0x32U;
+    store(0x1000U + kCenterSlot, 0x81U);
+    store(0x1F00U + kCenterSlot, 0xF9U);
+    store(0x1F80U + kCenterSlot, 0x55U);
+    store(0x0CFCU, 0x01U);
+
+    const GameStateView state(work_ram);
+    const auto captured = capture_skeleton_insect_actor(state, kCenterSlot);
+    const auto latches = state.table_rule_latches();
+    check(
+        captured && captured->actor.index == kCenterSlot
+            && captured->rule_state.kind == SkeletonInsectKind::center
+            && latches && latches->tower_completed,
+        "native Skeleton-Insect capture pairs a steady actor with its typed table source");
+
+    NativeGameplayState gameplay;
+    if (latches) {
+        gameplay.seed_table_rule_latches(*latches);
+    }
+    const auto updates = captured && gameplay.seed_skeleton_insect(captured->rule_state)
+        ? gameplay.advance_actor_phase()
+        : std::vector<NativeGameplayState::ActorPhaseUpdate>{};
+    check(
+        captured && gameplay.skeleton_insect(SkeletonInsectKind::center)
+            && updates.size() == 1U
+            && updates[0].kind
+                == NativeGameplayState::ActorPhaseUpdateKind::skeleton_insect_trigger
+            && updates[0].skeleton_insect
+            && updates[0].skeleton_insect->insect.disposition
+                == SkeletonInsectTriggerDisposition::triggered
+            && gameplay.score().stored_units == 100U
+            && gameplay.advance_actor_phase().empty()
+            && !gameplay.seed_skeleton_insect({
+                .kind = static_cast<SkeletonInsectKind>(3U)})
+            && gameplay.skeleton_insect(static_cast<SkeletonInsectKind>(3U))
+                == nullptr,
+        "native Skeleton-Insect capture preserves a pending Tower source for one actor-order trigger");
+
+    store(0x1000U, 0x81U);
+    const auto bootstrap = capture_native_gameplay_bootstrap(state);
+    NativeGameplayState bootstrapped_gameplay;
+    const bool bootstrap_applied = bootstrap
+        && apply_native_gameplay_bootstrap(bootstrapped_gameplay, *bootstrap);
+    check(
+        bootstrap_applied && !bootstrap->skeleton_insects[0U]
+            && bootstrap->skeleton_insects[1U] == captured
+            && !bootstrap->skeleton_insects[2U]
+            && bootstrapped_gameplay.skeleton_insect(SkeletonInsectKind::center)
+            && *bootstrapped_gameplay.skeleton_insect(SkeletonInsectKind::center)
+                == captured->rule_state,
+        "native gameplay bootstrap restores each clear Skeleton Insect independently");
+    store(0x1000U, 0x00U);
+
+    store(0x1F00U + kCenterSlot, 0xFAU);
+    check(
+        !capture_skeleton_insect_actor(state, kCenterSlot),
+        "native Skeleton-Insect capture excludes transition ownership");
+    store(0x1F00U + kCenterSlot, 0xF9U);
+    store(0x1000U + kCenterSlot, 0x82U);
+    check(
+        !capture_skeleton_insect_actor(state, kCenterSlot),
+        "native Skeleton-Insect capture rejects a mismatched fixed actor type");
+    store(0x1000U + kCenterSlot, 0x81U);
+    check(
+        !capture_skeleton_insect_actor(state, 0x30U),
+        "native Skeleton-Insect capture rejects a non-Skeleton slot");
+
+    const GameStateView truncated(
+        std::span<const std::byte>(work_ram).first(work_ram.size() - 1U));
+    check(
+        !capture_skeleton_insect_actor(truncated, kCenterSlot)
+            && !truncated.table_rule_latches(),
+        "native Skeleton-Insect capture rejects a truncated work-RAM image");
+}
+
+void test_native_dragon_egg_cluster_capture()
+{
+    using devils_crush::native_runtime::GameStateView;
+    using devils_crush::native_runtime::NativeGameplayState;
+    using devils_crush::native_runtime::apply_native_gameplay_bootstrap;
+    using devils_crush::native_runtime::capture_dragon_egg_cluster;
+    using devils_crush::native_runtime::capture_native_gameplay_bootstrap;
+
+    std::array<std::byte, GameStateView::kWorkRamSize> work_ram{};
+    const auto store = [&work_ram](
+                           const std::size_t offset,
+                           const std::uint8_t value) {
+        work_ram[offset] = static_cast<std::byte>(value);
+    };
+    for (std::uint8_t slot = 0x20U; slot <= 0x25U; ++slot) {
+        store(0x1000U + slot, 0x82U);
+        store(0x1800U + slot, 0x00U);
+        store(0x1F00U + slot, 0x45U);
+        store(0x1F80U + slot, 0x43U);
+    }
+    store(0x0CF4U, 6U);
+    store(0x0CF7U, 0x00U);
+    store(0x0D20U, 0x00U);
+
+    const GameStateView state(work_ram);
+    const auto captured = capture_dragon_egg_cluster(state);
+    check(
+        captured && captured->actors[0U].index == 0x20U
+            && captured->actors[5U].index == 0x25U
+            && captured->rule_state
+                == devils_crush::native_runtime::DragonEggClusterState{},
+        "native Dragon's-Egg capture accepts a complete six-target steady cluster");
+
+    store(0x0CF4U, 5U);
+    check(
+        !capture_dragon_egg_cluster(state),
+        "native Dragon's-Egg capture requires its full live-count invariant");
+    store(0x0CF4U, 6U);
+
+    NativeGameplayState gameplay;
+    if (captured) {
+        gameplay.seed_dragon_egg_cluster(captured->rule_state);
+    }
+    check(
+        captured && gameplay.dragon_egg_cluster()
+            && *gameplay.dragon_egg_cluster() == captured->rule_state,
+        "native Dragon's-Egg capture seeds the fixed-target cluster directly");
+
+    store(0x1000U, 0x81U);
+    const auto bootstrap = capture_native_gameplay_bootstrap(state);
+    NativeGameplayState bootstrapped_gameplay;
+    const bool bootstrap_applied = bootstrap
+        && apply_native_gameplay_bootstrap(bootstrapped_gameplay, *bootstrap);
+    check(
+        bootstrap_applied && bootstrap->dragon_eggs
+            && !bootstrap->dragon_eggs->hatchling
+            && bootstrapped_gameplay.dragon_egg_cluster()
+            && *bootstrapped_gameplay.dragon_egg_cluster()
+                == captured->rule_state,
+        "native gameplay bootstrap transfers a complete Dragon's-Egg cluster");
+    store(0x1000U, 0x00U);
+
+    store(0x1800U + 0x22U, 0x80U);
+    check(
+        !capture_dragon_egg_cluster(state),
+        "native Dragon's-Egg capture leaves a pending hit with its collision owner");
+    store(0x1800U + 0x22U, 0x00U);
+    store(0x1F00U + 0x22U, 0x87U);
+    check(
+        !capture_dragon_egg_cluster(state),
+        "native Dragon's-Egg capture excludes a destroyed egg dispatcher");
+    store(0x1F00U + 0x22U, 0x45U);
+
+    const GameStateView truncated(
+        std::span<const std::byte>(work_ram).first(work_ram.size() - 1U));
+    check(
+        !capture_dragon_egg_cluster(truncated),
+        "native Dragon's-Egg capture rejects a truncated work-RAM image");
+}
+
+void test_native_partial_dragon_egg_cluster_capture()
+{
+    using devils_crush::native_runtime::GameStateView;
+    using devils_crush::native_runtime::NativeGameplayState;
+    using devils_crush::native_runtime::capture_partial_dragon_egg_cluster;
+
+    std::array<std::byte, GameStateView::kWorkRamSize> work_ram{};
+    const auto store = [&work_ram](
+                           const std::size_t offset,
+                           const std::uint8_t value) {
+        work_ram[offset] = static_cast<std::byte>(value);
+    };
+    for (std::uint8_t slot = 0x20U; slot <= 0x25U; ++slot) {
+        store(0x1000U + slot, 0x82U);
+        store(0x1F00U + slot, 0x45U);
+        store(0x1F80U + slot, 0x43U);
+    }
+    // Slot $22 completed the source's post-hatchling disable transition.
+    store(0x1F00U + 0x22U, 0x87U);
+    store(0x1F80U + 0x22U, 0x43U);
+    store(0x0CF4U, 0x05U);
+    store(0x0CF7U, 0x00U);
+
+    const GameStateView state(work_ram);
+    const auto captured = capture_partial_dragon_egg_cluster(state);
+    check(
+        captured && captured->rule_state.eggs[0U].active
+            && captured->rule_state.eggs[1U].active
+            && !captured->rule_state.eggs[2U].active
+            && captured->rule_state.eggs[3U].active
+            && !captured->rule_state.completed
+            && !captured->rule_state.completion_pending,
+        "native Dragon's-Egg capture accepts a stable partial cluster after its hatchling releases");
+
+    NativeGameplayState gameplay;
+    if (captured) {
+        gameplay.seed_dragon_egg_cluster(captured->rule_state);
+    }
+    check(
+        captured && gameplay.dragon_egg_cluster()
+            && *gameplay.dragon_egg_cluster() == captured->rule_state,
+        "native partial Dragon's-Egg capture seeds the fixed-target scheduler directly");
+
+    store(0x0CF4U, 0x04U);
+    check(
+        !capture_partial_dragon_egg_cluster(state),
+        "native partial Dragon's-Egg capture requires the source live count to match fixed records");
+    store(0x0CF4U, 0x05U);
+    store(0x0CF7U, 0x01U);
+    check(
+        !capture_partial_dragon_egg_cluster(state),
+        "native partial Dragon's-Egg capture excludes the reset path");
+    store(0x0CF7U, 0x00U);
+    store(0x1000U + 0x64U, 0x82U);
+    store(0x1F00U + 0x64U, 0x1EU);
+    store(0x1F80U + 0x64U, 0x44U);
+    check(
+        !capture_partial_dragon_egg_cluster(state),
+        "native partial Dragon's-Egg capture leaves live hatchlings with their source owner");
+    store(0x1000U + 0x64U, 0x00U);
+    store(0x1F00U + 0x22U, 0x45U);
+    check(
+        !capture_partial_dragon_egg_cluster(state),
+        "native partial Dragon's-Egg capture requires at least one completed disable transition");
+
+    const GameStateView truncated(
+        std::span<const std::byte>(work_ram).first(work_ram.size() - 1U));
+    check(
+        !capture_partial_dragon_egg_cluster(truncated),
+        "native partial Dragon's-Egg capture rejects a truncated work-RAM image");
+}
+
+void test_native_dragon_egg_hatchling_capture()
+{
+    using devils_crush::native_runtime::GameStateView;
+    using devils_crush::native_runtime::NativeGameplayState;
+    using devils_crush::native_runtime::capture_dragon_egg_cluster_with_hatchling;
+
+    std::array<std::byte, GameStateView::kWorkRamSize> work_ram{};
+    const auto store = [&work_ram](
+                           const std::size_t offset,
+                           const std::uint8_t value) {
+        work_ram[offset] = static_cast<std::byte>(value);
+    };
+    for (std::uint8_t slot = 0x20U; slot <= 0x25U; ++slot) {
+        store(0x1000U + slot, 0x82U);
+        store(0x1F00U + slot, 0x45U);
+        store(0x1F80U + slot, 0x43U);
+    }
+    store(0x1F00U + 0x22U, 0x87U);
+    store(0x1F80U + 0x22U, 0x43U);
+    store(0x0CF4U, 0x05U);
+    store(0x1000U + 0x64U, 0x82U);
+    store(0x1F00U + 0x64U, 0x1EU);
+    store(0x1F80U + 0x64U, 0x44U);
+    store(0x1180U + 0x64U, 68U);
+    store(0x1300U + 0x64U, 44U);
+    store(0x1380U + 0x64U, 2U);
+    store(0x1A00U + 0x64U, 2U);
+
+    const GameStateView state(work_ram);
+    const auto captured = capture_dragon_egg_cluster_with_hatchling(state);
+    check(
+        captured && !captured->cluster.rule_state.eggs[2U].active
+            && captured->hatchling.source_egg_slot == 0x22U
+            && captured->hatchling.dynamic_slot == 0x64U
+            && captured->hatchling.position.horizontal_pixels == 68
+            && captured->hatchling.position.vertical_pixels == 556
+            && captured->hatchling.animation_timer == 2U,
+        "native Dragon's-Egg capture restores the sole in-flight hatchling with its disabled parent");
+
+    NativeGameplayState gameplay;
+    if (captured) {
+        gameplay.seed_dragon_egg_cluster(captured->cluster.rule_state);
+        check(
+            gameplay.seed_dragon_egg_hatchling(captured->hatchling),
+            "native Dragon's-Egg capture claims its existing dynamic hatchling without replaying allocation");
+    }
+    const auto phase = gameplay.advance_actor_phase();
+    check(
+        captured && phase.size() == 2U && phase[1].slot == 0x64U
+            && phase[1].dragon_egg_hatchling
+            && phase[1].dragon_egg_hatchling->hatchling.state.animation_timer == 1U,
+        "native Dragon's-Egg capture resumes the hatchling on its next actor turn");
+
+    store(0x1000U + 0x65U, 0x82U);
+    store(0x1F00U + 0x65U, 0x1EU);
+    store(0x1F80U + 0x65U, 0x44U);
+    check(
+        !capture_dragon_egg_cluster_with_hatchling(state),
+        "native Dragon's-Egg hatchling capture rejects ambiguous multiple children");
+    store(0x1000U + 0x65U, 0x00U);
+    store(0x0CF4U, 0x04U);
+    check(
+        !capture_dragon_egg_cluster_with_hatchling(state),
+        "native Dragon's-Egg hatchling capture requires exactly one disabled parent");
+    store(0x0CF4U, 0x05U);
+    store(0x1F00U + 0x22U, 0x45U);
+    check(
+        !capture_dragon_egg_cluster_with_hatchling(state),
+        "native Dragon's-Egg hatchling capture requires its parent disable transition");
+
+    const GameStateView truncated(
+        std::span<const std::byte>(work_ram).first(work_ram.size() - 1U));
+    check(
+        !capture_dragon_egg_cluster_with_hatchling(truncated),
+        "native Dragon's-Egg hatchling capture rejects a truncated work-RAM image");
+}
+
+void test_native_completed_dragon_egg_cluster_capture()
+{
+    using devils_crush::native_runtime::GameStateView;
+    using devils_crush::native_runtime::NativeGameplayState;
+    using devils_crush::native_runtime::capture_completed_dragon_egg_cluster;
+
+    std::array<std::byte, GameStateView::kWorkRamSize> work_ram{};
+    const auto store = [&work_ram](
+                           const std::size_t offset,
+                           const std::uint8_t value) {
+        work_ram[offset] = static_cast<std::byte>(value);
+    };
+    store(0x1000U + 0x1FU, 0x80U);
+    store(0x1F00U + 0x1FU, 0xF6U);
+    store(0x1F80U + 0x1FU, 0x42U);
+    for (std::uint8_t slot = 0x20U; slot <= 0x25U; ++slot) {
+        store(0x1000U + slot, 0x82U);
+        store(0x1F00U + slot, 0x87U);
+        store(0x1F80U + slot, 0x43U);
+    }
+    store(0x0CF4U, 0x00U);
+    store(0x0CF7U, 0x00U);
+    store(0x0D20U, 0x01U);
+
+    const GameStateView state(work_ram);
+    const auto captured = capture_completed_dragon_egg_cluster(state);
+    check(
+        captured && captured->rule_state.completed
+            && !captured->rule_state.completion_pending
+            && !captured->rule_state.reset_pending
+            && std::ranges::none_of(captured->rule_state.eggs, [](const auto& egg) {
+                   return egg.active || egg.hatchling_spawn_pending;
+               }),
+        "native Dragon's-Egg capture accepts the completed pre-reset cluster");
+
+    NativeGameplayState gameplay;
+    if (captured) {
+        gameplay.seed_dragon_egg_cluster(captured->rule_state);
+    }
+    const auto phase = gameplay.advance_actor_phase();
+    check(
+        captured && phase.size() == 1U && phase[0].slot == 0x1FU
+            && phase[0].kind
+                == NativeGameplayState::ActorPhaseUpdateKind::dragon_egg_controller
+            && phase[0].dragon_egg_controller
+            && phase[0].dragon_egg_controller->controller.disposition
+                == devils_crush::native_runtime::DragonEggCompletionDisposition::already_completed,
+        "native completed Dragon's-Egg capture preserves the already-awarded controller state");
+
+    store(0x0CF7U, 0x01U);
+    check(
+        !capture_completed_dragon_egg_cluster(state),
+        "native completed Dragon's-Egg capture excludes the reset transition");
+    store(0x0CF7U, 0x00U);
+    store(0x0D20U, 0x00U);
+    check(
+        !capture_completed_dragon_egg_cluster(state),
+        "native completed Dragon's-Egg capture requires the completion latch");
+    store(0x0D20U, 0x01U);
+    store(0x1000U + 0x64U, 0x82U);
+    store(0x1F00U + 0x64U, 0x1EU);
+    store(0x1F80U + 0x64U, 0x44U);
+    check(
+        !capture_completed_dragon_egg_cluster(state),
+        "native completed Dragon's-Egg capture leaves live hatchlings with their source owner");
+    store(0x1000U + 0x64U, 0x00U);
+    store(0x1F00U + 0x1FU, 0xEBU);
+    check(
+        !capture_completed_dragon_egg_cluster(state),
+        "native completed Dragon's-Egg capture requires the steady controller dispatch");
+    store(0x1F00U + 0x1FU, 0xF6U);
+    store(0x1F00U + 0x22U, 0x45U);
+    check(
+        !capture_completed_dragon_egg_cluster(state),
+        "native completed Dragon's-Egg capture requires every fixed egg to be disabled");
+
+    const GameStateView truncated(
+        std::span<const std::byte>(work_ram).first(work_ram.size() - 1U));
+    check(
+        !capture_completed_dragon_egg_cluster(truncated),
+        "native completed Dragon's-Egg capture rejects a truncated work-RAM image");
+}
+
+void test_native_dragon_egg_reset_cluster_capture()
+{
+    using devils_crush::native_runtime::GameStateView;
+    using devils_crush::native_runtime::NativeGameplayState;
+    using devils_crush::native_runtime::capture_dragon_egg_reset_cluster;
+
+    std::array<std::byte, GameStateView::kWorkRamSize> work_ram{};
+    const auto store = [&work_ram](
+                           const std::size_t offset,
+                           const std::uint8_t value) {
+        work_ram[offset] = static_cast<std::byte>(value);
+    };
+    store(0x1000U + 0x1FU, 0x80U);
+    store(0x1F00U + 0x1FU, 0xF6U);
+    store(0x1F80U + 0x1FU, 0x42U);
+    for (std::uint8_t slot = 0x20U; slot <= 0x25U; ++slot) {
+        store(0x1000U + slot, 0x82U);
+        store(0x1F00U + slot, 0x87U);
+        store(0x1F80U + slot, 0x43U);
+    }
+    // Slots $20 and $21 already reinitialized in the same reset phase.
+    constexpr std::array<std::uint8_t, 2U> kReinitializedSlots{0x20U, 0x21U};
+    for (const auto slot : kReinitializedSlots) {
+        store(0x1F00U + slot, 0x45U);
+    }
+    store(0x0CF4U, 0x02U);
+    store(0x0CF7U, 0x01U);
+    store(0x0D20U, 0x01U);
+
+    const GameStateView state(work_ram);
+    const auto captured = capture_dragon_egg_reset_cluster(state);
+    check(
+        captured && captured->rule_state.completed
+            && captured->rule_state.reset_pending
+            && captured->rule_state.eggs[0U].active
+            && captured->rule_state.eggs[1U].active
+            && !captured->rule_state.eggs[2U].active,
+        "native Dragon's-Egg capture accepts a stable in-progress per-slot reset");
+
+    NativeGameplayState gameplay;
+    if (captured) {
+        gameplay.seed_dragon_egg_cluster(captured->rule_state);
+    }
+    const auto phase = gameplay.advance_actor_phase();
+    check(
+        captured && phase.size() == 5U && phase[0].slot == 0x1FU
+            && phase[0].kind
+                == NativeGameplayState::ActorPhaseUpdateKind::dragon_egg_controller
+            && phase[1].slot == 0x22U
+            && phase[1].kind
+                == NativeGameplayState::ActorPhaseUpdateKind::dragon_egg_fixed_reset
+            && phase.back().slot == 0x25U
+            && phase.back().dragon_egg_fixed_reset
+            && phase.back().dragon_egg_fixed_reset->disposition
+                == devils_crush::native_runtime::DragonEggFixedResetDisposition::cluster_reinitialized,
+        "native Dragon's-Egg reset capture resumes remaining fixed targets in actor order");
+
+    store(0x0CF4U, 0x03U);
+    check(
+        !capture_dragon_egg_reset_cluster(state),
+        "native Dragon's-Egg reset capture requires the source live count to match fixed records");
+    store(0x0CF4U, 0x02U);
+    store(0x0CF7U, 0x00U);
+    check(
+        !capture_dragon_egg_reset_cluster(state),
+        "native Dragon's-Egg reset capture requires the reset signal");
+    store(0x0CF7U, 0x01U);
+    store(0x0D20U, 0x00U);
+    check(
+        !capture_dragon_egg_reset_cluster(state),
+        "native Dragon's-Egg reset capture requires prior completion");
+    store(0x0D20U, 0x01U);
+    store(0x1000U + 0x64U, 0x82U);
+    store(0x1F00U + 0x64U, 0x1EU);
+    store(0x1F80U + 0x64U, 0x44U);
+    check(
+        !capture_dragon_egg_reset_cluster(state),
+        "native Dragon's-Egg reset capture leaves live hatchlings with their source owner");
+    store(0x1000U + 0x64U, 0x00U);
+    store(0x1F00U + 0x23U, 0x1EU);
+    check(
+        !capture_dragon_egg_reset_cluster(state),
+        "native Dragon's-Egg reset capture rejects an unknown fixed dispatch");
+
+    const GameStateView truncated(
+        std::span<const std::byte>(work_ram).first(work_ram.size() - 1U));
+    check(
+        !capture_dragon_egg_reset_cluster(truncated),
+        "native Dragon's-Egg reset capture rejects a truncated work-RAM image");
+}
+
+void test_native_dragon_head_capture()
+{
+    using devils_crush::native_runtime::GameStateView;
+    using devils_crush::native_runtime::NativeGameplayState;
+    using devils_crush::native_runtime::apply_native_gameplay_bootstrap;
+    using devils_crush::native_runtime::capture_dragon_head_actor;
+    using devils_crush::native_runtime::capture_native_gameplay_bootstrap;
+    using devils_crush::native_runtime::kDragonHeadSlot;
+
+    std::array<std::byte, GameStateView::kWorkRamSize> work_ram{};
+    const auto store = [&work_ram](
+                           const std::size_t offset,
+                           const std::uint8_t value) {
+        work_ram[offset] = static_cast<std::byte>(value);
+    };
+    store(0x1000U + kDragonHeadSlot, 0x82U);
+    store(0x1800U + kDragonHeadSlot, 0x00U);
+    store(0x1C00U + kDragonHeadSlot, 0x06U);
+    store(0x1F00U + kDragonHeadSlot, 0x4BU);
+    store(0x1F80U + kDragonHeadSlot, 0x5AU);
+
+    const GameStateView state(work_ram);
+    const auto captured = capture_dragon_head_actor(state, kDragonHeadSlot);
+    check(
+        captured && captured->actor.index == kDragonHeadSlot
+            && captured->rule_state.hits_remaining == 6U
+            && captured->rule_state.collision_ready
+            && !captured->rule_state.mouth_opening_transition_pending,
+        "native Dragon's Head capture decodes the fixed steady hit counter");
+
+    NativeGameplayState gameplay;
+    if (captured) {
+        gameplay.seed_dragon_head(captured->rule_state);
+    }
+    check(
+        captured && gameplay.dragon_head() == captured->rule_state,
+        "native Dragon's Head capture seeds the fixed-target scheduler directly");
+
+    store(0x1000U, 0x81U);
+    const auto bootstrap = capture_native_gameplay_bootstrap(state);
+    NativeGameplayState bootstrapped_gameplay;
+    const bool bootstrap_applied = bootstrap
+        && apply_native_gameplay_bootstrap(bootstrapped_gameplay, *bootstrap);
+    check(
+        bootstrap_applied && bootstrap->dragon_head == captured
+            && bootstrapped_gameplay.dragon_head() == captured->rule_state,
+        "native gameplay bootstrap restores a clear Dragon's Head steady state");
+    store(0x1000U, 0x00U);
+
+    store(0x1800U + kDragonHeadSlot, 0x80U);
+    check(
+        !capture_dragon_head_actor(state, kDragonHeadSlot),
+        "native Dragon's Head capture leaves a pending hit with its collision owner");
+    store(0x1800U + kDragonHeadSlot, 0x00U);
+    store(0x1C00U + kDragonHeadSlot, 0x00U);
+    check(
+        !capture_dragon_head_actor(state, kDragonHeadSlot),
+        "native Dragon's Head capture excludes its terminal opening state");
+    store(0x1C00U + kDragonHeadSlot, 0x06U);
+    store(0x1F00U + kDragonHeadSlot, 0x74U);
+    check(
+        !capture_dragon_head_actor(state, kDragonHeadSlot),
+        "native Dragon's Head capture excludes non-steady handler ownership");
+    store(0x1F00U + kDragonHeadSlot, 0x4BU);
+    check(
+        !capture_dragon_head_actor(state, 0x14U),
+        "native Dragon's Head capture rejects the adjacent Bumper slot");
+
+    const GameStateView truncated(
+        std::span<const std::byte>(work_ram).first(work_ram.size() - 1U));
+    check(
+        !capture_dragon_head_actor(truncated, kDragonHeadSlot),
+        "native Dragon's Head capture rejects a truncated work-RAM image");
+}
+
+void test_native_giant_skeleton_capture()
+{
+    using devils_crush::native_runtime::GameStateView;
+    using devils_crush::native_runtime::NativeGameplayState;
+    using devils_crush::native_runtime::apply_native_gameplay_bootstrap;
+    using devils_crush::native_runtime::capture_giant_skeleton_actor;
+    using devils_crush::native_runtime::capture_native_gameplay_bootstrap;
+    using devils_crush::native_runtime::kGiantSkeletonSlot;
+
+    std::array<std::byte, GameStateView::kWorkRamSize> work_ram{};
+    const auto store = [&work_ram](
+                           const std::size_t offset,
+                           const std::uint8_t value) {
+        work_ram[offset] = static_cast<std::byte>(value);
+    };
+    store(0x1000U + kGiantSkeletonSlot, 0x83U);
+    store(0x1800U + kGiantSkeletonSlot, 0x00U);
+    store(0x1980U + kGiantSkeletonSlot, 0x05U);
+    store(0x1F00U + kGiantSkeletonSlot, 0xECU);
+    store(0x1F80U + kGiantSkeletonSlot, 0x5EU);
+
+    const GameStateView state(work_ram);
+    const auto captured = capture_giant_skeleton_actor(state, kGiantSkeletonSlot);
+    check(
+        captured && captured->actor.index == kGiantSkeletonSlot
+            && captured->rule_state.appearance == 5U,
+        "native Giant Skeleton capture decodes its fixed live direction appearance");
+
+    NativeGameplayState gameplay;
+    if (captured) {
+        gameplay.seed_giant_skeleton(captured->rule_state);
+    }
+    check(
+        captured && gameplay.giant_skeleton()
+            && *gameplay.giant_skeleton() == captured->rule_state,
+        "native Giant Skeleton capture seeds the fixed-target scheduler directly");
+
+    store(0x1000U, 0x81U);
+    const auto bootstrap = capture_native_gameplay_bootstrap(state);
+    NativeGameplayState bootstrapped_gameplay;
+    const bool bootstrap_applied = bootstrap
+        && apply_native_gameplay_bootstrap(bootstrapped_gameplay, *bootstrap);
+    check(
+        bootstrap_applied && bootstrap->giant_skeleton
+            && bootstrap->giant_skeleton->skeleton == captured
+            && !bootstrap->giant_skeleton->eyeball
+            && bootstrapped_gameplay.giant_skeleton()
+            && *bootstrapped_gameplay.giant_skeleton() == captured->rule_state,
+        "native gameplay bootstrap restores a clear Giant Skeleton steady state");
+    store(0x1000U, 0x00U);
+
+    store(0x1800U + kGiantSkeletonSlot, 0x80U);
+    check(
+        !capture_giant_skeleton_actor(state, kGiantSkeletonSlot),
+        "native Giant Skeleton capture leaves a pending hit with its collision owner");
+    store(0x1800U + kGiantSkeletonSlot, 0x00U);
+    store(0x1980U + kGiantSkeletonSlot, 0x01U);
+    check(
+        !capture_giant_skeleton_actor(state, kGiantSkeletonSlot),
+        "native Giant Skeleton capture rejects a non-live appearance phase");
+    store(0x1980U + kGiantSkeletonSlot, 0x05U);
+    store(0x1F00U + kGiantSkeletonSlot, 0xE4U);
+    check(
+        !capture_giant_skeleton_actor(state, kGiantSkeletonSlot),
+        "native Giant Skeleton capture excludes setup-handler ownership");
+    store(0x1F00U + kGiantSkeletonSlot, 0xECU);
+    check(
+        !capture_giant_skeleton_actor(state, 0x31U),
+        "native Giant Skeleton capture rejects an adjacent Skeleton-Insect slot");
+
+    const GameStateView truncated(
+        std::span<const std::byte>(work_ram).first(work_ram.size() - 1U));
+    check(
+        !capture_giant_skeleton_actor(truncated, kGiantSkeletonSlot),
+        "native Giant Skeleton capture rejects a truncated work-RAM image");
+}
+
+void test_native_giant_face_capture()
+{
+    using devils_crush::native_runtime::BallMotionTuning;
+    using devils_crush::native_runtime::CollisionMap;
+    using devils_crush::native_runtime::CollisionMask;
+    using devils_crush::native_runtime::Fixed24_8;
+    using devils_crush::native_runtime::GameStateView;
+    using devils_crush::native_runtime::NativeGameplayState;
+    using devils_crush::native_runtime::NativeGameplayRuntime;
+    using devils_crush::native_runtime::apply_native_gameplay_bootstrap;
+    using devils_crush::native_runtime::capture_awake_lower_giant_face;
+    using devils_crush::native_runtime::capture_awake_upper_giant_face;
+    using devils_crush::native_runtime::capture_dormant_giant_face;
+    using devils_crush::native_runtime::capture_giant_face_helmet;
+    using devils_crush::native_runtime::capture_native_gameplay_bootstrap;
+    using devils_crush::native_runtime::kGiantFaceAnimatorSlot;
+    using devils_crush::native_runtime::kGiantFaceControllerSlot;
+    using devils_crush::native_runtime::kGiantFaceCrownSlot;
+    using devils_crush::native_runtime::kGiantFaceMouthSlot;
+    using devils_crush::native_runtime::kGiantFaceLeftHelmetSlot;
+    using devils_crush::native_runtime::kGiantFaceRightHelmetSlot;
+
+    std::array<std::byte, GameStateView::kWorkRamSize> work_ram{};
+    const auto store = [&work_ram](
+                           const std::size_t offset,
+                           const std::uint8_t value) {
+        work_ram[offset] = static_cast<std::byte>(value);
+    };
+    const auto seed_actor = [&store](
+                                const std::uint8_t slot,
+                                const std::uint8_t type,
+                                const std::uint16_t handler) {
+        store(0x1000U + slot, type);
+        store(0x1800U + slot, 0x00U);
+        store(0x1F00U + slot, static_cast<std::uint8_t>(handler & 0x00FFU));
+        store(0x1F80U + slot, static_cast<std::uint8_t>(handler >> 8U));
+    };
+    seed_actor(kGiantFaceControllerSlot, 0x83U, 0x74D8U);
+    seed_actor(kGiantFaceAnimatorSlot, 0x83U, 0x767EU);
+    seed_actor(kGiantFaceMouthSlot, 0x82U, 0x7726U);
+    seed_actor(kGiantFaceCrownSlot, 0x82U, 0x76FAU);
+    seed_actor(kGiantFaceLeftHelmetSlot, 0x84U, 0x4C91U);
+    seed_actor(kGiantFaceRightHelmetSlot, 0x84U, 0x4C91U);
+    store(0x1A00U + kGiantFaceLeftHelmetSlot, 3U);
+    store(0x1980U + kGiantFaceLeftHelmetSlot, 1U);
+    store(0x1C80U + kGiantFaceLeftHelmetSlot, 0x13U);
+    store(0x1A00U + kGiantFaceRightHelmetSlot, 1U);
+    store(0x1980U + kGiantFaceRightHelmetSlot, 3U);
+    store(0x1C80U + kGiantFaceRightHelmetSlot, 0x1DU);
+
+    const GameStateView state(work_ram);
+    const auto snapshot = state.giant_face();
+    const auto captured = capture_dormant_giant_face(state);
+    const auto helmet_capture = capture_giant_face_helmet(state);
+    check(
+        snapshot && snapshot->persisted_form == 0U && !snapshot->wake_requested
+            && !snapshot->transformation_requested
+            && snapshot->display_selector == 0U && snapshot->animation_mode == 0U
+            && !snapshot->mouth_open && !snapshot->bonus_stage_4_requested
+            && captured && captured->actors.size() == 4U
+            && captured->actors[0].index == kGiantFaceControllerSlot
+            && captured->actors[3].index == kGiantFaceCrownSlot,
+        "native Giant Face capture decodes the fixed dormant family and its clear latches");
+    check(
+        helmet_capture && helmet_capture->actors[0].index == kGiantFaceLeftHelmetSlot
+            && helmet_capture->actors[1].index == kGiantFaceRightHelmetSlot
+            && helmet_capture->rule_state.channels[0U].ticks_until_appearance == 3U
+            && helmet_capture->rule_state.channels[0U].appearance == 1U
+            && helmet_capture->rule_state.channels[1U].ticks_until_appearance == 1U
+            && helmet_capture->rule_state.channels[1U].appearance == 3U,
+        "native Giant Face helmet capture restores both independent idle cadences");
+
+    NativeGameplayState gameplay;
+    if (captured) {
+        gameplay.seed_giant_face(captured->rule_state);
+    }
+    check(
+        captured && gameplay.giant_face() == captured->rule_state,
+        "native Giant Face dormant capture seeds the native rule scheduler directly");
+
+    store(0x1000U, 0x81U);
+    const auto bootstrap = capture_native_gameplay_bootstrap(state);
+    NativeGameplayState bootstrapped_gameplay;
+    bool bootstrap_applied = false;
+    if (bootstrap) {
+        bootstrap_applied = apply_native_gameplay_bootstrap(
+            bootstrapped_gameplay, *bootstrap);
+    }
+    check(
+        bootstrap && bootstrap_applied && bootstrap->giant_face == captured
+            && bootstrap->giant_face_helmet == helmet_capture
+            && bootstrapped_gameplay.physics().ball.position_x.raw == 0
+            && bootstrapped_gameplay.score().stored_units == 0U
+            && bootstrapped_gameplay.table_rule_latches()
+                == bootstrap->table_rule_latches
+            && bootstrapped_gameplay.giant_face() == captured->rule_state
+            && bootstrapped_gameplay.giant_face_helmet()
+            && bootstrapped_gameplay.giant_face_helmet()->channels
+                == helmet_capture->rule_state.channels,
+        "native gameplay bootstrap applies coherent ball, score, table, and dormant Face captures");
+
+    NativeGameplayRuntime runtime;
+    const bool runtime_bootstrapped = bootstrap && runtime.bootstrap(*bootstrap);
+    const auto runtime_frame = runtime.advance_actor_frame();
+    check(
+        runtime_bootstrapped && runtime.ready() && runtime.frame_number() == 1U
+            && runtime.gameplay()
+            && runtime.gameplay()->giant_face() == captured->rule_state
+            && runtime_frame && runtime_frame->frame_number == 1U
+            && !runtime.bootstrap(*bootstrap),
+        "native gameplay runtime owns one bootstrap and advances the actor phase");
+
+    NativeGameplayRuntime frame_runtime;
+    const bool frame_runtime_bootstrapped = bootstrap && frame_runtime.bootstrap(*bootstrap);
+    if (frame_runtime.gameplay()) {
+        frame_runtime.gameplay()->seed_ball({
+            .position_x = Fixed24_8{.raw = 16 * 256},
+            .position_y = Fixed24_8{.raw = 32 * 256},
+            .velocity_x = 0x0100,
+        });
+    }
+    std::array<std::uint8_t, CollisionMap::kColumns> clear_tile_ids{};
+    std::array<std::uint8_t, CollisionMap::kColumns> clear_mask_indices{};
+    std::array<CollisionMask, 2U> clear_masks{};
+    const CollisionMap clear_map{
+        .tile_ids = clear_tile_ids,
+        .mask_indices = clear_mask_indices,
+        .masks = clear_masks,
+    };
+    const auto completed_frame = frame_runtime.advance_physics_epoch(
+        BallMotionTuning{
+            .horizontal_drag_divisor = 8,
+            .vertical_drag_divisor = 8,
+            .vertical_gravity = 1U,
+        },
+        clear_map);
+    check(
+        frame_runtime_bootstrapped && completed_frame
+            && completed_frame->frame_number == 1U
+            && completed_frame->physics.no_contact
+            && !completed_frame->requires_collision_resolution()
+            && frame_runtime.gameplay()
+            && frame_runtime.gameplay()->physics()
+                == completed_frame->physics.no_contact->state,
+        "native gameplay runtime joins a clear physics epoch to the actor boundary");
+
+    NativeGameplayRuntime contact_runtime;
+    const bool contact_runtime_bootstrapped = bootstrap && contact_runtime.bootstrap(*bootstrap);
+    if (contact_runtime.gameplay()) {
+        contact_runtime.gameplay()->seed_ball({
+            .position_x = Fixed24_8{.raw = 15 * 256},
+            .position_y = Fixed24_8{.raw = 32 * 256},
+            .velocity_x = 0x0100,
+        });
+    }
+    clear_tile_ids[2U] = 0x7CU;
+    clear_mask_indices[2U] = 1U;
+    clear_masks[1U].rows[0U] = 0x80U;
+    const CollisionMap solid_map{
+        .tile_ids = clear_tile_ids,
+        .mask_indices = clear_mask_indices,
+        .masks = clear_masks,
+    };
+    const auto contact_frame = contact_runtime.advance_frame(
+        BallMotionTuning{.horizontal_drag_divisor = 8}, solid_map);
+    check(
+        contact_runtime_bootstrapped && contact_frame
+            && contact_frame->frame_number == 1U
+            && contact_frame->requires_collision_resolution()
+            && contact_frame->actor_updates.empty()
+            && contact_frame->audio_events.empty()
+            && contact_runtime.gameplay()
+            && contact_runtime.gameplay()->pending_playfield_contact()
+            && contact_runtime.gameplay()->pending_playfield_collision_loop()
+            && contact_runtime.gameplay()->pending_playfield_collision_loop()
+                    ->completed_substeps == 0U
+            && !contact_runtime.advance_frame(
+                BallMotionTuning{.horizontal_drag_divisor = 8}, solid_map)
+            && !contact_runtime.advance_actor_frame(),
+        "native gameplay runtime preserves a solid contact for its later resolver");
+    const auto resolved_contact_ball = contact_frame && contact_frame->physics.contact
+        ? contact_frame->physics.contact->entry_ball
+        : devils_crush::native_runtime::BallState{};
+    const auto completed_contact_frame = contact_runtime.complete_playfield_collision(
+        resolved_contact_ball);
+    check(
+        completed_contact_frame
+            && completed_contact_frame->frame_number == 1U
+            && contact_frame && contact_frame->physics.contact
+            && completed_contact_frame->contact == *contact_frame->physics.contact
+            && completed_contact_frame->resolved_ball == resolved_contact_ball
+            && contact_runtime.frame_number() == 1U
+            && contact_runtime.gameplay()
+            && contact_runtime.gameplay()->physics().ball == resolved_contact_ball
+            && !contact_runtime.gameplay()->pending_playfield_contact()
+            && !contact_runtime.complete_playfield_collision(resolved_contact_ball),
+        "native gameplay runtime completes the pending contact in its original frame");
+
+    NativeGameplayRuntime retry_runtime;
+    const bool retry_runtime_bootstrapped = bootstrap && retry_runtime.bootstrap(*bootstrap);
+    if (retry_runtime.gameplay()) {
+        retry_runtime.gameplay()->seed_ball({
+            .position_x = Fixed24_8{.raw = 15 * 256},
+            .position_y = Fixed24_8{.raw = 32 * 256},
+            .velocity_x = 0x0100,
+        });
+    }
+    const auto retry_contact_frame = retry_runtime.advance_frame(
+        BallMotionTuning{.horizontal_drag_divisor = 8}, solid_map);
+    const auto retry_update = retry_runtime.retry_pending_playfield_collision({
+        .by_direction = {{
+            {.horizontal_pixels = 1},
+        }},
+    });
+    check(
+        retry_runtime_bootstrapped && retry_contact_frame
+            && retry_contact_frame->requires_collision_resolution()
+            && retry_update && retry_update->frame_number == 1U
+            && retry_update->retry.disposition
+                == devils_crush::native_runtime::CollisionRetryProbeDisposition::clear
+            && retry_update->completes_frame()
+            && retry_runtime.frame_number() == 1U
+            && retry_runtime.gameplay()
+            && retry_runtime.gameplay()->physics().ball == retry_update->retry.retry.state
+            && retry_runtime.gameplay()->physics().ball.position_x.raw == 16 * 256
+            && !retry_runtime.gameplay()->pending_playfield_contact()
+            && !retry_runtime.retry_pending_playfield_collision({}),
+        "native gameplay runtime completes a clear collision retry in its original frame");
+
+    NativeGameplayRuntime full_scan_retry_runtime;
+    const bool full_scan_retry_bootstrapped = bootstrap
+        && full_scan_retry_runtime.bootstrap(*bootstrap);
+    if (full_scan_retry_runtime.gameplay()) {
+        full_scan_retry_runtime.gameplay()->seed_ball({
+            .position_x = Fixed24_8{.raw = 32 * 256},
+            .position_y = Fixed24_8{.raw = 256 * 256},
+            .velocity_x = 0x0100,
+        });
+    }
+    std::array<std::uint8_t, CollisionMap::kColumns * 29U> full_scan_tile_ids{};
+    std::array<std::uint8_t, CollisionMap::kColumns * 29U> full_scan_mask_indices{};
+    constexpr auto full_scan_collision_index = 4U;
+    full_scan_tile_ids[full_scan_collision_index + CollisionMap::kColumns * 28U]
+        = 0x7CU;
+    full_scan_mask_indices[
+        full_scan_collision_index + CollisionMap::kColumns * 28U] = 1U;
+    auto full_scan_masks = clear_masks;
+    full_scan_masks[1U].rows[0U] = 0x40U;
+    const CollisionMap full_scan_map{
+        .tile_ids = full_scan_tile_ids,
+        .mask_indices = full_scan_mask_indices,
+        .masks = full_scan_masks,
+    };
+    const auto full_scan_retry_contact = full_scan_retry_runtime.advance_frame(
+        BallMotionTuning{.horizontal_drag_divisor = 8}, full_scan_map);
+    const auto full_scan_retry_update =
+        full_scan_retry_runtime.retry_pending_playfield_collision({
+            .by_direction = {{
+                {.horizontal_pixels = 1},
+            }},
+        });
+    check(
+        full_scan_retry_bootstrapped && full_scan_retry_contact
+            && full_scan_retry_contact->requires_collision_resolution()
+            && full_scan_retry_update && full_scan_retry_update->frame_number == 1U
+            && full_scan_retry_update->retry.disposition
+                == devils_crush::native_runtime::CollisionRetryProbeDisposition::requires_full_scan
+            && !full_scan_retry_update->completes_frame()
+            && full_scan_retry_update->actor_updates.empty()
+            && full_scan_retry_update->audio_events.empty()
+            && full_scan_retry_runtime.frame_number() == 1U
+            && full_scan_retry_runtime.gameplay()
+            && full_scan_retry_runtime.gameplay()->pending_playfield_contact()
+            && full_scan_retry_runtime.gameplay()->pending_collision_retry_full_scan()
+            && !full_scan_retry_runtime.advance_frame(
+                BallMotionTuning{.horizontal_drag_divisor = 8}, full_scan_map),
+        "native gameplay runtime retains a full-scan collision retry at its resolver boundary");
+
+    NativeGameplayRuntime placement_retry_runtime;
+    const bool placement_retry_bootstrapped = bootstrap
+        && placement_retry_runtime.bootstrap(*bootstrap);
+    if (placement_retry_runtime.gameplay()) {
+        placement_retry_runtime.gameplay()->seed_ball({
+            .position_x = Fixed24_8{.raw = 32 * 256},
+            .position_y = Fixed24_8{.raw = 256 * 256},
+            .velocity_x = 0x0100,
+            .collision_state = 0x80U,
+        });
+    }
+    const devils_crush::native_runtime::CollisionRetryOffsetAttempts
+        placement_retry_offsets{
+            .by_direction = {{
+                {{{.horizontal_pixels = 1}, {}, {}}},
+                {{{}, {}, {}}},
+                {{{}, {}, {}}},
+                {{{}, {}, {}}},
+            }},
+        };
+    const auto placement_retry_contact = placement_retry_runtime.advance_frame(
+        BallMotionTuning{.horizontal_drag_divisor = 8}, full_scan_map);
+    const auto placement_retry_initial =
+        placement_retry_runtime.begin_pending_collision_retry(
+            placement_retry_offsets);
+    const auto placement_retry_accepted =
+        placement_retry_runtime.resolve_pending_collision_retry_full_scan(
+            devils_crush::native_runtime::CollisionRetryFullScanOutcome::clear);
+    const auto placement_retry_rearmed_ball = placement_retry_runtime.gameplay()
+        ? placement_retry_runtime.gameplay()->physics().ball
+        : devils_crush::native_runtime::BallState{};
+    const bool placement_retry_rearmed_contact = placement_retry_runtime.gameplay()
+        && placement_retry_runtime.gameplay()->pending_playfield_contact().has_value();
+    const auto placement_retry_resume =
+        placement_retry_runtime.resume_rearmed_collision_retry(
+            BallMotionTuning{.horizontal_drag_divisor = 8}, clear_map);
+    check(
+        placement_retry_bootstrapped && placement_retry_contact
+            && placement_retry_contact->requires_collision_resolution()
+            && placement_retry_initial
+            && placement_retry_initial->frame_number == 1U
+            && placement_retry_initial->placement.disposition
+                == devils_crush::native_runtime::CollisionRetryPlacementDisposition::probe_ready
+            && !placement_retry_initial->completes_frame()
+            && placement_retry_initial->actor_updates.empty()
+            && placement_retry_initial->audio_events.empty()
+            && placement_retry_accepted
+            && placement_retry_accepted->frame_number == 1U
+            && placement_retry_accepted->placement.disposition
+                == devils_crush::native_runtime::CollisionRetryPlacementDisposition::rearmed
+            && !placement_retry_accepted->completes_frame()
+            && placement_retry_runtime.frame_number() == 1U
+            && placement_retry_runtime.gameplay()
+            && placement_retry_rearmed_contact
+            && !placement_retry_runtime.gameplay()->pending_collision_retry_placement()
+            && placement_retry_accepted->placement.probe
+            && placement_retry_rearmed_ball.position_x
+                == placement_retry_accepted->placement.probe->state.position_x
+            && placement_retry_rearmed_ball.position_y
+                == placement_retry_accepted->placement.probe->state.position_y
+            && placement_retry_rearmed_ball.velocity_x
+                == placement_retry_accepted->placement.probe->state.velocity_x
+            && placement_retry_rearmed_ball.velocity_y
+                == placement_retry_accepted->placement.probe->state.velocity_y
+            && (placement_retry_rearmed_ball.collision_state
+                & 0x80U) == 0U
+            && placement_retry_resume
+            && placement_retry_resume->frame_number == 1U
+            && placement_retry_resume->completes_frame()
+            && !placement_retry_resume->physics.next_contact
+            && !placement_retry_runtime.gameplay()->pending_playfield_contact()
+            && !placement_retry_runtime.resolve_pending_collision_retry_full_scan(
+                devils_crush::native_runtime::CollisionRetryFullScanOutcome::clear),
+        "native gameplay runtime rearms a clear CDF8 probe into its original C6/C7 frame");
+
+    NativeGameplayRuntime random_placement_retry_runtime;
+    const bool random_placement_retry_bootstrapped = bootstrap
+        && random_placement_retry_runtime.bootstrap(*bootstrap);
+    if (random_placement_retry_runtime.gameplay()) {
+        random_placement_retry_runtime.gameplay()->seed_ball({
+            .position_x = Fixed24_8{.raw = 32 * 256},
+            .position_y = Fixed24_8{.raw = 256 * 256},
+            .velocity_x = 0x0100,
+            .collision_state = 0x80U,
+        });
+    }
+    const devils_crush::native_runtime::CollisionRetryOffsetAttempts
+        random_placement_retry_offsets{
+            .by_direction = {{
+                {{{.horizontal_pixels = 1}, {.horizontal_pixels = 1},
+                  {.horizontal_pixels = 1}}},
+                {{{.vertical_pixels = 1}, {}, {}}},
+                {{{}, {}, {}}},
+                {{{}, {}, {}}},
+            }},
+        };
+    const auto random_placement_retry_contact =
+        random_placement_retry_runtime.advance_frame(
+            BallMotionTuning{.horizontal_drag_divisor = 8}, full_scan_map);
+    const auto random_placement_retry_initial =
+        random_placement_retry_runtime.begin_pending_collision_retry(
+            random_placement_retry_offsets);
+    const auto random_placement_retry_second =
+        random_placement_retry_runtime.resolve_pending_collision_retry_full_scan(
+            devils_crush::native_runtime::CollisionRetryFullScanOutcome::solid);
+    const auto random_placement_retry_third =
+        random_placement_retry_runtime.resolve_pending_collision_retry_full_scan(
+            devils_crush::native_runtime::CollisionRetryFullScanOutcome::solid);
+    const auto random_placement_retry_select =
+        random_placement_retry_runtime.resolve_pending_collision_retry_full_scan(
+            devils_crush::native_runtime::CollisionRetryFullScanOutcome::solid);
+    const auto duplicate_random_selection =
+        random_placement_retry_runtime.select_pending_collision_retry_direction(0x00U);
+    const auto accepted_random_selection =
+        random_placement_retry_runtime.select_pending_collision_retry_direction(0x40U);
+    check(
+        random_placement_retry_bootstrapped && random_placement_retry_contact
+            && random_placement_retry_contact->requires_collision_resolution()
+            && random_placement_retry_initial
+            && random_placement_retry_second
+            && random_placement_retry_third
+            && random_placement_retry_select
+            && random_placement_retry_select->placement.disposition
+                == devils_crush::native_runtime::CollisionRetryPlacementDisposition::needs_random_direction
+            && duplicate_random_selection
+            && duplicate_random_selection->placement.disposition
+                == devils_crush::native_runtime::CollisionRetryPlacementDisposition::needs_random_direction
+            && !duplicate_random_selection->completes_frame()
+            && accepted_random_selection
+            && accepted_random_selection->placement.disposition
+                == devils_crush::native_runtime::CollisionRetryPlacementDisposition::rearmed
+            && !accepted_random_selection->completes_frame()
+            && accepted_random_selection->frame_number == 1U
+            && random_placement_retry_runtime.frame_number() == 1U
+            && random_placement_retry_runtime.gameplay()
+            && random_placement_retry_runtime.gameplay()->pending_playfield_contact()
+            && !random_placement_retry_runtime.gameplay()
+                ->pending_collision_retry_placement()
+            && accepted_random_selection->placement.probe
+            && random_placement_retry_runtime.gameplay()->physics().ball.position_x
+                == accepted_random_selection->placement.probe->state.position_x
+            && random_placement_retry_runtime.gameplay()->physics().ball.position_y
+                == accepted_random_selection->placement.probe->state.position_y
+            && (random_placement_retry_runtime.gameplay()->physics().ball
+                    .collision_state
+                & 0x80U) == 0U,
+        "native gameplay runtime retains CDF8's duplicate RNG wait and rearms its selected retry");
+
+    NativeGameplayRuntime asset_scan_retry_runtime;
+    const bool asset_scan_retry_bootstrapped = bootstrap
+        && asset_scan_retry_runtime.bootstrap(*bootstrap);
+    if (asset_scan_retry_runtime.gameplay()) {
+        asset_scan_retry_runtime.gameplay()->seed_ball({
+            .position_x = Fixed24_8{.raw = 32 * 256},
+            .position_y = Fixed24_8{.raw = 256 * 256},
+            .velocity_x = 0x0100,
+            .collision_state = 0x80U,
+        });
+    }
+    const auto asset_scan_retry_contact = asset_scan_retry_runtime.advance_frame(
+        BallMotionTuning{.horizontal_drag_divisor = 8}, full_scan_map);
+    const auto asset_scan_retry_initial =
+        asset_scan_retry_runtime.begin_pending_collision_retry(
+            placement_retry_offsets);
+    std::vector<std::byte> asset_scan_rom(
+        devils_crush::native_runtime::MappedRomView::kSupportedRomBytes);
+    std::array<std::uint8_t, 8U> asset_scan_mpr{};
+    asset_scan_mpr[4U] = 0x01U;
+    asset_scan_mpr[5U] = 0x02U;
+    asset_scan_mpr[6U] = 0x03U;
+    std::array<
+        std::byte,
+        devils_crush::native_runtime::GameStateView::kWorkRamSize>
+        asset_scan_ram{};
+    const auto store_asset_scan_word = [&asset_scan_ram](
+                                          const std::size_t offset,
+                                          const std::uint16_t value) {
+        asset_scan_ram[offset] = static_cast<std::byte>(value);
+        asset_scan_ram[offset + 1U] = static_cast<std::byte>(value >> 8U);
+    };
+    for (std::size_t index = 0U; index < 4U; ++index) {
+        store_asset_scan_word(0x0096U + index * 2U, 0x8000U);
+    }
+    store_asset_scan_word(0x0074U, 0x8000U);
+    store_asset_scan_word(0x0072U, 0x8000U);
+    store_asset_scan_word(0x008EU, 0x8000U);
+    store_asset_scan_word(0x00C8U, 0x9000U);
+    store_asset_scan_word(0x00C6U, 0xA000U);
+    store_asset_scan_word(0x0090U, 0xC000U);
+    const auto asset_scan_retry_resolution =
+        asset_scan_retry_runtime.resolve_pending_collision_retry_full_scan(
+            devils_crush::native_runtime::MappedRomView(
+                asset_scan_rom, asset_scan_mpr),
+            devils_crush::native_runtime::GameStateView(asset_scan_ram),
+            0x01U);
+    check(
+        asset_scan_retry_bootstrapped && asset_scan_retry_contact
+            && asset_scan_retry_contact->requires_collision_resolution()
+            && asset_scan_retry_initial
+            && asset_scan_retry_resolution
+            && asset_scan_retry_resolution->scan
+            && asset_scan_retry_resolution->scan->disposition
+                == devils_crush::native_runtime::CollisionRetryFullScanDisposition::playfield_evaluated
+            && asset_scan_retry_resolution->placement.disposition
+                == devils_crush::native_runtime::CollisionRetryPlacementDisposition::rearmed
+            && !asset_scan_retry_resolution->completes_frame()
+            && asset_scan_retry_runtime.frame_number() == 1U
+            && asset_scan_retry_runtime.gameplay()
+            && asset_scan_retry_runtime.gameplay()->pending_playfield_contact()
+            && !asset_scan_retry_runtime.gameplay()->pending_collision_retry_placement(),
+        "native gameplay runtime completes a CDF8 placement through its CED2/CD74 asset scan");
+
+    store(0x0258U, 0x01U);
+    store(0x0D0DU, 0x01U);
+    store(0x0D0EU, 0x01U);
+    store(0x1A00U + kGiantFaceAnimatorSlot, 0x05U);
+    store(0x1A80U + kGiantFaceAnimatorSlot, 0x01U);
+    const auto awake_capture = capture_awake_lower_giant_face(state);
+    NativeGameplayState awake_gameplay;
+    if (awake_capture) {
+        awake_gameplay.seed_giant_face(
+            awake_capture->rule_state,
+            awake_capture->controller_state,
+            awake_capture->animator_state);
+    }
+    const auto awake_phase = awake_gameplay.advance_actor_phase();
+    const auto awake_bootstrap = capture_native_gameplay_bootstrap(state);
+    NativeGameplayState awake_bootstrapped_gameplay;
+    const bool awake_bootstrap_applied = awake_bootstrap
+        && apply_native_gameplay_bootstrap(awake_bootstrapped_gameplay, *awake_bootstrap);
+    check(
+        awake_capture
+            && awake_capture->controller_state.persisted_form == 1U
+            && awake_capture->controller_state.accepts_transformations
+            && awake_capture->animator_state
+                == devils_crush::native_runtime::GiantFaceAnimatorState{
+                    .mode = devils_crush::native_runtime::GiantFaceAnimatorMode::lower_forms,
+                    .ticks_until_next_form = 5U,
+                    .displayed_form = 1U,
+                }
+            && awake_phase.size() == 1U
+            && awake_phase.front().giant_face_animator
+            && awake_phase.front().giant_face_animator->state.ticks_until_next_form == 4U
+            && awake_bootstrap_applied && awake_bootstrap->giant_face == awake_capture
+            && awake_bootstrapped_gameplay.giant_face_controller()
+                == awake_capture->controller_state
+            && awake_bootstrapped_gameplay.giant_face_animator()
+                == awake_capture->animator_state,
+        "native Giant Face capture restores the settled lower-form controller and animator loop");
+    store(0x0258U, 0x03U);
+    const auto transformed_lower_capture = capture_awake_lower_giant_face(state);
+    check(
+        transformed_lower_capture
+            && transformed_lower_capture->controller_state
+                == devils_crush::native_runtime::GiantFaceControllerState{
+                    .persisted_form = 3U,
+                    .accepts_transformations = true,
+                    .transformations_completed = 2U,
+                },
+        "native Giant Face lower-form capture retains completed transformation progress");
+    store(0x0258U, 0x04U);
+    store(0x0D0DU, 0x04U);
+    store(0x0D0EU, 0x02U);
+    store(0x1A00U + kGiantFaceAnimatorSlot, 0x08U);
+    store(0x1A80U + kGiantFaceAnimatorSlot, 0x05U);
+    const auto upper_capture = capture_awake_upper_giant_face(state);
+    const auto upper_bootstrap = capture_native_gameplay_bootstrap(state);
+    check(
+        upper_capture
+            && upper_capture->controller_state
+                == devils_crush::native_runtime::GiantFaceControllerState{
+                    .persisted_form = 4U,
+                    .accepts_transformations = true,
+                    .transformations_completed = 3U,
+                }
+            && upper_capture->animator_state
+                == devils_crush::native_runtime::GiantFaceAnimatorState{
+                    .mode = devils_crush::native_runtime::GiantFaceAnimatorMode::upper_forms,
+                    .ticks_until_next_form = 8U,
+                    .displayed_form = 5U,
+                }
+            && upper_bootstrap && upper_bootstrap->giant_face == upper_capture,
+        "native Giant Face capture restores the settled upper-form loop");
+    store(0x0258U, 0x00U);
+    store(0x0D0DU, 0x00U);
+    store(0x0D0EU, 0x00U);
+    store(0x1A00U + kGiantFaceAnimatorSlot, 0x00U);
+    store(0x1A80U + kGiantFaceAnimatorSlot, 0x00U);
+
+    store(0x1000U, 0x00U);
+    check(
+        !capture_native_gameplay_bootstrap(state),
+        "native gameplay bootstrap rejects a frame without a live ball");
+    store(0x1000U, 0x81U);
+
+    store(0x1800U + kGiantFaceMouthSlot, 0x80U);
+    check(
+        !capture_dormant_giant_face(state),
+        "native Giant Face capture leaves a pending mouth contact with its collision owner");
+    store(0x1800U + kGiantFaceMouthSlot, 0x00U);
+    store(0x0D0CU, 0x01U);
+    check(
+        !capture_dormant_giant_face(state),
+        "native Giant Face capture excludes an in-flight helmet wake request");
+    store(0x0D0CU, 0x00U);
+    store(0x0258U, 0x01U);
+    store(0x0D0EU, 0x01U);
+    store(0x1A00U + kGiantFaceAnimatorSlot, 0x00U);
+    check(
+        !capture_awake_lower_giant_face(state),
+        "native Giant Face active capture excludes an expired animator turn");
+    store(0x0258U, 0x00U);
+    store(0x0D0EU, 0x00U);
+    store(0x0D21U, 0x01U);
+    check(
+        !capture_dormant_giant_face(state),
+        "native Giant Face capture excludes an open-mouth transformation state");
+    store(0x0D21U, 0x80U);
+    check(
+        !capture_dormant_giant_face(state),
+        "native Giant Face capture excludes a completed mouth bonus request");
+    store(0x0D21U, 0x00U);
+    store(0x1F00U + kGiantFaceControllerSlot, 0x28U);
+    check(
+        !capture_dormant_giant_face(state),
+        "native Giant Face capture rejects its setup-handler ownership");
+    store(0x1F00U + kGiantFaceControllerSlot, 0xD8U);
+    store(0x1800U + kGiantFaceLeftHelmetSlot, 0x80U);
+    check(
+        !capture_giant_face_helmet(state),
+        "native Giant Face helmet capture excludes a collision-owned opening");
+    store(0x1800U + kGiantFaceLeftHelmetSlot, 0x00U);
+    store(0x1C80U + kGiantFaceRightHelmetSlot, 0x13U);
+    check(
+        !capture_giant_face_helmet(state),
+        "native Giant Face helmet capture retains each fixed side selector");
+    store(0x1C80U + kGiantFaceRightHelmetSlot, 0x1DU);
+
+    const GameStateView truncated(
+        std::span<const std::byte>(work_ram).first(work_ram.size() - 1U));
+    check(
+        !capture_dormant_giant_face(truncated)
+            && !capture_giant_face_helmet(truncated),
+        "native Giant Face captures reject a truncated work-RAM image");
+}
+
+void test_native_giant_skeleton_eyeball_capture()
+{
+    using devils_crush::native_runtime::GameStateView;
+    using devils_crush::native_runtime::NativeGameplayState;
+    using devils_crush::native_runtime::apply_native_gameplay_bootstrap;
+    using devils_crush::native_runtime::capture_giant_skeleton_eyeball_actor;
+    using devils_crush::native_runtime::capture_native_gameplay_bootstrap;
+    using devils_crush::native_runtime::kGiantSkeletonEyeballSlot;
+
+    std::array<std::byte, GameStateView::kWorkRamSize> work_ram{};
+    const auto store = [&work_ram](
+                           const std::size_t offset,
+                           const std::uint8_t value) {
+        work_ram[offset] = static_cast<std::byte>(value);
+    };
+    store(0x1000U + kGiantSkeletonEyeballSlot, 0x82U);
+    store(0x1A00U + kGiantSkeletonEyeballSlot, 0x08U);
+    store(0x1C00U + kGiantSkeletonEyeballSlot, 0x02U);
+    store(0x1F00U + kGiantSkeletonEyeballSlot, 0xF7U);
+    store(0x1F80U + kGiantSkeletonEyeballSlot, 0x4DU);
+
+    const GameStateView state(work_ram);
+    const auto captured = capture_giant_skeleton_eyeball_actor(
+        state, kGiantSkeletonEyeballSlot);
+    check(
+        captured && captured->actor.index == kGiantSkeletonEyeballSlot
+            && captured->rule_state.opening_countdown_active
+            && captured->rule_state.opening_ticks_remaining == 8U,
+        "native Giant Skeleton Eyeball capture decodes its live opening countdown");
+
+    NativeGameplayState gameplay;
+    if (captured) {
+        gameplay.seed_giant_skeleton_eyeball(captured->rule_state);
+    }
+    const auto phase = gameplay.advance_actor_phase();
+    check(
+        captured && phase.size() == 1U
+            && phase.front().slot == kGiantSkeletonEyeballSlot
+            && phase.front().giant_skeleton_eyeball
+            && phase.front().giant_skeleton_eyeball->state.opening_ticks_remaining
+                == 7U,
+        "native Giant Skeleton Eyeball capture seeds the opening scheduler directly");
+
+    store(0x1000U, 0x81U);
+    const auto bootstrap = capture_native_gameplay_bootstrap(state);
+    NativeGameplayState bootstrapped_gameplay;
+    const bool bootstrap_applied = bootstrap
+        && apply_native_gameplay_bootstrap(bootstrapped_gameplay, *bootstrap);
+    check(
+        bootstrap_applied && bootstrap->giant_skeleton
+            && !bootstrap->giant_skeleton->skeleton
+            && bootstrap->giant_skeleton->eyeball == captured
+            && bootstrapped_gameplay.giant_skeleton_eyeball()
+            && *bootstrapped_gameplay.giant_skeleton_eyeball()
+                == captured->rule_state,
+        "native gameplay bootstrap restores an Eyeball opening countdown");
+    store(0x1000U, 0x00U);
+
+    store(0x1A00U + kGiantSkeletonEyeballSlot, 0x01U);
+    check(
+        !capture_giant_skeleton_eyeball_actor(state, kGiantSkeletonEyeballSlot),
+        "native Giant Skeleton Eyeball capture leaves expiry with its animation owner");
+    store(0x1A00U + kGiantSkeletonEyeballSlot, 0x08U);
+    store(0x1C00U + kGiantSkeletonEyeballSlot, 0x01U);
+    check(
+        !capture_giant_skeleton_eyeball_actor(state, kGiantSkeletonEyeballSlot),
+        "native Giant Skeleton Eyeball capture rejects another state");
+    store(0x1C00U + kGiantSkeletonEyeballSlot, 0x02U);
+    store(0x1F00U + kGiantSkeletonEyeballSlot, 0xD9U);
+    check(
+        !capture_giant_skeleton_eyeball_actor(state, kGiantSkeletonEyeballSlot),
+        "native Giant Skeleton Eyeball capture excludes dormant dispatcher ownership");
+    store(0x1F00U + kGiantSkeletonEyeballSlot, 0xF7U);
+    check(
+        !capture_giant_skeleton_eyeball_actor(state, 0x30U),
+        "native Giant Skeleton Eyeball capture rejects the adjacent Giant Skeleton slot");
+
+    const GameStateView truncated(
+        std::span<const std::byte>(work_ram).first(work_ram.size() - 1U));
+    check(
+        !capture_giant_skeleton_eyeball_actor(
+            truncated, kGiantSkeletonEyeballSlot),
+        "native Giant Skeleton Eyeball capture rejects a truncated work-RAM image");
+}
+
+void test_native_giant_skeleton_eyeball_final_animation_capture()
+{
+    using devils_crush::native_runtime::GameStateView;
+    using devils_crush::native_runtime::NativeGameplayState;
+    using devils_crush::native_runtime::capture_giant_skeleton_eyeball_final_animation_actor;
+    using devils_crush::native_runtime::kGiantSkeletonEyeballSlot;
+
+    std::array<std::byte, GameStateView::kWorkRamSize> work_ram{};
+    const auto store = [&work_ram](
+                           const std::size_t offset,
+                           const std::uint8_t value) {
+        work_ram[offset] = static_cast<std::byte>(value);
+    };
+    store(0x1000U + kGiantSkeletonEyeballSlot, 0x82U);
+    store(0x1A00U + kGiantSkeletonEyeballSlot, 0x08U);
+    store(0x1B00U + kGiantSkeletonEyeballSlot, 0xE0U);
+    store(0x1B80U + kGiantSkeletonEyeballSlot, 0x03U);
+    store(0x1980U + kGiantSkeletonEyeballSlot, 0x01U);
+    store(0x1F00U + kGiantSkeletonEyeballSlot, 0x3DU);
+    store(0x1F80U + kGiantSkeletonEyeballSlot, 0x4FU);
+
+    const GameStateView state(work_ram);
+    const auto captured = capture_giant_skeleton_eyeball_final_animation_actor(
+        state, kGiantSkeletonEyeballSlot);
+    check(
+        captured && captured->actor.index == kGiantSkeletonEyeballSlot
+            && captured->rule_state.final_animation_active
+            && captured->rule_state.final_ticks_remaining == 0x03E0U
+            && captured->rule_state.final_appearance_ticks_remaining == 8U
+            && captured->rule_state.final_appearance == 1U,
+        "native Giant Skeleton Eyeball capture decodes its direct final-animation wait");
+
+    NativeGameplayState gameplay;
+    if (captured) {
+        gameplay.seed_giant_skeleton_eyeball(captured->rule_state);
+    }
+    const auto phase = gameplay.advance_actor_phase();
+    check(
+        captured && phase.size() == 1U
+            && phase.front().slot == kGiantSkeletonEyeballSlot
+            && phase.front().giant_skeleton_eyeball
+            && phase.front().giant_skeleton_eyeball->state.final_ticks_remaining
+                == 0x03DFU
+            && phase.front().giant_skeleton_eyeball->state
+                   .final_appearance_ticks_remaining
+                == 7U,
+        "native Giant Skeleton Eyeball final capture seeds the fixed actor scheduler directly");
+
+    store(0x1A00U + kGiantSkeletonEyeballSlot, 0x01U);
+    check(
+        !capture_giant_skeleton_eyeball_final_animation_actor(
+            state, kGiantSkeletonEyeballSlot),
+        "native Giant Skeleton Eyeball final capture leaves appearance expiry with its source owner");
+    store(0x1A00U + kGiantSkeletonEyeballSlot, 0x08U);
+    store(0x1B00U + kGiantSkeletonEyeballSlot, 0x01U);
+    check(
+        !capture_giant_skeleton_eyeball_final_animation_actor(
+            state, kGiantSkeletonEyeballSlot),
+        "native Giant Skeleton Eyeball final capture leaves phase transitions with its source owner");
+    store(0x1B00U + kGiantSkeletonEyeballSlot, 0xE0U);
+    store(0x1980U + kGiantSkeletonEyeballSlot, 0x02U);
+    check(
+        !capture_giant_skeleton_eyeball_final_animation_actor(
+            state, kGiantSkeletonEyeballSlot),
+        "native Giant Skeleton Eyeball final capture rejects an unproven appearance");
+    store(0x1980U + kGiantSkeletonEyeballSlot, 0x01U);
+    store(0x1F00U + kGiantSkeletonEyeballSlot, 0x24U);
+    check(
+        !capture_giant_skeleton_eyeball_final_animation_actor(
+            state, kGiantSkeletonEyeballSlot),
+        "native Giant Skeleton Eyeball final capture requires its direct wait continuation");
+
+    const GameStateView truncated(
+        std::span<const std::byte>(work_ram).first(work_ram.size() - 1U));
+    check(
+        !capture_giant_skeleton_eyeball_final_animation_actor(
+            truncated, kGiantSkeletonEyeballSlot),
+        "native Giant Skeleton Eyeball final capture rejects a truncated work-RAM image");
+}
+
+void test_native_tower_capture()
+{
+    using devils_crush::native_runtime::GameStateView;
+    using devils_crush::native_runtime::NativeGameplayState;
+    using devils_crush::native_runtime::apply_native_gameplay_bootstrap;
+    using devils_crush::native_runtime::capture_tower_guard_actor;
+    using devils_crush::native_runtime::capture_tower_actor;
+    using devils_crush::native_runtime::capture_native_gameplay_bootstrap;
+    using devils_crush::native_runtime::kTowerGuardSlot;
+
+    std::array<std::byte, GameStateView::kWorkRamSize> work_ram{};
+    const auto store = [&work_ram](
+                           const std::size_t offset,
+                           const std::uint8_t value) {
+        work_ram[offset] = static_cast<std::byte>(value);
+    };
+    constexpr std::uint8_t kTowerSlot = 0x2DU;
+    store(0x1000U + kTowerSlot, 0x83U);
+    store(0x1800U + kTowerSlot, 0x00U);
+    store(0x1F00U + kTowerSlot, 0xC3U);
+    store(0x1F80U + kTowerSlot, 0x60U);
+    store(0x0D3FU, 0x01U);
+    store(0x0D4DU, 0x04U);
+    store(0x1000U + kTowerGuardSlot, 0x82U);
+    store(0x1F00U + kTowerGuardSlot, 0xA6U);
+    store(0x1F80U + kTowerGuardSlot, 0x60U);
+
+    const GameStateView state(work_ram);
+    const auto captured = capture_tower_actor(state, kTowerSlot);
+    const auto guard_capture = capture_tower_guard_actor(state, kTowerGuardSlot);
+    check(
+        captured && captured->actor.index == kTowerSlot
+            && captured->rule_state.collision_ready
+            && captured->rule_state.hit_progress == 1U
+            && captured->rule_state.remaining_armed_passes == 4U,
+        "native Tower capture decodes its fixed steady state and hit progress");
+    check(
+        guard_capture && guard_capture->selector.remaining_armed_passes == 4U,
+        "native Tower capture keeps the paired Guard's derived selector available");
+
+    NativeGameplayState gameplay;
+    if (captured) {
+        gameplay.seed_tower(captured->rule_state);
+    }
+    check(
+        captured && gameplay.tower() == captured->rule_state,
+        "native Tower capture seeds the fixed-target scheduler directly");
+
+    store(0x1000U, 0x81U);
+    const auto bootstrap = capture_native_gameplay_bootstrap(state);
+    NativeGameplayState bootstrapped_gameplay;
+    const bool bootstrap_applied = bootstrap
+        && apply_native_gameplay_bootstrap(bootstrapped_gameplay, *bootstrap);
+    const auto guard_phase = bootstrapped_gameplay.advance_actor_phase();
+    check(
+        bootstrap_applied && bootstrap->tower == captured
+            && bootstrap->tower_guard == guard_capture
+            && bootstrapped_gameplay.tower() == captured->rule_state
+            && guard_phase.size() == 1U
+            && guard_phase.front().slot == kTowerGuardSlot
+            && guard_phase.front().kind
+                == NativeGameplayState::ActorPhaseUpdateKind::tower_guard_selector
+            && guard_phase.front().tower_guard == guard_capture->selector,
+        "native gameplay bootstrap restores Tower and derives its Guard selector in actor order");
+    store(0x1000U, 0x00U);
+
+    store(0x1800U + kTowerSlot, 0x80U);
+    check(
+        !capture_tower_actor(state, kTowerSlot),
+        "native Tower capture excludes a pending collision");
+    store(0x1800U + kTowerSlot, 0x00U);
+    store(0x1F00U + kTowerSlot, 0x1CU);
+    store(0x1F80U + kTowerSlot, 0x61U);
+    check(
+        !capture_tower_actor(state, kTowerSlot),
+        "native Tower capture excludes presentation-transition ownership");
+    store(0x1F00U + kTowerSlot, 0xC3U);
+    store(0x1F80U + kTowerSlot, 0x60U);
+    check(
+        !capture_tower_actor(state, 0x2EU),
+        "native Tower capture rejects the adjacent Tower Guard slot");
+
+    const GameStateView truncated(
+        std::span<const std::byte>(work_ram).first(work_ram.size() - 1U));
+    check(
+        !capture_tower_actor(truncated, kTowerSlot)
+            && !truncated.tower(kTowerSlot),
+        "native Tower capture rejects a truncated work-RAM image");
+}
+
+void test_native_tower_guard_capture()
+{
+    using devils_crush::native_runtime::GameStateView;
+    using devils_crush::native_runtime::TowerGuardSelectorDisposition;
+    using devils_crush::native_runtime::capture_tower_guard_actor;
+    using devils_crush::native_runtime::kTowerGuardSlot;
+
+    std::array<std::byte, GameStateView::kWorkRamSize> work_ram{};
+    const auto store = [&work_ram](
+                           const std::size_t offset,
+                           const std::uint8_t value) {
+        work_ram[offset] = static_cast<std::byte>(value);
+    };
+    store(0x1000U + kTowerGuardSlot, 0x82U);
+    store(0x1F00U + kTowerGuardSlot, 0xA6U);
+    store(0x1F80U + kTowerGuardSlot, 0x60U);
+    store(0x0D4DU, 0x03U);
+
+    const GameStateView state(work_ram);
+    const auto closed = capture_tower_guard_actor(state, kTowerGuardSlot);
+    check(
+        closed && closed->actor.index == kTowerGuardSlot
+            && closed->selector.remaining_armed_passes == 3U
+            && closed->selector.disposition == TowerGuardSelectorDisposition::closed,
+        "native Tower Guard capture derives the closed selector from the Tower gate");
+
+    store(0x0D4DU, 0x00U);
+    const auto open = capture_tower_guard_actor(state, kTowerGuardSlot);
+    check(
+        open && open->selector.completion_selector == 0x8EU
+            && open->selector.disposition
+                == TowerGuardSelectorDisposition::open_bonus_stage_entrance,
+        "native Tower Guard capture derives the open bonus-stage selector");
+
+    store(0x1F00U + kTowerGuardSlot, 0xC3U);
+    check(
+        !capture_tower_guard_actor(state, kTowerGuardSlot),
+        "native Tower Guard capture excludes a non-Guard dispatcher");
+    store(0x1F00U + kTowerGuardSlot, 0xA6U);
+    check(
+        !capture_tower_guard_actor(state, 0x2DU),
+        "native Tower Guard capture rejects the adjacent Tower slot");
+
+    const GameStateView truncated(
+        std::span<const std::byte>(work_ram).first(work_ram.size() - 1U));
+    check(
+        !capture_tower_guard_actor(truncated, kTowerGuardSlot),
+        "native Tower Guard capture rejects a truncated work-RAM image");
+}
+
+void test_playfield_collision_capture_adapter()
+{
+    using devils_crush::emulation::CpuRegisters;
+    using devils_crush::emulation::capture_playfield_collision_source;
+    using devils_crush::native_runtime::GameStateView;
+
+    std::array<std::byte, GameStateView::kWorkRamSize> work_ram{};
+    work_ram[0x00C6U] = std::byte{0x40U};
+    work_ram[0x00C7U] = std::byte{0x8AU};
+    work_ram[0x00C8U] = std::byte{0x80U};
+    work_ram[0x00C9U] = std::byte{0x8AU};
+    work_ram[0x0090U] = std::byte{0x00U};
+    work_ram[0x0091U] = std::byte{0xCFU};
+    CpuRegisters registers{};
+    registers.mpr[4] = 0x23U;
+    registers.mpr[5] = 0x24U;
+
+    const auto source = capture_playfield_collision_source(registers, work_ram);
+    check(
+        source && source->tables.tile_ids == 0x8A80U
+            && source->tables.collision_attributes == 0x8A40U
+            && source->tables.masks == 0xCF00U && source->mpr == registers.mpr,
+        "playfield collision capture joins live table pointers to the MPR map");
+    check(
+        !capture_playfield_collision_source(
+            registers,
+            std::span<const std::byte>{work_ram}.first(work_ram.size() - 1U)),
+        "playfield collision capture rejects truncated work RAM");
+}
+
+void test_native_actor_scheduler_view()
+{
+    using devils_crush::native_runtime::ActorSchedulerView;
+    using devils_crush::native_runtime::ActorPresentationQueueKind;
+    using devils_crush::native_runtime::ActorPresentationQueueState;
+    using devils_crush::native_runtime::ActorPostHandlerPresentation;
+    using devils_crush::native_runtime::ShortActorPassPresentation;
+    using devils_crush::native_runtime::GameStateView;
+    using devils_crush::native_runtime::actor_presentation_drain_order;
+    using devils_crush::native_runtime::file_completed_actor_for_presentation;
+    using devils_crush::native_runtime::file_actor_for_presentation;
+
+    std::array<std::byte, GameStateView::kWorkRamSize> work_ram{};
+    const auto store_actor = [&work_ram](
+                                 const std::uint8_t slot,
+                                 const std::uint8_t activity,
+                                 const std::uint8_t attributes,
+                                 const std::uint16_t handler) {
+        work_ram[0x1000U + slot] = static_cast<std::byte>(activity);
+        work_ram[0x1080U + slot] = static_cast<std::byte>(attributes);
+        work_ram[0x1F00U + slot] = static_cast<std::byte>(handler & 0x00FFU);
+        work_ram[0x1F80U + slot] =
+            static_cast<std::byte>(handler >> 8U);
+    };
+
+    store_actor(0x01U, 0x00U, 0x80U, 0xC001U);
+    store_actor(0x02U, 0x80U, 0x80U, 0xC002U);
+    store_actor(0x03U, 0x80U, 0x00U, 0xC003U);
+    store_actor(0x04U, 0x80U, 0x02U, 0xC004U);
+    store_actor(0x05U, 0xFFU, 0x82U, 0xC005U);
+
+    const GameStateView state(work_ram);
+    const ActorSchedulerView scheduler(state);
+
+    work_ram[0x0D35U] = std::byte{0x00U};
+    work_ram[0x0CEEU] = std::byte{0x5AU};
+    const auto unfrozen_short_pass = scheduler.begin_short_actor_pass();
+    work_ram[0x0D35U] = std::byte{0x01U};
+    const auto frozen_short_pass = scheduler.begin_short_actor_pass();
+    check(
+        unfrozen_short_pass && !unfrozen_short_pass->gate.frozen
+            && unfrozen_short_pass->gate.enabled_actor_mask == 0x5AU
+            && unfrozen_short_pass->presentation_queues
+                == ActorPresentationQueueState{}
+            && unfrozen_short_pass->completed_ball_substeps == 0U
+            && frozen_short_pass && frozen_short_pass->gate.frozen
+            && frozen_short_pass->gate.enabled_actor_mask == 0U,
+        "native actor scheduler names C539's freeze gate and reset seed");
+    work_ram[0x0D35U] = std::byte{0x00U};
+
+    ShortActorPassPresentation short_pass(*unfrozen_short_pass);
+    const auto short_pass_auxiliary = short_pass.complete_handler({
+        .slot = 0x11U,
+        .attributes_before_prequeue_presentation_refresh = 0x01U,
+        .attributes_after_prequeue_presentation_refresh = 0x04U,
+    });
+    const auto short_pass_slot_zero = short_pass.complete_handler({
+        .slot = 0x00U,
+        .attributes_before_prequeue_presentation_refresh = 0x00U,
+        .attributes_after_prequeue_presentation_refresh = 0x00U,
+    });
+    const auto short_pass_primary = short_pass.complete_handler({
+        .slot = 0x21U,
+        .attributes_before_prequeue_presentation_refresh = 0x00U,
+        .attributes_after_prequeue_presentation_refresh = 0x08U,
+    });
+    check(
+        !short_pass.gate().frozen
+            && short_pass.gate().enabled_actor_mask == 0x5AU
+            && short_pass.completed_ball_substeps() == 0U
+            && short_pass_auxiliary.queue == ActorPresentationQueueKind::auxiliary
+            && short_pass_auxiliary.requires_prequeue_presentation_refresh
+            && short_pass_slot_zero.queue
+                == ActorPresentationQueueKind::slot_zero_deferred
+            && short_pass_primary.queue == ActorPresentationQueueKind::primary_low
+            && actor_presentation_drain_order(short_pass.presentation_queues())
+                == std::vector<std::uint8_t>{0x11U, 0x21U},
+        "native short actor pass carries C606 queue state across completed handlers");
+
+    const auto scheduled = scheduler.actors_due_for_update();
+    check(
+        scheduled.size() == 3U && scheduled[0].index == 0x02U
+            && scheduled[0].handler_address == 0xC002U
+            && scheduled[1].index == 0x03U
+            && scheduled[1].handler_address == 0xC003U
+            && scheduled[2].index == 0x05U
+            && scheduled[2].handler_address == 0xC005U,
+        "native actor scheduler selects due actors in table order");
+
+    store_actor(0x03U, 0x00U, 0x80U, 0xC003U);
+    store_actor(0x04U, 0x00U, 0x80U, 0xC004U);
+    store_actor(0x05U, 0x80U, 0xC0U, 0xC005U);
+    store_actor(0x06U, 0x00U, 0x40U, 0xC006U);
+    store_actor(0x7FU, 0x00U, 0x80U, 0xC07FU);
+    const auto retry_scan = scheduler.actors_for_collision_retry_full_scan();
+    check(
+        retry_scan.size() == 2U && retry_scan[0].index == 0x04U
+            && retry_scan[1].index == 0x7FU,
+        "native actor scheduler preserves the retry full-scan slot order and eligibility");
+
+    work_ram[0x1300U + 0x04U] = std::byte{0x7FU};
+    work_ram[0x1380U + 0x04U] = std::byte{0x01U};
+    work_ram[0x1300U + 0x7FU] = std::byte{0x80U};
+    work_ram[0x1380U + 0x7FU] = std::byte{0x01U};
+    const auto vertical_candidates =
+        scheduler.actors_for_collision_retry_vertical_scan(0x0100U);
+    check(
+        vertical_candidates.size() == 1U
+            && vertical_candidates[0].actor.index == 0x04U
+            && vertical_candidates[0].vertical_proximity.signed_difference
+                == -127
+            && vertical_candidates[0].vertical_proximity.intersecting,
+        "native retry scan retains only vertically eligible actors in slot order");
+
+    using ReservationKind = GameStateView::DynamicActorReservationKind;
+    work_ram[0x0055U] = std::byte{0x00U};
+    work_ram[0x1000U + 0x04U] = std::byte{0x01U};
+    const auto standard_reservation = scheduler.next_dynamic_actor_reservation();
+    check(
+        standard_reservation && standard_reservation->slot == 0x06U
+            && standard_reservation->kind == ReservationKind::standard,
+        "native actor scheduler selects the first standard dynamic reservation");
+
+    work_ram[0x0055U] = std::byte{0x01U};
+    const auto alternate_reservation = scheduler.next_dynamic_actor_reservation();
+    check(
+        alternate_reservation && alternate_reservation->slot == 0x06U
+            && alternate_reservation->kind == ReservationKind::alternate,
+        "native actor scheduler preserves the alternate reservation mode");
+
+    for (std::uint8_t slot = 0x04U; slot < 0x7CU; ++slot) {
+        work_ram[0x1000U + slot] = std::byte{0x01U};
+    }
+    check(
+        !scheduler.next_dynamic_actor_reservation(),
+        "native actor scheduler reports an exhausted dynamic pool");
+
+    const GameStateView truncated(
+        std::span<const std::byte>(work_ram).first(work_ram.size() - 1U));
+    check(
+        ActorSchedulerView(truncated).actors_due_for_update().empty(),
+        "native actor scheduler rejects a truncated state image");
+    check(
+        !ActorSchedulerView(truncated).begin_short_actor_pass(),
+        "native short actor-pass seed rejects a truncated state image");
+    check(
+        ActorSchedulerView(truncated).actors_for_collision_retry_full_scan().empty(),
+        "native retry full scan rejects a truncated state image");
+    check(
+        ActorSchedulerView(truncated)
+            .actors_for_collision_retry_vertical_scan(0x0100U)
+            .empty(),
+        "native retry vertical scan rejects a truncated state image");
+
+    ActorPresentationQueueState presentation_queues;
+    const auto auxiliary_first = file_actor_for_presentation(
+        presentation_queues, 0x11U, 0x04U, true);
+    const auto auxiliary_second = file_actor_for_presentation(
+        auxiliary_first.state, 0x12U, 0x04U);
+    const auto primary_low_first = file_actor_for_presentation(
+        auxiliary_second.state, 0x21U, 0x08U);
+    const auto primary_low_second = file_actor_for_presentation(
+        primary_low_first.state, 0x22U, 0x08U);
+    const auto primary_high_first = file_actor_for_presentation(
+        primary_low_second.state, 0x31U, 0x00U);
+    const auto primary_high_second = file_actor_for_presentation(
+        primary_high_first.state, 0x32U, 0x00U);
+    const auto drained = actor_presentation_drain_order(primary_high_second.state);
+    const auto hidden = file_actor_for_presentation(
+        primary_high_second.state, 0x41U, 0x20U);
+    const auto slot_zero = file_actor_for_presentation(
+        hidden.state, 0x00U, 0x00U, true);
+    check(
+        auxiliary_first.queue == ActorPresentationQueueKind::auxiliary
+            && auxiliary_first.requires_prequeue_presentation_refresh
+            && auxiliary_second.queue == ActorPresentationQueueKind::auxiliary
+            && primary_low_first.queue == ActorPresentationQueueKind::primary_low
+            && primary_low_second.queue == ActorPresentationQueueKind::primary_low
+            && primary_high_first.queue == ActorPresentationQueueKind::primary_high
+            && primary_high_second.queue == ActorPresentationQueueKind::primary_high
+            && drained == std::vector<std::uint8_t>{
+                0x12U, 0x11U, 0x22U, 0x21U, 0x31U, 0x32U}
+            && hidden.queue == ActorPresentationQueueKind::hidden
+            && hidden.state == primary_high_second.state
+            && slot_zero.queue == ActorPresentationQueueKind::slot_zero_deferred
+            && slot_zero.requires_prequeue_presentation_refresh
+            && slot_zero.state == hidden.state,
+        "native actor scheduler preserves C606's post-handler SAT queue order");
+
+    ActorPresentationQueueState full_primary_queue;
+    full_primary_queue.primary_low_count = ActorPresentationQueueState::kQueueCapacity;
+    const auto full_primary = file_actor_for_presentation(
+        full_primary_queue, 0x51U, 0x00U);
+    ActorPresentationQueueState full_auxiliary_queue;
+    full_auxiliary_queue.auxiliary_count = ActorPresentationQueueState::kQueueCapacity;
+    const auto full_auxiliary = file_actor_for_presentation(
+        full_auxiliary_queue, 0x52U, 0x04U);
+    check(
+        full_primary.queue == ActorPresentationQueueKind::capacity_exhausted
+            && full_primary.state == full_primary_queue
+            && full_auxiliary.queue == ActorPresentationQueueKind::capacity_exhausted
+            && full_auxiliary.state == full_auxiliary_queue,
+        "native actor scheduler keeps the SAT queue capacities explicit");
+
+    const auto reset_then_hidden = file_completed_actor_for_presentation(
+        {},
+        ActorPostHandlerPresentation{
+            .slot = 0x61U,
+            .attributes_before_prequeue_presentation_refresh = 0x01U,
+            .attributes_after_prequeue_presentation_refresh = 0x20U,
+        });
+    const auto post_reset_bit_zero = file_completed_actor_for_presentation(
+        {},
+        ActorPostHandlerPresentation{
+            .slot = 0x62U,
+            .attributes_before_prequeue_presentation_refresh = 0x00U,
+            .attributes_after_prequeue_presentation_refresh = 0x05U,
+        });
+    check(
+        reset_then_hidden.requires_prequeue_presentation_refresh
+            && reset_then_hidden.queue == ActorPresentationQueueKind::hidden
+            && !post_reset_bit_zero.requires_prequeue_presentation_refresh
+            && post_reset_bit_zero.queue == ActorPresentationQueueKind::auxiliary,
+        "native actor scheduler preserves C606's before-refresh and reread attributes");
+}
+
+void test_native_bonus_stage_4()
+{
+    using devils_crush::native_runtime::BonusStage4ObjectiveDisposition;
+    using devils_crush::native_runtime::BonusStage4State;
+    using devils_crush::native_runtime::GameStateView;
+    using devils_crush::native_runtime::ScoreState;
+    using devils_crush::native_runtime::capture_bonus_stage_4;
+    using devils_crush::native_runtime::resolve_bonus_stage_4_objective_contact;
+
+    BonusStage4State stage{};
+    stage.objectives[0U].hits_remaining = 2U;
+    stage.objectives[1U].hits_remaining = 1U;
+    stage.objectives[2U].hits_remaining = 1U;
+    const auto ordinary = resolve_bonus_stage_4_objective_contact(
+        stage, ScoreState{}, 0U);
+    const auto first_terminal = resolve_bonus_stage_4_objective_contact(
+        ordinary.objective.state, ordinary.destruction_score_award.state, 0U);
+    const auto second_terminal = resolve_bonus_stage_4_objective_contact(
+        first_terminal.objective.state,
+        first_terminal.destruction_score_award.state, 1U);
+    const auto final_terminal = resolve_bonus_stage_4_objective_contact(
+        second_terminal.objective.state,
+        second_terminal.destruction_score_award.state, 2U);
+    const auto repeated = resolve_bonus_stage_4_objective_contact(
+        final_terminal.objective.state,
+        final_terminal.destruction_score_award.state, 2U);
+    const auto invalid = resolve_bonus_stage_4_objective_contact(
+        final_terminal.objective.state,
+        final_terminal.destruction_score_award.state, 3U);
+    devils_crush::native_runtime::NativeGameplayState scheduled_gameplay;
+    BonusStage4State scheduled_stage{};
+    scheduled_stage.objectives[0U].hits_remaining = 1U;
+    scheduled_gameplay.seed_bonus_stage_4(scheduled_stage);
+    const auto scheduled_contact = scheduled_gameplay.confirm_actor_contact({
+        .actor_slot = 0x34U,
+        .response_kind = 2U,
+    });
+    const auto scheduled_phase = scheduled_gameplay.advance_actor_phase();
+    const auto scheduled_audio = scheduled_gameplay.take_audio_events();
+    std::array<std::byte, GameStateView::kWorkRamSize> work_ram{};
+    constexpr std::array<std::uint8_t, 3U> objective_slots{0x34U, 0x52U, 0x56U};
+    for (std::size_t index = 0U; index < objective_slots.size(); ++index) {
+        const auto slot = objective_slots[index];
+        work_ram[0x1000U + slot] = std::byte{0x82U};
+        work_ram[0x1C00U + slot] = static_cast<std::byte>(8U - index);
+        work_ram[0x1F00U + slot] = std::byte{0x46U};
+        work_ram[0x1F80U + slot] = std::byte{0x6AU};
+        work_ram[0x0D2FU + index] = std::byte{0x01U};
+    }
+    const auto captured = capture_bonus_stage_4(GameStateView(work_ram));
+    work_ram[0x1834U] = std::byte{0x80U};
+    const auto transitional_capture = capture_bonus_stage_4(GameStateView(work_ram));
+    check(
+        ordinary.objective.disposition
+                == BonusStage4ObjectiveDisposition::survived_hit
+            && ordinary.objective.state.objectives[0U].hits_remaining == 1U
+            && ordinary.objective.hit_score_award_units == 100U
+            && ordinary.objective.audio_command == 0x2EU
+            && ordinary.destruction_score_award.awarded_units == 0U
+            && first_terminal.objective.disposition
+                == BonusStage4ObjectiveDisposition::destroyed
+            && !first_terminal.objective.state.objectives[0U].active
+            && first_terminal.objective.destruction_score_award_units == 1'000U
+            && first_terminal.objective.requests_destruction_presentation
+            && !second_terminal.objective.state.completion_requested
+            && final_terminal.objective.state.completion_requested
+            && final_terminal.objective.state.completion_multiplier == 20U
+            && final_terminal.destruction_score_award.state.stored_units == 3'400U
+            && repeated.objective.disposition
+                == BonusStage4ObjectiveDisposition::ignored
+            && repeated.objective.state == final_terminal.objective.state
+            && invalid.objective.disposition
+                == BonusStage4ObjectiveDisposition::ignored
+            && scheduled_contact.bonus_stage_4_queued
+            && scheduled_phase.size() == 1U
+            && scheduled_phase.front().slot == 0x34U
+            && scheduled_phase.front().kind
+                == devils_crush::native_runtime::
+                    NativeGameplayState::ActorPhaseUpdateKind::bonus_stage_4_objective
+            && scheduled_phase.front().bonus_stage_4
+            && scheduled_phase.front().bonus_stage_4->objective.disposition
+                == BonusStage4ObjectiveDisposition::destroyed
+            && scheduled_audio
+                == std::vector<devils_crush::native_runtime::GameplayAudioEvent>{ {
+                    .slot = 0x34U,
+                    .source = devils_crush::native_runtime::GameplayAudioSource::bonus_stage_4,
+                    .command = 0x2EU,
+                } }
+            && captured && captured->state.objectives[0U].hits_remaining == 8U
+            && captured->state.objectives[1U].hits_remaining == 7U
+            && captured->state.objectives[2U].hits_remaining == 6U
+            && !transitional_capture,
+        "native BS-4 objectives preserve capture, actor-order scoring, and multiplier-20 completion");
+}
+
+void test_native_bonus_stage_4_linked_target()
+{
+    using devils_crush::native_runtime::BonusStage4LinkedTargetAllocationDisposition;
+    using devils_crush::native_runtime::BonusStage4LinkedTargetContactDisposition;
+    using devils_crush::native_runtime::BonusStage4LinkedTargetHitPresentationDisposition;
+    using devils_crush::native_runtime::BonusStage4LinkedTargetMotionDisposition;
+    using devils_crush::native_runtime::BonusStage4LinkedTargetPosition;
+    using devils_crush::native_runtime::BonusStage4OrbitingChildAllocationDisposition;
+    using devils_crush::native_runtime::BonusStage4OrbitingChildFrameDisposition;
+    using devils_crush::native_runtime::BonusStage4OrbitingChildOrbitDisposition;
+    using devils_crush::native_runtime::ScoreState;
+    using devils_crush::native_runtime::allocate_bonus_stage_4_linked_target;
+    using devils_crush::native_runtime::allocate_bonus_stage_4_orbiting_child;
+    using devils_crush::native_runtime::advance_bonus_stage_4_linked_target_motion;
+    using devils_crush::native_runtime::advance_bonus_stage_4_orbiting_child_orbit;
+    using devils_crush::native_runtime::advance_bonus_stage_4_orbiting_child_frame;
+    using devils_crush::native_runtime::bonus_stage_4_orbit_position;
+    using devils_crush::native_runtime::complete_bonus_stage_4_linked_target_hit_presentation;
+    using devils_crush::native_runtime::resolve_bonus_stage_4_linked_target_contact;
+    using devils_crush::native_runtime::resolve_bonus_stage_4_orbiting_child_contact;
+
+    const auto allocation = allocate_bonus_stage_4_linked_target(
+        0x35U, 0U, 0x66U,
+        BonusStage4LinkedTargetPosition{
+            .horizontal_pixels = 0xFFF8U,
+            .vertical_pixels = 0xFFF8U,
+        });
+    const auto invalid_allocation = allocate_bonus_stage_4_linked_target(
+        0x34U, 0U, 0x66U, {});
+    const auto mismatched_allocation = allocate_bonus_stage_4_linked_target(
+        0x53U, 0U, 0x66U, {});
+    const auto target_hit = resolve_bonus_stage_4_linked_target_contact(
+        *allocation.target, ScoreState{});
+    const auto motion_refresh = advance_bonus_stage_4_linked_target_motion(
+        *allocation.target);
+    const auto motion_wait = advance_bonus_stage_4_linked_target_motion(
+        motion_refresh.state);
+    const auto repeated_target_hit = resolve_bonus_stage_4_linked_target_contact(
+        target_hit.target.state, target_hit.score_award.state);
+    const auto premature_child = allocate_bonus_stage_4_orbiting_child(
+        target_hit.target.state, 0x67U);
+    const auto completed_target_presentation =
+        complete_bonus_stage_4_linked_target_hit_presentation(target_hit.target.state);
+    const auto duplicate_presentation_completion =
+        complete_bonus_stage_4_linked_target_hit_presentation(
+            completed_target_presentation.state);
+    const auto hit_during_child_handoff = resolve_bonus_stage_4_linked_target_contact(
+        completed_target_presentation.state, target_hit.score_award.state);
+    auto target = completed_target_presentation.state;
+    const auto first_child = allocate_bonus_stage_4_orbiting_child(target, 0x67U);
+    target = first_child.target;
+    const auto second_child = allocate_bonus_stage_4_orbiting_child(target, 0x68U);
+    target = second_child.target;
+    const auto third_child = allocate_bonus_stage_4_orbiting_child(target, 0x69U);
+    target = third_child.target;
+    const auto fourth_child = allocate_bonus_stage_4_orbiting_child(target, 0x6AU);
+    target = fourth_child.target;
+    const auto exhausted_child = allocate_bonus_stage_4_orbiting_child(target, 0x6BU);
+    const auto rearmed_target_hit = resolve_bonus_stage_4_linked_target_contact(
+        target, target_hit.score_award.state);
+    devils_crush::native_runtime::NativeGameplayState scheduled_gameplay;
+    const bool scheduled_seeded = scheduled_gameplay.seed_bonus_stage_4_linked_target(
+        *allocation.target);
+    auto invalid_scheduled_target = *allocation.target;
+    invalid_scheduled_target.dynamic_slot = 0x02U;
+    devils_crush::native_runtime::NativeGameplayState invalid_scheduled_gameplay;
+    const bool invalid_scheduled_seeded =
+        invalid_scheduled_gameplay.seed_bonus_stage_4_linked_target(invalid_scheduled_target);
+    const auto scheduled_contact = scheduled_gameplay.confirm_actor_contact({
+        .actor_slot = allocation.target->dynamic_slot,
+        .response_kind = 2U,
+    });
+    const auto scheduled_phase = scheduled_gameplay.advance_actor_phase();
+    const auto scheduled_audio = scheduled_gameplay.take_audio_events();
+    const auto scheduled_presentation =
+        scheduled_gameplay.complete_bonus_stage_4_linked_target_hit_presentation();
+    const auto scheduled_first_child =
+        scheduled_gameplay.allocate_bonus_stage_4_orbiting_child(0x67U);
+    const auto scheduled_second_child =
+        scheduled_gameplay.allocate_bonus_stage_4_orbiting_child(0x68U);
+    const auto scheduled_third_child =
+        scheduled_gameplay.allocate_bonus_stage_4_orbiting_child(0x69U);
+    const auto scheduled_fourth_child =
+        scheduled_gameplay.allocate_bonus_stage_4_orbiting_child(0x6AU);
+    const auto scheduled_motion_phase = scheduled_gameplay.advance_actor_phase();
+    const auto scheduled_child_contact = scheduled_gameplay.confirm_actor_contact({
+        .actor_slot = 0x67U,
+        .response_kind = 2U,
+    });
+    const auto scheduled_child_phase = scheduled_gameplay.advance_actor_phase();
+    const auto scheduled_child_audio = scheduled_gameplay.take_audio_events();
+    const auto orbit_advance = advance_bonus_stage_4_orbiting_child_orbit(
+        *first_child.child, allocation.target->position, true, false);
+    const auto orbit_contact = advance_bonus_stage_4_orbiting_child_orbit(
+        orbit_advance.state, allocation.target->position, true, true);
+    const auto orbit_parent_inactive = advance_bonus_stage_4_orbiting_child_orbit(
+        orbit_advance.state, allocation.target->position, false, false);
+    const auto child_hit = resolve_bonus_stage_4_orbiting_child_contact(
+        *first_child.child, target_hit.score_award.state);
+    const auto clear_child_frame = advance_bonus_stage_4_orbiting_child_frame(
+        *first_child.child, allocation.target->position, true, false, ScoreState{});
+    const auto collided_child_frame = advance_bonus_stage_4_orbiting_child_frame(
+        *first_child.child, allocation.target->position, true, true, ScoreState{});
+    const auto parent_lost_child_frame = advance_bonus_stage_4_orbiting_child_frame(
+        *first_child.child, allocation.target->position, false, false, ScoreState{});
+
+    check(
+        allocation.disposition == BonusStage4LinkedTargetAllocationDisposition::allocated
+            && allocation.target
+            && allocation.target->objective_index == 0U
+            && allocation.target->source_slot == 0x35U
+            && allocation.target->dynamic_slot == 0x66U
+            && allocation.target->position.horizontal_pixels == 0x0008U
+            && allocation.target->position.vertical_pixels == 0x0008U
+            && allocation.target->ticks_until_motion_refresh == 1U
+            && invalid_allocation.disposition
+                == BonusStage4LinkedTargetAllocationDisposition::invalid_source
+            && mismatched_allocation.disposition
+                == BonusStage4LinkedTargetAllocationDisposition::invalid_source,
+        "native BS-4 paired source allocation retains linkage and wrapped offset");
+    check(
+        motion_refresh.disposition
+                == BonusStage4LinkedTargetMotionDisposition::random_motion_requested
+            && motion_refresh.state.ticks_until_motion_refresh == 32U
+            && motion_wait.disposition == BonusStage4LinkedTargetMotionDisposition::waiting
+            && motion_wait.state.ticks_until_motion_refresh == 31U,
+        "native BS-4 linked-target motion refresh preserves the recovered 32-tick cadence");
+    check(
+        target_hit.target.disposition
+                == BonusStage4LinkedTargetContactDisposition::accepted
+            && target_hit.target.score_award_units == 100U
+            && target_hit.target.audio_command == 0x3BU
+            && !target_hit.target.requests_orbiting_children
+            && target_hit.target.state.hit_presentation_pending
+            && target_hit.target.state.orbiting_children_pending == 0U
+            && target_hit.score_award.state.stored_units == 100U
+            && repeated_target_hit.target.disposition
+                == BonusStage4LinkedTargetContactDisposition::ignored
+            && premature_child.disposition
+                == BonusStage4OrbitingChildAllocationDisposition::no_pending_child,
+        "native BS-4 linked target defers its child handoff behind the recovered presentation");
+    check(
+        completed_target_presentation.disposition
+                == BonusStage4LinkedTargetHitPresentationDisposition::child_allocation_requested
+            && completed_target_presentation.requests_orbiting_children
+            && !completed_target_presentation.state.hit_presentation_pending
+            && completed_target_presentation.state.orbiting_children_pending == 4U
+            && duplicate_presentation_completion.disposition
+                == BonusStage4LinkedTargetHitPresentationDisposition::no_pending_presentation
+            && hit_during_child_handoff.target.disposition
+                == BonusStage4LinkedTargetContactDisposition::ignored,
+        "native BS-4 resumed hit continuation requests four children behind its collision latch");
+    check(
+        first_child.disposition == BonusStage4OrbitingChildAllocationDisposition::allocated
+            && first_child.child && first_child.child->target_slot == 0x66U
+            && first_child.child->orbit_phase == 24U
+            && first_child.child->position
+                == BonusStage4LinkedTargetPosition{
+                    .horizontal_pixels = 0x0010U,
+                    .vertical_pixels = 0x0000U,
+                }
+            && second_child.disposition == BonusStage4OrbitingChildAllocationDisposition::allocated
+            && second_child.child && second_child.child->orbit_phase == 16U
+            && third_child.disposition == BonusStage4OrbitingChildAllocationDisposition::allocated
+            && third_child.child && third_child.child->orbit_phase == 8U
+            && fourth_child.disposition == BonusStage4OrbitingChildAllocationDisposition::allocated
+            && fourth_child.child && fourth_child.child->orbit_phase == 0U
+            && fourth_child.target.orbiting_children_pending == 0U
+            && exhausted_child.disposition
+                == BonusStage4OrbitingChildAllocationDisposition::no_pending_child
+            && rearmed_target_hit.target.disposition
+                == BonusStage4LinkedTargetContactDisposition::accepted
+            && child_hit.child.releases_child
+            && child_hit.child.score_award_units == 100U
+            && child_hit.score_award.state.stored_units == 200U,
+        "native BS-4 target rearms only after four allocator-selected children finish");
+    check(
+        scheduled_seeded && !invalid_scheduled_seeded
+            && scheduled_contact.bonus_stage_4_linked_target_queued
+            && scheduled_phase.size() == 1U
+            && scheduled_phase.front().slot == 0x66U
+            && scheduled_phase.front().kind
+                == devils_crush::native_runtime::
+                    NativeGameplayState::ActorPhaseUpdateKind::bonus_stage_4_linked_target
+            && scheduled_phase.front().bonus_stage_4_linked_target
+            && scheduled_phase.front().bonus_stage_4_linked_target->target.disposition
+                == BonusStage4LinkedTargetContactDisposition::accepted
+            && scheduled_audio
+                == std::vector<devils_crush::native_runtime::GameplayAudioEvent>{ {
+                    .slot = 0x66U,
+                    .source = devils_crush::native_runtime::GameplayAudioSource::bonus_stage_4,
+                    .command = 0x3BU,
+                } }
+            && scheduled_presentation
+            && scheduled_presentation->requests_orbiting_children
+            && scheduled_first_child && scheduled_first_child->child
+            && scheduled_first_child->child->orbit_phase == 24U
+            && scheduled_second_child && scheduled_third_child && scheduled_fourth_child
+            && scheduled_motion_phase.size() == 5U
+            && scheduled_motion_phase.front().slot == 0x66U
+            && scheduled_motion_phase.front().kind
+                == devils_crush::native_runtime::NativeGameplayState::ActorPhaseUpdateKind::
+                    bonus_stage_4_linked_target_motion
+            && scheduled_motion_phase.front().bonus_stage_4_linked_target_motion
+            && scheduled_motion_phase.front().bonus_stage_4_linked_target_motion->disposition
+                == BonusStage4LinkedTargetMotionDisposition::random_motion_requested
+            && scheduled_motion_phase[1U].slot == 0x67U
+            && scheduled_motion_phase[1U].kind
+                == devils_crush::native_runtime::NativeGameplayState::ActorPhaseUpdateKind::
+                    bonus_stage_4_orbiting_child_orbit
+            && scheduled_motion_phase[1U].bonus_stage_4_orbiting_child
+            && scheduled_motion_phase[1U].bonus_stage_4_orbiting_child->child.state
+                .orbit_phase == 25U
+            && scheduled_child_contact.bonus_stage_4_orbiting_child_queued
+            && scheduled_child_phase.size() == 5U
+            && scheduled_child_phase[1U].slot == 0x67U
+            && scheduled_child_phase[1U].kind
+                == devils_crush::native_runtime::NativeGameplayState::ActorPhaseUpdateKind::
+                    bonus_stage_4_orbiting_child
+            && scheduled_child_phase[1U].bonus_stage_4_orbiting_child
+            && scheduled_child_phase[1U].bonus_stage_4_orbiting_child->child.releases_child
+            && scheduled_child_phase[1U].bonus_stage_4_orbiting_child->child.score_award_units
+                == 100U
+            && scheduled_child_audio.empty()
+            && !scheduled_gameplay.bonus_stage_4_orbiting_child(0x67U)
+            && scheduled_gameplay.bonus_stage_4_linked_target()
+            && scheduled_gameplay.bonus_stage_4_linked_target()
+                ->ticks_until_motion_refresh == 31U
+            && scheduled_gameplay.score().stored_units == 200U,
+        "native gameplay owns the BS-4 linked target, child release, and motion cadence");
+    check(
+        orbit_advance.disposition == BonusStage4OrbitingChildOrbitDisposition::advanced
+            && orbit_advance.state.orbit_phase == 25U
+            && orbit_advance.state.position
+                == BonusStage4LinkedTargetPosition{
+                    .horizontal_pixels = 0x0013U,
+                    .vertical_pixels = 0x0001U,
+                }
+            && orbit_contact.disposition
+                == BonusStage4OrbitingChildOrbitDisposition::collision_pending
+            && orbit_parent_inactive.disposition
+                == BonusStage4OrbitingChildOrbitDisposition::parent_inactive,
+        "native BS-4 orbiting child preserves the clear modulo-32 orbit phase boundary");
+    check(
+        clear_child_frame.child.disposition
+                == BonusStage4OrbitingChildFrameDisposition::advanced
+            && clear_child_frame.child.state == orbit_advance.state
+            && clear_child_frame.score_award.state.stored_units == 0U
+            && collided_child_frame.child.disposition
+                == BonusStage4OrbitingChildFrameDisposition::released_after_collision
+            && collided_child_frame.child.releases_child
+            && collided_child_frame.child.score_award_units == 100U
+            && collided_child_frame.score_award.state.stored_units == 100U
+            && parent_lost_child_frame.child.disposition
+                == BonusStage4OrbitingChildFrameDisposition::released_after_parent_loss
+            && parent_lost_child_frame.child.releases_child
+            && parent_lost_child_frame.score_award.state.stored_units == 100U,
+        "native BS-4 child frame sends parent loss and collision through the shared release");
+
+    using devils_crush::native_runtime::GameStateView;
+    using devils_crush::native_runtime::capture_bonus_stage_4_linked_target;
+    std::array<std::byte, GameStateView::kWorkRamSize> work_ram{};
+    constexpr std::uint8_t target_slot = 0x66U;
+    constexpr std::uint8_t source_slot = 0x35U;
+    work_ram[0x1000U + target_slot] = std::byte{0xC2U};
+    work_ram[0x1F00U + target_slot] = std::byte{0x7EU};
+    work_ram[0x1F80U + target_slot] = std::byte{0x6BU};
+    work_ram[0x1E00U + target_slot] = std::byte{0x00U};
+    work_ram[0x1E80U + target_slot] = static_cast<std::byte>(source_slot);
+    work_ram[0x1180U + target_slot] = std::byte{0x60U};
+    work_ram[0x1200U + target_slot] = std::byte{0x00U};
+    work_ram[0x1300U + target_slot] = std::byte{0x48U};
+    work_ram[0x1380U + target_slot] = std::byte{0x00U};
+    work_ram[0x1B00U + target_slot] = std::byte{0x20U};
+    work_ram[0x1C80U + source_slot] = std::byte{0xFFU};
+    const auto captured = capture_bonus_stage_4_linked_target(GameStateView(work_ram));
+    work_ram[0x1F00U + target_slot] = std::byte{0x21U};
+    work_ram[0x1F80U + target_slot] = std::byte{0x6CU};
+    work_ram[0x1980U + target_slot] = std::byte{0x04U};
+    work_ram[0x1800U + target_slot] = std::byte{0x80U};
+    const auto captured_hit_presentation = capture_bonus_stage_4_linked_target(
+        GameStateView(work_ram));
+    work_ram[0x1980U + target_slot] = std::byte{0x03U};
+    const auto mismatched_hit_presentation = capture_bonus_stage_4_linked_target(
+        GameStateView(work_ram));
+    work_ram[0x1F00U + target_slot] = std::byte{0x7EU};
+    work_ram[0x1F80U + target_slot] = std::byte{0x6BU};
+    work_ram[0x1980U + target_slot] = std::byte{0x00U};
+    work_ram[0x1800U + target_slot] = std::byte{0x00U};
+    work_ram[0x1C80U + source_slot] = std::byte{0x00U};
+    const auto unlinked_capture = capture_bonus_stage_4_linked_target(
+        GameStateView(work_ram));
+    check(
+        captured && captured->state.dynamic_slot == target_slot
+            && captured->state.source_slot == source_slot
+            && captured->state.objective_index == 0U
+            && captured->state.ticks_until_motion_refresh == 0x20U
+            && captured->state.position
+                == BonusStage4LinkedTargetPosition{
+                    .horizontal_pixels = 0x0060U,
+                    .vertical_pixels = 0x0048U,
+                }
+            && captured_hit_presentation
+            && captured_hit_presentation->state.hit_presentation_pending
+            && !mismatched_hit_presentation
+            && !unlinked_capture,
+        "native BS-4 capture accepts only proven steady or hit-presentation targets");
+
+    using devils_crush::native_runtime::capture_bonus_stage_4_orbiting_child;
+    using devils_crush::native_runtime::capture_bonus_stage_4_linked_target_generation;
+    using devils_crush::native_runtime::apply_native_gameplay_bootstrap;
+    using devils_crush::native_runtime::capture_native_gameplay_bootstrap;
+    constexpr std::uint8_t child_slot = 0x67U;
+    work_ram.fill(std::byte{});
+    work_ram[0x1000U + target_slot] = std::byte{0xC2U};
+    work_ram[0x1F00U + target_slot] = std::byte{0xA0U};
+    work_ram[0x1F80U + target_slot] = std::byte{0x6CU};
+    work_ram[0x1180U + target_slot] = std::byte{0x60U};
+    work_ram[0x1200U + target_slot] = std::byte{0x00U};
+    work_ram[0x1300U + target_slot] = std::byte{0x48U};
+    work_ram[0x1380U + target_slot] = std::byte{0x00U};
+    work_ram[0x1E00U + target_slot] = std::byte{0x00U};
+    work_ram[0x1E80U + target_slot] = std::byte{source_slot};
+    work_ram[0x1B00U + target_slot] = std::byte{0x20U};
+    work_ram[0x1C80U + source_slot] = std::byte{0xFFU};
+    work_ram[0x1000U + child_slot] = std::byte{0xC2U};
+    work_ram[0x1F00U + child_slot] = std::byte{0x27U};
+    work_ram[0x1F80U + child_slot] = std::byte{0x6DU};
+    work_ram[0x1E00U + child_slot] = std::byte{24U};
+    work_ram[0x1E80U + child_slot] = std::byte{target_slot};
+    const auto expected_child_position = bonus_stage_4_orbit_position(
+        BonusStage4LinkedTargetPosition{
+            .horizontal_pixels = 0x0060U,
+            .vertical_pixels = 0x0048U,
+        },
+        24U);
+    work_ram[0x1180U + child_slot] = static_cast<std::byte>(
+        expected_child_position.horizontal_pixels & 0x00FFU);
+    work_ram[0x1200U + child_slot] = static_cast<std::byte>(
+        expected_child_position.horizontal_pixels >> 8U);
+    work_ram[0x1300U + child_slot] = static_cast<std::byte>(
+        expected_child_position.vertical_pixels & 0x00FFU);
+    work_ram[0x1380U + child_slot] = static_cast<std::byte>(
+        expected_child_position.vertical_pixels >> 8U);
+    const auto captured_child = capture_bonus_stage_4_orbiting_child(
+        GameStateView(work_ram));
+    constexpr std::uint8_t second_child_slot = 0x68U;
+    constexpr std::uint8_t second_child_phase = 8U;
+    const auto expected_second_child_position = bonus_stage_4_orbit_position(
+        BonusStage4LinkedTargetPosition{
+            .horizontal_pixels = 0x0060U,
+            .vertical_pixels = 0x0048U,
+        },
+        second_child_phase);
+    work_ram[0x1000U + second_child_slot] = std::byte{0xC2U};
+    work_ram[0x1F00U + second_child_slot] = std::byte{0x27U};
+    work_ram[0x1F80U + second_child_slot] = std::byte{0x6DU};
+    work_ram[0x1E00U + second_child_slot] = std::byte{second_child_phase};
+    work_ram[0x1E80U + second_child_slot] = std::byte{target_slot};
+    work_ram[0x1180U + second_child_slot] = static_cast<std::byte>(
+        expected_second_child_position.horizontal_pixels & 0x00FFU);
+    work_ram[0x1200U + second_child_slot] = static_cast<std::byte>(
+        expected_second_child_position.horizontal_pixels >> 8U);
+    work_ram[0x1300U + second_child_slot] = static_cast<std::byte>(
+        expected_second_child_position.vertical_pixels & 0x00FFU);
+    work_ram[0x1380U + second_child_slot] = static_cast<std::byte>(
+        expected_second_child_position.vertical_pixels >> 8U);
+    const auto captured_generation = capture_bonus_stage_4_linked_target_generation(
+        GameStateView(work_ram));
+    devils_crush::native_runtime::NativeGameplayState captured_generation_gameplay;
+    const auto captured_generation_seeded = captured_generation
+        && captured_generation_gameplay.seed_bonus_stage_4_linked_target(
+            captured_generation->target.state,
+            {captured_generation->children[0U]
+                    ? std::optional<devils_crush::native_runtime::BonusStage4OrbitingChildState>{
+                        captured_generation->children[0U]->state}
+                    : std::nullopt,
+                captured_generation->children[1U]
+                    ? std::optional<devils_crush::native_runtime::BonusStage4OrbitingChildState>{
+                        captured_generation->children[1U]->state}
+                    : std::nullopt,
+                captured_generation->children[2U]
+                    ? std::optional<devils_crush::native_runtime::BonusStage4OrbitingChildState>{
+                        captured_generation->children[2U]->state}
+                    : std::nullopt,
+                captured_generation->children[3U]
+                    ? std::optional<devils_crush::native_runtime::BonusStage4OrbitingChildState>{
+                        captured_generation->children[3U]->state}
+                    : std::nullopt});
+    const auto captured_generation_phase = captured_generation_gameplay.advance_actor_phase();
+    work_ram[0x1000U] = std::byte{0x81U};
+    const auto captured_bootstrap = capture_native_gameplay_bootstrap(GameStateView(work_ram));
+    devils_crush::native_runtime::NativeGameplayState bootstrapped_generation_gameplay;
+    const auto captured_bootstrap_applied = captured_bootstrap
+        && apply_native_gameplay_bootstrap(
+            bootstrapped_generation_gameplay, *captured_bootstrap);
+    work_ram[0x1180U + child_slot] = std::byte{0x00U};
+    const auto displaced_child = capture_bonus_stage_4_orbiting_child(
+        GameStateView(work_ram));
+    const auto displaced_generation = capture_bonus_stage_4_linked_target_generation(
+        GameStateView(work_ram));
+    check(
+        captured_child && captured_child->state.dynamic_slot == child_slot
+            && captured_child->state.target_slot == target_slot
+            && captured_child->state.orbit_phase == 24U
+            && captured_child->state.position == expected_child_position
+            && captured_generation && captured_generation->children[0U]
+            && captured_generation->children[1U]
+            && captured_generation->children[0U]->state.dynamic_slot == child_slot
+            && captured_generation->children[1U]->state.dynamic_slot == second_child_slot
+            && captured_generation_seeded
+            && captured_generation_gameplay.bonus_stage_4_orbiting_child(child_slot)
+            && captured_generation_gameplay.bonus_stage_4_orbiting_child(second_child_slot)
+            && captured_generation_phase.size() == 3U
+            && captured_bootstrap_applied
+            && captured_bootstrap->bonus_stage_4_linked_target == captured_generation
+            && bootstrapped_generation_gameplay.bonus_stage_4_linked_target()
+            && bootstrapped_generation_gameplay.bonus_stage_4_orbiting_child(child_slot)
+            && bootstrapped_generation_gameplay.bonus_stage_4_orbiting_child(second_child_slot)
+            && !displaced_child && !displaced_generation,
+        "native BS-4 generation capture and bootstrap restore each proven clear child orbit state");
+}
+
+void test_native_actor_motion()
+{
+    using devils_crush::native_runtime::ActorMotionState;
+    using devils_crush::native_runtime::Fixed24_8;
+    using devils_crush::native_runtime::PlayfieldBounds;
+    using devils_crush::native_runtime::advance_actor_motion;
+
+    ActorMotionState state{
+        .position_x = Fixed24_8{.raw = 10 * 256 + 128},
+        .position_y = Fixed24_8{.raw = 20 * 256 + 64},
+        .velocity_x = 384,
+        .velocity_y = -320,
+        .target_x = 20,
+        .target_y = 10,
+        .velocity_adjustment_x = 16,
+        .velocity_adjustment_y = 8,
+        .integrate_x = true,
+        .integrate_y = true,
+        .steer_x = true,
+        .steer_y = true,
+    };
+    const auto moved = advance_actor_motion(state);
+    check(
+        moved.state.position_x.raw == 12 * 256
+            && moved.state.position_y.raw == 19 * 256,
+        "native actor motion integrates signed fractional coordinates");
+    check(
+        moved.state.velocity_x == 400 && moved.state.velocity_y == -328,
+        "native actor motion steers velocity after moving toward each target");
+    check(!moved.left_playfield, "native actor motion keeps in-bounds actors live");
+
+    state.position_x = Fixed24_8{.raw = 20 * 256};
+    state.position_y = Fixed24_8{.raw = 10 * 256};
+    state.velocity_x = 123;
+    state.velocity_y = -456;
+    state.integrate_x = false;
+    state.integrate_y = false;
+    const auto on_target = advance_actor_motion(state);
+    check(
+        on_target.state.velocity_x == 123 && on_target.state.velocity_y == -456,
+        "native actor motion does not steer an axis already at its target");
+
+    state.integrate_x = true;
+    state.steer_y = false;
+    state.position_x = Fixed24_8{.raw = 319 * 256 + 200};
+    state.velocity_x = 100;
+    const auto departed = advance_actor_motion(
+        state, PlayfieldBounds{.width = 320, .height = 720});
+    check(
+        departed.left_playfield,
+        "native actor motion reports a departure after an enabled axis crosses a bound");
+
+    state.position_x = Fixed24_8{.raw = 0};
+    state.velocity_x = -1;
+    const auto fractional_departure = advance_actor_motion(state);
+    check(
+        fractional_departure.left_playfield,
+        "native actor motion treats a negative fractional position as departed");
+
+    state.position_x = Fixed24_8{.raw = 0x007FFFFF};
+    state.velocity_x = 1;
+    const auto position_wrapped = advance_actor_motion(state);
+    check(
+        position_wrapped.state.position_x.raw == -0x00800000,
+        "native actor motion preserves the game's signed 24-bit position wrap");
+
+    state.integrate_x = false;
+    state.steer_x = true;
+    state.position_x = Fixed24_8{.raw = 40 * 256};
+    state.target_x = 20;
+    state.velocity_x = -32768;
+    state.velocity_adjustment_x = 1;
+    const auto wrapped = advance_actor_motion(state);
+    check(
+        wrapped.state.velocity_x == 32767,
+        "native actor motion preserves the game's signed 16-bit velocity wrap");
+}
+
+void test_native_actor_state()
+{
+    using devils_crush::native_runtime::ActorBehavior;
+    using devils_crush::native_runtime::ActorState;
+    using devils_crush::native_runtime::Fixed24_8;
+
+    ActorState actors;
+    check(
+        actors.actor(0x04U) && !actors.actor(0x04U)->active(),
+        "native actor state initializes every record as inactive");
+    check(
+        !actors.claim_dynamic_slot(0x03U, ActorBehavior::shared_motion)
+            && !actors.claim_dynamic_slot(0x7CU, ActorBehavior::shared_motion),
+        "native actor state protects fixed and out-of-range dynamic slots");
+    check(
+        actors.claim_dynamic_slot(0x04U, ActorBehavior::shared_motion)
+            && !actors.claim_dynamic_slot(0x04U, ActorBehavior::shared_motion),
+        "native actor state owns each dynamic-slot claim exactly once");
+
+    auto* actor = actors.actor(0x04U);
+    check(actor != nullptr, "native actor state retrieves an active record");
+    if (actor != nullptr) {
+        actor->due_for_update = true;
+        actor->motion = {
+            .position_x = Fixed24_8{.raw = 10 * 256},
+            .position_y = Fixed24_8{.raw = 20 * 256},
+            .velocity_x = 128,
+            .velocity_y = -256,
+            .integrate_x = true,
+            .integrate_y = true,
+        };
+    }
+    const auto updates = actors.advance_due_actors();
+    check(
+        updates.size() == 1U && updates.front().slot == 0x04U
+            && updates.front().step.state.position_x.raw == 10 * 256 + 128
+            && updates.front().step.state.position_y.raw == 19 * 256,
+        "native actor state applies shared motion to due actors in place");
+    check(
+        actor && actor->motion == updates.front().step.state,
+        "native actor state retains the behavior result as authoritative state");
+
+    actors.release(0x04U);
+    check(
+        actor && !actor->active() && !actor->due_for_update
+            && actors.claim_dynamic_slot(0x04U, ActorBehavior::shared_motion),
+        "native actor state releases a dynamic slot for later reuse");
+}
+
+void test_native_collision_effect()
+{
+    using devils_crush::native_runtime::ActorBehavior;
+    using devils_crush::native_runtime::ActorState;
+    using devils_crush::native_runtime::CollisionEffectAdvanceDisposition;
+    using devils_crush::native_runtime::CollisionEffectAllocationDisposition;
+    using devils_crush::native_runtime::advance_collision_effect;
+
+    const auto invalid = advance_collision_effect({.ticks_remaining = 0U});
+    check(
+        invalid.disposition == CollisionEffectAdvanceDisposition::invalid_state,
+        "native collision effect rejects an uninitialized lifetime");
+
+    ActorState actors;
+    check(
+        actors.claim_dynamic_slot(0x04U, ActorBehavior::shared_motion)
+            && actors.set_actor_appearance(0x04U, 0x5AU),
+        "native collision effect has an active source with a captured appearance");
+    const auto allocated = actors.claim_collision_effect(0x04U, 0x05U);
+    const auto duplicate = actors.claim_collision_effect(0x04U, 0x06U);
+    const auto* effect = actors.actor(0x05U);
+    check(
+        allocated.disposition == CollisionEffectAllocationDisposition::allocated
+            && allocated.effect
+            && allocated.effect->source_slot == 0x04U
+            && allocated.effect->source_association == 0U
+            && allocated.effect->source_appearance == 0x5AU
+            && effect && effect->behavior == ActorBehavior::collision_effect
+            && effect->collision_effect && effect->due_for_update
+            && duplicate.disposition
+                == CollisionEffectAllocationDisposition::source_already_has_effect,
+        "native collision-effect allocator creates one eight-turn child per source");
+
+    std::optional<devils_crush::native_runtime::ActorCollisionEffectUpdate> update;
+    for (std::uint8_t tick = 0U; tick < 8U; ++tick) {
+        update = actors.advance_collision_effect(0x05U);
+    }
+    const auto* released = actors.actor(0x05U);
+    const auto* source = actors.actor(0x04U);
+    check(
+        update && update->step.disposition
+                == CollisionEffectAdvanceDisposition::expired
+            && released && !released->active() && source
+            && !source->collision_effect_active
+            && source->collision_effect_association == 0U,
+        "native collision-effect lifetime releases its child and source association");
+
+    const auto old_effect = actors.claim_collision_effect(0x04U, 0x05U);
+    actors.release(0x04U);
+    const bool source_reused = actors.claim_dynamic_slot(
+        0x04U, ActorBehavior::shared_motion);
+    const auto new_effect = actors.claim_collision_effect(0x04U, 0x06U);
+    for (std::uint8_t tick = 0U; tick < 8U; ++tick) {
+        static_cast<void>(actors.advance_collision_effect(0x05U));
+    }
+    source = actors.actor(0x04U);
+    const bool new_association_survived_old_cleanup = source != nullptr
+        && source->collision_effect_active;
+    for (std::uint8_t tick = 0U; tick < 8U; ++tick) {
+        static_cast<void>(actors.advance_collision_effect(0x06U));
+    }
+    source = actors.actor(0x04U);
+    check(
+        old_effect.disposition == CollisionEffectAllocationDisposition::allocated
+            && source_reused
+            && new_effect.disposition == CollisionEffectAllocationDisposition::allocated
+            && new_association_survived_old_cleanup && source
+            && !source->collision_effect_active,
+        "native collision-effect cleanup cannot clear a reused source slot");
+
+    devils_crush::native_runtime::NativeGameplayState gameplay;
+    const bool phase_source_claimed = gameplay.actors().claim_dynamic_slot(
+        0x04U, ActorBehavior::shared_motion);
+    const auto phase_effect = gameplay.claim_collision_effect(0x04U, 0x05U);
+    const auto phase_updates = gameplay.advance_actor_phase();
+    check(
+        phase_source_claimed
+            && phase_effect.disposition
+                == CollisionEffectAllocationDisposition::allocated
+            && phase_updates.size() == 1U
+            && phase_updates.front().kind
+                == devils_crush::native_runtime::NativeGameplayState::ActorPhaseUpdateKind::collision_effect
+            && phase_updates.front().collision_effect
+            && phase_updates.front().collision_effect->step.state.ticks_remaining == 7U,
+        "native actor phase advances a claimed collision-effect child");
+
+    std::array<std::byte, devils_crush::native_runtime::GameStateView::kWorkRamSize>
+        work_ram{};
+    const auto store = [&work_ram](
+                           const std::size_t offset,
+                           const std::uint8_t value) {
+        work_ram[offset] = static_cast<std::byte>(value);
+    };
+    constexpr std::uint8_t captured_source_slot = 0x2CU;
+    constexpr std::uint8_t captured_effect_slot = 0x64U;
+    store(0x1000U + captured_source_slot, 0x82U);
+    store(0x1900U + captured_source_slot, 0x66U);
+    store(0x1D00U + captured_source_slot, 0x8FU);
+    store(0x1000U + captured_effect_slot, 0x8FU);
+    store(0x1080U + captured_effect_slot, 0xE0U);
+    store(0x1900U + captured_effect_slot, 0x66U);
+    store(0x1D80U + captured_effect_slot, 4U);
+    store(0x1E00U + captured_effect_slot, captured_source_slot);
+    store(0x1E80U + captured_effect_slot, 0x80U);
+    store(0x1F00U + captured_effect_slot, 0x34U);
+    store(0x1F80U + captured_effect_slot, 0x7CU);
+    const devils_crush::native_runtime::GameStateView captured_state(work_ram);
+    const auto captured = devils_crush::native_runtime::capture_collision_effect(
+        captured_state, captured_effect_slot);
+    devils_crush::native_runtime::NativeGameplayState seeded_gameplay;
+    const bool captured_source_claimed = seeded_gameplay.actors().claim_dynamic_slot(
+        captured_source_slot, ActorBehavior::shared_motion);
+    const bool captured_appearance_seeded = seeded_gameplay.actors().set_actor_appearance(
+        captured_source_slot, 0x66U);
+    const bool captured_association_seeded = seeded_gameplay.actors()
+        .set_collision_effect_association(captured_source_slot, 0x8FU);
+    const bool captured_effect_seeded = captured && seeded_gameplay.seed_collision_effect(
+        captured_effect_slot, captured->effect);
+    const auto* seeded_effect = seeded_gameplay.actors().actor(captured_effect_slot);
+    store(0x1E80U + captured_effect_slot, 0x70U);
+    const devils_crush::native_runtime::GameStateView invalid_capture_state(work_ram);
+    check(
+        captured && captured->effect.source_slot == captured_source_slot
+            && captured->effect.source_appearance == 0x66U
+            && captured->effect.source_association == 0x80U
+            && captured->effect.ticks_remaining == 4U
+            && captured_source_claimed && captured_appearance_seeded
+            && captured_association_seeded
+            && captured_effect_seeded && seeded_effect
+            && seeded_effect->collision_effect
+            && seeded_effect->collision_effect->ticks_remaining == 4U
+            && !devils_crush::native_runtime::capture_collision_effect(
+                invalid_capture_state, captured_effect_slot),
+        "native collision-effect capture validates and seeds a linked live source");
+}
+
+void test_native_collision_reaction()
+{
+    using devils_crush::native_runtime::ActorBehavior;
+    using devils_crush::native_runtime::ActorState;
+    using devils_crush::native_runtime::CollisionReactionState;
+    using devils_crush::native_runtime::CollisionTableCursor;
+    using devils_crush::native_runtime::CollisionTableRecordDisposition;
+    using devils_crush::native_runtime::CollisionTableRecordResolution;
+    using devils_crush::native_runtime::advance_collision_reaction;
+
+    const auto phase_step = advance_collision_reaction({
+        .collision_event = 0x05U,
+        .phase = 2U,
+        .ticks_until_next_phase = 1U,
+    });
+    check(
+        phase_step.response_code == 0x0AU && phase_step.phase_advanced
+            && phase_step.state.phase == 3U
+            && phase_step.state.ticks_until_next_phase == 4U,
+        "native collision reaction advances its event-selected phase cadence");
+
+    const auto ordinary_step = advance_collision_reaction(phase_step.state);
+    check(
+        ordinary_step.response_code == 0x0BU && !ordinary_step.phase_advanced
+            && ordinary_step.state.ticks_until_next_phase == 3U,
+        "native collision reaction retains a phase for its remaining ticks");
+
+    const auto wrapped_countdown = advance_collision_reaction(
+        CollisionReactionState{});
+    check(
+        !wrapped_countdown.phase_advanced
+            && wrapped_countdown.state.ticks_until_next_phase == 0xFFU,
+        "native collision reaction preserves an explicit zero-countdown state");
+
+    ActorState actors;
+    check(
+        actors.claim_dynamic_slot(0x04U, ActorBehavior::shared_motion),
+        "native actor state claims a target for collision-reaction ownership");
+    auto* actor = actors.actor(0x04U);
+    if (actor != nullptr) {
+        actor->collision_reaction = {
+            .collision_event = 0x02U,
+            .phase = 1U,
+            .ticks_until_next_phase = 2U,
+        };
+    }
+    const auto actor_step = actors.advance_collision_reaction(0x04U);
+    check(
+        actor_step && actor_step->step.response_code == 0x05U
+            && actor && actor->collision_reaction
+            && actor->collision_reaction->ticks_until_next_phase == 1U,
+        "native actor state retains a target collision reaction in place");
+
+    if (actor != nullptr) {
+        actor->collision_table = {
+            .collision_event = 0x00U,
+            .record_cursor = 2U,
+        };
+        actor->collision_reaction = {
+            .collision_event = 0x00U,
+            .phase = 1U,
+            .ticks_until_next_phase = 2U,
+        };
+    }
+    const auto table_step = actors.advance_collision_table(
+        0x04U,
+        {
+            .header_or_delta = 0x83U,
+        });
+    const auto synchronized_reaction = actors.advance_collision_reaction(0x04U);
+    check(
+        table_step && table_step->step.event_changed && actor
+            && actor->collision_table
+            && actor->collision_table->collision_event == 0x03U
+            && actor->collision_reaction
+            && actor->collision_reaction->collision_event == 0x03U
+            && synchronized_reaction
+            && synchronized_reaction->step.response_code == 0x05U,
+        "native actor state feeds a collision-table event into its reaction");
+
+    if (actor != nullptr) {
+        actor->collision_table =
+            devils_crush::native_runtime::CollisionTableState{};
+        actor->collision_reaction = {
+            .phase = 2U,
+            .ticks_until_next_phase = 3U,
+        };
+    }
+    const auto resolved_step = actors.apply_collision_table_resolution(
+        0x04U,
+        {
+            .disposition = CollisionTableRecordDisposition::record_ready,
+            .cursor = {.entry = 3U, .motion = 4U},
+            .record = {
+                .header_or_delta = 0x86U,
+                .delta_after_header = 0x40U,
+            },
+        });
+    check(
+        resolved_step && resolved_step->advance
+            && resolved_step->advance->event_changed && actor
+            && actor->collision_table
+            && actor->collision_table->collision_entry_cursor == 3U
+            && actor->collision_table->record_cursor == 6U
+            && actor->collision_table->position_x == 0xFFFFU
+            && actor->collision_reaction
+            && actor->collision_reaction->collision_event == 0x06U,
+        "native actor state consumes a decoded collision-table record and cursor");
+
+    const auto ended_table = actors.apply_collision_table_resolution(
+        0x04U,
+        {
+            .disposition = CollisionTableRecordDisposition::end_of_table,
+            .cursor = CollisionTableCursor{.entry = 4U},
+        });
+    check(
+        ended_table && !ended_table->advance && actor && actor->collision_table
+            && actor->collision_table->collision_entry_cursor == 4U
+            && actor->collision_table->record_cursor == 0U,
+        "native actor state commits a terminal collision-table cursor");
+    actors.release(0x04U);
+    check(
+        !actors.advance_collision_reaction(0x04U),
+        "native actor state does not advance an inactive target reaction");
+}
+
+void test_native_collision_table()
+{
+    using devils_crush::native_runtime::CollisionTableAdvanceDisposition;
+    using devils_crush::native_runtime::CollisionTableRecord;
+    using devils_crush::native_runtime::CollisionTableState;
+    using devils_crush::native_runtime::advance_collision_table;
+    using devils_crush::native_runtime::select_collision_table_pass;
+
+    const auto ordinary_pass = select_collision_table_pass(0x12U);
+    const auto alternating_pass = select_collision_table_pass(0x80U);
+    check(
+        ordinary_pass.index == 0x12U && !ordinary_pass.alternating
+            && ordinary_pass.next_pass_state == 0x12U
+            && alternating_pass.index == 1U && alternating_pass.alternating
+            && alternating_pass.next_pass_state == 0x81U
+            && !alternating_pass.completes_before_record,
+        "native collision table selects ordinary and alternating passes");
+
+    const auto completed_pass = advance_collision_table(
+        CollisionTableState{.pass_state = 0x81U}, CollisionTableRecord{});
+    check(
+        completed_pass.disposition
+                == CollisionTableAdvanceDisposition::alternating_pass_complete
+            && completed_pass.state.pass_state == 0x80U,
+        "native collision table completes an alternating pass before a record");
+
+    const auto header_record = advance_collision_table(
+        CollisionTableState{
+            .pass_state = 0x80U,
+            .collision_event = 0x02U,
+            .orientation_flags = 0x00U,
+            .record_cursor = 0xFFU,
+            .position_x = 0x00FFU,
+            .position_y = 0x0100U,
+        },
+        CollisionTableRecord{
+            .table_entry = 0x00U,
+            .header_or_delta = 0x85U,
+            .delta_after_header = 0x28U,
+        });
+    check(
+        header_record.disposition == CollisionTableAdvanceDisposition::advanced
+            && header_record.event_changed && header_record.applied_delta == 0x28U
+            && header_record.state.pass_state == 0x81U
+            && header_record.state.collision_event == 0x05U
+            && header_record.state.orientation_flags == 0x80U
+            && header_record.state.record_cursor == 1U
+            && header_record.state.position_x == 0x0100U
+            && header_record.state.position_y == 0x0101U,
+        "native collision table applies a header event, orientation, cursor, and motion");
+
+    const auto continuation = advance_collision_table(
+        CollisionTableState{
+            .pass_state = 0x01U,
+            .collision_event = 0x07U,
+            .record_cursor = 5U,
+        },
+        CollisionTableRecord{.header_or_delta = 0x50U});
+    check(
+        continuation.disposition == CollisionTableAdvanceDisposition::advanced
+            && !continuation.event_changed
+            && continuation.state.collision_event == 0x07U
+            && continuation.state.record_cursor == 6U
+            && continuation.state.position_x == 0xFFFFU
+            && continuation.state.position_y == 0xFFFFU,
+        "native collision table applies a headerless continuation delta");
+
+    const auto invalid = advance_collision_table(
+        CollisionTableState{.position_x = 12U},
+        CollisionTableRecord{.table_entry = 0xFEU});
+    check(
+        invalid.disposition == CollisionTableAdvanceDisposition::invalid_record
+            && invalid.state == invalid.previous,
+        "native collision table rejects record sentinels without mutation");
+}
+
+void test_native_collision_table_asset()
+{
+    using devils_crush::native_runtime::ActorBehavior;
+    using devils_crush::native_runtime::ActorState;
+    using devils_crush::native_runtime::CollisionTableCursor;
+    using devils_crush::native_runtime::CollisionTableRecordDisposition;
+    using devils_crush::native_runtime::MappedRomView;
+    using devils_crush::native_runtime::advance_actor_collision_table_from_asset;
+    using devils_crush::native_runtime::kCollisionTableMotionDirectory;
+    using devils_crush::native_runtime::kCollisionTableSelectorDirectory;
+    using devils_crush::native_runtime::resolve_collision_table_record;
+
+    std::vector<std::byte> rom(MappedRomView::kSupportedRomBytes);
+    std::array<std::uint8_t, 8> mpr{};
+    mpr[3] = 0x03U;
+    const auto store = [&rom](const std::uint16_t address,
+                              const std::uint8_t value) {
+        rom[0x03U * MappedRomView::kBankBytes
+            + (address & (MappedRomView::kBankBytes - 1U))] =
+            static_cast<std::byte>(value);
+    };
+    const auto store_word = [&store](
+                                const std::uint16_t address,
+                                const std::uint16_t value) {
+        store(address, static_cast<std::uint8_t>(value));
+        store(
+            static_cast<std::uint16_t>(address + 1U),
+            static_cast<std::uint8_t>(value >> 8U));
+    };
+    store_word(
+        static_cast<std::uint16_t>(kCollisionTableSelectorDirectory + 4U),
+        0x6E00U);
+    store(0x6E00U, 0x01U);
+    store_word(
+        static_cast<std::uint16_t>(kCollisionTableMotionDirectory + 2U),
+        0x6F00U);
+    store(0x6F00U, 0x83U);
+    store(0x6F01U, 0x20U);
+
+    const MappedRomView mapped_rom(rom, mpr);
+    const auto header = resolve_collision_table_record(
+        mapped_rom, 2U, CollisionTableCursor{});
+    check(
+        header.disposition == CollisionTableRecordDisposition::record_ready
+            && header.cursor == CollisionTableCursor{}
+            && header.record.table_entry == 0x01U
+            && header.record.header_or_delta == 0x83U
+            && header.record.delta_after_header == 0x20U,
+        "native collision-table asset decodes a selected header record");
+
+    ActorState actors;
+    check(
+        actors.claim_dynamic_slot(0x04U, ActorBehavior::shared_motion),
+        "native collision-table driver claims an actor target");
+    auto* actor = actors.actor(0x04U);
+    if (actor != nullptr) {
+        actor->collision_reaction = {
+            .phase = 1U,
+            .ticks_until_next_phase = 2U,
+        };
+    }
+    check(
+        !advance_actor_collision_table_from_asset(actors, 0x04U, mapped_rom)
+            && actors.configure_collision_table(0x04U, {.selector = 2U}),
+        "native collision-table driver requires an actor table program");
+    const auto actor_header = advance_actor_collision_table_from_asset(
+        actors, 0x04U, mapped_rom);
+    check(
+        actor_header && actor_header->advance
+            && actor_header->resolution == header && actor
+            && actor->collision_table_program
+            && actor->collision_table_program->selector == 2U
+            && actor->collision_table
+            && actor->collision_table->collision_entry_cursor == 0U
+            && actor->collision_table->record_cursor == 2U
+            && actor->collision_table->position_x == 1U
+            && actor->collision_reaction
+            && actor->collision_reaction->collision_event == 0x03U,
+        "native collision-table driver connects an asset record to actor state");
+
+    store(0x6E01U, 0x02U);
+    store_word(
+        static_cast<std::uint16_t>(kCollisionTableMotionDirectory + 4U),
+        0x6F20U);
+    store(0x6F00U, 0xC0U);
+    store(0x6F20U, 0x10U);
+    const auto continued = resolve_collision_table_record(
+        mapped_rom, 2U, CollisionTableCursor{});
+    check(
+        continued.disposition == CollisionTableRecordDisposition::record_ready
+            && continued.cursor == CollisionTableCursor{.entry = 1U}
+            && continued.record.table_entry == 0x02U
+            && continued.record.header_or_delta == 0x10U,
+        "native collision-table asset follows an entry-advance marker");
+
+    store(0x6E01U, 0xFEU);
+    store(0x6E00U, 0x01U);
+    store(0x6F00U, 0x08U);
+    const auto restarted = resolve_collision_table_record(
+        mapped_rom, 2U, CollisionTableCursor{.entry = 1U, .motion = 5U});
+    check(
+        restarted.disposition == CollisionTableRecordDisposition::record_ready
+            && restarted.restarted && restarted.cursor == CollisionTableCursor{}
+            && restarted.record.table_entry == 0x01U
+            && restarted.record.header_or_delta == 0x08U,
+        "native collision-table asset restarts a control-marked table");
+
+    store(0x6E00U, 0xFFU);
+    const auto ended = resolve_collision_table_record(
+        mapped_rom, 2U, CollisionTableCursor{});
+    check(
+        ended.disposition == CollisionTableRecordDisposition::end_of_table,
+        "native collision-table asset reports a terminal table marker");
+}
+
+void test_native_small_soldier()
+{
+    using devils_crush::native_runtime::ActorBehavior;
+    using devils_crush::native_runtime::ActorState;
+    using devils_crush::native_runtime::SmallSoldierContactDisposition;
+    using devils_crush::native_runtime::SmallSoldierGroupDisposition;
+    using devils_crush::native_runtime::SmallSoldierGroupSide;
+    using devils_crush::native_runtime::SmallSoldierGroupState;
+    using devils_crush::native_runtime::SmallSoldierSourceDisposition;
+    using devils_crush::native_runtime::SmallSoldierSourceState;
+    using devils_crush::native_runtime::SmallSoldierState;
+    using devils_crush::native_runtime::complete_small_soldier_group_child;
+    using devils_crush::native_runtime::complete_small_soldier_animation;
+    using devils_crush::native_runtime::complete_small_soldier_source_child;
+    using devils_crush::native_runtime::consume_small_soldier_contact;
+    using devils_crush::native_runtime::advance_small_soldier_source_clock;
+    using devils_crush::native_runtime::regenerate_small_soldier_source;
+    using devils_crush::native_runtime::spawn_small_soldier_child;
+    using devils_crush::native_runtime::spawn_small_soldier_source_child;
+
+    const auto untouched = consume_small_soldier_contact(SmallSoldierState{});
+    check(
+        untouched.disposition == SmallSoldierContactDisposition::no_contact
+            && untouched.state == untouched.previous,
+        "native Small-Soldier ignores an unconfirmed contact");
+
+    const auto first_hit = consume_small_soldier_contact({
+        .contact_pending = true,
+    });
+    check(
+        first_hit.disposition == SmallSoldierContactDisposition::survived_hit
+            && !first_hit.state.contact_pending
+            && first_hit.state.hits_remaining == 1U
+            && first_hit.hit_score_units == 30U
+            && first_hit.completion_score_units == 0U
+            && !first_hit.decrement_group
+            && !first_hit.release_actor,
+        "native Small-Soldier consumes its first confirmed hit");
+
+    const auto final_hit = consume_small_soldier_contact({
+        .hits_remaining = 1U,
+        .contact_pending = true,
+    });
+    check(
+        final_hit.disposition == SmallSoldierContactDisposition::completed
+            && final_hit.state.hits_remaining == 0U
+            && final_hit.hit_score_units == 30U
+            && final_hit.completion_score_units == 50U
+            && final_hit.decrement_group
+            && final_hit.release_actor,
+        "native Small-Soldier completes a normal second hit");
+
+    const auto deferred_hit = consume_small_soldier_contact({
+        .hits_remaining = 1U,
+        .subtype = 0x0FU,
+        .contact_pending = true,
+    });
+    check(
+        deferred_hit.disposition
+                == SmallSoldierContactDisposition::awaiting_completion_animation
+            && deferred_hit.state.completion_animation_pending
+            && deferred_hit.hit_score_units == 30U
+            && deferred_hit.completion_score_units == 0U
+            && !deferred_hit.decrement_group && !deferred_hit.release_actor,
+        "native Small-Soldier defers subtype completion to its animation");
+
+    const auto deferred_completion = complete_small_soldier_animation(
+        deferred_hit.state);
+    check(
+        deferred_completion.disposition == SmallSoldierContactDisposition::completed
+            && !deferred_completion.state.completion_animation_pending
+            && deferred_completion.hit_score_units == 0U
+            && deferred_completion.completion_score_units == 50U
+            && deferred_completion.decrement_group
+            && deferred_completion.release_actor,
+        "native Small-Soldier completes its subtype animation transition");
+
+    const auto invalid_hit = consume_small_soldier_contact({
+        .hits_remaining = 0U,
+        .contact_pending = true,
+    });
+    check(
+        invalid_hit.disposition == SmallSoldierContactDisposition::invalid_state
+            && invalid_hit.state == invalid_hit.previous,
+        "native Small-Soldier rejects a contact after completion");
+
+    const auto source_wait = advance_small_soldier_source_clock({
+        .group = {
+            .side = SmallSoldierGroupSide::lower_left,
+            .pending_spawns = 2U,
+            .live_children = 1U,
+        },
+        .ticks_until_next_spawn = 2U,
+    });
+    const auto source_due = advance_small_soldier_source_clock(source_wait.state);
+    check(
+        source_wait.disposition == SmallSoldierSourceDisposition::waiting
+            && source_wait.state.ticks_until_next_spawn == 1U
+            && source_due.disposition
+                == SmallSoldierSourceDisposition::spawn_requested
+            && source_due.state.ticks_until_next_spawn == 48U
+            && source_due.state.group == source_wait.state.group,
+        "native Side-Star clock restores its 48-tick spawn delay before requesting allocation");
+
+    SmallSoldierGroupState group{
+        .side = SmallSoldierGroupSide::upper_right,
+    };
+    for (std::uint8_t child = 0U; child < 5U; ++child) {
+        const auto spawn = spawn_small_soldier_child(group);
+        check(
+            spawn.disposition == SmallSoldierGroupDisposition::child_spawned
+                && spawn.state.side == SmallSoldierGroupSide::upper_right
+                && spawn.state.pending_spawns == 4U - child
+                && spawn.state.live_children == child + 1U,
+            "native Small-Soldier source tracks each of its five child spawns");
+        group = spawn.state;
+    }
+    const auto exhausted_spawn = spawn_small_soldier_child(group);
+    check(
+        exhausted_spawn.disposition == SmallSoldierGroupDisposition::invalid_state
+            && exhausted_spawn.state == group,
+        "native Small-Soldier source rejects a sixth child spawn");
+    for (std::uint8_t child = 0U; child < 4U; ++child) {
+        const auto completion = complete_small_soldier_group_child(group);
+        check(
+            completion.disposition == SmallSoldierGroupDisposition::child_completed
+                && completion.state.live_children == 4U - child,
+            "native Small-Soldier source retains its group until every child completes");
+        group = completion.state;
+    }
+    const auto source_completion = complete_small_soldier_group_child(group);
+    check(
+        source_completion.disposition
+                == SmallSoldierGroupDisposition::source_completed
+            && source_completion.state.live_children == 0U
+            && source_completion.source_completion_score_units == 200U,
+        "native Small-Soldier source emits its final group-completion award");
+    const auto invalid_completion = complete_small_soldier_group_child(
+        source_completion.state);
+    check(
+        invalid_completion.disposition == SmallSoldierGroupDisposition::invalid_state
+            && invalid_completion.state == source_completion.state,
+        "native Small-Soldier source cannot complete a nonexistent child");
+
+    SmallSoldierSourceState source{
+        .group = {.side = SmallSoldierGroupSide::upper_right},
+        .appearance = 3U,
+    };
+    for (std::uint8_t child = 0U; child < 5U; ++child) {
+        const auto spawn = spawn_small_soldier_source_child(source);
+        check(
+            spawn.disposition == SmallSoldierSourceDisposition::child_spawned
+                && spawn.group_step
+                && spawn.group_step->disposition
+                    == SmallSoldierGroupDisposition::child_spawned,
+            "native Side-Star source allocates a child through its generation state");
+        source = spawn.state;
+    }
+    for (std::uint8_t child = 0U; child < 4U; ++child) {
+        source = complete_small_soldier_source_child(source).state;
+    }
+    const auto generation_completion = complete_small_soldier_source_child(source);
+    check(
+        generation_completion.disposition
+                == SmallSoldierSourceDisposition::generation_completed
+            && generation_completion.group_step
+            && generation_completion.group_step->source_completion_score_units == 200U
+            && generation_completion.state.group.live_children == 0U
+            && generation_completion.state.appearance == 0U
+            && generation_completion.state.regeneration_pending,
+        "native Side-Star completion advances its appearance modulo four and requests regeneration");
+    const auto blocked_spawn = spawn_small_soldier_source_child(
+        generation_completion.state);
+    check(
+        blocked_spawn.disposition == SmallSoldierSourceDisposition::invalid_state
+            && blocked_spawn.state == generation_completion.state,
+        "native Side-Star source blocks children until its regeneration handoff completes");
+    const auto regenerated = regenerate_small_soldier_source(
+        generation_completion.state);
+    check(
+        regenerated.disposition == SmallSoldierSourceDisposition::regenerated
+            && regenerated.state.group.side == SmallSoldierGroupSide::upper_right
+            && regenerated.state.group.pending_spawns == 5U
+            && regenerated.state.group.live_children == 0U
+            && regenerated.state.appearance == 0U
+            && !regenerated.state.regeneration_pending,
+        "native Side-Star regeneration restores only the next five-child budget");
+
+    ActorState actors;
+    check(
+        actors.claim_dynamic_slot(0x04U, ActorBehavior::small_soldier)
+            && actors.configure_small_soldier(0x04U)
+            && !actors.configure_small_soldier(0x05U),
+        "native actor state configures Small-Soldier rules only on its owner");
+    const auto owned_first_hit = actors.apply_small_soldier_contact(0x04U);
+    const auto* owned_soldier = actors.actor(0x04U);
+    check(
+        owned_first_hit
+            && owned_first_hit->step.disposition
+                == SmallSoldierContactDisposition::survived_hit
+            && owned_first_hit->step.hit_score_units == 30U && owned_soldier
+            && owned_soldier->small_soldier
+            && owned_soldier->small_soldier->hits_remaining == 1U,
+        "native actor state turns a confirmed contact into a retained Small-Soldier hit");
+
+    const auto owned_completion = actors.apply_small_soldier_contact(0x04U);
+    check(
+        owned_completion
+            && owned_completion->step.disposition
+                == SmallSoldierContactDisposition::completed
+            && owned_completion->step.hit_score_units == 30U
+            && owned_completion->step.completion_score_units == 50U
+            && owned_completion->step.decrement_group
+            && owned_completion->step.release_actor && owned_soldier
+            && !owned_soldier->active(),
+        "native actor state releases a completed Small-Soldier after returning its effects");
+
+    check(
+        actors.claim_dynamic_slot(0x04U, ActorBehavior::small_soldier)
+            && actors.configure_small_soldier(0x04U, {
+                .hits_remaining = 1U,
+                .subtype = 0x0FU,
+            }),
+        "native actor state configures the deferred Small-Soldier subtype");
+    const auto owned_deferred_hit = actors.apply_small_soldier_contact(0x04U);
+    const auto owned_deferred_completion =
+        actors.complete_small_soldier_animation(0x04U);
+    check(
+        owned_deferred_hit
+            && owned_deferred_hit->step.disposition
+                == SmallSoldierContactDisposition::awaiting_completion_animation
+            && owned_deferred_completion
+            && owned_deferred_completion->step.disposition
+                == SmallSoldierContactDisposition::completed
+            && owned_deferred_completion->step.completion_score_units == 50U
+            && owned_deferred_completion->step.release_actor
+            && !actors.actor(0x04U)->active(),
+        "native actor state owns the Small-Soldier deferred completion lifecycle");
+
+    check(
+        actors.claim_dynamic_slot(0x05U, ActorBehavior::small_soldier),
+        "native actor state claims a slot before registering a Small-Soldier spawn");
+    const auto actor_spawn = actors.spawn_small_soldier(
+        0x05U,
+        {
+            .hits_remaining = 1U,
+            .group_side = SmallSoldierGroupSide::upper_right,
+        });
+    const auto actor_completion = actors.apply_small_soldier_contact(0x05U);
+    const auto* upper_right_group = actors.small_soldier_group(
+        SmallSoldierGroupSide::upper_right);
+    const auto* upper_right_source = actors.small_soldier_source(
+        SmallSoldierGroupSide::upper_right);
+    check(
+        actor_spawn
+            && actor_spawn->group_step.disposition
+                == SmallSoldierGroupDisposition::child_spawned
+            && actor_spawn->source_step.disposition
+                == SmallSoldierSourceDisposition::child_spawned
+            && actor_completion && actor_completion->group_step
+            && actor_completion->group_step->disposition
+                == SmallSoldierGroupDisposition::child_completed
+            && actor_completion->source_step
+            && actor_completion->source_step->disposition
+                == SmallSoldierSourceDisposition::child_completed
+            && upper_right_group && upper_right_group->pending_spawns == 4U
+            && upper_right_group->live_children == 0U
+            && upper_right_source && !upper_right_source->regeneration_pending
+            && !actors.actor(0x05U)->active(),
+        "native actor state connects a completed Small-Soldier to its Side-Star group");
+    check(
+        !actors.spawn_small_soldier(0x05U),
+        "native actor state rejects a Small-Soldier spawn without a claimed slot");
+
+    ActorState source_actors;
+    std::optional<devils_crush::native_runtime::ActorSmallSoldierUpdate>
+        last_source_completion;
+    for (std::uint8_t child = 0U; child < 5U; ++child) {
+        const auto slot = static_cast<std::uint8_t>(0x10U + child);
+        check(
+            source_actors.claim_dynamic_slot(slot, ActorBehavior::small_soldier)
+                && source_actors.spawn_small_soldier(slot, {
+                    .hits_remaining = 1U,
+                    .group_side = SmallSoldierGroupSide::lower_left,
+                }),
+            "native actor state allocates each child into its Side-Star source");
+        last_source_completion = source_actors.apply_small_soldier_contact(slot);
+    }
+    const auto* completed_source = source_actors.small_soldier_source(
+        SmallSoldierGroupSide::lower_left);
+    const auto regeneration_was_pending = completed_source
+        && completed_source->regeneration_pending;
+    const auto actor_regeneration = source_actors.regenerate_small_soldier_source(
+        SmallSoldierGroupSide::lower_left);
+    check(
+        last_source_completion && last_source_completion->group_step
+            && last_source_completion->group_step->disposition
+                == SmallSoldierGroupDisposition::source_completed
+            && last_source_completion->source_step
+            && last_source_completion->source_step->disposition
+                == SmallSoldierSourceDisposition::generation_completed
+            && regeneration_was_pending
+            && actor_regeneration
+            && actor_regeneration->disposition
+                == SmallSoldierSourceDisposition::regenerated
+            && source_actors.small_soldier_group(
+                   SmallSoldierGroupSide::lower_left)->pending_spawns == 5U,
+        "native actor state carries the fifth child through source completion and regeneration");
+}
+
+void test_native_bumper()
+{
+    using devils_crush::native_runtime::BumperHitDisposition;
+    using devils_crush::native_runtime::BumperState;
+    using devils_crush::native_runtime::ScoreAwardDisposition;
+    using devils_crush::native_runtime::ScoreState;
+    using devils_crush::native_runtime::ActorBehavior;
+    using devils_crush::native_runtime::NativeGameplayState;
+    using devils_crush::native_runtime::consume_bumper_contact;
+    using devils_crush::native_runtime::resolve_bumper_contact;
+
+    auto state = BumperState{.side = 1U};
+    BumperState state_after_sixth;
+    bool primary_progression_matches = true;
+    for (std::uint8_t hit = 1U; hit <= 6U; ++hit) {
+        const auto step = consume_bumper_contact(state);
+        primary_progression_matches = primary_progression_matches
+            && step.disposition == BumperHitDisposition::primary_damage
+            && step.state.hit_phase == hit
+            && step.state.primary_appearance == hit
+            && step.state.secondary_damage == 0U
+            && step.score_award_units == 10U && step.audio_command == 0x20U
+            && step.refresh_primary_appearance
+            && !step.updates_secondary_damage
+            && step.requested_child_count == 0U;
+        state = step.state;
+        if (hit == 6U) {
+            state_after_sixth = state;
+        }
+    }
+    check(
+        primary_progression_matches && state_after_sixth.side == 1U,
+        "native Bumper rule advances all six primary hit appearances");
+
+    const auto seventh = consume_bumper_contact(state);
+    const auto eighth = consume_bumper_contact(seventh.state);
+    const auto destruction = consume_bumper_contact(eighth.state);
+    check(
+        seventh.disposition == BumperHitDisposition::secondary_damage
+            && seventh.state.hit_phase == 7U
+            && seventh.state.primary_appearance == 6U
+            && seventh.state.secondary_damage == 1U
+            && seventh.score_award_units == 10U
+            && seventh.audio_command == 0x20U
+            && !seventh.refresh_primary_appearance
+            && seventh.updates_secondary_damage
+            && eighth.disposition == BumperHitDisposition::secondary_damage
+            && eighth.state.secondary_damage == 2U
+            && destruction.disposition == BumperHitDisposition::destroyed
+            && destruction.state.hit_phase == 9U && !destruction.state.active
+            && destruction.score_award_units == 200U
+            && destruction.audio_command == 0U
+            && destruction.requested_child_count == 6U,
+        "native Bumper rule advances secondary damage then requests six-child destruction");
+
+    const auto inactive = consume_bumper_contact(destruction.state);
+    const auto invalid = consume_bumper_contact({.hit_phase = 9U});
+    check(
+        inactive.disposition == BumperHitDisposition::inactive
+            && inactive.state == destruction.state
+            && invalid.disposition == BumperHitDisposition::invalid_state
+            && invalid.state.hit_phase == 9U && invalid.state.active,
+        "native Bumper rule keeps inactive and malformed states explicit");
+
+    const auto scored = resolve_bumper_contact(
+        BumperState{}, ScoreState{.stored_units = 90U});
+    const auto capped_destruction = resolve_bumper_contact(
+        BumperState{.hit_phase = 8U},
+        ScoreState{.stored_units = ScoreState::kExclusiveLimit - 100U});
+    check(
+        scored.bumper.disposition == BumperHitDisposition::primary_damage
+            && scored.score_award.state.stored_units == 100U
+            && capped_destruction.bumper.disposition
+                == BumperHitDisposition::destroyed
+            && capped_destruction.score_award.disposition
+                == ScoreAwardDisposition::reaches_limit
+            && capped_destruction.score_award.state.stored_units
+                == ScoreState::kExclusiveLimit - 100U,
+        "native Bumper scoring preserves the independent ordinary-score ceiling");
+}
+
+void test_native_front_spider()
+{
+    using devils_crush::native_runtime::FrontSpiderContactDisposition;
+    using devils_crush::native_runtime::FrontSpiderState;
+    using devils_crush::native_runtime::ScoreAwardDisposition;
+    using devils_crush::native_runtime::ScoreState;
+    using devils_crush::native_runtime::complete_front_spider_transition;
+    using devils_crush::native_runtime::consume_front_spider_contact;
+    using devils_crush::native_runtime::resolve_front_spider_contact;
+
+    const auto hit = consume_front_spider_contact({.side = 1U});
+    check(
+        hit.disposition == FrontSpiderContactDisposition::hit
+            && !hit.state.collision_ready && hit.score_award_units == 40U
+            && hit.audio_command == 0x34U && hit.sets_side_safety
+            && hit.requested_transition_stages == 4U,
+        "native Front-Spider rule names the one-hit safety, score, audio, and transition effects");
+    check(
+        consume_front_spider_contact(hit.state).disposition
+            == FrontSpiderContactDisposition::transition_pending
+            && complete_front_spider_transition(hit.state).collision_ready,
+        "native Front-Spider rule waits for the appearance owner before rearming");
+    check(
+        consume_front_spider_contact({.side = 2U}).disposition
+            == FrontSpiderContactDisposition::invalid_state,
+        "native Front-Spider rule rejects an invalid fixed-side state");
+
+    const auto capped = resolve_front_spider_contact(
+        {.side = 0U}, {.stored_units = ScoreState::kExclusiveLimit - 30U});
+    check(
+        capped.spider.disposition == FrontSpiderContactDisposition::hit
+            && !capped.spider.state.collision_ready
+            && capped.score_award.disposition == ScoreAwardDisposition::reaches_limit,
+        "native Front-Spider state transitions even when its score award reaches the limit");
+}
+
+void test_native_side_spider()
+{
+    using devils_crush::native_runtime::ScoreAwardDisposition;
+    using devils_crush::native_runtime::ScoreState;
+    using devils_crush::native_runtime::SideSpiderContactDisposition;
+    using devils_crush::native_runtime::SideSpiderState;
+    using devils_crush::native_runtime::complete_side_spider_transition;
+    using devils_crush::native_runtime::consume_side_spider_contact;
+    using devils_crush::native_runtime::resolve_side_spider_contact;
+
+    const auto hit = consume_side_spider_contact({.side = 0U});
+    check(
+        hit.disposition == SideSpiderContactDisposition::hit
+            && !hit.state.collision_ready && hit.score_award_units == 100U
+            && hit.audio_command == 0x34U && hit.sets_shared_transition_latch,
+        "native Side-Spider rule names the shared latch, score, and audio effects");
+    check(
+        consume_side_spider_contact(hit.state).disposition
+            == SideSpiderContactDisposition::transition_pending
+            && complete_side_spider_transition(hit.state).collision_ready,
+        "native Side-Spider rule waits for the shared appearance transition");
+    check(
+        consume_side_spider_contact({.side = 2U}).disposition
+            == SideSpiderContactDisposition::invalid_state,
+        "native Side-Spider rule rejects an invalid fixed-side state");
+
+    const auto capped = resolve_side_spider_contact(
+        {.side = 1U}, {.stored_units = ScoreState::kExclusiveLimit - 50U});
+    check(
+        capped.spider.disposition == SideSpiderContactDisposition::hit
+            && !capped.spider.state.collision_ready
+            && capped.score_award.disposition == ScoreAwardDisposition::reaches_limit,
+        "native Side-Spider state transitions even when its score award reaches the limit");
+}
+
+void test_native_skeleton_insect()
+{
+    using devils_crush::native_runtime::ScoreAwardDisposition;
+    using devils_crush::native_runtime::ScoreState;
+    using devils_crush::native_runtime::SkeletonInsectKind;
+    using devils_crush::native_runtime::SkeletonInsectLifecycle;
+    using devils_crush::native_runtime::SkeletonInsectTriggerDisposition;
+    using devils_crush::native_runtime::TableRuleLatches;
+    using devils_crush::native_runtime::complete_skeleton_insect_transition;
+    using devils_crush::native_runtime::consume_skeleton_insect_source;
+    using devils_crush::native_runtime::resolve_skeleton_insect_source;
+
+    const auto left_wait = consume_skeleton_insect_source({}, {});
+    const auto left_hit = consume_skeleton_insect_source(
+        {}, {.left_front_spider_safety = true});
+    const auto center_hit = consume_skeleton_insect_source(
+        {.kind = SkeletonInsectKind::center}, {.tower_completed = true});
+    const auto right_hit = consume_skeleton_insect_source(
+        {.kind = SkeletonInsectKind::right}, {.right_front_spider_safety = true});
+    check(
+        left_wait.disposition == SkeletonInsectTriggerDisposition::waiting_for_source
+            && left_hit.disposition == SkeletonInsectTriggerDisposition::triggered
+            && left_hit.score_award_units == 40U
+            && left_hit.requested_startup_rounds == 3U
+            && left_hit.audio_command == 0U
+            && center_hit.score_award_units == 100U
+            && center_hit.requested_startup_rounds == 16U
+            && right_hit.score_award_units == 40U
+            && right_hit.requested_startup_rounds == 2U,
+        "native Skeleton-Insect rule binds each fixed target to its source and score schedule");
+    check(
+        consume_skeleton_insect_source(left_hit.state, {.left_front_spider_safety = true})
+                .disposition == SkeletonInsectTriggerDisposition::transition_pending
+            && complete_skeleton_insect_transition(left_hit.state).lifecycle
+                == SkeletonInsectLifecycle::post_trigger,
+        "native Skeleton-Insect rule makes an asserted source latch one-shot");
+
+    const auto capped = resolve_skeleton_insect_source(
+        {.kind = SkeletonInsectKind::center}, {.tower_completed = true},
+        {.stored_units = ScoreState::kExclusiveLimit - 50U});
+    check(
+        capped.insect.disposition == SkeletonInsectTriggerDisposition::triggered
+            && capped.score_award.disposition == ScoreAwardDisposition::reaches_limit,
+        "native Skeleton-Insect trigger survives a rejected terminal score award");
+}
+
+void test_native_tower()
+{
+    using devils_crush::native_runtime::ScoreAwardDisposition;
+    using devils_crush::native_runtime::ScoreState;
+    using devils_crush::native_runtime::TowerBonusStageSelectionDisposition;
+    using devils_crush::native_runtime::TowerContactDisposition;
+    using devils_crush::native_runtime::TowerPresentationDisposition;
+    using devils_crush::native_runtime::advance_tower_presentation;
+    using devils_crush::native_runtime::consume_tower_bonus_stage_selection;
+    using devils_crush::native_runtime::consume_tower_contact;
+    using devils_crush::native_runtime::resolve_tower_contact;
+
+    const auto hit = consume_tower_contact({}, false);
+    check(
+        hit.disposition == TowerContactDisposition::first_source_hit
+            && !hit.state.collision_ready && hit.state.hit_progress == 1U
+            && hit.score_award_units == 50U && hit.audio_command == 0x33U
+            && hit.sets_center_insect_source,
+        "native Tower rule names the first qualifying source hit");
+    check(
+        consume_tower_contact(hit.state, false).disposition
+                == TowerContactDisposition::transition_pending
+            && advance_tower_presentation(hit.state).disposition
+                == TowerPresentationDisposition::countdown
+            && consume_tower_contact({}, true).disposition
+                == TowerContactDisposition::armed_pass_decremented
+            && consume_tower_contact(
+                   {.hit_progress = 1U, .remaining_armed_passes = 1U}, true)
+                    .disposition
+                == TowerContactDisposition::bonus_stage_selection_armed
+            && advance_tower_presentation(
+                   {.collision_ready = false, .bonus_stage_selection_pending = true})
+                   .disposition == TowerPresentationDisposition::not_pending,
+        "native Tower rule preserves presentation, armed-pass, and bonus-selection boundaries");
+
+    auto presentation = hit.state;
+    const auto first_presentation = advance_tower_presentation(presentation);
+    presentation = first_presentation.state;
+    const auto second_presentation = advance_tower_presentation(presentation);
+    presentation = second_presentation.state;
+    const auto third_presentation = advance_tower_presentation(presentation);
+    presentation = third_presentation.state;
+    const auto installed_steady_dispatch = advance_tower_presentation(presentation);
+    check(
+        first_presentation.disposition == TowerPresentationDisposition::countdown
+            && first_presentation.state.presentation_updates_remaining == 3U
+            && second_presentation.disposition == TowerPresentationDisposition::countdown
+            && third_presentation.disposition == TowerPresentationDisposition::countdown
+            && installed_steady_dispatch.disposition
+                == TowerPresentationDisposition::steady_dispatch_installed
+            && installed_steady_dispatch.state.collision_ready
+            && installed_steady_dispatch.state.presentation_updates_remaining == 0U,
+        "native Tower presentation preserves three countdowns before steady rearm");
+
+    const auto capped = resolve_tower_contact(
+        {}, false, {.stored_units = ScoreState::kExclusiveLimit - 40U});
+    check(
+        capped.tower.disposition == TowerContactDisposition::first_source_hit
+            && capped.score_award.disposition == ScoreAwardDisposition::reaches_limit,
+        "native Tower source transition survives a rejected terminal score award");
+
+    const auto waiting_for_bonus_collision = consume_tower_bonus_stage_selection(
+        {.collision_ready = false, .hit_progress = 1U,
+         .remaining_armed_passes = 0U, .bonus_stage_selection_pending = true},
+        false);
+    const auto selected_bonus_stage = consume_tower_bonus_stage_selection(
+        waiting_for_bonus_collision.state, true);
+    check(
+        waiting_for_bonus_collision.disposition
+                == TowerBonusStageSelectionDisposition::waiting_for_collision
+            && selected_bonus_stage.disposition
+                == TowerBonusStageSelectionDisposition::bonus_stage_selected
+            && selected_bonus_stage.bonus_stage == 5U
+            && selected_bonus_stage.audio_command == 0x41U
+            && selected_bonus_stage.sets_tower_stage_flag
+            && selected_bonus_stage.requests_session_transition
+            && selected_bonus_stage.starts_next_tower_insect_cycle
+            && selected_bonus_stage.state.remaining_armed_passes == 5U
+            && !selected_bonus_stage.state.collision_ready
+            && !selected_bonus_stage.state.bonus_stage_selection_pending
+            && selected_bonus_stage.state.bonus_stage_transition_requested
+            && consume_tower_bonus_stage_selection(selected_bonus_stage.state, true)
+                    .disposition
+                == TowerBonusStageSelectionDisposition::transition_pending,
+        "native Tower 03:6136 selects BS-5 only for its later qualifying collision");
+}
+
+void test_native_tower_insect()
+{
+    using devils_crush::native_runtime::ActorBehavior;
+    using devils_crush::native_runtime::NativeGameplayState;
+    using devils_crush::native_runtime::ScoreState;
+    using devils_crush::native_runtime::TowerInsectContactDisposition;
+    using devils_crush::native_runtime::TowerInsectRuleScheduler;
+    using devils_crush::native_runtime::TowerInsectSourceDisposition;
+    using devils_crush::native_runtime::TowerInsectGenerationState;
+    using devils_crush::native_runtime::TowerInsectSpawnDisposition;
+    using devils_crush::native_runtime::TowerInsectSourceState;
+    using devils_crush::native_runtime::advance_tower_insect_source;
+    using devils_crush::native_runtime::begin_tower_insect_generation;
+    using devils_crush::native_runtime::consume_tower_insect_contact;
+    using devils_crush::native_runtime::resolve_tower_insect_contact;
+    using devils_crush::native_runtime::restart_tower_insect_generation;
+    using devils_crush::native_runtime::spawn_tower_insect_child;
+
+    auto source = TowerInsectSourceState{};
+    const auto source_started = begin_tower_insect_generation(source, true);
+    source = source_started.state;
+    const auto first_spawn_request = advance_tower_insect_source(source);
+    source = first_spawn_request.state;
+    bool spawned_all_children = true;
+    for (std::uint8_t count = 0U; count < 4U; ++count) {
+        const auto step = spawn_tower_insect_child(source);
+        spawned_all_children = spawned_all_children
+            && step.disposition == TowerInsectSpawnDisposition::child_spawned;
+        source = step.state;
+        if (count + 1U < 4U) {
+            source.ticks_until_next_spawn = 1U;
+            const auto spawn_request = advance_tower_insect_source(source);
+            spawned_all_children = spawned_all_children
+                && spawn_request.disposition
+                    == TowerInsectSourceDisposition::child_spawn_requested;
+            source = spawn_request.state;
+        }
+    }
+    check(
+        source_started.disposition == TowerInsectSourceDisposition::generation_started
+            && source_started.state.generation_active
+            && first_spawn_request.disposition
+                == TowerInsectSourceDisposition::child_spawn_requested
+            && first_spawn_request.requests_child_spawn
+            && first_spawn_request.state.ticks_until_next_spawn == 0x30U
+            && spawned_all_children && source.spawns_remaining == 0U
+            && source.live_children == 4U
+            && spawn_tower_insect_child(source).disposition
+                == TowerInsectSpawnDisposition::source_exhausted,
+        "native Tower-insect source paces and limits one generation to four children");
+
+    const auto survived = consume_tower_insect_contact({}, source);
+    const auto completed = consume_tower_insect_contact(
+        survived.state, survived.source);
+    const auto inactive_source_rejected = consume_tower_insect_contact(
+        {}, {.live_children = 1U});
+    check(
+        survived.disposition == TowerInsectContactDisposition::survived_hit
+            && survived.state.hits_remaining == 1U
+            && survived.hit_score_award_units == 10U
+            && survived.audio_command == 0x29U
+            && completed.disposition == TowerInsectContactDisposition::child_completed
+            && completed.releases_child && completed.completion_score_award_units == 50U
+            && completed.source.live_children == 3U
+            && inactive_source_rejected.disposition
+                == TowerInsectContactDisposition::invalid_state,
+        "native Tower-insect rule preserves its two-hit score and release sequence");
+
+    const auto group_clear = consume_tower_insect_contact(
+        {.hits_remaining = 1U},
+        {.generation_active = true, .spawns_remaining = 0U, .live_children = 1U});
+    const auto scored = resolve_tower_insect_contact(
+        {.hits_remaining = 1U},
+        {.generation_active = true, .spawns_remaining = 0U, .live_children = 1U},
+        {.stored_units = 100U});
+    const auto source_clear = devils_crush::native_runtime::advance_tower_insect_source(
+        group_clear.source);
+    const auto waiting_for_cycle = restart_tower_insect_generation(
+        source_clear.state, false);
+    const auto restarted_generation = restart_tower_insect_generation(
+        source_clear.state, true);
+    check(
+        group_clear.disposition == TowerInsectContactDisposition::group_clear_armed
+            && group_clear.source.group_clear_pending
+            && source_clear.disposition
+                == TowerInsectSourceDisposition::group_clear_awarded
+            && source_clear.score_award_units == 200U
+            && waiting_for_cycle.disposition
+                == TowerInsectSourceDisposition::waiting_for_next_cycle
+            && restarted_generation.disposition
+                == TowerInsectSourceDisposition::generation_restarted
+            && restarted_generation.state.spawns_remaining == 4U
+            && restarted_generation.state.live_children == 0U
+            && scored.completion_score_award.state.stored_units == 160U,
+        "native Tower-insect source gates its next generation after the 200-unit award");
+
+    ScoreState score{};
+    TowerInsectRuleScheduler scheduler(score);
+    const auto scheduled_generation_started = scheduler.begin_generation(true);
+    const auto first_scheduled_spawn_request = scheduler.advance_source(0x2CU);
+    const auto first_spawn = scheduler.spawn_child(0x64U);
+    std::optional<devils_crush::native_runtime::TowerInsectSourceStep>
+        second_scheduled_spawn_request;
+    for (std::uint8_t tick = 0U; tick < 0x30U; ++tick) {
+        second_scheduled_spawn_request = scheduler.advance_source(0x2CU);
+    }
+    const auto second_spawn = scheduler.spawn_child(0x67U);
+    const bool source_has_two_children = scheduler.insect(0x64U)
+        && scheduler.source().live_children == 2U;
+    const bool duplicate_claim_rejected = !scheduler.spawn_child(0x64U)
+        && !scheduler.spawn_child(0x65U);
+    const devils_crush::native_runtime::ContactDispatch contact{
+        .target = {.actor_slot = 0x64U, .marked_for_response = true},
+        .disposition = devils_crush::native_runtime::ContactDisposition::dispatched,
+    };
+    const auto queued_first_hit = scheduler.queue_confirmed_contact(contact);
+    const auto scheduled_first_hit = scheduler.advance_actor(0x64U);
+    const auto queued_terminal_hit = scheduler.queue_confirmed_contact(contact);
+    const auto scheduled_terminal_hit = scheduler.advance_actor(0x64U);
+    check(
+        scheduled_generation_started
+            && scheduled_generation_started->disposition
+                == TowerInsectSourceDisposition::generation_started
+            && first_scheduled_spawn_request
+            && first_scheduled_spawn_request->requests_child_spawn
+            && second_scheduled_spawn_request
+            && second_scheduled_spawn_request->requests_child_spawn
+            && first_spawn && second_spawn && source_has_two_children
+            && queued_first_hit && scheduled_first_hit
+            && queued_terminal_hit && scheduled_terminal_hit
+            && !scheduler.insect(0x64U) && scheduler.source().live_children == 1U
+            && score.stored_units == 70U
+            && duplicate_claim_rejected,
+        "native Tower-insect scheduler owns dynamic child contact, score, and release");
+
+    ScoreState cycle_score{};
+    TowerInsectRuleScheduler cycle_scheduler(cycle_score);
+    const TowerInsectGenerationState final_child_generation{
+        .source = {.generation_active = true, .spawns_remaining = 0U,
+                   .live_children = 1U},
+        .insects = {devils_crush::native_runtime::TowerInsectState{
+            .hits_remaining = 1U}},
+    };
+    const bool final_child_seeded = cycle_scheduler.seed(final_child_generation);
+    const bool final_child_queued = cycle_scheduler.queue_confirmed_contact(contact);
+    const auto final_child_completed = cycle_scheduler.advance_actor(0x64U);
+    const auto group_awarded = cycle_scheduler.advance_source(0x2CU);
+    const auto scheduler_waiting = cycle_scheduler.restart_generation(false);
+    const auto scheduler_restarted = cycle_scheduler.restart_generation(true);
+    check(
+        final_child_seeded && final_child_queued && final_child_completed
+            && group_awarded && scheduler_waiting
+            && scheduler_waiting->disposition
+                == TowerInsectSourceDisposition::waiting_for_next_cycle
+            && scheduler_restarted
+            && scheduler_restarted->disposition
+                == TowerInsectSourceDisposition::generation_restarted
+            && cycle_scheduler.source().spawns_remaining == 4U
+            && !cycle_scheduler.insect(0x64U) && cycle_score.stored_units == 260U,
+        "native Tower-insect scheduler restarts only on the Tower-owned cycle latch");
+
+    NativeGameplayState gameplay;
+    const auto native_generation_started = gameplay.begin_tower_insect_generation(true);
+    const auto native_spawn_requested = gameplay.advance_tower_insect_source(0x2CU);
+    const auto native_spawn = gameplay.spawn_tower_insect_child(0x64U);
+    const auto* claimed_insect = gameplay.actors().actor(0x64U);
+    const bool insect_claimed = claimed_insect
+        && claimed_insect->behavior == ActorBehavior::tower_insect
+        && claimed_insect->appearance == 0x39U
+        && claimed_insect->collision_effect_association == 0x8CU;
+    const auto first_native_contact = gameplay.confirm_actor_contact({
+        .actor_slot = 0x64U,
+        .response_kind = 2U,
+    });
+    const auto first_native_hit = gameplay.advance_tower_insect_actor(0x64U);
+    gameplay.physics().contact = {};
+    const auto terminal_native_contact = gameplay.confirm_actor_contact({
+        .actor_slot = 0x64U,
+        .response_kind = 2U,
+    });
+    const auto terminal_native_hit = gameplay.advance_tower_insect_actor(0x64U);
+    const auto tower_insect_audio = gameplay.take_audio_events();
+    const auto* released_insect = gameplay.actors().actor(0x64U);
+    check(
+        native_generation_started && native_spawn_requested
+            && native_spawn_requested->requests_child_spawn && native_spawn
+            && insect_claimed
+            && first_native_contact.tower_insect_queued && first_native_hit
+            && terminal_native_contact.tower_insect_queued && terminal_native_hit
+            && terminal_native_hit->insect.releases_child && released_insect
+            && !released_insect->active() && gameplay.score().stored_units == 70U
+            && tower_insect_audio
+                == std::vector<devils_crush::native_runtime::GameplayAudioEvent>{
+                    {
+                        .slot = 0x64U,
+                        .source = devils_crush::native_runtime::GameplayAudioSource::tower_insect,
+                        .command = 0x29U,
+                    },
+                    {
+                        .slot = 0x64U,
+                        .source = devils_crush::native_runtime::GameplayAudioSource::tower_insect,
+                        .command = 0x29U,
+                    },
+                },
+        "native Tower-insect lifecycle claims/releases its actor and preserves both hit audio events");
+
+    NativeGameplayState effect_gameplay;
+    static_cast<void>(effect_gameplay.begin_tower_insect_generation(true));
+    static_cast<void>(effect_gameplay.advance_tower_insect_source(0x2CU));
+    static_cast<void>(effect_gameplay.spawn_tower_insect_child(0x64U));
+    const auto effect_contact = effect_gameplay.confirm_actor_contact({
+        .actor_slot = 0x64U,
+        .response_kind = 2U,
+    });
+    const auto effect_hit = effect_gameplay
+        .advance_tower_insect_actor_with_collision_effect(0x64U, 0x65U);
+    effect_gameplay.physics().contact = {};
+    const auto terminal_effect_contact = effect_gameplay.confirm_actor_contact({
+        .actor_slot = 0x64U,
+        .response_kind = 2U,
+    });
+    const auto terminal_effect_hit = effect_gameplay
+        .advance_tower_insect_actor_with_collision_effect(0x64U, 0x66U);
+    const auto effect_audio = effect_gameplay.take_audio_events();
+    const auto* active_effect = effect_gameplay.actors().actor(0x65U);
+    const auto* completed_child = effect_gameplay.actors().actor(0x64U);
+    check(
+        effect_contact.tower_insect_queued && effect_hit
+            && effect_hit->collision_effect
+            && effect_hit->collision_effect->disposition
+                == devils_crush::native_runtime::CollisionEffectAllocationDisposition::allocated
+            && effect_hit->collision_effect->effect
+            && effect_hit->collision_effect->effect->source_appearance == 0x39U
+            && effect_hit->collision_effect->effect->source_association == 0x8CU
+            && terminal_effect_contact.tower_insect_queued && terminal_effect_hit
+            && terminal_effect_hit->collision_effect
+            && terminal_effect_hit->collision_effect->disposition
+                == devils_crush::native_runtime::CollisionEffectAllocationDisposition::source_already_has_effect
+            && active_effect && active_effect->behavior == ActorBehavior::collision_effect
+            && completed_child && !completed_child->active()
+            && effect_audio
+                == std::vector<devils_crush::native_runtime::GameplayAudioEvent>{
+                    {
+                        .slot = 0x64U,
+                        .source = devils_crush::native_runtime::GameplayAudioSource::tower_insect,
+                        .command = 0x29U,
+                    },
+                    {
+                        .slot = 0x64U,
+                        .source = devils_crush::native_runtime::GameplayAudioSource::tower_insect,
+                        .command = 0x29U,
+                    },
+                },
+        "native Tower-insect contacts preserve appearance, effect order, and audio through the shared effect");
+}
+
+void test_native_tower_insect_capture()
+{
+    using devils_crush::native_runtime::CollisionEffectAdvanceDisposition;
+    using devils_crush::native_runtime::GameStateView;
+    using devils_crush::native_runtime::NativeGameplayState;
+    using devils_crush::native_runtime::apply_native_gameplay_bootstrap;
+    using devils_crush::native_runtime::capture_collision_effect;
+    using devils_crush::native_runtime::capture_native_gameplay_bootstrap;
+    using devils_crush::native_runtime::capture_tower_insect_generation;
+    using devils_crush::native_runtime::kTowerInsectSourceSlot;
+
+    std::array<std::byte, GameStateView::kWorkRamSize> work_ram{};
+    const auto store = [&work_ram](
+                           const std::size_t offset,
+                           const std::uint8_t value) {
+        work_ram[offset] = static_cast<std::byte>(value);
+    };
+    const auto seed_actor = [&store](
+                                const std::uint8_t slot,
+                                const std::uint16_t handler,
+                                const std::uint8_t hits) {
+        store(0x1000U + slot, 0x82U);
+        store(0x1800U + slot, 0x00U);
+        store(0x1C00U + slot, hits);
+        store(0x1F00U + slot, static_cast<std::uint8_t>(handler));
+        store(0x1F80U + slot, static_cast<std::uint8_t>(handler >> 8U));
+    };
+
+    seed_actor(kTowerInsectSourceSlot, 0x5F5FU, 0U);
+    store(0x1B00U + kTowerInsectSourceSlot, 0x00U);
+    store(0x0D2BU, 0x02U);
+    store(0x1A00U + kTowerInsectSourceSlot, 0x30U);
+    store(0x1900U + kTowerInsectSourceSlot, 0x39U);
+    store(0x1D00U + kTowerInsectSourceSlot, 0x8CU);
+    seed_actor(0x64U, 0x6016U, 2U);
+    seed_actor(0x6AU, 0x6016U, 1U);
+    store(0x1900U + 0x64U, 0x39U);
+    store(0x1900U + 0x6AU, 0x39U);
+    store(0x1D00U + 0x64U, 0x8CU);
+    store(0x1D00U + 0x6AU, 0x8CU);
+
+    const GameStateView state(work_ram);
+    const auto captured = capture_tower_insect_generation(state);
+    NativeGameplayState gameplay;
+    const bool seeded = captured
+        && gameplay.seed_tower_insect_generation(captured->generation);
+    check(
+        captured && captured->source_actor.index == kTowerInsectSourceSlot
+            && captured->generation.source.spawns_remaining == 0U
+            && captured->generation.source.live_children == 2U
+            && captured->generation.source.child_appearance == 0x39U
+            && captured->generation.source.child_collision_effect_association == 0x8CU
+            && captured->generation.insects[0U]
+            && captured->generation.insects[0U]->hits_remaining == 2U
+            && captured->generation.insects[0U]->appearance == 0x39U
+            && captured->generation.insects[0U]->collision_effect_association == 0x8CU
+            && captured->generation.insects[2U]
+            && captured->generation.insects[2U]->hits_remaining == 1U
+            && seeded && gameplay.tower_insect(0x64U)
+            && gameplay.tower_insect(0x64U)->hits_remaining == 2U
+            && gameplay.tower_insect(0x6AU)
+            && gameplay.tower_insect(0x6AU)->hits_remaining == 1U
+            && gameplay.actors().actor(0x64U)->appearance == 0x39U
+            && gameplay.actors().actor(0x64U)->collision_effect_association == 0x8CU
+            && gameplay.actors().actor(0x6AU)->appearance == 0x39U
+            && gameplay.actors().actor(0x6AU)->collision_effect_association == 0x8CU,
+        "native Tower-insect capture seeds a coherent steady generation");
+
+    store(0x1000U, 0x81U);
+    const auto bootstrap = capture_native_gameplay_bootstrap(state);
+    NativeGameplayState bootstrapped_gameplay;
+    const bool bootstrap_applied = bootstrap
+        && apply_native_gameplay_bootstrap(bootstrapped_gameplay, *bootstrap);
+    check(
+        bootstrap_applied && bootstrap->tower_insects
+            && bootstrap->tower_insects->generation == captured
+            && bootstrapped_gameplay.tower_insect(0x64U)
+            && bootstrapped_gameplay.tower_insect(0x64U)->hits_remaining == 2U
+            && bootstrapped_gameplay.tower_insect(0x6AU)
+            && bootstrapped_gameplay.tower_insect(0x6AU)->hits_remaining == 1U,
+        "native gameplay bootstrap restores a coherent Tower-Insect generation");
+    store(0x1000U, 0x00U);
+
+    store(0x1900U + 0x6AU, 0x3AU);
+    check(
+        !capture_tower_insect_generation(state),
+        "native Tower-insect capture rejects a child with a mismatched source appearance");
+    store(0x1900U + 0x6AU, 0x39U);
+    store(0x1D00U + 0x6AU, 0x7CU);
+    check(
+        !capture_tower_insect_generation(state),
+        "native Tower-insect capture rejects a child with a mismatched source association");
+    store(0x1D00U + 0x6AU, 0x8FU);
+    check(
+        capture_tower_insect_generation(state)
+            && capture_tower_insect_generation(state)->generation.insects[2U]
+            && capture_tower_insect_generation(state)->generation.insects[2U]
+                   ->collision_effect_association
+                == 0x8FU,
+        "native Tower-insect capture retains a live shared-effect association");
+    store(0x1D00U + 0x6AU, 0x8CU);
+
+    store(0x1D00U + 0x64U, 0x8FU);
+    store(0x1000U + 0x65U, 0x8FU);
+    store(0x1080U + 0x65U, 0xE0U);
+    store(0x1900U + 0x65U, 0x39U);
+    store(0x1D80U + 0x65U, 0x04U);
+    store(0x1E00U + 0x65U, 0x64U);
+    store(0x1E80U + 0x65U, 0x8CU);
+    store(0x1F00U + 0x65U, 0x34U);
+    store(0x1F80U + 0x65U, 0x7CU);
+    const auto effect_generation = capture_tower_insect_generation(state);
+    const auto effect_capture = capture_collision_effect(state, 0x65U);
+    NativeGameplayState effect_gameplay;
+    const bool effect_generation_seeded = effect_generation
+        && effect_gameplay.seed_tower_insect_generation(effect_generation->generation);
+    const bool effect_seeded = effect_capture
+        && effect_gameplay.seed_collision_effect(0x65U, effect_capture->effect);
+    const auto* effect_source = effect_gameplay.actors().actor(0x64U);
+    const auto* captured_effect_actor = effect_gameplay.actors().actor(0x65U);
+    check(
+        effect_generation_seeded && effect_seeded && effect_source
+            && effect_source->collision_effect_active
+            && effect_source->collision_effect_association == 0x8FU
+            && captured_effect_actor
+            && captured_effect_actor->collision_effect
+            && captured_effect_actor->collision_effect->ticks_remaining == 4U,
+        "native Tower-insect capture seeds an associated live collision effect");
+
+    store(0x1000U, 0x81U);
+    const auto effect_bootstrap = capture_native_gameplay_bootstrap(state);
+    NativeGameplayState effect_bootstrapped_gameplay;
+    const bool effect_bootstrap_applied = effect_bootstrap
+        && apply_native_gameplay_bootstrap(effect_bootstrapped_gameplay,
+            *effect_bootstrap);
+    const auto* bootstrapped_effect = effect_bootstrapped_gameplay.actors().actor(0x65U);
+    check(
+        effect_bootstrap_applied && effect_bootstrap->tower_insects
+            && effect_bootstrap->tower_insects->collision_effects[0U]
+                == effect_capture
+            && bootstrapped_effect && bootstrapped_effect->collision_effect
+            && bootstrapped_effect->collision_effect->ticks_remaining == 4U,
+        "native gameplay bootstrap restores a Tower-Insect collision-effect child");
+    store(0x1000U, 0x00U);
+
+    std::vector<NativeGameplayState::ActorPhaseUpdate> effect_expiry_updates;
+    for (std::uint8_t tick = 0U; tick < 4U; ++tick) {
+        effect_expiry_updates = effect_gameplay.advance_actor_phase();
+    }
+    effect_source = effect_gameplay.actors().actor(0x64U);
+    captured_effect_actor = effect_gameplay.actors().actor(0x65U);
+    check(
+        effect_expiry_updates.size() == 1U
+            && effect_expiry_updates.front().kind
+                == NativeGameplayState::ActorPhaseUpdateKind::collision_effect
+            && effect_expiry_updates.front().collision_effect
+            && effect_expiry_updates.front().collision_effect->step.disposition
+                == CollisionEffectAdvanceDisposition::expired
+            && effect_source && !effect_source->collision_effect_active
+            && effect_source->collision_effect_association == 0x8CU
+            && captured_effect_actor && !captured_effect_actor->active(),
+        "native Tower-insect effect capture restores its source association on expiry");
+    store(0x1D00U + 0x64U, 0x8CU);
+
+    store(0x1C00U + 0x6AU, 0x00U);
+    check(
+        !capture_tower_insect_generation(state),
+        "native Tower-insect capture excludes a completed child transition");
+    store(0x1C00U + 0x6AU, 0x01U);
+    store(0x0D2BU, 0x03U);
+    check(
+        !capture_tower_insect_generation(state),
+        "native Tower-insect capture rejects a mismatched live-child count");
+    store(0x0D2BU, 0x02U);
+    store(0x1F00U + kTowerInsectSourceSlot, 0x4AU);
+    store(0x1B00U + kTowerInsectSourceSlot, 0x02U);
+    const auto spawning_capture = capture_tower_insect_generation(state);
+    NativeGameplayState spawning_gameplay;
+    const bool spawning_seeded = spawning_capture
+        && spawning_gameplay.seed_tower_insect_generation(
+            spawning_capture->generation);
+    static_cast<void>(spawning_gameplay.advance_tower_insect_source(
+        kTowerInsectSourceSlot));
+    check(
+        spawning_capture && spawning_capture->generation.source.spawns_remaining == 2U
+            && spawning_capture->generation.source.ticks_until_next_spawn == 0x30U
+            && spawning_seeded
+            && spawning_gameplay.tower_insect_source().ticks_until_next_spawn
+                == 0x2FU,
+        "native Tower-insect capture resumes the source spawn countdown");
+    store(0x0D2BU, 0x01U);
+    store(0x1000U + 0x6AU, 0x00U);
+    check(
+        capture_tower_insect_generation(state)
+            && capture_tower_insect_generation(state)->generation.source.live_children
+                == 1U
+            && !capture_tower_insect_generation(state)->generation.insects[2U],
+        "native Tower-insect capture permits a destroyed child before spawning ends");
+    store(0x0D2BU, 0x02U);
+    store(0x1000U + 0x6AU, 0x82U);
+    store(0x1A00U + kTowerInsectSourceSlot, 0x00U);
+    check(
+        !capture_tower_insect_generation(state),
+        "native Tower-insect capture excludes an expired source countdown");
+    store(0x1A00U + kTowerInsectSourceSlot, 0x30U);
+    store(0x1B00U + kTowerInsectSourceSlot, 0x03U);
+    check(
+        !capture_tower_insect_generation(state),
+        "native Tower-insect capture rejects a mismatched spawn budget");
+    store(0x1B00U + kTowerInsectSourceSlot, 0x00U);
+    store(0x1F00U + kTowerInsectSourceSlot, 0x5FU);
+
+    const GameStateView truncated(
+        std::span<const std::byte>(work_ram).first(work_ram.size() - 1U));
+    check(
+        !capture_tower_insect_generation(truncated)
+            && !truncated.tower_insect_source(kTowerInsectSourceSlot),
+        "native Tower-insect capture rejects a truncated work-RAM image");
+}
+
+void test_native_tower_guard()
+{
+    using devils_crush::native_runtime::NativeGameplayState;
+    using devils_crush::native_runtime::TowerGuardSelectorDisposition;
+    using devils_crush::native_runtime::kTowerGuardClosedSelector;
+    using devils_crush::native_runtime::kTowerGuardOpenSelector;
+    using devils_crush::native_runtime::kTowerGuardSlot;
+    using devils_crush::native_runtime::select_tower_guard_selector;
+
+    const auto closed = select_tower_guard_selector({.remaining_armed_passes = 5U});
+    const auto open = select_tower_guard_selector({.remaining_armed_passes = 0U});
+    check(
+        closed.disposition == TowerGuardSelectorDisposition::closed
+            && closed.completion_selector == kTowerGuardClosedSelector
+            && open.disposition
+                == TowerGuardSelectorDisposition::open_bonus_stage_entrance
+            && open.completion_selector == kTowerGuardOpenSelector,
+        "native Tower Guard maps the shared gate to its recovered selectors");
+
+    NativeGameplayState gameplay;
+    gameplay.seed_tower({.remaining_armed_passes = 0U});
+    gameplay.seed_tower_guard();
+    const auto native_open = gameplay.advance_tower_guard_actor(kTowerGuardSlot);
+    check(
+        !gameplay.advance_tower_guard_actor(0x2DU) && native_open
+            && *native_open == open,
+        "native gameplay state exposes the Tower Guard selector at its fixed slot");
+}
+
+void test_native_score_state()
+{
+    using devils_crush::native_runtime::ActorBehavior;
+    using devils_crush::native_runtime::ActorState;
+    using devils_crush::native_runtime::ScoreAwardDisposition;
+    using devils_crush::native_runtime::ScoreState;
+    using devils_crush::native_runtime::SmallSoldierContactDisposition;
+    using devils_crush::native_runtime::SmallSoldierGroupDisposition;
+    using devils_crush::native_runtime::SmallSoldierGroupState;
+    using devils_crush::native_runtime::apply_score_award;
+    using devils_crush::native_runtime::complete_small_soldier_group_child;
+    using devils_crush::native_runtime::consume_small_soldier_contact;
+    using devils_crush::native_runtime::resolve_small_soldier_completion_animation;
+    using devils_crush::native_runtime::resolve_small_soldier_contact;
+    using devils_crush::native_runtime::small_soldier_score_events;
+    using devils_crush::native_runtime::spawn_small_soldier_child;
+
+    const auto ordinary = apply_score_award({}, 30U);
+    check(
+        ordinary.disposition == ScoreAwardDisposition::applied
+            && ordinary.state.stored_units == 30U && ordinary.state.display_dirty,
+        "native score state applies a stored-score award and dirties presentation");
+    const auto zero = apply_score_award(ordinary.state, 0U);
+    check(
+        zero.disposition == ScoreAwardDisposition::applied
+            && zero.state == ordinary.state,
+        "native score state preserves a zero-unit event without changing state");
+    const auto limited = apply_score_award(
+        {.stored_units = ScoreState::kExclusiveLimit - 30U}, 30U);
+    check(
+        limited.disposition == ScoreAwardDisposition::reaches_limit
+            && limited.state.stored_units == ScoreState::kExclusiveLimit - 30U,
+        "native score state rejects an award that reaches the original limit");
+    const auto invalid_seed = apply_score_award(
+        {.stored_units = ScoreState::kExclusiveLimit}, 1U);
+    check(
+        invalid_seed.disposition == ScoreAwardDisposition::reaches_limit
+            && invalid_seed.state.stored_units == ScoreState::kExclusiveLimit,
+        "native score state rejects an already out-of-range capture seed");
+
+    const auto completed_child = consume_small_soldier_contact({
+        .hits_remaining = 1U,
+        .contact_pending = true,
+    });
+    check(
+        completed_child.disposition == SmallSoldierContactDisposition::completed,
+        "native score events receive a terminal Small-Soldier child result");
+    auto group = SmallSoldierGroupState{};
+    for (std::uint8_t child = 0U; child < 5U; ++child) {
+        group = spawn_small_soldier_child(group).state;
+    }
+    for (std::uint8_t child = 0U; child < 4U; ++child) {
+        group = complete_small_soldier_group_child(group).state;
+    }
+    const auto final_group = complete_small_soldier_group_child(group);
+    check(
+        final_group.disposition == SmallSoldierGroupDisposition::source_completed,
+        "native score events receive a terminal Small-Soldier source result");
+    const auto events = small_soldier_score_events(completed_child, final_group);
+    check(
+        events.count == 3U && events.awards[0] == 30U
+            && events.awards[1] == 50U && events.awards[2] == 200U,
+        "native Small-Soldier score events preserve hit, child, then source order");
+
+    ScoreState score{};
+    for (std::uint8_t index = 0U; index < events.count; ++index) {
+        score = apply_score_award(score, events.awards[index]).state;
+    }
+    check(
+        score.stored_units == 280U && score.display_dirty,
+        "native score state consumes all Small-Soldier terminal effects");
+
+    ActorState actors;
+    ScoreState ruled_score{};
+    check(
+        actors.claim_dynamic_slot(0x04U, ActorBehavior::small_soldier)
+            && actors.configure_small_soldier(0x04U, {.hits_remaining = 1U}),
+        "native Small-Soldier rules receive a configured actor");
+    const auto terminal_rule = resolve_small_soldier_contact(
+        actors,
+        ruled_score,
+        0x04U);
+    check(
+        terminal_rule && terminal_rule->score_award_count == 2U
+            && terminal_rule->score_awards[0].awarded_units == 30U
+            && terminal_rule->score_awards[1].awarded_units == 50U
+            && ruled_score.stored_units == 80U
+            && !actors.actor(0x04U)->active(),
+        "native Small-Soldier rules apply terminal hit and completion scores separately");
+
+    check(
+        actors.claim_dynamic_slot(0x04U, ActorBehavior::small_soldier)
+            && actors.configure_small_soldier(0x04U, {
+                .hits_remaining = 1U,
+                .subtype = 0x0FU,
+            }),
+        "native Small-Soldier rules receive the deferred subtype");
+    const auto deferred_rule = resolve_small_soldier_contact(
+        actors,
+        ruled_score,
+        0x04U);
+    const auto deferred_completion_rule = resolve_small_soldier_completion_animation(
+        actors,
+        ruled_score,
+        0x04U);
+    check(
+        deferred_rule && deferred_rule->score_award_count == 1U
+            && deferred_rule->score_awards[0].awarded_units == 30U
+            && deferred_completion_rule
+            && deferred_completion_rule->score_award_count == 1U
+            && deferred_completion_rule->score_awards[0].awarded_units == 50U
+            && ruled_score.stored_units == 160U,
+        "native Small-Soldier rules preserve the deferred animation score boundary");
+
+    ActorState limited_actors;
+    ScoreState limited_score{.stored_units = ScoreState::kExclusiveLimit - 20U};
+    check(
+        limited_actors.claim_dynamic_slot(0x04U, ActorBehavior::small_soldier)
+            && limited_actors.configure_small_soldier(0x04U, {
+                .hits_remaining = 1U,
+            }),
+        "native Small-Soldier rules receive a near-limit score case");
+    const auto limited_rule = resolve_small_soldier_contact(
+        limited_actors,
+        limited_score,
+        0x04U);
+    check(
+        limited_rule && limited_rule->score_award_count == 2U
+            && limited_rule->score_awards[0].disposition
+                == ScoreAwardDisposition::reaches_limit
+            && limited_rule->score_awards[1].disposition
+                == ScoreAwardDisposition::reaches_limit
+            && limited_score.stored_units == ScoreState::kExclusiveLimit - 20U,
+        "native Small-Soldier rules preserve independent score-limit decisions");
+}
+
+void test_native_small_soldier_rule_scheduler()
+{
+    using devils_crush::native_runtime::ActorBehavior;
+    using devils_crush::native_runtime::ActorState;
+    using devils_crush::native_runtime::ContactDispatch;
+    using devils_crush::native_runtime::ContactDisposition;
+    using devils_crush::native_runtime::ContactState;
+    using devils_crush::native_runtime::ContactTarget;
+    using devils_crush::native_runtime::ScoreState;
+    using devils_crush::native_runtime::SmallSoldierContactDisposition;
+    using devils_crush::native_runtime::SmallSoldierRuleScheduler;
+    using devils_crush::native_runtime::dispatch_contact;
+
+    ActorState actors;
+    ScoreState score;
+    SmallSoldierRuleScheduler scheduler(actors, score);
+    constexpr std::uint8_t kSlot = 0x04U;
+    check(
+        actors.claim_dynamic_slot(kSlot, ActorBehavior::small_soldier)
+            && actors.configure_small_soldier(kSlot),
+        "native Small-Soldier scheduler receives an initialized actor");
+
+    const auto confirmed = dispatch_contact(
+        {},
+        {.actor_slot = kSlot, .response_kind = 2U});
+    check(
+        confirmed.disposition == ContactDisposition::dispatched
+            && confirmed.target.marked_for_response
+            && scheduler.queue_confirmed_contact(confirmed)
+            && scheduler.contact_queued(kSlot)
+            && !scheduler.queue_confirmed_contact(confirmed),
+        "native Small-Soldier scheduler preserves one confirmed contact until actor order reaches it");
+    const auto hit = scheduler.advance_actor(kSlot);
+    check(
+        hit && hit->actor.step.disposition
+                == SmallSoldierContactDisposition::survived_hit
+            && hit->score_award_count == 1U
+            && hit->score_awards[0].awarded_units == 30U
+            && hit->audio_command == 0x21U
+            && score.stored_units == 30U
+            && !scheduler.contact_queued(kSlot),
+        "native Small-Soldier scheduler consumes the mark in the later actor phase");
+    check(
+        !scheduler.advance_actor(kSlot),
+        "native Small-Soldier scheduler does not invent an unmarked second hit");
+
+    const ContactDispatch ignored{
+        .disposition = ContactDisposition::contact_already_handled,
+    };
+    check(
+        !scheduler.queue_confirmed_contact(ignored),
+        "native Small-Soldier scheduler rejects a contact dispatcher non-result");
+
+    const auto terminal_contact = dispatch_contact(
+        ContactState{.last_target = static_cast<std::uint8_t>(0x7FU)},
+        {.actor_slot = kSlot, .response_kind = 2U});
+    const auto terminal_queued = scheduler.queue_confirmed_contact(terminal_contact);
+    const auto terminal = scheduler.advance_actor(kSlot);
+    check(
+        terminal_queued && terminal
+            && terminal->actor.step.disposition
+                == SmallSoldierContactDisposition::completed
+            && terminal->score_award_count == 2U
+            && terminal->score_awards[0].awarded_units == 30U
+            && terminal->score_awards[1].awarded_units == 50U
+            && terminal->audio_command == 0x21U
+            && score.stored_units == 110U
+            && !actors.actor(kSlot)->active(),
+        "native Small-Soldier scheduler retains ordered hit and completion scores");
+
+    check(
+        actors.claim_dynamic_slot(kSlot, ActorBehavior::small_soldier)
+            && actors.configure_small_soldier(kSlot, {
+                .hits_remaining = 1U,
+                .subtype = 0x0FU,
+            }),
+        "native Small-Soldier scheduler prepares the deferred subtype");
+    const auto deferred_contact = dispatch_contact(
+        {}, {.actor_slot = kSlot, .response_kind = 2U});
+    const auto deferred = scheduler.queue_confirmed_contact(deferred_contact)
+        ? scheduler.advance_actor(kSlot)
+        : std::optional<devils_crush::native_runtime::SmallSoldierRulesUpdate>{};
+    const auto deferred_completion = scheduler.complete_animation(kSlot);
+    check(
+        deferred && deferred->actor.step.disposition
+                == SmallSoldierContactDisposition::awaiting_completion_animation
+            && deferred->score_award_count == 1U
+            && deferred->audio_command == 0x21U
+            && deferred_completion
+            && deferred_completion->actor.step.disposition
+                == SmallSoldierContactDisposition::completed
+            && deferred_completion->score_award_count == 1U
+            && deferred_completion->audio_command == 0U
+            && score.stored_units == 190U
+            && !actors.actor(kSlot)->active(),
+        "native Small-Soldier scheduler keeps deferred completion outside the contact queue");
+
+    ActorState stale_actors;
+    ScoreState stale_score;
+    SmallSoldierRuleScheduler stale_scheduler(stale_actors, stale_score);
+    check(
+        stale_actors.claim_dynamic_slot(kSlot, ActorBehavior::small_soldier)
+            && stale_actors.configure_small_soldier(kSlot)
+            && stale_scheduler.queue_confirmed_contact(dispatch_contact(
+                {}, {.actor_slot = kSlot, .response_kind = 2U})),
+        "native Small-Soldier scheduler queues a contact before a stale-slot check");
+    stale_actors.release(kSlot);
+    check(
+        !stale_scheduler.advance_actor(kSlot)
+            && !stale_scheduler.contact_queued(kSlot)
+            && stale_score.stored_units == 0U,
+        "native Small-Soldier scheduler discards a released slot's stale contact");
+}
+
+void test_native_dragon_head()
+{
+    using devils_crush::native_runtime::DragonHeadContactDisposition;
+    using devils_crush::native_runtime::DragonHeadState;
+    using devils_crush::native_runtime::NativeGameplayState;
+    using devils_crush::native_runtime::complete_dragon_head_hit_presentation;
+    using devils_crush::native_runtime::kDragonHeadSlot;
+    using devils_crush::native_runtime::resolve_dragon_head_contact;
+
+    const auto ordinary_hit = resolve_dragon_head_contact({}, {});
+    auto after_ordinary_hit = ordinary_hit.dragon.state;
+    const bool rearmed = complete_dragon_head_hit_presentation(after_ordinary_hit);
+    const auto terminal_hit = resolve_dragon_head_contact({
+        .hits_remaining = 1U,
+    }, {});
+    auto terminal_state = terminal_hit.dragon.state;
+    check(
+        ordinary_hit.dragon.disposition
+                == DragonHeadContactDisposition::survived_hit
+            && ordinary_hit.dragon.state.hits_remaining == 7U
+            && !ordinary_hit.dragon.state.collision_ready
+            && ordinary_hit.dragon.hit_score_award_units == 50U
+            && ordinary_hit.dragon.audio_command == 0x2EU
+            && ordinary_hit.dragon.requests_impact_effect
+            && ordinary_hit.dragon.requested_appearance == 3U
+            && ordinary_hit.hit_score_award.state.stored_units == 50U
+            && rearmed && after_ordinary_hit.collision_ready
+            && terminal_hit.dragon.disposition
+                == DragonHeadContactDisposition::mouth_opening_requested
+            && terminal_hit.dragon.state.hits_remaining == 0U
+            && terminal_hit.dragon.state.mouth_opening_transition_pending
+            && terminal_hit.dragon.hit_score_award_units == 50U
+            && terminal_hit.dragon.terminal_score_award_units == 50U
+            && terminal_hit.terminal_score_award.state.stored_units == 100U
+            && !complete_dragon_head_hit_presentation(terminal_state),
+        "native Dragon's Head preserves its eight-hit score/audio rule and distinct terminal mouth-opening handoff");
+
+    NativeGameplayState gameplay;
+    const auto contact = gameplay.confirm_actor_contact({
+        .actor_slot = kDragonHeadSlot,
+        .response_kind = 2U,
+    });
+    const auto phase = gameplay.advance_actor_phase();
+    const auto audio = gameplay.take_audio_events();
+    check(
+        contact.dragon_head_queued && phase.size() == 1U
+            && phase[0].slot == kDragonHeadSlot
+            && phase[0].kind
+                == NativeGameplayState::ActorPhaseUpdateKind::dragon_head_contact
+            && phase[0].dragon_head
+            && gameplay.score().stored_units == 50U
+            && audio
+                == std::vector<devils_crush::native_runtime::GameplayAudioEvent>{{
+                    .slot = kDragonHeadSlot,
+                    .source = devils_crush::native_runtime::GameplayAudioSource::dragon_head,
+                    .command = 0x2EU,
+                }}
+            && gameplay.complete_dragon_head_hit_presentation(kDragonHeadSlot)
+            && gameplay.dragon_head().collision_ready,
+        "native gameplay state queues the Dragon's Head in fixed actor order and hands its audio to the native dispatcher boundary");
+}
+
+void test_native_giant_face()
+{
+    using devils_crush::native_runtime::GiantFaceAnimatorDisposition;
+    using devils_crush::native_runtime::GiantFaceAnimatorMode;
+    using devils_crush::native_runtime::GiantFaceAnimatorState;
+    using devils_crush::native_runtime::GiantFaceControllerDisposition;
+    using devils_crush::native_runtime::GiantFaceControllerState;
+    using devils_crush::native_runtime::GiantFaceContactDisposition;
+    using devils_crush::native_runtime::GiantFaceHelmetDisposition;
+    using devils_crush::native_runtime::GiantFaceHelmetSide;
+    using devils_crush::native_runtime::GiantFaceHelmetState;
+    using devils_crush::native_runtime::GiantFaceState;
+    using devils_crush::native_runtime::NativeGameplayState;
+    using devils_crush::native_runtime::complete_giant_face_impact_presentation;
+    using devils_crush::native_runtime::complete_giant_face_mouth_opening;
+    using devils_crush::native_runtime::begin_giant_face_animator;
+    using devils_crush::native_runtime::advance_giant_face_animator;
+    using devils_crush::native_runtime::advance_giant_face_controller;
+    using devils_crush::native_runtime::advance_giant_face_helmet_channel;
+    using devils_crush::native_runtime::complete_giant_face_helmet_activation_presentation;
+    using devils_crush::native_runtime::complete_giant_face_helmet_ball_return;
+    using devils_crush::native_runtime::kGiantFaceCrownSlot;
+    using devils_crush::native_runtime::kGiantFaceMouthSlot;
+    using devils_crush::native_runtime::resolve_giant_face_crown_contact;
+    using devils_crush::native_runtime::resolve_giant_face_mouth_contact;
+    using devils_crush::native_runtime::request_giant_face_wake;
+    using devils_crush::native_runtime::request_giant_face_transformation;
+
+    const auto crown = resolve_giant_face_crown_contact({}, {});
+    auto crown_rearmed = crown.giant_face.state;
+    const auto closed_mouth = resolve_giant_face_mouth_contact({}, {});
+    auto opened_face = GiantFaceState{};
+    const bool mouth_opened = complete_giant_face_mouth_opening(opened_face);
+    const auto open_mouth = resolve_giant_face_mouth_contact(opened_face, {});
+    check(
+        crown.giant_face.disposition == GiantFaceContactDisposition::crown_scored
+            && crown.giant_face.score_award_units == 3U
+            && crown.giant_face.audio_command == 0x20U
+            && crown.giant_face.requests_impact_effect
+            && crown.giant_face.state.crown_impact_presentation_pending
+            && crown.score_award.state.stored_units == 3U
+            && complete_giant_face_impact_presentation(
+                crown_rearmed, kGiantFaceCrownSlot)
+            && crown_rearmed.crown_collision_ready
+            && closed_mouth.giant_face.disposition
+                == GiantFaceContactDisposition::closed_mouth_scored
+            && mouth_opened && opened_face.mouth_open
+            && open_mouth.giant_face.disposition
+                == GiantFaceContactDisposition::open_mouth_captured
+            && open_mouth.giant_face.score_award_units == 100U
+            && open_mouth.giant_face.audio_command == 0x41U
+            && open_mouth.giant_face.requests_bonus_stage_4
+            && open_mouth.giant_face.places_ball
+            && open_mouth.giant_face.ball_horizontal_pixels == 144
+            && open_mouth.giant_face.ball_vertical_pixels == 344
+            && open_mouth.score_award.state.stored_units == 100U,
+        "native Giant Face keeps crown, closed-mouth, and open-mouth collision rules distinct");
+
+    GiantFaceAnimatorState lower_animator{};
+    const bool lower_started = begin_giant_face_animator(
+        lower_animator, GiantFaceAnimatorMode::lower_forms);
+    const auto lower_first = advance_giant_face_animator(lower_animator);
+    const auto lower_wait = advance_giant_face_animator(lower_first.state);
+    auto lower_cycle = lower_first.state;
+    for (std::uint8_t tick = 0U; tick < 7U; ++tick) {
+        lower_cycle = advance_giant_face_animator(lower_cycle).state;
+    }
+    const auto lower_second = advance_giant_face_animator(lower_cycle);
+
+    GiantFaceAnimatorState upper_animator{};
+    const bool upper_started = begin_giant_face_animator(
+        upper_animator, GiantFaceAnimatorMode::upper_forms);
+    const auto upper_first = advance_giant_face_animator(upper_animator);
+    const bool idle_rejected = !begin_giant_face_animator(
+        upper_animator, GiantFaceAnimatorMode::idle);
+    check(
+        lower_started
+            && lower_first.disposition
+                == GiantFaceAnimatorDisposition::form_advanced
+            && lower_first.state.displayed_form == 1U
+            && lower_first.state.ticks_until_next_form == 8U
+            && lower_wait.disposition == GiantFaceAnimatorDisposition::waiting
+            && lower_wait.state.ticks_until_next_form == 7U
+            && lower_second.disposition
+                == GiantFaceAnimatorDisposition::form_advanced
+            && lower_second.state.displayed_form == 2U
+            && upper_started
+            && upper_first.disposition
+                == GiantFaceAnimatorDisposition::form_advanced
+            && upper_first.state.displayed_form == 4U
+            && idle_rejected,
+        "native Giant Face animator preserves the source-defined first delay and bounded form ranges");
+
+    const auto helmet_idle = advance_giant_face_helmet_channel({}, 0x2AU, false);
+    const auto helmet_wait = advance_giant_face_helmet_channel(
+        helmet_idle.state, 0x2AU, false);
+    const auto helmet_hit = advance_giant_face_helmet_channel(
+        helmet_wait.state, 0x2AU, true);
+    const auto helmet_completion = complete_giant_face_helmet_activation_presentation(
+        helmet_hit.state, 0x2AU);
+    auto helmet_rearmed = helmet_completion.state;
+    const bool helmet_returned = complete_giant_face_helmet_ball_return(
+        helmet_rearmed, 0x2AU);
+    check(
+        helmet_idle.disposition == GiantFaceHelmetDisposition::appearance_advanced
+            && helmet_idle.state.channels[0U].appearance == 1U
+            && helmet_idle.state.channels[0U].ticks_until_appearance == 4U
+            && helmet_wait.disposition == GiantFaceHelmetDisposition::timer_waiting
+            && helmet_hit.disposition == GiantFaceHelmetDisposition::activation_started
+            && helmet_hit.score_award_units == 3U && helmet_hit.audio_command == 0x20U
+            && helmet_hit.requests_face_wake
+            && helmet_hit.requests_opening_presentation
+            && helmet_completion.completed && helmet_completion.audio_command == 0x25U
+            && helmet_completion.requests_ball_return
+            && helmet_completion.ball_return_side == GiantFaceHelmetSide::left
+            && helmet_returned && helmet_rearmed.channels[0U].collision_ready,
+        "native Giant Face helmet preserves its idle cadence, wake request, and side-specific ball-return handoff");
+
+    GiantFaceState waking_face{};
+    const bool wake_requested = request_giant_face_wake(waking_face);
+    const auto wake_started = advance_giant_face_controller({}, waking_face);
+    auto controller_state = wake_started.state;
+    auto controller_face = wake_started.face_state;
+    devils_crush::native_runtime::GiantFaceControllerStep wake_step{};
+    bool wake_timing_matches = wake_requested
+        && wake_started.disposition == GiantFaceControllerDisposition::wake_started;
+    for (std::uint8_t expected_step = 1U; expected_step <= 4U; ++expected_step) {
+        if (expected_step > 1U) {
+            for (std::uint8_t tick = 0U; tick < 3U; ++tick) {
+                const auto wait = advance_giant_face_controller(
+                    controller_state, controller_face);
+                wake_timing_matches = wake_timing_matches
+                    && wait.disposition == GiantFaceControllerDisposition::wake_waiting;
+                controller_state = wait.state;
+                controller_face = wait.face_state;
+            }
+        }
+        wake_step = advance_giant_face_controller(controller_state, controller_face);
+        wake_timing_matches = wake_timing_matches
+            && wake_step.state.wake_steps_completed == expected_step
+            && wake_step.requests_wake_effect;
+        controller_state = wake_step.state;
+        controller_face = wake_step.face_state;
+    }
+    check(
+        wake_timing_matches
+            && wake_step.disposition == GiantFaceControllerDisposition::wake_completed
+            && wake_step.starts_lower_form_animation
+            && wake_step.state.persisted_form == 1U
+            && !wake_step.face_state.wake_requested,
+        "native Giant Face controller consumes the helmet wake through the source-defined four-step cadence");
+
+    bool transformations_match = wake_step.state.accepts_transformations;
+    auto transforming_controller = wake_step.state;
+    auto transforming_face = wake_step.face_state;
+    devils_crush::native_runtime::GiantFaceControllerStep transformation{};
+    for (std::uint8_t expected = 2U; expected <= 5U; ++expected) {
+        transformations_match = transformations_match
+            && request_giant_face_transformation(transforming_face);
+        transformation = advance_giant_face_controller(
+            transforming_controller, transforming_face);
+        transformations_match = transformations_match
+            && transformation.disposition
+                == GiantFaceControllerDisposition::transformation_selected
+            && transformation.state.persisted_form == expected
+            && transformation.requests_transformation_effect
+            && transformation.starts_upper_form_animation == (expected == 4U);
+        transforming_controller = transformation.state;
+        transforming_face = transformation.face_state;
+    }
+    transformations_match = transformations_match
+        && request_giant_face_transformation(transforming_face);
+    const auto mouth_transformation = advance_giant_face_controller(
+        transforming_controller, transforming_face);
+    transforming_controller = mouth_transformation.state;
+    transforming_face = mouth_transformation.face_state;
+    transformations_match = transformations_match
+        && mouth_transformation.disposition == GiantFaceControllerDisposition::mouth_opened
+        && mouth_transformation.state.persisted_form == 6U
+        && mouth_transformation.face_state.mouth_open
+        && mouth_transformation.opens_mouth
+        && request_giant_face_transformation(transforming_face);
+    const auto final_transformation = advance_giant_face_controller(
+        transforming_controller, transforming_face);
+    check(
+        transformations_match
+            && final_transformation.disposition
+                == GiantFaceControllerDisposition::reset_completed
+            && final_transformation.state == GiantFaceControllerState{}
+            && final_transformation.stops_form_animation
+            && final_transformation.face_state.mouth_open,
+        "native Giant Face controller preserves the six selected forms, upper animator handoff, mouth opening, and final dormant reset");
+
+    NativeGameplayState gameplay;
+    const auto crown_contact = gameplay.confirm_actor_contact({
+        .actor_slot = kGiantFaceCrownSlot,
+        .response_kind = 2U,
+    });
+    const auto crown_phase = gameplay.advance_actor_phase();
+    const auto crown_audio = gameplay.take_audio_events();
+    const bool crown_ready = gameplay.complete_giant_face_impact_presentation(
+        kGiantFaceCrownSlot);
+
+    NativeGameplayState mouth_gameplay;
+    mouth_gameplay.seed_ball({
+        .position_x = {.raw = 1 * 256},
+        .position_y = {.raw = 2 * 256},
+    });
+    const bool native_mouth_opened = mouth_gameplay.complete_giant_face_mouth_opening();
+    const auto mouth_contact = mouth_gameplay.confirm_actor_contact({
+        .actor_slot = kGiantFaceMouthSlot,
+        .response_kind = 2U,
+    });
+    const auto mouth_phase = mouth_gameplay.advance_actor_phase();
+    const auto mouth_audio = mouth_gameplay.take_audio_events();
+
+    NativeGameplayState animator_gameplay;
+    const bool gameplay_animator_started = animator_gameplay.begin_giant_face_animator(
+        GiantFaceAnimatorMode::upper_forms);
+    const auto animator_phase = animator_gameplay.advance_actor_phase();
+
+    NativeGameplayState helmet_gameplay;
+    helmet_gameplay.seed_giant_face_helmet(GiantFaceHelmetState{});
+    const auto helmet_contact = helmet_gameplay.confirm_actor_contact({
+        .actor_slot = 0x2AU,
+        .response_kind = 2U,
+    });
+    const auto helmet_phase = helmet_gameplay.advance_actor_phase();
+    const auto helmet_audio = helmet_gameplay.take_audio_events();
+    const auto helmet_presentation =
+        helmet_gameplay.complete_giant_face_helmet_activation_presentation(0x2AU);
+    const auto helmet_completion_audio = helmet_gameplay.take_audio_events();
+    const bool gameplay_transformation_requested =
+        helmet_gameplay.request_giant_face_transformation();
+    check(
+        crown_contact.giant_face_queued && crown_phase.size() == 1U
+            && crown_phase[0].slot == kGiantFaceCrownSlot
+            && crown_phase[0].kind
+                == NativeGameplayState::ActorPhaseUpdateKind::giant_face_contact
+            && crown_phase[0].giant_face && crown_ready
+            && crown_audio
+                == std::vector<devils_crush::native_runtime::GameplayAudioEvent>{ {
+                    .slot = kGiantFaceCrownSlot,
+                    .source = devils_crush::native_runtime::GameplayAudioSource::giant_face,
+                    .command = 0x20U,
+                } }
+            && native_mouth_opened && mouth_contact.giant_face_queued
+            && mouth_phase.size() == 1U && mouth_phase[0].slot == kGiantFaceMouthSlot
+            && mouth_phase[0].giant_face
+            && mouth_gameplay.score().stored_units == 100U
+            && mouth_gameplay.physics().ball.position_x.raw == 144 * 256
+            && mouth_gameplay.physics().ball.position_y.raw == 344 * 256
+            && mouth_audio
+                == std::vector<devils_crush::native_runtime::GameplayAudioEvent>{ {
+                    .slot = kGiantFaceMouthSlot,
+                    .source = devils_crush::native_runtime::GameplayAudioSource::giant_face,
+                    .command = 0x41U,
+                } }
+            && gameplay_animator_started && animator_phase.size() == 1U
+            && animator_phase[0].slot
+                == devils_crush::native_runtime::kGiantFaceAnimatorSlot
+            && animator_phase[0].kind
+                == NativeGameplayState::ActorPhaseUpdateKind::giant_face_animator
+            && animator_phase[0].giant_face_animator
+            && animator_phase[0].giant_face_animator->state.displayed_form == 4U
+            && animator_gameplay.giant_face_animator().displayed_form == 4U
+            && helmet_contact.giant_face_helmet_queued && helmet_phase.size() == 3U
+            && helmet_phase[0].slot == 0x2AU
+            && helmet_phase[0].kind
+                == NativeGameplayState::ActorPhaseUpdateKind::giant_face_helmet
+            && helmet_phase[0].giant_face_helmet
+            && helmet_phase[2].slot
+                == devils_crush::native_runtime::kGiantFaceControllerSlot
+            && helmet_phase[2].kind
+                == NativeGameplayState::ActorPhaseUpdateKind::giant_face_controller
+            && helmet_phase[2].giant_face_controller
+            && helmet_phase[2].giant_face_controller->disposition
+                == GiantFaceControllerDisposition::wake_started
+            && helmet_gameplay.score().stored_units == 3U
+            && helmet_gameplay.giant_face().wake_requested
+            && helmet_audio
+                == std::vector<devils_crush::native_runtime::GameplayAudioEvent>{ {
+                    .slot = 0x2AU,
+                    .source = devils_crush::native_runtime::GameplayAudioSource::giant_face_helmet,
+                    .command = 0x20U,
+                } }
+            && helmet_presentation && helmet_presentation->requests_ball_return
+            && helmet_completion_audio
+                == std::vector<devils_crush::native_runtime::GameplayAudioEvent>{ {
+                    .slot = 0x2AU,
+                    .source = devils_crush::native_runtime::GameplayAudioSource::giant_face_helmet,
+                    .command = 0x25U,
+                } }
+            && helmet_gameplay.complete_giant_face_helmet_ball_return(0x2AU),
+        "native gameplay runs Giant Face collisions, helmet channels, and hidden animation at their fixed actor turns");
+    check(
+        gameplay_transformation_requested
+            && helmet_gameplay.giant_face().transformation_requested,
+        "native gameplay retains a Giant Face transformation signal until the awakened controller owns it");
+}
+
+void test_native_dragon_egg_cluster()
+{
+    using devils_crush::native_runtime::DragonEggClusterState;
+    using devils_crush::native_runtime::DragonEggCompletionDisposition;
+    using devils_crush::native_runtime::DragonEggFixedResetDisposition;
+    using devils_crush::native_runtime::DragonEggGroupResetDisposition;
+    using devils_crush::native_runtime::DragonEggHatchlingAdvanceDisposition;
+    using devils_crush::native_runtime::DragonEggHatchlingAllocationDisposition;
+    using devils_crush::native_runtime::DragonEggHitDisposition;
+    using devils_crush::native_runtime::NativeGameplayState;
+    using devils_crush::native_runtime::allocate_dragon_egg_hatchling;
+    using devils_crush::native_runtime::advance_dragon_egg_fixed_reset;
+    using devils_crush::native_runtime::begin_dragon_egg_group_reset;
+    using devils_crush::native_runtime::consume_dragon_egg_contact;
+    using devils_crush::native_runtime::kDragonEggControllerSlot;
+    using devils_crush::native_runtime::resolve_dragon_egg_hatchling;
+    using devils_crush::native_runtime::resolve_dragon_egg_contact;
+    using devils_crush::native_runtime::resolve_dragon_egg_controller;
+
+    const auto first_hit = resolve_dragon_egg_contact({}, 0x22U, {});
+    check(
+        first_hit.egg.disposition == DragonEggHitDisposition::destroyed
+            && !first_hit.egg.state.eggs[2U].active
+            && first_hit.egg.state.eggs[2U].hatchling_spawn_pending
+            && first_hit.egg.score_award_units == 10U
+            && first_hit.egg.audio_command == 0x39U
+            && first_hit.egg.requests_hatchling_spawn
+            && first_hit.score_award.state.stored_units == 10U,
+        "native Dragon's Egg destroys one fixed target and requests its hatchling");
+
+    const std::array<std::optional<
+        devils_crush::native_runtime::DragonEggHatchlingState>, 6U>
+        no_hatchlings{};
+    const auto allocation = allocate_dragon_egg_hatchling(
+        first_hit.egg.state, 0x22U, 0x64U, no_hatchlings);
+    const auto animated = resolve_dragon_egg_hatchling(
+        *allocation.hatchling, false, first_hit.score_award.state);
+    const auto released = resolve_dragon_egg_hatchling(
+        animated.hatchling.state, true, animated.score_award.state);
+    check(
+        allocation.disposition
+                == DragonEggHatchlingAllocationDisposition::allocated
+            && allocation.hatchling
+            && allocation.hatchling->position.horizontal_pixels == 68
+            && allocation.hatchling->position.vertical_pixels == 556
+            && allocation.hatchling->animation_timer == 3U
+            && !allocation.cluster.eggs[2U].hatchling_spawn_pending
+            && animated.hatchling.disposition
+                == DragonEggHatchlingAdvanceDisposition::animation_advanced
+            && animated.hatchling.state.animation_timer == 2U
+            && released.hatchling.disposition
+                == DragonEggHatchlingAdvanceDisposition::released_on_contact
+            && released.hatchling.score_award_units == 200U
+            && released.hatchling.audio_command == 0x34U
+            && released.score_award.state.stored_units == 210U,
+        "native Dragon's-Egg hatchling keeps allocation, animation, and terminal contact distinct");
+
+    auto cluster = first_hit.egg.state;
+    auto score = first_hit.score_award.state;
+    constexpr std::array<std::uint8_t, 5U> kRemainingEggSlots{
+        0x20U, 0x21U, 0x23U, 0x24U, 0x25U};
+    for (const auto slot : kRemainingEggSlots) {
+        const auto hit = resolve_dragon_egg_contact(cluster, slot, score);
+        cluster = hit.egg.state;
+        score = hit.score_award.state;
+    }
+    const auto completion = resolve_dragon_egg_controller(cluster, score);
+    const auto duplicate = consume_dragon_egg_contact(completion.controller.state, 0x22U);
+    check(
+        cluster.completion_pending && !cluster.completed
+            && completion.controller.disposition
+                == DragonEggCompletionDisposition::completion_requested
+            && completion.controller.requests_group_reset
+            && completion.controller.score_award_units == 100U
+            && completion.score_award.state.stored_units == 160U
+            && duplicate.disposition == DragonEggHitDisposition::ignored,
+        "native Dragon's-Egg controller keeps group completion separate from the last hit");
+
+    auto reset = begin_dragon_egg_group_reset(completion.controller.state);
+    for (const auto slot : kRemainingEggSlots) {
+        reset.state = advance_dragon_egg_fixed_reset(reset.state, slot).state;
+    }
+    const auto final_reset = advance_dragon_egg_fixed_reset(reset.state, 0x22U);
+    check(
+        reset.disposition == DragonEggGroupResetDisposition::reset_armed
+            && final_reset.disposition
+                == DragonEggFixedResetDisposition::cluster_reinitialized
+            && std::ranges::all_of(final_reset.state.eggs,
+                [](const auto& egg) { return egg.active; })
+            && !final_reset.state.completed && !final_reset.state.reset_pending,
+        "native Dragon's-Egg reset restores each fixed target in actor order");
+
+    NativeGameplayState gameplay;
+    gameplay.seed_dragon_egg_cluster(DragonEggClusterState{});
+    const auto contact = gameplay.confirm_actor_contact({
+        .actor_slot = 0x22U,
+        .response_kind = 2U,
+    });
+    const auto phase = gameplay.advance_actor_phase();
+    const auto audio = gameplay.take_audio_events();
+    const auto* seeded_cluster = gameplay.dragon_egg_cluster();
+    const auto gameplay_allocation = gameplay.allocate_dragon_egg_hatchling(
+        0x22U, 0x64U);
+    const auto hatchling_phase = gameplay.advance_actor_phase();
+    const bool hatchling_alive_after_tick =
+        gameplay.dragon_egg_hatchling(0x64U) != nullptr;
+    const auto hatchling_contact = gameplay.confirm_actor_contact({
+        .actor_slot = 0x64U,
+        .response_kind = 2U,
+    });
+    const auto hatchling_release_phase = gameplay.advance_actor_phase();
+    const auto hatchling_audio = gameplay.take_audio_events();
+    DragonEggClusterState completed_for_reset{};
+    for (auto& egg : completed_for_reset.eggs) {
+        egg.active = false;
+    }
+    completed_for_reset.completed = true;
+    NativeGameplayState reset_gameplay;
+    reset_gameplay.seed_dragon_egg_cluster(completed_for_reset);
+    const auto reset_arm = reset_gameplay.begin_dragon_egg_group_reset();
+    const auto reset_phase = reset_gameplay.advance_actor_phase();
+    check(
+        contact.dragon_egg_queued && phase.size() == 2U
+            && phase[0].slot == kDragonEggControllerSlot
+            && phase[0].kind
+                == NativeGameplayState::ActorPhaseUpdateKind::dragon_egg_controller
+            && phase[1].slot == 0x22U
+            && phase[1].kind
+                == NativeGameplayState::ActorPhaseUpdateKind::dragon_egg_contact
+            && phase[1].dragon_egg
+            && seeded_cluster && !seeded_cluster->eggs[2U].active
+            && audio
+                == std::vector<devils_crush::native_runtime::GameplayAudioEvent>{ {
+                    .slot = 0x22U,
+                    .source = devils_crush::native_runtime::GameplayAudioSource::dragon_egg,
+                    .command = 0x39U,
+                } }
+            && gameplay_allocation && hatchling_alive_after_tick
+            && hatchling_phase.size() == 2U
+            && hatchling_phase[1].slot == 0x64U
+            && hatchling_phase[1].kind
+                == NativeGameplayState::ActorPhaseUpdateKind::dragon_egg_hatchling
+            && hatchling_contact.dragon_egg_queued
+            && hatchling_release_phase.size() == 2U
+            && hatchling_release_phase[1].dragon_egg_hatchling
+            && hatchling_release_phase[1].dragon_egg_hatchling->hatchling.releases_child
+            && gameplay.dragon_egg_hatchling(0x64U) == nullptr
+            && hatchling_audio
+                == std::vector<devils_crush::native_runtime::GameplayAudioEvent>{ {
+                    .slot = 0x64U,
+                    .source = devils_crush::native_runtime::GameplayAudioSource::dragon_egg_hatchling,
+                    .command = 0x34U,
+                } }
+            && reset_arm && reset_phase.size() == 7U
+            && reset_phase[1].slot == 0x20U
+            && reset_phase[1].kind
+                == NativeGameplayState::ActorPhaseUpdateKind::dragon_egg_fixed_reset
+            && reset_phase.back().slot == 0x25U
+            && reset_phase.back().dragon_egg_fixed_reset
+            && reset_phase.back().dragon_egg_fixed_reset->disposition
+                == DragonEggFixedResetDisposition::cluster_reinitialized,
+        "native gameplay state delivers Dragon's-Egg child allocation and reset in actor order");
+}
+
+void test_native_giant_skeleton_eyeball()
+{
+    using devils_crush::native_runtime::DragonEggClusterState;
+    using devils_crush::native_runtime::GiantSkeletonEyeballDisposition;
+    using devils_crush::native_runtime::GiantSkeletonEyeballFinalStartDisposition;
+    using devils_crush::native_runtime::GiantSkeletonEyeballFinalResetDisposition;
+    using devils_crush::native_runtime::GiantSkeletonEyeballOpeningStartDisposition;
+    using devils_crush::native_runtime::GiantSkeletonEyeballState;
+    using devils_crush::native_runtime::NativeGameplayState;
+    using devils_crush::native_runtime::advance_giant_skeleton_eyeball;
+    using devils_crush::native_runtime::begin_giant_skeleton_eyeball_opening_countdown;
+    using devils_crush::native_runtime::begin_giant_skeleton_eyeball_final_animation;
+    using devils_crush::native_runtime::complete_giant_skeleton_eyeball_final_reset;
+    using devils_crush::native_runtime::kDragonEggControllerSlot;
+    using devils_crush::native_runtime::kGiantSkeletonEyeballSlot;
+
+    const auto dormant = advance_giant_skeleton_eyeball({}, false);
+    const auto opening = advance_giant_skeleton_eyeball(dormant.state, true);
+    const auto waiting = advance_giant_skeleton_eyeball(opening.state, true);
+    const auto countdown = begin_giant_skeleton_eyeball_opening_countdown(
+        opening.state);
+    const auto countdown_wait = advance_giant_skeleton_eyeball(
+        countdown.state, true);
+    auto expiring_state = countdown_wait.state;
+    expiring_state.opening_ticks_remaining = 1U;
+    const auto expiry = advance_giant_skeleton_eyeball(expiring_state, true);
+    const auto final_start = begin_giant_skeleton_eyeball_final_animation(
+        expiry.state, false);
+    const auto final_wait = advance_giant_skeleton_eyeball(
+        final_start.state, false);
+    auto final_expiring_state = final_wait.state;
+    final_expiring_state.final_ticks_remaining = 1U;
+    final_expiring_state.final_appearance_ticks_remaining = 1U;
+    const auto final_expiry = advance_giant_skeleton_eyeball(
+        final_expiring_state, false);
+    const auto final_reset = complete_giant_skeleton_eyeball_final_reset(
+        final_expiry.state);
+    const auto extended_final_start = begin_giant_skeleton_eyeball_final_animation(
+        expiry.state, true);
+    check(
+        dormant.disposition == GiantSkeletonEyeballDisposition::dormant
+            && opening.disposition
+                == GiantSkeletonEyeballDisposition::opening_requested
+            && opening.state.opening_transition_pending
+            && waiting.disposition
+                == GiantSkeletonEyeballDisposition::waiting_for_opening_transition
+            && countdown.disposition
+                == GiantSkeletonEyeballOpeningStartDisposition::countdown_started
+            && countdown.state.opening_ticks_remaining == 8U
+            && countdown_wait.disposition
+                == GiantSkeletonEyeballDisposition::opening_countdown_wait
+            && countdown_wait.state.opening_ticks_remaining == 7U
+            && expiry.disposition
+                == GiantSkeletonEyeballDisposition::opening_timer_expired
+            && expiry.state.opening_expiry_pending
+            && final_start.disposition
+                == GiantSkeletonEyeballFinalStartDisposition::final_animation_started
+            && final_start.state.final_ticks_remaining == 0x00E0U
+            && final_wait.disposition
+                == GiantSkeletonEyeballDisposition::final_animation_wait
+            && final_wait.state.final_ticks_remaining == 0x00DFU
+            && final_wait.state.final_appearance == 1U
+            && final_expiry.disposition
+                == GiantSkeletonEyeballDisposition::final_animation_completed
+            && final_expiry.state.final_reset_pending
+            && final_reset.disposition
+                == GiantSkeletonEyeballFinalResetDisposition::dormant_reinitialized
+            && final_reset.state == GiantSkeletonEyeballState{}
+            && extended_final_start.disposition
+                == GiantSkeletonEyeballFinalStartDisposition::final_animation_started
+            && extended_final_start.state.final_ticks_remaining == 0x03E0U,
+        "native Giant Skeleton Eyeball turns egg completion into opening and final-animation countdown handoffs");
+
+    DragonEggClusterState completed_eggs{};
+    for (auto& egg : completed_eggs.eggs) {
+        egg.active = false;
+    }
+    completed_eggs.completion_pending = true;
+    NativeGameplayState gameplay;
+    gameplay.seed_dragon_egg_cluster(completed_eggs);
+    gameplay.seed_giant_skeleton_eyeball(GiantSkeletonEyeballState{});
+    const auto phase = gameplay.advance_actor_phase();
+    const auto native_countdown =
+        gameplay.begin_giant_skeleton_eyeball_opening_countdown();
+    const auto countdown_phase = gameplay.advance_actor_phase();
+    NativeGameplayState final_gameplay;
+    final_gameplay.seed_giant_skeleton_eyeball({
+        .opening_expiry_pending = true,
+    });
+    const auto native_final =
+        final_gameplay.begin_giant_skeleton_eyeball_final_animation(false);
+    const auto final_phase = final_gameplay.advance_actor_phase();
+    final_gameplay.seed_giant_skeleton_eyeball({
+        .final_reset_pending = true,
+    });
+    const auto native_final_reset =
+        final_gameplay.complete_giant_skeleton_eyeball_final_reset();
+    check(
+        phase.size() == 2U && phase[0].slot == kDragonEggControllerSlot
+            && phase[0].kind
+                == NativeGameplayState::ActorPhaseUpdateKind::dragon_egg_controller
+            && phase[1].slot == kGiantSkeletonEyeballSlot
+            && phase[1].kind
+                == NativeGameplayState::ActorPhaseUpdateKind::giant_skeleton_eyeball
+            && phase[1].giant_skeleton_eyeball
+            && phase[1].giant_skeleton_eyeball->disposition
+                == GiantSkeletonEyeballDisposition::opening_requested
+            && gameplay.giant_skeleton_eyeball()
+            && native_countdown && countdown_phase.size() == 2U
+            && countdown_phase[1].slot == kGiantSkeletonEyeballSlot
+            && countdown_phase[1].giant_skeleton_eyeball
+            && countdown_phase[1].giant_skeleton_eyeball->disposition
+                == GiantSkeletonEyeballDisposition::opening_countdown_wait
+            && gameplay.giant_skeleton_eyeball()->opening_ticks_remaining == 7U
+            && native_final && final_phase.size() == 1U
+            && final_phase[0].slot == kGiantSkeletonEyeballSlot
+            && final_phase[0].giant_skeleton_eyeball
+            && final_phase[0].giant_skeleton_eyeball->disposition
+                == GiantSkeletonEyeballDisposition::final_animation_wait
+            && final_gameplay.giant_skeleton_eyeball()
+            && native_final_reset
+            && native_final_reset->disposition
+                == GiantSkeletonEyeballFinalResetDisposition::dormant_reinitialized
+            && *final_gameplay.giant_skeleton_eyeball()
+                == GiantSkeletonEyeballState{},
+        "native gameplay delivers Dragon's-Egg completion and both Eyeball countdowns in fixed actor order");
+}
+
+void test_native_giant_skeleton()
+{
+    using devils_crush::native_runtime::GiantSkeletonState;
+    using devils_crush::native_runtime::GiantSkeletonTargetPosition;
+    using devils_crush::native_runtime::GiantSkeletonUpdateDisposition;
+    using devils_crush::native_runtime::NativeGameplayState;
+    using devils_crush::native_runtime::advance_giant_skeleton;
+    using devils_crush::native_runtime::kGiantSkeletonSlot;
+    using devils_crush::native_runtime::resolve_giant_skeleton_update;
+
+    const auto idle = advance_giant_skeleton(
+        {}, {.horizontal_pixels = 223, .vertical_pixels = 774}, false);
+    const auto hit = resolve_giant_skeleton_update(
+        idle.state, {.horizontal_pixels = 480, .vertical_pixels = 518}, true, {});
+    check(
+        idle.disposition == GiantSkeletonUpdateDisposition::idle
+            && idle.direction_code == 0x0CU && idle.state.appearance == 6U
+            && hit.giant_skeleton.disposition
+                == GiantSkeletonUpdateDisposition::repeatable_hit
+            && hit.giant_skeleton.direction_code == 0U
+            && hit.giant_skeleton.state.appearance == 2U
+            && hit.giant_skeleton.hit_score_award_units == 40U
+            && hit.giant_skeleton.audio_command == 0x2EU
+            && hit.giant_skeleton.requests_impact_presentation
+            && hit.giant_skeleton.requested_appearance == 2U
+            && hit.hit_score_award.state.stored_units == 40U,
+        "native Giant Skeleton preserves its direction-selected appearance and repeatable 40-unit hit");
+
+    NativeGameplayState gameplay;
+    gameplay.seed_giant_skeleton(GiantSkeletonState{});
+    gameplay.seed_ball({
+        .position_x = {.raw = 480 * 256},
+        .position_y = {.raw = 518 * 256},
+    });
+    const auto contact = gameplay.confirm_actor_contact({
+        .actor_slot = kGiantSkeletonSlot,
+        .response_kind = 2U,
+    });
+    const auto phase = gameplay.advance_actor_phase();
+    const auto audio = gameplay.take_audio_events();
+    const auto idle_phase = gameplay.advance_actor_phase();
+    check(
+        contact.giant_skeleton_queued && phase.size() == 1U
+            && phase[0].slot == kGiantSkeletonSlot
+            && phase[0].kind
+                == NativeGameplayState::ActorPhaseUpdateKind::giant_skeleton_update
+            && phase[0].giant_skeleton
+            && phase[0].giant_skeleton->giant_skeleton.disposition
+                == GiantSkeletonUpdateDisposition::repeatable_hit
+            && gameplay.score().stored_units == 40U
+            && gameplay.giant_skeleton()
+            && gameplay.giant_skeleton()->appearance == 2U
+            && audio
+                == std::vector<devils_crush::native_runtime::GameplayAudioEvent>{ {
+                    .slot = kGiantSkeletonSlot,
+                    .source = devils_crush::native_runtime::GameplayAudioSource::giant_skeleton,
+                    .command = 0x2EU,
+                } }
+            && idle_phase.size() == 1U && idle_phase[0].giant_skeleton
+            && idle_phase[0].giant_skeleton->giant_skeleton.disposition
+                == GiantSkeletonUpdateDisposition::idle
+            && gameplay.take_audio_events().empty(),
+        "native gameplay state runs the Giant Skeleton in fixed actor order and leaves it live after a hit");
+}
+
+void test_native_gameplay_state()
+{
+    static_assert(!std::is_copy_constructible_v<
+                  devils_crush::native_runtime::NativeGameplayState>);
+    static_assert(!std::is_copy_assignable_v<
+                  devils_crush::native_runtime::NativeGameplayState>);
+    static_assert(!std::is_move_constructible_v<
+                  devils_crush::native_runtime::NativeGameplayState>);
+    static_assert(!std::is_move_assignable_v<
+                  devils_crush::native_runtime::NativeGameplayState>);
+
+    using devils_crush::native_runtime::ActorBehavior;
+    using devils_crush::native_runtime::BallMotionTuning;
+    using devils_crush::native_runtime::CollisionMap;
+    using devils_crush::native_runtime::CollisionMask;
+    using devils_crush::native_runtime::CollisionRetryFullScanOutcome;
+    using devils_crush::native_runtime::CollisionRetryOffsetAttempts;
+    using devils_crush::native_runtime::CollisionRetryPlacementDisposition;
+    using devils_crush::native_runtime::CollisionRetryPlacementPhase;
+    using devils_crush::native_runtime::CollisionRetryPlacementUpdate;
+    using devils_crush::native_runtime::CollisionResponseBasis;
+    using devils_crush::native_runtime::CollisionResponseConfig;
+    using devils_crush::native_runtime::ContactDisposition;
+    using devils_crush::native_runtime::ContactTarget;
+    using devils_crush::native_runtime::Fixed24_8;
+    using devils_crush::native_runtime::GameStateView;
+    using devils_crush::native_runtime::MappedRomView;
+    using devils_crush::native_runtime::NativeGameplayState;
+    using Cf33ActorContactDisposition =
+        devils_crush::native_runtime::NativeGameplayState::Cf33ActorContactDisposition;
+    using Cf33PlayfieldContactDisposition =
+        devils_crush::native_runtime::NativeGameplayState::Cf33PlayfieldContactDisposition;
+    using devils_crush::native_runtime::ActorMotionState;
+    using devils_crush::native_runtime::SmallSoldierContactDisposition;
+
+    NativeGameplayState gameplay;
+    gameplay.seed_ball({
+        .position_x = Fixed24_8{.raw = 16 * 256},
+        .position_y = Fixed24_8{.raw = 32 * 256},
+        .velocity_x = 0x0100,
+    });
+    std::array<std::uint8_t, CollisionMap::kColumns> tile_ids{};
+    std::array<std::uint8_t, CollisionMap::kColumns> mask_indices{};
+    std::array<CollisionMask, 2U> masks{};
+    const CollisionMap empty_map{
+        .tile_ids = tile_ids,
+        .mask_indices = mask_indices,
+        .masks = masks,
+    };
+    const auto clear_frame = gameplay.advance_physics(
+        BallMotionTuning{
+            .horizontal_drag_divisor = 8,
+            .vertical_drag_divisor = 8,
+            .vertical_gravity = 1U,
+        },
+        empty_map);
+    check(
+        clear_frame && clear_frame->no_contact
+            && gameplay.physics() == clear_frame->no_contact->state,
+        "native gameplay state commits only a clear native physics frame");
+
+    gameplay.seed_ball({
+        .position_x = Fixed24_8{.raw = 15 * 256},
+        .position_y = Fixed24_8{.raw = 32 * 256},
+        .velocity_x = 0x0100,
+    });
+    const auto collision_index = 2U;
+    tile_ids[collision_index] = 0x7CU;
+    mask_indices[collision_index] = 1U;
+    masks[1].rows[0] = 0x80U;
+    const CollisionMap solid_map{
+        .tile_ids = tile_ids,
+        .mask_indices = mask_indices,
+        .masks = masks,
+    };
+    const auto physics_before_contact = gameplay.physics();
+    const auto blocked_frame = gameplay.advance_physics(
+        BallMotionTuning{.horizontal_drag_divisor = 8}, solid_map);
+    check(
+        blocked_frame && blocked_frame->contact
+            && gameplay.pending_playfield_contact() == blocked_frame->contact
+            && gameplay.physics() == physics_before_contact
+            && !gameplay.advance_physics(
+                BallMotionTuning{.horizontal_drag_divisor = 8}, solid_map),
+        "native gameplay state retains a solid impact until a resolver commits it");
+    auto resolved_ball = blocked_frame && blocked_frame->contact
+        ? blocked_frame->contact->entry_ball
+        : physics_before_contact.ball;
+    resolved_ball.velocity_x = -0x0100;
+    check(
+        gameplay.commit_playfield_collision(resolved_ball)
+            && !gameplay.pending_playfield_contact()
+            && gameplay.physics().ball == resolved_ball
+            && !gameplay.commit_playfield_collision(resolved_ball),
+        "native gameplay state commits one resolved solid impact exactly once");
+
+    gameplay.seed_ball({
+        .position_x = Fixed24_8{.raw = 15 * 256},
+        .position_y = Fixed24_8{.raw = 32 * 256},
+        .velocity_x = 0x0100,
+    });
+    const auto retry_frame = gameplay.advance_physics(
+        BallMotionTuning{.horizontal_drag_divisor = 8}, solid_map);
+    const auto retry_probe = gameplay.retry_pending_playfield_collision({
+        .by_direction = {{
+            {.horizontal_pixels = 1},
+        }},
+    });
+    check(
+        retry_frame && retry_frame->contact && retry_probe
+            && retry_probe->disposition
+                == devils_crush::native_runtime::CollisionRetryProbeDisposition::clear
+            && !gameplay.pending_playfield_contact()
+            && gameplay.physics().ball == retry_probe->retry.state
+            && gameplay.physics().ball.position_x.raw == 16 * 256
+            && !gameplay.retry_pending_playfield_collision({}),
+        "native gameplay state commits only the recovered clear retry branch");
+
+    std::array<std::uint8_t, CollisionMap::kColumns * 29U> full_scan_tile_ids{};
+    std::array<std::uint8_t, CollisionMap::kColumns * 29U> full_scan_mask_indices{};
+    constexpr auto full_scan_collision_index = 4U;
+    full_scan_tile_ids[full_scan_collision_index + CollisionMap::kColumns * 28U]
+        = 0x7CU;
+    full_scan_mask_indices[
+        full_scan_collision_index + CollisionMap::kColumns * 28U] = 1U;
+    auto full_scan_masks = masks;
+    full_scan_masks[1].rows[0] = 0x40U;
+    const CollisionMap full_scan_map{
+        .tile_ids = full_scan_tile_ids,
+        .mask_indices = full_scan_mask_indices,
+        .masks = full_scan_masks,
+    };
+    gameplay.seed_ball({
+        .position_x = Fixed24_8{.raw = 32 * 256},
+        .position_y = Fixed24_8{.raw = 256 * 256},
+        .velocity_x = 0x0100,
+        .collision_state = 0x80U,
+    });
+    const auto full_scan_frame = gameplay.advance_physics(
+        BallMotionTuning{.horizontal_drag_divisor = 8}, full_scan_map);
+    const auto full_scan_retry = gameplay.retry_pending_playfield_collision({
+        .by_direction = {{
+            {.horizontal_pixels = 1},
+        }},
+    });
+    const auto repeated_full_scan_retry = gameplay.retry_pending_playfield_collision({});
+    const auto full_scan_resolution = full_scan_frame && full_scan_frame->contact
+        ? full_scan_frame->contact->entry_ball
+        : gameplay.physics().ball;
+    check(
+        full_scan_frame && full_scan_frame->contact && full_scan_retry
+            && full_scan_retry->disposition
+                == devils_crush::native_runtime::CollisionRetryProbeDisposition::requires_full_scan
+            && gameplay.pending_collision_retry_full_scan() == full_scan_retry
+            && repeated_full_scan_retry == full_scan_retry
+            && gameplay.pending_playfield_contact()
+            && gameplay.commit_playfield_collision(full_scan_resolution)
+            && !gameplay.pending_collision_retry_full_scan(),
+        "native gameplay state retains one full-scan retry until its resolver commits it");
+
+    gameplay.seed_ball({
+        .position_x = Fixed24_8{.raw = 32 * 256},
+        .position_y = Fixed24_8{.raw = 256 * 256},
+        .velocity_x = 0x0100,
+        .collision_state = 0x80U,
+    });
+    const auto direct_placement_frame = gameplay.advance_physics(
+        BallMotionTuning{.horizontal_drag_divisor = 8}, full_scan_map);
+    const devils_crush::native_runtime::CollisionRetryOffsetAttempts
+        placement_offsets{
+            .by_direction = {{
+                {{{.horizontal_pixels = 1}, {}, {}}},
+                {{{.horizontal_pixels = 1}, {}, {}}},
+                {{{}, {}, {}}},
+                {{{}, {}, {}}},
+            }},
+        };
+    const auto direct_placement_initial = gameplay.begin_pending_collision_retry(
+        placement_offsets);
+    std::vector<std::byte> direct_scan_rom(
+        devils_crush::native_runtime::MappedRomView::kSupportedRomBytes);
+    std::array<std::uint8_t, 8U> direct_scan_mpr{};
+    direct_scan_mpr[4U] = 0x01U;
+    direct_scan_mpr[5U] = 0x02U;
+    direct_scan_mpr[6U] = 0x03U;
+    std::array<
+        std::byte,
+        devils_crush::native_runtime::GameStateView::kWorkRamSize>
+        direct_scan_ram{};
+    const auto store_direct_scan_word = [&direct_scan_ram](
+                                           const std::size_t offset,
+                                           const std::uint16_t value) {
+        direct_scan_ram[offset] = static_cast<std::byte>(value);
+        direct_scan_ram[offset + 1U] = static_cast<std::byte>(value >> 8U);
+    };
+    for (std::size_t index = 0U; index < 4U; ++index) {
+        store_direct_scan_word(0x0096U + index * 2U, 0x8000U);
+    }
+    store_direct_scan_word(0x0074U, 0x8000U);
+    store_direct_scan_word(0x0072U, 0x8000U);
+    store_direct_scan_word(0x008EU, 0x8000U);
+    store_direct_scan_word(0x00C8U, 0x9000U);
+    store_direct_scan_word(0x00C6U, 0xA000U);
+    store_direct_scan_word(0x0090U, 0xC000U);
+    const auto direct_scan_resolution =
+        gameplay.resolve_pending_collision_retry_full_scan(
+            devils_crush::native_runtime::MappedRomView(
+                direct_scan_rom, direct_scan_mpr),
+            devils_crush::native_runtime::GameStateView(direct_scan_ram),
+            0x01U);
+    check(
+        direct_placement_frame && direct_placement_frame->contact
+            && direct_placement_initial && direct_scan_resolution
+            && direct_scan_resolution->scan
+            && direct_scan_resolution->scan->disposition
+                == devils_crush::native_runtime::CollisionRetryFullScanDisposition::playfield_evaluated
+            && direct_scan_resolution->placement.disposition
+                == CollisionRetryPlacementDisposition::rearmed
+            && gameplay.pending_playfield_contact()
+            && !gameplay.pending_collision_retry_placement(),
+        "native gameplay state composes its pending CED2/CD74 scan into CDF8");
+
+    gameplay.seed_ball({
+        .position_x = Fixed24_8{.raw = 32 * 256},
+        .position_y = Fixed24_8{.raw = 256 * 256},
+        .velocity_x = 0x0100,
+        .collision_state = 0x80U,
+    });
+    const auto unresolved_scan_frame = gameplay.advance_physics(
+        BallMotionTuning{.horizontal_drag_divisor = 8}, full_scan_map);
+    const auto unresolved_scan_initial = gameplay.begin_pending_collision_retry(
+        placement_offsets);
+    const auto unresolved_scan_resolution =
+        gameplay.resolve_pending_collision_retry_full_scan(
+            devils_crush::native_runtime::MappedRomView(
+                std::span<const std::byte>{}, {}),
+            devils_crush::native_runtime::GameStateView(direct_scan_ram),
+            0x01U);
+    check(
+        unresolved_scan_frame && unresolved_scan_frame->contact
+            && unresolved_scan_initial && unresolved_scan_resolution
+            && unresolved_scan_resolution->scan
+            && unresolved_scan_resolution->scan->disposition
+                == devils_crush::native_runtime::CollisionRetryFullScanDisposition::unresolved_playfield_asset
+            && unresolved_scan_resolution->placement.disposition
+                == CollisionRetryPlacementDisposition::unresolved
+            && gameplay.pending_collision_retry_full_scan()
+            && gameplay.pending_collision_retry_placement(),
+        "native gameplay state retains an unavailable CED2/CD74 asset as unresolved");
+
+    gameplay.seed_ball({
+        .position_x = Fixed24_8{.raw = 32 * 256},
+        .position_y = Fixed24_8{.raw = 256 * 256},
+        .velocity_x = 0x0100,
+        .collision_state = 0x80U,
+    });
+    const auto placement_frame = gameplay.advance_physics(
+        BallMotionTuning{.horizontal_drag_divisor = 8}, full_scan_map);
+    const auto placement_initial = gameplay.begin_pending_collision_retry(
+        placement_offsets);
+    const auto initial_full_scan = gameplay.pending_collision_retry_full_scan();
+    const auto placement_unresolved =
+        gameplay.resolve_pending_collision_retry_full_scan(
+            CollisionRetryFullScanOutcome::unresolved);
+    const auto unresolved_full_scan = gameplay.pending_collision_retry_full_scan();
+    const auto placement_remains_pending =
+        gameplay.pending_collision_retry_placement().has_value();
+    const auto placement_second = gameplay.resolve_pending_collision_retry_full_scan(
+        CollisionRetryFullScanOutcome::solid);
+    const auto second_full_scan = gameplay.pending_collision_retry_full_scan();
+    const auto placement_third = gameplay.resolve_pending_collision_retry_full_scan(
+        CollisionRetryFullScanOutcome::solid);
+    const auto third_full_scan = gameplay.pending_collision_retry_full_scan();
+    const auto placement_needs_rng =
+        gameplay.resolve_pending_collision_retry_full_scan(
+            CollisionRetryFullScanOutcome::solid);
+    const auto needs_rng_full_scan = gameplay.pending_collision_retry_full_scan();
+    const auto placement_new_direction =
+        gameplay.select_pending_collision_retry_direction(0x40U);
+    const auto new_direction_full_scan = gameplay.pending_collision_retry_full_scan();
+    const auto placement_accepted =
+        gameplay.resolve_pending_collision_retry_full_scan(
+            CollisionRetryFullScanOutcome::clear);
+    check(
+        placement_frame && placement_frame->contact && placement_initial
+            && placement_initial->disposition
+                == CollisionRetryPlacementDisposition::probe_ready
+            && initial_full_scan && placement_initial->probe
+            && initial_full_scan->retry == *placement_initial->probe,
+        "native gameplay state starts CDF8 placement at a pending CED2 scan");
+    check(
+        placement_unresolved
+            && placement_unresolved->disposition
+                == CollisionRetryPlacementDisposition::unresolved
+            && placement_unresolved->probe == placement_initial->probe
+            && unresolved_full_scan == initial_full_scan
+            && placement_remains_pending,
+        "native gameplay state holds an unresolved CED2 placement candidate");
+    check(
+        placement_second && placement_second->probe && second_full_scan
+            && placement_third && placement_third->probe && third_full_scan
+            && placement_needs_rng
+            && placement_needs_rng->disposition
+                == CollisionRetryPlacementDisposition::needs_random_direction
+            && placement_needs_rng->state.phase
+                == CollisionRetryPlacementPhase::selecting_direction
+            && !needs_rng_full_scan,
+        "native gameplay state advances solid CED2 candidates to CDF8's RNG boundary");
+    check(
+        placement_new_direction && placement_new_direction->probe
+            && new_direction_full_scan
+            && placement_new_direction->state.attempted_direction_flags == 0xC0U
+            && placement_accepted
+            && placement_accepted->disposition
+                == CollisionRetryPlacementDisposition::rearmed
+            && gameplay.pending_playfield_contact()
+            && !gameplay.pending_collision_retry_placement()
+            && placement_accepted->probe
+            && gameplay.physics().ball.position_x
+                == placement_accepted->probe->state.position_x
+            && gameplay.physics().ball.position_y
+                == placement_accepted->probe->state.position_y
+            && (gameplay.physics().ball.collision_state & 0x80U) == 0U,
+        "native gameplay state rearms a CDF8 probe after its typed CED2 result");
+
+    gameplay.physics().contact = {
+        .last_target = 0x2AU,
+        .contact_latched = true,
+    };
+    const auto reseeded_ball = devils_crush::native_runtime::BallState{
+        .position_x = Fixed24_8{.raw = 23 * 256},
+        .position_y = Fixed24_8{.raw = 41 * 256},
+        .velocity_x = -0x0180,
+        .velocity_y = 0x0080,
+        .motion_flags = 0x82U,
+    };
+    gameplay.seed_ball(reseeded_ball);
+    check(
+        gameplay.physics().ball == reseeded_ball
+            && gameplay.physics().contact
+                == devils_crush::native_runtime::ContactState{}
+            && !gameplay.pending_playfield_contact(),
+        "native ball seeding starts a clean collision lifetime");
+
+    NativeGameplayState oriented_contact_gameplay;
+    oriented_contact_gameplay.seed_ball(reseeded_ball);
+    const auto oriented_contact =
+        oriented_contact_gameplay.confirm_oriented_actor_contact(
+            {.actor_slot = 0x2AU, .response_kind = 2U},
+            {},
+            CollisionResponseConfig{});
+    const auto repeated_oriented_contact =
+        oriented_contact_gameplay.confirm_oriented_actor_contact(
+            {.actor_slot = 0x2AU, .response_kind = 2U},
+            CollisionResponseBasis{},
+            {});
+    check(
+        oriented_contact.contact.contact.disposition
+                == ContactDisposition::dispatched
+            && oriented_contact.response
+            && oriented_contact.response->incoming.horizontal == -0x0180
+            && oriented_contact.response->incoming.vertical == 0x0080
+            && oriented_contact_gameplay.physics().ball.velocity_x == -0x0180
+            && oriented_contact_gameplay.physics().ball.velocity_y == -0x0080
+            && repeated_oriented_contact.contact.contact.disposition
+                == ContactDisposition::repeated_target
+            && !repeated_oriented_contact.response,
+        "native gameplay applies a target-selected oriented response once with confirmed actor contact bookkeeping");
+
+    std::vector<std::byte> oriented_contact_rom(
+        MappedRomView::kSupportedRomBytes);
+    std::array<std::uint8_t, 8U> oriented_contact_mpr{};
+    oriented_contact_mpr[6U] = 0x01U;
+    constexpr std::size_t kOrientedContactGeometryOffset = MappedRomView::kBankBytes
+        + (0xD2AEU & (MappedRomView::kBankBytes - 1U));
+    oriented_contact_rom[kOrientedContactGeometryOffset] = std::byte{0x00U};
+    oriented_contact_rom[kOrientedContactGeometryOffset + 1U] = std::byte{0x01U};
+    std::array<std::byte, GameStateView::kWorkRamSize> oriented_contact_ram{};
+    oriented_contact_ram[0x0078U] = std::byte{0xC0U};
+    NativeGameplayState asset_oriented_contact_gameplay;
+    asset_oriented_contact_gameplay.seed_ball(reseeded_ball);
+    const auto asset_oriented_contact =
+        asset_oriented_contact_gameplay.confirm_cf33_actor_contact(
+            {.index = 0x2AU, .activity_flags = 0x82U},
+            MappedRomView(oriented_contact_rom, oriented_contact_mpr),
+            GameStateView(oriented_contact_ram));
+    oriented_contact_mpr[6U] = 0x80U;
+    NativeGameplayState rejected_asset_oriented_contact_gameplay;
+    rejected_asset_oriented_contact_gameplay.seed_ball(reseeded_ball);
+    check(
+        asset_oriented_contact
+            && asset_oriented_contact->response
+            && asset_oriented_contact_gameplay.physics().ball.velocity_x == -0x0180
+            && asset_oriented_contact_gameplay.physics().ball.velocity_y == -0x0040
+            && !rejected_asset_oriented_contact_gameplay.confirm_cf33_actor_contact(
+                {.index = 0x2AU, .activity_flags = 0x82U},
+                MappedRomView(oriented_contact_rom, oriented_contact_mpr),
+                GameStateView(oriented_contact_ram))
+            && rejected_asset_oriented_contact_gameplay.physics().ball
+                == reseeded_ball,
+        "native gameplay consumes a captured type-82 CF33 actor and response input once");
+
+    NativeGameplayState suppressed_cf33_contact_gameplay;
+    suppressed_cf33_contact_gameplay.seed_ball(reseeded_ball);
+    suppressed_cf33_contact_gameplay.physics().contact.last_target =
+        static_cast<std::uint8_t>(0x2AU);
+    oriented_contact_mpr[6U] = 0x01U;
+    const auto suppressed_cf33_resolution =
+        suppressed_cf33_contact_gameplay.resolve_cf33_actor_contact(
+            {.index = 0x2AU, .activity_flags = 0x82U},
+            MappedRomView(oriented_contact_rom, oriented_contact_mpr),
+            GameStateView(oriented_contact_ram));
+    check(
+        suppressed_cf33_resolution.disposition
+                == Cf33ActorContactDisposition::contact_not_dispatched
+            && suppressed_cf33_resolution.contact
+            && !suppressed_cf33_resolution.contact->response
+            && suppressed_cf33_contact_gameplay.physics().ball == reseeded_ball,
+        "native CF33 distinguishes a dispatcher-suppressed contact from a response");
+
+    NativeGameplayState non_cf33_contact_gameplay;
+    non_cf33_contact_gameplay.seed_ball(reseeded_ball);
+    check(
+        !non_cf33_contact_gameplay.confirm_cf33_actor_contact(
+            {.index = 0x2AU, .activity_flags = 0x83U},
+            MappedRomView(oriented_contact_rom, oriented_contact_mpr),
+            GameStateView(oriented_contact_ram))
+            && non_cf33_contact_gameplay.physics().ball == reseeded_ball,
+        "native CF33 entrypoint leaves non-type-82 contacts for their own response owner");
+
+    NativeGameplayState clear_selector_cf33_contact_gameplay;
+    clear_selector_cf33_contact_gameplay.seed_ball(reseeded_ball);
+    oriented_contact_mpr[6U] = 0x01U;
+    oriented_contact_ram[0x0078U] = std::byte{0x40U};
+    const auto clear_selector_contact =
+        clear_selector_cf33_contact_gameplay.confirm_cf33_actor_contact(
+            {.index = 0x2AU, .activity_flags = 0x82U},
+            MappedRomView(oriented_contact_rom, oriented_contact_mpr),
+            GameStateView(oriented_contact_ram));
+    check(
+        clear_selector_contact && clear_selector_contact->response
+            && clear_selector_contact->response->normal.incoming_velocity == 0x0080
+            && clear_selector_cf33_contact_gameplay.physics().ball.velocity_x == -0x0180
+            && clear_selector_cf33_contact_gameplay.physics().ball.velocity_y == -0x0040,
+        "native CF33 clear selector applies CFD8 before reflecting its nonnegative local normal");
+
+    NativeGameplayState clear_selector_playfield_gameplay;
+    clear_selector_playfield_gameplay.seed_ball({
+        .position_x = Fixed24_8{.raw = 15 * 256},
+        .position_y = Fixed24_8{.raw = 32 * 256},
+        .velocity_x = 0x0100,
+        .velocity_y = 0x0080,
+    });
+    const auto clear_selector_playfield_frame =
+        clear_selector_playfield_gameplay.advance_physics(
+            BallMotionTuning{.horizontal_drag_divisor = 8}, solid_map);
+    const auto clear_selector_playfield =
+        clear_selector_playfield_gameplay.resolve_cf33_playfield_contact(
+            MappedRomView(oriented_contact_rom, oriented_contact_mpr),
+            GameStateView(oriented_contact_ram));
+    check(
+        clear_selector_playfield_frame && clear_selector_playfield_frame->contact
+            && clear_selector_playfield.disposition
+                == Cf33PlayfieldContactDisposition::response_ready
+            && clear_selector_playfield.response
+            && clear_selector_playfield.resolved_ball.velocity_x == 0x0100
+            && clear_selector_playfield.resolved_ball.velocity_y == -0x0040
+            && clear_selector_playfield_gameplay.pending_playfield_contact()
+            && clear_selector_playfield_gameplay.physics().ball.velocity_y == 0x0080,
+        "native CF5B evaluates a pending playfield impact without claiming its frame");
+    const auto clear_selector_playfield_resume =
+        clear_selector_playfield_gameplay.resume_cf33_playfield_contact(
+            MappedRomView(oriented_contact_rom, oriented_contact_mpr),
+            GameStateView(oriented_contact_ram),
+            BallMotionTuning{.horizontal_drag_divisor = 8},
+            empty_map);
+    check(
+        clear_selector_playfield_resume
+            && clear_selector_playfield_resume->response.disposition
+                == Cf33PlayfieldContactDisposition::response_ready
+            && clear_selector_playfield_resume->completes_frame()
+            && !clear_selector_playfield_resume->next_contact
+            && !clear_selector_playfield_gameplay.pending_playfield_contact()
+            && !clear_selector_playfield_gameplay.pending_playfield_collision_loop()
+            && clear_selector_playfield_gameplay.physics().ball.velocity_x == 0x00E0
+            && clear_selector_playfield_gameplay.physics().ball.velocity_y == 0,
+        "native CF5B resumes DC95 and reaches DD09 before releasing its frame");
+
+    NativeGameplayState separating_playfield_gameplay;
+    separating_playfield_gameplay.seed_ball({
+        .position_x = Fixed24_8{.raw = 15 * 256},
+        // Keep the half-pixel upward substep inside the same collision tile.
+        .position_y = Fixed24_8{.raw = 33 * 256},
+        .velocity_x = 0x0100,
+        .velocity_y = -0x0080,
+    });
+    auto separating_masks = masks;
+    separating_masks[1].rows.fill(0xFFU);
+    const CollisionMap separating_solid_map{
+        .tile_ids = tile_ids,
+        .mask_indices = mask_indices,
+        .masks = separating_masks,
+    };
+    const auto separating_playfield_frame = separating_playfield_gameplay.advance_physics(
+        BallMotionTuning{.horizontal_drag_divisor = 8}, separating_solid_map);
+    const auto separating_playfield =
+        separating_playfield_gameplay.resolve_cf33_playfield_contact(
+            MappedRomView(oriented_contact_rom, oriented_contact_mpr),
+            GameStateView(oriented_contact_ram));
+    oriented_contact_ram[0x0078U] = std::byte{0xC0U};
+    separating_playfield_gameplay.physics().ball.collision_state = 0x80U;
+    const auto signed_playfield =
+        separating_playfield_gameplay.resolve_cf33_playfield_contact(
+            MappedRomView(oriented_contact_rom, oriented_contact_mpr),
+            GameStateView(oriented_contact_ram));
+    check(
+        separating_playfield_frame && separating_playfield_frame->contact,
+        "native CF33 playfield test establishes a pending solid impact");
+    check(
+        separating_playfield.disposition
+            == Cf33PlayfieldContactDisposition::separating
+            && separating_playfield.response,
+        "native CF5B recognizes a separating pending playfield impact");
+    check(
+        separating_playfield_frame && separating_playfield_frame->contact
+            && separating_playfield.resolved_ball
+                == separating_playfield_frame->contact->impact_ball,
+        "native CF5B retains a separating impact ball for its caller");
+    check(
+        signed_playfield.disposition
+                == Cf33PlayfieldContactDisposition::signed_retry_required
+            && !signed_playfield.response
+            && separating_playfield_gameplay.pending_playfield_contact(),
+        "native CF33 retains a signed playfield retry for its frame owner");
+    separating_playfield_gameplay.physics().ball.collision_state = 0x00U;
+    const auto signed_unmarked_playfield =
+        separating_playfield_gameplay.resolve_cf33_playfield_contact(
+            MappedRomView(oriented_contact_rom, oriented_contact_mpr),
+            GameStateView(oriented_contact_ram));
+    check(
+        signed_unmarked_playfield.disposition
+                != Cf33PlayfieldContactDisposition::signed_retry_required
+            && signed_unmarked_playfield.response,
+        "native CF33 sends an unmarked signed playfield contact through CF3F");
+    oriented_contact_ram[0x0078U] = std::byte{0x40U};
+
+    NativeGameplayState separating_resume_gameplay;
+    separating_resume_gameplay.seed_ball({
+        .position_x = Fixed24_8{.raw = 15 * 256},
+        .position_y = Fixed24_8{.raw = 33 * 256},
+        .velocity_x = 0x0100,
+        .velocity_y = -0x0080,
+    });
+    const auto separating_resume_frame = separating_resume_gameplay.advance_physics(
+        BallMotionTuning{.horizontal_drag_divisor = 8}, separating_solid_map);
+    std::array<std::uint8_t, CollisionMap::kColumns> retry_clear_tile_ids{};
+    std::array<std::uint8_t, CollisionMap::kColumns> retry_clear_mask_indices{};
+    std::array<CollisionMask, 2U> retry_clear_masks{};
+    const CollisionMap retry_clear_map{
+        .tile_ids = retry_clear_tile_ids,
+        .mask_indices = retry_clear_mask_indices,
+        .masks = retry_clear_masks,
+    };
+    const auto separating_resume =
+        separating_resume_gameplay.resume_cf33_playfield_contact(
+            MappedRomView(oriented_contact_rom, oriented_contact_mpr),
+            GameStateView(oriented_contact_ram),
+            BallMotionTuning{.horizontal_drag_divisor = 8},
+            retry_clear_map);
+    check(
+        separating_resume_frame && separating_resume_frame->contact
+            && separating_resume
+            && separating_resume->response.disposition
+                == Cf33PlayfieldContactDisposition::separating
+            && separating_resume->completes_frame()
+            && !separating_resume_gameplay.pending_playfield_contact()
+            && separating_resume_gameplay.physics().ball.position_x.raw == 16 * 256,
+        "native CF8F restores and retries its unconsumed substep before DD09");
+
+    NativeGameplayState separating_cf5b_contact_gameplay;
+    separating_cf5b_contact_gameplay.seed_ball({
+        .velocity_x = -0x0180,
+        .velocity_y = -0x0080,
+    });
+    check(
+        !separating_cf5b_contact_gameplay.confirm_cf33_actor_contact(
+            {.index = 0x2AU, .activity_flags = 0x82U},
+            MappedRomView(oriented_contact_rom, oriented_contact_mpr),
+            GameStateView(oriented_contact_ram))
+            && separating_cf5b_contact_gameplay.physics().ball.velocity_y == -0x0080,
+        "native CF5B leaves separating local normals for its marker-clear return");
+
+    NativeGameplayState marked_cf33_contact_gameplay;
+    marked_cf33_contact_gameplay.seed_ball(reseeded_ball);
+    oriented_contact_ram[0x0078U] = std::byte{0xC0U};
+    oriented_contact_ram[0x1000U] = std::byte{0x80U};
+    oriented_contact_ram[0x1100U] = std::byte{0x00U};
+    oriented_contact_ram[0x1180U] = std::byte{23U};
+    oriented_contact_ram[0x1200U] = std::byte{0x00U};
+    oriented_contact_ram[0x1280U] = std::byte{0x00U};
+    oriented_contact_ram[0x1300U] = std::byte{41U};
+    oriented_contact_ram[0x1380U] = std::byte{0x00U};
+    oriented_contact_ram[0x1400U] = std::byte{0x80U};
+    oriented_contact_ram[0x1480U] = std::byte{0xFEU};
+    oriented_contact_ram[0x1500U] = std::byte{0x80U};
+    oriented_contact_ram[0x1580U] = std::byte{0x00U};
+    oriented_contact_ram[0x1C80U] = std::byte{0x82U};
+    oriented_contact_ram[0x0085U] = std::byte{0x80U};
+    oriented_contact_ram[0x0086U] = std::byte{0x34U};
+    oriented_contact_ram[0x0087U] = std::byte{0x12U};
+    oriented_contact_ram[0x0088U] = std::byte{0x40U};
+    oriented_contact_ram[0x0089U] = std::byte{0x80U};
+    oriented_contact_ram[0x008AU] = std::byte{0xFEU};
+    const auto marked_cf33_resolution =
+        marked_cf33_contact_gameplay.resolve_cf33_actor_contact(
+            {.index = 0x2AU, .activity_flags = 0x82U, .collision_state = 0x80U},
+            MappedRomView(oriented_contact_rom, oriented_contact_mpr),
+            GameStateView(oriented_contact_ram));
+    check(
+        !marked_cf33_contact_gameplay.confirm_cf33_actor_contact(
+            {.index = 0x2AU, .activity_flags = 0x82U, .collision_state = 0x80U},
+            MappedRomView(oriented_contact_rom, oriented_contact_mpr),
+            GameStateView(oriented_contact_ram))
+            && marked_cf33_contact_gameplay.physics().ball == reseeded_ball,
+        "native CF33 signed route leaves marked contacts for the CDF8 retry owner");
+    check(
+        marked_cf33_resolution.disposition
+                == Cf33ActorContactDisposition::position_retry_ready
+            && marked_cf33_resolution.retry_ball
+            && marked_cf33_resolution.retry_ball->impact_ball.state == reseeded_ball
+            && marked_cf33_resolution.retry_ball->previous_position.position_x.raw
+                == 0x00123480
+            && marked_cf33_resolution.retry_ball->previous_position.position_y.raw
+                == -0x00017FC0
+            && marked_cf33_contact_gameplay.physics().ball == reseeded_ball,
+        "native CF33 exposes its signed marked CDF8 handoff without changing the ball");
+    const auto actor_retry = marked_cf33_resolution.retry_ball
+        ? marked_cf33_contact_gameplay.begin_actor_contact_collision_retry(
+            *marked_cf33_resolution.retry_ball,
+            CollisionRetryOffsetAttempts{})
+        : std::optional<CollisionRetryPlacementUpdate>{};
+    check(
+        actor_retry
+            && actor_retry->disposition
+                == CollisionRetryPlacementDisposition::accepted
+            && actor_retry->probe
+            && marked_cf33_contact_gameplay.physics().ball
+                == actor_retry->probe->state
+            && !marked_cf33_contact_gameplay.pending_playfield_contact()
+            && !marked_cf33_contact_gameplay
+                    .pending_actor_contact_collision_retry_placement()
+            && !marked_cf33_contact_gameplay
+                    .pending_actor_contact_collision_retry_full_scan(),
+        "native CDF8 actor retry accepts a clear cached-position candidate independently");
+
+    constexpr std::uint8_t kSoldierSlot = 0x04U;
+    check(
+        gameplay.actors().claim_dynamic_slot(
+            kSoldierSlot, ActorBehavior::small_soldier)
+            && gameplay.actors().configure_small_soldier(kSoldierSlot),
+        "native gameplay state owns an initialized Small-Soldier actor");
+
+    const auto contact = gameplay.confirm_actor_contact({
+        .actor_slot = kSoldierSlot,
+        .response_kind = 2U,
+    });
+    check(
+        contact.contact.disposition == ContactDisposition::dispatched
+            && contact.contact.target.marked_for_response
+            && contact.small_soldier_queued
+            && gameplay.physics().contact == contact.contact.state,
+        "native gameplay state commits contact bookkeeping before queuing the actor rule");
+    const auto hit = gameplay.advance_small_soldier_actor(kSoldierSlot);
+    const auto direct_small_soldier_audio = gameplay.take_audio_events();
+    check(
+        hit && hit->actor.step.disposition
+                == SmallSoldierContactDisposition::survived_hit
+            && gameplay.score().stored_units == 30U
+            && direct_small_soldier_audio
+                == std::vector<devils_crush::native_runtime::GameplayAudioEvent>{{
+                    .slot = kSoldierSlot,
+                    .source = devils_crush::native_runtime::GameplayAudioSource::small_soldier,
+                    .command = 0x21U,
+                }}
+            && gameplay.take_audio_events().empty(),
+        "native gameplay state delivers a direct Small-Soldier hit to the native audio handoff exactly once");
+
+    constexpr std::uint8_t kMotionSlot = 0x05U;
+    check(
+        gameplay.actors().claim_dynamic_slot(kMotionSlot, ActorBehavior::shared_motion),
+        "native gameplay state prepares a due shared-motion actor");
+    auto* motion_actor = gameplay.actors().actor(kMotionSlot);
+    if (motion_actor != nullptr) {
+        motion_actor->due_for_update = true;
+        motion_actor->motion = ActorMotionState{
+            .position_x = Fixed24_8{.raw = 10 * 256},
+            .velocity_x = 0x0100,
+            .integrate_x = true,
+        };
+    }
+    gameplay.physics().contact = {};
+    const auto ordered_contact = gameplay.confirm_actor_contact({
+        .actor_slot = kSoldierSlot,
+        .response_kind = 2U,
+    });
+    auto* soldier_actor = gameplay.actors().actor(kSoldierSlot);
+    if (soldier_actor != nullptr) {
+        soldier_actor->due_for_update = true;
+    }
+    const auto actor_phase = gameplay.advance_actor_phase();
+    const auto actor_phase_audio = gameplay.take_audio_events();
+    check(
+        ordered_contact.small_soldier_queued && actor_phase.size() == 2U
+            && actor_phase[0].slot == kSoldierSlot
+            && actor_phase[0].kind
+                == NativeGameplayState::ActorPhaseUpdateKind::small_soldier_contact
+            && actor_phase[0].small_soldier
+            && actor_phase[1].slot == kMotionSlot
+            && actor_phase[1].kind
+                == NativeGameplayState::ActorPhaseUpdateKind::shared_motion
+            && actor_phase[1].motion
+            && actor_phase[1].motion->step.state.position_x.raw == 11 * 256
+            && actor_phase_audio
+                == std::vector<devils_crush::native_runtime::GameplayAudioEvent>{{
+                    .slot = kSoldierSlot,
+                    .source = devils_crush::native_runtime::GameplayAudioSource::small_soldier,
+                    .command = 0x21U,
+                }},
+        "native gameplay state applies recovered behaviors and their audio commands in actor slot order");
+
+    constexpr std::uint8_t kOtherSlot = 0x06U;
+    check(
+        gameplay.actors().claim_dynamic_slot(kOtherSlot, ActorBehavior::shared_motion),
+        "native gameplay state accepts a non-Small-Soldier actor");
+    const auto other_contact = gameplay.confirm_actor_contact({
+        .actor_slot = kOtherSlot,
+        .response_kind = 2U,
+    });
+    check(
+        other_contact.contact.disposition == ContactDisposition::dispatched
+            && !other_contact.small_soldier_queued
+            && gameplay.physics().contact.last_target == kOtherSlot
+            && !gameplay.physics().contact.contact_latched,
+        "native gameplay state preserves non-Small-Soldier contact handoff");
+
+    if (motion_actor != nullptr) {
+        motion_actor->due_for_update = false;
+    }
+    gameplay.physics().contact = {};
+    check(
+        gameplay.seed_bumper({.side = 0U}),
+        "native gameplay state accepts a captured left-Bumper state");
+    const auto score_before_bumper = gameplay.score().stored_units;
+    const auto bumper_contact = gameplay.confirm_actor_contact({
+        .actor_slot = devils_crush::native_runtime::kLeftBumperSlot,
+        .response_kind = 2U,
+    });
+    const auto bumper_phase = gameplay.advance_actor_phase();
+    const auto* left_bumper = gameplay.bumper(0U);
+    check(
+        bumper_contact.contact.disposition == ContactDisposition::dispatched
+            && bumper_contact.bumper_queued
+            && !bumper_contact.small_soldier_queued
+            && bumper_phase.size() == 1U
+            && bumper_phase[0].slot
+                == devils_crush::native_runtime::kLeftBumperSlot
+            && bumper_phase[0].kind
+                == NativeGameplayState::ActorPhaseUpdateKind::bumper_contact
+            && bumper_phase[0].bumper
+            && bumper_phase[0].bumper->bumper.disposition
+                == devils_crush::native_runtime::BumperHitDisposition::primary_damage
+            && left_bumper && left_bumper->hit_phase == 1U
+            && gameplay.score().stored_units == score_before_bumper + 10U,
+        "native gameplay state resolves a queued fixed Bumper in slot order");
+
+    gameplay.physics().contact = {};
+    check(
+        gameplay.seed_front_spider({.side = 1U}),
+        "native gameplay state accepts a captured right Front-Spider state");
+    const auto score_before_front_spider = gameplay.score().stored_units;
+    const auto front_spider_contact = gameplay.confirm_actor_contact({
+        .actor_slot = devils_crush::native_runtime::kRightFrontSpiderSlot,
+        .response_kind = 2U,
+    });
+    const auto front_spider_phase = gameplay.advance_actor_phase();
+    const auto* right_front_spider = gameplay.front_spider(1U);
+    check(
+        front_spider_contact.contact.disposition == ContactDisposition::dispatched
+            && front_spider_contact.front_spider_queued
+            && front_spider_phase.size() == 2U
+            && front_spider_phase[0].slot
+                == devils_crush::native_runtime::kRightFrontSpiderSlot
+            && front_spider_phase[0].kind
+                == NativeGameplayState::ActorPhaseUpdateKind::front_spider_contact
+            && front_spider_phase[0].front_spider
+            && front_spider_phase[0].front_spider->spider.disposition
+                == devils_crush::native_runtime::FrontSpiderContactDisposition::hit
+            && front_spider_phase[1].slot
+                == devils_crush::native_runtime::kRightSkeletonInsectSlot
+            && front_spider_phase[1].kind
+                == NativeGameplayState::ActorPhaseUpdateKind::skeleton_insect_trigger
+            && front_spider_phase[1].skeleton_insect
+            && front_spider_phase[1].skeleton_insect->insect.disposition
+                == devils_crush::native_runtime::SkeletonInsectTriggerDisposition::triggered
+            && right_front_spider && !right_front_spider->collision_ready
+            && gameplay.table_rule_latches().right_front_spider_safety
+            && gameplay.score().stored_units == score_before_front_spider + 80U
+            && gameplay.complete_front_spider_transition(
+                devils_crush::native_runtime::kRightFrontSpiderSlot)
+            && gameplay.front_spider(1U)->collision_ready
+            && gameplay.complete_skeleton_insect_transition(
+                devils_crush::native_runtime::kRightSkeletonInsectSlot),
+        "native gameplay state carries a Front-Spider safety latch to its later Skeleton Insect in slot order");
+
+    gameplay.physics().contact = {};
+    check(
+        gameplay.seed_side_spider({.side = 0U}),
+        "native gameplay state accepts a captured left Side-Spider state");
+    const auto score_before_side_spider = gameplay.score().stored_units;
+    const auto side_spider_contact = gameplay.confirm_actor_contact({
+        .actor_slot = devils_crush::native_runtime::kLeftSideSpiderSlot,
+        .response_kind = 2U,
+    });
+    const auto side_spider_phase = gameplay.advance_actor_phase();
+    const auto* left_side_spider = gameplay.side_spider(0U);
+    check(
+        side_spider_contact.contact.disposition == ContactDisposition::dispatched
+            && side_spider_contact.side_spider_queued
+            && side_spider_phase.size() == 1U
+            && side_spider_phase[0].slot
+                == devils_crush::native_runtime::kLeftSideSpiderSlot
+            && side_spider_phase[0].kind
+                == NativeGameplayState::ActorPhaseUpdateKind::side_spider_contact
+            && side_spider_phase[0].side_spider
+            && side_spider_phase[0].side_spider->spider.disposition
+                == devils_crush::native_runtime::SideSpiderContactDisposition::hit
+            && left_side_spider && !left_side_spider->collision_ready
+            && gameplay.score().stored_units == score_before_side_spider + 100U
+            && gameplay.complete_side_spider_transition(
+                devils_crush::native_runtime::kLeftSideSpiderSlot)
+            && gameplay.side_spider(0U)->collision_ready,
+        "native gameplay state resolves a Side Spider in slot order and preserves its transition boundary");
+
+    gameplay.physics().contact = {};
+    gameplay.seed_tower({});
+    gameplay.table_rule_latches().tower_completed = false;
+    const auto score_before_tower = gameplay.score().stored_units;
+    const auto tower_contact = gameplay.confirm_actor_contact({
+        .actor_slot = devils_crush::native_runtime::kTowerSlot,
+        .response_kind = 2U,
+    });
+    const auto tower_phase = gameplay.advance_actor_phase();
+    const auto fixed_target_audio = gameplay.take_audio_events();
+    check(
+        tower_contact.contact.disposition == ContactDisposition::dispatched
+            && tower_contact.tower_queued && tower_phase.size() == 2U
+            && tower_phase[0].slot == devils_crush::native_runtime::kTowerSlot
+            && tower_phase[0].kind
+                == NativeGameplayState::ActorPhaseUpdateKind::tower_contact
+            && tower_phase[0].tower
+            && tower_phase[0].tower->tower.disposition
+                == devils_crush::native_runtime::TowerContactDisposition::first_source_hit
+            && tower_phase[1].slot
+                == devils_crush::native_runtime::kCenterSkeletonInsectSlot
+            && tower_phase[1].kind
+                == NativeGameplayState::ActorPhaseUpdateKind::skeleton_insect_trigger
+            && tower_phase[1].skeleton_insect
+            && gameplay.table_rule_latches().tower_completed
+            && !gameplay.tower().collision_ready
+            && gameplay.score().stored_units == score_before_tower + 150U
+            && fixed_target_audio
+                == std::vector<devils_crush::native_runtime::GameplayAudioEvent>{
+                    {
+                        .slot = devils_crush::native_runtime::kLeftBumperSlot,
+                        .source = devils_crush::native_runtime::GameplayAudioSource::bumper,
+                        .command = 0x20U,
+                    },
+                    {
+                        .slot = devils_crush::native_runtime::kRightFrontSpiderSlot,
+                        .source = devils_crush::native_runtime::GameplayAudioSource::front_spider,
+                        .command = 0x34U,
+                    },
+                    {
+                        .slot = devils_crush::native_runtime::kLeftSideSpiderSlot,
+                        .source = devils_crush::native_runtime::GameplayAudioSource::side_spider,
+                        .command = 0x34U,
+                    },
+                    {
+                        .slot = devils_crush::native_runtime::kTowerSlot,
+                        .source = devils_crush::native_runtime::GameplayAudioSource::tower,
+                        .command = 0x33U,
+                    },
+                }
+            && gameplay.complete_skeleton_insect_transition(
+                devils_crush::native_runtime::kCenterSkeletonInsectSlot),
+        "native gameplay state carries a Tower source hit to the center Skeleton Insect in slot order");
+
+    const auto tower_presentation_one = gameplay.advance_tower_presentation(
+        devils_crush::native_runtime::kTowerSlot);
+    const auto tower_presentation_two = gameplay.advance_tower_presentation(
+        devils_crush::native_runtime::kTowerSlot);
+    const auto tower_presentation_three = gameplay.advance_tower_presentation(
+        devils_crush::native_runtime::kTowerSlot);
+    const auto tower_presentation_install = gameplay.advance_tower_presentation(
+        devils_crush::native_runtime::kTowerSlot);
+    check(
+        tower_presentation_one && tower_presentation_two && tower_presentation_three
+            && tower_presentation_install
+            && tower_presentation_one->disposition
+                == devils_crush::native_runtime::TowerPresentationDisposition::countdown
+            && tower_presentation_install->disposition
+                == devils_crush::native_runtime::TowerPresentationDisposition::steady_dispatch_installed
+            && gameplay.tower().collision_ready,
+        "native gameplay state advances all recovered Tower presentation updates before rearming");
+
+    gameplay.physics().contact = {};
+    const auto score_before_armed_pass = gameplay.score().stored_units;
+    const auto armed_pass_contact = gameplay.confirm_actor_contact({
+        .actor_slot = devils_crush::native_runtime::kTowerSlot,
+        .response_kind = 2U,
+    });
+    const auto armed_pass_phase = gameplay.advance_actor_phase();
+    check(
+        armed_pass_contact.tower_queued && armed_pass_phase.size() == 1U
+            && armed_pass_phase[0].kind
+                == NativeGameplayState::ActorPhaseUpdateKind::tower_contact
+            && armed_pass_phase[0].tower
+            && armed_pass_phase[0].tower->tower.disposition
+                == devils_crush::native_runtime::TowerContactDisposition::armed_pass_decremented
+            && gameplay.tower().remaining_armed_passes == 4U
+            && gameplay.score().stored_units == score_before_armed_pass,
+        "native gameplay state advances later Tower gate passes without replaying the source award");
+
+    gameplay.seed_tower({
+        .collision_ready = false,
+        .hit_progress = 1U,
+        .remaining_armed_passes = 0U,
+        .bonus_stage_selection_pending = true,
+    });
+    const auto tower_bonus_wait = gameplay.advance_tower_bonus_stage_selection(
+        devils_crush::native_runtime::kTowerSlot, false);
+    const auto tower_bonus_selection = gameplay.advance_tower_bonus_stage_selection(
+        devils_crush::native_runtime::kTowerSlot, true);
+    const auto tower_bonus_audio = gameplay.take_audio_events();
+    check(
+        !gameplay.advance_tower_bonus_stage_selection(0x2CU, true)
+            && tower_bonus_wait
+            && tower_bonus_wait->disposition
+                == devils_crush::native_runtime::TowerBonusStageSelectionDisposition::waiting_for_collision
+            && tower_bonus_selection
+            && tower_bonus_selection->requests_session_transition
+            && tower_bonus_selection->bonus_stage == 5U
+            && gameplay.tower().bonus_stage_transition_requested
+            && tower_bonus_audio
+                == std::vector<devils_crush::native_runtime::GameplayAudioEvent>{{
+                    .slot = devils_crush::native_runtime::kTowerSlot,
+                    .source = devils_crush::native_runtime::GameplayAudioSource::tower_bonus_stage_selection,
+                    .command = 0x41U,
+                }},
+        "native gameplay state exposes Tower BS-5 selection and its audio event only through its pending collision owner");
+
+    gameplay.seed_score({
+        .stored_units = 0x123456U,
+        .display_dirty = true,
+    });
+    check(
+        gameplay.score()
+            == devils_crush::native_runtime::ScoreState{
+                .stored_units = 0x123456U,
+                .display_dirty = true,
+            },
+        "native gameplay state accepts a captured score as its scoring authority");
+}
+
+void test_native_gameplay_audio_dispatch()
+{
+    using devils_crush::native_runtime::GameplayAudioDispatchDisposition;
+    using devils_crush::native_runtime::GameplayAudioDispatchPolicy;
+    using devils_crush::native_runtime::GameplayAudioEvent;
+    using devils_crush::native_runtime::GameplayAudioSource;
+    using devils_crush::native_runtime::dispatch_gameplay_audio_event;
+    using devils_crush::native_runtime::dispatch_gameplay_audio_events;
+
+    const auto ordinary = dispatch_gameplay_audio_event({
+        .slot = 0x14U,
+        .source = GameplayAudioSource::bumper,
+        .command = 0x20U,
+    });
+    const auto sentinel = dispatch_gameplay_audio_event({
+        .slot = 0x2DU,
+        .source = GameplayAudioSource::tower,
+        .command = 0xFFU,
+    });
+    const auto protected_while_locked = dispatch_gameplay_audio_event(
+        {
+            .slot = 0x26U,
+            .source = GameplayAudioSource::front_spider,
+            .command = 0x31U,
+        },
+        {.audio_locked = true});
+    const auto ordinary_while_locked = dispatch_gameplay_audio_event(
+        {
+            .slot = 0x64U,
+            .source = GameplayAudioSource::tower_insect,
+            .command = 0x29U,
+        },
+        {.audio_locked = true});
+    check(
+        ordinary.forwards_to_audio_driver()
+            && sentinel.disposition
+                == GameplayAudioDispatchDisposition::ignored_sentinel
+            && !sentinel.forwards_to_audio_driver()
+            && protected_while_locked.disposition
+                == GameplayAudioDispatchDisposition::suppressed_while_audio_locked
+            && !protected_while_locked.forwards_to_audio_driver()
+            && ordinary_while_locked.forwards_to_audio_driver(),
+        "native game-to-audio dispatch preserves ECFD's sentinel and locked-command gates");
+
+    constexpr std::array<GameplayAudioEvent, 4U> events{{
+        {
+            .slot = 0x14U,
+            .source = GameplayAudioSource::bumper,
+            .command = 0x20U,
+        },
+        {
+            .slot = 0x26U,
+            .source = GameplayAudioSource::front_spider,
+            .command = 0x27U,
+        },
+        {
+            .slot = 0x2DU,
+            .source = GameplayAudioSource::tower,
+            .command = 0x47U,
+        },
+        {
+            .slot = 0x64U,
+            .source = GameplayAudioSource::tower_insect,
+            .command = 0x29U,
+        },
+    }};
+    const auto batch = dispatch_gameplay_audio_events(
+        events, GameplayAudioDispatchPolicy{.audio_locked = true});
+    check(
+        batch.size() == events.size() && batch[0].event == events[0]
+            && batch[0].forwards_to_audio_driver() && batch[1].event == events[1]
+            && batch[1].disposition
+                == GameplayAudioDispatchDisposition::suppressed_while_audio_locked
+            && batch[2].event == events[2]
+            && batch[2].disposition
+                == GameplayAudioDispatchDisposition::suppressed_while_audio_locked
+            && batch[3].event == events[3] && batch[3].forwards_to_audio_driver(),
+        "native game-to-audio dispatch retains source-tagged actor order through the synchronous gate");
+}
+
+void test_native_ball_motion()
+{
+    using devils_crush::native_runtime::BallState;
+    using devils_crush::native_runtime::BallMotionIncrement;
+    using devils_crush::native_runtime::BallSubstepProgress;
+    using devils_crush::native_runtime::BallMotionTuning;
+    using devils_crush::native_runtime::Fixed24_8;
+    using devils_crush::native_runtime::apply_ball_drag_and_gravity;
+    using devils_crush::native_runtime::advance_ball_motion;
+    using devils_crush::native_runtime::advance_ball_motion_substep;
+    using devils_crush::native_runtime::advance_ball_motion_substeps;
+    using devils_crush::native_runtime::advance_prepared_ball_motion_substeps;
+    using devils_crush::native_runtime::rollback_ball_position;
+    using devils_crush::native_runtime::split_ball_motion_substeps;
+
+    BallState ball{
+        .position_x = Fixed24_8{.raw = 12 * 256 + 128},
+        .position_y = Fixed24_8{.raw = 20 * 256 + 64},
+        .velocity_x = 384,
+        .velocity_y = -320,
+        .motion_flags = 0xA7U,
+    };
+    const auto moved = advance_ball_motion(ball);
+    check(
+        moved.previous == ball && moved.state.position_x.raw == 14 * 256
+            && moved.state.position_y.raw == 19 * 256,
+        "native ball motion integrates both signed 8.8 velocity components");
+    check(
+        moved.crossed_whole_pixel && moved.state.motion_flags == 0xA5U,
+        "native ball motion clears the fractional-only marker after an integer step");
+
+    const auto split_motion = advance_ball_motion_substep(
+        ball,
+        {
+            .horizontal = 96,
+            .vertical = -80,
+        });
+    check(
+        split_motion.state.position_x.raw == 12 * 256 + 224
+            && split_motion.state.position_y.raw == 19 * 256 + 240
+            && split_motion.state.velocity_x == ball.velocity_x
+            && split_motion.state.velocity_y == ball.velocity_y,
+        "native ball substep integrates DC95's increment without replacing frame velocity");
+
+    ball.position_x = Fixed24_8{.raw = 12 * 256 + 1};
+    ball.position_y = Fixed24_8{.raw = 20 * 256 + 2};
+    ball.velocity_x = 16;
+    ball.velocity_y = -1;
+    ball.motion_flags = 0xA5U;
+    const auto fractional = advance_ball_motion(ball);
+    check(
+        !fractional.crossed_whole_pixel && fractional.state.motion_flags == 0xA7U,
+        "native ball motion marks an update that remains within the same pixels");
+
+    ball.position_x = Fixed24_8{.raw = 0x7FFFFFU};
+    ball.position_y = Fixed24_8{.raw = -0x800000};
+    ball.velocity_x = 1;
+    ball.velocity_y = -1;
+    const auto wrapped = advance_ball_motion(ball);
+    check(
+        wrapped.state.position_x.raw == -0x800000
+            && wrapped.state.position_y.raw == 0x7FFFFF,
+        "native ball motion preserves signed 24-bit coordinate wrap");
+
+    const auto rollback = rollback_ball_position(
+        {
+            .position_x = Fixed24_8{.raw = 28 * 256 + 64},
+            .position_y = Fixed24_8{.raw = 44 * 256 + 128},
+            .velocity_x = -0x0180,
+            .velocity_y = 0x0240,
+            .motion_flags = 0xA2U,
+        },
+        {
+            .position_x = Fixed24_8{.raw = 26 * 256 + 192},
+            .position_y = Fixed24_8{.raw = 41 * 256 + 16},
+            .velocity_x = 0x0100,
+            .velocity_y = -0x0100,
+            .motion_flags = 0x80U,
+        });
+    check(
+        rollback.position_x.raw == 26 * 256 + 192
+            && rollback.position_y.raw == 41 * 256 + 16
+            && rollback.velocity_x == -0x0180
+            && rollback.velocity_y == 0x0240
+            && rollback.motion_flags == 0xA2U,
+        "native ball rollback restores positions without undoing response state");
+
+    const auto single_step = split_ball_motion_substeps(BallState{
+        .velocity_x = 0x0340,
+        .velocity_y = 0x0180,
+    });
+    check(
+        single_step.count == 1U && single_step.shifts == 0U
+            && single_step.maximum_whole_speed == 3U
+            && single_step.velocity_x_per_step == 0x0340
+            && single_step.velocity_y_per_step == 0x0180,
+        "native ball physics keeps slow motion in one collision step");
+
+    const auto half_steps = split_ball_motion_substeps(BallState{
+        .velocity_x = 0x0180,
+        .velocity_y = 0x0480,
+    });
+    check(
+        half_steps.count == 2U && half_steps.shifts == 1U
+            && half_steps.maximum_whole_speed == 4U
+            && half_steps.velocity_x_per_step == 0x00C0
+            && half_steps.velocity_y_per_step == 0x0240,
+        "native ball physics halves both components for four-pixel motion");
+
+    const auto quarter_steps = split_ball_motion_substeps(BallState{
+        .velocity_x = static_cast<std::int16_t>(0xF800U),
+        .velocity_y = 0x0100,
+    });
+    check(
+        quarter_steps.count == 4U && quarter_steps.shifts == 2U
+            && quarter_steps.maximum_whole_speed == 8U
+            && quarter_steps.velocity_x_per_step
+                == static_cast<std::int16_t>(0xFE00U)
+            && quarter_steps.velocity_y_per_step == 0x0040,
+        "native ball physics arithmetically quarters fast negative motion");
+
+    const auto fixed_point_steps = split_ball_motion_substeps(BallState{
+        .velocity_x = static_cast<std::int16_t>(0x8000U),
+    });
+    check(
+        fixed_point_steps.count == 4U
+            && fixed_point_steps.maximum_whole_speed == 0x80U
+            && fixed_point_steps.velocity_x_per_step
+                == static_cast<std::int16_t>(0xE000U),
+        "native ball physics retains the signed whole-speed fixed point");
+
+    const auto unobstructed = advance_ball_motion_substeps(BallState{
+        .position_x = Fixed24_8{.raw = 16 * 256},
+        .position_y = Fixed24_8{.raw = 32 * 256},
+        .velocity_x = 0x0803,
+        .velocity_y = -0x0401,
+    });
+    check(
+        unobstructed.completed_steps == 4U && unobstructed.plan.count == 4U
+            && unobstructed.steps[0].state.position_x.raw == 18 * 256
+            && unobstructed.state.position_x.raw == 24 * 256
+            && unobstructed.state.position_y.raw == 28 * 256 - 4,
+        "native ball physics moves once per collision substep without rounding");
+    check(
+        unobstructed.state.velocity_x == 0x0803
+            && unobstructed.state.velocity_y == -0x0401,
+        "native ball physics retains frame velocity after an unobstructed loop");
+
+    const auto resumed = advance_prepared_ball_motion_substeps(
+        BallState{
+            .position_x = Fixed24_8{.raw = 20 * 256},
+            .position_y = Fixed24_8{.raw = 40 * 256},
+            .velocity_x = 0x0803,
+            .velocity_y = -0x0401,
+        },
+        BallSubstepProgress{
+            .increment = {.horizontal = 0x0200, .vertical = -0x0100},
+            .completed_steps = 1U,
+            .requested_steps = 4U,
+        });
+    check(
+        resumed && resumed->completed_steps == 3U
+            && resumed->progress.complete()
+            && resumed->state.position_x.raw == 26 * 256
+            && resumed->state.position_y.raw == 37 * 256
+            && resumed->state.velocity_x == 0x0803
+            && resumed->state.velocity_y == -0x0401,
+        "native ball physics resumes only DC95's remaining prepared substeps");
+    check(
+        !advance_prepared_ball_motion_substeps(
+            BallState{},
+            BallSubstepProgress{
+                .completed_steps = 1U,
+                .requested_steps = 3U,
+            }),
+        "native ball physics rejects a non-DC95 prepared substep count");
+
+    const auto damped = apply_ball_drag_and_gravity(
+        BallState{
+            .velocity_x = 0x0800,
+            .velocity_y = -0x0800,
+        },
+        BallMotionTuning{
+            .horizontal_drag_divisor = 8,
+            .vertical_drag_divisor = 8,
+            .vertical_gravity = 0x20U,
+        });
+    check(
+        damped && damped->previous.velocity_x == 0x0800
+            && damped->state.velocity_x == 0x0700
+            && damped->state.velocity_y == -0x06E0,
+        "native ball physics applies signed drag before vertical gravity");
+
+    const auto fractional_drag = apply_ball_drag_and_gravity(
+        BallState{
+            .velocity_x = -5,
+        },
+        BallMotionTuning{
+            .horizontal_drag_divisor = 8,
+            .vertical_drag_divisor = 0,
+        });
+    check(
+        fractional_drag && fractional_drag->state.velocity_x == -5,
+        "native ball physics preserves truncating signed sub-pixel drag");
+
+    const auto invalid_tuning = apply_ball_drag_and_gravity(
+        BallState{
+            .velocity_y = 1,
+        },
+        BallMotionTuning{
+            .vertical_drag_divisor = 0,
+        });
+    check(
+        !invalid_tuning,
+        "native ball physics rejects nonzero motion with a zero drag divisor");
+}
+
+void test_native_collision_retry()
+{
+    using devils_crush::native_runtime::BallState;
+    using devils_crush::native_runtime::CollisionRetryDirection;
+    using devils_crush::native_runtime::CollisionRetryDirectionSelectionDisposition;
+    using devils_crush::native_runtime::CollisionRetryOffsetAttempts;
+    using devils_crush::native_runtime::CollisionRetryOffsets;
+    using devils_crush::native_runtime::CollisionRetryPlacementDisposition;
+    using devils_crush::native_runtime::CollisionRetryPlacementPhase;
+    using devils_crush::native_runtime::CollisionRetryProbeDisposition;
+    using devils_crush::native_runtime::CollisionRetryFullScanOutcome;
+    using devils_crush::native_runtime::Fixed24_8;
+    using devils_crush::native_runtime::MappedRomView;
+    using devils_crush::native_runtime::classify_collision_retry_direction;
+    using devils_crush::native_runtime::begin_collision_retry_placement;
+    using devils_crush::native_runtime::advance_collision_retry_placement;
+    using devils_crush::native_runtime::decode_collision_retry_offset_attempts;
+    using devils_crush::native_runtime::decode_collision_retry_offsets;
+    using devils_crush::native_runtime::kCollisionRetryOffsetTable;
+    using devils_crush::native_runtime::make_collision_retry_full_scan_probe;
+    using devils_crush::native_runtime::make_collision_retry_attempt_sequence;
+    using devils_crush::native_runtime::make_collision_retry_attempt_sequence_for_direction;
+    using devils_crush::native_runtime::make_collision_retry_vertical_fallback_sequence;
+    using devils_crush::native_runtime::probe_collision_retry;
+    using devils_crush::native_runtime::retry_ball_collision;
+    using devils_crush::native_runtime::select_collision_retry_direction;
+    using devils_crush::native_runtime::select_collision_retry_placement_direction;
+
+    check(
+        classify_collision_retry_direction(0, 0)
+                == CollisionRetryDirection::positive_x_positive_y
+            && classify_collision_retry_direction(1, -1)
+                == CollisionRetryDirection::positive_x_negative_y
+            && classify_collision_retry_direction(-1, 1)
+                == CollisionRetryDirection::negative_x_positive_y
+            && classify_collision_retry_direction(-1, -1)
+                == CollisionRetryDirection::negative_x_negative_y,
+        "native collision retry classifies all signed motion directions");
+
+    const CollisionRetryOffsets offsets{
+        .by_direction = {{
+            {.horizontal_pixels = 1, .vertical_pixels = 2},
+            {.horizontal_pixels = 3, .vertical_pixels = -4},
+            {.horizontal_pixels = -5, .vertical_pixels = 6},
+            {.horizontal_pixels = -7, .vertical_pixels = -8},
+        }},
+    };
+    const auto retry = retry_ball_collision(
+        {
+            .position_x = Fixed24_8{.raw = 28 * 256 + 64},
+            .position_y = Fixed24_8{.raw = 44 * 256 + 128},
+            .velocity_x = -0x0180,
+            .velocity_y = 0x0240,
+            .motion_flags = 0xA2U,
+        },
+        {
+            .position_x = Fixed24_8{.raw = 26 * 256 + 192},
+            .position_y = Fixed24_8{.raw = 41 * 256 + 16},
+            .velocity_x = 0x0100,
+            .velocity_y = -0x0100,
+            .motion_flags = 0x80U,
+        },
+        offsets);
+    check(
+        retry.direction == CollisionRetryDirection::negative_x_positive_y
+            && retry.offset.horizontal_pixels == -5
+            && retry.offset.vertical_pixels == 6
+            && retry.state.position_x.raw == 21 * 256 + 192
+            && retry.state.position_y.raw == 47 * 256 + 16
+            && retry.state.velocity_x == -0x0180
+            && retry.state.velocity_y == 0x0240
+            && retry.state.motion_flags == 0xA2U
+            && !retry.vertical_integer_addition_carried,
+        "native collision retry restores position, preserves response state, and applies its direction offset");
+
+    const auto sequence = make_collision_retry_attempt_sequence(
+        {
+            .position_x = Fixed24_8{.raw = 28 * 256 + 64},
+            .position_y = Fixed24_8{.raw = 44 * 256 + 128},
+            .velocity_x = -0x0180,
+            .velocity_y = 0x0240,
+            .motion_flags = 0xA2U,
+        },
+        {
+            .position_x = Fixed24_8{.raw = 26 * 256 + 192},
+            .position_y = Fixed24_8{.raw = 41 * 256 + 16},
+            .velocity_x = 0x0100,
+            .velocity_y = -0x0100,
+            .motion_flags = 0x80U,
+        },
+        CollisionRetryOffsetAttempts{
+            .by_direction = {{
+                {},
+                {},
+                {{{.horizontal_pixels = -5, .vertical_pixels = 6},
+                  {.horizontal_pixels = 2, .vertical_pixels = -3},
+                  {.horizontal_pixels = -1, .vertical_pixels = 4}}},
+                {},
+            }},
+        });
+    check(
+        sequence.direction == CollisionRetryDirection::negative_x_positive_y
+            && sequence.restored_ball.position_x.raw == 26 * 256 + 192
+            && sequence.restored_ball.position_y.raw == 41 * 256 + 16
+            && sequence.attempts[0U].state.position_x.raw == 21 * 256 + 192
+            && sequence.attempts[0U].state.position_y.raw == 47 * 256 + 16
+            && sequence.attempts[1U].state.position_x.raw == 23 * 256 + 192
+            && sequence.attempts[1U].state.position_y.raw == 44 * 256 + 16
+            && sequence.attempts[2U].state.position_x.raw == 22 * 256 + 192
+            && sequence.attempts[2U].state.position_y.raw == 48 * 256 + 16,
+        "native collision retry keeps CDF8's three same-quadrant moves cumulative");
+    const auto selected_direction = select_collision_retry_direction(0x80U, 0xC0U);
+    const auto repeated_direction = select_collision_retry_direction(0x00U, 0xC0U);
+    const auto exhausted_directions = select_collision_retry_direction(0x00U, 0xF3U);
+    const auto selected_sequence = make_collision_retry_attempt_sequence_for_direction(
+        retry.impact_ball,
+        sequence.restored_ball,
+        CollisionRetryOffsetAttempts{
+            .by_direction = {{
+                {},
+                {},
+                {{{.horizontal_pixels = -5, .vertical_pixels = 6},
+                  {.horizontal_pixels = 2, .vertical_pixels = -3},
+                  {.horizontal_pixels = -1, .vertical_pixels = 4}}},
+                {},
+            }},
+        },
+        *selected_direction.direction);
+    check(
+        selected_direction.disposition
+                == CollisionRetryDirectionSelectionDisposition::selected
+            && selected_direction.direction
+                == CollisionRetryDirection::negative_x_positive_y
+            && selected_direction.direction_mask == 0x20U
+            && selected_direction.attempted_direction_flags_after == 0xE0U
+            && repeated_direction.disposition
+                == CollisionRetryDirectionSelectionDisposition::already_attempted
+            && repeated_direction.direction
+                == CollisionRetryDirection::positive_x_positive_y
+            && repeated_direction.attempted_direction_flags_after == 0xC0U
+            && exhausted_directions.disposition
+                == CollisionRetryDirectionSelectionDisposition::fallback_required
+            && !exhausted_directions.direction
+            && selected_sequence == sequence,
+        "native collision retry preserves CDF8's RNG direction selection and retry mask");
+
+    const auto fallback = make_collision_retry_vertical_fallback_sequence(
+        retry.impact_ball, sequence.attempts[2U].state);
+    check(
+        fallback.attempts[0U].state.position_x.raw == 22 * 256 + 192
+            && fallback.attempts[0U].state.position_y.raw == 47 * 256 + 16
+            && fallback.attempts[6U].state.position_x.raw == 22 * 256 + 192
+            && fallback.attempts[6U].state.position_y.raw == 41 * 256 + 16
+            && fallback.attempts[0U].vertical_integer_addition_carried
+            && fallback.attempts[6U].vertical_integer_addition_carried,
+        "native collision retry preserves CDF8's seven cumulative upward probes");
+    const auto wrapping_fallback = make_collision_retry_vertical_fallback_sequence(
+        retry.impact_ball,
+        {.position_y = Fixed24_8{.raw = 0}});
+    check(
+        wrapping_fallback.attempts[0U].state.position_y.raw == -256
+            && !wrapping_fallback.attempts[0U].vertical_integer_addition_carried,
+        "native collision retry preserves the fallback subtraction borrow into CEB5");
+
+    const CollisionRetryOffsetAttempts placement_offsets{
+        .by_direction = {{
+            {{{.horizontal_pixels = 1},
+              {.vertical_pixels = 1},
+              {.horizontal_pixels = 1, .vertical_pixels = 1}}},
+            {},
+            {{{.horizontal_pixels = -5, .vertical_pixels = 6},
+              {.horizontal_pixels = 2, .vertical_pixels = -3},
+              {.horizontal_pixels = -1, .vertical_pixels = 4}}},
+            {},
+        }},
+    };
+    const auto placement_initial = begin_collision_retry_placement(
+        retry.impact_ball, sequence.restored_ball, placement_offsets);
+    const auto placement_unresolved = advance_collision_retry_placement(
+        placement_initial.state, CollisionRetryFullScanOutcome::unresolved);
+    const auto placement_second = advance_collision_retry_placement(
+        placement_initial.state, CollisionRetryFullScanOutcome::solid);
+    const auto placement_third = advance_collision_retry_placement(
+        placement_second.state, CollisionRetryFullScanOutcome::solid);
+    const auto placement_needs_rng = advance_collision_retry_placement(
+        placement_third.state, CollisionRetryFullScanOutcome::solid);
+    const auto placement_repeated_direction =
+        select_collision_retry_placement_direction(
+            placement_needs_rng.state, 0x80U);
+    const auto placement_selected_direction =
+        select_collision_retry_placement_direction(
+            placement_needs_rng.state, 0x00U);
+    const auto invalid_placement_advance = advance_collision_retry_placement(
+        placement_needs_rng.state, CollisionRetryFullScanOutcome::clear);
+    const auto invalid_placement_direction =
+        select_collision_retry_placement_direction(placement_initial.state, 0x00U);
+    check(
+        placement_initial.disposition
+                == CollisionRetryPlacementDisposition::probe_ready
+            && placement_initial.probe == sequence.attempts[0U]
+            && placement_initial.state.attempted_direction_flags == 0x20U
+            && placement_unresolved.disposition
+                == CollisionRetryPlacementDisposition::unresolved
+            && placement_unresolved.state == placement_initial.state
+            && placement_unresolved.probe == placement_initial.probe
+            && placement_second.probe == sequence.attempts[1U]
+            && placement_third.probe == sequence.attempts[2U]
+            && placement_needs_rng.disposition
+                == CollisionRetryPlacementDisposition::needs_random_direction
+            && placement_needs_rng.state.phase
+                == CollisionRetryPlacementPhase::selecting_direction
+            && placement_repeated_direction.disposition
+                == CollisionRetryPlacementDisposition::needs_random_direction
+            && placement_selected_direction.disposition
+                == CollisionRetryPlacementDisposition::probe_ready
+            && placement_selected_direction.state.direction
+                == CollisionRetryDirection::positive_x_positive_y
+            && placement_selected_direction.state.attempted_direction_flags == 0xA0U
+            && placement_selected_direction.probe->state.position_x.raw
+                == 27 * 256 + 192
+            && placement_selected_direction.probe->state.position_y.raw
+                == 41 * 256 + 16
+            && invalid_placement_advance.disposition
+                == CollisionRetryPlacementDisposition::invalid_state
+            && invalid_placement_advance.state == placement_needs_rng.state
+            && invalid_placement_direction.disposition
+                == CollisionRetryPlacementDisposition::invalid_state
+            && invalid_placement_direction.state == placement_initial.state,
+        "native collision retry owns CDF8's candidate, unresolved, and RNG boundaries");
+
+    auto exhausted_placement = placement_needs_rng.state;
+    exhausted_placement.attempted_direction_flags = 0xF0U;
+    const auto fallback_placement = select_collision_retry_placement_direction(
+        exhausted_placement, 0x00U);
+    auto end_of_fallback_pass = fallback_placement;
+    for (std::size_t index = 0U; index < 6U; ++index) {
+        end_of_fallback_pass = advance_collision_retry_placement(
+            end_of_fallback_pass.state, CollisionRetryFullScanOutcome::solid);
+    }
+    const auto next_fallback_pass = advance_collision_retry_placement(
+        end_of_fallback_pass.state, CollisionRetryFullScanOutcome::solid);
+    const auto accepted_placement = advance_collision_retry_placement(
+        fallback_placement.state, CollisionRetryFullScanOutcome::clear);
+    check(
+        fallback_placement.disposition
+                == CollisionRetryPlacementDisposition::probe_ready
+            && fallback_placement.state.phase
+                == CollisionRetryPlacementPhase::vertical_fallback
+            && fallback_placement.probe->state.position_y.raw == 47 * 256 + 16
+            && end_of_fallback_pass.state.attempt_index == 6U
+            && end_of_fallback_pass.probe->state.position_y.raw == 41 * 256 + 16
+            && next_fallback_pass.state.attempt_index == 0U
+            && next_fallback_pass.probe->state.position_y.raw == 40 * 256 + 16
+            && accepted_placement.disposition
+                == CollisionRetryPlacementDisposition::accepted
+            && accepted_placement.state.phase
+                == CollisionRetryPlacementPhase::accepted
+            && accepted_placement.probe == fallback_placement.probe,
+        "native collision retry repeats CE98 fallback passes and retains the accepted candidate");
+
+    const auto clear_probe = probe_collision_retry(retry);
+    check(
+        clear_probe.adjusted_horizontal_low_byte == 0xF4U
+            && clear_probe.adjusted_horizontal_high_byte == 0xFFU
+            && clear_probe.vertical_low_byte == 47U
+            && clear_probe.disposition == CollisionRetryProbeDisposition::clear,
+        "native collision retry keeps its observed clear probe separate from full scanning");
+
+    const auto full_scan_probe = probe_collision_retry(retry_ball_collision(
+        {
+            .velocity_x = 1,
+            .velocity_y = 1,
+        },
+        {
+            .position_x = Fixed24_8{.raw = 32 * 256},
+            .position_y = Fixed24_8{},
+        },
+        CollisionRetryOffsets{
+            .by_direction = {{
+                {.horizontal_pixels = 1},
+            }},
+        }));
+    check(
+        full_scan_probe.adjusted_horizontal_low_byte == 0U
+            && full_scan_probe.adjusted_horizontal_high_byte == 0U
+            && full_scan_probe.vertical_low_byte == 0U
+            && full_scan_probe.disposition
+                == CollisionRetryProbeDisposition::requires_full_scan,
+        "native collision retry reports the unported scanner handoff exactly");
+    const auto full_scan_source = make_collision_retry_full_scan_probe(
+        full_scan_probe, 0x23U);
+    check(
+        full_scan_source && full_scan_source->horizontal == 0U
+            && full_scan_source->vertical == 0x2300U
+            && !make_collision_retry_full_scan_probe(clear_probe, 0x23U),
+        "native collision retry exposes CED2's mixed parent/retry scan source");
+
+    const auto carried_clear_probe = probe_collision_retry(retry_ball_collision(
+        {
+            .velocity_x = 1,
+            .velocity_y = 1,
+        },
+        {
+            .position_x = Fixed24_8{.raw = 32 * 256},
+            .position_y = Fixed24_8{.raw = 0xFFFF * 256},
+        },
+        CollisionRetryOffsets{
+            .by_direction = {{
+                {.vertical_pixels = 2},
+            }},
+        }));
+    check(
+        carried_clear_probe.retry.vertical_integer_addition_carried
+            && carried_clear_probe.adjusted_horizontal_high_byte == 0U
+            && carried_clear_probe.vertical_low_byte == 1U
+            && carried_clear_probe.disposition
+                == CollisionRetryProbeDisposition::clear,
+        "native collision retry preserves vertical-add carry into the probe");
+
+    const auto wrapped_retry = retry_ball_collision(
+        {
+            .velocity_x = 1,
+            .velocity_y = 1,
+        },
+        {
+            .position_x = Fixed24_8{.raw = 0x7FFF00},
+        },
+        offsets);
+    check(
+        wrapped_retry.state.position_x.raw == -0x800000,
+        "native collision retry preserves signed 24-bit position wrap");
+
+    std::vector<std::byte> rom(MappedRomView::kSupportedRomBytes);
+    std::array<std::uint8_t, 8U> mpr{};
+    mpr[6U] = 0x01U;
+    constexpr std::array retry_table{
+        std::byte{0x01}, std::byte{0x00}, std::byte{0x00}, std::byte{0x00},
+        std::byte{0x01}, std::byte{0x00}, std::byte{0x01}, std::byte{0x00},
+        std::byte{0x00}, std::byte{0x00}, std::byte{0x01}, std::byte{0x00},
+        std::byte{0x00}, std::byte{0x00}, std::byte{0xFF}, std::byte{0xFF},
+        std::byte{0x01}, std::byte{0x00}, std::byte{0xFF}, std::byte{0xFF},
+        std::byte{0x01}, std::byte{0x00}, std::byte{0x00}, std::byte{0x00},
+        std::byte{0xFF}, std::byte{0xFF}, std::byte{0x00}, std::byte{0x00},
+        std::byte{0xFF}, std::byte{0xFF}, std::byte{0x01}, std::byte{0x00},
+        std::byte{0x00}, std::byte{0x00}, std::byte{0x01}, std::byte{0x00},
+        std::byte{0x00}, std::byte{0x00}, std::byte{0xFF}, std::byte{0xFF},
+        std::byte{0xFF}, std::byte{0xFF}, std::byte{0xFF}, std::byte{0xFF},
+        std::byte{0xFF}, std::byte{0xFF}, std::byte{0x00}, std::byte{0x00},
+    };
+    std::ranges::copy(
+        retry_table,
+        rom.begin() + static_cast<std::ptrdiff_t>(
+            MappedRomView::kBankBytes
+            + (kCollisionRetryOffsetTable & (MappedRomView::kBankBytes - 1U))));
+    const auto decoded_offsets = decode_collision_retry_offsets(
+        MappedRomView(rom, mpr));
+    check(
+        decoded_offsets && *decoded_offsets == CollisionRetryOffsets{
+                .by_direction = {{
+                    {.horizontal_pixels = 1, .vertical_pixels = 0},
+                    {.horizontal_pixels = 0, .vertical_pixels = -1},
+                    {.horizontal_pixels = -1, .vertical_pixels = 0},
+                    {.horizontal_pixels = 0, .vertical_pixels = -1},
+                }},
+            },
+        "native collision retry decodes each direction's first CDF8 candidate");
+    const auto decoded_attempts = decode_collision_retry_offset_attempts(
+        MappedRomView(rom, mpr));
+    check(
+        decoded_attempts
+            && decoded_attempts->by_direction[0U][0U]
+                == devils_crush::native_runtime::CollisionRetryOffset{
+                    .horizontal_pixels = 1, .vertical_pixels = 0}
+            && decoded_attempts->by_direction[0U][2U]
+                == devils_crush::native_runtime::CollisionRetryOffset{
+                    .horizontal_pixels = 0, .vertical_pixels = 1}
+            && decoded_attempts->by_direction[1U][1U]
+                == devils_crush::native_runtime::CollisionRetryOffset{
+                    .horizontal_pixels = 1, .vertical_pixels = -1}
+            && decoded_attempts->by_direction[2U][1U]
+                == devils_crush::native_runtime::CollisionRetryOffset{
+                    .horizontal_pixels = -1, .vertical_pixels = 1}
+            && decoded_attempts->by_direction[3U][2U]
+                == devils_crush::native_runtime::CollisionRetryOffset{
+                    .horizontal_pixels = -1, .vertical_pixels = 0},
+        "native collision retry preserves CDF8's three ordered candidates per quadrant");
+    mpr[6U] = 0x80U;
+    check(
+        !decode_collision_retry_offset_attempts(MappedRomView(rom, mpr))
+            && !decode_collision_retry_offsets(MappedRomView(rom, mpr)),
+        "native collision retry rejects an unmapped offset table");
+}
+
+void test_native_collision_response()
+{
+    using devils_crush::native_runtime::CollisionResponseConfig;
+    using devils_crush::native_runtime::CollisionResponseBasis;
+    using devils_crush::native_runtime::CollisionResponseMode;
+    using devils_crush::native_runtime::CollisionNormalReflection;
+    using devils_crush::native_runtime::CollisionResponseVector;
+    using devils_crush::native_runtime::GameStateView;
+    using devils_crush::native_runtime::MappedRomView;
+    using devils_crush::native_runtime::NormalCollisionResponseTuning;
+    using devils_crush::native_runtime::apply_collision_response;
+    using devils_crush::native_runtime::apply_oriented_collision_response;
+    using devils_crush::native_runtime::decode_collision_response_basis;
+    using devils_crush::native_runtime::make_collision_response_config;
+
+    auto config = CollisionResponseConfig{
+        .requested_mode = CollisionResponseMode::half,
+    };
+    const auto half = apply_collision_response(
+        static_cast<std::int16_t>(0xFE00U), config);
+    check(
+        half.outgoing_velocity == -256 && !half.clamped,
+        "native collision response applies signed half-speed scaling");
+
+    config = {
+        .requested_mode = CollisionResponseMode::reduced,
+    };
+    const auto reduced = apply_collision_response(0x0800, config);
+    check(
+        reduced.outgoing_velocity == 0x0180,
+        "native collision response applies three-sixteenths reduced scaling");
+
+    config.use_quarter_reduced_scale = true;
+    const auto quarter = apply_collision_response(0x0800, config);
+    check(
+        quarter.outgoing_velocity == 0x0200,
+        "native collision response selects quarter reduced scaling");
+
+    config = {
+        .requested_mode = CollisionResponseMode::normal,
+        .force_reduced_mode = true,
+    };
+    const auto promoted = apply_collision_response(0x0800, config);
+    check(
+        promoted.effective_mode == CollisionResponseMode::reduced
+            && promoted.outgoing_velocity == 0x0180,
+        "native collision response promotes normal impacts in reduced table state");
+
+    config = {
+        .requested_mode = CollisionResponseMode::normal,
+        .normal_tuning = NormalCollisionResponseTuning{
+            .negative_low_byte_decrement = 0x20U,
+            .positive_low_byte_increment = 0x20U,
+            .positive_high_byte_increment = 0x01U,
+        },
+    };
+    const auto positive_cap = apply_collision_response(0x05F0, config);
+    check(
+        positive_cap.outgoing_velocity == 0x0610 && positive_cap.clamped,
+        "native collision response applies the normal positive speed cap");
+
+    const auto negative_cap = apply_collision_response(
+        static_cast<std::int16_t>(0xF510U), config);
+    check(
+        negative_cap.outgoing_velocity == static_cast<std::int16_t>(0xFAF0U)
+            && negative_cap.clamped,
+        "native collision response applies the normal negative speed cap");
+
+    const auto identity_reflection = apply_oriented_collision_response(
+        {.horizontal = 0x0200, .vertical = 0x0300},
+        {},
+        {});
+    check(
+        identity_reflection.local
+            == CollisionResponseVector{.horizontal = 0x0200, .vertical = 0x0300}
+            && identity_reflection.normal.incoming_velocity == -0x0300
+            && identity_reflection.outgoing
+                == CollisionResponseVector{.horizontal = 0x0200, .vertical = -0x0300},
+        "native oriented collision response reflects the local normal in an identity contact basis");
+
+    const auto quarter_turn_reflection = apply_oriented_collision_response(
+        {.horizontal = 0x0200, .vertical = 0x0300},
+        CollisionResponseBasis{.cosine = 0, .sine = 0x0100},
+        {});
+    check(
+        quarter_turn_reflection.local
+            == CollisionResponseVector{.horizontal = 0x0300, .vertical = -0x0200}
+            && quarter_turn_reflection.normal.incoming_velocity == 0x0200
+            && quarter_turn_reflection.outgoing
+                == CollisionResponseVector{.horizontal = -0x0200, .vertical = 0x0300},
+        "native oriented collision response preserves CF33's projection, normal reflection, and inverse projection");
+
+    const auto clear_selector_reflection = apply_oriented_collision_response(
+        {.horizontal = 0x0000, .vertical = 0x0100},
+        {},
+        {
+            .normal_tuning = {
+                .negative_low_byte_decrement = 0x20U,
+                .positive_low_byte_increment = 0x10U,
+            },
+        },
+        CollisionNormalReflection::after_response);
+    check(
+        clear_selector_reflection.normal.incoming_velocity == 0x0100
+            && clear_selector_reflection.normal.outgoing_velocity == 0x0110
+            && clear_selector_reflection.outgoing
+                == CollisionResponseVector{.horizontal = 0x0000, .vertical = -0x0110},
+        "native oriented collision response preserves CF5B's post-response normal negation");
+
+    std::vector<std::byte> geometry_rom(MappedRomView::kSupportedRomBytes);
+    std::array<std::uint8_t, 8U> geometry_mpr{};
+    geometry_mpr[6U] = 0x01U;
+    constexpr std::size_t kGeometryTableOffset = MappedRomView::kBankBytes
+        + (0xD2AEU & (MappedRomView::kBankBytes - 1U));
+    constexpr auto kContactOrientation = 0xE3U;
+    constexpr auto kGeometryIndex = (kContactOrientation & 0x1FU) << 1U;
+    geometry_rom[kGeometryTableOffset + kGeometryIndex] = std::byte{0x80U};
+    geometry_rom[kGeometryTableOffset + kGeometryIndex + 1U] = std::byte{0x01U};
+    geometry_rom[kGeometryTableOffset + 0x40U + kGeometryIndex]
+        = std::byte{0x40U};
+    geometry_rom[kGeometryTableOffset + 0x40U + kGeometryIndex + 1U]
+        = std::byte{0xFFU};
+    const auto decoded_basis = decode_collision_response_basis(
+        MappedRomView(geometry_rom, geometry_mpr), kContactOrientation);
+    geometry_mpr[6U] = 0x80U;
+    check(
+        decoded_basis
+            && decoded_basis->contact_orientation == kContactOrientation
+            && decoded_basis->table_index == kGeometryIndex
+            && decoded_basis->basis
+                == CollisionResponseBasis{.cosine = 0x0180, .sine = -0x00C0}
+            && !decode_collision_response_basis(
+                MappedRomView(geometry_rom, geometry_mpr), kContactOrientation),
+        "native collision response decodes D081's signed contact basis through the mapped ROM asset");
+
+    std::array<std::byte, GameStateView::kWorkRamSize> response_ram{};
+    response_ram[0x0078U] = std::byte{0x40U};
+    response_ram[0x0CC7U] = std::byte{0x01U};
+    response_ram[0x022CU] = std::byte{0x01U};
+    response_ram[0x0081U] = std::byte{0x18U};
+    response_ram[0x0082U] = std::byte{0x02U};
+    const auto table_response_state =
+        GameStateView(response_ram).collision_response_table_state();
+    const auto response_input = GameStateView(response_ram).collision_response_input();
+    const auto table_response_config = table_response_state
+        ? make_collision_response_config(0x00U, *table_response_state)
+        : CollisionResponseConfig{};
+    const auto half_response_config = table_response_state
+        ? make_collision_response_config(0x40U, *table_response_state)
+        : CollisionResponseConfig{};
+    check(
+        table_response_state
+            && response_input
+            && response_input->orientation == 0x40U
+            && !response_input->selects_signed_cf33_response()
+            && response_input->table_state == *table_response_state
+            && table_response_config.requested_mode == CollisionResponseMode::normal
+            && table_response_config.force_reduced_mode
+            && table_response_config.use_quarter_reduced_scale
+            && table_response_config.normal_tuning
+                == NormalCollisionResponseTuning{
+                    .negative_low_byte_decrement = 0x18U,
+                    .positive_low_byte_increment = 0x18U,
+                    .positive_high_byte_increment = 0x02U,
+                }
+            && half_response_config.requested_mode == CollisionResponseMode::half,
+        "native collision response captures CF33's shared orientation selector and CFD8 table tuning");
+}
+
+void test_native_collision_bounds()
+{
+    using devils_crush::native_runtime::ActorCollisionGeometryDisposition;
+    using devils_crush::native_runtime::ActorCollisionGeometryInput;
+    using devils_crush::native_runtime::ActorCollisionShapeDescriptor;
+    using devils_crush::native_runtime::CollisionBounds;
+    using devils_crush::native_runtime::CollisionBoundsDisposition;
+    using devils_crush::native_runtime::CollisionProbe;
+    using devils_crush::native_runtime::evaluate_actor_vertical_proximity;
+    using devils_crush::native_runtime::evaluate_collision_bounds;
+    using devils_crush::native_runtime::prepare_actor_collision_geometry;
+    using devils_crush::native_runtime::resolve_actor_collision_shape;
+    using devils_crush::native_runtime::MappedRomView;
+
+    const auto inside = evaluate_collision_bounds(
+        CollisionProbe{.horizontal = 0x42U, .vertical = 0x0200U},
+        CollisionBounds{
+            .horizontal_origin = 0x40U,
+            .vertical_origin = 0x01FEU,
+            .horizontal_extent = 3U,
+            .vertical_extent = 3U,
+        });
+    check(
+        inside.disposition == CollisionBoundsDisposition::intersecting
+            && inside.relative_horizontal == 2U
+            && inside.relative_vertical == 2U,
+        "native collision bounds retains an in-range one-sided candidate");
+
+    const auto horizontal_edge = evaluate_collision_bounds(
+        CollisionProbe{.horizontal = 0x43U, .vertical = 0x0200U}, inside.bounds);
+    check(
+        horizontal_edge.disposition
+            == CollisionBoundsDisposition::outside_horizontal,
+        "native collision bounds rejects its exclusive horizontal edge");
+
+    const auto vertical_edge = evaluate_collision_bounds(
+        CollisionProbe{.horizontal = 0x42U, .vertical = 0x0201U}, inside.bounds);
+    check(
+        vertical_edge.disposition == CollisionBoundsDisposition::outside_vertical,
+        "native collision bounds rejects its exclusive vertical edge");
+
+    const auto before_origin = evaluate_collision_bounds(
+        CollisionProbe{.horizontal = 0x3FU, .vertical = 0x01FDU}, inside.bounds);
+    check(
+        before_origin.relative_horizontal == 0xFFU
+            && before_origin.relative_vertical == 0xFFFFU
+            && before_origin.disposition
+                == CollisionBoundsDisposition::outside_horizontal,
+        "native collision bounds preserves unsigned wrapped rejection");
+
+    const auto empty = evaluate_collision_bounds(
+        CollisionProbe{.horizontal = 0x40U, .vertical = 0x01FEU},
+        CollisionBounds{
+            .horizontal_origin = 0x40U,
+            .vertical_origin = 0x01FEU,
+        });
+    check(
+        empty.disposition == CollisionBoundsDisposition::outside_horizontal,
+        "native collision bounds treats a zero horizontal extent as empty");
+
+    const auto vertical_near = evaluate_actor_vertical_proximity(0x0100U, 0x017FU);
+    const auto vertical_positive_edge = evaluate_actor_vertical_proximity(
+        0x0180U, 0x0100U);
+    const auto vertical_negative_edge = evaluate_actor_vertical_proximity(
+        0x0100U, 0x0180U);
+    check(
+        vertical_near.signed_difference == -127 && vertical_near.intersecting
+            && vertical_positive_edge.signed_difference == 128
+            && !vertical_positive_edge.intersecting
+            && vertical_negative_edge.signed_difference == -128
+            && !vertical_negative_edge.intersecting,
+        "native actor collision accepts only the recovered vertical proximity window");
+
+    const auto prepared = prepare_actor_collision_geometry({
+        .actor = {
+            .collision_table = {.position_x = 0x0050U, .position_y = 0x0300U},
+        },
+        .vertical_proximity = evaluate_actor_vertical_proximity(0x030AU, 0x0300U),
+        .descriptor = {
+            .horizontal_offset = -4,
+            .vertical_offset = -16,
+            .horizontal_extent = 12U,
+            .vertical_extent = 20U,
+        },
+    });
+    check(
+        prepared.disposition == ActorCollisionGeometryDisposition::bounds_ready
+            && prepared.position_after_ball_bias == 0x0030U
+            && prepared.bounds.horizontal_origin == 0x2CU
+            && prepared.bounds.vertical_origin == 0x02F0U
+            && prepared.bounds.horizontal_extent == 12U
+            && prepared.bounds.vertical_extent == 20U,
+        "native actor collision turns a decoded descriptor into a target window");
+
+    const auto vertically_rejected = prepare_actor_collision_geometry({
+        .actor = prepared.input.actor,
+        .vertical_proximity = evaluate_actor_vertical_proximity(0x0380U, 0x0300U),
+        .descriptor = prepared.input.descriptor,
+    });
+    const auto page_rejected = prepare_actor_collision_geometry({
+        .actor = {
+            .collision_table = {.position_x = 0x0120U, .position_y = 0x0300U},
+        },
+        .vertical_proximity = prepared.input.vertical_proximity,
+        .descriptor = prepared.input.descriptor,
+    });
+    check(
+        vertically_rejected.disposition
+                == ActorCollisionGeometryDisposition::outside_vertical_proximity
+            && page_rejected.disposition
+                == ActorCollisionGeometryDisposition::outside_horizontal_world,
+        "native actor collision preserves its vertical and one-byte-world rejections");
+
+    std::vector<std::byte> rom(MappedRomView::kSupportedRomBytes);
+    std::array<std::uint8_t, 8> mpr{};
+    mpr[4] = 0x01U;
+    const auto store_rom = [&rom](
+                               const std::uint16_t address,
+                               const std::uint8_t value) {
+        rom[MappedRomView::kBankBytes + (address & 0x1FFFU)] =
+            static_cast<std::byte>(value);
+    };
+    store_rom(0x8006U, 0x00U);
+    store_rom(0x8106U, 0x84U);
+    store_rom(0x8206U, 0x00U);
+    store_rom(0x8306U, 0x85U);
+    store_rom(0x8406U, 0x00U);
+    store_rom(0x8407U, 0x86U);
+    store_rom(0x8506U, 0x00U);
+    store_rom(0x8507U, 0x87U);
+    store_rom(0x8600U, 0xFCU);
+    store_rom(0x8601U, 0xF0U);
+    store_rom(0x8602U, 0x0CU);
+    store_rom(0x8603U, 0x14U);
+    const auto shape = resolve_actor_collision_shape(
+        MappedRomView(rom, mpr),
+        {.tables = {0x8000U, 0x8100U, 0x8200U, 0x8300U}},
+        0x06U,
+        0x03U);
+    check(
+        shape && shape->geometry_tables
+                == std::array<std::uint16_t, 2>{0x8400U, 0x8500U}
+            && shape->descriptor_address == 0x8600U
+            && shape->secondary_geometry_address == 0x8700U
+            && shape->descriptor.horizontal_offset == -4
+            && shape->descriptor.vertical_offset == -16
+            && shape->descriptor.horizontal_extent == 12U
+            && shape->descriptor.vertical_extent == 20U,
+        "native actor collision resolves the selected shape through mapped ROM");
+    const auto actor_shape = resolve_actor_collision_shape(
+        MappedRomView(rom, mpr),
+        {.tables = {0x8000U, 0x8100U, 0x8200U, 0x8300U}},
+        {.collision_shape_directory_index = 0x06U,
+         .collision_shape_phase = 0x03U});
+    check(
+        actor_shape == shape,
+        "native actor collision resolves a captured actor's selected shape");
+    mpr[4] = 0x80U;
+    check(
+        !resolve_actor_collision_shape(
+            MappedRomView(rom, mpr),
+            {.tables = {0x8000U, 0x8100U, 0x8200U, 0x8300U}},
+            0x06U,
+            0x03U),
+        "native actor collision rejects an unmapped shape directory");
+}
+
+void test_native_collision_mask()
+{
+    using devils_crush::native_runtime::CollisionMask;
+    using devils_crush::native_runtime::CollisionMaskCell;
+    using devils_crush::native_runtime::CollisionMaskDisposition;
+    using devils_crush::native_runtime::evaluate_collision_mask;
+
+    CollisionMask mask{};
+    mask.rows[5] = 0x28U;
+    const auto solid = evaluate_collision_mask(
+        mask, CollisionMaskCell{.column = 2U, .row = 5U});
+    check(
+        solid.disposition == CollisionMaskDisposition::solid
+            && solid.selected_row == 0x28U && solid.column_bit == 0x20U,
+        "native collision mask uses the ROM's high-bit-first column order");
+
+    const auto empty = evaluate_collision_mask(
+        mask, CollisionMaskCell{.column = 3U, .row = 5U});
+    check(
+        empty.disposition == CollisionMaskDisposition::empty
+            && empty.column_bit == 0x10U,
+        "native collision mask distinguishes a clear cell in a solid row");
+
+    const auto second_solid = evaluate_collision_mask(
+        mask, CollisionMaskCell{.column = 4U, .row = 5U});
+    check(
+        second_solid.disposition == CollisionMaskDisposition::solid
+            && second_solid.column_bit == 0x08U,
+        "native collision mask selects independent solidity bits");
+
+    const auto outside = evaluate_collision_mask(
+        mask, CollisionMaskCell{.column = CollisionMask::kWidth, .row = 0U});
+    check(
+        outside.disposition == CollisionMaskDisposition::outside_mask
+            && outside.column_bit == 0U,
+        "native collision mask rejects a cell outside its eight-by-eight shape");
+}
+
+void test_native_actor_collision_mask_coordinates()
+{
+    using devils_crush::native_runtime::ActorCollisionMaskCoordinateInput;
+    using devils_crush::native_runtime::CollisionBounds;
+    using devils_crush::native_runtime::CollisionBoundsDisposition;
+    using devils_crush::native_runtime::CollisionBoundsEvaluation;
+    using devils_crush::native_runtime::CollisionProbe;
+    using devils_crush::native_runtime::prepare_actor_collision_mask_coordinates;
+
+    const auto coordinates = prepare_actor_collision_mask_coordinates({
+        .actor_slot = 0x08U,
+        .shape_phase = 0x02U,
+        .session_active = true,
+        .side_flags = 0x11U,
+        .bounds = {
+            .probe = CollisionProbe{.horizontal = 0x2DU, .vertical = 0x021BU},
+            .bounds = CollisionBounds{
+                .horizontal_origin = 0x20U,
+                .vertical_origin = 0x0200U,
+                .horizontal_extent = 12U,
+                .vertical_extent = 20U,
+            },
+            .relative_horizontal = 13U,
+            .relative_vertical = 27U,
+            .disposition = CollisionBoundsDisposition::intersecting,
+        },
+    });
+    check(
+        coordinates.updates_side_flags && coordinates.side_flags == 0x91U
+            && coordinates.cell.column == 5U && coordinates.cell.row == 3U
+            && coordinates.horizontal_cell == 1U
+            && coordinates.vertical_cell == 3U
+            && coordinates.rounded_horizontal_span == 2U,
+        "native actor collision derives mask coordinates after bounds pass");
+
+    const auto rejected = prepare_actor_collision_mask_coordinates({
+        .actor_slot = 0x09U,
+        .shape_phase = 0x03U,
+        .session_active = true,
+        .side_flags = 0x11U,
+        .bounds = {
+            .relative_horizontal = 2U,
+            .relative_vertical = 4U,
+            .disposition = CollisionBoundsDisposition::outside_vertical,
+        },
+    });
+    check(
+        !rejected.updates_side_flags && rejected.side_flags == 0x11U
+            && rejected.cell.column == 0U && rejected.cell.row == 0U
+            && rejected.rounded_horizontal_span == 0U,
+        "native actor collision leaves rejected bounds outside mask preparation");
+}
+
+void test_native_actor_collision_mask_asset()
+{
+    using devils_crush::native_runtime::ActorCollisionMaskCoordinateInput;
+    using devils_crush::native_runtime::CollisionBounds;
+    using devils_crush::native_runtime::CollisionBoundsDisposition;
+    using devils_crush::native_runtime::CollisionBoundsEvaluation;
+    using devils_crush::native_runtime::CollisionProbe;
+    using devils_crush::native_runtime::GameStateView;
+    using devils_crush::native_runtime::MappedRomView;
+    using devils_crush::native_runtime::prepare_actor_collision_mask_coordinates;
+    using devils_crush::native_runtime::resolve_actor_collision_mask;
+
+    const auto coordinates = prepare_actor_collision_mask_coordinates({
+        .bounds = {
+            .probe = CollisionProbe{.horizontal = 0x2DU, .vertical = 0x021BU},
+            .bounds = CollisionBounds{
+                .horizontal_origin = 0x20U,
+                .vertical_origin = 0x0200U,
+                .horizontal_extent = 12U,
+                .vertical_extent = 20U,
+            },
+            .relative_horizontal = 13U,
+            .relative_vertical = 27U,
+            .disposition = CollisionBoundsDisposition::intersecting,
+        },
+    });
+    std::vector<std::byte> rom(MappedRomView::kSupportedRomBytes);
+    std::array<std::uint8_t, 8> mpr{};
+    mpr[4] = 0x01U;
+    const auto store_rom = [&rom](
+                               const std::uint16_t address,
+                               const std::uint8_t value) {
+        rom[MappedRomView::kBankBytes + (address & 0x1FFFU)] =
+            static_cast<std::byte>(value);
+    };
+    store_rom(0x8007U, 0xA2U);
+    store_rom(0x810BU, 0x02U);
+    store_rom(0x8213U, 0x04U);
+    const auto mask = resolve_actor_collision_mask(
+        MappedRomView(rom, mpr),
+        GameStateView::ActorCollisionMaskTablePointers{
+            .first_table = 0x8000U,
+            .second_table = 0x8100U,
+            .masks = 0x8200U,
+        },
+        coordinates);
+    check(
+        mask && mask->table_index == 0x07U
+            && mask->first_table_value == 0xA2U && mask->mask_index == 0x02U
+            && mask->mask_address == 0x8210U && mask->mask.rows[3] == 0x04U
+            && mask->evaluation.disposition
+                == devils_crush::native_runtime::CollisionMaskDisposition::solid,
+        "native actor collision resolves a row-major selected mapped mask");
+
+    mpr[4] = 0x80U;
+    check(
+        !resolve_actor_collision_mask(
+            MappedRomView(rom, mpr),
+            GameStateView::ActorCollisionMaskTablePointers{
+                .first_table = 0x8000U,
+                .second_table = 0x8100U,
+                .masks = 0x8200U,
+            },
+            coordinates),
+        "native actor collision rejects an unmapped selected mask");
+}
+
+void test_native_actor_collision_scan()
+{
+    using devils_crush::native_runtime::ActorCollisionScanContext;
+    using devils_crush::native_runtime::ActorCollisionScanDisposition;
+    using devils_crush::native_runtime::CollisionRetryFullScanDisposition;
+    using devils_crush::native_runtime::CollisionRetryFullScanOutcome;
+    using devils_crush::native_runtime::CollisionRetryProbeDisposition;
+    using devils_crush::native_runtime::CollisionRetryProbeResult;
+    using devils_crush::native_runtime::CollisionProbe;
+    using devils_crush::native_runtime::GameStateView;
+    using devils_crush::native_runtime::MappedRomView;
+    using devils_crush::native_runtime::make_actor_collision_scan_context;
+    using devils_crush::native_runtime::scan_actor_collision;
+    using devils_crush::native_runtime::scan_actor_collision_sweep;
+    using devils_crush::native_runtime::scan_normal_actor_collision_sweep;
+    using devils_crush::native_runtime::scan_collision_retry_full_actors;
+    using devils_crush::native_runtime::scan_collision_retry_full;
+    using devils_crush::native_runtime::resolve_collision_retry_full_scan_outcome;
+
+    std::vector<std::byte> rom(MappedRomView::kSupportedRomBytes);
+    std::array<std::uint8_t, 8> mpr{};
+    mpr[4] = 0x01U;
+    mpr[5] = 0x02U;
+    mpr[6] = 0x03U;
+    const auto store_rom = [&rom](
+                               const std::uint16_t address,
+                               const std::uint8_t value) {
+        rom[MappedRomView::kBankBytes + (address & 0x1FFFU)] =
+            static_cast<std::byte>(value);
+    };
+    store_rom(0x8006U, 0x00U);
+    store_rom(0x8106U, 0x84U);
+    store_rom(0x8206U, 0x00U);
+    store_rom(0x8306U, 0x85U);
+    store_rom(0x8406U, 0x00U);
+    store_rom(0x8407U, 0x86U);
+    store_rom(0x8506U, 0x00U);
+    store_rom(0x8507U, 0x87U);
+    store_rom(0x8404U, 0x00U);
+    store_rom(0x8405U, 0x86U);
+    store_rom(0x8504U, 0x00U);
+    store_rom(0x8505U, 0x87U);
+    store_rom(0x8600U, 0xFCU);
+    store_rom(0x8601U, 0xF0U);
+    store_rom(0x8602U, 0x0CU);
+    store_rom(0x8603U, 0x14U);
+    store_rom(0x8700U, 0xA2U);
+    store_rom(0x8604U, 0x02U);
+    store_rom(0x8A13U, 0x40U);
+    const ActorCollisionScanContext context{
+        .shape_directories = {.tables = {0x8000U, 0x8100U, 0x8200U, 0x8300U}},
+        .mask_tables = {
+            .first_table = 0x8800U,
+            .second_table = 0x8900U,
+            .masks = 0x8A00U,
+        },
+    };
+    std::array<std::byte, GameStateView::kWorkRamSize> work_ram{};
+    const auto store_ram = [&work_ram](
+                               const std::size_t offset,
+                               const std::uint8_t value) {
+        work_ram[offset] = static_cast<std::byte>(value);
+    };
+    for (std::size_t index = 0U; index < context.shape_directories.tables.size();
+         ++index) {
+        const auto pointer = context.shape_directories.tables[index];
+        store_ram(0x0096U + index * 2U, static_cast<std::uint8_t>(pointer));
+        store_ram(
+            0x0097U + index * 2U,
+            static_cast<std::uint8_t>(pointer >> 8U));
+    }
+    store_ram(0x0074U, static_cast<std::uint8_t>(context.mask_tables.first_table));
+    store_ram(
+        0x0075U,
+        static_cast<std::uint8_t>(context.mask_tables.first_table >> 8U));
+    store_ram(0x0072U, static_cast<std::uint8_t>(context.mask_tables.second_table));
+    store_ram(
+        0x0073U,
+        static_cast<std::uint8_t>(context.mask_tables.second_table >> 8U));
+    store_ram(0x008EU, static_cast<std::uint8_t>(context.mask_tables.masks));
+    store_ram(0x008FU, static_cast<std::uint8_t>(context.mask_tables.masks >> 8U));
+    store_ram(0x0254U, 0x01U);
+    store_ram(0x00B7U, 0xD0U);
+    const auto captured_context = make_actor_collision_scan_context(
+        GameStateView(work_ram));
+    check(
+        captured_context
+            && captured_context->shape_directories == context.shape_directories
+            && captured_context->mask_tables == context.mask_tables
+            && captured_context->session_active
+            && captured_context->side_flags == 0xD0U,
+        "native actor collision scan captures shared inputs from typed state");
+    const GameStateView::ActorSlot actor{
+        .index = 0x08U,
+        .collision_shape_directory_index = 0x06U,
+        .collision_shape_phase = 0x03U,
+        .collision_table = {.position_x = 0x0050U, .position_y = 0x0300U},
+    };
+    const auto solid = scan_actor_collision(
+        MappedRomView(rom, mpr),
+        context,
+        actor,
+        CollisionProbe{.horizontal = 0x2DU, .vertical = 0x02F3U});
+    check(
+        solid.disposition == ActorCollisionScanDisposition::solid_mask
+            && solid.vertical_proximity.intersecting
+            && solid.shape && solid.geometry && solid.bounds && solid.mask
+            && solid.bounds->relative_horizontal == 1U
+            && solid.bounds->relative_vertical == 3U
+            && solid.mask->evaluation.column_bit == 0x40U,
+        "native actor collision composes its shape, bounds, and mask stages");
+
+    store_rom(0x8A13U, 0x00U);
+    const auto empty = scan_actor_collision(
+        MappedRomView(rom, mpr),
+        context,
+        actor,
+        CollisionProbe{.horizontal = 0x2DU, .vertical = 0x02F3U});
+    check(
+        empty.disposition == ActorCollisionScanDisposition::empty_mask
+            && empty.mask,
+        "native actor collision preserves an empty target mask as a non-contact");
+
+    std::array<std::byte, GameStateView::kWorkRamSize> sweep_ram{};
+    const auto store_sweep_ram = [&sweep_ram](
+                                     const std::size_t offset,
+                                     const std::uint8_t value) {
+        sweep_ram[offset] = static_cast<std::byte>(value);
+    };
+    for (std::size_t index = 0U; index < context.shape_directories.tables.size();
+         ++index) {
+        const auto pointer = context.shape_directories.tables[index];
+        store_sweep_ram(
+            0x0096U + index * 2U, static_cast<std::uint8_t>(pointer));
+        store_sweep_ram(
+            0x0097U + index * 2U,
+            static_cast<std::uint8_t>(pointer >> 8U));
+    }
+    const auto store_sweep_word = [&store_sweep_ram](
+                                      const std::size_t offset,
+                                      const std::uint16_t value) {
+        store_sweep_ram(offset, static_cast<std::uint8_t>(value));
+        store_sweep_ram(offset + 1U, static_cast<std::uint8_t>(value >> 8U));
+    };
+    store_sweep_word(0x0074U, context.mask_tables.first_table);
+    store_sweep_word(0x0072U, context.mask_tables.second_table);
+    store_sweep_word(0x008EU, context.mask_tables.masks);
+    store_sweep_word(0x00C8U, 0x9000U);
+    store_sweep_word(0x00C6U, 0xA000U);
+    store_sweep_word(0x0090U, 0xC000U);
+    store_sweep_ram(0x0254U, 0x01U);
+    store_sweep_ram(0x00B7U, 0x02U);
+    for (const auto slot : {0x04U, 0x06U}) {
+        store_sweep_ram(0x1080U + slot, 0x80U);
+        store_sweep_ram(0x1180U + slot, 0x50U);
+        store_sweep_ram(0x1200U + slot, 0x00U);
+        store_sweep_ram(0x1300U + slot, 0x00U);
+        store_sweep_ram(0x1380U + slot, 0x03U);
+        store_sweep_ram(0x1900U + slot, 0x06U);
+        store_sweep_ram(0x1980U + slot, 0x03U);
+    }
+    store_sweep_ram(0x1980U + 0x04U, 0x02U);
+    store_sweep_ram(0x1080U + 0x05U, 0xC0U);
+    constexpr std::size_t kFullScanPlayfieldIndex = 90U * 32U + 5U;
+    rom[MappedRomView::kBankBytes + 0x1000U + kFullScanPlayfieldIndex] =
+        std::byte{0x5AU};
+    rom[2U * MappedRomView::kBankBytes + kFullScanPlayfieldIndex] =
+        std::byte{0x01U};
+    rom[3U * MappedRomView::kBankBytes + 8U + 3U] = std::byte{0x04U};
+    const auto sweep_state = GameStateView(sweep_ram);
+    const auto first_sweep_actor = sweep_state.actor(0x04U);
+    const auto first_sweep_candidate = first_sweep_actor
+        ? scan_actor_collision(
+              MappedRomView(rom, mpr),
+              *make_actor_collision_scan_context(sweep_state),
+              *first_sweep_actor,
+              CollisionProbe{.horizontal = 0x2DU, .vertical = 0x02F3U})
+        : devils_crush::native_runtime::ActorCollisionScanResult{};
+    check(
+        first_sweep_actor && first_sweep_actor->collision_shape_phase == 0x02U,
+        "native actor collision sweep decodes the first candidate phase");
+    check(
+        first_sweep_candidate.disposition
+                == ActorCollisionScanDisposition::empty_mask
+            && first_sweep_candidate.mask_coordinates
+            && first_sweep_candidate.mask,
+        "native actor collision scan resolves the phase-two sweep fixture");
+    check(
+        first_sweep_candidate.mask_coordinates
+            && first_sweep_candidate.mask_coordinates->updates_side_flags
+            && first_sweep_candidate.mask_coordinates->side_flags == 0x82U,
+        "native actor collision scan exposes CC1A's pre-lookup side-flag update");
+    const auto no_contact_sweep = scan_actor_collision_sweep(
+        MappedRomView(rom, mpr),
+        sweep_state,
+        CollisionProbe{.horizontal = 0x2DU, .vertical = 0x02F3U});
+    check(
+        no_contact_sweep && no_contact_sweep->candidates.size() == 2U
+            && !no_contact_sweep->first_solid_actor_slot
+            && no_contact_sweep->candidates[0].actor.index == 0x04U
+            && no_contact_sweep->candidates[1].actor.index == 0x06U
+            && no_contact_sweep->candidates[0].disposition
+                == ActorCollisionScanDisposition::empty_mask
+            && no_contact_sweep->candidates[0].mask_coordinates
+            && no_contact_sweep->candidates[0].mask_coordinates->updates_side_flags
+            && no_contact_sweep->candidates[1].mask_coordinates
+            && no_contact_sweep->candidates[1].mask_coordinates->input.side_flags
+                == 0x82U
+            && no_contact_sweep->side_flags_after_scan == 0x82U,
+        "native actor collision sweep keeps CED2 order and side-flag state");
+    store_sweep_ram(0x0055U, 0x00U);
+    store_sweep_ram(0x0060U, 0x03U);
+    store_sweep_ram(0x0064U, 0x04U);
+    store_sweep_ram(0x0065U, 0x2DU);
+    store_sweep_ram(0x0066U, 0xF3U);
+    store_sweep_ram(0x0067U, 0x02U);
+    store_sweep_ram(0x1180U, 0x4DU);
+    store_sweep_ram(0x1300U, 0xF3U);
+    store_sweep_ram(0x1380U, 0x02U);
+    const auto normal_walk = sweep_state.normal_actor_collision_scan_walk();
+    const auto normal_probe = sweep_state.normal_actor_collision_probe();
+    const auto normal_setup_probe =
+        sweep_state.normal_actor_collision_setup_probe();
+    const auto normal_no_contact_sweep = normal_walk
+        ? scan_normal_actor_collision_sweep(
+              MappedRomView(rom, mpr),
+              sweep_state,
+              *normal_walk,
+              normal_setup_probe.value_or(CollisionProbe{}))
+        : std::nullopt;
+    check(
+        normal_walk && normal_walk->first_slot == 0x04U
+            && normal_walk->slot_count == 0x03U
+            && !normal_walk->require_activity_bit_6
+            && normal_probe
+                == CollisionProbe{.horizontal = 0x2DU, .vertical = 0x02F3U}
+            && normal_setup_probe
+                == CollisionProbe{.horizontal = 0x2DU, .vertical = 0x02F3U}
+            && normal_no_contact_sweep
+            && normal_no_contact_sweep->candidates.size() == 2U
+            && normal_no_contact_sweep->candidates[0].actor.index == 0x04U
+            && normal_no_contact_sweep->candidates[1].actor.index == 0x06U,
+        "native normal actor scan preserves CB2A's setup and CB48's walk");
+    store_sweep_ram(0x0055U, 0x01U);
+    const auto gated_normal_walk = sweep_state.normal_actor_collision_scan_walk();
+    const auto gated_normal_sweep = gated_normal_walk
+        ? scan_normal_actor_collision_sweep(
+              MappedRomView(rom, mpr),
+              sweep_state,
+              *gated_normal_walk,
+              CollisionProbe{.horizontal = 0x2DU, .vertical = 0x02F3U})
+        : std::nullopt;
+    check(
+        gated_normal_walk && gated_normal_walk->require_activity_bit_6
+            && gated_normal_sweep && gated_normal_sweep->candidates.empty(),
+        "native normal actor scan excludes actors outside CB55's alternate subset");
+    store_sweep_ram(0x1000U + 0x04U, 0x40U);
+    const auto alternate_normal_sweep = gated_normal_walk
+        ? scan_normal_actor_collision_sweep(
+              MappedRomView(rom, mpr),
+              sweep_state,
+              *gated_normal_walk,
+              CollisionProbe{.horizontal = 0x2DU, .vertical = 0x02F3U})
+        : std::nullopt;
+    check(
+        alternate_normal_sweep && alternate_normal_sweep->candidates.size() == 1U
+            && alternate_normal_sweep->candidates.front().actor.index == 0x04U,
+        "native normal actor scan admits CB55's activity-bit-six subset");
+    store_sweep_ram(0x1000U + 0x04U, 0x00U);
+    store_sweep_ram(0x0055U, 0x00U);
+    store_sweep_ram(0x0060U, 0x02U);
+    store_sweep_ram(0x0064U, 0x7FU);
+    const auto out_of_range_normal_walk =
+        sweep_state.normal_actor_collision_scan_walk();
+    check(
+        out_of_range_normal_walk
+            && !scan_normal_actor_collision_sweep(
+                MappedRomView(rom, mpr),
+                sweep_state,
+                *out_of_range_normal_walk,
+                CollisionProbe{.horizontal = 0x2DU, .vertical = 0x02F3U}),
+        "native normal actor scan refuses an unmodelled wrapped actor range");
+    store_sweep_ram(0x0060U, 0x03U);
+    store_sweep_ram(0x0064U, 0x04U);
+
+    const CollisionRetryProbeResult retry_full_scan_input{
+        .adjusted_horizontal_low_byte = 0x2DU,
+        .adjusted_horizontal_high_byte = 0U,
+        .vertical_low_byte = 0xF3U,
+        .disposition = CollisionRetryProbeDisposition::requires_full_scan,
+    };
+    const auto retry_actor_scan = scan_collision_retry_full_actors(
+        MappedRomView(rom, mpr), sweep_state, retry_full_scan_input, 0x02U);
+    check(
+        retry_actor_scan && retry_actor_scan->probe
+                == CollisionProbe{.horizontal = 0x2DU, .vertical = 0x02F3U}
+            && retry_actor_scan->actor_sweep == *no_contact_sweep
+            && !scan_collision_retry_full_actors(
+                MappedRomView(rom, mpr),
+                sweep_state,
+                CollisionRetryProbeResult{},
+                0x02U),
+        "native retry actor scan composes only CEB5's full-scan handoff");
+    const auto retry_full_scan = scan_collision_retry_full(
+        MappedRomView(rom, mpr), sweep_state, retry_full_scan_input, 0x02U);
+    check(
+        retry_full_scan && retry_full_scan->actor_scan == *retry_actor_scan
+            && retry_full_scan->disposition
+                == CollisionRetryFullScanDisposition::playfield_evaluated
+            && retry_full_scan->playfield
+            && retry_full_scan->playfield->disposition
+                == devils_crush::native_runtime::PlayfieldCollisionDisposition::solid
+            && retry_full_scan->playfield->map.tile_id == 0x5AU,
+        "native retry full scan runs CD74 only after its actor sweep is clear");
+    auto clear_retry_full_scan = *retry_full_scan;
+    clear_retry_full_scan.playfield->disposition =
+        devils_crush::native_runtime::PlayfieldCollisionDisposition::empty;
+    clear_retry_full_scan.playfield->map.disposition =
+        devils_crush::native_runtime::CollisionMapDisposition::empty;
+    auto unresolved_playfield_ram = sweep_ram;
+    unresolved_playfield_ram[0x00C8U] = std::byte{0x00U};
+    unresolved_playfield_ram[0x00C9U] = std::byte{0xE0U};
+    auto unresolved_playfield_mpr = mpr;
+    unresolved_playfield_mpr[7U] = 0x80U;
+    const auto unresolved_playfield_scan = scan_collision_retry_full(
+        MappedRomView(rom, unresolved_playfield_mpr),
+        GameStateView(unresolved_playfield_ram),
+        retry_full_scan_input,
+        0x02U);
+    check(
+        unresolved_playfield_scan && unresolved_playfield_scan->disposition
+                == CollisionRetryFullScanDisposition::unresolved_playfield_asset
+            && !unresolved_playfield_scan->playfield,
+        "native retry full scan preserves an unmapped CD74 asset as unresolved");
+    check(
+        resolve_collision_retry_full_scan_outcome(*retry_full_scan)
+                == CollisionRetryFullScanOutcome::solid
+            && resolve_collision_retry_full_scan_outcome(clear_retry_full_scan)
+                == CollisionRetryFullScanOutcome::clear
+            && resolve_collision_retry_full_scan_outcome(*unresolved_playfield_scan)
+                == CollisionRetryFullScanOutcome::unresolved,
+        "native retry full scan exposes CED2's carry-like playfield outcomes");
+
+    store_rom(0x8A13U, 0x40U);
+    const auto solid_sweep = scan_actor_collision_sweep(
+        MappedRomView(rom, mpr),
+        GameStateView(sweep_ram),
+        CollisionProbe{.horizontal = 0x2DU, .vertical = 0x02F3U});
+    check(
+        solid_sweep && solid_sweep->candidates.size() == 1U
+            && solid_sweep->first_solid_actor_slot == 0x04U
+            && solid_sweep->candidates.front().disposition
+                == ActorCollisionScanDisposition::solid_mask,
+        "native actor collision sweep stops at CED2's first solid mask");
+    const auto actor_first_full_scan = scan_collision_retry_full(
+        MappedRomView(rom, mpr), sweep_state, retry_full_scan_input, 0x02U);
+    check(
+        actor_first_full_scan && actor_first_full_scan->disposition
+                == CollisionRetryFullScanDisposition::actor_solid
+            && !actor_first_full_scan->playfield,
+        "native retry full scan bypasses CD74 after CED2's first solid actor");
+    check(
+        resolve_collision_retry_full_scan_outcome(*actor_first_full_scan)
+            == CollisionRetryFullScanOutcome::solid,
+        "native retry full scan exposes a solid actor as CED2's set-carry outcome");
+}
+
+void test_native_collision_map()
+{
+    using devils_crush::native_runtime::CollisionMap;
+    using devils_crush::native_runtime::CollisionMapDisposition;
+    using devils_crush::native_runtime::CollisionMapPoint;
+    using devils_crush::native_runtime::CollisionMask;
+    using devils_crush::native_runtime::PlayfieldCollisionDisposition;
+    using devils_crush::native_runtime::PlayfieldCollisionProbe;
+    using devils_crush::native_runtime::evaluate_collision_map;
+    using devils_crush::native_runtime::evaluate_playfield_collision;
+
+    std::array<std::uint8_t, CollisionMap::kColumns * 2U> tile_ids{};
+    std::array<std::uint8_t, CollisionMap::kColumns * 2U> mask_indices{};
+    std::array<CollisionMask, 2> masks{};
+    tile_ids[0] = 0x4EU;
+    mask_indices[0] = 1U;
+    masks[1].rows[4] = 0x10U;
+    const CollisionMap map{
+        .tile_ids = tile_ids,
+        .mask_indices = mask_indices,
+        .masks = masks,
+    };
+    const auto solid = evaluate_collision_map(
+        map, CollisionMapPoint{.horizontal_pixels = 3U, .vertical_pixels = 4U});
+    check(
+        solid.disposition == CollisionMapDisposition::solid
+            && solid.tile_column == 0U && solid.tile_row == 0U
+            && solid.tile_id == 0x4EU && solid.mask_index == 1U
+            && solid.mask.column_bit == 0x10U,
+        "native collision map preserves tile identity while testing its mask");
+
+    const auto empty = evaluate_collision_map(
+        map, CollisionMapPoint{.horizontal_pixels = 2U, .vertical_pixels = 4U});
+    check(
+        empty.disposition == CollisionMapDisposition::empty,
+        "native collision map preserves clear cells within a selected mask");
+
+    const auto outside = evaluate_collision_map(
+        map,
+        CollisionMapPoint{
+            .horizontal_pixels = static_cast<std::uint16_t>(
+                CollisionMap::kColumns * CollisionMap::kTilePixels),
+        });
+    check(
+        outside.disposition == CollisionMapDisposition::outside_map,
+        "native collision map rejects a point beyond its 32-tile width");
+
+    mask_indices[1] = 2U;
+    const auto missing = evaluate_collision_map(
+        map, CollisionMapPoint{.horizontal_pixels = 8U});
+    check(
+        missing.disposition == CollisionMapDisposition::missing_mask,
+        "native collision map reports malformed mask selection explicitly");
+
+    const auto playfield_solid = evaluate_playfield_collision(
+        map,
+        PlayfieldCollisionProbe{.horizontal_pixels = 3U, .vertical_pixels = 36U});
+    check(
+        playfield_solid.disposition == PlayfieldCollisionDisposition::solid
+            && playfield_solid.map_point.vertical_pixels == 4U
+            && playfield_solid.map.tile_id == 0x4EU,
+        "native playfield collision converts table coordinates before lookup");
+
+    const auto above_playfield = evaluate_playfield_collision(
+        map,
+        PlayfieldCollisionProbe{.horizontal_pixels = 3U, .vertical_pixels = 31U});
+    check(
+        above_playfield.disposition
+            == PlayfieldCollisionDisposition::outside_playfield,
+        "native playfield collision rejects a point above the table");
+}
+
+void test_native_collision_map_asset()
+{
+    using devils_crush::native_runtime::CollisionMapDisposition;
+    using devils_crush::native_runtime::CollisionMapEvaluation;
+    using devils_crush::native_runtime::CollisionMapPoint;
+    using devils_crush::native_runtime::CollisionMapAssetLayout;
+    using devils_crush::native_runtime::MappedRomView;
+    using devils_crush::native_runtime::decode_collision_map_asset;
+    using devils_crush::native_runtime::decode_main_playfield_collision_map;
+    using devils_crush::native_runtime::evaluate_collision_map;
+    using devils_crush::native_runtime::main_playfield_collision_map_layout;
+
+    std::array<std::byte, 32> tile_bytes{};
+    std::array<std::byte, 32> attribute_bytes{};
+    std::array<std::byte, 16> mask_bytes{};
+    tile_bytes[0] = std::byte{0x3AU};
+    attribute_bytes[0] = std::byte{1U};
+    mask_bytes[8U + 6U] = std::byte{0x04U};
+
+    const auto asset = decode_collision_map_asset(
+        tile_bytes, attribute_bytes, mask_bytes);
+    const auto evaluation = asset
+        ? evaluate_collision_map(
+              asset->view(),
+              CollisionMapPoint{.horizontal_pixels = 5U, .vertical_pixels = 6U})
+        : CollisionMapEvaluation{};
+    check(
+        asset && evaluation.disposition == CollisionMapDisposition::solid
+            && evaluation.tile_id == 0x3AU && evaluation.mask_index == 1U,
+        "native collision asset decodes parallel map planes and mask rows");
+
+    attribute_bytes[0] = std::byte{2U};
+    check(
+        !decode_collision_map_asset(tile_bytes, attribute_bytes, mask_bytes),
+        "native collision asset rejects an unresolved mask attribute");
+    check(
+        !decode_collision_map_asset(
+            std::span<const std::byte>{tile_bytes}.first(31U),
+            attribute_bytes,
+            mask_bytes),
+        "native collision asset rejects incomplete map rows");
+
+    std::vector<std::byte> rom(MappedRomView::kSupportedRomBytes);
+    std::array<std::uint8_t, 8> mpr{};
+    mpr[4] = 0x01U;
+    const auto store = [&rom](const std::uint16_t address,
+                               const std::uint8_t value) {
+        rom[0x01U * MappedRomView::kBankBytes
+            + (address & (MappedRomView::kBankBytes - 1U))] =
+            static_cast<std::byte>(value);
+    };
+    store(0x8100U, 0x6BU);
+    store(0x8140U, 0x01U);
+    store(0x818FU, 0x04U);
+    const MappedRomView mapped_rom(rom, mpr);
+    const auto mapped_asset = decode_collision_map_asset(
+        mapped_rom,
+        CollisionMapAssetLayout{
+            .tile_ids_address = 0x8100U,
+            .collision_attributes_address = 0x8140U,
+            .masks_address = 0x8180U,
+            .map_rows = 1U,
+            .mask_count = 2U,
+        });
+    const auto mapped_evaluation = mapped_asset
+        ? evaluate_collision_map(
+              mapped_asset->view(),
+              CollisionMapPoint{.horizontal_pixels = 5U, .vertical_pixels = 7U})
+        : CollisionMapEvaluation{};
+    check(
+        mapped_asset
+            && mapped_evaluation.disposition == CollisionMapDisposition::solid
+            && mapped_evaluation.tile_id == 0x6BU,
+        "native collision asset resolves its table layout through mapped ROM");
+
+    mpr[4] = 0x41U;
+    rom[0x21U * MappedRomView::kBankBytes + 0x100U] = std::byte{0x9CU};
+    check(
+        MappedRomView(rom, mpr).byte_at(0x8100U) == std::byte{0x9CU},
+        "native mapped ROM preserves the cartridge's upper-bank mirror");
+
+    const auto main_layout = main_playfield_collision_map_layout({
+        .tile_ids = 0xABC6U,
+        .collision_attributes = 0xA006U,
+        .masks = 0xB686U,
+    });
+    check(
+        main_layout.tile_ids_address == 0xABC6U
+            && main_layout.collision_attributes_address == 0xA006U
+            && main_layout.masks_address == 0xB686U
+            && main_layout.map_rows == 94U && main_layout.mask_count == 250U,
+        "native main-table collision layout binds live pointers to verified dimensions");
+
+    std::array<std::uint8_t, 8> main_mpr{};
+    main_mpr[5] = 0x43U;
+    const auto store_main = [&rom](const std::uint16_t address,
+                                   const std::uint8_t value) {
+        rom[0x23U * MappedRomView::kBankBytes
+            + (address & (MappedRomView::kBankBytes - 1U))] =
+            static_cast<std::byte>(value);
+    };
+    store_main(0xABC6U, 0x4AU);
+    store_main(0xA006U, 0x01U);
+    store_main(0xB692U, 0x10U);
+    const auto main_asset = decode_main_playfield_collision_map(
+        MappedRomView(rom, main_mpr),
+        {
+            .tile_ids = 0xABC6U,
+            .collision_attributes = 0xA006U,
+            .masks = 0xB686U,
+        });
+    const auto main_evaluation = main_asset
+        ? evaluate_collision_map(
+              main_asset->view(),
+              CollisionMapPoint{.horizontal_pixels = 3U, .vertical_pixels = 4U})
+        : CollisionMapEvaluation{};
+    check(
+        main_asset
+            && main_evaluation.disposition == CollisionMapDisposition::solid
+            && main_evaluation.tile_id == 0x4AU
+            && main_evaluation.mask_index == 1U,
+        "native main-table decoder resolves captured pointers through mapped ROM");
+}
+
+void test_native_playfield_collision_scan()
+{
+    using devils_crush::native_runtime::BallState;
+    using devils_crush::native_runtime::CollisionMap;
+    using devils_crush::native_runtime::CollisionMask;
+    using devils_crush::native_runtime::Fixed24_8;
+    using devils_crush::native_runtime::PlayfieldCollisionDisposition;
+    using devils_crush::native_runtime::advance_ball_motion_substeps;
+    using devils_crush::native_runtime::first_playfield_contact;
+    using devils_crush::native_runtime::scan_playfield_collisions;
+
+    std::array<std::uint8_t, CollisionMap::kColumns> tile_ids{};
+    std::array<std::uint8_t, CollisionMap::kColumns> mask_indices{};
+    std::array<CollisionMask, 2> masks{};
+    tile_ids[0] = 0x52U;
+    mask_indices[0] = 1U;
+    masks[1].rows[4] = 0x04U;
+    const CollisionMap map{
+        .tile_ids = tile_ids,
+        .mask_indices = mask_indices,
+        .masks = masks,
+    };
+    const auto scan = scan_playfield_collisions(
+        advance_ball_motion_substeps({
+            .position_x = Fixed24_8{.raw = 1 * 256},
+            .position_y = Fixed24_8{.raw = 36 * 256},
+            .velocity_x = 0x0800,
+        }),
+        map);
+    check(
+        scan.completed_probes == 2U && scan.first_solid_substep == 1U
+            && scan.probes[1].collision.disposition
+                == PlayfieldCollisionDisposition::solid
+            && scan.probes[1].collision.map.tile_id == 0x52U,
+        "native playfield scan stops at its first solid collision substep");
+    const auto contact = first_playfield_contact(scan);
+    check(
+        contact && contact->substep_index == 1U
+            && contact->entry_ball.position_x.raw == 3 * 256
+            && contact->impact_ball.position_x.raw == 5 * 256
+            && contact->impact.map.tile_id == 0x52U,
+        "native playfield contact preserves the first impact state and tile");
+
+    const auto outside = scan_playfield_collisions(
+        advance_ball_motion_substeps({
+            .position_x = Fixed24_8{.raw = -256},
+            .position_y = Fixed24_8{.raw = 36 * 256},
+        }),
+        map);
+    check(
+        outside.completed_probes == 1U && !outside.probes[0].position_in_world
+            && !outside.first_solid_substep,
+        "native playfield scan rejects a ball outside world coordinates");
+}
+
+void test_native_physics_state()
+{
+    using devils_crush::native_runtime::BallMotionTuning;
+    using devils_crush::native_runtime::BallSubstepProgress;
+    using devils_crush::native_runtime::CollisionMap;
+    using devils_crush::native_runtime::CollisionMask;
+    using devils_crush::native_runtime::BallCollisionLoopDisposition;
+    using devils_crush::native_runtime::BallState;
+    using devils_crush::native_runtime::Fixed24_8;
+    using devils_crush::native_runtime::PhysicsState;
+    using devils_crush::native_runtime::advance_physics_with_playfield_scan;
+    using devils_crush::native_runtime::advance_physics_without_contact;
+    using devils_crush::native_runtime::advance_ball_collision_loop;
+    using devils_crush::native_runtime::begin_ball_collision_loop;
+    using devils_crush::native_runtime::begin_prepared_ball_collision_loop;
+    using devils_crush::native_runtime::resume_ball_collision_after_response;
+    using devils_crush::native_runtime::retry_ball_collision_substep;
+
+    const PhysicsState state{
+        .ball = {
+            .position_x = Fixed24_8{.raw = 16 * 256},
+            .position_y = Fixed24_8{.raw = 32 * 256},
+            .velocity_x = 0x0803,
+            .velocity_y = -0x0401,
+        },
+        .contact = {.contact_latched = true},
+    };
+    const auto advanced = advance_physics_without_contact(
+        state,
+        BallMotionTuning{
+            .horizontal_drag_divisor = 8,
+            .vertical_drag_divisor = 8,
+            .vertical_gravity = 1U,
+        });
+    check(
+        advanced && advanced->previous == state
+            && advanced->movement.completed_steps == 4U
+            && advanced->state.ball.position_x.raw == 24 * 256
+            && advanced->state.ball.position_y.raw == 28 * 256 - 4,
+        "native physics state composes unobstructed movement into one frame");
+    check(
+        advanced && advanced->state.ball.velocity_x == 0x0703
+            && advanced->state.ball.velocity_y == -0x0380
+            && advanced->state.contact == state.contact,
+        "native physics state damps post-loop velocity without losing contacts");
+
+    const auto invalid = advance_physics_without_contact(
+        PhysicsState{.ball = {.velocity_x = 1}},
+        BallMotionTuning{.horizontal_drag_divisor = 0});
+    check(
+        !invalid,
+        "native physics state rejects invalid moving-axis damping safely");
+
+    std::array<std::uint8_t, 4U * CollisionMap::kColumns> tile_ids{};
+    std::array<std::uint8_t, 4U * CollisionMap::kColumns> mask_indices{};
+    std::array<CollisionMask, 2> masks{};
+    const CollisionMap empty_map{
+        .tile_ids = tile_ids,
+        .mask_indices = mask_indices,
+        .masks = masks,
+    };
+    const auto clear = advance_physics_with_playfield_scan(
+        state,
+        BallMotionTuning{
+            .horizontal_drag_divisor = 8,
+            .vertical_drag_divisor = 8,
+            .vertical_gravity = 1U,
+        },
+        empty_map);
+    check(
+        clear && !clear->requires_collision_resolution()
+            && clear->no_contact == advanced
+            && clear->collision_scan.completed_probes == 4U,
+        "native physics completes a clear playfield frame through damping");
+
+    const auto solid_map_index = 3U * CollisionMap::kColumns + 4U;
+    tile_ids[solid_map_index] = 0x7CU;
+    mask_indices[solid_map_index] = 1U;
+    masks[1].rows[3] = 0x80U;
+    const CollisionMap solid_map{
+        .tile_ids = tile_ids,
+        .mask_indices = mask_indices,
+        .masks = masks,
+    };
+    const auto blocked = advance_physics_with_playfield_scan(
+        PhysicsState{
+            .ball = {
+                .position_x = Fixed24_8{.raw = 31 * 256},
+                .position_y = Fixed24_8{.raw = 59 * 256},
+                .velocity_x = 0x0100,
+            },
+        },
+        BallMotionTuning{.horizontal_drag_divisor = 0},
+        solid_map);
+    check(
+        blocked && blocked->requires_collision_resolution()
+            && blocked->contact && !blocked->no_contact
+            && blocked->contact->substep_index == 0U
+            && blocked->contact->entry_ball.position_x.raw == 31 * 256
+            && blocked->contact->impact_ball.position_x.raw == 32 * 256
+            && blocked->contact->impact.map.tile_id == 0x7CU,
+        "native physics defers a solid playfield contact before damping");
+
+    const auto clear_loop_step = advance_ball_collision_loop(
+        begin_ball_collision_loop(state),
+        BallMotionTuning{
+            .horizontal_drag_divisor = 8,
+            .vertical_drag_divisor = 8,
+            .vertical_gravity = 1U,
+        },
+        empty_map);
+    check(
+        clear_loop_step
+            && clear_loop_step->disposition
+                == BallCollisionLoopDisposition::substep_clear
+            && clear_loop_step->movement
+            && clear_loop_step->state.completed_substeps == 1U
+            && clear_loop_step->state.remaining_attempts == 15U
+            && clear_loop_step->state.state.ball.velocity_x == state.ball.velocity_x
+            && clear_loop_step->state.state.ball.velocity_y == state.ball.velocity_y,
+        "native collision loop retains frame velocity while consuming a clear substep");
+
+    const PhysicsState prepared_state{
+        .ball = {
+            .position_x = Fixed24_8{.raw = 20 * 256},
+            .position_y = Fixed24_8{.raw = 40 * 256},
+            // These velocities deliberately do not produce the captured
+            // increment if they are split again. C721 retains DC95's cursor.
+            .velocity_x = 0x0A03,
+            .velocity_y = -0x0901,
+        },
+    };
+    const auto prepared_loop = begin_prepared_ball_collision_loop(
+        prepared_state,
+        BallSubstepProgress{
+            .increment = {.horizontal = 0x0180, .vertical = -0x0080},
+            .completed_steps = 1U,
+            .requested_steps = 4U,
+        });
+    const auto prepared_step = prepared_loop
+        ? advance_ball_collision_loop(
+            *prepared_loop,
+            BallMotionTuning{.horizontal_drag_divisor = 8,
+                              .vertical_drag_divisor = 8},
+            empty_map)
+        : std::optional<devils_crush::native_runtime::BallCollisionLoopUpdate>{};
+    check(
+        prepared_loop && prepared_loop->completed_substeps == 1U
+            && prepared_loop->remaining_attempts == 16U
+            && prepared_loop->plan.count == 4U
+            && prepared_loop->plan.velocity_x_per_step == 0x0180
+            && prepared_loop->plan.velocity_y_per_step == -0x0080
+            && prepared_step
+            && prepared_step->disposition
+                == BallCollisionLoopDisposition::substep_clear
+            && prepared_step->probe
+            && prepared_step->probe->substep_index == 1U
+            && prepared_step->state.completed_substeps == 2U
+            && prepared_step->state.state.ball.position_x.raw == 21 * 256 + 128
+            && prepared_step->state.state.ball.position_y.raw == 39 * 256 + 128
+            && prepared_step->state.state.ball.velocity_x
+                == prepared_state.ball.velocity_x
+            && prepared_step->state.state.ball.velocity_y
+                == prepared_state.ball.velocity_y
+            && !begin_prepared_ball_collision_loop(
+                prepared_state,
+                BallSubstepProgress{
+                    .completed_steps = 1U,
+                    .requested_steps = 3U,
+                }),
+        "native C721 collision loop resumes DC95's captured increment and cursor");
+
+    const PhysicsState contact_state{
+        .ball = {
+            .position_x = Fixed24_8{.raw = 31 * 256},
+            .position_y = Fixed24_8{.raw = 59 * 256},
+            .velocity_x = 0x0100,
+        },
+    };
+    const auto collision_loop_contact = advance_ball_collision_loop(
+        begin_ball_collision_loop(contact_state),
+        BallMotionTuning{.horizontal_drag_divisor = 8},
+        solid_map);
+    const auto separating_retry = collision_loop_contact
+        ? retry_ball_collision_substep(collision_loop_contact->state)
+        : devils_crush::native_runtime::BallCollisionLoop{};
+    check(
+        collision_loop_contact
+            && collision_loop_contact->disposition
+                == BallCollisionLoopDisposition::playfield_contact
+            && collision_loop_contact->contact
+            && collision_loop_contact->state.completed_substeps == 0U
+            && collision_loop_contact->state.remaining_attempts == 15U
+            && collision_loop_contact->state.state.ball == contact_state.ball
+            && separating_retry == collision_loop_contact->state,
+        "native collision loop keeps CF8F's separating contact on the same substep");
+
+    auto response_ball = collision_loop_contact && collision_loop_contact->contact
+        ? collision_loop_contact->contact->impact_ball
+        : BallState{};
+    response_ball.velocity_x = 0x0800;
+    const auto response_loop = resume_ball_collision_after_response(
+        collision_loop_contact ? collision_loop_contact->state
+                               : devils_crush::native_runtime::BallCollisionLoop{},
+        response_ball);
+    const auto response_loop_step = advance_ball_collision_loop(
+        response_loop,
+        BallMotionTuning{.horizontal_drag_divisor = 8},
+        empty_map);
+    check(
+        collision_loop_contact && response_loop.completed_substeps == 1U
+            && response_loop.plan.count == 4U
+            && response_loop.remaining_attempts == 15U
+            && response_loop_step
+            && response_loop_step->disposition
+                == BallCollisionLoopDisposition::substep_clear
+            && response_loop_step->movement
+            && response_loop_step->movement->state.position_x.raw == 34 * 256,
+        "native collision loop applies CF33's DC95 resplit after its consumed contact");
+}
+
+void test_native_prepared_gameplay_collision_loop()
+{
+    using devils_crush::native_runtime::BallFrameOwner;
+    using devils_crush::native_runtime::BallFrameSchedule;
+    using devils_crush::native_runtime::BallMotionTuning;
+    using devils_crush::native_runtime::BallSubstepProgress;
+    using devils_crush::native_runtime::CollisionMap;
+    using devils_crush::native_runtime::CollisionMask;
+    using devils_crush::native_runtime::Fixed24_8;
+    using devils_crush::native_runtime::NativeGameplayState;
+    using devils_crush::native_runtime::NativeGameplayRuntime;
+
+    std::array<std::uint8_t, 4U * CollisionMap::kColumns> tile_ids{};
+    std::array<std::uint8_t, 4U * CollisionMap::kColumns> mask_indices{};
+    std::array<CollisionMask, 1U> masks{};
+    const CollisionMap clear_map{
+        .tile_ids = tile_ids,
+        .mask_indices = mask_indices,
+        .masks = masks,
+    };
+
+    NativeGameplayState gameplay;
+    gameplay.seed_ball({
+        .position_x = Fixed24_8{.raw = 20 * 256},
+        .position_y = Fixed24_8{.raw = 40 * 256},
+        .velocity_x = 0x0A03,
+        .velocity_y = -0x0901,
+    });
+    const auto completed = gameplay.resume_prepared_ball_collision_loop(
+        {
+            .increment = {.horizontal = 0x0180, .vertical = -0x0080},
+            .completed_steps = 1U,
+            .requested_steps = 4U,
+        },
+        BallMotionTuning{.horizontal_drag_divisor = 8,
+                         .vertical_drag_divisor = 8},
+        clear_map);
+    check(
+        completed && completed->completes_frame() && !completed->next_contact
+            && gameplay.physics().ball.position_x.raw == 24 * 256 + 128
+            && gameplay.physics().ball.position_y.raw == 38 * 256 + 128
+            && gameplay.physics().ball.velocity_x == 0x08C3
+            && gameplay.physics().ball.velocity_y == -0x07E1,
+        "native gameplay state completes a captured C721 suffix through DD09");
+
+    gameplay.seed_ball({
+        .position_x = Fixed24_8{.raw = 239 * 256},
+        .velocity_x = 0x0100,
+    });
+    const auto initial_handoff = gameplay.resume_initial_ball_motion(
+        {
+            .increment = {.horizontal = 0x0100},
+            .requested_steps = 1U,
+        },
+        BallMotionTuning{.horizontal_drag_divisor = 8}, clear_map);
+    check(
+        initial_handoff && initial_handoff->completes_initial_pass()
+            && initial_handoff->physics.completes_frame()
+            && initial_handoff->transition
+                == devils_crush::native_runtime::BallInitialTransition{
+                    .horizontal_pixels = 240U,
+                    .disposition = devils_crush::native_runtime::
+                        BallInitialTransitionDisposition::returns_to_caller,
+                }
+            && initial_handoff->next_substeps
+            && initial_handoff->next_substeps->count == 1U
+            && initial_handoff->next_substep_progress
+            && initial_handoff->next_substep_progress->requested_steps == 1U,
+        "native C6C2 handoff evaluates its gate after the captured cursor");
+
+    gameplay.seed_ball({
+        .position_x = Fixed24_8{.raw = 239 * 256},
+        .velocity_x = 0x0100,
+    });
+    const auto initial_schedule = gameplay.resume_initial_ball_motion(
+        {
+            .increment = {.horizontal = 0x0100},
+            .completed_steps = 1U,
+            .requested_steps = 1U,
+        },
+        BallMotionTuning{.horizontal_drag_divisor = 8}, clear_map);
+    check(
+        initial_schedule && initial_schedule->completes_initial_pass()
+            && initial_schedule->transition
+                == devils_crush::native_runtime::BallInitialTransition{
+                    .horizontal_pixels = 239U,
+                    .disposition = devils_crush::native_runtime::
+                        BallInitialTransitionDisposition::schedules_normal_motion,
+                },
+        "native C6C2 handoff preserves the low-side C721 schedule decision");
+
+    masks[0].rows.fill(0xFFU);
+    tile_ids[3U * CollisionMap::kColumns + 4U] = 0x7CU;
+    const CollisionMap solid_map{
+        .tile_ids = tile_ids,
+        .mask_indices = mask_indices,
+        .masks = masks,
+    };
+    gameplay.seed_ball({
+        .position_x = Fixed24_8{.raw = 31 * 256},
+        .position_y = Fixed24_8{.raw = 59 * 256},
+        .velocity_x = 0x0100,
+    });
+    const auto contact = gameplay.resume_prepared_ball_collision_loop(
+        {
+            .increment = {.horizontal = 0x0100},
+            .requested_steps = 1U,
+        },
+        BallMotionTuning{.horizontal_drag_divisor = 8},
+        solid_map);
+    check(
+        contact && !contact->completes_frame() && contact->next_contact
+            && contact->next_contact->substep_index == 0U
+            && gameplay.pending_playfield_contact() == contact->next_contact
+            && gameplay.pending_playfield_collision_loop()
+            && gameplay.pending_playfield_collision_loop()->completed_substeps == 0U
+            && gameplay.pending_playfield_collision_loop()->plan.velocity_x_per_step
+                == 0x0100,
+        "native gameplay state retains a captured C721 contact for CF33/CDF8");
+
+    masks[0].rows.fill(0U);
+    gameplay.seed_ball({
+        .position_x = Fixed24_8{.raw = 20 * 256},
+        .position_y = Fixed24_8{.raw = 40 * 256},
+        .velocity_x = 0x0A03,
+        .velocity_y = -0x0901,
+    });
+    const auto scheduled = gameplay.resume_scheduled_ball_motion(
+        {
+            .owner = BallFrameOwner::normal_motion,
+            .substep_progress = BallSubstepProgress{
+                .increment = {.horizontal = 0x0180, .vertical = -0x0080},
+                .completed_steps = 1U,
+                .requested_steps = 4U,
+            },
+        },
+        BallMotionTuning{.horizontal_drag_divisor = 8,
+                         .vertical_drag_divisor = 8},
+        clear_map);
+    check(
+        scheduled.disposition
+                == NativeGameplayState::ScheduledBallMotionDisposition::resumed
+            && scheduled.physics && scheduled.physics->completes_frame(),
+        "native gameplay state dispatches a captured C721 owner to its prepared loop");
+
+    gameplay.seed_ball({
+        .position_x = Fixed24_8{.raw = 239 * 256},
+        .velocity_x = 0x0100,
+    });
+    const auto initial = gameplay.resume_scheduled_ball_motion(
+        {
+            .owner = BallFrameOwner::initial_substep_transition,
+            .substep_progress = BallSubstepProgress{
+                .increment = {.horizontal = 0x0100},
+                .completed_steps = 1U,
+                .requested_steps = 1U,
+            },
+        },
+        BallMotionTuning{.horizontal_drag_divisor = 8,
+                         .vertical_drag_divisor = 8}, clear_map);
+    const auto missing_cursor = gameplay.resume_scheduled_ball_motion(
+        {.owner = BallFrameOwner::normal_motion}, BallMotionTuning{}, clear_map);
+    check(
+        initial.disposition
+                == NativeGameplayState::ScheduledBallMotionDisposition::resumed
+            && !initial.physics && initial.initial
+            && initial.initial->completes_initial_pass()
+            && initial.initial->transition
+                && initial.initial->transition->disposition
+                    == devils_crush::native_runtime::
+                        BallInitialTransitionDisposition::schedules_normal_motion
+            && missing_cursor.disposition
+                == NativeGameplayState::ScheduledBallMotionDisposition::unavailable
+            && !missing_cursor.physics,
+        "native gameplay scheduler resumes C6C2 and rejects normal motion without a cursor");
+
+    NativeGameplayRuntime initial_runtime;
+    const bool initial_runtime_bootstrapped = initial_runtime.bootstrap({
+        .ball = {
+            .state = {
+                .position_x = Fixed24_8{.raw = 239 * 256},
+                .velocity_x = 0x0100,
+            },
+        },
+        .ball_frame_schedule = {
+            .owner = BallFrameOwner::initial_substep_transition,
+            .substep_progress = BallSubstepProgress{
+                .increment = {.horizontal = 0x0100},
+                .completed_steps = 1U,
+                .requested_steps = 1U,
+            },
+            .collision_shape = devils_crush::native_runtime::
+                BallCollisionShapeSelection{
+                    .directory_index = 0x42U,
+                    .phase = 0x17U,
+                },
+        },
+    });
+    const auto initial_runtime_update = initial_runtime.advance_initial_ball_motion(
+        BallMotionTuning{.horizontal_drag_divisor = 8}, clear_map);
+    check(
+        initial_runtime_bootstrapped && initial_runtime_update
+            && initial_runtime_update->motion.completes_initial_pass()
+            && !initial_runtime_update->returned_to_slot_zero_actor_loop
+            && initial_runtime_update->next_schedule.owner
+                == BallFrameOwner::normal_motion
+            && initial_runtime_update->next_schedule.substep_progress
+                == initial_runtime_update->motion.next_substep_progress
+            && initial_runtime_update->next_schedule.collision_shape
+                == devils_crush::native_runtime::BallCollisionShapeSelection{}
+            && initial_runtime.ball_frame_schedule()
+                == initial_runtime_update->next_schedule,
+        "native gameplay runtime owns C6C2's next C721 schedule");
+
+    NativeGameplayRuntime returning_initial_runtime;
+    const bool returning_initial_runtime_bootstrapped =
+        returning_initial_runtime.bootstrap({
+            .ball = {
+                .state = {
+                    .position_x = Fixed24_8{.raw = 240 * 256},
+                    .velocity_x = 0x0100,
+                },
+            },
+            .ball_frame_schedule = {
+                .owner = BallFrameOwner::initial_substep_transition,
+                .substep_progress = BallSubstepProgress{
+                    .increment = {.horizontal = 0x0100},
+                    .completed_steps = 1U,
+                    .requested_steps = 1U,
+                },
+                .collision_shape = devils_crush::native_runtime::
+                    BallCollisionShapeSelection{
+                        .directory_index = 0x42U,
+                        .phase = 0x17U,
+                    },
+            },
+        });
+    const auto returning_initial_runtime_update =
+        returning_initial_runtime.advance_initial_ball_motion(
+            BallMotionTuning{.horizontal_drag_divisor = 8}, clear_map);
+    check(
+        returning_initial_runtime_bootstrapped
+            && returning_initial_runtime_update
+            && returning_initial_runtime_update->motion.completes_initial_pass()
+            && returning_initial_runtime_update->returned_to_slot_zero_actor_loop
+            && returning_initial_runtime_update->next_schedule.owner
+                == BallFrameOwner::initial_substep_transition
+            && returning_initial_runtime_update->next_schedule.collision_shape
+                == devils_crush::native_runtime::BallCollisionShapeSelection{
+                    .directory_index = 0x42U,
+                    .phase = 0x17U,
+                },
+        "native gameplay runtime records C6C2's slot-zero actor-loop return");
+}
+
+void test_native_contact_dispatch()
+{
+    using devils_crush::native_runtime::ContactDisposition;
+    using devils_crush::native_runtime::ContactState;
+    using devils_crush::native_runtime::ContactTarget;
+    using devils_crush::native_runtime::GameStateView;
+    using devils_crush::native_runtime::dispatch_contact;
+    using devils_crush::native_runtime::make_confirmed_contact_target;
+
+    const auto type_82_target = make_confirmed_contact_target({
+        .index = 0x62U,
+        .activity_flags = 0x82U,
+    });
+    const auto inactive_target = make_confirmed_contact_target({
+        .index = 0x62U,
+        .activity_flags = 0x02U,
+    });
+    check(
+        type_82_target
+            && *type_82_target == ContactTarget{
+                .actor_slot = 0x62U,
+                .response_kind = 2U,
+            }
+            && !inactive_target,
+        "native contact target mapper preserves CBCF's active type-82 response selection");
+
+    const auto repeated = dispatch_contact(
+        ContactState{.last_target = std::uint8_t{0x11U}},
+        ContactTarget{.actor_slot = 0x11U, .response_kind = 5U});
+    check(
+        repeated.disposition == ContactDisposition::repeated_target
+            && !repeated.target.marked_for_response,
+        "native contact dispatch suppresses an immediate repeat target");
+
+    const auto latched = dispatch_contact(
+        ContactState{.contact_latched = true},
+        ContactTarget{.actor_slot = 0x12U, .response_kind = 5U});
+    check(
+        latched.disposition == ContactDisposition::contact_already_handled
+            && !latched.target.marked_for_response,
+        "native contact dispatch defers a target after an earlier handled contact");
+
+    const auto dispatched = dispatch_contact(
+        ContactState{},
+        ContactTarget{.actor_slot = 0x12U, .response_kind = 1U});
+    check(
+        dispatched.disposition == ContactDisposition::dispatched
+            && dispatched.target.marked_for_response
+            && dispatched.state.last_target == 0x12U,
+        "native contact dispatch marks and records a new target");
+
+    const auto released = dispatch_contact(
+        ContactState{},
+        ContactTarget{.actor_slot = 0x13U, .response_kind = 2U});
+    check(
+        released.disposition == ContactDisposition::dispatched
+            && !released.state.contact_latched,
+        "native contact dispatch releases the latch for higher response kinds");
+}
+
+void test_native_frame_oracle()
+{
+    using devils_crush::native_runtime::FrameMismatch;
+    using devils_crush::native_runtime::FrameMismatchField;
+    using devils_crush::native_runtime::FrameObservation;
+    using devils_crush::native_runtime::FrameSnapshot;
+    using devils_crush::native_runtime::compare_frame_observations;
+
+    std::array<std::byte, 3> work_ram{
+        std::byte{0x01U}, std::byte{0x02U}, std::byte{0x03U}};
+    std::array<std::uint32_t, 2> framebuffer{0xFF000000U, 0xFFFFFFFFU};
+    std::array<float, 4> audio{0.0F, 0.25F, -0.25F, 0.0F};
+    const FrameObservation reference{
+        .frame_number = 7U,
+        .work_ram = work_ram,
+        .framebuffer = framebuffer,
+        .framebuffer_width = 2,
+        .framebuffer_height = 1,
+        .framebuffer_pitch_pixels = 2,
+        .audio = audio,
+        .audio_sample_rate = 44100,
+    };
+    auto candidate_work_ram = work_ram;
+    auto candidate_framebuffer = framebuffer;
+    auto candidate_audio = audio;
+    FrameObservation candidate{
+        .frame_number = reference.frame_number,
+        .work_ram = candidate_work_ram,
+        .framebuffer = candidate_framebuffer,
+        .framebuffer_width = reference.framebuffer_width,
+        .framebuffer_height = reference.framebuffer_height,
+        .framebuffer_pitch_pixels = reference.framebuffer_pitch_pixels,
+        .audio = candidate_audio,
+        .audio_sample_rate = reference.audio_sample_rate,
+    };
+    FrameMismatch mismatch{};
+    check(
+        compare_frame_observations(reference, candidate, mismatch) == nullptr,
+        "native frame oracle accepts an exact frame");
+
+    const FrameSnapshot snapshot(reference);
+    work_ram[0] = std::byte{0xFFU};
+    framebuffer[0] = 0U;
+    audio[0] = 1.0F;
+    check(
+        compare_frame_observations(
+            snapshot.observation(), candidate, mismatch) == nullptr,
+        "native frame snapshot owns reference buffers beyond the source frame");
+    work_ram[0] = std::byte{0x01U};
+    framebuffer[0] = 0xFF000000U;
+    audio[0] = 0.0F;
+
+    candidate_work_ram[1] = std::byte{0x04U};
+    check(
+        compare_frame_observations(reference, candidate, mismatch) == &mismatch
+            && mismatch.field == FrameMismatchField::work_ram
+            && mismatch.index == 1U,
+        "native frame oracle reports the first work-RAM difference");
+    candidate_work_ram[1] = std::byte{0x02U};
+
+    candidate.framebuffer_pitch_pixels = 3;
+    check(
+        compare_frame_observations(reference, candidate, mismatch) == &mismatch
+            && mismatch.field == FrameMismatchField::framebuffer_shape,
+        "native frame oracle rejects a framebuffer shape change");
+    candidate.framebuffer_pitch_pixels = reference.framebuffer_pitch_pixels;
+
+    candidate_audio[2] = 0.5F;
+    check(
+        compare_frame_observations(reference, candidate, mismatch) == &mismatch
+            && mismatch.field == FrameMismatchField::audio
+            && mismatch.index == 2U,
+        "native frame oracle reports the first audio difference");
+}
+
+void test_emulator_oracle_adapter()
+{
+    using devils_crush::emulation::EmulatedFrame;
+    using devils_crush::emulation::create_pce_runtime;
+    using devils_crush::native_runtime::capture_emulator_frame;
+
+    std::array<std::uint32_t, 2> framebuffer{0xFF000000U, 0xFFFFFFFFU};
+    std::array<float, 2> audio{0.25F, -0.25F};
+    const EmulatedFrame frame{
+        .framebuffer = {
+            .pixels = framebuffer,
+            .width = 2,
+            .height = 1,
+            .pitch_pixels = 2,
+        },
+        .audio = {
+            .interleaved_stereo = audio,
+            .sample_rate = 44100,
+        },
+        .frame_number = 23U,
+    };
+
+    const auto runtime = create_pce_runtime();
+    const auto snapshot = capture_emulator_frame(*runtime, frame).observation();
+    check(
+        snapshot.frame_number == 23U && snapshot.work_ram.empty()
+            && std::ranges::equal(snapshot.framebuffer, framebuffer)
+            && snapshot.framebuffer_width == 2
+            && snapshot.framebuffer_height == 1
+            && snapshot.framebuffer_pitch_pixels == 2
+            && std::ranges::equal(snapshot.audio, audio)
+            && snapshot.audio_sample_rate == 44100,
+        "emulator oracle adapter captures an emulated frame boundary");
+
+    framebuffer[0] = 0U;
+    audio[0] = 0.0F;
+    check(
+        snapshot.framebuffer[0] == 0xFF000000U && snapshot.audio[0] == 0.25F,
+        "emulator oracle adapter snapshot remains valid after source reuse");
+}
+
 void test_runtime_boundary()
 {
     const auto runtime = devils_crush::emulation::create_pce_runtime();
@@ -11095,7 +20464,7 @@ int main()
     test_native_unsigned_fixed_division();
     test_native_motion_rotation();
     test_native_collision_table_pass();
-    test_native_collision_response();
+    test_native_runtime_collision_response();
     test_native_collision_scan_vertical_reject();
     test_native_collision_geometry();
     test_native_collision_scan_bounds_reject();
@@ -11261,6 +20630,69 @@ int main()
     test_dmd_text_layout();
     test_table_palette_cache();
     test_native_registry();
+    test_native_game_state_view();
+    test_native_ball_frame_schedule();
+    test_native_gameplay_audio_dispatch();
+    test_native_small_soldier_capture();
+    test_playfield_collision_capture_adapter();
+    test_native_actor_scheduler_view();
+    test_native_bonus_stage_4();
+    test_native_bonus_stage_4_linked_target();
+    test_native_actor_motion();
+    test_native_actor_state();
+    test_native_bumper_capture();
+    test_native_front_spider_capture();
+    test_native_side_spider_capture();
+    test_native_skeleton_insect_capture();
+    test_native_dragon_egg_cluster_capture();
+    test_native_partial_dragon_egg_cluster_capture();
+    test_native_dragon_egg_hatchling_capture();
+    test_native_completed_dragon_egg_cluster_capture();
+    test_native_dragon_egg_reset_cluster_capture();
+    test_native_dragon_head_capture();
+    test_native_giant_skeleton_capture();
+    test_native_giant_face_capture();
+    test_native_giant_skeleton_eyeball_capture();
+    test_native_giant_skeleton_eyeball_final_animation_capture();
+    test_native_tower_capture();
+    test_native_tower_guard_capture();
+    test_native_collision_effect();
+    test_native_collision_reaction();
+    test_native_collision_table();
+    test_native_collision_table_asset();
+    test_native_small_soldier();
+    test_native_bumper();
+    test_native_front_spider();
+    test_native_side_spider();
+    test_native_skeleton_insect();
+    test_native_tower();
+    test_native_tower_insect();
+    test_native_tower_insect_capture();
+    test_native_tower_guard();
+    test_native_score_state();
+    test_native_small_soldier_rule_scheduler();
+    test_native_dragon_head();
+    test_native_giant_face();
+    test_native_dragon_egg_cluster();
+    test_native_giant_skeleton_eyeball();
+    test_native_giant_skeleton();
+    test_native_gameplay_state();
+    test_native_ball_motion();
+    test_native_collision_retry();
+    test_native_collision_response();
+    test_native_collision_bounds();
+    test_native_collision_mask();
+    test_native_actor_collision_mask_coordinates();
+    test_native_actor_collision_mask_asset();
+    test_native_actor_collision_scan();
+    test_native_collision_map();
+    test_native_collision_map_asset();
+    test_native_playfield_collision_scan();
+    test_native_physics_state();
+    test_native_prepared_gameplay_collision_loop();
+    test_native_contact_dispatch();
+    test_native_frame_oracle();
+    test_emulator_oracle_adapter();
     test_runtime_boundary();
 
     if (failures == 0) {

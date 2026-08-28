@@ -10,9 +10,12 @@
   GPL-3.0-or-later after auditing the MSVC compatibility sources compiled
   from Beetle.
 - Use [Mesen2](https://github.com/SourMesen/Mesen2) as an independent debugger and behavioral oracle.
-- Initially run the game completely through emulation, then replace gameplay
-  routines incrementally with native C/C++ while retaining emulated hardware,
-  original graphics/audio drivers, menus, and compatibility glue.
+- Initially run the game completely through emulation, then use bounded native
+  replacements only as a fidelity bridge and behavioral oracle. The completed
+  port is a human-readable native C++ game runtime: named game-state types and
+  subsystem updates replace HuC6280 instruction execution for normal play.
+  The emulator remains available during development for differential replay,
+  not as a permanent implementation of gameplay.
 - V1 supports only the existing USA ROM: MD5 `92fbe89d4c87bf283dbfbeac69a64e6e`. The user supplies this ROM and it remains required at launch.
 - Preserve original gameplay by default. Native gameplay modules provide extension points for later physics, rules, scoring, and cabinet enhancements.
 - Render every window at its monitor's current pixel resolution using one fixed sharp pixel-art scaling pipeline. No alternative filtering modes are included in v1.
@@ -55,6 +58,30 @@ The following remain emulated in v1:
 - VDC/VCE tile, sprite, palette, raster, and scrolling behavior.
 - PSG and the original music/SFX driver.
 - ROM bootstrap, title/options screens, legacy password/save UI, and low-level display/audio routines.
+
+### Native-runtime migration target
+
+The routine registry is a transition tool, not the final architecture. It is
+useful for discovering behavior and proving small models against the ROM, but
+it must not be extended by translating individual instructions or arbitrary
+interior address ranges into C++.
+
+The native runtime owns an entire frame as a composition of readable domains:
+
+- `GameState`, `BallState`, `PlayerState`, `TableState`, and typed actor
+  records replace raw work-RAM offsets at public subsystem boundaries.
+- An actor scheduler dispatches named actor kinds to explicit update functions.
+- Physics/collision, rules/scoring, scene flow, rendering, and audio have
+  separate input/output contracts.
+- ROM bytes may remain the source of tables, graphics, and sound data, but are
+  decoded into named native data rather than treated as executable code.
+
+Each domain is first run beside the emulator against the same input recording.
+Per-frame work-RAM, framebuffer, and audio fingerprints remain the oracle
+until the domain is complete. Exact low-level helpers may temporarily preserve
+machine-shaped arithmetic, but they must be isolated behind named operations;
+new domain code should express game intent rather than branch addresses or CPU
+registers. See [docs/NATIVE_RUNTIME_MIGRATION.md](docs/NATIVE_RUNTIME_MIGRATION.md).
 
 ### Progressive native routine replacement
 
@@ -248,18 +275,25 @@ in [PROGRESS.md](PROGRESS.md); the dated record of how each gate was met is in
 - Keep application orchestration separate from instruction-faithful
   replacement adapters. Adapters live in subsystem implementation files;
   `native_replacements.cpp` is the central registry.
-- Port RNG, physics, collision, table actors and rules, bonus stages, and
-  session transitions.
-- For each routine: observe, document, shadow-test, then replace, following
-  [docs/NATIVE_PORT_WORKFLOW.md](docs/NATIVE_PORT_WORKFLOW.md). Admission
-  requires a natural route or player capture that gives the scope its own
-  caller and return — see [docs/ROUTE_SCREENING.md](docs/ROUTE_SCREENING.md).
+- Build a selectable native frame runtime behind `PceRuntime`, initially using
+  the emulator as a frame-by-frame differential oracle.
+- Port whole gameplay domains in order: actor scheduler/collision/physics,
+  actor families and table rules, score/UI, music/audio scheduling, then scene
+  flow and startup glue.
+- Use routine observation and replacement only to recover semantics, name
+  data, and establish fixtures for the owning native domain. A replacement is
+  not a terminal port merely because it executes natively.
+- For each domain, compare the same player captures and focused fixtures in
+  the assembly, hybrid, and native-runtime modes. Preserve work-RAM, video,
+  audio, input, save, and scene behavior before retiring its interpreter path.
 - Maintain [docs/NATIVE_REGISTRY.md](docs/NATIVE_REGISTRY.md) as the manifest
   of admitted routines, and
   [docs/RETAINED_ASSEMBLY_SEAMS.md](docs/RETAINED_ASSEMBLY_SEAMS.md) as the
   manifest of code deliberately left emulated.
-- **Exit:** all listed gameplay subsystems are native and remaining ROM
-  execution is limited to approved compatibility glue.
+- **Exit:** normal gameplay executes through human-readable native C++ domain
+  code with no HuC6280 gameplay instructions; any retained emulator path is
+  explicitly limited to compatibility/front-end behavior and is not required
+  for a native-runtime replay.
 
 ### 5. Final cabinet world model — not started
 

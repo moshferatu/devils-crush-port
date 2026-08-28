@@ -39,7 +39,65 @@ add_library(
     dc_core
     STATIC
     src/audio/music_voice_overlay.cpp
-    src/audio/pce_psg.cpp
+      src/audio/pce_psg.cpp
+      src/native_runtime/actor_collision_geometry.cpp
+      src/native_runtime/actor_collision_mask_asset.cpp
+      src/native_runtime/actor_collision_mask_coordinates.cpp
+      src/native_runtime/actor_collision_scan.cpp
+    src/native_runtime/actor_collision_seed.cpp
+    src/native_runtime/ball_capture.cpp
+    src/native_runtime/ball_frame_schedule.cpp
+      src/native_runtime/ball_physics.cpp
+    src/native_runtime/bonus_stage_4.cpp
+    src/native_runtime/bonus_stage_4_capture.cpp
+    src/native_runtime/bonus_stage_4_linked_target.cpp
+    src/native_runtime/bonus_stage_4_linked_target_capture.cpp
+    src/native_runtime/bonus_stage_4_linked_target_scheduler.cpp
+    src/native_runtime/bonus_stage_4_orbiting_child_capture.cpp
+    src/native_runtime/bonus_stage_4_scheduler.cpp
+      src/native_runtime/bumper.cpp
+    src/native_runtime/bumper_capture.cpp
+    src/native_runtime/bumper_scheduler.cpp
+    src/native_runtime/collision_detection.cpp
+      src/native_runtime/collision_map.cpp
+      src/native_runtime/collision_map_asset.cpp
+      src/native_runtime/collision_mask.cpp
+      src/native_runtime/collision_effect.cpp
+      src/native_runtime/collision_effect_capture.cpp
+      src/native_runtime/collision_reaction.cpp
+      src/native_runtime/collision_retry.cpp
+      src/native_runtime/collision_retry_asset.cpp
+      src/native_runtime/collision_retry_placement.cpp
+      src/native_runtime/collision_retry_probe.cpp
+      src/native_runtime/collision_response.cpp
+      src/native_runtime/collision_response_asset.cpp
+      src/native_runtime/collision_table.cpp
+    src/native_runtime/collision_table_asset.cpp
+    src/native_runtime/collision_table_driver.cpp
+    src/native_runtime/contact_dispatch.cpp
+    src/native_runtime/dragon_head.cpp
+    src/native_runtime/dragon_head_capture.cpp
+    src/native_runtime/dragon_head_scheduler.cpp
+    src/native_runtime/dragon_egg.cpp
+    src/native_runtime/dragon_egg_capture.cpp
+    src/native_runtime/dragon_egg_hatchling.cpp
+    src/native_runtime/dragon_egg_scheduler.cpp
+    src/native_runtime/front_spider.cpp
+    src/native_runtime/front_spider_capture.cpp
+    src/native_runtime/front_spider_scheduler.cpp
+    src/native_runtime/gameplay_bootstrap.cpp
+    src/native_runtime/giant_skeleton.cpp
+      src/native_runtime/giant_skeleton_capture.cpp
+      src/native_runtime/giant_skeleton_eyeball.cpp
+      src/native_runtime/giant_skeleton_eyeball_capture.cpp
+      src/native_runtime/giant_skeleton_eyeball_scheduler.cpp
+    src/native_runtime/giant_skeleton_scheduler.cpp
+    src/native_runtime/giant_face.cpp
+    src/native_runtime/giant_face_capture.cpp
+    src/native_runtime/giant_face_helmet.cpp
+    src/native_runtime/giant_face_helmet_capture.cpp
+    src/native_runtime/giant_face_helmet_scheduler.cpp
+    src/native_runtime/giant_face_scheduler.cpp
     src/cabinet/cabinet_state.cpp
     src/cabinet/display_config.cpp
     src/cabinet/dmd_font.cpp
@@ -53,7 +111,39 @@ add_library(
     src/cpu/huc6280_scheduler.cpp
     src/input/pce_pad.cpp
     src/input/plunger.cpp
-    src/core/rom_image.cpp
+    src/native_runtime/actor_motion.cpp
+    src/native_runtime/actor_motion_capture.cpp
+    src/native_runtime/actor_scheduler.cpp
+    src/native_runtime/actor_state.cpp
+    src/native_runtime/frame_oracle.cpp
+      src/native_runtime/gameplay_audio_dispatch.cpp
+      src/native_runtime/game_state.cpp
+      src/native_runtime/mapped_rom.cpp
+      src/native_runtime/native_gameplay_state.cpp
+      src/native_runtime/native_gameplay_runtime.cpp
+      src/native_runtime/physics_state.cpp
+      src/native_runtime/playfield_collision.cpp
+      src/native_runtime/score_capture.cpp
+      src/native_runtime/score_state.cpp
+      src/native_runtime/skeleton_insect.cpp
+      src/native_runtime/skeleton_insect_capture.cpp
+      src/native_runtime/skeleton_insect_scheduler.cpp
+      src/native_runtime/side_spider.cpp
+      src/native_runtime/side_spider_capture.cpp
+      src/native_runtime/side_spider_scheduler.cpp
+      src/native_runtime/small_soldier.cpp
+      src/native_runtime/small_soldier_capture.cpp
+      src/native_runtime/small_soldier_rules.cpp
+      src/native_runtime/small_soldier_scheduler.cpp
+      src/native_runtime/tower.cpp
+      src/native_runtime/tower_capture.cpp
+      src/native_runtime/tower_guard.cpp
+      src/native_runtime/tower_guard_capture.cpp
+      src/native_runtime/tower_insect.cpp
+      src/native_runtime/tower_insect_capture.cpp
+      src/native_runtime/tower_insect_scheduler.cpp
+      src/native_runtime/tower_scheduler.cpp
+      src/core/rom_image.cpp
     src/core/save_state.cpp
     src/render/pce_background.cpp
     src/render/pce_sprite_overlay.cpp
@@ -129,6 +219,8 @@ add_library(
     dc_emulation
     STATIC
     "${dc_emulation_source}"
+    src/emulation/native_runtime_oracle_adapter.cpp
+    src/emulation/playfield_collision_adapter.cpp
     src/emulation/routine_replay_corpus.cpp
 )
 
@@ -143,12 +235,16 @@ target_include_directories(
 target_compile_features(dc_emulation PUBLIC cxx_std_20)
 dc_enable_strict_warnings(dc_emulation)
 
+# The emulator-to-oracle adapter returns the core-owned FrameSnapshot type.
+# Make that relationship transitive so the stub configuration is link-complete
+# for consumers that use the adapter directly.
+target_link_libraries(dc_emulation PUBLIC DevilsCrush::Core)
+
 if(DC_FETCH_BEETLE)
     target_link_libraries(
         dc_emulation
         PRIVATE
             DevilsCrush::BeetlePce
-            DevilsCrush::Core
     )
     target_compile_definitions(
         dc_emulation

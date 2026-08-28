@@ -181,8 +181,9 @@ Assert-RomHex $rom 0x00AB16 @"
 
 # A main target hit awards 100 stored units and response $3B before yielding
 # through the animation continuation. The subsequent ROM continuation emits
-# four orbiting children at $6D27; a child contact also awards 100 and frees
-# that child.
+# four orbiting children at $6D27. Either its collision bit or a cleared
+# parent liveness marker branches to $6D7F, which awards 100 and frees that
+# child.
 Assert-RomHex $rom 0x00AC06 @"
 A9 64 85 2F 64 30 20 2A C0 A9 3B 8D 6E 2D 20 B1 66
 A9 04 9D 80 39 A9 06 20 21 C0 20 18 C0

@@ -867,6 +867,13 @@ slots inline, the vertical scan at `01:CC1A` for the rest, the `BCC` at
 `01:CB61` that resolves the result, and the shared tail at `01:CB6B` that
 advances the cursor at `$2064` and the countdown at `$2060`. A set carry means
 a hit and sets bit 2 of the latch at `$2077` before the helper at `01:CBCF`.
+The `$55` gate does not disable the walk: when nonzero it additionally requires
+bit 6 of the candidate's `$3000,Y` activity byte; when clear, every otherwise
+eligible candidate reaches `CC1A`.
+Before the walk, `CB2A` refreshes its staged probe at `$65:$67` from the ball's
+whole-pixel coordinate (X minus `$20`, followed by Y), so a host observer at
+the routine entry must derive that pending value rather than reuse stale scratch
+bytes from a prior sweep.
 The call out to the scan is composed into the walk rather than handed to the
 core; see the end of the next section.
 
@@ -1002,7 +1009,14 @@ The emitter drains all three downward — the first two from their own cursors,
 the third from a fixed `$7F` — so the first two are emitted in reverse
 registration order and the third, whose cursor counts down, in registration
 order. Bit 0 diverts the slot to a one-shot clear of `$3800` bit 6 and the
-helper at `01:F605` before any queue is chosen.
+  helper at `01:F605` before any queue is chosen. `F605` tail-jumps to
+  `01:D599`: it applies the pending presentation offset, invokes `01:D1A2` to
+  refresh the actor's transformed `$3400/$3480` and `$3500/$3580` coordinate
+  pairs, marks the presentation-refresh scratch flag, then clears bit 7 of the
+  `$3800,Y` record selected through `$64` before joining the shared
+  presentation continuation. It is therefore a presentation refresh, not an
+  opaque actor reset. C606's second `$3080,X` read follows that helper and is
+  the only value that selects the SAT queue.
 
 `08:40DF` is the descriptor renderer:
 
@@ -2107,6 +2121,14 @@ the existing native `45:4C42` record initializer. All 66 routed calls preserve
 the complete 5,163-write scope; zero-tag descriptors still fall back to the
 original push/RTS dispatch.
 
+`native_runtime::GameplayAudioDispatch` is the corresponding readable
+gameplay-side boundary. It preserves each source-tagged submission in actor
+order, rejects `$FF`, and models the `$2CC7` lock's narrow suppression of only
+`$31`, `$27`, and `$47`. It deliberately returns an immediate dispatch outcome
+rather than a fake PSG queue: a later native descriptor-loader/audio scheduler
+will consume accepted commands synchronously, while the current hybrid path
+continues through the proven bank-45 loader.
+
 The outer `ED18` scope is the useful replacement-facing boundary because it
 includes bank mapping, the original audio driver, and restoration of the
 caller's X, Y, SP, and all eight MPRs. Its 66 calls span frames 7-3,466, take
@@ -2204,6 +2226,36 @@ copies the source position and collision fields. When `$2D2B` reaches zero,
 the source declares a 200-unit (20,000 displayed point) group-clear award.
 The child's two-hit behavior is bounded separately below.
 
+`TowerInsectRuleScheduler` now owns the corresponding native gameplay state:
+one source generation starts only after the Tower/insect-cycle latch activates
+its fixed source, makes a one-turn allocation request, then makes the remaining
+requests at the recovered 48-turn cadence; the allocator remains an explicit
+consumer of each request. Each child awards 10 units and `$29` on either hit,
+and its second hit adds 50,
+releases the child, and decrements the live count. The final live child arms
+the source's later 200-unit group-clear award. `capture_tower_insect_generation`
+can seed that native scheduler during its ordinary one-to-48-turn spawn
+countdown without exceeding its four-child capacity, or after all four allocations
+with a positive count and matching steady children; startup, collision, and
+zero-count handoff snapshots remain outside the capture boundary. Request-slot
+selection remains a separate owner; the shared collision-effect allocator and
+lifetime are now native. The
+post-clear native rule now waits for the distinct Tower/insect-cycle latch
+before re-entering the four-child source setup, matching `02:5F5F`'s branch
+back through `02:5F22` rather than respawning immediately.
+Each captured child must retain the fixed source's copied `$3900` appearance;
+the same selector is carried into native child records and into their shared
+collision effects. Capture likewise carries the source-copied `$3D00` `$8C`
+association, admits only its effect-owned low-nibble `$0F` variation, and can
+therefore seed the child and an associated type-`$8F` effect as one native
+continuation.
+
+When an allocator-selected slot is supplied for a pending request,
+`NativeGameplayState` now claims it as the native `tower_insect` actor
+behavior before committing the child rule. Its terminal second hit releases
+that same dynamic record after the score and source-count update, so an
+uncommitted or occupied slot cannot create a phantom child.
+
 Semantic `02:5F22@all` now covers the source's one fixed-slot setup call at
 frame 872. It preserves the exact 192-cycle, seven-write original scheduler
 transaction and final `01:C5E6` checkpoint; the countdown, allocation, and
@@ -2254,6 +2306,10 @@ The record has type `$82`, state `$37`, and flags `$84`. Initialization sets
 collision selector `$10`, closed completion selector `$84`, and installs
 `03:60A6`. Every live update reads the Tower-owned gate counter `$2D4D`.
 Nonzero selects `$84`; zero selects open completion ID `$8E`.
+The native bootstrap enables this stateless actor-phase output only when both
+the Tower and Guard have their fixed steady captures, so the selector is
+derived from the captured Tower gate at slot `$2E` rather than copied from a
+stale Guard-local field.
 
 Tower slot `$2D` initializes `$2D4D` to 5. Its first qualifying hit arms
 `$2CFC`; later qualifying passes decrement `$2D4D`. When that decrement
@@ -2330,6 +2386,24 @@ side-selected live count at `$2D11,Y`. This is the manual's six-creature
 release. Neither bumper reaches phase 9 on the current route, so the
 destruction and child paths are guarded by exact ROM signatures rather than
 claimed as dynamically exercised.
+
+`native_runtime::BumperState` now gives that recovered nine-hit progression a
+human-readable C++ owner. `consume_bumper_contact` returns the distinct
+primary, secondary, and destruction effects without exposing a phase-table
+address: primary hits advance the appearance, secondary hits advance damage,
+and destruction requests six children. `resolve_bumper_contact` keeps the
+ordinary score call separate, so a score-limit rejection cannot incorrectly
+undo the Bumper's terminal state. Fixed-slot setup, collision dispatch, child
+allocation, and presentation are still separate native-runtime work.
+`BumperRuleScheduler` now carries a dispatched contact to its fixed `$14` or
+`$15` actor-order turn and `NativeGameplayState` applies the returned score
+event there, rather than resolving a target rule immediately in collision
+code.
+`capture_bumper_actor` supplies its steady-state migration boundary: it reads
+the Bumper-private side, phase, and appearance counters only after the fixed
+slot/type and `03:78C7` handler identify this family, then verifies the
+six-primary/two-secondary counter relationship before producing a
+`BumperState`. Terminal allocation remains outside that capture state.
 
 The bounded route contains 3,468 calls—1,734 per bumper—from frames
 872-3,562. It records 11 hits: slot `$15` reaches phase 8 and slot `$14`
@@ -2858,13 +2932,37 @@ counter 8 → 7 → 6 and contributing 100 stored units. The counter-zero path
 is not active on this route; its exact ROM signature adds a second 50-unit
 award on the eighth hit and begins the multi-stage mouth-opening transition.
 
-The Giant Skeleton dispatcher invokes the shared RNG every active update and
-maps its result into five appearance values `$02-$06`. The deterministic
-route contains 2,139 calls and reproduces the complete value histogram. Its
-frame-2,642 hit clears bit 7 of `$3800,X`, submits 40 stored units (4,000
-displayed points), emits command `$2E`, and returns with the same live
-dispatcher. Unlike the Dragon, this observed hit has no countdown or
+The readable native runtime mirrors that rule as `DragonHeadState` and
+`DragonHeadRuleScheduler`: fixed slot `$13` receives a confirmed contact at
+its actor-order turn, emits the 50-unit/`$2E` event, and retains the shared
+impact/appearance completion as an explicit rearm handoff. On the eighth hit,
+it adds the verified second 50-unit award and reports a mouth-opening
+transition request. The unresolved multi-stage presentation remains distinct;
+the native state does not substitute a guessed frame timer for it.
+`capture_dragon_head_actor` admits only the clear type-`$82` slot `$13` record
+at steady dispatcher `02:5A4B`, carrying its one-through-eight hit counter into
+`DragonHeadState`; pending hits and terminal opening remain with their owning
+collision and presentation phases.
+
+The Giant Skeleton dispatcher invokes the shared direction classifier every
+active update and maps its result into five appearance values `$02-$06`. The
+deterministic route contains 2,139 calls and reproduces the complete value
+histogram. Its frame-2,642 hit clears bit 7 of `$3800,X`, submits 40 stored
+units (4,000 displayed points), emits command `$2E`, and returns with the same
+live dispatcher. Unlike the Dragon, this observed hit has no countdown or
 completion transition.
+
+The readable native runtime now models this as `GiantSkeletonState` and
+`GiantSkeletonRuleScheduler`. Its every-turn position classifier names the
+ball-to-fixed-target comparison, its direction table is retained as a
+presentation selector, and the resulting appearance is clamped to the proven
+`$02-$06` range. A confirmed contact reaches slot `$30` in actor order, emits
+the repeatable 40-unit/`$2E` hit, and asks the presentation owner for its
+shared impact state without fabricating a countdown. This is geometry-derived,
+not RNG-derived. `capture_giant_skeleton_actor` admits only the clear type-`$83`
+slot `$30` record at steady dispatcher `02:5EEC`, carrying its live appearance
+into `GiantSkeletonState`; a latched hit remains with the collision owner.
+Fixed-table setup remains the explicit seeding seam.
 
 The combined boundary contains 4,283 calls from frames 872-3,600 and 50,711
 ordered writes. The three hits contribute 140 stored score units and three
@@ -2897,7 +2995,7 @@ ordinal 1 shadows frame 2,076 with exact 27-cycle and one-write parity.
 
 `tools/Analyze-DragonGiantSkeletonSemantics.ps1` guards both layout records,
 initializers and hit rules, the inactive Dragon terminal path, fixed
-identities, call populations, RNG-derived Giant-Skeleton appearance
+identities, call populations, direction-derived Giant-Skeleton appearance
 histogram, every score/audio write, counter progression, and normalized
 replay. Debug and Release reproduce:
 
@@ -3262,6 +3360,56 @@ initializer increments the shared live-egg counter at `$2CF4`, producing the
 sequence 1-6. Invisible fixed slot `$1F`, initialized at `02:42EB` and
 updated at `02:42F6`, is the group controller.
 
+The readable native runtime now represents this family as
+`DragonEggClusterState` and `DragonEggRuleScheduler`. A confirmed fixed-egg
+turn at `$20-$25` disables only its own target, awards 10 stored units, emits
+`$39`, and requests the separate hatchling allocator. The allocator-selected
+dynamic child is now `DragonEggHatchlingState`: it copies the exact parent
+position, retains the captured wrapping animation timer, and resolves its
+later 200-unit/`$34` terminal contact before releasing only that dynamic
+record. The slot-`$1F` controller remains a distinct later actor turn: once
+all six are destroyed it awards 100 stored units and requests the existing
+group-reset phase. When the separate timer/presentation owner supplies that
+signal, the native scheduler reinitializes each fixed slot `$20-$25` on its
+own actor turn and clears cluster completion only after the sixth target is
+live. Hatchling flight motion and reset presentation are deliberately not
+inferred here.
+`capture_dragon_egg_cluster` admits only the complete clear type-`$82`
+`02:4345` snapshot, so native startup cannot mistake a destroyed or
+reset-requested egg for a collision-ready target.
+
+`capture_partial_dragon_egg_cluster` extends that boundary only after a child
+has released: each live egg must remain at `02:4345`, each destroyed fixed egg
+must be at `02:4387`, `$2CF4` must exactly equal the one-through-five live
+record count, `$2CF7.0` must be clear, and no type-`$82` `02:441E` hatchling
+may be live. This transfers the stable mixed target lifecycle without
+inventing a parent for an in-flight child or taking over completion/reset
+transitions.
+
+`capture_dragon_egg_cluster_with_hatchling` covers the corresponding narrow
+in-flight handoff. It requires exactly five `02:4345` fixed eggs, one
+`02:4387` disabled parent, and exactly one type-`$82` `02:441E` dynamic child;
+the fixed count and clear reset/completion latches must agree. The source does
+not preserve a parent link after allocation, so the sole disabled fixed record
+is the only safe association. Native state claims that existing dynamic slot
+and preserves its captured position and timer without replaying allocation.
+Ambiguous multi-child states remain outside this boundary.
+
+`capture_completed_dragon_egg_cluster` adds the distinct all-disabled,
+pre-reset handoff. It requires `$2CF4=0`, `$2CF7.0` clear, `$2D20.0` set,
+controller slot `$1F` at type `$80` / `02:42F6`, all six fixed eggs at
+`02:4387`, and no type-`$82` `02:441E` hatchling. The captured native cluster
+is already complete, preserving the source's already-committed 100-unit
+controller award while leaving reset timing to its separate owner.
+
+Once that separate owner raises `$2CF7.0`,
+`capture_dragon_egg_reset_cluster` accepts the explicit in-progress reset:
+the same controller and no-hatchling checks apply, `$2D20.0` remains set, and
+the zero-through-five `$2CF4` count must match a mix of `02:4345` live and
+`02:4387` disabled fixed records. The captured state retains `completed` and
+`reset_pending`, so the native scheduler reinitializes only remaining
+disabled targets in source actor order rather than resetting all six at once.
+
 ### Dragon's-Egg controller initializer extension: semantic `02:42EB@all`
 
 The hidden controller's one setup call now executes natively. Its typed
@@ -3361,6 +3509,35 @@ when shared live count `$2CF4` reaches zero, `02:42F6` increments `$2CFB`,
 sets `$2D20` bit 0, awards 100 stored score units, and begins the egg reset
 sequence. The Eyeball consumes that signal to enter the Giant Skeleton's
 timed mouth-opening animation and eventually loops back to its initializer.
+
+The native runtime now makes this cross-target dependency explicit:
+`DragonEggClusterState` completes on the slot-`$1F` controller turn and the
+separately seeded `GiantSkeletonEyeballState` observes it on fixed slot `$2F`.
+That later turn emits exactly one named opening-transition handoff before it
+waits for the animation/presentation owner. After that owner completes the
+source's immediate setup, the native state reloads and advances the verified
+eight-tick opening countdown; expiry remains a separate animation handoff.
+Once that owner selects the final branch, native state advances the verified
+ordinary `$00E0` or secondary-mode `$03E0` mouth wait, its eight-turn
+four-phase `0/1/0/1` appearance cadence, and a named reset handoff. The entry
+mode and presentation owners remain explicit; the countdown is not a generic
+elapsed-frame approximation.
+
+`capture_giant_skeleton_eyeball_actor` provides the corresponding strict
+handoff during a live countdown: it accepts only the type-`$82`, state-`2`,
+`02:4DF7` continuation with two through eight ticks remaining. The source's
+one-tick expiry and dormant/final-animation entry ownership stay outside this
+native capture boundary.
+
+`capture_giant_skeleton_eyeball_final_animation_actor` supplies the matching
+strict final-wait handoff. It accepts only type-`$82` direct `02:4F3D` records
+whose two-through-eight appearance timer and non-transition low phase are
+live, then transfers the source's complete little-endian 16-bit final wait and
+current 0/1 appearance into `GiantSkeletonEyeballState`. Appearance expiry,
+phase transition, branch entry, and reset remain outside that capture seam.
+Once the separate close-presentation owner acknowledges the terminal wait,
+native state follows the source's `02:4F93 -> 02:4DC8` return and restores the
+Eyeball's dormant lifecycle.
 
 The canonical route destroys only one egg, so the completion signal remains
 clear. The trace contains one initializer at frame 872 and 1,988 steady
@@ -3615,6 +3792,19 @@ remain assembly-owned, so copied RAM is never held across a coroutine yield.
 Release and Debug preserve the exact 216-call/1,172-write overlapping artifact
 and the 135-cycle/five-write first replay for every seam.
 
+`native_runtime::FrontSpiderState` now owns the recovered one-hit gameplay
+rule in human-readable C++: a ready fixed target records its side safety,
+40-unit score event, `$34` audio event, and four requested appearance stages,
+then remains unavailable until a presentation owner explicitly completes that
+transition. `FrontSpiderRuleScheduler` retains the dispatched target contact
+until fixed slot `$26` or `$27` reaches native actor order. The transition's
+elapsed scheduling and appearance writes deliberately remain outside this rule
+instead of being approximated from the observed 72-frame returns.
+`capture_front_spider_actor` is its steady-state capture boundary: it admits
+only those fixed type-`$83` slots at `03:6490` and then gives `$3C80,X` its
+proven side meaning. A transition handler cannot be mistaken for a ready
+collision target.
+
 `tools/Analyze-FrontSpiderSemantics.ps1` guards the two fixed layout records,
 side ownership, collision selection, every safety/score/audio write, the
 appearance-transition timeline, fixed dispatch identity, and normalized
@@ -3673,6 +3863,18 @@ as shared collision work and periodic interrupts vary. Normalized replay
 `03:651F@1` occurs at frame 873 with 903 cycles and 19 writes. The hit and
 transition sequence is ROM-bounded and not claimed as dynamically exercised.
 
+`native_runtime::SideSpiderState` now gives this separate one-hit target rule
+a human-readable C++ owner: a ready target emits the shared transition-latch,
+100-unit score, and `$34` audio effects, then remains unavailable until its
+appearance owner completes the transition. `SideSpiderRuleScheduler` carries
+each confirmed contact to fixed slot `$28` or `$29` in native actor order. The
+five-state presentation controller remains an explicit later domain; no
+unobserved collision timing is inferred from the collision-free route.
+`capture_side_spider_actor` is the corresponding steady-state capture
+boundary: it accepts only fixed type-`$83` `$28/$29` actors at `03:651F` and
+then gives `$3C80,X` its proven side meaning. Transition-state handlers cannot
+be seeded as collision-ready targets.
+
 `tools/Analyze-SideSpiderSemantics.ps1` guards both layout records,
 initialization and side ownership, collision selectors, hit/score/audio and
 transition signatures, shared appearance helper, equal call populations,
@@ -3722,6 +3924,49 @@ scopes calls the audio producer at `00:ECFD`: the triggering Front Spider or
 Tower owns the same-frame `$34` or `$33` feedback. Exact ROM signatures also
 retain inactive secondary collision/award branches in `02:5500` and
 `02:5590`; the route reaches those states but does not take either branch.
+
+`native_runtime::TableRuleLatches` now gives the source signals a typed table
+owner. `SkeletonInsectRuleScheduler` runs the three waiting targets at fixed
+slots `$31-$33` after their source slots, so a native Front-Spider hit supplies
+its safety latch before the matching later insect performs its one-shot 40-unit
+award. The same state model names the center Tower latch and its 100-unit
+award. Each trigger reports the recovered 3/16/2-round startup transition and
+no audio command, leaving its source target as the feedback owner; detailed
+transition, post-trigger collision, and presentation behavior stay separate.
+`GameStateView::table_rule_latches` captures all four cross-target flags as a
+single typed snapshot, while `capture_skeleton_insect_actor` accepts a target
+only at its fixed steady handler (`02:54B9`, `02:55F9`, or `02:5551`). This
+keeps a captured source-ready target native without mistaking its unported
+transition/presentation handler for collision readiness.
+
+`TowerRuleScheduler` now owns the Tower's first qualifying steady contact at
+fixed slot `$2D`: it awards 50 units, emits `$33`, advances the named source
+progress once, and sets the typed center-insect source before slot `$32` runs
+in the same actor pass. The following `03:611C/03:611F` presentation handoff
+is now a named native four-update phase: three countdown updates followed by
+the steady `03:60C3` dispatch install. Once armed, later qualifying passes
+now decrement the named five-step `$2D4D` gate without replaying the source
+award. The zero decrement installs an explicit pending BS-5-selection state.
+Its native `03:6136` prefix treats a no-hit tick as a wait, and only a later
+negative geometry latch emits a typed request for bonus stage 5, command
+`$41`, stage flag `$3C80`, a restored five-pass gate, and the next
+Tower/insect cycle. The shared timer/audio/scene dispatcher remains an
+explicit downstream owner, so this handoff does not claim a completed native
+scene transition.
+`capture_tower_actor` admits only type `$83` at `03:60C3` with a clear
+collision state and captures Tower-local `$2D3F` as named hit progress. A
+pending collision or `03:611C/03:611F` presentation handler therefore cannot
+become a collision-ready native Tower seed. It also captures the `$2D4D`
+remaining-pass gate so an in-progress Tower can continue natively.
+
+`select_tower_guard_selector` now gives the adjacent fixed Guard at slot
+`$2E` a native, human-readable `03:60A6` owner: a nonzero Tower gate yields
+its closed `$84` completion selector, while zero yields the open `$8E`
+BS-5-entrance selector. It has no independent progress state and deliberately
+does not absorb the Guard mask's ordinary ball-response dispatcher.
+`capture_tower_guard_actor` accepts only that fixed steady handler, validates
+type `$82`, and derives the selector from Tower `$2D4D`; the Guard's local
+completion byte is therefore not promoted into native gameplay state.
 
 The capture contains 5,805 calls and 1,316 scoped writes. Normalized first
 steady-state replays for `02:54B9`, `02:5551`, and `02:55F9` each take 21
@@ -4219,6 +4464,20 @@ without applying the rule. On a hit it:
 confirmed-hit controllers. It checks the low nibble of `$3D00,X`: `$0F`
 means a collision effect is already associated and returns immediately.
 Otherwise it calls the generic actor-slot allocator through `01:C024/C5AB`.
+The native `ActorState` now represents that transaction as an explicit
+allocator-selected `collision_effect` child: it copies the source appearance,
+owns the eight-turn lifetime, and rejects a duplicate live source association.
+Its source-generation guard prevents an expired old effect from clearing a
+new actor that reused the same dynamic slot. On expiration it restores the
+saved full source `$3D00` association, as `03:7C34` does after the scheduled
+wait. Burst drawing remains the separate presentation owner.
+`advance_tower_insect_actor_with_collision_effect` accepts the surrounding
+allocator's selected slot and performs this association before a terminal
+Tower-insect child releases, matching the original helper call order.
+`capture_collision_effect` admits only a steady type-`$8F`/`03:7C34` child
+with its source link, source low-nibble association, copied `$3900`
+appearance, and valid one-to-eight lifetime intact. An already-native source
+can then seed the effect's remaining lifetime without re-running allocation.
 On success, Y names the reserved child and the routine writes:
 
 - source slot X to `$3E00,Y` and source `$3D00,X` to `$3E80,Y`;
@@ -4438,6 +4697,19 @@ sets mouth-open latch `$2D21=1`; the final handler clears animation mode and
 resets the controller. Hidden slot `$37` animates bounded form ranges for
 `$2D0E` modes 1 and 2.
 
+The native `GiantFaceControllerState` now owns this verified controller
+state-transition path in domain terms. It retains the separate transformation signal
+through wake, selects forms `2,3,4,5,6,7` in order, starts the upper animator
+at form 4, opens the mouth at form 6, and stops animation before the form-7
+dormant reset. The source's transient visual-effect actor remains an explicit
+presentation boundary rather than an address-shaped C++ state machine.
+
+`capture_dormant_giant_face` bridges the ordinary form-zero startup state into
+that native model only after it verifies all four fixed steady dispatchers and
+the clear form/request/display/animation/mouth latches. It intentionally
+declines any collision, wake, transformation, or presentation transition so
+native startup cannot discard work owned by another actor family.
+
 Slots `$38/$39` receive no routed collision. Exact ROM signatures retain the
 inactive rules:
 
@@ -4448,6 +4720,23 @@ inactive rules:
   the ball sets bit 7 of `$2D21`, awards 100 units (10,000 displayed points),
   positions the ball at `(144,344)`, emits command `$41`, and selects bonus
   stage 4.
+
+`GiantFaceState` and `GiantFaceRuleScheduler` now own those two collision
+surfaces in readable native C++. Confirmed contacts wait for the real fixed
+slot `$38/$39` actor turn. Crown and closed-mouth contacts retain the shared
+impact-presentation handoff before rearming; once the separately-owned form
+controller explicitly opens the mouth, its capture path performs the verified
+100-unit, ball-placement, `$41`, and bonus-stage-4 request. The form/request
+controller at `$36` now owns its verified wake portion as
+`GiantFaceControllerState`: the helmet's request begins its one-turn delay,
+then four four-turn visual steps; the final step persists form 1, clears the
+wake request, and starts lower-form animation. The hidden animator at `$37`
+is `GiantFaceAnimatorState`: a form controller can name
+either of its verified display modes, and each real fixed actor turn advances
+its one-turn startup delay or eight-turn cadence. The lower mode cycles forms
+`1,2,0`; the upper mode cycles `4,5,3`, preserving the source's exclusive
+bounds 3 and 6 without reusing local timer bytes as a public API. The six
+later transformation requests remain a distinct native controller slice.
 
 The bounded trace contains 5,608 calls and 812 scoped writes. The only ten
 Giant-Face-owned writes are initializer/restoration writes; all later writes
@@ -4512,6 +4801,21 @@ awards 3 stored units (300 displayed points). It then emits command `$25`,
 passes the channel selector through the ball-routing helper, and restores
 the original steady dispatch. The request is consumed by Giant-Face
 controller `03:74D8`, bounded above.
+
+`GiantFaceHelmetState` and `GiantFaceHelmetRuleScheduler` now own this pair
+of channels in readable native C++ once their fixed setup/capture has seeded
+them. Their actual `$2A/$2B` turns preserve the four-tick, four-appearance
+idle cadence. A confirmed contact enters the separately-validated active
+path, applies the three-unit/`$20` rule, and records the named Giant-Face wake
+request. The opening presentation acknowledgement later emits `$25` and
+returns a side-specific ball-route request; the native ball-launch owner must
+complete that request before the channel becomes collision-ready again. This
+does not substitute an invented launch vector for the source's routing helper.
+`capture_giant_face_helmet` restores both channels only together at that idle
+boundary: each must retain type `$84`, steady dispatch `02:4C91`, a clear
+collision flag, its fixed `$13/$1D` selector, a one-through-four tick timer,
+and a zero-through-three appearance. A collision or opening transition stays
+with its existing owner rather than being reconstructed from partial state.
 
 The capture contains 1,752 calls, 3,558 scoped writes, and 3,934 selected
 state writes. `tools/Analyze-GiantFaceHelmetSemantics.ps1` guards both layout
@@ -7592,9 +7896,12 @@ classification, mask-coordinate preparation, and truncated snapshots.
 The near-target continuation of `CCD5` is a bounded geometry leaf. It swaps
 the target slot into X, selects four directory bytes through zero-page
 pointers `$96-$9D`, resolves two phase-indexed geometry pointers, and reads
-the first four-byte descriptor. The host follows the live MPR map, including
-the supported 384-KiB HuCard mirror, while
-`dc_prepare_collision_geometry` supplies the pure arithmetic model.
+the first four-byte descriptor. It then installs the selected secondary and
+primary addresses in `$74:$75` and `$72:$73` respectively; `CC98` uses those
+actor/phase-specific table roots while retaining its shared mask base at
+`$8E:$8F`. The host follows the live MPR map, including the supported
+384-KiB HuCard mirror, while `dc_prepare_collision_geometry` supplies the
+pure arithmetic model.
 
 Positive and negative initial vertical differences combine with positive
 and negative descriptor offsets into four uninterrupted bodies:
@@ -7648,13 +7955,14 @@ parent composes this leaf before its ROM-pointer and final mask test.
 
 ### Twenty-ninth native replacement: semantic `01:CC98@all`
 
-The final collision-mask tail adds scratch bytes `$2D+$2F`, uses the wrapped
-sum to read the first pointer table at `$74`, and uses the sum plus four to
-read the second table at `$72`. The second byte is multiplied by eight and
-added to mask base `$8E:$8F`. Row `$5F` selects the mask byte; column `$5E`
-selects the ROM bit table at `01:CF2B`. A nonzero intersection returns at
-`CCD2` with carry set, while a zero intersection returns at `CCD4` with carry
-clear.
+Before the final collision-mask tail, `CC95` multiplies the vertical
+eight-pixel cell in `$2F` by the rounded horizontal cell span in `$30`;
+`CC98` then adds the horizontal cell in `$2D`. That row-major index reads the
+first pointer table at `$74`, while its sum plus four reads the second table
+at `$72`. The second byte is multiplied by eight and added to mask base
+`$8E:$8F`. Row `$5F` selects the mask byte; column `$5E` selects the ROM bit
+table at `01:CF2B`. A nonzero intersection returns at `CCD2` with carry set,
+while a zero intersection returns at `CCD4` with carry clear.
 
 `dc_resolve_collision_mask_lookup` exposes the pure index, pointer, mask, and
 contact state. The host resolves all pointer-derived bytes through the live
@@ -9473,8 +9781,9 @@ transaction schedules its continuation through `01:C5CA/C5CD/C5D9/C5E1/C5E6`.
 Its `01:C5C9` descendant begins 990 cycles after the gate and lasts 1,395
 cycles with 27 writes. The state alone does not reach `03:7821/7834`, so the
 later RNG-release path is not conflated with capture. Open-mouth states remain
-assembly-owned; semantic `03:7726@all` continues to replace only its bounded
-closed/no-hit form.
+assembly-owned; the type-`$84` mouth record is not a restartable form-six
+capture because it depends on that scheduled continuation. Semantic
+`03:7726@all` continues to replace only its bounded closed/no-hit form.
 
 The complementary closed-mouth collision screen sets only slot `$38`'s
 collision byte `$3838=$80`. The frame-1,213 gate reaches `03:7730` after its
@@ -9966,6 +10275,57 @@ position retry. It derives an octant from `$3480/$3580`, restores the cached
 ball position through existing native `00:F241`, selects four signed offsets
 from the bank-1 tables, and applies them to `$3180/$3200/$3300/$3380`.
 
+The 48-byte table at `01:CEFB` is decoded through the native ROM asset
+boundary as three ordered candidates per incoming-motion quadrant. Its four
+groups are `(+1,0)/(+1,+1)/(0,+1)`, `(0,-1)/(+1,-1)/(+1,0)`,
+`(-1,0)/(-1,+1)/(0,+1)`, and `(0,-1)/(-1,-1)/(-1,0)`. CDF8 advances by four
+bytes after a rejected candidate and changes quadrant only after the third;
+the compatibility decoder exposes each quadrant's first candidate to existing
+callers. Those are cumulative moves: CDF8 restores the cached ball position
+once per quadrant, then adds each later vector to the preceding rejected
+candidate. `make_collision_retry_attempt_sequence` now exposes that exact
+same-quadrant progression without selecting the random next quadrant. The
+retry does not alter `$3100/$3280`, so each ball coordinate retains its
+fractional byte.
+
+The interactive gameplay shadow validates that rollback at CDF8's direct
+`00:F241` child return (`01:CE1F -> 01:CE22`), where the live position must
+again equal F1B4's six-byte cache. It deliberately does not compare that cache
+with the next `01:DC95`: after CDF8 returns, the enclosing retry loop may run
+more motion before that later scheduling boundary.
+
+The next-quadrant choice is not an unknown policy: CDF8 passes bound four to
+the existing `00:E8A4` RNG scaler, so it selects `random_byte >> 6`. The
+`$70` high-nibble mask is initialized from the incoming quadrant, rejects a
+duplicate RNG result by drawing again, and enters `CE98` once all `$80/$40/$20/$10`
+bits have been attempted. `select_collision_retry_direction` exposes these
+three outcomes while receiving the RNG byte from its caller; it therefore does
+not create a second random stream.
+
+When all directions have failed, CDF8 enters the `CE98` fallback: it subtracts
+one whole vertical pixel from the last rejected candidate, probes, and repeats
+for seven moves before starting another seven-move pass if none is clear.
+`make_collision_retry_vertical_fallback_sequence` now supplies one exact,
+cumulative seven-probe pass, including the subtraction carry that CEB5
+consumes. The unbounded restart remains an explicit caller policy.
+
+`CollisionRetryPlacementState` now composes these recovered decisions into a
+native, typed CDF8 placement loop. It exposes one candidate at a time, holds
+an unresolved CED2/CD74 result without advancing, accepts the first clear
+candidate, requests the caller-owned RNG only after three solid
+same-quadrant attempts, and restarts CE98's seven-probe pass from its final
+rejected candidate. It owns no target-contact response. `NativeGameplayState`
+now uses this same typed state after its owning collision resolver selects the
+retry branch: it retains CEB5 full scans, advances only on their typed CED2
+outcomes, and commits only the accepted placement.
+
+`NativeGameplayState` can now run that pending CED2/CD74 scan directly at its
+explicit mapped-ROM and captured-state adapter boundary. Its returned
+`CollisionRetryFullScanUpdate` keeps the complete actor-first/playfield scan
+result alongside the CDF8 placement update; an unavailable asset remains an
+unresolved pending candidate. This still does not select or apply a
+target-specific contact response.
+
 All 42 natural calls take the playfield probe's bounded early-out: the ball's
 high X byte is zero while the high scroll byte is nonzero. The probe clears
 carry, the caller clears the collision bit in `$3800,X`, and the original outer
@@ -9973,6 +10333,53 @@ return completes the response. Four native entries preserve both JSR stack
 frames and every instruction boundary around the two children. Other geometry
 continues through the full scanner in assembly until a natural route proves
 that branch.
+
+The diagnostic session-6 replay adds 58 independently observed `01:CEB5`
+calls. Each returns at `01:CEF8` after 138 body cycles and three scratch
+writes; none enters `01:CED2`, the full-scanner handoff. Native runtime now
+models this carry-sensitive short gate as `clear` versus `requires_full_scan`.
+`NativeGameplayState` commits only the clear retry after its owning resolver
+selects the branch. A full-scan retry is retained exactly once until that
+resolver commits its result, rather than allowing a second caller to apply the
+offset again. The geometry itself remains an explicit unresolved result rather
+than guessed geometry.
+
+Static recovery of `01:CED2` now names its scanner boundary: it examines
+dynamic actor slots 4 through 127 in order, sending only negative attribute
+records with collision-suppression bit `$40` clear to the actor geometry scan,
+then probes the playfield. CEB5's CED2 handoff now has a typed native boundary:
+it supplies its carry-adjusted X low byte and retry Y low byte, while retaining
+the parent scan's pre-retry Y high byte loaded from `$3380,X` in `01:8B3E`.
+`scan_collision_retry_full_actors` composes that input with the recovered
+actor-only CED2 sweep. `ActorSchedulerView` exposes that candidate order; the
+first shared geometry gate is now a native vertical-candidate adapter that
+preserves the same slot order and signed 127-pixel window. Its 16-bit scan
+source stays explicit at the parent/retry boundary; a natural CED2 trace must
+still certify the complete response path. When the actor sweep is clear,
+`scan_collision_retry_full` now composes CED2's `CD74` continuation through
+the existing typed playfield-map adapter; its actor and playfield solid results
+remain descriptive rather than selecting a response. A decoded descriptor now
+feeds a separate native geometry preparation step, which preserves the
+32-pixel ball bias, the one-byte horizontal-world rejection, and the resulting
+typed target window. The native asset adapter also resolves the known
+four-directory/phase-table chain under the active MPR map into that descriptor.
+For an explicitly supplied, bounds-ready candidate, the next native stage now
+derives the exact local mask cell, ROM-table cells, rounded span, and conditional
+side-flag update. The mapped-mask adapter also decodes CC98's three table roots
+through the active MPR map and produces the typed solid/empty result. These
+stages now compose as `scan_actor_collision`, whose context factory captures
+those shared table roots and session side flags together from `GameStateView`.
+`scan_actor_collision_sweep` also owns CED2's dynamic-slot eligibility, table
+order, cross-candidate CC1A side-flag carry, and first-solid exit as a pure
+result. It retains all intermediate evidence and explicit failure states;
+connecting that result to the playfield and native target-response owner still
+awaits the CED2 transcript.
+
+`resolve_collision_retry_full_scan_outcome` now closes CED2's local control
+boundary: actor solidity or a solid CD74 map result is its set-carry outcome;
+empty or outside-map/playfield results are clear; unresolved ROM assets and
+invalid mapped-mask results remain unresolved. This is the carry-like result
+that CDF8 consumes for placement only, not a target-contact response.
 
 The owning collision oracle keeps the canonical census, complete 520-call and
 251,090-write response artifacts, and 6,906,417 selected writes byte-identical

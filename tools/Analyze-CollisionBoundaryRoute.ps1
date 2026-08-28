@@ -260,6 +260,15 @@ Assert-RomBytes $rom 0x002F33 @(
     0xB7, 0x77, 0x4C, 0x95, 0xDC
 ) "CF33 type-82 ball response"
 
+# The negative type-response retry selects one of four signed whole-pixel
+# vectors at 01:CEFB from the signs of the current ball velocity.
+Assert-RomBytes $rom 0x002EFB @(
+    0x01, 0x00, 0x00, 0x00,
+    0x01, 0x00, 0x01, 0x00,
+    0x00, 0x00, 0x01, 0x00,
+    0x00, 0x00, 0xFF, 0xFF
+) "CDF8 collision-retry offsets"
+
 # 6966 interprets the actor's collision table and 7FB1 advances the
 # Small-Soldier response state before the actor tests the collision bit.
 Assert-RomBytes $rom 0x006966 @(

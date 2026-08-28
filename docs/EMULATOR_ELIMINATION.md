@@ -1,5 +1,30 @@
 # Removing the emulator
 
+## Decision: migrate by native domains, not more instruction adapters
+
+As of 2026-08-25, the project has adopted a native-runtime migration as the
+completion strategy. The registry and its instruction-faithful adapters remain
+valuable for semantic discovery and for comparing against the ROM, but are not
+the intended way to reach 100% native gameplay execution. Extending the
+registry through the remaining composite actor, device, and timing seams would
+produce C++ that preserves assembly structure without producing a maintainable
+port.
+
+The successor is a selectable third `PceRuntime` implementation. It advances a
+whole frame through named C++ domains and is compared to the emulator using the
+same replay captures. Migrate in this order:
+
+1. Actor scheduling, collision, and physics.
+2. Actor families, table rules, scoring, and bonus stages.
+3. Score/UI rendering and music/audio scheduling.
+4. Scene flow, startup, saves, and the remaining compatibility surface.
+
+An individual domain can use ROM-derived tables, but not ROM instruction flow
+as its program representation. It must expose typed state, named operations,
+and tests that compare observable frame results. See
+[NATIVE_RUNTIME_MIGRATION.md](NATIVE_RUNTIME_MIGRATION.md) for the execution
+plan.
+
 The native-share percentage in [NATIVE_REGISTRY.md](NATIVE_REGISTRY.md)
 measures one thing: how many master cycles are executed by native
 replacements instead of by the emulated HuC6280. That is a good proxy for

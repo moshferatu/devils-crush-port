@@ -11,8 +11,15 @@
 #include "devils_crush/core/rom_image.hpp"
 #include "devils_crush/core/save_state.hpp"
 #include "devils_crush/emulation/pce_runtime.hpp"
+#include "devils_crush/emulation/playfield_collision_adapter.hpp"
 #include "devils_crush/emulation/routine_replay_corpus.hpp"
 #include "devils_crush/input/plunger.hpp"
+#include "devils_crush/native_runtime/actor_collision_scan.hpp"
+#include "devils_crush/native_runtime/collision_map_asset.hpp"
+#include "devils_crush/native_runtime/ball_frame_schedule.hpp"
+#include "devils_crush/native_runtime/gameplay_bootstrap.hpp"
+#include "devils_crush/native_runtime/mapped_rom.hpp"
+#include "devils_crush/native_runtime/native_gameplay_runtime.hpp"
 #include "devils_crush/render/pce_background.hpp"
 #include "devils_crush/render/pce_sprite_overlay.hpp"
 #include "devils_crush/render/table_palette_cache.hpp"
@@ -35,6 +42,7 @@
 #include <cstdlib>
 #include <exception>
 #include <filesystem>
+#include <functional>
 #include <format>
 #include <fstream>
 #include <iomanip>
@@ -472,6 +480,7 @@ struct CommandLine {
     std::vector<RoutineReplayRequest> replace_hooks;
     std::filesystem::path routine_trace_path;
     std::filesystem::path routine_call_trace_path;
+    std::filesystem::path playfield_collision_sources_path;
     std::vector<RoutineReplayRequest> routine_replays;
     std::filesystem::path routine_replay_corpus_output_directory;
     std::vector<std::filesystem::path> routine_replay_corpus_paths;
@@ -526,6 +535,9 @@ struct CommandLine {
     // The interactive host deploys the registry by default so a session runs
     // the ported code; this opts back out to the emulated original.
     bool emulate_only = false;
+    // Runs the native gameplay bootstrap against each completed live frame,
+    // without transferring frame ownership away from the emulator.
+    bool native_gameplay_bootstrap_shadow = false;
     std::filesystem::path cabinet_dump_route_directory;
     bool cabinet_oracle = false;
     bool cabinet_freeze_census = false;
@@ -561,6 +573,2345 @@ struct CommandLine {
     std::filesystem::path backup_ram_test_path = kBackupRamTestPath;
     bool show_help = false;
     std::string error;
+};
+
+// A read-only bridge from the live emulator to the human-readable gameplay
+// runtime. It establishes that the native runtime can accept real, completed
+// frame-boundary state and run one candidate frame without granting it frame
+// ownership. Keeping this as a fresh bootstrap for each observation avoids
+// carrying emulated state across an as-yet-unported gameplay transition.
+struct NativeGameplayBootstrapShadow {
+    struct DecodedPlayfieldMap {
+        devils_crush::emulation::PlayfieldCollisionSource source;
+        devils_crush::native_runtime::CollisionMapAsset map;
+    };
+
+    // A clear candidate is advanced entirely by readable native code. Compare
+    // its completed ball state against the next emulator frame boundary before
+    // considering any transfer of frame ownership. Contacts deliberately do
+    // not install a prediction because their response owner is still split.
+    struct NativeRuntimeFramePrediction {
+        devils_crush::native_runtime::BallState ball;
+        // The source scheduler's typed owner for the next boundary. Keep it
+        // with a prediction so a frame that never reaches DC95 can be
+        // attributed to a real owner rather than mistaken for failed physics.
+        devils_crush::native_runtime::BallFrameSchedule schedule;
+    };
+
+    struct NativeEpochActorHandlerCount {
+        std::uint16_t handler_address = 0U;
+        std::uint64_t entries = 0U;
+    };
+
+    // This stays separate from the candidate runtime itself: C52C observes
+    // source handler dispatches after the candidate's DC95 seed and before the
+    // next comparison boundary. It identifies the live actor behaviors that
+    // correlate with a persistent-state divergence without giving the shadow
+    // any actor ownership.
+    struct NativeEpochRuntimeChain {
+        devils_crush::native_runtime::NativeGameplayRuntime runtime;
+        std::array<NativeEpochActorHandlerCount, 8U> source_actor_handlers{};
+        std::uint64_t unclassified_source_actor_handler_entries = 0U;
+    };
+
+    struct NativeEpochActorHandlerEvidence {
+        std::uint16_t handler_address = 0U;
+        std::uint64_t matching_entries = 0U;
+        std::uint64_t mismatched_entries = 0U;
+    };
+
+    // Facts gathered from the emulator between two frame boundaries. They are
+    // not native predictions: they classify why an otherwise-clear readable
+    // candidate diverged before the next boundary.
+    struct ActualFrameCollisionFacts {
+        bool actor_contact = false;
+        bool solid_playfield_contact = false;
+        std::uint8_t motion_substep_split_entries = 0U;
+        std::uint8_t position_integration_entries = 0U;
+        std::uint8_t motion_damping_entries = 0U;
+    };
+
+    void observe_playfield_collision_source(
+        const RoutineEntry& entry,
+        const std::span<const std::byte> work_ram,
+        const std::span<const std::byte> rom) noexcept
+    {
+        constexpr RoutineKey kPlayfieldProbe{
+            .physical_bank = 0x01U,
+            .logical_pc = 0xCD74U,
+        };
+        if (entry.routine != kPlayfieldProbe) {
+            return;
+        }
+
+        if (active_collision_sweep) {
+            active_collision_sweep->reached_playfield_probe = true;
+            active_collision_sweep->playfield_probe_entry =
+                entry.absolute_master_cycle;
+        }
+
+        ++playfield_probe_entries;
+        try {
+            const auto source = devils_crush::emulation::
+                capture_playfield_collision_source(entry.registers, work_ram);
+            if (!source) {
+                ++unavailable_playfield_sources;
+                return;
+            }
+            if (std::ranges::any_of(
+                    playfield_maps,
+                    [&source](const DecodedPlayfieldMap& existing) {
+                        return existing.source == *source;
+                    })) {
+                ++reused_playfield_maps;
+                return;
+            }
+
+            const devils_crush::native_runtime::MappedRomView mapped_rom(
+                rom, source->mpr);
+            const auto map = devils_crush::native_runtime::
+                decode_main_playfield_collision_map(mapped_rom, source->tables);
+            if (!map || !map->view().valid()) {
+                ++rejected_playfield_maps;
+                return;
+            }
+            playfield_maps.push_back({
+                .source = *source,
+                .map = std::move(*map),
+            });
+            ++decoded_playfield_maps;
+        } catch (...) {
+            // The shadow never changes a live session's correctness. Allocation
+            // and asset-decoding failures stay visible in its shutdown report.
+            ++playfield_capture_failures;
+        }
+    }
+
+    void observe_motion_entry(
+        const RoutineEntry& entry,
+        const std::span<const std::byte> work_ram,
+        const std::span<const std::byte> rom) noexcept
+    {
+        constexpr RoutineKey kMotionSubstepSplit{
+            .physical_bank = 0x01U,
+            .logical_pc = 0xDC95U,
+        };
+        constexpr RoutineKey kPositionIntegration{
+            .physical_bank = 0x00U,
+            .logical_pc = 0xF1B4U,
+        };
+        constexpr RoutineKey kMotionDamping{
+            .physical_bank = 0x01U,
+            .logical_pc = 0xDD09U,
+        };
+        constexpr RoutineKey kCollisionSweep{
+            .physical_bank = 0x01U,
+            .logical_pc = 0xCB2AU,
+        };
+        constexpr RoutineKey kContactResponse{
+            .physical_bank = 0x01U,
+            .logical_pc = 0xCF33U,
+        };
+        constexpr RoutineKey kPositionRetry{
+            .physical_bank = 0x01U,
+            .logical_pc = 0xCDF8U,
+        };
+        constexpr RoutineKey kActorDispatch{
+            .physical_bank = 0x01U,
+            .logical_pc = 0xC52CU,
+        };
+        constexpr RoutineKey kSingleActorProbe{
+            .physical_bank = 0x01U,
+            .logical_pc = 0xCBABU,
+        };
+        constexpr RoutineKey kActorCollisionScanner{
+            .physical_bank = 0x01U,
+            .logical_pc = 0xCC1AU,
+        };
+        constexpr RoutineKey kCollisionMaskLookup{
+            .physical_bank = 0x01U,
+            .logical_pc = 0xCC98U,
+        };
+        constexpr RoutineKey kSingleActorProbeResult{
+            .physical_bank = 0x01U,
+            .logical_pc = 0xCBC2U,
+        };
+        constexpr RoutineKey kConfirmedActorContact{
+            .physical_bank = 0x01U,
+            .logical_pc = 0xCBCFU,
+        };
+        if ((entry.routine != kMotionSubstepSplit
+             && entry.routine != kPositionIntegration
+             && entry.routine != kMotionDamping
+             && entry.routine != kCollisionSweep
+             && entry.routine != kContactResponse
+             && entry.routine != kPositionRetry
+             && entry.routine != kActorDispatch
+             && entry.routine != kSingleActorProbe
+             && entry.routine != kActorCollisionScanner
+             && entry.routine != kCollisionMaskLookup
+             && entry.routine != kSingleActorProbeResult
+             && entry.routine != kConfirmedActorContact)
+            || (entry.routine != kActorDispatch
+                && entry.routine != kSingleActorProbe
+                && entry.routine != kActorCollisionScanner
+                && entry.routine != kCollisionMaskLookup
+                && entry.routine != kSingleActorProbeResult
+                && entry.routine != kConfirmedActorContact
+                && entry.registers.x != 0U)) {
+            return;
+        }
+
+        const devils_crush::native_runtime::GameStateView state{work_ram};
+        if (entry.routine == kActorDispatch) {
+            observe_native_epoch_actor_handler_dispatch(state, entry.registers.x);
+            return;
+        }
+        if (entry.routine == kSingleActorProbe) {
+            begin_single_slot_actor_collision_probe(entry);
+            return;
+        }
+        if (entry.routine == kActorCollisionScanner) {
+            observe_single_slot_actor_collision_scan(entry, state, rom);
+            return;
+        }
+        if (entry.routine == kCollisionMaskLookup) {
+            observe_single_slot_actor_collision_mask_stage(entry, state, rom);
+            return;
+        }
+        if (entry.routine == kSingleActorProbeResult) {
+            observe_single_slot_actor_collision_result(entry);
+            return;
+        }
+        if (entry.routine == kConfirmedActorContact) {
+            observe_single_slot_confirmed_actor_contact();
+            return;
+        }
+
+        if (entry.routine == kMotionSubstepSplit) {
+            ++actual_frame_collision_facts.motion_substep_split_entries;
+        }
+
+        const auto ball = state.valid()
+            ? devils_crush::native_runtime::capture_active_ball(state)
+            : std::nullopt;
+        if (!ball) {
+            ++unavailable_motion_routine_seeds;
+            return;
+        }
+
+        if (entry.routine == kMotionSubstepSplit) {
+            observe_native_epoch_candidate_entry(state, ball->state);
+            observe_collision_loop_split_entry(entry, ball->state);
+            return;
+        }
+        if (entry.routine == kCollisionSweep) {
+            observe_collision_sweep_entry(entry, state, rom);
+            return;
+        }
+        if (entry.routine == kContactResponse) {
+            observe_playfield_contact_response_entry(state);
+            return;
+        }
+        if (entry.routine == kPositionRetry) {
+            observe_collision_retry_entry(entry, state, work_ram);
+            return;
+        }
+
+        std::optional<devils_crush::native_runtime::BallMotionTuning> tuning;
+        std::optional<devils_crush::native_runtime::BallMotionIncrement>
+            substep_motion;
+        if (entry.routine == kPositionIntegration) {
+            ++actual_frame_collision_facts.position_integration_entries;
+            substep_motion = state.ball_substep_motion();
+            if (!substep_motion) {
+                ++unavailable_motion_routine_seeds;
+                return;
+            }
+            observe_collision_loop_position_entry(
+                entry, ball->state, *substep_motion);
+        } else {
+            ++actual_frame_collision_facts.motion_damping_entries;
+            tuning = state.ball_motion_tuning();
+            if (!tuning) {
+                ++unavailable_motion_routine_seeds;
+                return;
+            }
+            observe_collision_loop_damping_entry(
+                entry, ball->state, *tuning);
+        }
+
+        try {
+            if (motion_routine_seeds.size() == kMaximumMotionRoutineSeeds) {
+                motion_routine_seeds.erase(motion_routine_seeds.begin());
+                ++dropped_motion_routine_seeds;
+            }
+            motion_routine_seeds.push_back({
+                .routine = entry.routine,
+                .entry_absolute_master_cycle = entry.absolute_master_cycle,
+                .ball = ball->state,
+                .tuning = tuning,
+                .substep_motion = substep_motion,
+            });
+        } catch (...) {
+            ++motion_routine_capture_failures;
+        }
+    }
+
+    void observe_motion_completion(
+        const RoutineCall& call,
+        const std::span<const std::byte> work_ram) noexcept
+    {
+        const auto seed = std::find_if(
+            motion_routine_seeds.rbegin(),
+            motion_routine_seeds.rend(),
+            [&call](const MotionRoutineSeed& candidate) {
+                return candidate.routine == call.entry.routine
+                    && candidate.entry_absolute_master_cycle
+                        == call.entry.absolute_master_cycle;
+            });
+        if (seed == motion_routine_seeds.rend()) {
+            ++unmatched_motion_routine_completions;
+            return;
+        }
+        const auto captured = *seed;
+        motion_routine_seeds.erase(std::next(seed).base());
+
+        const devils_crush::native_runtime::GameStateView state{work_ram};
+        const auto observed_ball = state.valid()
+            ? devils_crush::native_runtime::capture_active_ball(state)
+            : std::nullopt;
+        if (!observed_ball) {
+            ++unavailable_motion_routine_outputs;
+            return;
+        }
+
+        constexpr RoutineKey kPositionIntegration{
+            .physical_bank = 0x00U,
+            .logical_pc = 0xF1B4U,
+        };
+        if (captured.routine == kPositionIntegration) {
+            if (!captured.substep_motion) {
+                ++rejected_position_integration_predictions;
+                return;
+            }
+            ++position_integration_predictions;
+            if (devils_crush::native_runtime::advance_ball_motion_substep(
+                    captured.ball, *captured.substep_motion).state
+                == observed_ball->state) {
+                ++position_integration_matches;
+            } else {
+                ++position_integration_mismatches;
+            }
+            observe_collision_loop_position_completion(
+                call, observed_ball->state);
+            return;
+        }
+
+        if (!captured.tuning) {
+            ++rejected_motion_damping_predictions;
+            return;
+        }
+        const auto prediction = devils_crush::native_runtime::
+            apply_ball_drag_and_gravity(captured.ball, *captured.tuning);
+        if (!prediction) {
+            ++rejected_motion_damping_predictions;
+            return;
+        }
+        ++motion_damping_predictions;
+        if (prediction->state == observed_ball->state) {
+            ++motion_damping_matches;
+        } else {
+            ++motion_damping_mismatches;
+        }
+        observe_collision_loop_damping_completion(call, observed_ball->state);
+    }
+
+    void observe_gameplay_completion(
+        const RoutineCall& call,
+        const std::span<const std::byte> work_ram) noexcept
+    {
+        constexpr RoutineKey kCachedPositionRestore{
+            .physical_bank = 0x00U,
+            .logical_pc = 0xF241U,
+        };
+        constexpr RoutineKey kPlayfieldProbe{
+            .physical_bank = 0x01U,
+            .logical_pc = 0xCD74U,
+        };
+        if (call.entry.routine == kCachedPositionRestore) {
+            observe_marked_playfield_retry_restore(call, work_ram);
+            return;
+        }
+        if (call.entry.routine == kPlayfieldProbe) {
+            observe_playfield_collision_completion(call);
+            return;
+        }
+        observe_motion_completion(call, work_ram);
+    }
+
+    void observe(
+        const std::span<const std::byte> work_ram,
+        const InputFrame& input)
+    {
+        ++frame_boundaries;
+        observe_pending_native_frame_prediction(work_ram, input);
+        actual_frame_collision_facts = {};
+
+        const devils_crush::native_runtime::GameStateView state{work_ram};
+        if (!state.valid()) {
+            ++invalid_work_ram;
+            return;
+        }
+        const auto bootstrap =
+            devils_crush::native_runtime::capture_native_gameplay_bootstrap(
+                state);
+        if (!bootstrap) {
+            ++unavailable_bootstraps;
+            return;
+        }
+
+        devils_crush::native_runtime::NativeGameplayRuntime native_runtime;
+        if (!native_runtime.bootstrap(*bootstrap)) {
+            ++rejected_bootstraps;
+            return;
+        }
+        const auto* const gameplay = native_runtime.gameplay();
+        if (gameplay == nullptr
+            || gameplay->physics().ball != bootstrap->ball.state
+            || native_runtime.ball_frame_schedule()
+                != bootstrap->ball_frame_schedule
+            || gameplay->score() != bootstrap->score.state
+            || gameplay->table_rule_latches()
+                != bootstrap->table_rule_latches) {
+            ++seed_mismatches;
+            return;
+        }
+        ++verified_bootstraps;
+
+        const auto tuning = state.ball_motion_tuning();
+        if (!tuning) {
+            ++unavailable_motion_tuning;
+            return;
+        }
+
+        if (playfield_maps.empty()) {
+            ++waiting_for_playfield_map;
+            return;
+        }
+
+        if (bootstrap->ball_frame_schedule.owner
+            == devils_crush::native_runtime::BallFrameOwner::
+                initial_substep_transition) {
+            ++native_initial_motion_candidates;
+            try {
+                const auto initial = native_runtime.advance_initial_ball_motion(
+                    *tuning, playfield_maps.back().map.view());
+                if (!initial) {
+                    ++unavailable_native_initial_motion;
+                    return;
+                }
+                if (!initial->motion.completes_initial_pass()) {
+                    if (initial->motion.physics.next_contact) {
+                        ++native_initial_motion_contacts;
+                    } else if (initial->motion.physics.attempt_cap_exhausted) {
+                        ++native_initial_motion_attempt_caps;
+                    } else {
+                        ++unavailable_native_initial_motion;
+                    }
+                    return;
+                }
+                if (initial->next_schedule.owner
+                    == devils_crush::native_runtime::BallFrameOwner::
+                        normal_motion) {
+                    ++native_initial_motion_schedules_normal;
+                } else if (initial->returned_to_slot_zero_actor_loop) {
+                    ++native_initial_motion_slot_zero_returns;
+                } else {
+                    ++unavailable_native_initial_motion;
+                }
+            } catch (...) {
+                // The shadow candidate remains isolated from live emulation.
+                ++native_initial_motion_failures;
+            }
+            return;
+        }
+
+        if (!bootstrap->ball_frame_schedule.runs_normal_motion()) {
+            ++native_runtime_deferred_schedule_frames;
+            record_deferred_frame_schedule(bootstrap->ball_frame_schedule.owner);
+            if (bootstrap->ball_frame_schedule.owner
+                == devils_crush::native_runtime::BallFrameOwner::unrecognized) {
+                record_unrecognized_schedule_handler(
+                    bootstrap->ball_frame_schedule.source_handler_address);
+            }
+            return;
+        }
+
+        ++verified_clear_physics_inputs;
+        try {
+            const auto frame = native_runtime.advance_physics_epoch(
+                *tuning, playfield_maps.back().map.view());
+            if (!frame) {
+                ++unavailable_native_runtime_frames;
+                return;
+            }
+            ++native_runtime_frames;
+            native_runtime_actor_updates += frame->actor_updates.size();
+            native_runtime_audio_events += frame->audio_events.size();
+            if (frame->requires_collision_resolution()) {
+                ++native_runtime_contact_frames;
+            } else {
+                ++native_runtime_clear_frames;
+                const auto* const advanced_gameplay = native_runtime.gameplay();
+                if (advanced_gameplay == nullptr) {
+                    ++unavailable_native_runtime_frame_predictions;
+                } else {
+                    pending_native_runtime_frame_prediction = {
+                        .ball = advanced_gameplay->physics().ball,
+                        .schedule = bootstrap->ball_frame_schedule,
+                    };
+                    ++native_runtime_frame_predictions;
+                }
+            }
+        } catch (...) {
+            // This candidate stays entirely private to the observer. A
+            // transient allocation failure must never affect live emulation.
+            ++native_runtime_frame_failures;
+        }
+    }
+
+    void report() const
+    {
+        std::cout << "Native gameplay bootstrap shadow: "
+                  << verified_bootstraps << " verified seed(s) across "
+                  << frame_boundaries << " frame boundary/boundaries";
+        if (unavailable_bootstraps != 0U) {
+            std::cout << ", " << unavailable_bootstraps
+                      << " unavailable";
+        }
+        if (invalid_work_ram != 0U) {
+            std::cout << ", " << invalid_work_ram << " invalid RAM image(s)";
+        }
+        if (rejected_bootstraps != 0U) {
+            std::cout << ", " << rejected_bootstraps
+                      << " rejected bootstrap(s)";
+        }
+        if (seed_mismatches != 0U) {
+            std::cout << ", " << seed_mismatches << " seed mismatch(es)";
+        }
+        if (verified_clear_physics_inputs != 0U) {
+            std::cout << "; " << verified_clear_physics_inputs
+                      << " frame boundary/boundaries had typed motion tuning "
+                         "and a decoded playfield map";
+        }
+        if (native_runtime_frames != 0U
+            || unavailable_native_runtime_frames != 0U
+            || native_runtime_frame_failures != 0U) {
+            std::cout << "; native gameplay host-boundary epoch shadow: "
+                      << native_runtime_clear_frames << " clear completion(s), "
+                      << native_runtime_contact_frames
+                      << " contact boundary/boundaries from "
+                      << native_runtime_frames << " candidate frame(s)";
+            if (native_runtime_actor_updates != 0U
+                || native_runtime_audio_events != 0U) {
+                std::cout << ", " << native_runtime_actor_updates
+                          << " actor update(s), " << native_runtime_audio_events
+                          << " gameplay audio event(s)";
+            }
+            if (unavailable_native_runtime_frames != 0U) {
+                std::cout << ", " << unavailable_native_runtime_frames
+                          << " unavailable candidate frame(s)";
+            }
+            if (native_runtime_frame_failures != 0U) {
+                std::cout << ", " << native_runtime_frame_failures
+                          << " candidate failure(s)";
+            }
+        }
+        if (native_epoch_runtime_candidates != 0U
+            || native_epoch_runtime_unavailable != 0U) {
+            std::cout << "; native gameplay DC95 chain shadow: "
+                      << matched_native_epoch_runtime_boundaries << "/"
+                      << observed_native_epoch_runtime_boundaries
+                      << " completed epoch boundary/boundaries match from "
+                      << native_epoch_runtime_candidates
+                      << " candidate epoch(s)";
+            if (native_epoch_runtime_clear_candidates != 0U
+                || native_epoch_runtime_contact_candidates != 0U) {
+                std::cout << " (" << native_epoch_runtime_clear_candidates
+                          << " clear, "
+                          << native_epoch_runtime_contact_candidates
+                          << " contact handoff(s))";
+            }
+            if (native_epoch_runtime_seeds != 0U) {
+                std::cout << ", " << native_epoch_runtime_seeds
+                          << " seed(s)";
+            }
+            if (mismatched_native_epoch_runtime_boundaries != 0U) {
+                std::cout << ", "
+                          << mismatched_native_epoch_runtime_boundaries
+                          << " divergent rebootstrap(s)";
+                if (native_epoch_actor_handler_evidence[0U].mismatched_entries
+                    != 0U) {
+                    std::cout << " (source actor handlers";
+                    for (const auto& handler : native_epoch_actor_handler_evidence) {
+                        if (handler.mismatched_entries == 0U) {
+                            continue;
+                        }
+                        std::cout << ' ' << std::format(
+                            "{:04X}={}/{}",
+                            handler.handler_address,
+                            handler.mismatched_entries,
+                            handler.mismatched_entries
+                                + handler.matching_entries);
+                    }
+                    if (unclassified_native_epoch_actor_handler_entries != 0U) {
+                        std::cout << " other="
+                                  << unclassified_native_epoch_actor_handler_entries;
+                    }
+                    std::cout << ')';
+                }
+            }
+            if (native_epoch_runtime_unavailable != 0U) {
+                std::cout << ", " << native_epoch_runtime_unavailable
+                          << " unavailable epoch(s)";
+            }
+        }
+        if (native_runtime_frame_predictions != 0U
+            || observed_native_runtime_frame_predictions != 0U
+            || unavailable_native_runtime_frame_predictions != 0U) {
+            std::cout << "; native gameplay host-boundary diagnostic: "
+                      << matched_native_runtime_frame_predictions << "/"
+                      << observed_native_runtime_frame_predictions
+                      << " clear-frame ball state match(es) from "
+                      << native_runtime_frame_predictions
+                      << " prediction(s)";
+            if (observed_native_runtime_frame_predictions != 0U) {
+                std::cout << ", scheduler owner "
+                          << matched_native_runtime_frame_prediction_schedule_owners
+                          << "/"
+                          << observed_native_runtime_frame_predictions
+                          << " match(es)";
+                if (mismatched_native_runtime_frame_prediction_schedule_owners
+                    != 0U) {
+                    std::cout << " (departures";
+                    for (const auto& owner : prediction_schedule_owners) {
+                        if (owner.mismatches == 0U) {
+                            continue;
+                        }
+                        std::cout << ' ' << devils_crush::native_runtime::
+                            describe_ball_frame_owner(owner.owner)
+                                  << '=' << owner.mismatches;
+                    }
+                    if (unclassified_prediction_schedule_owners != 0U) {
+                        std::cout << " other="
+                                  << unclassified_prediction_schedule_owners;
+                    }
+                    std::cout << ')';
+                }
+            }
+            if (mismatched_native_runtime_frame_predictions != 0U) {
+                std::cout << ", "
+                          << mismatched_native_runtime_frame_predictions
+                          << " mismatch(es) (x="
+                          << native_runtime_frame_prediction_position_x_mismatches
+                          << ", y="
+                          << native_runtime_frame_prediction_position_y_mismatches
+                          << ", vx="
+                          << native_runtime_frame_prediction_velocity_x_mismatches
+                          << ", vy="
+                          << native_runtime_frame_prediction_velocity_y_mismatches
+                          << ", motion="
+                          << native_runtime_frame_prediction_motion_flag_mismatches
+                          << ", collision="
+                          << native_runtime_frame_prediction_collision_state_mismatches
+                          << "; routes actor="
+                          << native_runtime_frame_prediction_actor_contact_mismatches
+                          << ", playfield="
+                          << native_runtime_frame_prediction_playfield_contact_mismatches
+                          << ", both="
+                          << native_runtime_frame_prediction_both_contact_mismatches
+                          << ", no-contact="
+                          << native_runtime_frame_prediction_no_contact_mismatches
+                          << "; input active="
+                          << native_runtime_frame_prediction_input_active_mismatches
+                          << ", neutral="
+                          << native_runtime_frame_prediction_input_neutral_mismatches
+                          << "; motion DC95="
+                          << native_runtime_frame_prediction_split_mismatches
+                          << " (one="
+                          << native_runtime_frame_prediction_single_split_mismatches
+                          << ", many="
+                          << native_runtime_frame_prediction_multiple_split_mismatches
+                          << ')'
+                          << ", F1B4="
+                          << native_runtime_frame_prediction_position_mismatches
+                          << ", DD09="
+                          << native_runtime_frame_prediction_damping_mismatches
+                          << " (zero="
+                          << native_runtime_frame_prediction_no_damping_mismatches
+                          << ", one="
+                          << native_runtime_frame_prediction_single_damping_mismatches
+                          << ", many="
+                          << native_runtime_frame_prediction_multiple_damping_mismatches
+                          << ')'
+                          << ", no DC95="
+                          << native_runtime_frame_prediction_no_split_mismatches
+                          << ')';
+            }
+            if (unavailable_native_runtime_frame_predictions != 0U) {
+                std::cout << ", "
+                          << unavailable_native_runtime_frame_predictions
+                          << " unavailable output(s)";
+            }
+            if (pending_native_runtime_frame_prediction) {
+                std::cout << ", 1 awaiting frame boundary";
+            }
+        }
+        if (native_runtime_deferred_schedule_frames != 0U) {
+            std::cout << "; native gameplay deferred schedule frame(s): "
+                      << native_runtime_deferred_schedule_frames;
+            for (const auto& owner : deferred_frame_schedule_owners) {
+                if (owner.mismatches == 0U) {
+                    continue;
+                }
+                std::cout << ' ' << devils_crush::native_runtime::
+                    describe_ball_frame_owner(owner.owner)
+                          << '=' << owner.mismatches;
+            }
+            if (unclassified_deferred_frame_schedule_owners != 0U) {
+                std::cout << " other="
+                          << unclassified_deferred_frame_schedule_owners;
+            }
+        }
+        if (native_initial_motion_candidates != 0U) {
+            std::cout << "; native initial C6C2 shadow: "
+                      << native_initial_motion_schedules_normal
+                      << " tails into C721, "
+                      << native_initial_motion_slot_zero_returns
+                      << " returns through slot-zero actor filing, "
+                      << native_initial_motion_contacts
+                      << " contact(s), " << native_initial_motion_attempt_caps
+                      << " attempt-cap(s), " << unavailable_native_initial_motion
+                      << " unavailable";
+            if (native_initial_motion_failures != 0U) {
+                std::cout << ", " << native_initial_motion_failures
+                          << " failure(s)";
+            }
+        }
+        if (std::ranges::any_of(
+                deferred_frame_schedule_owners,
+                [](const FrameScheduleOwnerCount& owner) {
+                    return owner.owner
+                            == devils_crush::native_runtime::BallFrameOwner::unrecognized
+                        && owner.mismatches != 0U;
+                })) {
+            std::cout << "; unrecognized schedule handler(s)";
+            for (const auto& handler : unrecognized_schedule_handlers) {
+                if (handler.frames == 0U) {
+                    continue;
+                }
+                std::cout << ' ' << std::format(
+                    "{:04X}={}", handler.handler_address, handler.frames);
+            }
+            if (unclassified_schedule_handlers != 0U) {
+                std::cout << " other=" << unclassified_schedule_handlers;
+            }
+        }
+        report_motion_routine_shadow();
+        report_collision_loop_shadow();
+        if (collision_retry_entries != 0U) {
+            std::cout << "; collision-retry shadow: "
+                      << collision_retry_consuming_entries
+                      << " CDF8 entry/entries with CB7E's consume bit set, "
+                      << collision_retry_rearming_entries << " with it clear"
+                      << " ("
+                      << collision_retry_after_marked_playfield_cf33_entries
+                      << " after marked playfield CF33, "
+                      << collision_retry_after_unmarked_playfield_cf33_entries
+                      << " after unmarked signed playfield CF33, "
+                      << collision_retry_outside_signed_playfield_cf33_entries
+                      << " other)";
+        }
+        if (marked_playfield_retry_restore_candidates != 0U
+            || unavailable_marked_playfield_retry_restore_caches != 0U) {
+            std::cout << "; marked CDF8 rollback shadow: "
+                      << verified_marked_playfield_retry_restores << "/"
+                      << observed_marked_playfield_retry_restores
+                      << " F241 cache restore(s) from "
+                      << marked_playfield_retry_restore_candidates
+                      << " marked clear candidate(s)";
+            if (mismatched_marked_playfield_retry_restores != 0U) {
+                std::cout << ", "
+                          << mismatched_marked_playfield_retry_restores
+                          << " mismatch(es)";
+            }
+            if (unavailable_marked_playfield_retry_restore_caches != 0U) {
+                std::cout << ", "
+                          << unavailable_marked_playfield_retry_restore_caches
+                          << " unavailable cache(s)";
+            }
+            if (superseded_marked_playfield_retry_restores != 0U) {
+                std::cout << ", "
+                          << superseded_marked_playfield_retry_restores
+                          << " superseded before F241";
+            }
+            if (pending_marked_playfield_retry_restore) {
+                std::cout << ", 1 awaiting F241";
+            }
+        }
+        if (playfield_probe_entries != 0U) {
+            std::cout << "; playfield map shadow: " << decoded_playfield_maps
+                      << " decoded distinct map(s) from "
+                      << playfield_probe_entries << " CD74 probe(s)";
+            if (reused_playfield_maps != 0U) {
+                std::cout << ", " << reused_playfield_maps << " reused";
+            }
+            if (unavailable_playfield_sources != 0U) {
+                std::cout << ", " << unavailable_playfield_sources
+                          << " unavailable source(s)";
+            }
+            if (rejected_playfield_maps != 0U) {
+                std::cout << ", " << rejected_playfield_maps
+                          << " rejected map(s)";
+            }
+            if (playfield_capture_failures != 0U) {
+                std::cout << ", " << playfield_capture_failures
+                          << " capture failure(s)";
+            }
+            if (solid_playfield_probes != 0U || clear_playfield_probes != 0U
+                || unmatched_playfield_probe_completions != 0U) {
+                std::cout << "; playfield-probe shadow: "
+                          << solid_playfield_probes << " solid, "
+                          << clear_playfield_probes << " clear";
+                if (unmatched_playfield_probe_completions != 0U) {
+                    std::cout << ", "
+                              << unmatched_playfield_probe_completions
+                              << " unmatched completion(s)";
+                }
+            }
+        }
+        if (waiting_for_playfield_map != 0U) {
+            std::cout << "; " << waiting_for_playfield_map
+                      << " bootstrap(s) preceded the first playfield map";
+        }
+        if (unavailable_motion_tuning != 0U) {
+            std::cout << "; " << unavailable_motion_tuning
+                      << " unavailable motion-tuning snapshot(s)";
+        }
+        std::cout << ".\n";
+    }
+
+    std::uint64_t frame_boundaries = 0U;
+    std::uint64_t invalid_work_ram = 0U;
+    std::uint64_t unavailable_bootstraps = 0U;
+    std::uint64_t rejected_bootstraps = 0U;
+    std::uint64_t seed_mismatches = 0U;
+    std::uint64_t verified_bootstraps = 0U;
+    std::uint64_t unavailable_motion_tuning = 0U;
+    std::uint64_t waiting_for_playfield_map = 0U;
+    std::uint64_t verified_clear_physics_inputs = 0U;
+    std::uint64_t native_runtime_frames = 0U;
+    std::uint64_t native_runtime_clear_frames = 0U;
+    std::uint64_t native_runtime_contact_frames = 0U;
+    std::uint64_t native_runtime_actor_updates = 0U;
+    std::uint64_t native_runtime_audio_events = 0U;
+    std::uint64_t native_runtime_deferred_schedule_frames = 0U;
+    std::uint64_t native_epoch_runtime_candidates = 0U;
+    std::uint64_t native_epoch_runtime_clear_candidates = 0U;
+    std::uint64_t native_epoch_runtime_contact_candidates = 0U;
+    std::uint64_t native_epoch_runtime_seeds = 0U;
+    std::uint64_t observed_native_epoch_runtime_boundaries = 0U;
+    std::uint64_t matched_native_epoch_runtime_boundaries = 0U;
+    std::uint64_t mismatched_native_epoch_runtime_boundaries = 0U;
+    std::uint64_t native_epoch_runtime_unavailable = 0U;
+    std::array<NativeEpochActorHandlerEvidence, 16U>
+        native_epoch_actor_handler_evidence{};
+    std::uint64_t unclassified_native_epoch_actor_handler_entries = 0U;
+    ActualFrameCollisionFacts actual_frame_collision_facts;
+    std::optional<NativeRuntimeFramePrediction>
+        pending_native_runtime_frame_prediction;
+    std::uint64_t native_runtime_frame_predictions = 0U;
+    std::uint64_t observed_native_runtime_frame_predictions = 0U;
+    std::uint64_t matched_native_runtime_frame_predictions = 0U;
+    std::uint64_t mismatched_native_runtime_frame_predictions = 0U;
+    std::uint64_t matched_native_runtime_frame_prediction_schedule_owners = 0U;
+    std::uint64_t mismatched_native_runtime_frame_prediction_schedule_owners = 0U;
+    std::uint64_t native_runtime_frame_prediction_position_x_mismatches = 0U;
+    std::uint64_t native_runtime_frame_prediction_position_y_mismatches = 0U;
+    std::uint64_t native_runtime_frame_prediction_velocity_x_mismatches = 0U;
+    std::uint64_t native_runtime_frame_prediction_velocity_y_mismatches = 0U;
+    std::uint64_t native_runtime_frame_prediction_motion_flag_mismatches = 0U;
+    std::uint64_t native_runtime_frame_prediction_collision_state_mismatches = 0U;
+    std::uint64_t native_runtime_frame_prediction_actor_contact_mismatches = 0U;
+    std::uint64_t native_runtime_frame_prediction_playfield_contact_mismatches = 0U;
+    std::uint64_t native_runtime_frame_prediction_both_contact_mismatches = 0U;
+    std::uint64_t native_runtime_frame_prediction_no_contact_mismatches = 0U;
+    std::uint64_t native_runtime_frame_prediction_input_active_mismatches = 0U;
+    std::uint64_t native_runtime_frame_prediction_input_neutral_mismatches = 0U;
+    std::uint64_t native_runtime_frame_prediction_split_mismatches = 0U;
+    std::uint64_t native_runtime_frame_prediction_position_mismatches = 0U;
+    std::uint64_t native_runtime_frame_prediction_damping_mismatches = 0U;
+    std::uint64_t native_runtime_frame_prediction_no_split_mismatches = 0U;
+    std::uint64_t native_runtime_frame_prediction_single_split_mismatches = 0U;
+    std::uint64_t native_runtime_frame_prediction_multiple_split_mismatches = 0U;
+    std::uint64_t native_runtime_frame_prediction_no_damping_mismatches = 0U;
+    std::uint64_t native_runtime_frame_prediction_single_damping_mismatches = 0U;
+    std::uint64_t native_runtime_frame_prediction_multiple_damping_mismatches = 0U;
+    struct FrameScheduleOwnerCount {
+        devils_crush::native_runtime::BallFrameOwner owner =
+            devils_crush::native_runtime::BallFrameOwner::unrecognized;
+        std::uint64_t mismatches = 0U;
+    };
+    std::array<FrameScheduleOwnerCount, 4U> deferred_frame_schedule_owners{};
+    std::uint64_t unclassified_deferred_frame_schedule_owners = 0U;
+    std::array<FrameScheduleOwnerCount, 4U> prediction_schedule_owners{};
+    std::uint64_t unclassified_prediction_schedule_owners = 0U;
+    std::uint64_t native_initial_motion_candidates = 0U;
+    std::uint64_t native_initial_motion_schedules_normal = 0U;
+    std::uint64_t native_initial_motion_slot_zero_returns = 0U;
+    std::uint64_t native_initial_motion_contacts = 0U;
+    std::uint64_t native_initial_motion_attempt_caps = 0U;
+    std::uint64_t unavailable_native_initial_motion = 0U;
+    std::uint64_t native_initial_motion_failures = 0U;
+    struct UnrecognizedScheduleHandlerCount {
+        std::uint16_t handler_address = 0U;
+        std::uint64_t frames = 0U;
+    };
+    std::array<UnrecognizedScheduleHandlerCount, 8U>
+        unrecognized_schedule_handlers{};
+    std::uint64_t unclassified_schedule_handlers = 0U;
+    std::uint64_t unavailable_native_runtime_frame_predictions = 0U;
+    std::uint64_t unavailable_native_runtime_frames = 0U;
+    std::uint64_t native_runtime_frame_failures = 0U;
+    std::uint64_t playfield_probe_entries = 0U;
+    std::uint64_t unavailable_playfield_sources = 0U;
+    std::uint64_t rejected_playfield_maps = 0U;
+    std::uint64_t playfield_capture_failures = 0U;
+    std::uint64_t reused_playfield_maps = 0U;
+    std::uint64_t decoded_playfield_maps = 0U;
+    std::uint64_t solid_playfield_probes = 0U;
+    std::uint64_t clear_playfield_probes = 0U;
+    std::uint64_t unmatched_playfield_probe_completions = 0U;
+    std::uint64_t collision_retry_entries = 0U;
+    std::uint64_t collision_retry_consuming_entries = 0U;
+    std::uint64_t collision_retry_rearming_entries = 0U;
+    std::uint64_t collision_retry_after_marked_playfield_cf33_entries = 0U;
+    std::uint64_t collision_retry_after_unmarked_playfield_cf33_entries = 0U;
+    std::uint64_t collision_retry_outside_signed_playfield_cf33_entries = 0U;
+    std::vector<DecodedPlayfieldMap> playfield_maps;
+    std::optional<NativeEpochRuntimeChain> native_epoch_runtime;
+
+private:
+    struct MotionRoutineSeed {
+        RoutineKey routine;
+        std::uint64_t entry_absolute_master_cycle = 0U;
+        devils_crush::native_runtime::BallState ball;
+        std::optional<devils_crush::native_runtime::BallMotionTuning> tuning;
+        std::optional<devils_crush::native_runtime::BallMotionIncrement>
+            substep_motion;
+    };
+
+    // DC95 gives the loop one immutable increment and F1B4 consumes it until
+    // DD09 closes the clear path. The collision sweep can take a different
+    // route at any point, so this observer certifies only a fully composed
+    // sequence whose live state remains exactly on that no-contact path.
+    struct CollisionLoopSeed {
+        std::uint64_t split_entry_absolute_master_cycle = 0U;
+        devils_crush::native_runtime::BallMotionSubsteps plan;
+        devils_crush::native_runtime::BallState expected_ball;
+        std::uint8_t completed_steps = 0U;
+        std::optional<std::uint64_t> pending_position_entry;
+        std::optional<std::uint64_t> pending_damping_entry;
+        std::optional<devils_crush::native_runtime::BallMotionTuning>
+            pending_damping_tuning;
+        bool diverged_from_clear_path = false;
+    };
+
+    // CB2A exhausts actor candidates before it can fall through to CD74. That
+    // makes the presence of a CD74 entry an unambiguous table-probe boundary;
+    // its absence means the sweep was retained by an actor-contact path.
+    struct CollisionSweepSeed {
+        std::uint64_t entry_absolute_master_cycle = 0U;
+        // The readable normal CB48/CC1A scan is actor-first. Preserve only
+        // its carry-like boundary here: detailed target behavior remains with
+        // the later native contact owner.
+        std::optional<bool> native_actor_scan_found_solid;
+        bool reached_playfield_probe = false;
+        std::optional<std::uint64_t> playfield_probe_entry;
+        std::optional<bool> playfield_probe_is_solid;
+        std::optional<bool> cf33_selector_is_signed;
+        std::optional<bool> cf33_signed_collision_marker;
+    };
+
+    // CBAB is a caller-selected one-slot actor query. It can occur inside the
+    // wider CB2A sweep, so it owns a separate source/typed correlation rather
+    // than being attributed to the outer scan's CD74 continuation.
+    struct SingleSlotActorCollisionProbeSeed {
+        std::uint64_t entry_absolute_master_cycle = 0U;
+        std::optional<std::uint8_t> scanned_slot;
+        std::optional<std::uint16_t> scanned_handler_address;
+        std::optional<devils_crush::native_runtime::ActorCollisionScanResult>
+            native_scan;
+        std::optional<devils_crush::native_runtime::ActorCollisionScanDisposition>
+            native_disposition;
+        // CBC2 receives CC1A's carry immediately before CBAB either returns
+        // clear or enters CBCF. A later CBCF can belong to CB48's broad scan,
+        // so only this direct carry handoff may retain the one-slot seed for
+        // confirmed-contact comparison.
+        bool returned_contact = false;
+    };
+
+    struct SingleSlotActorCollisionHandlerEvidence {
+        std::uint16_t handler_address = 0U;
+        std::uint64_t matching_contacts = 0U;
+        std::uint64_t mismatched_contacts = 0U;
+    };
+
+    // A carry-confirmed CBAB query that the readable CC1A model calls empty
+    // is a true disagreement. Keep its finite mask input rather than guessing
+    // a flipper-specific rule from the handler name.
+    struct SingleSlotActorCollisionMaskMismatchEvidence {
+        std::uint16_t handler_address = 0U;
+        std::uint8_t slot = 0U;
+        std::uint8_t phase = 0U;
+        std::uint8_t probe_horizontal = 0U;
+        std::uint16_t probe_vertical = 0U;
+        std::uint8_t relative_horizontal = 0U;
+        std::uint16_t relative_vertical = 0U;
+        std::uint8_t mask_index = 0U;
+        std::uint8_t selected_row = 0U;
+        std::uint8_t column_bit = 0U;
+        std::uint64_t contacts = 0U;
+    };
+
+    // The host-frame shadow above deliberately creates a fresh candidate at
+    // every presentation boundary. DC95 is the narrower, recovered physics
+    // boundary, so retain a separate candidate here and compare its completed
+    // native state at the next live DC95 entry. A collision handoff resets the
+    // chain because CF33/CDF8 still belong to the source resolver.
+    void observe_native_epoch_candidate_entry(
+        const devils_crush::native_runtime::GameStateView& state,
+        const devils_crush::native_runtime::BallState observed_ball) noexcept
+    {
+        if (native_epoch_runtime) {
+            const auto* const gameplay = native_epoch_runtime->runtime.gameplay();
+            if (gameplay == nullptr) {
+                ++native_epoch_runtime_unavailable;
+                native_epoch_runtime.reset();
+            } else {
+                ++observed_native_epoch_runtime_boundaries;
+                if (gameplay->physics().ball == observed_ball) {
+                    ++matched_native_epoch_runtime_boundaries;
+                    record_native_epoch_actor_handler_evidence(
+                        *native_epoch_runtime, true);
+                } else {
+                    ++mismatched_native_epoch_runtime_boundaries;
+                    record_native_epoch_actor_handler_evidence(
+                        *native_epoch_runtime, false);
+                    native_epoch_runtime.reset();
+                }
+            }
+        }
+
+        const auto tuning = state.ball_motion_tuning();
+        if (!tuning || playfield_maps.empty()) {
+            ++native_epoch_runtime_unavailable;
+            native_epoch_runtime.reset();
+            return;
+        }
+
+        try {
+            if (!native_epoch_runtime) {
+                const auto bootstrap = devils_crush::native_runtime::
+                    capture_native_gameplay_bootstrap(state);
+                if (!bootstrap) {
+                    ++native_epoch_runtime_unavailable;
+                    return;
+                }
+                native_epoch_runtime.emplace();
+                if (!native_epoch_runtime->runtime.bootstrap(*bootstrap)) {
+                    ++native_epoch_runtime_unavailable;
+                    native_epoch_runtime.reset();
+                    return;
+                }
+                ++native_epoch_runtime_seeds;
+            }
+
+            const auto frame = native_epoch_runtime->runtime.advance_physics_epoch(
+                *tuning, playfield_maps.back().map.view());
+            if (!frame) {
+                ++native_epoch_runtime_unavailable;
+                native_epoch_runtime.reset();
+                return;
+            }
+            ++native_epoch_runtime_candidates;
+            if (frame->requires_collision_resolution()) {
+                ++native_epoch_runtime_contact_candidates;
+                native_epoch_runtime.reset();
+            } else {
+                ++native_epoch_runtime_clear_candidates;
+            }
+        } catch (...) {
+            // This chain is diagnostic only. Never let an allocation or
+            // decoding failure alter live execution at a registry hook.
+            ++native_epoch_runtime_unavailable;
+            native_epoch_runtime.reset();
+        }
+    }
+
+    void observe_native_epoch_actor_handler_dispatch(
+        const devils_crush::native_runtime::GameStateView& state,
+        const std::uint8_t slot) noexcept
+    {
+        if (!native_epoch_runtime) {
+            return;
+        }
+        const auto actor = state.valid() ? state.actor(slot) : std::nullopt;
+        if (!actor) {
+            ++native_epoch_runtime->unclassified_source_actor_handler_entries;
+            return;
+        }
+        for (auto& handler : native_epoch_runtime->source_actor_handlers) {
+            if (handler.entries != 0U
+                && handler.handler_address == actor->handler_address) {
+                ++handler.entries;
+                return;
+            }
+        }
+        for (auto& handler : native_epoch_runtime->source_actor_handlers) {
+            if (handler.entries == 0U) {
+                handler = {
+                    .handler_address = actor->handler_address,
+                    .entries = 1U,
+                };
+                return;
+            }
+        }
+        ++native_epoch_runtime->unclassified_source_actor_handler_entries;
+    }
+
+    void record_native_epoch_actor_handler_evidence(
+        const NativeEpochRuntimeChain& chain,
+        const bool matches) noexcept
+    {
+        for (const auto& source_handler : chain.source_actor_handlers) {
+            if (source_handler.entries == 0U) {
+                continue;
+            }
+            bool recorded_handler = false;
+            for (auto& recorded : native_epoch_actor_handler_evidence) {
+                if (recorded.matching_entries + recorded.mismatched_entries != 0U
+                    && recorded.handler_address == source_handler.handler_address) {
+                    if (matches) {
+                        recorded.matching_entries += source_handler.entries;
+                    } else {
+                        recorded.mismatched_entries += source_handler.entries;
+                    }
+                    recorded_handler = true;
+                    break;
+                }
+            }
+            if (!recorded_handler) {
+                for (auto& recorded : native_epoch_actor_handler_evidence) {
+                    if (recorded.matching_entries + recorded.mismatched_entries == 0U) {
+                        recorded.handler_address = source_handler.handler_address;
+                        if (matches) {
+                            recorded.matching_entries = source_handler.entries;
+                        } else {
+                            recorded.mismatched_entries = source_handler.entries;
+                        }
+                        recorded_handler = true;
+                        break;
+                    }
+                }
+            }
+            if (!recorded_handler) {
+                unclassified_native_epoch_actor_handler_entries
+                    += source_handler.entries;
+            }
+        }
+        unclassified_native_epoch_actor_handler_entries
+            += chain.unclassified_source_actor_handler_entries;
+    }
+
+    void record_deferred_frame_schedule(
+        const devils_crush::native_runtime::BallFrameOwner owner) noexcept
+    {
+        for (auto& recorded : deferred_frame_schedule_owners) {
+            if (recorded.mismatches != 0U && recorded.owner == owner) {
+                ++recorded.mismatches;
+                return;
+            }
+        }
+        for (auto& recorded : deferred_frame_schedule_owners) {
+            if (recorded.mismatches == 0U) {
+                recorded = {
+                    .owner = owner,
+                    .mismatches = 1U,
+                };
+                return;
+            }
+        }
+        ++unclassified_deferred_frame_schedule_owners;
+    }
+
+    void record_prediction_schedule_owner(
+        const devils_crush::native_runtime::BallFrameOwner owner) noexcept
+    {
+        for (auto& recorded : prediction_schedule_owners) {
+            if (recorded.mismatches != 0U && recorded.owner == owner) {
+                ++recorded.mismatches;
+                return;
+            }
+        }
+        for (auto& recorded : prediction_schedule_owners) {
+            if (recorded.mismatches == 0U) {
+                recorded = {
+                    .owner = owner,
+                    .mismatches = 1U,
+                };
+                return;
+            }
+        }
+        ++unclassified_prediction_schedule_owners;
+    }
+
+    void record_unrecognized_schedule_handler(
+        const std::uint16_t handler_address) noexcept
+    {
+        for (auto& recorded : unrecognized_schedule_handlers) {
+            if (recorded.frames != 0U
+                && recorded.handler_address == handler_address) {
+                ++recorded.frames;
+                return;
+            }
+        }
+        for (auto& recorded : unrecognized_schedule_handlers) {
+            if (recorded.frames == 0U) {
+                recorded = {
+                    .handler_address = handler_address,
+                    .frames = 1U,
+                };
+                return;
+            }
+        }
+        ++unclassified_schedule_handlers;
+    }
+
+    void observe_pending_native_frame_prediction(
+        const std::span<const std::byte> work_ram,
+        const InputFrame& input) noexcept
+    {
+        if (!pending_native_runtime_frame_prediction) {
+            return;
+        }
+        const auto expected = *pending_native_runtime_frame_prediction;
+        pending_native_runtime_frame_prediction.reset();
+        const devils_crush::native_runtime::GameStateView state{work_ram};
+        const auto ball = state.valid()
+            ? devils_crush::native_runtime::capture_active_ball(state)
+            : std::nullopt;
+        if (!ball) {
+            ++unavailable_native_runtime_frame_predictions;
+            return;
+        }
+        const auto actual_schedule =
+            devils_crush::native_runtime::capture_ball_frame_schedule(state);
+        ++observed_native_runtime_frame_predictions;
+        if (actual_schedule.owner == expected.schedule.owner) {
+            ++matched_native_runtime_frame_prediction_schedule_owners;
+        } else {
+            ++mismatched_native_runtime_frame_prediction_schedule_owners;
+            record_prediction_schedule_owner(actual_schedule.owner);
+        }
+        if (ball->state == expected.ball) {
+            ++matched_native_runtime_frame_predictions;
+        } else {
+            ++mismatched_native_runtime_frame_predictions;
+            if (input.player_one == 0U) {
+                ++native_runtime_frame_prediction_input_neutral_mismatches;
+            } else {
+                ++native_runtime_frame_prediction_input_active_mismatches;
+            }
+            if (actual_frame_collision_facts.motion_substep_split_entries != 0U) {
+                ++native_runtime_frame_prediction_split_mismatches;
+                if (actual_frame_collision_facts.motion_substep_split_entries == 1U) {
+                    ++native_runtime_frame_prediction_single_split_mismatches;
+                } else {
+                    ++native_runtime_frame_prediction_multiple_split_mismatches;
+                }
+            } else {
+                ++native_runtime_frame_prediction_no_split_mismatches;
+            }
+            if (actual_frame_collision_facts.position_integration_entries != 0U) {
+                ++native_runtime_frame_prediction_position_mismatches;
+            }
+            if (actual_frame_collision_facts.motion_damping_entries != 0U) {
+                ++native_runtime_frame_prediction_damping_mismatches;
+                if (actual_frame_collision_facts.motion_damping_entries == 1U) {
+                    ++native_runtime_frame_prediction_single_damping_mismatches;
+                } else {
+                    ++native_runtime_frame_prediction_multiple_damping_mismatches;
+                }
+            } else {
+                ++native_runtime_frame_prediction_no_damping_mismatches;
+            }
+            if (actual_frame_collision_facts.actor_contact
+                && actual_frame_collision_facts.solid_playfield_contact) {
+                ++native_runtime_frame_prediction_both_contact_mismatches;
+            } else if (actual_frame_collision_facts.actor_contact) {
+                ++native_runtime_frame_prediction_actor_contact_mismatches;
+            } else if (actual_frame_collision_facts.solid_playfield_contact) {
+                ++native_runtime_frame_prediction_playfield_contact_mismatches;
+            } else {
+                ++native_runtime_frame_prediction_no_contact_mismatches;
+            }
+            if (ball->state.position_x != expected.ball.position_x) {
+                ++native_runtime_frame_prediction_position_x_mismatches;
+            }
+            if (ball->state.position_y != expected.ball.position_y) {
+                ++native_runtime_frame_prediction_position_y_mismatches;
+            }
+            if (ball->state.velocity_x != expected.ball.velocity_x) {
+                ++native_runtime_frame_prediction_velocity_x_mismatches;
+            }
+            if (ball->state.velocity_y != expected.ball.velocity_y) {
+                ++native_runtime_frame_prediction_velocity_y_mismatches;
+            }
+            if (ball->state.motion_flags != expected.ball.motion_flags) {
+                ++native_runtime_frame_prediction_motion_flag_mismatches;
+            }
+            if (ball->state.collision_state != expected.ball.collision_state) {
+                ++native_runtime_frame_prediction_collision_state_mismatches;
+            }
+        }
+    }
+
+    // A marked CF33 contact enters CDF8 with CB7E's retry bit clear. Its first
+    // child is F241, which restores F1B4's cache before CDF8 tries any
+    // whole-pixel candidate. The later DC95 boundary may include additional
+    // retry-loop motion, so this direct child-return boundary is the only
+    // sound place to validate the readable rollback state.
+    struct MarkedPlayfieldRetryRestoreSeed {
+        std::uint64_t cdf8_entry_absolute_master_cycle = 0U;
+        devils_crush::native_runtime::GameStateView::
+            BallCollisionPositionCache cached_position;
+    };
+
+    enum class CollisionSweepExit {
+        next_substep,
+        damping,
+        rearmed,
+    };
+
+    void observe_collision_sweep_entry(
+        const RoutineEntry& entry,
+        const devils_crush::native_runtime::GameStateView& state,
+        const std::span<const std::byte> rom) noexcept
+    {
+        finish_collision_sweep(CollisionSweepExit::next_substep);
+        active_collision_sweep = CollisionSweepSeed{
+            .entry_absolute_master_cycle = entry.absolute_master_cycle,
+        };
+        ++collision_sweep_entries;
+
+        try {
+            const auto walk = state.normal_actor_collision_scan_walk();
+            const auto probe = state.normal_actor_collision_setup_probe();
+            if (!walk || !probe) {
+                ++unavailable_normal_actor_collision_scans;
+                return;
+            }
+            const devils_crush::native_runtime::MappedRomView mapped_rom(
+                rom, entry.registers.mpr);
+            const auto scan = devils_crush::native_runtime::
+                scan_normal_actor_collision_sweep(
+                    mapped_rom,
+                    state,
+                    *walk,
+                    *probe);
+            if (!scan) {
+                ++unavailable_normal_actor_collision_scans;
+                return;
+            }
+            active_collision_sweep->native_actor_scan_found_solid =
+                scan->first_solid_actor_slot.has_value();
+            ++normal_actor_collision_scans;
+        } catch (...) {
+            // This remains a read-only bridge while the contact response is
+            // still source-owned.  A bad mapped asset must not affect play.
+            ++unavailable_normal_actor_collision_scans;
+        }
+    }
+
+    void begin_single_slot_actor_collision_probe(
+        const RoutineEntry& entry) noexcept
+    {
+        active_single_slot_actor_collision_probe = {
+            .entry_absolute_master_cycle = entry.absolute_master_cycle,
+        };
+        ++single_slot_actor_collision_probe_entries;
+    }
+
+    void observe_single_slot_actor_collision_scan(
+        const RoutineEntry& entry,
+        const devils_crush::native_runtime::GameStateView& state,
+        const std::span<const std::byte> rom) noexcept
+    {
+        if (!active_single_slot_actor_collision_probe
+            || active_single_slot_actor_collision_probe->native_disposition) {
+            return;
+        }
+        try {
+            const auto actor = state.actor(entry.registers.y);
+            const auto context = devils_crush::native_runtime::
+                make_actor_collision_scan_context(state);
+            const auto probe = state.normal_actor_collision_probe();
+            if (!actor || !context || !probe) {
+                ++unavailable_single_slot_actor_collision_scans;
+                return;
+            }
+            const devils_crush::native_runtime::MappedRomView mapped_rom(
+                rom, entry.registers.mpr);
+            const auto scan = devils_crush::native_runtime::scan_actor_collision(
+                mapped_rom, *context, *actor, *probe);
+            active_single_slot_actor_collision_probe->scanned_slot = actor->index;
+            active_single_slot_actor_collision_probe->scanned_handler_address =
+                actor->handler_address;
+            active_single_slot_actor_collision_probe->native_scan = scan;
+            active_single_slot_actor_collision_probe->native_disposition =
+                scan.disposition;
+            ++single_slot_actor_collision_scans;
+        } catch (...) {
+            ++unavailable_single_slot_actor_collision_scans;
+        }
+    }
+
+    // The source reaches CC98 only after it has converted the local mask
+    // coordinates into row-major scratch state. Sampling this boundary lets
+    // the readable pre-scan distinguish an incorrect geometry model from a
+    // later mapped-ROM lookup without changing live play.
+    void observe_single_slot_actor_collision_mask_stage(
+        const RoutineEntry& entry,
+        const devils_crush::native_runtime::GameStateView& state,
+        const std::span<const std::byte> rom) noexcept
+    {
+        if (!active_single_slot_actor_collision_probe
+            || !active_single_slot_actor_collision_probe->native_scan
+            || !active_single_slot_actor_collision_probe->native_scan->mask) {
+            return;
+        }
+        try {
+            const auto stage = state.actor_collision_mask_lookup_stage();
+            const auto pointers = state.actor_collision_mask_table_pointers();
+            if (!stage || !pointers) {
+                ++unavailable_single_slot_collision_mask_stages;
+                return;
+            }
+
+            const devils_crush::native_runtime::ActorCollisionMaskCoordinates
+                staged_coordinates{
+                    .input = {
+                        .bounds = {.disposition = devils_crush::native_runtime::
+                                       CollisionBoundsDisposition::intersecting},
+                    },
+                    .cell = {
+                        .column = stage->mask_column,
+                        .row = stage->mask_row,
+                    },
+                    .horizontal_cell = stage->horizontal_cell,
+                    .vertical_cell = stage->vertical_offset,
+                    // `$2F` already contains CC95's multiplied row offset.
+                    .rounded_horizontal_span = 1U,
+                };
+            const devils_crush::native_runtime::MappedRomView mapped_rom(
+                rom, entry.registers.mpr);
+            const auto staged = devils_crush::native_runtime::
+                resolve_actor_collision_mask(
+                    mapped_rom, *pointers, staged_coordinates);
+            if (!staged) {
+                ++unavailable_single_slot_collision_mask_stages;
+                return;
+            }
+
+            ++single_slot_collision_mask_stage_entries;
+            const auto& predicted = *active_single_slot_actor_collision_probe
+                                        ->native_scan->mask;
+            if (predicted.table_index == staged->table_index) {
+                ++matched_single_slot_collision_mask_stage_indices;
+            }
+            if (predicted.evaluation.cell == staged->evaluation.cell) {
+                ++matched_single_slot_collision_mask_stage_cells;
+            }
+            if (predicted.mask_index == staged->mask_index
+                && predicted.evaluation.selected_row
+                    == staged->evaluation.selected_row
+                && predicted.evaluation.column_bit
+                    == staged->evaluation.column_bit) {
+                ++matched_single_slot_collision_mask_stage_lookups;
+            }
+            if (predicted.evaluation.disposition
+                == staged->evaluation.disposition) {
+                ++matched_single_slot_collision_mask_stage_decisions;
+            }
+        } catch (...) {
+            ++unavailable_single_slot_collision_mask_stages;
+        }
+    }
+
+    void observe_single_slot_confirmed_actor_contact() noexcept
+    {
+        if (!active_single_slot_actor_collision_probe
+            || !active_single_slot_actor_collision_probe->returned_contact) {
+            return;
+        }
+        ++single_slot_confirmed_actor_contacts;
+        const auto disposition =
+            active_single_slot_actor_collision_probe->native_disposition;
+        if (disposition
+            == devils_crush::native_runtime::ActorCollisionScanDisposition::
+                solid_mask) {
+            ++matched_single_slot_actor_collision_contacts;
+            record_single_slot_actor_collision_handler(
+                active_single_slot_actor_collision_probe->scanned_handler_address,
+                true);
+        } else {
+            ++mismatched_single_slot_actor_collision_contacts;
+            record_single_slot_actor_collision_disposition(disposition);
+            record_single_slot_actor_collision_mask_mismatch(
+                active_single_slot_actor_collision_probe->native_scan);
+            record_single_slot_actor_collision_handler(
+                active_single_slot_actor_collision_probe->scanned_handler_address,
+                false);
+        }
+        active_single_slot_actor_collision_probe.reset();
+    }
+
+    void observe_single_slot_actor_collision_result(
+        const RoutineEntry& entry) noexcept
+    {
+        if (!active_single_slot_actor_collision_probe) {
+            return;
+        }
+
+        // CBC2 follows the JSR CC1A inside CBAB. Its incoming carry is the
+        // scanner's contact result; a clear return cannot subsequently reach
+        // CBCF through this one-slot query, so discard it now. This avoids
+        // attributing a later CB48 contact to a stale flipper probe.
+        if ((entry.registers.status & 0x01U) == 0U) {
+            active_single_slot_actor_collision_probe.reset();
+            return;
+        }
+        active_single_slot_actor_collision_probe->returned_contact = true;
+        ++single_slot_actor_collision_contact_returns;
+    }
+
+    void record_single_slot_actor_collision_disposition(
+        const std::optional<devils_crush::native_runtime::
+            ActorCollisionScanDisposition> disposition) noexcept
+    {
+        using Disposition = devils_crush::native_runtime::
+            ActorCollisionScanDisposition;
+        if (!disposition) {
+            ++unavailable_single_slot_confirmed_contact_scans;
+            return;
+        }
+        switch (*disposition) {
+        case Disposition::outside_vertical_proximity:
+            ++single_slot_confirmed_contact_vertical_misses;
+            return;
+        case Disposition::unresolved_shape_asset:
+            ++single_slot_confirmed_contact_shape_asset_misses;
+            return;
+        case Disposition::outside_horizontal_world:
+            ++single_slot_confirmed_contact_horizontal_world_misses;
+            return;
+        case Disposition::outside_bounds:
+            ++single_slot_confirmed_contact_bounds_misses;
+            return;
+        case Disposition::unresolved_mask_asset:
+            ++single_slot_confirmed_contact_mask_asset_misses;
+            return;
+        case Disposition::empty_mask:
+            ++single_slot_confirmed_contact_empty_mask_misses;
+            return;
+        case Disposition::solid_mask:
+            return;
+        }
+    }
+
+    void record_single_slot_actor_collision_handler(
+        const std::optional<std::uint16_t> handler_address,
+        const bool matches) noexcept
+    {
+        if (!handler_address) {
+            ++unclassified_single_slot_actor_collision_contacts;
+            return;
+        }
+        for (auto& handler : single_slot_actor_collision_handlers) {
+            if (handler.matching_contacts + handler.mismatched_contacts != 0U
+                && handler.handler_address == *handler_address) {
+                if (matches) {
+                    ++handler.matching_contacts;
+                } else {
+                    ++handler.mismatched_contacts;
+                }
+                return;
+            }
+        }
+        for (auto& handler : single_slot_actor_collision_handlers) {
+            if (handler.matching_contacts + handler.mismatched_contacts == 0U) {
+                handler.handler_address = *handler_address;
+                if (matches) {
+                    handler.matching_contacts = 1U;
+                } else {
+                    handler.mismatched_contacts = 1U;
+                }
+                return;
+            }
+        }
+        ++unclassified_single_slot_actor_collision_contacts;
+    }
+
+    void record_single_slot_actor_collision_mask_mismatch(
+        const std::optional<devils_crush::native_runtime::
+            ActorCollisionScanResult>& scan) noexcept
+    {
+        using Disposition = devils_crush::native_runtime::
+            ActorCollisionScanDisposition;
+        if (!scan || scan->disposition != Disposition::empty_mask
+            || !scan->bounds || !scan->mask) {
+            return;
+        }
+
+        const auto& mask = *scan->mask;
+        const SingleSlotActorCollisionMaskMismatchEvidence candidate{
+            .handler_address = scan->actor.handler_address,
+            .slot = scan->actor.index,
+            .phase = scan->actor.collision_shape_phase,
+            .probe_horizontal = scan->probe.horizontal,
+            .probe_vertical = scan->probe.vertical,
+            .relative_horizontal = scan->bounds->relative_horizontal,
+            .relative_vertical = scan->bounds->relative_vertical,
+            .mask_index = mask.mask_index,
+            .selected_row = mask.evaluation.selected_row,
+            .column_bit = mask.evaluation.column_bit,
+            .contacts = 1U,
+        };
+        for (auto& evidence : single_slot_actor_collision_mask_mismatches) {
+            if (evidence.contacts != 0U
+                && evidence.handler_address == candidate.handler_address
+                && evidence.slot == candidate.slot
+                && evidence.phase == candidate.phase
+                && evidence.probe_horizontal == candidate.probe_horizontal
+                && evidence.probe_vertical == candidate.probe_vertical
+                && evidence.relative_horizontal == candidate.relative_horizontal
+                && evidence.relative_vertical == candidate.relative_vertical
+                && evidence.mask_index == candidate.mask_index
+                && evidence.selected_row == candidate.selected_row
+                && evidence.column_bit == candidate.column_bit) {
+                ++evidence.contacts;
+                return;
+            }
+        }
+        for (auto& evidence : single_slot_actor_collision_mask_mismatches) {
+            if (evidence.contacts == 0U) {
+                evidence = candidate;
+                return;
+            }
+        }
+        ++unclassified_single_slot_actor_collision_mask_mismatches;
+    }
+
+    void observe_playfield_collision_completion(const RoutineCall& call) noexcept
+    {
+        if (!active_collision_sweep
+            || !active_collision_sweep->playfield_probe_entry
+            || *active_collision_sweep->playfield_probe_entry
+                != call.entry.absolute_master_cycle) {
+            ++unmatched_playfield_probe_completions;
+            return;
+        }
+        const bool solid = (call.output_registers.status & 0x01U) != 0U;
+        active_collision_sweep->playfield_probe_is_solid = solid;
+        if (solid) {
+            ++solid_playfield_probes;
+            actual_frame_collision_facts.solid_playfield_contact = true;
+        } else {
+            ++clear_playfield_probes;
+        }
+    }
+
+    // CF33 follows a solid CD74 table probe. Its high selector bit chooses a
+    // signed leg or clear-selector CF5B; within the signed leg, the ball's
+    // collision marker selects CDF8's placement retry versus CF3F's ordinary
+    // response. Retain those exact facts on the active sweep and classify its
+    // later observed exit only.
+    void observe_playfield_contact_response_entry(
+        const devils_crush::native_runtime::GameStateView& state) noexcept
+    {
+        if (!active_collision_sweep
+            || !active_collision_sweep->playfield_probe_is_solid
+            || !*active_collision_sweep->playfield_probe_is_solid) {
+            return;
+        }
+        const auto input = state.collision_response_input();
+        if (!input) {
+            ++unavailable_playfield_contact_responses;
+            return;
+        }
+        const auto selector_is_signed = input->selects_signed_cf33_response();
+        active_collision_sweep->cf33_selector_is_signed = selector_is_signed;
+        if (selector_is_signed) {
+            ++signed_playfield_contact_responses;
+            const auto ball = state.ball();
+            if (!ball) {
+                ++unavailable_playfield_contact_markers;
+            } else if ((ball->collision_state & 0x80U) != 0U) {
+                active_collision_sweep->cf33_signed_collision_marker = true;
+                ++signed_playfield_contact_marked_retries;
+            } else {
+                active_collision_sweep->cf33_signed_collision_marker = false;
+                ++signed_playfield_contact_unmarked_responses;
+            }
+        } else {
+            ++clear_playfield_contact_responses;
+        }
+    }
+
+    // CDF8 returns to CB7E, whose BBR3 $77 controls whether the parent C6/C7
+    // loop consumes the resolved substep. Capture the bit before CDF8's own
+    // placement work, without treating either arm as a native completion.
+    void observe_collision_retry_entry(
+        const RoutineEntry& entry,
+        const devils_crush::native_runtime::GameStateView& state,
+        const std::span<const std::byte> work_ram) noexcept
+    {
+        constexpr std::size_t kCollisionSweepFlags = 0x77U;
+        if (work_ram.size() <= kCollisionSweepFlags) {
+            return;
+        }
+        ++collision_retry_entries;
+        const auto flags = std::to_integer<std::uint8_t>(
+            work_ram[kCollisionSweepFlags]);
+        if ((flags & 0x08U) != 0U) {
+            ++collision_retry_consuming_entries;
+        } else {
+            ++collision_retry_rearming_entries;
+        }
+        const bool follows_signed_playfield_response = active_collision_sweep
+            && active_collision_sweep->cf33_selector_is_signed
+            && *active_collision_sweep->cf33_selector_is_signed
+            && active_collision_sweep->cf33_signed_collision_marker.has_value();
+        if (!follows_signed_playfield_response) {
+            ++collision_retry_outside_signed_playfield_cf33_entries;
+            return;
+        }
+        if (*active_collision_sweep->cf33_signed_collision_marker) {
+            ++collision_retry_after_marked_playfield_cf33_entries;
+        } else {
+            // CF33's unmarked signed leg branches to CF3F, not CDF8. Keep any
+            // such transcript visible rather than silently attributing it to
+            // the pending playfield retry.
+            ++collision_retry_after_unmarked_playfield_cf33_entries;
+            return;
+        }
+
+        // Only CB7E's clear arm is the restored-cache retry that the readable
+        // state model owns. A consuming arm is retained as telemetry until its
+        // parent context is independently classified.
+        if ((flags & 0x08U) != 0U) {
+            return;
+        }
+        const auto cache = state.ball_collision_position_cache();
+        if (!cache) {
+            ++unavailable_marked_playfield_retry_restore_caches;
+            return;
+        }
+        if (pending_marked_playfield_retry_restore) {
+            ++superseded_marked_playfield_retry_restores;
+        }
+        pending_marked_playfield_retry_restore =
+            MarkedPlayfieldRetryRestoreSeed{
+                .cdf8_entry_absolute_master_cycle =
+                    entry.absolute_master_cycle,
+                .cached_position = *cache,
+            };
+        ++marked_playfield_retry_restore_candidates;
+    }
+
+    void observe_marked_playfield_retry_restore(
+        const RoutineCall& call,
+        const std::span<const std::byte> work_ram) noexcept
+    {
+        constexpr std::uint16_t kPositionRetryRestoreCaller = 0xCE1FU;
+        constexpr std::uint16_t kPositionRetryRestoreReturn = 0xCE22U;
+        if (call.caller_pc != kPositionRetryRestoreCaller
+            || call.return_pc != kPositionRetryRestoreReturn
+            || !pending_marked_playfield_retry_restore) {
+            return;
+        }
+        const auto expected = *pending_marked_playfield_retry_restore;
+        pending_marked_playfield_retry_restore.reset();
+        ++observed_marked_playfield_retry_restores;
+        const devils_crush::native_runtime::GameStateView state{work_ram};
+        const auto restored = state.ball();
+        if (!restored) {
+            ++unavailable_marked_playfield_retry_restore_caches;
+            return;
+        }
+        if (restored->position_x == expected.cached_position.position_x
+            && restored->position_y == expected.cached_position.position_y) {
+            ++verified_marked_playfield_retry_restores;
+        } else {
+            ++mismatched_marked_playfield_retry_restores;
+        }
+    }
+
+    void finish_collision_sweep(const CollisionSweepExit exit) noexcept
+    {
+        if (!active_collision_sweep) {
+            return;
+        }
+        const auto reached_playfield =
+            active_collision_sweep->reached_playfield_probe;
+        if (active_collision_sweep->native_actor_scan_found_solid
+            && reached_playfield) {
+            // A later CBAB single-slot query can run inside this broader
+            // sweep.  Only an actual CD74 continuation belongs unambiguously
+            // to CB48's actor-first result; a no-CD74 exit is therefore not
+            // evidence that the outer scan missed an actor.
+            if (!*active_collision_sweep->native_actor_scan_found_solid) {
+                ++matched_normal_actor_collision_boundaries;
+            } else {
+                ++mismatched_normal_actor_collision_boundaries;
+            }
+        } else if (active_collision_sweep->native_actor_scan_found_solid) {
+            ++unresolved_normal_actor_collision_boundaries;
+        }
+        switch (exit) {
+        case CollisionSweepExit::next_substep:
+            ++clear_collision_sweeps;
+            if (reached_playfield
+                && active_collision_sweep->cf33_selector_is_signed) {
+                record_playfield_contact_response_exit(exit);
+            }
+            break;
+        case CollisionSweepExit::damping:
+            if (reached_playfield) {
+                ++playfield_contact_sweeps_to_damping;
+                if (active_collision_sweep->playfield_probe_is_solid
+                    && *active_collision_sweep->playfield_probe_is_solid) {
+                    record_playfield_contact_response_exit(exit);
+                }
+            } else {
+                ++actor_contact_sweeps_to_damping;
+                actual_frame_collision_facts.actor_contact = true;
+            }
+            break;
+        case CollisionSweepExit::rearmed:
+            if (reached_playfield) {
+                ++playfield_contact_sweeps_rearmed;
+                if (active_collision_sweep->playfield_probe_is_solid
+                    && *active_collision_sweep->playfield_probe_is_solid) {
+                    record_playfield_contact_response_exit(exit);
+                }
+            } else {
+                ++actor_contact_sweeps_rearmed;
+                actual_frame_collision_facts.actor_contact = true;
+            }
+            break;
+        }
+        active_collision_sweep.reset();
+    }
+
+    void record_playfield_contact_response_exit(
+        const CollisionSweepExit exit) noexcept
+    {
+        if (!active_collision_sweep->cf33_selector_is_signed) {
+            ++playfield_contacts_without_cf33_response;
+            return;
+        }
+        if (*active_collision_sweep->cf33_selector_is_signed) {
+            if (exit == CollisionSweepExit::rearmed) {
+                ++signed_playfield_contact_rearms;
+            } else if (exit == CollisionSweepExit::damping) {
+                ++signed_playfield_contact_damping_paths;
+            } else {
+                ++signed_playfield_contact_clear_paths;
+            }
+            return;
+        }
+        if (exit == CollisionSweepExit::rearmed) {
+            ++clear_playfield_contact_rearms;
+        } else if (exit == CollisionSweepExit::damping) {
+            ++clear_playfield_contact_damping_paths;
+        } else {
+            ++clear_playfield_contact_clear_paths;
+        }
+    }
+
+    void observe_collision_loop_split_entry(
+        const RoutineEntry& entry,
+        const devils_crush::native_runtime::BallState ball) noexcept
+    {
+        finish_collision_sweep(CollisionSweepExit::rearmed);
+        if (active_collision_loop) {
+            ++collision_loop_rearmed_before_completion;
+        }
+        active_collision_loop = CollisionLoopSeed{
+            .split_entry_absolute_master_cycle = entry.absolute_master_cycle,
+            .plan = devils_crush::native_runtime::split_ball_motion_substeps(ball),
+            .expected_ball = ball,
+        };
+        ++collision_loop_seeds;
+    }
+
+    void observe_collision_loop_position_entry(
+        const RoutineEntry& entry,
+        const devils_crush::native_runtime::BallState ball,
+        const devils_crush::native_runtime::BallMotionIncrement increment) noexcept
+    {
+        finish_collision_sweep(CollisionSweepExit::next_substep);
+        if (!active_collision_loop) {
+            return;
+        }
+        auto& loop = *active_collision_loop;
+        const devils_crush::native_runtime::BallMotionIncrement expected_increment{
+            .horizontal = loop.plan.velocity_x_per_step,
+            .vertical = loop.plan.velocity_y_per_step,
+        };
+        if (loop.completed_steps >= loop.plan.count || increment != expected_increment
+            || ball != loop.expected_ball) {
+            loop.diverged_from_clear_path = true;
+            return;
+        }
+        loop.pending_position_entry = entry.absolute_master_cycle;
+    }
+
+    void observe_collision_loop_position_completion(
+        const RoutineCall& call,
+        const devils_crush::native_runtime::BallState ball) noexcept
+    {
+        if (!active_collision_loop) {
+            return;
+        }
+        auto& loop = *active_collision_loop;
+        if (!loop.pending_position_entry
+            || *loop.pending_position_entry != call.entry.absolute_master_cycle) {
+            return;
+        }
+        loop.pending_position_entry.reset();
+        const devils_crush::native_runtime::BallMotionIncrement increment{
+            .horizontal = loop.plan.velocity_x_per_step,
+            .vertical = loop.plan.velocity_y_per_step,
+        };
+        const auto expected = devils_crush::native_runtime::advance_ball_motion_substep(
+            loop.expected_ball, increment);
+        if (expected.state != ball) {
+            loop.diverged_from_clear_path = true;
+            return;
+        }
+        loop.expected_ball = expected.state;
+        ++loop.completed_steps;
+    }
+
+    void observe_collision_loop_damping_entry(
+        const RoutineEntry& entry,
+        const devils_crush::native_runtime::BallState ball,
+        const devils_crush::native_runtime::BallMotionTuning& tuning) noexcept
+    {
+        const bool completed_clear_path = active_collision_loop
+            && !active_collision_loop->diverged_from_clear_path
+            && active_collision_loop->completed_steps
+                == active_collision_loop->plan.count
+            && ball == active_collision_loop->expected_ball;
+        finish_collision_sweep(
+            completed_clear_path ? CollisionSweepExit::next_substep
+                                 : CollisionSweepExit::damping);
+        if (!active_collision_loop) {
+            return;
+        }
+        auto& loop = *active_collision_loop;
+        if (loop.diverged_from_clear_path || loop.completed_steps != loop.plan.count
+            || ball != loop.expected_ball) {
+            ++collision_or_control_routed_loops;
+            active_collision_loop.reset();
+            return;
+        }
+        loop.pending_damping_entry = entry.absolute_master_cycle;
+        loop.pending_damping_tuning = tuning;
+    }
+
+    void observe_collision_loop_damping_completion(
+        const RoutineCall& call,
+        const devils_crush::native_runtime::BallState ball) noexcept
+    {
+        if (!active_collision_loop) {
+            return;
+        }
+        const auto& loop = *active_collision_loop;
+        if (!loop.pending_damping_entry || !loop.pending_damping_tuning
+            || *loop.pending_damping_entry != call.entry.absolute_master_cycle) {
+            return;
+        }
+        const auto expected = devils_crush::native_runtime::apply_ball_drag_and_gravity(
+            loop.expected_ball, *loop.pending_damping_tuning);
+        if (expected && expected->state == ball) {
+            ++composed_clear_collision_loops;
+        } else {
+            ++unexpected_composed_clear_loop_results;
+        }
+        active_collision_loop.reset();
+    }
+
+    void report_collision_loop_shadow() const
+    {
+        if (collision_loop_seeds == 0U) {
+            return;
+        }
+        std::cout << "; collision-loop shadow: "
+                  << composed_clear_collision_loops << "/"
+                  << collision_loop_seeds
+                  << " complete clear epoch(s) composed";
+        if (collision_or_control_routed_loops != 0U) {
+            std::cout << ", " << collision_or_control_routed_loops
+                      << " collision/control-routed";
+        }
+        if (collision_loop_rearmed_before_completion != 0U) {
+            std::cout << ", " << collision_loop_rearmed_before_completion
+                      << " rearmed before completion";
+        }
+        if (unexpected_composed_clear_loop_results != 0U) {
+            std::cout << ", " << unexpected_composed_clear_loop_results
+                      << " unexpected clear result(s)";
+        }
+        if (collision_sweep_entries != 0U) {
+            std::cout << "; collision-sweep shadow: "
+                      << clear_collision_sweeps
+                      << " clear sweep(s), "
+                      << actor_contact_sweeps_rearmed
+                      << " actor-contact rearm(s), "
+                      << playfield_contact_sweeps_rearmed
+                      << " playfield-probed rearm(s), "
+                      << actor_contact_sweeps_to_damping
+                      << " actor-contact damping path(s), "
+                          << playfield_contact_sweeps_to_damping
+                          << " playfield-probed damping path(s)";
+            if (normal_actor_collision_scans != 0U
+                || unavailable_normal_actor_collision_scans != 0U) {
+                std::cout << "; normal actor-collision shadow: "
+                          << matched_normal_actor_collision_boundaries
+                          << " playfield-continuation match(es)";
+                if (mismatched_normal_actor_collision_boundaries != 0U) {
+                    std::cout << ", "
+                              << mismatched_normal_actor_collision_boundaries
+                              << " mismatch(es)";
+                }
+                if (unavailable_normal_actor_collision_scans != 0U) {
+                    std::cout << ", "
+                              << unavailable_normal_actor_collision_scans
+                              << " unavailable scan(s)";
+                }
+                if (unresolved_normal_actor_collision_boundaries != 0U) {
+                    std::cout << ", "
+                              << unresolved_normal_actor_collision_boundaries
+                              << " nested route(s) retained for the "
+                                 "single-slot owner";
+                }
+            }
+            if (signed_playfield_contact_responses != 0U
+                || clear_playfield_contact_responses != 0U
+                || unavailable_playfield_contact_responses != 0U) {
+                std::cout << "; playfield-response shadow: "
+                          << signed_playfield_contact_responses
+                          << " signed CF33 selector(s), "
+                          << clear_playfield_contact_responses
+                          << " clear CF5B selector(s), "
+                          << signed_playfield_contact_rearms
+                          << " signed rearm(s), "
+                          << clear_playfield_contact_rearms
+                          << " clear rearm(s), "
+                          << signed_playfield_contact_damping_paths
+                          << " signed damping path(s), "
+                          << clear_playfield_contact_damping_paths
+                          << " clear damping path(s), "
+                          << signed_playfield_contact_clear_paths
+                          << " signed next-substep path(s), "
+                          << clear_playfield_contact_clear_paths
+                          << " clear next-substep path(s)";
+                if (signed_playfield_contact_marked_retries != 0U
+                    || signed_playfield_contact_unmarked_responses != 0U
+                    || unavailable_playfield_contact_markers != 0U) {
+                    std::cout << ", "
+                              << signed_playfield_contact_marked_retries
+                              << " signed marked CDF8 handoff(s), "
+                              << signed_playfield_contact_unmarked_responses
+                              << " signed unmarked CF3F branch(es)";
+                    if (unavailable_playfield_contact_markers != 0U) {
+                        std::cout << ", "
+                                  << unavailable_playfield_contact_markers
+                                  << " unavailable signed marker(s)";
+                    }
+                }
+                if (playfield_contacts_without_cf33_response != 0U) {
+                    std::cout << ", "
+                              << playfield_contacts_without_cf33_response
+                              << " contact(s) without a CF33 entry";
+                }
+                if (unavailable_playfield_contact_responses != 0U) {
+                    std::cout << ", "
+                              << unavailable_playfield_contact_responses
+                              << " unavailable response input(s)";
+                }
+            }
+        }
+        if (single_slot_actor_collision_probe_entries != 0U) {
+            std::cout << "; single-slot actor-collision shadow: "
+                      << matched_single_slot_actor_collision_contacts << "/"
+                      << single_slot_confirmed_actor_contacts
+                      << " confirmed-contact match(es) from "
+                      << single_slot_actor_collision_scans
+                      << " typed scan(s)";
+            if (mismatched_single_slot_actor_collision_contacts != 0U) {
+                std::cout << ", "
+                          << mismatched_single_slot_actor_collision_contacts
+                          << " mismatch(es)";
+                std::cout << " (vertical="
+                          << single_slot_confirmed_contact_vertical_misses
+                          << ", shape="
+                          << single_slot_confirmed_contact_shape_asset_misses
+                          << ", horizontal="
+                          << single_slot_confirmed_contact_horizontal_world_misses
+                          << ", bounds="
+                          << single_slot_confirmed_contact_bounds_misses
+                          << ", mask="
+                          << single_slot_confirmed_contact_mask_asset_misses
+                          << ", empty="
+                          << single_slot_confirmed_contact_empty_mask_misses
+                          << ", unavailable="
+                          << unavailable_single_slot_confirmed_contact_scans
+                          << ')';
+            }
+            if (unavailable_single_slot_actor_collision_scans != 0U) {
+                std::cout << ", "
+                          << unavailable_single_slot_actor_collision_scans
+                          << " unavailable scan(s)";
+            }
+            if (single_slot_actor_collision_handlers[0U].matching_contacts
+                    + single_slot_actor_collision_handlers[0U].mismatched_contacts
+                != 0U) {
+                std::cout << "; single-slot target handler(s)";
+                for (const auto& handler : single_slot_actor_collision_handlers) {
+                    if (handler.matching_contacts + handler.mismatched_contacts
+                        == 0U) {
+                        continue;
+                    }
+                    std::cout << ' ' << std::uppercase << std::hex
+                              << std::setw(4) << std::setfill('0')
+                              << handler.handler_address << std::dec << '='
+                              << handler.matching_contacts << '/'
+                              << handler.mismatched_contacts;
+                }
+                if (unclassified_single_slot_actor_collision_contacts != 0U) {
+                    std::cout << " other="
+                              << unclassified_single_slot_actor_collision_contacts;
+                }
+            }
+            if (single_slot_actor_collision_mask_mismatches[0U].contacts != 0U) {
+                std::cout << "; single-slot empty-mask evidence";
+                for (const auto& evidence : single_slot_actor_collision_mask_mismatches) {
+                    if (evidence.contacts == 0U) {
+                        continue;
+                    }
+                    std::cout << " " << std::uppercase << std::hex
+                              << std::setw(4) << std::setfill('0')
+                              << evidence.handler_address << ":slot="
+                              << std::setw(2)
+                              << static_cast<unsigned>(evidence.slot)
+                              << ",phase=" << std::setw(2)
+                              << static_cast<unsigned>(evidence.phase)
+                              << ",probe=" << std::setw(2)
+                              << static_cast<unsigned>(evidence.probe_horizontal)
+                              << ':' << std::setw(4) << evidence.probe_vertical
+                              << ",delta=" << std::setw(2)
+                              << static_cast<unsigned>(evidence.relative_horizontal)
+                              << ':' << std::setw(4) << evidence.relative_vertical
+                              << ",mask=" << std::setw(2)
+                              << static_cast<unsigned>(evidence.mask_index)
+                              << ':' << std::setw(2)
+                              << static_cast<unsigned>(evidence.selected_row)
+                              << "/" << std::setw(2)
+                              << static_cast<unsigned>(evidence.column_bit)
+                              << std::dec << "x" << evidence.contacts;
+                }
+                if (unclassified_single_slot_actor_collision_mask_mismatches != 0U) {
+                    std::cout << " other="
+                              << unclassified_single_slot_actor_collision_mask_mismatches;
+                }
+            }
+            if (single_slot_collision_mask_stage_entries != 0U
+                || unavailable_single_slot_collision_mask_stages != 0U) {
+                std::cout << "; single-slot CC98 stage shadow: "
+                          << single_slot_collision_mask_stage_entries
+                          << " sampled (index="
+                          << matched_single_slot_collision_mask_stage_indices
+                          << ", cell="
+                          << matched_single_slot_collision_mask_stage_cells
+                          << ", lookup="
+                          << matched_single_slot_collision_mask_stage_lookups
+                          << ", decision="
+                          << matched_single_slot_collision_mask_stage_decisions
+                          << ')';
+                if (unavailable_single_slot_collision_mask_stages != 0U) {
+                    std::cout << ", "
+                              << unavailable_single_slot_collision_mask_stages
+                              << " unavailable";
+                }
+            }
+        }
+    }
+
+    void report_motion_routine_shadow() const
+    {
+        if (position_integration_predictions == 0U
+            && motion_damping_predictions == 0U
+            && rejected_position_integration_predictions == 0U
+            && rejected_motion_damping_predictions == 0U) {
+            return;
+        }
+        std::cout << "; motion-routine shadow: F1B4 "
+                  << position_integration_matches << "/"
+                  << position_integration_predictions << " match(es), DD09 "
+                  << motion_damping_matches << "/"
+                  << motion_damping_predictions << " match(es)";
+        if (position_integration_mismatches != 0U) {
+            std::cout << ", " << position_integration_mismatches
+                      << " F1B4 mismatch(es)";
+        }
+        if (motion_damping_mismatches != 0U) {
+            std::cout << ", " << motion_damping_mismatches
+                      << " DD09 mismatch(es)";
+        }
+        if (rejected_position_integration_predictions != 0U) {
+            std::cout << ", " << rejected_position_integration_predictions
+                      << " rejected F1B4 prediction(s)";
+        }
+        if (rejected_motion_damping_predictions != 0U) {
+            std::cout << ", " << rejected_motion_damping_predictions
+                      << " rejected DD09 prediction(s)";
+        }
+        if (unavailable_motion_routine_seeds != 0U
+            || unavailable_motion_routine_outputs != 0U
+            || unmatched_motion_routine_completions != 0U
+            || dropped_motion_routine_seeds != 0U
+            || motion_routine_capture_failures != 0U) {
+            std::cout << " (";
+            bool separated = false;
+            const auto append = [&separated](
+                                    const std::uint64_t count,
+                                    const std::string_view label) {
+                if (count == 0U) {
+                    return;
+                }
+                if (separated) {
+                    std::cout << ", ";
+                }
+                std::cout << count << ' ' << label;
+                separated = true;
+            };
+            append(unavailable_motion_routine_seeds, "unavailable seed(s)");
+            append(unavailable_motion_routine_outputs, "unavailable output(s)");
+            append(unmatched_motion_routine_completions, "unmatched completion(s)");
+            append(dropped_motion_routine_seeds, "dropped seed(s)");
+            append(motion_routine_capture_failures, "capture failure(s)");
+            std::cout << ')';
+        }
+    }
+
+    static constexpr std::size_t kMaximumMotionRoutineSeeds = 16U;
+    std::vector<MotionRoutineSeed> motion_routine_seeds;
+    std::uint64_t unavailable_motion_routine_seeds = 0U;
+    std::uint64_t unavailable_motion_routine_outputs = 0U;
+    std::uint64_t unmatched_motion_routine_completions = 0U;
+    std::uint64_t dropped_motion_routine_seeds = 0U;
+    std::uint64_t motion_routine_capture_failures = 0U;
+    std::uint64_t position_integration_predictions = 0U;
+    std::uint64_t position_integration_matches = 0U;
+    std::uint64_t position_integration_mismatches = 0U;
+    std::uint64_t rejected_position_integration_predictions = 0U;
+    std::uint64_t motion_damping_predictions = 0U;
+    std::uint64_t motion_damping_matches = 0U;
+    std::uint64_t motion_damping_mismatches = 0U;
+    std::uint64_t rejected_motion_damping_predictions = 0U;
+    std::optional<CollisionLoopSeed> active_collision_loop;
+    std::uint64_t collision_loop_seeds = 0U;
+    std::uint64_t composed_clear_collision_loops = 0U;
+    std::uint64_t collision_or_control_routed_loops = 0U;
+    std::uint64_t collision_loop_rearmed_before_completion = 0U;
+    std::uint64_t unexpected_composed_clear_loop_results = 0U;
+    std::optional<CollisionSweepSeed> active_collision_sweep;
+    std::uint64_t collision_sweep_entries = 0U;
+    std::uint64_t clear_collision_sweeps = 0U;
+    std::uint64_t actor_contact_sweeps_rearmed = 0U;
+    std::uint64_t playfield_contact_sweeps_rearmed = 0U;
+    std::uint64_t actor_contact_sweeps_to_damping = 0U;
+    std::uint64_t playfield_contact_sweeps_to_damping = 0U;
+    std::uint64_t normal_actor_collision_scans = 0U;
+    std::uint64_t unavailable_normal_actor_collision_scans = 0U;
+    std::uint64_t matched_normal_actor_collision_boundaries = 0U;
+    std::uint64_t mismatched_normal_actor_collision_boundaries = 0U;
+    std::uint64_t unresolved_normal_actor_collision_boundaries = 0U;
+    std::optional<SingleSlotActorCollisionProbeSeed>
+        active_single_slot_actor_collision_probe;
+    std::uint64_t single_slot_actor_collision_probe_entries = 0U;
+    std::uint64_t single_slot_actor_collision_scans = 0U;
+    std::uint64_t unavailable_single_slot_actor_collision_scans = 0U;
+    std::uint64_t single_slot_actor_collision_contact_returns = 0U;
+    std::uint64_t single_slot_confirmed_actor_contacts = 0U;
+    std::uint64_t matched_single_slot_actor_collision_contacts = 0U;
+    std::uint64_t mismatched_single_slot_actor_collision_contacts = 0U;
+    std::uint64_t single_slot_confirmed_contact_vertical_misses = 0U;
+    std::uint64_t single_slot_confirmed_contact_shape_asset_misses = 0U;
+    std::uint64_t single_slot_confirmed_contact_horizontal_world_misses = 0U;
+    std::uint64_t single_slot_confirmed_contact_bounds_misses = 0U;
+    std::uint64_t single_slot_confirmed_contact_mask_asset_misses = 0U;
+    std::uint64_t single_slot_confirmed_contact_empty_mask_misses = 0U;
+    std::uint64_t unavailable_single_slot_confirmed_contact_scans = 0U;
+    std::array<SingleSlotActorCollisionHandlerEvidence, 8U>
+        single_slot_actor_collision_handlers{};
+    std::uint64_t unclassified_single_slot_actor_collision_contacts = 0U;
+    std::array<SingleSlotActorCollisionMaskMismatchEvidence, 8U>
+        single_slot_actor_collision_mask_mismatches{};
+    std::uint64_t unclassified_single_slot_actor_collision_mask_mismatches = 0U;
+    std::uint64_t single_slot_collision_mask_stage_entries = 0U;
+    std::uint64_t unavailable_single_slot_collision_mask_stages = 0U;
+    std::uint64_t matched_single_slot_collision_mask_stage_indices = 0U;
+    std::uint64_t matched_single_slot_collision_mask_stage_cells = 0U;
+    std::uint64_t matched_single_slot_collision_mask_stage_lookups = 0U;
+    std::uint64_t matched_single_slot_collision_mask_stage_decisions = 0U;
+    std::uint64_t unavailable_playfield_contact_responses = 0U;
+    std::uint64_t unavailable_playfield_contact_markers = 0U;
+    std::uint64_t signed_playfield_contact_responses = 0U;
+    std::uint64_t signed_playfield_contact_marked_retries = 0U;
+    std::uint64_t signed_playfield_contact_unmarked_responses = 0U;
+    std::uint64_t clear_playfield_contact_responses = 0U;
+    std::uint64_t playfield_contacts_without_cf33_response = 0U;
+    std::uint64_t signed_playfield_contact_rearms = 0U;
+    std::uint64_t clear_playfield_contact_rearms = 0U;
+    std::uint64_t signed_playfield_contact_damping_paths = 0U;
+    std::uint64_t clear_playfield_contact_damping_paths = 0U;
+    std::uint64_t signed_playfield_contact_clear_paths = 0U;
+    std::uint64_t clear_playfield_contact_clear_paths = 0U;
+    std::optional<MarkedPlayfieldRetryRestoreSeed>
+        pending_marked_playfield_retry_restore;
+    std::uint64_t marked_playfield_retry_restore_candidates = 0U;
+    std::uint64_t observed_marked_playfield_retry_restores = 0U;
+    std::uint64_t verified_marked_playfield_retry_restores = 0U;
+    std::uint64_t mismatched_marked_playfield_retry_restores = 0U;
+    std::uint64_t unavailable_marked_playfield_retry_restore_caches = 0U;
+    std::uint64_t superseded_marked_playfield_retry_restores = 0U;
 };
 
 [[nodiscard]] std::optional<RoutineKey> parse_routine_key(
@@ -1192,6 +3543,13 @@ parse_logical_address_range(const std::string_view text)
                 return options;
             }
             options.routine_call_trace_path = argv[++index];
+        } else if (argument == "--playfield-collision-sources") {
+            if (index + 1 >= argc) {
+                options.error =
+                    "--playfield-collision-sources requires a path.";
+                return options;
+            }
+            options.playfield_collision_sources_path = argv[++index];
         } else if (argument == "--routine-replay") {
             if (index + 1 >= argc) {
                 options.error =
@@ -1431,6 +3789,8 @@ parse_logical_address_range(const std::string_view text)
             options.cabinet_state_dump_directory = argv[++index];
         } else if (argument == "--emulate-only") {
             options.emulate_only = true;
+        } else if (argument == "--native-gameplay-bootstrap-shadow") {
+            options.native_gameplay_bootstrap_shadow = true;
         } else if (argument == "--registry-slice") {
             if (index + 1 >= argc) {
                 options.error =
@@ -1714,6 +4074,10 @@ parse_logical_address_range(const std::string_view text)
     } else if (options.emulate_only && !host_selected) {
         options.error =
             "--emulate-only is available only for the interactive host.";
+    } else if (options.native_gameplay_bootstrap_shadow && !host_selected) {
+        options.error =
+            "--native-gameplay-bootstrap-shadow is available only for the "
+            "interactive host.";
     } else if (options.emulate_only && options.replace_registry) {
         options.error =
             "--emulate-only and --replace-registry are mutually exclusive.";
@@ -5108,6 +7472,20 @@ parse_logical_address_range(const std::string_view text)
         options.error =
             "--observe-hook requires --routine-trace or "
             "--routine-call-trace.";
+    } else if (!options.playfield_collision_sources_path.empty()
+               && !recording_selected) {
+        options.error =
+            "--playfield-collision-sources requires a recording operation.";
+    } else if (!options.playfield_collision_sources_path.empty()
+               && std::find(
+                      options.observe_hooks.begin(),
+                      options.observe_hooks.end(),
+                      RoutineKey{
+                          .physical_bank = 0x01U,
+                          .logical_pc = 0xCD74U,
+                      }) == options.observe_hooks.end()) {
+        options.error =
+            "--playfield-collision-sources requires --observe-hook 01:CD74.";
     } else if (!options.routine_replays.empty()
                && (!recording_selected
                    || options.routine_call_trace_path.empty())) {
@@ -5178,6 +7556,7 @@ void print_usage()
            "      [--replace-hook <bank:pc@ordinal|bank:pc@all>]...\n"
            "      [--routine-trace <entries.csv>]\n"
            "      [--routine-call-trace <calls.csv>]\n"
+           "      [--playfield-collision-sources <sources.csv>]\n"
            "      [--routine-replay <bank:pc@ordinal>]...\n"
            "      [--routine-replay-corpus-out <directory>]\n"
            "      [--work-ram-patch <frame:address:value>]...\n"
@@ -5476,6 +7855,12 @@ void print_usage()
         << "  The interactive host deploys every admitted native routine by\n"
            "  default and reports its share of the session on exit. Pass\n"
            "  --emulate-only to run the untouched emulated original instead.\n"
+        << "  --native-gameplay-bootstrap-shadow samples each completed live\n"
+           "  frame into the human-readable gameplay runtime, verifies its\n"
+           "  bootstrap seed, captures live DD09 tuning/CD74 map assets, and\n"
+           "  compares exact DC95/F1B4/DD09 clear-motion epochs.\n"
+           "  It is read-only: the emulator still owns every playable frame\n"
+           "  and no gameplay behavior changes.\n"
            "  The sound generator is a native device model in every mode;\n"
            "  --emulated-psg hands it back to the emulator, which is what a\n"
            "  difference in the audio hash is measured against, and\n"
@@ -10018,6 +12403,69 @@ bool write_pcm16_wave_header(
     return true;
 }
 
+[[nodiscard]] bool write_playfield_collision_sources(
+    const std::filesystem::path& path,
+    const std::span<const devils_crush::emulation::PlayfieldCollisionSource>
+        sources,
+    const std::string_view core_revision)
+{
+    if (sources.empty()) {
+        return false;
+    }
+
+    std::error_code error;
+    const auto directory = path.parent_path();
+    if (!directory.empty()) {
+        std::filesystem::create_directories(directory, error);
+    }
+    if (error) {
+        std::cerr << "Could not create playfield-collision source directory: "
+                  << error.message() << '\n';
+        return false;
+    }
+
+    auto temporary_path = path;
+    temporary_path += ".tmp";
+    std::ofstream output(
+        temporary_path,
+        std::ios::binary | std::ios::trunc);
+    if (!output) {
+        std::cerr << "Could not create playfield-collision source capture: "
+                  << temporary_path.string() << '\n';
+        return false;
+    }
+
+    output << "# format=devils-crush-playfield-collision-source-v1\n"
+           << "# rom_sha256=" << devils_crush::rom::kSupportedSha256 << '\n'
+           << "# core_revision=" << core_revision << '\n'
+           << "# source_count=" << sources.size() << '\n'
+           << "sequence,tile_ids,collision_attributes,masks,"
+              "mpr0,mpr1,mpr2,mpr3,mpr4,mpr5,mpr6,mpr7\n";
+    std::size_t sequence = 0U;
+    for (const auto& source : sources) {
+        output << ++sequence << ',' << std::uppercase << std::hex
+               << std::setfill('0') << std::setw(4) << source.tables.tile_ids
+               << ',' << std::setw(4) << source.tables.collision_attributes
+               << ',' << std::setw(4) << source.tables.masks;
+        for (const auto mpr : source.mpr) {
+            output << ',' << std::setw(2) << static_cast<unsigned>(mpr);
+        }
+        output << std::dec << '\n';
+    }
+    output.close();
+    if (!output) {
+        std::cerr << "Could not finalize playfield-collision source capture.\n";
+        return false;
+    }
+    if (!commit_artifact(
+            temporary_path, path, "playfield-collision source capture")) {
+        return false;
+    }
+    std::cout << "Playfield-collision sources complete: " << sources.size()
+              << " distinct source(s)\nOutput: " << path.string() << '\n';
+    return true;
+}
+
 [[nodiscard]] bool write_routine_call_trace(
     const std::filesystem::path& path,
     const std::span<const RoutineKey> routines,
@@ -11316,12 +13764,17 @@ constexpr RoutineKey kShooterGateOwner{
     .logical_pc = 0xC4DEU,
 };
 
+using NativeRegistryEntryObserver = std::function<void(
+    const RoutineEntry&,
+    std::span<const std::byte>)>;
+
 [[nodiscard]] bool install_native_registry(
     PceRuntime& runtime,
     const CommandLine& options,
     const std::vector<std::byte>& replacement_rom,
     const std::span<const RoutineKey> claimed_routines,
-    NativeRegistryDeployment& deployment)
+    NativeRegistryDeployment& deployment,
+    const NativeRegistryEntryObserver& entry_observer = {})
 {
     const auto admitted = devils_crush::app::admitted_native_routines();
     deployment.rows.clear();
@@ -11371,12 +13824,15 @@ constexpr RoutineKey kShooterGateOwner{
                 .routine = deployment.rows[index].routine,
                 .mode = HookMode::replace,
                 .replacement_callback =
-                    [&deployment, &replacement_rom, index](
+                    [&deployment, &replacement_rom, entry_observer, index](
                         const RoutineEntry& entry,
                         const std::span<const std::byte> work_ram) {
                         auto& row = deployment.rows[index];
                         ++row.entries;
                         deployment.span.observe(entry.absolute_master_cycle);
+                        if (entry_observer) {
+                            entry_observer(entry, work_ram);
+                        }
                         auto result = replace_native_gameplay_routine(
                             entry,
                             work_ram,
@@ -13505,7 +15961,8 @@ int run_windows_host(
     const CommandLine* native_registry = nullptr,
     const CabinetLayers layers = CabinetLayers::all,
     const bool overlay_stats = false,
-    const std::filesystem::path& capture_session_directory = {})
+    const std::filesystem::path& capture_session_directory = {},
+    const bool native_gameplay_bootstrap_shadow = false)
 {
     // Joystick as well as gamepad: the plunger is an anonymous HID axis that
     // SDL's gamepad database has no mapping for, so it is only visible through
@@ -13722,6 +16179,7 @@ int run_windows_host(
     int playfield_dump_remaining = 0;
     const bool capture_session = !capture_session_directory.empty();
     std::vector<InteractiveCaptureFrame> captured_inputs;
+    NativeGameplayBootstrapShadow gameplay_bootstrap_shadow;
 
     // The registry is installed last, once every fallible setup step has
     // succeeded, so no early return can leave a hook pointing at a dead
@@ -13729,6 +16187,14 @@ int run_windows_host(
     const auto replacement_rom = native_registry != nullptr
         ? read_rom_bytes(rom_path)
         : std::optional<std::vector<std::byte>>{std::vector<std::byte>{}};
+    const auto gameplay_shadow_rom = native_gameplay_bootstrap_shadow
+        ? read_rom_bytes(rom_path)
+        : std::optional<std::vector<std::byte>>{};
+    if (native_gameplay_bootstrap_shadow && !gameplay_shadow_rom) {
+        std::cerr << "Could not read ROM bytes for native gameplay shadow.\n";
+        running = false;
+        host_ok = false;
+    }
     NativeRegistryDeployment registry_deployment;
     // The preamble is claimed back so the shooter's input gate has an
     // interpreted instruction to hang off; see `kShooterGateOwner`.
@@ -13741,7 +16207,20 @@ int run_windows_host(
                 *native_registry,
                 *replacement_rom,
                 kHostClaimedRoutines,
-                registry_deployment)) {
+                registry_deployment,
+                native_gameplay_bootstrap_shadow
+                    ? NativeRegistryEntryObserver{
+                          [&gameplay_bootstrap_shadow,
+                           &gameplay_shadow_rom](
+                              const RoutineEntry& entry,
+                              const std::span<const std::byte> work_ram) {
+                              gameplay_bootstrap_shadow
+                                  .observe_playfield_collision_source(
+                                      entry, work_ram, *gameplay_shadow_rom);
+                              gameplay_bootstrap_shadow.observe_motion_entry(
+                                  entry, work_ram, *gameplay_shadow_rom);
+                          }}
+                    : NativeRegistryEntryObserver{})) {
             running = false;
             host_ok = false;
         } else {
@@ -13771,6 +16250,141 @@ int run_windows_host(
                           << " inside it, and a native transcript never "
                              "presents its interior to the interpreter.\n";
             }
+        }
+    }
+    if (host_ok && native_gameplay_bootstrap_shadow
+        && native_registry == nullptr
+        && !runtime.install_execution_hook({
+            .routine = {
+                .physical_bank = 0x01U,
+                .logical_pc = 0xCD74U,
+            },
+            .mode = HookMode::observe,
+            .callback = [&runtime,
+                         &gameplay_bootstrap_shadow,
+                         &gameplay_shadow_rom](const RoutineEntry& entry) {
+                gameplay_bootstrap_shadow.observe_playfield_collision_source(
+                    entry,
+                    runtime.export_work_ram(),
+                    *gameplay_shadow_rom);
+            },
+        })) {
+        std::cerr << "Could not observe the playfield collision probe for "
+                     "native gameplay shadow.\n";
+        running = false;
+        host_ok = false;
+    }
+    if (host_ok && native_gameplay_bootstrap_shadow
+        && native_registry == nullptr) {
+        constexpr std::array<RoutineKey, 12> kGameplayShadowEntries{{
+            {
+                .physical_bank = 0x01U,
+                .logical_pc = 0xCB2AU,
+            },
+            {
+                .physical_bank = 0x01U,
+                .logical_pc = 0xDC95U,
+            },
+            {
+                .physical_bank = 0x00U,
+                .logical_pc = 0xF1B4U,
+            },
+            {
+                .physical_bank = 0x01U,
+                .logical_pc = 0xDD09U,
+            },
+            {
+                .physical_bank = 0x01U,
+                .logical_pc = 0xCF33U,
+            },
+            {
+                .physical_bank = 0x01U,
+                .logical_pc = 0xCDF8U,
+            },
+            {
+                .physical_bank = 0x01U,
+                .logical_pc = 0xC52CU,
+            },
+            {
+                .physical_bank = 0x01U,
+                .logical_pc = 0xCBABU,
+            },
+            {
+                .physical_bank = 0x01U,
+                .logical_pc = 0xCC1AU,
+            },
+            {
+                .physical_bank = 0x01U,
+                .logical_pc = 0xCC98U,
+            },
+            {
+                .physical_bank = 0x01U,
+                .logical_pc = 0xCBC2U,
+            },
+            {
+                .physical_bank = 0x01U,
+                .logical_pc = 0xCBCFU,
+            },
+        }};
+        for (const auto routine : kGameplayShadowEntries) {
+            if (runtime.install_execution_hook({
+                    .routine = routine,
+                    .mode = HookMode::observe,
+                    .callback = [&runtime,
+                                 &gameplay_bootstrap_shadow,
+                                 &gameplay_shadow_rom](
+                                    const RoutineEntry& entry) {
+                        gameplay_bootstrap_shadow.observe_motion_entry(
+                            entry,
+                            runtime.export_work_ram(),
+                            *gameplay_shadow_rom);
+                    },
+                })) {
+                continue;
+            }
+            std::cerr << "Could not observe " << format_routine_key(routine)
+                      << " for native gameplay shadow.\n";
+            running = false;
+            host_ok = false;
+            break;
+        }
+    }
+    if (host_ok && native_gameplay_bootstrap_shadow) {
+        constexpr std::array<RoutineKey, 4> kGameplayRoutineCompletions{{
+            {
+                .physical_bank = 0x00U,
+                .logical_pc = 0xF241U,
+            },
+            {
+                .physical_bank = 0x00U,
+                .logical_pc = 0xF1B4U,
+            },
+            {
+                .physical_bank = 0x01U,
+                .logical_pc = 0xDD09U,
+            },
+            {
+                .physical_bank = 0x01U,
+                .logical_pc = 0xCD74U,
+            },
+        }};
+        for (const auto routine : kGameplayRoutineCompletions) {
+            if (runtime.install_routine_call_observer({
+                    .routine = routine,
+                    .callback = [&runtime, &gameplay_bootstrap_shadow](
+                                    const RoutineCall& call) {
+                        gameplay_bootstrap_shadow.observe_gameplay_completion(
+                            call, runtime.export_work_ram());
+                    },
+                })) {
+                continue;
+            }
+            std::cerr << "Could not observe completion of "
+                      << format_routine_key(routine)
+                      << " for native gameplay shadow.\n";
+            running = false;
+            host_ok = false;
+            break;
         }
     }
     // After the registry, so a deployed replacement owning either address
@@ -14066,6 +16680,10 @@ int run_windows_host(
                 });
             }
             const auto frame = runtime.run_frame(input);
+            if (native_gameplay_bootstrap_shadow) {
+                gameplay_bootstrap_shadow.observe(
+                    runtime.export_work_ram(), input);
+            }
             if (capture_session) {
                 const auto work_ram = runtime.export_work_ram();
                 if (work_ram.size() != runtime.work_ram_size()) {
@@ -14302,6 +16920,9 @@ int run_windows_host(
     SDL_Quit();
     if (overlay_stats) {
         seeded_actors.report();
+    }
+    if (native_gameplay_bootstrap_shadow) {
+        gameplay_bootstrap_shadow.report();
     }
     if (native_registry != nullptr) {
         print_native_registry_summary(
@@ -18158,6 +20779,7 @@ int main(const int argc, char* argv[])
                     ? std::span<const InputFrame>(session_replay->inputs)
                     : std::span<const InputFrame>{},
                 .expected_work_ram_sha256s = session_replay
+                        && options.playfield_collision_sources_path.empty()
                     ? std::span<const std::string>(
                           session_replay->work_ram_sha256s)
                     : std::span<const std::string>{},
@@ -18232,6 +20854,11 @@ int main(const int argc, char* argv[])
                 : options.record_gameplay
                     ? kGameplayRecordingPlan
                     : kCanonicalRecordingPlan;
+            if (!options.playfield_collision_sources_path.empty()) {
+                std::cout
+                    << "Playfield-collision source capture is diagnostic; "
+                       "stored replay hashes are not asserted.\n";
+            }
             const auto recording_path = !options.replay_session_input_path.empty()
                 ? options.replay_session_input_path.parent_path()
                     / "replay.csv"
@@ -18310,6 +20937,8 @@ int main(const int argc, char* argv[])
             std::vector<RoutineCall> observed_calls;
             std::vector<ObservedMemoryWrite> observed_work_ram_writes;
             std::vector<ObservedBusWrite> observed_bus_writes;
+            std::vector<devils_crush::emulation::PlayfieldCollisionSource>
+                playfield_collision_sources;
             std::vector<RoutineReplayCapture> routine_replays;
             routine_replays.reserve(options.routine_replays.size());
             for (const auto request : options.routine_replays) {
@@ -18361,6 +20990,7 @@ int main(const int argc, char* argv[])
                     .callback = [&runtime,
                                  &observed_entries,
                                  &routine_replays,
+                                 &playfield_collision_sources,
                                  &active_replay,
                                  &suppress_recording_observers](
                                     const RoutineEntry& entry) {
@@ -18379,6 +21009,25 @@ int main(const int argc, char* argv[])
                                 replay.checkpoint = runtime->serialize();
                                 replay.pre_call_work_ram =
                                     runtime->export_work_ram();
+                            }
+                        }
+                        if (entry.routine
+                                == RoutineKey{
+                                    .physical_bank = 0x01U,
+                                    .logical_pc = 0xCD74U,
+                                }) {
+                            const auto source =
+                                devils_crush::emulation::
+                                    capture_playfield_collision_source(
+                                        entry.registers,
+                                        runtime->export_work_ram());
+                            if (source
+                                && std::find(
+                                       playfield_collision_sources.begin(),
+                                       playfield_collision_sources.end(),
+                                       *source)
+                                    == playfield_collision_sources.end()) {
+                                playfield_collision_sources.push_back(*source);
                             }
                         }
                         observed_entries.push_back(entry);
@@ -18767,6 +21416,13 @@ int main(const int argc, char* argv[])
                     runtime_info.upstream_revision)) {
                 return EXIT_FAILURE;
             }
+            if (!options.playfield_collision_sources_path.empty()
+                && !write_playfield_collision_sources(
+                    options.playfield_collision_sources_path,
+                    playfield_collision_sources,
+                    runtime_info.upstream_revision)) {
+                return EXIT_FAILURE;
+            }
             if (!options.work_ram_write_trace_path.empty()
                 && !write_work_ram_write_trace(
                     options.work_ram_write_trace_path,
@@ -18861,7 +21517,8 @@ int main(const int argc, char* argv[])
             host_registry,
             options.cabinet_layers,
             options.cabinet_overlay_stats,
-            options.capture_session_directory);
+            options.capture_session_directory,
+            options.native_gameplay_bootstrap_shadow);
         const bool save_succeeded =
             save_backup_ram(*runtime, kBackupRamPath);
         return host_result == EXIT_SUCCESS && save_succeeded

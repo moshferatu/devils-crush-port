@@ -154,8 +154,9 @@ Assert-RomBytes $rom 0x005A74 @(
 ) "Dragon's-Head terminal opening"
 
 # The Giant Skeleton chooses one of five appearance values from the shared
-# RNG. Its repeatable hit clears the collision latch, awards 40 stored units,
-# emits the same command $2E, and leaves the actor alive.
+# ball-direction classifier. Its repeatable hit clears the collision latch,
+# awards 40 stored units, emits the same command $2E, and leaves the actor
+# alive.
 Assert-RomBytes $rom 0x005EE4 @(
     0xA9, 0x03, 0x9D, 0x80, 0x39, 0x20, 0x18, 0xC0
 ) "Giant-Skeleton initializer"
@@ -247,7 +248,7 @@ Assert-Histogram $skeletonAnimations "value" @{
     "04" = 140
     "05" = 184
     "06" = 335
-} "Giant-Skeleton RNG appearance"
+} "Giant-Skeleton direction appearance"
 
 $dragonHitMarkers = @(
     $writes |
