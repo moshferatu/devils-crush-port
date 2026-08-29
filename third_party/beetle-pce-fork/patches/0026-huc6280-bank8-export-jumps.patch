@@ -1,0 +1,13 @@
+diff --git a/mednafen/pce/huc6280.cpp b/mednafen/pce/huc6280.cpp
+--- a/mednafen/pce/huc6280.cpp
++++ b/mednafen/pce/huc6280.cpp
+@@ -1263,7 +1263,8 @@ NO_INLINE void HuC6280::RunSub(void)
+ 					&& replacement.write_count == 0
+ 					&& replacement.checkpoint_count == 0
+ 					&& replacement.body_master_cycles == 12
+-					&& (PC == 0x4003 || PC == 0x40FF) && lastop == 0x4C;
++					&& (PC == 0x4003 || PC == 0x40FF || PC == 0x4000
++						|| PC == 0x4009 || PC == 0x4015) && lastop == 0x4C;
+ 			}
+ 			if(dc_beetle_native_flipper_owner_instruction)
+ 			{

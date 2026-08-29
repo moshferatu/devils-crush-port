@@ -30,12 +30,12 @@ using emulation::RoutineReplacement;
 //            total held little-endian across `$3E00,X`, `$3A00,X` and
 //            `$3980,X`. The top byte saturates: at 4 or more it is zeroed.
 //
-//   01:C969  the head of the range-squared helper, 2,993 calls. Its body never
-//            runs on this route -- the sixteen-bit population counter at
-//            `$2D00`/`$2D01` is zero on all 2,993 entries, so every call is the
-//            three-instruction guard and its `RTS`. The walk transcribes the
-//            guard and hands the taken arm at 01:C972 back to the core rather
-//            than transcribing a path it has never observed.
+//   01:C969  the head of the range-squared helper. Most calls find the
+//            sixteen-bit population counter at `$2D00`/`$2D01` clear and
+//            return through the three-instruction guard. The live nonzero arm
+//            derives two signed position deltas in `$35`-`$38`, primes the
+//            fixed-bank arithmetic inputs, then crosses its first math call on
+//            the original stack frame.
 //
 //   01:DAF8  the direction-octant classifier, 2,139 calls and 1.51M master
 //            cycles. It subtracts actor X's position from actor Y's on both
@@ -109,13 +109,13 @@ constexpr std::uint32_t kBranchAlways = 12U;
 }
 
 // Where each walk stops: the accumulator's `RTS` at 01:C968, the guard's at
-// 01:C971, the classifier's two at 01:DB81 and 01:DB9D, and 01:C972 -- the arm
-// of the guard's `BNE` that this route never takes. Handing that arm back costs
-// nothing and keeps the walk from claiming a path it has never seen.
+// 01:C971, and the classifier's two at 01:DB81 and 01:DB9D. The range helper's
+// live arm crosses into fixed-bank arithmetic rather than inventing an atomic
+// result for it.
 [[nodiscard]] constexpr bool is_stop_instruction(const std::uint16_t logical_pc)
 {
     return logical_pc == 0xC968U || logical_pc == 0xC971U
-        || logical_pc == 0xC972U || logical_pc == 0xDB81U
+        || logical_pc == 0xDB81U
         || logical_pc == 0xDB9DU;
 }
 
@@ -262,6 +262,41 @@ std::optional<RoutineReplacement> replace_actor_geometry_leaf(
             return next;
         };
 
+    // The nonzero range path reaches fixed-bank arithmetic through ordinary
+    // JSRs. Keep each call as a boundary: its two writes must still be visible
+    // as the caller's live frame to the original RTS.
+    std::optional<RoutineKey> crossed;
+    const auto call_fixed_math =
+        [&replacement,
+         &registers,
+         &cycle,
+         &store,
+         &append_checkpoint,
+         &crossed](const std::uint16_t instruction_pc,
+                   const std::uint16_t target_pc) {
+            const auto pushed_return = static_cast<std::uint16_t>(
+                instruction_pc + 2U);
+            store(
+                instruction_pc,
+                static_cast<std::uint16_t>(
+                    0x2100U + registers.stack_pointer),
+                static_cast<std::uint8_t>(pushed_return >> 8U));
+            registers.stack_pointer = static_cast<std::uint8_t>(
+                registers.stack_pointer - 1U);
+            store(
+                instruction_pc,
+                static_cast<std::uint16_t>(
+                    0x2100U + registers.stack_pointer),
+                static_cast<std::uint8_t>(pushed_return));
+            registers.stack_pointer = static_cast<std::uint8_t>(
+                registers.stack_pointer - 1U);
+            append_checkpoint(instruction_pc, target_pc, 21U);
+            crossed = RoutineKey{
+                .physical_bank = 0x00U,
+                .logical_pc = target_pc,
+            };
+        };
+
     const auto load_accumulator = [&registers](const std::uint8_t value) {
         registers.accumulator = value;
         registers.status = set_nz(registers.status, value);
@@ -396,7 +431,7 @@ std::optional<RoutineReplacement> replace_actor_geometry_leaf(
         };
 
     auto pc = entry.routine.logical_pc;
-    while (!is_stop_instruction(pc) && !overflow
+    while (!is_stop_instruction(pc) && !crossed.has_value() && !overflow
         && replacement.checkpoints.size() < 128U) {
         switch (pc) {
         // --- 01:C8F3, the path-length accumulator ------------------------
@@ -703,10 +738,190 @@ std::optional<RoutineReplacement> replace_actor_geometry_leaf(
             append_checkpoint(0xC96CU, 0xC96FU, kAbsolute);
             pc = 0xC96FU;
             break;
-        case 0xC96FU:  // BNE $C972 -- never taken on this route
+        case 0xC96FU:  // BNE $C972
             pc = branch(
                 0xC96FU, 0xC972U, 0xC971U,
                 (registers.status & kZero) == 0U);
+            break;
+        case 0xC972U:  // LDA $55 -- an active countdown returns through C971
+            load_accumulator(read_ram(zero_page(0x55U)));
+            append_checkpoint(0xC972U, 0xC974U, kZeroPage);
+            pc = 0xC974U;
+            break;
+        case 0xC974U:  // BNE $C971
+            pc = branch(
+                0xC974U, 0xC971U, 0xC976U,
+                (registers.status & kZero) == 0U);
+            break;
+        case 0xC976U:  // SEC
+            registers.status = static_cast<std::uint8_t>(
+                registers.status | kCarry);
+            append_checkpoint(0xC976U, 0xC977U, kImplied);
+            pc = 0xC977U;
+            break;
+        case 0xC977U:  // LDA $3180,X
+            load_accumulator(read_ram(slot_x(0x3180U)));
+            append_checkpoint(0xC977U, 0xC97AU, kAbsoluteIndexed);
+            pc = 0xC97AU;
+            break;
+        case 0xC97AU:  // SBC $2CFE
+            subtract_with_carry(read_ram(0x2CFEU));
+            append_checkpoint(0xC97AU, 0xC97DU, kAbsolute);
+            pc = 0xC97DU;
+            break;
+        case 0xC97DU:  // STA $35
+            store(0xC97DU, zero_page(0x35U), registers.accumulator);
+            append_checkpoint(0xC97DU, 0xC97FU, kZeroPage);
+            pc = 0xC97FU;
+            break;
+        case 0xC97FU:  // LDA $3200,X
+            load_accumulator(read_ram(slot_x(0x3200U)));
+            append_checkpoint(0xC97FU, 0xC982U, kAbsoluteIndexed);
+            pc = 0xC982U;
+            break;
+        case 0xC982U:  // SBC #$00
+            subtract_with_carry(0x00U);
+            append_checkpoint(0xC982U, 0xC984U, kImmediate);
+            pc = 0xC984U;
+            break;
+        case 0xC984U:  // STA $36
+            store(0xC984U, zero_page(0x36U), registers.accumulator);
+            append_checkpoint(0xC984U, 0xC986U, kZeroPage);
+            pc = 0xC986U;
+            break;
+        case 0xC986U:  // LDA $3300,X
+            load_accumulator(read_ram(slot_x(0x3300U)));
+            append_checkpoint(0xC986U, 0xC989U, kAbsoluteIndexed);
+            pc = 0xC989U;
+            break;
+        case 0xC989U:  // STA $37
+            store(0xC989U, zero_page(0x37U), registers.accumulator);
+            append_checkpoint(0xC989U, 0xC98BU, kZeroPage);
+            pc = 0xC98BU;
+            break;
+        case 0xC98BU:  // LDA $3380,X
+            load_accumulator(read_ram(slot_x(0x3380U)));
+            append_checkpoint(0xC98BU, 0xC98EU, kAbsoluteIndexed);
+            pc = 0xC98EU;
+            break;
+        case 0xC98EU:  // STA $38
+            store(0xC98EU, zero_page(0x38U), registers.accumulator);
+            append_checkpoint(0xC98EU, 0xC990U, kZeroPage);
+            pc = 0xC990U;
+            break;
+        case 0xC990U:  // BNE $C9DE
+            pc = branch(
+                0xC990U, 0xC9DEU, 0xC992U,
+                (registers.status & kZero) == 0U);
+            break;
+        case 0xC992U:  // SEC
+            registers.status = static_cast<std::uint8_t>(
+                registers.status | kCarry);
+            append_checkpoint(0xC992U, 0xC993U, kImplied);
+            pc = 0xC993U;
+            break;
+        case 0xC993U:  // LDA $37
+            load_accumulator(read_ram(zero_page(0x37U)));
+            append_checkpoint(0xC993U, 0xC995U, kZeroPage);
+            pc = 0xC995U;
+            break;
+        case 0xC995U:  // SBC $2CFF
+            subtract_with_carry(read_ram(0x2CFFU));
+            append_checkpoint(0xC995U, 0xC998U, kAbsolute);
+            pc = 0xC998U;
+            break;
+        case 0xC998U:  // STA $37
+            store(0xC998U, zero_page(0x37U), registers.accumulator);
+            append_checkpoint(0xC998U, 0xC99AU, kZeroPage);
+            pc = 0xC99AU;
+            break;
+        case 0xC99AU:  // LDA $38
+            load_accumulator(read_ram(zero_page(0x38U)));
+            append_checkpoint(0xC99AU, 0xC99CU, kZeroPage);
+            pc = 0xC99CU;
+            break;
+        case 0xC99CU:  // SBC #$00
+            subtract_with_carry(0x00U);
+            append_checkpoint(0xC99CU, 0xC99EU, kImmediate);
+            pc = 0xC99EU;
+            break;
+        case 0xC99EU:  // STA $38
+            store(0xC99EU, zero_page(0x38U), registers.accumulator);
+            append_checkpoint(0xC99EU, 0xC9A0U, kZeroPage);
+            pc = 0xC9A0U;
+            break;
+        case 0xC9A0U:  // LDA $35
+            load_accumulator(read_ram(zero_page(0x35U)));
+            append_checkpoint(0xC9A0U, 0xC9A2U, kZeroPage);
+            pc = 0xC9A2U;
+            break;
+        case 0xC9A2U:  // STA $2F
+            store(0xC9A2U, zero_page(0x2FU), registers.accumulator);
+            append_checkpoint(0xC9A2U, 0xC9A4U, kZeroPage);
+            pc = 0xC9A4U;
+            break;
+        case 0xC9A4U:  // STA $2D
+            store(0xC9A4U, zero_page(0x2DU), registers.accumulator);
+            append_checkpoint(0xC9A4U, 0xC9A6U, kZeroPage);
+            pc = 0xC9A6U;
+            break;
+        case 0xC9A6U:  // LDA $36
+            load_accumulator(read_ram(zero_page(0x36U)));
+            append_checkpoint(0xC9A6U, 0xC9A8U, kZeroPage);
+            pc = 0xC9A8U;
+            break;
+        case 0xC9A8U:  // STA $30
+            store(0xC9A8U, zero_page(0x30U), registers.accumulator);
+            append_checkpoint(0xC9A8U, 0xC9AAU, kZeroPage);
+            pc = 0xC9AAU;
+            break;
+        case 0xC9AAU:  // STA $2E
+            store(0xC9AAU, zero_page(0x2EU), registers.accumulator);
+            append_checkpoint(0xC9AAU, 0xC9ACU, kZeroPage);
+            pc = 0xC9ACU;
+            break;
+        case 0xC9ACU:  // JSR $E5EC
+            call_fixed_math(0xC9ACU, 0xE5ECU);
+            pc = 0xE5ECU;
+            break;
+        case 0xC9DEU:  // STA $26
+            store(0xC9DEU, zero_page(0x26U), registers.accumulator);
+            append_checkpoint(0xC9DEU, 0xC9E0U, kZeroPage);
+            pc = 0xC9E0U;
+            break;
+        case 0xC9E0U:  // STA $2D
+            store(0xC9E0U, zero_page(0x2DU), registers.accumulator);
+            append_checkpoint(0xC9E0U, 0xC9E2U, kZeroPage);
+            pc = 0xC9E2U;
+            break;
+        case 0xC9E2U:  // STZ $2E
+            store(0xC9E2U, zero_page(0x2EU), 0x00U);
+            append_checkpoint(0xC9E2U, 0xC9E4U, kZeroPage);
+            pc = 0xC9E4U;
+            break;
+        case 0xC9E4U:  // LDA $35
+            load_accumulator(read_ram(zero_page(0x35U)));
+            append_checkpoint(0xC9E4U, 0xC9E6U, kZeroPage);
+            pc = 0xC9E6U;
+            break;
+        case 0xC9E6U:  // STA $2F
+            store(0xC9E6U, zero_page(0x2FU), registers.accumulator);
+            append_checkpoint(0xC9E6U, 0xC9E8U, kZeroPage);
+            pc = 0xC9E8U;
+            break;
+        case 0xC9E8U:  // LDA $36
+            load_accumulator(read_ram(zero_page(0x36U)));
+            append_checkpoint(0xC9E8U, 0xC9EAU, kZeroPage);
+            pc = 0xC9EAU;
+            break;
+        case 0xC9EAU:  // STA $30
+            store(0xC9EAU, zero_page(0x30U), registers.accumulator);
+            append_checkpoint(0xC9EAU, 0xC9ECU, kZeroPage);
+            pc = 0xC9ECU;
+            break;
+        case 0xC9ECU:  // JSR $E79C
+            call_fixed_math(0xC9ECU, 0xE79CU);
+            pc = 0xE79CU;
             break;
 
         // --- 01:DAF8, the direction-octant classifier --------------------
@@ -1139,6 +1354,13 @@ std::optional<RoutineReplacement> replace_actor_geometry_leaf(
         default:
             return std::nullopt;
         }
+    }
+
+    if (crossed.has_value()) {
+        replacement.return_instruction = *crossed;
+        replacement.output_registers = registers;
+        replacement.body_master_cycles = cycle;
+        return replacement;
     }
 
     if (overflow || !is_stop_instruction(pc)

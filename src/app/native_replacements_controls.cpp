@@ -4631,6 +4631,11 @@ replace_bank9_actor_scan(
     constexpr std::uint16_t kCounterAddress = 0x204DU;
     constexpr std::uint16_t kStackBase = 0x2100U;
     constexpr std::uint8_t kSlotLimit = 0x80U;
+    // `$4D` is an eight-bit cursor.  The usual scan starts below $80 and
+    // reaches its terminal compare within 128 advances, but a queue callback
+    // may re-enter with a cursor at or above $80.  The ROM then walks through
+    // the byte wrap and still terminates at $80, which takes up to 256 steps.
+    constexpr std::uint16_t kMaximumCursorAdvances = 0x100U;
 
     constexpr std::uint32_t kImmediate = 6U;
     constexpr std::uint32_t kZeroPage = 12U;
@@ -4672,8 +4677,8 @@ replace_bank9_actor_scan(
     auto registers = entry.registers;
     std::uint32_t cycle = 0U;
     RoutineReplacement replacement;
-    replacement.checkpoints.reserve(900U);
-    replacement.work_ram_writes.reserve(130U);
+    replacement.checkpoints.reserve(1800U);
+    replacement.work_ram_writes.reserve(256U);
 
     const auto boundary =
         [&](const std::uint16_t instruction_pc,
@@ -4708,7 +4713,15 @@ replace_bank9_actor_scan(
     // continuation must therefore begin with INC $4D / LDX $4D, rather than
     // restarting the scan from the stale X register.
     bool advance = entry.routine.logical_pc == kAdvancePc;
-    for (std::uint16_t walked = 0U; walked <= kSlotLimit; ++walked) {
+    // Writes are staged in the replacement and are not reflected in the
+    // immutable entry snapshot. Keep the live `$4D` value locally so a
+    // scan that skips more than one actor observes each INC before it is
+    // committed at the transcript boundary.
+    auto cursor = std::to_integer<std::uint8_t>(
+        work_ram[kCounterAddress - 0x2000U]);
+    for (std::uint16_t walked = 0U;
+         walked < kMaximumCursorAdvances;
+         ++walked) {
         if (!advance) {
         const auto flags = std::to_integer<std::uint8_t>(
             work_ram[static_cast<std::size_t>(kFlagsBase - 0x2000U)
@@ -4765,9 +4778,8 @@ replace_bank9_actor_scan(
         }
         }
 
-        const auto counter = std::to_integer<std::uint8_t>(
-            work_ram[kCounterAddress - 0x2000U]);
-        const auto next = static_cast<std::uint8_t>(counter + 1U);
+        const auto next = static_cast<std::uint8_t>(cursor + 1U);
+        cursor = next;
         registers.status = set_nz(registers.status, next);
         cycle += kReadModifyWrite;
         replacement.work_ram_writes.push_back({
@@ -4891,6 +4903,11 @@ replace_bonus_actor_scan(
         };
 
     bool advance = entry.routine.logical_pc == kAdvancePc;
+    // Writes are staged until this transcript commits.  Keep the scan cursor
+    // live locally so a single replacement can cross more than one clear
+    // actor slot instead of repeatedly incrementing the entry snapshot.
+    auto cursor = std::to_integer<std::uint8_t>(
+        work_ram[kCounterAddress - 0x2000U]);
     for (std::uint16_t walked = 0U; walked <= kSlotLimit; ++walked) {
         if (!advance) {
             const auto flags = std::to_integer<std::uint8_t>(
@@ -4928,9 +4945,8 @@ replace_bonus_actor_scan(
             }
         }
 
-        const auto counter = std::to_integer<std::uint8_t>(
-            work_ram[kCounterAddress - 0x2000U]);
-        const auto next = static_cast<std::uint8_t>(counter + 1U);
+        const auto next = static_cast<std::uint8_t>(cursor + 1U);
+        cursor = next;
         registers.status = set_nz(registers.status, next);
         cycle += kReadModifyWrite;
         replacement.work_ram_writes.push_back({
@@ -6275,15 +6291,29 @@ std::optional<RoutineReplacement> replace_flipper_owner_rts(
         .physical_bank = 0x01U,
         .logical_pc = 0xD4B2U,
     };
-    // This return terminates only one arm of the active-flipper owner. The
-    // caller and target are live stack state, so the descriptor deliberately
-    // leaves the core's RTS execution intact rather than guessing either.
-    if (entry.routine != kRoutine) {
+    constexpr RoutineKey kUpperTableReturn{
+        .physical_bank = 0x02U,
+        .logical_pc = 0x5933U,
+    };
+    constexpr RoutineKey kKnightCollisionReturn{
+        .physical_bank = 0x03U,
+        .logical_pc = 0x73FDU,
+    };
+    constexpr RoutineKey kGiantFaceAnimatorReturn{
+        .physical_bank = 0x03U,
+        .logical_pc = 0x76A8U,
+    };
+    // These returns end owners whose caller and target are live stack state,
+    // so the descriptor deliberately leaves the core's RTS execution intact
+    // rather than guessing either.
+    if (entry.routine != kRoutine && entry.routine != kUpperTableReturn
+        && entry.routine != kKnightCollisionReturn
+        && entry.routine != kGiantFaceAnimatorReturn) {
         return std::nullopt;
     }
 
     RoutineReplacement replacement{};
-    replacement.return_instruction = kRoutine;
+    replacement.return_instruction = entry.routine;
     replacement.output_registers = entry.registers;
     replacement.body_master_cycles = 21U;
     replacement.native_rts_instruction = NativeRtsInstruction{};

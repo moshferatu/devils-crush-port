@@ -22231,6 +22231,145 @@ replace_giant_face_helmet_controller(
 }
 
 [[nodiscard]] std::optional<RoutineReplacement>
+replace_shared_four_tick_timer_tail(
+    const RoutineEntry& entry,
+    const std::span<const std::byte> work_ram)
+{
+    constexpr RoutineKey kRoutine{.physical_bank = 0x02U, .logical_pc = 0x4CDAU};
+    constexpr std::size_t kTimerOffset = 0x1A00U;
+    constexpr std::size_t kAppearanceOffset = 0x1980U;
+    if (entry.routine != kRoutine
+        || work_ram.size()
+            <= std::max(
+                kTimerOffset + static_cast<std::size_t>(entry.registers.x),
+                kAppearanceOffset + static_cast<std::size_t>(entry.registers.x))) {
+        return std::nullopt;
+    }
+
+    const auto read = [&work_ram](const std::size_t offset) {
+        return std::to_integer<std::uint8_t>(work_ram[offset]);
+    };
+    const auto set_nz = [](std::uint8_t status, const std::uint8_t value) {
+        status = static_cast<std::uint8_t>(status & 0x7DU);
+        if (value == 0U) {
+            return static_cast<std::uint8_t>(status | 0x02U);
+        }
+        if ((value & 0x80U) != 0U) {
+            return static_cast<std::uint8_t>(status | 0x80U);
+        }
+        return status;
+    };
+    const auto set_compare = [&set_nz](
+                                 std::uint8_t status,
+                                 const std::uint8_t left,
+                                 const std::uint8_t right) {
+        status = set_nz(
+            static_cast<std::uint8_t>(status & 0xFEU),
+            static_cast<std::uint8_t>(left - right));
+        if (left >= right) {
+            status = static_cast<std::uint8_t>(status | 0x01U);
+        }
+        return status;
+    };
+    const auto append_checkpoint = [](
+                                       RoutineReplacement& replacement,
+                                       const std::uint16_t instruction_pc,
+                                       const std::uint16_t resume_pc,
+                                       const std::uint32_t master_cycle,
+                                       auto registers) {
+        registers.program_counter = resume_pc;
+        replacement.checkpoints.push_back({
+            .interrupt_sample_master_cycle_offset = master_cycle - 3U,
+            .master_cycle_offset = master_cycle,
+            .instruction = {0x02U, instruction_pc},
+            .registers = registers,
+        });
+    };
+
+    const auto slot = entry.registers.x;
+    const auto timer_address = static_cast<std::uint16_t>(0x3A00U + slot);
+    const auto appearance_address = static_cast<std::uint16_t>(0x3980U + slot);
+    const auto decremented_timer = static_cast<std::uint8_t>(
+        read(kTimerOffset + static_cast<std::size_t>(slot)) - 1U);
+    auto after_decrement = entry.registers;
+    after_decrement.status = set_nz(after_decrement.status, decremented_timer);
+
+    RoutineReplacement replacement{
+        .return_instruction = {.physical_bank = 0x02U, .logical_pc = 0x4CF1U},
+        .output_registers = after_decrement,
+        .body_master_cycles = 33U,
+    };
+    replacement.work_ram_writes.push_back({
+        .instruction = {0x02U, 0x4CDAU},
+        .logical_address = timer_address,
+        .value = decremented_timer,
+        .master_cycle_offset = 21U,
+    });
+    append_checkpoint(replacement, 0x4CDAU, 0x4CDDU, 21U, after_decrement);
+    if (decremented_timer != 0U) {
+        append_checkpoint(replacement, 0x4CDDU, 0x4CF1U, 33U, after_decrement);
+        replacement.output_registers.program_counter = 0x4CF1U;
+        return replacement;
+    }
+
+    append_checkpoint(replacement, 0x4CDDU, 0x4CDFU, 27U, after_decrement);
+    auto after_timer_load = after_decrement;
+    after_timer_load.accumulator = 0x04U;
+    after_timer_load.status = set_nz(after_timer_load.status, 0x04U);
+    append_checkpoint(replacement, 0x4CDFU, 0x4CE1U, 33U, after_timer_load);
+    replacement.work_ram_writes.push_back({
+        .instruction = {0x02U, 0x4CE1U},
+        .logical_address = timer_address,
+        .value = 0x04U,
+        .master_cycle_offset = 48U,
+    });
+    append_checkpoint(replacement, 0x4CE1U, 0x4CE4U, 48U, after_timer_load);
+
+    const auto advanced_appearance = static_cast<std::uint8_t>(
+        read(kAppearanceOffset + static_cast<std::size_t>(slot)) + 1U);
+    auto after_appearance_increment = after_timer_load;
+    after_appearance_increment.status = set_nz(
+        after_appearance_increment.status, advanced_appearance);
+    replacement.work_ram_writes.push_back({
+        .instruction = {0x02U, 0x4CE4U},
+        .logical_address = appearance_address,
+        .value = advanced_appearance,
+        .master_cycle_offset = 69U,
+    });
+    append_checkpoint(
+        replacement, 0x4CE4U, 0x4CE7U, 69U, after_appearance_increment);
+
+    auto after_appearance_load = after_appearance_increment;
+    after_appearance_load.accumulator = advanced_appearance;
+    after_appearance_load.status = set_nz(
+        after_appearance_load.status, advanced_appearance);
+    append_checkpoint(
+        replacement, 0x4CE7U, 0x4CEAU, 84U, after_appearance_load);
+    auto after_compare = after_appearance_load;
+    after_compare.status = set_compare(
+        after_compare.status, after_compare.accumulator, 0x03U);
+    append_checkpoint(replacement, 0x4CEAU, 0x4CECU, 90U, after_compare);
+    replacement.output_registers = after_compare;
+    replacement.output_registers.program_counter = 0x4CF1U;
+    if (advanced_appearance < 0x03U) {
+        replacement.body_master_cycles = 102U;
+        append_checkpoint(replacement, 0x4CECU, 0x4CF1U, 102U, after_compare);
+        return replacement;
+    }
+
+    append_checkpoint(replacement, 0x4CECU, 0x4CEEU, 96U, after_compare);
+    replacement.work_ram_writes.push_back({
+        .instruction = {0x02U, 0x4CEEU},
+        .logical_address = appearance_address,
+        .value = 0x00U,
+        .master_cycle_offset = 111U,
+    });
+    replacement.body_master_cycles = 111U;
+    append_checkpoint(replacement, 0x4CEEU, 0x4CF1U, 111U, after_compare);
+    return replacement;
+}
+
+[[nodiscard]] std::optional<RoutineReplacement>
 replace_giant_face_helmet_hit_continuation(
     const RoutineEntry& entry,
     const std::span<const std::byte> work_ram)

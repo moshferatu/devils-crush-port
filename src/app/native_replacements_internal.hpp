@@ -1862,7 +1862,8 @@ replace_collision_tail_bbs2(
     std::span<const std::byte> work_ram);
 
 // 01:D4B2 is an active-flipper-owner RTS. The core keeps its live stack
-// return intact so it cannot be mistaken for a standalone transaction.
+// return intact so it cannot be mistaken for a standalone transaction.  The
+// same exact-core seam also owns the Knight and Giant-Face helper returns.
 [[nodiscard]] std::optional<emulation::RoutineReplacement>
 replace_flipper_owner_rts(const emulation::RoutineEntry& entry);
 

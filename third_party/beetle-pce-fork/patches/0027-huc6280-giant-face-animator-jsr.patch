@@ -1,0 +1,12 @@
+diff --git a/mednafen/pce/huc6280.cpp b/mednafen/pce/huc6280.cpp
+--- a/mednafen/pce/huc6280.cpp
++++ b/mednafen/pce/huc6280.cpp
+@@ -1346,7 +1346,7 @@ NO_INLINE void HuC6280::RunSub(void)
+ 					&& replacement.write_count == 0
+ 					&& replacement.checkpoint_count == 0
+ 					&& replacement.body_master_cycles == 21
+-					&& PC == 0x4138 && lastop == 0x20;
++					&& (PC == 0x4138 || PC == 0x7696) && lastop == 0x20;
+ 			}
+ 			if(dc_beetle_native_jmp_instruction)
+ 			{

@@ -13734,6 +13734,7 @@ struct NativeRegistryDeployment {
     std::uint64_t auxiliary_bank9_actor_scan_decimal_entries = 0U;
     std::uint64_t auxiliary_bank9_actor_scan_transfer_entries = 0U;
     std::uint64_t auxiliary_bank9_actor_scan_queue_bank_mismatch_entries = 0U;
+    std::uint64_t auxiliary_bank9_actor_scan_wrapped_counter_entries = 0U;
     std::uint64_t auxiliary_bonus_actor_scan_entries = 0U;
 };
 
@@ -14076,6 +14077,75 @@ using NativeRegistryEntryObserver = std::function<void(
         std::cerr << "Could not install native flipper-owner RTS hook.\n";
         return false;
     }
+    // 02:5933 is the upper-table effect's shared live-stack return.  As with
+    // D4B2, retain the core's exact return sequence instead of inventing a
+    // transcript target from the current stack page.
+    constexpr RoutineKey kUpperTableReturnInstruction{
+        .physical_bank = 0x02U,
+        .logical_pc = 0x5933U,
+    };
+    if (std::find(
+            claimed_routines.begin(),
+            claimed_routines.end(),
+            kUpperTableReturnInstruction)
+            == claimed_routines.end()
+        && !runtime.install_execution_hook({
+            .routine = kUpperTableReturnInstruction,
+            .mode = HookMode::replace,
+            .replacement_callback = [&deployment, &replacement_rom](
+                const RoutineEntry& entry,
+                const std::span<const std::byte> work_ram) {
+                ++deployment.core_capability_entries;
+                deployment.span.observe(entry.absolute_master_cycle);
+                auto result = replace_native_gameplay_routine(
+                    entry, work_ram, replacement_rom);
+                if (result) {
+                    ++deployment.core_capability_accepted;
+                    ++deployment.core_rts_instructions;
+                    deployment.core_capability_master_cycles +=
+                        result->body_master_cycles;
+                }
+                return result;
+            },
+        })) {
+        std::cerr << "Could not install native upper-table RTS hook.\n";
+        return false;
+    }
+    // These helper returns are reached from several live callers.  Keep the
+    // HuC6280's stack-pop sequence exact while moving their instruction
+    // boundary out of the interpreter.
+    constexpr std::array<RoutineKey, 2U> kGameplayHelperRtsInstructions{{
+        {.physical_bank = 0x03U, .logical_pc = 0x73FDU},
+        {.physical_bank = 0x03U, .logical_pc = 0x76A8U},
+    }};
+    for (const auto routine : kGameplayHelperRtsInstructions) {
+        if (std::find(claimed_routines.begin(), claimed_routines.end(), routine)
+            != claimed_routines.end()) {
+            continue;
+        }
+        if (!runtime.install_execution_hook({
+                .routine = routine,
+                .mode = HookMode::replace,
+                .replacement_callback = [&deployment, &replacement_rom](
+                    const RoutineEntry& entry,
+                    const std::span<const std::byte> work_ram) {
+                    ++deployment.core_capability_entries;
+                    deployment.span.observe(entry.absolute_master_cycle);
+                    auto result = replace_native_gameplay_routine(
+                        entry, work_ram, replacement_rom);
+                    if (result) {
+                        ++deployment.core_capability_accepted;
+                        ++deployment.core_rts_instructions;
+                        deployment.core_capability_master_cycles +=
+                            result->body_master_cycles;
+                    }
+                    return result;
+                },
+            })) {
+            std::cerr << "Could not install native gameplay-helper RTS hook.\\n";
+            return false;
+        }
+    }
     // The VDC status read is the interrupt acknowledge itself. It cannot be
     // transcribed, but the core can retain the original device read exactly.
     constexpr RoutineKey kVdcStatusReadInstruction{
@@ -14177,19 +14247,22 @@ using NativeRegistryEntryObserver = std::function<void(
         std::cerr << "Could not install native music SEI hook.\n";
         return false;
     }
-    constexpr RoutineKey kMusicPsgCallInstruction{
-        .physical_bank = 0x45U,
-        .logical_pc = 0x4138U,
-    };
-    if (std::find(
-            claimed_routines.begin(), claimed_routines.end(), kMusicPsgCallInstruction)
-            == claimed_routines.end()
-        && !runtime.install_execution_hook({
-            .routine = kMusicPsgCallInstruction,
-            .mode = HookMode::replace,
-            .replacement_callback = [&deployment, &replacement_rom](
-                const RoutineEntry& entry,
-                const std::span<const std::byte> work_ram) {
+    constexpr std::array<RoutineKey, 3U> kExactJsrInstructions{{
+        {.physical_bank = 0x45U, .logical_pc = 0x4138U},
+        {.physical_bank = 0x03U, .logical_pc = 0x7696U},
+        {.physical_bank = 0x01U, .logical_pc = 0xCB5EU},
+    }};
+    for (const auto routine : kExactJsrInstructions) {
+        if (std::find(claimed_routines.begin(), claimed_routines.end(), routine)
+            != claimed_routines.end()) {
+            continue;
+        }
+        if (!runtime.install_execution_hook({
+                .routine = routine,
+                .mode = HookMode::replace,
+                .replacement_callback = [&deployment, &replacement_rom](
+                    const RoutineEntry& entry,
+                    const std::span<const std::byte> work_ram) {
                 ++deployment.core_capability_entries;
                 deployment.span.observe(entry.absolute_master_cycle);
                 auto result = replace_native_gameplay_routine(
@@ -14202,9 +14275,10 @@ using NativeRegistryEntryObserver = std::function<void(
                 }
                 return result;
             },
-        })) {
-        std::cerr << "Could not install native music JSR hook.\n";
-        return false;
+            })) {
+            std::cerr << "Could not install native exact JSR hook.\n";
+            return false;
+        }
     }
     constexpr RoutineKey kMusicPsgReturnInstruction{
         .physical_bank = 0x45U,
@@ -14331,9 +14405,12 @@ using NativeRegistryEntryObserver = std::function<void(
             return false;
         }
     }
-    constexpr std::array<RoutineKey, 2U> kMusicJumpInstructions{{
+    constexpr std::array<RoutineKey, 5U> kMusicJumpInstructions{{
         {.physical_bank = 0x45U, .logical_pc = 0x4003U},
         {.physical_bank = 0x45U, .logical_pc = 0x40FFU},
+        {.physical_bank = 0x08U, .logical_pc = 0x4000U},
+        {.physical_bank = 0x08U, .logical_pc = 0x4009U},
+        {.physical_bank = 0x08U, .logical_pc = 0x4015U},
     }};
     for (const auto routine : kMusicJumpInstructions) {
         if (std::find(claimed_routines.begin(), claimed_routines.end(), routine)
@@ -14424,6 +14501,11 @@ using NativeRegistryEntryObserver = std::function<void(
                     }
                     if (entry.registers.mpr[0xC606U >> 13U] != 0x01U) {
                         ++deployment.auxiliary_bank9_actor_scan_queue_bank_mismatch_entries;
+                    }
+                    if (work_ram.size() >= 0x4EU
+                        && std::to_integer<std::uint8_t>(work_ram[0x4DU])
+                            >= 0x80U) {
+                        ++deployment.auxiliary_bank9_actor_scan_wrapped_counter_entries;
                     }
                     deployment.span.observe(entry.absolute_master_cycle);
                     auto result = replace_native_gameplay_routine(
@@ -14724,6 +14806,8 @@ void print_native_registry_summary(
                       << deployment.auxiliary_bank9_actor_scan_transfer_entries
                       << ", queue-bank mismatch="
                       << deployment.auxiliary_bank9_actor_scan_queue_bank_mismatch_entries
+                      << ", counter-at-or-after-80="
+                      << deployment.auxiliary_bank9_actor_scan_wrapped_counter_entries
                       << "\n";
         }
     }

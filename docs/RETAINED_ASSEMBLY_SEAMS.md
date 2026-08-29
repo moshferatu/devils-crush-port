@@ -35,6 +35,19 @@ of it is native.
 Moving the transfer itself needs a compact block-transfer transaction primitive
 or a wider bridge contract — not another instruction-checkpoint transcript.
 
+## Giant-Face active-wait return at `03:76CA`
+
+`03:76C5` is native for its safe, one-write active-animation wait, but its
+nonzero-timer path reaches the following `RTS` at `03:76CA`. An exact-core
+instruction candidate for that return was tested in live play and changed the
+return interaction: the ball accelerated erratically, eventually left the
+visible table, and gameplay slowed sharply. The instruction is inexpensive,
+so there is no reason to trade correctness for its small residue contribution.
+
+Keep `03:76CA` interpreter-owned. Revisit it only with a transcript model of
+the suspended caller/return interaction and a long interactive validation;
+do not re-add it as a standalone exact-RTS capability.
+
 ## Timer-horizon fallbacks in audio-visible routines
 
 Two routines fall back to assembly when a serviceable timer IRQ is close

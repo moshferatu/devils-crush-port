@@ -9561,6 +9561,11 @@ When hidden-form animation mode is active, fixed Giant-Face animator slot
 while it remains nonzero, returns through `03:76CA`. Timer expiry reloads the
 timer, advances its phase, and enters original drawing/scheduler work.
 
+The safe native helper deliberately stops before that return. A standalone
+exact-core candidate for `03:76CA` caused an interactive physics and slowdown
+regression, so the `RTS` remains a documented interpreter-owned seam rather
+than a native-core capability.
+
 `dc_classify_giant_face_animator_active_wait` admits only the fixed slot with
 a timer above one. The adapter preserves the exact 27-cycle, one-write
 decrement/untaken-branch path: the `$3A37` store occurs at cycle 21 and both

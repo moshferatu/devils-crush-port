@@ -309,19 +309,30 @@ std::optional<RoutineReplacement> replace_music_sei(
 std::optional<RoutineReplacement> replace_music_jsr(
     const RoutineEntry& entry)
 {
-    constexpr RoutineKey kRoutine{
+    constexpr RoutineKey kMusicPsgCall{
         .physical_bank = 0x45U,
         .logical_pc = 0x4138U,
     };
-    if (entry.routine != kRoutine) {
+    constexpr RoutineKey kGiantFaceAnimatorCall{
+        .physical_bank = 0x03U,
+        .logical_pc = 0x7696U,
+    };
+    constexpr RoutineKey kCollisionScannerCall{
+        .physical_bank = 0x01U,
+        .logical_pc = 0xCB5EU,
+    };
+    if (entry.routine != kMusicPsgCall
+        && entry.routine != kGiantFaceAnimatorCall
+        && entry.routine != kCollisionScannerCall) {
         return std::nullopt;
     }
 
-    // This call opens the sequencer's timer-sensitive PSG subroutine. Its
-    // return address lands on the live stack before the interrupt boundary,
-    // so retain the original core JSR rather than modeling a synthetic frame.
+    // Each of these calls creates a return address on the live stack before
+    // the interrupt boundary. Retain the original core JSR rather than
+    // modeling a synthetic frame; CB5E covers the collision scanner's rare
+    // non-composed entries.
     RoutineReplacement replacement{};
-    replacement.return_instruction = kRoutine;
+    replacement.return_instruction = entry.routine;
     replacement.output_registers = entry.registers;
     replacement.body_master_cycles = 21U;
     replacement.native_jsr_instruction = emulation::NativeJsrInstruction{};
@@ -353,8 +364,15 @@ std::optional<RoutineReplacement> replace_music_jmp(
     const RoutineEntry& entry)
 {
     const auto pc = entry.routine.logical_pc;
-    if (entry.routine.physical_bank != kBank
-        || (pc != 0x4003U && pc != 0x40FFU)) {
+    const bool music_jump = entry.routine.physical_bank == kBank
+        && (pc == 0x4003U || pc == 0x40FFU);
+    // Bank 08 begins with fixed export vectors.  These three are reached
+    // repeatedly by the normal table and are the same exact `JMP absolute`
+    // contract as the sequencer boundaries above: retain the core transfer
+    // and its interrupt/event sampling rather than inventing a host target.
+    const bool bank8_export_jump = entry.routine.physical_bank == 0x08U
+        && (pc == 0x4000U || pc == 0x4009U || pc == 0x4015U);
+    if (!music_jump && !bank8_export_jump) {
         return std::nullopt;
     }
 

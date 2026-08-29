@@ -60,6 +60,11 @@ function(dc_provide_beetle_pce)
         "${beetle_fork_root}/patches/0022-huc6280-break-flag-resume.patch"
         "${beetle_fork_root}/patches/0023-huc6280-interrupt-flag-sample.patch"
         "${beetle_fork_root}/patches/0024-huc6280-native-tia-transfer.patch"
+        "${beetle_fork_root}/patches/0025-huc6280-upper-table-rts.patch"
+        "${beetle_fork_root}/patches/0026-huc6280-bank8-export-jumps.patch"
+        "${beetle_fork_root}/patches/0027-huc6280-giant-face-animator-jsr.patch"
+        "${beetle_fork_root}/patches/0028-huc6280-knight-giant-face-rts.patch"
+        "${beetle_fork_root}/patches/0029-huc6280-collision-scanner-jsr.patch"
     )
 
     find_package(Git REQUIRED)
@@ -436,7 +441,72 @@ function(dc_provide_beetle_pce)
                 string(
                     FIND
                     "${beetle_cpu_source}"
-                     "dc_beetle_native_actor_scheduler_instruction"
+                    "dc_beetle_native_actor_scheduler_instruction"
+                    beetle_patch_marker_two
+                )
+            elseif(beetle_patch_name MATCHES "^0025-")
+                string(
+                    FIND
+                    "${beetle_cpu_source}"
+                    "PC == 0x5933"
+                    beetle_patch_marker_one
+                )
+                string(
+                    FIND
+                    "${beetle_cpu_source}"
+                    "native_rts_instruction"
+                    beetle_patch_marker_two
+                )
+            elseif(beetle_patch_name MATCHES "^0026-")
+                string(
+                    FIND
+                    "${beetle_cpu_source}"
+                    "PC == 0x4009"
+                    beetle_patch_marker_one
+                )
+                string(
+                    FIND
+                    "${beetle_cpu_source}"
+                    "native_jmp_instruction"
+                    beetle_patch_marker_two
+                )
+            elseif(beetle_patch_name MATCHES "^0027-")
+                string(
+                    FIND
+                    "${beetle_cpu_source}"
+                    "PC == 0x4138 || PC == 0x7696"
+                    beetle_patch_marker_one
+                )
+                string(
+                    FIND
+                    "${beetle_cpu_source}"
+                    "native_jsr_instruction"
+                    beetle_patch_marker_two
+                )
+            elseif(beetle_patch_name MATCHES "^0028-")
+                string(
+                    FIND
+                    "${beetle_cpu_source}"
+                    "PC == 0x76A8"
+                    beetle_patch_marker_one
+                )
+                string(
+                    FIND
+                    "${beetle_cpu_source}"
+                    "native_rts_instruction"
+                    beetle_patch_marker_two
+                )
+            elseif(beetle_patch_name MATCHES "^0029-")
+                string(
+                    FIND
+                    "${beetle_cpu_source}"
+                    "PC == 0xCB5E"
+                    beetle_patch_marker_one
+                )
+                string(
+                    FIND
+                    "${beetle_cpu_source}"
+                    "native_jsr_instruction"
                     beetle_patch_marker_two
                 )
             else()
