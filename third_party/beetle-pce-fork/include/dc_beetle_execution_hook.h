@@ -81,6 +81,39 @@ typedef struct dc_beetle_replacement_checkpoint {
 
 typedef struct dc_beetle_replacement_result {
     uint8_t handled;
+    // A compact request for the core's own resumable TIA loop. The descriptor
+    // crosses the hook boundary only; it is deliberately not retained in the
+    // serialized replacement arrays used by quick-states.
+    uint8_t native_tia_transfer;
+    uint16_t native_tia_source;
+    uint16_t native_tia_destination;
+    uint16_t native_tia_length;
+    // A fixed BBR0 that needs the core's two original event samples.
+    uint8_t native_bbr0_instruction;
+    // A fixed BBR3 that needs the core's two original event samples.
+    uint8_t native_bbr3_instruction;
+    // A fixed BBS2 that needs the core's two original event samples.
+    uint8_t native_bbs2_instruction;
+    // A fixed RTS that needs the core's live stack-return path.
+    uint8_t native_rts_instruction;
+    // A fixed VDC status read that needs the core's acknowledge side effect.
+    uint8_t native_vdc_status_read_instruction;
+    // A fixed PLP that needs the core's pre-restore interrupt sample.
+    uint8_t native_plp_instruction;
+    // A fixed SEI that needs the core's pre-mask interrupt sample.
+    uint8_t native_sei_instruction;
+    // A fixed JSR that needs the core's live stack-call path.
+    uint8_t native_jsr_instruction;
+    // A fixed JMP that needs the core's original control-transfer boundary.
+    uint8_t native_jmp_instruction;
+    // The active-flipper owner's short input-tail instruction family.
+    uint8_t native_flipper_owner_instruction;
+    // The shared actor scheduler's post-call control-tail instruction family.
+    uint8_t native_actor_scheduler_instruction;
+    uint8_t native_tii_transfer;
+    uint16_t native_tii_source;
+    uint16_t native_tii_destination;
+    uint16_t native_tii_length;
     uint16_t resume_logical_pc;
     uint8_t accumulator;
     uint8_t x;

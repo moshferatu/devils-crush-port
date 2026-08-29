@@ -1,6 +1,6 @@
 # Project Progress
 
-Last updated: 2026-08-27
+Last updated: 2026-08-28
 
 This file is the short answer to "where is the port right now". It is kept
 small on purpose. Detail lives in `docs/`:
@@ -35,6 +35,35 @@ Status values are `Not started`, `In progress`, `Blocked`, and `Complete`.
 ## Current status
 
 **Milestone 4, native gameplay port and native-runtime migration.**
+
+The immediate execution-completion track has its required measurement:
+the deployed interactive registry reports an interpreter-only, bank-qualified
+cycle ranking at shutdown, and captured sessions also save that ranking as
+`interpreter-residue.csv`. This separates genuine fallback from native
+transcript entry boundaries. The native-only gate is zero interpreter residue
+outside deliberately retained platform/front-end seams.
+
+The first ranked non-wait residue, palette transfer `00:EB46`, now has a
+state-compatible compact-TIA path: it validates the fixed transfer descriptor
+and reuses the core's existing resumable TIA loop, rather than expanding the
+quick-state-serialized replacement-write buffer. A player session confirmed
+all 29 transfers as core capabilities and removed the 625,095-cycle seam from
+the interpreter residue. The next capability applies the same timing-safe
+pattern to `00:F423`'s split-sample `BBR0`; a player session confirmed all
+34,816 executions as core capabilities, removed the branch from residue, and
+reached 98.52% native cycles outside the frame-sync wait with zero abandoned
+transcripts. A fresh player run then confirmed the fixed `01:C100` startup
+`TII $2000,$2001,$1FFF` as one guarded core capability, removing its 147,489
+cycles from fallback. `08:585A`'s fixed `$3000,$3001,$0FFF` work-RAM clear is
+implemented as a descriptor candidate but deliberately not deployed after its
+first live run regressed new-game startup; it needs a core-boundary trace
+before another admission attempt. The release build now also admits
+`01:C756`'s split-sample `BBR3 $77,$C75E` through the same guarded core path;
+a normal player session confirmed 2,345 safe entries and removed it from the
+interpreter hot list. The adjacent `01:CB7E` collision-sweep BBR3 was also
+confirmed (9,414 combined BBR3 entries); the preceding `01:CB71` BBS2 is now
+admitted through the same guarded original-opcode pattern and awaits its own
+confirmation.
 
 As of 2026-08-25, the project no longer treats the routine registry as the
 route to completion. The registry remains a high-fidelity reverse-engineering

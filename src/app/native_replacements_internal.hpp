@@ -1400,6 +1400,11 @@ replace_ball_substep_loop(
     const emulation::RoutineEntry& entry,
     std::span<const std::byte> work_ram);
 
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_ball_substep_bbr3(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram);
+
 // 00:F08E-00:F1B3, the shared motion step: a four-way dispatcher on the bottom
 // bits of $3800,X over two position integrators and two velocity steps. Eleven
 // entry points, six crossed calls -- four of them into its own leaves -- and
@@ -1573,10 +1578,23 @@ replace_actor_slot_reset(
 
 // 01:C4DE-01:C50E, the actor scan's preamble: settle the frame's actor enable
 // mask, reset the three list cursors, clear the scan index, and fall through
-// into the registered scan at 01:C510. One entry, no call of any kind, and no
-// ROM read; see native_replacements_actor_scan_preamble.cpp.
+// into the registered scan at 01:C510. C4DE stops at the host's C500 input
+// handoff; the host then invokes the same walker at C500 for the native cursor
+// suffix. No call and no ROM read; see native_replacements_actor_scan_preamble.cpp.
 [[nodiscard]] std::optional<emulation::RoutineReplacement>
 replace_actor_scan_preamble(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram);
+
+// Bank 09's second actor scan. It shares the bank-01 queue filer at C606 but
+// otherwise only filters actor flags and advances the same $4D cursor.
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_bank9_actor_scan(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram);
+
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_bonus_actor_scan(
     const emulation::RoutineEntry& entry,
     std::span<const std::byte> work_ram);
 
@@ -1758,6 +1776,39 @@ replace_vblank_handler(
     std::span<const std::byte> work_ram,
     std::span<const std::byte> rom);
 
+// 00:E05C is the VDC status read that acknowledges the active interrupt. Its
+// hardware read stays in the core rather than becoming a transcript write.
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_vdc_status_read(const emulation::RoutineEntry& entry);
+
+// The VBlank epilogue's PLP samples IRQs before it restores the saved status,
+// so the core retains this one instruction rather than a transcript.
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_vblank_plp(const emulation::RoutineEntry& entry);
+
+// The music driver's unmasked SEI must retain its pre-mask IRQ sample.
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_music_sei(const emulation::RoutineEntry& entry);
+
+// The music sequencer's core-retained call and return boundaries.
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_music_jsr(const emulation::RoutineEntry& entry);
+
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_music_rts(const emulation::RoutineEntry& entry);
+
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_music_jmp(const emulation::RoutineEntry& entry);
+
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_shared_actor_rts(const emulation::RoutineEntry& entry);
+
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_actor_scheduler_instruction(const emulation::RoutineEntry& entry);
+
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_flipper_owner_instruction(const emulation::RoutineEntry& entry);
+
 // The graphics driver's four port-streaming loops plus the work-RAM byte
 // decoder at 00:E4E3. One walk shared by ten entry points -- each streaming
 // routine's head and its chunk/record continuation, plus 00:FA40 and the two
@@ -1781,6 +1832,9 @@ replace_tilemap_upload(
     std::span<const std::byte> work_ram,
     std::span<const std::byte> rom);
 
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_startup_tii_clear(const emulation::RoutineEntry& entry);
+
 // The frame around the collision scanner: the playfield-tile probe at 01:CD74,
 // the ball/table gate at 01:CA84, the sweep setup at 01:CB2A and its tail, the
 // single-slot probe at 01:CBAB and the contact dispatcher at 01:CBCF. One walk
@@ -1792,6 +1846,25 @@ replace_collision_tail(
     const emulation::RoutineEntry& entry,
     std::span<const std::byte> work_ram,
     std::span<const std::byte> rom);
+
+// 01:CB7E is the collision sweep's BBR3 <$77. It is retained by the core so
+// its two event samples remain at their original instruction boundaries.
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_collision_tail_bbr3(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram);
+
+// 01:CB71 is the collision sweep's BBS2 <$77. It is retained by the core so
+// its two event samples remain at their original instruction boundaries.
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_collision_tail_bbs2(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram);
+
+// 01:D4B2 is an active-flipper-owner RTS. The core keeps its live stack
+// return intact so it cannot be mistaken for a standalone transaction.
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_flipper_owner_rts(const emulation::RoutineEntry& entry);
 
 [[nodiscard]] std::optional<emulation::RoutineReplacement>
 replace_actor_dispatch_vector(

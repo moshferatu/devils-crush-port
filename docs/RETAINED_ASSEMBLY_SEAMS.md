@@ -22,7 +22,7 @@ native code on both proven arms — for `00:FA67`, all 832 instances, resuming a
 boundary for the same reason.
 
 This is a deliberate hardware-timing seam, not missing semantic coverage.
-Moving `01:C6E3` or `01:C756` would require a bridge checkpoint that preserves
+Moving `01:C6E3` would require a bridge checkpoint that preserves
 the core's four-step event sampling; an ordinary two-boundary transcript is not
 sufficient, and it is not needed to keep porting adjacent gameplay code.
 

@@ -10,6 +10,8 @@ namespace devils_crush::app::detail {
 namespace {
 
 using emulation::CpuRegisters;
+using emulation::NativeBbr0Instruction;
+using emulation::NativeTiiTransfer;
 using emulation::RoutineEntry;
 using emulation::RoutineKey;
 using emulation::RoutineReplacement;
@@ -148,7 +150,8 @@ constexpr std::uint32_t kPortSampleBack = 6U;
         || logical_pc == 0xF301U || logical_pc == 0xF330U
         || logical_pc == 0xF35FU || logical_pc == 0xF3B5U
         || logical_pc == 0xF3E4U || logical_pc == 0xF3E7U
-        || logical_pc == 0xF426U || logical_pc == 0xF42AU;
+        || logical_pc == 0xF423U || logical_pc == 0xF426U
+        || logical_pc == 0xF42AU;
 }
 
 // Where each walk stops. Three are RTS instructions and 00:F4F2 is the camera
@@ -225,6 +228,32 @@ std::optional<RoutineReplacement> replace_tilemap_upload(
         || !is_owned_entry(entry.routine.logical_pc)
         || work_ram.size() < 0x2000U) {
         return std::nullopt;
+    }
+
+    if (entry.routine.logical_pc == 0xF423U) {
+        // BBR0 $27, $F42A. The core samples the event horizon both after the
+        // zero-page read and after the branch, so it must execute this one
+        // opcode. The output records the real arm for coverage accounting;
+        // the core leaves the registers and PC to its original instruction.
+        if (entry.registers.mpr[1] != 0xF8U
+            || work_ram.size() <= 0x27U) {
+            return std::nullopt;
+        }
+        const auto value = std::to_integer<std::uint8_t>(work_ram[0x27U]);
+        const bool clear = (value & 0x01U) == 0U;
+        const auto resume_pc = static_cast<std::uint16_t>(
+            clear ? 0xF42AU : 0xF426U);
+        RoutineReplacement replacement;
+        auto registers = entry.registers;
+        registers.program_counter = resume_pc;
+        replacement.return_instruction = {
+            registers.mpr[resume_pc >> 13U],
+            resume_pc,
+        };
+        replacement.output_registers = registers;
+        replacement.body_master_cycles = clear ? 21U : 15U;
+        replacement.native_bbr0_instruction = NativeBbr0Instruction{};
+        return replacement;
     }
     // Neither decimal mode nor the memory-operand T flag is something this
     // region is written to run under; T would redirect the accumulator through
@@ -2833,6 +2862,41 @@ std::optional<RoutineReplacement> replace_tilemap_upload(
             return replacement;
         }
     }
+}
+
+std::optional<RoutineReplacement> replace_startup_tii_clear(
+    const RoutineEntry& entry)
+{
+    NativeTiiTransfer transfer{};
+    std::uint32_t body_master_cycles = 0U;
+    RoutineKey return_instruction{};
+    if (entry.routine == RoutineKey{0x01U, 0xC100U}) {
+        transfer = {
+            .source = 0x2000U,
+            .destination = 0x2001U,
+            .length = 0x1FFFU,
+        };
+        body_master_cycles = 147489U;
+        return_instruction = {0x01U, 0xC107U};
+    } else if (entry.routine == RoutineKey{0x08U, 0x585AU}) {
+        transfer = {
+            .source = 0x3000U,
+            .destination = 0x3001U,
+            .length = 0x0FFFU,
+        };
+        body_master_cycles = 73785U;
+        return_instruction = {0x08U, 0x5861U};
+    } else {
+        return std::nullopt;
+    }
+
+    RoutineReplacement replacement{};
+    replacement.return_instruction = return_instruction;
+    replacement.output_registers = entry.registers;
+    replacement.output_registers.program_counter = return_instruction.logical_pc;
+    replacement.body_master_cycles = body_master_cycles;
+    replacement.native_tii_transfer = transfer;
+    return replacement;
 }
 
 } // namespace devils_crush::app::detail

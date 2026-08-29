@@ -192,6 +192,50 @@ constexpr std::uint16_t kJoypadPort = 0x1000U;
 
 } // namespace
 
+std::optional<RoutineReplacement> replace_vdc_status_read(
+    const RoutineEntry& entry)
+{
+    constexpr RoutineKey kRoutine{
+        .physical_bank = 0x00U,
+        .logical_pc = 0xE05CU,
+    };
+    if (entry.routine != kRoutine) {
+        return std::nullopt;
+    }
+
+    // `LDA $0000` reads the VDC status and drops the VDC's latched interrupt
+    // line. Its byte and side effect are both device state, so a transcript
+    // cannot reproduce it; the compact descriptor keeps the original core
+    // opcode and its interrupt boundary intact.
+    RoutineReplacement replacement{};
+    replacement.return_instruction = kRoutine;
+    replacement.output_registers = entry.registers;
+    replacement.body_master_cycles = 18U;
+    replacement.native_vdc_status_read_instruction =
+        emulation::NativeVdcStatusReadInstruction{};
+    return replacement;
+}
+
+std::optional<RoutineReplacement> replace_vblank_plp(
+    const RoutineEntry& entry)
+{
+    if (entry.routine.physical_bank != 0x00U
+        || (entry.routine.logical_pc != 0xE134U
+            && entry.routine.logical_pc != 0xE193U)) {
+        return std::nullopt;
+    }
+
+    // The HuC6280 samples its IRQ line before PLP pulls the saved status byte.
+    // A checkpoint would publish only one of those two status values, whereas
+    // this descriptor runs the original core opcode and preserves both.
+    RoutineReplacement replacement{};
+    replacement.return_instruction = entry.routine;
+    replacement.output_registers = entry.registers;
+    replacement.body_master_cycles = 12U;
+    replacement.native_plp_instruction = emulation::NativePlpInstruction{};
+    return replacement;
+}
+
 std::optional<RoutineReplacement> replace_vblank_handler(
     const RoutineEntry& entry,
     const std::span<const std::byte> work_ram,

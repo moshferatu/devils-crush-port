@@ -5,6 +5,129 @@ next native-port batch. It is deliberately not a statement of whole-game
 native coverage: the runtime captures bounded call scopes only for explicit
 observer addresses.
 
+## Native-only execution residue
+
+The interactive host now enables a second, residency-aware profile whenever
+the native registry is deployed. It attributes an instruction interval to the
+interpreter only when the boundary did not accept a native transcript. An
+accepted transcript still has an instruction-entry boundary, but its body is
+excluded from this residue, so its ranking cannot mistake native work for an
+unported hotspot.
+
+At shutdown the host prints the total residual intervals/cycles, separates the
+known `00:E321-E32B` frame-sync wait, and then ranks the twelve highest-cost
+non-wait bank-qualified addresses. A `--capture-session` additionally writes
+`interpreter-residue.csv` beside the existing complete
+`instruction-profile.csv`; its `# scope=interpreter-residue` header makes the
+distinction explicit. Use this file to select the first remaining interpreter
+owner. Classify platform waits, device service, and front-end seams before
+porting; do not split a compound gameplay owner merely to improve the metric.
+
+The first ranked non-wait seam, `00:EB46`, is the 1,024-byte palette `TIA`.
+Its timing is fully derived from the pinned core: VCE writes occur at
+master-cycle offsets `69 + 21*n` and the instruction completes at 21,555.
+Do not enlarge the fixed replacement-write arrays to carry that transcript:
+they are serialized in quick-states, so doing so rejects existing captures.
+The safe implementation is now a compact native-TIA descriptor. It validates
+the fixed operands at `00:EB46` and lets the core's single existing resumable
+TIA loop execute unchanged, preserving the serialized format and block-transfer
+yield behavior. The confirming player session admitted all 29 transfers as
+core capabilities and removed its 625,095 cycles from `interpreter-residue.csv`
+without a state or capture regression.
+
+The next ranked seam is `00:F423`, a `BBR0 $27,$F42A`. It cannot use an
+ordinary replacement checkpoint: the core separately samples the zero-page
+read and the branch, and merging them changes VDC event timing. Its compact
+descriptor therefore validates this exact opcode and lets the core execute the
+existing two-sample instruction unchanged, resuming at `00:F426` or `00:F42A`.
+A confirming player session admitted all 34,816 BBR0 executions, removed the
+branch from residue, and reached 98.52% native cycles outside the frame-sync
+wait with zero abandoned transcripts. This is execution-coverage work, not the
+eventual human-readable gameplay port.
+
+The guarded `01:C756` admission, the ball-substep loop's
+`BBR3 $77,$C75E`. Its two arms already begin at native continuation entries
+`01:C759` and `01:C75E`, but its zero-page read and branch still require the
+core's two event samples. A normal player session confirmed 2,345 safe native
+core-capability entries and removed it from the interpreter hot list.
+
+The adjacent `01:CB7E` collision-sweep `BBR3 $77,$CB8A` uses the exact same
+bit gate and already-native continuation arms at `01:CB81` and `01:CB8A`.
+A normal player session confirmed this path alongside `01:C756`, with 9,414
+combined BBR3 capability entries and no abandoned transcript. The release
+build now admits the preceding `01:CB71` `BBS2 $77,$CB76` by the corresponding
+guarded original-opcode path; its native arms are `01:CB74` and `01:CB76`.
+`08:585A` remains an undeployed descriptor candidate after its new-game
+startup regression.
+
+The next residue row, `01:D4B2`, is not a routine body: it is the `RTS` in an
+active-flipper-owner branch. It cannot be made a generic transaction because
+the live stack determines both the return target and scheduler resumption.
+The guarded core-RTS capability instead validates only this opcode and leaves
+the core's original return path intact. A confirming player session admitted
+2,322 `RTS` entries, removed `01:D4B2` from residue, and reached the table
+without abandonments.
+
+The next VBlank seam is `00:E05C`, `LDA $0000`. It returns VDC status *and*
+acknowledges the VDC interrupt; replacing it with a transaction would leave the
+interrupt asserted. The guarded VDC-status-read capability validates the exact
+opcode and retains the core's existing hardware read. A player report must show
+`VDC-read` entries and remove `00:E05C` from residue before it is considered
+admitted. A confirming session did so for 5,234 reads and reached the table.
+
+The following `00:E134` and `00:E193` `PLP` instructions are similarly
+untranscribable: the core samples IRQs with the old `I` mask before the stack
+pull restores the new status byte. The guarded PLP descriptor retains that
+original core ordering for both VBlank epilogues. A confirming session must
+report nonzero `PLP` entries and remove `00:E134` from residue. A confirming
+session admitted 6,509 PLP entries with no abandoned transcripts.
+
+The music driver's `45:4168` `SEI` is another two-status instruction: a
+pending IRQ is sampled before it raises `I`, which is why its unmasked path
+formerly stopped the audio transcript. The guarded SEI descriptor retains the
+core opcode and its original deadline ordering. A confirming session admitted
+9,731 SEI entries, removed `45:4168` from residue, and had no abandonments.
+
+The next two music seams were `45:4138` `JSR $4142` and `45:4210` `RTS`. They
+open and close the timer-sensitive PSG programming call, so a normal
+transaction cannot predeclare their live stack frame or return target. Guarded
+core JSR/RTS descriptors retain those exact call and return paths; a confirming
+session admitted 4,409 JSR and 5,108 RTS entries, removed both addresses from
+the residue list, and had no abandonments.
+
+The next three seams are not gameplay bodies: `03:7525` is the shared
+actor-handler `RTS`, while `45:4003` (`JMP $4015`) enters the music tick and
+`45:40FF` (`JMP $4044`) closes its chunked voice loop. Their live stack and
+control-transfer boundaries remain core-owned through guarded RTS/JMP
+capabilities; a confirming session admitted 7,938 JMP entries, removed all
+three rows from residue, and had no abandonments. The gameplay and music C++
+owners on either side stay unchanged.
+
+The subsequent `01:D4A7-D4B0` active-flipper tail shares the host-restored
+input byte: it clears the transient latch, reads and masks `$2CEE`, then takes
+the original zero-branch into either the existing owner or its live-stack
+return. A single guarded core family retains those exact four opcode
+boundaries. A confirming player session admitted 11,508 `Flipper`
+instructions, removed `D4A7-D4AD` from residue, and had no abandoned
+transcripts.
+
+The next independent residual fragment is the shared actor scheduler's local
+post-call tail at `03:751E-7523`: `LDA $2D0C`, `AND #$02`, then `BNE` into the
+already-core-retained `03:7525` live-stack return. It is admitted through a
+separate guarded capability, so the original RAM read and branch timing remain
+core-owned. A confirming player session admitted 1,554 `Actor-scheduler`
+instructions, removed `03:751E` from residue, and reached 98.67% native
+cycles outside the frame-sync wait with no abandoned transcripts.
+
+The shooter/input preamble is native through its actor-scan hand-off. Its
+registry prefix ends after `01:C4FD STY $2CEE` and returns at `01:C500`, where
+a host-aware replacement restores the held flipper bits, transcribes the cursor
+suffix through `01:C50E`, and returns at the native `01:C510` actor scan. The
+first live suffix attempt preserved launch and flipper response but exposed a
+missing `C510` terminal boundary: it declined the suffix and left its seven
+instructions interpreted. The corrected walker restores that boundary; the
+next player verification must show no `C500-C50E` interpreter residue.
+
 ## Four-Star Wall-Pocket pilot
 
 The first profile uses the natural 3,600-frame matching-arrow route. It
@@ -4105,8 +4228,11 @@ clusters; `08:584C-585A` is the next coherent bank-8 residue to assess.
 residue is almost entirely one instruction: `TII $3000,$3001,$0FFF` at
 `08:585A` costs 73,785 cycles and emits 4,095 ordered work-RAM writes. The
 bridge carries 512 writes, and a block transfer exposes no interior
-instruction boundary, so the transfer is a capacity wall rather than a
-candidate for transcript chunking.
+instruction boundary, so the transfer is a capacity wall for transcript
+chunking. A guarded core-transfer descriptor exists: it validates the
+descriptor, opcode, entry PC, and cycle total before the existing resumable
+core loop executes unchanged. It is not currently deployed because its first
+live new-game run regressed startup.
 
 The routine still splits cleanly around that wall. Semantic `08:584C` and
 `08:584F` cross the two JSRs, `08:5852` owns the three clear-setup stores and
@@ -4115,8 +4241,10 @@ absorbed return. The four one-shot entries add 183 native cycles. The complete
 outer call spans the intervening fade driver for 2,936,556 cycles and retains
 all 49,993 ordered writes exactly; selected RAM, the 2,036,234-write global VDC
 bus artifact, and the canonical census also remain byte-identical. The
-deployed profile now leaves 4,880,286 non-wait cycles in 260 clusters, with the
-TII itself still visible as the eighteenth-ranked deliberate wall.
+deployed profile now leaves 4,880,286 non-wait cycles in 260 clusters. The
+descriptor candidate is not deployed: its first live new-game run regressed
+startup, so this transfer remains interpreter-owned until a core-boundary
+trace explains the differing context.
 
 ## Work-RAM byte-stream decoder
 

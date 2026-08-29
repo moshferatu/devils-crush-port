@@ -59,6 +59,7 @@ function(dc_provide_beetle_pce)
         "${beetle_fork_root}/patches/0021-huc6280-abandonment-reason.patch"
         "${beetle_fork_root}/patches/0022-huc6280-break-flag-resume.patch"
         "${beetle_fork_root}/patches/0023-huc6280-interrupt-flag-sample.patch"
+        "${beetle_fork_root}/patches/0024-huc6280-native-tia-transfer.patch"
     )
 
     find_package(Git REQUIRED)
@@ -423,6 +424,19 @@ function(dc_provide_beetle_pce)
                     FIND
                     "${beetle_cpu_source}"
                     "((P ^ previous.status) & ~B_FLAG)"
+                    beetle_patch_marker_two
+                )
+            elseif(beetle_patch_name MATCHES "^0024-")
+                string(
+                    FIND
+                    "${beetle_cpu_source}"
+                     "replacement.native_actor_scheduler_instruction"
+                    beetle_patch_marker_one
+                )
+                string(
+                    FIND
+                    "${beetle_cpu_source}"
+                     "dc_beetle_native_actor_scheduler_instruction"
                     beetle_patch_marker_two
                 )
             else()

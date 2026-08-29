@@ -222,6 +222,92 @@ struct AbsorbedReturn {
     [[nodiscard]] bool operator==(const AbsorbedReturn&) const = default;
 };
 
+// A compact request for the core to execute its own resumable TIA block-move
+// implementation. Unlike a replacement write list, this does not put one
+// entry per bus write into the core's serialized transaction state: the core
+// keeps the transfer's ordinary source, destination, length, and alternate
+// phase, so an event or quick-state can resume it exactly as an opcode would.
+struct NativeTiaTransfer {
+    std::uint16_t source = 0;
+    std::uint16_t destination = 0;
+    std::uint16_t length = 0;
+
+    [[nodiscard]] bool operator==(const NativeTiaTransfer&) const = default;
+};
+
+// The HuC6280's BBR0 executes as two separately event-sampled core steps.
+// Marking this fixed opcode as a core capability preserves that indivisible
+// timing while the surrounding game loop remains native.
+struct NativeBbr0Instruction {
+    [[nodiscard]] bool operator==(const NativeBbr0Instruction&) const = default;
+};
+
+// Like BBR0 above, this fixed BBR3 needs the core's two original event
+// samples. It is separate because its gameplay-loop arms differ from the
+// tilemap opcode's arms.
+struct NativeBbr3Instruction {
+    [[nodiscard]] bool operator==(const NativeBbr3Instruction&) const = default;
+};
+
+// Like BBR, BBS performs separately event-sampled zero-page and branch steps.
+// A fixed BBS2 must therefore retain the core's original instruction path.
+struct NativeBbs2Instruction {
+    [[nodiscard]] bool operator==(const NativeBbs2Instruction&) const = default;
+};
+
+// A fixed RTS that returns through a live owner/scheduler composition. The
+// core must retain its stack reads, return target, and event boundary.
+struct NativeRtsInstruction {
+    [[nodiscard]] bool operator==(const NativeRtsInstruction&) const = default;
+};
+
+// The VDC status read both returns a device byte and acknowledges its latched
+// interrupt sources. The core must retain that hardware read and its boundary.
+struct NativeVdcStatusReadInstruction {
+    [[nodiscard]] bool operator==(const NativeVdcStatusReadInstruction&) const = default;
+};
+
+// A fixed PLP whose interrupt sample precedes the status byte restored from
+// the stack. The core must retain that instruction ordering exactly.
+struct NativePlpInstruction {
+    [[nodiscard]] bool operator==(const NativePlpInstruction&) const = default;
+};
+
+// A fixed SEI whose IRQ sample precedes setting the interrupt-disable flag.
+// The core must retain that instruction ordering exactly.
+struct NativeSeiInstruction {
+    [[nodiscard]] bool operator==(const NativeSeiInstruction&) const = default;
+};
+
+// A fixed JSR whose live stack frame and interrupt boundary stay in the core.
+struct NativeJsrInstruction {
+    [[nodiscard]] bool operator==(const NativeJsrInstruction&) const = default;
+};
+
+// A fixed JMP whose target and event boundary stay in the core.
+struct NativeJmpInstruction {
+    [[nodiscard]] bool operator==(const NativeJmpInstruction&) const = default;
+};
+
+// The active-flipper owner's short input-tail instructions. Their exact
+// memory and branch boundaries remain in the core beside the host input gate.
+struct NativeFlipperOwnerInstruction {
+    [[nodiscard]] bool operator==(const NativeFlipperOwnerInstruction&) const = default;
+};
+
+// The shared actor scheduler's short post-call control tail. Its load, mask,
+// and branch remain at their original instruction boundaries in the core.
+struct NativeActorSchedulerInstruction {
+    [[nodiscard]] bool operator==(const NativeActorSchedulerInstruction&) const = default;
+};
+
+struct NativeTiiTransfer {
+    std::uint16_t source = 0U;
+    std::uint16_t destination = 0U;
+    std::uint16_t length = 0U;
+    [[nodiscard]] bool operator==(const NativeTiiTransfer&) const = default;
+};
+
 struct RoutineReplacement {
     // Where the core resumes after applying the transaction. A transcript that
     // stops in front of its own RTS names that RTS here and leaves it to be
@@ -241,6 +327,34 @@ struct RoutineReplacement {
     // advances one checkpoint at a time so original interrupt handlers can
     // preempt and return between native segments.
     std::vector<ReplacementCheckpoint> checkpoints;
+    // An opcode-shaped transfer the core executes through its existing TIA
+    // loop. It is mutually exclusive with generic writes and checkpoints.
+    std::optional<NativeTiaTransfer> native_tia_transfer;
+    // A fixed BBR0 whose original two-sample core implementation must execute
+    // intact. It is mutually exclusive with generic writes and checkpoints.
+    std::optional<NativeBbr0Instruction> native_bbr0_instruction;
+    // A fixed BBR3 whose original two-sample core implementation must execute
+    // intact. It is mutually exclusive with generic writes and checkpoints.
+    std::optional<NativeBbr3Instruction> native_bbr3_instruction;
+    // A fixed BBS2 whose original two-sample core implementation must execute
+    // intact. It is mutually exclusive with generic writes and checkpoints.
+    std::optional<NativeBbs2Instruction> native_bbs2_instruction;
+    // A fixed RTS whose original core path must retain the live return target.
+    // It is mutually exclusive with generic writes and checkpoints.
+    std::optional<NativeRtsInstruction> native_rts_instruction;
+    // A fixed VDC status read whose core path retains its acknowledge side
+    // effect. It is mutually exclusive with generic writes and checkpoints.
+    std::optional<NativeVdcStatusReadInstruction>
+        native_vdc_status_read_instruction;
+    std::optional<NativePlpInstruction> native_plp_instruction;
+    std::optional<NativeSeiInstruction> native_sei_instruction;
+    std::optional<NativeJsrInstruction> native_jsr_instruction;
+    std::optional<NativeJmpInstruction> native_jmp_instruction;
+    std::optional<NativeFlipperOwnerInstruction>
+        native_flipper_owner_instruction;
+    std::optional<NativeActorSchedulerInstruction>
+        native_actor_scheduler_instruction;
+    std::optional<NativeTiiTransfer> native_tii_transfer;
     // The returns this transcript ended past rather than in front of, in the
     // order it passed them: its own, and any it absorbed on behalf of a routine
     // it composed. Empty for a transcript that stops before its RTS.
@@ -488,6 +602,16 @@ public:
     // never executed are omitted.
     [[nodiscard]] virtual std::vector<InstructionProfileEntry>
     export_instruction_profile() const = 0;
+
+    // The subset of the whole-ROM profile whose instruction interval actually
+    // ran in the HuC6280 interpreter.  A successful native transcript still
+    // has an entry boundary, but its body is deliberately excluded here.  This
+    // is the actionable residue when the registry is deployed.
+    //
+    // Entries are returned in descending master-cycle order. Addresses that
+    // never ran interpreted are omitted.
+    [[nodiscard]] virtual std::vector<InstructionProfileEntry>
+    export_interpreted_instruction_profile() const = 0;
 
     // Where the abandonments counted by `ReplacementNesting::abandoned`
     // happened, grouped by transcript, resume address and reason, in descending

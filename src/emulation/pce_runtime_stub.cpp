@@ -151,6 +151,12 @@ public:
         return {};
     }
 
+    [[nodiscard]] std::vector<InstructionProfileEntry>
+    export_interpreted_instruction_profile() const override
+    {
+        return {};
+    }
+
     [[nodiscard]] std::vector<AbandonmentSite>
     export_abandonment_census() const override
     {

@@ -10,6 +10,7 @@ namespace devils_crush::app::detail {
 namespace {
 
 using emulation::CpuRegisters;
+using emulation::NativeBbr3Instruction;
 using emulation::RoutineEntry;
 using emulation::RoutineKey;
 using emulation::RoutineReplacement;
@@ -778,6 +779,36 @@ std::optional<RoutineReplacement> replace_ball_substep_loop(
             return replacement;
         }
     }
+}
+
+std::optional<RoutineReplacement> replace_ball_substep_bbr3(
+    const RoutineEntry& entry,
+    const std::span<const std::byte> work_ram)
+{
+    // BBR3 <$77, $C75E. The core owns the zero-page read and the branch so it
+    // can sample an event after each one; this only records the arm it will
+    // execute and asks the core to retain that exact opcode path.
+    if (entry.routine != RoutineKey{kBank, 0xC756U}
+        || entry.registers.mpr[1] != 0xF8U
+        || work_ram.size() <= 0x77U) {
+        return std::nullopt;
+    }
+
+    const auto value = std::to_integer<std::uint8_t>(work_ram[0x77U]);
+    const bool clear = (value & 0x08U) == 0U;
+    const auto resume_pc = static_cast<std::uint16_t>(
+        clear ? 0xC75EU : 0xC759U);
+    RoutineReplacement replacement{};
+    auto registers = entry.registers;
+    registers.program_counter = resume_pc;
+    replacement.return_instruction = {
+        registers.mpr[resume_pc >> 13U],
+        resume_pc,
+    };
+    replacement.output_registers = registers;
+    replacement.body_master_cycles = clear ? 21U : 15U;
+    replacement.native_bbr3_instruction = NativeBbr3Instruction{};
+    return replacement;
 }
 
 } // namespace devils_crush::app::detail

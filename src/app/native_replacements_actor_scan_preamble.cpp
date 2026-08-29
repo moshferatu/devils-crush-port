@@ -40,11 +40,12 @@ using emulation::RoutineReplacement;
 // no `JMP`, not one ROM read. Every operand is in work RAM, and every branch
 // target but one is inside the range.
 //
-// It ends by falling through into 01:C510, the registered actor scan, which is
-// the whole of its hand-off: the transcript stops in front of an address that
-// already belongs to this port, so there is no jump to transcribe and nothing
-// returns to the interpreter. 01:C50E is a store, not a branch, so the walk
-// arrives there the same way the assembly does.
+// The host restores cabinet flipper input immediately after `STY $2CEE`. The
+// C4DE entry therefore hands back at 01:C500, where the host-aware C500 entry
+// restores the input and then uses this same walker for the cursor suffix.
+// The suffix falls into the registered actor scan at 01:C510. This keeps the
+// handoff at its original instruction boundary without leaving its six simple
+// instructions in the interpreter.
 //
 // 3,492 arrivals on the recorded route: 2,649 from 01:C157, immediately after
 // the frame-sync wait at 01:C154, and 843 from five `JSR`s in bank 08 plus a
@@ -87,7 +88,9 @@ constexpr std::uint32_t kBranchNotTaken = 6U;
 
 // Where each walk stops.
 //
-// 01:C510 is the hand-off, and it is the ordinary end of every walk here.
+// 01:C500 is the host-visible input hand-off. Its host-aware native replacement
+// resumes this walk for the cursor suffix, which returns at the registered
+// 01:C510 scan.
 //
 // 01:C4ED is the arm this route has never taken: `$2254` was zero on all 3,492
 // arrivals, so the mask staged in <$B7 has never been the one chosen and
@@ -100,9 +103,13 @@ constexpr std::uint32_t kBranchNotTaken = 6U;
 // reaches it 322 times -- so following a branch there lands on an instruction
 // this walk already owns, and the only untranscribed thing about the arm is
 // which way the flag went.
-[[nodiscard]] constexpr bool is_stop_instruction(const std::uint16_t logical_pc)
+[[nodiscard]] constexpr bool is_stop_instruction(
+    const std::uint16_t logical_pc,
+    const bool hand_off_input)
 {
-    return logical_pc == 0xC510U || logical_pc == 0xC4EDU;
+    return (hand_off_input && logical_pc == 0xC500U)
+        || logical_pc == 0xC4EDU
+        || logical_pc == 0xC510U;
 }
 
 } // namespace
@@ -111,11 +118,17 @@ std::optional<RoutineReplacement> replace_actor_scan_preamble(
     const RoutineEntry& entry,
     const std::span<const std::byte> work_ram)
 {
-    constexpr RoutineKey kRoutine{
+    constexpr RoutineKey kPreambleRoutine{
         .physical_bank = kBank,
         .logical_pc = 0xC4DEU,
     };
-    if (entry.routine != kRoutine || work_ram.size() < 0x2000U) {
+    constexpr RoutineKey kCursorRoutine{
+        .physical_bank = kBank,
+        .logical_pc = 0xC500U,
+    };
+    if ((entry.routine != kPreambleRoutine
+            && entry.routine != kCursorRoutine)
+        || work_ram.size() < 0x2000U) {
         return std::nullopt;
     }
     // The memory-operand T flag would take the left-hand side of the `AND` at
@@ -252,14 +265,15 @@ std::optional<RoutineReplacement> replace_actor_scan_preamble(
             return std::nullopt;
         }
 
-        if (is_stop_instruction(pc)) {
+        if (is_stop_instruction(pc, entry.routine == kPreambleRoutine)) {
             registers.program_counter = pc;
             replacement.return_instruction = {kBank, pc};
             replacement.output_registers = registers;
             replacement.body_master_cycles = cycle;
             // Nothing is absorbed. This walk never reaches a return: it ends
-            // either on the scan it fell into or on the arm it declines, and
-            // the stack is exactly as it was found in both cases.
+            // either on the host-visible input hand-off or on the arm it
+            // declines, and the stack is exactly as it was found in both
+            // cases.
             return replacement;
         }
 

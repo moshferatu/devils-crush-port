@@ -862,10 +862,13 @@ than the VDC and the PSG. It walks the thirty-two dirty flags, and for
 each block it points the colour table at `$0402`/`$0403` and pushes
 sixteen colours through `$0404`/`$0405`. Twenty-nine of its 3,599 calls
 take a second arm instead, where a single `TIA $27B9, $0404, $0400`
-moves all 1,024 bytes at once; that is 1,024 writes against a channel
-that carries 512, so the walk declines in front of the first store
-rather than truncating the upload. A further 418 calls never reach the
-hook because another transcript is suspended when they arrive.
+moves all 1,024 bytes at once. Its derived VCE offsets are `69 + 21*n`
+master cycles and its completion is 21,555 master cycles. `00:EB46` now emits
+a compact native-TIA descriptor instead of 1,024 replacement writes. The core
+validates its fixed operands and falls through to its single existing resumable
+TIA loop, preserving VCE timing, scheduler yields, and the quick-state layout.
+A further 418 calls never reach the hook because another transcript is
+suspended when they arrive.
 
 Admitting it took a two-line widening on each side of the boundary: the
 VCE register file was added to the replacement write channel's
@@ -1326,12 +1329,16 @@ four times in 3,600 frames — twice inside the walk, and twice in assembly
 *downstream* of it, which is what made it clear the perturbation outlives
 the transcript.
 
-The fix is to hand `00:F423` back to the core and register the two
-addresses the branch arrives at, which is why the loop has 17,248 entries
-instead of 539. Splitting the difference is not available: an extra
-checkpoint inside the `BBR` would make that boundary an extra interrupt
-opportunity the machine does not have. It costs 365,664 master cycles, 77%
-of everything still emulated in the region.
+The original resolution was to hand `00:F423` back to the core and register
+the two addresses the branch arrives at, which is why the loop had 17,248
+entries instead of 539. The current execution-completion track makes that
+choice explicit as a compact `BBR0` core-capability descriptor: it validates
+the exact opcode and leaves the core to execute its existing two-sample
+instruction unchanged before resuming at `00:F426` or `00:F42A`. Splitting
+the difference is not available: an extra checkpoint inside the `BBR` would
+make that boundary an extra interrupt opportunity the machine does not have.
+This removes the seam from interpreter-residue accounting without pretending
+that the opcode implementation is already human-readable gameplay C++.
 
 Shared state was measured before the walk was written, and by call windows
 from a `00:F261` observer rather than inferred from the writes — the

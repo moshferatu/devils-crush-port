@@ -18,6 +18,8 @@
 
 namespace devils_crush::app::detail {
 
+using emulation::NativeFlipperOwnerInstruction;
+using emulation::NativeRtsInstruction;
 using emulation::ReplacementMemoryWrite;
 using emulation::RoutineEntry;
 using emulation::RoutineKey;
@@ -4602,6 +4604,366 @@ replace_actor_scan_run(
 }
 
 [[nodiscard]] std::optional<RoutineReplacement>
+replace_bank9_actor_scan(
+    const RoutineEntry& entry,
+    const std::span<const std::byte> work_ram)
+{
+    // 09:609B is the compact, second actor scan used by the long bonus/table
+    // route. It skips slots whose $3000 byte is clear, and sends slot zero or
+    // a set bit 6 through the existing 01:C606 queue filer:
+    //
+    //   609B LDA $3000,X / BPL $60AB
+    //   60A0 CPX #$00 / BEQ $60A8
+    //   60A4 AND #$40 / BNE $60AB
+    //   60A8 JSR $C606
+    //   60AB INC <$4D / LDX <$4D / CPX #$80 / BNE $609B / RTS
+    //
+    // A queue call is not inlined. Its stack frame must remain visible to the
+    // bank-01 owner, which returns through the measured C654 -> 09:60AB seam.
+    constexpr std::uint8_t kBank = 0x09U;
+    constexpr std::uint8_t kQueueBank = 0x01U;
+    constexpr std::uint16_t kHeadPc = 0x609BU;
+    constexpr std::uint16_t kAdvancePc = 0x60ABU;
+    constexpr std::uint16_t kCallPc = 0x60A8U;
+    constexpr std::uint16_t kQueuePc = 0xC606U;
+    constexpr std::uint16_t kTerminalPc = 0x60B3U;
+    constexpr std::uint16_t kFlagsBase = 0x3000U;
+    constexpr std::uint16_t kCounterAddress = 0x204DU;
+    constexpr std::uint16_t kStackBase = 0x2100U;
+    constexpr std::uint8_t kSlotLimit = 0x80U;
+
+    constexpr std::uint32_t kImmediate = 6U;
+    constexpr std::uint32_t kZeroPage = 12U;
+    constexpr std::uint32_t kAbsoluteIndexed = 15U;
+    constexpr std::uint32_t kReadModifyWrite = 18U;
+    constexpr std::uint32_t kSubroutineCall = 21U;
+    constexpr std::uint32_t kBranchTaken = 12U;
+    constexpr std::uint32_t kBranchNotTaken = 6U;
+
+    if (entry.routine.physical_bank != kBank
+        || (entry.routine.logical_pc != kHeadPc
+            && entry.routine.logical_pc != kAdvancePc)
+        || work_ram.size() < 0x2000U
+        || (entry.registers.status & 0x28U) != 0U) {
+        return std::nullopt;
+    }
+
+    const auto set_nz = [](std::uint8_t status, const std::uint8_t value) {
+        status = static_cast<std::uint8_t>(
+            status & static_cast<std::uint8_t>(~0x82U));
+        if (value == 0U) {
+            status = static_cast<std::uint8_t>(status | 0x02U);
+        } else if ((value & 0x80U) != 0U) {
+            status = static_cast<std::uint8_t>(status | 0x80U);
+        }
+        return status;
+    };
+    const auto compare_x = [&set_nz](
+                               std::uint8_t status,
+                               const std::uint8_t left,
+                               const std::uint8_t right) {
+        const auto difference = static_cast<std::uint8_t>(left - right);
+        status = set_nz(status, difference);
+        return static_cast<std::uint8_t>(
+            left >= right ? status | 0x01U
+                          : status & static_cast<std::uint8_t>(~0x01U));
+    };
+
+    auto registers = entry.registers;
+    std::uint32_t cycle = 0U;
+    RoutineReplacement replacement;
+    replacement.checkpoints.reserve(900U);
+    replacement.work_ram_writes.reserve(130U);
+
+    const auto boundary =
+        [&](const std::uint16_t instruction_pc,
+            const std::uint16_t resume_pc) {
+            registers.program_counter = resume_pc;
+            replacement.checkpoints.push_back({
+                .interrupt_sample_master_cycle_offset = cycle - 3U,
+                .master_cycle_offset = cycle,
+                .instruction = {kBank, instruction_pc},
+                .registers = registers,
+            });
+        };
+    const auto step =
+        [&](const std::uint16_t instruction_pc,
+            const std::uint16_t resume_pc,
+            const std::uint32_t instruction_cycles) {
+            cycle += instruction_cycles;
+            boundary(instruction_pc, resume_pc);
+        };
+    const auto finish_at = [&](const std::uint16_t pc) {
+        replacement.return_instruction = {
+            .physical_bank = registers.mpr[pc >> 13U],
+            .logical_pc = pc,
+        };
+        registers.program_counter = pc;
+        replacement.output_registers = registers;
+        replacement.body_master_cycles = cycle;
+        return replacement;
+    };
+
+    // A queue-filed slot resumes at 60AB with X owned by the filer.  The
+    // continuation must therefore begin with INC $4D / LDX $4D, rather than
+    // restarting the scan from the stale X register.
+    bool advance = entry.routine.logical_pc == kAdvancePc;
+    for (std::uint16_t walked = 0U; walked <= kSlotLimit; ++walked) {
+        if (!advance) {
+        const auto flags = std::to_integer<std::uint8_t>(
+            work_ram[static_cast<std::size_t>(kFlagsBase - 0x2000U)
+                + registers.x]);
+        registers.accumulator = flags;
+        registers.status = set_nz(registers.status, flags);
+        step(kHeadPc, 0x609EU, kAbsoluteIndexed);
+        if ((flags & 0x80U) == 0U) {
+            step(0x609EU, kAdvancePc, kBranchTaken);
+        } else {
+            step(0x609EU, 0x60A0U, kBranchNotTaken);
+            registers.status = compare_x(registers.status, registers.x, 0U);
+            step(0x60A0U, 0x60A2U, kImmediate);
+            if (registers.x == 0U) {
+                step(0x60A2U, kCallPc, kBranchTaken);
+            } else {
+                step(0x60A2U, 0x60A4U, kBranchNotTaken);
+                registers.accumulator = static_cast<std::uint8_t>(
+                    registers.accumulator & 0x40U);
+                registers.status = set_nz(
+                    registers.status, registers.accumulator);
+                step(0x60A4U, 0x60A6U, kImmediate);
+                if (registers.accumulator != 0U) {
+                    step(0x60A6U, kAdvancePc, kBranchTaken);
+                } else {
+                    step(0x60A6U, kCallPc, kBranchNotTaken);
+                }
+            }
+            if (registers.program_counter == kCallPc) {
+                if (registers.mpr[kQueuePc >> 13U] != kQueueBank) {
+                    return std::nullopt;
+                }
+                replacement.work_ram_writes.push_back({
+                    .instruction = {kBank, kCallPc},
+                    .logical_address = static_cast<std::uint16_t>(
+                        kStackBase + registers.stack_pointer),
+                    .value = 0x60U,
+                    .master_cycle_offset = cycle,
+                });
+                replacement.work_ram_writes.push_back({
+                    .instruction = {kBank, kCallPc},
+                    .logical_address = static_cast<std::uint16_t>(
+                        kStackBase
+                        + static_cast<std::uint8_t>(
+                            registers.stack_pointer - 1U)),
+                    .value = 0xAAU,
+                    .master_cycle_offset = cycle,
+                });
+                registers.stack_pointer = static_cast<std::uint8_t>(
+                    registers.stack_pointer - 2U);
+                step(kCallPc, kQueuePc, kSubroutineCall);
+                return finish_at(kQueuePc);
+            }
+        }
+        }
+
+        const auto counter = std::to_integer<std::uint8_t>(
+            work_ram[kCounterAddress - 0x2000U]);
+        const auto next = static_cast<std::uint8_t>(counter + 1U);
+        registers.status = set_nz(registers.status, next);
+        cycle += kReadModifyWrite;
+        replacement.work_ram_writes.push_back({
+            .instruction = {kBank, kAdvancePc},
+            .logical_address = kCounterAddress,
+            .value = next,
+            .master_cycle_offset = cycle,
+        });
+        boundary(kAdvancePc, 0x60ADU);
+        registers.x = next;
+        registers.status = set_nz(registers.status, next);
+        step(0x60ADU, 0x60AFU, kZeroPage);
+        registers.status = compare_x(registers.status, registers.x, kSlotLimit);
+        step(0x60AFU, 0x60B1U, kImmediate);
+        if (registers.x != kSlotLimit) {
+            step(0x60B1U, kHeadPc, kBranchTaken);
+            advance = false;
+            continue;
+        }
+        step(0x60B1U, kTerminalPc, kBranchNotTaken);
+        absorb_return(
+            replacement,
+            work_ram,
+            entry.registers.stack_pointer,
+            {kBank, kTerminalPc},
+            cycle,
+            registers);
+        return replacement;
+    }
+    return std::nullopt;
+}
+
+[[nodiscard]] std::optional<RoutineReplacement>
+replace_bonus_actor_scan(
+    const RoutineEntry& entry,
+    const std::span<const std::byte> work_ram)
+{
+    // C559 is the long bonus route's compact actor scan. It is mapped in bank
+    // 01, rather than bank 09, and its BSR dispatch is followed by the normal
+    // C606 queue filer:
+    //
+    //   C559 LDA $3000,X / BPL $C56B
+    //   C55E CPX #$00 / BEQ $C566
+    //   C562 AND #$40 / BEQ $C56B
+    //   C566 BSR $C52C / C568 JSR $C606
+    //   C56B INC <$4D / LDX <$4D / CPX #$80 / BNE $C559 / RTS
+    //
+    // The two calls remain separate native boundaries because the dispatcher
+    // can tail-jump into any actor handler. This walk owns all clear slots
+    // and resumes after the queue filer at C56B.
+    constexpr std::uint8_t kBank = 0x01U;
+    constexpr std::uint16_t kHeadPc = 0xC559U;
+    constexpr std::uint16_t kAdvancePc = 0xC56BU;
+    constexpr std::uint16_t kDispatchPc = 0xC566U;
+    constexpr std::uint16_t kTerminalPc = 0xC573U;
+    constexpr std::uint16_t kFlagsBase = 0x3000U;
+    constexpr std::uint16_t kCounterAddress = 0x204DU;
+    constexpr std::uint8_t kSlotLimit = 0x80U;
+
+    constexpr std::uint32_t kImmediate = 6U;
+    constexpr std::uint32_t kZeroPage = 12U;
+    constexpr std::uint32_t kAbsoluteIndexed = 15U;
+    constexpr std::uint32_t kReadModifyWrite = 18U;
+    constexpr std::uint32_t kBranchTaken = 12U;
+    constexpr std::uint32_t kBranchNotTaken = 6U;
+
+    if (entry.routine.physical_bank != kBank
+        || (entry.routine.logical_pc != kHeadPc
+            && entry.routine.logical_pc != kAdvancePc)
+        || work_ram.size() < 0x2000U
+        || (entry.registers.status & 0x28U) != 0U) {
+        return std::nullopt;
+    }
+    if (entry.routine.logical_pc == kHeadPc
+        && std::to_integer<std::uint8_t>(work_ram[kCounterAddress - 0x2000U])
+            != entry.registers.x) {
+        return std::nullopt;
+    }
+
+    const auto set_nz = [](std::uint8_t status, const std::uint8_t value) {
+        status = static_cast<std::uint8_t>(
+            status & static_cast<std::uint8_t>(~0x82U));
+        if (value == 0U) {
+            status = static_cast<std::uint8_t>(status | 0x02U);
+        } else if ((value & 0x80U) != 0U) {
+            status = static_cast<std::uint8_t>(status | 0x80U);
+        }
+        return status;
+    };
+    const auto compare_x = [&set_nz](
+                               std::uint8_t status,
+                               const std::uint8_t left,
+                               const std::uint8_t right) {
+        status = set_nz(status, static_cast<std::uint8_t>(left - right));
+        return static_cast<std::uint8_t>(
+            left >= right ? status | 0x01U
+                          : status & static_cast<std::uint8_t>(~0x01U));
+    };
+
+    auto registers = entry.registers;
+    std::uint32_t cycle = 0U;
+    RoutineReplacement replacement{};
+    replacement.checkpoints.reserve(900U);
+    replacement.work_ram_writes.reserve(128U);
+    const auto boundary =
+        [&](const std::uint16_t instruction_pc, const std::uint16_t resume_pc) {
+            registers.program_counter = resume_pc;
+            replacement.checkpoints.push_back({
+                .interrupt_sample_master_cycle_offset = cycle - 3U,
+                .master_cycle_offset = cycle,
+                .instruction = {kBank, instruction_pc},
+                .registers = registers,
+            });
+        };
+    const auto step =
+        [&](const std::uint16_t instruction_pc,
+            const std::uint16_t resume_pc,
+            const std::uint32_t instruction_cycles) {
+            cycle += instruction_cycles;
+            boundary(instruction_pc, resume_pc);
+        };
+
+    bool advance = entry.routine.logical_pc == kAdvancePc;
+    for (std::uint16_t walked = 0U; walked <= kSlotLimit; ++walked) {
+        if (!advance) {
+            const auto flags = std::to_integer<std::uint8_t>(
+                work_ram[static_cast<std::size_t>(kFlagsBase - 0x2000U)
+                    + registers.x]);
+            registers.accumulator = flags;
+            registers.status = set_nz(registers.status, flags);
+            step(kHeadPc, 0xC55CU, kAbsoluteIndexed);
+            if ((flags & 0x80U) != 0U) {
+                step(0xC55CU, 0xC55EU, kBranchNotTaken);
+                registers.status = compare_x(registers.status, registers.x, 0U);
+                step(0xC55EU, 0xC560U, kImmediate);
+                if (registers.x == 0U) {
+                    step(0xC560U, kDispatchPc, kBranchTaken);
+                    replacement.return_instruction = {kBank, kDispatchPc};
+                    replacement.output_registers = registers;
+                    replacement.body_master_cycles = cycle;
+                    return replacement;
+                }
+                step(0xC560U, 0xC562U, kBranchNotTaken);
+                registers.accumulator = static_cast<std::uint8_t>(
+                    registers.accumulator & 0x40U);
+                registers.status = set_nz(registers.status, registers.accumulator);
+                step(0xC562U, 0xC564U, kImmediate);
+                if (registers.accumulator != 0U) {
+                    step(0xC564U, kDispatchPc, kBranchNotTaken);
+                    replacement.return_instruction = {kBank, kDispatchPc};
+                    replacement.output_registers = registers;
+                    replacement.body_master_cycles = cycle;
+                    return replacement;
+                }
+                step(0xC564U, kAdvancePc, kBranchTaken);
+            } else {
+                step(0xC55CU, kAdvancePc, kBranchTaken);
+            }
+        }
+
+        const auto counter = std::to_integer<std::uint8_t>(
+            work_ram[kCounterAddress - 0x2000U]);
+        const auto next = static_cast<std::uint8_t>(counter + 1U);
+        registers.status = set_nz(registers.status, next);
+        cycle += kReadModifyWrite;
+        replacement.work_ram_writes.push_back({
+            .instruction = {kBank, kAdvancePc},
+            .logical_address = kCounterAddress,
+            .value = next,
+            .master_cycle_offset = cycle,
+        });
+        boundary(kAdvancePc, 0xC56DU);
+        registers.x = next;
+        registers.status = set_nz(registers.status, next);
+        step(0xC56DU, 0xC56FU, kZeroPage);
+        registers.status = compare_x(registers.status, registers.x, kSlotLimit);
+        step(0xC56FU, 0xC571U, kImmediate);
+        if (registers.x != kSlotLimit) {
+            step(0xC571U, kHeadPc, kBranchTaken);
+            advance = false;
+            continue;
+        }
+        step(0xC571U, kTerminalPc, kBranchNotTaken);
+        absorb_return(
+            replacement,
+            work_ram,
+            entry.registers.stack_pointer,
+            {kBank, kTerminalPc},
+            cycle,
+            registers);
+        return replacement;
+    }
+    return std::nullopt;
+}
+
+[[nodiscard]] std::optional<RoutineReplacement>
 replace_actor_scan_advance(
     const RoutineEntry& entry,
     const std::span<const std::byte> work_ram)
@@ -5252,16 +5614,24 @@ replace_actor_dispatch_call(
 {
     // C51E BSR $C52C 24 — the loop's call into the dispatch half. The target
     // is already native, so the transcript is the push pair and nothing else.
-    constexpr RoutineKey kRoutine{
+    constexpr RoutineKey kMainRoutine{
         .physical_bank = 0x01U,
         .logical_pc = 0xC51EU,
     };
-    constexpr std::uint16_t kPushedReturn = 0xC51FU;
+    constexpr RoutineKey kBonusRoutine{
+        .physical_bank = 0x01U,
+        .logical_pc = 0xC566U,
+    };
+    constexpr std::uint16_t kMainPushedReturn = 0xC51FU;
+    constexpr std::uint16_t kBonusPushedReturn = 0xC567U;
     constexpr std::uint16_t kDispatchPc = 0xC52CU;
 
-    if (entry.routine != kRoutine) {
+    if (entry.routine != kMainRoutine && entry.routine != kBonusRoutine) {
         return std::nullopt;
     }
+    const auto pushed_return = entry.routine == kMainRoutine
+        ? kMainPushedReturn
+        : kBonusPushedReturn;
 
     auto registers = entry.registers;
     RoutineReplacement replacement{};
@@ -5269,8 +5639,8 @@ replace_actor_dispatch_call(
     push_return_address(
         replacement,
         registers,
-        kRoutine,
-        kPushedReturn,
+        entry.routine,
+        pushed_return,
         0U);
 
     // BSR touches no flag, so the only register news is the new stack pointer.
@@ -5278,11 +5648,11 @@ replace_actor_dispatch_call(
     replacement.checkpoints.push_back({
         .interrupt_sample_master_cycle_offset = kBranchSubroutineCall - 3U,
         .master_cycle_offset = kBranchSubroutineCall,
-        .instruction = kRoutine,
+        .instruction = entry.routine,
         .registers = registers,
     });
     replacement.return_instruction = {
-        .physical_bank = kRoutine.physical_bank,
+        .physical_bank = entry.routine.physical_bank,
         .logical_pc = kDispatchPc,
     };
     replacement.output_registers = registers;
@@ -5296,16 +5666,24 @@ replace_actor_queue_call(
 {
     // C520 JSR $C606 21 — reached when the dispatched handler returns. The
     // queue filer it calls is itself native.
-    constexpr RoutineKey kRoutine{
+    constexpr RoutineKey kMainRoutine{
         .physical_bank = 0x01U,
         .logical_pc = 0xC520U,
     };
-    constexpr std::uint16_t kPushedReturn = 0xC522U;
+    constexpr RoutineKey kBonusRoutine{
+        .physical_bank = 0x01U,
+        .logical_pc = 0xC568U,
+    };
+    constexpr std::uint16_t kMainPushedReturn = 0xC522U;
+    constexpr std::uint16_t kBonusPushedReturn = 0xC56AU;
     constexpr std::uint16_t kQueuePc = 0xC606U;
 
-    if (entry.routine != kRoutine) {
+    if (entry.routine != kMainRoutine && entry.routine != kBonusRoutine) {
         return std::nullopt;
     }
+    const auto pushed_return = entry.routine == kMainRoutine
+        ? kMainPushedReturn
+        : kBonusPushedReturn;
 
     auto registers = entry.registers;
     RoutineReplacement replacement{};
@@ -5313,19 +5691,19 @@ replace_actor_queue_call(
     push_return_address(
         replacement,
         registers,
-        kRoutine,
-        kPushedReturn,
+        entry.routine,
+        pushed_return,
         0U);
 
     registers.program_counter = kQueuePc;
     replacement.checkpoints.push_back({
         .interrupt_sample_master_cycle_offset = kSubroutineCall - 3U,
         .master_cycle_offset = kSubroutineCall,
-        .instruction = kRoutine,
+        .instruction = entry.routine,
         .registers = registers,
     });
     replacement.return_instruction = {
-        .physical_bank = kRoutine.physical_bank,
+        .physical_bank = entry.routine.physical_bank,
         .logical_pc = kQueuePc,
     };
     replacement.output_registers = registers;
@@ -5338,19 +5716,25 @@ replace_actor_queue_return(
     const RoutineEntry& entry,
     const std::span<const std::byte> work_ram)
 {
-    // C654 RTS 21 — the queue filer's return, and the last emulated
-    // instruction in the loop. Both of the filer's exits reach it, so this is
-    // where the loop hands back to the already-native tail at `01:C523`.
+    // C654 RTS 21 — the queue filer's return. Both of the main loop's exits
+    // reach it, so its usual path hands back to the already-native tail at
+    // `01:C523`. The bank-09 and bonus scans call the same filer from
+    // `09:60A8` and `01:C568`, then resume at their respective tails.
     //
     // The return address is read out of the stack rather than assumed: `C654`
-    // is only this loop's return when the frame under the stack pointer is the
-    // one `C520` pushed.
+    // is only one of these loops' returns when the frame under the stack
+    // pointer is the one C520 or 60A8 pushed.
     constexpr RoutineKey kRoutine{
         .physical_bank = 0x01U,
         .logical_pc = 0xC654U,
     };
     constexpr std::uint16_t kPushedReturn = 0xC522U;
     constexpr std::uint16_t kAdvancePc = 0xC523U;
+    constexpr std::uint16_t kBonusPushedReturn = 0xC56AU;
+    constexpr std::uint16_t kBonusAdvancePc = 0xC56BU;
+    constexpr std::uint16_t kBank9PushedReturn = 0x60AAU;
+    constexpr std::uint16_t kBank9AdvancePc = 0x60ABU;
+    constexpr std::uint8_t kBank9 = 0x09U;
 
     if (entry.routine != kRoutine || work_ram.size() < 0x2000U) {
         return std::nullopt;
@@ -5367,7 +5751,12 @@ replace_actor_queue_return(
         | (static_cast<std::uint16_t>(
                std::to_integer<std::uint8_t>(work_ram[high_offset]))
            << 8U));
-    if (pulled != kPushedReturn) {
+    const bool main_loop_return = pulled == kPushedReturn;
+    const bool bank9_loop_return = pulled == kBank9PushedReturn
+        && entry.registers.mpr[kBank9AdvancePc >> 13U] == kBank9;
+    const bool bonus_loop_return = pulled == kBonusPushedReturn
+        && entry.registers.mpr[kBonusAdvancePc >> 13U] == 0x01U;
+    if (!main_loop_return && !bank9_loop_return && !bonus_loop_return) {
         return std::nullopt;
     }
 
@@ -5375,7 +5764,9 @@ replace_actor_queue_return(
     auto registers = entry.registers;
     registers.stack_pointer =
         static_cast<std::uint8_t>(registers.stack_pointer + 2U);
-    registers.program_counter = kAdvancePc;
+    registers.program_counter = main_loop_return
+        ? kAdvancePc
+        : (bank9_loop_return ? kBank9AdvancePc : kBonusAdvancePc);
 
     RoutineReplacement replacement{};
     replacement.checkpoints.push_back({
@@ -5385,8 +5776,8 @@ replace_actor_queue_return(
         .registers = registers,
     });
     replacement.return_instruction = {
-        .physical_bank = kRoutine.physical_bank,
-        .logical_pc = kAdvancePc,
+        .physical_bank = registers.mpr[registers.program_counter >> 13U],
+        .logical_pc = registers.program_counter,
     };
     replacement.output_registers = registers;
     replacement.body_master_cycles = kSubroutineReturn;
@@ -5876,4 +6267,52 @@ replace_actor_slot_reset(
         checkpoint);
     return replacement;
 }
+
+std::optional<RoutineReplacement> replace_flipper_owner_rts(
+    const RoutineEntry& entry)
+{
+    constexpr RoutineKey kRoutine{
+        .physical_bank = 0x01U,
+        .logical_pc = 0xD4B2U,
+    };
+    // This return terminates only one arm of the active-flipper owner. The
+    // caller and target are live stack state, so the descriptor deliberately
+    // leaves the core's RTS execution intact rather than guessing either.
+    if (entry.routine != kRoutine) {
+        return std::nullopt;
+    }
+
+    RoutineReplacement replacement{};
+    replacement.return_instruction = kRoutine;
+    replacement.output_registers = entry.registers;
+    replacement.body_master_cycles = 21U;
+    replacement.native_rts_instruction = NativeRtsInstruction{};
+    return replacement;
+}
+
+std::optional<RoutineReplacement> replace_flipper_owner_instruction(
+    const RoutineEntry& entry)
+{
+    constexpr std::uint8_t kBank = 0x01U;
+    const auto pc = entry.routine.logical_pc;
+    if (entry.routine.physical_bank != kBank
+        || (pc != 0xD4A7U && pc != 0xD4AAU && pc != 0xD4ADU
+            && pc != 0xD4B0U)) {
+        return std::nullopt;
+    }
+
+    // The tail shares the host-restored input byte at $2CEE. The core owns
+    // the actual clear/read/mask/branch instruction boundary, so this does
+    // not introduce a synthetic transaction inside the live flipper owner.
+    RoutineReplacement replacement{};
+    replacement.return_instruction = entry.routine;
+    replacement.output_registers = entry.registers;
+    replacement.body_master_cycles = pc == 0xD4B0U
+        ? ((entry.registers.status & 0x02U) != 0U ? 12U : 6U)
+        : 15U;
+    replacement.native_flipper_owner_instruction =
+        NativeFlipperOwnerInstruction{};
+    return replacement;
+}
+
 } // namespace devils_crush::app::detail

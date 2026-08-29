@@ -1330,50 +1330,14 @@ public:
     export_instruction_profile() const override
     {
         assert_owner_thread();
-        std::vector<InstructionProfileEntry> entries;
-        if (!instruction_profile_) {
-            return entries;
-        }
+        return export_instruction_profile(false);
+    }
 
-        for (std::size_t bank = 0U;
-             bank < instruction_profile_->banks.size();
-             ++bank) {
-            const auto& counters = instruction_profile_->banks[bank];
-            if (!counters) {
-                continue;
-            }
-            for (std::size_t pc = 0U; pc < counters->size(); ++pc) {
-                const auto& counter = (*counters)[pc];
-                if (counter.executions == 0U) {
-                    continue;
-                }
-                entries.push_back({
-                    .instruction =
-                        {
-                            .physical_bank = static_cast<std::uint8_t>(bank),
-                            .logical_pc = static_cast<std::uint16_t>(pc),
-                        },
-                    .executions = counter.executions,
-                    .master_cycles = counter.master_cycles,
-                });
-            }
-        }
-
-        std::ranges::sort(
-            entries,
-            [](const InstructionProfileEntry& left,
-               const InstructionProfileEntry& right) {
-                if (left.master_cycles != right.master_cycles) {
-                    return left.master_cycles > right.master_cycles;
-                }
-                return std::pair{
-                           left.instruction.physical_bank,
-                           left.instruction.logical_pc}
-                < std::pair{
-                           right.instruction.physical_bank,
-                           right.instruction.logical_pc};
-            });
-        return entries;
+    [[nodiscard]] std::vector<InstructionProfileEntry>
+    export_interpreted_instruction_profile() const override
+    {
+        assert_owner_thread();
+        return export_instruction_profile(true);
     }
 
     [[nodiscard]] std::vector<AbandonmentSite>
@@ -3395,11 +3359,133 @@ private:
             const auto& result = *replacement;
             const auto write_count = result.work_ram_writes.size();
             const auto checkpoint_count = result.checkpoints.size();
+            const auto native_tia_transfer = result.native_tia_transfer;
+            const auto native_bbr0_instruction =
+                result.native_bbr0_instruction;
+            const auto native_bbr3_instruction =
+                result.native_bbr3_instruction;
+            const auto native_bbs2_instruction =
+                result.native_bbs2_instruction;
+            const auto native_rts_instruction = result.native_rts_instruction;
+            const auto native_vdc_status_read_instruction =
+                result.native_vdc_status_read_instruction;
+            const auto native_plp_instruction = result.native_plp_instruction;
+            const auto native_sei_instruction = result.native_sei_instruction;
+            const auto native_jsr_instruction = result.native_jsr_instruction;
+            const auto native_jmp_instruction = result.native_jmp_instruction;
+            const auto native_flipper_owner_instruction =
+                result.native_flipper_owner_instruction;
+            const auto native_actor_scheduler_instruction =
+                result.native_actor_scheduler_instruction;
+            const auto native_tii_transfer = result.native_tii_transfer;
+            const auto native_capability_count =
+                static_cast<unsigned>(native_tia_transfer.has_value())
+                + static_cast<unsigned>(native_bbr0_instruction.has_value())
+                + static_cast<unsigned>(native_bbr3_instruction.has_value())
+                + static_cast<unsigned>(native_bbs2_instruction.has_value())
+                + static_cast<unsigned>(native_rts_instruction.has_value())
+                + static_cast<unsigned>(
+                    native_vdc_status_read_instruction.has_value())
+                + static_cast<unsigned>(native_plp_instruction.has_value())
+                + static_cast<unsigned>(native_sei_instruction.has_value())
+                + static_cast<unsigned>(native_jsr_instruction.has_value())
+                + static_cast<unsigned>(native_jmp_instruction.has_value())
+                + static_cast<unsigned>(
+                    native_flipper_owner_instruction.has_value())
+                + static_cast<unsigned>(
+                    native_actor_scheduler_instruction.has_value())
+                + static_cast<unsigned>(native_tii_transfer.has_value());
             const auto resume_segment =
                 result.return_instruction.logical_pc >> 13U;
             if (write_count > DC_BEETLE_MAX_REPLACEMENT_WRITES
                 || checkpoint_count
                     > DC_BEETLE_MAX_REPLACEMENT_CHECKPOINTS
+                || (native_tia_transfer
+                    && (write_count != 0U || checkpoint_count != 0U
+                        || result.body_master_cycles != 21555U))
+                || (native_bbr0_instruction
+                    && (write_count != 0U || checkpoint_count != 0U))
+                || (native_bbr3_instruction
+                    && (write_count != 0U || checkpoint_count != 0U))
+                || (native_bbs2_instruction
+                    && (write_count != 0U || checkpoint_count != 0U))
+                || (native_rts_instruction
+                    && (write_count != 0U || checkpoint_count != 0U))
+                || (native_vdc_status_read_instruction
+                    && (write_count != 0U || checkpoint_count != 0U
+                        || result.body_master_cycles != 18U))
+                || (native_plp_instruction
+                    && (write_count != 0U || checkpoint_count != 0U
+                        || result.body_master_cycles != 12U))
+                || (native_sei_instruction
+                    && (write_count != 0U || checkpoint_count != 0U
+                        || result.body_master_cycles != 6U))
+                || (native_jsr_instruction
+                    && (write_count != 0U || checkpoint_count != 0U
+                        || result.body_master_cycles != 21U))
+                || (native_jmp_instruction
+                    && (write_count != 0U || checkpoint_count != 0U
+                        || result.body_master_cycles != 12U))
+                || (native_flipper_owner_instruction
+                    && (write_count != 0U || checkpoint_count != 0U
+                        || (result.body_master_cycles != 15U
+                            && result.body_master_cycles != 6U
+                            && result.body_master_cycles != 12U)))
+                || (native_actor_scheduler_instruction
+                    && (write_count != 0U || checkpoint_count != 0U
+                        || (result.body_master_cycles != 15U
+                            && result.body_master_cycles != 6U
+                            && result.body_master_cycles != 12U)))
+                || (native_tii_transfer
+                    && (write_count != 0U || checkpoint_count != 0U
+                        || (result.body_master_cycles != 147489U
+                            && result.body_master_cycles != 73785U)))
+                || (native_tia_transfer && native_bbr0_instruction)
+                || (native_tia_transfer && native_bbr3_instruction)
+                || (native_tia_transfer && native_bbs2_instruction)
+                || (native_tia_transfer && native_rts_instruction)
+                || (native_tia_transfer && native_vdc_status_read_instruction)
+                || (native_tia_transfer && native_plp_instruction)
+                || (native_tia_transfer && native_sei_instruction)
+                || (native_tia_transfer && native_jsr_instruction)
+                || (native_tia_transfer && native_tii_transfer)
+                || (native_bbr0_instruction && native_tii_transfer)
+                || (native_bbr0_instruction && native_vdc_status_read_instruction)
+                || (native_bbr0_instruction && native_plp_instruction)
+                || (native_bbr0_instruction && native_sei_instruction)
+                || (native_bbr0_instruction && native_jsr_instruction)
+                || (native_bbr0_instruction && native_bbr3_instruction)
+                || (native_bbr0_instruction && native_bbs2_instruction)
+                || (native_bbr0_instruction && native_rts_instruction)
+                || (native_bbr3_instruction && native_tii_transfer)
+                || (native_bbr3_instruction && native_vdc_status_read_instruction)
+                || (native_bbr3_instruction && native_plp_instruction)
+                || (native_bbr3_instruction && native_sei_instruction)
+                || (native_bbr3_instruction && native_jsr_instruction)
+                || (native_bbr3_instruction && native_bbs2_instruction)
+                || (native_bbr3_instruction && native_rts_instruction)
+                || (native_bbs2_instruction && native_tii_transfer)
+                || (native_bbs2_instruction && native_vdc_status_read_instruction)
+                || (native_bbs2_instruction && native_plp_instruction)
+                || (native_bbs2_instruction && native_sei_instruction)
+                || (native_bbs2_instruction && native_jsr_instruction)
+                || (native_bbs2_instruction && native_rts_instruction)
+                || (native_rts_instruction && native_tii_transfer)
+                || (native_rts_instruction && native_vdc_status_read_instruction)
+                || (native_rts_instruction && native_plp_instruction)
+                || (native_rts_instruction && native_sei_instruction)
+                || (native_rts_instruction && native_jsr_instruction)
+                || (native_vdc_status_read_instruction && native_plp_instruction)
+                || (native_vdc_status_read_instruction && native_tii_transfer)
+                || (native_plp_instruction && native_tii_transfer)
+                || (native_plp_instruction && native_sei_instruction)
+                || (native_plp_instruction && native_jsr_instruction)
+                || (native_sei_instruction && native_tii_transfer)
+                || (native_sei_instruction && native_jsr_instruction)
+                || (native_jsr_instruction && native_tii_transfer)
+                || (native_vdc_status_read_instruction && native_sei_instruction)
+                || (native_vdc_status_read_instruction && native_jsr_instruction)
+                || native_capability_count > 1U
                 || result.output_registers.program_counter
                     != result.return_instruction.logical_pc
                 || result.output_registers.mpr[resume_segment]
@@ -3502,6 +3588,53 @@ private:
                 transcript_token);
             core_result->transcript_token = transcript_token;
 
+            if (native_tia_transfer) {
+                core_result->native_tia_transfer = 1U;
+                core_result->native_tia_source = native_tia_transfer->source;
+                core_result->native_tia_destination =
+                    native_tia_transfer->destination;
+                core_result->native_tia_length = native_tia_transfer->length;
+            }
+            if (native_bbr0_instruction) {
+                core_result->native_bbr0_instruction = 1U;
+            }
+            if (native_bbr3_instruction) {
+                core_result->native_bbr3_instruction = 1U;
+            }
+            if (native_bbs2_instruction) {
+                core_result->native_bbs2_instruction = 1U;
+            }
+            if (native_rts_instruction) {
+                core_result->native_rts_instruction = 1U;
+            }
+            if (native_vdc_status_read_instruction) {
+                core_result->native_vdc_status_read_instruction = 1U;
+            }
+            if (native_plp_instruction) {
+                core_result->native_plp_instruction = 1U;
+            }
+            if (native_sei_instruction) {
+                core_result->native_sei_instruction = 1U;
+            }
+            if (native_jsr_instruction) {
+                core_result->native_jsr_instruction = 1U;
+            }
+            if (native_jmp_instruction) {
+                core_result->native_jmp_instruction = 1U;
+            }
+            if (native_flipper_owner_instruction) {
+                core_result->native_flipper_owner_instruction = 1U;
+            }
+            if (native_actor_scheduler_instruction) {
+                core_result->native_actor_scheduler_instruction = 1U;
+            }
+            if (native_tii_transfer) {
+                core_result->native_tii_transfer = 1U;
+                core_result->native_tii_source = native_tii_transfer->source;
+                core_result->native_tii_destination = native_tii_transfer->destination;
+                core_result->native_tii_length = native_tii_transfer->length;
+            }
+
             core_result->resume_logical_pc =
                 result.return_instruction.logical_pc;
             core_result->accumulator =
@@ -3574,6 +3707,12 @@ private:
             }
             core_result->checkpoints =
                 runtime->replacement_checkpoints_.data();
+            if (runtime->instruction_profile_) {
+                runtime->instruction_profile_->mark_previous_native(
+                    state->physical_bank,
+                    state->logical_pc,
+                    state->absolute_master_cycle);
+            }
             core_result->handled = 1U;
         } catch (...) {
             runtime->callback_failed_ = true;
@@ -4030,6 +4169,8 @@ private:
     struct InstructionCounter {
         std::uint64_t executions = 0;
         std::uint64_t master_cycles = 0;
+        std::uint64_t interpreted_executions = 0;
+        std::uint64_t interpreted_master_cycles = 0;
     };
 
     struct InstructionProfile {
@@ -4041,6 +4182,7 @@ private:
         std::uint8_t previous_bank = 0;
         std::uint16_t previous_pc = 0;
         std::uint64_t previous_absolute_master_cycle = 0;
+        bool previous_was_native = false;
 
         void sample(
             const std::uint8_t bank,
@@ -4056,15 +4198,91 @@ private:
                 }
                 auto& counter = (*page)[previous_pc];
                 ++counter.executions;
-                counter.master_cycles += absolute_master_cycle
+                const auto cycles = absolute_master_cycle
                     - previous_absolute_master_cycle;
+                counter.master_cycles += cycles;
+                if (!previous_was_native) {
+                    ++counter.interpreted_executions;
+                    counter.interpreted_master_cycles += cycles;
+                }
             }
             has_previous = true;
             previous_bank = bank;
             previous_pc = pc;
             previous_absolute_master_cycle = absolute_master_cycle;
+            previous_was_native = false;
+        }
+
+        void mark_previous_native(
+            const std::uint8_t bank,
+            const std::uint16_t pc,
+            const std::uint64_t absolute_master_cycle) noexcept
+        {
+            // The core enters the instruction hook before asking whether this
+            // exact boundary has a replacement. A successful transaction owns
+            // the interval which starts here; a declined transaction leaves it
+            // interpreted. Do not let a delayed or mismatched callback relabel
+            // a newer instruction.
+            if (has_previous && previous_bank == bank && previous_pc == pc
+                && previous_absolute_master_cycle == absolute_master_cycle) {
+                previous_was_native = true;
+            }
         }
     };
+
+    [[nodiscard]] std::vector<InstructionProfileEntry>
+    export_instruction_profile(const bool interpreted_only) const
+    {
+        std::vector<InstructionProfileEntry> entries;
+        if (!instruction_profile_) {
+            return entries;
+        }
+
+        for (std::size_t bank = 0U;
+             bank < instruction_profile_->banks.size();
+             ++bank) {
+            const auto& counters = instruction_profile_->banks[bank];
+            if (!counters) {
+                continue;
+            }
+            for (std::size_t pc = 0U; pc < counters->size(); ++pc) {
+                const auto& counter = (*counters)[pc];
+                const auto executions = interpreted_only
+                    ? counter.interpreted_executions
+                    : counter.executions;
+                if (executions == 0U) {
+                    continue;
+                }
+                entries.push_back({
+                    .instruction =
+                        {
+                            .physical_bank = static_cast<std::uint8_t>(bank),
+                            .logical_pc = static_cast<std::uint16_t>(pc),
+                        },
+                    .executions = executions,
+                    .master_cycles = interpreted_only
+                        ? counter.interpreted_master_cycles
+                        : counter.master_cycles,
+                });
+            }
+        }
+
+        std::ranges::sort(
+            entries,
+            [](const InstructionProfileEntry& left,
+               const InstructionProfileEntry& right) {
+                if (left.master_cycles != right.master_cycles) {
+                    return left.master_cycles > right.master_cycles;
+                }
+                return std::pair{
+                           left.instruction.physical_bank,
+                           left.instruction.logical_pc}
+                < std::pair{
+                           right.instruction.physical_bank,
+                           right.instruction.logical_pc};
+            });
+        return entries;
+    }
 
     std::unique_ptr<InstructionProfile> instruction_profile_;
     std::vector<ExecutionHook> execution_hooks_;

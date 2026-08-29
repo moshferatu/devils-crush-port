@@ -13416,7 +13416,8 @@ read_interactive_session_replay(const std::filesystem::path& path)
     const std::filesystem::path& path,
     const std::span<const devils_crush::emulation::InstructionProfileEntry>
         entries,
-    const std::string_view core_revision)
+    const std::string_view core_revision,
+    const std::string_view scope = {})
 {
     if (entries.empty()) {
         std::cerr << "The instruction profile recorded no executions.\n";
@@ -13456,6 +13457,8 @@ read_interactive_session_replay(const std::filesystem::path& path)
     output << "# format=devils-crush-instruction-profile-v1\n"
            << "# rom_sha256=" << devils_crush::rom::kSupportedSha256 << '\n'
            << "# core_revision=" << core_revision << '\n'
+           << (scope.empty() ? "" : "# scope=") << scope
+           << (scope.empty() ? "" : "\n")
            << "# address_count=" << entries.size() << '\n'
            << "# total_executions=" << total_executions << '\n'
            << "# total_master_cycles=" << total_cycles << '\n'
@@ -13699,6 +13702,39 @@ read_interactive_session_replay(const std::filesystem::path& path)
 struct NativeRegistryDeployment {
     std::vector<RegistryCensusRow> rows;
     NativeCycleSpan span;
+    // Core-native instruction capabilities installed beside (rather than as)
+    // admitted game-routine rows. The full-palette TIA is the first: its
+    // precise body belongs in the cycle share, while 00:EB30 remains the
+    // registry owner reported by the routine census.
+    std::uint64_t core_capability_entries = 0U;
+    std::uint64_t core_capability_accepted = 0U;
+    std::uint64_t core_capability_master_cycles = 0U;
+    std::uint64_t core_tia_transfers = 0U;
+    std::uint64_t core_bbr0_instructions = 0U;
+    std::uint64_t core_bbr3_instructions = 0U;
+    std::uint64_t core_bbs2_instructions = 0U;
+    std::uint64_t core_rts_instructions = 0U;
+    std::uint64_t core_vdc_status_reads = 0U;
+    std::uint64_t core_plp_instructions = 0U;
+    std::uint64_t core_sei_instructions = 0U;
+    std::uint64_t core_jsr_instructions = 0U;
+    std::uint64_t core_jmp_instructions = 0U;
+    std::uint64_t core_flipper_owner_instructions = 0U;
+    std::uint64_t core_actor_scheduler_instructions = 0U;
+    std::uint64_t core_tii_transfers = 0U;
+    // Bounded native transcripts at instruction continuations that have not
+    // yet been promoted to admitted routine rows. They remain visible in the
+    // cycle share while live play validates their broader ownership.
+    std::uint64_t auxiliary_transcript_entries = 0U;
+    std::uint64_t auxiliary_transcript_accepted = 0U;
+    std::uint64_t auxiliary_transcript_master_cycles = 0U;
+    std::uint64_t auxiliary_bank9_actor_scan_entries = 0U;
+    std::uint64_t auxiliary_bank9_actor_scan_head_entries = 0U;
+    std::uint64_t auxiliary_bank9_actor_scan_advance_entries = 0U;
+    std::uint64_t auxiliary_bank9_actor_scan_decimal_entries = 0U;
+    std::uint64_t auxiliary_bank9_actor_scan_transfer_entries = 0U;
+    std::uint64_t auxiliary_bank9_actor_scan_queue_bank_mismatch_entries = 0U;
+    std::uint64_t auxiliary_bonus_actor_scan_entries = 0U;
 };
 
 // Admitted routines that are nonetheless withheld from a composed deployment.
@@ -13730,38 +13766,12 @@ struct NativeRegistryDeployment {
 constexpr std::array<RoutineKey, 0U> kWithheldRoutines{};
 
 // Installs every admitted routine that is neither withheld nor already claimed
-// by an explicit hook. The recording paths and the interactive host share this
-// Where the shooter's input gate is lifted, and what the host has to take back
-// from the registry to be able to lift it there.
-//
-// `restore_flipper_input` has to run between `01:C4FD STY $2CEE` and the four
-// addresses that read `$2CEE`, and `01:C500` is the first instruction after
-// the write. That was an ordinary instruction hook until `01:C4DE`-`01:C50E`
-// was ported: a routine that runs as a native transcript never presents its
-// interior instructions to the interpreter -- the walk leaves `01:C4DE` and
-// hands back a program counter of `01:C510` -- so the hook stopped firing and
-// the flippers went dead during the launch again. Nothing failed loudly.
-// `install_execution_hook` still succeeded, because `01:C500` is not a
-// registry entry and collided with nothing; it simply never fired.
-//
-// **An address is hookable only if the interpreter still arrives at it, which
-// for a ported range means its entry and whatever it hands back to, and
-// nothing in between.** Neither of those is available here. `01:C4DE` is
-// before the write, and `01:C510`, `01:C52C` and `01:D466` -- every address
-// between the write and the reads -- are registry entries themselves, and a
-// key may carry one hook.
-//
-// So the host claims the preamble back. `01:C4DE` runs interpreted while the
-// gate is installed, which costs 775,224 master cycles of a 1.29-billion-cycle
-// route: 0.06% of the session, against a flipper that answers 100 frames
-// sooner on every launch.
+// by an explicit hook. The C4DE actor-scan prefix returns at 01:C500 after it
+// stores `$2CEE`, so the host can restore cabinet flipper input at that exact
+// instruction boundary without claiming the complete preamble back.
 constexpr RoutineKey kShooterGateInstruction{
     .physical_bank = 0x01U,
     .logical_pc = 0xC500U,
-};
-constexpr RoutineKey kShooterGateOwner{
-    .physical_bank = 0x01U,
-    .logical_pc = 0xC4DEU,
 };
 
 using NativeRegistryEntryObserver = std::function<void(
@@ -13864,6 +13874,610 @@ using NativeRegistryEntryObserver = std::function<void(
                   << ".\n";
         return false;
     }
+    // The full VCE palette upload is a single TIA opcode at 00:EB46, reached
+    // from the admitted 00:EB30 transaction. It is not a separately admitted
+    // game routine, but it still needs a hook at the instruction boundary so
+    // the compact core block-transfer path can take it over. Keep it outside
+    // the census rows: the existing EB30 owner remains the reported routine.
+    constexpr RoutineKey kPaletteTiaInstruction{
+        .physical_bank = 0x00U,
+        .logical_pc = 0xEB46U,
+    };
+    if (std::find(
+            claimed_routines.begin(),
+            claimed_routines.end(),
+            kPaletteTiaInstruction)
+        == claimed_routines.end()
+        && !runtime.install_execution_hook({
+            .routine = kPaletteTiaInstruction,
+            .mode = HookMode::replace,
+            .replacement_callback = [&deployment, &replacement_rom](
+                const RoutineEntry& entry,
+                const std::span<const std::byte> work_ram) {
+                ++deployment.core_capability_entries;
+                deployment.span.observe(entry.absolute_master_cycle);
+                auto result = replace_native_gameplay_routine(
+                    entry, work_ram, replacement_rom);
+                if (result) {
+                    ++deployment.core_capability_accepted;
+                    ++deployment.core_tia_transfers;
+                    deployment.core_capability_master_cycles +=
+                        result->body_master_cycles;
+                }
+                return result;
+            },
+        })) {
+        std::cerr << "Could not install native palette TIA hook.\n";
+        return false;
+    }
+    // Like TIA, BBR0 is an indivisible core opcode rather than a game-routine
+    // transcript: its zero-page read and branch each sample the event horizon.
+    // Its two tilemap arms are already admitted at F426/F42A.
+    constexpr RoutineKey kTilemapBbr0Instruction{
+        .physical_bank = 0x00U,
+        .logical_pc = 0xF423U,
+    };
+    if (std::find(
+            claimed_routines.begin(),
+            claimed_routines.end(),
+            kTilemapBbr0Instruction)
+        == claimed_routines.end()
+        && !runtime.install_execution_hook({
+            .routine = kTilemapBbr0Instruction,
+            .mode = HookMode::replace,
+            .replacement_callback = [&deployment, &replacement_rom](
+                const RoutineEntry& entry,
+                const std::span<const std::byte> work_ram) {
+                ++deployment.core_capability_entries;
+                deployment.span.observe(entry.absolute_master_cycle);
+                auto result = replace_native_gameplay_routine(
+                    entry, work_ram, replacement_rom);
+                if (result) {
+                    ++deployment.core_capability_accepted;
+                    ++deployment.core_bbr0_instructions;
+                    deployment.core_capability_master_cycles +=
+                        result->body_master_cycles;
+                }
+                return result;
+            },
+        })) {
+        std::cerr << "Could not install native tilemap BBR0 hook.\n";
+        return false;
+    }
+    // The substep loop's BBR3 is likewise a single core opcode with two event
+    // samples. Its native continuations already begin at C759 and C75E.
+    constexpr RoutineKey kSubstepBbr3Instruction{
+        .physical_bank = 0x01U,
+        .logical_pc = 0xC756U,
+    };
+    if (std::find(
+            claimed_routines.begin(),
+            claimed_routines.end(),
+            kSubstepBbr3Instruction)
+        == claimed_routines.end()
+        && !runtime.install_execution_hook({
+            .routine = kSubstepBbr3Instruction,
+            .mode = HookMode::replace,
+            .replacement_callback = [&deployment, &replacement_rom](
+                const RoutineEntry& entry,
+                const std::span<const std::byte> work_ram) {
+                ++deployment.core_capability_entries;
+                deployment.span.observe(entry.absolute_master_cycle);
+                auto result = replace_native_gameplay_routine(
+                    entry, work_ram, replacement_rom);
+                if (result) {
+                    ++deployment.core_capability_accepted;
+                    ++deployment.core_bbr3_instructions;
+                    deployment.core_capability_master_cycles +=
+                        result->body_master_cycles;
+                }
+                return result;
+            },
+        })) {
+        std::cerr << "Could not install native substep BBR3 hook.\n";
+        return false;
+    }
+    // The collision sweep uses the same BBR3 opcode and has native arms at
+    // CB81 and CB8A. It stays in the core for the original event samples.
+    constexpr RoutineKey kCollisionTailBbr3Instruction{
+        .physical_bank = 0x01U,
+        .logical_pc = 0xCB7EU,
+    };
+    if (std::find(
+            claimed_routines.begin(),
+            claimed_routines.end(),
+            kCollisionTailBbr3Instruction)
+        == claimed_routines.end()
+        && !runtime.install_execution_hook({
+            .routine = kCollisionTailBbr3Instruction,
+            .mode = HookMode::replace,
+            .replacement_callback = [&deployment, &replacement_rom](
+                const RoutineEntry& entry,
+                const std::span<const std::byte> work_ram) {
+                ++deployment.core_capability_entries;
+                deployment.span.observe(entry.absolute_master_cycle);
+                auto result = replace_native_gameplay_routine(
+                    entry, work_ram, replacement_rom);
+                if (result) {
+                    ++deployment.core_capability_accepted;
+                    ++deployment.core_bbr3_instructions;
+                    deployment.core_capability_master_cycles +=
+                        result->body_master_cycles;
+                }
+                return result;
+            },
+        })) {
+        std::cerr << "Could not install native collision BBR3 hook.\n";
+        return false;
+    }
+    // The preceding collision-sweep BBS2 has native arms at CB74 and CB76;
+    // its core path retains the zero-page and branch event samples.
+    constexpr RoutineKey kCollisionTailBbs2Instruction{
+        .physical_bank = 0x01U,
+        .logical_pc = 0xCB71U,
+    };
+    if (std::find(
+            claimed_routines.begin(),
+            claimed_routines.end(),
+            kCollisionTailBbs2Instruction)
+        == claimed_routines.end()
+        && !runtime.install_execution_hook({
+            .routine = kCollisionTailBbs2Instruction,
+            .mode = HookMode::replace,
+            .replacement_callback = [&deployment, &replacement_rom](
+                const RoutineEntry& entry,
+                const std::span<const std::byte> work_ram) {
+                ++deployment.core_capability_entries;
+                deployment.span.observe(entry.absolute_master_cycle);
+                auto result = replace_native_gameplay_routine(
+                    entry, work_ram, replacement_rom);
+                if (result) {
+                    ++deployment.core_capability_accepted;
+                    ++deployment.core_bbs2_instructions;
+                    deployment.core_capability_master_cycles +=
+                        result->body_master_cycles;
+                }
+                return result;
+            },
+        })) {
+        std::cerr << "Could not install native collision BBS2 hook.\n";
+        return false;
+    }
+    // D4B2 is an RTS embedded in the active-flipper owner. Its target comes
+    // from a live stack frame, so the core alone executes the return.
+    constexpr RoutineKey kFlipperOwnerRtsInstruction{
+        .physical_bank = 0x01U,
+        .logical_pc = 0xD4B2U,
+    };
+    if (std::find(
+            claimed_routines.begin(),
+            claimed_routines.end(),
+            kFlipperOwnerRtsInstruction)
+        == claimed_routines.end()
+        && !runtime.install_execution_hook({
+            .routine = kFlipperOwnerRtsInstruction,
+            .mode = HookMode::replace,
+            .replacement_callback = [&deployment, &replacement_rom](
+                const RoutineEntry& entry,
+                const std::span<const std::byte> work_ram) {
+                ++deployment.core_capability_entries;
+                deployment.span.observe(entry.absolute_master_cycle);
+                auto result = replace_native_gameplay_routine(
+                    entry, work_ram, replacement_rom);
+                if (result) {
+                    ++deployment.core_capability_accepted;
+                    ++deployment.core_rts_instructions;
+                    deployment.core_capability_master_cycles +=
+                        result->body_master_cycles;
+                }
+                return result;
+            },
+        })) {
+        std::cerr << "Could not install native flipper-owner RTS hook.\n";
+        return false;
+    }
+    // The VDC status read is the interrupt acknowledge itself. It cannot be
+    // transcribed, but the core can retain the original device read exactly.
+    constexpr RoutineKey kVdcStatusReadInstruction{
+        .physical_bank = 0x00U,
+        .logical_pc = 0xE05CU,
+    };
+    if (std::find(
+            claimed_routines.begin(),
+            claimed_routines.end(),
+            kVdcStatusReadInstruction)
+            == claimed_routines.end()
+        && !runtime.install_execution_hook({
+            .routine = kVdcStatusReadInstruction,
+            .mode = HookMode::replace,
+            .replacement_callback = [&deployment, &replacement_rom](
+                const RoutineEntry& entry,
+                const std::span<const std::byte> work_ram) {
+                ++deployment.core_capability_entries;
+                deployment.span.observe(entry.absolute_master_cycle);
+                auto result = replace_native_gameplay_routine(
+                    entry, work_ram, replacement_rom);
+                if (result) {
+                    ++deployment.core_capability_accepted;
+                    ++deployment.core_vdc_status_reads;
+                    deployment.core_capability_master_cycles +=
+                        result->body_master_cycles;
+                }
+                return result;
+            },
+        })) {
+        std::cerr << "Could not install native VDC-status read hook.\n";
+        return false;
+    }
+    // PLP samples the interrupt mask before it restores P from the stack.
+    // Keep both VBlank epilogues in the core so that ordering remains exact.
+    constexpr std::array<std::uint16_t, 2U> kVblankPlpInstructions{
+        0xE134U,
+        0xE193U,
+    };
+    for (const auto plp_pc : kVblankPlpInstructions) {
+        const RoutineKey plp_instruction{
+            .physical_bank = 0x00U,
+            .logical_pc = plp_pc,
+        };
+        if (std::find(
+                claimed_routines.begin(), claimed_routines.end(), plp_instruction)
+                == claimed_routines.end()
+            && !runtime.install_execution_hook({
+                .routine = plp_instruction,
+                .mode = HookMode::replace,
+                .replacement_callback = [&deployment, &replacement_rom](
+                    const RoutineEntry& entry,
+                    const std::span<const std::byte> work_ram) {
+                    ++deployment.core_capability_entries;
+                    deployment.span.observe(entry.absolute_master_cycle);
+                    auto result = replace_native_gameplay_routine(
+                        entry, work_ram, replacement_rom);
+                    if (result) {
+                        ++deployment.core_capability_accepted;
+                        ++deployment.core_plp_instructions;
+                        deployment.core_capability_master_cycles +=
+                            result->body_master_cycles;
+                    }
+                    return result;
+                },
+            })) {
+            std::cerr << "Could not install native VBlank PLP hook.\n";
+            return false;
+        }
+    }
+    // The music driver reaches this SEI with interrupts enabled. The original
+    // opcode samples its pending IRQ before it raises I, so retain it in core.
+    constexpr RoutineKey kMusicSeiInstruction{
+        .physical_bank = 0x45U,
+        .logical_pc = 0x4168U,
+    };
+    if (std::find(
+            claimed_routines.begin(), claimed_routines.end(), kMusicSeiInstruction)
+            == claimed_routines.end()
+        && !runtime.install_execution_hook({
+            .routine = kMusicSeiInstruction,
+            .mode = HookMode::replace,
+            .replacement_callback = [&deployment, &replacement_rom](
+                const RoutineEntry& entry,
+                const std::span<const std::byte> work_ram) {
+                ++deployment.core_capability_entries;
+                deployment.span.observe(entry.absolute_master_cycle);
+                auto result = replace_native_gameplay_routine(
+                    entry, work_ram, replacement_rom);
+                if (result) {
+                    ++deployment.core_capability_accepted;
+                    ++deployment.core_sei_instructions;
+                    deployment.core_capability_master_cycles +=
+                        result->body_master_cycles;
+                }
+                return result;
+            },
+        })) {
+        std::cerr << "Could not install native music SEI hook.\n";
+        return false;
+    }
+    constexpr RoutineKey kMusicPsgCallInstruction{
+        .physical_bank = 0x45U,
+        .logical_pc = 0x4138U,
+    };
+    if (std::find(
+            claimed_routines.begin(), claimed_routines.end(), kMusicPsgCallInstruction)
+            == claimed_routines.end()
+        && !runtime.install_execution_hook({
+            .routine = kMusicPsgCallInstruction,
+            .mode = HookMode::replace,
+            .replacement_callback = [&deployment, &replacement_rom](
+                const RoutineEntry& entry,
+                const std::span<const std::byte> work_ram) {
+                ++deployment.core_capability_entries;
+                deployment.span.observe(entry.absolute_master_cycle);
+                auto result = replace_native_gameplay_routine(
+                    entry, work_ram, replacement_rom);
+                if (result) {
+                    ++deployment.core_capability_accepted;
+                    ++deployment.core_jsr_instructions;
+                    deployment.core_capability_master_cycles +=
+                        result->body_master_cycles;
+                }
+                return result;
+            },
+        })) {
+        std::cerr << "Could not install native music JSR hook.\n";
+        return false;
+    }
+    constexpr RoutineKey kMusicPsgReturnInstruction{
+        .physical_bank = 0x45U,
+        .logical_pc = 0x4210U,
+    };
+    if (std::find(
+            claimed_routines.begin(), claimed_routines.end(), kMusicPsgReturnInstruction)
+            == claimed_routines.end()
+        && !runtime.install_execution_hook({
+            .routine = kMusicPsgReturnInstruction,
+            .mode = HookMode::replace,
+            .replacement_callback = [&deployment, &replacement_rom](
+                const RoutineEntry& entry,
+                const std::span<const std::byte> work_ram) {
+                ++deployment.core_capability_entries;
+                deployment.span.observe(entry.absolute_master_cycle);
+                auto result = replace_native_gameplay_routine(
+                    entry, work_ram, replacement_rom);
+                if (result) {
+                    ++deployment.core_capability_accepted;
+                    ++deployment.core_rts_instructions;
+                    deployment.core_capability_master_cycles +=
+                        result->body_master_cycles;
+                }
+                return result;
+            },
+        })) {
+        std::cerr << "Could not install native music RTS hook.\n";
+        return false;
+    }
+    constexpr RoutineKey kSharedActorReturnInstruction{
+        .physical_bank = 0x03U,
+        .logical_pc = 0x7525U,
+    };
+    if (std::find(
+            claimed_routines.begin(), claimed_routines.end(), kSharedActorReturnInstruction)
+            == claimed_routines.end()
+        && !runtime.install_execution_hook({
+            .routine = kSharedActorReturnInstruction,
+            .mode = HookMode::replace,
+            .replacement_callback = [&deployment, &replacement_rom](
+                const RoutineEntry& entry,
+                const std::span<const std::byte> work_ram) {
+                ++deployment.core_capability_entries;
+                deployment.span.observe(entry.absolute_master_cycle);
+                auto result = replace_native_gameplay_routine(
+                    entry, work_ram, replacement_rom);
+                if (result) {
+                    ++deployment.core_capability_accepted;
+                    ++deployment.core_rts_instructions;
+                    deployment.core_capability_master_cycles +=
+                        result->body_master_cycles;
+                }
+                return result;
+            },
+        })) {
+        std::cerr << "Could not install native shared actor RTS hook.\n";
+        return false;
+    }
+    constexpr std::array<RoutineKey, 4U> kFlipperOwnerInstructions{{
+        {.physical_bank = 0x01U, .logical_pc = 0xD4A7U},
+        {.physical_bank = 0x01U, .logical_pc = 0xD4AAU},
+        {.physical_bank = 0x01U, .logical_pc = 0xD4ADU},
+        {.physical_bank = 0x01U, .logical_pc = 0xD4B0U},
+    }};
+    for (const auto routine : kFlipperOwnerInstructions) {
+        if (std::find(claimed_routines.begin(), claimed_routines.end(), routine)
+            != claimed_routines.end()) {
+            continue;
+        }
+        if (!runtime.install_execution_hook({
+                .routine = routine,
+                .mode = HookMode::replace,
+                .replacement_callback = [&deployment, &replacement_rom](
+                    const RoutineEntry& entry,
+                    const std::span<const std::byte> work_ram) {
+                    ++deployment.core_capability_entries;
+                    deployment.span.observe(entry.absolute_master_cycle);
+                    auto result = replace_native_gameplay_routine(
+                        entry, work_ram, replacement_rom);
+                    if (result) {
+                        ++deployment.core_capability_accepted;
+                        ++deployment.core_flipper_owner_instructions;
+                        deployment.core_capability_master_cycles +=
+                            result->body_master_cycles;
+                    }
+                    return result;
+                },
+            })) {
+            std::cerr << "Could not install native flipper-owner hook.\n";
+            return false;
+        }
+    }
+    constexpr std::array<RoutineKey, 3U> kActorSchedulerInstructions{{
+        {.physical_bank = 0x03U, .logical_pc = 0x751EU},
+        {.physical_bank = 0x03U, .logical_pc = 0x7521U},
+        {.physical_bank = 0x03U, .logical_pc = 0x7523U},
+    }};
+    for (const auto routine : kActorSchedulerInstructions) {
+        if (std::find(claimed_routines.begin(), claimed_routines.end(), routine)
+            != claimed_routines.end()) {
+            continue;
+        }
+        if (!runtime.install_execution_hook({
+                .routine = routine,
+                .mode = HookMode::replace,
+                .replacement_callback = [&deployment, &replacement_rom](
+                    const RoutineEntry& entry,
+                    const std::span<const std::byte> work_ram) {
+                    ++deployment.core_capability_entries;
+                    deployment.span.observe(entry.absolute_master_cycle);
+                    auto result = replace_native_gameplay_routine(
+                        entry, work_ram, replacement_rom);
+                    if (result) {
+                        ++deployment.core_capability_accepted;
+                        ++deployment.core_actor_scheduler_instructions;
+                        deployment.core_capability_master_cycles +=
+                            result->body_master_cycles;
+                    }
+                    return result;
+                },
+            })) {
+            std::cerr << "Could not install native actor-scheduler hook.\n";
+            return false;
+        }
+    }
+    constexpr std::array<RoutineKey, 2U> kMusicJumpInstructions{{
+        {.physical_bank = 0x45U, .logical_pc = 0x4003U},
+        {.physical_bank = 0x45U, .logical_pc = 0x40FFU},
+    }};
+    for (const auto routine : kMusicJumpInstructions) {
+        if (std::find(claimed_routines.begin(), claimed_routines.end(), routine)
+            != claimed_routines.end()) {
+            continue;
+        }
+        if (!runtime.install_execution_hook({
+                .routine = routine,
+                .mode = HookMode::replace,
+                .replacement_callback = [&deployment, &replacement_rom](
+                    const RoutineEntry& entry,
+                    const std::span<const std::byte> work_ram) {
+                    ++deployment.core_capability_entries;
+                    deployment.span.observe(entry.absolute_master_cycle);
+                    auto result = replace_native_gameplay_routine(
+                        entry, work_ram, replacement_rom);
+                    if (result) {
+                        ++deployment.core_capability_accepted;
+                        ++deployment.core_jmp_instructions;
+                        deployment.core_capability_master_cycles +=
+                            result->body_master_cycles;
+                    }
+                    return result;
+                },
+            })) {
+            std::cerr << "Could not install native music JMP hook.\n";
+            return false;
+        }
+    }
+    constexpr RoutineKey kStartupTiiInstruction{
+        .physical_bank = 0x01U,
+        .logical_pc = 0xC100U,
+    };
+    if (std::find(claimed_routines.begin(), claimed_routines.end(),
+                  kStartupTiiInstruction) == claimed_routines.end()
+        && !runtime.install_execution_hook({
+            .routine = kStartupTiiInstruction,
+            .mode = HookMode::replace,
+            .replacement_callback = [&deployment, &replacement_rom](
+                const RoutineEntry& entry,
+                const std::span<const std::byte> work_ram) {
+                ++deployment.core_capability_entries;
+                deployment.span.observe(entry.absolute_master_cycle);
+                auto result = replace_native_gameplay_routine(
+                    entry, work_ram, replacement_rom);
+                if (result) {
+                    ++deployment.core_capability_accepted;
+                    ++deployment.core_tii_transfers;
+                    deployment.core_capability_master_cycles += result->body_master_cycles;
+                }
+                return result;
+            },
+        })) {
+        std::cerr << "Could not install native startup TII hook.\n";
+        return false;
+    }
+    // Bank 09's compact actor scan reuses the admitted bank-01 queue filer,
+    // but its two resumable instruction boundaries are not routine entries.
+    // Keep it isolated from the registry while live play validates its exact
+    // C654 -> 60AB continuation.
+    constexpr std::array<RoutineKey, 2U> kBank9ActorScanInstructions{{
+        {.physical_bank = 0x09U, .logical_pc = 0x609BU},
+        {.physical_bank = 0x09U, .logical_pc = 0x60ABU},
+    }};
+    for (const auto routine : kBank9ActorScanInstructions) {
+        if (std::find(claimed_routines.begin(), claimed_routines.end(), routine)
+            != claimed_routines.end()) {
+            continue;
+        }
+        if (!runtime.install_execution_hook({
+                .routine = routine,
+                .mode = HookMode::replace,
+                .replacement_callback = [&deployment, &replacement_rom](
+                    const RoutineEntry& entry,
+                    const std::span<const std::byte> work_ram) {
+                    ++deployment.auxiliary_transcript_entries;
+                    ++deployment.auxiliary_bank9_actor_scan_entries;
+                    if (entry.routine.logical_pc == 0x609BU) {
+                        ++deployment.auxiliary_bank9_actor_scan_head_entries;
+                    } else {
+                        ++deployment.auxiliary_bank9_actor_scan_advance_entries;
+                    }
+                    if ((entry.registers.status & 0x08U) != 0U) {
+                        ++deployment.auxiliary_bank9_actor_scan_decimal_entries;
+                    }
+                    if ((entry.registers.status & 0x20U) != 0U) {
+                        ++deployment.auxiliary_bank9_actor_scan_transfer_entries;
+                    }
+                    if (entry.registers.mpr[0xC606U >> 13U] != 0x01U) {
+                        ++deployment.auxiliary_bank9_actor_scan_queue_bank_mismatch_entries;
+                    }
+                    deployment.span.observe(entry.absolute_master_cycle);
+                    auto result = replace_native_gameplay_routine(
+                        entry, work_ram, replacement_rom);
+                    if (result) {
+                        ++deployment.auxiliary_transcript_accepted;
+                        deployment.auxiliary_transcript_master_cycles +=
+                            result->body_master_cycles;
+                    }
+                    return result;
+                },
+            })) {
+            std::cerr << "Could not install native bank-09 actor-scan hook.\n";
+            return false;
+        }
+    }
+    // The longer bonus route maps a sibling scan at bank 01:C559. Its clear
+    // run, dispatch call, queue call, and post-queue continuation are all
+    // instruction boundaries rather than admitted rows, so keep their
+    // deployment explicitly visible while live play validates the route.
+    constexpr std::array<RoutineKey, 4U> kBonusActorScanInstructions{{
+        {.physical_bank = 0x01U, .logical_pc = 0xC559U},
+        {.physical_bank = 0x01U, .logical_pc = 0xC566U},
+        {.physical_bank = 0x01U, .logical_pc = 0xC568U},
+        {.physical_bank = 0x01U, .logical_pc = 0xC56BU},
+    }};
+    for (const auto routine : kBonusActorScanInstructions) {
+        if (std::find(claimed_routines.begin(), claimed_routines.end(), routine)
+            != claimed_routines.end()) {
+            continue;
+        }
+        if (!runtime.install_execution_hook({
+                .routine = routine,
+                .mode = HookMode::replace,
+                .replacement_callback = [&deployment, &replacement_rom](
+                    const RoutineEntry& entry,
+                    const std::span<const std::byte> work_ram) {
+                    ++deployment.auxiliary_transcript_entries;
+                    ++deployment.auxiliary_bonus_actor_scan_entries;
+                    deployment.span.observe(entry.absolute_master_cycle);
+                    auto result = replace_native_gameplay_routine(
+                        entry, work_ram, replacement_rom);
+                    if (result) {
+                        ++deployment.auxiliary_transcript_accepted;
+                        deployment.auxiliary_transcript_master_cycles +=
+                            result->body_master_cycles;
+                    }
+                    return result;
+                },
+            })) {
+            std::cerr << "Could not install native bonus actor-scan hook.\n";
+            return false;
+        }
+    }
     return true;
 }
 
@@ -13941,6 +14555,84 @@ void print_native_cycle_share(
     }
 }
 
+// The native idle model verifies and advances the frame-sync wait. The
+// profile still sees its entrance, non-skippable turns, and exit tail; they
+// belong in the raw record, but are not a gameplay owner to port.
+[[nodiscard]] constexpr bool is_frame_sync_wait_instruction(
+    const RoutineKey routine) noexcept
+{
+    return routine.physical_bank == 0x00U
+        && routine.logical_pc >= 0xE321U
+        && routine.logical_pc <= 0xE32BU;
+}
+
+// The registry's total cycle share says how much native work it accepted; it
+// cannot say where the rest of the interpreter time went. Keep that residue
+// separate from the whole-ROM profile: a native transcript has an instruction
+// entry boundary too, but its body is not a fallback.
+void print_interpreted_residue_summary(
+    const devils_crush::emulation::PceRuntime& runtime)
+{
+    const auto entries = runtime.export_interpreted_instruction_profile();
+    std::uint64_t executions = 0U;
+    std::uint64_t cycles = 0U;
+    std::uint64_t frame_sync_executions = 0U;
+    std::uint64_t frame_sync_cycles = 0U;
+    for (const auto& entry : entries) {
+        executions += entry.executions;
+        cycles += entry.master_cycles;
+        if (is_frame_sync_wait_instruction(entry.instruction)) {
+            frame_sync_executions += entry.executions;
+            frame_sync_cycles += entry.master_cycles;
+        }
+    }
+
+    std::cout << "Interpreter residue: " << executions
+              << " executed instruction interval(s), " << cycles
+              << " master cycles across " << entries.size()
+              << " address(es)";
+    if (entries.empty()) {
+        std::cout << "; no interpreter residue recorded\n";
+        return;
+    }
+    std::cout << "; " << frame_sync_cycles
+              << " cycles/" << frame_sync_executions
+              << " interval(s) are the already-native frame-sync wait\n";
+
+    std::vector<devils_crush::emulation::InstructionProfileEntry> actionable;
+    actionable.reserve(entries.size());
+    for (const auto& entry : entries) {
+        if (!is_frame_sync_wait_instruction(entry.instruction)) {
+            actionable.push_back(entry);
+        }
+    }
+    std::uint64_t actionable_executions = 0U;
+    std::uint64_t actionable_cycles = 0U;
+    for (const auto& entry : actionable) {
+        actionable_executions += entry.executions;
+        actionable_cycles += entry.master_cycles;
+    }
+    std::cout << "Interpreter residue outside the frame-sync wait: "
+              << actionable_executions << " executed instruction interval(s), "
+              << actionable_cycles << " master cycles across "
+              << actionable.size() << " address(es)\n";
+
+    constexpr std::size_t kTopResidueAddresses = 12U;
+    std::cout << "Interpreter residue, top "
+              << std::min(kTopResidueAddresses, actionable.size())
+              << " by master cycles:";
+    for (std::size_t index = 0U;
+         index < std::min(kTopResidueAddresses, actionable.size());
+         ++index) {
+        const auto& entry = actionable[index];
+        std::cout << (index == 0U ? " " : "; ")
+                  << format_routine_key(entry.instruction) << ' '
+                  << entry.master_cycles << " cycles/"
+                  << entry.executions << " interval(s)";
+    }
+    std::cout << '\n';
+}
+
 void print_native_registry_summary(
     const NativeRegistryDeployment& deployment,
     const ReplacementNesting nesting,
@@ -13964,6 +14656,12 @@ void print_native_registry_summary(
         total_declined += row.declined_at_horizon;
         native_cycles += row.native_master_cycles;
     }
+    total_entries += deployment.core_capability_entries;
+    total_accepted += deployment.core_capability_accepted;
+    native_cycles += deployment.core_capability_master_cycles;
+    total_entries += deployment.auxiliary_transcript_entries;
+    total_accepted += deployment.auxiliary_transcript_accepted;
+    native_cycles += deployment.auxiliary_transcript_master_cycles;
     const auto elapsed = deployment.span.elapsed();
     if (kWithheldRoutines.empty()) {
         std::cout << "Registry hold-backs: none; every admitted routine is "
@@ -13985,7 +14683,52 @@ void print_native_registry_summary(
               << "Registry calls: " << total_accepted << " native of "
               << total_entries << " entered (" << total_declined
               << " declined at an interrupt horizon)\n";
+    if (deployment.core_capability_entries != 0U) {
+        std::cout << "Registry core capabilities: "
+                  << deployment.core_capability_accepted
+                  << " native core instruction(s) of "
+                  << deployment.core_capability_entries << " entered ("
+                  << deployment.core_capability_master_cycles
+                  << " master cycles; TIA="
+                  << deployment.core_tia_transfers << ", BBR0="
+                  << deployment.core_bbr0_instructions << ", BBR3="
+                  << deployment.core_bbr3_instructions << ", BBS2="
+                  << deployment.core_bbs2_instructions << ", RTS="
+                  << deployment.core_rts_instructions << ", VDC-read="
+                  << deployment.core_vdc_status_reads << ", PLP="
+                  << deployment.core_plp_instructions << ", SEI="
+                  << deployment.core_sei_instructions << ", JSR="
+                  << deployment.core_jsr_instructions << ", JMP="
+                  << deployment.core_jmp_instructions << ", Flipper="
+                  << deployment.core_flipper_owner_instructions << ", Actor-scheduler="
+                  << deployment.core_actor_scheduler_instructions << ", TII="
+                  << deployment.core_tii_transfers << ")\n";
+    }
+    if (deployment.auxiliary_transcript_entries != 0U) {
+        std::cout << "Registry auxiliary transcripts: "
+                  << deployment.auxiliary_transcript_accepted
+                  << " native of " << deployment.auxiliary_transcript_entries
+                  << " entered (" << deployment.auxiliary_transcript_master_cycles
+                  << " master cycles; bank-09 actor-scan="
+                  << deployment.auxiliary_bank9_actor_scan_entries
+                  << ", bonus actor-scan="
+                  << deployment.auxiliary_bonus_actor_scan_entries << ")\n";
+        if (deployment.auxiliary_bank9_actor_scan_entries != 0U) {
+            std::cout << "Bank-09 actor-scan entries: head="
+                      << deployment.auxiliary_bank9_actor_scan_head_entries
+                      << ", advance="
+                      << deployment.auxiliary_bank9_actor_scan_advance_entries
+                      << ", decimal="
+                      << deployment.auxiliary_bank9_actor_scan_decimal_entries
+                      << ", transfer="
+                      << deployment.auxiliary_bank9_actor_scan_transfer_entries
+                      << ", queue-bank mismatch="
+                      << deployment.auxiliary_bank9_actor_scan_queue_bank_mismatch_entries
+                      << "\n";
+        }
+    }
     print_native_cycle_share(native_cycles, elapsed, runtime);
+    print_interpreted_residue_summary(runtime);
     // The cycle line above credits every call this process offered. An
     // overflow is a call the runtime then refused, so a nonzero count is the
     // one condition under which that line overstates the share.
@@ -15759,12 +16502,12 @@ void restore_flipper_input(
 
 // The hook sits on `01:C500`, the instruction after the `STY $2CEE`, so it
 // sees the byte the ROM just wrote and runs before the actor sweep at
-// `01:C50D` reads it. That requires the preamble to be interpreted, which is
-// why `kShooterGateOwner` is claimed back from the registry wherever this is
-// installed; see the note there. `02:C020` is a second copy of the same code
-// with the same gate; it is deliberately not hooked, because the 3,600-frame
-// census route never executes it and an unmeasured second site is a claim
-// rather than a change.
+// `01:C50D` reads it. The native C4DE prefix deliberately stops at this
+// instruction. The replacement restores the host's flipper bits, then owns
+// C500-C50E and returns at the registered C510 scan. `02:C020` is a second
+// copy of the same code with the same gate; it is deliberately not hooked,
+// because the 3,600-frame census route never executes it and an unmeasured
+// second site is a claim rather than a change.
 //
 // `--cabinet-launch-flipper-probe` measures what this buys, and measures it
 // with the registry deployed so that it is measuring what people play: on the
@@ -15777,10 +16520,15 @@ void restore_flipper_input(
 {
     return runtime.install_execution_hook({
         .routine = kShooterGateInstruction,
-        .mode = HookMode::observe,
-        .callback =
-            [&runtime, &flippers](const RoutineEntry&) {
+        .mode = HookMode::replace,
+        .replacement_callback =
+            [&runtime, &flippers](
+                const RoutineEntry& entry,
+                const std::span<const std::byte>) {
                 restore_flipper_input(runtime, flippers);
+                const auto work_ram = runtime.export_work_ram();
+                return devils_crush::app::replace_native_gameplay_routine(
+                    entry, work_ram, {});
             },
     });
 }
@@ -16196,10 +16944,7 @@ int run_windows_host(
         host_ok = false;
     }
     NativeRegistryDeployment registry_deployment;
-    // The preamble is claimed back so the shooter's input gate has an
-    // interpreted instruction to hang off; see `kShooterGateOwner`.
-    constexpr std::array<RoutineKey, 1> kHostClaimedRoutines{
-        kShooterGateOwner};
+    constexpr std::array<RoutineKey, 0U> kHostClaimedRoutines{};
     if (native_registry != nullptr) {
         if (!replacement_rom
             || !install_native_registry(
@@ -16244,11 +16989,7 @@ int run_windows_host(
             // worth having to read.
             for (const auto& claimed : kHostClaimedRoutines) {
                 std::cout << "Registry claim: "
-                          << format_routine_key(claimed)
-                          << " claimed; the shooter's input gate hooks "
-                          << format_routine_key(kShooterGateInstruction)
-                          << " inside it, and a native transcript never "
-                             "presents its interior to the interpreter.\n";
+                          << format_routine_key(claimed) << " claimed.\n";
             }
         }
     }
@@ -16422,11 +17163,11 @@ int run_windows_host(
             host_ok = false;
         }
     }
-    if (host_ok && capture_session
+    if (host_ok && (capture_session || native_registry != nullptr)
         && !runtime.set_instruction_profiling(true)) {
         std::cerr
-            << "Could not enable instruction profiling for interactive "
-               "capture.\n";
+            << "Could not enable instruction profiling for interpreter "
+               "residue reporting.\n";
         running = false;
         host_ok = false;
     }
@@ -16950,6 +17691,12 @@ int run_windows_host(
                     capture_session_directory / "instruction-profile.csv",
                     runtime.export_instruction_profile(),
                     core_revision))
+            || (native_registry != nullptr && !captured_inputs.empty()
+                && !write_instruction_profile(
+                    capture_session_directory / "interpreter-residue.csv",
+                    runtime.export_interpreted_instruction_profile(),
+                    core_revision,
+                    "interpreter-residue"))
             || !write_abandonment_census(
                 capture_session_directory / "abandonment-census.csv",
                 runtime.export_abandonment_census(),
@@ -18906,16 +19653,11 @@ struct LaunchFlipperPass {
     bool entered_shooter = false;
 
     // With the registry, because without it this probe measured a machine
-    // nobody plays and missed the one thing it exists to catch. The gate hangs
-    // off an instruction hook, a native transcript never presents its interior
-    // instructions to the interpreter, and so a hook that a port swallowed
-    // would keep passing here and keep failing in the host. Deployed after
-    // `clear_execution_hooks` for the obvious reason, and before the gate so
-    // that a routine owning the gate's address would collide with it visibly.
+    // nobody plays and missed the one thing it exists to catch. The C4DE
+    // prefix explicitly returns at the instruction hook, so the probe checks
+    // the same native/input hand-off the interactive host ships.
     NativeRegistryDeployment registry_deployment;
-    const std::vector<RoutineKey> claimed_routines = restore_input
-        ? std::vector<RoutineKey>{kShooterGateOwner}
-        : std::vector<RoutineKey>{};
+    const std::vector<RoutineKey> claimed_routines{};
     if (native_registry != nullptr
         && !install_native_registry(
             runtime,
@@ -21146,13 +21888,6 @@ int main(const int argc, char* argv[])
             if (options.replace_registry) {
                 std::vector<RoutineKey> claimed_routines =
                     options.observe_hooks;
-                // The live host claims the shooter's preamble so the
-                // flipper-restoration hook can run inside it. Preserve that
-                // ownership in a captured-session replay too; otherwise a
-                // registry transcript skips the hook's instruction site.
-                if (session_replay) {
-                    claimed_routines.push_back(kShooterGateOwner);
-                }
                 claimed_routines.reserve(
                     claimed_routines.size() + options.replace_hooks.size());
                 for (const auto& request : options.replace_hooks) {

@@ -53,15 +53,14 @@ using emulation::RoutineReplacement;
 // points the colour-table address at $0402/$0403 and pushes sixteen colours
 // through $0404/$0405. Its whole-palette arm -- taken when $2BB9 is set, on
 // twenty-nine of 3,599 calls -- uploads all 1,024 bytes with a single TIA, and
-// that one instruction is out of reach: 1,024 writes against a channel that
-// carries 512, with no boundary inside a block transfer for a chunk to stop
-// at. The arm is still native either side of it. 00:EB30 walks the four flag
-// tests and the two colour-table stores and stops in front of the transfer;
-// 00:EB4D, a seventh registered address that nothing in the game jumps to,
-// clears the two request bytes afterwards. The routine was never the unit
-// here -- the instruction was, and it is worth 625,095 of the arm's 627,618
-// master cycles, so this split buys admission on every call rather than
-// cycles.
+// that one instruction needs the core's own resumable TIA loop: serializing
+// 1,024 writes would exceed the replacement channel and would change the
+// quick-state layout. 00:EB46 is therefore a compact core transaction that
+// names the original source, ports, and length; the core keeps its ordinary
+// transfer state, timing, and event yields. 00:EB4D, a seventh registered
+// address that nothing in the game jumps to, clears the two request bytes
+// afterwards. The routine was never the unit here -- the instruction was, and
+// it is worth 625,095 of the arm's 627,618 master cycles.
 //
 // The fifth is 00:EAA7, the fade-to-black stepper, and it is the first routine
 // here that a single transcript cannot hold. Where the interpolator crossfades
@@ -137,16 +136,15 @@ constexpr std::size_t kCheckpointBudget = 1700U;
 {
     return logical_pc == 0xE93CU || logical_pc == 0xE9B6U
         || logical_pc == 0xEAA7U || logical_pc == 0xEAB0U
-        || logical_pc == 0xEB30U || logical_pc == 0xEB4DU
+        || logical_pc == 0xEB30U || logical_pc == 0xEB46U
+        || logical_pc == 0xEB4DU
         || logical_pc == 0xEBA5U;
 }
 
-// The one instruction in this family the contract cannot express, and the
-// reason is capacity rather than meaning. TIA $27B9, $0404, $0400 alternates
-// 1,024 bytes between the two VCE data ports; the replacement channel carries
-// 512 writes, and a checkpoint is an instruction boundary, so there is nowhere
-// inside a block transfer for a chunk to stop. The walk hands it to the core
-// and 00:EB4D picks the arm up again on the other side.
+// The whole-palette TIA is its own hook entry. The host tells the core only its
+// original operands; the core executes its existing block-move loop so every
+// VCE write, scheduler yield, and saved partial transfer stays byte-for-byte
+// compatible with emulation.
 [[nodiscard]] constexpr bool is_handover_instruction(
     const std::uint16_t logical_pc)
 {
@@ -183,12 +181,36 @@ std::optional<RoutineReplacement> replace_palette_shadow(
     if ((entry.registers.status & (kDecimal | kMemory)) != 0U) {
         return std::nullopt;
     }
-    // 00:EB30 addresses the VCE at $0400-$0405, which only reaches the device
+    // 00:EB30 and 00:EB46 address the VCE at $0400-$0405, which only reaches the device
     // while the hardware page is mapped at segment 0 -- the same condition the
     // core's write validator imposes before it will commit a port write.
-    if (entry.routine.logical_pc == 0xEB30U
+    if ((entry.routine.logical_pc == 0xEB30U
+         || entry.routine.logical_pc == 0xEB46U)
         && entry.registers.mpr[0] != 0xFFU) {
         return std::nullopt;
+    }
+
+    if (entry.routine.logical_pc == 0xEB46U) {
+        // TIA $27B9, $0404, $0400. The source is the palette shadow buffer in
+        // work RAM; the core validates and executes the transfer itself.
+        if (entry.registers.mpr[1] != 0xF8U) {
+            return std::nullopt;
+        }
+        RoutineReplacement replacement;
+        auto registers = entry.registers;
+        registers.program_counter = 0xEB4DU;
+        replacement.return_instruction = {
+            registers.mpr[0xEB4DU >> 13U],
+            0xEB4DU,
+        };
+        replacement.output_registers = registers;
+        replacement.body_master_cycles = 21555U;
+        replacement.native_tia_transfer = {
+            .source = 0x27B9U,
+            .destination = 0x0404U,
+            .length = 0x0400U,
+        };
+        return replacement;
     }
 
     std::uint8_t ram[0x2000];

@@ -284,6 +284,138 @@ constexpr std::uint32_t kChannelIterationMasterCycles = 2304U;
 
 }  // namespace
 
+std::optional<RoutineReplacement> replace_music_sei(
+    const RoutineEntry& entry)
+{
+    constexpr RoutineKey kRoutine{
+        .physical_bank = 0x45U,
+        .logical_pc = 0x4168U,
+    };
+    if (entry.routine != kRoutine) {
+        return std::nullopt;
+    }
+
+    // SEI samples a pending IRQ before it raises I. The music transcript stops
+    // here when unmasked for exactly that reason; retaining the core opcode
+    // keeps its two-status ordering without moving the PSG deadline.
+    RoutineReplacement replacement{};
+    replacement.return_instruction = kRoutine;
+    replacement.output_registers = entry.registers;
+    replacement.body_master_cycles = 6U;
+    replacement.native_sei_instruction = emulation::NativeSeiInstruction{};
+    return replacement;
+}
+
+std::optional<RoutineReplacement> replace_music_jsr(
+    const RoutineEntry& entry)
+{
+    constexpr RoutineKey kRoutine{
+        .physical_bank = 0x45U,
+        .logical_pc = 0x4138U,
+    };
+    if (entry.routine != kRoutine) {
+        return std::nullopt;
+    }
+
+    // This call opens the sequencer's timer-sensitive PSG subroutine. Its
+    // return address lands on the live stack before the interrupt boundary,
+    // so retain the original core JSR rather than modeling a synthetic frame.
+    RoutineReplacement replacement{};
+    replacement.return_instruction = kRoutine;
+    replacement.output_registers = entry.registers;
+    replacement.body_master_cycles = 21U;
+    replacement.native_jsr_instruction = emulation::NativeJsrInstruction{};
+    return replacement;
+}
+
+std::optional<RoutineReplacement> replace_music_rts(
+    const RoutineEntry& entry)
+{
+    constexpr RoutineKey kRoutine{
+        .physical_bank = 0x45U,
+        .logical_pc = 0x4210U,
+    };
+    if (entry.routine != kRoutine) {
+        return std::nullopt;
+    }
+
+    // The matching return consumes the exact stack frame emitted by 4138 and
+    // reaches scheduler state the transcript cannot name ahead of time.
+    RoutineReplacement replacement{};
+    replacement.return_instruction = kRoutine;
+    replacement.output_registers = entry.registers;
+    replacement.body_master_cycles = 21U;
+    replacement.native_rts_instruction = emulation::NativeRtsInstruction{};
+    return replacement;
+}
+
+std::optional<RoutineReplacement> replace_music_jmp(
+    const RoutineEntry& entry)
+{
+    const auto pc = entry.routine.logical_pc;
+    if (entry.routine.physical_bank != kBank
+        || (pc != 0x4003U && pc != 0x40FFU)) {
+        return std::nullopt;
+    }
+
+    // The exported tick entry and its chunk boundary are live jump
+    // boundaries. Retain the core's original transfer rather than publish a
+    // synthetic destination across a possible interrupt sample.
+    RoutineReplacement replacement{};
+    replacement.return_instruction = entry.routine;
+    replacement.output_registers = entry.registers;
+    replacement.body_master_cycles = 12U;
+    replacement.native_jmp_instruction = emulation::NativeJmpInstruction{};
+    return replacement;
+}
+
+std::optional<RoutineReplacement> replace_shared_actor_rts(
+    const RoutineEntry& entry)
+{
+    constexpr RoutineKey kRoutine{
+        .physical_bank = 0x03U,
+        .logical_pc = 0x7525U,
+    };
+    if (entry.routine != kRoutine) {
+        return std::nullopt;
+    }
+
+    // This is the actor dispatcher's shared live-stack return. Keeping the
+    // core opcode avoids manufacturing a routine boundary inside its owner.
+    RoutineReplacement replacement{};
+    replacement.return_instruction = kRoutine;
+    replacement.output_registers = entry.registers;
+    replacement.body_master_cycles = 21U;
+    replacement.native_rts_instruction = emulation::NativeRtsInstruction{};
+    return replacement;
+}
+
+std::optional<RoutineReplacement> replace_actor_scheduler_instruction(
+    const RoutineEntry& entry)
+{
+    constexpr std::uint8_t kActorBank = 0x03U;
+    const auto pc = entry.routine.logical_pc;
+    if (entry.routine.physical_bank != kActorBank
+        || (pc != 0x751EU && pc != 0x7521U && pc != 0x7523U)) {
+        return std::nullopt;
+    }
+
+    // This local tail follows the source-scheduler call and immediately
+    // reaches the shared live-stack return at 7525. Preserve its RAM read,
+    // request mask, and branch in the original core opcode paths.
+    RoutineReplacement replacement{};
+    replacement.return_instruction = entry.routine;
+    replacement.output_registers = entry.registers;
+    replacement.body_master_cycles = pc == 0x751EU
+        ? 15U
+        : (pc == 0x7521U
+            ? 6U
+            : ((entry.registers.status & 0x02U) == 0U ? 12U : 6U));
+    replacement.native_actor_scheduler_instruction =
+        emulation::NativeActorSchedulerInstruction{};
+    return replacement;
+}
+
 std::optional<RoutineReplacement> replace_music_sequencer(
     const RoutineEntry& entry,
     const std::span<const std::byte> work_ram,

@@ -1,0 +1,203 @@
+diff --git a/mednafen/pce/huc6280.cpp b/mednafen/pce/huc6280.cpp
+--- a/mednafen/pce/huc6280.cpp
++++ b/mednafen/pce/huc6280.cpp
+@@ -1241,2 +1241,199 @@ NO_INLINE void HuC6280::RunSub(void)
+ 			uint32 elapsed = 0;
++			const bool dc_beetle_native_tia_transfer =
++				replacement.native_tia_transfer != 0;
++			const bool dc_beetle_native_bbr0_instruction =
++				replacement.native_bbr0_instruction != 0;
++			const bool dc_beetle_native_bbr3_instruction =
++				replacement.native_bbr3_instruction != 0;
++			const bool dc_beetle_native_bbs2_instruction =
++				replacement.native_bbs2_instruction != 0;
++			const bool dc_beetle_native_rts_instruction =
++				replacement.native_rts_instruction != 0;
++			const bool dc_beetle_native_vdc_status_read_instruction =
++				replacement.native_vdc_status_read_instruction != 0;
++			const bool dc_beetle_native_plp_instruction =
++				replacement.native_plp_instruction != 0;
++			const bool dc_beetle_native_sei_instruction =
++				replacement.native_sei_instruction != 0;
++			const bool dc_beetle_native_jsr_instruction =
++				replacement.native_jsr_instruction != 0;
++			const bool dc_beetle_native_jmp_instruction =
++				replacement.native_jmp_instruction != 0;
++			const bool dc_beetle_native_flipper_owner_instruction =
++				replacement.native_flipper_owner_instruction != 0;
++			const bool dc_beetle_native_actor_scheduler_instruction =
++				replacement.native_actor_scheduler_instruction != 0;
++			const bool dc_beetle_native_tii_transfer =
++				replacement.native_tii_transfer != 0;
++			if(dc_beetle_native_tia_transfer)
++			{
++				// The existing opcode loop owns its resumable TIA state. Validate
++				// this compact request, then fall through to that loop unchanged.
++				valid = valid
++					&& replacement.write_count == 0
++					&& replacement.checkpoint_count == 0
++					&& replacement.native_tia_source == 0x27B9
++					&& replacement.native_tia_destination == 0x0404
++					&& replacement.native_tia_length == 0x0400
++					&& replacement.body_master_cycles == 21555;
++			}
++			if(dc_beetle_native_bbr0_instruction)
++			{
++				// BBR0 is two independently sampled core operations. Keep both
++				// samples by falling through to the one existing opcode path.
++				valid = valid
++					&& replacement.write_count == 0
++					&& replacement.checkpoint_count == 0
++					&& PC == 0xF423 && lastop == 0x0F;
++			}
++			if(dc_beetle_native_bbr3_instruction)
++			{
++				// The gameplay substep and collision-sweep BBR3 opcodes have the
++				// same independently sampled core operations as BBR0. Keep the
++				// opcode path intact.
++				valid = valid
++					&& replacement.write_count == 0
++					&& replacement.checkpoint_count == 0
++					&& (PC == 0xC756 || PC == 0xCB7E) && lastop == 0x3F;
++			}
++			if(dc_beetle_native_bbs2_instruction)
++			{
++				// The collision sweep BBS2 has the same two independently sampled
++				// core operations as BBR. Keep the opcode path intact.
++				valid = valid
++					&& replacement.write_count == 0
++					&& replacement.checkpoint_count == 0
++					&& PC == 0xCB71 && lastop == 0xAF;
++			}
++			if(dc_beetle_native_rts_instruction)
++			{
++				// The active-flipper owner returns through a live stack frame.
++				// Preserve the core's exact stack-read and return-target path.
++				valid = valid
++					&& replacement.write_count == 0
++					&& replacement.checkpoint_count == 0
++					&& (PC == 0xD4B2 || PC == 0x4210 || PC == 0x7525) && lastop == 0x60;
++			}
++			if(dc_beetle_native_vdc_status_read_instruction)
++			{
++				// The VDC status read acknowledges the live interrupt source.
++				// Preserve its hardware read and boundary in the original opcode.
++				valid = valid
++					&& replacement.write_count == 0
++					&& replacement.checkpoint_count == 0
++					&& replacement.body_master_cycles == 18
++					&& PC == 0xE05C && lastop == 0xAD;
++			}
++			if(dc_beetle_native_plp_instruction)
++			{
++				// PLP samples the old interrupt mask before restoring P.
++				// The original opcode path owns that ordering.
++				valid = valid
++					&& replacement.write_count == 0
++					&& replacement.checkpoint_count == 0
++					&& replacement.body_master_cycles == 12
++					&& (PC == 0xE134 || PC == 0xE193) && lastop == 0x28;
++			}
++			if(dc_beetle_native_sei_instruction)
++			{
++				// SEI samples the old interrupt mask before it raises I.
++				// The original opcode path owns that ordering.
++				valid = valid
++					&& replacement.write_count == 0
++					&& replacement.checkpoint_count == 0
++					&& replacement.body_master_cycles == 6
++					&& PC == 0x4168 && lastop == 0x78;
++			}
++			if(dc_beetle_native_jsr_instruction)
++			{
++				// The music PSG call pushes a live return frame before its
++				// interrupt boundary. Keep the original core JSR path intact.
++				valid = valid
++					&& replacement.write_count == 0
++					&& replacement.checkpoint_count == 0
++					&& replacement.body_master_cycles == 21
++					&& PC == 0x4138 && lastop == 0x20;
++			}
++			if(dc_beetle_native_jmp_instruction)
++			{
++				// The audio export and sequencer chunk jump at a live event
++				// boundary. Keep the original core control-transfer path intact.
++				valid = valid
++					&& replacement.write_count == 0
++					&& replacement.checkpoint_count == 0
++					&& replacement.body_master_cycles == 12
++					&& (PC == 0x4003 || PC == 0x40FF) && lastop == 0x4C;
++			}
++			if(dc_beetle_native_flipper_owner_instruction)
++			{
++				// The host leaves the shooter gate interpreted, but this flipper
++				// tail retains its original clear/read/mask/branch boundaries.
++				const bool dc_beetle_flipper_owner_opcode =
++					(PC == 0xD4A7 && lastop == 0x9E)
++					|| (PC == 0xD4AA && lastop == 0xAD)
++					|| (PC == 0xD4AD && lastop == 0x3D)
++					|| (PC == 0xD4B0 && lastop == 0xF0);
++				valid = valid
++					&& replacement.write_count == 0
++					&& replacement.checkpoint_count == 0
++					&& ((replacement.body_master_cycles == 15
++						&& PC != 0xD4B0)
++						|| ((replacement.body_master_cycles == 6
++							|| replacement.body_master_cycles == 12)
++							&& PC == 0xD4B0))
++					&& dc_beetle_flipper_owner_opcode;
++			}
++			if(dc_beetle_native_actor_scheduler_instruction)
++			{
++				// This local actor tail follows a scheduler call and reaches the
++				// shared live-stack return. Keep its RAM read, mask, and branch.
++				const bool dc_beetle_actor_scheduler_opcode =
++					(PC == 0x751E && lastop == 0xAD)
++					|| (PC == 0x7521 && lastop == 0x29)
++					|| (PC == 0x7523 && lastop == 0xD0);
++				valid = valid
++					&& replacement.write_count == 0
++					&& replacement.checkpoint_count == 0
++					&& ((replacement.body_master_cycles == 15
++						&& PC == 0x751E)
++						|| (replacement.body_master_cycles == 6
++							&& (PC == 0x7521 || PC == 0x7523))
++						|| (replacement.body_master_cycles == 12
++							&& PC == 0x7523))
++					&& dc_beetle_actor_scheduler_opcode;
++			}
++			if(dc_beetle_native_tii_transfer)
++			{
++				const bool dc_beetle_known_tii_clear =
++					(replacement.native_tii_source == 0x2000
++						&& replacement.native_tii_destination == 0x2001
++						&& replacement.native_tii_length == 0x1FFF
++						&& replacement.body_master_cycles == 147489
++						&& PC == 0xC100)
++					|| (replacement.native_tii_source == 0x3000
++						&& replacement.native_tii_destination == 0x3001
++						&& replacement.native_tii_length == 0x0FFF
++						&& replacement.body_master_cycles == 73785
++						&& PC == 0x585A);
++				valid = valid
++					&& replacement.write_count == 0
++					&& replacement.checkpoint_count == 0
++					&& dc_beetle_known_tii_clear && lastop == 0x73;
++			}
++			// `valid` controls generic transaction installation below. Suppress
++			// it after validation so the original core opcode executes unchanged.
++			if((dc_beetle_native_tia_transfer
++				|| dc_beetle_native_bbr0_instruction
++				|| dc_beetle_native_bbr3_instruction
++				|| dc_beetle_native_bbs2_instruction
++				|| dc_beetle_native_rts_instruction
++				|| dc_beetle_native_vdc_status_read_instruction
++				|| dc_beetle_native_plp_instruction
++				|| dc_beetle_native_sei_instruction
++				|| dc_beetle_native_jsr_instruction
++				|| dc_beetle_native_jmp_instruction
++				|| dc_beetle_native_flipper_owner_instruction
++				|| dc_beetle_native_actor_scheduler_instruction
++				|| dc_beetle_native_tii_transfer) && valid)
++				valid = false;
+ 			for(uint32 i = 0; valid && i < replacement.write_count; i++)
