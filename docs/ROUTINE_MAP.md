@@ -5695,16 +5695,17 @@ Collision, multi-pass, remaining interrupt-bearing movement records, and the hit
 assembly-owned. The waiting branch's two JSR stack writes occur at cycle 42,
 matching the original transcript.
 
-Semantic `03:73A6@all` now runs 128 of the controlled route's 129 calls
-natively, including the checkpointed `73D8`, `73AF` and `73FD` timer-IRQ
-boundaries. The multi-pass restriction above is gone: the parent no longer
+Semantic `03:73A6@all` now runs all 129 controlled-route calls natively,
+including the checkpointed `73D8`, `73AF` and `73FD` timer-IRQ boundaries.
+The carry-set collision record owns the `73AF` branch to `73CD`, preserves its
+`JSR $C018` `$73CF` stack frame, and composes the existing `C5C9` coroutine
+scheduler through its `C5E9` handoff. The multi-pass restriction above is gone: the parent no longer
 pins its collision child to the single 165-cycle path, because the interpreter
 checkpoints every instruction it walks and the parent takes the child's own
 return instruction — `$6988`, `$6994`, `$69A1` or `$6A37` — rather than
 assuming `$6988`. The `73FD` boundary was added at the same time; without it
 an interrupt landing on the hit gate's return stacked `73CC` instead of
-`73CA`. The one remaining decline is the call whose interpreter returns carry
-set and branches to `73CD`, which is untranscribed.
+`73CA`.
 
 The collision helper at `03:73D8` decrements the four-hit counter.
 Nonterminal hits emit command `$26` and submit 50 stored units (5,000

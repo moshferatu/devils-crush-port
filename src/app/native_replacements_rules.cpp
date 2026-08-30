@@ -7846,10 +7846,6 @@ replace_knight_movement_parent(
     }
     constexpr std::uint32_t kCollisionOffset = 51U;
     append_child(*collision, kCollisionOffset);
-    if ((collision->output_registers.status & 0x01U) != 0U) {
-        return std::nullopt;
-    }
-
     checkpoint = collision->output_registers;
     checkpoint.stack_pointer = static_cast<std::uint8_t>(checkpoint.stack_pointer + 2U);
     const auto collision_end = kCollisionOffset + collision->body_master_cycles;
@@ -7861,6 +7857,72 @@ replace_knight_movement_parent(
     // boundaries so an IRQ stacks the same return PC as ROM.
     append_checkpoint(collision->return_instruction.logical_pc, 0x73AFU,
         collision_end + 21U, checkpoint);
+
+    if ((checkpoint.status & 0x01U) != 0U) {
+        // A carry-set collision takes the parent-owned BCS at $73AF, then
+        // yields this Knight through the ordinary C018/C5C9 coroutine path.
+        // This was the only untranscribed movement record: treating $73D0 as
+        // an independent owner was wrong because it is merely the scheduler's
+        // next actor entry. Compose the whole branch here, retaining the
+        // original JSR frame ($73CF) for C5C9 to consume.
+        append_checkpoint(0x73AFU, 0x73CDU, collision_end + 33U, checkpoint);
+
+        const auto scheduler_stack_high = checkpoint.stack_pointer;
+        const auto scheduler_stack_low = static_cast<std::uint8_t>(
+            scheduler_stack_high - 1U);
+        const auto scheduler_call_offset = collision_end + 33U;
+        replacement.work_ram_writes.push_back({
+            .instruction = {0x03U, 0x73CDU},
+            .logical_address = static_cast<std::uint16_t>(
+                0x2100U + scheduler_stack_high),
+            .value = 0x73U,
+            .master_cycle_offset = scheduler_call_offset,
+        });
+        replacement.work_ram_writes.push_back({
+            .instruction = {0x03U, 0x73CDU},
+            .logical_address = static_cast<std::uint16_t>(
+                0x2100U + scheduler_stack_low),
+            .value = 0xCFU,
+            .master_cycle_offset = scheduler_call_offset,
+        });
+        if (!stage_write(0x2100U + scheduler_stack_high, 0x73U)
+            || !stage_write(0x2100U + scheduler_stack_low, 0xCFU)) {
+            return std::nullopt;
+        }
+        checkpoint.stack_pointer = static_cast<std::uint8_t>(
+            checkpoint.stack_pointer - 2U);
+        append_checkpoint(0x73CDU, 0xC018U, scheduler_call_offset + 21U, checkpoint);
+        append_checkpoint(0xC018U, 0xC5C9U, scheduler_call_offset + 33U, checkpoint);
+
+        RoutineEntry scheduler_entry{
+            .routine = {.physical_bank = 0x01U, .logical_pc = 0xC5C9U},
+            .registers = checkpoint,
+        };
+        auto scheduler = replace_coroutine_scheduler(scheduler_entry, staged);
+        if (!scheduler || scheduler->checkpoints.empty()
+            || scheduler->return_instruction
+                != RoutineKey{.physical_bank = 0x01U, .logical_pc = 0xC5E9U}
+            || replacement.checkpoints.size() + scheduler->checkpoints.size()
+                >= kMaximumCheckpoints
+            || replacement.work_ram_writes.size()
+                + scheduler->work_ram_writes.size()
+            >= kMaximumWrites) {
+            return std::nullopt;
+        }
+        for (const auto& write : scheduler->work_ram_writes) {
+            if (!stage_write(write.logical_address, write.value)) {
+                return std::nullopt;
+            }
+        }
+        constexpr std::uint32_t kSchedulerOffsetFromCall = 33U;
+        append_child(*scheduler, scheduler_call_offset + kSchedulerOffsetFromCall);
+        replacement.return_instruction = scheduler->return_instruction;
+        replacement.output_registers = scheduler->output_registers;
+        replacement.body_master_cycles = scheduler_call_offset
+            + kSchedulerOffsetFromCall + scheduler->body_master_cycles;
+        return replacement;
+    }
+
     append_checkpoint(0x73AFU, 0x73B1U, collision_end + 27U, checkpoint);
 
     const auto timer = static_cast<std::uint8_t>(parent.timer - 1U);

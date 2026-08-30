@@ -15,11 +15,12 @@
 # after the branch at `73CA` and stacked `73CC` where ROM stacks `73CA`. No
 # admitted call happened to take an interrupt there, so nothing saw it. Lifting
 # the gate without the checkpoint moved both the census and the write trace;
-# with it, all three artifacts are identical to assembly at 128 of 129.
+# with it, all three artifacts are identical to assembly. The final carry-set
+# record is composed below.
 #
-# The one remaining decline is call 129, where the interpreter returns carry
-# set and the parent branches to `73CD`. That is an untranscribed path, not a
-# horizon or a cap.
+# Call 129 drives the carry-set collision return through the parent's `73CD`
+# coroutine-scheduler branch. It is composed by the parent so the scheduler's
+# own `$73CF` return frame remains visible to C5C9.
 
 foreach(required_variable IN ITEMS APP CONFIG ROM OUTPUT ORDINAL)
     if(NOT DEFINED ${required_variable} OR "${${required_variable}}" STREQUAL "")
@@ -39,7 +40,7 @@ set(expected_write_sha256 "bc5d40c4259a012696a3576188271060d601c660c362f97bca719
 set(call_output "${OUTPUT}.calls.csv")
 set(write_output "${call_output}.writes.csv")
 if(ORDINAL STREQUAL "all")
-    set(expected_native_line "Native replacement 03:73A6@all entries: 128 of 129")
+    set(expected_native_line "Native replacement 03:73A6@all entries: 129 of 129")
 else()
     set(expected_native_line "Native replacement 03:73A6@${ORDINAL} entries: 1")
 endif()

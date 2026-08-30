@@ -50,7 +50,8 @@ replace_native_gameplay_routine_impl(
         return detail::replace_music_sei(entry);
     }
     if (entry.routine == RoutineKey{0x45U, 0x4138U}
-        || entry.routine == RoutineKey{0x03U, 0x7696U}) {
+        || entry.routine == RoutineKey{0x03U, 0x7696U}
+        || entry.routine == RoutineKey{0x01U, 0xCB5EU}) {
         return detail::replace_music_jsr(entry);
     }
     if (entry.routine == RoutineKey{0x45U, 0x4210U}) {
