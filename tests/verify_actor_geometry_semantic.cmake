@@ -127,9 +127,139 @@ foreach(artifact IN ITEMS census write)
     endif()
 endforeach()
 
+# The canonical route reaches only the guard's zero-counter return. Exercise
+# its active arm independently: the staged counter reaches the coordinate
+# delta prefix, which must hand the caller's continuation back at `01:C9DE`.
+# A direct corpus replay proves its registers, four scratch writes and 207
+# master cycles against the original assembly without relying on a live game.
+set(active_output "${OUTPUT}.active-range.csv")
+set(active_trace_output "${active_output}.trace.csv")
+set(active_call_output "${active_output}.calls.csv")
+set(active_corpus_directory "${OUTPUT}.active-range-corpus")
+set(active_corpus_path "${active_corpus_directory}/01-C969-1300.dcrr")
+
+execute_process(
+    COMMAND
+        "${APP}"
+        --record-state-census
+        "${active_output}"
+        --work-ram-patch
+        "1300:2D00:01"
+        --observe-hook
+        "01:C969"
+        --observe-hook
+        "01:C9DE"
+        --routine-trace
+        "${active_trace_output}"
+        --routine-call-trace
+        "${active_call_output}"
+        --routine-replay
+        "01:C969@1300"
+        --routine-replay
+        "01:C9DE@1"
+        --routine-replay-corpus-out
+        "${active_corpus_directory}"
+        --rom
+        "${ROM}"
+    RESULT_VARIABLE active_capture_result
+    OUTPUT_VARIABLE active_capture_output
+    ERROR_VARIABLE active_capture_error
+)
+if(NOT active_capture_result EQUAL 0)
+    message(
+        FATAL_ERROR
+        "Active actor-geometry capture failed (${active_capture_result}).\n"
+        "${active_capture_output}${active_capture_error}"
+    )
+endif()
+foreach(expected_line IN ITEMS
+    "Work-RAM patches applied: 1"
+    "Routine replay 01:C969@1300 verified: frame 2285, 207 body cycles, 4 ordered writes"
+    "Routine replay 01:C9DE@1 verified: frame 1300, 756 body cycles, 27 ordered writes"
+    "Routine replay corpus 01:C969@1300 persisted:"
+    "Routine replay corpus 01:C9DE@1 persisted:"
+)
+    string(FIND "${active_capture_output}" "${expected_line}" line_offset)
+    if(line_offset EQUAL -1)
+        message(
+            FATAL_ERROR
+            "Active actor-geometry capture omitted '${expected_line}'.\n"
+            "${active_capture_output}${active_capture_error}"
+        )
+    endif()
+endforeach()
+
+execute_process(
+    COMMAND
+        "${APP}"
+        --routine-replay-corpus
+        "${active_corpus_path}"
+        --replace-hook
+        "01:C969@all"
+        --rom
+        "${ROM}"
+    RESULT_VARIABLE active_replay_result
+    OUTPUT_VARIABLE active_replay_output
+    ERROR_VARIABLE active_replay_error
+)
+if(NOT active_replay_result EQUAL 0)
+    message(
+        FATAL_ERROR
+        "Active actor-geometry native replay failed (${active_replay_result}).\n"
+        "${active_replay_output}${active_replay_error}"
+    )
+endif()
+string(
+    FIND "${active_replay_output}"
+    "Direct routine replay 01:C969@1300 verified: frame 2285, 207 body cycles, 4 ordered writes, native"
+    active_replay_line
+)
+if(active_replay_line EQUAL -1)
+    message(
+        FATAL_ERROR
+        "Active actor-geometry native replay omitted its equivalence result.\n"
+        "${active_replay_output}${active_replay_error}"
+    )
+endif()
+
+set(active_return_corpus_path "${active_corpus_directory}/01-C9DE-1.dcrr")
+execute_process(
+    COMMAND
+        "${APP}"
+        --routine-replay-corpus
+        "${active_return_corpus_path}"
+        --replace-hook
+        "01:C9DE@all"
+        --rom
+        "${ROM}"
+    RESULT_VARIABLE active_return_replay_result
+    OUTPUT_VARIABLE active_return_replay_output
+    ERROR_VARIABLE active_return_replay_error
+)
+if(NOT active_return_replay_result EQUAL 0)
+    message(
+        FATAL_ERROR
+        "Active actor-geometry return native replay failed (${active_return_replay_result}).\n"
+        "${active_return_replay_output}${active_return_replay_error}"
+    )
+endif()
+string(
+    FIND "${active_return_replay_output}"
+    "Direct routine replay 01:C9DE@1 verified: frame 1300, 756 body cycles, 27 ordered writes, native"
+    active_return_replay_line
+)
+if(active_return_replay_line EQUAL -1)
+    message(
+        FATAL_ERROR
+        "Active actor-geometry return replay omitted its equivalence result.\n"
+        "${active_return_replay_output}${active_return_replay_error}"
+    )
+endif()
+
 message(
     STATUS
     "Semantic bank-01 geometry leaves run all three entry points natively "
     "across 7,472 admitted entries, with their whole output and the state "
-    "census identical to assembly."
+    "census identical to assembly; the active range-guard handoff and its "
+    "caller-owned RTS are also verified by direct assembly corpus replay."
 )

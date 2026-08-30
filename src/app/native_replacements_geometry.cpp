@@ -109,12 +109,14 @@ constexpr std::uint32_t kBranchAlways = 12U;
 }
 
 // Where each walk stops: the accumulator's `RTS` at 01:C968, the guard's at
-// 01:C971, and the classifier's two at 01:DB81 and 01:DB9D. The range helper's
-// live arm crosses into fixed-bank arithmetic rather than inventing an atomic
-// result for it.
+// 01:C971, and the classifier's two at 01:DB81 and 01:DB9D. `01:C9DE` is a
+// non-return handoff from the guard's active arm: it belongs to the caller's
+// continuation, so the guard must not absorb its stack frame or transcribe
+// the following fixed-bank call as though it were still its own body.
 [[nodiscard]] constexpr bool is_stop_instruction(const std::uint16_t logical_pc)
 {
     return logical_pc == 0xC968U || logical_pc == 0xC971U
+        || logical_pc == 0xC9DEU
         || logical_pc == 0xDB81U
         || logical_pc == 0xDB9DU;
 }
@@ -884,46 +886,6 @@ std::optional<RoutineReplacement> replace_actor_geometry_leaf(
             call_fixed_math(0xC9ACU, 0xE5ECU);
             pc = 0xE5ECU;
             break;
-        case 0xC9DEU:  // STA $26
-            store(0xC9DEU, zero_page(0x26U), registers.accumulator);
-            append_checkpoint(0xC9DEU, 0xC9E0U, kZeroPage);
-            pc = 0xC9E0U;
-            break;
-        case 0xC9E0U:  // STA $2D
-            store(0xC9E0U, zero_page(0x2DU), registers.accumulator);
-            append_checkpoint(0xC9E0U, 0xC9E2U, kZeroPage);
-            pc = 0xC9E2U;
-            break;
-        case 0xC9E2U:  // STZ $2E
-            store(0xC9E2U, zero_page(0x2EU), 0x00U);
-            append_checkpoint(0xC9E2U, 0xC9E4U, kZeroPage);
-            pc = 0xC9E4U;
-            break;
-        case 0xC9E4U:  // LDA $35
-            load_accumulator(read_ram(zero_page(0x35U)));
-            append_checkpoint(0xC9E4U, 0xC9E6U, kZeroPage);
-            pc = 0xC9E6U;
-            break;
-        case 0xC9E6U:  // STA $2F
-            store(0xC9E6U, zero_page(0x2FU), registers.accumulator);
-            append_checkpoint(0xC9E6U, 0xC9E8U, kZeroPage);
-            pc = 0xC9E8U;
-            break;
-        case 0xC9E8U:  // LDA $36
-            load_accumulator(read_ram(zero_page(0x36U)));
-            append_checkpoint(0xC9E8U, 0xC9EAU, kZeroPage);
-            pc = 0xC9EAU;
-            break;
-        case 0xC9EAU:  // STA $30
-            store(0xC9EAU, zero_page(0x30U), registers.accumulator);
-            append_checkpoint(0xC9EAU, 0xC9ECU, kZeroPage);
-            pc = 0xC9ECU;
-            break;
-        case 0xC9ECU:  // JSR $E79C
-            call_fixed_math(0xC9ECU, 0xE79CU);
-            pc = 0xE79CU;
-            break;
-
         // --- 01:DAF8, the direction-octant classifier --------------------
         case 0xDAF8U:  // CLY -- the reference actor is slot zero
             registers.y = 0U;
@@ -1376,18 +1338,16 @@ std::optional<RoutineReplacement> replace_actor_geometry_leaf(
     replacement.output_registers = registers;
     replacement.body_master_cycles = cycle;
 
-    // Four of the five stops are the `RTS` the walk ends on, and the walk can
-    // run past them: nothing composes this routine, so no other transcript is
-    // reading the address back to transcribe the return itself. 01:C972 is the
-    // fifth and is an `LDA` -- the arm of the guard's `BNE` this route never
-    // takes -- which is a handover rather than a return.
+    // Four stops are the `RTS` instructions the walk ends on. `01:C9DE` is
+    // the fifth, but is a live handoff rather than a return: its caller frame
+    // must remain untouched for the original continuation.
     //
     // These walks touch no stack at all, so the frame the return reads is the
     // one the caller pushed and the pointer is still the entry's. The
     // checkpoint list is non-empty by the test above, so the transcript is
     // interruptible and the horizon valve never has to weigh the extra
     // twenty-one cycles.
-    if (pc != 0xC972U) {
+    if (pc != 0xC9DEU) {
         absorb_return(
             replacement,
             work_ram,

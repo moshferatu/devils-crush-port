@@ -9992,11 +9992,16 @@ table at `$DB9E` in the bank's own ROM page. Two exits: 1,459 calls return
 through `01:DB9D` and 680 through `01:DB81`.
 
 `01:C969` guards the range-squared helper on the sixteen-bit counter at
-`$2D00`/`$2D01`. That counter is zero on all 2,993 entries this route makes, so
-the body from `01:C976` — which calls `00:E5EC` twice, once per axis, and sums
-the results — never runs. The transcript covers the three-instruction guard and stops in
-front of the `RTS` at `01:C971`; the taken arm at `01:C972` is handed back to
-the core rather than transcribed from a path the route has never taken.
+`$2D00`/`$2D01`. That counter is zero on all 2,993 canonical-route entries,
+so the normal transcript covers the three-instruction guard and stops in front
+of the `RTS` at `01:C971`. Its active arm computes the coordinate deltas at
+`01:C976–C990` and then hands the caller's separate `RTS` at `01:C9DE` back
+to the exact core stack-return seam; it does not absorb a caller-owned stack
+frame. The frame-1300 forced-counter corpus verifies that handoff against
+assembly: 207 master cycles and the four ordered `$35–$38` scratch writes.
+The independent frame-1300 `C9DE` corpus covers the live-stack return through
+its caller: 756 master cycles and 27 ordered writes, reproduced by the native
+core RTS path.
 
 Shared state was measured on exact call windows from observers on all three
 heads. Of the 358 instructions that write any address these routines read,

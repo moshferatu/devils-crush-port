@@ -35,6 +35,7 @@ replace_native_gameplay_routine_impl(
     }
     if (entry.routine == RoutineKey{0x01U, 0xD4B2U}
         || entry.routine == RoutineKey{0x02U, 0x5933U}
+        || entry.routine == RoutineKey{0x01U, 0xC9DEU}
         || entry.routine == RoutineKey{0x03U, 0x73FDU}
         || entry.routine == RoutineKey{0x03U, 0x76A8U}) {
         return detail::replace_flipper_owner_rts(entry);

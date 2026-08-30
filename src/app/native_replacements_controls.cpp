@@ -6295,6 +6295,10 @@ std::optional<RoutineReplacement> replace_flipper_owner_rts(
         .physical_bank = 0x02U,
         .logical_pc = 0x5933U,
     };
+    constexpr RoutineKey kRangeHelperReturn{
+        .physical_bank = 0x01U,
+        .logical_pc = 0xC9DEU,
+    };
     constexpr RoutineKey kKnightCollisionReturn{
         .physical_bank = 0x03U,
         .logical_pc = 0x73FDU,
@@ -6304,9 +6308,10 @@ std::optional<RoutineReplacement> replace_flipper_owner_rts(
         .logical_pc = 0x76A8U,
     };
     // These returns end owners whose caller and target are live stack state,
-    // so the descriptor deliberately leaves the core's RTS execution intact
-    // rather than guessing either.
+    // including C969's active range-helper arm. The descriptor deliberately
+    // leaves the core's RTS execution intact rather than guessing either.
     if (entry.routine != kRoutine && entry.routine != kUpperTableReturn
+        && entry.routine != kRangeHelperReturn
         && entry.routine != kKnightCollisionReturn
         && entry.routine != kGiantFaceAnimatorReturn) {
         return std::nullopt;

@@ -6794,6 +6794,13 @@ parse_logical_address_range(const std::string_view text)
                                || request.routine.logical_pc == 0xC969U
                                || request.routine.logical_pc == 0xDAF8U)
                            && request.all_calls;
+                       const bool proven_range_helper_return =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x01U,
+                                       .logical_pc = 0xC9DEU,
+                                   }
+                           && request.all_calls;
                        const bool proven_actor_camera_sweep =
                            request.routine.physical_bank == 0x00U
                            && (request.routine.logical_pc == 0xF4F2U
@@ -6895,6 +6902,7 @@ parse_logical_address_range(const std::string_view text)
                            && !proven_collision_tail
                            && !proven_sorcerer_tick
                            && !proven_actor_geometry_leaf
+                           && !proven_range_helper_return
                            && !proven_position_integration
                            && !proven_motion_damping
                            && !proven_motion_rotation
@@ -14113,8 +14121,11 @@ using NativeRegistryEntryObserver = std::function<void(
     }
     // These helper returns are reached from several live callers.  Keep the
     // HuC6280's stack-pop sequence exact while moving their instruction
-    // boundary out of the interpreter.
-    constexpr std::array<RoutineKey, 2U> kGameplayHelperRtsInstructions{{
+    // boundary out of the interpreter. C9DE is the active range-helper's
+    // caller-owned return: it is deliberately a core RTS rather than a
+    // synthetic continuation of C969.
+    constexpr std::array<RoutineKey, 3U> kGameplayHelperRtsInstructions{{
+        {.physical_bank = 0x01U, .logical_pc = 0xC9DEU},
         {.physical_bank = 0x03U, .logical_pc = 0x73FDU},
         {.physical_bank = 0x03U, .logical_pc = 0x76A8U},
     }};
