@@ -396,18 +396,29 @@ std::optional<RoutineReplacement> replace_music_jmp(
 std::optional<RoutineReplacement> replace_shared_actor_rts(
     const RoutineEntry& entry)
 {
-    constexpr RoutineKey kRoutine{
+    constexpr RoutineKey kSharedActorRoutine{
         .physical_bank = 0x03U,
         .logical_pc = 0x7525U,
     };
-    if (entry.routine != kRoutine) {
+    constexpr RoutineKey kCollisionScannerRoutine{
+        .physical_bank = 0x01U,
+        .logical_pc = 0xCCD4U,
+    };
+    constexpr RoutineKey kKnightNoHitReturn{
+        .physical_bank = 0x03U,
+        .logical_pc = 0x73D7U,
+    };
+    if (entry.routine != kSharedActorRoutine
+        && entry.routine != kCollisionScannerRoutine
+        && entry.routine != kKnightNoHitReturn) {
         return std::nullopt;
     }
 
-    // This is the actor dispatcher's shared live-stack return. Keeping the
-    // core opcode avoids manufacturing a routine boundary inside its owner.
+    // Each entry consumes a live stack frame at a point the enclosing native
+    // owner deliberately cannot name. Keeping the core opcode avoids
+    // manufacturing a return boundary inside either owner.
     RoutineReplacement replacement{};
-    replacement.return_instruction = kRoutine;
+    replacement.return_instruction = entry.routine;
     replacement.output_registers = entry.registers;
     replacement.body_master_cycles = 21U;
     replacement.native_rts_instruction = emulation::NativeRtsInstruction{};

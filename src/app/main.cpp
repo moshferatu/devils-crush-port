@@ -15538,6 +15538,68 @@ using NativeRegistryEntryObserver = std::function<void(
         std::cerr << "Could not install native shared actor RTS hook.\n";
         return false;
     }
+    constexpr RoutineKey kCollisionScannerReturnInstruction{
+        .physical_bank = 0x01U,
+        .logical_pc = 0xCCD4U,
+    };
+    if (std::find(
+            claimed_routines.begin(),
+            claimed_routines.end(),
+            kCollisionScannerReturnInstruction)
+            == claimed_routines.end()
+        && !runtime.install_execution_hook({
+            .routine = kCollisionScannerReturnInstruction,
+            .mode = HookMode::replace,
+            .replacement_callback = [&deployment, &replacement_rom](
+                const RoutineEntry& entry,
+                const std::span<const std::byte> work_ram) {
+                ++deployment.core_capability_entries;
+                deployment.span.observe(entry.absolute_master_cycle);
+                auto result = replace_native_gameplay_routine(
+                    entry, work_ram, replacement_rom);
+                if (result) {
+                    ++deployment.core_capability_accepted;
+                    ++deployment.core_rts_instructions;
+                    deployment.core_capability_master_cycles +=
+                        result->body_master_cycles;
+                }
+                return result;
+            },
+        })) {
+        std::cerr << "Could not install native collision-scanner RTS hook.\n";
+        return false;
+    }
+    constexpr RoutineKey kKnightNoHitReturnInstruction{
+        .physical_bank = 0x03U,
+        .logical_pc = 0x73D7U,
+    };
+    if (std::find(
+            claimed_routines.begin(),
+            claimed_routines.end(),
+            kKnightNoHitReturnInstruction)
+            == claimed_routines.end()
+        && !runtime.install_execution_hook({
+            .routine = kKnightNoHitReturnInstruction,
+            .mode = HookMode::replace,
+            .replacement_callback = [&deployment, &replacement_rom](
+                const RoutineEntry& entry,
+                const std::span<const std::byte> work_ram) {
+                ++deployment.core_capability_entries;
+                deployment.span.observe(entry.absolute_master_cycle);
+                auto result = replace_native_gameplay_routine(
+                    entry, work_ram, replacement_rom);
+                if (result) {
+                    ++deployment.core_capability_accepted;
+                    ++deployment.core_rts_instructions;
+                    deployment.core_capability_master_cycles +=
+                        result->body_master_cycles;
+                }
+                return result;
+            },
+        })) {
+        std::cerr << "Could not install native Knight no-hit RTS hook.\n";
+        return false;
+    }
     constexpr std::array<RoutineKey, 4U> kFlipperOwnerInstructions{{
         {.physical_bank = 0x01U, .logical_pc = 0xD4A7U},
         {.physical_bank = 0x01U, .logical_pc = 0xD4AAU},
