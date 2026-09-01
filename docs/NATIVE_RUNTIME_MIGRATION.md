@@ -249,7 +249,8 @@ owned collision asset.
   dynamic-slot reservation decision and its named reservation mode, while
   leaving mutation to the future native actor-state owner.
 - `file_actor_for_presentation` owns the recovered post-handler `01:C606`
-  filing decision. It retains the three bounded SAT queues, bit-zero's
+  filing decision. It retains the entry-attribute camera-bit eligibility gate,
+  three bounded SAT queues, bit-zero's
   family-owned prequeue presentation-refresh dependency, the fixed slot-zero presentation
   seam, and the driver's reverse/reverse/forward drain order. Dynamic handler
   execution remains a separate native scheduler responsibility, so this does
@@ -260,15 +261,131 @@ owned collision asset.
   presentation coordinates and clears a visibility flag before this reread,
   so the future native handler result can enter the real queueing path without
   a ROM-vector-shaped dispatcher.
+  `capture_actor_post_handler_presentation` now derives that exact typed
+  result from verified before/after handler-boundary snapshots. It remains a
+  pure observation adapter, so it cannot advance a C539 pass from a guessed
+  final attribute value. `capture_scheduled_actor_handler_boundary` further
+  requires the entire before-snapshot actor record to equal C539's decoded
+  scheduled record, preventing a reused slot from another pass from joining
+  the wrong native behavior observation. The capture-preserving
+  `join_native_gameplay_actor_behavior_boundary` retains that full-record
+  equality through the behavior/presentation join, rejecting same-slot handler
+  or attribute drift before a shadow completion can be replayed. `ShortActorPass`
+  repeats that full-record check against its current cursor before C606-equivalent
+  filing can advance, keeping a manually assembled or stale completion from
+  crossing a scheduler boundary.
 - `ActorSchedulerView::begin_short_actor_pass` now names the reusable C539
   entry contract: it resets the presentation queues and completed ball-substep
   count, while `ActorFrameGate` preserves the inherited actor-enable mask or
   clears it when the frame is frozen. The composite dispatch and its dynamic
   handlers remain separate native behavior owners.
+  `capture_short_actor_pass` packages that reset seed with the ordered due
+  actors from the same read-only state view, giving future capture wiring one
+  coherent shadow input rather than independently sampled pieces. The existing
+  gameplay-bootstrap diagnostic reaches that bundle through a dedicated
+  observe-only C539 entry hook, with probes at both direct JSR callers so an
+  unselected short pass is not confused with a capture gap. It reports
+  coverage only; it neither dispatches a native behavior nor changes the
+  emulator's scheduler ownership.
+- The ordinary C510 walk exposes a more frequently selected, narrower
+  observation boundary: C52C dispatches a dynamic handler, returns at C520,
+  then enters C606 with the handler's final attributes. The gameplay shadow
+  now retains the C52C entry slot until its observed completion and accepts a
+  C606 successor only when its X register and actor attribute still match.
+  C606 calls without that predecessor (including the slot-zero route) are
+  deliberately reported as unrelated rather than forced into the dynamic
+  handoff. This verifies a real scheduler/presentation seam without claiming
+  either the C510 scan or a ROM-selected actor behavior.
+- Each accepted C52C/C606 pair is additionally counted by the handler vector
+  present at C52C entry. That pre-dispatch identity is intentional: a dynamic
+  handler may rewrite its own vector before C606 sees the actor again. The
+  256-entry diagnostic reports its top 16 handler counts and is still
+  read-only, recording only strictly paired observations. It identifies an
+  active behavior family without treating the C510 scan, C52C dispatch, or
+  that handler as natively owned.
+- The same C52C completion now compares the pre-dispatch and post-handler
+  typed `ActorSlot` for that same slot. Its compact state-effect record names
+  activity, attributes, behavior counter, handler vector, horizontal/vertical
+  motion, and the coupled collision domain. The shadow reports the eight
+  highest-frequency handlers with those effect counts. This remains
+  observation-only: it provides the evidence needed to choose one coherent
+  behavior-family owner rather than promoting a handler merely because it is
+  frequently called.
+- The same strictly paired C606 calls now bracket the recovered filing model.
+  `GameStateView::ActorPresentationQueueImage` captures the auxiliary queue,
+  the shared primary queue, and all three source cursors at C606 entry;
+  `capture_actor_presentation_queue_state` normalizes its upward/upward/
+  downward storage into the readable queue state. At C606 completion the
+  shadow combines the entry attribute with the post-F605 reread attribute,
+  runs `file_completed_actor_for_presentation`, and compares only the final
+  queue state. This certifies the queue effect without suppressing F605,
+  writing RAM, or taking scheduler/presentation ownership.
+- With each C606 filing proven in isolation, the gameplay shadow also brackets
+  the enclosing C510 scan. C510 is a loop head, so its zero-slot arrival
+  supplies the reset queue image. `ActorSchedulerView::scan_main_actor_run`
+  recovers each native transcript's contiguous skipped slots and C52C target
+  (or terminal exit), so the shadow checks that readable target directly. The
+  dispatch is charged only when that C52C invocation returns at
+  C520; nested C52C entries inside its handler therefore cannot consume the
+  pending C510 scan. C510 is also its own loop-back target, so the registry
+  records an observer call for every loop head; the `C52B` RTS closes all of
+  those same-stack records together. Only the X=0 record began the aggregate
+  pass, so only its `C52B` completion closes the bracket; later loop-head
+  completions and inner C52C/C606 transcript closures leave the live pass
+  intact. `MainActorPass` accepts a scan run only at that live boundary and
+  requires its matching post-handler C606 filing before it can accept the next
+  run, so handler mutations of later actor records remain visible to the
+  readable owner. The terminal boundary compares its aggregate final queue
+  state. A
+  same-slot disagreement preserves both gate-byte snapshots and a bounded
+  read-only work-RAM census of the instruction that wrote either pending gate
+  between C510 and C52C. This is a pass-level oracle only: the ROM scheduler,
+  dynamic handlers, F605 refresh, and presentation path still execute live.
 - `ShortActorPassPresentation` owns C606's filing state for one C539-started
   pass. It accepts one completed named-handler observation at a time and
   carries the resulting queues to the next slot, without claiming the
   still-unported ROM dispatch or treating a frozen pass as an empty pass.
+- `ShortActorPass` now supplies the first typed behavior-dispatch boundary.
+  It presents only the next decoded actor record to an injected named behavior
+  owner, advances only after that owner returns a matching post-handler
+  presentation result, and leaves the pass untouched when a family is not yet
+  available. This is shadow-only infrastructure: no ROM handler address is a
+  native dispatch key and no live C539 replacement is installed.
+  Its prefix-run result reports completed native slots and retains the first
+  blocked actor, giving shadow validation a coverage metric without allowing
+  it to skip an unported family.
+- `NativeGameplayState::advance_actor_phase_slot` now exposes the same named
+  behavior ordering as the full recovered phase, but for exactly one selected
+  slot. The full-phase API delegates to the shared range implementation, so
+  its existing slot-order semantics remain the oracle while a future dispatcher
+  gains a non-ROM-address behavior entry point. This is still shadow-only and
+  is not connected to a live C539 registry replacement.
+- `NativeGameplayActorBehaviorDispatcher` joins a C539-decoded actor record
+  to that one-slot native behavior operation only when the native state was
+  already seeded for the same slot. Its result deliberately excludes C606
+  presentation filing: post-handler attributes remain a captured dependency,
+  so this bridge cannot accidentally treat the pre-dispatch attribute byte as
+  the final presentation state. `join_native_gameplay_actor_behavior_presentation`
+  now accepts that capture only when its slot agrees with both the decoded
+  actor and the native update, retaining the final C606 handoff as a strict
+  shadow contract rather than an inferred completion.
+  `ShortActorPass::complete_native_gameplay_behavior` then requires the pass
+  cursor to agree with that same slot before using the captured result for
+  C606 filing; it remains an observation-completion path, not a live behavior
+  dispatcher. Its completion-replay helper validates an ordered capture
+  prefix, retaining the first mismatch and any surplus observations rather
+  than letting a later actor consume them. When an observed completion fails
+  at the current cursor, the replay result also retains that rejected typed
+  completion beside the blocked actor, making shadow divergence diagnosable
+  without granting a live scheduler path any new authority. Its typed block
+  reason separately identifies an exhausted capture prefix (awaiting the next
+  completion) from a present but invalid completion, so a coverage gap is not
+  misreported as identity divergence. Multi-actor replay coverage also proves
+  that a later capture cannot skip an unobserved middle actor. A completed
+  replay also retains its first surplus completion, keeping adjacent-pass
+  capture data explicit without classifying it as a current-pass failure. The
+  replay result validates these terminal forms as disjoint, so capture wiring
+  can reject contradictory diagnostic state before it reaches reporting.
 - `ActorSchedulerView` also names the later collision-retry full scanner's
   exact slot ordering and attribute eligibility. It supplies dynamic actor
   candidates 4 through 127 to future typed geometry, without treating the
@@ -925,8 +1042,16 @@ gameplay execution today.
    behavior.
 2. **Actor scheduler, collision, and physics.** Replace the composite actor
    ownership represented by `01:C539` and its dynamic handlers with a typed
-   scheduler. This is the first major payoff and the prerequisite for removing
-   the remaining high-cost actor interiors.
+   scheduler. The initial `ShortActorPass` now joins C539's decoded frame seed,
+   table-order due-actor list, and C606 presentation filing contract; it rejects
+   out-of-order handler completions without changing the live emulator path.
+   `NativeGameplayState::advance_actor_phase_slot` supplies the corresponding
+   one-actor named behavior unit while preserving the full-phase oracle's
+   ordering, and `NativeGameplayActorBehaviorDispatcher` binds it only to a
+  matching, seeded C539 slot. Presentation adaptation and differential replay
+  are still required before this becomes a runtime replacement. This is the
+   first major payoff and the prerequisite for removing the remaining high-cost
+   actor interiors.
 3. **Actor families and rules.** Move targets, enemies, gates, scoring,
    ball/turn transitions, and bonus stages into named domain modules. Use the
    registry only to recover behavior and feed focused differential fixtures.

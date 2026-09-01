@@ -126,7 +126,8 @@ collision-velocity response families are native as well. Confirmed-contact
 bookkeeping, collision-space bounds rejection, and the no-contact physics
 frame path are native. Eight-by-eight collision-mask solidity is also native.
 The recovered post-handler SAT filing step is native too: it preserves C606's
-three bounded presentation queues, fixed slot-zero seam, prequeue presentation-refresh
+entry-attribute camera-bit eligibility gate, three bounded presentation queues,
+fixed slot-zero seam, prequeue presentation-refresh
 dependency, and reverse/reverse/forward drain order while keeping dynamic
 handler execution as the next separate scheduler owner. Its typed completed-
 handler seam carries the attribute sampled before F605's presentation refresh
@@ -514,6 +515,98 @@ replacement.
       compares player-session replays against the emulator.
 - [x] Define typed state views and the native actor-scheduler selection
       boundary. It now exposes actors due for updates without CPU continuations.
+- [x] Compose C539's frame seed, ordered due-actor list, and C606 presentation
+      filing into a strict `ShortActorPass` contract. It rejects duplicate or
+      out-of-order handler completion without changing the live emulator path.
+- [x] Add the shadow-only `ActorPassBehaviorDispatcher` boundary. It receives
+      the next decoded actor record, can decline an unported family without
+      advancing the pass, and cannot select behavior from a ROM handler address.
+- [x] Add strict C539 prefix-run reporting for shadow dispatch coverage. The
+      first unavailable behavior remains pending, so partial coverage cannot
+      silently reorder or skip actor updates.
+- [x] Extract a one-slot recovered gameplay behavior operation for C539 shadow
+      dispatch. The full actor phase uses the same range implementation, so it
+      retains its established slot-order behavior while no live registry path
+      changes.
+- [x] Bind a seeded C539 actor slot to that one-slot native behavior operation
+      without dispatching by ROM handler address. The bridge intentionally
+      stops before C606 because post-handler presentation attributes still need
+      capture-backed adaptation.
+- [x] Capture C606's pre- and post-refresh actor attributes from verified
+      handler-boundary snapshots. This remains shadow-only until a typed C539
+      dispatcher can supply those observations for every completed behavior.
+- [x] Require same-slot agreement before pairing a seeded C539 native behavior
+      update with its captured C606 presentation result. The composite still
+      has no live replacement or synthesized post-handler state.
+- [x] Admit a captured native behavior completion to a short C539 pass only
+      when its update, presentation result, and current pass actor agree.
+- [x] Replay ordered captured C539 completions through the strict pass and
+      retain the first mismatch or surplus observation for shadow coverage.
+- [x] Bind each captured C539 handler boundary to the complete decoded
+      pre-handler actor record, rejecting stale or cross-pass slot reuse before
+      presentation can join a native behavior update.
+- [x] Carry that complete C539 scheduled-record identity through the native
+      behavior/presentation join, so same-slot handler or attribute drift cannot
+      form a completion in shadow replay.
+- [x] Require each replayed C539 completion to match the current pass's entire
+      decoded actor record before C606-equivalent presentation filing advances
+      the cursor.
+- [x] Retain the first rejected C539 completion alongside its blocked actor in
+      shadow replay, so identity divergence can be attributed without changing
+      the live scheduler path.
+- [x] Distinguish a C539 shadow replay awaiting its next capture from one
+      blocked by a rejected completion, keeping coverage gaps separate from
+      identity divergence without changing the live scheduler path.
+- [x] Verify that C539 shadow replay stops at a missing middle actor instead
+      of consuming a later completion out of order.
+- [x] Preserve the first surplus completion after a complete C539 shadow pass,
+      so adjacent-pass capture data remains attributable without being treated
+      as a failure of the completed pass.
+- [x] Validate C539 shadow replay terminal forms before reporting them, keeping
+      complete, awaiting, rejected, and surplus-capture outcomes disjoint.
+- [x] Capture C539's reset seed and ordered due-actor list as one read-only
+      shadow input, preventing a future observer from combining different
+      frame snapshots before strict replay.
+- [x] Wire C539-entry capture and its two direct caller probes into the
+      existing read-only gameplay shadow. The report distinguishes an
+      unselected short pass from a capture gap; no live scheduler or handler
+      behavior changed.
+- [x] Observe the regularly active `C52C -> C520 -> C606` handoff as a
+      separate read-only scheduler seam. The shadow pairs a completed dynamic
+      handler with C606 only when its slot and final attributes still agree;
+      unrelated slot-zero C606 calls remain explicitly unpaired rather than
+      being attributed to a dynamic actor.
+- [x] Classify the strictly paired C52C/C606 handoffs by the handler vector
+      selected at C52C entry. The 256-entry read-only census reports its top
+      16 validated pairs, so a handler that rewrites its own vector cannot be
+      misidentified from its post-handler actor record.
+- [x] Capture each same-slot C52C handler transition as typed actor-domain
+      effects (activity, attributes, behavior counter, handler vector, motion,
+      and coupled collision state). The read-only report ranks the eight most
+      active handlers by observed effects, so the next native behavior family
+      is selected from real state ownership rather than call frequency alone.
+- [x] Decode C606's live three-queue image and compare each strictly paired
+      call's post-return queue state against the readable filing model. The
+      oracle preserves F605's original presentation refresh and validates only
+      the resulting queue/cursor effect; it still changes no live scheduler or
+      presentation ownership.
+- [x] Bracket the enclosing C510 actor scan in the gameplay shadow. The
+      zero-slot loop-head arrival supplies the reset queue image. The readable
+      `ActorSchedulerView::scan_main_actor_run` models every native transcript
+      as contiguous skipped slots plus its C52C target (or terminal exit), so
+      C52C dispatch target—not the scan-run entry—supplies the readable
+      eligibility decision; skipped runs are reported separately. The
+      C52C side is attributed only on its C520 return, so a handler's nested
+      C52C work cannot be mistaken for the pending C510 scan. Because C510 is
+      also its own loop-back target, every loop-head observer record reaches
+      C52B together; only the X=0 record owns the scan's terminal completion.
+      `MainActorPass` consumes each scan run only when reached and accepts its
+      matching post-handler C606 filing before another run can begin; it never
+      freezes a pass-start actor schedule. That completion compares the
+      model's aggregate C606 queue state. Same-slot
+      disagreements retain both gate bytes and a bounded read-only census of
+      the instruction that writes either pending gate between those boundaries.
+      This remains a read-only pass oracle, not a live scheduler replacement.
 - [ ] Seed native actor state, shared motion, the active ball, and active score from capture
       observations, then port ball and actor collision response; use
       `player-session-6` as its first regression corpus. Active shared-motion

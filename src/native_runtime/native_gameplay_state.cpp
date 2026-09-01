@@ -2,6 +2,7 @@
 
 #include "devils_crush/native_runtime/native_gameplay_state.hpp"
 
+#include <algorithm>
 #include <utility>
 
 namespace devils_crush::native_runtime {
@@ -1605,7 +1606,10 @@ NativeGameplayState::allocate_bonus_stage_4_orbiting_child(
 }
 
 std::vector<NativeGameplayState::ActorPhaseUpdate>
-NativeGameplayState::advance_actor_phase(const PlayfieldBounds playfield)
+NativeGameplayState::advance_actor_phase_slots(
+    const std::size_t first_slot,
+    const std::size_t slot_count,
+    const PlayfieldBounds playfield)
 {
     std::vector<ActorPhaseUpdate> updates;
     const auto ball_position = GiantSkeletonTargetPosition{
@@ -1614,7 +1618,10 @@ NativeGameplayState::advance_actor_phase(const PlayfieldBounds playfield)
         .vertical_pixels = static_cast<std::int16_t>(
             physics_.ball.position_y.raw / 256),
     };
-    for (std::uint8_t slot = 0U; slot < ActorState::kSlotCount; ++slot) {
+    const auto last_slot = std::min(first_slot + slot_count,
+        static_cast<std::size_t>(ActorState::kSlotCount));
+    for (auto slot_index = first_slot; slot_index < last_slot; ++slot_index) {
+        const auto slot = static_cast<std::uint8_t>(slot_index);
         if (const auto linked_target =
                 bonus_stage_4_linked_target_scheduler_.advance_actor(slot)) {
             record_audio_event(slot, GameplayAudioSource::bonus_stage_4,
@@ -1901,6 +1908,25 @@ NativeGameplayState::advance_actor_phase(const PlayfieldBounds playfield)
         }
     }
     return updates;
+}
+
+std::optional<NativeGameplayState::ActorPhaseUpdate>
+NativeGameplayState::advance_actor_phase_slot(
+    const std::uint8_t slot,
+    const PlayfieldBounds playfield)
+{
+    const auto updates = advance_actor_phase_slots(slot, 1U, playfield);
+    if (updates.empty()) {
+        return std::nullopt;
+    }
+    return updates.front();
+}
+
+std::vector<NativeGameplayState::ActorPhaseUpdate>
+NativeGameplayState::advance_actor_phase(const PlayfieldBounds playfield)
+{
+    return advance_actor_phase_slots(0U,
+        static_cast<std::size_t>(ActorState::kSlotCount), playfield);
 }
 
 void NativeGameplayState::record_audio_event(

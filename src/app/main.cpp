@@ -15,6 +15,7 @@
 #include "devils_crush/emulation/routine_replay_corpus.hpp"
 #include "devils_crush/input/plunger.hpp"
 #include "devils_crush/native_runtime/actor_collision_scan.hpp"
+#include "devils_crush/native_runtime/actor_scheduler.hpp"
 #include "devils_crush/native_runtime/collision_map_asset.hpp"
 #include "devils_crush/native_runtime/ball_frame_schedule.hpp"
 #include "devils_crush/native_runtime/gameplay_bootstrap.hpp"
@@ -631,6 +632,104 @@ struct NativeGameplayBootstrapShadow {
         std::uint8_t motion_damping_entries = 0U;
     };
 
+    // C52C dispatches one dynamic actor handler, then C520 immediately calls
+    // C606 to file that handler's final presentation attributes. This is a
+    // narrower, regularly active boundary than C539: it can be verified on
+    // the normal C510 walk without claiming the scheduler or a handler.
+    struct PendingActorDispatch {
+        std::uint64_t entry_absolute_master_cycle = 0U;
+        std::uint8_t slot = 0U;
+        // Raw C52C gate bytes. A native C510 scan may skip several slots
+        // before it hands control back at this dispatch, so these describe
+        // the dispatch target rather than necessarily the scan-run entry.
+        std::uint8_t activity_flags = 0U;
+        std::uint8_t attributes = 0U;
+        // True only when this dispatch belongs to the C510 pass currently
+        // bracketed by the shadow. Dynamic handlers remain emulator-owned;
+        // this bit merely prevents an unrelated C606 call from being folded
+        // into that pass's aggregate queue prediction.
+        bool belongs_to_main_actor_pass = false;
+        // This is the vector selected at C52C entry, before the dynamic
+        // handler is allowed to retarget its own actor slot.
+        std::uint16_t handler_address = 0U;
+        // The named actor-domain state at the C52C boundary. Its eventual
+        // same-slot transition is evidence for selecting a behavior family;
+        // it does not give this observer permission to update that family.
+        devils_crush::native_runtime::GameStateView::ActorSlot actor_before_handler;
+    };
+
+    struct PendingActorQueueFiling {
+        std::uint8_t slot = 0U;
+        std::uint8_t attributes_after_handler = 0U;
+        std::uint16_t handler_address = 0U;
+        bool belongs_to_main_actor_pass = false;
+    };
+
+    // C52C has returned to C520 and C606 is about to file the completed
+    // actor. Retain the queue state from this precise entry boundary so the
+    // original C606 call can be checked against the readable model after its
+    // optional F605 presentation refresh. This is observation-only.
+    struct PendingActorQueueFiler {
+        PendingActorQueueFiling dispatch;
+        devils_crush::native_runtime::ActorPresentationQueueState queues_before;
+        std::uint8_t attributes_before_filing = 0U;
+    };
+
+    struct PendingMainActorPassDecision {
+        std::uint8_t slot = 0U;
+        std::uint8_t activity_flags = 0U;
+        std::uint8_t attributes = 0U;
+        std::optional<std::uint8_t> expected_dispatch_slot;
+        std::size_t skipped_actor_count = 0U;
+        // The work-RAM write observer records the last instruction to touch
+        // either byte while this C510 scan-run entry is live. A C510-to-C52C
+        // disagreement is actionable only when the recovered scan target
+        // differs from C52C's eventual dispatch target.
+        std::optional<RoutineKey> activity_gate_writer;
+        std::optional<RoutineKey> attribute_gate_writer;
+        bool dispatch_expected = false;
+    };
+
+    struct ActorGateWriteEvidence {
+        RoutineKey instruction;
+        std::uint64_t activity_changes = 0U;
+        std::uint64_t attribute_changes = 0U;
+    };
+
+    // C510 is the re-entered head of the complete 128-slot main actor scan.
+    // Capture its X=0 arrival after C4DE's preamble has established the
+    // zeroed presentation queues, then sample every C510 scan-run entry. A
+    // native run can skip several slots before it leaves at C51E; C52C's own
+    // entry therefore supplies the authoritative dispatch-slot snapshot.
+    // This remains observation-only.
+    struct PendingMainActorPass {
+        std::optional<PendingMainActorPassDecision> pending_decision;
+        devils_crush::native_runtime::MainActorPass model;
+        std::uint64_t matched_dispatch_decisions = 0U;
+        std::uint64_t mismatched_dispatch_decisions = 0U;
+        std::uint64_t dispatched_when_skip_expected = 0U;
+        std::uint64_t dispatched_for_other_slot = 0U;
+        std::uint64_t dispatched_after_inactive_activity_gate = 0U;
+        std::uint64_t dispatched_after_deferred_attribute_gate = 0U;
+        std::uint64_t dispatched_after_changed_gate_bytes = 0U;
+        std::uint64_t dispatched_after_unchanged_gate_bytes = 0U;
+        std::uint64_t completed_queue_filings = 0U;
+        std::uint64_t queue_chain_mismatches = 0U;
+    };
+
+    struct ActorDispatchHandlerEvidence {
+        std::uint16_t handler_address = 0U;
+        std::uint64_t matching_handoffs = 0U;
+        std::uint64_t mismatched_handoffs = 0U;
+        std::uint64_t completed_handler_states = 0U;
+        std::uint64_t changed_activity_flags = 0U;
+        std::uint64_t changed_attributes = 0U;
+        std::uint64_t changed_behavior_counter = 0U;
+        std::uint64_t changed_handler_address = 0U;
+        std::uint64_t changed_motion = 0U;
+        std::uint64_t changed_collision_state = 0U;
+    };
+
     void observe_playfield_collision_source(
         const RoutineEntry& entry,
         const std::span<const std::byte> work_ram,
@@ -687,6 +786,66 @@ struct NativeGameplayBootstrapShadow {
         }
     }
 
+    // C539 is the composite actor scheduler entry. Capture only its decoded
+    // pass input here: behavior execution and C606 presentation filing remain
+    // emulator-owned until every handler boundary can be replayed strictly.
+    void observe_short_actor_pass_entry(
+        const RoutineEntry& entry,
+        const std::span<const std::byte> work_ram) noexcept
+    {
+        constexpr RoutineKey kShortActorPass{
+            .physical_bank = 0x01U,
+            .logical_pc = 0xC539U,
+        };
+        if (entry.routine != kShortActorPass) {
+            return;
+        }
+
+        ++short_actor_pass_entries;
+        try {
+            const devils_crush::native_runtime::GameStateView state{work_ram};
+            const devils_crush::native_runtime::ActorSchedulerView scheduler{
+                state};
+            const auto capture = scheduler.capture_short_actor_pass();
+            if (!capture) {
+                ++unavailable_short_actor_pass_captures;
+                return;
+            }
+            ++captured_short_actor_passes;
+            scheduled_short_actor_pass_actors +=
+                capture->scheduled_actors.size();
+            if (capture->seed.gate.frozen) {
+                ++frozen_short_actor_passes;
+            }
+            if (capture->scheduled_actors.empty()) {
+                ++empty_short_actor_passes;
+            }
+        } catch (...) {
+            // The observer must remain incapable of changing a live frame.
+            ++short_actor_pass_capture_failures;
+        }
+    }
+
+    // The short pass is reached by two direct JSR sites. Keep their entries
+    // separate from the C539 snapshot so an otherwise quiet report can say
+    // whether the session simply never selected this scheduler variant.
+    void observe_short_actor_pass_call_site(const RoutineEntry& entry) noexcept
+    {
+        constexpr RoutineKey kMainLoopCaller{
+            .physical_bank = 0x01U,
+            .logical_pc = 0xC1D3U,
+        };
+        constexpr RoutineKey kTimerCaller{
+            .physical_bank = 0x00U,
+            .logical_pc = 0xEEC1U,
+        };
+        if (entry.routine == kMainLoopCaller) {
+            ++short_actor_pass_main_loop_call_sites;
+        } else if (entry.routine == kTimerCaller) {
+            ++short_actor_pass_timer_call_sites;
+        }
+    }
+
     void observe_motion_entry(
         const RoutineEntry& entry,
         const std::span<const std::byte> work_ram,
@@ -720,6 +879,14 @@ struct NativeGameplayBootstrapShadow {
             .physical_bank = 0x01U,
             .logical_pc = 0xC52CU,
         };
+        constexpr RoutineKey kActorQueueFiler{
+            .physical_bank = 0x01U,
+            .logical_pc = 0xC606U,
+        };
+        constexpr RoutineKey kMainActorPass{
+            .physical_bank = 0x01U,
+            .logical_pc = 0xC510U,
+        };
         constexpr RoutineKey kSingleActorProbe{
             .physical_bank = 0x01U,
             .logical_pc = 0xCBABU,
@@ -747,12 +914,16 @@ struct NativeGameplayBootstrapShadow {
              && entry.routine != kContactResponse
              && entry.routine != kPositionRetry
              && entry.routine != kActorDispatch
+             && entry.routine != kActorQueueFiler
+             && entry.routine != kMainActorPass
              && entry.routine != kSingleActorProbe
              && entry.routine != kActorCollisionScanner
              && entry.routine != kCollisionMaskLookup
              && entry.routine != kSingleActorProbeResult
              && entry.routine != kConfirmedActorContact)
             || (entry.routine != kActorDispatch
+                && entry.routine != kActorQueueFiler
+                && entry.routine != kMainActorPass
                 && entry.routine != kSingleActorProbe
                 && entry.routine != kActorCollisionScanner
                 && entry.routine != kCollisionMaskLookup
@@ -763,8 +934,17 @@ struct NativeGameplayBootstrapShadow {
         }
 
         const devils_crush::native_runtime::GameStateView state{work_ram};
+        if (entry.routine == kMainActorPass) {
+            observe_main_actor_pass_entry(entry, state);
+            return;
+        }
         if (entry.routine == kActorDispatch) {
             observe_native_epoch_actor_handler_dispatch(state, entry.registers.x);
+            observe_actor_dispatch_entry(entry, state);
+            return;
+        }
+        if (entry.routine == kActorQueueFiler) {
+            observe_actor_queue_filer_entry(entry, state);
             return;
         }
         if (entry.routine == kSingleActorProbe) {
@@ -927,10 +1107,567 @@ struct NativeGameplayBootstrapShadow {
         observe_collision_loop_damping_completion(call, observed_ball->state);
     }
 
+    void observe_main_actor_pass_entry(
+        const RoutineEntry& entry,
+        const devils_crush::native_runtime::GameStateView& state) noexcept
+    {
+        // C510 is a loop head, not a one-shot subroutine entry. The native
+        // registry can therefore surface it after every C523 tail that
+        // reaches the next slot. X is loaded from $4D on those re-entries;
+        // only C4DE's initial CLX/STX setup reaches C510 with X=0. Treating
+        // every later arrival as another pass had discarded the pending
+        // aggregate before its final C52B RTS could be observed.
+        if (active_main_actor_pass
+            && active_main_actor_pass->pending_decision) {
+            // Reaching another C510 loop head proves that the prior native
+            // run reached its terminal C523/C52B path rather than C52C.
+            const auto pending = *active_main_actor_pass->pending_decision;
+            active_main_actor_pass->pending_decision.reset();
+            if (!pending.dispatch_expected) {
+                ++active_main_actor_pass->matched_dispatch_decisions;
+            } else {
+                ++active_main_actor_pass->mismatched_dispatch_decisions;
+            }
+        }
+
+        if (entry.registers.x == 0U) {
+            ++main_actor_pass_entries;
+            if (active_main_actor_pass) {
+                // A new zero-slot arrival means the prior pass never
+                // presented its terminal C52B return boundary. Do not join
+                // them.
+                ++superseded_main_actor_passes;
+                active_main_actor_pass.reset();
+            }
+
+            const auto queues = devils_crush::native_runtime::
+                capture_actor_presentation_queue_state(state);
+            if (!queues) {
+                ++unavailable_main_actor_pass_inputs;
+                return;
+            }
+
+            try {
+                active_main_actor_pass = PendingMainActorPass{
+                    .model = devils_crush::native_runtime::MainActorPass{
+                        *queues},
+                };
+                ++captured_main_actor_passes;
+            } catch (...) {
+                ++main_actor_pass_capture_failures;
+                return;
+            }
+        }
+
+        if (!active_main_actor_pass) {
+            return;
+        }
+        const devils_crush::native_runtime::ActorSchedulerView scheduler{
+            state};
+        const auto run = scheduler.scan_main_actor_run(entry.registers.x);
+        if (!run) {
+            ++unavailable_main_actor_pass_inputs;
+            return;
+        }
+        const auto scanned_actor = !run->skipped_actors.empty()
+            ? std::optional<devils_crush::native_runtime::GameStateView::ActorSlot>{
+                run->skipped_actors.front()}
+            : run->dispatch_actor;
+        if (!scanned_actor
+            || !active_main_actor_pass->model.submit_scan_run(*run)) {
+            ++unavailable_main_actor_pass_inputs;
+            return;
+        }
+        active_main_actor_pass->pending_decision = {
+            .slot = entry.registers.x,
+            .activity_flags = scanned_actor->activity_flags,
+            .attributes = scanned_actor->attributes,
+            .expected_dispatch_slot = run->dispatch_actor
+                ? std::optional<std::uint8_t>{run->dispatch_actor->index}
+                : std::nullopt,
+            .skipped_actor_count = run->skipped_actors.size(),
+            .dispatch_expected = run->dispatch_actor.has_value(),
+        };
+    }
+
+    void observe_main_actor_pass_gate_write(
+        const ObservedMemoryWrite& write) noexcept
+    {
+        if (!active_main_actor_pass
+            || !active_main_actor_pass->pending_decision) {
+            return;
+        }
+        auto& decision = *active_main_actor_pass->pending_decision;
+        const auto activity_address = static_cast<std::uint16_t>(
+            0x3000U + decision.slot);
+        const auto attribute_address = static_cast<std::uint16_t>(
+            0x3080U + decision.slot);
+        if (write.logical_address == activity_address) {
+            decision.activity_gate_writer = write.instruction;
+        } else if (write.logical_address == attribute_address) {
+            decision.attribute_gate_writer = write.instruction;
+        }
+    }
+
+    void observe_main_actor_pass_completion(
+        const RoutineCall& call,
+        const std::span<const std::byte> work_ram) noexcept
+    {
+        // C510 is both the pass head and the loop-back target. Consequently
+        // the routine-call observer records one active C510 call per loop
+        // head, all with the same stack depth, and C52B closes every one of
+        // those observer records together. Only the X=0 record began the
+        // aggregate pass below; later loop-head records must not either close
+        // it or be counted as unmatched completions.
+        constexpr RoutineKey kMainActorPassReturn{
+            .physical_bank = 0x01U,
+            .logical_pc = 0xC52BU,
+        };
+        if (call.return_instruction != kMainActorPassReturn
+            || call.entry.registers.x != 0U) {
+            return;
+        }
+        if (!active_main_actor_pass) {
+            ++unmatched_main_actor_pass_completions;
+            return;
+        }
+        if (active_main_actor_pass->pending_decision) {
+            // The terminal C52B return is reached from C523, so an unresolved
+            // final decision necessarily took C510's skip path.
+            const auto pending = *active_main_actor_pass->pending_decision;
+            active_main_actor_pass->pending_decision.reset();
+            if (!pending.dispatch_expected) {
+                ++active_main_actor_pass->matched_dispatch_decisions;
+            } else {
+                ++active_main_actor_pass->mismatched_dispatch_decisions;
+            }
+        }
+        const auto completed = std::move(*active_main_actor_pass);
+        active_main_actor_pass.reset();
+        ++completed_main_actor_passes;
+        matched_main_actor_pass_dispatch_decisions
+            += completed.matched_dispatch_decisions;
+        mismatched_main_actor_pass_dispatch_decisions
+            += completed.mismatched_dispatch_decisions;
+        main_actor_pass_dispatched_when_skip_expected
+            += completed.dispatched_when_skip_expected;
+        main_actor_pass_dispatched_for_other_slot
+            += completed.dispatched_for_other_slot;
+        main_actor_pass_dispatched_after_inactive_activity_gate
+            += completed.dispatched_after_inactive_activity_gate;
+        main_actor_pass_dispatched_after_deferred_attribute_gate
+            += completed.dispatched_after_deferred_attribute_gate;
+        main_actor_pass_dispatched_after_changed_gate_bytes
+            += completed.dispatched_after_changed_gate_bytes;
+        main_actor_pass_dispatched_after_unchanged_gate_bytes
+            += completed.dispatched_after_unchanged_gate_bytes;
+
+        const devils_crush::native_runtime::GameStateView state{work_ram};
+        const auto queues = devils_crush::native_runtime::
+            capture_actor_presentation_queue_state(state);
+        if (!queues) {
+            ++unavailable_main_actor_pass_outputs;
+            return;
+        }
+        ++main_actor_pass_queue_predictions;
+        if (completed.model.terminal()
+            && !completed.model.pending_actor()
+            && completed.model.presentation_queues() == *queues) {
+            ++matched_main_actor_pass_queue_predictions;
+        } else {
+            ++mismatched_main_actor_pass_queue_predictions;
+        }
+        main_actor_pass_completed_queue_filings
+            += completed.completed_queue_filings;
+        main_actor_pass_queue_chain_mismatches
+            += completed.queue_chain_mismatches;
+    }
+
+    void record_main_actor_pass_gate_writer(
+        const std::optional<RoutineKey> writer,
+        const bool activity) noexcept
+    {
+        if (!writer) {
+            if (activity) {
+                ++main_actor_pass_unobserved_activity_gate_writers;
+            } else {
+                ++main_actor_pass_unobserved_attribute_gate_writers;
+            }
+            return;
+        }
+        for (auto& evidence : main_actor_pass_gate_writer_evidence) {
+            if (evidence.activity_changes == 0U
+                && evidence.attribute_changes == 0U) {
+                evidence.instruction = *writer;
+                if (activity) {
+                    ++evidence.activity_changes;
+                } else {
+                    ++evidence.attribute_changes;
+                }
+                return;
+            }
+            if (evidence.instruction != *writer) {
+                continue;
+            }
+            if (activity) {
+                ++evidence.activity_changes;
+            } else {
+                ++evidence.attribute_changes;
+            }
+            return;
+        }
+        if (activity) {
+            ++unclassified_main_actor_pass_activity_gate_writers;
+        } else {
+            ++unclassified_main_actor_pass_attribute_gate_writers;
+        }
+    }
+
+    void observe_actor_dispatch_entry(
+        const RoutineEntry& entry,
+        const devils_crush::native_runtime::GameStateView& state) noexcept
+    {
+        ++actor_dispatch_entries;
+        const bool belongs_to_main_actor_pass = active_main_actor_pass.has_value();
+        if (pending_actor_queue_filing) {
+            // C520 should enter C606 before another C52C dispatch. Do not
+            // let an incomplete observation cross that proven boundary.
+            ++unpaired_actor_dispatch_completions;
+            pending_actor_queue_filing.reset();
+        }
+        if (pending_actor_queue_filer) {
+            // A C606 call must complete before the next C52C dispatch. Its
+            // pending oracle cannot be paired across that ordering boundary.
+            ++superseded_actor_queue_filer_predictions;
+            pending_actor_queue_filer.reset();
+        }
+
+        const auto actor = state.actor(entry.registers.x);
+        if (!actor) {
+            ++unavailable_actor_dispatch_entries;
+            return;
+        }
+        try {
+            if (pending_actor_dispatches.size()
+                == kMaximumPendingActorDispatches) {
+                pending_actor_dispatches.erase(
+                    pending_actor_dispatches.begin());
+                ++dropped_actor_dispatch_entries;
+            }
+            pending_actor_dispatches.push_back({
+                .entry_absolute_master_cycle = entry.absolute_master_cycle,
+                .slot = actor->index,
+                .activity_flags = actor->activity_flags,
+                .attributes = actor->attributes,
+                .belongs_to_main_actor_pass = belongs_to_main_actor_pass,
+                .handler_address = actor->handler_address,
+                .actor_before_handler = *actor,
+            });
+        } catch (...) {
+            ++actor_dispatch_capture_failures;
+        }
+    }
+
+    void observe_actor_dispatch_completion(
+        const RoutineCall& call,
+        const std::span<const std::byte> work_ram) noexcept
+    {
+        const auto pending = std::find_if(
+            pending_actor_dispatches.rbegin(),
+            pending_actor_dispatches.rend(),
+            [&call](const PendingActorDispatch& candidate) {
+                return candidate.entry_absolute_master_cycle
+                    == call.entry.absolute_master_cycle;
+            });
+        if (pending == pending_actor_dispatches.rend()) {
+            ++unmatched_actor_dispatch_completions;
+            return;
+        }
+        const auto captured = *pending;
+        pending_actor_dispatches.erase(std::next(pending).base());
+
+        // `return_instruction` identifies the handler's terminating RTS.
+        // Routine-call observers expose the post-RTS destination separately
+        // in `return_pc`; the C52C BSR must land at C520 before that caller
+        // can invoke C606. Comparing the RTS address here would reject every
+        // dynamically dispatched handler as a false non-C520 return.
+        constexpr std::uint16_t kActorQueueCallPc = 0xC520U;
+        if (call.return_pc != kActorQueueCallPc) {
+            ++nonqueue_actor_dispatch_returns;
+            return;
+        }
+
+        // C510's BSR is the C52C invocation that returns at C520. A handler
+        // may enter C52C recursively before this outer dispatch finishes, so
+        // attributing a C52C *entry* to C510 confuses that legitimate nested
+        // work with the pending slot decision. Resolve the decision only at
+        // the C520 return boundary: it is after the dynamic handler has
+        // unwound and immediately before the matching C606 filing call. The
+        // C510's typed scan run predicts both the contiguous skipped slots
+        // and C52C's next target. C52C is still resolved at its C520 return
+        // so nested handlers cannot be mistaken for this outer dispatch.
+        if (captured.belongs_to_main_actor_pass) {
+            if (active_main_actor_pass
+                && active_main_actor_pass->pending_decision) {
+                auto decision =
+                    *active_main_actor_pass->pending_decision;
+                active_main_actor_pass->pending_decision.reset();
+                if (decision.skipped_actor_count != 0U) {
+                    ++native_main_actor_pass_scan_realignments;
+                    native_main_actor_pass_skipped_slots
+                        += decision.skipped_actor_count;
+                }
+                if (!decision.dispatch_expected
+                    || !decision.expected_dispatch_slot
+                    || *decision.expected_dispatch_slot != captured.slot) {
+                    ++active_main_actor_pass->mismatched_dispatch_decisions;
+                    ++active_main_actor_pass->dispatched_when_skip_expected;
+                    if ((decision.activity_flags & 0x80U) == 0U) {
+                        ++active_main_actor_pass
+                               ->dispatched_after_inactive_activity_gate;
+                    } else {
+                        ++active_main_actor_pass
+                               ->dispatched_after_deferred_attribute_gate;
+                    }
+                    if (decision.activity_flags != captured.activity_flags
+                        || decision.attributes != captured.attributes) {
+                        ++active_main_actor_pass
+                               ->dispatched_after_changed_gate_bytes;
+                        if (decision.activity_flags
+                            != captured.activity_flags) {
+                            ++main_actor_pass_changed_activity_gate_bytes;
+                            record_main_actor_pass_gate_writer(
+                                decision.activity_gate_writer,
+                                true);
+                        }
+                        if (decision.attributes != captured.attributes) {
+                            ++main_actor_pass_changed_attribute_gate_bytes;
+                            record_main_actor_pass_gate_writer(
+                                decision.attribute_gate_writer,
+                                false);
+                        }
+                    } else {
+                        ++active_main_actor_pass
+                               ->dispatched_after_unchanged_gate_bytes;
+                    }
+                } else {
+                    ++active_main_actor_pass->matched_dispatch_decisions;
+                }
+            } else {
+                ++mismatched_main_actor_pass_dispatch_decisions;
+                ++main_actor_pass_dispatches_without_pending_decision;
+            }
+        }
+        if (call.output_registers.x != captured.slot) {
+            ++actor_dispatch_output_slot_mismatches;
+            return;
+        }
+
+        const devils_crush::native_runtime::GameStateView state{work_ram};
+        const auto actor = state.actor(captured.slot);
+        if (!actor) {
+            ++unavailable_actor_dispatch_outputs;
+            return;
+        }
+        const auto behavior_changes = devils_crush::native_runtime::
+            capture_actor_behavior_state_changes(
+                captured.actor_before_handler, *actor);
+        if (!behavior_changes) {
+            ++unavailable_actor_dispatch_state_transitions;
+        } else {
+            record_actor_dispatch_handler_state_transition(
+                captured.handler_address, *behavior_changes);
+        }
+
+        if (pending_actor_queue_filing) {
+            ++unpaired_actor_dispatch_completions;
+        }
+        pending_actor_queue_filing = {
+            .slot = captured.slot,
+            .attributes_after_handler = actor->attributes,
+            .handler_address = captured.handler_address,
+            .belongs_to_main_actor_pass = captured.belongs_to_main_actor_pass,
+        };
+        ++completed_actor_dispatches;
+    }
+
+    void observe_actor_queue_filer_entry(
+        const RoutineEntry& entry,
+        const devils_crush::native_runtime::GameStateView& state) noexcept
+    {
+        ++actor_queue_filer_entries;
+        if (!pending_actor_queue_filing) {
+            ++unpaired_actor_queue_filer_entries;
+            return;
+        }
+
+        const auto pending = *pending_actor_queue_filing;
+        pending_actor_queue_filing.reset();
+        const auto actor = state.actor(pending.slot);
+        if (!actor) {
+            ++unavailable_actor_queue_filer_inputs;
+            return;
+        }
+        if (entry.registers.x != pending.slot
+            || actor->attributes != pending.attributes_after_handler) {
+            ++mismatched_actor_dispatch_queue_handoffs;
+            record_actor_dispatch_handler_handoff(
+                pending.handler_address, false);
+            return;
+        }
+        ++matched_actor_dispatch_queue_handoffs;
+        record_actor_dispatch_handler_handoff(pending.handler_address, true);
+
+        const auto queues = devils_crush::native_runtime::
+            capture_actor_presentation_queue_state(state);
+        if (!queues) {
+            ++unavailable_actor_queue_filer_queue_inputs;
+            return;
+        }
+        pending_actor_queue_filer = {
+            .dispatch = pending,
+            .queues_before = *queues,
+            .attributes_before_filing = actor->attributes,
+        };
+        ++actor_queue_filer_predictions;
+    }
+
+    void observe_actor_queue_filer_completion(
+        const RoutineCall&,
+        const std::span<const std::byte> work_ram) noexcept
+    {
+        if (!pending_actor_queue_filer) {
+            return;
+        }
+        const auto pending = *pending_actor_queue_filer;
+        pending_actor_queue_filer.reset();
+
+        const devils_crush::native_runtime::GameStateView state{work_ram};
+        const auto actor = state.actor(pending.dispatch.slot);
+        const auto queues = devils_crush::native_runtime::
+            capture_actor_presentation_queue_state(state);
+        if (!actor || !queues) {
+            ++unavailable_actor_queue_filer_queue_outputs;
+            return;
+        }
+        const devils_crush::native_runtime::ActorPostHandlerPresentation
+            presentation{
+                .slot = pending.dispatch.slot,
+                .attributes_before_prequeue_presentation_refresh =
+                    pending.attributes_before_filing,
+                .attributes_after_prequeue_presentation_refresh = actor->attributes,
+            };
+        const auto expected = devils_crush::native_runtime::
+            file_completed_actor_for_presentation(pending.queues_before, presentation);
+        if (pending.dispatch.belongs_to_main_actor_pass
+            && active_main_actor_pass) {
+            if (active_main_actor_pass->model.presentation_queues()
+                != pending.queues_before) {
+                ++active_main_actor_pass->queue_chain_mismatches;
+            }
+            const auto modeled = active_main_actor_pass->model.complete_handler(
+                presentation);
+            if (!modeled || modeled->state != expected.state) {
+                ++active_main_actor_pass->queue_chain_mismatches;
+            } else {
+                ++active_main_actor_pass->completed_queue_filings;
+            }
+        }
+        if (expected.state == *queues) {
+            ++matched_actor_queue_filer_predictions;
+        } else {
+            ++mismatched_actor_queue_filer_predictions;
+        }
+    }
+
+    void record_actor_dispatch_handler_handoff(
+        const std::uint16_t handler_address,
+        const bool matches) noexcept
+    {
+        for (auto& evidence : actor_dispatch_handler_evidence) {
+            if (actor_dispatch_handler_evidence_active(evidence)
+                && evidence.handler_address == handler_address) {
+                if (matches) {
+                    ++evidence.matching_handoffs;
+                } else {
+                    ++evidence.mismatched_handoffs;
+                }
+                return;
+            }
+        }
+        for (auto& evidence : actor_dispatch_handler_evidence) {
+            if (!actor_dispatch_handler_evidence_active(evidence)) {
+                evidence.handler_address = handler_address;
+                if (matches) {
+                    ++evidence.matching_handoffs;
+                } else {
+                    ++evidence.mismatched_handoffs;
+                }
+                return;
+            }
+        }
+        ++unclassified_actor_dispatch_handler_handoffs;
+    }
+
+    [[nodiscard]] static bool actor_dispatch_handler_evidence_active(
+        const ActorDispatchHandlerEvidence& evidence) noexcept
+    {
+        return evidence.matching_handoffs != 0U
+            || evidence.mismatched_handoffs != 0U
+            || evidence.completed_handler_states != 0U;
+    }
+
+    void record_actor_dispatch_handler_state_transition(
+        const std::uint16_t handler_address,
+        const devils_crush::native_runtime::ActorBehaviorStateChanges& changes) noexcept
+    {
+        for (auto& evidence : actor_dispatch_handler_evidence) {
+            if (actor_dispatch_handler_evidence_active(evidence)
+                && evidence.handler_address == handler_address) {
+                ++evidence.completed_handler_states;
+                evidence.changed_activity_flags += changes.activity_flags ? 1U : 0U;
+                evidence.changed_attributes += changes.attributes ? 1U : 0U;
+                evidence.changed_behavior_counter += changes.behavior_counter ? 1U : 0U;
+                evidence.changed_handler_address += changes.handler_address ? 1U : 0U;
+                evidence.changed_motion +=
+                    changes.horizontal_motion || changes.vertical_motion ? 1U : 0U;
+                evidence.changed_collision_state += changes.collision_state ? 1U : 0U;
+                return;
+            }
+        }
+        for (auto& evidence : actor_dispatch_handler_evidence) {
+            if (!actor_dispatch_handler_evidence_active(evidence)) {
+                evidence.handler_address = handler_address;
+                evidence.completed_handler_states = 1U;
+                evidence.changed_activity_flags = changes.activity_flags ? 1U : 0U;
+                evidence.changed_attributes = changes.attributes ? 1U : 0U;
+                evidence.changed_behavior_counter = changes.behavior_counter ? 1U : 0U;
+                evidence.changed_handler_address = changes.handler_address ? 1U : 0U;
+                evidence.changed_motion =
+                    changes.horizontal_motion || changes.vertical_motion ? 1U : 0U;
+                evidence.changed_collision_state = changes.collision_state ? 1U : 0U;
+                return;
+            }
+        }
+        ++unclassified_actor_dispatch_state_transitions;
+    }
+
     void observe_gameplay_completion(
         const RoutineCall& call,
         const std::span<const std::byte> work_ram) noexcept
     {
+        constexpr RoutineKey kActorDispatch{
+            .physical_bank = 0x01U,
+            .logical_pc = 0xC52CU,
+        };
+        constexpr RoutineKey kActorQueueFiler{
+            .physical_bank = 0x01U,
+            .logical_pc = 0xC606U,
+        };
+        constexpr RoutineKey kMainActorPass{
+            .physical_bank = 0x01U,
+            .logical_pc = 0xC510U,
+        };
         constexpr RoutineKey kCachedPositionRestore{
             .physical_bank = 0x00U,
             .logical_pc = 0xF241U,
@@ -941,6 +1678,18 @@ struct NativeGameplayBootstrapShadow {
         };
         if (call.entry.routine == kCachedPositionRestore) {
             observe_marked_playfield_retry_restore(call, work_ram);
+            return;
+        }
+        if (call.entry.routine == kActorDispatch) {
+            observe_actor_dispatch_completion(call, work_ram);
+            return;
+        }
+        if (call.entry.routine == kActorQueueFiler) {
+            observe_actor_queue_filer_completion(call, work_ram);
+            return;
+        }
+        if (call.entry.routine == kMainActorPass) {
+            observe_main_actor_pass_completion(call, work_ram);
             return;
         }
         if (call.entry.routine == kPlayfieldProbe) {
@@ -1320,6 +2069,308 @@ struct NativeGameplayBootstrapShadow {
         }
         report_motion_routine_shadow();
         report_collision_loop_shadow();
+        if (main_actor_pass_entries != 0U) {
+            std::cout << "; main actor-pass shadow: "
+                      << completed_main_actor_passes << "/"
+                      << captured_main_actor_passes
+                      << " C510 completion(s), "
+                      << matched_main_actor_pass_dispatch_decisions << "/"
+                      << (matched_main_actor_pass_dispatch_decisions
+                          + mismatched_main_actor_pass_dispatch_decisions)
+                      << " C510 scan target(s) matched, "
+                      << matched_main_actor_pass_queue_predictions << "/"
+                      << main_actor_pass_queue_predictions
+                      << " model final queue-state match(es)"
+                      << " (" << main_actor_pass_completed_queue_filings
+                      << " paired C606 filing(s))";
+            if (mismatched_main_actor_pass_dispatch_decisions != 0U
+                || mismatched_main_actor_pass_queue_predictions != 0U
+                || main_actor_pass_queue_chain_mismatches != 0U
+                || unavailable_main_actor_pass_inputs != 0U
+                || unavailable_main_actor_pass_outputs != 0U
+                || superseded_main_actor_passes != 0U
+                || unmatched_main_actor_pass_completions != 0U
+                || main_actor_pass_capture_failures != 0U
+                || native_main_actor_pass_scan_realignments != 0U) {
+                std::cout << " (";
+                bool separated = false;
+                const auto append = [&separated](
+                                        const std::uint64_t count,
+                                        const std::string_view label) {
+                    if (count == 0U) {
+                        return;
+                    }
+                    if (separated) {
+                        std::cout << ", ";
+                    }
+                    std::cout << count << ' ' << label;
+                    separated = true;
+                };
+                append(mismatched_main_actor_pass_dispatch_decisions,
+                       "live dispatch mismatch(es)");
+                append(main_actor_pass_dispatched_when_skip_expected,
+                       "dispatch(es) after an expected skip");
+                append(main_actor_pass_dispatched_for_other_slot,
+                       "dispatch(es) for another slot");
+                append(main_actor_pass_dispatched_after_inactive_activity_gate,
+                       "dispatch(es) after an inactive C510 gate");
+                append(main_actor_pass_dispatched_after_deferred_attribute_gate,
+                       "dispatch(es) after a deferred C510 attribute gate");
+                append(main_actor_pass_dispatched_after_changed_gate_bytes,
+                       "skip-dispatch(es) with changed gate bytes");
+                append(main_actor_pass_dispatched_after_unchanged_gate_bytes,
+                       "skip-dispatch(es) with unchanged gate bytes");
+                append(native_main_actor_pass_scan_realignments,
+                       "native scan run(s) with skipped slot(s)");
+                append(native_main_actor_pass_skipped_slots,
+                       "native skipped slot(s)");
+                append(main_actor_pass_dispatches_without_pending_decision,
+                       "dispatch(es) without a pending decision");
+                append(mismatched_main_actor_pass_queue_predictions,
+                       "final queue mismatch(es)");
+                append(main_actor_pass_queue_chain_mismatches,
+                       "intermediate queue-chain mismatch(es)");
+                append(unavailable_main_actor_pass_inputs,
+                       "unavailable input(s)");
+                append(unavailable_main_actor_pass_outputs,
+                       "unavailable output(s)");
+                append(superseded_main_actor_passes, "superseded pass(es)");
+                append(unmatched_main_actor_pass_completions,
+                       "unmatched completion(s)");
+                append(main_actor_pass_capture_failures,
+                       "capture failure(s)");
+                std::cout << ')';
+            }
+            if (main_actor_pass_changed_activity_gate_bytes != 0U
+                || main_actor_pass_changed_attribute_gate_bytes != 0U) {
+                std::cout << "; main actor-pass gate-write shadow: activity="
+                          << main_actor_pass_changed_activity_gate_bytes
+                          << ", attributes="
+                          << main_actor_pass_changed_attribute_gate_bytes;
+                for (const auto& evidence
+                     : main_actor_pass_gate_writer_evidence) {
+                    if (evidence.activity_changes == 0U
+                        && evidence.attribute_changes == 0U) {
+                        continue;
+                    }
+                    std::cout << ' ' << format_routine_key(evidence.instruction)
+                              << "=activity:" << evidence.activity_changes
+                              << "/attribute:"
+                              << evidence.attribute_changes;
+                }
+                if (main_actor_pass_unobserved_activity_gate_writers != 0U
+                    || main_actor_pass_unobserved_attribute_gate_writers
+                        != 0U) {
+                    std::cout << " unobserved=activity:"
+                              << main_actor_pass_unobserved_activity_gate_writers
+                              << "/attribute:"
+                              << main_actor_pass_unobserved_attribute_gate_writers;
+                }
+                if (unclassified_main_actor_pass_activity_gate_writers != 0U
+                    || unclassified_main_actor_pass_attribute_gate_writers
+                        != 0U) {
+                    std::cout << " other=activity:"
+                              << unclassified_main_actor_pass_activity_gate_writers
+                              << "/attribute:"
+                              << unclassified_main_actor_pass_attribute_gate_writers;
+                }
+            }
+        }
+        if (actor_dispatch_entries != 0U || actor_queue_filer_entries != 0U) {
+            std::cout << "; actor-dispatch handoff shadow: "
+                      << completed_actor_dispatches
+                      << " C52C handler completion(s), "
+                      << matched_actor_dispatch_queue_handoffs << "/"
+                      << (matched_actor_dispatch_queue_handoffs
+                          + mismatched_actor_dispatch_queue_handoffs)
+                      << " paired C606 input(s) matched";
+            if (mismatched_actor_dispatch_queue_handoffs != 0U) {
+                std::cout << ", "
+                          << mismatched_actor_dispatch_queue_handoffs
+                          << " slot/attribute mismatch(es)";
+            }
+            if (unpaired_actor_dispatch_completions != 0U
+                || unpaired_actor_queue_filer_entries != 0U) {
+                std::cout << " (unpaired C52C="
+                          << unpaired_actor_dispatch_completions
+                          << ", other C606="
+                          << unpaired_actor_queue_filer_entries
+                          << ')';
+            }
+            if (nonqueue_actor_dispatch_returns != 0U
+                || actor_dispatch_output_slot_mismatches != 0U
+                || unavailable_actor_dispatch_entries != 0U
+                || unavailable_actor_dispatch_outputs != 0U
+                || unavailable_actor_dispatch_state_transitions != 0U
+                || unavailable_actor_queue_filer_inputs != 0U
+                || unmatched_actor_dispatch_completions != 0U
+                || dropped_actor_dispatch_entries != 0U
+                || actor_dispatch_capture_failures != 0U) {
+                std::cout << " (";
+                bool separated = false;
+                const auto append = [&separated](
+                                        const std::uint64_t count,
+                                        const std::string_view label) {
+                    if (count == 0U) {
+                        return;
+                    }
+                    if (separated) {
+                        std::cout << ", ";
+                    }
+                    std::cout << count << ' ' << label;
+                    separated = true;
+                };
+                append(nonqueue_actor_dispatch_returns, "non-C520 return(s)");
+                append(actor_dispatch_output_slot_mismatches,
+                       "C52C output-slot mismatch(es)");
+                append(unavailable_actor_dispatch_entries,
+                       "unavailable C52C input(s)");
+                append(unavailable_actor_dispatch_outputs,
+                       "unavailable C52C output(s)");
+                append(unavailable_actor_dispatch_state_transitions,
+                       "unavailable C52C state transition(s)");
+                append(unavailable_actor_queue_filer_inputs,
+                       "unavailable C606 input(s)");
+                append(unmatched_actor_dispatch_completions,
+                       "unmatched C52C completion(s)");
+                append(dropped_actor_dispatch_entries,
+                       "dropped C52C entry/entries");
+                append(actor_dispatch_capture_failures,
+                       "C52C capture failure(s)");
+                std::cout << ')';
+            }
+            if (matched_actor_dispatch_queue_handoffs != 0U
+                || mismatched_actor_dispatch_queue_handoffs != 0U) {
+                std::cout << "; actor-dispatch top handler coverage:";
+                std::array<bool, kMaximumActorDispatchHandlerEvidence> reported{};
+                for (std::size_t rank = 0U;
+                     rank < kReportedActorDispatchHandlerCoverage;
+                     ++rank) {
+                    std::optional<std::size_t> next;
+                    for (std::size_t index = 0U;
+                         index < actor_dispatch_handler_evidence.size();
+                         ++index) {
+                        const auto& evidence = actor_dispatch_handler_evidence[index];
+                        const auto count = evidence.matching_handoffs
+                            + evidence.mismatched_handoffs;
+                        if (reported[index] || count == 0U
+                            || (next && count
+                                <= actor_dispatch_handler_evidence[*next]
+                                       .matching_handoffs
+                                    + actor_dispatch_handler_evidence[*next]
+                                          .mismatched_handoffs)) {
+                            continue;
+                        }
+                        next = index;
+                    }
+                    if (!next) {
+                        break;
+                    }
+                    reported[*next] = true;
+                    const auto& evidence = actor_dispatch_handler_evidence[*next];
+                    std::cout << ' ' << std::format(
+                        "{:04X}={}/{}",
+                        evidence.handler_address,
+                        evidence.matching_handoffs,
+                        evidence.matching_handoffs
+                            + evidence.mismatched_handoffs);
+                }
+                if (unclassified_actor_dispatch_handler_handoffs != 0U) {
+                    std::cout << " other="
+                              << unclassified_actor_dispatch_handler_handoffs;
+                }
+            }
+            if (std::ranges::any_of(
+                    actor_dispatch_handler_evidence,
+                    [](const ActorDispatchHandlerEvidence& evidence) {
+                        return evidence.completed_handler_states != 0U;
+                    })) {
+                std::cout << "; actor-dispatch state effects:";
+                std::array<bool, kMaximumActorDispatchHandlerEvidence> reported{};
+                for (std::size_t rank = 0U;
+                     rank < kReportedActorDispatchHandlerEffects;
+                     ++rank) {
+                    std::optional<std::size_t> next;
+                    for (std::size_t index = 0U;
+                         index < actor_dispatch_handler_evidence.size();
+                         ++index) {
+                        const auto& evidence = actor_dispatch_handler_evidence[index];
+                        if (reported[index]
+                            || evidence.completed_handler_states == 0U
+                            || (next && evidence.completed_handler_states
+                                <= actor_dispatch_handler_evidence[*next]
+                                       .completed_handler_states)) {
+                            continue;
+                        }
+                        next = index;
+                    }
+                    if (!next) {
+                        break;
+                    }
+                    reported[*next] = true;
+                    const auto& evidence = actor_dispatch_handler_evidence[*next];
+                    std::cout << ' ' << std::format(
+                        "{:04X}={}",
+                        evidence.handler_address,
+                        evidence.completed_handler_states);
+                    if (evidence.changed_activity_flags != 0U
+                        || evidence.changed_attributes != 0U
+                        || evidence.changed_behavior_counter != 0U
+                        || evidence.changed_handler_address != 0U
+                        || evidence.changed_motion != 0U
+                        || evidence.changed_collision_state != 0U) {
+                        std::cout << "(activity=" << evidence.changed_activity_flags
+                                  << ", attributes=" << evidence.changed_attributes
+                                  << ", counter=" << evidence.changed_behavior_counter
+                                  << ", vector=" << evidence.changed_handler_address
+                                  << ", motion=" << evidence.changed_motion
+                                  << ", collision="
+                                  << evidence.changed_collision_state << ')';
+                    }
+                }
+                if (unclassified_actor_dispatch_state_transitions != 0U) {
+                    std::cout << " other="
+                              << unclassified_actor_dispatch_state_transitions;
+                }
+            }
+            if (actor_queue_filer_predictions != 0U
+                || unavailable_actor_queue_filer_queue_inputs != 0U) {
+                std::cout << "; actor-queue filing shadow: "
+                          << matched_actor_queue_filer_predictions << "/"
+                          << actor_queue_filer_predictions
+                          << " C606 queue-state match(es)";
+                if (mismatched_actor_queue_filer_predictions != 0U) {
+                    std::cout << ", "
+                              << mismatched_actor_queue_filer_predictions
+                              << " mismatch(es)";
+                }
+                if (unavailable_actor_queue_filer_queue_inputs != 0U
+                    || unavailable_actor_queue_filer_queue_outputs != 0U
+                    || superseded_actor_queue_filer_predictions != 0U) {
+                    std::cout << " (";
+                    bool separated = false;
+                    const auto append = [&separated](
+                                            const std::string_view label,
+                                            const std::uint64_t count) {
+                        if (count == 0U) {
+                            return;
+                        }
+                        if (separated) {
+                            std::cout << ", ";
+                        }
+                        std::cout << count << ' ' << label;
+                        separated = true;
+                    };
+                    append("unavailable input queue(s)",
+                        unavailable_actor_queue_filer_queue_inputs);
+                    append("unavailable output queue(s)",
+                        unavailable_actor_queue_filer_queue_outputs);
+                    append("superseded prediction(s)",
+                        superseded_actor_queue_filer_predictions);
+                    std::cout << ')';
+                }
+            }
+        }
         if (collision_retry_entries != 0U) {
             std::cout << "; collision-retry shadow: "
                       << collision_retry_consuming_entries
@@ -1389,6 +2440,30 @@ struct NativeGameplayBootstrapShadow {
                               << unmatched_playfield_probe_completions
                               << " unmatched completion(s)";
                 }
+            }
+        }
+        {
+            std::cout << "; C539 actor-pass capture: "
+                      << captured_short_actor_passes << "/"
+                      << short_actor_pass_entries << " coherent input(s), "
+                      << scheduled_short_actor_pass_actors
+                      << " scheduled actor(s), caller probes C1D3="
+                      << short_actor_pass_main_loop_call_sites << " EEC1="
+                      << short_actor_pass_timer_call_sites;
+            if (frozen_short_actor_passes != 0U) {
+                std::cout << ", " << frozen_short_actor_passes
+                          << " frozen";
+            }
+            if (empty_short_actor_passes != 0U) {
+                std::cout << ", " << empty_short_actor_passes << " empty";
+            }
+            if (unavailable_short_actor_pass_captures != 0U) {
+                std::cout << ", " << unavailable_short_actor_pass_captures
+                          << " unavailable";
+            }
+            if (short_actor_pass_capture_failures != 0U) {
+                std::cout << ", " << short_actor_pass_capture_failures
+                          << " capture failure(s)";
             }
         }
         if (waiting_for_playfield_map != 0U) {
@@ -1490,6 +2565,74 @@ struct NativeGameplayBootstrapShadow {
     std::uint64_t playfield_capture_failures = 0U;
     std::uint64_t reused_playfield_maps = 0U;
     std::uint64_t decoded_playfield_maps = 0U;
+    std::uint64_t short_actor_pass_entries = 0U;
+    std::uint64_t short_actor_pass_main_loop_call_sites = 0U;
+    std::uint64_t short_actor_pass_timer_call_sites = 0U;
+    std::uint64_t captured_short_actor_passes = 0U;
+    std::uint64_t unavailable_short_actor_pass_captures = 0U;
+    std::uint64_t short_actor_pass_capture_failures = 0U;
+    std::uint64_t scheduled_short_actor_pass_actors = 0U;
+    std::uint64_t frozen_short_actor_passes = 0U;
+    std::uint64_t empty_short_actor_passes = 0U;
+    std::uint64_t main_actor_pass_entries = 0U;
+    std::uint64_t captured_main_actor_passes = 0U;
+    std::uint64_t completed_main_actor_passes = 0U;
+    std::uint64_t matched_main_actor_pass_dispatch_decisions = 0U;
+    std::uint64_t mismatched_main_actor_pass_dispatch_decisions = 0U;
+    std::uint64_t main_actor_pass_dispatched_when_skip_expected = 0U;
+    std::uint64_t main_actor_pass_dispatched_for_other_slot = 0U;
+    std::uint64_t main_actor_pass_dispatched_after_inactive_activity_gate = 0U;
+    std::uint64_t main_actor_pass_dispatched_after_deferred_attribute_gate = 0U;
+    std::uint64_t main_actor_pass_dispatched_after_changed_gate_bytes = 0U;
+    std::uint64_t main_actor_pass_dispatched_after_unchanged_gate_bytes = 0U;
+    std::uint64_t native_main_actor_pass_scan_realignments = 0U;
+    std::uint64_t native_main_actor_pass_skipped_slots = 0U;
+    std::uint64_t main_actor_pass_changed_activity_gate_bytes = 0U;
+    std::uint64_t main_actor_pass_changed_attribute_gate_bytes = 0U;
+    std::uint64_t main_actor_pass_unobserved_activity_gate_writers = 0U;
+    std::uint64_t main_actor_pass_unobserved_attribute_gate_writers = 0U;
+    std::uint64_t unclassified_main_actor_pass_activity_gate_writers = 0U;
+    std::uint64_t unclassified_main_actor_pass_attribute_gate_writers = 0U;
+    std::uint64_t main_actor_pass_dispatches_without_pending_decision = 0U;
+    std::uint64_t main_actor_pass_queue_predictions = 0U;
+    std::uint64_t matched_main_actor_pass_queue_predictions = 0U;
+    std::uint64_t mismatched_main_actor_pass_queue_predictions = 0U;
+    std::uint64_t main_actor_pass_completed_queue_filings = 0U;
+    std::uint64_t main_actor_pass_queue_chain_mismatches = 0U;
+    std::uint64_t unavailable_main_actor_pass_inputs = 0U;
+    std::uint64_t unavailable_main_actor_pass_outputs = 0U;
+    std::uint64_t superseded_main_actor_passes = 0U;
+    std::uint64_t unmatched_main_actor_pass_completions = 0U;
+    std::uint64_t main_actor_pass_capture_failures = 0U;
+    std::uint64_t actor_dispatch_entries = 0U;
+    std::uint64_t completed_actor_dispatches = 0U;
+    std::uint64_t actor_queue_filer_entries = 0U;
+    std::uint64_t matched_actor_dispatch_queue_handoffs = 0U;
+    std::uint64_t mismatched_actor_dispatch_queue_handoffs = 0U;
+    std::uint64_t unpaired_actor_dispatch_completions = 0U;
+    std::uint64_t unpaired_actor_queue_filer_entries = 0U;
+    std::uint64_t unavailable_actor_dispatch_entries = 0U;
+    std::uint64_t unavailable_actor_dispatch_outputs = 0U;
+    std::uint64_t unavailable_actor_queue_filer_inputs = 0U;
+    std::uint64_t actor_queue_filer_predictions = 0U;
+    std::uint64_t matched_actor_queue_filer_predictions = 0U;
+    std::uint64_t mismatched_actor_queue_filer_predictions = 0U;
+    std::uint64_t unavailable_actor_queue_filer_queue_inputs = 0U;
+    std::uint64_t unavailable_actor_queue_filer_queue_outputs = 0U;
+    std::uint64_t superseded_actor_queue_filer_predictions = 0U;
+    std::uint64_t unmatched_actor_dispatch_completions = 0U;
+    std::uint64_t nonqueue_actor_dispatch_returns = 0U;
+    std::uint64_t actor_dispatch_output_slot_mismatches = 0U;
+    std::uint64_t dropped_actor_dispatch_entries = 0U;
+    std::uint64_t actor_dispatch_capture_failures = 0U;
+    static constexpr std::size_t kMaximumActorDispatchHandlerEvidence = 256U;
+    static constexpr std::size_t kReportedActorDispatchHandlerCoverage = 16U;
+    static constexpr std::size_t kReportedActorDispatchHandlerEffects = 8U;
+    std::array<ActorDispatchHandlerEvidence, kMaximumActorDispatchHandlerEvidence>
+        actor_dispatch_handler_evidence{};
+    std::uint64_t unclassified_actor_dispatch_handler_handoffs = 0U;
+    std::uint64_t unavailable_actor_dispatch_state_transitions = 0U;
+    std::uint64_t unclassified_actor_dispatch_state_transitions = 0U;
     std::uint64_t solid_playfield_probes = 0U;
     std::uint64_t clear_playfield_probes = 0U;
     std::uint64_t unmatched_playfield_probe_completions = 0U;
@@ -1503,6 +2646,15 @@ struct NativeGameplayBootstrapShadow {
     std::optional<NativeEpochRuntimeChain> native_epoch_runtime;
 
 private:
+    static constexpr std::size_t kMaximumPendingActorDispatches = 16U;
+    static constexpr std::size_t kMaximumMainActorPassGateWriters = 16U;
+    std::array<ActorGateWriteEvidence, kMaximumMainActorPassGateWriters>
+        main_actor_pass_gate_writer_evidence{};
+    std::vector<PendingActorDispatch> pending_actor_dispatches;
+    std::optional<PendingActorQueueFiling> pending_actor_queue_filing;
+    std::optional<PendingActorQueueFiler> pending_actor_queue_filer;
+    std::optional<PendingMainActorPass> active_main_actor_pass;
+
     struct MotionRoutineSeed {
         RoutineKey routine;
         std::uint64_t entry_absolute_master_cycle = 0U;
@@ -17057,6 +18209,9 @@ int run_windows_host(
                               gameplay_bootstrap_shadow
                                   .observe_playfield_collision_source(
                                       entry, work_ram, *gameplay_shadow_rom);
+                              gameplay_bootstrap_shadow
+                                  .observe_short_actor_pass_entry(
+                                      entry, work_ram);
                               gameplay_bootstrap_shadow.observe_motion_entry(
                                   entry, work_ram, *gameplay_shadow_rom);
                           }}
@@ -17088,6 +18243,65 @@ int run_windows_host(
             }
         }
     }
+    // C510 itself does not write either scheduler gate byte before its C52C
+    // BSR.  When their two entry snapshots disagree, retain only the writer
+    // of the current slot's `$3000`/`$3080` bytes; this isolates the boundary
+    // that changes eligibility without taking ownership of the pass.
+    if (host_ok && native_gameplay_bootstrap_shadow
+        && !runtime.set_work_ram_write_observer(
+            [&gameplay_bootstrap_shadow](const ObservedMemoryWrite& write) {
+                gameplay_bootstrap_shadow.observe_main_actor_pass_gate_write(
+                    write);
+            })) {
+        std::cerr << "Could not observe C510 scheduler-gate writes for native "
+                     "gameplay shadow.\n";
+        running = false;
+        host_ok = false;
+    }
+    // C539 is a direct composite call rather than an admitted registry entry,
+    // so the registry's entry observer cannot see it. Separate observe-only
+    // hooks at its two JSR sites establish whether the short pass was selected
+    // at all; the C539 hook then supplies its preamble snapshot. None claims
+    // dynamic handlers, the loop, or C606 filing.
+    if (host_ok && native_gameplay_bootstrap_shadow
+        && !runtime.install_execution_hook({
+            .routine = {
+                .physical_bank = 0x01U,
+                .logical_pc = 0xC539U,
+            },
+            .mode = HookMode::observe,
+            .callback = [&runtime, &gameplay_bootstrap_shadow](
+                            const RoutineEntry& entry) {
+                gameplay_bootstrap_shadow.observe_short_actor_pass_entry(
+                    entry, runtime.export_work_ram());
+            },
+        })) {
+        std::cerr << "Could not observe C539 actor-pass entry for native "
+                     "gameplay shadow.\n";
+        running = false;
+        host_ok = false;
+    }
+    constexpr std::array<RoutineKey, 2U> kShortActorPassCallSites{{
+        {.physical_bank = 0x01U, .logical_pc = 0xC1D3U},
+        {.physical_bank = 0x00U, .logical_pc = 0xEEC1U},
+    }};
+    for (const auto routine : kShortActorPassCallSites) {
+        if (host_ok && native_gameplay_bootstrap_shadow
+            && !runtime.install_execution_hook({
+                .routine = routine,
+                .mode = HookMode::observe,
+                .callback = [&gameplay_bootstrap_shadow](
+                                const RoutineEntry& entry) {
+                    gameplay_bootstrap_shadow
+                        .observe_short_actor_pass_call_site(entry);
+                },
+            })) {
+            std::cerr << "Could not observe a C539 actor-pass call site for "
+                         "native gameplay shadow.\n";
+            running = false;
+            host_ok = false;
+        }
+    }
     if (host_ok && native_gameplay_bootstrap_shadow
         && native_registry == nullptr
         && !runtime.install_execution_hook({
@@ -17112,7 +18326,7 @@ int run_windows_host(
     }
     if (host_ok && native_gameplay_bootstrap_shadow
         && native_registry == nullptr) {
-        constexpr std::array<RoutineKey, 12> kGameplayShadowEntries{{
+        constexpr std::array<RoutineKey, 14> kGameplayShadowEntries{{
             {
                 .physical_bank = 0x01U,
                 .logical_pc = 0xCB2AU,
@@ -17140,6 +18354,14 @@ int run_windows_host(
             {
                 .physical_bank = 0x01U,
                 .logical_pc = 0xC52CU,
+            },
+            {
+                .physical_bank = 0x01U,
+                .logical_pc = 0xC606U,
+            },
+            {
+                .physical_bank = 0x01U,
+                .logical_pc = 0xC510U,
             },
             {
                 .physical_bank = 0x01U,
@@ -17186,7 +18408,7 @@ int run_windows_host(
         }
     }
     if (host_ok && native_gameplay_bootstrap_shadow) {
-        constexpr std::array<RoutineKey, 4> kGameplayRoutineCompletions{{
+        constexpr std::array<RoutineKey, 7> kGameplayRoutineCompletions{{
             {
                 .physical_bank = 0x00U,
                 .logical_pc = 0xF241U,
@@ -17202,6 +18424,18 @@ int run_windows_host(
             {
                 .physical_bank = 0x01U,
                 .logical_pc = 0xCD74U,
+            },
+            {
+                .physical_bank = 0x01U,
+                .logical_pc = 0xC52CU,
+            },
+            {
+                .physical_bank = 0x01U,
+                .logical_pc = 0xC606U,
+            },
+            {
+                .physical_bank = 0x01U,
+                .logical_pc = 0xC510U,
             },
         }};
         for (const auto routine : kGameplayRoutineCompletions) {
@@ -17739,6 +18973,7 @@ int run_windows_host(
     // The hooks capture the deployment and the replacement ROM, both of which
     // die with this frame, so they must go before either does.
     runtime.clear_execution_hooks();
+    runtime.clear_work_ram_write_observer();
     destroy_audio(audio);
     destroy_stage(stage);
     destroy_source(source);

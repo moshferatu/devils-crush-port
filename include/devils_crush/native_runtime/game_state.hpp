@@ -94,6 +94,22 @@ public:
         [[nodiscard]] bool operator==(const ActorFrameGate&) const = default;
     };
 
+    // C606's three SAT-filing queues live outside the parallel actor records.
+    // Keep their RAM-shaped image at this read-only boundary: the scheduler
+    // adapter below gives consumers a canonical queue state, while this type
+    // retains the distinct shared-queue cursors needed to validate it against
+    // a live C606 call.
+    struct ActorPresentationQueueImage {
+        std::array<std::uint8_t, kActorSlotCount> auxiliary_slots{};
+        std::array<std::uint8_t, kActorSlotCount> primary_slots{};
+        std::uint8_t auxiliary_count = 0U;
+        std::uint8_t primary_low_count = 0U;
+        std::uint8_t primary_high_next_index = 0U;
+
+        [[nodiscard]] bool operator==(const ActorPresentationQueueImage&) const
+            = default;
+    };
+
     // BS-4's controller owns three one-byte objective flags while the fixed
     // actor records retain their individual eight-hit counters. Expose the
     // paired capture values only to the bonus-stage adapter.
@@ -406,6 +422,8 @@ public:
         std::uint8_t slot) const noexcept;
     [[nodiscard]] std::optional<ActorFrameGate> short_actor_frame_gate()
         const noexcept;
+    [[nodiscard]] std::optional<ActorPresentationQueueImage>
+    actor_presentation_queue_image() const noexcept;
     [[nodiscard]] std::optional<BonusStage4ObjectiveSlot>
     bonus_stage_4_objective(std::uint8_t index) const noexcept;
     [[nodiscard]] std::optional<BonusStage4LinkedTargetSlot>

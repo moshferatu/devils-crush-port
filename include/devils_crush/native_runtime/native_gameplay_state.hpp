@@ -29,6 +29,7 @@
 #include "devils_crush/native_runtime/tower_insect_scheduler.hpp"
 #include "devils_crush/native_runtime/tower_scheduler.hpp"
 
+#include <cstddef>
 #include <vector>
 
 namespace devils_crush::native_runtime {
@@ -755,6 +756,13 @@ public:
         [[nodiscard]] bool operator==(const ActorPhaseUpdate&) const = default;
     };
 
+    // Advances one recovered actor behavior without touching any other slot.
+    // This is the typed unit used by the C539 scheduler shadow; it is not a
+    // live registry hook.
+    [[nodiscard]] std::optional<ActorPhaseUpdate> advance_actor_phase_slot(
+        std::uint8_t slot,
+        PlayfieldBounds playfield = {});
+
     // Walks due native actors in slot order. Shared motion advances every due
     // frame; a Small Soldier emits a rule update only when a confirmed contact
     // was queued by the collision phase.
@@ -762,6 +770,11 @@ public:
         PlayfieldBounds playfield = {});
 
 private:
+    [[nodiscard]] std::vector<ActorPhaseUpdate> advance_actor_phase_slots(
+        std::size_t first_slot,
+        std::size_t slot_count,
+        PlayfieldBounds playfield);
+
     PhysicsState physics_;
     ActorState actors_;
     ScoreState score_;

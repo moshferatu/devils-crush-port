@@ -13530,11 +13530,25 @@ void test_native_actor_scheduler_view()
     using devils_crush::native_runtime::ActorPresentationQueueKind;
     using devils_crush::native_runtime::ActorPresentationQueueState;
     using devils_crush::native_runtime::ActorPostHandlerPresentation;
+    using devils_crush::native_runtime::ActorPassBehaviorDispatcher;
+    using devils_crush::native_runtime::NativeGameplayActorBehaviorDispatcher;
+    using devils_crush::native_runtime::NativeGameplayState;
+    using devils_crush::native_runtime::ActorBehavior;
+    using devils_crush::native_runtime::ActorMotionState;
+    using devils_crush::native_runtime::Fixed24_8;
     using devils_crush::native_runtime::ShortActorPassPresentation;
+    using devils_crush::native_runtime::ShortActorPass;
+    using devils_crush::native_runtime::MainActorPass;
     using devils_crush::native_runtime::GameStateView;
     using devils_crush::native_runtime::actor_presentation_drain_order;
+    using devils_crush::native_runtime::capture_actor_presentation_queue_state;
+    using devils_crush::native_runtime::capture_actor_behavior_state_changes;
+    using devils_crush::native_runtime::capture_actor_post_handler_presentation;
+    using devils_crush::native_runtime::capture_scheduled_actor_handler_boundary;
     using devils_crush::native_runtime::file_completed_actor_for_presentation;
     using devils_crush::native_runtime::file_actor_for_presentation;
+    using devils_crush::native_runtime::join_native_gameplay_actor_behavior_boundary;
+    using devils_crush::native_runtime::join_native_gameplay_actor_behavior_presentation;
 
     std::array<std::byte, GameStateView::kWorkRamSize> work_ram{};
     const auto store_actor = [&work_ram](
@@ -13561,24 +13575,36 @@ void test_native_actor_scheduler_view()
     work_ram[0x0D35U] = std::byte{0x00U};
     work_ram[0x0CEEU] = std::byte{0x5AU};
     const auto unfrozen_short_pass = scheduler.begin_short_actor_pass();
+    const auto unfrozen_short_pass_capture = scheduler.capture_short_actor_pass();
     work_ram[0x0D35U] = std::byte{0x01U};
     const auto frozen_short_pass = scheduler.begin_short_actor_pass();
+    const auto frozen_short_pass_capture = scheduler.capture_short_actor_pass();
     check(
         unfrozen_short_pass && !unfrozen_short_pass->gate.frozen
             && unfrozen_short_pass->gate.enabled_actor_mask == 0x5AU
             && unfrozen_short_pass->presentation_queues
                 == ActorPresentationQueueState{}
             && unfrozen_short_pass->completed_ball_substeps == 0U
+            && unfrozen_short_pass_capture
+            && unfrozen_short_pass_capture->seed == *unfrozen_short_pass
+            && unfrozen_short_pass_capture->scheduled_actors.size() == 3U
+            && unfrozen_short_pass_capture->scheduled_actors[0].index == 0x02U
+            && unfrozen_short_pass_capture->scheduled_actors[1].index == 0x03U
+            && unfrozen_short_pass_capture->scheduled_actors[2].index == 0x05U
             && frozen_short_pass && frozen_short_pass->gate.frozen
-            && frozen_short_pass->gate.enabled_actor_mask == 0U,
-        "native actor scheduler names C539's freeze gate and reset seed");
+            && frozen_short_pass->gate.enabled_actor_mask == 0U
+            && frozen_short_pass_capture
+            && frozen_short_pass_capture->seed == *frozen_short_pass
+            && frozen_short_pass_capture->scheduled_actors
+                == unfrozen_short_pass_capture->scheduled_actors,
+        "native actor scheduler captures C539's gate and schedule together");
     work_ram[0x0D35U] = std::byte{0x00U};
 
     ShortActorPassPresentation short_pass(*unfrozen_short_pass);
     const auto short_pass_auxiliary = short_pass.complete_handler({
         .slot = 0x11U,
-        .attributes_before_prequeue_presentation_refresh = 0x01U,
-        .attributes_after_prequeue_presentation_refresh = 0x04U,
+        .attributes_before_prequeue_presentation_refresh = 0x81U,
+        .attributes_after_prequeue_presentation_refresh = 0x84U,
     });
     const auto short_pass_slot_zero = short_pass.complete_handler({
         .slot = 0x00U,
@@ -13587,8 +13613,8 @@ void test_native_actor_scheduler_view()
     });
     const auto short_pass_primary = short_pass.complete_handler({
         .slot = 0x21U,
-        .attributes_before_prequeue_presentation_refresh = 0x00U,
-        .attributes_after_prequeue_presentation_refresh = 0x08U,
+        .attributes_before_prequeue_presentation_refresh = 0x80U,
+        .attributes_after_prequeue_presentation_refresh = 0x88U,
     });
     check(
         !short_pass.gate().frozen
@@ -13612,6 +13638,455 @@ void test_native_actor_scheduler_view()
             && scheduled[2].index == 0x05U
             && scheduled[2].handler_address == 0xC005U,
         "native actor scheduler selects due actors in table order");
+    check(
+        scheduler.actor_is_due_for_update(*state.actor(0x02U))
+            && scheduler.actor_is_due_for_update(*state.actor(0x03U))
+            && !scheduler.actor_is_due_for_update(*state.actor(0x04U))
+            && scheduler.actor_is_due_for_update(*state.actor(0x05U)),
+        "native actor scheduler exposes C510's single-slot eligibility gate");
+    const auto first_scan_run = scheduler.scan_main_actor_run(0x00U);
+    const auto deferred_scan_run = scheduler.scan_main_actor_run(0x04U);
+    const auto terminal_scan_run = scheduler.scan_main_actor_run(0x06U);
+    check(
+        first_scan_run && first_scan_run->dispatch_actor
+            && first_scan_run->dispatch_actor->index == 0x02U
+            && first_scan_run->skipped_actors.size() == 2U
+            && first_scan_run->skipped_actors[0].index == 0x00U
+            && first_scan_run->skipped_actors[1].index == 0x01U
+            && deferred_scan_run && deferred_scan_run->dispatch_actor
+            && deferred_scan_run->dispatch_actor->index == 0x05U
+            && deferred_scan_run->skipped_actors.size() == 1U
+            && deferred_scan_run->skipped_actors[0].index == 0x04U
+            && terminal_scan_run && terminal_scan_run->terminal()
+            && terminal_scan_run->skipped_actors.size() == 122U
+            && terminal_scan_run->skipped_actors.front().index == 0x06U
+            && terminal_scan_run->skipped_actors.back().index == 0x7FU,
+        "native actor scheduler captures C510's contiguous skip run and exit");
+
+    MainActorPass main_pass(ActorPresentationQueueState{});
+    const auto premature_second_run = first_scan_run
+        ? main_pass.submit_scan_run(*first_scan_run)
+            && !main_pass.submit_scan_run(*deferred_scan_run)
+        : false;
+    const auto rejected_main_completion = main_pass.complete_handler({
+        .slot = 0x03U,
+        .attributes_before_prequeue_presentation_refresh = 0x80U,
+        .attributes_after_prequeue_presentation_refresh = 0x80U,
+    });
+    const auto first_main_completion = main_pass.complete_handler({
+        .slot = 0x02U,
+        .attributes_before_prequeue_presentation_refresh = 0x80U,
+        .attributes_after_prequeue_presentation_refresh = 0x88U,
+    });
+    const auto second_main_run = deferred_scan_run
+        ? main_pass.submit_scan_run(*deferred_scan_run)
+        : false;
+    const auto second_main_completion = main_pass.complete_handler({
+        .slot = 0x05U,
+        .attributes_before_prequeue_presentation_refresh = 0x82U,
+        .attributes_after_prequeue_presentation_refresh = 0x84U,
+    });
+    const auto terminal_main_run = terminal_scan_run
+        ? main_pass.submit_scan_run(*terminal_scan_run)
+        : false;
+    check(
+        premature_second_run && !rejected_main_completion
+            && first_main_completion
+            && first_main_completion->queue
+                == ActorPresentationQueueKind::primary_low
+            && second_main_run && second_main_completion
+            && second_main_completion->queue == ActorPresentationQueueKind::auxiliary
+            && terminal_main_run && main_pass.terminal()
+            && !main_pass.pending_actor()
+            && actor_presentation_drain_order(main_pass.presentation_queues())
+                == std::vector<std::uint8_t>{0x05U, 0x02U}
+            && !main_pass.submit_scan_run(*first_scan_run),
+        "native main actor pass preserves C510 scan boundaries through C606 filing");
+
+    const auto before_handler_ram = work_ram;
+    auto after_handler_ram = work_ram;
+    after_handler_ram[0x1000U + 0x05U] = std::byte{0x81U};
+    after_handler_ram[0x1080U + 0x05U] = std::byte{0x84U};
+    after_handler_ram[0x1800U + 0x05U] = std::byte{0x01U};
+    after_handler_ram[0x1C00U + 0x05U] = std::byte{0x02U};
+    after_handler_ram[0x1F80U + 0x05U] = std::byte{0xC1U};
+    after_handler_ram[0x1400U + 0x05U] = std::byte{0x03U};
+    const GameStateView before_handler(before_handler_ram);
+    const GameStateView after_handler(after_handler_ram);
+    const auto captured_presentation = capture_actor_post_handler_presentation(
+        before_handler, after_handler, 0x05U);
+    const auto captured_handler_boundary =
+        capture_scheduled_actor_handler_boundary(
+            before_handler, after_handler, scheduled[2]);
+    auto stale_scheduled_actor = scheduled[2];
+    stale_scheduled_actor.handler_address = 0xC006U;
+    const auto stale_handler_boundary =
+        capture_scheduled_actor_handler_boundary(
+            before_handler, after_handler, stale_scheduled_actor);
+    const GameStateView truncated_after_handler(
+        std::span<const std::byte>(after_handler_ram).first(
+            after_handler_ram.size() - 1U));
+    const auto behavior_changes = before_handler.actor(0x05U)
+            && after_handler.actor(0x05U)
+        ? capture_actor_behavior_state_changes(
+              *before_handler.actor(0x05U), *after_handler.actor(0x05U))
+        : std::nullopt;
+    auto other_slot = after_handler.actor(0x05U);
+    if (other_slot) {
+        other_slot->index = 0x06U;
+    }
+    check(
+        captured_presentation
+            == ActorPostHandlerPresentation{
+                .slot = 0x05U,
+                .attributes_before_prequeue_presentation_refresh = 0x82U,
+                .attributes_after_prequeue_presentation_refresh = 0x84U,
+            }
+            && !capture_actor_post_handler_presentation(
+                before_handler, truncated_after_handler, 0x05U)
+            && captured_handler_boundary
+            && captured_handler_boundary->scheduled_actor == scheduled[2]
+            && captured_handler_boundary->presentation == *captured_presentation
+            && !stale_handler_boundary && behavior_changes
+            && behavior_changes->activity_flags && behavior_changes->attributes
+            && behavior_changes->behavior_counter
+            && behavior_changes->handler_address
+            && behavior_changes->horizontal_motion
+            && behavior_changes->collision_state
+            && !behavior_changes->vertical_motion
+            && other_slot
+            && !capture_actor_behavior_state_changes(
+                *before_handler.actor(0x05U), *other_slot),
+        "native C539 presentation capture binds snapshots to the scheduled handler record");
+
+    NativeGameplayState native_behavior_gameplay;
+    check(
+        native_behavior_gameplay.actors().claim_dynamic_slot(
+            0x05U, ActorBehavior::shared_motion),
+        "native C539 behavior dispatcher accepts a seeded named actor");
+    auto* native_behavior_actor = native_behavior_gameplay.actors().actor(0x05U);
+    if (native_behavior_actor != nullptr) {
+        native_behavior_actor->due_for_update = true;
+        native_behavior_actor->motion = ActorMotionState{
+            .position_x = Fixed24_8{.raw = 30 * 256},
+            .velocity_x = 0x0100,
+            .integrate_x = true,
+        };
+    }
+    NativeGameplayActorBehaviorDispatcher native_behavior_dispatcher(
+        native_behavior_gameplay);
+    const auto unavailable_native_behavior = native_behavior_dispatcher.advance_actor(
+        scheduled[0]);
+    const auto native_behavior = native_behavior_dispatcher.advance_actor(scheduled[2]);
+    const auto native_behavior_completion = native_behavior
+        && captured_presentation
+        ? join_native_gameplay_actor_behavior_presentation(
+            *native_behavior, *captured_presentation)
+        : std::nullopt;
+    const auto boundary_native_behavior_completion = native_behavior
+        && captured_handler_boundary
+        ? join_native_gameplay_actor_behavior_boundary(
+            *native_behavior, *captured_handler_boundary)
+        : std::nullopt;
+    auto drifted_handler_boundary = captured_handler_boundary;
+    if (drifted_handler_boundary) {
+        drifted_handler_boundary->scheduled_actor.handler_address = 0xC006U;
+    }
+    const auto stale_boundary_native_behavior_completion = native_behavior
+        && drifted_handler_boundary
+        ? join_native_gameplay_actor_behavior_boundary(
+            *native_behavior, *drifted_handler_boundary)
+        : std::nullopt;
+    const auto mismatched_native_behavior_completion = native_behavior
+        ? join_native_gameplay_actor_behavior_presentation(
+            *native_behavior,
+            {
+                .slot = 0x04U,
+                .attributes_before_prequeue_presentation_refresh = 0x00U,
+                .attributes_after_prequeue_presentation_refresh = 0x00U,
+            })
+        : std::nullopt;
+    check(
+        !unavailable_native_behavior && native_behavior
+            && native_behavior->actor == scheduled[2]
+            && native_behavior->update.slot == 0x05U
+            && native_behavior->update.kind
+                == NativeGameplayState::ActorPhaseUpdateKind::shared_motion
+            && native_behavior->update.motion
+            && native_behavior->update.motion->step.state.position_x.raw == 31 * 256
+            && native_behavior_completion
+            && native_behavior_completion->presentation == *captured_presentation
+            && boundary_native_behavior_completion
+            && boundary_native_behavior_completion->presentation
+                == captured_handler_boundary->presentation
+            && !stale_boundary_native_behavior_completion
+            && !mismatched_native_behavior_completion,
+        "native C539 behavior dispatcher preserves scheduled actor identity at the capture join");
+
+    auto completion_short_pass = scheduler.begin_short_actor_pass_session();
+    const auto completion_prefix_first = completion_short_pass->complete_handler({
+        .slot = 0x02U,
+        .attributes_before_prequeue_presentation_refresh = 0x80U,
+        .attributes_after_prequeue_presentation_refresh = 0x84U,
+    });
+    const auto completion_prefix_second = completion_short_pass->complete_handler({
+        .slot = 0x03U,
+        .attributes_before_prequeue_presentation_refresh = 0x80U,
+        .attributes_after_prequeue_presentation_refresh = 0x88U,
+    });
+    auto malformed_native_behavior_completion = native_behavior_completion;
+    if (malformed_native_behavior_completion) {
+        malformed_native_behavior_completion->behavior.update.slot = 0x04U;
+    }
+    auto drifted_pass_actor_completion = native_behavior_completion;
+    if (drifted_pass_actor_completion) {
+        drifted_pass_actor_completion->behavior.actor.handler_address = 0xC006U;
+    }
+    const auto malformed_native_completion = malformed_native_behavior_completion
+        ? completion_short_pass->complete_native_gameplay_behavior(
+            *malformed_native_behavior_completion)
+        : std::nullopt;
+    const auto drifted_pass_actor_completion_step = drifted_pass_actor_completion
+        ? completion_short_pass->complete_native_gameplay_behavior(
+            *drifted_pass_actor_completion)
+        : std::nullopt;
+    const auto native_completion_step = native_behavior_completion
+        ? completion_short_pass->complete_native_gameplay_behavior(
+            *native_behavior_completion)
+        : std::nullopt;
+    check(
+        completion_short_pass && completion_prefix_first && completion_prefix_second
+            && !malformed_native_completion && !drifted_pass_actor_completion_step
+            && native_completion_step
+            && native_completion_step->slot == 0x05U
+            && native_completion_step->queue == ActorPresentationQueueKind::auxiliary
+            && completion_short_pass->complete(),
+        "native C539 pass files only its current verified actor completion");
+
+    const std::vector<devils_crush::native_runtime::NativeGameplayActorBehaviorCompletion>
+        captured_native_completions = native_behavior_completion
+        ? std::vector{*native_behavior_completion}
+        : std::vector<devils_crush::native_runtime::NativeGameplayActorBehaviorCompletion>{};
+    ShortActorPass replay_short_pass(
+        *unfrozen_short_pass, {scheduled[2]});
+    const auto replayed_completion =
+        replay_short_pass.replay_native_gameplay_behavior_completions(
+            captured_native_completions);
+    auto surplus_native_behavior_completion = malformed_native_behavior_completion;
+    if (surplus_native_behavior_completion && native_behavior_completion) {
+        surplus_native_behavior_completion->behavior.actor = scheduled[2];
+        surplus_native_behavior_completion->behavior.update.slot = 0x05U;
+        surplus_native_behavior_completion->presentation = native_behavior_completion->presentation;
+    }
+    ShortActorPass surplus_replay_short_pass(
+        *unfrozen_short_pass, {scheduled[2]});
+    const auto surplus_replay =
+        surplus_replay_short_pass.replay_native_gameplay_behavior_completions(
+            native_behavior_completion && surplus_native_behavior_completion
+                ? std::vector{
+                    *native_behavior_completion,
+                    *surplus_native_behavior_completion,
+                }
+                : std::vector<devils_crush::native_runtime::NativeGameplayActorBehaviorCompletion>{});
+    ShortActorPass blocked_replay_short_pass(
+        *unfrozen_short_pass, {scheduled[2]});
+    const auto blocked_replay =
+        blocked_replay_short_pass.replay_native_gameplay_behavior_completions(
+            malformed_native_behavior_completion
+                ? std::vector{*malformed_native_behavior_completion}
+                : std::vector<devils_crush::native_runtime::NativeGameplayActorBehaviorCompletion>{});
+    ShortActorPass awaiting_replay_short_pass(
+        *unfrozen_short_pass, {scheduled[2]});
+    const auto awaiting_replay =
+        awaiting_replay_short_pass.replay_native_gameplay_behavior_completions({});
+    auto first_actor_native_behavior_completion = native_behavior_completion;
+    if (first_actor_native_behavior_completion) {
+        first_actor_native_behavior_completion->behavior.actor = scheduled[0];
+        first_actor_native_behavior_completion->behavior.update.slot = 0x02U;
+        first_actor_native_behavior_completion->presentation = {
+            .slot = 0x02U,
+            .attributes_before_prequeue_presentation_refresh = 0x80U,
+            .attributes_after_prequeue_presentation_refresh = 0x84U,
+        };
+    }
+    ShortActorPass out_of_order_replay_short_pass(
+        *unfrozen_short_pass, scheduled);
+    const auto out_of_order_replay =
+        out_of_order_replay_short_pass.replay_native_gameplay_behavior_completions(
+            first_actor_native_behavior_completion && native_behavior_completion
+                ? std::vector{
+                    *first_actor_native_behavior_completion,
+                    *native_behavior_completion,
+                }
+                : std::vector<devils_crush::native_runtime::NativeGameplayActorBehaviorCompletion>{});
+    check(
+        replayed_completion.pass_complete
+            && replayed_completion.completed_handlers.size() == 1U
+            && replayed_completion.completed_handlers.front().slot == 0x05U
+            && replayed_completion.consumed_completions == 1U
+            && replayed_completion.unconsumed_completions == 0U
+            && replayed_completion.coherent()
+            && !replayed_completion.blocked_actor
+            && !replayed_completion.block_reason
+            && !replayed_completion.rejected_completion
+            && !replayed_completion.first_surplus_completion && replay_short_pass.complete()
+            && surplus_replay.pass_complete
+            && surplus_replay.completed_handlers.size() == 1U
+            && surplus_replay.consumed_completions == 1U
+            && surplus_replay.unconsumed_completions == 1U
+            && surplus_replay.coherent()
+            && surplus_native_behavior_completion
+            && surplus_replay.first_surplus_completion
+                == *surplus_native_behavior_completion
+            && !surplus_replay.blocked_actor && !surplus_replay.block_reason
+            && !surplus_replay.rejected_completion && surplus_replay_short_pass.complete()
+            && !blocked_replay.pass_complete && blocked_replay.blocked_actor
+            && blocked_replay.blocked_actor->index == 0x05U
+            && blocked_replay.block_reason
+                == devils_crush::native_runtime::ShortActorPassCompletionReplayBlockReason::rejected_completion
+            && malformed_native_behavior_completion
+            && blocked_replay.rejected_completion
+                == *malformed_native_behavior_completion
+            && !blocked_replay.first_surplus_completion
+            && blocked_replay.consumed_completions == 0U
+            && blocked_replay.unconsumed_completions == 1U
+            && blocked_replay.coherent()
+            && !blocked_replay_short_pass.complete()
+            && !awaiting_replay.pass_complete && awaiting_replay.blocked_actor
+            && awaiting_replay.blocked_actor->index == 0x05U
+            && awaiting_replay.block_reason
+                == devils_crush::native_runtime::ShortActorPassCompletionReplayBlockReason::awaiting_completion
+            && !awaiting_replay.rejected_completion
+            && !awaiting_replay.first_surplus_completion
+            && awaiting_replay.consumed_completions == 0U
+            && awaiting_replay.unconsumed_completions == 0U
+            && awaiting_replay.coherent()
+            && !awaiting_replay_short_pass.complete(),
+        "native C539 completion replay distinguishes missing, rejected, and surplus captures");
+    check(
+        first_actor_native_behavior_completion && native_behavior_completion
+            && !out_of_order_replay.pass_complete
+            && out_of_order_replay.completed_handlers.size() == 1U
+            && out_of_order_replay.completed_handlers.front().slot == 0x02U
+            && out_of_order_replay.blocked_actor
+            && out_of_order_replay.blocked_actor->index == 0x03U
+            && out_of_order_replay.block_reason
+                == devils_crush::native_runtime::ShortActorPassCompletionReplayBlockReason::rejected_completion
+            && out_of_order_replay.rejected_completion == *native_behavior_completion
+            && !out_of_order_replay.first_surplus_completion
+            && out_of_order_replay.consumed_completions == 1U
+            && out_of_order_replay.unconsumed_completions == 1U
+            && out_of_order_replay.coherent()
+            && !out_of_order_replay_short_pass.complete(),
+        "native C539 completion replay never skips a missing middle actor");
+    auto incoherent_replay = surplus_replay;
+    incoherent_replay.pass_complete = false;
+    check(
+        !incoherent_replay.coherent(),
+        "native C539 completion replay rejects contradictory terminal state");
+
+    auto typed_short_pass = scheduler.begin_short_actor_pass_session();
+    const auto out_of_order_completion = typed_short_pass->complete_handler({
+        .slot = 0x03U,
+        .attributes_before_prequeue_presentation_refresh = 0x80U,
+        .attributes_after_prequeue_presentation_refresh = 0x88U,
+    });
+    const auto first_completion = typed_short_pass->complete_handler({
+        .slot = 0x02U,
+        .attributes_before_prequeue_presentation_refresh = 0x81U,
+        .attributes_after_prequeue_presentation_refresh = 0x84U,
+    });
+    const auto second_completion = typed_short_pass->complete_handler({
+        .slot = 0x03U,
+        .attributes_before_prequeue_presentation_refresh = 0x80U,
+        .attributes_after_prequeue_presentation_refresh = 0x88U,
+    });
+    const auto third_completion = typed_short_pass->complete_handler({
+        .slot = 0x05U,
+        .attributes_before_prequeue_presentation_refresh = 0x80U,
+        .attributes_after_prequeue_presentation_refresh = 0x80U,
+    });
+    const auto duplicate_completion = typed_short_pass->complete_handler({
+        .slot = 0x05U,
+        .attributes_before_prequeue_presentation_refresh = 0x00U,
+        .attributes_after_prequeue_presentation_refresh = 0x00U,
+    });
+    check(
+        typed_short_pass && typed_short_pass->scheduled_actors() == scheduled
+            && !out_of_order_completion && first_completion
+            && second_completion && third_completion && !duplicate_completion
+            && typed_short_pass->complete()
+            && !typed_short_pass->next_actor()
+            && actor_presentation_drain_order(
+                   typed_short_pass->presentation_queues())
+                == std::vector<std::uint8_t>{0x02U, 0x03U, 0x05U},
+        "native short actor pass keeps C539 handler completions in table order");
+
+    struct RecordingActorDispatcher final : ActorPassBehaviorDispatcher {
+        std::vector<std::uint8_t> observed_slots;
+        std::optional<std::uint8_t> unavailable_slot;
+        bool return_wrong_slot = false;
+
+        std::optional<ActorPostHandlerPresentation> advance_actor(
+            const GameStateView::ActorSlot& actor) override
+        {
+            observed_slots.push_back(actor.index);
+            if (unavailable_slot && actor.index == *unavailable_slot) {
+                return std::nullopt;
+            }
+            return ActorPostHandlerPresentation{
+                .slot = return_wrong_slot
+                    ? static_cast<std::uint8_t>(actor.index + 1U)
+                    : actor.index,
+                .attributes_before_prequeue_presentation_refresh = 0x80U,
+                .attributes_after_prequeue_presentation_refresh = actor.index == 0x02U
+                    ? 0x84U
+                    : actor.index == 0x03U ? 0x88U : 0x80U,
+            };
+        }
+    };
+    auto dispatched_short_pass = scheduler.begin_short_actor_pass_session();
+    RecordingActorDispatcher dispatcher;
+    dispatcher.unavailable_slot = static_cast<std::uint8_t>(0x03U);
+    const auto dispatched_first = dispatched_short_pass->advance_next_actor(dispatcher);
+    const auto unavailable_dispatch = dispatched_short_pass->advance_next_actor(dispatcher);
+    dispatcher.unavailable_slot = std::nullopt;
+    dispatcher.return_wrong_slot = true;
+    const auto wrong_slot_dispatch = dispatched_short_pass->advance_next_actor(dispatcher);
+    dispatcher.return_wrong_slot = false;
+    const auto dispatched_second = dispatched_short_pass->advance_next_actor(dispatcher);
+    const auto dispatched_third = dispatched_short_pass->advance_next_actor(dispatcher);
+    const auto completed_dispatch = dispatched_short_pass->advance_next_actor(dispatcher);
+    check(
+        dispatched_short_pass && dispatched_first && !unavailable_dispatch
+            && !wrong_slot_dispatch && dispatched_second && dispatched_third
+            && !completed_dispatch && dispatched_short_pass->complete()
+            && dispatcher.observed_slots
+                == std::vector<std::uint8_t>{0x02U, 0x03U, 0x03U, 0x03U, 0x05U}
+            && actor_presentation_drain_order(
+                   dispatched_short_pass->presentation_queues())
+                == std::vector<std::uint8_t>{0x02U, 0x03U, 0x05U},
+        "native short actor pass advances only completed typed behavior results");
+
+    auto prefix_short_pass = scheduler.begin_short_actor_pass_session();
+    RecordingActorDispatcher prefix_dispatcher;
+    prefix_dispatcher.unavailable_slot = static_cast<std::uint8_t>(0x03U);
+    const auto blocked_prefix = prefix_short_pass->advance_available_prefix(
+        prefix_dispatcher);
+    prefix_dispatcher.unavailable_slot = std::nullopt;
+    const auto completed_prefix = prefix_short_pass->advance_available_prefix(
+        prefix_dispatcher);
+    check(
+        prefix_short_pass && blocked_prefix.completed_handlers.size() == 1U
+            && blocked_prefix.completed_handlers.front().slot == 0x02U
+            && blocked_prefix.blocked_actor
+            && blocked_prefix.blocked_actor->index == 0x03U
+            && !blocked_prefix.complete && completed_prefix.completed_handlers.size() == 2U
+            && !completed_prefix.blocked_actor && completed_prefix.complete
+            && prefix_short_pass->complete()
+            && prefix_dispatcher.observed_slots
+                == std::vector<std::uint8_t>{0x02U, 0x03U, 0x03U, 0x05U},
+        "native short actor pass reports a contiguous typed-dispatch prefix");
 
     store_actor(0x03U, 0x00U, 0x80U, 0xC003U);
     store_actor(0x04U, 0x00U, 0x80U, 0xC004U);
@@ -13680,20 +14155,27 @@ void test_native_actor_scheduler_view()
 
     ActorPresentationQueueState presentation_queues;
     const auto auxiliary_first = file_actor_for_presentation(
-        presentation_queues, 0x11U, 0x04U, true);
+        presentation_queues, 0x11U, 0x84U, true);
     const auto auxiliary_second = file_actor_for_presentation(
-        auxiliary_first.state, 0x12U, 0x04U);
+        auxiliary_first.state, 0x12U, 0x84U);
     const auto primary_low_first = file_actor_for_presentation(
-        auxiliary_second.state, 0x21U, 0x08U);
+        auxiliary_second.state, 0x21U, 0x88U);
     const auto primary_low_second = file_actor_for_presentation(
-        primary_low_first.state, 0x22U, 0x08U);
+        primary_low_first.state, 0x22U, 0x88U);
     const auto primary_high_first = file_actor_for_presentation(
-        primary_low_second.state, 0x31U, 0x00U);
+        primary_low_second.state, 0x31U, 0x80U);
     const auto primary_high_second = file_actor_for_presentation(
-        primary_high_first.state, 0x32U, 0x00U);
+        primary_high_first.state, 0x32U, 0x80U);
     const auto drained = actor_presentation_drain_order(primary_high_second.state);
     const auto hidden = file_actor_for_presentation(
-        primary_high_second.state, 0x41U, 0x20U);
+        primary_high_second.state, 0x41U, 0xA0U);
+    const auto not_presentation_eligible = file_completed_actor_for_presentation(
+        hidden.state,
+        ActorPostHandlerPresentation{
+            .slot = 0x42U,
+            .attributes_before_prequeue_presentation_refresh = 0x04U,
+            .attributes_after_prequeue_presentation_refresh = 0x84U,
+        });
     const auto slot_zero = file_actor_for_presentation(
         hidden.state, 0x00U, 0x00U, true);
     check(
@@ -13708,19 +14190,22 @@ void test_native_actor_scheduler_view()
                 0x12U, 0x11U, 0x22U, 0x21U, 0x31U, 0x32U}
             && hidden.queue == ActorPresentationQueueKind::hidden
             && hidden.state == primary_high_second.state
+            && not_presentation_eligible.queue
+                == ActorPresentationQueueKind::not_presentation_eligible
+            && not_presentation_eligible.state == hidden.state
             && slot_zero.queue == ActorPresentationQueueKind::slot_zero_deferred
-            && slot_zero.requires_prequeue_presentation_refresh
+            && !slot_zero.requires_prequeue_presentation_refresh
             && slot_zero.state == hidden.state,
-        "native actor scheduler preserves C606's post-handler SAT queue order");
+        "native actor scheduler preserves C606's post-handler SAT queue order and eligibility gate");
 
     ActorPresentationQueueState full_primary_queue;
     full_primary_queue.primary_low_count = ActorPresentationQueueState::kQueueCapacity;
     const auto full_primary = file_actor_for_presentation(
-        full_primary_queue, 0x51U, 0x00U);
+        full_primary_queue, 0x51U, 0x80U);
     ActorPresentationQueueState full_auxiliary_queue;
     full_auxiliary_queue.auxiliary_count = ActorPresentationQueueState::kQueueCapacity;
     const auto full_auxiliary = file_actor_for_presentation(
-        full_auxiliary_queue, 0x52U, 0x04U);
+        full_auxiliary_queue, 0x52U, 0x84U);
     check(
         full_primary.queue == ActorPresentationQueueKind::capacity_exhausted
             && full_primary.state == full_primary_queue
@@ -13732,15 +14217,15 @@ void test_native_actor_scheduler_view()
         {},
         ActorPostHandlerPresentation{
             .slot = 0x61U,
-            .attributes_before_prequeue_presentation_refresh = 0x01U,
-            .attributes_after_prequeue_presentation_refresh = 0x20U,
+            .attributes_before_prequeue_presentation_refresh = 0x81U,
+            .attributes_after_prequeue_presentation_refresh = 0xA0U,
         });
     const auto post_reset_bit_zero = file_completed_actor_for_presentation(
         {},
         ActorPostHandlerPresentation{
             .slot = 0x62U,
-            .attributes_before_prequeue_presentation_refresh = 0x00U,
-            .attributes_after_prequeue_presentation_refresh = 0x05U,
+            .attributes_before_prequeue_presentation_refresh = 0x80U,
+            .attributes_after_prequeue_presentation_refresh = 0x85U,
         });
     check(
         reset_then_hidden.requires_prequeue_presentation_refresh
@@ -13748,6 +14233,45 @@ void test_native_actor_scheduler_view()
             && !post_reset_bit_zero.requires_prequeue_presentation_refresh
             && post_reset_bit_zero.queue == ActorPresentationQueueKind::auxiliary,
         "native actor scheduler preserves C606's before-refresh and reread attributes");
+
+    // C606 stores its high primary queue from $7F downward. The typed capture
+    // normalizes that physical direction into the same registration order the
+    // readable filing model uses, so a live before/after C606 oracle need not
+    // reason about source RAM cursors itself.
+    work_ram[0x0CBCU] = std::byte{0x02U};
+    work_ram[0x0CBAU] = std::byte{0x02U};
+    work_ram[0x0CBBU] = std::byte{0x7DU};
+    work_ram[0x0C3AU] = std::byte{0x3AU};
+    work_ram[0x0C3BU] = std::byte{0x3BU};
+    work_ram[0x0BBAU] = std::byte{0x11U};
+    work_ram[0x0BBBU] = std::byte{0x12U};
+    work_ram[0x0C39U] = std::byte{0x21U};
+    work_ram[0x0C38U] = std::byte{0x22U};
+    const auto queue_before = capture_actor_presentation_queue_state(state);
+    work_ram[0x0BBCU] = std::byte{0x44U};
+    work_ram[0x0CBAU] = std::byte{0x03U};
+    const auto queue_after = capture_actor_presentation_queue_state(state);
+    const auto queue_expected = queue_before
+        ? file_completed_actor_for_presentation(
+              *queue_before,
+              ActorPostHandlerPresentation{
+                  .slot = 0x44U,
+                  .attributes_before_prequeue_presentation_refresh = 0x88U,
+                  .attributes_after_prequeue_presentation_refresh = 0x88U,
+              })
+        : devils_crush::native_runtime::ActorPresentationQueueStep{};
+    check(
+        queue_before && queue_after
+            && actor_presentation_drain_order(*queue_before)
+                == std::vector<std::uint8_t>{0x3BU, 0x3AU, 0x12U, 0x11U, 0x21U, 0x22U}
+            && queue_after->primary_low_count == 3U
+            && queue_after->primary_low_slots[2] == 0x44U
+            && queue_after == queue_expected.state,
+        "native actor scheduler decodes C606's physical queues and predicts its filing");
+    work_ram[0x0CBBU] = std::byte{0x80U};
+    check(
+        !capture_actor_presentation_queue_state(state),
+        "native actor scheduler rejects an invalid C606 high-queue cursor");
 }
 
 void test_native_bonus_stage_4()
@@ -17663,6 +18187,31 @@ void test_native_gameplay_state()
             && !gameplay.physics().contact.contact_latched,
         "native gameplay state preserves non-Small-Soldier contact handoff");
 
+    auto* other_actor = gameplay.actors().actor(kOtherSlot);
+    if (other_actor != nullptr) {
+        other_actor->due_for_update = true;
+        other_actor->motion = ActorMotionState{
+            .position_x = Fixed24_8{.raw = 20 * 256},
+            .velocity_x = 0x0100,
+            .integrate_x = true,
+        };
+    }
+    const auto isolated_actor_phase = gameplay.advance_actor_phase_slot(kOtherSlot);
+    check(
+        isolated_actor_phase
+            && isolated_actor_phase->slot == kOtherSlot
+            && isolated_actor_phase->kind
+                == NativeGameplayState::ActorPhaseUpdateKind::shared_motion
+            && isolated_actor_phase->motion
+            && isolated_actor_phase->motion->step.state.position_x.raw == 21 * 256
+            && motion_actor && motion_actor->motion.position_x.raw == 11 * 256
+            && !gameplay.advance_actor_phase_slot(
+                devils_crush::native_runtime::ActorState::kSlotCount),
+        "native gameplay state advances a selected actor without touching other slots");
+
+    if (other_actor != nullptr) {
+        other_actor->due_for_update = false;
+    }
     if (motion_actor != nullptr) {
         motion_actor->due_for_update = false;
     }

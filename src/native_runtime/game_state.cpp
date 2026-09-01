@@ -11,6 +11,11 @@ constexpr std::size_t kActorActivityOffset = 0x1000U;
 constexpr std::size_t kActorAttributesOffset = 0x1080U;
 constexpr std::size_t kActorPassFreezeLatchOffset = 0x0D35U;
 constexpr std::size_t kActorEnableMaskOffset = 0x0CEEU;
+constexpr std::size_t kActorPresentationAuxiliaryQueueOffset = 0x0C3AU;
+constexpr std::size_t kActorPresentationPrimaryQueueOffset = 0x0BBAU;
+constexpr std::size_t kActorPresentationAuxiliaryCountOffset = 0x0CBCU;
+constexpr std::size_t kActorPresentationPrimaryLowCountOffset = 0x0CBAU;
+constexpr std::size_t kActorPresentationPrimaryHighNextIndexOffset = 0x0CBBU;
 constexpr std::size_t kBonusStage4ObjectiveFlagsOffset = 0x0D2FU;
 constexpr std::size_t kActorHorizontalMotionLowOffset = 0x1400U;
 constexpr std::size_t kActorHorizontalMotionHighOffset = 0x1480U;
@@ -231,6 +236,42 @@ GameStateView::short_actor_frame_gate() const noexcept
         .frozen = *freeze_latch != 0U,
         .enabled_actor_mask = *freeze_latch != 0U ? 0U : *enabled_actor_mask,
     };
+}
+
+std::optional<GameStateView::ActorPresentationQueueImage>
+GameStateView::actor_presentation_queue_image() const noexcept
+{
+    if (!valid()) {
+        return std::nullopt;
+    }
+
+    const auto auxiliary_count = byte_at_offset(
+        kActorPresentationAuxiliaryCountOffset);
+    const auto primary_low_count = byte_at_offset(
+        kActorPresentationPrimaryLowCountOffset);
+    const auto primary_high_next_index = byte_at_offset(
+        kActorPresentationPrimaryHighNextIndexOffset);
+    if (!auxiliary_count || !primary_low_count || !primary_high_next_index) {
+        return std::nullopt;
+    }
+
+    ActorPresentationQueueImage image{
+        .auxiliary_count = *auxiliary_count,
+        .primary_low_count = *primary_low_count,
+        .primary_high_next_index = *primary_high_next_index,
+    };
+    for (std::size_t index = 0U; index < kActorSlotCount; ++index) {
+        const auto auxiliary = byte_at_offset(
+            kActorPresentationAuxiliaryQueueOffset + index);
+        const auto primary = byte_at_offset(
+            kActorPresentationPrimaryQueueOffset + index);
+        if (!auxiliary || !primary) {
+            return std::nullopt;
+        }
+        image.auxiliary_slots[index] = *auxiliary;
+        image.primary_slots[index] = *primary;
+    }
+    return image;
 }
 
 std::optional<GameStateView::BonusStage4ObjectiveSlot>
