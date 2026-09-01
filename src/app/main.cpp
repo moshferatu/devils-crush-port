@@ -14875,6 +14875,7 @@ struct NativeRegistryDeployment {
     std::uint64_t core_bbs2_instructions = 0U;
     std::uint64_t core_rts_instructions = 0U;
     std::uint64_t core_vdc_status_reads = 0U;
+    std::uint64_t core_vdc_address_steps = 0U;
     std::uint64_t core_plp_instructions = 0U;
     std::uint64_t core_sei_instructions = 0U;
     std::uint64_t core_jsr_instructions = 0U;
@@ -15342,6 +15343,41 @@ using NativeRegistryEntryObserver = std::function<void(
         std::cerr << "Could not install native VDC-status read hook.\n";
         return false;
     }
+    // One iteration of the graphics driver's VDC-address setup loop writes
+    // the low/high latch pair then stops in front of its closing BNE.  The
+    // descriptor checkpoints both device writes, while the core retains the
+    // branch and its interrupt horizon.
+    constexpr RoutineKey kVdcAddressSetupInstruction{
+        .physical_bank = 0x00U,
+        .logical_pc = 0xE34CU,
+    };
+    if (std::find(
+            claimed_routines.begin(),
+            claimed_routines.end(),
+            kVdcAddressSetupInstruction)
+            == claimed_routines.end()
+        && !runtime.install_execution_hook({
+            .routine = kVdcAddressSetupInstruction,
+            .mode = HookMode::replace,
+            .replacement_callback = [&deployment, &replacement_rom](
+                const RoutineEntry& entry,
+                const std::span<const std::byte> work_ram) {
+                ++deployment.core_capability_entries;
+                deployment.span.observe(entry.absolute_master_cycle);
+                auto result = replace_native_gameplay_routine(
+                    entry, work_ram, replacement_rom);
+                if (result) {
+                    ++deployment.core_capability_accepted;
+                    ++deployment.core_vdc_address_steps;
+                    deployment.core_capability_master_cycles +=
+                        result->body_master_cycles;
+                }
+                return result;
+            },
+        })) {
+        std::cerr << "Could not install native VDC-address setup hook.\n";
+        return false;
+    }
     // PLP samples the interrupt mask before it restores P from the stack.
     // Keep both VBlank epilogues in the core so that ordering remains exact.
     constexpr std::array<std::uint16_t, 2U> kVblankPlpInstructions{
@@ -15603,32 +15639,40 @@ using NativeRegistryEntryObserver = std::function<void(
             return false;
         }
     }
-    constexpr RoutineKey kStartupTiiInstruction{
-        .physical_bank = 0x01U,
-        .logical_pc = 0xC100U,
-    };
-    if (std::find(claimed_routines.begin(), claimed_routines.end(),
-                  kStartupTiiInstruction) == claimed_routines.end()
-        && !runtime.install_execution_hook({
-            .routine = kStartupTiiInstruction,
-            .mode = HookMode::replace,
-            .replacement_callback = [&deployment, &replacement_rom](
-                const RoutineEntry& entry,
-                const std::span<const std::byte> work_ram) {
-                ++deployment.core_capability_entries;
-                deployment.span.observe(entry.absolute_master_cycle);
-                auto result = replace_native_gameplay_routine(
-                    entry, work_ram, replacement_rom);
-                if (result) {
-                    ++deployment.core_capability_accepted;
-                    ++deployment.core_tii_transfers;
-                    deployment.core_capability_master_cycles += result->body_master_cycles;
-                }
-                return result;
-            },
-        })) {
-        std::cerr << "Could not install native startup TII hook.\n";
-        return false;
+    // These descriptors deliberately hand the original overlapping clears
+    // back to the core's resumable TII opcode path. Neither descriptor
+    // serializes thousands of writes through the ordinary replacement channel.
+    constexpr std::array<RoutineKey, 2U> kStartupTiiInstructions{{
+        {.physical_bank = 0x01U, .logical_pc = 0xC100U},
+        {.physical_bank = 0x08U, .logical_pc = 0x585AU},
+    }};
+    for (const auto routine : kStartupTiiInstructions) {
+        if (std::find(claimed_routines.begin(), claimed_routines.end(), routine)
+            != claimed_routines.end()) {
+            continue;
+        }
+        if (!runtime.install_execution_hook({
+                .routine = routine,
+                .mode = HookMode::replace,
+                .replacement_callback = [&deployment, &replacement_rom](
+                    const RoutineEntry& entry,
+                    const std::span<const std::byte> work_ram) {
+                    ++deployment.core_capability_entries;
+                    deployment.span.observe(entry.absolute_master_cycle);
+                    auto result = replace_native_gameplay_routine(
+                        entry, work_ram, replacement_rom);
+                    if (result) {
+                        ++deployment.core_capability_accepted;
+                        ++deployment.core_tii_transfers;
+                        deployment.core_capability_master_cycles +=
+                            result->body_master_cycles;
+                    }
+                    return result;
+                },
+            })) {
+            std::cerr << "Could not install native startup TII hook.\n";
+            return false;
+        }
     }
     // Bank 09's compact actor scan reuses the admitted bank-01 queue filer,
     // but its two resumable instruction boundaries are not routine entries.
@@ -15938,9 +15982,10 @@ void print_native_registry_summary(
                   << deployment.core_tia_transfers << ", BBR0="
                   << deployment.core_bbr0_instructions << ", BBR3="
                   << deployment.core_bbr3_instructions << ", BBS2="
-                  << deployment.core_bbs2_instructions << ", RTS="
-                  << deployment.core_rts_instructions << ", VDC-read="
-                  << deployment.core_vdc_status_reads << ", PLP="
+              << deployment.core_bbs2_instructions << ", RTS="
+              << deployment.core_rts_instructions << ", VDC-read="
+              << deployment.core_vdc_status_reads << ", VDC-address="
+              << deployment.core_vdc_address_steps << ", PLP="
                   << deployment.core_plp_instructions << ", SEI="
                   << deployment.core_sei_instructions << ", JSR="
                   << deployment.core_jsr_instructions << ", JMP="
@@ -20313,32 +20358,6 @@ enum class ViewProbeRoute {
         return std::tuple{
             channel(16U) / 255U, channel(8U) / 255U, channel(0U) / 255U};
     };
-    const auto save_emulated = [&output_directory](
-                                   const EmulatedFrame& frame,
-                                   const std::string& stem) {
-        if (frame.framebuffer.pixels.empty()) {
-            return;
-        }
-        devils_crush::render::ArgbImage hardware;
-        hardware.width = frame.framebuffer.width;
-        hardware.height = frame.framebuffer.height;
-        hardware.pixels.resize(
-            static_cast<std::size_t>(hardware.width)
-            * static_cast<std::size_t>(hardware.height));
-        for (int row = 0; row < hardware.height; ++row) {
-            for (int column = 0; column < hardware.width; ++column) {
-                hardware.pixels[
-                    static_cast<std::size_t>(row) * hardware.width + column] =
-                    frame.framebuffer.pixels[
-                        static_cast<std::size_t>(row)
-                            * frame.framebuffer.pitch_pixels
-                        + column];
-            }
-        }
-        static_cast<void>(save_playfield_png(
-            hardware, output_directory / (stem + "-emulated.bmp")));
-    };
-
     // Carries this frame's work RAM into the next iteration on every exit
     // path, so the frame before a break can be dumped beside it.
     struct WorkRamKeeper {
@@ -20554,7 +20573,26 @@ enum class ViewProbeRoute {
                     spec.name,
                     frame_number,
                     mismatched * 100U / compared);
-                save_emulated(frame, stem);
+                if (!frame.framebuffer.pixels.empty()) {
+                    devils_crush::render::ArgbImage hardware;
+                    hardware.width = frame.framebuffer.width;
+                    hardware.height = frame.framebuffer.height;
+                    hardware.pixels.resize(
+                        static_cast<std::size_t>(hardware.width)
+                        * static_cast<std::size_t>(hardware.height));
+                    for (int row = 0; row < hardware.height; ++row) {
+                        for (int column = 0; column < hardware.width; ++column) {
+                            hardware.pixels[
+                                static_cast<std::size_t>(row) * hardware.width
+                                + column] = frame.framebuffer.pixels[
+                                static_cast<std::size_t>(row)
+                                    * frame.framebuffer.pitch_pixels
+                                + column];
+                        }
+                    }
+                    static_cast<void>(save_playfield_png(
+                        hardware, output_directory / (stem + "-emulated.bmp")));
+                }
                 static_cast<void>(save_playfield_png(
                     table->image,
                     output_directory / (stem + "-cabinet.bmp")));

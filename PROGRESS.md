@@ -55,9 +55,12 @@ reached 98.52% native cycles outside the frame-sync wait with zero abandoned
 transcripts. A fresh player run then confirmed the fixed `01:C100` startup
 `TII $2000,$2001,$1FFF` as one guarded core capability, removing its 147,489
 cycles from fallback. `08:585A`'s fixed `$3000,$3001,$0FFF` work-RAM clear is
-implemented as a descriptor candidate but deliberately not deployed after its
-first live run regressed new-game startup; it needs a core-boundary trace
-before another admission attempt. The release build now also admits
+now admitted through the core's original resumable TII path, not a 4,095-write
+replacement transaction; the latest player report confirms `TII=2` and no
+longer ranks `08:585A` as interpreter residue. The next isolated capability
+is the one-pass `00:E34C` VDC-address setup loop: its two VDC writes are
+checkpointed, and the core still executes its closing branch. The default
+registry now also admits
 `01:C756`'s split-sample `BBR3 $77,$C75E` through the same guarded core path;
 a normal player session confirmed 2,345 safe entries and removed it from the
 interpreter hot list. The adjacent `01:CB7E` collision-sweep BBR3 was also

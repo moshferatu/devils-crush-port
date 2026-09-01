@@ -19,6 +19,8 @@ using emulation::RoutineReplacement;
 // device register, so unlike the interrupt dispatcher above they are fully
 // expressible.
 //
+//   00:E34C  write one VDC address word from $31/$32, then advance the
+//            $2B:$2C transfer counter. The core retains the closing BNE.
 //   00:E3C0  clear 512 VRAM words from $7800 through the VDC data ports
 //   00:E3FC  clear 1,024 VCE colour entries through $0404/$0405
 //   00:E41F  the generic word-stream decoder: $2D/$2E is the destination VRAM
@@ -111,7 +113,8 @@ constexpr std::size_t kCheckpointBudget = 1980U;
 
 [[nodiscard]] constexpr bool is_owned_entry(const std::uint16_t logical_pc)
 {
-    return logical_pc == 0xE3C0U || logical_pc == 0xE3D7U
+    return logical_pc == 0xE34CU || logical_pc == 0xE3C0U
+        || logical_pc == 0xE3D7U
         || logical_pc == 0xE3FCU || logical_pc == 0xE403U
         || logical_pc == 0xE41FU || logical_pc == 0xE439U
         || logical_pc == 0xE4E3U || logical_pc == 0xFA40U
@@ -693,6 +696,60 @@ std::optional<RoutineReplacement> replace_vram_upload(
             append_checkpoint(0xFAA4U, 0xFAA5U, 6U);
             pc = 0xFAA5U;
             break;
+
+        // ---- 00:E34C  submit one VDC address word and advance its count ---
+        //
+        // This tight setup loop leaves its backward BNE in the core.  That
+        // makes each pass resumable at the real branch horizon, while the two
+        // VDC port stores retain their exact write and interrupt timestamps.
+        case 0xE34CU: {
+            load_accumulator(read_ram(zp(0x31U)));  // LDA $31
+            append_checkpoint(0xE34CU, 0xE34EU, 12U);
+
+            store_port(0xE34EU, 0x0002U, registers.accumulator);  // STA $0002
+            append_checkpoint(0xE34EU, 0xE351U, 18U, 6U);
+
+            load_accumulator(read_ram(zp(0x32U)));  // LDA $32
+            append_checkpoint(0xE351U, 0xE353U, 12U);
+
+            store_port(0xE353U, 0x0003U, registers.accumulator);  // STA $0003
+            append_checkpoint(0xE353U, 0xE356U, 18U, 6U);
+
+            load_accumulator(read_ram(zp(0x2BU)));  // LDA $2B
+            append_checkpoint(0xE356U, 0xE358U, 12U);
+
+            const bool lower_byte_nonzero = registers.accumulator != 0U;
+            append_checkpoint(
+                0xE358U,
+                lower_byte_nonzero ? 0xE35CU : 0xE35AU,
+                lower_byte_nonzero ? 12U : 6U);  // BNE $E35C
+
+            if (!lower_byte_nonzero) {
+                const auto decremented_high = static_cast<std::uint8_t>(
+                    read_ram(zp(0x2CU)) - 1U);
+                store(0xE35AU, zp(0x2CU), decremented_high);  // DEC $2C
+                registers.status = set_nz(registers.status, decremented_high);
+                append_checkpoint(0xE35AU, 0xE35CU, 18U);
+            }
+
+            const auto decremented_low = static_cast<std::uint8_t>(
+                read_ram(zp(0x2BU)) - 1U);
+            store(0xE35CU, zp(0x2BU), decremented_low);  // DEC $2B
+            registers.status = set_nz(registers.status, decremented_low);
+            append_checkpoint(0xE35CU, 0xE35EU, 18U);
+
+            load_accumulator(read_ram(zp(0x2BU)));  // LDA $2B
+            append_checkpoint(0xE35EU, 0xE360U, 12U);
+
+            load_accumulator(static_cast<std::uint8_t>(
+                registers.accumulator | read_ram(zp(0x2CU))));  // ORA $2C
+            append_checkpoint(0xE360U, 0xE362U, 12U);
+
+            // The core samples and executes this branch, then re-enters at
+            // E34C for the next word or takes the caller's RTS.
+            finish(0xE362U);
+            return replacement;
+        }
 
         // ---- 00:E3C0  clear 512 VRAM words from $7800 --------------------
         case 0xE3C0U:  // LDA #$00

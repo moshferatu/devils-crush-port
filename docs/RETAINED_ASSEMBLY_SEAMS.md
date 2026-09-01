@@ -28,12 +28,12 @@ sufficient, and it is not needed to keep porting adjacent gameplay code.
 
 ## The boot work-RAM clear at `08:585A`
 
-One `TII` emits 4,095 ordered writes against a 512-write transaction channel,
-and offers no interior instruction boundary to split on. The code on both sides
-of it is native.
+The 4,095-write `TII` cannot use the ordinary 512-write transaction channel,
+but it is no longer interpreter-owned: its compact descriptor hands the
+original overlapping move back to the core's resumable opcode loop.
 
-Moving the transfer itself needs a compact block-transfer transaction primitive
-or a wider bridge contract — not another instruction-checkpoint transcript.
+The compact capability is intentionally limited to this known opcode; a
+generic block-transfer replacement would need a wider bridge contract.
 
 ## Giant-Face active-wait return at `03:76CA`
 

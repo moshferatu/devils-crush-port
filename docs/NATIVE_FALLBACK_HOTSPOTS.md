@@ -57,8 +57,8 @@ A normal player session confirmed this path alongside `01:C756`, with 9,414
 combined BBR3 capability entries and no abandoned transcript. The release
 build now admits the preceding `01:CB71` `BBS2 $77,$CB76` by the corresponding
 guarded original-opcode path; its native arms are `01:CB74` and `01:CB76`.
-`08:585A` remains an undeployed descriptor candidate after its new-game
-startup regression.
+`08:585A` now uses the same compact core-TII path. It is therefore core-owned
+without serializing its 4,095 writes through the replacement channel.
 
 The next residue row, `01:D4B2`, is not a routine body: it is the `RTS` in an
 active-flipper-owner branch. It cannot be made a generic transaction because
@@ -4231,8 +4231,9 @@ bridge carries 512 writes, and a block transfer exposes no interior
 instruction boundary, so the transfer is a capacity wall for transcript
 chunking. A guarded core-transfer descriptor exists: it validates the
 descriptor, opcode, entry PC, and cycle total before the existing resumable
-core loop executes unchanged. It is not currently deployed because its first
-live new-game run regressed startup.
+core loop executes unchanged. It is now deployed: the latest player run
+reported `TII=2`, removed `08:585A` from the residue ranking, and completed
+with no abandoned transcripts.
 
 The routine still splits cleanly around that wall. Semantic `08:584C` and
 `08:584F` cross the two JSRs, `08:5852` owns the three clear-setup stores and
@@ -4241,10 +4242,20 @@ absorbed return. The four one-shot entries add 183 native cycles. The complete
 outer call spans the intervening fade driver for 2,936,556 cycles and retains
 all 49,993 ordered writes exactly; selected RAM, the 2,036,234-write global VDC
 bus artifact, and the canonical census also remain byte-identical. The
-deployed profile now leaves 4,880,286 non-wait cycles in 260 clusters. The
-descriptor candidate is not deployed: its first live new-game run regressed
-startup, so this transfer remains interpreter-owned until a core-boundary
-trace explains the differing context.
+deployed profile now leaves 4,880,286 non-wait cycles in 260 clusters.
+
+## VDC address-latch loop at `00:E34C`
+
+`00:E34C-E362` loads the VDC address from `$31:$32`, writes its low and high
+ports, then decrements the `$2B:$2C` transfer counter. Its port writes cannot
+be condensed into an ordinary memory transaction: each is an eighteen-master-
+cycle VDC event with an earlier interrupt sample. The new compact descriptor
+therefore executes exactly one loop pass with individual checkpoints at both
+stores and the counter writes, then returns at `E362`. The core samples and
+executes the closing `BNE`, either re-entering `E34C` or reaching the caller's
+`RTS`. This keeps the branch and all interrupt horizons hardware-owned while
+removing the repeated setup instructions from interpreter residue. It awaits
+the next player-session validation.
 
 ## Work-RAM byte-stream decoder
 
