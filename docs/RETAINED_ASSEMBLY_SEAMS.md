@@ -26,14 +26,16 @@ Moving `01:C6E3` would require a bridge checkpoint that preserves
 the core's four-step event sampling; an ordinary two-boundary transcript is not
 sufficient, and it is not needed to keep porting adjacent gameplay code.
 
-## The boot work-RAM clear at `08:585A`
+## Fixed overlapping `TII` transfers
 
-The 4,095-write `TII` cannot use the ordinary 512-write transaction channel,
-but it is no longer interpreter-owned: its compact descriptor hands the
-original overlapping move back to the core's resumable opcode loop.
+The 4,095-write boot clear at `08:585A` and the 1,023-write palette-shadow
+clear at `00:E950` cannot use the ordinary 512-write transaction channel, but
+they are no longer interpreter-owned: compact descriptors hand their original
+overlapping moves back to the core's resumable opcode loop.
 
-The compact capability is intentionally limited to this known opcode; a
-generic block-transfer replacement would need a wider bridge contract.
+The compact capabilities are intentionally limited to fixed, verified opcode
+descriptors; a generic block-transfer replacement would need a wider bridge
+contract.
 
 ## Giant-Face active-wait return at `03:76CA`
 

@@ -3048,11 +3048,16 @@ the spin, and the return address is the next entry point. `00:E94D` has a
 second such instruction of its own, the `TII $27B9, $27BA, $03FF` at `00:E950`,
 1,023 work-RAM writes and 18,465 cycles, which splits the same way. What stops
 them is that this route enters `00:E94D` **once** and `00:EA77` eight times.
-Every entry point in this family is admitted on hundreds or thousands of calls,
-which is what lets a regression claim the transcript is state-generic rather
-than a transcription of one observed path. One sample cannot make that claim,
-and 0.011% of the route does not justify lowering the bar. That is a different
-verdict from "blocked" and it should be recorded as a different word.
+That made a replacement transcript inappropriate: its call count cannot
+establish a state-generic C++ walk. The fixed opcode descriptor is nevertheless
+eligible for the same compact core-TII path as the boot clears: it validates
+the exact transfer and lets the core execute its existing resumable loop
+unchanged. Its 18,465-cycle duration is explicitly admitted by the bridge, so
+the player-session check can exercise the transfer rather than reject it. The
+player confirmed it as the third core-TII capability, eliminating `00:E950`
+from the residue report. `08:559F` is the same fixed transfer in bank 8 with
+its own post-opcode resume address, so it is the next isolated descriptor to
+validate through that already-proven capability.
 
 ## The bank-switching call wrappers, and two corrections
 
@@ -4254,8 +4259,10 @@ therefore executes exactly one loop pass with individual checkpoints at both
 stores and the counter writes, then returns at `E362`. The core samples and
 executes the closing `BNE`, either re-entering `E34C` or reaching the caller's
 `RTS`. This keeps the branch and all interrupt horizons hardware-owned while
-removing the repeated setup instructions from interpreter residue. It awaits
-the next player-session validation.
+removing the repeated setup instructions from interpreter residue. A player
+session confirmed 2,048 VDC-address capability entries and removed
+`E34C-E360` from the residue ranking; `E362` remains the deliberate core-owned
+branch horizon.
 
 ## Work-RAM byte-stream decoder
 

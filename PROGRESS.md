@@ -57,9 +57,15 @@ transcripts. A fresh player run then confirmed the fixed `01:C100` startup
 cycles from fallback. `08:585A`'s fixed `$3000,$3001,$0FFF` work-RAM clear is
 now admitted through the core's original resumable TII path, not a 4,095-write
 replacement transaction; the latest player report confirms `TII=2` and no
-longer ranks `08:585A` as interpreter residue. The next isolated capability
-is the one-pass `00:E34C` VDC-address setup loop: its two VDC writes are
-checkpointed, and the core still executes its closing branch. The default
+longer ranks `08:585A` as interpreter residue. A subsequent player session
+also confirmed the one-pass `00:E34C` VDC-address setup descriptor: its two
+VDC writes are checkpointed while the core executes the closing `E362` branch,
+removing the repeated address-latch setup from residue. A player session then
+confirmed the fixed palette-shadow `TII $27B9,$27BA,$03FF` at `00:E950` as the
+third core-TII capability, removing its 18,465-cycle residue row without a
+startup regression. The matching bank-8 instance at `08:559F` is the next
+isolated descriptor; it has the same transfer contract and cycle duration,
+but a distinct resume address. The default
 registry now also admits
 `01:C756`'s split-sample `BBR3 $77,$C75E` through the same guarded core path;
 a normal player session confirmed 2,345 safe entries and removed it from the

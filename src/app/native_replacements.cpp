@@ -21,8 +21,10 @@ replace_native_gameplay_routine_impl(
     const std::span<const std::byte> rom)
 {
     if (entry.routine == RoutineKey{0x01U, 0xC100U}
-        || entry.routine == RoutineKey{0x08U, 0x585AU}) {
-        return detail::replace_startup_tii_clear(entry);
+        || entry.routine == RoutineKey{0x08U, 0x585AU}
+        || entry.routine == RoutineKey{0x00U, 0xE950U}
+        || entry.routine == RoutineKey{0x08U, 0x559FU}) {
+        return detail::replace_core_tii_transfer(entry);
     }
     if (entry.routine == RoutineKey{0x01U, 0xC756U}) {
         return detail::replace_ball_substep_bbr3(entry, work_ram);
@@ -52,7 +54,8 @@ replace_native_gameplay_routine_impl(
     }
     if (entry.routine == RoutineKey{0x45U, 0x4138U}
         || entry.routine == RoutineKey{0x03U, 0x7696U}
-        || entry.routine == RoutineKey{0x01U, 0xCB5EU}) {
+        || entry.routine == RoutineKey{0x01U, 0xCB5EU}
+        || entry.routine == RoutineKey{0x00U, 0xE976U}) {
         return detail::replace_music_jsr(entry);
     }
     if (entry.routine == RoutineKey{0x45U, 0x4210U}) {

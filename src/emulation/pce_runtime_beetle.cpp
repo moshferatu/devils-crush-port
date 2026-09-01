@@ -3439,7 +3439,8 @@ private:
                 || (native_tii_transfer
                     && (write_count != 0U || checkpoint_count != 0U
                         || (result.body_master_cycles != 147489U
-                            && result.body_master_cycles != 73785U)))
+                            && result.body_master_cycles != 73785U
+                            && result.body_master_cycles != 18465U)))
                 || (native_tia_transfer && native_bbr0_instruction)
                 || (native_tia_transfer && native_bbr3_instruction)
                 || (native_tia_transfer && native_bbs2_instruction)

@@ -1833,7 +1833,7 @@ replace_tilemap_upload(
     std::span<const std::byte> rom);
 
 [[nodiscard]] std::optional<emulation::RoutineReplacement>
-replace_startup_tii_clear(const emulation::RoutineEntry& entry);
+replace_core_tii_transfer(const emulation::RoutineEntry& entry);
 
 // The frame around the collision scanner: the playfield-tile probe at 01:CD74,
 // the ball/table gate at 01:CA84, the sweep setup at 01:CB2A and its tail, the

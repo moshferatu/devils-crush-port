@@ -2864,7 +2864,7 @@ std::optional<RoutineReplacement> replace_tilemap_upload(
     }
 }
 
-std::optional<RoutineReplacement> replace_startup_tii_clear(
+std::optional<RoutineReplacement> replace_core_tii_transfer(
     const RoutineEntry& entry)
 {
     NativeTiiTransfer transfer{};
@@ -2886,6 +2886,20 @@ std::optional<RoutineReplacement> replace_startup_tii_clear(
         };
         body_master_cycles = 73785U;
         return_instruction = {0x08U, 0x5861U};
+    } else if (entry.routine == RoutineKey{0x00U, 0xE950U}
+               || entry.routine == RoutineKey{0x08U, 0x559FU}) {
+        // The palette shadow is cleared by one overlapping TII. Keep its
+        // 1,023 ordered work-RAM writes inside the original resumable core
+        // opcode rather than expanding them through the replacement bridge.
+        transfer = {
+            .source = 0x27B9U,
+            .destination = 0x27BAU,
+            .length = 0x03FFU,
+        };
+        body_master_cycles = 18465U;
+        return_instruction = entry.routine == RoutineKey{0x00U, 0xE950U}
+            ? RoutineKey{0x00U, 0xE957U}
+            : RoutineKey{0x08U, 0x55A6U};
     } else {
         return std::nullopt;
     }

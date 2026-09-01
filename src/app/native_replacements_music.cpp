@@ -321,16 +321,22 @@ std::optional<RoutineReplacement> replace_music_jsr(
         .physical_bank = 0x01U,
         .logical_pc = 0xCB5EU,
     };
+    constexpr RoutineKey kPaletteFadeTableCall{
+        .physical_bank = 0x00U,
+        .logical_pc = 0xE976U,
+    };
     if (entry.routine != kMusicPsgCall
         && entry.routine != kGiantFaceAnimatorCall
-        && entry.routine != kCollisionScannerCall) {
+        && entry.routine != kCollisionScannerCall
+        && entry.routine != kPaletteFadeTableCall) {
         return std::nullopt;
     }
 
     // Each of these calls creates a return address on the live stack before
     // the interrupt boundary. Retain the original core JSR rather than
     // modeling a synthetic frame; CB5E covers the collision scanner's rare
-    // non-composed entries.
+    // non-composed entries and E976 crosses into the palette-fade table
+    // emitter without moving either stack write.
     RoutineReplacement replacement{};
     replacement.return_instruction = entry.routine;
     replacement.output_registers = entry.registers;

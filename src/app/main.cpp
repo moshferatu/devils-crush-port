@@ -15446,10 +15446,11 @@ using NativeRegistryEntryObserver = std::function<void(
         std::cerr << "Could not install native music SEI hook.\n";
         return false;
     }
-    constexpr std::array<RoutineKey, 3U> kExactJsrInstructions{{
+    constexpr std::array<RoutineKey, 4U> kExactJsrInstructions{{
         {.physical_bank = 0x45U, .logical_pc = 0x4138U},
         {.physical_bank = 0x03U, .logical_pc = 0x7696U},
         {.physical_bank = 0x01U, .logical_pc = 0xCB5EU},
+        {.physical_bank = 0x00U, .logical_pc = 0xE976U},
     }};
     for (const auto routine : kExactJsrInstructions) {
         if (std::find(claimed_routines.begin(), claimed_routines.end(), routine)
@@ -15639,14 +15640,16 @@ using NativeRegistryEntryObserver = std::function<void(
             return false;
         }
     }
-    // These descriptors deliberately hand the original overlapping clears
-    // back to the core's resumable TII opcode path. Neither descriptor
-    // serializes thousands of writes through the ordinary replacement channel.
-    constexpr std::array<RoutineKey, 2U> kStartupTiiInstructions{{
+    // These fixed descriptors deliberately hand the original overlapping
+    // clears back to the core's resumable TII opcode path. None serializes
+    // thousands of writes through the ordinary replacement channel.
+    constexpr std::array<RoutineKey, 4U> kCoreTiiInstructions{{
         {.physical_bank = 0x01U, .logical_pc = 0xC100U},
         {.physical_bank = 0x08U, .logical_pc = 0x585AU},
+        {.physical_bank = 0x00U, .logical_pc = 0xE950U},
+        {.physical_bank = 0x08U, .logical_pc = 0x559FU},
     }};
-    for (const auto routine : kStartupTiiInstructions) {
+    for (const auto routine : kCoreTiiInstructions) {
         if (std::find(claimed_routines.begin(), claimed_routines.end(), routine)
             != claimed_routines.end()) {
             continue;
@@ -15670,7 +15673,7 @@ using NativeRegistryEntryObserver = std::function<void(
                     return result;
                 },
             })) {
-            std::cerr << "Could not install native startup TII hook.\n";
+            std::cerr << "Could not install native core TII hook.\n";
             return false;
         }
     }
