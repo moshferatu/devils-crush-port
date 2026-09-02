@@ -486,12 +486,14 @@ std::optional<RoutineReplacement> replace_music_jmp(
     const auto pc = entry.routine.logical_pc;
     const bool music_jump = entry.routine.physical_bank == kBank
         && (pc == 0x4003U || pc == 0x40FFU);
-    // Bank 08 begins with fixed export vectors.  These three are reached
-    // repeatedly by the normal table and are the same exact `JMP absolute`
-    // contract as the sequencer boundaries above: retain the core transfer
-    // and its interrupt/event sampling rather than inventing a host target.
+    // Bank 08 begins with fixed export vectors; 4030 is the equally fixed
+    // transfer into its VDC-clear helper.  They are the same exact `JMP
+    // absolute` contract as the sequencer boundaries above: retain the core
+    // transfer and its interrupt/event sampling rather than inventing a host
+    // target.
     const bool bank8_export_jump = entry.routine.physical_bank == 0x08U
-        && (pc == 0x4000U || pc == 0x4009U || pc == 0x4015U);
+        && (pc == 0x4000U || pc == 0x4009U || pc == 0x4015U
+            || pc == 0x4030U);
     if (!music_jump && !bank8_export_jump) {
         return std::nullopt;
     }

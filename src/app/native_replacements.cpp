@@ -76,13 +76,23 @@ replace_native_gameplay_routine_impl(
         return detail::replace_giant_face_wait_dispatch_instruction(entry);
     }
     if (entry.routine == RoutineKey{0x03U, 0x66A3U}) {
-        return detail::replace_three_blobs_timer_decrement_instruction(entry);
+        // The full prefix has an exact native transcript when there is enough
+        // time before the next timer interrupt.  At its short-horizon edge,
+        // retain only the DEC in the core so the interrupt is observed at the
+        // original instruction boundary.
+        constexpr std::uint32_t kTimerHorizonSafeCycles = 300U;
+        if (entry.master_cycles_until_timer_interrupt
+            <= kTimerHorizonSafeCycles) {
+            return detail::replace_three_blobs_timer_decrement_instruction(entry);
+        }
+        return detail::replace_three_blobs_first_movement_prefix(entry, work_ram);
     }
     if (entry.routine == RoutineKey{0x45U, 0x4003U}
         || entry.routine == RoutineKey{0x45U, 0x40FFU}
         || entry.routine == RoutineKey{0x08U, 0x4000U}
         || entry.routine == RoutineKey{0x08U, 0x4009U}
-        || entry.routine == RoutineKey{0x08U, 0x4015U}) {
+        || entry.routine == RoutineKey{0x08U, 0x4015U}
+        || entry.routine == RoutineKey{0x08U, 0x4030U}) {
         return detail::replace_music_jmp(entry);
     }
     if (entry.routine == RoutineKey{0x03U, 0x7525U}
