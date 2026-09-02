@@ -15136,6 +15136,7 @@ struct NativeRegistryDeployment {
     std::uint64_t core_jsr_instructions = 0U;
     std::uint64_t core_jmp_instructions = 0U;
     std::uint64_t core_giant_face_wait_dispatch_instructions = 0U;
+    std::uint64_t core_three_blobs_timer_decrement_instructions = 0U;
     std::uint64_t core_flipper_owner_instructions = 0U;
     std::uint64_t core_actor_scheduler_instructions = 0U;
     std::uint64_t core_tii_transfers = 0U;
@@ -15261,7 +15262,16 @@ using NativeRegistryEntryObserver = std::function<void(
                         const RoutineEntry& entry,
                         const std::span<const std::byte> work_ram) {
                         auto& row = deployment.rows[index];
+                        const bool three_blobs_timer_decrement =
+                            entry.routine
+                            == RoutineKey{
+                                .physical_bank = 0x03U,
+                                .logical_pc = 0x66A3U,
+                            };
                         ++row.entries;
+                        if (three_blobs_timer_decrement) {
+                            ++deployment.core_capability_entries;
+                        }
                         deployment.span.observe(entry.absolute_master_cycle);
                         if (entry_observer) {
                             entry_observer(entry, work_ram);
@@ -15286,6 +15296,12 @@ using NativeRegistryEntryObserver = std::function<void(
                             ++row.accepted;
                             row.native_master_cycles +=
                                 result->body_master_cycles;
+                            if (three_blobs_timer_decrement) {
+                                ++deployment.core_capability_accepted;
+                                ++deployment.core_three_blobs_timer_decrement_instructions;
+                                deployment.core_capability_master_cycles +=
+                                    result->body_master_cycles;
+                            }
                         }
                         return result;
                     },
@@ -16518,6 +16534,8 @@ void print_native_registry_summary(
                   << deployment.core_jsr_instructions << ", JMP="
                   << deployment.core_jmp_instructions << ", Giant-face-wait="
                   << deployment.core_giant_face_wait_dispatch_instructions
+                  << ", Three-blobs-timer="
+                  << deployment.core_three_blobs_timer_decrement_instructions
                   << ", Flipper="
                   << deployment.core_flipper_owner_instructions << ", Actor-scheduler="
                   << deployment.core_actor_scheduler_instructions << ", TII="

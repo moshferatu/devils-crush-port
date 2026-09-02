@@ -75,6 +75,9 @@ replace_native_gameplay_routine_impl(
             || entry.routine.logical_pc == 0x76A6U)) {
         return detail::replace_giant_face_wait_dispatch_instruction(entry);
     }
+    if (entry.routine == RoutineKey{0x03U, 0x66A3U}) {
+        return detail::replace_three_blobs_timer_decrement_instruction(entry);
+    }
     if (entry.routine == RoutineKey{0x45U, 0x4003U}
         || entry.routine == RoutineKey{0x45U, 0x40FFU}
         || entry.routine == RoutineKey{0x08U, 0x4000U}

@@ -69,6 +69,7 @@ function(dc_provide_beetle_pce)
         "${beetle_fork_root}/patches/0031-huc6280-knight-counter-rts.patch"
         "${beetle_fork_root}/patches/0032-huc6280-knight-bcs.patch"
         "${beetle_fork_root}/patches/0033-huc6280-giant-face-wait-dispatch.patch"
+        "${beetle_fork_root}/patches/0034-huc6280-three-blobs-timer-decrement.patch"
     )
 
     find_package(Git REQUIRED)
@@ -563,6 +564,19 @@ function(dc_provide_beetle_pce)
                     FIND
                     "${beetle_cpu_source}"
                     "PC == 0x7699"
+                    beetle_patch_marker_two
+                )
+            elseif(beetle_patch_name MATCHES "^0034-")
+                string(
+                    FIND
+                    "${beetle_cpu_source}"
+                    "native_three_blobs_timer_decrement_instruction"
+                    beetle_patch_marker_one
+                )
+                string(
+                    FIND
+                    "${beetle_cpu_source}"
+                    "PC == 0x66A3 && lastop == 0xDE"
                     beetle_patch_marker_two
                 )
             else()

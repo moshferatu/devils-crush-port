@@ -1,0 +1,32 @@
+diff --git a/mednafen/pce/huc6280.cpp b/mednafen/pce/huc6280.cpp
+--- a/mednafen/pce/huc6280.cpp
++++ b/mednafen/pce/huc6280.cpp
+@@ -1268,4 +1268,6 @@ NO_INLINE void HuC6280::RunSub(void)
+ 			const bool dc_beetle_native_giant_face_wait_dispatch_instruction =
+ 				replacement.native_giant_face_wait_dispatch_instruction != 0;
++			const bool dc_beetle_native_three_blobs_timer_decrement_instruction =
++				replacement.native_three_blobs_timer_decrement_instruction != 0;
+ 			const bool dc_beetle_native_jmp_instruction =
+ 				replacement.native_jmp_instruction != 0;
+@@ -1405,4 +1407,15 @@ NO_INLINE void HuC6280::RunSub(void)
+ 					&& dc_beetle_giant_face_wait_dispatch_opcode;
+ 			}
++			if(dc_beetle_native_three_blobs_timer_decrement_instruction)
++			{
++				// This indexed DEC begins the Three-Blobs motion prefix. The
++				// decrement's work-RAM write and interrupt sample remain the
++				// original core opcode on short timer horizons.
++				valid = valid
++					&& replacement.write_count == 0
++					&& replacement.checkpoint_count == 0
++					&& replacement.body_master_cycles == 21
++					&& PC == 0x66A3 && lastop == 0xDE;
++			}
+ 			if(dc_beetle_native_jmp_instruction)
+ 			{
+@@ -1464,4 +1478,5 @@ NO_INLINE void HuC6280::RunSub(void)
+ 				|| dc_beetle_native_bsr_instruction
+ 				|| dc_beetle_native_bcs_instruction
+ 				|| dc_beetle_native_giant_face_wait_dispatch_instruction
++				|| dc_beetle_native_three_blobs_timer_decrement_instruction
+ 				|| dc_beetle_native_jmp_instruction

@@ -110,6 +110,9 @@ typedef struct dc_beetle_replacement_result {
     uint8_t native_bcs_instruction;
     // The Giant-Face timer-return dispatch keeps its RAM reads and branches.
     uint8_t native_giant_face_wait_dispatch_instruction;
+    // The Three-Blobs timer decrement keeps its indexed RAM write and IRQ
+    // sample inside the core.
+    uint8_t native_three_blobs_timer_decrement_instruction;
     // A fixed JMP that needs the core's original control-transfer boundary.
     uint8_t native_jmp_instruction;
     // The active-flipper owner's short input-tail instruction family.

@@ -456,6 +456,30 @@ std::optional<RoutineReplacement> replace_giant_face_wait_dispatch_instruction(
     return replacement;
 }
 
+std::optional<RoutineReplacement>
+replace_three_blobs_timer_decrement_instruction(const RoutineEntry& entry)
+{
+    constexpr RoutineKey kRoutine{
+        .physical_bank = 0x03U,
+        .logical_pc = 0x66A3U,
+    };
+    if (entry.routine != kRoutine) {
+        return std::nullopt;
+    }
+
+    // This DEC $3A00,X begins the Three-Blobs motion-prefix classifier.  A
+    // timer can become serviceable immediately after it retires, which is why
+    // the semantic walk intentionally declines short-horizon calls.  Keep the
+    // actual indexed read-modify-write and final interrupt sample in the core.
+    RoutineReplacement replacement{};
+    replacement.return_instruction = kRoutine;
+    replacement.output_registers = entry.registers;
+    replacement.body_master_cycles = 21U;
+    replacement.native_three_blobs_timer_decrement_instruction =
+        emulation::NativeThreeBlobsTimerDecrementInstruction{};
+    return replacement;
+}
+
 std::optional<RoutineReplacement> replace_music_jmp(
     const RoutineEntry& entry)
 {

@@ -304,6 +304,12 @@ struct NativeGiantFaceWaitDispatchInstruction {
     [[nodiscard]] bool operator==(const NativeGiantFaceWaitDispatchInstruction&) const = default;
 };
 
+// The Three-Blobs controller's timer decrement can fall directly onto a timer
+// interrupt horizon.  The core therefore owns the original indexed DEC.
+struct NativeThreeBlobsTimerDecrementInstruction {
+    [[nodiscard]] bool operator==(const NativeThreeBlobsTimerDecrementInstruction&) const = default;
+};
+
 // A fixed JMP whose target and event boundary stay in the core.
 struct NativeJmpInstruction {
     [[nodiscard]] bool operator==(const NativeJmpInstruction&) const = default;
@@ -373,6 +379,8 @@ struct RoutineReplacement {
     std::optional<NativeBcsInstruction> native_bcs_instruction;
     std::optional<NativeGiantFaceWaitDispatchInstruction>
         native_giant_face_wait_dispatch_instruction;
+    std::optional<NativeThreeBlobsTimerDecrementInstruction>
+        native_three_blobs_timer_decrement_instruction;
     std::optional<NativeJmpInstruction> native_jmp_instruction;
     std::optional<NativeFlipperOwnerInstruction>
         native_flipper_owner_instruction;

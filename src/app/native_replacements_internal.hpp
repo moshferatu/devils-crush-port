@@ -1815,6 +1815,10 @@ replace_giant_face_wait_dispatch_instruction(
     const emulation::RoutineEntry& entry);
 
 [[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_three_blobs_timer_decrement_instruction(
+    const emulation::RoutineEntry& entry);
+
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
 replace_music_rts(const emulation::RoutineEntry& entry);
 
 [[nodiscard]] std::optional<emulation::RoutineReplacement>
