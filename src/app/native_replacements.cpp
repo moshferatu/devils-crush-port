@@ -68,7 +68,9 @@ replace_native_gameplay_routine_impl(
         || entry.routine == RoutineKey{0x08U, 0x4015U}) {
         return detail::replace_music_jmp(entry);
     }
-    if (entry.routine == RoutineKey{0x03U, 0x7525U}) {
+    if (entry.routine == RoutineKey{0x03U, 0x7525U}
+        || entry.routine == RoutineKey{0x01U, 0xCCD4U}
+        || entry.routine == RoutineKey{0x03U, 0x73D7U}) {
         return detail::replace_shared_actor_rts(entry);
     }
     if (entry.routine == RoutineKey{0x03U, 0x751EU}
@@ -887,6 +889,13 @@ replace_native_gameplay_routine_impl(
                 .logical_pc = 0xEBA5U,
             }) {
         return detail::replace_palette_shadow(entry, work_ram, rom);
+    }
+    if (entry.routine
+        == RoutineKey{
+            .physical_bank = 0x00U,
+            .logical_pc = 0xE979U,
+        }) {
+        return detail::replace_palette_fade_caller_tail(entry, work_ram);
     }
     // The same job in bank 08, for the block the setup screens flash. The
     // cadence controller starts the walk, which then crosses the resolver call

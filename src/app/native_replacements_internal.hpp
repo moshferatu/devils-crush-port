@@ -1726,6 +1726,15 @@ replace_palette_shadow(
     std::span<const std::byte> work_ram,
     std::span<const std::byte> rom);
 
+// The post-interpolator tail of 00:E970's palette-fade driver.  The existing
+// core-owned JSR at E976 still creates the live E9B6 call frame; this bounded
+// continuation only advances the two packed-colour pointers and selects the
+// next call or the terminal E994 path.
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_palette_fade_caller_tail(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram);
+
 // The setup screen's own block stager, the shadow buffer's only producer
 // outside bank 00. Two transcripts: the head builds the asset reference and
 // crosses the `JSR $E1FD` that resolves it into a pointer, and 08:5982 -- the

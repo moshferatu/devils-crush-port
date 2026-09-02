@@ -2500,6 +2500,150 @@ std::optional<RoutineReplacement> replace_palette_shadow(
     }
 }
 
+std::optional<RoutineReplacement> replace_palette_fade_caller_tail(
+    const RoutineEntry& entry,
+    const std::span<const std::byte> work_ram)
+{
+    constexpr RoutineKey kEntry{.physical_bank = kBank, .logical_pc = 0xE979U};
+    if (entry.routine != kEntry || work_ram.size() < 0x31U
+        || entry.registers.mpr[0x2000U >> 13U] != 0xF8U
+        || (entry.registers.status & (kDecimal | kMemory)) != 0U) {
+        return std::nullopt;
+    }
+
+    // This is the caller tail immediately after E9B6 returns to E979:
+    //
+    //   CLC; LDA $2D; ADC #$20; STA $2D; CLA; ADC $2E; STA $2E
+    //   CLC; LDA $2F; ADC #$20; STA $2F; CLA; ADC $30; STA $30
+    //   DEX; BNE $E976
+    //
+    // Keep each original instruction boundary.  Besides preserving the
+    // interrupt schedule, that leaves E976's core JSR and E9B6's already
+    // native interpolator as separate owners with their original live stack
+    // frame intact.
+    RoutineReplacement replacement;
+    auto registers = entry.registers;
+    std::uint32_t cycle = 0U;
+    std::size_t committed_writes = 0U;
+
+    const auto commit_pending_writes =
+        [&replacement, &committed_writes](const std::uint32_t at_cycle) {
+            while (committed_writes < replacement.work_ram_writes.size()) {
+                replacement.work_ram_writes[committed_writes]
+                    .master_cycle_offset = at_cycle;
+                ++committed_writes;
+            }
+        };
+    const auto append_checkpoint =
+        [&replacement, &registers, &cycle, &commit_pending_writes](
+            const std::uint16_t instruction_pc,
+            const std::uint16_t resume_pc,
+            const std::uint32_t instruction_cycles) {
+            cycle += instruction_cycles;
+            commit_pending_writes(cycle);
+            registers.program_counter = resume_pc;
+            replacement.checkpoints.push_back({
+                .interrupt_sample_master_cycle_offset = cycle - 3U,
+                .master_cycle_offset = cycle,
+                .instruction = {kBank, instruction_pc},
+                .registers = registers,
+            });
+        };
+    const auto store = [&replacement](
+                           const std::uint16_t instruction_pc,
+                           const std::uint8_t offset,
+                           const std::uint8_t value) {
+        replacement.work_ram_writes.push_back({
+            .instruction = {kBank, instruction_pc},
+            .logical_address = static_cast<std::uint16_t>(0x2000U + offset),
+            .value = value,
+            .master_cycle_offset = 0U,
+        });
+    };
+    const auto load_accumulator = [&registers](const std::uint8_t value) {
+        registers.accumulator = value;
+        registers.status = set_nz(registers.status, value);
+    };
+    const auto add_with_carry = [&registers](const std::uint8_t operand) {
+        const auto accumulator = registers.accumulator;
+        const auto sum = static_cast<std::uint16_t>(
+            static_cast<std::uint16_t>(accumulator)
+            + static_cast<std::uint16_t>(operand)
+            + static_cast<std::uint16_t>(registers.status & kCarry));
+        auto status = static_cast<std::uint8_t>(
+            registers.status & static_cast<std::uint8_t>(~(0x43U | kNegative)));
+        const auto overflow_bit = static_cast<std::uint8_t>(
+            ((((accumulator ^ operand) & 0x80U) ^ 0x80U)
+             & ((accumulator ^ sum) & 0x80U))
+            >> 1U);
+        status = static_cast<std::uint8_t>(status | overflow_bit);
+        status = static_cast<std::uint8_t>(
+            status | static_cast<std::uint8_t>((sum >> 8U) & kCarry));
+        registers.accumulator = static_cast<std::uint8_t>(sum);
+        registers.status = set_nz(status, registers.accumulator);
+    };
+    const auto advance_pointer = [&](const std::uint16_t first_pc,
+                                     const std::uint8_t low_offset,
+                                     const std::uint8_t high_offset) {
+        registers.status = static_cast<std::uint8_t>(
+            registers.status & static_cast<std::uint8_t>(~kCarry));
+        append_checkpoint(first_pc, static_cast<std::uint16_t>(first_pc + 1U), 6U);
+
+        load_accumulator(std::to_integer<std::uint8_t>(work_ram[low_offset]));
+        append_checkpoint(
+            static_cast<std::uint16_t>(first_pc + 1U),
+            static_cast<std::uint16_t>(first_pc + 3U),
+            9U);
+
+        add_with_carry(0x20U);
+        append_checkpoint(
+            static_cast<std::uint16_t>(first_pc + 3U),
+            static_cast<std::uint16_t>(first_pc + 5U),
+            6U);
+
+        store(static_cast<std::uint16_t>(first_pc + 5U), low_offset,
+              registers.accumulator);
+        append_checkpoint(
+            static_cast<std::uint16_t>(first_pc + 5U),
+            static_cast<std::uint16_t>(first_pc + 7U),
+            9U);
+
+        registers.accumulator = 0U; // CLA preserves the status register.
+        append_checkpoint(
+            static_cast<std::uint16_t>(first_pc + 7U),
+            static_cast<std::uint16_t>(first_pc + 8U),
+            6U);
+
+        add_with_carry(std::to_integer<std::uint8_t>(work_ram[high_offset]));
+        append_checkpoint(
+            static_cast<std::uint16_t>(first_pc + 8U),
+            static_cast<std::uint16_t>(first_pc + 10U),
+            9U);
+
+        store(static_cast<std::uint16_t>(first_pc + 10U), high_offset,
+              registers.accumulator);
+        append_checkpoint(
+            static_cast<std::uint16_t>(first_pc + 10U),
+            static_cast<std::uint16_t>(first_pc + 12U),
+            9U);
+    };
+
+    advance_pointer(0xE979U, 0x2DU, 0x2EU);
+    advance_pointer(0xE985U, 0x2FU, 0x30U);
+
+    registers.x = static_cast<std::uint8_t>(registers.x - 1U);
+    registers.status = set_nz(registers.status, registers.x);
+    append_checkpoint(0xE991U, 0xE992U, 6U);
+
+    const auto loops = registers.x != 0U;
+    const auto resume_pc = static_cast<std::uint16_t>(loops ? 0xE976U : 0xE994U);
+    append_checkpoint(0xE992U, resume_pc, loops ? 12U : 6U);
+    replacement.return_instruction = {registers.mpr[resume_pc >> 13U], resume_pc};
+    replacement.output_registers = registers;
+    replacement.body_master_cycles = cycle;
+    return replacement;
+}
+
 namespace {
 
 // The setup screen's own block stager, and the shadow buffer's only producer

@@ -1830,6 +1830,202 @@ struct NativeGameplayBootstrapShadow {
         }
     }
 
+    // E970's palette-fade driver calls the native E9B6 interpolator, then
+    // advances two packed-colour pointers before it either loops through E976
+    // or falls into E994.  This is an observation-only model of that caller
+    // tail: the core retains the JSR/RTS and E9B6 retains the interpolation.
+    struct PaletteFadeTailPrediction {
+        devils_crush::emulation::CpuRegisters registers;
+        std::array<std::uint8_t, 4U> pointers{};
+        bool loops = false;
+    };
+
+    [[nodiscard]] static std::optional<std::uint16_t>
+    palette_fade_caller_pc(
+        const devils_crush::emulation::RoutineEntry& entry,
+        const std::span<const std::byte> work_ram) noexcept
+    {
+        // On entry the JSR frame is at SP+1/SP+2 in ordinary work RAM.
+        if (work_ram.size() < 0x200U) {
+            return std::nullopt;
+        }
+        const auto low_index = static_cast<std::size_t>(
+            0x100U
+            + static_cast<std::uint8_t>(entry.registers.stack_pointer + 1U));
+        const auto high_index = static_cast<std::size_t>(
+            0x100U
+            + static_cast<std::uint8_t>(entry.registers.stack_pointer + 2U));
+        const auto stacked_return = static_cast<std::uint16_t>(
+            std::to_integer<std::uint8_t>(work_ram[low_index])
+            | (static_cast<std::uint16_t>(
+                   std::to_integer<std::uint8_t>(work_ram[high_index]))
+               << 8U));
+        return static_cast<std::uint16_t>(stacked_return - 2U);
+    }
+
+    [[nodiscard]] static std::uint8_t palette_fade_set_nz(
+        const std::uint8_t status,
+        const std::uint8_t value) noexcept
+    {
+        auto result = static_cast<std::uint8_t>(status & 0x7DU);
+        if (value == 0U) {
+            result = static_cast<std::uint8_t>(result | 0x02U);
+        }
+        return static_cast<std::uint8_t>(result | (value & 0x80U));
+    }
+
+    static void palette_fade_adc(
+        devils_crush::emulation::CpuRegisters& registers,
+        const std::uint8_t operand) noexcept
+    {
+        const auto accumulator = registers.accumulator;
+        const auto sum = static_cast<std::uint16_t>(
+            static_cast<std::uint16_t>(accumulator)
+            + static_cast<std::uint16_t>(operand)
+            + static_cast<std::uint16_t>(registers.status & 0x01U));
+        auto status = static_cast<std::uint8_t>(registers.status & 0x3CU);
+        if ((~(accumulator ^ operand) & (accumulator ^ sum) & 0x80U) != 0U) {
+            status = static_cast<std::uint8_t>(status | 0x40U);
+        }
+        if ((sum & 0x100U) != 0U) {
+            status = static_cast<std::uint8_t>(status | 0x01U);
+        }
+        registers.accumulator = static_cast<std::uint8_t>(sum);
+        registers.status = palette_fade_set_nz(status, registers.accumulator);
+    }
+
+    void observe_palette_fade_block_entry(
+        const RoutineEntry& entry,
+        const std::span<const std::byte> work_ram) noexcept
+    {
+        constexpr RoutineKey kBlockInterpolator{0x00U, 0xE9B6U};
+        if (entry.routine != kBlockInterpolator
+            || palette_fade_caller_pc(entry, work_ram) != 0xE976U) {
+            return;
+        }
+        ++palette_fade_block_entries;
+        if (!pending_palette_fade_tail) {
+            return;
+        }
+        if (!pending_palette_fade_tail->loops) {
+            ++missed_palette_fade_terminal_tails;
+            pending_palette_fade_tail.reset();
+            return;
+        }
+        const auto pointers = std::array<std::uint8_t, 4U>{
+            std::to_integer<std::uint8_t>(work_ram[0x2DU]),
+            std::to_integer<std::uint8_t>(work_ram[0x2EU]),
+            std::to_integer<std::uint8_t>(work_ram[0x2FU]),
+            std::to_integer<std::uint8_t>(work_ram[0x30U]),
+        };
+        if (entry.registers == pending_palette_fade_tail->registers
+            && pointers == pending_palette_fade_tail->pointers) {
+            ++matched_palette_fade_loop_tails;
+        } else {
+            ++mismatched_palette_fade_loop_tails;
+        }
+        pending_palette_fade_tail.reset();
+    }
+
+    void observe_palette_fade_block_completion(
+        const RoutineCall& call,
+        const std::span<const std::byte> work_ram) noexcept
+    {
+        constexpr RoutineKey kBlockInterpolator{0x00U, 0xE9B6U};
+        constexpr RoutineKey kReturn{0x00U, 0xEA76U};
+        if (call.entry.routine != kBlockInterpolator
+            || call.caller_pc != 0xE976U) {
+            return;
+        }
+        ++palette_fade_block_completions;
+        if (call.return_instruction != kReturn || call.return_pc != 0xE979U
+            || work_ram.size() < 0x31U
+            || (call.output_registers.status & 0x28U) != 0U) {
+            ++unavailable_palette_fade_tail_predictions;
+            return;
+        }
+        if (pending_palette_fade_tail) {
+            ++superseded_palette_fade_tail_predictions;
+        }
+
+        auto predicted = call.output_registers;
+        predicted.program_counter = 0xE979U;
+        predicted.stack_pointer = static_cast<std::uint8_t>(
+            predicted.stack_pointer + 2U);
+        auto pointers = std::array<std::uint8_t, 4U>{
+            std::to_integer<std::uint8_t>(work_ram[0x2DU]),
+            std::to_integer<std::uint8_t>(work_ram[0x2EU]),
+            std::to_integer<std::uint8_t>(work_ram[0x2FU]),
+            std::to_integer<std::uint8_t>(work_ram[0x30U]),
+        };
+        // CLC; LDA $2D; ADC #$20; STA $2D; CLA; ADC $2E; STA $2E.
+        predicted.status = static_cast<std::uint8_t>(predicted.status & ~0x01U);
+        predicted.accumulator = pointers[0U];
+        predicted.status = palette_fade_set_nz(
+            predicted.status, predicted.accumulator);
+        palette_fade_adc(predicted, 0x20U);
+        pointers[0U] = predicted.accumulator;
+        predicted.accumulator = 0U; // CLA preserves the carry from ADC.
+        palette_fade_adc(predicted, pointers[1U]);
+        pointers[1U] = predicted.accumulator;
+        // CLC; LDA $2F; ADC #$20; STA $2F; CLA; ADC $30; STA $30.
+        predicted.status = static_cast<std::uint8_t>(predicted.status & ~0x01U);
+        predicted.accumulator = pointers[2U];
+        predicted.status = palette_fade_set_nz(
+            predicted.status, predicted.accumulator);
+        palette_fade_adc(predicted, 0x20U);
+        pointers[2U] = predicted.accumulator;
+        predicted.accumulator = 0U;
+        palette_fade_adc(predicted, pointers[3U]);
+        pointers[3U] = predicted.accumulator;
+        // DEX; BNE E976.
+        predicted.x = static_cast<std::uint8_t>(predicted.x - 1U);
+        predicted.status = palette_fade_set_nz(predicted.status, predicted.x);
+        const auto loops = predicted.x != 0U;
+        if (loops) {
+            predicted.program_counter = 0xE9B6U;
+            predicted.stack_pointer = static_cast<std::uint8_t>(
+                predicted.stack_pointer - 2U);
+            ++palette_fade_loop_tail_predictions;
+        } else {
+            predicted.program_counter = 0xE994U;
+            ++palette_fade_terminal_tail_predictions;
+        }
+        pending_palette_fade_tail = PaletteFadeTailPrediction{
+            .registers = predicted,
+            .pointers = pointers,
+            .loops = loops,
+        };
+    }
+
+    void observe_palette_fade_terminal_entry(
+        const RoutineEntry& entry,
+        const std::span<const std::byte> work_ram) noexcept
+    {
+        constexpr RoutineKey kTerminal{0x00U, 0xE994U};
+        if (entry.routine != kTerminal || !pending_palette_fade_tail) {
+            return;
+        }
+        if (pending_palette_fade_tail->loops) {
+            ++unexpected_palette_fade_terminal_entries;
+            pending_palette_fade_tail.reset();
+            return;
+        }
+        const auto pointers = std::array<std::uint8_t, 4U>{
+            std::to_integer<std::uint8_t>(work_ram[0x2DU]),
+            std::to_integer<std::uint8_t>(work_ram[0x2EU]),
+            std::to_integer<std::uint8_t>(work_ram[0x2FU]),
+            std::to_integer<std::uint8_t>(work_ram[0x30U]),
+        };
+        if (entry.registers == pending_palette_fade_tail->registers
+            && pointers == pending_palette_fade_tail->pointers) {
+            ++matched_palette_fade_terminal_tails;
+        } else {
+            ++mismatched_palette_fade_terminal_tails;
+        }
+        pending_palette_fade_tail.reset();
+    }
+
     void report() const
     {
         std::cout << "Native gameplay bootstrap shadow: "
@@ -2069,6 +2265,52 @@ struct NativeGameplayBootstrapShadow {
         }
         report_motion_routine_shadow();
         report_collision_loop_shadow();
+        if (palette_fade_block_entries != 0U
+            || palette_fade_block_completions != 0U) {
+            std::cout << "; palette-fade caller shadow: "
+                      << matched_palette_fade_loop_tails << "/"
+                      << palette_fade_loop_tail_predictions
+                      << " loop-tail reentry/reentries match, "
+                      << matched_palette_fade_terminal_tails << "/"
+                      << palette_fade_terminal_tail_predictions
+                      << " terminal tail(s) match from "
+                      << palette_fade_block_completions
+                      << " E9B6 completion(s)";
+            if (mismatched_palette_fade_loop_tails != 0U
+                || mismatched_palette_fade_terminal_tails != 0U
+                || unavailable_palette_fade_tail_predictions != 0U
+                || superseded_palette_fade_tail_predictions != 0U
+                || missed_palette_fade_terminal_tails != 0U
+                || unexpected_palette_fade_terminal_entries != 0U) {
+                std::cout << " (";
+                bool separated = false;
+                const auto append = [&separated](
+                                        const std::uint64_t count,
+                                        const std::string_view label) {
+                    if (count == 0U) {
+                        return;
+                    }
+                    if (separated) {
+                        std::cout << ", ";
+                    }
+                    std::cout << count << ' ' << label;
+                    separated = true;
+                };
+                append(mismatched_palette_fade_loop_tails,
+                       "loop mismatch(es)");
+                append(mismatched_palette_fade_terminal_tails,
+                       "terminal mismatch(es)");
+                append(unavailable_palette_fade_tail_predictions,
+                       "unavailable tail(s)");
+                append(superseded_palette_fade_tail_predictions,
+                       "superseded tail(s)");
+                append(missed_palette_fade_terminal_tails,
+                       "missed terminal tail(s)");
+                append(unexpected_palette_fade_terminal_entries,
+                       "unexpected terminal entry/entries");
+                std::cout << ')';
+            }
+        }
         if (main_actor_pass_entries != 0U) {
             std::cout << "; main actor-pass shadow: "
                       << completed_main_actor_passes << "/"
@@ -2485,6 +2727,19 @@ struct NativeGameplayBootstrapShadow {
     std::uint64_t verified_bootstraps = 0U;
     std::uint64_t unavailable_motion_tuning = 0U;
     std::uint64_t waiting_for_playfield_map = 0U;
+    std::optional<PaletteFadeTailPrediction> pending_palette_fade_tail;
+    std::uint64_t palette_fade_block_entries = 0U;
+    std::uint64_t palette_fade_block_completions = 0U;
+    std::uint64_t palette_fade_loop_tail_predictions = 0U;
+    std::uint64_t matched_palette_fade_loop_tails = 0U;
+    std::uint64_t mismatched_palette_fade_loop_tails = 0U;
+    std::uint64_t palette_fade_terminal_tail_predictions = 0U;
+    std::uint64_t matched_palette_fade_terminal_tails = 0U;
+    std::uint64_t mismatched_palette_fade_terminal_tails = 0U;
+    std::uint64_t unavailable_palette_fade_tail_predictions = 0U;
+    std::uint64_t superseded_palette_fade_tail_predictions = 0U;
+    std::uint64_t missed_palette_fade_terminal_tails = 0U;
+    std::uint64_t unexpected_palette_fade_terminal_entries = 0U;
     std::uint64_t verified_clear_physics_inputs = 0U;
     std::uint64_t native_runtime_frames = 0U;
     std::uint64_t native_runtime_clear_frames = 0U;
@@ -14897,6 +15152,7 @@ struct NativeRegistryDeployment {
     std::uint64_t auxiliary_bank9_actor_scan_queue_bank_mismatch_entries = 0U;
     std::uint64_t auxiliary_bank9_actor_scan_wrapped_counter_entries = 0U;
     std::uint64_t auxiliary_bonus_actor_scan_entries = 0U;
+    std::uint64_t auxiliary_palette_fade_tail_entries = 0U;
 };
 
 // Admitted routines that are nonetheless withheld from a composed deployment.
@@ -15739,6 +15995,40 @@ using NativeRegistryEntryObserver = std::function<void(
             return false;
         }
     }
+    // E979 is the bounded caller continuation after E9B6's palette-block
+    // interpolation.  It returns to the already core-owned JSR at E976 on
+    // every non-terminal pass, so this remains an auxiliary transcript until
+    // live play has exercised both its loop and E994 terminal arms broadly.
+    constexpr RoutineKey kPaletteFadeCallerTail{
+        .physical_bank = 0x00U,
+        .logical_pc = 0xE979U,
+    };
+    if (std::find(
+            claimed_routines.begin(), claimed_routines.end(),
+            kPaletteFadeCallerTail)
+            == claimed_routines.end()
+        && !runtime.install_execution_hook({
+            .routine = kPaletteFadeCallerTail,
+            .mode = HookMode::replace,
+            .replacement_callback = [&deployment, &replacement_rom](
+                const RoutineEntry& entry,
+                const std::span<const std::byte> work_ram) {
+                ++deployment.auxiliary_transcript_entries;
+                ++deployment.auxiliary_palette_fade_tail_entries;
+                deployment.span.observe(entry.absolute_master_cycle);
+                auto result = replace_native_gameplay_routine(
+                    entry, work_ram, replacement_rom);
+                if (result) {
+                    ++deployment.auxiliary_transcript_accepted;
+                    deployment.auxiliary_transcript_master_cycles +=
+                        result->body_master_cycles;
+                }
+                return result;
+            },
+        })) {
+        std::cerr << "Could not install native palette-fade tail hook.\n";
+        return false;
+    }
     // Bank 09's compact actor scan reuses the admitted bank-01 queue filer,
     // but its two resumable instruction boundaries are not routine entries.
     // Keep it isolated from the registry while live play validates its exact
@@ -16067,7 +16357,9 @@ void print_native_registry_summary(
                   << " master cycles; bank-09 actor-scan="
                   << deployment.auxiliary_bank9_actor_scan_entries
                   << ", bonus actor-scan="
-                  << deployment.auxiliary_bonus_actor_scan_entries << ")\n";
+                  << deployment.auxiliary_bonus_actor_scan_entries
+                  << ", palette-fade tail="
+                  << deployment.auxiliary_palette_fade_tail_entries << ")\n";
         if (deployment.auxiliary_bank9_actor_scan_entries != 0U) {
             std::cout << "Bank-09 actor-scan entries: head="
                       << deployment.auxiliary_bank9_actor_scan_head_entries
@@ -18322,6 +18614,9 @@ int run_windows_host(
                               gameplay_bootstrap_shadow
                                   .observe_short_actor_pass_entry(
                                       entry, work_ram);
+                              gameplay_bootstrap_shadow
+                                  .observe_palette_fade_block_entry(
+                                      entry, work_ram);
                               gameplay_bootstrap_shadow.observe_motion_entry(
                                   entry, work_ram, *gameplay_shadow_rom);
                           }}
@@ -18566,6 +18861,44 @@ int run_windows_host(
             host_ok = false;
             break;
         }
+    }
+    // E9B6 returns through the core-owned JSR at E976.  Its routine-call
+    // observer gives the shadow the precise pre-RTS register state; E994 is
+    // the only caller-tail boundary not already owned by the registry.
+    if (host_ok && native_gameplay_bootstrap_shadow
+        && !runtime.install_routine_call_observer({
+            .routine = {
+                .physical_bank = 0x00U,
+                .logical_pc = 0xE9B6U,
+            },
+            .callback = [&runtime, &gameplay_bootstrap_shadow](
+                            const RoutineCall& call) {
+                gameplay_bootstrap_shadow.observe_palette_fade_block_completion(
+                    call, runtime.export_work_ram());
+            },
+        })) {
+        std::cerr << "Could not observe E9B6 palette-fade completion for "
+                     "native gameplay shadow.\n";
+        running = false;
+        host_ok = false;
+    }
+    if (host_ok && native_gameplay_bootstrap_shadow
+        && !runtime.install_execution_hook({
+            .routine = {
+                .physical_bank = 0x00U,
+                .logical_pc = 0xE994U,
+            },
+            .mode = HookMode::observe,
+            .callback = [&runtime, &gameplay_bootstrap_shadow](
+                            const RoutineEntry& entry) {
+                gameplay_bootstrap_shadow.observe_palette_fade_terminal_entry(
+                    entry, runtime.export_work_ram());
+            },
+        })) {
+        std::cerr << "Could not observe E994 palette-fade tail for native "
+                     "gameplay shadow.\n";
+        running = false;
+        host_ok = false;
     }
     // After the registry, so a deployed replacement owning either address
     // would be reported as the collision it is rather than silently winning.
