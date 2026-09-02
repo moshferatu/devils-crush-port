@@ -3372,6 +3372,10 @@ private:
             const auto native_plp_instruction = result.native_plp_instruction;
             const auto native_sei_instruction = result.native_sei_instruction;
             const auto native_jsr_instruction = result.native_jsr_instruction;
+            const auto native_bsr_instruction = result.native_bsr_instruction;
+            const auto native_bcs_instruction = result.native_bcs_instruction;
+            const auto native_giant_face_wait_dispatch_instruction =
+                result.native_giant_face_wait_dispatch_instruction;
             const auto native_jmp_instruction = result.native_jmp_instruction;
             const auto native_flipper_owner_instruction =
                 result.native_flipper_owner_instruction;
@@ -3389,6 +3393,10 @@ private:
                 + static_cast<unsigned>(native_plp_instruction.has_value())
                 + static_cast<unsigned>(native_sei_instruction.has_value())
                 + static_cast<unsigned>(native_jsr_instruction.has_value())
+                + static_cast<unsigned>(native_bsr_instruction.has_value())
+                + static_cast<unsigned>(native_bcs_instruction.has_value())
+                + static_cast<unsigned>(
+                    native_giant_face_wait_dispatch_instruction.has_value())
                 + static_cast<unsigned>(native_jmp_instruction.has_value())
                 + static_cast<unsigned>(
                     native_flipper_owner_instruction.has_value())
@@ -3423,6 +3431,18 @@ private:
                 || (native_jsr_instruction
                     && (write_count != 0U || checkpoint_count != 0U
                         || result.body_master_cycles != 21U))
+                || (native_bsr_instruction
+                    && (write_count != 0U || checkpoint_count != 0U
+                        || result.body_master_cycles != 24U))
+                || (native_bcs_instruction
+                    && (write_count != 0U || checkpoint_count != 0U
+                        || (result.body_master_cycles != 6U
+                            && result.body_master_cycles != 12U)))
+                || (native_giant_face_wait_dispatch_instruction
+                    && (write_count != 0U || checkpoint_count != 0U
+                        || (result.body_master_cycles != 6U
+                            && result.body_master_cycles != 12U
+                            && result.body_master_cycles != 15U)))
                 || (native_jmp_instruction
                     && (write_count != 0U || checkpoint_count != 0U
                         || result.body_master_cycles != 12U))
@@ -3658,6 +3678,15 @@ private:
             }
             if (native_jsr_instruction) {
                 core_result->native_jsr_instruction = 1U;
+            }
+            if (native_bsr_instruction) {
+                core_result->native_bsr_instruction = 1U;
+            }
+            if (native_bcs_instruction) {
+                core_result->native_bcs_instruction = 1U;
+            }
+            if (native_giant_face_wait_dispatch_instruction) {
+                core_result->native_giant_face_wait_dispatch_instruction = 1U;
             }
             if (native_jmp_instruction) {
                 core_result->native_jmp_instruction = 1U;

@@ -65,6 +65,10 @@ function(dc_provide_beetle_pce)
         "${beetle_fork_root}/patches/0027-huc6280-giant-face-animator-jsr.patch"
         "${beetle_fork_root}/patches/0028-huc6280-knight-giant-face-rts.patch"
         "${beetle_fork_root}/patches/0029-huc6280-collision-scanner-jsr.patch"
+        "${beetle_fork_root}/patches/0030-huc6280-knight-bsr.patch"
+        "${beetle_fork_root}/patches/0031-huc6280-knight-counter-rts.patch"
+        "${beetle_fork_root}/patches/0032-huc6280-knight-bcs.patch"
+        "${beetle_fork_root}/patches/0033-huc6280-giant-face-wait-dispatch.patch"
     )
 
     find_package(Git REQUIRED)
@@ -507,6 +511,58 @@ function(dc_provide_beetle_pce)
                     FIND
                     "${beetle_cpu_source}"
                     "native_jsr_instruction"
+                    beetle_patch_marker_two
+                )
+            elseif(beetle_patch_name MATCHES "^0030-")
+                string(
+                    FIND
+                    "${beetle_cpu_source}"
+                    "native_bsr_instruction"
+                    beetle_patch_marker_one
+                )
+                string(
+                    FIND
+                    "${beetle_cpu_source}"
+                    "PC == 0x73D3 && lastop == 0x44"
+                    beetle_patch_marker_two
+                )
+            elseif(beetle_patch_name MATCHES "^0031-")
+                string(
+                    FIND
+                    "${beetle_cpu_source}"
+                    "PC == 0x76CA"
+                    beetle_patch_marker_one
+                )
+                string(
+                    FIND
+                    "${beetle_cpu_source}"
+                    "native_rts_instruction"
+                    beetle_patch_marker_two
+                )
+            elseif(beetle_patch_name MATCHES "^0032-")
+                string(
+                    FIND
+                    "${beetle_cpu_source}"
+                    "native_bcs_instruction"
+                    beetle_patch_marker_one
+                )
+                string(
+                    FIND
+                    "${beetle_cpu_source}"
+                    "PC == 0x73D5 && lastop == 0xB0"
+                    beetle_patch_marker_two
+                )
+            elseif(beetle_patch_name MATCHES "^0033-")
+                string(
+                    FIND
+                    "${beetle_cpu_source}"
+                    "native_giant_face_wait_dispatch_instruction"
+                    beetle_patch_marker_one
+                )
+                string(
+                    FIND
+                    "${beetle_cpu_source}"
+                    "PC == 0x7699"
                     beetle_patch_marker_two
                 )
             else()

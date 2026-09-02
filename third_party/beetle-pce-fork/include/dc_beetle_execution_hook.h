@@ -104,6 +104,12 @@ typedef struct dc_beetle_replacement_result {
     uint8_t native_sei_instruction;
     // A fixed JSR that needs the core's live stack-call path.
     uint8_t native_jsr_instruction;
+    // A fixed BSR that needs the core's live relative-call path.
+    uint8_t native_bsr_instruction;
+    // A fixed BCS that needs the core's live relative-branch path.
+    uint8_t native_bcs_instruction;
+    // The Giant-Face timer-return dispatch keeps its RAM reads and branches.
+    uint8_t native_giant_face_wait_dispatch_instruction;
     // A fixed JMP that needs the core's original control-transfer boundary.
     uint8_t native_jmp_instruction;
     // The active-flipper owner's short input-tail instruction family.

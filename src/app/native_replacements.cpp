@@ -61,6 +61,20 @@ replace_native_gameplay_routine_impl(
     if (entry.routine == RoutineKey{0x45U, 0x4210U}) {
         return detail::replace_music_rts(entry);
     }
+    if (entry.routine == RoutineKey{0x03U, 0x73D3U}) {
+        return detail::replace_knight_bsr(entry);
+    }
+    if (entry.routine == RoutineKey{0x03U, 0x73D5U}) {
+        return detail::replace_knight_bcs(entry);
+    }
+    if (entry.routine.physical_bank == 0x03U
+        && (entry.routine.logical_pc == 0x7699U
+            || entry.routine.logical_pc == 0x769CU
+            || entry.routine.logical_pc == 0x76A1U
+            || entry.routine.logical_pc == 0x76A4U
+            || entry.routine.logical_pc == 0x76A6U)) {
+        return detail::replace_giant_face_wait_dispatch_instruction(entry);
+    }
     if (entry.routine == RoutineKey{0x45U, 0x4003U}
         || entry.routine == RoutineKey{0x45U, 0x40FFU}
         || entry.routine == RoutineKey{0x08U, 0x4000U}
@@ -69,8 +83,10 @@ replace_native_gameplay_routine_impl(
         return detail::replace_music_jmp(entry);
     }
     if (entry.routine == RoutineKey{0x03U, 0x7525U}
+        || entry.routine == RoutineKey{0x01U, 0xC5E9U}
         || entry.routine == RoutineKey{0x01U, 0xCCD4U}
-        || entry.routine == RoutineKey{0x03U, 0x73D7U}) {
+        || entry.routine == RoutineKey{0x03U, 0x73D7U}
+        || entry.routine == RoutineKey{0x03U, 0x76CAU}) {
         return detail::replace_shared_actor_rts(entry);
     }
     if (entry.routine == RoutineKey{0x03U, 0x751EU}

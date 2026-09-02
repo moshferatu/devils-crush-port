@@ -1,0 +1,45 @@
+diff --git a/mednafen/pce/huc6280.cpp b/mednafen/pce/huc6280.cpp
+--- a/mednafen/pce/huc6280.cpp
++++ b/mednafen/pce/huc6280.cpp
+@@ -1266,4 +1266,6 @@ NO_INLINE void HuC6280::RunSub(void)
+ 			const bool dc_beetle_native_bcs_instruction =
+ 				replacement.native_bcs_instruction != 0;
++			const bool dc_beetle_native_giant_face_wait_dispatch_instruction =
++				replacement.native_giant_face_wait_dispatch_instruction != 0;
+ 			const bool dc_beetle_native_jmp_instruction =
+ 				replacement.native_jmp_instruction != 0;
+@@ -1376,5 +1378,27 @@ NO_INLINE void HuC6280::RunSub(void)
+ 					&& (replacement.body_master_cycles == 6 || replacement.body_master_cycles == 12)
+ 					&& PC == 0x73D5 && lastop == 0xB0;
+ 			}
++			if(dc_beetle_native_giant_face_wait_dispatch_instruction)
++			{
++				// 76C5 returns here to read the live phase byte, compare it, and
++				// choose either the owner return or the next animator phase. Keep
++				// each RAM/flag/branch opcode in the core.
++				const bool dc_beetle_giant_face_wait_dispatch_opcode =
++					(PC == 0x7699 && lastop == 0xAD)
++					|| (PC == 0x769C && lastop == 0xD0)
++					|| (PC == 0x76A1 && lastop == 0xAD)
++					|| (PC == 0x76A4 && lastop == 0xC9)
++					|| (PC == 0x76A6 && lastop == 0xF0);
++				valid = valid
++					&& replacement.write_count == 0
++					&& replacement.checkpoint_count == 0
++					&& ((replacement.body_master_cycles == 15
++						&& (PC == 0x7699 || PC == 0x76A1))
++						|| (replacement.body_master_cycles == 6
++							&& (PC == 0x769C || PC == 0x76A4 || PC == 0x76A6))
++						|| (replacement.body_master_cycles == 12
++							&& (PC == 0x769C || PC == 0x76A6)))
++					&& dc_beetle_giant_face_wait_dispatch_opcode;
++			}
+ 			if(dc_beetle_native_jmp_instruction)
+ 			{
+@@ -1440,5 +1461,6 @@ NO_INLINE void HuC6280::RunSub(void)
+ 				|| dc_beetle_native_jsr_instruction
+ 				|| dc_beetle_native_bsr_instruction
+ 				|| dc_beetle_native_bcs_instruction
++				|| dc_beetle_native_giant_face_wait_dispatch_instruction
+ 				|| dc_beetle_native_jmp_instruction
+ 				|| dc_beetle_native_flipper_owner_instruction

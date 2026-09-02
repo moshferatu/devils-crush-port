@@ -1803,6 +1803,17 @@ replace_music_sei(const emulation::RoutineEntry& entry);
 [[nodiscard]] std::optional<emulation::RoutineReplacement>
 replace_music_jsr(const emulation::RoutineEntry& entry);
 
+// Bank 03's relative call must retain its live two-byte stack frame.
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_knight_bsr(const emulation::RoutineEntry& entry);
+
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_knight_bcs(const emulation::RoutineEntry& entry);
+
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_giant_face_wait_dispatch_instruction(
+    const emulation::RoutineEntry& entry);
+
 [[nodiscard]] std::optional<emulation::RoutineReplacement>
 replace_music_rts(const emulation::RoutineEntry& entry);
 

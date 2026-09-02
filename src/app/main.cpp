@@ -15135,6 +15135,7 @@ struct NativeRegistryDeployment {
     std::uint64_t core_sei_instructions = 0U;
     std::uint64_t core_jsr_instructions = 0U;
     std::uint64_t core_jmp_instructions = 0U;
+    std::uint64_t core_giant_face_wait_dispatch_instructions = 0U;
     std::uint64_t core_flipper_owner_instructions = 0U;
     std::uint64_t core_actor_scheduler_instructions = 0U;
     std::uint64_t core_tii_transfers = 0U;
@@ -15153,6 +15154,10 @@ struct NativeRegistryDeployment {
     std::uint64_t auxiliary_bank9_actor_scan_wrapped_counter_entries = 0U;
     std::uint64_t auxiliary_bonus_actor_scan_entries = 0U;
     std::uint64_t auxiliary_palette_fade_tail_entries = 0U;
+    std::uint64_t auxiliary_coroutine_scheduler_rts_entries = 0U;
+    std::uint64_t auxiliary_knight_bsr_entries = 0U;
+    std::uint64_t auxiliary_knight_bcs_entries = 0U;
+    std::uint64_t auxiliary_knight_counter_rts_entries = 0U;
 };
 
 // Admitted routines that are nonetheless withheld from a composed deployment.
@@ -15958,6 +15963,44 @@ using NativeRegistryEntryObserver = std::function<void(
             return false;
         }
     }
+    // The active Giant-Face animator returns through 76CA and immediately
+    // runs this five-opcode phase dispatcher. Each byte stays core-owned so
+    // its work-RAM reads, flags, branches, and event samples remain exact.
+    constexpr std::array<RoutineKey, 5U> kGiantFaceWaitDispatchInstructions{{
+        {.physical_bank = 0x03U, .logical_pc = 0x7699U},
+        {.physical_bank = 0x03U, .logical_pc = 0x769CU},
+        {.physical_bank = 0x03U, .logical_pc = 0x76A1U},
+        {.physical_bank = 0x03U, .logical_pc = 0x76A4U},
+        {.physical_bank = 0x03U, .logical_pc = 0x76A6U},
+    }};
+    for (const auto routine : kGiantFaceWaitDispatchInstructions) {
+        if (std::find(claimed_routines.begin(), claimed_routines.end(), routine)
+            != claimed_routines.end()) {
+            continue;
+        }
+        if (!runtime.install_execution_hook({
+                .routine = routine,
+                .mode = HookMode::replace,
+                .replacement_callback = [&deployment, &replacement_rom](
+                    const RoutineEntry& entry,
+                    const std::span<const std::byte> work_ram) {
+                    ++deployment.core_capability_entries;
+                    deployment.span.observe(entry.absolute_master_cycle);
+                    auto result = replace_native_gameplay_routine(
+                        entry, work_ram, replacement_rom);
+                    if (result) {
+                        ++deployment.core_capability_accepted;
+                        ++deployment.core_giant_face_wait_dispatch_instructions;
+                        deployment.core_capability_master_cycles +=
+                            result->body_master_cycles;
+                    }
+                    return result;
+                },
+            })) {
+            std::cerr << "Could not install native Giant-Face wait-dispatch hook.\n";
+            return false;
+        }
+    }
     // These fixed descriptors deliberately hand the original overlapping
     // clears back to the core's resumable TII opcode path. None serializes
     // thousands of writes through the ordinary replacement channel.
@@ -16027,6 +16070,135 @@ using NativeRegistryEntryObserver = std::function<void(
             },
         })) {
         std::cerr << "Could not install native palette-fade tail hook.\n";
+        return false;
+    }
+    // The coroutine scheduler ends at a shared RTS whose stack frame depends
+    // on whichever actor scheduled it.  Let the core consume that live frame
+    // through the native RTS primitive rather than modelling a scheduler
+    // return boundary here.
+    constexpr RoutineKey kCoroutineSchedulerReturn{
+        .physical_bank = 0x01U,
+        .logical_pc = 0xC5E9U,
+    };
+    if (std::find(
+            claimed_routines.begin(), claimed_routines.end(),
+            kCoroutineSchedulerReturn)
+            == claimed_routines.end()
+        && !runtime.install_execution_hook({
+            .routine = kCoroutineSchedulerReturn,
+            .mode = HookMode::replace,
+            .replacement_callback = [&deployment, &replacement_rom](
+                const RoutineEntry& entry,
+                const std::span<const std::byte> work_ram) {
+                ++deployment.auxiliary_transcript_entries;
+                ++deployment.auxiliary_coroutine_scheduler_rts_entries;
+                deployment.span.observe(entry.absolute_master_cycle);
+                auto result = replace_native_gameplay_routine(
+                    entry, work_ram, replacement_rom);
+                if (result) {
+                    ++deployment.auxiliary_transcript_accepted;
+                    deployment.auxiliary_transcript_master_cycles +=
+                        result->body_master_cycles;
+                }
+                return result;
+            },
+        })) {
+        std::cerr << "Could not install native coroutine-scheduler RTS hook.\n";
+        return false;
+    }
+    // The knight's relative call shares a live frame with the surrounding
+    // bank-03 path. Keep its push, relative target, and interrupt boundary
+    // in the core before considering the larger caller as a native domain.
+    constexpr RoutineKey kKnightBsr{
+        .physical_bank = 0x03U,
+        .logical_pc = 0x73D3U,
+    };
+    if (std::find(
+            claimed_routines.begin(), claimed_routines.end(), kKnightBsr)
+            == claimed_routines.end()
+        && !runtime.install_execution_hook({
+            .routine = kKnightBsr,
+            .mode = HookMode::replace,
+            .replacement_callback = [&deployment, &replacement_rom](
+                const RoutineEntry& entry,
+                const std::span<const std::byte> work_ram) {
+                ++deployment.auxiliary_transcript_entries;
+                ++deployment.auxiliary_knight_bsr_entries;
+                deployment.span.observe(entry.absolute_master_cycle);
+                auto result = replace_native_gameplay_routine(
+                    entry, work_ram, replacement_rom);
+                if (result) {
+                    ++deployment.auxiliary_transcript_accepted;
+                    deployment.auxiliary_transcript_master_cycles +=
+                        result->body_master_cycles;
+                }
+                return result;
+            },
+        })) {
+        std::cerr << "Could not install native knight BSR hook.\n";
+        return false;
+    }
+    // The BSR returns into a carry-sensitive branch. Its taken and
+    // fall-through timing belong to the core with the live carry result.
+    constexpr RoutineKey kKnightBcs{
+        .physical_bank = 0x03U,
+        .logical_pc = 0x73D5U,
+    };
+    if (std::find(
+            claimed_routines.begin(), claimed_routines.end(), kKnightBcs)
+            == claimed_routines.end()
+        && !runtime.install_execution_hook({
+            .routine = kKnightBcs,
+            .mode = HookMode::replace,
+            .replacement_callback = [&deployment, &replacement_rom](
+                const RoutineEntry& entry,
+                const std::span<const std::byte> work_ram) {
+                ++deployment.auxiliary_transcript_entries;
+                ++deployment.auxiliary_knight_bcs_entries;
+                deployment.span.observe(entry.absolute_master_cycle);
+                auto result = replace_native_gameplay_routine(
+                    entry, work_ram, replacement_rom);
+                if (result) {
+                    ++deployment.auxiliary_transcript_accepted;
+                    deployment.auxiliary_transcript_master_cycles +=
+                        result->body_master_cycles;
+                }
+                return result;
+            },
+        })) {
+        std::cerr << "Could not install native knight BCS hook.\n";
+        return false;
+    }
+    // This independent knight counter tail returns through a live frame after
+    // its per-actor counter check. Keep the core responsible for the pop.
+    constexpr RoutineKey kKnightCounterReturn{
+        .physical_bank = 0x03U,
+        .logical_pc = 0x76CAU,
+    };
+    if (std::find(
+            claimed_routines.begin(), claimed_routines.end(),
+            kKnightCounterReturn)
+            == claimed_routines.end()
+        && !runtime.install_execution_hook({
+            .routine = kKnightCounterReturn,
+            .mode = HookMode::replace,
+            .replacement_callback = [&deployment, &replacement_rom](
+                const RoutineEntry& entry,
+                const std::span<const std::byte> work_ram) {
+                ++deployment.auxiliary_transcript_entries;
+                ++deployment.auxiliary_knight_counter_rts_entries;
+                deployment.span.observe(entry.absolute_master_cycle);
+                auto result = replace_native_gameplay_routine(
+                    entry, work_ram, replacement_rom);
+                if (result) {
+                    ++deployment.auxiliary_transcript_accepted;
+                    deployment.auxiliary_transcript_master_cycles +=
+                        result->body_master_cycles;
+                }
+                return result;
+            },
+        })) {
+        std::cerr << "Could not install native knight counter RTS hook.\n";
         return false;
     }
     // Bank 09's compact actor scan reuses the admitted bank-01 queue filer,
@@ -16344,7 +16516,9 @@ void print_native_registry_summary(
                   << deployment.core_plp_instructions << ", SEI="
                   << deployment.core_sei_instructions << ", JSR="
                   << deployment.core_jsr_instructions << ", JMP="
-                  << deployment.core_jmp_instructions << ", Flipper="
+                  << deployment.core_jmp_instructions << ", Giant-face-wait="
+                  << deployment.core_giant_face_wait_dispatch_instructions
+                  << ", Flipper="
                   << deployment.core_flipper_owner_instructions << ", Actor-scheduler="
                   << deployment.core_actor_scheduler_instructions << ", TII="
                   << deployment.core_tii_transfers << ")\n";
@@ -16359,7 +16533,16 @@ void print_native_registry_summary(
                   << ", bonus actor-scan="
                   << deployment.auxiliary_bonus_actor_scan_entries
                   << ", palette-fade tail="
-                  << deployment.auxiliary_palette_fade_tail_entries << ")\n";
+                  << deployment.auxiliary_palette_fade_tail_entries
+                  << ", coroutine-scheduler RTS="
+                  << deployment.auxiliary_coroutine_scheduler_rts_entries
+                  << ", knight BSR="
+                  << deployment.auxiliary_knight_bsr_entries
+                  << ", knight BCS="
+                  << deployment.auxiliary_knight_bcs_entries
+                  << ", knight counter RTS="
+                  << deployment.auxiliary_knight_counter_rts_entries
+                  << ")\n";
         if (deployment.auxiliary_bank9_actor_scan_entries != 0U) {
             std::cout << "Bank-09 actor-scan entries: head="
                       << deployment.auxiliary_bank9_actor_scan_head_entries

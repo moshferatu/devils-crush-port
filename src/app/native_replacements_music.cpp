@@ -366,6 +366,96 @@ std::optional<RoutineReplacement> replace_music_rts(
     return replacement;
 }
 
+std::optional<RoutineReplacement> replace_knight_bsr(
+    const RoutineEntry& entry)
+{
+    constexpr RoutineKey kRoutine{
+        .physical_bank = 0x03U,
+        .logical_pc = 0x73D3U,
+    };
+    if (entry.routine != kRoutine) {
+        return std::nullopt;
+    }
+
+    // BSR pushes the caller's live return address, then transfers through a
+    // signed ROM displacement. The callee's later RTS consumes that exact
+    // frame, so retain the original opcode and its final event sample.
+    RoutineReplacement replacement{};
+    replacement.return_instruction = kRoutine;
+    replacement.output_registers = entry.registers;
+    replacement.body_master_cycles = 24U;
+    replacement.native_bsr_instruction = emulation::NativeBsrInstruction{};
+    return replacement;
+}
+
+std::optional<RoutineReplacement> replace_knight_bcs(
+    const RoutineEntry& entry)
+{
+    constexpr RoutineKey kRoutine{
+        .physical_bank = 0x03U,
+        .logical_pc = 0x73D5U,
+    };
+    if (entry.routine != kRoutine) {
+        return std::nullopt;
+    }
+
+    // BCS follows the knight's live BSR return. Its outcome keeps the
+    // callee's carry result but changes both the PC and cycle length, so the
+    // core must retain the original relative branch and event sample.
+    RoutineReplacement replacement{};
+    replacement.return_instruction = kRoutine;
+    replacement.output_registers = entry.registers;
+    replacement.body_master_cycles = (entry.registers.status & 0x01U) != 0U
+        ? 12U
+        : 6U;
+    replacement.native_bcs_instruction = emulation::NativeBcsInstruction{};
+    return replacement;
+}
+
+std::optional<RoutineReplacement> replace_giant_face_wait_dispatch_instruction(
+    const RoutineEntry& entry)
+{
+    if (entry.routine.physical_bank != 0x03U) {
+        return std::nullopt;
+    }
+
+    const auto pc = entry.routine.logical_pc;
+    std::uint32_t cycles = 0U;
+    switch (pc) {
+    case 0x7699U:
+    case 0x76A1U:
+        // LDA $2D0E reads the current animator phase and owns N/Z.
+        cycles = 15U;
+        break;
+    case 0x769CU:
+        // BNE $76A1 resumes the phase dispatcher when the phase is active.
+        cycles = (entry.registers.status & kZero) == 0U ? 12U : 6U;
+        break;
+    case 0x76A4U:
+        // CMP #$02 establishes the terminal-phase comparison flags.
+        cycles = 6U;
+        break;
+    case 0x76A6U:
+        // BEQ $76A9 branches around the live return on the terminal phase.
+        cycles = (entry.registers.status & kZero) != 0U ? 12U : 6U;
+        break;
+    default:
+        return std::nullopt;
+    }
+
+    // This is the continuation after 76C5's timer return. Retaining every
+    // byte in the core preserves the phase read, comparison flags, branch
+    // target, timing, and final interrupt sample without growing the host's
+    // ownership beyond that exact five-instruction dispatcher.
+    RoutineReplacement replacement{};
+    replacement.return_instruction = entry.routine;
+    replacement.output_registers = entry.registers;
+    replacement.body_master_cycles = cycles;
+    replacement.native_giant_face_wait_dispatch_instruction =
+        emulation::NativeGiantFaceWaitDispatchInstruction{};
+    return replacement;
+}
+
 std::optional<RoutineReplacement> replace_music_jmp(
     const RoutineEntry& entry)
 {
@@ -404,13 +494,23 @@ std::optional<RoutineReplacement> replace_shared_actor_rts(
         .physical_bank = 0x01U,
         .logical_pc = 0xCCD4U,
     };
+    constexpr RoutineKey kCoroutineSchedulerReturn{
+        .physical_bank = 0x01U,
+        .logical_pc = 0xC5E9U,
+    };
     constexpr RoutineKey kKnightNoHitReturn{
         .physical_bank = 0x03U,
         .logical_pc = 0x73D7U,
     };
+    constexpr RoutineKey kKnightCounterReturn{
+        .physical_bank = 0x03U,
+        .logical_pc = 0x76CAU,
+    };
     if (entry.routine != kSharedActorRoutine
+        && entry.routine != kCoroutineSchedulerReturn
         && entry.routine != kCollisionScannerRoutine
-        && entry.routine != kKnightNoHitReturn) {
+        && entry.routine != kKnightNoHitReturn
+        && entry.routine != kKnightCounterReturn) {
         return std::nullopt;
     }
 

@@ -1,0 +1,34 @@
+diff --git a/mednafen/pce/huc6280.cpp b/mednafen/pce/huc6280.cpp
+--- a/mednafen/pce/huc6280.cpp
++++ b/mednafen/pce/huc6280.cpp
+@@ -1262,4 +1262,6 @@ NO_INLINE void HuC6280::RunSub(void)
+ 			const bool dc_beetle_native_jsr_instruction =
+ 				replacement.native_jsr_instruction != 0;
++			const bool dc_beetle_native_bsr_instruction =
++				replacement.native_bsr_instruction != 0;
+ 			const bool dc_beetle_native_jmp_instruction =
+ 				replacement.native_jmp_instruction != 0;
+@@ -1350,5 +1352,16 @@ NO_INLINE void HuC6280::RunSub(void)
+ 					&& replacement.body_master_cycles == 21
+ 					&& (PC == 0x4138 || PC == 0x7696 || PC == 0xCB5E) && lastop == 0x20;
+ 			}
++			if(dc_beetle_native_bsr_instruction)
++			{
++				// BSR pushes a live return frame before reading its signed
++				// displacement and taking the final event sample. Preserve the
++				// original core opcode rather than manufacturing that frame.
++				valid = valid
++					&& replacement.write_count == 0
++					&& replacement.checkpoint_count == 0
++					&& replacement.body_master_cycles == 24
++					&& PC == 0x73D3 && lastop == 0x44;
++			}
+ 			if(dc_beetle_native_jmp_instruction)
+ 			{
+@@ -1411,5 +1424,6 @@ NO_INLINE void HuC6280::RunSub(void)
+ 				|| dc_beetle_native_plp_instruction
+ 				|| dc_beetle_native_sei_instruction
+ 				|| dc_beetle_native_jsr_instruction
++				|| dc_beetle_native_bsr_instruction
+ 				|| dc_beetle_native_jmp_instruction
+ 				|| dc_beetle_native_flipper_owner_instruction

@@ -284,6 +284,26 @@ struct NativeJsrInstruction {
     [[nodiscard]] bool operator==(const NativeJsrInstruction&) const = default;
 };
 
+// A fixed BSR whose two-byte live stack frame and relative branch remain in
+// the core. The caller and callee share that frame, so a replacement cannot
+// safely publish a synthetic return address here.
+struct NativeBsrInstruction {
+    [[nodiscard]] bool operator==(const NativeBsrInstruction&) const = default;
+};
+
+// A fixed BCS whose taken and fall-through timing must retain the core's
+// original relative branch and final event sample.
+struct NativeBcsInstruction {
+    [[nodiscard]] bool operator==(const NativeBcsInstruction&) const = default;
+};
+
+// The Giant-Face animator's timer-return dispatch is a short sequence of
+// loads, compares, and relative branches. The core retains its RAM reads,
+// flag updates, and per-opcode event samples.
+struct NativeGiantFaceWaitDispatchInstruction {
+    [[nodiscard]] bool operator==(const NativeGiantFaceWaitDispatchInstruction&) const = default;
+};
+
 // A fixed JMP whose target and event boundary stay in the core.
 struct NativeJmpInstruction {
     [[nodiscard]] bool operator==(const NativeJmpInstruction&) const = default;
@@ -349,6 +369,10 @@ struct RoutineReplacement {
     std::optional<NativePlpInstruction> native_plp_instruction;
     std::optional<NativeSeiInstruction> native_sei_instruction;
     std::optional<NativeJsrInstruction> native_jsr_instruction;
+    std::optional<NativeBsrInstruction> native_bsr_instruction;
+    std::optional<NativeBcsInstruction> native_bcs_instruction;
+    std::optional<NativeGiantFaceWaitDispatchInstruction>
+        native_giant_face_wait_dispatch_instruction;
     std::optional<NativeJmpInstruction> native_jmp_instruction;
     std::optional<NativeFlipperOwnerInstruction>
         native_flipper_owner_instruction;
