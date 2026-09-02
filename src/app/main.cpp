@@ -15136,6 +15136,7 @@ struct NativeRegistryDeployment {
     std::uint64_t core_jsr_instructions = 0U;
     std::uint64_t core_jmp_instructions = 0U;
     std::uint64_t core_giant_face_wait_dispatch_instructions = 0U;
+    std::uint64_t core_four_tick_timer_tail_entries = 0U;
     std::uint64_t core_three_blobs_timer_decrement_instructions = 0U;
     std::uint64_t core_flipper_owner_instructions = 0U;
     std::uint64_t core_actor_scheduler_instructions = 0U;
@@ -15383,19 +15384,20 @@ using NativeRegistryEntryObserver = std::function<void(
         std::cerr << "Could not install native tilemap BBR0 hook.\n";
         return false;
     }
-    // The substep loop's BBR3 is likewise a single core opcode with two event
-    // samples. Its native continuations already begin at C759 and C75E.
-    constexpr RoutineKey kSubstepBbr3Instruction{
-        .physical_bank = 0x01U,
-        .logical_pc = 0xC756U,
-    };
-    if (std::find(
-            claimed_routines.begin(),
-            claimed_routines.end(),
-            kSubstepBbr3Instruction)
-        == claimed_routines.end()
-        && !runtime.install_execution_hook({
-            .routine = kSubstepBbr3Instruction,
+    // The substep loops contain two BBR3 <$77 instructions.  Their native
+    // continuations already begin at each possible arm, while the core keeps
+    // the original read/branch event samples.
+    constexpr std::array<RoutineKey, 2U> kSubstepBbr3Instructions{{
+        {.physical_bank = 0x01U, .logical_pc = 0xC6E3U},
+        {.physical_bank = 0x01U, .logical_pc = 0xC756U},
+    }};
+    for (const auto routine : kSubstepBbr3Instructions) {
+        if (std::find(claimed_routines.begin(), claimed_routines.end(), routine)
+            != claimed_routines.end()) {
+            continue;
+        }
+        if (!runtime.install_execution_hook({
+            .routine = routine,
             .mode = HookMode::replace,
             .replacement_callback = [&deployment, &replacement_rom](
                 const RoutineEntry& entry,
@@ -15413,8 +15415,9 @@ using NativeRegistryEntryObserver = std::function<void(
                 return result;
             },
         })) {
-        std::cerr << "Could not install native substep BBR3 hook.\n";
-        return false;
+            std::cerr << "Could not install native substep BBR3 hook.\n";
+            return false;
+        }
     }
     // The collision sweep uses the same BBR3 opcode and has native arms at
     // CB81 and CB8A. It stays in the core for the original event samples.
@@ -15554,8 +15557,12 @@ using NativeRegistryEntryObserver = std::function<void(
     // boundary out of the interpreter. C9DE is the active range-helper's
     // caller-owned return: it is deliberately a core RTS rather than a
     // synthetic continuation of C969.
-    constexpr std::array<RoutineKey, 3U> kGameplayHelperRtsInstructions{{
+    constexpr std::array<RoutineKey, 7U> kGameplayHelperRtsInstructions{{
         {.physical_bank = 0x01U, .logical_pc = 0xC9DEU},
+        {.physical_bank = 0x01U, .logical_pc = 0xC70AU},
+        {.physical_bank = 0x02U, .logical_pc = 0x453BU},
+        {.physical_bank = 0x03U, .logical_pc = 0x6314U},
+        {.physical_bank = 0x03U, .logical_pc = 0x6905U},
         {.physical_bank = 0x03U, .logical_pc = 0x73FDU},
         {.physical_bank = 0x03U, .logical_pc = 0x76A8U},
     }};
@@ -15723,7 +15730,9 @@ using NativeRegistryEntryObserver = std::function<void(
         std::cerr << "Could not install native music SEI hook.\n";
         return false;
     }
-    constexpr std::array<RoutineKey, 4U> kExactJsrInstructions{{
+    constexpr std::array<RoutineKey, 6U> kExactJsrInstructions{{
+        {.physical_bank = 0x45U, .logical_pc = 0x408FU},
+        {.physical_bank = 0x45U, .logical_pc = 0x4099U},
         {.physical_bank = 0x45U, .logical_pc = 0x4138U},
         {.physical_bank = 0x03U, .logical_pc = 0x7696U},
         {.physical_bank = 0x01U, .logical_pc = 0xCB5EU},
@@ -15944,12 +15953,13 @@ using NativeRegistryEntryObserver = std::function<void(
             return false;
         }
     }
-    constexpr std::array<RoutineKey, 5U> kMusicJumpInstructions{{
+    constexpr std::array<RoutineKey, 6U> kMusicJumpInstructions{{
         {.physical_bank = 0x45U, .logical_pc = 0x4003U},
         {.physical_bank = 0x45U, .logical_pc = 0x40FFU},
         {.physical_bank = 0x08U, .logical_pc = 0x4000U},
         {.physical_bank = 0x08U, .logical_pc = 0x4009U},
         {.physical_bank = 0x08U, .logical_pc = 0x4015U},
+        {.physical_bank = 0x08U, .logical_pc = 0x4030U},
     }};
     for (const auto routine : kMusicJumpInstructions) {
         if (std::find(claimed_routines.begin(), claimed_routines.end(), routine)
@@ -15976,6 +15986,41 @@ using NativeRegistryEntryObserver = std::function<void(
                 },
             })) {
             std::cerr << "Could not install native music JMP hook.\n";
+            return false;
+        }
+    }
+    // Stable sequencer continuations reached after an inner native call or a
+    // short core interval. Register them directly so the existing bank-45
+    // model resumes the voice walk instead of falling back to interpretation.
+    constexpr std::array<RoutineKey, 3U> kMusicSequencerContinuations{{
+        {.physical_bank = 0x45U, .logical_pc = 0x40ADU},
+        {.physical_bank = 0x45U, .logical_pc = 0x40EEU},
+        {.physical_bank = 0x45U, .logical_pc = 0x40F6U},
+    }};
+    for (const auto routine : kMusicSequencerContinuations) {
+        if (std::find(claimed_routines.begin(), claimed_routines.end(), routine)
+            != claimed_routines.end()) {
+            continue;
+        }
+        if (!runtime.install_execution_hook({
+                .routine = routine,
+                .mode = HookMode::replace,
+                .replacement_callback = [&deployment, &replacement_rom](
+                    const RoutineEntry& entry,
+                    const std::span<const std::byte> work_ram) {
+                    ++deployment.core_capability_entries;
+                    deployment.span.observe(entry.absolute_master_cycle);
+                    auto result = replace_native_gameplay_routine(
+                        entry, work_ram, replacement_rom);
+                    if (result) {
+                        ++deployment.core_capability_accepted;
+                        deployment.core_capability_master_cycles +=
+                            result->body_master_cycles;
+                    }
+                    return result;
+                },
+            })) {
+            std::cerr << "Could not install native music continuation hook.\n";
             return false;
         }
     }
@@ -16014,6 +16059,42 @@ using NativeRegistryEntryObserver = std::function<void(
                 },
             })) {
             std::cerr << "Could not install native Giant-Face wait-dispatch hook.\n";
+            return false;
+        }
+    }
+    // The final four-tick countdown is shared by the Giant-Face helmet and
+    // its sibling actor routes.  Its replacement carries every original
+    // interrupt checkpoint, but is not an admitted routine row, so install
+    // its precise tail as a visible core capability.
+    constexpr RoutineKey kSharedFourTickTimerTail{
+        .physical_bank = 0x02U,
+        .logical_pc = 0x4CDAU,
+    };
+    if (std::find(
+            claimed_routines.begin(),
+            claimed_routines.end(),
+            kSharedFourTickTimerTail)
+        == claimed_routines.end()) {
+        if (!runtime.install_execution_hook({
+                .routine = kSharedFourTickTimerTail,
+                .mode = HookMode::replace,
+                .replacement_callback = [&deployment, &replacement_rom](
+                    const RoutineEntry& entry,
+                    const std::span<const std::byte> work_ram) {
+                    ++deployment.core_capability_entries;
+                    ++deployment.core_four_tick_timer_tail_entries;
+                    deployment.span.observe(entry.absolute_master_cycle);
+                    auto result = replace_native_gameplay_routine(
+                        entry, work_ram, replacement_rom);
+                    if (result) {
+                        ++deployment.core_capability_accepted;
+                        deployment.core_capability_master_cycles +=
+                            result->body_master_cycles;
+                    }
+                    return result;
+                },
+            })) {
+            std::cerr << "Could not install native four-tick timer tail hook.\n";
             return false;
         }
     }
@@ -16534,6 +16615,8 @@ void print_native_registry_summary(
                   << deployment.core_jsr_instructions << ", JMP="
                   << deployment.core_jmp_instructions << ", Giant-face-wait="
                   << deployment.core_giant_face_wait_dispatch_instructions
+                  << ", Four-tick-tail="
+                  << deployment.core_four_tick_timer_tail_entries
                   << ", Three-blobs-timer="
                   << deployment.core_three_blobs_timer_decrement_instructions
                   << ", Flipper="

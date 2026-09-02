@@ -20,13 +20,17 @@ replace_native_gameplay_routine_impl(
     const std::span<const std::byte> work_ram,
     const std::span<const std::byte> rom)
 {
+    if (entry.routine == RoutineKey{0x02U, 0x4CDAU}) {
+        return detail::replace_shared_four_tick_timer_tail(entry, work_ram);
+    }
     if (entry.routine == RoutineKey{0x01U, 0xC100U}
         || entry.routine == RoutineKey{0x08U, 0x585AU}
         || entry.routine == RoutineKey{0x00U, 0xE950U}
         || entry.routine == RoutineKey{0x08U, 0x559FU}) {
         return detail::replace_core_tii_transfer(entry);
     }
-    if (entry.routine == RoutineKey{0x01U, 0xC756U}) {
+    if (entry.routine == RoutineKey{0x01U, 0xC6E3U}
+        || entry.routine == RoutineKey{0x01U, 0xC756U}) {
         return detail::replace_ball_substep_bbr3(entry, work_ram);
     }
     if (entry.routine == RoutineKey{0x01U, 0xCB7EU}) {
@@ -52,7 +56,9 @@ replace_native_gameplay_routine_impl(
     if (entry.routine == RoutineKey{0x45U, 0x4168U}) {
         return detail::replace_music_sei(entry);
     }
-    if (entry.routine == RoutineKey{0x45U, 0x4138U}
+    if (entry.routine == RoutineKey{0x45U, 0x408FU}
+        || entry.routine == RoutineKey{0x45U, 0x4099U}
+        || entry.routine == RoutineKey{0x45U, 0x4138U}
         || entry.routine == RoutineKey{0x03U, 0x7696U}
         || entry.routine == RoutineKey{0x01U, 0xCB5EU}
         || entry.routine == RoutineKey{0x00U, 0xE976U}) {
@@ -99,7 +105,10 @@ replace_native_gameplay_routine_impl(
         || entry.routine == RoutineKey{0x01U, 0xC5E9U}
         || entry.routine == RoutineKey{0x01U, 0xCCD4U}
         || entry.routine == RoutineKey{0x03U, 0x73D7U}
-        || entry.routine == RoutineKey{0x03U, 0x76CAU}) {
+        || entry.routine == RoutineKey{0x03U, 0x76CAU}
+        || entry.routine == RoutineKey{0x01U, 0xC70AU}
+        || entry.routine == RoutineKey{0x03U, 0x6905U}
+        || entry.routine == RoutineKey{0x02U, 0x453BU}) {
         return detail::replace_shared_actor_rts(entry);
     }
     if (entry.routine == RoutineKey{0x03U, 0x751EU}
@@ -759,6 +768,21 @@ replace_native_gameplay_routine_impl(
             == RoutineKey{
                 .physical_bank = 0x45U,
                 .logical_pc = 0x409CU,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x45U,
+                .logical_pc = 0x40ADU,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x45U,
+                .logical_pc = 0x40EEU,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x45U,
+                .logical_pc = 0x40F6U,
             }
         || entry.routine
             == RoutineKey{

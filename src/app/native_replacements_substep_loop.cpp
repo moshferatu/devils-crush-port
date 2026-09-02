@@ -785,10 +785,13 @@ std::optional<RoutineReplacement> replace_ball_substep_bbr3(
     const RoutineEntry& entry,
     const std::span<const std::byte> work_ram)
 {
-    // BBR3 <$77, $C75E. The core owns the zero-page read and the branch so it
-    // can sample an event after each one; this only records the arm it will
-    // execute and asks the core to retain that exact opcode path.
-    if (entry.routine != RoutineKey{kBank, 0xC756U}
+    // The two BBR3 forms in the substep loops both test <$77.  The core owns
+    // each zero-page read and branch so it can retain their separate event
+    // samples; this only records the live arm and requests that exact opcode
+    // path.  C6E3 branches to the consume-substep arm, while C756 branches to
+    // the resume-loop's collision arm.
+    if (entry.routine != RoutineKey{kBank, 0xC6E3U}
+        && entry.routine != RoutineKey{kBank, 0xC756U}
         || entry.registers.mpr[1] != 0xF8U
         || work_ram.size() <= 0x77U) {
         return std::nullopt;
@@ -797,7 +800,9 @@ std::optional<RoutineReplacement> replace_ball_substep_bbr3(
     const auto value = std::to_integer<std::uint8_t>(work_ram[0x77U]);
     const bool clear = (value & 0x08U) == 0U;
     const auto resume_pc = static_cast<std::uint16_t>(
-        clear ? 0xC75EU : 0xC759U);
+        entry.routine.logical_pc == 0xC6E3U
+            ? (clear ? 0xC6EBU : 0xC6E6U)
+            : (clear ? 0xC75EU : 0xC759U));
     RoutineReplacement replacement{};
     auto registers = entry.registers;
     registers.program_counter = resume_pc;

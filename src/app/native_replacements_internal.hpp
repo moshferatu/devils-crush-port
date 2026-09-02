@@ -1242,6 +1242,11 @@ replace_giant_face_helmet_controller(
     std::span<const std::byte> work_ram);
 
 [[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_shared_four_tick_timer_tail(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram);
+
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
 replace_giant_face_helmet_hit_continuation(
     const emulation::RoutineEntry& entry,
     std::span<const std::byte> work_ram);

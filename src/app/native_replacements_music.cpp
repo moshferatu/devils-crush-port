@@ -193,6 +193,9 @@ constexpr std::uint32_t kChannelIterationMasterCycles = 2304U;
     return logical_pc == 0x4015U
         || logical_pc == 0x4044U
         || logical_pc == 0x409CU
+        || logical_pc == 0x40ADU
+        || logical_pc == 0x40EEU
+        || logical_pc == 0x40F6U
         || logical_pc == 0x413BU
         || logical_pc == 0x4142U
         || logical_pc == 0x4143U
@@ -313,6 +316,14 @@ std::optional<RoutineReplacement> replace_music_jsr(
         .physical_bank = 0x45U,
         .logical_pc = 0x4138U,
     };
+    constexpr RoutineKey kMusicPitchUpdateCall{
+        .physical_bank = 0x45U,
+        .logical_pc = 0x408FU,
+    };
+    constexpr RoutineKey kMusicPitchSlideCall{
+        .physical_bank = 0x45U,
+        .logical_pc = 0x4099U,
+    };
     constexpr RoutineKey kGiantFaceAnimatorCall{
         .physical_bank = 0x03U,
         .logical_pc = 0x7696U,
@@ -326,6 +337,8 @@ std::optional<RoutineReplacement> replace_music_jsr(
         .logical_pc = 0xE976U,
     };
     if (entry.routine != kMusicPsgCall
+        && entry.routine != kMusicPitchUpdateCall
+        && entry.routine != kMusicPitchSlideCall
         && entry.routine != kGiantFaceAnimatorCall
         && entry.routine != kCollisionScannerCall
         && entry.routine != kPaletteFadeTableCall) {
@@ -334,9 +347,10 @@ std::optional<RoutineReplacement> replace_music_jsr(
 
     // Each of these calls creates a return address on the live stack before
     // the interrupt boundary. Retain the original core JSR rather than
-    // modeling a synthetic frame; CB5E covers the collision scanner's rare
-    // non-composed entries and E976 crosses into the palette-fade table
-    // emitter without moving either stack write.
+    // modeling a synthetic frame; the two voice-loop calls use the same
+    // contract before resuming their already-transcribed callees. CB5E covers
+    // the collision scanner's rare non-composed entries and E976 crosses into
+    // the palette-fade table emitter without moving either stack write.
     RoutineReplacement replacement{};
     replacement.return_instruction = entry.routine;
     replacement.output_registers = entry.registers;
@@ -532,11 +546,31 @@ std::optional<RoutineReplacement> replace_shared_actor_rts(
         .physical_bank = 0x03U,
         .logical_pc = 0x76CAU,
     };
+    constexpr RoutineKey kActorSetupReturn{
+        .physical_bank = 0x03U,
+        .logical_pc = 0x6314U,
+    };
+    constexpr RoutineKey kInitialSubstepReturn{
+        .physical_bank = 0x01U,
+        .logical_pc = 0xC70AU,
+    };
+    constexpr RoutineKey kGrayBlobTimerReturn{
+        .physical_bank = 0x03U,
+        .logical_pc = 0x6905U,
+    };
+    constexpr RoutineKey kLowerTableTimerReturn{
+        .physical_bank = 0x02U,
+        .logical_pc = 0x453BU,
+    };
     if (entry.routine != kSharedActorRoutine
         && entry.routine != kCoroutineSchedulerReturn
         && entry.routine != kCollisionScannerRoutine
         && entry.routine != kKnightNoHitReturn
-        && entry.routine != kKnightCounterReturn) {
+        && entry.routine != kKnightCounterReturn
+        && entry.routine != kActorSetupReturn
+        && entry.routine != kInitialSubstepReturn
+        && entry.routine != kGrayBlobTimerReturn
+        && entry.routine != kLowerTableTimerReturn) {
         return std::nullopt;
     }
 
