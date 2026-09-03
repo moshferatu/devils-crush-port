@@ -29,11 +29,20 @@ replace_native_gameplay_routine_impl(
     if (entry.routine == RoutineKey{0x02U, 0x592BU}) {
         return detail::replace_upper_table_idle_gate(entry, work_ram);
     }
+    if (entry.routine == RoutineKey{0x02U, 0x449BU}) {
+        return detail::replace_upper_table_parent_idle_gate(entry, work_ram);
+    }
     if (entry.routine == RoutineKey{0x02U, 0x452EU}) {
         return detail::replace_upper_table_actor_idle_gate(entry, work_ram);
     }
+    if (entry.routine == RoutineKey{0x02U, 0x4421U}) {
+        return detail::replace_shared_collision_table_call(entry, work_ram);
+    }
     if (entry.routine == RoutineKey{0x03U, 0x68BFU}) {
         return detail::replace_gray_blob_live_wait_prefix(entry, work_ram);
+    }
+    if (entry.routine == RoutineKey{0x05U, 0x7356U}) {
+        return detail::replace_bonus_hazard_timer(entry, work_ram);
     }
     if (entry.routine == RoutineKey{0x01U, 0xDE9CU}) {
         return detail::replace_bank1_vdc_row_upload(entry, work_ram, rom);
@@ -939,6 +948,21 @@ replace_native_gameplay_routine_impl(
             == RoutineKey{
                 .physical_bank = 0x45U,
                 .logical_pc = 0x49F9U,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x45U,
+                .logical_pc = 0x4B4EU,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x45U,
+                .logical_pc = 0x4B5EU,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x45U,
+                .logical_pc = 0x402CU,
             }
         || entry.routine
             == RoutineKey{
@@ -2300,6 +2324,11 @@ replace_native_gameplay_routine_impl(
             work_ram);
     }
     if (entry.routine
+            == RoutineKey{
+                .physical_bank = 0x02U,
+                .logical_pc = 0x5F73U,
+            }
+        || entry.routine
             == RoutineKey{
                 .physical_bank = 0x02U,
                 .logical_pc = 0x5F78U,

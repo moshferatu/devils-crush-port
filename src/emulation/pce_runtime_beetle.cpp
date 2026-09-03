@@ -3541,44 +3541,10 @@ private:
                 previous_cycle = write.master_cycle_offset;
             }
 
-            // The core commits a replacement transaction directly, rather
-            // than routing its declared writes through the emulated memory
-            // hook.  Mirror the write stream to the runtime observers here so
-            // a mixed native/emulated execution has one complete write
-            // history.  This is deliberately after transaction validation and
-            // in transcript order; callbacks receive provenance only and the
-            // core remains the sole owner that applies the writes.
-            if (!runtime->routine_call_observers_.empty()
-                || runtime->work_ram_write_observer_) {
-                for (const auto& write : result.work_ram_writes) {
-                    const auto segment = write.logical_address >> 13U;
-                    if (state->mpr[segment] != 0xF8U) {
-                        continue;
-                    }
-                    const ObservedMemoryWrite observed{
-                        .instruction = write.instruction,
-                        .logical_address = write.logical_address,
-                        .work_ram_offset = static_cast<std::uint16_t>(
-                            write.logical_address & 0x1FFFU),
-                        .value = write.value,
-                        .frame_number = runtime->frame_number_ + 1U,
-                        .master_cycle = static_cast<std::uint32_t>(
-                            state->master_cycle + write.master_cycle_offset),
-                        .absolute_master_cycle =
-                            state->absolute_master_cycle
-                            + write.master_cycle_offset,
-                    };
-                    for (auto& registration
-                         : runtime->routine_call_observers_) {
-                        for (auto& active : registration.active_calls) {
-                            active.call.work_ram_writes.push_back(observed);
-                        }
-                    }
-                    if (runtime->work_ram_write_observer_) {
-                        runtime->work_ram_write_observer_(observed);
-                    }
-                }
-            }
+            // Replacement commits now flow through the same memory-write
+            // callback as interpreted stores.  Mirroring this list here as
+            // well duplicates every native work-RAM write in routine and
+            // range traces while leaving the final machine state unchanged.
 
             previous_cycle = 0;
             for (const auto& checkpoint : result.checkpoints) {

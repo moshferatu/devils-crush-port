@@ -191,6 +191,7 @@ constexpr std::uint32_t kChannelIterationMasterCycles = 2304U;
 [[nodiscard]] constexpr bool is_owned_entry(const std::uint16_t logical_pc)
 {
     return logical_pc == 0x4015U
+        || logical_pc == 0x402CU
         || logical_pc == 0x4044U
         || logical_pc == 0x409CU
         || logical_pc == 0x40ADU
@@ -217,6 +218,8 @@ constexpr std::uint32_t kChannelIterationMasterCycles = 2304U;
         || logical_pc == 0x49B6U
         || logical_pc == 0x49E4U
         || logical_pc == 0x49F9U
+        || logical_pc == 0x4B4EU
+        || logical_pc == 0x4B5EU
         || logical_pc == 0x4BCCU
         || logical_pc == 0x4C42U;
 }
@@ -247,7 +250,8 @@ constexpr std::uint32_t kChannelIterationMasterCycles = 2304U;
         || pc == 0x47DFU
         || pc == 0x482DU
         || pc == 0x485DU
-        || pc == 0x49E3U;
+        || pc == 0x49E3U
+        || pc == 0x4B5DU;
 }
 
 // Every RTS in the ported set. At call depth zero the walk stops in front of
@@ -291,11 +295,16 @@ constexpr std::uint32_t kChannelIterationMasterCycles = 2304U;
 std::optional<RoutineReplacement> replace_music_sei(
     const RoutineEntry& entry)
 {
-    constexpr RoutineKey kRoutine{
+    constexpr RoutineKey kVoiceProgrammerSei{
         .physical_bank = 0x45U,
         .logical_pc = 0x4168U,
     };
-    if (entry.routine != kRoutine) {
+    constexpr RoutineKey kSequencerResetSei{
+        .physical_bank = 0x45U,
+        .logical_pc = 0x4B5DU,
+    };
+    if (entry.routine != kVoiceProgrammerSei
+        && entry.routine != kSequencerResetSei) {
         return std::nullopt;
     }
 
@@ -303,7 +312,7 @@ std::optional<RoutineReplacement> replace_music_sei(
     // here when unmasked for exactly that reason; retaining the core opcode
     // keeps its two-status ordering without moving the PSG deadline.
     RoutineReplacement replacement{};
-    replacement.return_instruction = kRoutine;
+    replacement.return_instruction = entry.routine;
     replacement.output_registers = entry.registers;
     replacement.body_master_cycles = 6U;
     replacement.native_sei_instruction = emulation::NativeSeiInstruction{};
@@ -1346,6 +1355,133 @@ std::optional<RoutineReplacement> replace_music_sequencer(
             pc = 0x4017U;
             break;
 
+        // ---- 45:4B4E  sequencer reset-and-restart arm -------------------
+        // The top-level tick arrives here when bit one of $D6 requests a
+        // music reset. It silences the timer/PSG state under a short PHP/SEI
+        // bracket, then reuses the existing 49B6 tempo and 4142 PSG walks.
+        case 0x4B4EU:  // STZ $0C01 -- disable timer IRQ source
+            store(0x4B4EU, kTimerControl, 0x00U);
+            append_checkpoint(0x4B4EU, 0x4B51U, 15U);
+            pc = 0x4B51U;
+            break;
+
+        case 0x4B51U:  // STZ $0C00 -- clear timer reload
+            store(0x4B51U, 0x0C00U, 0x00U);
+            append_checkpoint(0x4B51U, 0x4B54U, 15U);
+            pc = 0x4B54U;
+            break;
+
+        case 0x4B54U:  // STZ <$F5 -- clear driver channel-bank shadows
+            store(0x4B54U, zp(0xF5U), 0x00U);
+            append_checkpoint(0x4B54U, 0x4B56U, 12U);
+            pc = 0x4B56U;
+            break;
+
+        case 0x4B56U:  // STZ <$F7
+            store(0x4B56U, zp(0xF7U), 0x00U);
+            append_checkpoint(0x4B56U, 0x4B58U, 12U);
+            pc = 0x4B58U;
+            break;
+
+        case 0x4B58U:  // STZ <$F9
+            store(0x4B58U, zp(0xF9U), 0x00U);
+            append_checkpoint(0x4B58U, 0x4B5AU, 12U);
+            pc = 0x4B5AU;
+            break;
+
+        case 0x4B5AU:  // STZ <$D9
+            store(0x4B5AU, zp(0xD9U), 0x00U);
+            append_checkpoint(0x4B5AU, 0x4B5CU, 12U);
+            pc = 0x4B5CU;
+            break;
+
+        case 0x4B5CU:  // PHP -- preserve the caller's interrupt mask
+            push(
+                0x4B5CU,
+                static_cast<std::uint8_t>(registers.status | 0x10U));
+            append_checkpoint(0x4B5CU, 0x4B5DU, 9U);
+            pc = 0x4B5DU;
+            break;
+
+        // With an open interrupt window, the loop leaves this SEI for the
+        // core so its pre-mask interrupt sample stays exact. This arm is for
+        // entries that already arrive masked.
+        case 0x4B5DU:  // SEI
+            pending_status = static_cast<std::uint8_t>(
+                registers.status | kInterruptDisable);
+            status_change_pending = true;
+            append_checkpoint(0x4B5DU, 0x4B5EU, 6U);
+            pc = 0x4B5EU;
+            break;
+
+        case 0x4B5EU:  // STZ $0800 -- select PSG channel zero
+            store(0x4B5EU, kPsgChannelSelect, 0x00U);
+            append_checkpoint(0x4B5EU, 0x4B61U, 12U);
+            pc = 0x4B61U;
+            break;
+
+        case 0x4B61U:  // STZ $0805 -- clear channel balance
+            store(0x4B61U, kPsgBalance, 0x00U);
+            append_checkpoint(0x4B61U, 0x4B64U, 12U);
+            pc = 0x4B64U;
+            break;
+
+        case 0x4B64U:  // LDA #$02
+            load_accumulator(0x02U);
+            append_checkpoint(0x4B64U, 0x4B66U, 6U);
+            pc = 0x4B66U;
+            break;
+
+        case 0x4B66U:  // STA $0800 -- select PSG channel two
+            store(0x4B66U, kPsgChannelSelect, registers.accumulator);
+            append_checkpoint(0x4B66U, 0x4B69U, 12U);
+            pc = 0x4B69U;
+            break;
+
+        case 0x4B69U:  // STZ $0805
+            store(0x4B69U, kPsgBalance, 0x00U);
+            append_checkpoint(0x4B69U, 0x4B6CU, 12U);
+            pc = 0x4B6CU;
+            break;
+
+        case 0x4B6CU:  // LDA #$04
+            load_accumulator(0x04U);
+            append_checkpoint(0x4B6CU, 0x4B6EU, 6U);
+            pc = 0x4B6EU;
+            break;
+
+        case 0x4B6EU:  // STA $0800 -- select PSG channel four
+            store(0x4B6EU, kPsgChannelSelect, registers.accumulator);
+            append_checkpoint(0x4B6EU, 0x4B71U, 12U);
+            pc = 0x4B71U;
+            break;
+
+        case 0x4B71U:  // STZ $0805
+            store(0x4B71U, kPsgBalance, 0x00U);
+            append_checkpoint(0x4B71U, 0x4B74U, 12U);
+            pc = 0x4B74U;
+            break;
+
+        case 0x4B74U:  // PLP -- restore the caller's mask after its sample
+            pull_status();
+            append_checkpoint(0x4B74U, 0x4B75U, 12U);
+            pc = 0x4B75U;
+            break;
+
+        case 0x4B75U:  // JSR $49B6 -- reset the tempo divider
+            push(0x4B75U, 0x4BU);
+            push(0x4B75U, 0x77U);
+            commit_pending_writes(cycle);
+            ++depth;
+            append_checkpoint(0x4B75U, 0x49B6U, 21U);
+            pc = 0x49B6U;
+            break;
+
+        case 0x4B78U:  // JMP $4142 -- reuse the PSG channel upload walk
+            append_checkpoint(0x4B78U, 0x4142U, 12U);
+            pc = 0x4142U;
+            break;
+
         // The core runs the immediate form of BIT through the same macro as
         // the memory forms -- `case 0x89: LD_IM(BIT)` -- so it clears N and V
         // and takes them from the operand rather than moving Z alone the way a
@@ -1388,6 +1524,24 @@ std::optional<RoutineReplacement> replace_music_sequencer(
             pc = branch(
                 0x4022U, 0x402FU, 0x4024U,
                 (registers.status & kZero) != 0U);
+            break;
+
+        case 0x402BU:  // CLI -- restart the sequencer with IRQs reopened
+            pending_status = static_cast<std::uint8_t>(
+                registers.status
+                & static_cast<std::uint8_t>(~kInterruptDisable));
+            status_change_pending = true;
+            append_checkpoint(0x402BU, 0x402CU, 6U);
+            pc = 0x402CU;
+            break;
+
+        case 0x402CU:  // JSR $4BCC -- install the selected command record
+            push(0x402CU, 0x40U);
+            push(0x402CU, 0x2EU);
+            commit_pending_writes(cycle);
+            ++depth;
+            append_checkpoint(0x402CU, 0x4BCCU, 21U);
+            pc = 0x4BCCU;
             break;
 
         case 0x402FU:  // JSR $4211 -- the pending-event gate

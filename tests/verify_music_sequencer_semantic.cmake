@@ -130,11 +130,11 @@ set(
 )
 set(
     expected_call_sha256
-    "e0d9b34c80d2a0dd8fc61a2a1859b0bc664a9092f01256b7f35c0f5b8cee2d2b"
+    "0912b02a9a3db6410dfc1f58892373c2e93b35d36c34c8ed4a90d52ba0959b96"
 )
 set(
     expected_call_write_sha256
-    "0f0314437896872b6646a8f74279b3045e0f7a7045490d3ed87005e66c69e2b2"
+    "ad52399b7450be376fecfcc795fa866b3ed0791b45cd90a157955552c9ddfb0e"
 )
 
 set(write_output "${OUTPUT}.writes.csv")
@@ -194,12 +194,18 @@ execute_process(
         "45:4BCC"
         --replace-hook
         "45:4BCC@all"
+        --observe-hook
+        "45:4B4E"
+        --replace-hook
+        "45:4B4E@all"
         --routine-call-trace
         "${call_output}"
         --routine-replay
         "45:4936@548"
         --routine-replay
         "45:4BCC@66"
+        --routine-replay
+        "45:4B4E@2"
         --work-ram-write-range
         "20D2-20D8"
         --work-ram-write-range
@@ -268,12 +274,15 @@ foreach(expected_line IN ITEMS
     "Native replacement 45:49E4@all entries: 289 of 289"
     "Native replacement 45:49F9@all entries: 35 of 37"
     "Native replacement 45:4BCC@all entries: 66 of 66"
+    "Native replacement 45:4B4E@all entries: 5 of 5"
     "Observe hook 1 entries: 548"
     "Observe hook 2 entries: 66"
-    "Routine call trace complete: 614 calls, 5896 writes"
+    "Observe hook 3 entries: 5"
+    "Routine call trace complete: 619 calls, 6006 writes"
     "Routine replay 45:4936@548 verified: frame 3407, 168 body cycles, 1 ordered writes"
     "Routine replay 45:4BCC@66 verified: frame 3466, 1800 body cycles, 45 ordered writes"
-    "Routine replay complete: 2 state-normalized calls"
+    "Routine replay 45:4B4E@2 verified: frame 1, 1476 body cycles, 22 ordered writes"
+    "Routine replay complete: 3 state-normalized calls"
     "Work-RAM write trace complete: 5458568 selected writes"
     "Bus write trace complete: 699251 selected writes"
 )

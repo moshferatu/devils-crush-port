@@ -7915,6 +7915,20 @@ parse_logical_address_range(const std::string_view text)
                                || request.ordinal == 21U
                                || request.ordinal == 22U
                                || request.ordinal == 23U);
+                       const bool proven_upper_table_parent_idle_gate =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x02U,
+                                       .logical_pc = 0x449BU,
+                                   }
+                           && request.all_calls;
+                       const bool proven_bonus_hazard_timer =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x05U,
+                                       .logical_pc = 0x7356U,
+                                   }
+                           && request.all_calls;
                        const bool proven_actor_scan_preamble =
                            request.routine
                                    == RoutineKey{
@@ -8058,7 +8072,8 @@ parse_logical_address_range(const std::string_view text)
                                || request.routine.logical_pc == 0x49B6U
                                || request.routine.logical_pc == 0x49F9U
                                || request.routine.logical_pc == 0x4BCCU
-                               || request.routine.logical_pc == 0x4C42U)
+                               || request.routine.logical_pc == 0x4C42U
+                               || request.routine.logical_pc == 0x4B4EU)
                            && request.all_calls;
                        const bool proven_palette_shadow =
                            request.routine.physical_bank == 0x00U
@@ -8617,10 +8632,13 @@ parse_logical_address_range(const std::string_view text)
                            && !proven_scaled_word_add
                            && !proven_three_blobs_controller
                            && !proven_three_blobs_appearance_gate
-                           && !proven_collision_table_pass;
+                           && !proven_collision_table_pass
+                           && !proven_upper_table_parent_idle_gate
+                           && !proven_bonus_hazard_timer;
                    })) {
         options.error =
-            "Native replacement currently supports 00:F241, semantic "
+            "Native replacement currently supports 00:F241, semantic 02:449B@all, semantic 05:7356@all, "
+            "semantic "
             "00:F1B4@all, and the proven no-interrupt 00:F1B4@1, 00:F1B4@10, "
             "00:F1B4@17, semantic 01:D1A2@all, 01:D1A2@23, "
             "semantic 01:DD09@all, 01:DD09@1, 01:DD09@2, "
@@ -15143,7 +15161,9 @@ struct NativeRegistryDeployment {
     std::uint64_t core_mercy_star_not_last_tail_entries = 0U;
     std::uint64_t core_three_blobs_timer_decrement_instructions = 0U;
     std::uint64_t core_upper_table_idle_gate_entries = 0U;
+    std::uint64_t core_upper_table_parent_idle_gate_entries = 0U;
     std::uint64_t core_upper_table_actor_idle_gate_entries = 0U;
+    std::uint64_t core_bonus_hazard_timer_entries = 0U;
     std::uint64_t core_gray_blob_live_wait_entries = 0U;
     std::uint64_t core_bank1_vdc_row_upload_entries = 0U;
     std::uint64_t core_shared_collision_free_timer_tail_entries = 0U;
@@ -15723,15 +15743,17 @@ using NativeRegistryEntryObserver = std::function<void(
     }
     // The music driver reaches this SEI with interrupts enabled. The original
     // opcode samples its pending IRQ before it raises I, so retain it in core.
-    constexpr RoutineKey kMusicSeiInstruction{
-        .physical_bank = 0x45U,
-        .logical_pc = 0x4168U,
-    };
-    if (std::find(
-            claimed_routines.begin(), claimed_routines.end(), kMusicSeiInstruction)
-            == claimed_routines.end()
-        && !runtime.install_execution_hook({
-            .routine = kMusicSeiInstruction,
+    constexpr std::array<RoutineKey, 2U> kMusicSeiInstructions{{
+        {.physical_bank = 0x45U, .logical_pc = 0x4168U},
+        {.physical_bank = 0x45U, .logical_pc = 0x4B5DU},
+    }};
+    for (const auto routine : kMusicSeiInstructions) {
+        if (std::find(claimed_routines.begin(), claimed_routines.end(), routine)
+            != claimed_routines.end()) {
+            continue;
+        }
+        if (!runtime.install_execution_hook({
+            .routine = routine,
             .mode = HookMode::replace,
             .replacement_callback = [&deployment, &replacement_rom](
                 const RoutineEntry& entry,
@@ -15748,9 +15770,10 @@ using NativeRegistryEntryObserver = std::function<void(
                 }
                 return result;
             },
-        })) {
-        std::cerr << "Could not install native music SEI hook.\n";
-        return false;
+            })) {
+            std::cerr << "Could not install native music SEI hook.\n";
+            return false;
+        }
     }
     constexpr std::array<RoutineKey, 8U> kExactJsrInstructions{{
         {.physical_bank = 0x45U, .logical_pc = 0x408FU},
@@ -16016,10 +16039,12 @@ using NativeRegistryEntryObserver = std::function<void(
     // Stable sequencer continuations reached after an inner native call or a
     // short core interval. Register them directly so the existing bank-45
     // model resumes the voice walk instead of falling back to interpretation.
-    constexpr std::array<RoutineKey, 3U> kMusicSequencerContinuations{{
+    constexpr std::array<RoutineKey, 6U> kMusicSequencerContinuations{{
         {.physical_bank = 0x45U, .logical_pc = 0x40ADU},
         {.physical_bank = 0x45U, .logical_pc = 0x40EEU},
         {.physical_bank = 0x45U, .logical_pc = 0x40F6U},
+        {.physical_bank = 0x45U, .logical_pc = 0x402CU},
+        {.physical_bank = 0x45U, .logical_pc = 0x4B5EU},
     }};
     for (const auto routine : kMusicSequencerContinuations) {
         if (std::find(claimed_routines.begin(), claimed_routines.end(), routine)
@@ -16248,6 +16273,37 @@ using NativeRegistryEntryObserver = std::function<void(
         std::cerr << "Could not install native upper-table idle gate hook.\n";
         return false;
     }
+    // 02:449B's mapped-parent gate returns immediately when the parent is
+    // already active. Its zero arm enters the original setup path.
+    constexpr RoutineKey kUpperTableParentIdleGate{
+        .physical_bank = 0x02U,
+        .logical_pc = 0x449BU,
+    };
+    if (std::find(
+            claimed_routines.begin(), claimed_routines.end(), kUpperTableParentIdleGate)
+            == claimed_routines.end()
+        && !runtime.install_execution_hook({
+            .routine = kUpperTableParentIdleGate,
+            .mode = HookMode::replace,
+            .replacement_callback = [&deployment, &replacement_rom](
+                const RoutineEntry& entry,
+                const std::span<const std::byte> work_ram) {
+                ++deployment.core_capability_entries;
+                ++deployment.core_upper_table_parent_idle_gate_entries;
+                deployment.span.observe(entry.absolute_master_cycle);
+                auto result = replace_native_gameplay_routine(
+                    entry, work_ram, replacement_rom);
+                if (result) {
+                    ++deployment.core_capability_accepted;
+                    deployment.core_capability_master_cycles +=
+                        result->body_master_cycles;
+                }
+                return result;
+            },
+        })) {
+        std::cerr << "Could not install native upper-table parent idle gate hook.\n";
+        return false;
+    }
     // 02:452E's upper-table actor wait arm reads a zero gate and an active
     // actor before returning through the shared RTS at 453B. Its two other
     // branches retain their ROM-owned active/reactivation behavior.
@@ -16278,6 +16334,38 @@ using NativeRegistryEntryObserver = std::function<void(
             },
         })) {
         std::cerr << "Could not install native upper-table actor idle gate hook.\n";
+        return false;
+    }
+    // 05:7356's stage-six hazard normally decrements a live timer and returns.
+    // Its zero arm installs a new state through C018/C5C9, so that transition
+    // remains assembly-owned while the common steady arm is native.
+    constexpr RoutineKey kBonusHazardTimer{
+        .physical_bank = 0x05U,
+        .logical_pc = 0x7356U,
+    };
+    if (std::find(
+            claimed_routines.begin(), claimed_routines.end(), kBonusHazardTimer)
+        == claimed_routines.end()
+        && !runtime.install_execution_hook({
+            .routine = kBonusHazardTimer,
+            .mode = HookMode::replace,
+            .replacement_callback = [&deployment, &replacement_rom](
+                const RoutineEntry& entry,
+                const std::span<const std::byte> work_ram) {
+                ++deployment.core_capability_entries;
+                ++deployment.core_bonus_hazard_timer_entries;
+                deployment.span.observe(entry.absolute_master_cycle);
+                auto result = replace_native_gameplay_routine(
+                    entry, work_ram, replacement_rom);
+                if (result) {
+                    ++deployment.core_capability_accepted;
+                    deployment.core_capability_master_cycles +=
+                        result->body_master_cycles;
+                }
+                return result;
+            },
+        })) {
+        std::cerr << "Could not install native bonus-hazard timer hook.\n";
         return false;
     }
     // 03:68BF's common live Gray-Blob arm advances a non-expiring movement
@@ -17052,8 +17140,12 @@ void print_native_registry_summary(
                   << deployment.core_three_blobs_timer_decrement_instructions
                   << ", Upper-table-idle="
                   << deployment.core_upper_table_idle_gate_entries
+                  << ", Upper-table-parent-idle="
+                  << deployment.core_upper_table_parent_idle_gate_entries
                   << ", Upper-table-actor-idle="
                   << deployment.core_upper_table_actor_idle_gate_entries
+                  << ", Bonus-hazard-timer="
+                  << deployment.core_bonus_hazard_timer_entries
                   << ", Gray-blob-wait="
                   << deployment.core_gray_blob_live_wait_entries
                   << ", Bank-01-VDC-row="
@@ -18305,7 +18397,12 @@ struct DirectRoutineReplay {
                     const std::span<const std::byte> work_ram) {
                     if (active == nullptr
                         || active->corpus.checkpoint_entry.routine
-                            != routine) {
+                            != routine
+                        // A corpus checkpoint resumes at the requested entry.
+                        // The rest of its frame may reach the same routine
+                        // again, but direct replay validates exactly the one
+                        // captured call rather than replacing later calls.
+                        || active->replacement_hits != 0U) {
                         return std::optional<RoutineReplacement>{};
                     }
                     auto result = replace_native_gameplay_routine(

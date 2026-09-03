@@ -823,6 +823,73 @@ replace_gray_blob_live_wait_prefix(
 }
 
 [[nodiscard]] std::optional<RoutineReplacement>
+replace_bonus_hazard_timer(
+    const RoutineEntry& entry,
+    const std::span<const std::byte> work_ram)
+{
+    // The stage-six hazard's steady arm is deliberately small and closed:
+    //
+    //   7356 DEC $3B00,X  21
+    //   7359 BEQ $735C     6  (not taken)
+    //
+    // The following RTS remains its own instruction boundary.  A zero result
+    // instead initializes the next animation state and crosses C018/C5C9, so
+    // leave that expiry path to the original code until its full handoff is
+    // independently modeled.
+    constexpr RoutineKey kRoutine{.physical_bank = 0x05U, .logical_pc = 0x7356U};
+    constexpr std::uint16_t kTimerBase = 0x3B00U;
+    if (entry.routine != kRoutine || work_ram.size() < 0x2000U) {
+        return std::nullopt;
+    }
+
+    const auto timer_offset = static_cast<std::size_t>(
+        (kTimerBase & 0x1FFFU) + entry.registers.x);
+    if (timer_offset >= work_ram.size()) {
+        return std::nullopt;
+    }
+    const auto timer_before = std::to_integer<std::uint8_t>(work_ram[timer_offset]);
+    const auto timer_after = static_cast<std::uint8_t>(timer_before - 1U);
+    if (timer_after == 0U) {
+        return std::nullopt;
+    }
+
+    auto output = entry.registers;
+    output.status = static_cast<std::uint8_t>(output.status & 0x7DU);
+    if ((timer_after & 0x80U) != 0U) {
+        output.status = static_cast<std::uint8_t>(output.status | 0x80U);
+    }
+    output.program_counter = 0x735BU;
+
+    RoutineReplacement replacement{
+        .return_instruction = {.physical_bank = 0x05U, .logical_pc = 0x735BU},
+        .output_registers = output,
+        .body_master_cycles = 27U,
+    };
+    replacement.work_ram_writes.push_back({
+        .instruction = {.physical_bank = 0x05U, .logical_pc = 0x7356U},
+        .logical_address = static_cast<std::uint16_t>(kTimerBase + entry.registers.x),
+        .value = timer_after,
+        .master_cycle_offset = 21U,
+    });
+    auto checkpoint = output;
+    checkpoint.program_counter = 0x7359U;
+    replacement.checkpoints.push_back({
+        .interrupt_sample_master_cycle_offset = 18U,
+        .master_cycle_offset = 21U,
+        .instruction = {.physical_bank = 0x05U, .logical_pc = 0x7356U},
+        .registers = checkpoint,
+    });
+    checkpoint.program_counter = 0x735BU;
+    replacement.checkpoints.push_back({
+        .interrupt_sample_master_cycle_offset = 24U,
+        .master_cycle_offset = 27U,
+        .instruction = {.physical_bank = 0x05U, .logical_pc = 0x7359U},
+        .registers = checkpoint,
+    });
+    return replacement;
+}
+
+[[nodiscard]] std::optional<RoutineReplacement>
 replace_upper_table_idle_gate(
     const RoutineEntry& entry,
     const std::span<const std::byte> work_ram)
@@ -891,6 +958,84 @@ replace_upper_table_idle_gate(
         kReturn,
         27U,
         output);
+    return replacement;
+}
+
+[[nodiscard]] std::optional<RoutineReplacement>
+replace_upper_table_parent_idle_gate(
+    const RoutineEntry& entry,
+    const std::span<const std::byte> work_ram)
+{
+    // This upper-table leaf maps the active actor through $3E00, reads the
+    // parent's $2CF5 gate, and returns when that parent is already active:
+    //
+    //   449B LDY $3E00,X  15    44A1 BEQ $44A4  6 (not taken)
+    //   449E LDA $2CF5,Y  15    44A3 RTS        (core-owned)
+    //
+    // A zero gate continues into the parent's setup path at $44A4 and stays
+    // in ROM. The nonzero return hands its live stack pop to the existing
+    // exact-core RTS capability at $44A3.
+    constexpr RoutineKey kRoutine{.physical_bank = 0x02U, .logical_pc = 0x449BU};
+    constexpr RoutineKey kReturn{.physical_bank = 0x02U, .logical_pc = 0x44A3U};
+    constexpr std::size_t kParentSlotBase = 0x1E00U;
+    constexpr std::size_t kParentGateBase = 0x0CF5U;
+    if (entry.routine != kRoutine
+        || work_ram.size() <= kParentSlotBase + entry.registers.x) {
+        return std::nullopt;
+    }
+
+    const auto set_nz = [](std::uint8_t status, const std::uint8_t value) {
+        status = static_cast<std::uint8_t>(status & 0x7DU);
+        if (value == 0U) {
+            return static_cast<std::uint8_t>(status | 0x02U);
+        }
+        if ((value & 0x80U) != 0U) {
+            return static_cast<std::uint8_t>(status | 0x80U);
+        }
+        return status;
+    };
+    const auto parent_slot = std::to_integer<std::uint8_t>(
+        work_ram[kParentSlotBase + entry.registers.x]);
+    if (work_ram.size() <= kParentGateBase + parent_slot) {
+        return std::nullopt;
+    }
+    const auto parent_gate = std::to_integer<std::uint8_t>(
+        work_ram[kParentGateBase + parent_slot]);
+    if (parent_gate == 0U) {
+        return std::nullopt;
+    }
+
+    auto output = entry.registers;
+    output.y = parent_slot;
+    output.status = set_nz(output.status, output.y);
+    RoutineReplacement replacement{
+        .return_instruction = kReturn,
+        .output_registers = output,
+        .body_master_cycles = 36U,
+    };
+    replacement.checkpoints.push_back({
+        .interrupt_sample_master_cycle_offset = 12U,
+        .master_cycle_offset = 15U,
+        .instruction = kRoutine,
+        .registers = output,
+    });
+    output.accumulator = parent_gate;
+    output.status = set_nz(output.status, output.accumulator);
+    output.program_counter = 0x44A1U;
+    replacement.checkpoints.push_back({
+        .interrupt_sample_master_cycle_offset = 27U,
+        .master_cycle_offset = 30U,
+        .instruction = {.physical_bank = 0x02U, .logical_pc = 0x449EU},
+        .registers = output,
+    });
+    output.program_counter = kReturn.logical_pc;
+    replacement.checkpoints.push_back({
+        .interrupt_sample_master_cycle_offset = 33U,
+        .master_cycle_offset = 36U,
+        .instruction = {.physical_bank = 0x02U, .logical_pc = 0x44A1U},
+        .registers = output,
+    });
+    replacement.output_registers = output;
     return replacement;
 }
 
@@ -10200,11 +10345,13 @@ replace_tower_insect_child_spawner_seam(
     const RoutineEntry& entry,
     const std::span<const std::byte> work_ram)
 {
+    constexpr RoutineKey kSourceSchedulerCall{0x02U, 0x5F73U};
     constexpr RoutineKey kAllocationCall{0x02U, 0x5F78U};
     constexpr RoutineKey kAllocatorSuccess{0x02U, 0x5F7BU};
     constexpr RoutineKey kChildInitializer{0x02U, 0x5F7EU};
     constexpr RoutineKey kCountTail{0x02U, 0x5FD6U};
-    if ((entry.routine != kAllocationCall
+    if ((entry.routine != kSourceSchedulerCall
+         && entry.routine != kAllocationCall
          && entry.routine != kAllocatorSuccess
          && entry.routine != kChildInitializer
          && entry.routine != kCountTail)
@@ -10258,6 +10405,32 @@ replace_tower_insect_child_spawner_seam(
     };
 
     auto checkpoint = entry.registers;
+    if (entry.routine == kSourceSchedulerCall) {
+        // The fixed source's group-clear path yields through the ordinary
+        // coroutine scheduler.  This JSR owns only its precise return frame;
+        // C018/C5C9 remains the existing scheduler transaction, which
+        // consumes that frame and installs the next source dispatch.
+        if (entry.registers.x != 0x2CU) {
+            return std::nullopt;
+        }
+        const auto stack_high = checkpoint.stack_pointer;
+        const auto stack_low = static_cast<std::uint8_t>(stack_high - 1U);
+        append_write(0x5F73U,
+                     static_cast<std::uint16_t>(0x2100U + stack_high),
+                     0x5FU, 0U);
+        append_write(0x5F73U,
+                     static_cast<std::uint16_t>(0x2100U + stack_low),
+                     0x75U, 0U);
+        checkpoint.stack_pointer = static_cast<std::uint8_t>(
+            checkpoint.stack_pointer - 2U);
+        append_checkpoint(0x5F73U, 0xC018U, 21U, checkpoint);
+        checkpoint.program_counter = 0xC018U;
+        replacement.return_instruction = {0x01U, 0xC018U};
+        replacement.output_registers = checkpoint;
+        replacement.body_master_cycles = 21U;
+        return replacement;
+    }
+
     if (entry.routine == kAllocationCall) {
         // JSR $C024. The jump-table row and generic allocator remain their
         // own admitted transactions and resume at the carry branch below.
@@ -22780,6 +22953,57 @@ replace_shared_four_tick_timer_tail(
     });
     replacement.body_master_cycles = 111U;
     append_checkpoint(replacement, 0x4CEEU, 0x4CF1U, 111U, after_compare);
+    return replacement;
+}
+
+[[nodiscard]] std::optional<RoutineReplacement>
+replace_shared_collision_table_call(
+    const RoutineEntry& entry,
+    const std::span<const std::byte> work_ram)
+{
+    // `JSR $6966` is the common upper-table collision-table call.  The
+    // callee already owns the whole table walk and absorbs this return, so
+    // this seam owns only the caller's exact JSR frame.
+    constexpr RoutineKey kRoutine{.physical_bank = 0x02U, .logical_pc = 0x4421U};
+    constexpr std::uint16_t kCollisionTableEntry = 0x6966U;
+    if (entry.routine != kRoutine || work_ram.size() < 0x0200U) {
+        return std::nullopt;
+    }
+
+    auto output = entry.registers;
+    const auto stack_high = output.stack_pointer;
+    const auto stack_low = static_cast<std::uint8_t>(stack_high - 1U);
+    output.stack_pointer = static_cast<std::uint8_t>(output.stack_pointer - 2U);
+    output.program_counter = kCollisionTableEntry;
+
+    RoutineReplacement replacement{
+        .return_instruction = {
+            .physical_bank = output.mpr[kCollisionTableEntry >> 13U],
+            .logical_pc = kCollisionTableEntry,
+        },
+        .output_registers = output,
+        .body_master_cycles = 21U,
+        .work_ram_writes = {
+            {
+                .instruction = kRoutine,
+                .logical_address = static_cast<std::uint16_t>(0x2100U + stack_high),
+                .value = 0x44U,
+                .master_cycle_offset = 15U,
+            },
+            {
+                .instruction = kRoutine,
+                .logical_address = static_cast<std::uint16_t>(0x2100U + stack_low),
+                .value = 0x23U,
+                .master_cycle_offset = 15U,
+            },
+        },
+    };
+    replacement.checkpoints.push_back({
+        .interrupt_sample_master_cycle_offset = 18U,
+        .master_cycle_offset = 21U,
+        .instruction = kRoutine,
+        .registers = output,
+    });
     return replacement;
 }
 

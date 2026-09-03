@@ -103,7 +103,17 @@ replace_upper_table_idle_gate(
     std::span<const std::byte> work_ram);
 
 [[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_upper_table_parent_idle_gate(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram);
+
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
 replace_upper_table_actor_idle_gate(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram);
+
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_shared_collision_table_call(
     const emulation::RoutineEntry& entry,
     std::span<const std::byte> work_ram);
 
@@ -1620,6 +1630,13 @@ replace_bank9_actor_scan(
 
 [[nodiscard]] std::optional<emulation::RoutineReplacement>
 replace_bonus_actor_scan(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram);
+
+// 05:7356's bonus-stage-6 hazard handler.  The common non-expiring timer arm
+// is a closed decrement/return; expiry stays at the original scheduler seam.
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_bonus_hazard_timer(
     const emulation::RoutineEntry& entry,
     std::span<const std::byte> work_ram);
 
