@@ -1598,4 +1598,244 @@ std::optional<RoutineReplacement> replace_vram_upload(
     }
 }
 
+std::optional<RoutineReplacement> replace_bank1_vdc_row_upload(
+    const RoutineEntry& entry,
+    const std::span<const std::byte> work_ram,
+    const std::span<const std::byte> rom)
+{
+    // 01:DE9C prepares MAWR twice and emits two $E2xx words per pass.  The
+    // backwards BNE at DF02 returns to DEA2, so the complete row is bounded
+    // by the caller's $2D55 count and fits the replacement channels.
+    constexpr RoutineKey kRoutine{.physical_bank = 0x01U, .logical_pc = 0xDE9CU};
+    constexpr std::uint8_t kBank1 = 0x01U;
+    // Each pass has twelve VDC writes and eight work-RAM stores.  Keeping the
+    // cap at 24 leaves room below the core's 512-write channel limit even for
+    // the terminal flag store; larger caller counts fall back to assembly.
+    constexpr std::uint8_t kMaximumRows = 24U;
+    if (entry.routine != kRoutine || work_ram.size() < 0x2000U
+        || rom.size() != 0x60000U || entry.registers.mpr[0] != 0xFFU
+        || entry.registers.mpr[1] != 0xF8U
+        || (entry.registers.status & (kDecimal | kMemory)) != 0U) {
+        return std::nullopt;
+    }
+
+    std::uint8_t ram[0x2000];
+    for (std::size_t index = 0U; index < 0x2000U; ++index) {
+        ram[index] = std::to_integer<std::uint8_t>(work_ram[index]);
+    }
+    const auto ram_at = [&ram](const std::uint16_t address) {
+        return ram[address - kWorkRamBase];
+    };
+    const auto zp = [](const std::uint8_t offset) {
+        return static_cast<std::uint16_t>(kWorkRamBase + offset);
+    };
+    if (const auto rows = ram_at(0x2D55U);
+        rows == 0U || rows > kMaximumRows) {
+        return std::nullopt;
+    }
+
+    RoutineReplacement replacement;
+    auto registers = entry.registers;
+    std::uint32_t cycle = 0U;
+    std::size_t committed_writes = 0U;
+    bool overflow = false;
+    const auto commit_writes = [&replacement, &committed_writes](
+                                   const std::uint32_t at_cycle) {
+        while (committed_writes < replacement.work_ram_writes.size()) {
+            replacement.work_ram_writes[committed_writes]
+                .master_cycle_offset = at_cycle;
+            ++committed_writes;
+        }
+    };
+    const auto checkpoint = [&replacement, &registers, &cycle, &commit_writes](
+                                const std::uint16_t instruction_pc,
+                                const std::uint16_t resume_pc,
+                                const std::uint32_t instruction_cycles,
+                                const std::uint32_t sample_back = 3U) {
+        cycle += instruction_cycles;
+        commit_writes(cycle);
+        registers.program_counter = resume_pc;
+        replacement.checkpoints.push_back({
+            .interrupt_sample_master_cycle_offset = cycle - sample_back,
+            .master_cycle_offset = cycle,
+            .instruction = {kBank1, instruction_pc},
+            .registers = registers,
+        });
+    };
+    const auto write = [&replacement](const std::uint16_t instruction_pc,
+                                      const std::uint16_t address,
+                                      const std::uint8_t value) {
+        replacement.work_ram_writes.push_back({
+            .instruction = {kBank1, instruction_pc},
+            .logical_address = address,
+            .value = value,
+            .master_cycle_offset = 0U,
+        });
+    };
+    const auto store_ram = [&ram, &write, &checkpoint](
+                               const std::uint16_t instruction_pc,
+                               const std::uint16_t resume_pc,
+                               const std::uint16_t address,
+                               const std::uint8_t value) {
+        ram[address - kWorkRamBase] = value;
+        write(instruction_pc, address, value);
+        checkpoint(instruction_pc, resume_pc, 12U);
+    };
+    const auto store_port = [&write, &checkpoint](
+                                const std::uint16_t instruction_pc,
+                                const std::uint16_t resume_pc,
+                                const std::uint16_t address,
+                                const std::uint8_t value) {
+        write(instruction_pc, address, value);
+        checkpoint(instruction_pc, resume_pc, 18U, 6U);
+    };
+    const auto load = [&registers](const std::uint8_t value) {
+        registers.accumulator = value;
+        registers.status = set_nz(registers.status, value);
+    };
+    const auto load_x = [&registers](const std::uint8_t value) {
+        registers.x = value;
+        registers.status = set_nz(registers.status, value);
+    };
+    const auto load_y = [&registers](const std::uint8_t value) {
+        registers.y = value;
+        registers.status = set_nz(registers.status, value);
+    };
+    const auto adc = [&registers](const std::uint8_t operand) {
+        const auto left = registers.accumulator;
+        const auto sum = static_cast<std::uint16_t>(left)
+            + operand + (registers.status & kCarry);
+        const auto value = static_cast<std::uint8_t>(sum);
+        auto status = static_cast<std::uint8_t>(
+            registers.status & static_cast<std::uint8_t>(~(kCarry | kOverflow)));
+        if (sum > 0xFFU) {
+            status = static_cast<std::uint8_t>(status | kCarry);
+        }
+        if (((left ^ value) & (operand ^ value) & kNegative) != 0U) {
+            status = static_cast<std::uint8_t>(status | kOverflow);
+        }
+        registers.accumulator = value;
+        registers.status = set_nz(status, value);
+    };
+    const auto sbc = [&registers](const std::uint8_t operand) {
+        const auto left = registers.accumulator;
+        const auto borrow = (registers.status & kCarry) == 0U ? 1U : 0U;
+        const auto difference = static_cast<std::uint16_t>(left) - operand - borrow;
+        const auto value = static_cast<std::uint8_t>(difference);
+        auto status = static_cast<std::uint8_t>(
+            registers.status & static_cast<std::uint8_t>(~(kCarry | kOverflow)));
+        if (static_cast<std::uint16_t>(left)
+            >= static_cast<std::uint16_t>(operand) + borrow) {
+            status = static_cast<std::uint8_t>(status | kCarry);
+        }
+        if (((left ^ operand) & (left ^ value) & kNegative) != 0U) {
+            status = static_cast<std::uint8_t>(status | kOverflow);
+        }
+        registers.accumulator = value;
+        registers.status = set_nz(status, value);
+    };
+    const auto mapped_source = [&registers, &ram, rom, &overflow](
+                                   const std::uint16_t address) {
+        const auto bank = registers.mpr[address >> 13U];
+        if (bank == 0xF8U) {
+            return ram[address & 0x1FFFU];
+        }
+        if (bank >= 0x80U) {
+            overflow = true;
+            return static_cast<std::uint8_t>(0U);
+        }
+        const auto rom_bank = bank < 0x40U
+            ? static_cast<std::size_t>(bank & 0x1FU)
+            : static_cast<std::size_t>((bank & 0x0FU) + 0x20U);
+        return std::to_integer<std::uint8_t>(
+            rom[rom_bank * 0x2000U + (address & 0x1FFFU)]);
+    };
+    const auto source = [&ram_at, &zp, &registers, &mapped_source]() {
+        const auto pointer = static_cast<std::uint16_t>(
+            ram_at(zp(0x92U))
+            | static_cast<std::uint16_t>(ram_at(zp(0x93U)) << 8U));
+        return mapped_source(static_cast<std::uint16_t>(pointer + registers.y));
+    };
+
+    load_x(ram_at(0x2D55U));
+    checkpoint(0xDE9CU, 0xDE9FU, 15U);
+    load_y(ram_at(0x2D65U));
+    checkpoint(0xDE9FU, 0xDEA2U, 15U);
+    while (!overflow && registers.x != 0U) {
+        load(0U);
+        checkpoint(0xDEA2U, 0xDEA4U, 6U);
+        store_ram(0xDEA4U, 0xDEA6U, zp(0x06U), registers.accumulator);
+        store_port(0xDEA6U, 0xDEA9U, 0x0000U, registers.accumulator);
+        load(ram_at(zp(0x2DU))); checkpoint(0xDEA9U, 0xDEABU, 12U);
+        store_port(0xDEABU, 0xDEAEU, 0x0002U, registers.accumulator);
+        load(ram_at(zp(0x2EU))); checkpoint(0xDEAEU, 0xDEB0U, 12U);
+        store_port(0xDEB0U, 0xDEB3U, 0x0003U, registers.accumulator);
+        load(2U); checkpoint(0xDEB3U, 0xDEB5U, 6U);
+        store_ram(0xDEB5U, 0xDEB7U, zp(0x06U), registers.accumulator);
+        store_port(0xDEB7U, 0xDEBAU, 0x0000U, registers.accumulator);
+        load(source()); checkpoint(0xDEBAU, 0xDEBCU, 21U);
+        store_port(0xDEBCU, 0xDEBFU, 0x0002U, registers.accumulator);
+        load(0xE2U); checkpoint(0xDEBFU, 0xDEC1U, 6U);
+        store_port(0xDEC1U, 0xDEC4U, 0x0003U, registers.accumulator);
+        load_y(static_cast<std::uint8_t>(registers.y + 1U));
+        checkpoint(0xDEC4U, 0xDEC5U, 6U);
+        registers.status = static_cast<std::uint8_t>(registers.status & ~kCarry);
+        checkpoint(0xDEC5U, 0xDEC6U, 6U);
+        load(ram_at(zp(0x2DU))); checkpoint(0xDEC6U, 0xDEC8U, 12U);
+        adc(0x40U); checkpoint(0xDEC8U, 0xDECAU, 6U);
+        store_ram(0xDECAU, 0xDECCU, zp(0x2DU), registers.accumulator);
+        registers.accumulator = 0U; // CLA preserves P, including low-byte carry.
+        checkpoint(0xDECCU, 0xDECDU, 6U);
+        adc(ram_at(zp(0x2EU))); checkpoint(0xDECDU, 0xDECFU, 12U);
+        store_ram(0xDECFU, 0xDED1U, zp(0x2EU), registers.accumulator);
+
+        load(0U); checkpoint(0xDED1U, 0xDED3U, 6U);
+        store_ram(0xDED3U, 0xDED5U, zp(0x06U), registers.accumulator);
+        store_port(0xDED5U, 0xDED8U, 0x0000U, registers.accumulator);
+        load(ram_at(zp(0x2DU))); checkpoint(0xDED8U, 0xDEDAU, 12U);
+        store_port(0xDEDAU, 0xDEDDU, 0x0002U, registers.accumulator);
+        load(ram_at(zp(0x2EU))); checkpoint(0xDEDDU, 0xDEDFU, 12U);
+        store_port(0xDEDFU, 0xDEE2U, 0x0003U, registers.accumulator);
+        load(2U); checkpoint(0xDEE2U, 0xDEE4U, 6U);
+        store_ram(0xDEE4U, 0xDEE6U, zp(0x06U), registers.accumulator);
+        store_port(0xDEE6U, 0xDEE9U, 0x0000U, registers.accumulator);
+        load(source()); checkpoint(0xDEE9U, 0xDEEBU, 21U);
+        store_port(0xDEEBU, 0xDEEEU, 0x0002U, registers.accumulator);
+        load(0xE2U); checkpoint(0xDEEEU, 0xDEF0U, 6U);
+        store_port(0xDEF0U, 0xDEF3U, 0x0003U, registers.accumulator);
+        load_y(static_cast<std::uint8_t>(registers.y + 1U));
+        checkpoint(0xDEF3U, 0xDEF4U, 6U);
+        registers.status = static_cast<std::uint8_t>(registers.status | kCarry);
+        checkpoint(0xDEF4U, 0xDEF5U, 6U);
+        load(ram_at(zp(0x2DU))); checkpoint(0xDEF5U, 0xDEF7U, 12U);
+        sbc(0x3FU); checkpoint(0xDEF7U, 0xDEF9U, 6U);
+        store_ram(0xDEF9U, 0xDEFB, zp(0x2DU), registers.accumulator);
+        load(ram_at(zp(0x2EU))); checkpoint(0xDEFBU, 0xDEFD, 12U);
+        sbc(0U); checkpoint(0xDEFD, 0xDEFF, 6U);
+        store_ram(0xDEFFU, 0xDF01U, zp(0x2EU), registers.accumulator);
+        load_x(static_cast<std::uint8_t>(registers.x - 1U));
+        checkpoint(0xDF01U, 0xDF02U, 6U);
+        const bool repeat = registers.x != 0U;
+        checkpoint(0xDF02U, repeat ? 0xDEA2U : 0xDF04U, repeat ? 12U : 6U);
+    }
+    if (overflow || replacement.work_ram_writes.size() > 512U
+        || replacement.checkpoints.size() > 2048U) {
+        return std::nullopt;
+    }
+
+    load(source()); checkpoint(0xDF04U, 0xDF06U, 21U);
+    if ((registers.status & kZero) == 0U) {
+        checkpoint(0xDF06U, 0xDF0EU, 12U);
+        replacement.return_instruction = {kBank1, 0xDF0EU};
+    } else {
+        checkpoint(0xDF06U, 0xDF08U, 6U);
+        load(1U); checkpoint(0xDF08U, 0xDF0AU, 6U);
+        store_ram(0xDF0AU, 0xDF0DU, 0x2D68U, registers.accumulator);
+        replacement.return_instruction = {kBank1, 0xDF0DU};
+    }
+    replacement.output_registers = registers;
+    replacement.body_master_cycles = cycle;
+    return replacement;
+}
+
 } // namespace devils_crush::app::detail

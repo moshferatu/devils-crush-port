@@ -56,6 +56,9 @@ replace_collision_scan_run(
     constexpr std::uint16_t kMaskBranchPc = 0xCB51U;
     constexpr std::uint16_t kGatePc = 0xCB53U;
     constexpr std::uint16_t kGateBranchPc = 0xCB55U;
+    constexpr std::uint16_t kGatedAttributesPc = 0xCB57U;
+    constexpr std::uint16_t kGatedMaskPc = 0xCB5AU;
+    constexpr std::uint16_t kGatedBranchPc = 0xCB5CU;
     constexpr std::uint16_t kCandidatePc = 0xCB5EU;
     constexpr std::uint16_t kScannerPc = 0xCC1AU;
     constexpr std::uint16_t kScannerReturnPc = 0xCC40U;
@@ -68,6 +71,7 @@ replace_collision_scan_run(
     constexpr std::uint16_t kCountdownAddress = 0x2060U;
     constexpr std::uint16_t kGateAddress = 0x2055U;
     constexpr std::uint16_t kSlotAttributesBase = 0x1080U;
+    constexpr std::uint16_t kGatedAttributesBase = 0x1000U;
     constexpr std::uint16_t kWorkRamBase = 0x2000U;
     constexpr std::uint16_t kStackBase = 0x2100U;
 
@@ -131,11 +135,11 @@ replace_collision_scan_run(
     auto registers = entry.registers;
     std::uint32_t cycle = 0U;
     RoutineReplacement replacement{};
-    // Eight boundaries and two writes per masked slot, plus a seven-
-    // instruction candidate prefix: 1,031 checkpoints and 256 writes at the
+    // Thirteen boundaries and two writes per gated slot, plus a nine-
+    // instruction candidate prefix: 1,673 checkpoints and 256 writes at the
     // very worst, inside the core's 2,048 and 512.
     replacement.checkpoints.reserve(
-        static_cast<std::size_t>(run.skipped) * 8U + 7U);
+        static_cast<std::size_t>(run.skipped) * 13U + 9U);
     replacement.work_ram_writes.reserve(
         static_cast<std::size_t>(run.skipped) * 2U);
 
@@ -216,12 +220,33 @@ replace_collision_scan_run(
     auto left = remaining;
     for (std::uint8_t walked = 0U; walked < run.skipped; ++walked) {
         const auto attributes = read_slot(current);
-        if ((attributes & 0x80U) == 0U) {
+        if (run.skips[walked] == DC_COLLISION_SCAN_SKIP_POSITIVE) {
             step(kPositiveBranchPc, kSlotIncrementPc, kBranchTaken);
-        } else {
+        } else if (run.skips[walked] == DC_COLLISION_SCAN_SKIP_MASKED) {
             step(kPositiveBranchPc, kMaskPc, kBranchNotTaken);
             bit_mask(attributes);
             step(kMaskBranchPc, kSlotIncrementPc, kBranchTaken);
+        } else if (run.skips[walked] == DC_COLLISION_SCAN_SKIP_GATED) {
+            step(kPositiveBranchPc, kMaskPc, kBranchNotTaken);
+            bit_mask(attributes);
+            step(kMaskBranchPc, kGatePc, kBranchNotTaken);
+            registers.accumulator = gate;
+            registers.status = set_nz(registers.status, gate);
+            step(kGatePc, kGateBranchPc, kZeroPage);
+            step(kGateBranchPc, kGatedAttributesPc, kBranchNotTaken);
+            const auto gated_attributes = std::to_integer<std::uint8_t>(
+                work_ram[static_cast<std::size_t>(kGatedAttributesBase)
+                    + current]);
+            registers.accumulator = gated_attributes;
+            registers.status = set_nz(registers.status, gated_attributes);
+            step(kGatedAttributesPc, kGatedMaskPc, kAbsoluteIndexed);
+            registers.accumulator = static_cast<std::uint8_t>(
+                gated_attributes & 0x40U);
+            registers.status = set_nz(registers.status, registers.accumulator);
+            step(kGatedMaskPc, kGatedBranchPc, kImmediate);
+            step(kGatedBranchPc, kSlotIncrementPc, kBranchTaken);
+        } else {
+            return std::nullopt;
         }
         current = static_cast<std::uint8_t>(current + 1U);
         left = static_cast<std::uint8_t>(left - 1U);
@@ -243,7 +268,22 @@ replace_collision_scan_run(
         registers.accumulator = gate;
         registers.status = set_nz(registers.status, gate);
         step(kGatePc, kGateBranchPc, kZeroPage);
-        step(kGateBranchPc, kCandidatePc, kBranchTaken);
+        if (gate == 0U) {
+            step(kGateBranchPc, kCandidatePc, kBranchTaken);
+        } else {
+            step(kGateBranchPc, kGatedAttributesPc, kBranchNotTaken);
+            const auto gated_attributes = std::to_integer<std::uint8_t>(
+                work_ram[static_cast<std::size_t>(kGatedAttributesBase)
+                    + current]);
+            registers.accumulator = gated_attributes;
+            registers.status = set_nz(registers.status, gated_attributes);
+            step(kGatedAttributesPc, kGatedMaskPc, kAbsoluteIndexed);
+            registers.accumulator = static_cast<std::uint8_t>(
+                gated_attributes & 0x40U);
+            registers.status = set_nz(registers.status, registers.accumulator);
+            step(kGatedMaskPc, kGatedBranchPc, kImmediate);
+            step(kGatedBranchPc, kCandidatePc, kBranchNotTaken);
+        }
         break;
     }
     case DC_COLLISION_SCAN_EXHAUSTED:

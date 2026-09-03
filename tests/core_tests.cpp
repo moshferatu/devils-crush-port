@@ -2385,6 +2385,41 @@ void test_native_gray_blob_first_live()
         "native 68A1 rejects a truncated work-RAM snapshot");
 }
 
+void test_native_gray_blob_live_wait()
+{
+    std::array<std::uint8_t, 0x2000> work_ram{};
+    dc_gray_blob_live_wait wait{};
+
+    work_ram[0x1A50U] = 0x03U;
+    work_ram[0x1850U] = 0x13U;
+    work_ram[0x1BD0U] = 0x16U;
+    check(
+        dc_classify_gray_blob_live_wait(
+            work_ram.data(), work_ram.size(), 0x50U, &wait)
+            != 0
+            && wait.slot == 0x50U
+            && wait.appearance_timer == 0x03U
+            && wait.decremented_appearance_timer == 0x02U
+            && wait.collision_state == 0x13U
+            && wait.movement_timer == 0x16U
+            && wait.decremented_movement_timer == 0x15U,
+        "native 68BF classifies a non-expiring Gray-Blob live wait");
+
+    work_ram[0x1A50U] = 0x01U;
+    check(
+        dc_classify_gray_blob_live_wait(
+            work_ram.data(), work_ram.size(), 0x50U, &wait)
+            == 0,
+        "native 68BF leaves the appearance-expiry arm in assembly");
+    work_ram[0x1A50U] = 0x03U;
+    work_ram[0x1BD0U] = 0x01U;
+    check(
+        dc_classify_gray_blob_live_wait(
+            work_ram.data(), work_ram.size(), 0x50U, &wait)
+            == 0,
+        "native 68BF leaves the movement-expiry arm in assembly");
+}
+
 void test_native_mercy_star_initializer()
 {
     std::array<std::uint8_t, 0x2000> work_ram{};
@@ -10787,11 +10822,27 @@ void test_collision_scan_run()
             && run.slot == 7U && run.remaining == 0x79U,
         "budgeted sweep stops after its allowance");
 
-    // The nonzero gate selects an unmodelled test and must be refused.
+    // A nonzero gate uses the companion table: its clear bit-six rejects the
+    // first otherwise eligible slot, and its set bit-six enters the scan.
+    reset();
+    work_ram[0x1080U + 4U] = 0x80U;
+    work_ram[0x1080U + 5U] = 0x80U;
+    work_ram[0x1000U + 5U] = 0x40U;
     check(
         dc_classify_collision_scan_run(
-            work_ram.data(), work_ram.size(), 4U, 0x7CU, 1U, 0x80U, &run) == 0,
-        "collision scan refuses a nonzero gate");
+            work_ram.data(), work_ram.size(), 4U, 0x7CU, 1U, 0x80U, &run) == 1,
+        "collision scan classifies a nonzero gate");
+    check(
+        run.skipped == 1U,
+        "nonzero gate advances past its rejected companion bit");
+    check(
+        run.skips[0] == static_cast<std::uint8_t>(
+            DC_COLLISION_SCAN_SKIP_GATED),
+        "nonzero gate records its companion-bit rejection shape");
+    check(
+        run.exit == DC_COLLISION_SCAN_CANDIDATE && run.slot == 5U
+            && run.remaining == 0x7BU && run.accumulator == 0x40U,
+        "nonzero gate accepts its set companion bit");
     check(
         dc_classify_collision_scan_run(
             work_ram.data(), work_ram.size(), 4U, 0U, 0U, 0x80U, &run) == 0,
@@ -21037,6 +21088,7 @@ int main()
     test_native_giant_skeleton_eyeball_final_wait();
     test_native_gray_blob_initializer();
     test_native_gray_blob_first_live();
+    test_native_gray_blob_live_wait();
     test_native_mercy_star_initializer();
     test_native_devil_shooter_initializer();
     test_native_little_skull_initializer();

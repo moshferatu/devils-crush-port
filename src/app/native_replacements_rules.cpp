@@ -719,6 +719,50 @@ replace_gray_blob_first_live_prefix(
 }
 
 [[nodiscard]] std::optional<RoutineReplacement>
+replace_gray_blob_live_wait_prefix(
+    const RoutineEntry& entry,
+    const std::span<const std::byte> work_ram)
+{
+    constexpr RoutineKey kRoutine{.physical_bank = 0x03U, .logical_pc = 0x68BFU};
+    if (entry.routine != kRoutine) {
+        return std::nullopt;
+    }
+
+    dc_gray_blob_live_wait wait{};
+    if (!dc_classify_gray_blob_live_wait(
+            reinterpret_cast<const std::uint8_t*>(work_ram.data()),
+            work_ram.size(), entry.registers.x, &wait)) {
+        return std::nullopt;
+    }
+
+    // The arithmetic contract is fully classified (the leading opcode is
+    // DEC $3A00,X, not LDA), but this entry also resumes through a live actor
+    // scheduler boundary.  The core's replacement handoff is not yet a
+    // closed transcript for that continuation: even the exact 93-cycle,
+    // two-write transaction destabilizes the upper-table run.  Preserve the
+    // verified classifier and leave this interrupt-sensitive continuation to
+    // the ROM until its scheduler handoff is modeled as one transaction.
+    (void)wait;
+    return std::nullopt;
+}
+
+[[nodiscard]] std::optional<RoutineReplacement>
+replace_upper_table_idle_gate(
+    const RoutineEntry& entry,
+    const std::span<const std::byte> work_ram)
+{
+    // The zero-gate branch falls directly into an RTS whose target is owned
+    // by the live upper-table call stack. A captured Sorcerer hit reaches
+    // that branch at an interrupt boundary where composing the branch and
+    // return leaves the core without a framebuffer on the following frame.
+    // Keep both instructions in the core until their stack/interrupt handoff
+    // is represented by a single verified transcript.
+    (void)entry;
+    (void)work_ram;
+    return std::nullopt;
+}
+
+[[nodiscard]] std::optional<RoutineReplacement>
 replace_mercy_star_initializer(
     const RoutineEntry& entry,
     const std::span<const std::byte> work_ram)
@@ -879,6 +923,97 @@ replace_mercy_star_gate(
         {0x02U, 0x4FE1U},
         54U,
         output);
+    return replacement;
+}
+
+[[nodiscard]] std::optional<RoutineReplacement>
+replace_mercy_star_not_last_tail(
+    const RoutineEntry& entry,
+    const std::span<const std::byte> work_ram)
+{
+    // The non-last-ball Mercy-Star gate returns here after its C018 callback.
+    // A positive activity byte and a table state other than two both converge
+    // on the shared four-tick timer. The negative activity continuation and
+    // table-state-two transfer remain core-owned.
+    //
+    //   5003 LDA $3800,X 15   5006 BMI $5015 6/12
+    //   5008 LDA $2D4E   15   500B CMP #$02   6
+    //   500D BNE $5012  12   5012 JMP $4CDA  12
+    constexpr RoutineKey kRoutine{.physical_bank = 0x02U, .logical_pc = 0x5003U};
+    constexpr std::size_t kActivityOffset = 0x1800U;
+    constexpr std::size_t kTableStateOffset = 0x0D4EU;
+    if (entry.routine != kRoutine
+        || (entry.registers.status & 0x20U) != 0U
+        || work_ram.size() <= kActivityOffset + entry.registers.x
+        || work_ram.size() <= kTableStateOffset) {
+        return std::nullopt;
+    }
+
+    const auto activity = std::to_integer<std::uint8_t>(
+        work_ram[kActivityOffset + entry.registers.x]);
+    const auto table_state = std::to_integer<std::uint8_t>(
+        work_ram[kTableStateOffset]);
+    if ((activity & 0x80U) != 0U || table_state == 0x02U) {
+        return std::nullopt;
+    }
+
+    const auto set_nz = [](std::uint8_t status, const std::uint8_t value) {
+        status = static_cast<std::uint8_t>(status & 0x7DU);
+        if (value == 0U) {
+            status = static_cast<std::uint8_t>(status | 0x02U);
+        } else if ((value & 0x80U) != 0U) {
+            status = static_cast<std::uint8_t>(status | 0x80U);
+        }
+        return status;
+    };
+    const auto set_cmp = [](std::uint8_t status,
+                            const std::uint8_t left,
+                            const std::uint8_t right) {
+        status = static_cast<std::uint8_t>(status & 0x7CU);
+        const auto difference = static_cast<std::uint8_t>(left - right);
+        if (difference == 0U) {
+            status = static_cast<std::uint8_t>(status | 0x02U);
+        } else if ((difference & 0x80U) != 0U) {
+            status = static_cast<std::uint8_t>(status | 0x80U);
+        }
+        if (left >= right) {
+            status = static_cast<std::uint8_t>(status | 0x01U);
+        }
+        return status;
+    };
+    const auto append_checkpoint = [](RoutineReplacement& replacement,
+                                      const std::uint16_t instruction_pc,
+                                      const std::uint16_t resume_pc,
+                                      const std::uint32_t master_cycle,
+                                      auto registers) {
+        registers.program_counter = resume_pc;
+        replacement.checkpoints.push_back({
+            .interrupt_sample_master_cycle_offset = master_cycle - 3U,
+            .master_cycle_offset = master_cycle,
+            .instruction = {0x02U, instruction_pc},
+            .registers = registers,
+        });
+    };
+
+    auto output = entry.registers;
+    output.accumulator = activity;
+    output.status = set_nz(output.status, activity);
+    RoutineReplacement replacement{
+        .return_instruction = {.physical_bank = 0x02U, .logical_pc = 0x4CDAU},
+        .output_registers = output,
+        .body_master_cycles = 66U,
+    };
+    append_checkpoint(replacement, 0x5003U, 0x5006U, 15U, output);
+    append_checkpoint(replacement, 0x5006U, 0x5008U, 21U, output);
+    output.accumulator = table_state;
+    output.status = set_nz(output.status, table_state);
+    append_checkpoint(replacement, 0x5008U, 0x500BU, 36U, output);
+    output.status = set_cmp(output.status, table_state, 0x02U);
+    append_checkpoint(replacement, 0x500BU, 0x500DU, 42U, output);
+    append_checkpoint(replacement, 0x500DU, 0x5012U, 54U, output);
+    output.program_counter = 0x4CDAU;
+    append_checkpoint(replacement, 0x5012U, 0x4CDAU, 66U, output);
+    replacement.output_registers = output;
     return replacement;
 }
 
@@ -21644,15 +21779,7 @@ replace_giant_face_animator_active_wait(
         .physical_bank = 0x03U,
         .logical_pc = 0x76C5U,
     };
-    if (entry.routine != kRoutine || entry.master_cycles_until_user_event <= 27U
-        || entry.master_cycles_until_timer_interrupt <= 27U) {
-        return std::nullopt;
-    }
-
-    dc_giant_face_animator_active_wait wait{};
-    if (!dc_classify_giant_face_animator_active_wait(
-            reinterpret_cast<const std::uint8_t*>(work_ram.data()),
-            work_ram.size(), entry.registers.x, &wait)) {
+    if (entry.routine != kRoutine) {
         return std::nullopt;
     }
 
@@ -21665,6 +21792,21 @@ replace_giant_face_animator_active_wait(
         }
         return status;
     };
+
+    // The fixed-slot non-expiry wait is a bounded decrement and return.  An
+    // expiry enters the Giant Face's phase, drawing, and scheduler body, so
+    // it must remain core-owned rather than jumping across that transition.
+    if (entry.master_cycles_until_user_event <= 27U
+        || entry.master_cycles_until_timer_interrupt <= 27U) {
+        return std::nullopt;
+    }
+
+    dc_giant_face_animator_active_wait wait{};
+    if (!dc_classify_giant_face_animator_active_wait(
+            reinterpret_cast<const std::uint8_t*>(work_ram.data()),
+            work_ram.size(), entry.registers.x, &wait)) {
+        return std::nullopt;
+    }
 
     auto output = entry.registers;
     output.status = set_nz(output.status, wait.decremented_timer);
@@ -22428,6 +22570,134 @@ replace_shared_four_tick_timer_tail(
     });
     replacement.body_master_cycles = 111U;
     append_checkpoint(replacement, 0x4CEEU, 0x4CF1U, 111U, after_compare);
+    return replacement;
+}
+
+[[nodiscard]] std::optional<RoutineReplacement>
+replace_shared_collision_free_timer_tail(
+    const RoutineEntry& entry,
+    const std::span<const std::byte> work_ram)
+{
+    // 02:4424 is reached only after the collision-table JSR at 02:4421
+    // returns.  Preserve that division of ownership: a set carry takes the
+    // established scheduler handoff, while the clear-carry arm decrements an
+    // actor timer, mirrors it into the animation phase and either returns or
+    // resumes the active continuation at 02:443A.
+    constexpr RoutineKey kRoutine{.physical_bank = 0x02U, .logical_pc = 0x4424U};
+    constexpr std::uint16_t kTimerBase = 0x3A00U;
+    // `LDA $3A80,X` at 442E copies the actor's selected frame/event into
+    // its visible phase at $3980,X.  These are deliberately distinct: using
+    // the destination as the source leaves an expiring effect on its old
+    // frame, which is especially destructive for the upper-table Sorcerer's
+    // impact burst.
+    constexpr std::uint16_t kAnimationSourceBase = 0x3A80U;
+    constexpr std::uint16_t kAnimationDestinationBase = 0x3980U;
+    constexpr std::uint16_t kMotionBase = 0x3800U;
+    constexpr std::uint8_t kCarry = 0x01U;
+    constexpr std::uint8_t kNegative = 0x80U;
+    constexpr std::uint32_t kAbsoluteIndexed = 15U;
+    constexpr std::uint32_t kAbsoluteIndexedReadModifyWrite = 21U;
+    constexpr std::uint32_t kBranchTaken = 12U;
+    constexpr std::uint32_t kBranchNotTaken = 6U;
+    constexpr std::uint32_t kJump = 12U;
+
+    if (entry.routine != kRoutine || work_ram.size() < 0x2000U) {
+        return std::nullopt;
+    }
+
+    const auto set_nz = [](std::uint8_t status, const std::uint8_t value) {
+        status = static_cast<std::uint8_t>(status & 0x7DU);
+        if (value == 0U) {
+            status = static_cast<std::uint8_t>(status | 0x02U);
+        } else if ((value & 0x80U) != 0U) {
+            status = static_cast<std::uint8_t>(status | 0x80U);
+        }
+        return status;
+    };
+    const auto slot_address = [slot = entry.registers.x](const std::uint16_t base) {
+        return static_cast<std::uint16_t>(base + slot);
+    };
+    const auto read = [&work_ram](const std::uint16_t address) {
+        return std::to_integer<std::uint8_t>(
+            work_ram[static_cast<std::size_t>(address - 0x2000U)]);
+    };
+
+    auto registers = entry.registers;
+    RoutineReplacement replacement{};
+    std::uint32_t cycle = 0U;
+    const auto checkpoint = [&replacement, &registers, &cycle](
+                                const std::uint16_t instruction,
+                                const std::uint16_t resume,
+                                const std::uint32_t instruction_cycles) {
+        cycle += instruction_cycles;
+        registers.program_counter = resume;
+        replacement.checkpoints.push_back({
+            .interrupt_sample_master_cycle_offset = cycle - 3U,
+            .master_cycle_offset = cycle,
+            .instruction = {0x02U, instruction},
+            .registers = registers,
+        });
+    };
+
+    // BCC $4429; collisions keep their pre-existing $C027 scheduler handoff.
+    if ((registers.status & kCarry) != 0U) {
+        checkpoint(0x4424U, 0x4426U, kBranchNotTaken);
+        checkpoint(0x4426U, 0xC027U, kJump);
+        replacement.return_instruction = {
+            .physical_bank = registers.mpr[0xC027U >> 13U],
+            .logical_pc = 0xC027U,
+        };
+        replacement.output_registers = registers;
+        replacement.body_master_cycles = cycle;
+        return replacement;
+    }
+    checkpoint(0x4424U, 0x4429U, kBranchTaken);
+
+    const auto timer_address = slot_address(kTimerBase);
+    const auto decremented_timer = static_cast<std::uint8_t>(read(timer_address) - 1U);
+    registers.status = set_nz(registers.status, decremented_timer);
+    replacement.work_ram_writes.push_back({
+        .instruction = {0x02U, 0x4429U},
+        .logical_address = timer_address,
+        .value = decremented_timer,
+        .master_cycle_offset = cycle + kAbsoluteIndexedReadModifyWrite,
+    });
+    checkpoint(0x4429U, 0x442CU, kAbsoluteIndexedReadModifyWrite);
+    checkpoint(
+        0x442CU,
+        0x442EU,
+        decremented_timer != 0U ? kBranchTaken : kBranchNotTaken);
+
+    registers.accumulator = read(slot_address(kAnimationSourceBase));
+    registers.status = set_nz(registers.status, registers.accumulator);
+    checkpoint(0x442EU, 0x4431U, kAbsoluteIndexed);
+    replacement.work_ram_writes.push_back({
+        .instruction = {0x02U, 0x4431U},
+        .logical_address = slot_address(kAnimationDestinationBase),
+        .value = registers.accumulator,
+        .master_cycle_offset = cycle + kAbsoluteIndexed,
+    });
+    checkpoint(0x4431U, 0x4434U, kAbsoluteIndexed);
+
+    registers.accumulator = read(slot_address(kMotionBase));
+    registers.status = set_nz(registers.status, registers.accumulator);
+    checkpoint(0x4434U, 0x4437U, kAbsoluteIndexed);
+    if ((registers.accumulator & kNegative) != 0U) {
+        checkpoint(0x4437U, 0x443AU, kBranchTaken);
+        replacement.return_instruction = {.physical_bank = 0x02U, .logical_pc = 0x443AU};
+        replacement.output_registers = registers;
+        replacement.body_master_cycles = cycle;
+        return replacement;
+    }
+
+    checkpoint(0x4437U, 0x4439U, kBranchNotTaken);
+    absorb_return(
+        replacement,
+        work_ram,
+        entry.registers.stack_pointer,
+        {0x02U, 0x4439U},
+        cycle,
+        registers);
     return replacement;
 }
 
@@ -27052,7 +27322,6 @@ replace_rng_update(
             &update)) {
         return std::nullopt;
     }
-
     auto output = entry.registers;
     output.program_counter = 0xE8E6U;
     output.accumulator = update.seed_high;

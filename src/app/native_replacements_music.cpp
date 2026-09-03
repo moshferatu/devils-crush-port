@@ -204,6 +204,7 @@ constexpr std::uint32_t kChannelIterationMasterCycles = 2304U;
         || logical_pc == 0x4211U
         || logical_pc == 0x4228U
         || logical_pc == 0x457AU
+        || logical_pc == 0x4667U
         || logical_pc == 0x469BU
         || logical_pc == 0x47E0U
         || logical_pc == 0x482EU
@@ -336,12 +337,22 @@ std::optional<RoutineReplacement> replace_music_jsr(
         .physical_bank = 0x00U,
         .logical_pc = 0xE976U,
     };
+    constexpr RoutineKey kActorPassSchedulerCall{
+        .physical_bank = 0x01U,
+        .logical_pc = 0xC603U,
+    };
+    constexpr RoutineKey kCoroutineSchedulerCall{
+        .physical_bank = 0x01U,
+        .logical_pc = 0xC7CFU,
+    };
     if (entry.routine != kMusicPsgCall
         && entry.routine != kMusicPitchUpdateCall
         && entry.routine != kMusicPitchSlideCall
         && entry.routine != kGiantFaceAnimatorCall
         && entry.routine != kCollisionScannerCall
-        && entry.routine != kPaletteFadeTableCall) {
+        && entry.routine != kPaletteFadeTableCall
+        && entry.routine != kActorPassSchedulerCall
+        && entry.routine != kCoroutineSchedulerCall) {
         return std::nullopt;
     }
 
@@ -349,8 +360,9 @@ std::optional<RoutineReplacement> replace_music_jsr(
     // the interrupt boundary. Retain the original core JSR rather than
     // modeling a synthetic frame; the two voice-loop calls use the same
     // contract before resuming their already-transcribed callees. CB5E covers
-    // the collision scanner's rare non-composed entries and E976 crosses into
-    // the palette-fade table emitter without moving either stack write.
+    // the collision scanner's rare non-composed entries, E976 crosses into
+    // the palette-fade table emitter, C603 hands an actor pass into its
+    // scheduler, and C7CF creates the consumed frame for a coroutine reschedule.
     RoutineReplacement replacement{};
     replacement.return_instruction = entry.routine;
     replacement.output_registers = entry.registers;
@@ -362,18 +374,25 @@ std::optional<RoutineReplacement> replace_music_jsr(
 std::optional<RoutineReplacement> replace_music_rts(
     const RoutineEntry& entry)
 {
-    constexpr RoutineKey kRoutine{
+    constexpr RoutineKey kChannelLoopReturn{
         .physical_bank = 0x45U,
         .logical_pc = 0x4210U,
     };
-    if (entry.routine != kRoutine) {
+    constexpr RoutineKey kDurationDispatchReturn{
+        .physical_bank = 0x45U,
+        .logical_pc = 0x46D6U,
+    };
+    if (entry.routine != kChannelLoopReturn
+        && entry.routine != kDurationDispatchReturn) {
         return std::nullopt;
     }
 
-    // The matching return consumes the exact stack frame emitted by 4138 and
-    // reaches scheduler state the transcript cannot name ahead of time.
+    // Both returns consume a live caller frame whose target this local
+    // instruction boundary cannot name: 4210 returns from the channel loop,
+    // while 46D6 closes the duration decoder when it was entered at its
+    // internal 4667 seam. Keep the HuC6280 stack-pop sequence in the core.
     RoutineReplacement replacement{};
-    replacement.return_instruction = kRoutine;
+    replacement.return_instruction = entry.routine;
     replacement.output_registers = entry.registers;
     replacement.body_master_cycles = 21U;
     replacement.native_rts_instruction = emulation::NativeRtsInstruction{};
@@ -399,6 +418,155 @@ std::optional<RoutineReplacement> replace_knight_bsr(
     replacement.output_registers = entry.registers;
     replacement.body_master_cycles = 24U;
     replacement.native_bsr_instruction = emulation::NativeBsrInstruction{};
+    return replacement;
+}
+
+std::optional<RoutineReplacement> replace_knight_source_slot_load(
+    const RoutineEntry& entry,
+    const std::span<const std::byte> work_ram)
+{
+    constexpr RoutineKey kRoutine{
+        .physical_bank = 0x03U,
+        .logical_pc = 0x73D0U,
+    };
+    constexpr std::size_t kSourceSlotOffset = 0x1B00U;
+    if (entry.routine != kRoutine
+        || work_ram.size() <= kSourceSlotOffset + entry.registers.x) {
+        return std::nullopt;
+    }
+
+    // `LDY $3B00,X` is the one-instruction predecessor of the native BSR at
+    // 73D3.  It has no stack or device side effects, but it does own Y and
+    // N/Z before the callee runs, so publish its ordinary instruction-end
+    // checkpoint rather than broadening the surrounding Knight owner.
+    auto output = entry.registers;
+    output.y = std::to_integer<std::uint8_t>(
+        work_ram[kSourceSlotOffset + entry.registers.x]);
+    output.status = static_cast<std::uint8_t>(output.status & 0x7DU);
+    if (output.y == 0U) {
+        output.status = static_cast<std::uint8_t>(output.status | 0x02U);
+    } else if ((output.y & 0x80U) != 0U) {
+        output.status = static_cast<std::uint8_t>(output.status | 0x80U);
+    }
+    output.program_counter = 0x73D3U;
+
+    RoutineReplacement replacement{
+        .return_instruction = {.physical_bank = 0x03U, .logical_pc = 0x73D3U},
+        .output_registers = output,
+        .body_master_cycles = 15U,
+    };
+    replacement.checkpoints.push_back({
+        .interrupt_sample_master_cycle_offset = 12U,
+        .master_cycle_offset = 15U,
+        .instruction = kRoutine,
+        .registers = output,
+    });
+    return replacement;
+}
+
+std::optional<RoutineReplacement> replace_knight_movement_jsr(
+    const RoutineEntry& entry)
+{
+    constexpr RoutineKey kMotionUpdateCall{
+        .physical_bank = 0x03U,
+        .logical_pc = 0x7A74U,
+    };
+    constexpr RoutineKey kCounterUpdateCall{
+        .physical_bank = 0x03U,
+        .logical_pc = 0x7A7CU,
+    };
+    if (entry.routine != kMotionUpdateCall
+        && entry.routine != kCounterUpdateCall) {
+        return std::nullopt;
+    }
+
+    // Each literal JSR creates a live frame consumed by a helper-owned RTS.
+    // Retain the core stack push and interrupt sample while leaving the
+    // stateful 7Axx helper bodies outside this narrowly scoped seam.
+    RoutineReplacement replacement{};
+    replacement.return_instruction = entry.routine;
+    replacement.output_registers = entry.registers;
+    replacement.body_master_cycles = 21U;
+    replacement.native_jsr_instruction = emulation::NativeJsrInstruction{};
+    return replacement;
+}
+
+std::optional<RoutineReplacement> replace_knight_movement_rts(
+    const RoutineEntry& entry)
+{
+    constexpr RoutineKey kCounterUpdateReturn{
+        .physical_bank = 0x03U,
+        .logical_pc = 0x7AF2U,
+    };
+    constexpr RoutineKey kMotionUpdateReturn{
+        .physical_bank = 0x03U,
+        .logical_pc = 0x7A8EU,
+    };
+    if (entry.routine != kCounterUpdateReturn
+        && entry.routine != kMotionUpdateReturn) {
+        return std::nullopt;
+    }
+
+    // These returns resume live callers inside the Knight helper. Let the
+    // core perform the pop instead of manufacturing a standalone boundary.
+    RoutineReplacement replacement{};
+    replacement.return_instruction = entry.routine;
+    replacement.output_registers = entry.registers;
+    replacement.body_master_cycles = 21U;
+    replacement.native_rts_instruction = emulation::NativeRtsInstruction{};
+    return replacement;
+}
+
+std::optional<RoutineReplacement> replace_fixed_scheduler_jsr(
+    const RoutineEntry& entry)
+{
+    constexpr RoutineKey kFirstCall{
+        .physical_bank = 0x03U,
+        .logical_pc = 0x7B4BU,
+    };
+    constexpr RoutineKey kSecondCall{
+        .physical_bank = 0x03U,
+        .logical_pc = 0x7B5AU,
+    };
+    constexpr RoutineKey kThirdCall{
+        .physical_bank = 0x03U,
+        .logical_pc = 0x7B69U,
+    };
+    if (entry.routine != kFirstCall
+        && entry.routine != kSecondCall
+        && entry.routine != kThirdCall) {
+        return std::nullopt;
+    }
+
+    // These repeated `JSR $C060` instructions share the fixed scheduler's
+    // stateful setup body.  Preserve each original stack push and interrupt
+    // boundary in the core without absorbing that surrounding body.
+    RoutineReplacement replacement{};
+    replacement.return_instruction = entry.routine;
+    replacement.output_registers = entry.registers;
+    replacement.body_master_cycles = 21U;
+    replacement.native_jsr_instruction = emulation::NativeJsrInstruction{};
+    return replacement;
+}
+
+std::optional<RoutineReplacement> replace_fixed_scheduler_rts(
+    const RoutineEntry& entry)
+{
+    constexpr RoutineKey kRoutine{
+        .physical_bank = 0x03U,
+        .logical_pc = 0x7B6CU,
+    };
+    if (entry.routine != kRoutine) {
+        return std::nullopt;
+    }
+
+    // The enclosing fixed scheduler owns the caller identity; retain its
+    // literal core RTS rather than synthesizing a return continuation.
+    RoutineReplacement replacement{};
+    replacement.return_instruction = kRoutine;
+    replacement.output_registers = entry.registers;
+    replacement.body_master_cycles = 21U;
+    replacement.native_rts_instruction = emulation::NativeRtsInstruction{};
     return replacement;
 }
 
@@ -523,6 +691,45 @@ std::optional<RoutineReplacement> replace_music_jmp(
     return replacement;
 }
 
+std::optional<RoutineReplacement> replace_music_voice_state_load(
+    const RoutineEntry& entry,
+    const std::span<const std::byte> work_ram)
+{
+    constexpr RoutineKey kRoutine{
+        .physical_bank = kBank,
+        .logical_pc = 0x4092U,
+    };
+    constexpr std::uint16_t kVoiceState = 0x2EBEU;
+    if (entry.routine != kRoutine || work_ram.size() < 0x1000U) {
+        return std::nullopt;
+    }
+
+    // `LDA $2EBE,X` is inside the per-voice loop.  When its enclosing music
+    // transcript declines at an interrupt horizon, this read remains a
+    // self-contained work-RAM operation: it preserves every flag except N/Z
+    // and resumes at the next original instruction.
+    const auto offset = static_cast<std::size_t>(
+        static_cast<std::uint16_t>(kVoiceState + entry.registers.x)
+        - kWorkRamBase);
+    auto output = entry.registers;
+    output.accumulator = std::to_integer<std::uint8_t>(work_ram[offset]);
+    output.status = set_nz(output.status, output.accumulator);
+    output.program_counter = 0x4095U;
+
+    RoutineReplacement replacement{
+        .return_instruction = {.physical_bank = kBank, .logical_pc = 0x4095U},
+        .output_registers = output,
+        .body_master_cycles = 15U,
+    };
+    replacement.checkpoints.push_back({
+        .interrupt_sample_master_cycle_offset = 12U,
+        .master_cycle_offset = 15U,
+        .instruction = kRoutine,
+        .registers = output,
+    });
+    return replacement;
+}
+
 std::optional<RoutineReplacement> replace_shared_actor_rts(
     const RoutineEntry& entry)
 {
@@ -542,6 +749,10 @@ std::optional<RoutineReplacement> replace_shared_actor_rts(
         .physical_bank = 0x03U,
         .logical_pc = 0x73D7U,
     };
+    constexpr RoutineKey kKnightHitParentReturn{
+        .physical_bank = 0x03U,
+        .logical_pc = 0x73CCU,
+    };
     constexpr RoutineKey kKnightCounterReturn{
         .physical_bank = 0x03U,
         .logical_pc = 0x76CAU,
@@ -549,6 +760,10 @@ std::optional<RoutineReplacement> replace_shared_actor_rts(
     constexpr RoutineKey kActorSetupReturn{
         .physical_bank = 0x03U,
         .logical_pc = 0x6314U,
+    };
+    constexpr RoutineKey kKnightIdleReturn{
+        .physical_bank = 0x03U,
+        .logical_pc = 0x7423U,
     };
     constexpr RoutineKey kInitialSubstepReturn{
         .physical_bank = 0x01U,
@@ -566,8 +781,10 @@ std::optional<RoutineReplacement> replace_shared_actor_rts(
         && entry.routine != kCoroutineSchedulerReturn
         && entry.routine != kCollisionScannerRoutine
         && entry.routine != kKnightNoHitReturn
+        && entry.routine != kKnightHitParentReturn
         && entry.routine != kKnightCounterReturn
         && entry.routine != kActorSetupReturn
+        && entry.routine != kKnightIdleReturn
         && entry.routine != kInitialSubstepReturn
         && entry.routine != kGrayBlobTimerReturn
         && entry.routine != kLowerTableTimerReturn) {

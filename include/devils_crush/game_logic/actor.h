@@ -259,6 +259,26 @@ int dc_classify_gray_blob_first_live(
     uint8_t slot,
     dc_gray_blob_first_live* first_live);
 
+// The normal Gray-Blob live pass at 03:68BF has a small, side-effect-free
+// wait arm: a still-live appearance timer, no signed collision, and a
+// movement timer that does not expire.  The other arms change animation,
+// invoke the collision route, or schedule another coroutine and remain in
+// the ROM interpreter.
+typedef struct dc_gray_blob_live_wait {
+    uint8_t slot;
+    uint8_t appearance_timer;
+    uint8_t decremented_appearance_timer;
+    uint8_t collision_state;
+    uint8_t movement_timer;
+    uint8_t decremented_movement_timer;
+} dc_gray_blob_live_wait;
+
+int dc_classify_gray_blob_live_wait(
+    const uint8_t* work_ram,
+    size_t work_ram_size,
+    uint8_t slot,
+    dc_gray_blob_live_wait* wait);
+
 // Direct ROM routine 02:4F9F installs the dormant appearance, collision,
 // and script fields for one of the three lower-table Mercy Stars.
 typedef struct dc_mercy_star_initializer {

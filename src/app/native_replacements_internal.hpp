@@ -93,6 +93,16 @@ replace_gray_blob_first_live_prefix(
     std::span<const std::byte> work_ram);
 
 [[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_gray_blob_live_wait_prefix(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram);
+
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_upper_table_idle_gate(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram);
+
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
 replace_mercy_star_initializer(
     const emulation::RoutineEntry& entry,
     std::span<const std::byte> work_ram);
@@ -214,6 +224,11 @@ replace_side_star_initializers(
 
 [[nodiscard]] std::optional<emulation::RoutineReplacement>
 replace_mercy_star_gate(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram);
+
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_mercy_star_not_last_tail(
     const emulation::RoutineEntry& entry,
     std::span<const std::byte> work_ram);
 
@@ -1812,6 +1827,27 @@ replace_music_jsr(const emulation::RoutineEntry& entry);
 [[nodiscard]] std::optional<emulation::RoutineReplacement>
 replace_knight_bsr(const emulation::RoutineEntry& entry);
 
+// The Knight hit caller reloads its source slot immediately before that BSR.
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_knight_source_slot_load(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram);
+
+// Exact JSR and RTS instruction seams inside the Knight's 7Axx movement
+// helper. The stateful helper body remains interpreted between these seams.
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_knight_movement_jsr(const emulation::RoutineEntry& entry);
+
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_knight_movement_rts(const emulation::RoutineEntry& entry);
+
+// Exact stack seams shared by the fixed scheduler's repeated $C060 calls.
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_fixed_scheduler_jsr(const emulation::RoutineEntry& entry);
+
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_fixed_scheduler_rts(const emulation::RoutineEntry& entry);
+
 [[nodiscard]] std::optional<emulation::RoutineReplacement>
 replace_knight_bcs(const emulation::RoutineEntry& entry);
 
@@ -1828,6 +1864,13 @@ replace_music_rts(const emulation::RoutineEntry& entry);
 
 [[nodiscard]] std::optional<emulation::RoutineReplacement>
 replace_music_jmp(const emulation::RoutineEntry& entry);
+
+// A declined per-voice music walk can still execute this isolated work-RAM
+// load without widening the sequencer's interrupt-sensitive transcript.
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_music_voice_state_load(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram);
 
 [[nodiscard]] std::optional<emulation::RoutineReplacement>
 replace_shared_actor_rts(const emulation::RoutineEntry& entry);
@@ -1848,6 +1891,20 @@ replace_vram_upload(
     const emulation::RoutineEntry& entry,
     std::span<const std::byte> work_ram,
     std::span<const std::byte> rom);
+
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_bank1_vdc_row_upload(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram,
+    std::span<const std::byte> rom);
+
+// The collision-free half of bank 02's shared actor timer tail.  The collision
+// table has already answered before this entry; collision and active-state
+// continuations retain their original scheduler boundary.
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_shared_collision_free_timer_tail(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram);
 
 // The background tilemap upload: the row writer at 00:F3E7 and the scroll
 // driver at 00:F261 that decides which row has come into view and calls it. One

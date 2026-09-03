@@ -23,6 +23,21 @@ replace_native_gameplay_routine_impl(
     if (entry.routine == RoutineKey{0x02U, 0x4CDAU}) {
         return detail::replace_shared_four_tick_timer_tail(entry, work_ram);
     }
+    if (entry.routine == RoutineKey{0x02U, 0x5003U}) {
+        return detail::replace_mercy_star_not_last_tail(entry, work_ram);
+    }
+    if (entry.routine == RoutineKey{0x02U, 0x592BU}) {
+        return detail::replace_upper_table_idle_gate(entry, work_ram);
+    }
+    if (entry.routine == RoutineKey{0x03U, 0x68BFU}) {
+        return detail::replace_gray_blob_live_wait_prefix(entry, work_ram);
+    }
+    if (entry.routine == RoutineKey{0x01U, 0xDE9CU}) {
+        return detail::replace_bank1_vdc_row_upload(entry, work_ram, rom);
+    }
+    if (entry.routine == RoutineKey{0x02U, 0x4424U}) {
+        return detail::replace_shared_collision_free_timer_tail(entry, work_ram);
+    }
     if (entry.routine == RoutineKey{0x01U, 0xC100U}
         || entry.routine == RoutineKey{0x08U, 0x585AU}
         || entry.routine == RoutineKey{0x00U, 0xE950U}
@@ -61,14 +76,39 @@ replace_native_gameplay_routine_impl(
         || entry.routine == RoutineKey{0x45U, 0x4138U}
         || entry.routine == RoutineKey{0x03U, 0x7696U}
         || entry.routine == RoutineKey{0x01U, 0xCB5EU}
-        || entry.routine == RoutineKey{0x00U, 0xE976U}) {
+        || entry.routine == RoutineKey{0x00U, 0xE976U}
+        || entry.routine == RoutineKey{0x01U, 0xC603U}
+        || entry.routine == RoutineKey{0x01U, 0xC7CFU}) {
         return detail::replace_music_jsr(entry);
     }
-    if (entry.routine == RoutineKey{0x45U, 0x4210U}) {
+    if (entry.routine == RoutineKey{0x45U, 0x4210U}
+        || entry.routine == RoutineKey{0x45U, 0x46D6U}) {
         return detail::replace_music_rts(entry);
+    }
+    if (entry.routine == RoutineKey{0x45U, 0x4092U}) {
+        return detail::replace_music_voice_state_load(entry, work_ram);
     }
     if (entry.routine == RoutineKey{0x03U, 0x73D3U}) {
         return detail::replace_knight_bsr(entry);
+    }
+    if (entry.routine == RoutineKey{0x03U, 0x73D0U}) {
+        return detail::replace_knight_source_slot_load(entry, work_ram);
+    }
+    if (entry.routine == RoutineKey{0x03U, 0x7A74U}
+        || entry.routine == RoutineKey{0x03U, 0x7A7CU}) {
+        return detail::replace_knight_movement_jsr(entry);
+    }
+    if (entry.routine == RoutineKey{0x03U, 0x7A8EU}
+        || entry.routine == RoutineKey{0x03U, 0x7AF2U}) {
+        return detail::replace_knight_movement_rts(entry);
+    }
+    if (entry.routine == RoutineKey{0x03U, 0x7B4BU}
+        || entry.routine == RoutineKey{0x03U, 0x7B5AU}
+        || entry.routine == RoutineKey{0x03U, 0x7B69U}) {
+        return detail::replace_fixed_scheduler_jsr(entry);
+    }
+    if (entry.routine == RoutineKey{0x03U, 0x7B6CU}) {
+        return detail::replace_fixed_scheduler_rts(entry);
     }
     if (entry.routine == RoutineKey{0x03U, 0x73D5U}) {
         return detail::replace_knight_bcs(entry);
@@ -105,7 +145,12 @@ replace_native_gameplay_routine_impl(
         || entry.routine == RoutineKey{0x01U, 0xC5E9U}
         || entry.routine == RoutineKey{0x01U, 0xCCD4U}
         || entry.routine == RoutineKey{0x03U, 0x73D7U}
+        || entry.routine == RoutineKey{0x03U, 0x73CCU}
         || entry.routine == RoutineKey{0x03U, 0x76CAU}
+        || entry.routine == RoutineKey{0x03U, 0x6314U}
+        || entry.routine == RoutineKey{0x03U, 0x7423U}
+        || entry.routine == RoutineKey{0x01U, 0xC3DCU}
+        || entry.routine == RoutineKey{0x01U, 0xC4C8U}
         || entry.routine == RoutineKey{0x01U, 0xC70AU}
         || entry.routine == RoutineKey{0x03U, 0x6905U}
         || entry.routine == RoutineKey{0x02U, 0x453BU}) {
@@ -751,9 +796,10 @@ replace_native_gameplay_routine_impl(
     // in front of the RTS. Three of those entries are not calls at all -- `4044`
     // and `4143` are loop heads, where a chunked transcript resumes, and
     // `4169` is where the channel loop picks up after the one instruction in
-    // the bank a checkpoint cannot describe, the SEI at `4168`. `469B` is
-    // the command interpreter's stable note-duration continuation; it is an
-    // internal branch target rather than a separately callable routine.
+    // the bank a checkpoint cannot describe, the SEI at `4168`. `4667` and
+    // `469B` are the command interpreter's stable duration continuations;
+    // they are internal branch targets rather than separately callable
+    // routines.
     if (entry.routine
             == RoutineKey{
                 .physical_bank = 0x45U,
@@ -843,6 +889,11 @@ replace_native_gameplay_routine_impl(
             == RoutineKey{
                 .physical_bank = 0x45U,
                 .logical_pc = 0x457AU,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x45U,
+                .logical_pc = 0x4667U,
             }
         || entry.routine
             == RoutineKey{

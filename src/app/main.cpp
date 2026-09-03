@@ -8048,6 +8048,7 @@ parse_logical_address_range(const std::string_view text)
                                || request.routine.logical_pc == 0x4211U
                                || request.routine.logical_pc == 0x4228U
                                || request.routine.logical_pc == 0x457AU
+                               || request.routine.logical_pc == 0x4667U
                                || request.routine.logical_pc == 0x469BU
                                || request.routine.logical_pc == 0x4883U
                                || request.routine.logical_pc == 0x48B4U
@@ -15137,7 +15138,14 @@ struct NativeRegistryDeployment {
     std::uint64_t core_jmp_instructions = 0U;
     std::uint64_t core_giant_face_wait_dispatch_instructions = 0U;
     std::uint64_t core_four_tick_timer_tail_entries = 0U;
+    std::uint64_t core_music_duration_tail_entries = 0U;
+    std::uint64_t core_music_duration_return_entries = 0U;
+    std::uint64_t core_mercy_star_not_last_tail_entries = 0U;
     std::uint64_t core_three_blobs_timer_decrement_instructions = 0U;
+    std::uint64_t core_upper_table_idle_gate_entries = 0U;
+    std::uint64_t core_gray_blob_live_wait_entries = 0U;
+    std::uint64_t core_bank1_vdc_row_upload_entries = 0U;
+    std::uint64_t core_shared_collision_free_timer_tail_entries = 0U;
     std::uint64_t core_flipper_owner_instructions = 0U;
     std::uint64_t core_actor_scheduler_instructions = 0U;
     std::uint64_t core_tii_transfers = 0U;
@@ -15157,9 +15165,15 @@ struct NativeRegistryDeployment {
     std::uint64_t auxiliary_bonus_actor_scan_entries = 0U;
     std::uint64_t auxiliary_palette_fade_tail_entries = 0U;
     std::uint64_t auxiliary_coroutine_scheduler_rts_entries = 0U;
+    std::uint64_t auxiliary_knight_source_slot_load_entries = 0U;
     std::uint64_t auxiliary_knight_bsr_entries = 0U;
     std::uint64_t auxiliary_knight_bcs_entries = 0U;
+    std::uint64_t auxiliary_knight_movement_jsr_entries = 0U;
+    std::uint64_t auxiliary_knight_movement_rts_entries = 0U;
+    std::uint64_t auxiliary_fixed_scheduler_jsr_entries = 0U;
+    std::uint64_t auxiliary_fixed_scheduler_rts_entries = 0U;
     std::uint64_t auxiliary_knight_counter_rts_entries = 0U;
+    std::uint64_t auxiliary_music_voice_state_load_entries = 0U;
 };
 
 // Admitted routines that are nonetheless withheld from a composed deployment.
@@ -15557,12 +15571,16 @@ using NativeRegistryEntryObserver = std::function<void(
     // boundary out of the interpreter. C9DE is the active range-helper's
     // caller-owned return: it is deliberately a core RTS rather than a
     // synthetic continuation of C969.
-    constexpr std::array<RoutineKey, 7U> kGameplayHelperRtsInstructions{{
+    constexpr std::array<RoutineKey, 11U> kGameplayHelperRtsInstructions{{
         {.physical_bank = 0x01U, .logical_pc = 0xC9DEU},
         {.physical_bank = 0x01U, .logical_pc = 0xC70AU},
+        {.physical_bank = 0x01U, .logical_pc = 0xC3DCU},
+        {.physical_bank = 0x01U, .logical_pc = 0xC4C8U},
         {.physical_bank = 0x02U, .logical_pc = 0x453BU},
         {.physical_bank = 0x03U, .logical_pc = 0x6314U},
         {.physical_bank = 0x03U, .logical_pc = 0x6905U},
+        {.physical_bank = 0x03U, .logical_pc = 0x73CCU},
+        {.physical_bank = 0x03U, .logical_pc = 0x7423U},
         {.physical_bank = 0x03U, .logical_pc = 0x73FDU},
         {.physical_bank = 0x03U, .logical_pc = 0x76A8U},
     }};
@@ -15730,13 +15748,15 @@ using NativeRegistryEntryObserver = std::function<void(
         std::cerr << "Could not install native music SEI hook.\n";
         return false;
     }
-    constexpr std::array<RoutineKey, 6U> kExactJsrInstructions{{
+    constexpr std::array<RoutineKey, 8U> kExactJsrInstructions{{
         {.physical_bank = 0x45U, .logical_pc = 0x408FU},
         {.physical_bank = 0x45U, .logical_pc = 0x4099U},
         {.physical_bank = 0x45U, .logical_pc = 0x4138U},
         {.physical_bank = 0x03U, .logical_pc = 0x7696U},
         {.physical_bank = 0x01U, .logical_pc = 0xCB5EU},
         {.physical_bank = 0x00U, .logical_pc = 0xE976U},
+        {.physical_bank = 0x01U, .logical_pc = 0xC603U},
+        {.physical_bank = 0x01U, .logical_pc = 0xC7CFU},
     }};
     for (const auto routine : kExactJsrInstructions) {
         if (std::find(claimed_routines.begin(), claimed_routines.end(), routine)
@@ -16098,6 +16118,229 @@ using NativeRegistryEntryObserver = std::function<void(
             return false;
         }
     }
+    // This is the music command decoder's common duration-dispatch seam. It
+    // is already covered by the sequencer's guarded transcript, but is an
+    // internal branch target rather than an admitted routine row.
+    constexpr RoutineKey kMusicDurationTail{
+        .physical_bank = 0x45U,
+        .logical_pc = 0x4667U,
+    };
+    if (std::find(claimed_routines.begin(), claimed_routines.end(), kMusicDurationTail)
+            == claimed_routines.end()
+        && !runtime.install_execution_hook({
+            .routine = kMusicDurationTail,
+            .mode = HookMode::replace,
+            .replacement_callback = [&deployment, &replacement_rom](
+                const RoutineEntry& entry,
+                const std::span<const std::byte> work_ram) {
+                ++deployment.core_capability_entries;
+                ++deployment.core_music_duration_tail_entries;
+                deployment.span.observe(entry.absolute_master_cycle);
+                auto result = replace_native_gameplay_routine(
+                    entry, work_ram, replacement_rom);
+                if (result) {
+                    ++deployment.core_capability_accepted;
+                    deployment.core_capability_master_cycles +=
+                        result->body_master_cycles;
+                }
+                return result;
+            },
+        })) {
+        std::cerr << "Could not install native music duration-tail hook.\n";
+        return false;
+    }
+    // The duration decoder's matching RTS uses the caller's live frame.  Its
+    // target is opaque at the 4667 internal seam, so retain the core's exact
+    // stack-pop and final event sample instead of synthesizing a continuation.
+    constexpr RoutineKey kMusicDurationReturn{
+        .physical_bank = 0x45U,
+        .logical_pc = 0x46D6U,
+    };
+    if (std::find(claimed_routines.begin(), claimed_routines.end(), kMusicDurationReturn)
+            == claimed_routines.end()
+        && !runtime.install_execution_hook({
+            .routine = kMusicDurationReturn,
+            .mode = HookMode::replace,
+            .replacement_callback = [&deployment, &replacement_rom](
+                const RoutineEntry& entry,
+                const std::span<const std::byte> work_ram) {
+                ++deployment.core_capability_entries;
+                ++deployment.core_music_duration_return_entries;
+                deployment.span.observe(entry.absolute_master_cycle);
+                auto result = replace_native_gameplay_routine(
+                    entry, work_ram, replacement_rom);
+                if (result) {
+                    ++deployment.core_capability_accepted;
+                    ++deployment.core_rts_instructions;
+                    deployment.core_capability_master_cycles +=
+                        result->body_master_cycles;
+                }
+                return result;
+            },
+        })) {
+        std::cerr << "Could not install native music duration-return hook.\n";
+        return false;
+    }
+    // The common Mercy-Star post-callback tail only chooses the shared
+    // four-tick timer. Its active-table and negative-activity branches remain
+    // interpreted, while this bounded transfer is visible separately.
+    constexpr RoutineKey kMercyStarNotLastTail{
+        .physical_bank = 0x02U,
+        .logical_pc = 0x5003U,
+    };
+    if (std::find(
+            claimed_routines.begin(), claimed_routines.end(), kMercyStarNotLastTail)
+            == claimed_routines.end()
+        && !runtime.install_execution_hook({
+            .routine = kMercyStarNotLastTail,
+            .mode = HookMode::replace,
+            .replacement_callback = [&deployment, &replacement_rom](
+                const RoutineEntry& entry,
+                const std::span<const std::byte> work_ram) {
+                ++deployment.core_capability_entries;
+                ++deployment.core_mercy_star_not_last_tail_entries;
+                deployment.span.observe(entry.absolute_master_cycle);
+                auto result = replace_native_gameplay_routine(
+                    entry, work_ram, replacement_rom);
+                if (result) {
+                    ++deployment.core_capability_accepted;
+                    deployment.core_capability_master_cycles +=
+                        result->body_master_cycles;
+                }
+                return result;
+            },
+        })) {
+        std::cerr << "Could not install native Mercy-Star tail hook.\n";
+        return false;
+    }
+    // 02:592B's idle arm is only a zero load and a taken branch into the
+    // already core-owned shared RTS. Its nonzero jump remains interpreted.
+    constexpr RoutineKey kUpperTableIdleGate{
+        .physical_bank = 0x02U,
+        .logical_pc = 0x592BU,
+    };
+    if (std::find(
+            claimed_routines.begin(), claimed_routines.end(), kUpperTableIdleGate)
+        == claimed_routines.end()
+        && !runtime.install_execution_hook({
+            .routine = kUpperTableIdleGate,
+            .mode = HookMode::replace,
+            .replacement_callback = [&deployment, &replacement_rom](
+                const RoutineEntry& entry,
+                const std::span<const std::byte> work_ram) {
+                ++deployment.core_capability_entries;
+                ++deployment.core_upper_table_idle_gate_entries;
+                deployment.span.observe(entry.absolute_master_cycle);
+                auto result = replace_native_gameplay_routine(
+                    entry, work_ram, replacement_rom);
+                if (result) {
+                    ++deployment.core_capability_accepted;
+                    deployment.core_capability_master_cycles +=
+                        result->body_master_cycles;
+                }
+                return result;
+            },
+        })) {
+        std::cerr << "Could not install native upper-table idle gate hook.\n";
+        return false;
+    }
+    // 03:68BF's common live Gray-Blob arm advances a non-expiring movement
+    // timer then reaches the existing core-owned RTS. Collision, animation,
+    // and expiry arms retain their original interpreter boundaries.
+    constexpr RoutineKey kGrayBlobLiveWait{
+        .physical_bank = 0x03U,
+        .logical_pc = 0x68BFU,
+    };
+    if (std::find(
+            claimed_routines.begin(), claimed_routines.end(), kGrayBlobLiveWait)
+        == claimed_routines.end()
+        && !runtime.install_execution_hook({
+            .routine = kGrayBlobLiveWait,
+            .mode = HookMode::replace,
+            .replacement_callback = [&deployment, &replacement_rom](
+                const RoutineEntry& entry,
+                const std::span<const std::byte> work_ram) {
+                ++deployment.core_capability_entries;
+                ++deployment.core_gray_blob_live_wait_entries;
+                deployment.span.observe(entry.absolute_master_cycle);
+                auto result = replace_native_gameplay_routine(
+                    entry, work_ram, replacement_rom);
+                if (result) {
+                    ++deployment.core_capability_accepted;
+                    deployment.core_capability_master_cycles +=
+                        result->body_master_cycles;
+                }
+                return result;
+            },
+        })) {
+        std::cerr << "Could not install native Gray-Blob live-wait hook.\n";
+        return false;
+    }
+    // 01:DE9C emits a bounded pair of VDC words per row. It remains an
+    // auxiliary capability until live play has covered both terminal arms.
+    constexpr RoutineKey kBank1VdcRowUpload{
+        .physical_bank = 0x01U,
+        .logical_pc = 0xDE9CU,
+    };
+    if (std::find(
+            claimed_routines.begin(), claimed_routines.end(), kBank1VdcRowUpload)
+        == claimed_routines.end()
+        && !runtime.install_execution_hook({
+            .routine = kBank1VdcRowUpload,
+            .mode = HookMode::replace,
+            .replacement_callback = [&deployment, &replacement_rom](
+                const RoutineEntry& entry,
+                const std::span<const std::byte> work_ram) {
+                ++deployment.core_capability_entries;
+                ++deployment.core_bank1_vdc_row_upload_entries;
+                deployment.span.observe(entry.absolute_master_cycle);
+                auto result = replace_native_gameplay_routine(
+                    entry, work_ram, replacement_rom);
+                if (result) {
+                    ++deployment.core_capability_accepted;
+                    deployment.core_capability_master_cycles +=
+                        result->body_master_cycles;
+                }
+                return result;
+            },
+        })) {
+        std::cerr << "Could not install native bank-01 VDC row-upload hook.\n";
+        return false;
+    }
+    // This post-collision timer tail is shared by several bank-02 actors.
+    // The set-carry contact arm only transfers to the already-native scheduler;
+    // its active continuation remains assembly-owned.
+    constexpr RoutineKey kSharedCollisionFreeTimerTail{
+        .physical_bank = 0x02U,
+        .logical_pc = 0x4424U,
+    };
+    if (std::find(
+            claimed_routines.begin(),
+            claimed_routines.end(),
+            kSharedCollisionFreeTimerTail)
+            == claimed_routines.end()
+        && !runtime.install_execution_hook({
+            .routine = kSharedCollisionFreeTimerTail,
+            .mode = HookMode::replace,
+            .replacement_callback = [&deployment, &replacement_rom](
+                const RoutineEntry& entry,
+                const std::span<const std::byte> work_ram) {
+                ++deployment.core_capability_entries;
+                ++deployment.core_shared_collision_free_timer_tail_entries;
+                deployment.span.observe(entry.absolute_master_cycle);
+                auto result = replace_native_gameplay_routine(
+                    entry, work_ram, replacement_rom);
+                if (result) {
+                    ++deployment.core_capability_accepted;
+                    deployment.core_capability_master_cycles +=
+                        result->body_master_cycles;
+                }
+                return result;
+            },
+        })) {
+        std::cerr << "Could not install native shared collision-free timer tail hook.\n";
+        return false;
+    }
     // These fixed descriptors deliberately hand the original overlapping
     // clears back to the core's resumable TII opcode path. None serializes
     // thousands of writes through the ordinary replacement channel.
@@ -16203,9 +16446,72 @@ using NativeRegistryEntryObserver = std::function<void(
         std::cerr << "Could not install native coroutine-scheduler RTS hook.\n";
         return false;
     }
+    // This per-voice load has no stack or device side effects, so it remains
+    // a safe independent seam when the enclosing music transcript yields at
+    // an interrupt horizon.
+    constexpr RoutineKey kMusicVoiceStateLoad{
+        .physical_bank = 0x45U,
+        .logical_pc = 0x4092U,
+    };
+    if (std::find(
+            claimed_routines.begin(), claimed_routines.end(),
+            kMusicVoiceStateLoad)
+            == claimed_routines.end()
+        && !runtime.install_execution_hook({
+            .routine = kMusicVoiceStateLoad,
+            .mode = HookMode::replace,
+            .replacement_callback = [&deployment, &replacement_rom](
+                const RoutineEntry& entry,
+                const std::span<const std::byte> work_ram) {
+                ++deployment.auxiliary_transcript_entries;
+                ++deployment.auxiliary_music_voice_state_load_entries;
+                deployment.span.observe(entry.absolute_master_cycle);
+                auto result = replace_native_gameplay_routine(
+                    entry, work_ram, replacement_rom);
+                if (result) {
+                    ++deployment.auxiliary_transcript_accepted;
+                    deployment.auxiliary_transcript_master_cycles +=
+                        result->body_master_cycles;
+                }
+                return result;
+            },
+        })) {
+        std::cerr << "Could not install native music voice-state load hook.\n";
+        return false;
+    }
     // The knight's relative call shares a live frame with the surrounding
     // bank-03 path. Keep its push, relative target, and interrupt boundary
     // in the core before considering the larger caller as a native domain.
+    constexpr RoutineKey kKnightSourceSlotLoad{
+        .physical_bank = 0x03U,
+        .logical_pc = 0x73D0U,
+    };
+    if (std::find(
+            claimed_routines.begin(), claimed_routines.end(),
+            kKnightSourceSlotLoad)
+            == claimed_routines.end()
+        && !runtime.install_execution_hook({
+            .routine = kKnightSourceSlotLoad,
+            .mode = HookMode::replace,
+            .replacement_callback = [&deployment, &replacement_rom](
+                const RoutineEntry& entry,
+                const std::span<const std::byte> work_ram) {
+                ++deployment.auxiliary_transcript_entries;
+                ++deployment.auxiliary_knight_source_slot_load_entries;
+                deployment.span.observe(entry.absolute_master_cycle);
+                auto result = replace_native_gameplay_routine(
+                    entry, work_ram, replacement_rom);
+                if (result) {
+                    ++deployment.auxiliary_transcript_accepted;
+                    deployment.auxiliary_transcript_master_cycles +=
+                        result->body_master_cycles;
+                }
+                return result;
+            },
+        })) {
+        std::cerr << "Could not install native knight source-slot load hook.\n";
+        return false;
+    }
     constexpr RoutineKey kKnightBsr{
         .physical_bank = 0x03U,
         .logical_pc = 0x73D3U,
@@ -16265,6 +16571,89 @@ using NativeRegistryEntryObserver = std::function<void(
         })) {
         std::cerr << "Could not install native knight BCS hook.\n";
         return false;
+    }
+    // The Knight movement helper owns its state transitions, but its literal
+    // call/return boundaries can remain exact core instructions. Keep the
+    // four seams visible independently until live play covers their callers.
+    constexpr std::array<RoutineKey, 4U> kKnightMovementInstructionSeams{{
+        {.physical_bank = 0x03U, .logical_pc = 0x7A74U},
+        {.physical_bank = 0x03U, .logical_pc = 0x7A7CU},
+        {.physical_bank = 0x03U, .logical_pc = 0x7A8EU},
+        {.physical_bank = 0x03U, .logical_pc = 0x7AF2U},
+    }};
+    for (const auto routine : kKnightMovementInstructionSeams) {
+        if (std::find(claimed_routines.begin(), claimed_routines.end(), routine)
+            != claimed_routines.end()) {
+            continue;
+        }
+        if (!runtime.install_execution_hook({
+                .routine = routine,
+                .mode = HookMode::replace,
+                .replacement_callback = [&deployment, &replacement_rom](
+                    const RoutineEntry& entry,
+                    const std::span<const std::byte> work_ram) {
+                    ++deployment.auxiliary_transcript_entries;
+                    if (entry.routine.logical_pc == 0x7A74U
+                        || entry.routine.logical_pc == 0x7A7CU) {
+                        ++deployment.auxiliary_knight_movement_jsr_entries;
+                    } else {
+                        ++deployment.auxiliary_knight_movement_rts_entries;
+                    }
+                    deployment.span.observe(entry.absolute_master_cycle);
+                    auto result = replace_native_gameplay_routine(
+                        entry, work_ram, replacement_rom);
+                    if (result) {
+                        ++deployment.auxiliary_transcript_accepted;
+                        deployment.auxiliary_transcript_master_cycles +=
+                            result->body_master_cycles;
+                    }
+                    return result;
+                },
+            })) {
+            std::cerr << "Could not install native knight movement seam hook.\n";
+            return false;
+        }
+    }
+    // The fixed scheduler repeats three calls to the shared $C060 helper,
+    // then closes through a caller-owned RTS. Keep those literal stack seams
+    // native while the scheduler's setup and marker writes stay interpreted.
+    constexpr std::array<RoutineKey, 4U> kFixedSchedulerInstructionSeams{{
+        {.physical_bank = 0x03U, .logical_pc = 0x7B4BU},
+        {.physical_bank = 0x03U, .logical_pc = 0x7B5AU},
+        {.physical_bank = 0x03U, .logical_pc = 0x7B69U},
+        {.physical_bank = 0x03U, .logical_pc = 0x7B6CU},
+    }};
+    for (const auto routine : kFixedSchedulerInstructionSeams) {
+        if (std::find(claimed_routines.begin(), claimed_routines.end(), routine)
+            != claimed_routines.end()) {
+            continue;
+        }
+        if (!runtime.install_execution_hook({
+                .routine = routine,
+                .mode = HookMode::replace,
+                .replacement_callback = [&deployment, &replacement_rom](
+                    const RoutineEntry& entry,
+                    const std::span<const std::byte> work_ram) {
+                    ++deployment.auxiliary_transcript_entries;
+                    if (entry.routine.logical_pc == 0x7B6CU) {
+                        ++deployment.auxiliary_fixed_scheduler_rts_entries;
+                    } else {
+                        ++deployment.auxiliary_fixed_scheduler_jsr_entries;
+                    }
+                    deployment.span.observe(entry.absolute_master_cycle);
+                    auto result = replace_native_gameplay_routine(
+                        entry, work_ram, replacement_rom);
+                    if (result) {
+                        ++deployment.auxiliary_transcript_accepted;
+                        deployment.auxiliary_transcript_master_cycles +=
+                            result->body_master_cycles;
+                    }
+                    return result;
+                },
+            })) {
+            std::cerr << "Could not install native fixed-scheduler seam hook.\n";
+            return false;
+        }
     }
     // This independent knight counter tail returns through a live frame after
     // its per-actor counter check. Keep the core responsible for the pop.
@@ -16617,8 +17006,22 @@ void print_native_registry_summary(
                   << deployment.core_giant_face_wait_dispatch_instructions
                   << ", Four-tick-tail="
                   << deployment.core_four_tick_timer_tail_entries
+                  << ", Music-duration-tail="
+                  << deployment.core_music_duration_tail_entries
+                  << ", Music-duration-RTS="
+                  << deployment.core_music_duration_return_entries
+                  << ", Mercy-star-tail="
+                  << deployment.core_mercy_star_not_last_tail_entries
                   << ", Three-blobs-timer="
                   << deployment.core_three_blobs_timer_decrement_instructions
+                  << ", Upper-table-idle="
+                  << deployment.core_upper_table_idle_gate_entries
+                  << ", Gray-blob-wait="
+                  << deployment.core_gray_blob_live_wait_entries
+                  << ", Bank-01-VDC-row="
+                  << deployment.core_bank1_vdc_row_upload_entries
+                  << ", Collision-free-timer="
+                  << deployment.core_shared_collision_free_timer_tail_entries
                   << ", Flipper="
                   << deployment.core_flipper_owner_instructions << ", Actor-scheduler="
                   << deployment.core_actor_scheduler_instructions << ", TII="
@@ -16637,12 +17040,24 @@ void print_native_registry_summary(
                   << deployment.auxiliary_palette_fade_tail_entries
                   << ", coroutine-scheduler RTS="
                   << deployment.auxiliary_coroutine_scheduler_rts_entries
+                  << ", knight source-slot load="
+                  << deployment.auxiliary_knight_source_slot_load_entries
                   << ", knight BSR="
                   << deployment.auxiliary_knight_bsr_entries
                   << ", knight BCS="
                   << deployment.auxiliary_knight_bcs_entries
+                  << ", knight movement JSR="
+                  << deployment.auxiliary_knight_movement_jsr_entries
+                  << ", knight movement RTS="
+                  << deployment.auxiliary_knight_movement_rts_entries
+                  << ", fixed-scheduler JSR="
+                  << deployment.auxiliary_fixed_scheduler_jsr_entries
+                  << ", fixed-scheduler RTS="
+                  << deployment.auxiliary_fixed_scheduler_rts_entries
                   << ", knight counter RTS="
                   << deployment.auxiliary_knight_counter_rts_entries
+                  << ", music voice-state load="
+                  << deployment.auxiliary_music_voice_state_load_entries
                   << ")\n";
         if (deployment.auxiliary_bank9_actor_scan_entries != 0U) {
             std::cout << "Bank-09 actor-scan entries: head="
@@ -16892,7 +17307,8 @@ int run_deterministic_recording(
     const std::span<const WorkRamPatch> work_ram_patches,
     const std::filesystem::path& table_vram_census_path = {},
     const std::span<const std::byte> rom = {},
-    const std::filesystem::path& initial_state_path = {})
+    const std::filesystem::path& initial_state_path = {},
+    const std::function<void()>& failure_callback = {})
 {
     if (runtime.work_ram_size() == 0U || plan.frame_count <= 0
         || (plan.input_for_frame == nullptr
@@ -17038,6 +17454,7 @@ int run_deterministic_recording(
     } else {
         runtime.reset();
     }
+    const auto initial_frame_number = runtime.serialize().frame_number;
     const auto interactive_flippers =
         devils_crush::cabinet::default_input_bindings().flippers;
     if (plan.restore_interactive_flipper_host
@@ -17098,11 +17515,15 @@ int run_deterministic_recording(
         const auto input = input_for_recording_plan_frame(plan, index);
         const auto frame = runtime.run_frame(input);
         const auto work_ram = runtime.export_work_ram();
-        if (frame.frame_number != static_cast<std::uint64_t>(index)
+        if (frame.frame_number
+                != initial_frame_number + static_cast<std::uint64_t>(index)
             || frame.framebuffer.pixels.empty()
             || frame.framebuffer.width <= 0
             || frame.framebuffer.height <= 0
             || work_ram.size() != runtime.work_ram_size()) {
+            if (failure_callback) {
+                failure_callback();
+            }
             std::cerr << plan.label << " recording failed on frame " << index
                       << ".\n";
             return EXIT_FAILURE;
@@ -17112,6 +17533,9 @@ int run_deterministic_recording(
             && work_ram_hash
                 != plan.expected_work_ram_sha256s[static_cast<std::size_t>(
                     index - 1)]) {
+            if (failure_callback) {
+                failure_callback();
+            }
             std::cerr << "Interactive session replay diverged at frame "
                       << index << ": expected work-RAM SHA-256 "
                       << plan.expected_work_ram_sha256s[
@@ -24094,7 +24518,33 @@ int main(const int argc, char* argv[])
                 options.table_vram_census_path,
                 *replacement_rom,
                 session_replay ? session_replay->initial_state_path
-                               : std::filesystem::path{});
+                               : std::filesystem::path{},
+                [&]() {
+                    // A frame failure used to discard the only evidence of
+                    // the routine handoffs immediately before it.  Preserve
+                    // explicitly requested traces so a captured session can
+                    // diagnose the failing frame as well as a completed one.
+                    if (!options.routine_trace_path.empty()) {
+                        static_cast<void>(write_routine_trace(
+                            options.routine_trace_path,
+                            options.observe_hooks,
+                            observed_entries,
+                            runtime_info.upstream_revision));
+                    }
+                    if (!options.routine_call_trace_path.empty()) {
+                        static_cast<void>(write_routine_call_trace(
+                            options.routine_call_trace_path,
+                            options.observe_hooks,
+                            observed_calls,
+                            runtime_info.upstream_revision));
+                    }
+                    if (options.replace_registry) {
+                        print_native_registry_summary(
+                            registry_deployment,
+                            runtime->replacement_nesting(),
+                            *runtime);
+                    }
+                });
             if (result != EXIT_SUCCESS) {
                 return result;
             }

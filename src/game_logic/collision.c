@@ -20,12 +20,6 @@ int dc_classify_collision_scan_run(
         || remaining == 0U || maximum_skips > DC_COLLISION_SCAN_MAX_SKIPS) {
         return 0;
     }
-    /* A nonzero gate takes the second eligibility test through $3000,Y,
-       which no observed route exercises. */
-    if (gate != 0U) {
-        return 0;
-    }
-
     current = slot;
     left = remaining;
     skipped = 0U;
@@ -49,10 +43,25 @@ int dc_classify_collision_scan_run(
             if ((attributes & 0x40U) == 0U) {
                 /* LDA $55 : BEQ to the vertical scan call. */
                 accumulator = gate;
-                run->exit = DC_COLLISION_SCAN_CANDIDATE;
-                break;
+                if (gate == 0U) {
+                    run->exit = DC_COLLISION_SCAN_CANDIDATE;
+                    break;
+                }
+                /* The nonzero gate checks bit six in the companion table
+                   before it may enter the same vertical scan. */
+                if ((size_t)0x1000U + (size_t)current >= work_ram_size) {
+                    return 0;
+                }
+                accumulator = (uint8_t)(work_ram[0x1000U + (size_t)current]
+                    & 0x40U);
+                if (accumulator != 0U) {
+                    run->exit = DC_COLLISION_SCAN_CANDIDATE;
+                    break;
+                }
+                run->skips[skipped] = (uint8_t)DC_COLLISION_SCAN_SKIP_GATED;
+            } else {
+                run->skips[skipped] = (uint8_t)DC_COLLISION_SCAN_SKIP_MASKED;
             }
-            run->skips[skipped] = (uint8_t)DC_COLLISION_SCAN_SKIP_MASKED;
         } else {
             run->skips[skipped] = (uint8_t)DC_COLLISION_SCAN_SKIP_POSITIVE;
         }
