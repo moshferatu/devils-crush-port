@@ -29,6 +29,9 @@ replace_native_gameplay_routine_impl(
     if (entry.routine == RoutineKey{0x02U, 0x592BU}) {
         return detail::replace_upper_table_idle_gate(entry, work_ram);
     }
+    if (entry.routine == RoutineKey{0x02U, 0x452EU}) {
+        return detail::replace_upper_table_actor_idle_gate(entry, work_ram);
+    }
     if (entry.routine == RoutineKey{0x03U, 0x68BFU}) {
         return detail::replace_gray_blob_live_wait_prefix(entry, work_ram);
     }
@@ -55,7 +58,9 @@ replace_native_gameplay_routine_impl(
         return detail::replace_collision_tail_bbs2(entry, work_ram);
     }
     if (entry.routine == RoutineKey{0x01U, 0xD4B2U}
+        || entry.routine == RoutineKey{0x02U, 0x44A3U}
         || entry.routine == RoutineKey{0x02U, 0x5933U}
+        || entry.routine == RoutineKey{0x02U, 0x5CD5U}
         || entry.routine == RoutineKey{0x01U, 0xC9DEU}
         || entry.routine == RoutineKey{0x03U, 0x73FDU}
         || entry.routine == RoutineKey{0x03U, 0x76A8U}) {

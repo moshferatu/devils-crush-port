@@ -15143,6 +15143,7 @@ struct NativeRegistryDeployment {
     std::uint64_t core_mercy_star_not_last_tail_entries = 0U;
     std::uint64_t core_three_blobs_timer_decrement_instructions = 0U;
     std::uint64_t core_upper_table_idle_gate_entries = 0U;
+    std::uint64_t core_upper_table_actor_idle_gate_entries = 0U;
     std::uint64_t core_gray_blob_live_wait_entries = 0U;
     std::uint64_t core_bank1_vdc_row_upload_entries = 0U;
     std::uint64_t core_shared_collision_free_timer_tail_entries = 0U;
@@ -15568,15 +15569,18 @@ using NativeRegistryEntryObserver = std::function<void(
     }
     // These helper returns are reached from several live callers.  Keep the
     // HuC6280's stack-pop sequence exact while moving their instruction
-    // boundary out of the interpreter. C9DE is the active range-helper's
-    // caller-owned return: it is deliberately a core RTS rather than a
-    // synthetic continuation of C969.
-    constexpr std::array<RoutineKey, 11U> kGameplayHelperRtsInstructions{{
+    // boundary out of the interpreter. 44A3 is an upper-table helper return,
+    // 5CD5 is the Side-Worm selector return, while C9DE is the active
+    // range-helper's caller-owned return; each deliberately remains a core
+    // RTS instruction rather than a synthetic continuation of its caller.
+    constexpr std::array<RoutineKey, 13U> kGameplayHelperRtsInstructions{{
         {.physical_bank = 0x01U, .logical_pc = 0xC9DEU},
         {.physical_bank = 0x01U, .logical_pc = 0xC70AU},
         {.physical_bank = 0x01U, .logical_pc = 0xC3DCU},
         {.physical_bank = 0x01U, .logical_pc = 0xC4C8U},
+        {.physical_bank = 0x02U, .logical_pc = 0x44A3U},
         {.physical_bank = 0x02U, .logical_pc = 0x453BU},
+        {.physical_bank = 0x02U, .logical_pc = 0x5CD5U},
         {.physical_bank = 0x03U, .logical_pc = 0x6314U},
         {.physical_bank = 0x03U, .logical_pc = 0x6905U},
         {.physical_bank = 0x03U, .logical_pc = 0x73CCU},
@@ -16242,6 +16246,38 @@ using NativeRegistryEntryObserver = std::function<void(
             },
         })) {
         std::cerr << "Could not install native upper-table idle gate hook.\n";
+        return false;
+    }
+    // 02:452E's upper-table actor wait arm reads a zero gate and an active
+    // actor before returning through the shared RTS at 453B. Its two other
+    // branches retain their ROM-owned active/reactivation behavior.
+    constexpr RoutineKey kUpperTableActorIdleGate{
+        .physical_bank = 0x02U,
+        .logical_pc = 0x452EU,
+    };
+    if (std::find(
+            claimed_routines.begin(), claimed_routines.end(), kUpperTableActorIdleGate)
+        == claimed_routines.end()
+        && !runtime.install_execution_hook({
+            .routine = kUpperTableActorIdleGate,
+            .mode = HookMode::replace,
+            .replacement_callback = [&deployment, &replacement_rom](
+                const RoutineEntry& entry,
+                const std::span<const std::byte> work_ram) {
+                ++deployment.core_capability_entries;
+                ++deployment.core_upper_table_actor_idle_gate_entries;
+                deployment.span.observe(entry.absolute_master_cycle);
+                auto result = replace_native_gameplay_routine(
+                    entry, work_ram, replacement_rom);
+                if (result) {
+                    ++deployment.core_capability_accepted;
+                    deployment.core_capability_master_cycles +=
+                        result->body_master_cycles;
+                }
+                return result;
+            },
+        })) {
+        std::cerr << "Could not install native upper-table actor idle gate hook.\n";
         return false;
     }
     // 03:68BF's common live Gray-Blob arm advances a non-expiring movement
@@ -17016,6 +17052,8 @@ void print_native_registry_summary(
                   << deployment.core_three_blobs_timer_decrement_instructions
                   << ", Upper-table-idle="
                   << deployment.core_upper_table_idle_gate_entries
+                  << ", Upper-table-actor-idle="
+                  << deployment.core_upper_table_actor_idle_gate_entries
                   << ", Gray-blob-wait="
                   << deployment.core_gray_blob_live_wait_entries
                   << ", Bank-01-VDC-row="

@@ -103,6 +103,11 @@ replace_upper_table_idle_gate(
     std::span<const std::byte> work_ram);
 
 [[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_upper_table_actor_idle_gate(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram);
+
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
 replace_mercy_star_initializer(
     const emulation::RoutineEntry& entry,
     std::span<const std::byte> work_ram);

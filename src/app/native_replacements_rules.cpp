@@ -735,15 +735,91 @@ replace_gray_blob_live_wait_prefix(
         return std::nullopt;
     }
 
-    // The arithmetic contract is fully classified (the leading opcode is
-    // DEC $3A00,X, not LDA), but this entry also resumes through a live actor
-    // scheduler boundary.  The core's replacement handoff is not yet a
-    // closed transcript for that continuation: even the exact 93-cycle,
-    // two-write transaction destabilizes the upper-table run.  Preserve the
-    // verified classifier and leave this interrupt-sensitive continuation to
-    // the ROM until its scheduler handoff is modeled as one transaction.
-    (void)wait;
-    return std::nullopt;
+    // The initial 93-cycle prefix reaches $6905, which owns another timer
+    // decrement and the live caller's RTS.  Splitting there leaves the
+    // scheduler return exposed at an interrupt horizon.  This arm keeps all
+    // three non-expiring timers and that return in one closed transaction:
+    //
+    //   68BF DEC $3A00,X  21    68D9 DEC $3B80,X  21
+    //   68C2 BNE $68D1   12    68DC BNE $6905    12
+    //   68D1 LDA $3800,X 15    6905 DEC $3B00,X  21
+    //   68D4 BPL $68D9   12    6908 BNE $690D    12
+    //                                690D RTS    21
+    const auto set_nz = [](std::uint8_t status, const std::uint8_t value) {
+        status = static_cast<std::uint8_t>(status & 0x7DU);
+        if (value == 0U) {
+            status = static_cast<std::uint8_t>(status | 0x02U);
+        } else if ((value & 0x80U) != 0U) {
+            status = static_cast<std::uint8_t>(status | 0x80U);
+        }
+        return status;
+    };
+    const auto append_checkpoint = [](RoutineReplacement& replacement,
+                                      const std::uint16_t instruction,
+                                      const std::uint16_t resume,
+                                      const std::uint32_t cycle,
+                                      auto registers) {
+        registers.program_counter = resume;
+        replacement.checkpoints.push_back({
+            .interrupt_sample_master_cycle_offset = cycle - 3U,
+            .master_cycle_offset = cycle,
+            .instruction = {.physical_bank = 0x03U, .logical_pc = instruction},
+            .registers = registers,
+        });
+    };
+    const auto add_write = [](RoutineReplacement& replacement,
+                              const std::uint16_t instruction,
+                              const std::uint16_t address,
+                              const std::uint8_t value,
+                              const std::uint32_t cycle) {
+        replacement.work_ram_writes.push_back({
+            .instruction = {.physical_bank = 0x03U, .logical_pc = instruction},
+            .logical_address = address,
+            .value = value,
+            .master_cycle_offset = cycle,
+        });
+    };
+
+    auto checkpoint = entry.registers;
+    checkpoint.status = set_nz(checkpoint.status, wait.decremented_appearance_timer);
+    RoutineReplacement replacement{
+        .return_instruction = {.physical_bank = 0x03U, .logical_pc = 0x690DU},
+        .output_registers = checkpoint,
+        .body_master_cycles = 126U,
+    };
+    add_write(replacement, 0x68BFU,
+              static_cast<std::uint16_t>(0x3A00U + wait.slot),
+              wait.decremented_appearance_timer, 21U);
+    append_checkpoint(replacement, 0x68BFU, 0x68C2U, 21U, checkpoint);
+    append_checkpoint(replacement, 0x68C2U, 0x68D1U, 33U, checkpoint);
+
+    checkpoint.accumulator = wait.collision_state;
+    checkpoint.status = set_nz(checkpoint.status, checkpoint.accumulator);
+    append_checkpoint(replacement, 0x68D1U, 0x68D4U, 48U, checkpoint);
+    append_checkpoint(replacement, 0x68D4U, 0x68D9U, 60U, checkpoint);
+
+    checkpoint.status = set_nz(checkpoint.status, wait.decremented_movement_timer);
+    add_write(replacement, 0x68D9U,
+              static_cast<std::uint16_t>(0x3B80U + wait.slot),
+              wait.decremented_movement_timer, 81U);
+    append_checkpoint(replacement, 0x68D9U, 0x68DCU, 81U, checkpoint);
+    append_checkpoint(replacement, 0x68DCU, 0x6905U, 93U, checkpoint);
+
+    checkpoint.status = set_nz(checkpoint.status, wait.decremented_phase_timer);
+    add_write(replacement, 0x6905U,
+              static_cast<std::uint16_t>(0x3B00U + wait.slot),
+              wait.decremented_phase_timer, 114U);
+    append_checkpoint(replacement, 0x6905U, 0x6908U, 114U, checkpoint);
+    append_checkpoint(replacement, 0x6908U, 0x690DU, 126U, checkpoint);
+
+    absorb_return(
+        replacement,
+        work_ram,
+        entry.registers.stack_pointer,
+        {.physical_bank = 0x03U, .logical_pc = 0x690DU},
+        126U,
+        checkpoint);
+    return replacement;
 }
 
 [[nodiscard]] std::optional<RoutineReplacement>
@@ -814,6 +890,84 @@ replace_upper_table_idle_gate(
         entry.registers.stack_pointer,
         kReturn,
         27U,
+        output);
+    return replacement;
+}
+
+[[nodiscard]] std::optional<RoutineReplacement>
+replace_upper_table_actor_idle_gate(
+    const RoutineEntry& entry,
+    const std::span<const std::byte> work_ram)
+{
+    // This is the common upper-table actor wait gate's closed return arm:
+    //
+    //   452E LDA $2CFA   15    4536 LDA $3800,X 15
+    //   4531 BEQ $4536  12    4539 BMI $453C   6
+    //                                453B RTS  21
+    //
+    // A nonzero $2CFA transfers to the actor's active path at $458A, and a
+    // negative activity byte enters its reactivation setup at $453C.  Neither
+    // is folded into this idle transaction.
+    constexpr RoutineKey kRoutine{.physical_bank = 0x02U, .logical_pc = 0x452EU};
+    constexpr RoutineKey kReturn{.physical_bank = 0x02U, .logical_pc = 0x453BU};
+    constexpr std::size_t kGateOffset = 0x0CFAU;
+    constexpr std::size_t kActivityOffset = 0x1800U;
+    if (entry.routine != kRoutine || work_ram.size() <= kGateOffset
+        || work_ram.size() <= kActivityOffset + entry.registers.x) {
+        return std::nullopt;
+    }
+
+    const auto gate = std::to_integer<std::uint8_t>(work_ram[kGateOffset]);
+    const auto activity = std::to_integer<std::uint8_t>(
+        work_ram[kActivityOffset + entry.registers.x]);
+    if (gate != 0U || (activity & 0x80U) != 0U) {
+        return std::nullopt;
+    }
+
+    const auto set_nz = [](std::uint8_t status, const std::uint8_t value) {
+        status = static_cast<std::uint8_t>(status & 0x7DU);
+        if (value == 0U) {
+            status = static_cast<std::uint8_t>(status | 0x02U);
+        } else if ((value & 0x80U) != 0U) {
+            status = static_cast<std::uint8_t>(status | 0x80U);
+        }
+        return status;
+    };
+    const auto append_checkpoint = [](RoutineReplacement& replacement,
+                                      const std::uint16_t instruction,
+                                      const std::uint16_t resume,
+                                      const std::uint32_t cycle,
+                                      auto registers) {
+        registers.program_counter = resume;
+        replacement.checkpoints.push_back({
+            .interrupt_sample_master_cycle_offset = cycle - 3U,
+            .master_cycle_offset = cycle,
+            .instruction = {.physical_bank = 0x02U, .logical_pc = instruction},
+            .registers = registers,
+        });
+    };
+
+    auto output = entry.registers;
+    output.accumulator = gate;
+    output.status = set_nz(output.status, gate);
+    RoutineReplacement replacement{
+        .return_instruction = kReturn,
+        .output_registers = output,
+        // absorb_return contributes the final 21-cycle RTS below.
+        .body_master_cycles = 48U,
+    };
+    append_checkpoint(replacement, 0x452EU, 0x4531U, 15U, output);
+    append_checkpoint(replacement, 0x4531U, 0x4536U, 27U, output);
+    output.accumulator = activity;
+    output.status = set_nz(output.status, activity);
+    append_checkpoint(replacement, 0x4536U, 0x4539U, 42U, output);
+    append_checkpoint(replacement, 0x4539U, 0x453BU, 48U, output);
+    absorb_return(
+        replacement,
+        work_ram,
+        entry.registers.stack_pointer,
+        kReturn,
+        48U,
         output);
     return replacement;
 }

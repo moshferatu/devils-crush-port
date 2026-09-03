@@ -271,6 +271,8 @@ typedef struct dc_gray_blob_live_wait {
     uint8_t collision_state;
     uint8_t movement_timer;
     uint8_t decremented_movement_timer;
+    uint8_t phase_timer;
+    uint8_t decremented_phase_timer;
 } dc_gray_blob_live_wait;
 
 int dc_classify_gray_blob_live_wait(

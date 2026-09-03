@@ -6295,6 +6295,14 @@ std::optional<RoutineReplacement> replace_flipper_owner_rts(
         .physical_bank = 0x02U,
         .logical_pc = 0x5933U,
     };
+    constexpr RoutineKey kUpperTableHelperReturn{
+        .physical_bank = 0x02U,
+        .logical_pc = 0x44A3U,
+    };
+    constexpr RoutineKey kSideWormSelectorReturn{
+        .physical_bank = 0x02U,
+        .logical_pc = 0x5CD5U,
+    };
     constexpr RoutineKey kRangeHelperReturn{
         .physical_bank = 0x01U,
         .logical_pc = 0xC9DEU,
@@ -6311,6 +6319,8 @@ std::optional<RoutineReplacement> replace_flipper_owner_rts(
     // including C969's active range-helper arm. The descriptor deliberately
     // leaves the core's RTS execution intact rather than guessing either.
     if (entry.routine != kRoutine && entry.routine != kUpperTableReturn
+        && entry.routine != kUpperTableHelperReturn
+        && entry.routine != kSideWormSelectorReturn
         && entry.routine != kRangeHelperReturn
         && entry.routine != kKnightCollisionReturn
         && entry.routine != kGiantFaceAnimatorReturn) {

@@ -2393,6 +2393,7 @@ void test_native_gray_blob_live_wait()
     work_ram[0x1A50U] = 0x03U;
     work_ram[0x1850U] = 0x13U;
     work_ram[0x1BD0U] = 0x16U;
+    work_ram[0x1B50U] = 0x07U;
     check(
         dc_classify_gray_blob_live_wait(
             work_ram.data(), work_ram.size(), 0x50U, &wait)
@@ -2402,7 +2403,9 @@ void test_native_gray_blob_live_wait()
             && wait.decremented_appearance_timer == 0x02U
             && wait.collision_state == 0x13U
             && wait.movement_timer == 0x16U
-            && wait.decremented_movement_timer == 0x15U,
+            && wait.decremented_movement_timer == 0x15U
+            && wait.phase_timer == 0x07U
+            && wait.decremented_phase_timer == 0x06U,
         "native 68BF classifies a non-expiring Gray-Blob live wait");
 
     work_ram[0x1A50U] = 0x01U;
@@ -2418,6 +2421,13 @@ void test_native_gray_blob_live_wait()
             work_ram.data(), work_ram.size(), 0x50U, &wait)
             == 0,
         "native 68BF leaves the movement-expiry arm in assembly");
+    work_ram[0x1BD0U] = 0x16U;
+    work_ram[0x1B50U] = 0x01U;
+    check(
+        dc_classify_gray_blob_live_wait(
+            work_ram.data(), work_ram.size(), 0x50U, &wait)
+            == 0,
+        "native 68BF leaves the phase-expiry arm in assembly");
 }
 
 void test_native_mercy_star_initializer()

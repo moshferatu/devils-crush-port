@@ -465,14 +465,17 @@ int dc_classify_gray_blob_live_wait(
     const size_t appearance_timer_offset = 0x1A00U + (size_t)slot;
     const size_t collision_offset = 0x1800U + (size_t)slot;
     const size_t movement_timer_offset = 0x1B80U + (size_t)slot;
+    const size_t phase_timer_offset = 0x1B00U + (size_t)slot;
 
     if (work_ram == NULL || wait == NULL || slot < 0x50U || slot > 0x56U
         || work_ram_size <= appearance_timer_offset
         || work_ram_size <= collision_offset
         || work_ram_size <= movement_timer_offset
+        || work_ram_size <= phase_timer_offset
         || work_ram[appearance_timer_offset] <= 1U
         || (work_ram[collision_offset] & 0x80U) != 0U
-        || work_ram[movement_timer_offset] <= 1U) {
+        || work_ram[movement_timer_offset] <= 1U
+        || work_ram[phase_timer_offset] <= 1U) {
         return 0;
     }
 
@@ -484,6 +487,9 @@ int dc_classify_gray_blob_live_wait(
     wait->movement_timer = work_ram[movement_timer_offset];
     wait->decremented_movement_timer =
         (uint8_t)(wait->movement_timer - 1U);
+    wait->phase_timer = work_ram[phase_timer_offset];
+    wait->decremented_phase_timer =
+        (uint8_t)(wait->phase_timer - 1U);
     return 1;
 }
 
