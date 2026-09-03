@@ -751,15 +751,71 @@ replace_upper_table_idle_gate(
     const RoutineEntry& entry,
     const std::span<const std::byte> work_ram)
 {
-    // The zero-gate branch falls directly into an RTS whose target is owned
-    // by the live upper-table call stack. A captured Sorcerer hit reaches
-    // that branch at an interrupt boundary where composing the branch and
-    // return leaves the core without a framebuffer on the following frame.
-    // Keep both instructions in the core until their stack/interrupt handoff
-    // is represented by a single verified transcript.
-    (void)entry;
-    (void)work_ram;
-    return std::nullopt;
+    // The idle arm is a short, closed return path:
+    //
+    //   592B LDA $2D0B   15
+    //   592E BEQ $5933   12
+    //   5933 RTS         21
+    //
+    // The RTS belongs to the live upper-table caller, so stopping the
+    // replacement at $5933 split the branch from the stack handoff at an IRQ
+    // horizon.  Absorb that return instead: it resolves the actual caller
+    // through the current stack and publishes the original final interrupt
+    // sample at the end of the one 48-cycle transaction.
+    constexpr RoutineKey kRoutine{.physical_bank = 0x02U, .logical_pc = 0x592BU};
+    constexpr RoutineKey kReturn{.physical_bank = 0x02U, .logical_pc = 0x5933U};
+    constexpr std::size_t kIdleGateOffset = 0x0D0BU;
+    if (entry.routine != kRoutine || work_ram.size() <= kIdleGateOffset) {
+        return std::nullopt;
+    }
+
+    const auto gate = std::to_integer<std::uint8_t>(work_ram[kIdleGateOffset]);
+    if (gate != 0U) {
+        // The fall-through JMP $5808 remains at its existing interpreter
+        // boundary; only the proven zero-return arm is closed here.
+        return std::nullopt;
+    }
+
+    const auto set_nz = [](std::uint8_t status, const std::uint8_t value) {
+        status = static_cast<std::uint8_t>(status & 0x7DU);
+        if (value == 0U) {
+            status = static_cast<std::uint8_t>(status | 0x02U);
+        } else if ((value & 0x80U) != 0U) {
+            status = static_cast<std::uint8_t>(status | 0x80U);
+        }
+        return status;
+    };
+
+    auto output = entry.registers;
+    output.accumulator = gate;
+    output.status = set_nz(output.status, gate);
+    output.program_counter = 0x592EU;
+    RoutineReplacement replacement{
+        .return_instruction = kReturn,
+        .output_registers = output,
+        .body_master_cycles = 27U,
+    };
+    replacement.checkpoints.push_back({
+        .interrupt_sample_master_cycle_offset = 12U,
+        .master_cycle_offset = 15U,
+        .instruction = {.physical_bank = 0x02U, .logical_pc = 0x592EU},
+        .registers = output,
+    });
+    output.program_counter = 0x5933U;
+    replacement.checkpoints.push_back({
+        .interrupt_sample_master_cycle_offset = 24U,
+        .master_cycle_offset = 27U,
+        .instruction = kReturn,
+        .registers = output,
+    });
+    absorb_return(
+        replacement,
+        work_ram,
+        entry.registers.stack_pointer,
+        kReturn,
+        27U,
+        output);
+    return replacement;
 }
 
 [[nodiscard]] std::optional<RoutineReplacement>
