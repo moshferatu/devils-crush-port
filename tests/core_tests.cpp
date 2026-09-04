@@ -11164,6 +11164,13 @@ void test_dmd_text_layout()
             && content.text[1] == "Ball 1"
             && content.text[2] == "Bonus 3,700",
         "the DMD exposes comma-formatted live values and labels");
+    check(
+        content.colors
+            == std::array{
+                devils_crush::cabinet::kDmdOrange,
+                devils_crush::cabinet::kDmdOrange,
+                devils_crush::cabinet::kDmdOrange},
+        "the live DMD keeps its original orange text");
 
     // Every shape a DMD role can take: the default window, a dedicated DMD
     // strip, fullscreen 16:9 and 16:10 panels, and a portrait rotation.
@@ -11267,6 +11274,10 @@ void test_dmd_text_layout()
 
     const auto champion = make_dmd_high_score_content(high_scores, 0U);
     const auto runner_up = make_dmd_high_score_content(high_scores, 1U);
+    const auto glowing_score =
+        make_dmd_high_score_content(high_scores, 0U, 500U);
+    const auto dimmed_score =
+        make_dmd_high_score_content(high_scores, 0U, 1'000U);
     check(
         champion.text[0] == "Grand Champion"
             && champion.text[1] == "DEV"
@@ -11276,6 +11287,18 @@ void test_dmd_text_layout()
             && runner_up.text[2] == "100,000",
         "startup DMD pages contain each rank label, initials, and formatted "
         "score");
+    check(
+        champion.colors[0] == devils_crush::cabinet::kDmdYellow
+            && champion.colors[1] == devils_crush::cabinet::kDmdWhite
+            && champion.colors[2] == devils_crush::cabinet::kDmdOrange
+            && runner_up.colors == champion.colors
+            && glowing_score.colors[0] == champion.colors[0]
+            && glowing_score.colors[1] == champion.colors[1]
+            && glowing_score.colors[2]
+                == devils_crush::cabinet::kDmdBrightOrange
+            && dimmed_score.colors == champion.colors,
+        "high-score DMD values flash orange slowly while labels stay yellow "
+        "and initials stay white");
 
     for (const auto& output : outputs) {
         const auto layout = calculate_dmd_high_score_layout(

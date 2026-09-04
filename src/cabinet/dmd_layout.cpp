@@ -32,6 +32,17 @@ namespace {
     return width;
 }
 
+// Let the high score breathe at a pinball-display pace instead of using the
+// title screen's rapid four-frame palette cycle. Each orange shade remains
+// visible for half a second, producing one complete flash per second.
+[[nodiscard]] DmdTextColor high_score_value_color(
+    const std::uint64_t elapsed_milliseconds) noexcept
+{
+    return (elapsed_milliseconds / 500U) % 2U == 0U
+        ? kDmdOrange
+        : kDmdBrightOrange;
+}
+
 } // namespace
 
 DmdTextContent make_dmd_text_content(
@@ -45,12 +56,14 @@ DmdTextContent make_dmd_text_content(
             "Ball " + std::to_string(static_cast<unsigned>(current_ball)),
             "Bonus " + format_number(bonus_points),
         },
+        .colors = {kDmdOrange, kDmdOrange, kDmdOrange},
     };
 }
 
 DmdTextContent make_dmd_high_score_content(
     const core::HighScoreTable& table,
-    const std::size_t rank)
+    const std::size_t rank,
+    const std::uint64_t elapsed_milliseconds)
 {
     if (rank >= core::kHighScoreRankCount) {
         return {};
@@ -65,6 +78,11 @@ DmdTextContent make_dmd_high_score_content(
                 static_cast<std::uint64_t>(
                     core::high_score_at(table, rank))
                 * 100U),
+        },
+        .colors = {
+            kDmdYellow,
+            kDmdWhite,
+            high_score_value_color(elapsed_milliseconds),
         },
     };
 }

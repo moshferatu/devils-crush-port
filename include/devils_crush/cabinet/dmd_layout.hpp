@@ -21,9 +21,24 @@ inline constexpr std::size_t kDmdMaximumStatusCharacters = 11U;
 inline constexpr std::size_t kDmdMaximumHighScoreLabelCharacters = 14U;
 inline constexpr std::uint64_t kDmdHighScoreDurationMilliseconds = 3'000U;
 
+struct DmdTextColor {
+    std::uint8_t red = 0U;
+    std::uint8_t green = 0U;
+    std::uint8_t blue = 0U;
+
+    [[nodiscard]] constexpr bool operator==(
+        const DmdTextColor&) const noexcept = default;
+};
+
+inline constexpr DmdTextColor kDmdOrange{255U, 80U, 0U};
+inline constexpr DmdTextColor kDmdBrightOrange{255U, 112U, 0U};
+inline constexpr DmdTextColor kDmdYellow{255U, 240U, 64U};
+inline constexpr DmdTextColor kDmdWhite{255U, 255U, 255U};
+
 struct DmdTextContent {
     // Three display lines. Their placement depends on the selected layout.
     std::array<std::string, kDmdTextCount> text;
+    std::array<DmdTextColor, kDmdTextCount> colors;
 };
 
 struct DmdTextLineLayout {
@@ -60,7 +75,8 @@ struct DmdTextLayout {
 // are numbered High Score #1 through High Score #4.
 [[nodiscard]] DmdTextContent make_dmd_high_score_content(
     const core::HighScoreTable& table,
-    std::size_t rank);
+    std::size_t rank,
+    std::uint64_t elapsed_milliseconds = 0U);
 
 // Selects one of the five high-score pages from elapsed wall-clock time.
 [[nodiscard]] std::size_t dmd_high_score_rank(

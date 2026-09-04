@@ -764,10 +764,11 @@ scaler with the PCE's pixel aspect preserved.
 At startup the DMD cycles through all five persisted high scores, advancing
 every three seconds. Each page shows the player's initials and visible score;
 the first is labeled `Grand Champion`, followed by `High Score #1` through
-`High Score #4`. Scores use comma thousands separators. Pressing Run arms the
-handoff, and the live score-centric view takes over when the cartridge starts
-the player's session. This keeps an untouched attract-mode demo from
-dismissing the carousel.
+`High Score #4`. The rank label is yellow, the initials are white, and the
+score flashes between two orange shades once per second. Scores use comma
+thousands separators. Pressing Run arms the handoff, and the live score-centric
+view takes over when the cartridge starts the player's session. This keeps an
+untouched attract-mode demo from dismissing the carousel.
 
 `cabinet::decode_cabinet_state()` selects the score slot through `$2251` and
 reads the three-byte little-endian score arrays at `$2205`, `$220C`, and

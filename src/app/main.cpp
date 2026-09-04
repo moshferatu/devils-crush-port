@@ -10561,10 +10561,16 @@ void set_assignment_titles(
             || report_sdl_error("SDL_RenderPresent (DMD) failed");
     }
 
-    if (!SDL_SetRenderDrawColor(output.renderer, 255U, 80U, 0U, 255U)) {
-        return report_sdl_error("Setting the DMD text color failed");
-    }
     for (std::size_t line = 0; line < content.text.size(); ++line) {
+        const auto color = content.colors[line];
+        if (!SDL_SetRenderDrawColor(
+                output.renderer,
+                color.red,
+                color.green,
+                color.blue,
+                255U)) {
+            return report_sdl_error("Setting the DMD text color failed");
+        }
         int character_x = layout.lines[line].origin_x;
         for (std::size_t index = 0;
              index < content.text[line].size();
@@ -10624,7 +10630,8 @@ void set_assignment_titles(
     AuxiliaryWindow& output,
     const devils_crush::cabinet::DmdFont& font,
     const devils_crush::core::HighScoreTable& table,
-    const std::size_t rank)
+    const std::size_t rank,
+    const std::uint64_t elapsed_milliseconds)
 {
     int output_width = 0;
     int output_height = 0;
@@ -10635,7 +10642,8 @@ void set_assignment_titles(
         return report_sdl_error("SDL_GetRenderOutputSize (DMD) failed");
     }
     const auto content =
-        devils_crush::cabinet::make_dmd_high_score_content(table, rank);
+        devils_crush::cabinet::make_dmd_high_score_content(
+            table, rank, elapsed_milliseconds);
     return present_dmd_content(
         output,
         font,
@@ -20956,7 +20964,9 @@ int run_windows_host(
                             dmd,
                             *dmd_font,
                             high_scores.last,
-                            dmd_high_score_page)
+                            dmd_high_score_page,
+                            static_cast<std::uint64_t>(
+                                dmd_high_score_elapsed))
                         : present_dmd(
                             dmd,
                             *dmd_font,
