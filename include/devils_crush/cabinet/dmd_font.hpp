@@ -13,6 +13,17 @@ namespace devils_crush::cabinet {
 inline constexpr int kDmdGlyphWidth = 8;
 inline constexpr int kDmdGlyphHeight = 8;
 inline constexpr int kDmdGlyphAdvance = 8;
+inline constexpr int kDmdCommaAdvance = 6;
+
+[[nodiscard]] constexpr int dmd_character_advance_cells(
+    const char character,
+    const char next_character = '\0') noexcept
+{
+    if (character == ',') {
+        return kDmdCommaAdvance;
+    }
+    return kDmdGlyphAdvance - (next_character == ',' ? 1 : 0);
+}
 
 using DmdGlyph = std::array<std::uint8_t, kDmdGlyphHeight>;
 
@@ -26,7 +37,8 @@ public:
 
     // The game stores upper-case forms only. Lower-case label characters map
     // to those same original glyphs, matching the cartridge's presentation;
-    // the host also supplies the hash needed by high-score rank labels.
+    // the host also supplies the punctuation needed by its score and rank
+    // labels.
     [[nodiscard]] std::optional<DmdGlyph> glyph(char character) const noexcept;
 
 private:

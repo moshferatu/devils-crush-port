@@ -11160,10 +11160,10 @@ void test_dmd_text_layout()
 
     const auto content = make_dmd_text_content(102000U, 3700U, 1U);
     check(
-        content.text[0] == "102000"
+        content.text[0] == "102,000"
             && content.text[1] == "Ball 1"
-            && content.text[2] == "Bonus 3700",
-        "the DMD exposes the requested labels and live values");
+            && content.text[2] == "Bonus 3,700",
+        "the DMD exposes comma-formatted live values and labels");
 
     // Every shape a DMD role can take: the default window, a dedicated DMD
     // strip, fullscreen 16:9 and 16:10 panels, and a portrait rotation.
@@ -11216,11 +11216,20 @@ void test_dmd_text_layout()
             && default_layout.lines[1].glyph_height
                 == default_layout.lines[1].cell_size * kDmdGlyphHeight,
         "both DMD tiers retain square 8-by-8 bitmap cells");
+    check(
+        default_layout.lines[0].width
+            == (7 * devils_crush::cabinet::kDmdGlyphAdvance - 3)
+                * default_layout.lines[0].cell_size,
+        "a comma uses asymmetric kerning and the score stays centered");
 
     // Value growth must not resize either tier. The widest legal values use
     // the same fixed reserves as the initial values.
     const auto maximum_content =
         make_dmd_text_content(999999900U, 9900U, 3U);
+    check(
+        maximum_content.text[0] == "999,999,900"
+            && maximum_content.text[2] == "Bonus 9,900",
+        "maximum DMD point values retain their thousands separators");
     const auto maximum_layout =
         calculate_dmd_text_layout(960, 240, maximum_content);
     check(
@@ -11261,11 +11270,12 @@ void test_dmd_text_layout()
     check(
         champion.text[0] == "Grand Champion"
             && champion.text[1] == "DEV"
-            && champion.text[2] == "1000000"
+            && champion.text[2] == "1,000,000"
             && runner_up.text[0] == "High Score #1"
             && runner_up.text[1] == "ACE"
-            && runner_up.text[2] == "100000",
-        "startup DMD pages contain each rank label, initials, and score");
+            && runner_up.text[2] == "100,000",
+        "startup DMD pages contain each rank label, initials, and formatted "
+        "score");
 
     for (const auto& output : outputs) {
         const auto layout = calculate_dmd_high_score_layout(

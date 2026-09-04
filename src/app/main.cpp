@@ -10565,6 +10565,7 @@ void set_assignment_titles(
         return report_sdl_error("Setting the DMD text color failed");
     }
     for (std::size_t line = 0; line < content.text.size(); ++line) {
+        int character_x = layout.lines[line].origin_x;
         for (std::size_t index = 0;
              index < content.text[line].size();
              ++index) {
@@ -10572,13 +10573,18 @@ void set_assignment_titles(
                     output.renderer,
                     font,
                     content.text[line][index],
-                    layout.lines[line].origin_x
-                        + static_cast<int>(index)
-                            * layout.lines[line].character_advance,
+                    character_x,
                     layout.lines[line].origin_y,
                     layout.lines[line].cell_size)) {
                 return false;
             }
+            character_x +=
+                devils_crush::cabinet::dmd_character_advance_cells(
+                    content.text[line][index],
+                    index + 1U < content.text[line].size()
+                        ? content.text[line][index + 1U]
+                        : '\0')
+                * layout.lines[line].cell_size;
         }
     }
     if (!SDL_RenderPresent(output.renderer)) {

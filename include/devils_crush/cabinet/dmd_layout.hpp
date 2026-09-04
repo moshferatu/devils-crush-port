@@ -14,10 +14,10 @@ namespace devils_crush::cabinet {
 
 inline constexpr std::size_t kDmdTextCount = 3U;
 // Fixed reserves keep either tier from changing size as its values gain
-// digits. The score is nine digits at its verified maximum; "Bonus 9900" is
-// the longest lower-row field the game exposes.
-inline constexpr std::size_t kDmdMaximumScoreCharacters = 9U;
-inline constexpr std::size_t kDmdMaximumStatusCharacters = 10U;
+// digits and separators. The score is "999,999,900" at its verified maximum;
+// "Bonus 9,900" is the longest lower-row field the game exposes.
+inline constexpr std::size_t kDmdMaximumScoreCharacters = 11U;
+inline constexpr std::size_t kDmdMaximumStatusCharacters = 11U;
 inline constexpr std::size_t kDmdMaximumHighScoreLabelCharacters = 14U;
 inline constexpr std::uint64_t kDmdHighScoreDurationMilliseconds = 3'000U;
 
@@ -32,12 +32,10 @@ struct DmdTextLineLayout {
     int width = 0;
     int cell_size = 0;
     int glyph_height = 0;
-    int character_advance = 0;
 
     [[nodiscard]] bool valid() const noexcept
     {
-        return cell_size > 0 && glyph_height > 0
-            && character_advance > 0;
+        return cell_size > 0 && glyph_height > 0;
     }
 };
 

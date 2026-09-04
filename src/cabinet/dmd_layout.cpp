@@ -7,6 +7,32 @@
 #include <string>
 
 namespace devils_crush::cabinet {
+namespace {
+
+[[nodiscard]] std::string format_number(const std::uint64_t value)
+{
+    auto text = std::to_string(value);
+    for (std::size_t separator = text.size(); separator > 3U;
+         separator -= 3U) {
+        text.insert(separator - 3U, 1U, ',');
+    }
+    return text;
+}
+
+[[nodiscard]] int text_width_cells(const std::string& text) noexcept
+{
+    if (text.empty()) {
+        return 0;
+    }
+    int width = kDmdGlyphWidth;
+    for (std::size_t index = 0; index + 1U < text.size(); ++index) {
+        width += dmd_character_advance_cells(
+            text[index], text[index + 1U]);
+    }
+    return width;
+}
+
+} // namespace
 
 DmdTextContent make_dmd_text_content(
     const std::uint64_t displayed_score,
@@ -15,9 +41,9 @@ DmdTextContent make_dmd_text_content(
 {
     return DmdTextContent{
         .text = {
-            std::to_string(displayed_score),
+            format_number(displayed_score),
             "Ball " + std::to_string(static_cast<unsigned>(current_ball)),
-            "Bonus " + std::to_string(bonus_points),
+            "Bonus " + format_number(bonus_points),
         },
     };
 }
@@ -35,7 +61,7 @@ DmdTextContent make_dmd_high_score_content(
                 ? "Grand Champion"
                 : "High Score #" + std::to_string(rank),
             core::high_score_name_at(table, rank),
-            std::to_string(
+            format_number(
                 static_cast<std::uint64_t>(
                     core::high_score_at(table, rank))
                 * 100U),
@@ -104,10 +130,7 @@ DmdTextLayout calculate_dmd_text_layout(
                                const int cell_size,
                                const int center_x,
                                const int center_y) {
-        const int advance = kDmdGlyphAdvance * cell_size;
-        const int width =
-            (static_cast<int>(text.size()) - 1) * advance
-            + kDmdGlyphWidth * cell_size;
+        const int width = text_width_cells(text) * cell_size;
         const int height = kDmdGlyphHeight * cell_size;
         return DmdTextLineLayout{
             .origin_x = center_x - width / 2,
@@ -115,7 +138,6 @@ DmdTextLayout calculate_dmd_text_layout(
             .width = width,
             .cell_size = cell_size,
             .glyph_height = height,
-            .character_advance = advance,
         };
     };
 
@@ -180,10 +202,7 @@ DmdTextLayout calculate_dmd_high_score_layout(
         if (cell_size <= 0) {
             return {};
         }
-        const int advance = kDmdGlyphAdvance * cell_size;
-        const int width =
-            (static_cast<int>(content.text[line].size()) - 1) * advance
-            + kDmdGlyphWidth * cell_size;
+        const int width = text_width_cells(content.text[line]) * cell_size;
         const int glyph_height = kDmdGlyphHeight * cell_size;
         layout.lines[line] = DmdTextLineLayout{
             .origin_x = (output_width - width) / 2,
@@ -192,7 +211,6 @@ DmdTextLayout calculate_dmd_high_score_layout(
             .width = width,
             .cell_size = cell_size,
             .glyph_height = glyph_height,
-            .character_advance = advance,
         };
     }
 

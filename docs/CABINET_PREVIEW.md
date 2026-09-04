@@ -764,9 +764,10 @@ scaler with the PCE's pixel aspect preserved.
 At startup the DMD cycles through all five persisted high scores, advancing
 every three seconds. Each page shows the player's initials and visible score;
 the first is labeled `Grand Champion`, followed by `High Score #1` through
-`High Score #4`. Pressing Run arms the handoff, and the live score-centric
-view takes over when the cartridge starts the player's session. This keeps an
-untouched attract-mode demo from dismissing the carousel.
+`High Score #4`. Scores use comma thousands separators. Pressing Run arms the
+handoff, and the live score-centric view takes over when the cartridge starts
+the player's session. This keeps an untouched attract-mode demo from
+dismissing the carousel.
 
 `cabinet::decode_cabinet_state()` selects the score slot through `$2251` and
 reads the three-byte little-endian score arrays at `$2205`, `$220C`, and
@@ -787,23 +788,28 @@ from work RAM.
 
 ### Text layout
 
-The host renders the score value without a label, then `Ball <value>` and
-`Bonus <value>` together on the row below. Those live labels and values, as
+The host renders the comma-formatted score value without a label, then
+`Ball <value>` and comma-formatted `Bonus <value>` together on the row below.
+Those live labels and values, as
 well as the startup high-score pages, use the cartridge's own 8-by-8
 alphanumeric font: cabinet startup decodes the same
 ROM stream that table setup uploads from `11:A9C0` to VRAM `$7900`. The game
 stores upper-case forms, so the mixed-case host labels intentionally render
-with those original capitals. A matching host-defined hash glyph supplies the
-only character the rank labels need that the original font does not contain.
+with those original capitals. Matching host-defined hash and comma glyphs
+supply the punctuation that the original font does not contain. Commas use a
+slightly narrower advance than the full-width alphanumeric cells so thousands
+groups remain visually connected, plus one dot of left-side kerning to balance
+the punctuation within those groups.
 There is no host-font dependency and there are no borders, rails, inactive
 segments, or other decoration.
 
 `cabinet::calculate_dmd_text_layout()` gives the score the upper two thirds
 of the output and centers it at the largest stable size allowed by the
-verified nine-digit maximum. The lower third is split horizontally between
-Ball and Bonus, which share one substantially smaller size. Fixed width
-reserves prevent value growth from resizing either tier. The layout remains
-bounded by both axes and keeps every bitmap cell square on wide, fullscreen,
+verified nine-digit maximum plus its separators. The lower third is split
+horizontally between Ball and Bonus, which share one substantially smaller
+size. Fixed width reserves prevent value growth from resizing either tier.
+The layout remains bounded by both axes and keeps every bitmap cell square on
+wide, fullscreen,
 and portrait outputs. `test_dmd_text_layout` covers the exact labels, maximum
 values, common monitor shapes, size hierarchy, shared lower row, stable type
 sizes, high-score labels and cycling, and degenerate outputs.

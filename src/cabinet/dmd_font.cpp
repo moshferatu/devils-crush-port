@@ -101,6 +101,18 @@ std::optional<DmdGlyph> DmdFont::glyph(const char character) const noexcept
             0x00U,
         };
     }
+    if (character == ',') {
+        return DmdGlyph{
+            0x00U,
+            0x00U,
+            0x00U,
+            0x00U,
+            0x00U,
+            0x30U,
+            0x30U,
+            0x20U,
+        };
+    }
     const auto index = glyph_index(character);
     if (!index || *index >= glyphs_.size()) {
         return std::nullopt;
