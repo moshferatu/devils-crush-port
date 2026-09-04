@@ -55,6 +55,20 @@ replace_native_gameplay_routine_impl(
         || entry.routine == RoutineKey{0x00U, 0xF664U}) {
         return detail::replace_actor_script_record_loader(entry, work_ram, rom);
     }
+    if (entry.routine == RoutineKey{
+                             .physical_bank = 0x00U,
+                             .logical_pc = 0xF768U,
+                         }
+        || entry.routine == RoutineKey{
+                                .physical_bank = 0x00U,
+                                .logical_pc = 0xF778U,
+                            }
+        || entry.routine == RoutineKey{
+                                .physical_bank = 0x00U,
+                                .logical_pc = 0xF781U,
+                            }) {
+        return detail::replace_resident_pattern_loader(entry, work_ram, rom);
+    }
     if (entry.routine == RoutineKey{0x02U, 0x4424U}) {
         return detail::replace_shared_collision_free_timer_tail(entry, work_ram);
     }
@@ -104,7 +118,8 @@ replace_native_gameplay_routine_impl(
         || entry.routine == RoutineKey{0x00U, 0xED4DU}
         || entry.routine == RoutineKey{0x01U, 0xD4A4U}
         || entry.routine == RoutineKey{0x01U, 0xC603U}
-        || entry.routine == RoutineKey{0x01U, 0xC7CFU}) {
+        || entry.routine == RoutineKey{0x01U, 0xC7CFU}
+        || entry.routine == RoutineKey{0x01U, 0xCC04U}) {
         return detail::replace_music_jsr(entry);
     }
     if (entry.routine == RoutineKey{0x45U, 0x4210U}
@@ -1007,6 +1022,16 @@ replace_native_gameplay_routine_impl(
         || entry.routine
             == RoutineKey{
                 .physical_bank = 0x45U,
+                .logical_pc = 0x4389U,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x45U,
+                .logical_pc = 0x4434U,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x45U,
                 .logical_pc = 0x457AU,
             }
         || entry.routine
@@ -1053,6 +1078,11 @@ replace_native_gameplay_routine_impl(
             == RoutineKey{
                 .physical_bank = 0x45U,
                 .logical_pc = 0x49F9U,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x45U,
+                .logical_pc = 0x4A16U,
             }
         || entry.routine
             == RoutineKey{
@@ -2158,6 +2188,13 @@ replace_native_gameplay_routine_impl(
             .logical_pc = 0x694AU,
         }) {
         return detail::replace_three_blobs_collision_marker(entry, work_ram);
+    }
+    if (entry.routine
+        == RoutineKey{
+            .physical_bank = 0x03U,
+            .logical_pc = 0x66DCU,
+        }) {
+        return detail::replace_three_blobs_rng_loop_branch(entry);
     }
     if (entry.routine
             == RoutineKey{

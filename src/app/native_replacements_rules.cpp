@@ -27829,6 +27829,36 @@ replace_three_blobs_alternate_motion_arithmetic(
 }
 
 [[nodiscard]] std::optional<RoutineReplacement>
+replace_three_blobs_rng_loop_branch(const RoutineEntry& entry)
+{
+    // 03:66DC is the unconditional backward branch from the alternate-motion
+    // controller into the separately-owned RNG continuation at 6697. Keep it
+    // as its own single-instruction transaction: the branch leaves every
+    // register intact, but its LastCycle sample is still an interrupt horizon.
+    constexpr RoutineKey kRoutine{.physical_bank = 0x03U, .logical_pc = 0x66DCU};
+    constexpr RoutineKey kTarget{.physical_bank = 0x03U, .logical_pc = 0x6697U};
+    constexpr std::uint32_t kBranchAlways = 12U;
+    if (entry.routine != kRoutine || (entry.registers.status & 0x28U) != 0U) {
+        return std::nullopt;
+    }
+
+    auto output = entry.registers;
+    output.program_counter = kTarget.logical_pc;
+    RoutineReplacement replacement{
+        .return_instruction = kTarget,
+        .output_registers = output,
+        .body_master_cycles = kBranchAlways,
+    };
+    replacement.checkpoints.push_back({
+        .interrupt_sample_master_cycle_offset = kBranchAlways - 3U,
+        .master_cycle_offset = kBranchAlways,
+        .instruction = kRoutine,
+        .registers = output,
+    });
+    return replacement;
+}
+
+[[nodiscard]] std::optional<RoutineReplacement>
 replace_three_blobs_movement_call_seam(const RoutineEntry& entry)
 {
     // The y-expiry movement coroutine remains suspended across repeated actor

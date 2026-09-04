@@ -7742,6 +7742,13 @@ parse_logical_address_range(const std::string_view text)
                                 || request.routine.logical_pc == 0x6697U
                                 || request.routine.logical_pc == 0x669AU)
                             && request.all_calls;
+                        const bool proven_three_blobs_rng_loop_branch =
+                            request.routine
+                                    == RoutineKey{
+                                        .physical_bank = 0x03U,
+                                        .logical_pc = 0x66DCU,
+                                    }
+                            && request.all_calls;
                         const bool proven_three_blobs_first_movement_continuation =
                             request.routine
                                     == RoutineKey{
@@ -8067,6 +8074,8 @@ parse_logical_address_range(const std::string_view text)
                                || request.routine.logical_pc == 0x49E4U
                                || request.routine.logical_pc == 0x4211U
                                || request.routine.logical_pc == 0x4228U
+                               || request.routine.logical_pc == 0x4389U
+                               || request.routine.logical_pc == 0x4434U
                                || request.routine.logical_pc == 0x457AU
                                || request.routine.logical_pc == 0x4667U
                                || request.routine.logical_pc == 0x469BU
@@ -8077,6 +8086,7 @@ parse_logical_address_range(const std::string_view text)
                                || request.routine.logical_pc == 0x49A2U
                                || request.routine.logical_pc == 0x49B6U
                                || request.routine.logical_pc == 0x49F9U
+                               || request.routine.logical_pc == 0x4A16U
                                || request.routine.logical_pc == 0x4BCCU
                                || request.routine.logical_pc == 0x4C42U
                                || request.routine.logical_pc == 0x4B4EU)
@@ -8186,6 +8196,12 @@ parse_logical_address_range(const std::string_view text)
                                || request.routine.logical_pc == 0xFA40U
                                || request.routine.logical_pc == 0xFA6AU
                                || request.routine.logical_pc == 0xFA6EU)
+                           && request.all_calls;
+                       const bool proven_resident_pattern_loader =
+                           request.routine.physical_bank == 0x00U
+                           && (request.routine.logical_pc == 0xF768U
+                               || request.routine.logical_pc == 0xF778U
+                               || request.routine.logical_pc == 0xF781U)
                            && request.all_calls;
                        const bool proven_tilemap_upload =
                            request.routine.physical_bank == 0x00U
@@ -8359,6 +8375,7 @@ parse_logical_address_range(const std::string_view text)
                            && !proven_bank_call_wrappers
                            && !proven_vblank_handler
                            && !proven_vram_upload
+                           && !proven_resident_pattern_loader
                            && !proven_tilemap_upload
                            && !proven_collision_tail
                            && !proven_sorcerer_tick
@@ -8651,6 +8668,7 @@ parse_logical_address_range(const std::string_view text)
                             && !proven_fixed_response_initializer
                             && !proven_dragon_egg_controller_initializer
                             && !proven_three_blobs_rng_initialization
+                            && !proven_three_blobs_rng_loop_branch
                             && !proven_three_blobs_first_movement_prefix
                             && !proven_three_blobs_first_movement_continuation
                             && !proven_three_blobs_y_expiry_negation_prefix
@@ -15968,7 +15986,7 @@ using NativeRegistryEntryObserver = std::function<void(
             return false;
         }
     }
-    constexpr std::array<RoutineKey, 10U> kExactJsrInstructions{{
+    constexpr std::array<RoutineKey, 11U> kExactJsrInstructions{{
         {.physical_bank = 0x45U, .logical_pc = 0x408FU},
         {.physical_bank = 0x45U, .logical_pc = 0x4099U},
         {.physical_bank = 0x45U, .logical_pc = 0x4138U},
@@ -15979,6 +15997,10 @@ using NativeRegistryEntryObserver = std::function<void(
         {.physical_bank = 0x01U, .logical_pc = 0xD4A4U},
         {.physical_bank = 0x01U, .logical_pc = 0xC603U},
         {.physical_bank = 0x01U, .logical_pc = 0xC7CFU},
+        // The collision scanner's $CC04 call opens the bounded $CCD5
+        // comparison walk.  Its callee remains independently scheduled;
+        // retain only the exact stack-producing JSR here.
+        {.physical_bank = 0x01U, .logical_pc = 0xCC04U},
     }};
     for (const auto routine : kExactJsrInstructions) {
         if (std::find(claimed_routines.begin(), claimed_routines.end(), routine)

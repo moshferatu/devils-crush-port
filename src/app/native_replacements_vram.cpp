@@ -2494,4 +2494,188 @@ std::optional<RoutineReplacement> replace_actor_script_record_loader(
     return replacement;
 }
 
+std::optional<RoutineReplacement> replace_resident_pattern_loader(
+    const RoutineEntry& entry,
+    const std::span<const std::byte> work_ram,
+    const std::span<const std::byte> rom)
+{
+    // The resident pattern selector is intentionally split at both children:
+    // 00:E1FD maps the selected pack and 00:E41F performs its bounded VDC
+    // stream decode.  Keeping those calls visible preserves their existing
+    // interrupt horizons and avoids making the 1,008-word upload atomic.
+    constexpr RoutineKey kHead{0x00U, 0xF768U};
+    constexpr RoutineKey kDecoderCall{0x00U, 0xF778U};
+    constexpr RoutineKey kReturnTail{0x00U, 0xF781U};
+    if ((entry.routine != kHead && entry.routine != kDecoderCall
+         && entry.routine != kReturnTail)
+        || work_ram.size() < 0x2000U || rom.size() != 0x60000U
+        || entry.registers.mpr[0U] != 0xFFU
+        || entry.registers.mpr[1U] != 0xF8U
+        || (entry.registers.status & (kDecimal | kMemory)) != 0U) {
+        return std::nullopt;
+    }
+
+    RoutineReplacement replacement;
+    auto registers = entry.registers;
+    std::uint32_t cycle = 0U;
+    bool unsupported = false;
+    std::size_t committed_writes = 0U;
+
+    const auto set_nz = [&registers](const std::uint8_t value) {
+        registers.status = static_cast<std::uint8_t>(
+            registers.status & static_cast<std::uint8_t>(~(kNegative | kZero)));
+        if (value == 0U) {
+            registers.status = static_cast<std::uint8_t>(registers.status | kZero);
+        } else {
+            registers.status = static_cast<std::uint8_t>(
+                registers.status | (value & kNegative));
+        }
+    };
+    const auto read_ram = [&work_ram, &unsupported](const std::uint16_t address) {
+        if (address < kWorkRamBase || address >= 0x4000U) {
+            unsupported = true;
+            return std::uint8_t{0U};
+        }
+        return std::to_integer<std::uint8_t>(work_ram[address - kWorkRamBase]);
+    };
+    const auto read_mapped = [&registers, rom, &unsupported](const std::uint16_t address) {
+        const auto bank = registers.mpr[address >> 13U];
+        if (bank >= 0x80U) {
+            unsupported = true;
+            return std::uint8_t{0U};
+        }
+        const auto rom_bank = bank < 0x40U
+            ? static_cast<std::size_t>(bank & 0x1FU)
+            : static_cast<std::size_t>((bank & 0x0FU) + 0x20U);
+        const auto offset = rom_bank * 0x2000U
+            + static_cast<std::size_t>(address & 0x1FFFU);
+        if (offset >= rom.size()) {
+            unsupported = true;
+            return std::uint8_t{0U};
+        }
+        return std::to_integer<std::uint8_t>(rom[offset]);
+    };
+    const auto write_ram = [&replacement, &unsupported](
+                               const std::uint16_t instruction,
+                               const std::uint16_t address,
+                               const std::uint8_t value) {
+        if (address < kWorkRamBase || address >= 0x4000U) {
+            unsupported = true;
+            return;
+        }
+        replacement.work_ram_writes.push_back({
+            .instruction = {0x00U, instruction},
+            .logical_address = address,
+            .value = value,
+            .master_cycle_offset = 0U,
+        });
+    };
+    const auto commit = [&replacement, &committed_writes](const std::uint32_t at_cycle) {
+        while (committed_writes < replacement.work_ram_writes.size()) {
+            replacement.work_ram_writes[committed_writes].master_cycle_offset = at_cycle;
+            ++committed_writes;
+        }
+    };
+    const auto checkpoint = [&replacement, &registers, &cycle, &commit](
+                                const std::uint16_t instruction,
+                                const std::uint16_t resume,
+                                const std::uint32_t master_cycles) {
+        cycle += master_cycles;
+        commit(cycle);
+        registers.program_counter = resume;
+        replacement.checkpoints.push_back({
+            .interrupt_sample_master_cycle_offset = cycle - 3U,
+            .master_cycle_offset = cycle,
+            .instruction = {0x00U, instruction},
+            .registers = registers,
+        });
+    };
+    const auto push = [&registers, &write_ram](
+                          const std::uint16_t instruction,
+                          const std::uint8_t value) {
+        write_ram(
+            instruction,
+            static_cast<std::uint16_t>(kStackBase + registers.stack_pointer),
+            value);
+        registers.stack_pointer = static_cast<std::uint8_t>(
+            registers.stack_pointer - 1U);
+    };
+
+    if (entry.routine == kReturnTail) {
+        registers.stack_pointer = static_cast<std::uint8_t>(
+            registers.stack_pointer + 1U);
+        registers.x = read_ram(static_cast<std::uint16_t>(
+            kStackBase + registers.stack_pointer));
+        set_nz(registers.x);
+        checkpoint(0xF781U, 0xF782U, 12U);  // PLX
+        if (unsupported) {
+            return std::nullopt;
+        }
+        absorb_return(
+            replacement,
+            work_ram,
+            registers.stack_pointer,
+            {0x00U, 0xF782U},
+            cycle,
+            registers);
+        return replacement;
+    }
+
+    if (entry.routine == kDecoderCall) {
+        write_ram(0xF778U, static_cast<std::uint16_t>(kWorkRamBase + 0x2DU), 0U);
+        checkpoint(0xF778U, 0xF77AU, 12U);  // STZ $2D
+        registers.accumulator = 0x7CU;
+        set_nz(registers.accumulator);
+        checkpoint(0xF77AU, 0xF77CU, 6U);  // LDA #$7C
+        write_ram(0xF77CU, static_cast<std::uint16_t>(kWorkRamBase + 0x2EU), registers.accumulator);
+        checkpoint(0xF77CU, 0xF77EU, 12U);  // STA $2E
+        const auto pushed = std::uint16_t{0xF780U};
+        push(0xF77EU, static_cast<std::uint8_t>(pushed >> 8U));
+        push(0xF77EU, static_cast<std::uint8_t>(pushed));
+        checkpoint(0xF77EU, 0xE41FU, 21U);  // JSR $E41F
+        if (unsupported) {
+            return std::nullopt;
+        }
+        replacement.return_instruction = {
+            registers.mpr[0xE41FU >> 13U], 0xE41FU};
+        replacement.output_registers = registers;
+        replacement.body_master_cycles = cycle;
+        return replacement;
+    }
+
+    push(0xF768U, registers.accumulator);  // PHA
+    checkpoint(0xF768U, 0xF769U, 9U);
+    registers.accumulator = 0xA8U;
+    set_nz(registers.accumulator);
+    checkpoint(0xF769U, 0xF76BU, 6U);
+    const auto selector_address = static_cast<std::uint16_t>(0xF783U + registers.y);
+    registers.accumulator = read_mapped(selector_address);
+    set_nz(registers.accumulator);
+    // This first indexed read carries the resident-ROM fetch phase that the
+    // HuC6280 exposes after the preceding immediate selector load.  It is
+    // six master cycles longer than the following table-byte fetch; keeping
+    // that distinction makes the E1FD child entry coincide with the
+    // interpreter's interrupt boundary.
+    checkpoint(0xF76BU, 0xF76EU, 21U);
+    write_ram(0xF76EU, static_cast<std::uint16_t>(kWorkRamBase + 0x2FU), registers.accumulator);
+    checkpoint(0xF76EU, 0xF770U, 12U);
+    registers.accumulator = read_mapped(static_cast<std::uint16_t>(selector_address + 1U));
+    set_nz(registers.accumulator);
+    checkpoint(0xF770U, 0xF773U, 15U);
+    write_ram(0xF773U, static_cast<std::uint16_t>(kWorkRamBase + 0x30U), registers.accumulator);
+    checkpoint(0xF773U, 0xF775U, 12U);
+    const auto pushed = std::uint16_t{0xF777U};
+    push(0xF775U, static_cast<std::uint8_t>(pushed >> 8U));
+    push(0xF775U, static_cast<std::uint8_t>(pushed));
+    checkpoint(0xF775U, 0xE1FDU, 21U);  // JSR $E1FD
+    if (unsupported) {
+        return std::nullopt;
+    }
+    replacement.return_instruction = {
+        registers.mpr[0xE1FDU >> 13U], 0xE1FDU};
+    replacement.output_registers = registers;
+    replacement.body_master_cycles = cycle;
+    return replacement;
+}
+
 } // namespace devils_crush::app::detail

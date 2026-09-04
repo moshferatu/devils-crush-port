@@ -211,6 +211,8 @@ constexpr std::uint32_t kChannelIterationMasterCycles = 2304U;
         || logical_pc == 0x4169U
         || logical_pc == 0x4211U
         || logical_pc == 0x4228U
+        || logical_pc == 0x4389U
+        || logical_pc == 0x4434U
         || logical_pc == 0x457AU
         || logical_pc == 0x4667U
         || logical_pc == 0x469BU
@@ -225,6 +227,7 @@ constexpr std::uint32_t kChannelIterationMasterCycles = 2304U;
         || logical_pc == 0x49B6U
         || logical_pc == 0x49E4U
         || logical_pc == 0x49F9U
+        || logical_pc == 0x4A16U
         || logical_pc == 0x4B4EU
         || logical_pc == 0x4B5EU
         || logical_pc == 0x4BCCU
@@ -283,6 +286,8 @@ constexpr std::uint32_t kChannelIterationMasterCycles = 2304U;
         || pc == 0x4227U
         || pc == 0x4243U || pc == 0x4270U || pc == 0x429EU
         || pc == 0x42B2U || pc == 0x42B9U
+        || pc == 0x4392U
+        || pc == 0x443FU
         || pc == 0x46D6U || pc == 0x4775U || pc == 0x4882U
         || pc == 0x48ACU || pc == 0x48B3U
         || pc == 0x48B8U || pc == 0x48C0U || pc == 0x48CDU || pc == 0x48D6U
@@ -369,6 +374,10 @@ std::optional<RoutineReplacement> replace_music_jsr(
         .physical_bank = 0x01U,
         .logical_pc = 0xC7CFU,
     };
+    constexpr RoutineKey kCollisionComparisonWalkCall{
+        .physical_bank = 0x01U,
+        .logical_pc = 0xCC04U,
+    };
     if (entry.routine != kMusicPsgCall
         && entry.routine != kMusicPitchUpdateCall
         && entry.routine != kMusicPitchSlideCall
@@ -378,7 +387,8 @@ std::optional<RoutineReplacement> replace_music_jsr(
         && entry.routine != kCrossBankWrapperCall
         && entry.routine != kFlipperOwnerInputCall
         && entry.routine != kActorPassSchedulerCall
-        && entry.routine != kCoroutineSchedulerCall) {
+        && entry.routine != kCoroutineSchedulerCall
+        && entry.routine != kCollisionComparisonWalkCall) {
         return std::nullopt;
     }
 
@@ -388,7 +398,8 @@ std::optional<RoutineReplacement> replace_music_jsr(
     // contract before resuming their already-transcribed callees. CB5E covers
     // the collision scanner's rare non-composed entries, E976 crosses into
     // the palette-fade table emitter, C603 hands an actor pass into its
-    // scheduler, and C7CF creates the consumed frame for a coroutine reschedule.
+    // scheduler, C7CF creates the consumed frame for a coroutine reschedule,
+    // and CC04 opens the collision comparison walk at CCD5.
     RoutineReplacement replacement{};
     replacement.return_instruction = entry.routine;
     replacement.output_registers = entry.registers;

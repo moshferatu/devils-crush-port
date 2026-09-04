@@ -5960,6 +5960,23 @@ if(TARGET devils_crush)
         )
 
         add_test(
+            NAME dc_rom_three_blobs_rng_loop_branch_semantic
+            CONFIGURATIONS Release
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/three-blobs-rng-loop-branch-semantic-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_three_blobs_rng_loop_branch_semantic.cmake"
+        )
+        set_tests_properties(
+            dc_rom_three_blobs_rng_loop_branch_semantic
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
             NAME dc_rom_three_blobs_first_movement_continuation_semantic
             CONFIGURATIONS Release Debug
             COMMAND
@@ -7291,6 +7308,74 @@ if(TARGET devils_crush)
         )
         set_tests_properties(
             dc_rom_native_replacement
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_resident_pattern_loader_semantic
+            CONFIGURATIONS Release
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/resident-pattern-loader-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_resident_pattern_loader_semantic.cmake"
+        )
+        set_tests_properties(
+            dc_rom_resident_pattern_loader_semantic
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_music_detune_tail_semantic
+            CONFIGURATIONS Release
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/music-detune-tail-semantic-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_music_detune_tail_semantic.cmake"
+        )
+        set_tests_properties(
+            dc_rom_music_detune_tail_semantic
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_music_volume_tail_semantic
+            CONFIGURATIONS Release
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/music-volume-tail-semantic-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_music_volume_tail_semantic.cmake"
+        )
+        set_tests_properties(
+            dc_rom_music_volume_tail_semantic
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_music_voice_commit_semantic
+            CONFIGURATIONS Release
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/music-voice-commit-semantic-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_music_voice_commit_semantic.cmake"
+        )
+        set_tests_properties(
+            dc_rom_music_voice_commit_semantic
             PROPERTIES LABELS rom_required
         )
 

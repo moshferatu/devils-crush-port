@@ -292,6 +292,10 @@ replace_three_blobs_movement_call_seam(
     const emulation::RoutineEntry& entry);
 
 [[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_three_blobs_rng_loop_branch(
+    const emulation::RoutineEntry& entry);
+
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
 replace_three_blobs_direct_continuation(
     const emulation::RoutineEntry& entry,
     std::span<const std::byte> work_ram);
@@ -1982,6 +1986,15 @@ replace_vdc_sprite_attribute_prefix(
 // JSR/PHX/PLX boundaries.
 [[nodiscard]] std::optional<emulation::RoutineReplacement>
 replace_actor_script_record_loader(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram,
+    std::span<const std::byte> rom);
+
+// The five scene-resident pattern packs at 00:F768.  The bounded setup and
+// return tails retain the existing bank-call wrapper and generic VDC decoder
+// as separate native transactions.
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_resident_pattern_loader(
     const emulation::RoutineEntry& entry,
     std::span<const std::byte> work_ram,
     std::span<const std::byte> rom);
