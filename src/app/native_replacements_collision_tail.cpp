@@ -132,6 +132,7 @@ constexpr std::uint32_t kCall = 21U;
         || logical_pc == 0xCB76U
         || logical_pc == 0xCB79U || logical_pc == 0xCB81U
         || logical_pc == 0xCB8AU || logical_pc == 0xCBABU
+        || logical_pc == 0xCB65U
         || logical_pc == 0xCBB6U || logical_pc == 0xCBC2U
         || logical_pc == 0xCBCAU || logical_pc == 0xCBCFU
         || logical_pc == 0xCD74U || logical_pc == 0xCDF8U
@@ -1186,6 +1187,14 @@ std::optional<RoutineReplacement> replace_collision_tail(
 
         case 0xCB7BU:  // JSR $CF33 -- crossed into the contact response
             call(0xCB7BU, 0xCF33U);
+            break;
+
+        // The hit arm of the broad collision sweep sets its latch at CB63,
+        // then enters here. Cross the dispatcher call itself so the native
+        // CBCF walk owns the contact body while CB68's BBS seam remains with
+        // the core, exactly as it does for the assembly route.
+        case 0xCB65U:  // JSR $CBCF -- crossed into the contact dispatcher
+            call(0xCB65U, 0xCBCFU);
             break;
 
         case 0xCB81U:  // LDA $3800,X

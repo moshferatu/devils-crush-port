@@ -108,6 +108,8 @@ execute_process(
         --replace-hook
         "01:CB46@all"
         --replace-hook
+        "01:CB65@all"
+        --replace-hook
         "01:CB74@all"
         --replace-hook
         "01:CB76@all"
@@ -211,6 +213,7 @@ foreach(expected_line IN ITEMS
     "Native replacement 01:CB11@all entries: 2121 of 2121"
     "Native replacement 01:CB2A@all entries: 3233 of 3233"
     "Native replacement 01:CB46@all entries: 3233 of 3233"
+    "Native replacement 01:CB65@all entries: 251 of 251"
     "Native replacement 01:CB74@all entries: 2986 of 2986"
     "Native replacement 01:CB76@all entries: 247 of 247"
     "Native replacement 01:CB79@all entries: 3233 of 3233"

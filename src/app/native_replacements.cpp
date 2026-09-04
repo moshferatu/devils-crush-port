@@ -47,6 +47,14 @@ replace_native_gameplay_routine_impl(
     if (entry.routine == RoutineKey{0x01U, 0xDE9CU}) {
         return detail::replace_bank1_vdc_row_upload(entry, work_ram, rom);
     }
+    if (entry.routine == RoutineKey{0x01U, 0xD950U}) {
+        return detail::replace_vdc_sprite_attribute_prefix(entry, work_ram, rom);
+    }
+    if (entry.routine == RoutineKey{0x00U, 0xF605U}
+        || entry.routine == RoutineKey{0x00U, 0xF660U}
+        || entry.routine == RoutineKey{0x00U, 0xF664U}) {
+        return detail::replace_actor_script_record_loader(entry, work_ram, rom);
+    }
     if (entry.routine == RoutineKey{0x02U, 0x4424U}) {
         return detail::replace_shared_collision_free_timer_tail(entry, work_ram);
     }
@@ -75,7 +83,9 @@ replace_native_gameplay_routine_impl(
         || entry.routine == RoutineKey{0x03U, 0x76A8U}) {
         return detail::replace_flipper_owner_rts(entry);
     }
-    if (entry.routine == RoutineKey{0x00U, 0xE05CU}) {
+    if (entry.routine == RoutineKey{0x00U, 0xE05CU}
+        || entry.routine == RoutineKey{0x01U, 0xDA06U}
+        || entry.routine == RoutineKey{0x01U, 0xDA0BU}) {
         return detail::replace_vdc_status_read(entry);
     }
     if (entry.routine == RoutineKey{0x00U, 0xE134U}
@@ -91,6 +101,8 @@ replace_native_gameplay_routine_impl(
         || entry.routine == RoutineKey{0x03U, 0x7696U}
         || entry.routine == RoutineKey{0x01U, 0xCB5EU}
         || entry.routine == RoutineKey{0x00U, 0xE976U}
+        || entry.routine == RoutineKey{0x00U, 0xED4DU}
+        || entry.routine == RoutineKey{0x01U, 0xD4A4U}
         || entry.routine == RoutineKey{0x01U, 0xC603U}
         || entry.routine == RoutineKey{0x01U, 0xC7CFU}) {
         return detail::replace_music_jsr(entry);
@@ -147,16 +159,43 @@ replace_native_gameplay_routine_impl(
         }
         return detail::replace_three_blobs_first_movement_prefix(entry, work_ram);
     }
-    if (entry.routine == RoutineKey{0x45U, 0x4003U}
+    if (entry.routine
+            == RoutineKey{
+                .physical_bank = 0x45U,
+                .logical_pc = 0x4000U,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x45U,
+                .logical_pc = 0x4003U,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x45U,
+                .logical_pc = 0x4006U,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x45U,
+                .logical_pc = 0x4009U,
+            }
         || entry.routine == RoutineKey{0x45U, 0x40FFU}
         || entry.routine == RoutineKey{0x08U, 0x4000U}
+        || entry.routine == RoutineKey{0x08U, 0x4003U}
+        || entry.routine == RoutineKey{0x08U, 0x4006U}
         || entry.routine == RoutineKey{0x08U, 0x4009U}
+        || entry.routine == RoutineKey{0x08U, 0x400CU}
+        || entry.routine == RoutineKey{0x08U, 0x400FU}
+        || entry.routine == RoutineKey{0x08U, 0x4012U}
         || entry.routine == RoutineKey{0x08U, 0x4015U}
+        || entry.routine == RoutineKey{0x08U, 0x4018U}
+        || entry.routine == RoutineKey{0x08U, 0x401BU}
         || entry.routine == RoutineKey{0x08U, 0x4030U}) {
         return detail::replace_music_jmp(entry);
     }
     if (entry.routine == RoutineKey{0x03U, 0x7525U}
         || entry.routine == RoutineKey{0x01U, 0xC5E9U}
+        || entry.routine == RoutineKey{0x01U, 0xCCD2U}
         || entry.routine == RoutineKey{0x01U, 0xCCD4U}
         || entry.routine == RoutineKey{0x03U, 0x73D7U}
         || entry.routine == RoutineKey{0x03U, 0x73CCU}
@@ -514,6 +553,62 @@ replace_native_gameplay_routine_impl(
     }
     if (entry.routine
             == RoutineKey{
+                .physical_bank = 0x09U,
+                .logical_pc = 0x6FB1U,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x09U,
+                .logical_pc = 0x70EEU,
+            }) {
+        return detail::replace_bank9_scripted_actor_initializer(entry, work_ram);
+    }
+    if (entry.routine
+            == RoutineKey{
+                .physical_bank = 0x09U,
+                .logical_pc = 0x7025U,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x09U,
+                .logical_pc = 0x715DU,
+            }) {
+        return detail::replace_bank9_upper_table_countdown(entry, work_ram);
+    }
+    if (entry.routine
+            == RoutineKey{
+                .physical_bank = 0x09U,
+                .logical_pc = 0x7043U,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x09U,
+                .logical_pc = 0x717BU,
+            }) {
+        return detail::replace_bank9_upper_table_parent_decay(entry, work_ram);
+    }
+    if (entry.routine
+            == RoutineKey{
+                .physical_bank = 0x09U,
+                .logical_pc = 0x704FU,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x09U,
+                .logical_pc = 0x7187U,
+            }) {
+        return detail::replace_bank9_upper_table_parent_initializer(entry, work_ram);
+    }
+    if (entry.routine
+        == RoutineKey{.physical_bank = 0x02U, .logical_pc = 0x4F6CU}) {
+        return detail::replace_bank2_actor_countdown_return(entry, work_ram);
+    }
+    if (entry.routine
+        == RoutineKey{.physical_bank = 0x03U, .logical_pc = 0x6001U}) {
+        return detail::replace_bank3_actor_idle_branch(entry);
+    }
+    if (entry.routine
+            == RoutineKey{
                 .physical_bank = 0x01U,
                 .logical_pc = 0xC559U,
             }
@@ -828,6 +923,16 @@ replace_native_gameplay_routine_impl(
             == RoutineKey{
                 .physical_bank = 0x45U,
                 .logical_pc = 0x409CU,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x45U,
+                .logical_pc = 0x409FU,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x45U,
+                .logical_pc = 0x40A2U,
             }
         || entry.routine
             == RoutineKey{
@@ -1366,6 +1471,11 @@ replace_native_gameplay_routine_impl(
         || entry.routine
             == RoutineKey{
                 .physical_bank = 0x01U,
+                .logical_pc = 0xCB65U,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x01U,
                 .logical_pc = 0xCB74U,
             }
         || entry.routine
@@ -1598,6 +1708,13 @@ replace_native_gameplay_routine_impl(
         return detail::replace_actor_queue_registration(entry, work_ram);
     }
     if (entry.routine
+        == RoutineKey{
+            .physical_bank = 0x01U,
+            .logical_pc = 0xC63EU,
+        }) {
+        return detail::replace_actor_queue_terminal(entry, work_ram);
+    }
+    if (entry.routine
             == RoutineKey{
                 .physical_bank = 0x01U,
                 .logical_pc = 0xC51EU,
@@ -1664,6 +1781,20 @@ replace_native_gameplay_routine_impl(
             .logical_pc = 0x5B01U,
         }) {
         return detail::replace_text_tile_write(entry, work_ram);
+    }
+    if (entry.routine
+        == RoutineKey{
+            .physical_bank = 0x08U,
+            .logical_pc = 0x5A2EU,
+        }) {
+        return detail::replace_upper_table_actor_tile_schedule(entry, work_ram);
+    }
+    if (entry.routine
+        == RoutineKey{
+            .physical_bank = 0x08U,
+            .logical_pc = 0x5ABFU,
+        }) {
+        return detail::replace_upper_table_string_record(entry, work_ram, rom);
     }
     if (entry.routine
         == RoutineKey{
@@ -1775,6 +1906,14 @@ replace_native_gameplay_routine_impl(
             .logical_pc = 0x5197U,
         }) {
         return detail::replace_devil_shooter_charge_tail(entry, work_ram);
+    }
+    if (entry.routine
+        == RoutineKey{
+            .physical_bank = 0x02U,
+            .logical_pc = 0x51AFU,
+        }) {
+        return detail::replace_devil_shooter_release_countdown_tail(
+            entry, work_ram, rom);
     }
     if (entry.routine
         == RoutineKey{

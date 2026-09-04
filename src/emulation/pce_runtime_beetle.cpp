@@ -3369,6 +3369,8 @@ private:
             const auto native_rts_instruction = result.native_rts_instruction;
             const auto native_vdc_status_read_instruction =
                 result.native_vdc_status_read_instruction;
+            const auto native_vdc_data_read_instruction =
+                result.native_vdc_data_read_instruction;
             const auto native_plp_instruction = result.native_plp_instruction;
             const auto native_sei_instruction = result.native_sei_instruction;
             const auto native_jsr_instruction = result.native_jsr_instruction;
@@ -3392,6 +3394,8 @@ private:
                 + static_cast<unsigned>(native_rts_instruction.has_value())
                 + static_cast<unsigned>(
                     native_vdc_status_read_instruction.has_value())
+                + static_cast<unsigned>(
+                    native_vdc_data_read_instruction.has_value())
                 + static_cast<unsigned>(native_plp_instruction.has_value())
                 + static_cast<unsigned>(native_sei_instruction.has_value())
                 + static_cast<unsigned>(native_jsr_instruction.has_value())
@@ -3426,6 +3430,9 @@ private:
                 || (native_vdc_status_read_instruction
                     && (write_count != 0U || checkpoint_count != 0U
                         || result.body_master_cycles != 18U))
+                || (native_vdc_data_read_instruction
+                    && (write_count != 0U || checkpoint_count != 0U
+                        || result.body_master_cycles != 12U))
                 || (native_plp_instruction
                     && (write_count != 0U || checkpoint_count != 0U
                         || result.body_master_cycles != 12U))
@@ -3642,6 +3649,9 @@ private:
             }
             if (native_vdc_status_read_instruction) {
                 core_result->native_vdc_status_read_instruction = 1U;
+            }
+            if (native_vdc_data_read_instruction) {
+                core_result->native_vdc_data_read_instruction = 1U;
             }
             if (native_plp_instruction) {
                 core_result->native_plp_instruction = 1U;

@@ -20938,7 +20938,11 @@ void test_emulator_oracle_adapter()
     };
 
     const auto runtime = create_pce_runtime();
-    const auto snapshot = capture_emulator_frame(*runtime, frame).observation();
+    // `observation()` is deliberately a view into the owning FrameSnapshot.
+    // Retain that owner while asserting the copied output, rather than
+    // keeping spans into a temporary snapshot after it is destroyed.
+    const auto owned_snapshot = capture_emulator_frame(*runtime, frame);
+    const auto snapshot = owned_snapshot.observation();
     check(
         snapshot.frame_number == 23U && snapshot.work_ram.empty()
             && std::ranges::equal(snapshot.framebuffer, framebuffer)

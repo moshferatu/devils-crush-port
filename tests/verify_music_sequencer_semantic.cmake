@@ -15,7 +15,12 @@ endif()
 # what they are, programming the PSG register file and maintaining the
 # per-voice records in $2E00-$2FFF.
 #
-# Twenty-four entry points share one walk: the per-frame tick at `4015`, which
+# Its four public vectors at `4000`, `4003`, `4006`, and `4009` are small
+# core-owned `JMP` transfers.  Keep them in this family regression as well:
+# they are the sequencer's external entry seam, while the switch below owns
+# the larger work after the vectors land.
+#
+# Twenty-six entry points share one walk: the per-frame tick at `4015`, which
 # is the bank's top level, and the subroutines it calls.
 #
 # The tick was recorded as unportable for four slices, on the arithmetic that
@@ -27,11 +32,13 @@ endif()
 # next chunk starts against a fresh one. 24,667 of the route's 32,391 voice
 # iterations now run inside a transcript.
 #
-# Two entry points exist because the walk stops in front of a call: `409C` is
-# where it resumes after `4936`, which is not transcribed here at all, and
-# `413B` after `4142`. `4142` is transcribed and is still handed back
-# deliberately, so that it is entered on its own and keeps the driver-state
-# guard it already carries instead of imposing it on the whole tick.
+# Four entry points exist because the walk stops in front of a call: `409C`
+# resumes after `4936`, which is not transcribed here at all; `409F` resumes
+# after an externally-entered `48F6` sweep update; `40A2` resumes after an
+# externally-entered `49A2` vibrato update; and `413B` resumes after `4142`.
+# `4142` is transcribed and is still handed back deliberately, so that it is
+# entered on its own and keeps the driver-state guard it already carries
+# instead of imposing it on the whole tick.
 #
 # Composing the rest is ordinary control flow rather than a spliced child
 # transcript, because every callee is a case in the same switch. That is why
@@ -147,11 +154,23 @@ execute_process(
         --record-state-census
         "${OUTPUT}"
         --replace-hook
+        "45:4000@all"
+        --replace-hook
+        "45:4003@all"
+        --replace-hook
+        "45:4006@all"
+        --replace-hook
+        "45:4009@all"
+        --replace-hook
         "45:4015@all"
         --replace-hook
         "45:4044@all"
         --replace-hook
         "45:409C@all"
+        --replace-hook
+        "45:409F@all"
+        --replace-hook
+        "45:40A2@all"
         --replace-hook
         "45:413B@all"
         --replace-hook
@@ -252,15 +271,21 @@ endif()
 # are unchanged, which is what says the route did not.
 foreach(expected_line IN ITEMS
     "State census recording complete: 3600 frames"
+    "Native replacement 45:4000@all entries: 1 of 1"
+    "Native replacement 45:4003@all entries: 3582 of 3599"
+    "Native replacement 45:4006@all entries: 58 of 66"
+    "Native replacement 45:4009@all entries: 3 of 4"
     "Native replacement 45:4015@all entries: 3554 of 3599"
     "Native replacement 45:4044@all entries: 1417 of 1535"
     "Native replacement 45:409C@all entries: 855 of 892"
+    "Native replacement 45:409F@all entries: 12 of 37"
+    "Native replacement 45:40A2@all entries: 4 of 25"
     "Native replacement 45:413B@all entries: 3599 of 3599"
     "Native replacement 45:4142@all entries: 3562 of 3604"
     "Native replacement 45:4143@all entries: 3 of 42"
     "Native replacement 45:4154@all entries: 13 of 13"
     "Native replacement 45:4169@all entries: 11093 of 11093"
-    "Native replacement 45:4211@all entries: 89 of 89"
+    "Native replacement 45:4211@all entries: 85 of 85"
     "Native replacement 45:4228@all entries: 12 of 12"
     "Native replacement 45:457A@all entries: 4 of 51"
     "Native replacement 45:469B@all entries: 224 of 224"
@@ -269,10 +294,10 @@ foreach(expected_line IN ITEMS
     "Native replacement 45:4883@all entries: 344 of 344"
     "Native replacement 45:48F6@all entries: 37 of 37"
     "Native replacement 45:4936@all entries: 548 of 548"
-    "Native replacement 45:49A2@all entries: 37 of 37"
+    "Native replacement 45:49A2@all entries: 25 of 25"
     "Native replacement 45:49B6@all entries: 50 of 50"
     "Native replacement 45:49E4@all entries: 289 of 289"
-    "Native replacement 45:49F9@all entries: 35 of 37"
+    "Native replacement 45:49F9@all entries: 19 of 21"
     "Native replacement 45:4BCC@all entries: 66 of 66"
     "Native replacement 45:4B4E@all entries: 5 of 5"
     "Observe hook 1 entries: 548"

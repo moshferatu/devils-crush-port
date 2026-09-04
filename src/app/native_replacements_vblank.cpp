@@ -195,11 +195,20 @@ constexpr std::uint16_t kJoypadPort = 0x1000U;
 std::optional<RoutineReplacement> replace_vdc_status_read(
     const RoutineEntry& entry)
 {
-    constexpr RoutineKey kRoutine{
+    constexpr RoutineKey kStatusRead{
         .physical_bank = 0x00U,
         .logical_pc = 0xE05CU,
     };
-    if (entry.routine != kRoutine) {
+    constexpr RoutineKey kDataReadLow{
+        .physical_bank = 0x01U,
+        .logical_pc = 0xDA06U,
+    };
+    constexpr RoutineKey kDataReadHigh{
+        .physical_bank = 0x01U,
+        .logical_pc = 0xDA0BU,
+    };
+    if (entry.routine != kStatusRead && entry.routine != kDataReadLow
+        && entry.routine != kDataReadHigh) {
         return std::nullopt;
     }
 
@@ -208,11 +217,20 @@ std::optional<RoutineReplacement> replace_vdc_status_read(
     // cannot reproduce it; the compact descriptor keeps the original core
     // opcode and its interrupt boundary intact.
     RoutineReplacement replacement{};
-    replacement.return_instruction = kRoutine;
+    replacement.return_instruction = entry.routine;
     replacement.output_registers = entry.registers;
-    replacement.body_master_cycles = 18U;
-    replacement.native_vdc_status_read_instruction =
-        emulation::NativeVdcStatusReadInstruction{};
+    if (entry.routine == kStatusRead) {
+        replacement.body_master_cycles = 18U;
+        replacement.native_vdc_status_read_instruction =
+            emulation::NativeVdcStatusReadInstruction{};
+    } else {
+        // These LDA $0002/$0003 instructions consume the live VDC data port.
+        // Its selected-register and read-buffer effects cannot be represented
+        // by a transcript, so keep the exact opcode in the core.
+        replacement.body_master_cycles = 12U;
+        replacement.native_vdc_data_read_instruction =
+            emulation::NativeVdcDataReadInstruction{};
+    }
     return replacement;
 }
 

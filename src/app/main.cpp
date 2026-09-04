@@ -8047,9 +8047,15 @@ parse_logical_address_range(const std::string_view text)
                            && request.all_calls;
                        const bool proven_music_sequencer =
                            request.routine.physical_bank == 0x45U
-                           && (request.routine.logical_pc == 0x4015U
+                           && (request.routine.logical_pc == 0x4000U
+                               || request.routine.logical_pc == 0x4003U
+                               || request.routine.logical_pc == 0x4006U
+                               || request.routine.logical_pc == 0x4009U
+                               || request.routine.logical_pc == 0x4015U
                                || request.routine.logical_pc == 0x4044U
                                || request.routine.logical_pc == 0x409CU
+                               || request.routine.logical_pc == 0x409FU
+                               || request.routine.logical_pc == 0x40A2U
                                || request.routine.logical_pc == 0x413BU
                                || request.routine.logical_pc == 0x4142U
                                || request.routine.logical_pc == 0x4143U
@@ -8075,6 +8081,20 @@ parse_logical_address_range(const std::string_view text)
                                || request.routine.logical_pc == 0x4C42U
                                || request.routine.logical_pc == 0x4B4EU)
                            && request.all_calls;
+                       const bool proven_bank8_export_vectors =
+                           request.routine.physical_bank == 0x08U
+                           && (request.routine.logical_pc == 0x4000U
+                               || request.routine.logical_pc == 0x4003U
+                               || request.routine.logical_pc == 0x4006U
+                               || request.routine.logical_pc == 0x4009U
+                               || request.routine.logical_pc == 0x400CU
+                               || request.routine.logical_pc == 0x400FU
+                               || request.routine.logical_pc == 0x4012U
+                               || request.routine.logical_pc == 0x4015U
+                               || request.routine.logical_pc == 0x4018U
+                               || request.routine.logical_pc == 0x401BU
+                               || request.routine.logical_pc == 0x4030U)
+                           && request.all_calls;
                        const bool proven_palette_shadow =
                            request.routine.physical_bank == 0x00U
                            && (request.routine.logical_pc == 0xE93CU
@@ -8096,6 +8116,20 @@ parse_logical_address_range(const std::string_view text)
                                    == RoutineKey{
                                        .physical_bank = 0x08U,
                                        .logical_pc = 0x5B01U,
+                                   }
+                           && request.all_calls;
+                       const bool proven_upper_table_actor_tile_schedule =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x08U,
+                                       .logical_pc = 0x5A2EU,
+                                   }
+                           && request.all_calls;
+                       const bool proven_upper_table_string_record =
+                           request.routine
+                                   == RoutineKey{
+                                       .physical_bank = 0x08U,
+                                       .logical_pc = 0x5ABFU,
                                    }
                            && request.all_calls;
                        const bool proven_video_update_idle_gate =
@@ -8178,6 +8212,7 @@ parse_logical_address_range(const std::string_view text)
                                || request.routine.logical_pc == 0xCB11U
                                || request.routine.logical_pc == 0xCB2AU
                                || request.routine.logical_pc == 0xCB46U
+                               || request.routine.logical_pc == 0xCB65U
                                || request.routine.logical_pc == 0xCB74U
                                || request.routine.logical_pc == 0xCB76U
                                || request.routine.logical_pc == 0xCB79U
@@ -8313,9 +8348,12 @@ parse_logical_address_range(const std::string_view text)
                            && !proven_actor_camera_sweep
                            && !proven_sound_timer_driver
                            && !proven_music_sequencer
+                           && !proven_bank8_export_vectors
                            && !proven_palette_shadow
                            && !proven_setup_screen_palette_stager
                            && !proven_text_tile_write
+                           && !proven_upper_table_actor_tile_schedule
+                           && !proven_upper_table_string_record
                            && !proven_video_update_idle_gate
                            && !proven_boot_work_ram_clear_seams
                            && !proven_bank_call_wrappers
@@ -15149,6 +15187,7 @@ struct NativeRegistryDeployment {
     std::uint64_t core_bbs2_instructions = 0U;
     std::uint64_t core_rts_instructions = 0U;
     std::uint64_t core_vdc_status_reads = 0U;
+    std::uint64_t core_vdc_data_reads = 0U;
     std::uint64_t core_vdc_address_steps = 0U;
     std::uint64_t core_plp_instructions = 0U;
     std::uint64_t core_sei_instructions = 0U;
@@ -15183,6 +15222,13 @@ struct NativeRegistryDeployment {
     std::uint64_t auxiliary_bank9_actor_scan_transfer_entries = 0U;
     std::uint64_t auxiliary_bank9_actor_scan_queue_bank_mismatch_entries = 0U;
     std::uint64_t auxiliary_bank9_actor_scan_wrapped_counter_entries = 0U;
+    std::uint64_t auxiliary_bank9_scripted_actor_initializer_entries = 0U;
+    std::uint64_t auxiliary_bank9_upper_table_countdown_entries = 0U;
+    std::uint64_t auxiliary_bank9_upper_table_parent_decay_entries = 0U;
+    std::uint64_t auxiliary_bank9_upper_table_parent_initializer_entries = 0U;
+    std::uint64_t auxiliary_bank2_actor_countdown_return_entries = 0U;
+    std::uint64_t auxiliary_bank3_actor_idle_branch_entries = 0U;
+    std::uint64_t auxiliary_actor_queue_terminal_entries = 0U;
     std::uint64_t auxiliary_bonus_actor_scan_entries = 0U;
     std::uint64_t auxiliary_palette_fade_tail_entries = 0U;
     std::uint64_t auxiliary_coroutine_scheduler_rts_entries = 0U;
@@ -15195,6 +15241,9 @@ struct NativeRegistryDeployment {
     std::uint64_t auxiliary_fixed_scheduler_rts_entries = 0U;
     std::uint64_t auxiliary_knight_counter_rts_entries = 0U;
     std::uint64_t auxiliary_music_voice_state_load_entries = 0U;
+    std::uint64_t auxiliary_vdc_sprite_attribute_prefix_entries = 0U;
+    std::uint64_t auxiliary_actor_script_record_loader_entries = 0U;
+    std::uint64_t auxiliary_devil_shooter_release_countdown_entries = 0U;
 };
 
 // Admitted routines that are nonetheless withheld from a composed deployment.
@@ -15669,6 +15718,150 @@ using NativeRegistryEntryObserver = std::function<void(
         std::cerr << "Could not install native VDC-status read hook.\n";
         return false;
     }
+    // The sprite attribute updater reads back VDC data at these two adjacent
+    // sites.  The selected register and read buffer are live device state, so
+    // both LDA instructions remain exact core boundaries until the enclosing
+    // transaction can be transcribed around them.
+    constexpr std::array<RoutineKey, 2U> kVdcDataReadInstructions{{
+        {
+            .physical_bank = 0x01U,
+            .logical_pc = 0xDA06U,
+        },
+        {
+            .physical_bank = 0x01U,
+            .logical_pc = 0xDA0BU,
+        },
+    }};
+    for (const auto routine : kVdcDataReadInstructions) {
+        if (std::find(claimed_routines.begin(), claimed_routines.end(), routine)
+                != claimed_routines.end()) {
+            continue;
+        }
+        if (!runtime.install_execution_hook({
+                .routine = routine,
+                .mode = HookMode::replace,
+                .replacement_callback = [&deployment, &replacement_rom](
+                    const RoutineEntry& entry,
+                    const std::span<const std::byte> work_ram) {
+                    ++deployment.core_capability_entries;
+                    deployment.span.observe(entry.absolute_master_cycle);
+                    auto result = replace_native_gameplay_routine(
+                        entry, work_ram, replacement_rom);
+                    if (result) {
+                        ++deployment.core_capability_accepted;
+                        ++deployment.core_vdc_data_reads;
+                        deployment.core_capability_master_cycles +=
+                            result->body_master_cycles;
+                    }
+                    return result;
+                },
+            })) {
+            std::cerr << "Could not install native VDC-data read hook.\n";
+            return false;
+        }
+    }
+    // D950 is the deterministic address/setup half of the sprite-attribute
+    // transaction. It stops at DA06 so the selected-register VDC read remains
+    // the exact core instruction installed above.
+    constexpr RoutineKey kVdcSpriteAttributePrefix{
+        .physical_bank = 0x01U,
+        .logical_pc = 0xD950U,
+    };
+    if (std::find(
+            claimed_routines.begin(), claimed_routines.end(),
+            kVdcSpriteAttributePrefix)
+            == claimed_routines.end()
+        && !runtime.install_execution_hook({
+            .routine = kVdcSpriteAttributePrefix,
+            .mode = HookMode::replace,
+            .replacement_callback = [&deployment, &replacement_rom](
+                const RoutineEntry& entry,
+                const std::span<const std::byte> work_ram) {
+                ++deployment.auxiliary_transcript_entries;
+                ++deployment.auxiliary_vdc_sprite_attribute_prefix_entries;
+                deployment.span.observe(entry.absolute_master_cycle);
+                auto result = replace_native_gameplay_routine(
+                    entry, work_ram, replacement_rom);
+                if (result) {
+                    ++deployment.auxiliary_transcript_accepted;
+                    deployment.auxiliary_transcript_master_cycles +=
+                        result->body_master_cycles;
+                }
+                return result;
+            },
+        })) {
+        std::cerr << "Could not install native VDC sprite-attribute prefix hook.\n";
+        return false;
+    }
+    // F605 prepares one actor's MPR-backed graphics record. It makes the
+    // original resolver and word-stream-decoder calls, so its two return
+    // continuations are separately installed beside the routine head.
+    constexpr std::array<RoutineKey, 3U> kActorScriptRecordLoaderEntries{{
+        {.physical_bank = 0x00U, .logical_pc = 0xF605U},
+        {.physical_bank = 0x00U, .logical_pc = 0xF660U},
+        {.physical_bank = 0x00U, .logical_pc = 0xF664U},
+    }};
+    for (const auto routine : kActorScriptRecordLoaderEntries) {
+        if (std::find(claimed_routines.begin(), claimed_routines.end(), routine)
+            != claimed_routines.end()) {
+            continue;
+        }
+        if (!runtime.install_execution_hook({
+                .routine = routine,
+                .mode = HookMode::replace,
+                .replacement_callback = [&deployment, &replacement_rom](
+                    const RoutineEntry& entry,
+                    const std::span<const std::byte> work_ram) {
+                    ++deployment.auxiliary_transcript_entries;
+                    ++deployment.auxiliary_actor_script_record_loader_entries;
+                    deployment.span.observe(entry.absolute_master_cycle);
+                    auto result = replace_native_gameplay_routine(
+                        entry, work_ram, replacement_rom);
+                    if (result) {
+                        ++deployment.auxiliary_transcript_accepted;
+                        deployment.auxiliary_transcript_master_cycles +=
+                            result->body_master_cycles;
+                    }
+                    return result;
+                },
+            })) {
+            std::cerr << "Could not install native actor-script loader hook.\n";
+            return false;
+        }
+    }
+    // The Devil Shooter's release timer normally reaches an RTS.  On expiry
+    // it calls the appearance submitter with a different stack depth, so the
+    // countdown transcript keeps that child call explicit.
+    constexpr RoutineKey kDevilShooterReleaseCountdown{
+        .physical_bank = 0x02U,
+        .logical_pc = 0x51AFU,
+    };
+    if (std::find(
+            claimed_routines.begin(), claimed_routines.end(),
+            kDevilShooterReleaseCountdown)
+            == claimed_routines.end()
+        && !runtime.install_execution_hook({
+            .routine = kDevilShooterReleaseCountdown,
+            .mode = HookMode::replace,
+            .replacement_callback = [&deployment, &replacement_rom](
+                const RoutineEntry& entry,
+                const std::span<const std::byte> work_ram) {
+                ++deployment.auxiliary_transcript_entries;
+                ++deployment.auxiliary_devil_shooter_release_countdown_entries;
+                deployment.span.observe(entry.absolute_master_cycle);
+                auto result = replace_native_gameplay_routine(
+                    entry, work_ram, replacement_rom);
+                if (result) {
+                    ++deployment.auxiliary_transcript_accepted;
+                    deployment.auxiliary_transcript_master_cycles +=
+                        result->body_master_cycles;
+                }
+                return result;
+            },
+        })) {
+        std::cerr << "Could not install native Devil Shooter release countdown hook.\n";
+        return false;
+    }
     // One iteration of the graphics driver's VDC-address setup loop writes
     // the low/high latch pair then stops in front of its closing BNE.  The
     // descriptor checkpoints both device writes, while the core retains the
@@ -15775,13 +15968,15 @@ using NativeRegistryEntryObserver = std::function<void(
             return false;
         }
     }
-    constexpr std::array<RoutineKey, 8U> kExactJsrInstructions{{
+    constexpr std::array<RoutineKey, 10U> kExactJsrInstructions{{
         {.physical_bank = 0x45U, .logical_pc = 0x408FU},
         {.physical_bank = 0x45U, .logical_pc = 0x4099U},
         {.physical_bank = 0x45U, .logical_pc = 0x4138U},
         {.physical_bank = 0x03U, .logical_pc = 0x7696U},
         {.physical_bank = 0x01U, .logical_pc = 0xCB5EU},
         {.physical_bank = 0x00U, .logical_pc = 0xE976U},
+        {.physical_bank = 0x00U, .logical_pc = 0xED4DU},
+        {.physical_bank = 0x01U, .logical_pc = 0xD4A4U},
         {.physical_bank = 0x01U, .logical_pc = 0xC603U},
         {.physical_bank = 0x01U, .logical_pc = 0xC7CFU},
     }};
@@ -15902,6 +16097,40 @@ using NativeRegistryEntryObserver = std::function<void(
         std::cerr << "Could not install native collision-scanner RTS hook.\n";
         return false;
     }
+    // The sibling hit return is reached by the collision-mask lookup with
+    // carry already set.  Like CCD4, only the core can consume its caller's
+    // live stack frame without inventing a continuation.
+    constexpr RoutineKey kCollisionScannerHitReturnInstruction{
+        .physical_bank = 0x01U,
+        .logical_pc = 0xCCD2U,
+    };
+    if (std::find(
+            claimed_routines.begin(),
+            claimed_routines.end(),
+            kCollisionScannerHitReturnInstruction)
+            == claimed_routines.end()
+        && !runtime.install_execution_hook({
+            .routine = kCollisionScannerHitReturnInstruction,
+            .mode = HookMode::replace,
+            .replacement_callback = [&deployment, &replacement_rom](
+                const RoutineEntry& entry,
+                const std::span<const std::byte> work_ram) {
+                ++deployment.core_capability_entries;
+                deployment.span.observe(entry.absolute_master_cycle);
+                auto result = replace_native_gameplay_routine(
+                    entry, work_ram, replacement_rom);
+                if (result) {
+                    ++deployment.core_capability_accepted;
+                    ++deployment.core_rts_instructions;
+                    deployment.core_capability_master_cycles +=
+                        result->body_master_cycles;
+                }
+                return result;
+            },
+        })) {
+        std::cerr << "Could not install native collision hit-return RTS hook.\n";
+        return false;
+    }
     constexpr RoutineKey kKnightNoHitReturnInstruction{
         .physical_bank = 0x03U,
         .logical_pc = 0x73D7U,
@@ -16000,17 +16229,37 @@ using NativeRegistryEntryObserver = std::function<void(
             return false;
         }
     }
-    constexpr std::array<RoutineKey, 6U> kMusicJumpInstructions{{
+    constexpr std::array<RoutineKey, 16U> kMusicJumpInstructions{{
+        {.physical_bank = 0x45U, .logical_pc = 0x4000U},
         {.physical_bank = 0x45U, .logical_pc = 0x4003U},
+        {.physical_bank = 0x45U, .logical_pc = 0x4006U},
+        {.physical_bank = 0x45U, .logical_pc = 0x4009U},
         {.physical_bank = 0x45U, .logical_pc = 0x40FFU},
         {.physical_bank = 0x08U, .logical_pc = 0x4000U},
+        {.physical_bank = 0x08U, .logical_pc = 0x4003U},
+        {.physical_bank = 0x08U, .logical_pc = 0x4006U},
         {.physical_bank = 0x08U, .logical_pc = 0x4009U},
+        {.physical_bank = 0x08U, .logical_pc = 0x400CU},
+        {.physical_bank = 0x08U, .logical_pc = 0x400FU},
+        {.physical_bank = 0x08U, .logical_pc = 0x4012U},
         {.physical_bank = 0x08U, .logical_pc = 0x4015U},
+        {.physical_bank = 0x08U, .logical_pc = 0x4018U},
+        {.physical_bank = 0x08U, .logical_pc = 0x401BU},
         {.physical_bank = 0x08U, .logical_pc = 0x4030U},
     }};
     for (const auto routine : kMusicJumpInstructions) {
+        // An admitted export is already installed above as its own registry
+        // row.  Do not claim it again as a generic core-JMP capability: the
+        // runtime permits one hook per address, and a registry slice or
+        // explicit exclusion must still leave the core capability available.
+        const bool installed_by_registry = std::ranges::any_of(
+            deployment.rows,
+            [routine](const RegistryCensusRow& row) {
+                return row.routine == routine && !row.skipped;
+            });
         if (std::find(claimed_routines.begin(), claimed_routines.end(), routine)
-            != claimed_routines.end()) {
+                != claimed_routines.end()
+            || installed_by_registry) {
             continue;
         }
         if (!runtime.install_execution_hook({
@@ -16866,6 +17115,221 @@ using NativeRegistryEntryObserver = std::function<void(
             return false;
         }
     }
+    // The upper-table scripted actors begin with an exact immediate-store
+    // prefix, then execute the bank-01 common-initializer JSR in the core.
+    // Keep those one-shot prefixes outside the routine registry while their
+    // longer scripts remain core-owned.
+    constexpr std::array<RoutineKey, 2U> kBank9ScriptedActorInitializers{{
+        {.physical_bank = 0x09U, .logical_pc = 0x6FB1U},
+        {.physical_bank = 0x09U, .logical_pc = 0x70EEU},
+    }};
+    for (const auto routine : kBank9ScriptedActorInitializers) {
+        if (std::find(claimed_routines.begin(), claimed_routines.end(), routine)
+            != claimed_routines.end()) {
+            continue;
+        }
+        if (!runtime.install_execution_hook({
+                .routine = routine,
+                .mode = HookMode::replace,
+                .replacement_callback = [&deployment](
+                    const RoutineEntry& entry,
+                    const std::span<const std::byte> work_ram) {
+                    ++deployment.auxiliary_transcript_entries;
+                    ++deployment.auxiliary_bank9_scripted_actor_initializer_entries;
+                    deployment.span.observe(entry.absolute_master_cycle);
+                    auto result = replace_native_gameplay_routine(entry, work_ram, {});
+                    if (result) {
+                        ++deployment.auxiliary_transcript_accepted;
+                        deployment.auxiliary_transcript_master_cycles +=
+                            result->body_master_cycles;
+                    }
+                    return result;
+                },
+            })) {
+            std::cerr << "Could not install native bank-09 scripted actor initializer hook.\n";
+            return false;
+        }
+    }
+    // The first scripted actor resumes after F08E at 09:7025. Its bounded
+    // countdown leaves the script's RTS or the common-initializer JSR in the
+    // core, preserving both existing call frames.
+    constexpr std::array<RoutineKey, 2U> kBank9UpperTableCountdowns{{
+        {.physical_bank = 0x09U, .logical_pc = 0x7025U},
+        {.physical_bank = 0x09U, .logical_pc = 0x715DU},
+    }};
+    for (const auto routine : kBank9UpperTableCountdowns) {
+        if (std::find(claimed_routines.begin(), claimed_routines.end(), routine)
+                != claimed_routines.end()) {
+            continue;
+        }
+        if (!runtime.install_execution_hook({
+            .routine = routine,
+            .mode = HookMode::replace,
+            .replacement_callback = [&deployment](
+                const RoutineEntry& entry,
+                const std::span<const std::byte> work_ram) {
+                ++deployment.auxiliary_transcript_entries;
+                ++deployment.auxiliary_bank9_upper_table_countdown_entries;
+                deployment.span.observe(entry.absolute_master_cycle);
+                auto result = replace_native_gameplay_routine(entry, work_ram, {});
+                if (result) {
+                    ++deployment.auxiliary_transcript_accepted;
+                    deployment.auxiliary_transcript_master_cycles +=
+                        result->body_master_cycles;
+                }
+                return result;
+            },
+        })) {
+            std::cerr << "Could not install native bank-09 upper-table countdown hook.\n";
+            return false;
+        }
+    }
+    constexpr std::array<RoutineKey, 2U> kBank9UpperTableParentDecays{{
+        {.physical_bank = 0x09U, .logical_pc = 0x7043U},
+        {.physical_bank = 0x09U, .logical_pc = 0x717BU},
+    }};
+    for (const auto routine : kBank9UpperTableParentDecays) {
+        if (std::find(claimed_routines.begin(), claimed_routines.end(), routine)
+                != claimed_routines.end()) {
+            continue;
+        }
+        if (!runtime.install_execution_hook({
+            .routine = routine,
+            .mode = HookMode::replace,
+            .replacement_callback = [&deployment](
+                const RoutineEntry& entry,
+                const std::span<const std::byte> work_ram) {
+                ++deployment.auxiliary_transcript_entries;
+                ++deployment.auxiliary_bank9_upper_table_parent_decay_entries;
+                deployment.span.observe(entry.absolute_master_cycle);
+                auto result = replace_native_gameplay_routine(entry, work_ram, {});
+                if (result) {
+                    ++deployment.auxiliary_transcript_accepted;
+                    deployment.auxiliary_transcript_master_cycles +=
+                        result->body_master_cycles;
+                }
+                return result;
+            },
+        })) {
+            std::cerr << "Could not install native bank-09 upper-table parent-decay hook.\n";
+            return false;
+        }
+    }
+    // Both parent actors reset their animation counters and enter the shared
+    // scheduler through a conventional JSR frame.  The replacement owns only
+    // that prefix; the scheduler remains the established native boundary.
+    constexpr std::array<RoutineKey, 2U> kBank9UpperTableParentInitializers{{
+        {.physical_bank = 0x09U, .logical_pc = 0x704FU},
+        {.physical_bank = 0x09U, .logical_pc = 0x7187U},
+    }};
+    for (const auto routine : kBank9UpperTableParentInitializers) {
+        if (std::find(claimed_routines.begin(), claimed_routines.end(), routine)
+                != claimed_routines.end()) {
+            continue;
+        }
+        if (!runtime.install_execution_hook({
+            .routine = routine,
+            .mode = HookMode::replace,
+            .replacement_callback = [&deployment](
+                const RoutineEntry& entry,
+                const std::span<const std::byte> work_ram) {
+                ++deployment.auxiliary_transcript_entries;
+                ++deployment.auxiliary_bank9_upper_table_parent_initializer_entries;
+                deployment.span.observe(entry.absolute_master_cycle);
+                auto result = replace_native_gameplay_routine(entry, work_ram, {});
+                if (result) {
+                    ++deployment.auxiliary_transcript_accepted;
+                    deployment.auxiliary_transcript_master_cycles +=
+                        result->body_master_cycles;
+                }
+                return result;
+            },
+        })) {
+            std::cerr << "Could not install native bank-09 upper-table parent initializer hook.\n";
+            return false;
+        }
+    }
+    constexpr RoutineKey kBank2ActorCountdownReturn{
+        .physical_bank = 0x02U,
+        .logical_pc = 0x4F6CU,
+    };
+    if (std::find(claimed_routines.begin(), claimed_routines.end(),
+                  kBank2ActorCountdownReturn) == claimed_routines.end()
+        && !runtime.install_execution_hook({
+            .routine = kBank2ActorCountdownReturn,
+            .mode = HookMode::replace,
+            .replacement_callback = [&deployment](
+                const RoutineEntry& entry,
+                const std::span<const std::byte> work_ram) {
+                ++deployment.auxiliary_transcript_entries;
+                ++deployment.auxiliary_bank2_actor_countdown_return_entries;
+                deployment.span.observe(entry.absolute_master_cycle);
+                auto result = replace_native_gameplay_routine(entry, work_ram, {});
+                if (result) {
+                    ++deployment.auxiliary_transcript_accepted;
+                    deployment.auxiliary_transcript_master_cycles +=
+                        result->body_master_cycles;
+                }
+                return result;
+            },
+        })) {
+        std::cerr << "Could not install native bank-02 actor countdown-return hook.\n";
+        return false;
+    }
+    constexpr RoutineKey kBank3ActorIdleBranch{
+        .physical_bank = 0x03U,
+        .logical_pc = 0x6001U,
+    };
+    if (std::find(claimed_routines.begin(), claimed_routines.end(),
+                  kBank3ActorIdleBranch) == claimed_routines.end()
+        && !runtime.install_execution_hook({
+            .routine = kBank3ActorIdleBranch,
+            .mode = HookMode::replace,
+            .replacement_callback = [&deployment](
+                const RoutineEntry& entry,
+                const std::span<const std::byte> work_ram) {
+                ++deployment.auxiliary_transcript_entries;
+                ++deployment.auxiliary_bank3_actor_idle_branch_entries;
+                deployment.span.observe(entry.absolute_master_cycle);
+                auto result = replace_native_gameplay_routine(entry, work_ram, {});
+                if (result) {
+                    ++deployment.auxiliary_transcript_accepted;
+                    deployment.auxiliary_transcript_master_cycles +=
+                        result->body_master_cycles;
+                }
+                return result;
+            },
+        })) {
+        std::cerr << "Could not install native bank-03 actor idle-branch hook.\n";
+        return false;
+    }
+    constexpr RoutineKey kActorQueueTerminal{
+        .physical_bank = 0x01U,
+        .logical_pc = 0xC63EU,
+    };
+    if (std::find(claimed_routines.begin(), claimed_routines.end(),
+                  kActorQueueTerminal) == claimed_routines.end()
+        && !runtime.install_execution_hook({
+            .routine = kActorQueueTerminal,
+            .mode = HookMode::replace,
+            .replacement_callback = [&deployment](
+                const RoutineEntry& entry,
+                const std::span<const std::byte> work_ram) {
+                ++deployment.auxiliary_transcript_entries;
+                ++deployment.auxiliary_actor_queue_terminal_entries;
+                deployment.span.observe(entry.absolute_master_cycle);
+                auto result = replace_native_gameplay_routine(entry, work_ram, {});
+                if (result) {
+                    ++deployment.auxiliary_transcript_accepted;
+                    deployment.auxiliary_transcript_master_cycles +=
+                        result->body_master_cycles;
+                }
+                return result;
+            },
+        })) {
+        std::cerr << "Could not install native actor queue-terminal hook.\n";
+        return false;
+    }
     // The longer bonus route maps a sibling scan at bank 01:C559. Its clear
     // run, dispatch call, queue call, and post-queue continuation are all
     // instruction boundaries rather than admitted rows, so keep their
@@ -17121,7 +17585,8 @@ void print_native_registry_summary(
                   << deployment.core_bbr3_instructions << ", BBS2="
               << deployment.core_bbs2_instructions << ", RTS="
               << deployment.core_rts_instructions << ", VDC-read="
-              << deployment.core_vdc_status_reads << ", VDC-address="
+              << deployment.core_vdc_status_reads << ", VDC-data-read="
+              << deployment.core_vdc_data_reads << ", VDC-address="
               << deployment.core_vdc_address_steps << ", PLP="
                   << deployment.core_plp_instructions << ", SEI="
                   << deployment.core_sei_instructions << ", JSR="
@@ -17164,6 +17629,20 @@ void print_native_registry_summary(
                   << " entered (" << deployment.auxiliary_transcript_master_cycles
                   << " master cycles; bank-09 actor-scan="
                   << deployment.auxiliary_bank9_actor_scan_entries
+                  << ", bank-09 scripted actor initializer="
+                  << deployment.auxiliary_bank9_scripted_actor_initializer_entries
+                  << ", bank-09 upper-table countdown="
+                  << deployment.auxiliary_bank9_upper_table_countdown_entries
+                  << ", bank-09 upper-table parent decay="
+                  << deployment.auxiliary_bank9_upper_table_parent_decay_entries
+                  << ", bank-09 upper-table parent initializer="
+                  << deployment.auxiliary_bank9_upper_table_parent_initializer_entries
+                  << ", bank-02 actor countdown-return="
+                  << deployment.auxiliary_bank2_actor_countdown_return_entries
+                  << ", bank-03 actor idle-branch="
+                  << deployment.auxiliary_bank3_actor_idle_branch_entries
+                  << ", actor queue-terminal="
+                  << deployment.auxiliary_actor_queue_terminal_entries
                   << ", bonus actor-scan="
                   << deployment.auxiliary_bonus_actor_scan_entries
                   << ", palette-fade tail="
@@ -17188,6 +17667,12 @@ void print_native_registry_summary(
                   << deployment.auxiliary_knight_counter_rts_entries
                   << ", music voice-state load="
                   << deployment.auxiliary_music_voice_state_load_entries
+                  << ", VDC sprite-attribute prefix="
+                  << deployment.auxiliary_vdc_sprite_attribute_prefix_entries
+                  << ", actor-script record loader="
+                  << deployment.auxiliary_actor_script_record_loader_entries
+                  << ", Devil Shooter release countdown="
+                  << deployment.auxiliary_devil_shooter_release_countdown_entries
                   << ")\n";
         if (deployment.auxiliary_bank9_actor_scan_entries != 0U) {
             std::cout << "Bank-09 actor-scan entries: head="

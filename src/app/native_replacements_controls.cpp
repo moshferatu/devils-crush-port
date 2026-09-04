@@ -4813,6 +4813,642 @@ replace_bank9_actor_scan(
 }
 
 [[nodiscard]] std::optional<RoutineReplacement>
+replace_bank9_scripted_actor_initializer(
+    const RoutineEntry& entry,
+    const std::span<const std::byte> work_ram)
+{
+    // 09:6FB1 and 09:70EE are two one-shot upper-table actor initializers.
+    // Their first 47 bytes are a closed sequence: select the slot, initialise
+    // twenty-two actor fields, then JSR into the shared 01:C5C9 initializer.
+    // The child and the scripts following its return have distinct control
+    // flow, so this replacement stops immediately before that JSR and lets
+    // the core own its stack timing and the complete child composition.
+    constexpr std::uint8_t kBank = 0x09U;
+    constexpr std::uint16_t kFirstEntry = 0x6FB1U;
+    constexpr std::uint16_t kSecondEntry = 0x70EEU;
+    constexpr std::uint32_t kImmediate = 6U;
+    constexpr std::uint32_t kAbsoluteIndexed = 15U;
+
+    struct Script {
+        std::uint16_t entry;
+        std::uint8_t slot;
+        std::array<std::uint8_t, 22U> values;
+        std::array<std::uint16_t, 22U> addresses;
+        std::uint16_t call_pc;
+    };
+    constexpr std::array<std::uint16_t, 22U> kAddresses{{
+        0x3000U, 0x3080U, 0x3900U, 0x3180U, 0x3200U, 0x3300U,
+        0x3380U, 0x3400U, 0x3480U, 0x3500U, 0x3580U, 0x3600U,
+        0x3680U, 0x3700U, 0x3780U, 0x3980U, 0x3800U, 0x3D00U,
+        0x3A00U, 0x3B00U, 0x3B80U, 0x3D00U,
+    }};
+    constexpr std::array<Script, 2U> kScripts{{
+        {kFirstEntry, 0x05U,
+         {{0x80U, 0x80U, 0x3CU, 0x30U, 0x00U, 0x2CU, 0x00U,
+           0x00U, 0x00U, 0x00U, 0x00U, 0x20U, 0x20U, 0x94U,
+           0x7FU, 0x00U, 0x1FU, 0x81U, 0x01U, 0x95U, 0x0AU,
+           0x81U}},
+         kAddresses, 0x701FU},
+        {kSecondEntry, 0x06U,
+         {{0x80U, 0x80U, 0x3DU, 0x30U, 0x00U, 0xA3U, 0x00U,
+           0x00U, 0x00U, 0x00U, 0x00U, 0x20U, 0x20U, 0x94U,
+           0x81U, 0x00U, 0x1FU, 0x81U, 0x01U, 0x99U, 0x81U,
+           0x81U}},
+         kAddresses, 0x7157U},
+    }};
+
+    if (entry.routine.physical_bank != kBank
+        || work_ram.size() < 0x2000U
+        || (entry.registers.status & 0x28U) != 0U) {
+        return std::nullopt;
+    }
+    const auto script = std::find_if(
+        kScripts.begin(), kScripts.end(),
+        [&entry](const Script& candidate) {
+            // X belongs to the caller at this boundary; the very first
+            // instruction establishes the script's slot.
+            return candidate.entry == entry.routine.logical_pc;
+        });
+    if (script == kScripts.end()) {
+        return std::nullopt;
+    }
+
+    auto registers = entry.registers;
+    RoutineReplacement replacement;
+    replacement.checkpoints.reserve(45U);
+    replacement.work_ram_writes.reserve(24U);
+    std::uint32_t cycle = 0U;
+    const auto set_nz = [](std::uint8_t status, const std::uint8_t value) {
+        status = static_cast<std::uint8_t>(status & ~0x82U);
+        if (value == 0U) {
+            status = static_cast<std::uint8_t>(status | 0x02U);
+        } else if ((value & 0x80U) != 0U) {
+            status = static_cast<std::uint8_t>(status | 0x80U);
+        }
+        return status;
+    };
+    const auto checkpoint =
+        [&replacement, &registers, &cycle](
+            const std::uint16_t pc,
+            const std::uint16_t resume_pc) {
+            registers.program_counter = resume_pc;
+            replacement.checkpoints.push_back({
+                .interrupt_sample_master_cycle_offset = cycle - 3U,
+                .master_cycle_offset = cycle,
+                .instruction = {kBank, pc},
+                .registers = registers,
+            });
+        };
+
+    cycle += kImmediate;
+    registers.x = script->slot;
+    registers.status = set_nz(registers.status, registers.x);
+    checkpoint(script->entry, static_cast<std::uint16_t>(script->entry + 2U));
+    auto instruction_pc = static_cast<std::uint16_t>(script->entry + 2U);
+    for (std::size_t index = 0U; index < script->values.size(); ++index) {
+        // The sixteenth field is `STZ $3980,X`, not an immediate load and
+        // store. It consequently preserves A/N/Z and occupies three bytes.
+        if (index == 15U) {
+            cycle += kAbsoluteIndexed;
+            replacement.work_ram_writes.push_back({
+                .instruction = {kBank, instruction_pc},
+                .logical_address = static_cast<std::uint16_t>(
+                    script->addresses[index] + script->slot),
+                .value = 0x00U,
+                .master_cycle_offset = cycle,
+            });
+            checkpoint(instruction_pc,
+                       static_cast<std::uint16_t>(instruction_pc + 3U));
+            instruction_pc = static_cast<std::uint16_t>(instruction_pc + 3U);
+            continue;
+        }
+        const auto load_pc = instruction_pc;
+        const auto store_pc = static_cast<std::uint16_t>(load_pc + 2U);
+        const auto value = script->values[index];
+        cycle += kImmediate;
+        registers.accumulator = value;
+        registers.status = set_nz(registers.status, value);
+        checkpoint(load_pc, store_pc);
+        cycle += kAbsoluteIndexed;
+        replacement.work_ram_writes.push_back({
+            .instruction = {kBank, store_pc},
+            .logical_address = static_cast<std::uint16_t>(
+                script->addresses[index] + script->slot),
+            .value = value,
+            .master_cycle_offset = cycle,
+        });
+        checkpoint(store_pc, static_cast<std::uint16_t>(store_pc + 3U));
+        instruction_pc = static_cast<std::uint16_t>(instruction_pc + 5U);
+    }
+
+    if (instruction_pc != script->call_pc) {
+        return std::nullopt;
+    }
+    registers.program_counter = script->call_pc;
+    replacement.return_instruction = {kBank, script->call_pc};
+    replacement.output_registers = registers;
+    replacement.body_master_cycles = cycle;
+    return replacement;
+}
+
+[[nodiscard]] std::optional<RoutineReplacement>
+replace_bank9_upper_table_countdown(
+    const RoutineEntry& entry,
+    const std::span<const std::byte> work_ram)
+{
+    // 09:7025 follows the original F08E motion call in the first upper-table
+    // scripted actor. It decrements two indexed timers. Most passes end at
+    // the script's RTS; on rollover it refreshes the delay/count field and
+    // stops immediately before the common 01:C5C9 initializer JSR.
+    constexpr std::uint8_t kBank = 0x09U;
+    constexpr std::uint32_t kAbsoluteIndexedRmw = 21U;
+    constexpr std::uint32_t kAbsoluteIndexed = 15U;
+    constexpr std::uint32_t kImmediate = 6U;
+    constexpr std::uint32_t kBranchTaken = 12U;
+    constexpr std::uint32_t kBranchNotTaken = 6U;
+
+    struct CountdownScript {
+        std::uint16_t entry_pc;
+        std::uint16_t return_pc;
+        std::uint16_t initializer_call_pc;
+    };
+    constexpr std::array<CountdownScript, 2U> kScripts{{
+        {0x7025U, 0x703CU, 0x703DU},
+        {0x715DU, 0x7174U, 0x7175U},
+    }};
+    const auto script = std::find_if(
+        kScripts.begin(), kScripts.end(),
+        [&entry](const CountdownScript& candidate) {
+            return candidate.entry_pc == entry.routine.logical_pc;
+        });
+    if (entry.routine.physical_bank != kBank
+        || script == kScripts.end()
+        || work_ram.size() < 0x2000U
+        || (entry.registers.status & 0x28U) != 0U) {
+        return std::nullopt;
+    }
+
+    const auto set_nz = [](std::uint8_t status, const std::uint8_t value) {
+        status = static_cast<std::uint8_t>(status & ~0x82U);
+        if (value == 0U) {
+            status = static_cast<std::uint8_t>(status | 0x02U);
+        } else if ((value & 0x80U) != 0U) {
+            status = static_cast<std::uint8_t>(status | 0x80U);
+        }
+        return status;
+    };
+    const auto compare = [&set_nz](std::uint8_t status,
+                                   const std::uint8_t left,
+                                   const std::uint8_t right) {
+        status = set_nz(status, static_cast<std::uint8_t>(left - right));
+        return static_cast<std::uint8_t>(
+            left >= right ? status | 0x01U
+                          : status & static_cast<std::uint8_t>(~0x01U));
+    };
+    const auto ram = reinterpret_cast<const std::uint8_t*>(work_ram.data());
+    const auto slot = entry.registers.x;
+    const auto first_timer_address = static_cast<std::uint16_t>(0x3B00U + slot);
+    const auto second_timer_address = static_cast<std::uint16_t>(0x3A00U + slot);
+    const auto cycle_counter_address = static_cast<std::uint16_t>(0x3980U + slot);
+    const auto first_decrement_pc = script->entry_pc;
+    const auto second_decrement_pc = static_cast<std::uint16_t>(
+        first_decrement_pc + 3U);
+    const auto first_branch_pc = static_cast<std::uint16_t>(
+        second_decrement_pc + 3U);
+    const auto reload_pc = static_cast<std::uint16_t>(first_branch_pc + 2U);
+    const auto reload_store_pc = static_cast<std::uint16_t>(reload_pc + 2U);
+    const auto increment_pc = static_cast<std::uint16_t>(reload_store_pc + 3U);
+    const auto counter_load_pc = static_cast<std::uint16_t>(increment_pc + 3U);
+    const auto compare_pc = static_cast<std::uint16_t>(counter_load_pc + 3U);
+    const auto rollover_branch_pc = static_cast<std::uint16_t>(compare_pc + 2U);
+
+    auto registers = entry.registers;
+    RoutineReplacement replacement{};
+    replacement.checkpoints.reserve(9U);
+    replacement.work_ram_writes.reserve(4U);
+    std::uint32_t cycle = 0U;
+    const auto checkpoint = [&](const std::uint16_t pc,
+                                const std::uint16_t resume_pc) {
+        registers.program_counter = resume_pc;
+        replacement.checkpoints.push_back({
+            .interrupt_sample_master_cycle_offset = cycle - 3U,
+            .master_cycle_offset = cycle,
+            .instruction = {kBank, pc},
+            .registers = registers,
+        });
+    };
+    const auto write = [&](const std::uint16_t pc,
+                           const std::uint16_t address,
+                           const std::uint8_t value,
+                           const std::uint16_t resume_pc,
+                           const std::uint32_t instruction_cycles) {
+        cycle += instruction_cycles;
+        replacement.work_ram_writes.push_back({
+            .instruction = {kBank, pc},
+            .logical_address = address,
+            .value = value,
+            .master_cycle_offset = cycle,
+        });
+        checkpoint(pc, resume_pc);
+    };
+
+    const auto first_timer_after = static_cast<std::uint8_t>(
+        ram[first_timer_address - 0x2000U] - 1U);
+    registers.status = set_nz(registers.status, first_timer_after);
+    write(first_decrement_pc, first_timer_address, first_timer_after,
+          second_decrement_pc,
+          kAbsoluteIndexedRmw);
+
+    const auto second_timer_after = static_cast<std::uint8_t>(
+        ram[second_timer_address - 0x2000U] - 1U);
+    registers.status = set_nz(registers.status, second_timer_after);
+    write(second_decrement_pc, second_timer_address, second_timer_after,
+          first_branch_pc,
+          kAbsoluteIndexedRmw);
+
+    if (second_timer_after != 0U) {
+        cycle += kBranchTaken;
+        checkpoint(first_branch_pc, script->return_pc);
+        replacement.return_instruction = {kBank, script->return_pc};
+        replacement.output_registers = registers;
+        replacement.body_master_cycles = cycle;
+        return replacement;
+    }
+
+    cycle += kBranchNotTaken;
+    checkpoint(first_branch_pc, reload_pc);
+    cycle += kImmediate;
+    registers.accumulator = 0x06U;
+    registers.status = set_nz(registers.status, registers.accumulator);
+    checkpoint(reload_pc, reload_store_pc);
+    write(reload_store_pc, second_timer_address, registers.accumulator,
+          increment_pc,
+          kAbsoluteIndexed);
+
+    const auto cycle_counter_after = static_cast<std::uint8_t>(
+        ram[cycle_counter_address - 0x2000U] + 1U);
+    registers.status = set_nz(registers.status, cycle_counter_after);
+    write(increment_pc, cycle_counter_address, cycle_counter_after,
+          counter_load_pc,
+          kAbsoluteIndexedRmw);
+    cycle += kAbsoluteIndexed;
+    registers.accumulator = cycle_counter_after;
+    registers.status = set_nz(registers.status, registers.accumulator);
+    checkpoint(counter_load_pc, compare_pc);
+    cycle += kImmediate;
+    registers.status = compare(registers.status, registers.accumulator, 0x06U);
+    checkpoint(compare_pc, rollover_branch_pc);
+
+    const auto rollover = cycle_counter_after == 0x06U;
+    cycle += rollover ? kBranchTaken : kBranchNotTaken;
+    checkpoint(rollover_branch_pc,
+               rollover ? script->initializer_call_pc : script->return_pc);
+    replacement.return_instruction = {
+        kBank, rollover ? script->initializer_call_pc : script->return_pc};
+    replacement.output_registers = registers;
+    replacement.body_master_cycles = cycle;
+    return replacement;
+}
+
+[[nodiscard]] std::optional<RoutineReplacement>
+replace_bank9_upper_table_parent_decay(
+    const RoutineEntry& entry,
+    const std::span<const std::byte> work_ram)
+{
+    // 09:7043 and 09:717B are sibling parent actors' short decay gates after
+    // F08E. Their branches converge on the enclosing script's RTS, so the
+    // core keeps that return frame while this replacement owns only the four
+    // local instructions.
+    constexpr std::uint8_t kBank = 0x09U;
+    struct DecayScript {
+        std::uint16_t entry_pc;
+        std::uint16_t return_pc;
+        std::uint16_t initializer_pc;
+    };
+    constexpr std::array<DecayScript, 2U> kScripts{{
+        {0x7043U, 0x704EU, 0x704FU},
+        {0x717BU, 0x7186U, 0x7187U},
+    }};
+    constexpr std::uint32_t kAbsoluteIndexedRmw = 21U;
+    constexpr std::uint32_t kAbsoluteIndexed = 15U;
+    constexpr std::uint32_t kBranchTaken = 12U;
+    constexpr std::uint32_t kBranchNotTaken = 6U;
+    const auto script = std::find_if(kScripts.begin(), kScripts.end(),
+                                     [&entry](const DecayScript& candidate) {
+                                         return entry.routine
+                                             == RoutineKey{0x09U, candidate.entry_pc};
+                                     });
+    if (script == kScripts.end() || work_ram.size() < 0x2000U
+        || (entry.registers.status & 0x28U) != 0U) {
+        return std::nullopt;
+    }
+
+    const auto set_nz = [](std::uint8_t status, const std::uint8_t value) {
+        status = static_cast<std::uint8_t>(status & ~0x82U);
+        if (value == 0U) {
+            status = static_cast<std::uint8_t>(status | 0x02U);
+        } else if ((value & 0x80U) != 0U) {
+            status = static_cast<std::uint8_t>(status | 0x80U);
+        }
+        return status;
+    };
+    const auto ram = reinterpret_cast<const std::uint8_t*>(work_ram.data());
+    const auto entry_pc = script->entry_pc;
+    const auto slot = entry.registers.x;
+    const auto timer_address = static_cast<std::uint16_t>(0x3B00U + slot);
+    const auto first_parent_address = static_cast<std::uint16_t>(0x3400U + slot);
+    const auto second_parent_address = static_cast<std::uint16_t>(0x3480U + slot);
+
+    auto registers = entry.registers;
+    RoutineReplacement replacement{};
+    replacement.checkpoints.reserve(4U);
+    std::uint32_t cycle = 0U;
+    const auto checkpoint = [&](const std::uint16_t pc,
+                                const std::uint16_t resume_pc) {
+        registers.program_counter = resume_pc;
+        replacement.checkpoints.push_back({
+            .interrupt_sample_master_cycle_offset = cycle - 3U,
+            .master_cycle_offset = cycle,
+            .instruction = {kBank, pc},
+            .registers = registers,
+        });
+    };
+
+    const auto timer_after = static_cast<std::uint8_t>(
+        ram[timer_address - 0x2000U] - 1U);
+    registers.status = set_nz(registers.status, timer_after);
+    cycle += kAbsoluteIndexedRmw;
+    replacement.work_ram_writes.push_back({
+        .instruction = {kBank, entry_pc},
+        .logical_address = timer_address,
+        .value = timer_after,
+        .master_cycle_offset = cycle,
+    });
+    checkpoint(entry_pc, static_cast<std::uint16_t>(entry_pc + 3U));
+
+    registers.accumulator = ram[first_parent_address - 0x2000U];
+    registers.status = set_nz(registers.status, registers.accumulator);
+    cycle += kAbsoluteIndexed;
+    checkpoint(static_cast<std::uint16_t>(entry_pc + 3U),
+               static_cast<std::uint16_t>(entry_pc + 6U));
+
+    registers.accumulator = static_cast<std::uint8_t>(
+        registers.accumulator | ram[second_parent_address - 0x2000U]);
+    registers.status = set_nz(registers.status, registers.accumulator);
+    cycle += kAbsoluteIndexed;
+    checkpoint(static_cast<std::uint16_t>(entry_pc + 6U),
+               static_cast<std::uint16_t>(entry_pc + 9U));
+
+    const auto starts_initializer = registers.accumulator == 0U;
+    cycle += starts_initializer ? kBranchTaken : kBranchNotTaken;
+    // `F0 $01` skips each script's RTS when both parent fields are clear;
+    // its taken target is the next initializer arm, not the RTS.
+    const auto continuation_pc = static_cast<std::uint16_t>(
+        starts_initializer ? script->initializer_pc : script->return_pc);
+    checkpoint(static_cast<std::uint16_t>(entry_pc + 9U), continuation_pc);
+    replacement.return_instruction = {kBank, continuation_pc};
+    replacement.output_registers = registers;
+    replacement.body_master_cycles = cycle;
+    return replacement;
+}
+
+[[nodiscard]] std::optional<RoutineReplacement>
+replace_bank9_upper_table_parent_initializer(
+    const RoutineEntry& entry,
+    const std::span<const std::byte> work_ram)
+{
+    // 09:704F and 09:7187 are byte-identical parent-animation resets.  Each
+    // writes the two animation counters for its X-selected slot, then JSRs
+    // into the common 01:C5C9 coroutine scheduler.  The scheduler consumes
+    // that JSR frame itself, so model the call's two hardware-order stack
+    // writes exactly and leave the scheduler's much larger transaction to its
+    // existing native replacement.
+    constexpr std::uint8_t kBank = 0x09U;
+    constexpr std::uint16_t kSchedulerPc = 0xC5C9U;
+    constexpr std::uint32_t kImmediate = 6U;
+    constexpr std::uint32_t kAbsoluteIndexed = 15U;
+    constexpr std::uint32_t kSubroutineCall = 21U;
+    struct Script {
+        std::uint16_t entry_pc;
+        std::uint16_t call_pc;
+        std::uint16_t pushed_return;
+    };
+    constexpr std::array<Script, 2U> kScripts{{
+        {0x704FU, 0x7059U, 0x705BU},
+        {0x7187U, 0x7191U, 0x7193U},
+    }};
+    const auto script = std::find_if(
+        kScripts.begin(), kScripts.end(), [&entry](const Script& candidate) {
+            return entry.routine
+                == RoutineKey{0x09U, candidate.entry_pc};
+        });
+    if (script == kScripts.end() || work_ram.size() < 0x2000U
+        || (entry.registers.status & 0x28U) != 0U) {
+        return std::nullopt;
+    }
+
+    const auto set_nz = [](std::uint8_t status, const std::uint8_t value) {
+        status = static_cast<std::uint8_t>(status & ~0x82U);
+        if (value == 0U) {
+            status = static_cast<std::uint8_t>(status | 0x02U);
+        } else if ((value & 0x80U) != 0U) {
+            status = static_cast<std::uint8_t>(status | 0x80U);
+        }
+        return status;
+    };
+
+    auto registers = entry.registers;
+    RoutineReplacement replacement{};
+    replacement.checkpoints.reserve(5U);
+    replacement.work_ram_writes.reserve(4U);
+    std::uint32_t cycle = 0U;
+    const auto checkpoint = [&](const std::uint16_t pc,
+                                const std::uint16_t resume_pc) {
+        registers.program_counter = resume_pc;
+        replacement.checkpoints.push_back({
+            .interrupt_sample_master_cycle_offset = cycle - 3U,
+            .master_cycle_offset = cycle,
+            .instruction = {kBank, pc},
+            .registers = registers,
+        });
+    };
+    const auto write = [&](const std::uint16_t pc,
+                           const std::uint16_t address,
+                           const std::uint8_t value) {
+        replacement.work_ram_writes.push_back({
+            .instruction = {kBank, pc},
+            .logical_address = address,
+            .value = value,
+            .master_cycle_offset = cycle,
+        });
+    };
+
+    registers.accumulator = 0x10U;
+    registers.status = set_nz(registers.status, registers.accumulator);
+    cycle += kImmediate;
+    checkpoint(script->entry_pc, static_cast<std::uint16_t>(script->entry_pc + 2U));
+    cycle += kAbsoluteIndexed;
+    write(static_cast<std::uint16_t>(script->entry_pc + 2U),
+          static_cast<std::uint16_t>(0x3600U + registers.x),
+          registers.accumulator);
+    checkpoint(static_cast<std::uint16_t>(script->entry_pc + 2U),
+               static_cast<std::uint16_t>(script->entry_pc + 5U));
+
+    cycle += kImmediate;
+    checkpoint(static_cast<std::uint16_t>(script->entry_pc + 5U),
+               static_cast<std::uint16_t>(script->entry_pc + 7U));
+    cycle += kAbsoluteIndexed;
+    write(static_cast<std::uint16_t>(script->entry_pc + 7U),
+          static_cast<std::uint16_t>(0x3680U + registers.x),
+          registers.accumulator);
+    checkpoint(static_cast<std::uint16_t>(script->entry_pc + 7U), script->call_pc);
+
+    // HuC6280 pushes JSR's return address high byte first before charging its
+    // 21 master cycles.  Work-RAM offsets are reported through the $2100
+    // stack page so the runtime's write mirror observes the physical stack.
+    write(script->call_pc,
+          static_cast<std::uint16_t>(0x2100U + registers.stack_pointer),
+          static_cast<std::uint8_t>(script->pushed_return >> 8U));
+    write(script->call_pc,
+          static_cast<std::uint16_t>(
+              0x2100U + static_cast<std::uint8_t>(registers.stack_pointer - 1U)),
+          static_cast<std::uint8_t>(script->pushed_return & 0x00FFU));
+    registers.stack_pointer = static_cast<std::uint8_t>(registers.stack_pointer - 2U);
+    cycle += kSubroutineCall;
+    checkpoint(script->call_pc, kSchedulerPc);
+
+    replacement.return_instruction = {0x01U, kSchedulerPc};
+    replacement.output_registers = registers;
+    replacement.body_master_cycles = cycle;
+    return replacement;
+}
+
+[[nodiscard]] std::optional<RoutineReplacement>
+replace_bank2_actor_countdown_return(
+    const RoutineEntry& entry,
+    const std::span<const std::byte> work_ram)
+{
+    // 02:4F6C decrements the caller's accumulator, records it in the
+    // X-selected actor counter, ORs the companion counter, and returns while
+    // either is nonzero.  The zero arm falls into a distinct submission path;
+    // do not speculate across that state-changing continuation.
+    constexpr RoutineKey kRoutine{0x02U, 0x4F6CU};
+    constexpr std::uint32_t kAccumulatorDecrement = 6U;
+    constexpr std::uint32_t kAbsoluteIndexed = 15U;
+    constexpr std::uint32_t kBranchNotTaken = 6U;
+    if (entry.routine != kRoutine || work_ram.size() < 0x2000U
+        || (entry.registers.status & 0x28U) != 0U) {
+        return std::nullopt;
+    }
+
+    const auto set_nz = [](std::uint8_t status, const std::uint8_t value) {
+        status = static_cast<std::uint8_t>(status & ~0x82U);
+        if (value == 0U) {
+            status = static_cast<std::uint8_t>(status | 0x02U);
+        } else if ((value & 0x80U) != 0U) {
+            status = static_cast<std::uint8_t>(status | 0x80U);
+        }
+        return status;
+    };
+
+    const auto slot = entry.registers.x;
+    const auto stored_counter = static_cast<std::uint8_t>(
+        entry.registers.accumulator - 1U);
+    const auto companion_address = static_cast<std::uint16_t>(0x3B80U + slot);
+    const auto ram = reinterpret_cast<const std::uint8_t*>(work_ram.data());
+    const auto combined = static_cast<std::uint8_t>(
+        stored_counter | ram[companion_address - 0x2000U]);
+    // F0 $01 takes the expiry continuation rather than this routine's RTS.
+    // Return no transcript in that case so neither the counter write nor its
+    // interrupt checkpoints are committed ahead of the original path.
+    if (combined == 0U) {
+        return std::nullopt;
+    }
+
+    auto registers = entry.registers;
+    RoutineReplacement replacement{};
+    replacement.checkpoints.reserve(4U);
+    replacement.work_ram_writes.reserve(1U);
+    std::uint32_t cycle = 0U;
+    const auto checkpoint = [&](const std::uint16_t pc,
+                                const std::uint16_t resume_pc) {
+        registers.program_counter = resume_pc;
+        replacement.checkpoints.push_back({
+            .interrupt_sample_master_cycle_offset = cycle - 3U,
+            .master_cycle_offset = cycle,
+            .instruction = {0x02U, pc},
+            .registers = registers,
+        });
+    };
+
+    registers.accumulator = stored_counter;
+    registers.status = set_nz(registers.status, registers.accumulator);
+    cycle += kAccumulatorDecrement;
+    checkpoint(0x4F6CU, 0x4F6DU);
+
+    cycle += kAbsoluteIndexed;
+    replacement.work_ram_writes.push_back({
+        .instruction = {0x02U, 0x4F6DU},
+        .logical_address = static_cast<std::uint16_t>(0x3B00U + slot),
+        .value = registers.accumulator,
+        .master_cycle_offset = cycle,
+    });
+    checkpoint(0x4F6DU, 0x4F70U);
+
+    registers.accumulator = combined;
+    registers.status = set_nz(registers.status, registers.accumulator);
+    cycle += kAbsoluteIndexed;
+    checkpoint(0x4F70U, 0x4F73U);
+
+    cycle += kBranchNotTaken;
+    checkpoint(0x4F73U, 0x4F75U);
+    replacement.return_instruction = {0x02U, 0x4F75U};
+    replacement.output_registers = registers;
+    replacement.body_master_cycles = cycle;
+    return replacement;
+}
+
+[[nodiscard]] std::optional<RoutineReplacement>
+replace_bank3_actor_idle_branch(const RoutineEntry& entry)
+{
+    // 03:6001 BCS $6005 / 6003 BRA $6054.  The normal carry-clear arm is
+    // only a branch pair and preserves every register and flag.  Carry-set
+    // instead initializes the actor before entering the scheduler, so keep
+    // that separate path interpreted.
+    constexpr RoutineKey kRoutine{0x03U, 0x6001U};
+    constexpr std::uint32_t kBranchNotTaken = 6U;
+    constexpr std::uint32_t kBranchTaken = 12U;
+    if (entry.routine != kRoutine
+        || (entry.registers.status & 0x01U) != 0U) {
+        return std::nullopt;
+    }
+
+    auto registers = entry.registers;
+    RoutineReplacement replacement{};
+    replacement.checkpoints.reserve(2U);
+    replacement.body_master_cycles = kBranchNotTaken + kBranchTaken;
+
+    registers.program_counter = 0x6003U;
+    replacement.checkpoints.push_back({
+        .interrupt_sample_master_cycle_offset = kBranchNotTaken - 3U,
+        .master_cycle_offset = kBranchNotTaken,
+        .instruction = {0x03U, 0x6001U},
+        .registers = registers,
+    });
+    registers.program_counter = 0x6054U;
+    replacement.checkpoints.push_back({
+        .interrupt_sample_master_cycle_offset =
+            replacement.body_master_cycles - 3U,
+        .master_cycle_offset = replacement.body_master_cycles,
+        .instruction = {0x03U, 0x6003U},
+        .registers = registers,
+    });
+    replacement.return_instruction = {0x03U, 0x6054U};
+    replacement.output_registers = registers;
+    return replacement;
+}
+
+[[nodiscard]] std::optional<RoutineReplacement>
 replace_bonus_actor_scan(
     const RoutineEntry& entry,
     const std::span<const std::byte> work_ram)
@@ -5572,6 +6208,132 @@ replace_actor_queue_registration(
         .physical_bank = kRoutine.physical_bank,
         .logical_pc = resume,
     };
+    replacement.output_registers = registers;
+    replacement.body_master_cycles = cycle;
+    return replacement;
+}
+
+[[nodiscard]] std::optional<RoutineReplacement>
+replace_actor_queue_terminal(
+    const RoutineEntry& entry,
+    const std::span<const std::byte> work_ram)
+{
+    // Direct entries at C63E arrive after an actor handler has selected the
+    // second or third sprite-emission queue. This is the closed suffix of the
+    // C606 queue filer: test bit 3 in A, update one cursor, and file X.
+    constexpr RoutineKey kRoutine{
+        .physical_bank = 0x01U,
+        .logical_pc = 0xC63EU,
+    };
+    constexpr std::uint16_t kBranchPc = 0xC640U;
+    constexpr std::uint16_t kSecondCursorPc = 0xC642U;
+    constexpr std::uint16_t kSecondBumpPc = 0xC645U;
+    constexpr std::uint16_t kSecondJoinPc = 0xC648U;
+    constexpr std::uint16_t kThirdCursorPc = 0xC64AU;
+    constexpr std::uint16_t kThirdBumpPc = 0xC64DU;
+    constexpr std::uint16_t kTransferPc = 0xC650U;
+    constexpr std::uint16_t kStorePc = 0xC651U;
+    constexpr std::uint16_t kTerminalPc = 0xC654U;
+    constexpr std::uint16_t kSecondCursorAddress = 0x2CBAU;
+    constexpr std::uint16_t kThirdCursorAddress = 0x2CBBU;
+    constexpr std::uint16_t kQueueBase = 0x2BBAU;
+    constexpr std::uint32_t kImmediate = 6U;
+    constexpr std::uint32_t kAbsoluteIndexed = 15U;
+    constexpr std::uint32_t kAbsoluteReadModifyWrite = 21U;
+    constexpr std::uint32_t kBranchTaken = 12U;
+
+    if (entry.routine != kRoutine || work_ram.size() < 0x2000U
+        || (entry.registers.status & 0x28U) != 0U) {
+        return std::nullopt;
+    }
+
+    const auto set_nz = [](std::uint8_t status, const std::uint8_t value) {
+        status = static_cast<std::uint8_t>(status & ~0x82U);
+        if (value == 0U) {
+            status = static_cast<std::uint8_t>(status | 0x02U);
+        } else if ((value & 0x80U) != 0U) {
+            status = static_cast<std::uint8_t>(status | 0x80U);
+        }
+        return status;
+    };
+    const auto ram = reinterpret_cast<const std::uint8_t*>(work_ram.data());
+    auto registers = entry.registers;
+    RoutineReplacement replacement{};
+    replacement.checkpoints.reserve(7U);
+    replacement.work_ram_writes.reserve(2U);
+    std::uint32_t cycle = 0U;
+    const auto checkpoint = [&](const std::uint16_t pc,
+                                const std::uint16_t resume_pc) {
+        registers.program_counter = resume_pc;
+        replacement.checkpoints.push_back({
+            .interrupt_sample_master_cycle_offset = cycle - 3U,
+            .master_cycle_offset = cycle,
+            .instruction = {kRoutine.physical_bank, pc},
+            .registers = registers,
+        });
+    };
+    const auto step = [&](const std::uint16_t pc,
+                          const std::uint16_t resume_pc,
+                          const std::uint32_t cycles) {
+        cycle += cycles;
+        checkpoint(pc, resume_pc);
+    };
+    const auto write = [&](const std::uint16_t pc,
+                           const std::uint16_t resume_pc,
+                           const std::uint32_t cycles,
+                           const std::uint16_t address,
+                           const std::uint8_t value) {
+        cycle += cycles;
+        replacement.work_ram_writes.push_back({
+            .instruction = {kRoutine.physical_bank, pc},
+            .logical_address = address,
+            .value = value,
+            .master_cycle_offset = cycle,
+        });
+        checkpoint(pc, resume_pc);
+    };
+
+    // HuC6280's immediate BIT clears N and V from the immediate operand,
+    // then sets Z from A & operand; this matches the core's LD_IM(BIT) path.
+    registers.status = static_cast<std::uint8_t>(registers.status & ~0xC2U);
+    if ((registers.accumulator & 0x08U) == 0U) {
+        registers.status = static_cast<std::uint8_t>(registers.status | 0x02U);
+    }
+    step(0xC63EU, kBranchPc, kImmediate);
+
+    const auto second_queue = (registers.status & 0x02U) == 0U;
+    step(kBranchPc,
+         second_queue ? kSecondCursorPc : kThirdCursorPc,
+         second_queue ? kImmediate : kBranchTaken);
+    const auto cursor_address = second_queue ? kSecondCursorAddress
+                                             : kThirdCursorAddress;
+    const auto cursor_pc = second_queue ? kSecondCursorPc : kThirdCursorPc;
+    const auto bump_pc = second_queue ? kSecondBumpPc : kThirdBumpPc;
+    registers.y = ram[cursor_address - 0x2000U];
+    registers.status = set_nz(registers.status, registers.y);
+    step(cursor_pc, bump_pc, kAbsoluteIndexed);
+
+    const auto updated_cursor = static_cast<std::uint8_t>(
+        second_queue ? registers.y + 1U : registers.y - 1U);
+    registers.status = set_nz(registers.status, updated_cursor);
+    write(bump_pc,
+          second_queue ? kSecondJoinPc : kTransferPc,
+          kAbsoluteReadModifyWrite,
+          cursor_address,
+          updated_cursor);
+    if (second_queue) {
+        step(kSecondJoinPc, kTransferPc, kBranchTaken);
+    }
+
+    registers.accumulator = registers.x;
+    registers.status = set_nz(registers.status, registers.accumulator);
+    step(kTransferPc, kStorePc, kImmediate);
+    write(kStorePc,
+          kTerminalPc,
+          kAbsoluteIndexed,
+          static_cast<std::uint16_t>(kQueueBase + registers.y),
+          registers.accumulator);
+    replacement.return_instruction = {kRoutine.physical_bank, kTerminalPc};
     replacement.output_registers = registers;
     replacement.body_master_cycles = cycle;
     return replacement;

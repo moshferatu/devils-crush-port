@@ -194,6 +194,13 @@ constexpr std::uint32_t kChannelIterationMasterCycles = 2304U;
         || logical_pc == 0x402CU
         || logical_pc == 0x4044U
         || logical_pc == 0x409CU
+        // $48F6 returns here when it was reached from an emulated caller.
+        // This is the sequencer's normal vibrato/upload continuation, not an
+        // independent routine: its full tail is already modeled below.
+        || logical_pc == 0x409FU
+        // $49A2 returns here when its vibrato update began outside a native
+        // sequencer walk. Continue through the already-modeled voice upload.
+        || logical_pc == 0x40A2U
         || logical_pc == 0x40ADU
         || logical_pc == 0x40EEU
         || logical_pc == 0x40F6U
@@ -346,6 +353,14 @@ std::optional<RoutineReplacement> replace_music_jsr(
         .physical_bank = 0x00U,
         .logical_pc = 0xE976U,
     };
+    constexpr RoutineKey kCrossBankWrapperCall{
+        .physical_bank = 0x00U,
+        .logical_pc = 0xED4DU,
+    };
+    constexpr RoutineKey kFlipperOwnerInputCall{
+        .physical_bank = 0x01U,
+        .logical_pc = 0xD4A4U,
+    };
     constexpr RoutineKey kActorPassSchedulerCall{
         .physical_bank = 0x01U,
         .logical_pc = 0xC603U,
@@ -360,6 +375,8 @@ std::optional<RoutineReplacement> replace_music_jsr(
         && entry.routine != kGiantFaceAnimatorCall
         && entry.routine != kCollisionScannerCall
         && entry.routine != kPaletteFadeTableCall
+        && entry.routine != kCrossBankWrapperCall
+        && entry.routine != kFlipperOwnerInputCall
         && entry.routine != kActorPassSchedulerCall
         && entry.routine != kCoroutineSchedulerCall) {
         return std::nullopt;
@@ -675,16 +692,24 @@ std::optional<RoutineReplacement> replace_music_jmp(
     const RoutineEntry& entry)
 {
     const auto pc = entry.routine.logical_pc;
+    // Bank $45 begins with four public jump vectors.  They are distinct
+    // exports, rather than fall-through instructions in the sequencer: $4000
+    // reaches descriptor setup, $4003 the per-frame tick, and $4006/$4009
+    // their companion control entries.  Keep every vector transfer in the
+    // core so its event/interrupt sample remains at the original boundary.
     const bool music_jump = entry.routine.physical_bank == kBank
-        && (pc == 0x4003U || pc == 0x40FFU);
+        && (pc == 0x4000U || pc == 0x4003U || pc == 0x4006U
+            || pc == 0x4009U || pc == 0x40FFU);
     // Bank 08 begins with fixed export vectors; 4030 is the equally fixed
     // transfer into its VDC-clear helper.  They are the same exact `JMP
     // absolute` contract as the sequencer boundaries above: retain the core
     // transfer and its interrupt/event sampling rather than inventing a host
     // target.
     const bool bank8_export_jump = entry.routine.physical_bank == 0x08U
-        && (pc == 0x4000U || pc == 0x4009U || pc == 0x4015U
-            || pc == 0x4030U);
+        && (pc == 0x4000U || pc == 0x4003U || pc == 0x4006U
+            || pc == 0x4009U || pc == 0x400CU || pc == 0x400FU
+            || pc == 0x4012U || pc == 0x4015U || pc == 0x4018U
+            || pc == 0x401BU || pc == 0x4030U);
     if (!music_jump && !bank8_export_jump) {
         return std::nullopt;
     }
@@ -750,6 +775,10 @@ std::optional<RoutineReplacement> replace_shared_actor_rts(
         .physical_bank = 0x01U,
         .logical_pc = 0xCCD4U,
     };
+    constexpr RoutineKey kCollisionScannerHitReturn{
+        .physical_bank = 0x01U,
+        .logical_pc = 0xCCD2U,
+    };
     constexpr RoutineKey kCoroutineSchedulerReturn{
         .physical_bank = 0x01U,
         .logical_pc = 0xC5E9U,
@@ -789,6 +818,7 @@ std::optional<RoutineReplacement> replace_shared_actor_rts(
     if (entry.routine != kSharedActorRoutine
         && entry.routine != kCoroutineSchedulerReturn
         && entry.routine != kCollisionScannerRoutine
+        && entry.routine != kCollisionScannerHitReturn
         && entry.routine != kKnightNoHitReturn
         && entry.routine != kKnightHitParentReturn
         && entry.routine != kKnightCounterReturn

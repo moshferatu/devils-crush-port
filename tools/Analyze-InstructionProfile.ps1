@@ -34,9 +34,14 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)]
-    [string] $ProfilePath,
+    [string[]] $ProfilePath,
 
     [string] $RegistryPath,
+
+    # Registry entries do not cover internal core or host boundaries. This
+    # manifest classifies those addresses before a profile is used to choose
+    # another native port.
+    [string] $SeamManifestPath,
 
     [int] $Top = 25,
 
@@ -48,6 +53,10 @@ param(
     # Show only instructions that are not admitted registry entry points.
     # This is the deployed-residue view used after the registry is mature.
     [switch] $UnregisteredOnly,
+
+    # Select only unregistered addresses that have not already been classified
+    # as a core, host, or guarded-native boundary.
+    [switch] $CandidateOnly,
 
     # The game spends most of its time polling the frame boundary at
     # 00:E321-E32B. Those cycles are real machine time but not porting work.
@@ -61,9 +70,14 @@ if (-not $RegistryPath) {
     $repositoryRoot = Split-Path -Parent (Split-Path -Parent $PSCommandPath)
     $RegistryPath = Join-Path $repositoryRoot "src/app/native_registry_table.inc"
 }
+if (-not $SeamManifestPath) {
+    $SeamManifestPath = Join-Path $PSScriptRoot "native_execution_seams.csv"
+}
 
-if (-not (Test-Path -LiteralPath $ProfilePath)) {
-    throw "Instruction profile not found: $ProfilePath"
+foreach ($path in $ProfilePath) {
+    if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+        throw "Instruction profile not found: $path"
+    }
 }
 
 $excluded = [System.Collections.Generic.HashSet[string]]::new()
@@ -83,58 +97,135 @@ if (Test-Path -LiteralPath $RegistryPath) {
     }
 }
 
-$rows = @(
-    Get-Content -LiteralPath $ProfilePath |
-        Where-Object { -not $_.StartsWith("#") } |
-        ConvertFrom-Csv)
-if ($rows.Count -eq 0) {
-    throw "Instruction profile is empty: $ProfilePath"
+$seams = [System.Collections.Generic.List[object]]::new()
+if (Test-Path -LiteralPath $SeamManifestPath -PathType Leaf) {
+    $requiredSeamColumns = @("Bank", "Start", "End", "Kind", "Detail")
+    foreach ($row in (Import-Csv -LiteralPath $SeamManifestPath)) {
+        foreach ($column in $requiredSeamColumns) {
+            if (-not ($row.PSObject.Properties.Name -contains $column)) {
+                throw "Execution-seam manifest lacks '$column': $SeamManifestPath"
+            }
+        }
+        if ($row.Kind -notin @("core", "host", "guarded")) {
+            throw "Execution seam has unsupported kind '$($row.Kind)': $SeamManifestPath"
+        }
+        try {
+            $start = [Convert]::ToInt32($row.Start, 16)
+            $end = [Convert]::ToInt32($row.End, 16)
+            if ($start -gt $end) {
+                throw "start is greater than end"
+            }
+            $seams.Add([pscustomobject] @{
+                Bank = $row.Bank.ToUpperInvariant()
+                Start = $start
+                End = $end
+                Kind = $row.Kind
+                Detail = $row.Detail
+            }) | Out-Null
+        } catch {
+            throw "Invalid execution seam '$($row.Bank):$($row.Start)-$($row.End)': $($_.Exception.Message)"
+        }
+    }
 }
 
-$samples = [System.Collections.Generic.List[object]]::new()
-foreach ($row in $rows) {
-    $address = "{0}:{1}" -f
-        $row.physical_bank.ToUpperInvariant(),
-        $row.logical_pc.ToUpperInvariant()
-    $isFrameSyncWait =
-        $row.physical_bank.ToUpperInvariant() -eq "00" -and
-        [Convert]::ToInt32($row.logical_pc, 16) -ge 0xE321 -and
-        [Convert]::ToInt32($row.logical_pc, 16) -le 0xE32B
-    $profileRegistry =
-        $row.PSObject.Properties.Name -contains "registry_entry" -and
-        $row.registry_entry -eq "1"
-    $samples.Add(
-        [pscustomobject] @{
-            Address = $address
-            Bank = $row.physical_bank.ToUpperInvariant()
-            Pc = [Convert]::ToInt32($row.logical_pc, 16)
-            Cycles = [uint64] $row.master_cycles
-            Executions = [uint64] $row.executions
-            Registry = $profileRegistry -or $registry.Contains($address)
-            Excluded = $excluded.Contains($address) -or
-                ($ExcludeFrameSyncWait -and $isFrameSyncWait)
-        }) | Out-Null
+function Find-ExecutionSeam {
+    param([string] $Bank, [int] $Pc)
+
+    foreach ($seam in $seams) {
+        if ($seam.Bank -eq $Bank -and $Pc -ge $seam.Start -and $Pc -le $seam.End) {
+            return $seam
+        }
+    }
+    return $null
 }
+
+$samplesByAddress = @{}
+foreach ($path in $ProfilePath) {
+    $rows = @(
+        Get-Content -LiteralPath $path |
+            Where-Object { -not $_.StartsWith("#") } |
+            ConvertFrom-Csv)
+    if ($rows.Count -eq 0) {
+        throw "Instruction profile is empty: $path"
+    }
+
+    foreach ($row in $rows) {
+        $address = "{0}:{1}" -f
+            $row.physical_bank.ToUpperInvariant(),
+            $row.logical_pc.ToUpperInvariant()
+        $isFrameSyncWait =
+            $row.physical_bank.ToUpperInvariant() -eq "00" -and
+            [Convert]::ToInt32($row.logical_pc, 16) -ge 0xE321 -and
+            [Convert]::ToInt32($row.logical_pc, 16) -le 0xE32B
+        $profileRegistry =
+            $row.PSObject.Properties.Name -contains "registry_entry" -and
+            $row.registry_entry -eq "1"
+        $pc = [Convert]::ToInt32($row.logical_pc, 16)
+        $seam = Find-ExecutionSeam $row.physical_bank.ToUpperInvariant() $pc
+        if (-not $samplesByAddress.ContainsKey($address)) {
+            $samplesByAddress[$address] = [pscustomobject] @{
+                Address = $address
+                Bank = $row.physical_bank.ToUpperInvariant()
+                Pc = $pc
+                Cycles = [uint64] 0
+                Executions = [uint64] 0
+                Registry = $false
+                SeamKind = if ($null -eq $seam) { "candidate" } else { $seam.Kind }
+                SeamDetail = if ($null -eq $seam) { "" } else { $seam.Detail }
+                Excluded = $excluded.Contains($address) -or
+                    ($ExcludeFrameSyncWait -and $isFrameSyncWait)
+            }
+        }
+        $sample = $samplesByAddress[$address]
+        $sample.Cycles += [uint64] $row.master_cycles
+        $sample.Executions += [uint64] $row.executions
+        $sample.Registry = $sample.Registry -or
+            $profileRegistry -or $registry.Contains($address)
+    }
+}
+
+$samples = @($samplesByAddress.Values)
 
 $total = ($samples | Measure-Object -Property Cycles -Sum).Sum
 $ranked = @(
     $samples |
         Where-Object {
             -not $_.Excluded -and
-            (-not $UnregisteredOnly -or -not $_.Registry)
+            ((-not $UnregisteredOnly -and -not $CandidateOnly) -or -not $_.Registry) -and
+            (-not $CandidateOnly -or $_.SeamKind -eq "candidate")
         }
 )
 $addressable = ($ranked | Measure-Object -Property Cycles -Sum).Sum
 
-Write-Host ("Addresses executed : {0:N0}" -f $samples.Count)
-Write-Host ("Total cycles       : {0:N0}" -f $total)
-if ($excluded.Count -ne 0 -or $ExcludeFrameSyncWait -or $UnregisteredOnly) {
-    Write-Host ("Filtered cycles    : {0:N0} ({1:N1}%)" -f
+Write-Output ("Profiles merged    : {0:N0}" -f $ProfilePath.Count)
+Write-Output ("Addresses executed : {0:N0}" -f $samples.Count)
+Write-Output ("Total cycles       : {0:N0}" -f $total)
+if ($excluded.Count -ne 0 -or $ExcludeFrameSyncWait -or $UnregisteredOnly -or $CandidateOnly) {
+    Write-Output ("Filtered cycles    : {0:N0} ({1:N1}%)" -f
         ($total - $addressable), (100.0 * ($total - $addressable) / $total))
 }
-Write-Host ("Addressable cycles : {0:N0}" -f $addressable)
-if ($UnregisteredOnly) {
-    Write-Host "View              : unregistered deployed residue"
+Write-Output ("Addressable cycles : {0:N0}" -f $addressable)
+if ($CandidateOnly) {
+    Write-Output "View              : unclassified deployed candidates"
+} elseif ($UnregisteredOnly) {
+    Write-Output "View              : unregistered deployed residue (entry-only)"
+}
+
+$seamAccounting = @(
+    $samples |
+        Where-Object { -not $_.Excluded } |
+        Group-Object SeamKind |
+        ForEach-Object {
+            [pscustomobject] @{
+                Kind = $_.Name
+                Cycles = ($_.Group | Measure-Object -Property Cycles -Sum).Sum
+            }
+        } |
+        Sort-Object Cycles -Descending
+)
+Write-Output "Execution-boundary accounting"
+foreach ($classification in $seamAccounting) {
+    Write-Output ("  {0,-9} {1,15:N0}" -f $classification.Kind, $classification.Cycles)
 }
 
 # Group contiguous executed addresses within a bank into one candidate.
@@ -150,6 +241,7 @@ foreach ($bank in @($ranked | Group-Object Bank)) {
             if ($sample.Registry) {
                 $current.Registry = $true
             }
+            [void] $current.SeamKinds.Add($sample.SeamKind)
             continue
         }
         if ($null -ne $current) {
@@ -162,31 +254,38 @@ foreach ($bank in @($ranked | Group-Object Bank)) {
             Cycles = $sample.Cycles
             Addresses = 1
             Registry = $sample.Registry
+            SeamKinds = [System.Collections.Generic.HashSet[string]]::new()
         }
+        [void] $current.SeamKinds.Add($sample.SeamKind)
     }
     if ($null -ne $current) {
         $clusters.Add($current) | Out-Null
     }
 }
 
-Write-Host ""
-Write-Host ("Top {0} candidate routines (contiguous executed ranges)" -f $Top)
-Write-Host "  range                  cycles     share  addrs  registry"
+Write-Output ""
+Write-Output ("Top {0} candidate routines (contiguous executed ranges)" -f $Top)
+Write-Output "  range                  cycles     share  addrs  registry  classification"
 foreach ($cluster in @($clusters | Sort-Object Cycles -Descending |
         Select-Object -First $Top)) {
-    Write-Host ("  {0}:{1:X4}-{2:X4} {3,15:N0} {4,7:N2}% {5,6}  {6}" -f
+    $classification = @($cluster.SeamKinds | Sort-Object) -join "+"
+    Write-Output ("  {0}:{1:X4}-{2:X4} {3,15:N0} {4,7:N2}% {5,6}  {6}" -f
         $cluster.Bank,
         $cluster.Start,
         $cluster.End,
         $cluster.Cycles,
         (100.0 * $cluster.Cycles / $addressable),
         $cluster.Addresses,
-        $(if ($cluster.Registry) { "entered" } else { "--" }))
+        $(if ($cluster.Registry) { "entered" } else { "--" }) +
+        ("  {0}" -f $classification))
 }
 
-Write-Host ""
-if ($UnregisteredOnly) {
-    Write-Host ("Unregistered deployed-residue clusters: {0}" -f
+Write-Output ""
+if ($CandidateOnly) {
+    Write-Output ("Unclassified deployed candidate clusters: {0}" -f
+        $clusters.Count)
+} elseif ($UnregisteredOnly) {
+    Write-Output ("Unregistered deployed-residue clusters: {0}" -f
         $clusters.Count)
 } else {
     $coveredClusters = @($clusters | Where-Object Registry)
@@ -197,7 +296,7 @@ if ($UnregisteredOnly) {
     } else {
         [uint64] $coveredMeasure.Sum
     }
-    Write-Host ("Clusters entered by the registry: {0} of {1}, {2:N1}% of addressable cycles" -f
+    Write-Output ("Clusters entered by the registry: {0} of {1}, {2:N1}% of addressable cycles" -f
         $coveredClusters.Count,
         $clusters.Count,
         (100.0 * $covered / $addressable))

@@ -4,10 +4,12 @@
 #include "devils_crush/game_logic/sprite.h"
 #include "devils_crush/game_logic/video.h"
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <span>
+#include <vector>
 
 namespace devils_crush::app::detail {
 
@@ -810,6 +812,592 @@ replace_text_tile_write(
         cycle,
         at_return);
     return replacement;
+}
+
+[[nodiscard]] std::optional<RoutineReplacement>
+replace_upper_table_actor_tile_schedule(
+    const RoutineEntry& entry,
+    const std::span<const std::byte> work_ram)
+{
+    // 08:5A2E is the one-shot upper-table actor initializer reached from the
+    // scene setup arms at 56E9, 571F and 575E.  It gives the selected actor a
+    // fixed $80/$80 position, renders the first glyph through 5A7A -> 5B01,
+    // then gives the actor to C5C9.  The last call is a coroutine handoff:
+    // C5C9 consumes 5A3D and returns through C5E9, so this is a bounded
+    // transaction despite not ending at a local RTS.
+    constexpr RoutineKey kRoutine{0x08U, 0x5A2EU};
+    constexpr RoutineKey kTileWriter{0x08U, 0x5B01U};
+    constexpr RoutineKey kScheduler{0x01U, 0xC5C9U};
+    constexpr RoutineKey kTileReturn{0x08U, 0x5A3BU};
+    constexpr std::uint16_t kWorkRamBase = 0x2000U;
+    constexpr std::uint32_t kImmediate = 6U;
+    constexpr std::uint32_t kZeroPage = 12U;
+    constexpr std::uint32_t kZeroPageRmw = 18U;
+    constexpr std::uint32_t kAbsoluteIndexed = 15U;
+    constexpr std::uint32_t kBranchTaken = 12U;
+    constexpr std::uint32_t kBranchNotTaken = 6U;
+    constexpr std::uint32_t kJumpToSubroutine = 21U;
+    constexpr std::uint32_t kJump = 12U;
+
+    if (entry.routine != kRoutine || work_ram.size() < 0x2000U
+        || (entry.registers.status & kUnsupportedFlags) != 0U
+        || entry.registers.mpr[0] != 0xFFU
+        || entry.registers.mpr[1] != 0xF8U
+        || entry.registers.mpr[2] != 0x08U) {
+        return std::nullopt;
+    }
+
+    auto staged = std::vector<std::byte>(work_ram.begin(), work_ram.end());
+    RoutineReplacement replacement{};
+    replacement.checkpoints.reserve(64U);
+    replacement.work_ram_writes.reserve(32U);
+    auto registers = entry.registers;
+    std::uint32_t cycle = 0U;
+
+    const auto read = [&staged](const std::size_t offset) {
+        return std::to_integer<std::uint8_t>(staged[offset]);
+    };
+    const auto stage_write = [&staged](const std::uint16_t address,
+                                       const std::uint8_t value) {
+        if (address < kWorkRamBase
+            || static_cast<std::size_t>(address - kWorkRamBase)
+                >= staged.size()) {
+            return false;
+        }
+        staged[static_cast<std::size_t>(address - kWorkRamBase)] =
+            static_cast<std::byte>(value);
+        return true;
+    };
+    const auto boundary = [&replacement, &registers, &cycle](
+                              const std::uint8_t bank,
+                              const std::uint16_t instruction_pc,
+                              const std::uint16_t resume_pc) {
+        registers.program_counter = resume_pc;
+        replacement.checkpoints.push_back({
+            .interrupt_sample_master_cycle_offset = cycle - 3U,
+            .master_cycle_offset = cycle,
+            .instruction = {bank, instruction_pc},
+            .registers = registers,
+        });
+    };
+    const auto step = [&boundary, &cycle](const std::uint16_t instruction_pc,
+                                           const std::uint16_t resume_pc,
+                                           const std::uint32_t cycles) {
+        cycle += cycles;
+        boundary(0x08U, instruction_pc, resume_pc);
+    };
+    const auto write = [&replacement, &stage_write, &boundary, &cycle](
+                           const std::uint16_t instruction_pc,
+                           const std::uint16_t resume_pc,
+                           const std::uint32_t cycles,
+                           const std::uint16_t address,
+                           const std::uint8_t value) {
+        cycle += cycles;
+        if (!stage_write(address, value)) {
+            return false;
+        }
+        replacement.work_ram_writes.push_back({
+            .instruction = {0x08U, instruction_pc},
+            .logical_address = address,
+            .value = value,
+            .master_cycle_offset = cycle,
+        });
+        boundary(0x08U, instruction_pc, resume_pc);
+        return true;
+    };
+    const auto append_child = [&replacement, &staged, &registers, &cycle](
+                                  const RoutineReplacement& child) {
+        for (auto child_write : child.work_ram_writes) {
+            if (child_write.logical_address >= kWorkRamBase
+                && child_write.logical_address < 0x4000U) {
+                staged[static_cast<std::size_t>(
+                    child_write.logical_address - kWorkRamBase)] =
+                    static_cast<std::byte>(child_write.value);
+            }
+            child_write.master_cycle_offset += cycle;
+            replacement.work_ram_writes.push_back(child_write);
+        }
+        for (auto child_checkpoint : child.checkpoints) {
+            child_checkpoint.interrupt_sample_master_cycle_offset += cycle;
+            child_checkpoint.master_cycle_offset += cycle;
+            replacement.checkpoints.push_back(child_checkpoint);
+        }
+        cycle += child.body_master_cycles;
+        registers = child.output_registers;
+    };
+    const auto rotate_left = [](std::uint8_t& status,
+                                const std::uint8_t value) {
+        const auto carry_in = static_cast<std::uint8_t>(status & kCarryFlag);
+        status = static_cast<std::uint8_t>(status & ~kCarryFlag);
+        status = static_cast<std::uint8_t>(status | (value >> 7U));
+        const auto result = static_cast<std::uint8_t>((value << 1U) | carry_in);
+        status = set_nz(status, result);
+        return result;
+    };
+
+    registers.accumulator = 0x80U;
+    registers.status = set_nz(registers.status, registers.accumulator);
+    step(0x5A2EU, 0x5A30U, kImmediate);
+    if (!write(
+            0x5A30U,
+            0x5A33U,
+            kAbsoluteIndexed,
+            static_cast<std::uint16_t>(0x3000U + registers.x),
+            registers.accumulator)) {
+        return std::nullopt;
+    }
+    registers.accumulator = 0x80U;
+    registers.status = set_nz(registers.status, registers.accumulator);
+    step(0x5A33U, 0x5A35U, kImmediate);
+    if (!write(
+            0x5A35U,
+            0x5A38U,
+            kAbsoluteIndexed,
+            static_cast<std::uint16_t>(0x3080U + registers.x),
+            registers.accumulator)) {
+        return std::nullopt;
+    }
+
+    // JSR $5A7A. Its tail JMP enters the independently proven 5B01 tile
+    // writer, whose absorbed RTS returns to 5A3B.
+    const auto tile_stack_high = registers.stack_pointer;
+    const auto tile_stack_low = static_cast<std::uint8_t>(tile_stack_high - 1U);
+    if (!stage_write(static_cast<std::uint16_t>(0x2100U + tile_stack_high), 0x5AU)
+        || !stage_write(static_cast<std::uint16_t>(0x2100U + tile_stack_low), 0x3AU)) {
+        return std::nullopt;
+    }
+    replacement.work_ram_writes.push_back({
+        .instruction = {0x08U, 0x5A38U},
+        .logical_address = static_cast<std::uint16_t>(0x2100U + tile_stack_high),
+        .value = 0x5AU,
+        .master_cycle_offset = cycle,
+    });
+    replacement.work_ram_writes.push_back({
+        .instruction = {0x08U, 0x5A38U},
+        .logical_address = static_cast<std::uint16_t>(0x2100U + tile_stack_low),
+        .value = 0x3AU,
+        .master_cycle_offset = cycle,
+    });
+    registers.stack_pointer = static_cast<std::uint8_t>(registers.stack_pointer - 2U);
+    step(0x5A38U, 0x5A7AU, kJumpToSubroutine);
+
+    registers.accumulator = 0x65U;
+    registers.status = set_nz(registers.status, registers.accumulator);
+    step(0x5A7AU, 0x5A7CU, kImmediate);
+    if (!write(0x5A7CU, 0x5A7EU, kZeroPage, 0x2026U, registers.accumulator)) {
+        return std::nullopt;
+    }
+    registers.accumulator = read(0x5DU);
+    registers.status = set_nz(registers.status, registers.accumulator);
+    step(0x5A7EU, 0x5A80U, kZeroPage);
+    registers.y = read(static_cast<std::size_t>(0x1E80U + registers.x));
+    registers.status = set_nz(registers.status, registers.y);
+    step(0x5A80U, 0x5A83U, kAbsoluteIndexed);
+    if (registers.y == 0U) {
+        step(0x5A83U, 0x5A86U, kBranchTaken);
+    } else {
+        step(0x5A83U, 0x5A85U, kBranchNotTaken);
+        registers.accumulator = shift_left(registers.status, registers.accumulator);
+        step(0x5A85U, 0x5A86U, kImmediate);
+    }
+    registers.status = static_cast<std::uint8_t>(registers.status & ~kCarryFlag);
+    step(0x5A86U, 0x5A87U, kImmediate);
+    registers.accumulator = add_with_carry(
+        registers.status,
+        registers.accumulator,
+        read(static_cast<std::size_t>(0x1300U + registers.x)));
+    step(0x5A87U, 0x5A8AU, kAbsoluteIndexed);
+    if (!write(0x5A8AU, 0x5A8CU, kZeroPage, 0x202EU, 0x00U)) {
+        return std::nullopt;
+    }
+    for (const auto instruction_pc : std::array<std::uint16_t, 5U>{
+             0x5A8CU, 0x5A8FU, 0x5A92U, 0x5A95U, 0x5A98U}) {
+        registers.accumulator = shift_left(registers.status, registers.accumulator);
+        step(instruction_pc, static_cast<std::uint16_t>(instruction_pc + 1U), kImmediate);
+        const auto rotated = rotate_left(registers.status, read(0x2EU));
+        if (!write(
+                static_cast<std::uint16_t>(instruction_pc + 1U),
+                static_cast<std::uint16_t>(instruction_pc + 3U),
+                kZeroPageRmw,
+                0x202EU,
+                rotated)) {
+            return std::nullopt;
+        }
+    }
+    registers.status = static_cast<std::uint8_t>(registers.status & ~kCarryFlag);
+    step(0x5A9BU, 0x5A9CU, kImmediate);
+    registers.accumulator = add_with_carry(
+        registers.status,
+        registers.accumulator,
+        read(static_cast<std::size_t>(0x1180U + registers.x)));
+    step(0x5A9CU, 0x5A9FU, kAbsoluteIndexed);
+    if (!write(0x5A9FU, 0x5AA1U, kZeroPage, 0x202DU, registers.accumulator)) {
+        return std::nullopt;
+    }
+    registers.accumulator = 0U; // CLA leaves flags unchanged on this core.
+    step(0x5AA1U, 0x5AA2U, kImmediate);
+    registers.accumulator = add_with_carry(registers.status, registers.accumulator, read(0x2EU));
+    step(0x5AA2U, 0x5AA4U, kZeroPage);
+    if (!write(0x5AA4U, 0x5AA6U, kZeroPage, 0x202EU, registers.accumulator)) {
+        return std::nullopt;
+    }
+    registers.accumulator = read(0x26U);
+    registers.status = set_nz(registers.status, registers.accumulator);
+    step(0x5AA6U, 0x5AA8U, kZeroPage);
+    step(0x5AA8U, 0x5B01U, kJump);
+
+    RoutineEntry tile_entry{.routine = kTileWriter, .registers = registers};
+    const auto tile = replace_text_tile_write(tile_entry, staged);
+    if (!tile || tile->checkpoints.empty()
+        || tile->return_instruction != kTileReturn) {
+        return std::nullopt;
+    }
+    append_child(*tile);
+
+    // JSR $C5C9.  It installs the 5A3E continuation into the actor slot and
+    // returns directly to the actor pass through C5E9.
+    const auto scheduler_stack_high = registers.stack_pointer;
+    const auto scheduler_stack_low = static_cast<std::uint8_t>(scheduler_stack_high - 1U);
+    if (!stage_write(static_cast<std::uint16_t>(0x2100U + scheduler_stack_high), 0x5AU)
+        || !stage_write(static_cast<std::uint16_t>(0x2100U + scheduler_stack_low), 0x3DU)) {
+        return std::nullopt;
+    }
+    replacement.work_ram_writes.push_back({
+        .instruction = {0x08U, 0x5A3BU},
+        .logical_address = static_cast<std::uint16_t>(0x2100U + scheduler_stack_high),
+        .value = 0x5AU,
+        .master_cycle_offset = cycle,
+    });
+    replacement.work_ram_writes.push_back({
+        .instruction = {0x08U, 0x5A3BU},
+        .logical_address = static_cast<std::uint16_t>(0x2100U + scheduler_stack_low),
+        .value = 0x3DU,
+        .master_cycle_offset = cycle,
+    });
+    registers.stack_pointer = static_cast<std::uint8_t>(registers.stack_pointer - 2U);
+    registers.program_counter = 0xC5C9U;
+    cycle += kJumpToSubroutine;
+    replacement.checkpoints.push_back({
+        .interrupt_sample_master_cycle_offset = cycle - 3U,
+        .master_cycle_offset = cycle,
+        .instruction = {0x08U, 0x5A3BU},
+        .registers = registers,
+    });
+
+    RoutineEntry scheduler_entry{.routine = kScheduler, .registers = registers};
+    const auto scheduler = replace_coroutine_scheduler(scheduler_entry, staged);
+    if (!scheduler || scheduler->checkpoints.empty()) {
+        return std::nullopt;
+    }
+    append_child(*scheduler);
+    replacement.return_instruction = scheduler->return_instruction;
+    replacement.output_registers = scheduler->output_registers;
+    replacement.body_master_cycles = cycle;
+    return replacement;
+}
+
+[[nodiscard]] std::optional<RoutineReplacement>
+replace_upper_table_string_record(
+    const RoutineEntry& entry,
+    const std::span<const std::byte> work_ram,
+    const std::span<const std::byte> rom)
+{
+    // 08:5ABF renders one upper-table text record.  A record starts with a
+    // tile-address selector at cursor+1 and then contains characters from
+    // cursor+2 through an FF terminator.  FE advances the cursor by three
+    // bytes and tail-jumps back to 5ABF for the next record.  Keeping that
+    // jump as the transaction boundary is intentional: the long scene labels
+    // otherwise exceed the runtime's bounded transcript budget, while 5ABF
+    // itself is an ordinary instruction boundary at which the registry can
+    // safely re-enter.
+    constexpr RoutineKey kRoutine{0x08U, 0x5ABFU};
+    constexpr RoutineKey kTileWriter{0x08U, 0x5B01U};
+    constexpr std::uint16_t kTileReturn = 0x5AEEU;
+    constexpr std::uint16_t kReturnPc = 0x5AF1U;
+    constexpr std::uint16_t kWorkRamBase = 0x2000U;
+    constexpr std::uint32_t kImplied = 6U;
+    constexpr std::uint32_t kImmediate = 6U;
+    constexpr std::uint32_t kZeroPage = 12U;
+    constexpr std::uint32_t kZeroPageRmw = 18U;
+    constexpr std::uint32_t kIndirectIndexed = 21U;
+    constexpr std::uint32_t kJumpToSubroutine = 21U;
+    constexpr std::uint32_t kJump = 12U;
+    constexpr std::uint32_t kBranchTaken = 12U;
+    constexpr std::uint32_t kBranchNotTaken = 6U;
+    constexpr std::size_t kMaximumCharacters = 32U;
+
+    if (entry.routine != kRoutine || work_ram.size() < 0x2000U
+        || (entry.registers.status & kUnsupportedFlags) != 0U
+        || entry.registers.mpr[0] != 0xFFU
+        || entry.registers.mpr[1] != 0xF8U
+        || entry.registers.mpr[2] != 0x08U) {
+        return std::nullopt;
+    }
+
+    auto staged = std::vector<std::byte>(work_ram.begin(), work_ram.end());
+    auto registers = entry.registers;
+    RoutineReplacement replacement{};
+    replacement.work_ram_writes.reserve(kMaximumCharacters * 16U + 8U);
+    replacement.checkpoints.reserve(kMaximumCharacters * 40U + 32U);
+    std::uint32_t cycle = 0U;
+
+    const auto read = [&staged](const std::size_t offset) {
+        return std::to_integer<std::uint8_t>(staged[offset]);
+    };
+    const auto read_indirect = [&read, &registers, rom](const std::uint16_t address)
+        -> std::optional<std::uint8_t> {
+        const auto bank = registers.mpr[address >> 13U];
+        if (bank == 0xF8U) {
+            return read(static_cast<std::size_t>(address & 0x1FFFU));
+        }
+        if (bank >= 0x80U || rom.size() != 0x60000U) {
+            return std::nullopt;
+        }
+        const auto mapped_bank = bank < 0x40U
+            ? static_cast<std::size_t>(bank & 0x1FU)
+            : static_cast<std::size_t>((bank & 0x0FU) + 0x20U);
+        const auto offset = mapped_bank * 0x2000U + (address & 0x1FFFU);
+        if (offset >= rom.size()) {
+            return std::nullopt;
+        }
+        return std::to_integer<std::uint8_t>(rom[offset]);
+    };
+    const auto stage_write = [&staged](const std::uint16_t address,
+                                       const std::uint8_t value) {
+        if (address < kWorkRamBase
+            || static_cast<std::size_t>(address - kWorkRamBase) >= staged.size()) {
+            return false;
+        }
+        staged[static_cast<std::size_t>(address - kWorkRamBase)] =
+            static_cast<std::byte>(value);
+        return true;
+    };
+    const auto boundary = [&replacement, &registers, &cycle](
+                              const std::uint8_t bank,
+                              const std::uint16_t instruction_pc,
+                              const std::uint16_t resume_pc,
+                              const std::uint32_t sample_back = 3U) {
+        registers.program_counter = resume_pc;
+        replacement.checkpoints.push_back({
+            .interrupt_sample_master_cycle_offset = cycle - sample_back,
+            .master_cycle_offset = cycle,
+            .instruction = {bank, instruction_pc},
+            .registers = registers,
+        });
+    };
+    const auto step = [&boundary, &cycle](const std::uint16_t instruction_pc,
+                                           const std::uint16_t resume_pc,
+                                           const std::uint32_t cycles) {
+        cycle += cycles;
+        boundary(0x08U, instruction_pc, resume_pc);
+    };
+    const auto write = [&replacement, &stage_write, &boundary, &cycle](
+                           const std::uint16_t instruction_pc,
+                           const std::uint16_t resume_pc,
+                           const std::uint32_t cycles,
+                           const std::uint16_t address,
+                           const std::uint8_t value) {
+        cycle += cycles;
+        if (!stage_write(address, value)) {
+            return false;
+        }
+        replacement.work_ram_writes.push_back({
+            .instruction = {0x08U, instruction_pc},
+            .logical_address = address,
+            .value = value,
+            .master_cycle_offset = cycle,
+        });
+        boundary(0x08U, instruction_pc, resume_pc);
+        return true;
+    };
+    const auto append_child = [&replacement, &staged, &registers, &cycle](
+                                  const RoutineReplacement& child) {
+        for (auto child_write : child.work_ram_writes) {
+            if (child_write.logical_address >= kWorkRamBase
+                && child_write.logical_address < 0x4000U) {
+                staged[static_cast<std::size_t>(
+                    child_write.logical_address - kWorkRamBase)] =
+                    static_cast<std::byte>(child_write.value);
+            }
+            child_write.master_cycle_offset += cycle;
+            replacement.work_ram_writes.push_back(child_write);
+        }
+        for (auto child_checkpoint : child.checkpoints) {
+            child_checkpoint.interrupt_sample_master_cycle_offset += cycle;
+            child_checkpoint.master_cycle_offset += cycle;
+            replacement.checkpoints.push_back(child_checkpoint);
+        }
+        cycle += child.body_master_cycles;
+        registers = child.output_registers;
+    };
+    const auto rotate_left = [](std::uint8_t& status,
+                                const std::uint8_t value) {
+        const auto carry_in = static_cast<std::uint8_t>(status & kCarryFlag);
+        status = static_cast<std::uint8_t>(status & ~kCarryFlag);
+        status = static_cast<std::uint8_t>(status | (value >> 7U));
+        const auto result = static_cast<std::uint8_t>((value << 1U) | carry_in);
+        status = set_nz(status, result);
+        return result;
+    };
+
+    const auto cursor = [&read]() {
+        return static_cast<std::uint16_t>(
+            read(0x2FU) | (static_cast<std::uint16_t>(read(0x30U)) << 8U));
+    };
+    const auto cursor_byte = [&cursor, &read_indirect](const std::uint8_t index)
+        -> std::optional<std::uint8_t> {
+        return read_indirect(static_cast<std::uint16_t>(cursor() + index));
+    };
+
+    registers.y = 0x01U;
+    registers.status = set_nz(registers.status, registers.y);
+    step(0x5ABFU, 0x5AC1U, kImmediate);
+    const auto selector = cursor_byte(registers.y);
+    if (!selector) {
+        return std::nullopt;
+    }
+    registers.accumulator = *selector;
+    registers.status = set_nz(registers.status, registers.accumulator);
+    step(0x5AC1U, 0x5AC3U, kIndirectIndexed);
+    if (!write(0x5AC3U, 0x5AC5U, kZeroPage, 0x202EU, 0U)) {
+        return std::nullopt;
+    }
+    for (const auto instruction_pc : std::array<std::uint16_t, 5U>{
+             0x5AC5U, 0x5AC8U, 0x5ACBU, 0x5ACEU, 0x5AD1U}) {
+        registers.accumulator = shift_left(registers.status, registers.accumulator);
+        step(instruction_pc, static_cast<std::uint16_t>(instruction_pc + 1U), kImplied);
+        const auto rotated = rotate_left(registers.status, read(0x2EU));
+        if (!write(
+                static_cast<std::uint16_t>(instruction_pc + 1U),
+                static_cast<std::uint16_t>(instruction_pc + 3U),
+                kZeroPageRmw,
+                0x202EU,
+                rotated)) {
+            return std::nullopt;
+        }
+    }
+    registers.y = 0U; // CLY leaves flags unchanged on this core.
+    step(0x5AD4U, 0x5AD5U, kImplied);
+    registers.status = static_cast<std::uint8_t>(registers.status & ~kCarryFlag);
+    step(0x5AD5U, 0x5AD6U, kImplied);
+    const auto low_addend = cursor_byte(registers.y);
+    if (!low_addend) {
+        return std::nullopt;
+    }
+    registers.accumulator = add_with_carry(
+        registers.status, registers.accumulator, *low_addend);
+    step(0x5AD6U, 0x5AD8U, kIndirectIndexed);
+    if (!write(0x5AD8U, 0x5ADAU, kZeroPage, 0x202DU, registers.accumulator)) {
+        return std::nullopt;
+    }
+    registers.accumulator = 0U; // CLA leaves flags unchanged on this core.
+    step(0x5ADAU, 0x5ADBU, kImplied);
+    registers.accumulator = add_with_carry(registers.status, registers.accumulator, read(0x2EU));
+    step(0x5ADBU, 0x5ADDU, kZeroPage);
+    if (!write(0x5ADDU, 0x5ADFU, kZeroPage, 0x202EU, registers.accumulator)) {
+        return std::nullopt;
+    }
+
+    registers.y = 0x02U;
+    registers.status = set_nz(registers.status, registers.y);
+    step(0x5ADFU, 0x5AE1U, kImmediate);
+    for (std::size_t character_count = 0U;
+         character_count < kMaximumCharacters;
+         ++character_count) {
+        const auto character = cursor_byte(registers.y);
+        if (!character) {
+            return std::nullopt;
+        }
+        registers.accumulator = *character;
+        registers.status = set_nz(registers.status, registers.accumulator);
+        step(0x5AE1U, 0x5AE3U, kIndirectIndexed);
+        registers.status = compare(registers.status, registers.accumulator, 0xFFU);
+        step(0x5AE3U, 0x5AE5U, kImmediate);
+        if (registers.accumulator == 0xFFU) {
+            step(0x5AE5U, kReturnPc, kBranchTaken);
+            auto at_return = registers;
+            at_return.program_counter = kReturnPc;
+            absorb_return(
+                replacement,
+                work_ram,
+                entry.registers.stack_pointer,
+                {kRoutine.physical_bank, kReturnPc},
+                cycle,
+                at_return);
+            return replacement;
+        }
+        step(0x5AE5U, 0x5AE7U, kBranchNotTaken);
+        registers.status = compare(registers.status, registers.accumulator, 0xFEU);
+        step(0x5AE7U, 0x5AE9U, kImmediate);
+        if (registers.accumulator == 0xFEU) {
+            step(0x5AE9U, 0x5AF2U, kBranchTaken);
+            registers.y = static_cast<std::uint8_t>(registers.y + 1U);
+            registers.status = set_nz(registers.status, registers.y);
+            step(0x5AF2U, 0x5AF3U, kImplied);
+            registers.accumulator = registers.y;
+            registers.status = set_nz(registers.status, registers.accumulator);
+            step(0x5AF3U, 0x5AF4U, kImplied);
+            registers.status = static_cast<std::uint8_t>(registers.status & ~kCarryFlag);
+            step(0x5AF4U, 0x5AF5U, kImplied);
+            registers.accumulator = add_with_carry(registers.status, registers.accumulator, read(0x2FU));
+            step(0x5AF5U, 0x5AF7U, kZeroPage);
+            if (!write(0x5AF7U, 0x5AF9U, kZeroPage, 0x202FU, registers.accumulator)) {
+                return std::nullopt;
+            }
+            registers.accumulator = 0U; // CLA leaves flags unchanged on this core.
+            step(0x5AF9U, 0x5AFAU, kImplied);
+            registers.accumulator = add_with_carry(registers.status, registers.accumulator, read(0x30U));
+            step(0x5AFAU, 0x5AFCU, kZeroPage);
+            if (!write(0x5AFCU, 0x5AFEU, kZeroPage, 0x2030U, registers.accumulator)) {
+                return std::nullopt;
+            }
+            step(0x5AFEU, 0x5ABFU, kJump);
+            replacement.return_instruction = kRoutine;
+            replacement.output_registers = registers;
+            replacement.body_master_cycles = cycle;
+            return replacement;
+        }
+        step(0x5AE9U, 0x5AEBU, kBranchNotTaken);
+
+        // JSR $5B01.  The child absorbs its RTS from this staged 5AED frame
+        // and resumes at INY $5AEE, preserving every VDC wait checkpoint.
+        const auto stack_high = registers.stack_pointer;
+        const auto stack_low = static_cast<std::uint8_t>(stack_high - 1U);
+        if (!stage_write(static_cast<std::uint16_t>(0x2100U + stack_high), 0x5AU)
+            || !stage_write(static_cast<std::uint16_t>(0x2100U + stack_low), 0xEDU)) {
+            return std::nullopt;
+        }
+        replacement.work_ram_writes.push_back({
+            .instruction = {0x08U, 0x5AEBU},
+            .logical_address = static_cast<std::uint16_t>(0x2100U + stack_high),
+            .value = 0x5AU,
+            .master_cycle_offset = cycle,
+        });
+        replacement.work_ram_writes.push_back({
+            .instruction = {0x08U, 0x5AEBU},
+            .logical_address = static_cast<std::uint16_t>(0x2100U + stack_low),
+            .value = 0xEDU,
+            .master_cycle_offset = cycle,
+        });
+        registers.stack_pointer = static_cast<std::uint8_t>(registers.stack_pointer - 2U);
+        step(0x5AEBU, 0x5B01U, kJumpToSubroutine);
+        RoutineEntry tile_entry{.routine = kTileWriter, .registers = registers};
+        const auto tile = replace_text_tile_write(tile_entry, staged);
+        if (!tile || tile->checkpoints.empty()
+            || tile->return_instruction != RoutineKey{0x08U, kTileReturn}) {
+            return std::nullopt;
+        }
+        append_child(*tile);
+
+        registers.y = static_cast<std::uint8_t>(registers.y + 1U);
+        registers.status = set_nz(registers.status, registers.y);
+        step(0x5AEEU, 0x5AEFU, kImplied);
+        step(0x5AEFU, 0x5AE1U, kJump);
+    }
+
+    // A record longer than the proved transcript budget is not a failure of
+    // the game path: decline it so the original CPU continues from 5ABF.
+    return std::nullopt;
 }
 
 [[nodiscard]] std::optional<RoutineReplacement>

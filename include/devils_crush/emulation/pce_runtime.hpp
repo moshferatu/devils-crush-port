@@ -267,6 +267,13 @@ struct NativeVdcStatusReadInstruction {
     [[nodiscard]] bool operator==(const NativeVdcStatusReadInstruction&) const = default;
 };
 
+// A fixed VDC data-port read.  Unlike a status read, this consumes the
+// controller's selected register and may advance its read state, so the core
+// must retain the original LDA instruction and device access.
+struct NativeVdcDataReadInstruction {
+    [[nodiscard]] bool operator==(const NativeVdcDataReadInstruction&) const = default;
+};
+
 // A fixed PLP whose interrupt sample precedes the status byte restored from
 // the stack. The core must retain that instruction ordering exactly.
 struct NativePlpInstruction {
@@ -372,6 +379,10 @@ struct RoutineReplacement {
     // effect. It is mutually exclusive with generic writes and checkpoints.
     std::optional<NativeVdcStatusReadInstruction>
         native_vdc_status_read_instruction;
+    // A fixed VDC data-port read whose selected-register side effects stay in
+    // the core. It is mutually exclusive with generic writes and checkpoints.
+    std::optional<NativeVdcDataReadInstruction>
+        native_vdc_data_read_instruction;
     std::optional<NativePlpInstruction> native_plp_instruction;
     std::optional<NativeSeiInstruction> native_sei_instruction;
     std::optional<NativeJsrInstruction> native_jsr_instruction;

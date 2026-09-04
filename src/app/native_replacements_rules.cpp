@@ -15310,6 +15310,171 @@ replace_devil_shooter_charge_tail(
 }
 
 [[nodiscard]] std::optional<RoutineReplacement>
+replace_devil_shooter_release_countdown_tail(
+    const RoutineEntry& entry,
+    const std::span<const std::byte> work_ram,
+    const std::span<const std::byte> rom)
+{
+    // This is the release delay reached after the Shooter's launch jump.  A
+    // nonzero countdown simply returns.  At zero it refreshes the actor's
+    // appearance, then keeps the original $5475 submission call as a child;
+    // that child has a distinct JSR stack shape from the direct launch path.
+    constexpr RoutineKey kRoutine{0x02U, 0x51AFU};
+    if (entry.routine != kRoutine || entry.registers.mpr[2] != 0x02U
+        || entry.registers.mpr[1] != 0xF8U
+        || entry.registers.x != 0x0EU
+        || entry.registers.stack_pointer != 0xFBU
+        || (entry.registers.status & 0x28U) != 0U
+        || work_ram.size() < 0x1A8FU || rom.size() <= 0x51D6U) {
+        return std::nullopt;
+    }
+
+    const auto set_nz = [](std::uint8_t status, const std::uint8_t value) {
+        status = static_cast<std::uint8_t>(status & ~0x82U);
+        if (value == 0U) {
+            status = static_cast<std::uint8_t>(status | 0x02U);
+        }
+        if ((value & 0x80U) != 0U) {
+            status = static_cast<std::uint8_t>(status | 0x80U);
+        }
+        return status;
+    };
+    const auto compare = [&set_nz](std::uint8_t status,
+                                   const std::uint8_t left,
+                                   const std::uint8_t right) {
+        const auto difference = static_cast<std::uint8_t>(left - right);
+        status = set_nz(static_cast<std::uint8_t>(status & ~0x01U), difference);
+        if (left >= right) {
+            status = static_cast<std::uint8_t>(status | 0x01U);
+        }
+        return status;
+    };
+    const auto subtract = [&set_nz](std::uint8_t status,
+                                    const std::uint8_t left,
+                                    const std::uint8_t right) {
+        const auto result = static_cast<std::uint8_t>(left - right);
+        status = static_cast<std::uint8_t>(status & ~0x43U);
+        if (left >= right) {
+            status = static_cast<std::uint8_t>(status | 0x01U);
+        }
+        if (((left ^ right) & (left ^ result) & 0x80U) != 0U) {
+            status = static_cast<std::uint8_t>(status | 0x40U);
+        }
+        return std::pair{result, set_nz(status, result)};
+    };
+
+    const auto timer_address = static_cast<std::uint16_t>(
+        0x3A00U + entry.registers.x);
+    const auto state_address = static_cast<std::uint16_t>(
+        0x3A80U + entry.registers.x);
+    const auto appearance_address = static_cast<std::uint16_t>(
+        0x3980U + entry.registers.x);
+    const auto read = [work_ram](const std::uint16_t logical_address) {
+        return std::to_integer<std::uint8_t>(
+            work_ram[logical_address & 0x1FFFU]);
+    };
+
+    RoutineReplacement replacement{};
+    auto registers = entry.registers;
+    std::uint32_t cycle = 0U;
+    const auto checkpoint = [&replacement, &registers, &cycle](
+                                const std::uint16_t instruction_pc,
+                                const std::uint16_t resume_pc,
+                                const std::uint32_t instruction_cycles) {
+        cycle += instruction_cycles;
+        registers.program_counter = resume_pc;
+        replacement.checkpoints.push_back({
+            .interrupt_sample_master_cycle_offset = cycle - 3U,
+            .master_cycle_offset = cycle,
+            .instruction = {0x02U, instruction_pc},
+            .registers = registers,
+        });
+    };
+    const auto write = [&replacement, &cycle](
+                           const std::uint16_t instruction_pc,
+                           const std::uint16_t logical_address,
+                           const std::uint8_t value) {
+        replacement.work_ram_writes.push_back({
+            .instruction = {0x02U, instruction_pc},
+            .logical_address = logical_address,
+            .value = value,
+            .master_cycle_offset = cycle,
+        });
+    };
+
+    auto countdown = static_cast<std::uint8_t>(read(timer_address) - 1U);
+    registers.status = set_nz(registers.status, countdown);
+    write(0x51AFU, timer_address, countdown);
+    checkpoint(0x51AFU, 0x51B2U, 21U);
+    if (countdown != 0U) {
+        checkpoint(0x51B2U, 0x51D5U, 12U);
+        replacement.return_instruction = {0x02U, 0x51D5U};
+        replacement.output_registers = registers;
+        replacement.body_master_cycles = cycle;
+        return replacement;
+    }
+
+    // The expiry continuation reaches the same submission code through a
+    // JSR-specific frame. Its entry state is captured, but its composition is
+    // not yet state-stable under the full deterministic route; let the core
+    // own that branch until the complete child path is transcribed.
+    return std::nullopt;
+
+    checkpoint(0x51B2U, 0x51B4U, 6U);
+    registers.accumulator = 0x05U;
+    registers.status = set_nz(registers.status, registers.accumulator);
+    checkpoint(0x51B4U, 0x51B6U, 6U);
+    write(0x51B6U, timer_address, registers.accumulator);
+    checkpoint(0x51B6U, 0x51B9U, 15U);
+
+    auto state = static_cast<std::uint8_t>(read(state_address) + 1U);
+    registers.status = set_nz(registers.status, state);
+    write(0x51B9U, state_address, state);
+    checkpoint(0x51B9U, 0x51BCU, 21U);
+    registers.accumulator = state;
+    registers.status = set_nz(registers.status, registers.accumulator);
+    checkpoint(0x51BCU, 0x51BFU, 15U);
+    registers.status = compare(registers.status, registers.accumulator, 0x0CU);
+    checkpoint(0x51BFU, 0x51C1U, 6U);
+    if (registers.accumulator < 0x0CU) {
+        checkpoint(0x51C1U, 0x51C8U, 12U);
+    } else {
+        checkpoint(0x51C1U, 0x51C3U, 6U);
+        registers.accumulator = 0x08U;
+        registers.status = set_nz(registers.status, registers.accumulator);
+        checkpoint(0x51C3U, 0x51C5U, 6U);
+        state = registers.accumulator;
+        write(0x51C5U, state_address, state);
+        checkpoint(0x51C5U, 0x51C8U, 15U);
+    }
+
+    write(0x51C8U, appearance_address, registers.accumulator);
+    checkpoint(0x51C8U, 0x51CBU, 15U);
+    registers.status = static_cast<std::uint8_t>(registers.status | 0x01U);
+    checkpoint(0x51CBU, 0x51CCU, 6U);
+    const auto [appearance_index, appearance_status] = subtract(
+        registers.status, registers.accumulator, 0x08U);
+    registers.accumulator = appearance_index;
+    registers.status = appearance_status;
+    checkpoint(0x51CCU, 0x51CEU, 6U);
+    registers.y = registers.accumulator;
+    registers.status = set_nz(registers.status, registers.y);
+    checkpoint(0x51CEU, 0x51CFU, 6U);
+    registers.accumulator = std::to_integer<std::uint8_t>(
+        rom[0x51D6U + registers.y]);
+    registers.status = set_nz(registers.status, registers.accumulator);
+    checkpoint(0x51CFU, 0x51D2U, 15U);
+
+    // Stop in front of JSR $5475. Its stack frame is part of the original
+    // submission call and the callee's $F9 path differs from the direct
+    // launch submission, so retain the call as an exact core boundary.
+    replacement.return_instruction = {0x02U, 0x51D2U};
+    replacement.output_registers = registers;
+    replacement.body_master_cycles = cycle;
+    return replacement;
+}
+
+[[nodiscard]] std::optional<RoutineReplacement>
 replace_devil_shooter_appearance_submission_prefix(
     const RoutineEntry& entry,
     const std::span<const std::byte> work_ram)

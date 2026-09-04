@@ -263,6 +263,26 @@ add_test(
 )
 
 add_test(
+    NAME dc_native_coverage_baseline
+    COMMAND
+        powershell
+        -NoProfile
+        -ExecutionPolicy
+        Bypass
+        -File
+        "${CMAKE_CURRENT_SOURCE_DIR}/../tools/Verify-NativeCoverageBaseline.ps1"
+        -ManifestPath
+        "${CMAKE_CURRENT_SOURCE_DIR}/native_coverage_table_routes.csv"
+)
+
+add_test(
+    NAME dc_native_execution_seams
+    COMMAND powershell.exe -NoProfile -ExecutionPolicy Bypass -File
+        "${CMAKE_SOURCE_DIR}/tools/Verify-NativeExecutionSeams.ps1"
+        -ManifestPath "${CMAKE_SOURCE_DIR}/tools/native_execution_seams.csv"
+)
+
+add_test(
     NAME dc_native_registry_manifest
     COMMAND
         powershell
@@ -2965,6 +2985,40 @@ if(TARGET devils_crush)
         )
 
         add_test(
+            NAME dc_rom_upper_table_actor_tile_schedule_semantic
+            CONFIGURATIONS Release
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DEVILS_CRUSH_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/upper-table-actor-tile-schedule-semantic-v1"
+                -P
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_upper_table_actor_tile_schedule_semantic.cmake"
+        )
+          set_tests_properties(
+              dc_rom_upper_table_actor_tile_schedule_semantic
+              PROPERTIES LABELS rom_required
+          )
+
+          add_test(
+              NAME dc_rom_upper_table_string_record_semantic
+              CONFIGURATIONS Release
+              COMMAND
+                  "${CMAKE_COMMAND}"
+                  "-DAPP=$<TARGET_FILE:devils_crush>"
+                  "-DCONFIG=$<CONFIG>"
+                  "-DROM=${DC_ROM_PATH}"
+                  "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/upper-table-string-record-semantic-v1"
+                  -P
+                  "${CMAKE_CURRENT_SOURCE_DIR}/verify_upper_table_string_record_semantic.cmake"
+          )
+          set_tests_properties(
+              dc_rom_upper_table_string_record_semantic
+              PROPERTIES LABELS rom_required
+          )
+
+          add_test(
             NAME dc_rom_video_update_idle_gate_semantic
             CONFIGURATIONS Release
             COMMAND

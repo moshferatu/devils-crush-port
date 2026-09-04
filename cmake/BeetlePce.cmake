@@ -70,6 +70,7 @@ function(dc_provide_beetle_pce)
         "${beetle_fork_root}/patches/0032-huc6280-knight-bcs.patch"
         "${beetle_fork_root}/patches/0033-huc6280-giant-face-wait-dispatch.patch"
         "${beetle_fork_root}/patches/0034-huc6280-three-blobs-timer-decrement.patch"
+        "${beetle_fork_root}/patches/0035-huc6280-vdc-data-read.patch"
     )
 
     find_package(Git REQUIRED)
@@ -577,6 +578,19 @@ function(dc_provide_beetle_pce)
                     FIND
                     "${beetle_cpu_source}"
                     "PC == 0x66A3 && lastop == 0xDE"
+                    beetle_patch_marker_two
+                )
+            elseif(beetle_patch_name MATCHES "^0035-")
+                string(
+                    FIND
+                    "${beetle_cpu_source}"
+                    "native_vdc_data_read_instruction"
+                    beetle_patch_marker_one
+                )
+                string(
+                    FIND
+                    "${beetle_cpu_source}"
+                    "PC == 0xDA06 || PC == 0xDA0B"
                     beetle_patch_marker_two
                 )
             else()

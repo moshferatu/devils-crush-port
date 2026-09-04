@@ -98,6 +98,9 @@ typedef struct dc_beetle_replacement_result {
     uint8_t native_rts_instruction;
     // A fixed VDC status read that needs the core's acknowledge side effect.
     uint8_t native_vdc_status_read_instruction;
+    // A fixed VDC data-port read that needs the core's selected-register and
+    // read-buffer side effects.
+    uint8_t native_vdc_data_read_instruction;
     // A fixed PLP that needs the core's pre-restore interrupt sample.
     uint8_t native_plp_instruction;
     // A fixed SEI that needs the core's pre-mask interrupt sample.

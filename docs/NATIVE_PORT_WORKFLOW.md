@@ -374,9 +374,56 @@ the route: the state census is unchanged with profiling on.
 ```
 
 The analyzer groups contiguous executed addresses into approximate routines,
-ranks them by cycles, and marks the ones the registry already enters. Exclude
+ranks them by cycles, and marks the ones the registry already enters. The
+entry-only view is accounting, not proof that every listed instruction still
+runs in the interpreter: `tools/native_execution_seams.csv` also classifies
+core opcode boundaries, cabinet handoffs, and guarded-native fallbacks that
+are deliberately not registry rows. Use `-CandidateOnly` to exclude all three
+classes when selecting a new family; maintain the CSV (and its static test)
+when a new explicit hook or guarded family is introduced. Exclude
 the frame-sync spin loop — `00:E323`/`00:E325` is 45% of all master cycles and
 is the game waiting on the VBlank counter, not work to port.
+
+### Persistent table-route coverage sweep
+
+Use `Invoke-NativeCoverageSweep.ps1` when choosing the next family rather
+than relying on a single recent play session. It runs all 31 deterministic
+table input routes by default, records each route both assembly-only and with
+the admitted registry. It preserves both profiles and logs, writes their
+state-hash manifest (including an explicit A/B comparison), and merges the
+registry-enabled profiles into both a ranked entry-only residue report and a
+second ranking of unclassified port candidates.
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File `
+  .\tools\Invoke-NativeCoverageSweep.ps1 `
+  -App .\out\build\windows-vs2022\Release\devils-crush.exe `
+  -Rom ".\Devil's Crush.pce" `
+  -OutputDirectory .\out\coverage\table-routes-001
+```
+
+The output directory must not already contain artifacts. That keeps a failing
+run's assembly control, registry result, and logs available for diagnosis
+instead of letting a later run silently overwrite its evidence. For a quick
+family check, pass one or more names such as `-Route higharc,playfield`; omit
+`-Route` for the complete corpus. `Analyze-InstructionProfile.ps1` also now
+accepts several `-ProfilePath` values directly when a custom route set needs a
+merged ranking. After accepting a sweep, use its `manifest.csv` as the next
+run's reviewed baseline; the checked-in
+`tests/native_coverage_table_routes.csv` is used by default, so either the
+assembly or registry state hash changing is a hard failure. Pass
+`-SkipBaselineCheck` only while deliberately generating a reviewed replacement
+baseline, or `-BaselineManifest` to check a candidate manifest.
+`-RequireAssemblyRegistryMatch` is available for a fully assembly-faithful
+configuration, but is intentionally not assumed by the current broad registry
+sweep: its A/B differences are preserved as diagnostic evidence rather than
+silently treated as a new baseline.
+
+The entry-only report keeps the full cost accounting, including core and host
+seams. The companion `registry-candidate-residue.md` removes those classified
+boundaries and guarded families, so a large fallback inside an existing
+Devil-Shooter or music replacement is investigated by its guard state instead
+of being misidentified as a wholly unported routine.
 
 `tools/Disassemble-Rom.py` reads a candidate back, addressed the same way the
 profile prints it, so a ranked `bank:pc` can be turned into instructions

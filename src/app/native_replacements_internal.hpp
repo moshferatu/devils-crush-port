@@ -968,6 +968,12 @@ replace_devil_shooter_charge_tail(
     std::span<const std::byte> work_ram);
 
 [[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_devil_shooter_release_countdown_tail(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram,
+    std::span<const std::byte> rom);
+
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
 replace_devil_shooter_appearance_submission_prefix(
     const emulation::RoutineEntry& entry,
     std::span<const std::byte> work_ram);
@@ -1628,6 +1634,47 @@ replace_bank9_actor_scan(
     const emulation::RoutineEntry& entry,
     std::span<const std::byte> work_ram);
 
+// The two bank-09 scripted actor initializers share a closed immediate-store
+// prefix, then call the bank-01 common initializer under its original JSR
+// frame. The longer actor scripts remain core-owned after that handoff.
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_bank9_scripted_actor_initializer(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram);
+
+// The first upper-table scripted actor's post-motion countdown is a closed
+// per-slot update. It deliberately stops at the shared initializer JSR when
+// the countdown rolls over.
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_bank9_upper_table_countdown(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram);
+
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_bank9_upper_table_parent_decay(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram);
+
+// The two upper-table parent actors share a small animation-reset prefix that
+// then calls the existing bank-01 coroutine scheduler with an ordinary JSR
+// frame.
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_bank9_upper_table_parent_initializer(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram);
+
+// A bank-02 actor timer's non-expiring decrement-and-return arm.  Expiry
+// continues through the original submission sequence in the core.
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_bank2_actor_countdown_return(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram);
+
+// The common carry-clear entry branch into bank 03's actor idle handler.  The
+// carry-set setup arm remains core-owned.
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_bank3_actor_idle_branch(const emulation::RoutineEntry& entry);
+
 [[nodiscard]] std::optional<emulation::RoutineReplacement>
 replace_bonus_actor_scan(
     const emulation::RoutineEntry& entry,
@@ -1829,6 +1876,7 @@ replace_vblank_handler(
 
 // 00:E05C is the VDC status read that acknowledges the active interrupt. Its
 // hardware read stays in the core rather than becoming a transcript write.
+// 01:DA09 and 01:DA0E likewise retain their selected VDC data-port reads.
 [[nodiscard]] std::optional<emulation::RoutineReplacement>
 replace_vdc_status_read(const emulation::RoutineEntry& entry);
 
@@ -1920,6 +1968,32 @@ replace_bank1_vdc_row_upload(
     std::span<const std::byte> work_ram,
     std::span<const std::byte> rom);
 
+// The first, non-device-reading segment of bank 01's sprite-attribute
+// updater. It stops in front of the live VDC data-port read at 01:DA06.
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_vdc_sprite_attribute_prefix(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram,
+    std::span<const std::byte> rom);
+
+// The actor-script record loader at 00:F605.  Its normal record form resolves
+// an MPR-backed word stream, then crosses the existing banking and VRAM
+// decoder transcripts.  The two child-return entries preserve the original
+// JSR/PHX/PLX boundaries.
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_actor_script_record_loader(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram,
+    std::span<const std::byte> rom);
+
+// The first, non-device-reading segment of bank 01's sprite-attribute
+// updater.  It stops in front of the live VDC data-port read at 01:DA09.
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_vdc_sprite_attribute_prefix(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram,
+    std::span<const std::byte> rom);
+
 // The collision-free half of bank 02's shared actor timer tail.  The collision
 // table has already answered before this entry; collision and active-state
 // continuations retain their original scheduler boundary.
@@ -1982,6 +2056,14 @@ replace_actor_dispatch_vector(
 
 [[nodiscard]] std::optional<emulation::RoutineReplacement>
 replace_actor_queue_registration(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram);
+
+// The direct C63E queue-filing tail is also reached from dispatched actor
+// handlers, outside C606's registered entry. It owns no call frame and leaves
+// the common RTS at C654 to the core.
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_actor_queue_terminal(
     const emulation::RoutineEntry& entry,
     std::span<const std::byte> work_ram);
 
@@ -2062,6 +2144,19 @@ replace_sprite_emit_run(
 replace_text_tile_write(
     const emulation::RoutineEntry& entry,
     std::span<const std::byte> work_ram);
+
+// One-shot upper-table actor initializer. It composes the bounded character
+// writer and coroutine scheduler while preserving both of their return seams.
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_upper_table_actor_tile_schedule(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram);
+
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_upper_table_string_record(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram,
+    std::span<const std::byte> rom);
 
 // The naturally hot idle return at the head of bank 08's deferred video
 // update routine. Active-update states deliberately remain in assembly.
