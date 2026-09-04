@@ -18,6 +18,7 @@
 #include "devils_crush/native_runtime/actor_scheduler.hpp"
 #include "devils_crush/native_runtime/collision_map_asset.hpp"
 #include "devils_crush/native_runtime/ball_frame_schedule.hpp"
+#include "devils_crush/native_runtime/bonus_stage_launch.hpp"
 #include "devils_crush/native_runtime/gameplay_bootstrap.hpp"
 #include "devils_crush/native_runtime/mapped_rom.hpp"
 #include "devils_crush/native_runtime/native_gameplay_runtime.hpp"
@@ -13310,6 +13311,37 @@ constexpr std::uint8_t kBonusStageBallOffTableBit = 0x01U;
     return true;
 }
 
+[[nodiscard]] bool service_synthetic_bonus_stage_return(
+    PceRuntime& runtime,
+    bool& return_pending)
+{
+    auto work_ram = runtime.export_work_ram();
+    if (work_ram.size() != runtime.work_ram_size()
+        || work_ram.size() <= kBonusStageSessionFlagsOffset) {
+        std::cerr << "Could not inspect work RAM for bonus-stage return.\n";
+        return false;
+    }
+
+    const auto session_flags = std::to_integer<std::uint8_t>(
+        work_ram[kBonusStageSessionFlagsOffset]);
+    if ((session_flags & kBonusStageRequestBit) != 0U) {
+        // Re-arm after an F9 restore to a quick state inside the bonus stage.
+        return_pending = true;
+    }
+    if (!return_pending
+        || !devils_crush::native_runtime::release_synthetic_bonus_return_ball(
+            work_ram)) {
+        return true;
+    }
+    if (!runtime.import_work_ram(work_ram)) {
+        std::cerr << "Could not release the ball after bonus-stage return.\n";
+        return false;
+    }
+
+    return_pending = false;
+    return true;
+}
+
 using RecordingInputFunction = InputFrame (*)(int);
 
 [[nodiscard]] bool apply_flipper_inputs(
@@ -20036,6 +20068,7 @@ int run_windows_host(
     bool running = true;
     bool host_ok = true;
     int emulated_frames = 0;
+    bool bonus_stage_return_pending = bonus_stage != 0U;
     int playfield_dump_remaining = 0;
     const bool capture_session = !capture_session_directory.empty();
     std::vector<InteractiveCaptureFrame> captured_inputs;
@@ -20665,6 +20698,12 @@ int run_windows_host(
                 });
             }
             const auto frame = runtime.run_frame(input);
+            if (bonus_stage != 0U
+                && !service_synthetic_bonus_stage_return(
+                    runtime, bonus_stage_return_pending)) {
+                host_ok = false;
+                break;
+            }
             if (native_gameplay_bootstrap_shadow) {
                 gameplay_bootstrap_shadow.observe(
                     runtime.export_work_ram(), input);

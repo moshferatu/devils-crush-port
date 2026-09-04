@@ -27,6 +27,7 @@
 #include "devils_crush/native_runtime/ball_capture.hpp"
 #include "devils_crush/native_runtime/ball_frame_schedule.hpp"
 #include "devils_crush/native_runtime/ball_physics.hpp"
+#include "devils_crush/native_runtime/bonus_stage_launch.hpp"
 #include "devils_crush/native_runtime/bonus_stage_4.hpp"
 #include "devils_crush/native_runtime/bonus_stage_4_capture.hpp"
 #include "devils_crush/native_runtime/bonus_stage_4_linked_target.hpp"
@@ -6907,6 +6908,61 @@ void test_native_ball_frame_schedule()
                 {.disposition = BallInitialTransitionDisposition::returns_to_caller},
                 {.requested_steps = 1U}),
         "native C6C2 scheduler applies its typed C721 and caller-return actions");
+}
+
+void test_synthetic_bonus_stage_return()
+{
+    using devils_crush::native_runtime::release_synthetic_bonus_return_ball;
+
+    std::array<std::byte, 0x2000U> work_ram{};
+    const auto store = [&work_ram](
+                           const std::size_t offset,
+                           const std::uint8_t value) {
+        work_ram[offset] = static_cast<std::byte>(value);
+    };
+    store(0x0053U, 0x00U);
+    store(0x0054U, 0x00U);
+    store(0x1080U, 0x80U);
+    store(0x1180U, 0x0FU);
+    store(0x1200U, 0x01U);
+    store(0x1300U, 0x2CU);
+    store(0x1380U, 0x02U);
+    store(0x0D22U, 0x0FU);
+    store(0x0D23U, 0x01U);
+    store(0x0D24U, 0x2CU);
+    store(0x0D25U, 0x02U);
+    store(0x1C80U, 0x03U);
+    store(0x1F00U, 0xDAU);
+    store(0x1F80U, 0xC8U);
+
+    check(
+        release_synthetic_bonus_return_ball(work_ram)
+            && std::to_integer<std::uint8_t>(work_ram[0x1C80U]) == 0x02U,
+        "synthetic bonus return releases only the table-feature hold bit");
+
+    store(0x1C80U, 0x03U);
+    store(0x0053U, 0x10U);
+    check(
+        !release_synthetic_bonus_return_ball(work_ram)
+            && std::to_integer<std::uint8_t>(work_ram[0x1C80U]) == 0x03U,
+        "synthetic bonus return remains held while the bonus session is active");
+
+    store(0x0053U, 0x00U);
+    store(0x1F00U, 0xE7U);
+    check(
+        !release_synthetic_bonus_return_ball(work_ram),
+        "synthetic bonus return rejects a different ball continuation");
+
+    store(0x1F00U, 0xDAU);
+    store(0x0D22U, 0x10U);
+    check(
+        !release_synthetic_bonus_return_ball(work_ram),
+        "synthetic bonus return rejects a ball outside the restored position");
+
+    check(
+        !release_synthetic_bonus_return_ball(
+            std::span<std::byte>(work_ram).first(work_ram.size() - 1U)),
+        "synthetic bonus return rejects truncated work RAM");
 }
 
 void test_native_bank7_mode_gate()
@@ -21247,6 +21303,7 @@ int main()
     test_native_registry();
     test_native_game_state_view();
     test_native_ball_frame_schedule();
+    test_synthetic_bonus_stage_return();
     test_native_gameplay_audio_dispatch();
     test_native_small_soldier_capture();
     test_playfield_collision_capture_adapter();
