@@ -25,7 +25,8 @@ public:
         std::span<const std::byte> rom_bytes);
 
     // The game stores upper-case forms only. Lower-case label characters map
-    // to those same original glyphs, matching the cartridge's presentation.
+    // to those same original glyphs, matching the cartridge's presentation;
+    // the host also supplies the hash needed by high-score rank labels.
     [[nodiscard]] std::optional<DmdGlyph> glyph(char character) const noexcept;
 
 private:

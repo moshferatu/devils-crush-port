@@ -89,6 +89,18 @@ std::optional<DmdGlyph> DmdFont::glyph(const char character) const noexcept
     if (character == ' ') {
         return DmdGlyph{};
     }
+    if (character == '#') {
+        return DmdGlyph{
+            0x24U,
+            0x24U,
+            0x7EU,
+            0x24U,
+            0x7EU,
+            0x24U,
+            0x24U,
+            0x00U,
+        };
+    }
     const auto index = glyph_index(character);
     if (!index || *index >= glyphs_.size()) {
         return std::nullopt;

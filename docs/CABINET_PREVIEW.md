@@ -761,6 +761,13 @@ scaler with the PCE's pixel aspect preserved.
 
 ## DMD state
 
+At startup the DMD cycles through all five persisted high scores, advancing
+every three seconds. Each page shows the player's initials and visible score;
+the first is labeled `Grand Champion`, followed by `High Score #1` through
+`High Score #4`. Pressing Run arms the handoff, and the live score-centric
+view takes over when the cartridge starts the player's session. This keeps an
+untouched attract-mode demo from dismissing the carousel.
+
 `cabinet::decode_cabinet_state()` selects the score slot through `$2251` and
 reads the three-byte little-endian score arrays at `$2205`, `$220C`, and
 `$2213`. Stored units are multiplied by 100, preserving the verified original
@@ -781,12 +788,15 @@ from work RAM.
 ### Text layout
 
 The host renders the score value without a label, then `Ball <value>` and
-`Bonus <value>` together on the row below. Both labels and values use the
-cartridge's own 8-by-8 alphanumeric font: cabinet startup decodes the same
+`Bonus <value>` together on the row below. Those live labels and values, as
+well as the startup high-score pages, use the cartridge's own 8-by-8
+alphanumeric font: cabinet startup decodes the same
 ROM stream that table setup uploads from `11:A9C0` to VRAM `$7900`. The game
 stores upper-case forms, so the mixed-case host labels intentionally render
-with those original capitals. There is no host-font dependency and there are
-no borders, rails, inactive segments, or other decoration.
+with those original capitals. A matching host-defined hash glyph supplies the
+only character the rank labels need that the original font does not contain.
+There is no host-font dependency and there are no borders, rails, inactive
+segments, or other decoration.
 
 `cabinet::calculate_dmd_text_layout()` gives the score the upper two thirds
 of the output and centers it at the largest stable size allowed by the
@@ -796,7 +806,7 @@ reserves prevent value growth from resizing either tier. The layout remains
 bounded by both axes and keeps every bitmap cell square on wide, fullscreen,
 and portrait outputs. `test_dmd_text_layout` covers the exact labels, maximum
 values, common monitor shapes, size hierarchy, shared lower row, stable type
-sizes, and degenerate outputs.
+sizes, high-score labels and cycling, and degenerate outputs.
 
 ## One rendered layer, measured against the emulator
 

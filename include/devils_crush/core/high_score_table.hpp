@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <optional>
 #include <span>
+#include <string>
 #include <vector>
 
 namespace devils_crush::core {
@@ -61,6 +62,12 @@ inline constexpr std::size_t kHighScoreFileSize = 6U + kHighScoreTableBytes;
 [[nodiscard]] std::uint32_t high_score_at(
     const HighScoreTable& table,
     std::size_t rank) noexcept;
+
+// The three display characters stored alongside a ranked score. Bytes the
+// cartridge font cannot display are replaced with spaces.
+[[nodiscard]] std::string high_score_name_at(
+    const HighScoreTable& table,
+    std::size_t rank);
 
 [[nodiscard]] std::optional<HighScoreTable> read_high_score_table(
     std::span<const std::byte> work_ram);

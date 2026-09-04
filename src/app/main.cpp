@@ -10531,12 +10531,11 @@ void set_assignment_titles(
     return true;
 }
 
-[[nodiscard]] bool present_dmd(
+[[nodiscard]] bool present_dmd_content(
     AuxiliaryWindow& output,
     const devils_crush::cabinet::DmdFont& font,
-    const std::uint64_t displayed_score,
-    const std::uint32_t bonus_points,
-    const std::uint8_t current_ball)
+    const devils_crush::cabinet::DmdTextContent& content,
+    const devils_crush::cabinet::DmdTextLayout& layout)
 {
     if (output.renderer == nullptr) {
         return true;
@@ -10557,14 +10556,6 @@ void set_assignment_titles(
         return report_sdl_error("Clearing the DMD failed");
     }
 
-    const auto content = devils_crush::cabinet::make_dmd_text_content(
-        displayed_score,
-        bonus_points,
-        current_ball);
-    const auto layout = devils_crush::cabinet::calculate_dmd_text_layout(
-        output_width,
-        output_height,
-        content);
     if (!layout.valid()) {
         return SDL_RenderPresent(output.renderer)
             || report_sdl_error("SDL_RenderPresent (DMD) failed");
@@ -10594,6 +10585,57 @@ void set_assignment_titles(
         return report_sdl_error("SDL_RenderPresent (DMD) failed");
     }
     return true;
+}
+
+[[nodiscard]] bool present_dmd(
+    AuxiliaryWindow& output,
+    const devils_crush::cabinet::DmdFont& font,
+    const std::uint64_t displayed_score,
+    const std::uint32_t bonus_points,
+    const std::uint8_t current_ball)
+{
+    int output_width = 0;
+    int output_height = 0;
+    if (!SDL_GetRenderOutputSize(
+            output.renderer,
+            &output_width,
+            &output_height)) {
+        return report_sdl_error("SDL_GetRenderOutputSize (DMD) failed");
+    }
+    const auto content = devils_crush::cabinet::make_dmd_text_content(
+        displayed_score,
+        bonus_points,
+        current_ball);
+    return present_dmd_content(
+        output,
+        font,
+        content,
+        devils_crush::cabinet::calculate_dmd_text_layout(
+            output_width, output_height, content));
+}
+
+[[nodiscard]] bool present_dmd_high_score(
+    AuxiliaryWindow& output,
+    const devils_crush::cabinet::DmdFont& font,
+    const devils_crush::core::HighScoreTable& table,
+    const std::size_t rank)
+{
+    int output_width = 0;
+    int output_height = 0;
+    if (!SDL_GetRenderOutputSize(
+            output.renderer,
+            &output_width,
+            &output_height)) {
+        return report_sdl_error("SDL_GetRenderOutputSize (DMD) failed");
+    }
+    const auto content =
+        devils_crush::cabinet::make_dmd_high_score_content(table, rank);
+    return present_dmd_content(
+        output,
+        font,
+        content,
+        devils_crush::cabinet::calculate_dmd_high_score_layout(
+            output_width, output_height, content));
 }
 
 // Tracks which actor slots the camera never claims. A slot whose anchor never
@@ -19718,6 +19760,9 @@ struct HighScoreAutosave {
     if (result.loaded()) {
         autosave.stored =
             devils_crush::core::decode_high_score_table(result.bytes);
+        if (autosave.stored) {
+            autosave.last = *autosave.stored;
+        }
     }
     if (!autosave.stored) {
         // Loud, because the alternative is a player silently starting the
@@ -19769,20 +19814,26 @@ void restore_high_scores(
     HighScoreAutosave& autosave)
 {
     autosave.table_seen = true;
-    if (!autosave.stored) {
-        return;
-    }
     auto work_ram = runtime.export_work_ram();
-    if (!devils_crush::core::write_high_score_table(
-            work_ram, *autosave.stored)) {
-        return;
+    if (autosave.stored) {
+        if (!devils_crush::core::write_high_score_table(
+                work_ram, *autosave.stored)) {
+            return;
+        }
+        if (!runtime.import_work_ram(work_ram)) {
+            return;
+        }
     }
-    if (!runtime.import_work_ram(work_ram)) {
+    // Capture either the restored file or the cartridge defaults immediately,
+    // so the startup DMD never has to wait for the first autosave poll.
+    const auto current =
+        devils_crush::core::read_high_score_table(work_ram);
+    if (!current) {
         return;
     }
     // The poll compares against this, so a restore must not read back as a
     // change and rewrite the file it just came from.
-    autosave.last = *autosave.stored;
+    autosave.last = *current;
     autosave.pending = false;
     autosave.settled_samples = 0;
 }
@@ -20064,6 +20115,9 @@ int run_windows_host(
     const auto frame_period = std::chrono::duration_cast<Clock::duration>(
         std::chrono::duration<double>(1.0 / kEmulationFramesPerSecond));
     auto next_frame_time = Clock::now();
+    const auto dmd_high_score_epoch = Clock::now();
+    bool dmd_game_started = bonus_stage != 0U;
+    bool dmd_game_requested = dmd_game_started;
 
     bool running = true;
     bool host_ok = true;
@@ -20690,6 +20744,10 @@ int run_windows_host(
                 ball_in_launcher,
                 cabinet_config.input.flippers,
                 rod_engaged && !rod.released);
+            constexpr auto kRunButton =
+                static_cast<std::uint16_t>(Button::run);
+            dmd_game_requested = dmd_game_requested
+                || ((input.player_one | input.player_two) & kRunButton) != 0U;
             if (capture_session) {
                 captured_inputs.push_back({
                     .input = input,
@@ -20738,6 +20796,9 @@ int run_windows_host(
                     dmd_score = cabinet_state->displayed_score;
                     dmd_bonus_points = cabinet_state->bonus_points;
                     dmd_current_ball = cabinet_state->current_ball;
+                    dmd_game_started = dmd_game_started
+                        || (dmd_game_requested
+                            && cabinet_state->balls_in_session != 0U);
                 }
                 if (backglass_logo
                     && backglass.renderer != nullptr) {
@@ -20871,18 +20932,31 @@ int run_windows_host(
                     cabinet_mode ? kPureBlack : kDesktopFrameColor);
             }
         }
+        const auto dmd_high_score_elapsed =
+            std::chrono::duration_cast<std::chrono::milliseconds>(
+                Clock::now() - dmd_high_score_epoch)
+                .count();
+        const auto dmd_high_score_page =
+            devils_crush::cabinet::dmd_high_score_rank(
+                static_cast<std::uint64_t>(dmd_high_score_elapsed));
         if (running && dmd.renderer != nullptr && dmd_font
             && !(assignment_active
                     ? present_assignment(
                         dmd.renderer,
                         AssignmentRole::dmd,
                         assignment_role == AssignmentRole::dmd)
-                    : present_dmd(
-                        dmd,
-                        *dmd_font,
-                        dmd_score,
-                        dmd_bonus_points,
-                        dmd_current_ball))) {
+                    : !dmd_game_started && high_scores.table_seen
+                        ? present_dmd_high_score(
+                            dmd,
+                            *dmd_font,
+                            high_scores.last,
+                            dmd_high_score_page)
+                        : present_dmd(
+                            dmd,
+                            *dmd_font,
+                            dmd_score,
+                            dmd_bonus_points,
+                            dmd_current_ball))) {
             std::cerr << "Cabinet DMD renderer lost; disabling DMD.\n";
             destroy_auxiliary_window(dmd);
         }

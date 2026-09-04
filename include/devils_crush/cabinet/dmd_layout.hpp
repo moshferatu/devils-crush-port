@@ -3,6 +3,7 @@
 #pragma once
 
 #include "devils_crush/cabinet/dmd_font.hpp"
+#include "devils_crush/core/high_score_table.hpp"
 
 #include <array>
 #include <cstddef>
@@ -17,9 +18,11 @@ inline constexpr std::size_t kDmdTextCount = 3U;
 // the longest lower-row field the game exposes.
 inline constexpr std::size_t kDmdMaximumScoreCharacters = 9U;
 inline constexpr std::size_t kDmdMaximumStatusCharacters = 10U;
+inline constexpr std::size_t kDmdMaximumHighScoreLabelCharacters = 14U;
+inline constexpr std::uint64_t kDmdHighScoreDurationMilliseconds = 3'000U;
 
 struct DmdTextContent {
-    // Score, Ball, Bonus. Ball and Bonus share the lower visual row.
+    // Three display lines. Their placement depends on the selected layout.
     std::array<std::string, kDmdTextCount> text;
 };
 
@@ -54,10 +57,28 @@ struct DmdTextLayout {
     std::uint32_t bonus_points,
     std::uint8_t current_ball);
 
+// Builds one page of the startup high-score carousel. Rank zero is the
+// Grand Champion; the remaining four entries follow pinball convention and
+// are numbered High Score #1 through High Score #4.
+[[nodiscard]] DmdTextContent make_dmd_high_score_content(
+    const core::HighScoreTable& table,
+    std::size_t rank);
+
+// Selects one of the five high-score pages from elapsed wall-clock time.
+[[nodiscard]] std::size_t dmd_high_score_rank(
+    std::uint64_t elapsed_milliseconds) noexcept;
+
 // Centers a large score in the upper two thirds. Ball and Bonus use one
 // shared, substantially smaller size in the left and right halves of the
 // lower third. All bitmap cells remain square.
 [[nodiscard]] DmdTextLayout calculate_dmd_text_layout(
+    int output_width,
+    int output_height,
+    const DmdTextContent& content) noexcept;
+
+// Centers the rank label, initials, and score on three stacked rows. The
+// score is the largest row, while every bitmap cell remains square.
+[[nodiscard]] DmdTextLayout calculate_dmd_high_score_layout(
     int output_width,
     int output_height,
     const DmdTextContent& content) noexcept;

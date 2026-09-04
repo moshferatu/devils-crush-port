@@ -101,7 +101,7 @@ measurements behind this.
 Cabinet mode runs the game using 3 windows:
 
 1. The playfield window renders the game in portrait mode. Individual table sections from the original game have been stitched together.
-2. The DMD (Dot Matrix Display) window displays information like the current score, bonus points, and current ball.
+2. The DMD (Dot Matrix Display) window cycles through the five high scores at startup, then displays the current score, bonus points, and ball once play begins.
 3. The backglass window displays the game's artwork.
 
 ### Screen Assignment

@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <optional>
 #include <span>
+#include <string>
 #include <vector>
 
 namespace devils_crush::core {
@@ -36,6 +37,28 @@ std::uint32_t high_score_at(
         | static_cast<std::uint32_t>(
               table.bytes[2U * kHighScoreRankCount + rank])
             << 16U;
+}
+
+std::string high_score_name_at(
+    const HighScoreTable& table,
+    const std::size_t rank)
+{
+    if (rank >= kHighScoreRankCount) {
+        return {};
+    }
+    std::string name;
+    name.reserve(3U);
+    for (std::size_t row = 3U; row < kHighScoreRowCount; ++row) {
+        const auto character = static_cast<char>(
+            table.bytes[row * kHighScoreRankCount + rank]);
+        name.push_back(
+            (character >= 'A' && character <= 'Z')
+                    || (character >= '0' && character <= '9')
+                    || character == ' '
+                ? character
+                : ' ');
+    }
+    return name;
 }
 
 std::optional<HighScoreTable> read_high_score_table(

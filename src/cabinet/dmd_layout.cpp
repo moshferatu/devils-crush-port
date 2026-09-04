@@ -3,6 +3,7 @@
 #include "devils_crush/cabinet/dmd_layout.hpp"
 
 #include <algorithm>
+#include <array>
 #include <string>
 
 namespace devils_crush::cabinet {
@@ -19,6 +20,35 @@ DmdTextContent make_dmd_text_content(
             "Bonus " + std::to_string(bonus_points),
         },
     };
+}
+
+DmdTextContent make_dmd_high_score_content(
+    const core::HighScoreTable& table,
+    const std::size_t rank)
+{
+    if (rank >= core::kHighScoreRankCount) {
+        return {};
+    }
+    return DmdTextContent{
+        .text = {
+            rank == 0U
+                ? "Grand Champion"
+                : "High Score #" + std::to_string(rank),
+            core::high_score_name_at(table, rank),
+            std::to_string(
+                static_cast<std::uint64_t>(
+                    core::high_score_at(table, rank))
+                * 100U),
+        },
+    };
+}
+
+std::size_t dmd_high_score_rank(
+    const std::uint64_t elapsed_milliseconds) noexcept
+{
+    return static_cast<std::size_t>(
+        elapsed_milliseconds / kDmdHighScoreDurationMilliseconds
+        % core::kHighScoreRankCount);
 }
 
 DmdTextLayout calculate_dmd_text_layout(
@@ -103,6 +133,68 @@ DmdTextLayout calculate_dmd_text_layout(
         status_cell_size,
         status_region_width + (output_width - status_region_width) / 2,
         status_center_y);
+
+    for (const auto& line : layout.lines) {
+        if (line.origin_x < 0 || line.origin_y < 0
+            || line.origin_x + line.width > output_width
+            || line.origin_y + line.glyph_height > output_height) {
+            return {};
+        }
+    }
+    return layout;
+}
+
+DmdTextLayout calculate_dmd_high_score_layout(
+    const int output_width,
+    const int output_height,
+    const DmdTextContent& content) noexcept
+{
+    if (output_width <= 0 || output_height <= 0
+        || content.text[0].empty()
+        || content.text[0].size() > kDmdMaximumHighScoreLabelCharacters
+        || content.text[1].empty() || content.text[1].size() > 3U
+        || content.text[2].empty()
+        || content.text[2].size() > kDmdMaximumScoreCharacters) {
+        return {};
+    }
+
+    constexpr std::array<std::size_t, kDmdTextCount> kReservedCharacters{
+        kDmdMaximumHighScoreLabelCharacters,
+        3U,
+        kDmdMaximumScoreCharacters,
+    };
+    const int row_height = output_height / 3;
+    const int width_budget = output_width - output_width / 10;
+    DmdTextLayout layout{};
+    for (std::size_t line = 0; line < kDmdTextCount; ++line) {
+        const int reserved_cells =
+            (static_cast<int>(kReservedCharacters[line]) - 1)
+                * kDmdGlyphAdvance
+            + kDmdGlyphWidth;
+        const int width_cell = width_budget / reserved_cells;
+        const int height_budget = line == 2U
+            ? row_height * 4 / 5
+            : row_height * 3 / 5;
+        const int cell_size =
+            std::min(width_cell, height_budget / kDmdGlyphHeight);
+        if (cell_size <= 0) {
+            return {};
+        }
+        const int advance = kDmdGlyphAdvance * cell_size;
+        const int width =
+            (static_cast<int>(content.text[line].size()) - 1) * advance
+            + kDmdGlyphWidth * cell_size;
+        const int glyph_height = kDmdGlyphHeight * cell_size;
+        layout.lines[line] = DmdTextLineLayout{
+            .origin_x = (output_width - width) / 2,
+            .origin_y = static_cast<int>(line) * row_height
+                + (row_height - glyph_height) / 2,
+            .width = width,
+            .cell_size = cell_size,
+            .glyph_height = glyph_height,
+            .character_advance = advance,
+        };
+    }
 
     for (const auto& line : layout.lines) {
         if (line.origin_x < 0 || line.origin_y < 0

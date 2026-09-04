@@ -10172,6 +10172,12 @@ void test_high_score_table()
         defaults->bytes[3U * kHighScoreRankCount] == 0x41U,
         "the first name character of the first entry is read");
     check(
+        devils_crush::core::high_score_name_at(*defaults, 0U) == "AAA"
+            && devils_crush::core::high_score_name_at(
+                   *defaults, kHighScoreRankCount)
+                .empty(),
+        "a high-score name is decoded and an invalid rank is empty");
+    check(
         !devils_crush::core::read_high_score_table(
             std::span<const std::byte>(work_ram).first(0x1FFFU)),
         "a short work-RAM image is refused");
@@ -11145,7 +11151,11 @@ void test_text_tile_write()
 void test_dmd_text_layout()
 {
     using devils_crush::cabinet::calculate_dmd_text_layout;
+    using devils_crush::cabinet::calculate_dmd_high_score_layout;
+    using devils_crush::cabinet::dmd_high_score_rank;
     using devils_crush::cabinet::kDmdGlyphHeight;
+    using devils_crush::cabinet::kDmdHighScoreDurationMilliseconds;
+    using devils_crush::cabinet::make_dmd_high_score_content;
     using devils_crush::cabinet::make_dmd_text_content;
 
     const auto content = make_dmd_text_content(102000U, 3700U, 1U);
@@ -11232,6 +11242,65 @@ void test_dmd_text_layout()
             && !calculate_dmd_text_layout(960, 0, content).valid()
             && !calculate_dmd_text_layout(40, 20, content).valid(),
         "a degenerate DMD output yields no layout");
+
+    devils_crush::core::HighScoreTable high_scores;
+    constexpr auto kRanks = devils_crush::core::kHighScoreRankCount;
+    high_scores.bytes[0U] = 0x10U;
+    high_scores.bytes[kRanks] = 0x27U;
+    high_scores.bytes[3U * kRanks] = 'D';
+    high_scores.bytes[4U * kRanks] = 'E';
+    high_scores.bytes[5U * kRanks] = 'V';
+    high_scores.bytes[1U] = 0xE8U;
+    high_scores.bytes[kRanks + 1U] = 0x03U;
+    high_scores.bytes[3U * kRanks + 1U] = 'A';
+    high_scores.bytes[4U * kRanks + 1U] = 'C';
+    high_scores.bytes[5U * kRanks + 1U] = 'E';
+
+    const auto champion = make_dmd_high_score_content(high_scores, 0U);
+    const auto runner_up = make_dmd_high_score_content(high_scores, 1U);
+    check(
+        champion.text[0] == "Grand Champion"
+            && champion.text[1] == "DEV"
+            && champion.text[2] == "1000000"
+            && runner_up.text[0] == "High Score #1"
+            && runner_up.text[1] == "ACE"
+            && runner_up.text[2] == "100000",
+        "startup DMD pages contain each rank label, initials, and score");
+
+    for (const auto& output : outputs) {
+        const auto layout = calculate_dmd_high_score_layout(
+            output.width, output.height, champion);
+        check(layout.valid(), "the high-score DMD layout is drawable");
+        for (const auto& line : layout.lines) {
+            check(
+                line.origin_x >= 0
+                    && line.origin_x + line.width <= output.width
+                    && line.origin_y >= 0
+                    && line.origin_y + line.glyph_height <= output.height,
+                "each high-score DMD line fits its output");
+        }
+        check(
+            layout.lines[2].cell_size > layout.lines[0].cell_size,
+            "the high-score value is larger than its rank label");
+    }
+    check(
+        dmd_high_score_rank(0U) == 0U
+            && dmd_high_score_rank(
+                   kDmdHighScoreDurationMilliseconds - 1U)
+                == 0U
+            && dmd_high_score_rank(kDmdHighScoreDurationMilliseconds) == 1U
+            && dmd_high_score_rank(
+                   kDmdHighScoreDurationMilliseconds * 5U)
+                == 0U,
+        "the startup DMD advances every three seconds and wraps");
+    check(
+        !calculate_dmd_high_score_layout(40, 20, champion).valid()
+            && !calculate_dmd_high_score_layout(
+                    960,
+                    240,
+                    make_dmd_high_score_content(high_scores, kRanks))
+                    .valid(),
+        "invalid high-score DMD pages do not produce a layout");
 }
 
 void test_table_palette_cache()
