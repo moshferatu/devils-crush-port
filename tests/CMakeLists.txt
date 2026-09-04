@@ -298,6 +298,26 @@ add_test(
 
 if(TARGET devils_crush)
     add_test(NAME dc_cli_help COMMAND devils_crush --help)
+    set_tests_properties(
+        dc_cli_help
+        PROPERTIES PASS_REGULAR_EXPRESSION "--bonus-stage <1-6>"
+    )
+    add_test(
+        NAME dc_cli_invalid_bonus_stage
+        COMMAND devils_crush --bonus-stage 7
+    )
+    set_tests_properties(
+        dc_cli_invalid_bonus_stage
+        PROPERTIES WILL_FAIL TRUE
+    )
+    add_test(
+        NAME dc_cli_missing_bonus_stage
+        COMMAND devils_crush --bonus-stage
+    )
+    set_tests_properties(
+        dc_cli_missing_bonus_stage
+        PROPERTIES WILL_FAIL TRUE
+    )
     add_test(
         NAME dc_cli_missing_rom
         COMMAND devils_crush --validate-rom
@@ -690,6 +710,26 @@ if(TARGET devils_crush)
                 LABELS rom_required
                 ENVIRONMENT
                     "SDL_VIDEODRIVER=dummy;SDL_AUDIODRIVER=dummy"
+        )
+
+        add_test(
+            NAME dc_rom_bonus_launch_smoke
+            COMMAND
+                devils_crush
+                --cabinet-smoke-test
+                --bonus-stage
+                1
+                --rom
+                "${DC_ROM_PATH}"
+        )
+        set_tests_properties(
+            dc_rom_bonus_launch_smoke
+            PROPERTIES
+                LABELS rom_required
+                ENVIRONMENT
+                    "SDL_VIDEODRIVER=dummy;SDL_AUDIODRIVER=dummy"
+                PASS_REGULAR_EXPRESSION
+                    "Bonus-stage smoke reached a playable ball."
         )
 
         add_test(

@@ -291,6 +291,10 @@ struct CommandLine {
     bool smoke_test = false;
     bool cabinet_smoke_test = false;
     bool cabinet = false;
+    // Zero selects the ordinary title/menu flow. Values one through six boot
+    // the same session and request the cartridge's authentic bonus transition
+    // before handing control to the interactive host.
+    std::uint8_t bonus_stage = 0U;
     // Records an interactive, power-on play session as exact per-frame pad
     // masks plus the runtime coverage artifacts needed to rank new code.
     std::filesystem::path capture_session_directory;
@@ -4549,6 +4553,22 @@ parse_logical_address_range(const std::string_view text)
             options.cabinet_smoke_test = true;
         } else if (argument == "--cabinet") {
             options.cabinet = true;
+        } else if (argument == "--bonus-stage") {
+            if (index + 1 >= argc) {
+                options.error = "--bonus-stage requires a stage from 1 to 6.";
+                return options;
+            }
+            const std::string_view value = argv[++index];
+            unsigned int stage = 0U;
+            const auto result = std::from_chars(
+                value.data(), value.data() + value.size(), stage);
+            if (result.ec != std::errc{}
+                || result.ptr != value.data() + value.size()
+                || stage < 1U || stage > 6U) {
+                options.error = "--bonus-stage requires a stage from 1 to 6.";
+                return options;
+            }
+            options.bonus_stage = static_cast<std::uint8_t>(stage);
         } else if (argument == "--capture-session") {
             if (index + 1 >= argc) {
                 options.error = "--capture-session requires a directory.";
@@ -5454,6 +5474,10 @@ parse_logical_address_range(const std::string_view text)
                && (!host_selected || options.cabinet_smoke_test)) {
         options.error =
             "--capture-session requires the interactive host.";
+    } else if (options.bonus_stage != 0U && !host_selected) {
+        options.error =
+            "--bonus-stage is available only for the interactive host or "
+            "--cabinet-smoke-test.";
     } else if (options.cabinet_overlay_stats && !options.cabinet
                && !options.cabinet_smoke_test) {
         options.error =
@@ -9028,15 +9052,18 @@ void print_usage()
         << "Devil's Crush PC port - Milestone 4\n\n"
         << "Usage:\n"
         << "  devils-crush [--rom <path>]\n"
-           "      [--emulate-only] [--capture-session <directory>]\n"
+           "      [--bonus-stage <1-6>] [--emulate-only]\n"
+           "      [--capture-session <directory>]\n"
            "      [--native-cycle-census <census.csv>]\n"
         << "  devils-crush --replay-session <inputs.csv> [--rom <path>]\n"
         << "  devils-crush --cabinet [--rom <path>]\n"
-           "      [--emulate-only] [--capture-session <directory>]\n"
+           "      [--bonus-stage <1-6>] [--emulate-only]\n"
+           "      [--capture-session <directory>]\n"
            "      [--native-cycle-census <census.csv>]\n"
         << "  devils-crush --validate-rom [path]\n"
         << "  devils-crush --smoke-test [--rom <path>]\n"
-        << "  devils-crush --cabinet-smoke-test [--rom <path>]\n"
+        << "  devils-crush --cabinet-smoke-test [--bonus-stage <1-6>]\n"
+           "      [--rom <path>]\n"
         << "  devils-crush --record-canonical [output.csv]\n"
            "      [--canonical-work-ram <output.bin>]\n"
            "      [--canonical-framebuffer <output.rgb>]\n"
@@ -13196,6 +13223,91 @@ struct ProbedAxis {
         press(Button::two);
     }
     return input;
+}
+
+// At this point the scripted power-on route has a live ball session ($53.3).
+// Later, frame 1300 has already entered the lost-ball state ($53.1): requesting
+// a bonus there loads the right layout, but the cartridge immediately resolves
+// it as a loss. Requesting the transition from this live-session boundary
+// preserves the same entry contract as a table feature.
+constexpr int kBonusStageLaunchFrame = 1200;
+constexpr int kBonusStageSmokeFrames = 240;
+constexpr std::size_t kBonusStageSessionFlagsOffset = 0x0053U;
+constexpr std::size_t kBonusStageIdOffset = 0x0055U;
+constexpr std::size_t kBonusStageBallFlagsOffset = 0x1080U;
+constexpr std::size_t kBonusStageBallStateOffset = 0x1C80U;
+constexpr std::uint8_t kBonusStageLiveSessionBit = 0x08U;
+constexpr std::uint8_t kBonusStageRequestBit = 0x10U;
+constexpr std::uint8_t kBonusStageBallHeldBit = 0x20U;
+constexpr std::uint8_t kBonusStageBallOffTableBit = 0x01U;
+
+[[nodiscard]] bool prepare_bonus_stage_launch(
+    PceRuntime& runtime,
+    const std::uint8_t stage)
+{
+    if (stage < 1U || stage > 6U) {
+        return false;
+    }
+
+    const auto initial_frame_number = runtime.serialize().frame_number;
+    for (int frame_number = 1;
+         frame_number < kBonusStageLaunchFrame;
+         ++frame_number) {
+        const auto frame = runtime.run_frame(
+            state_census_input_for_frame(frame_number));
+        if (frame.frame_number
+                != initial_frame_number
+                    + static_cast<std::uint64_t>(frame_number)
+            || frame.framebuffer.pixels.empty()) {
+            std::cerr << "Could not prepare bonus-stage launch on frame "
+                      << frame_number << ".\n";
+            return false;
+        }
+    }
+
+    auto work_ram = runtime.export_work_ram();
+    if (work_ram.size() != runtime.work_ram_size()
+        || work_ram.size() <= kBonusStageIdOffset) {
+        std::cerr << "Could not access work RAM for bonus-stage launch.\n";
+        return false;
+    }
+    const auto session_flags = std::to_integer<std::uint8_t>(
+        work_ram[kBonusStageSessionFlagsOffset]);
+    if ((session_flags & kBonusStageLiveSessionBit) == 0U) {
+        std::cerr << "Could not reach a live session for bonus-stage launch.\n";
+        return false;
+    }
+    work_ram[kBonusStageIdOffset] = static_cast<std::byte>(stage);
+    work_ram[kBonusStageSessionFlagsOffset] |=
+        static_cast<std::byte>(kBonusStageRequestBit);
+    if (!runtime.import_work_ram(work_ram)) {
+        std::cerr << "Could not request bonus stage "
+                  << static_cast<unsigned int>(stage) << ".\n";
+        return false;
+    }
+
+    const auto frame = runtime.run_frame(
+        state_census_input_for_frame(kBonusStageLaunchFrame));
+    const auto launched_work_ram = runtime.export_work_ram();
+    if (frame.frame_number
+            != initial_frame_number
+                + static_cast<std::uint64_t>(kBonusStageLaunchFrame)
+        || frame.framebuffer.pixels.empty()
+        || launched_work_ram.size() <= kBonusStageIdOffset
+        || std::to_integer<std::uint8_t>(
+               launched_work_ram[kBonusStageIdOffset]) != stage
+        || (std::to_integer<std::uint8_t>(
+                launched_work_ram[kBonusStageSessionFlagsOffset])
+            & (kBonusStageLiveSessionBit | kBonusStageRequestBit))
+            != (kBonusStageLiveSessionBit | kBonusStageRequestBit)) {
+        std::cerr << "Bonus stage " << static_cast<unsigned int>(stage)
+                  << " did not enter its transition.\n";
+        return false;
+    }
+
+    std::cout << "Bonus-stage launch ready: BS-"
+              << static_cast<unsigned int>(stage) << ".\n";
+    return true;
 }
 
 using RecordingInputFunction = InputFrame (*)(int);
@@ -19704,6 +19816,7 @@ int run_windows_host(
     PceRuntime& runtime,
     const std::filesystem::path& rom_path,
     const bool cabinet_mode,
+    const std::uint8_t bonus_stage,
     const int frame_limit = 0,
     const CommandLine* native_registry = nullptr,
     const CabinetLayers layers = CabinetLayers::all,
@@ -20265,6 +20378,15 @@ int run_windows_host(
         running = false;
         host_ok = false;
     }
+    // Keep the scripted power-on sequence outside interactive capture. Its
+    // final frame asks the cartridge to perform the same full transition a
+    // table feature would, and the first live frame therefore begins at the
+    // bonus entrance rather than in the menus or on the main table.
+    if (host_ok && bonus_stage != 0U
+        && !prepare_bonus_stage_launch(runtime, bonus_stage)) {
+        running = false;
+        host_ok = false;
+    }
     if (host_ok && capture_session
         && !save_quick_state(
             runtime, capture_session_directory / "initial.state")) {
@@ -20757,6 +20879,29 @@ int run_windows_host(
         }
         if (!vsync_enabled) {
             SDL_Delay(1);
+        }
+    }
+
+    if (host_ok && frame_limit > 0 && bonus_stage != 0U) {
+        const auto work_ram = runtime.export_work_ram();
+        const auto cabinet_state =
+            devils_crush::cabinet::decode_cabinet_state(work_ram);
+        if (!cabinet_state || !cabinet_state->bonus_stage
+            || work_ram.size() <= kBonusStageBallStateOffset
+            || std::to_integer<std::uint8_t>(
+                   work_ram[kBonusStageIdOffset]) != bonus_stage
+            || (std::to_integer<std::uint8_t>(
+                    work_ram[kBonusStageBallFlagsOffset])
+                & kBonusStageBallHeldBit) != 0U
+            || (std::to_integer<std::uint8_t>(
+                    work_ram[kBonusStageBallStateOffset])
+                & kBonusStageBallOffTableBit) != 0U) {
+            std::cerr << "Cabinet host did not reach a playable ball in bonus stage "
+                      << static_cast<unsigned int>(bonus_stage)
+                      << " through its smoke frames.\n";
+            host_ok = false;
+        } else {
+            std::cout << "Bonus-stage smoke reached a playable ball.\n";
         }
     }
 
@@ -25379,7 +25524,10 @@ int main(const int argc, char* argv[])
                 *runtime,
                 options.rom_path,
                 true,
-                kSmokeTestFrames,
+                options.bonus_stage,
+                options.bonus_stage != 0U
+                    ? kBonusStageSmokeFrames
+                    : kSmokeTestFrames,
                 host_registry,
                 options.cabinet_layers,
                 options.cabinet_overlay_stats);
@@ -25390,6 +25538,7 @@ int main(const int argc, char* argv[])
             *runtime,
             options.rom_path,
             options.cabinet,
+            options.bonus_stage,
             0,
             host_registry,
             options.cabinet_layers,

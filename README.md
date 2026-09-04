@@ -35,6 +35,14 @@ On a virtual pinball cabinet, across three screens:
 devils-crush.exe --cabinet --rom "D:\path\to\Devil's Crush.pce"
 ```
 
+To start a session directly in one of the six bonus stages, add
+`--bonus-stage` with a stage number from 1 through 6. This works in both
+desktop and cabinet modes and uses the game's normal bonus-stage transition:
+
+```powershell
+devils-crush.exe --bonus-stage 3 --rom "D:\path\to\Devil's Crush.pce"
+```
+
 | Key | |
 | --- | --- |
 | F5 / F9 | Save and restore a quick state |
