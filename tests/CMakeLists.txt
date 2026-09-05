@@ -5487,6 +5487,30 @@ if(TARGET devils_crush)
             PROPERTIES LABELS rom_required)
 
         add_test(
+            NAME dc_rom_scene_bootstrap_controller
+            COMMAND "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/scene-bootstrap-controller-v1"
+                "-P" "${CMAKE_CURRENT_SOURCE_DIR}/verify_scene_bootstrap_controller.cmake"
+        )
+        set_tests_properties(dc_rom_scene_bootstrap_controller
+            PROPERTIES LABELS rom_required)
+
+        add_test(
+            NAME dc_rom_scene_bootstrap_timeout
+            COMMAND "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/scene-bootstrap-timeout-v1"
+                "-P" "${CMAKE_CURRENT_SOURCE_DIR}/verify_scene_bootstrap_timeout.cmake"
+        )
+        set_tests_properties(dc_rom_scene_bootstrap_timeout
+            PROPERTIES LABELS rom_required)
+
+        add_test(
             NAME dc_rom_scene_selection_controller
             COMMAND "${CMAKE_COMMAND}"
                 "-DAPP=$<TARGET_FILE:devils_crush>"

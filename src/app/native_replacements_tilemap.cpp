@@ -2875,7 +2875,11 @@ std::optional<RoutineReplacement> replace_scene_selection_controller(
     if (entry.routine.physical_bank != 0x08U || work_ram.size() < 0x2000U
         || entry.registers.mpr[1] != 0xF8U
         || entry.registers.mpr[2] != 0x08U
-        || (entry.registers.status & kMemory) != 0U) {
+        || (entry.registers.status & kMemory) != 0U
+        || (entry.routine.logical_pc < 0x56D3U
+            && (entry.registers.status & kDecimal) != 0U)
+        || (entry.routine.logical_pc == 0x5695U && entry.registers.x >= 0x80U)
+        || (entry.routine.logical_pc == 0x55A6U && entry.registers.mpr[0] != 0xFFU)) {
         return std::nullopt;
     }
     RoutineReplacement replacement;
@@ -2894,11 +2898,12 @@ std::optional<RoutineReplacement> replace_scene_selection_controller(
         }
         return std::to_integer<std::uint8_t>(work_ram[address - 0x2000U]);
     };
-    const auto step = [&](const std::uint16_t next, const std::uint32_t cost) {
+    const auto step = [&](const std::uint16_t next, const std::uint32_t cost,
+                          const std::uint32_t sample_back = 3U) {
         cycle += cost;
         registers.program_counter = next;
         replacement.checkpoints.push_back({
-            .interrupt_sample_master_cycle_offset = cycle - 3U,
+            .interrupt_sample_master_cycle_offset = cycle - sample_back,
             .master_cycle_offset = cycle,
             .instruction = {0x08U, pc},
             .registers = registers,
@@ -2942,10 +2947,168 @@ std::optional<RoutineReplacement> replace_scene_selection_controller(
              taken ? kBranchTaken : kBranchNotTaken);
     };
 
+    const auto add = [&](const std::uint8_t operand, const std::uint16_t next,
+                         const std::uint32_t cost) {
+        const auto sum = static_cast<std::uint16_t>(registers.accumulator
+            + operand + (registers.status & kCarry));
+        const auto value = static_cast<std::uint8_t>(sum);
+        const auto overflow = ((registers.accumulator ^ value)
+            & (operand ^ value) & kNegative) != 0U;
+        registers.status = static_cast<std::uint8_t>(
+            (registers.status & ~(kCarry | kOverflow))
+            | (sum > 0xFFU ? kCarry : 0U) | (overflow ? kOverflow : 0U));
+        load(value, next, cost);
+    };
+
     // Addresses are fixed controller semantics, not a ROM opcode interpreter.
-    // Shared cases are the three identical choice-page input loops.
+    // Bootstrap/setup, attract countdown, then the three choice-page loops.
+    // Indexed actor stores use the live X returned by 5977, never a recorded
+    // slot. VDC writes go through the real bus with its stolen-cycle sample.
     while (!finished && replacement.checkpoints.size() < 64U) {
         switch (pc) {
+        case 0x55A6U: load(0x09U, 0x55A8U, kImmediate); break;
+        case 0x55A8U: store(0x2006U, registers.accumulator, 0x55AAU, kZeroPage); break;
+        case 0x55AAU:
+            write(0x0000U, registers.accumulator, cycle + kPortStore);
+            step(0x55ADU, kPortStore, kPortSampleBack); break;
+        case 0x55ADU:
+            write(0x0002U, 0U, cycle + kPortStore);
+            step(0x55B0U, kPortStore, kPortSampleBack); break;
+        case 0x55B0U:
+            write(0x0003U, 0U, cycle + kPortStore);
+            step(0x55B3U, kPortStore, kPortSampleBack); break;
+        case 0x55B3U: call(0x5879U); break;
+        case 0x55BAU: call(0x58EEU); break;
+        case 0x55BDU: call(0xE2E3U); break;
+        case 0x55C0U: call(0xE321U); break;
+        case 0x55CBU: call(0xE1FDU); break;
+        case 0x55DDU: call(0xEBA5U); break;
+        case 0x55EEU: call(0xEBA5U); break;
+        case 0x55F1U: call(0xE2CBU); break;
+        case 0x55F4U: call(0x6FB1U); break;
+        case 0x55F7U: call(0x70EEU); break;
+        case 0x55FCU: call(0xECFDU); break;
+        case 0x5615U: call(0x769AU); break;
+        case 0x5618U: call(0xE321U); break;
+        case 0x5621U: call(0xC4DEU); break;
+        case 0x5624U: call(0x4036U); break;
+        case 0x562EU: call(0xED2CU); break;
+        case 0x5633U: call(0xECFDU); break;
+        case 0x5638U: call(0xECFDU); break;
+        case 0x5692U: call(0x5977U); break;
+        case 0x56AEU: call(0xE321U); break;
+        case 0x56B1U: call(0xC4DEU); break;
+        case 0x56B4U: call(0x4036U); break;
+        case 0x55B6U: load(0x03U, 0x55B8U, kImmediate); break;
+        case 0x55C3U: load(0x04U, 0x55C5U, kImmediate); break;
+        case 0x55C7U: load(0x1EU, 0x55C9U, kImmediate); break;
+        case 0x55DBU: load(0x10U, 0x55DDU, kImmediate); break;
+        case 0x55ECU: load(0x11U, 0x55EEU, kImmediate); break;
+        case 0x55FAU: load(0x3EU, 0x55FCU, kImmediate); break;
+        case 0x5631U: load(0x0CU, 0x5633U, kImmediate); break;
+        case 0x5636U: load(0x42U, 0x5638U, kImmediate); break;
+        case 0x5695U: load(0x01U, 0x5697U, kImmediate); break;
+        case 0x569AU: load(0x61U, 0x569CU, kImmediate); break;
+        case 0x569FU: load(0x59U, 0x56A1U, kImmediate); break;
+        case 0x56A4U: load(0xB0U, 0x56A6U, kImmediate); break;
+        case 0x56A9U: load(0x04U, 0x56ABU, kImmediate); break;
+        case 0x55B8U: store(0x2054U, registers.accumulator, 0x55BAU, kZeroPage); break;
+        case 0x55C5U: store(0x202FU, registers.accumulator, 0x55C7U, kZeroPage); break;
+        case 0x55C9U: store(0x2030U, registers.accumulator, 0x55CBU, kZeroPage); break;
+        case 0x55D3U: store(0x202FU, registers.accumulator, 0x55D5U, kZeroPage); break;
+        case 0x55D9U: store(0x2030U, registers.accumulator, 0x55DBU, kZeroPage); break;
+        case 0x55E5U: store(0x202FU, registers.accumulator, 0x55E7U, kZeroPage); break;
+        case 0x55EAU: store(0x2030U, registers.accumulator, 0x55ECU, kZeroPage); break;
+        case 0x55FFU: store(0x2251U, 0U, 0x5602U, kAbsolute); break;
+        case 0x5602U: store(0x205DU, 0U, 0x5604U, kZeroPage); break;
+        case 0x5604U: store(0x20A8U, 0U, 0x5606U, kZeroPage); break;
+        case 0x5606U: store(0x20A9U, 0U, 0x5608U, kZeroPage); break;
+        case 0x5608U: store(0x20AAU, 0U, 0x560AU, kZeroPage); break;
+        case 0x560AU: store(0x2BB9U, 0U, 0x560DU, kAbsolute); break;
+        case 0x560DU: store(0x2055U, 0U, 0x560FU, kZeroPage); break;
+        case 0x560FU: store(0x2D53U, 0U, 0x5612U, kAbsolute); break;
+        case 0x5612U: store(0x2254U, 0U, 0x5615U, kAbsolute); break;
+        case 0x55CFU: load(read(0x202FU), 0x55D1U, kZeroPage); break;
+        case 0x55D5U: load(read(0x2030U), 0x55D7U, kZeroPage); break;
+        case 0x55E1U: load(read(0x202FU), 0x55E3U, kZeroPage); break;
+        case 0x561BU: load(read(0x2018U), 0x561DU, kZeroPage); break;
+        case 0x5627U: load(read(0x2D53U), 0x562AU, kAbsolute); break;
+        case 0x56B7U: load(read(0x2018U), 0x56B9U, kZeroPage); break;
+        case 0x56BDU: load(read(0x2D5FU), 0x56C0U, kAbsolute); break;
+        case 0x56C8U: load(read(0x2D5FU), 0x56CBU, kAbsolute); break;
+        case 0x55CEU: case 0x55E0U:
+            registers.status &= static_cast<std::uint8_t>(~kCarry);
+            step(static_cast<std::uint16_t>(pc + 1U), kImplied); break;
+        case 0x55D1U: add(0U, 0x55D3U, kImmediate); break;
+        case 0x55D7U: add(2U, 0x55D9U, kImmediate); break;
+        case 0x55E3U: add(0x20U, 0x55E5U, kImmediate); break;
+        case 0x55E7U: // CLA does not change N/Z on the HuC6280.
+            registers.accumulator = 0U; step(0x55E8U, kImplied); break;
+        case 0x55E8U: add(read(0x2030U), 0x55EAU, kZeroPage); break;
+        case 0x561DU: case 0x56B9U:
+            load(static_cast<std::uint8_t>(registers.accumulator & 8U),
+                 static_cast<std::uint16_t>(pc + 2U), kImmediate); break;
+        case 0x561FU: branch((registers.status & kZero) == 0U, 0x562EU); break;
+        case 0x562AU: branch((registers.status & kZero) != 0U, 0x5618U); break;
+        case 0x562CU: step(0x56A4U, kBranchTaken); break;
+        case 0x563BU: registers.x = 5U; registers.status = set_nz(registers.status, registers.x);
+            step(0x563DU, kImmediate); break;
+        case 0x565CU: ++registers.x; registers.status = set_nz(registers.status, registers.x);
+            step(0x565DU, kImplied); break;
+        case 0x567CU: registers.x = 4U; registers.status = set_nz(registers.status, registers.x);
+            step(0x567EU, kImmediate); break;
+        case 0x563DU: load(0x79U, 0x563FU, kImmediate); break;
+        case 0x563FU: store(static_cast<std::uint16_t>(0x3180U + registers.x), registers.accumulator, 0x5642U, kAbsolute); break;
+        case 0x5645U: load(0x2DU, 0x5647U, kImmediate); break;
+        case 0x5647U: store(static_cast<std::uint16_t>(0x3300U + registers.x), registers.accumulator, 0x564AU, kAbsolute); break;
+        case 0x564DU: load(0x06U, 0x564FU, kImmediate); break;
+        case 0x564FU: store(static_cast<std::uint16_t>(0x3980U + registers.x), registers.accumulator, 0x5652U, kAbsolute); break;
+        case 0x5652U: load(0xC1U, 0x5654U, kImmediate); break;
+        case 0x5654U: store(static_cast<std::uint16_t>(0x3F00U + registers.x), registers.accumulator, 0x5657U, kAbsolute); break;
+        case 0x5657U: load(0x70U, 0x5659U, kImmediate); break;
+        case 0x5659U: store(static_cast<std::uint16_t>(0x3F80U + registers.x), registers.accumulator, 0x565CU, kAbsolute); break;
+        case 0x565DU: load(0x6EU, 0x565FU, kImmediate); break;
+        case 0x565FU: store(static_cast<std::uint16_t>(0x3180U + registers.x), registers.accumulator, 0x5662U, kAbsolute); break;
+        case 0x5665U: load(0x78U, 0x5667U, kImmediate); break;
+        case 0x5667U: store(static_cast<std::uint16_t>(0x3300U + registers.x), registers.accumulator, 0x566AU, kAbsolute); break;
+        case 0x566DU: load(0x06U, 0x566FU, kImmediate); break;
+        case 0x566FU: store(static_cast<std::uint16_t>(0x3980U + registers.x), registers.accumulator, 0x5672U, kAbsolute); break;
+        case 0x5672U: load(0xEAU, 0x5674U, kImmediate); break;
+        case 0x5674U: store(static_cast<std::uint16_t>(0x3F00U + registers.x), registers.accumulator, 0x5677U, kAbsolute); break;
+        case 0x5677U: load(0x71U, 0x5679U, kImmediate); break;
+        case 0x5679U: store(static_cast<std::uint16_t>(0x3F80U + registers.x), registers.accumulator, 0x567CU, kAbsolute); break;
+        case 0x567EU: load(0x08U, 0x5680U, kImmediate); break;
+        case 0x5680U: store(static_cast<std::uint16_t>(0x3A00U + registers.x), registers.accumulator, 0x5683U, kAbsolute); break;
+        case 0x5683U: load(0x80U, 0x5685U, kImmediate); break;
+        case 0x5685U: store(static_cast<std::uint16_t>(0x3000U + registers.x), registers.accumulator, 0x5688U, kAbsolute); break;
+        case 0x5688U: load(0xA0U, 0x568AU, kImmediate); break;
+        case 0x568AU: store(static_cast<std::uint16_t>(0x3080U + registers.x), registers.accumulator, 0x568DU, kAbsolute); break;
+        case 0x568DU: load(0x0FU, 0x568FU, kImmediate); break;
+        case 0x568FU: store(static_cast<std::uint16_t>(0x3A80U + registers.x), registers.accumulator, 0x5692U, kAbsolute); break;
+        case 0x5642U: store(static_cast<std::uint16_t>(0x3200U + registers.x), 0U, 0x5645U, kAbsolute); break;
+        case 0x564AU: store(static_cast<std::uint16_t>(0x3380U + registers.x), 0U, 0x564DU, kAbsolute); break;
+        case 0x5662U: store(static_cast<std::uint16_t>(0x3200U + registers.x), 0U, 0x5665U, kAbsolute); break;
+        case 0x566AU: store(static_cast<std::uint16_t>(0x3380U + registers.x), 0U, 0x566DU, kAbsolute); break;
+        case 0x5697U: store(0x2D53U, registers.accumulator, 0x569AU, kAbsolute); break;
+        case 0x569CU: store(static_cast<std::uint16_t>(0x3F00U + registers.x), registers.accumulator, 0x569FU, kAbsolute); break;
+        case 0x56A1U: store(static_cast<std::uint16_t>(0x3F80U + registers.x), registers.accumulator, 0x56A4U, kAbsolute); break;
+        case 0x56A6U: store(0x2D5FU, registers.accumulator, 0x56A9U, kAbsolute); break;
+        case 0x56ABU: store(0x2D60U, registers.accumulator, 0x56AEU, kAbsolute); break;
+        case 0x56BBU:
+            branch((registers.status & kZero) == 0U, 0x56D3U);
+            finished = pc == 0x56D3U; break;
+        case 0x56C0U: branch((registers.status & kZero) == 0U, 0x56C5U); break;
+        case 0x56C2U: case 0x56C5U: {
+            const auto address = static_cast<std::uint16_t>(pc == 0x56C2U ? 0x2D60U : 0x2D5FU);
+            const auto value = static_cast<std::uint8_t>(read(address) - 1U);
+            registers.status = set_nz(registers.status, value);
+            store(address, value, static_cast<std::uint16_t>(pc + 3U), 21U); break;
+        }
+        case 0x56CBU:
+            load(static_cast<std::uint8_t>(registers.accumulator | read(0x2D60U)),
+                 0x56CEU, kAbsolute); break;
+        case 0x56CEU: branch((registers.status & kZero) == 0U, 0x56AEU); break;
+        case 0x56D0U: step(0x5871U, kJump); finished = true; break;
         case 0x56D3U: load(0x46U, 0x56D5U, kImmediate); break;
         case 0x56D5U: store(0x202FU, registers.accumulator, 0x56D7U, kZeroPage); break;
         case 0x56D7U: load(0x5DU, 0x56D9U, kImmediate); break;

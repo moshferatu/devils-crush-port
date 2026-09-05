@@ -20,7 +20,30 @@ replace_native_gameplay_routine_impl(
     const std::span<const std::byte> work_ram,
     const std::span<const std::byte> rom)
 {
-    if (entry.routine == RoutineKey{.physical_bank = 0x08U, .logical_pc = 0x56D3U}
+    if (entry.routine == RoutineKey{.physical_bank = 0x08U, .logical_pc = 0x55A6U}
+        || entry.routine == RoutineKey{.physical_bank = 0x08U, .logical_pc = 0x55B6U}
+        || entry.routine == RoutineKey{.physical_bank = 0x08U, .logical_pc = 0x55BDU}
+        || entry.routine == RoutineKey{.physical_bank = 0x08U, .logical_pc = 0x55C0U}
+        || entry.routine == RoutineKey{.physical_bank = 0x08U, .logical_pc = 0x55C3U}
+        || entry.routine == RoutineKey{.physical_bank = 0x08U, .logical_pc = 0x55CEU}
+        || entry.routine == RoutineKey{.physical_bank = 0x08U, .logical_pc = 0x55E0U}
+        || entry.routine == RoutineKey{.physical_bank = 0x08U, .logical_pc = 0x55F1U}
+        || entry.routine == RoutineKey{.physical_bank = 0x08U, .logical_pc = 0x55F4U}
+        || entry.routine == RoutineKey{.physical_bank = 0x08U, .logical_pc = 0x55F7U}
+        || entry.routine == RoutineKey{.physical_bank = 0x08U, .logical_pc = 0x55FAU}
+        || entry.routine == RoutineKey{.physical_bank = 0x08U, .logical_pc = 0x55FFU}
+        || entry.routine == RoutineKey{.physical_bank = 0x08U, .logical_pc = 0x5618U}
+        || entry.routine == RoutineKey{.physical_bank = 0x08U, .logical_pc = 0x561BU}
+        || entry.routine == RoutineKey{.physical_bank = 0x08U, .logical_pc = 0x5624U}
+        || entry.routine == RoutineKey{.physical_bank = 0x08U, .logical_pc = 0x5627U}
+        || entry.routine == RoutineKey{.physical_bank = 0x08U, .logical_pc = 0x5631U}
+        || entry.routine == RoutineKey{.physical_bank = 0x08U, .logical_pc = 0x5636U}
+        || entry.routine == RoutineKey{.physical_bank = 0x08U, .logical_pc = 0x563BU}
+        || entry.routine == RoutineKey{.physical_bank = 0x08U, .logical_pc = 0x5695U}
+        || entry.routine == RoutineKey{.physical_bank = 0x08U, .logical_pc = 0x56B1U}
+        || entry.routine == RoutineKey{.physical_bank = 0x08U, .logical_pc = 0x56B4U}
+        || entry.routine == RoutineKey{.physical_bank = 0x08U, .logical_pc = 0x56B7U}
+        || entry.routine == RoutineKey{.physical_bank = 0x08U, .logical_pc = 0x56D3U}
         || entry.routine == RoutineKey{.physical_bank = 0x08U, .logical_pc = 0x56DEU}
         || entry.routine == RoutineKey{.physical_bank = 0x08U, .logical_pc = 0x56E9U}
         || entry.routine == RoutineKey{.physical_bank = 0x08U, .logical_pc = 0x56ECU}

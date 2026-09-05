@@ -129,9 +129,11 @@ enclosing bulk-upload/scheduler transaction. It now has bounded native segments
 at its actual child calls and return addresses, including all three input loops
 and choice transitions. The child bodies and frame waits keep their existing
 owners. This resolves the old transaction-size objection without increasing
-bridge capacity or predicting input across frames. The adjacent bootstrap at
-`08:55A6-56C0` and its countdown remain separate work; see the measured evidence
-in [NATIVE_PORT_WORKFLOW.md](NATIVE_PORT_WORKFLOW.md).
+bridge capacity or predicting input across frames. The adjacent bootstrap and
+countdown at `08:55A6-56D0` now use the same real-boundary model, including VDC
+setup, attract-loop input, actor creation, timeout and restart. Its children
+still run independently; no bulk upload or frame wait was absorbed. See the
+measured evidence in [NATIVE_PORT_WORKFLOW.md](NATIVE_PORT_WORKFLOW.md).
 
 The canonical 3,600-frame route has no further standalone table-rule entry and
 return contract to admit. Its filtered residue — 3,228,057 unregistered
@@ -141,10 +143,12 @@ caller-owned continuation seams above. The remaining bank-`02`/`03` table rows
 in the profiled tail are all already-classified actor-loader, scheduler,
 collision, appearance, allocator, or caller-return interiors.
 
-This is a prioritization horizon, not an external blocker, and manufacturing a
-seam by splitting a known owner around its child or its return is the wrong
-answer to it. Resolve it with new *evidence*: a player-session capture, or a
-natural route whose profile leaves the discovery union. See
+This historical screen is a prioritization horizon, not an external blocker.
+Real child-call and return boundaries are valid controller seams when exact
+state, ordered writes and timing prove the handoff, as the scene controllers
+above demonstrate. Avoid arbitrary instruction-sized splits merely to increase
+the entry count. Use measured deployed residue and new boundary evidence, or
+an additional route/capture when existing routes do not reach the work. See
 [ROUTE_SCREENING.md](ROUTE_SCREENING.md).
 
 ## Cabinet-side deferrals

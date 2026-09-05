@@ -8245,7 +8245,7 @@ parse_logical_address_range(const std::string_view text)
                            && request.all_calls;
                        const bool scene_selection_controller =
                            request.routine.physical_bank == 0x08U
-                           && request.routine.logical_pc >= 0x56D3U
+                           && request.routine.logical_pc >= 0x55A6U
                            && request.routine.logical_pc <= 0x577AU
                            && request.all_calls;
                        const bool proven_collision_tail =

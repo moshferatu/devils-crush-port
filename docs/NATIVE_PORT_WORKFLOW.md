@@ -46,8 +46,33 @@ match assembly, as do frame-by-frame RAM, video and audio. Separate controlled
 menu-choice tests cover the optional child, early exit and repeated third-page
 visits. Evidence is under `out/coverage-scene-selection-corpus-v1` and
 `out/scene-selection-controller-v1`; the checked-in scene-selection regressions
-retain the assembly goldens. The adjacent `08:55A6-56C0` bootstrap remains a
-high-cost next controller target, rather than a permanent deferral.
+retain the assembly goldens.
+
+The following slice extends that controller through the adjacent scene
+bootstrap and attract countdown, `08:55A6-56D0`. Its 23 new admitted entries
+are genuine child-return boundaries, covering setup, the start-input loop,
+actor creation, the 16-bit countdown and timeout/restart. Bank-09 setup
+children are resolved through the live MPRs; the actor slot returned by
+`08:5977` is read fresh, not captured from a particular run. The initial VDC
+stores preserve the bus's stolen-cycle interrupt sampling. No child body,
+frame wait or bulk upload is made part of an oversized native transaction.
+
+Across the same 31 accepted routes, this removes another 1,303,116 non-wait
+interpreter cycles: 25,313,061 becomes 24,009,945 (5.1% less residue), with
+120 previously interpreted addresses removed. Every assembly/registry
+baseline and every abandonment count remains unchanged. The natural
+assembly comparison includes all 4,270,592 RAM writes, 1,019,098 VDC writes,
+6,288 child-entry snapshots, and frame RAM/video/audio. A separate controlled
+timeout verifies restart and the full countdown, including low-byte borrow,
+against 1,318,305 assembly RAM writes. Both new regressions and the core tests
+pass in Debug and Release; the focused 12-test Release set also includes the
+existing selection and sorcerer gates. The final Release executable is rebuilt.
+Evidence: `out/scene-bootstrap-controller-v1` and
+`out/coverage-scene-bootstrap-corpus-v1`.
+
+This leaves `00:E362-E39C`, the `08:5A2E` actor-initialization seams and
+`00:ED4F-ED85` among the next high-impact non-host targets. The leading
+`01:C500-C50E` profile row remains cabinet-owned rather than new porting work.
 
 The full Release audit also exposed two stale test-wiring/count expectations,
 corrected without changing their behavioral goldens, and one unresolved
@@ -60,6 +85,9 @@ The diagnostic artifacts are `prior-registry.census.csv` and
 `prior-registry.stack.csv` under `out/scene-selection-controller-v1`.
 Do not relax that parity test or describe the full suite as green; preservation
 of the accepted per-configuration corpus is a distinct, narrower guarantee.
+The bootstrap slice reran that strict comparison: both the registry census
+and complete stack-write hash still match the prior registry exactly. Its
+artifacts are `strict-registry.*` under `out/scene-bootstrap-controller-v1`.
 
 ## Validation tiers
 

@@ -2043,7 +2043,7 @@ replace_tilemap_upload(
 [[nodiscard]] std::optional<emulation::RoutineReplacement>
 replace_core_tii_transfer(const emulation::RoutineEntry& entry);
 
-// Scene-selection controller, bounded at its actual child calls and resumed
+// Scene bootstrap/selection controller, bounded at its child calls and resumed
 // at their return addresses. Frame waits and actor passes keep their owners.
 [[nodiscard]] std::optional<emulation::RoutineReplacement>
 replace_scene_selection_controller(
