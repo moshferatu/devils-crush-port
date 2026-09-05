@@ -30,6 +30,37 @@ dispatch paths reduced higharc's deployed non-wait interpreter residue from
 state hashes. All 1,629 directly observed controller calls and 20,975 ordered
 call writes remained byte-identical to assembly. The routine count stayed 620.
 
+The next controller slice, `08:56D3-577E`, moves the three scene-selection
+pages out of the interpreter. Its 24 admitted entries are the head and real
+child-return continuations of one controller, not independent leaf ports.
+Each native segment pushes the original child-call frame and stops at the
+callee; frame waits, actor passes and asset uploads retain their existing
+owners. The next continuation reads fresh RAM after the child returns.
+
+Across the same 31 routes, this removed 1,679,208 non-wait interpreter cycles:
+26,992,269 became 25,313,061 (6.2% less residue). The 70 previously interpreted
+controller addresses disappeared from that corpus's residue, with every
+assembly and registry baseline unchanged. On the unpatched admission route,
+all 4,270,592 ordered RAM writes and 5,330 child-entry register/timing snapshots
+match assembly, as do frame-by-frame RAM, video and audio. Separate controlled
+menu-choice tests cover the optional child, early exit and repeated third-page
+visits. Evidence is under `out/coverage-scene-selection-corpus-v1` and
+`out/scene-selection-controller-v1`; the checked-in scene-selection regressions
+retain the assembly goldens. The adjacent `08:55A6-56C0` bootstrap remains a
+high-cost next controller target, rather than a permanent deferral.
+
+The full Release audit also exposed two stale test-wiring/count expectations,
+corrected without changing their behavioral goldens, and one unresolved
+**pre-existing** strict registry/assembly parity failure:
+`dc_rom_registry_stack_page_writes`. A diagnostic replay excluding all 24 new
+scene-controller entries has exactly the same census and complete stack trace
+as the expanded registry. The first assembly/registry stack difference is write
+23 at frame 1, `45:4B75` (cycle 6,468 versus 6,450), before scene selection.
+The diagnostic artifacts are `prior-registry.census.csv` and
+`prior-registry.stack.csv` under `out/scene-selection-controller-v1`.
+Do not relax that parity test or describe the full suite as green; preservation
+of the accepted per-configuration corpus is a distinct, narrower guarantee.
+
 ## Validation tiers
 
 ### Per slice
@@ -57,8 +88,9 @@ writes, and interrupt hand-off.
 Run the full Release suite after a related batch, before declaring that family
 complete, and before a milestone or hand-off checkpoint. A related batch
 normally contains two to five sibling routines that share a route, actor
-family, or state machine. In parallel this is under three minutes, so there is
-no reason to narrow it.
+family, or state machine. Run it in parallel, but use the latest completed
+CTest timing when estimating the wait: the growing regression suite and its
+trace-heavy tests no longer fit the old three-minute estimate.
 
 Run the **ROM-free** Debug tests here too, and per slice. They are the
 standing Debug obligation and they cost seconds.

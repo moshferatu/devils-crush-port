@@ -20,6 +20,32 @@ replace_native_gameplay_routine_impl(
     const std::span<const std::byte> work_ram,
     const std::span<const std::byte> rom)
 {
+    if (entry.routine == RoutineKey{.physical_bank = 0x08U, .logical_pc = 0x56D3U}
+        || entry.routine == RoutineKey{.physical_bank = 0x08U, .logical_pc = 0x56DEU}
+        || entry.routine == RoutineKey{.physical_bank = 0x08U, .logical_pc = 0x56E9U}
+        || entry.routine == RoutineKey{.physical_bank = 0x08U, .logical_pc = 0x56ECU}
+        || entry.routine == RoutineKey{.physical_bank = 0x08U, .logical_pc = 0x56EFU}
+        || entry.routine == RoutineKey{.physical_bank = 0x08U, .logical_pc = 0x56F2U}
+        || entry.routine == RoutineKey{.physical_bank = 0x08U, .logical_pc = 0x56F5U}
+        || entry.routine == RoutineKey{.physical_bank = 0x08U, .logical_pc = 0x5702U}
+        || entry.routine == RoutineKey{.physical_bank = 0x08U, .logical_pc = 0x5712U}
+        || entry.routine == RoutineKey{.physical_bank = 0x08U, .logical_pc = 0x571FU}
+        || entry.routine == RoutineKey{.physical_bank = 0x08U, .logical_pc = 0x5722U}
+        || entry.routine == RoutineKey{.physical_bank = 0x08U, .logical_pc = 0x5725U}
+        || entry.routine == RoutineKey{.physical_bank = 0x08U, .logical_pc = 0x5728U}
+        || entry.routine == RoutineKey{.physical_bank = 0x08U, .logical_pc = 0x572BU}
+        || entry.routine == RoutineKey{.physical_bank = 0x08U, .logical_pc = 0x5738U}
+        || entry.routine == RoutineKey{.physical_bank = 0x08U, .logical_pc = 0x5742U}
+        || entry.routine == RoutineKey{.physical_bank = 0x08U, .logical_pc = 0x5751U}
+        || entry.routine == RoutineKey{.physical_bank = 0x08U, .logical_pc = 0x575EU}
+        || entry.routine == RoutineKey{.physical_bank = 0x08U, .logical_pc = 0x5761U}
+        || entry.routine == RoutineKey{.physical_bank = 0x08U, .logical_pc = 0x5764U}
+        || entry.routine == RoutineKey{.physical_bank = 0x08U, .logical_pc = 0x5767U}
+        || entry.routine == RoutineKey{.physical_bank = 0x08U, .logical_pc = 0x576AU}
+        || entry.routine == RoutineKey{.physical_bank = 0x08U, .logical_pc = 0x5775U}
+        || entry.routine == RoutineKey{.physical_bank = 0x08U, .logical_pc = 0x577AU}) {
+        return detail::replace_scene_selection_controller(entry, work_ram);
+    }
     if (entry.routine == RoutineKey{0x02U, 0x4CDAU}) {
         return detail::replace_shared_four_tick_timer_tail(entry, work_ram);
     }

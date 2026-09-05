@@ -8243,6 +8243,11 @@ parse_logical_address_range(const std::string_view text)
                                || request.routine.logical_pc == 0xF426U
                                || request.routine.logical_pc == 0xF42AU)
                            && request.all_calls;
+                       const bool scene_selection_controller =
+                           request.routine.physical_bank == 0x08U
+                           && request.routine.logical_pc >= 0x56D3U
+                           && request.routine.logical_pc <= 0x577AU
+                           && request.all_calls;
                        const bool proven_collision_tail =
                            request.routine.physical_bank == 0x01U
                            && (request.routine.logical_pc == 0xCA84U
@@ -8404,6 +8409,7 @@ parse_logical_address_range(const std::string_view text)
                            && !proven_vram_upload
                            && !proven_resident_pattern_loader
                            && !proven_tilemap_upload
+                           && !scene_selection_controller
                            && !proven_collision_tail
                            && !proven_sorcerer_tick
                            && !proven_actor_geometry_leaf

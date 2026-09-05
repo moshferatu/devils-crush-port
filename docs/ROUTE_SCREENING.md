@@ -6,28 +6,31 @@ emulated work RAM, and the resulting scope has its own caller and its own
 return. This file records which routes have already been run and what each one
 reached, so a later slice does not pay for a screen that has already been done.
 
-The screening rule, stated once, because every row below applies it:
+The current screening rule:
 
-> A route earns a replacement only if it executes an instruction address that
-> no earlier route reached **and** that address heads a transaction with an
-> independent caller-and-return contract. Reaching a new *interior* of a
-> routine that is already owned by a scheduler, collision, allocator,
-> appearance, or actor-controller transaction is branch coverage, not a seam.
-> Splitting an existing owner around its child or return is explicitly not
-> allowed — see [RETAINED_ASSEMBLY_SEAMS.md](RETAINED_ASSEMBLY_SEAMS.md).
+> A new standalone routine needs a natural entry and a proven execution
+> contract. An existing controller's expensive branches and continuations are
+> also porting work: extend the owner and preserve its real child-call, return,
+> interrupt and frame-wait boundaries. Do not manufacture independent routines
+> from arbitrary instruction slices. Classifying a path as an owner interior
+> is not a reason to defer it when actual interpreter cost justifies the work.
+> See [NATIVE_PORT_WORKFLOW.md](NATIVE_PORT_WORKFLOW.md) for the current ranking
+> and the shooter and scene-selection controller examples.
 
 Each route is a `--record-gameplay-<name>` flag on the application. They all
 run the ordinary visible startup and then drive the pad only; the differences
 are the launcher release frame and the flipper/nudge cadence. Deterministic
-means the assembly, deployed Release, and deployed Debug runs produce a
-byte-identical recording, instruction profile, native-cycle census, and
-abandonment census. Artifact hashes for each run are in
-[PROGRESS_ARCHIVE.md](PROGRESS_ARCHIVE.md).
+means repeating the same configuration preserves its accepted artifacts.
+The full registry and assembly currently have separate accepted state hashes;
+the coverage sweep checks both against `tests/native_coverage_table_routes.csv`.
+A new isolated native family must additionally match its assembly goldens.
+Historical artifact hashes are in [PROGRESS_ARCHIVE.md](PROGRESS_ARCHIVE.md).
 
 ## Screened routes
 
-All routes below are deterministic across configurations unless noted, and
-none of them admitted a replacement.
+The table below records the original standalone-entry screening decisions.
+Those historical decisions do not exclude later controller expansion; the
+same corpus now verifies such work and measures its reduction in residue.
 
 | Route | Cadence | What it reached | Verdict |
 | --- | --- | --- | --- |

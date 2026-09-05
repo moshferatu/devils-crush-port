@@ -3031,7 +3031,7 @@ if(TARGET devils_crush)
                 "${CMAKE_COMMAND}"
                 "-DAPP=$<TARGET_FILE:devils_crush>"
                 "-DCONFIG=$<CONFIG>"
-                "-DROM=${DEVILS_CRUSH_ROM_PATH}"
+                "-DROM=${DC_ROM_PATH}"
                 "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/upper-table-actor-tile-schedule-semantic-v1"
                 -P
                 "${CMAKE_CURRENT_SOURCE_DIR}/verify_upper_table_actor_tile_schedule_semantic.cmake"
@@ -5484,6 +5484,31 @@ if(TARGET devils_crush)
                 "-P" "${CMAKE_CURRENT_SOURCE_DIR}/verify_devil_shooter_dispatch_semantic.cmake"
         )
         set_tests_properties(dc_rom_devil_shooter_dispatch_semantic
+            PROPERTIES LABELS rom_required)
+
+        add_test(
+            NAME dc_rom_scene_selection_controller
+            COMMAND "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/scene-selection-controller-v1"
+                "-P" "${CMAKE_CURRENT_SOURCE_DIR}/verify_scene_selection_controller.cmake"
+        )
+        set_tests_properties(dc_rom_scene_selection_controller
+            PROPERTIES LABELS rom_required)
+
+        add_test(
+            NAME dc_rom_scene_selection_branches
+            CONFIGURATIONS Release
+            COMMAND "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/scene-selection-branches-v1"
+                "-P" "${CMAKE_CURRENT_SOURCE_DIR}/verify_scene_selection_branches.cmake"
+        )
+        set_tests_properties(dc_rom_scene_selection_branches
             PROPERTIES LABELS rom_required)
 
         add_test(

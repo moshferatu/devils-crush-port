@@ -2864,6 +2864,177 @@ std::optional<RoutineReplacement> replace_tilemap_upload(
     }
 }
 
+std::optional<RoutineReplacement> replace_scene_selection_controller(
+    const RoutineEntry& entry, const std::span<const std::byte> work_ram)
+{
+    // This controller spans frames, not one atomic transaction. Each segment
+    // ends after pushing a real child-call frame. The child (including E321's
+    // frame wait) runs under its existing owner; its RTS reaches the next
+    // admitted continuation with a fresh RAM snapshot. Never predict input
+    // across a frame wait or fold an actor pass into the controller.
+    if (entry.routine.physical_bank != 0x08U || work_ram.size() < 0x2000U
+        || entry.registers.mpr[1] != 0xF8U
+        || entry.registers.mpr[2] != 0x08U
+        || (entry.registers.status & kMemory) != 0U) {
+        return std::nullopt;
+    }
+    RoutineReplacement replacement;
+    auto registers = entry.registers;
+    auto pc = entry.routine.logical_pc;
+    std::uint32_t cycle = 0U;
+    bool finished = false;
+    const auto read = [&](const std::uint16_t address) {
+        // Earlier stores in this short segment take precedence over the
+        // snapshot. No segment can contain a child or a frame wait.
+        for (auto it = replacement.work_ram_writes.rbegin();
+             it != replacement.work_ram_writes.rend(); ++it) {
+            if (it->logical_address == address) {
+                return it->value;
+            }
+        }
+        return std::to_integer<std::uint8_t>(work_ram[address - 0x2000U]);
+    };
+    const auto step = [&](const std::uint16_t next, const std::uint32_t cost) {
+        cycle += cost;
+        registers.program_counter = next;
+        replacement.checkpoints.push_back({
+            .interrupt_sample_master_cycle_offset = cycle - 3U,
+            .master_cycle_offset = cycle,
+            .instruction = {0x08U, pc},
+            .registers = registers,
+        });
+        pc = next;
+    };
+    const auto load = [&](const std::uint8_t value, const std::uint16_t next,
+                          const std::uint32_t cost) {
+        registers.accumulator = value;
+        registers.status = set_nz(registers.status, value);
+        step(next, cost);
+    };
+    const auto write = [&](const std::uint16_t address, const std::uint8_t value,
+                           const std::uint32_t offset) {
+        replacement.work_ram_writes.push_back({
+            .instruction = {0x08U, pc},
+            .logical_address = address,
+            .value = value,
+            .master_cycle_offset = offset,
+        });
+    };
+    const auto store = [&](const std::uint16_t address, const std::uint8_t value,
+                           const std::uint16_t next, const std::uint32_t cost) {
+        write(address, value, cycle + cost);
+        step(next, cost);
+    };
+    const auto call = [&](const std::uint16_t target) {
+        const auto return_address = static_cast<std::uint16_t>(pc + 2U);
+        // JSR pushes at its entry timestamp, unlike a normal RAM store.
+        write(static_cast<std::uint16_t>(0x2100U + registers.stack_pointer),
+              static_cast<std::uint8_t>(return_address >> 8U), cycle);
+        --registers.stack_pointer;
+        write(static_cast<std::uint16_t>(0x2100U + registers.stack_pointer),
+              static_cast<std::uint8_t>(return_address), cycle);
+        --registers.stack_pointer;
+        step(target, kCall);
+        finished = true;
+    };
+    const auto branch = [&](const bool taken, const std::uint16_t target) {
+        step(taken ? target : static_cast<std::uint16_t>(pc + 2U),
+             taken ? kBranchTaken : kBranchNotTaken);
+    };
+
+    // Addresses are fixed controller semantics, not a ROM opcode interpreter.
+    // Shared cases are the three identical choice-page input loops.
+    while (!finished && replacement.checkpoints.size() < 64U) {
+        switch (pc) {
+        case 0x56D3U: load(0x46U, 0x56D5U, kImmediate); break;
+        case 0x56D5U: store(0x202FU, registers.accumulator, 0x56D7U, kZeroPage); break;
+        case 0x56D7U: load(0x5DU, 0x56D9U, kImmediate); break;
+        case 0x56D9U: store(0x2030U, registers.accumulator, 0x56DBU, kZeroPage); break;
+        case 0x56DBU: case 0x56E6U: case 0x571CU: case 0x575BU:
+            call(0x5ABFU); break;
+        case 0x56DEU: load(0x7FU, 0x56E0U, kImmediate); break;
+        case 0x56E0U: store(0x202FU, registers.accumulator, 0x56E2U, kZeroPage); break;
+        case 0x56E2U: load(0x5CU, 0x56E4U, kImmediate); break;
+        case 0x56E4U: store(0x2030U, registers.accumulator, 0x56E6U, kZeroPage); break;
+        case 0x56E9U: call(0x59B5U); break;
+        case 0x56ECU: case 0x5722U: case 0x5761U:
+            call(0xE321U); break;
+        case 0x56EFU: case 0x5725U: case 0x5764U:
+            call(0xC4DEU); break;
+        case 0x56F2U: case 0x5728U: case 0x5767U:
+            call(0x4036U); break;
+        case 0x56F5U: case 0x572BU: case 0x576AU:
+            load(read(0x2018U), static_cast<std::uint16_t>(pc + 2U), kZeroPage);
+            break;
+        case 0x56F7U: case 0x572DU: case 0x576CU:
+            // HuC6280 BIT immediate sets N/V from the operand as well as Z.
+            registers.status = static_cast<std::uint8_t>(
+                (registers.status & ~(kNegative | kOverflow | kZero))
+                | ((registers.accumulator & 0x09U) == 0U ? kZero : 0U));
+            step(static_cast<std::uint16_t>(pc + 2U), kImmediate);
+            break;
+        case 0x56F9U: branch((registers.status & kZero) == 0U, 0x56FDU); break;
+        case 0x572FU: branch((registers.status & kZero) == 0U, 0x5733U); break;
+        case 0x576EU: branch((registers.status & kZero) != 0U, 0x5761U); break;
+        case 0x56FBU: step(0x56ECU, kBranchTaken); break;
+        case 0x5731U: step(0x5722U, kBranchTaken); break;
+        case 0x56FDU: case 0x5733U: case 0x5770U:
+            registers.x = 0x10U;
+            registers.status = set_nz(registers.status, registers.x);
+            step(static_cast<std::uint16_t>(pc + 2U), kImmediate);
+            break;
+        case 0x56FFU: case 0x5735U: case 0x5772U:
+            call(0xC574U); break;
+        case 0x5702U: load(read(0x222DU), 0x5705U, kAbsolute); break;
+        case 0x5705U: store(0x2250U, registers.accumulator, 0x5708U, kAbsolute); break;
+        case 0x5708U: load(read(0x205DU), 0x570AU, kZeroPage); break;
+        case 0x570AU: store(0x222DU, registers.accumulator, 0x570DU, kAbsolute); break;
+        case 0x570DU: case 0x573DU: case 0x5775U:
+            load(0x2EU, static_cast<std::uint16_t>(pc + 2U), kImmediate); break;
+        case 0x570FU: case 0x573FU: case 0x5777U:
+            call(0xECFDU); break;
+        case 0x5712U: store(0x205DU, 0U, 0x5714U, kZeroPage); break;
+        case 0x5714U: load(0xA9U, 0x5716U, kImmediate); break;
+        case 0x5716U: store(0x202FU, registers.accumulator, 0x5718U, kZeroPage); break;
+        case 0x5718U: load(0x5CU, 0x571AU, kImmediate); break;
+        case 0x571AU: store(0x2030U, registers.accumulator, 0x571CU, kZeroPage); break;
+        case 0x571FU: call(0x59CEU); break;
+        case 0x5738U: load(read(0x205DU), 0x573AU, kZeroPage); break;
+        case 0x573AU: store(0x222CU, registers.accumulator, 0x573DU, kAbsolute); break;
+        case 0x5742U: load(read(0x222EU), 0x5745U, kAbsolute); break;
+        case 0x5745U: branch((registers.status & kZero) == 0U, 0x574AU); break;
+        case 0x5747U: step(0x57D5U, kJump); finished = true; break;
+        case 0x574AU:
+            registers.status = static_cast<std::uint8_t>(
+                (set_nz(registers.status, static_cast<std::uint8_t>(registers.accumulator - 2U))
+                 & ~kCarry) | (registers.accumulator >= 2U ? kCarry : 0U));
+            step(0x574CU, kImmediate); break;
+        case 0x574CU: branch((registers.status & kZero) != 0U, 0x5751U); break;
+        case 0x574EU: call(0x76BBU); break;
+        case 0x5751U: store(0x205DU, 0U, 0x5753U, kZeroPage); break;
+        case 0x5753U: load(0xDCU, 0x5755U, kImmediate); break;
+        case 0x5755U: store(0x202FU, registers.accumulator, 0x5757U, kZeroPage); break;
+        case 0x5757U: load(0x5CU, 0x5759U, kImmediate); break;
+        case 0x5759U: store(0x2030U, registers.accumulator, 0x575BU, kZeroPage); break;
+        case 0x575EU: call(0x59E7U); break;
+        case 0x577AU: load(read(0x205DU), 0x577CU, kZeroPage); break;
+        case 0x577CU:
+            branch((registers.status & kZero) == 0U, 0x5781U);
+            finished = pc == 0x5781U;
+            break;
+        case 0x577EU: step(0x584CU, kJump); finished = true; break;
+        default: return std::nullopt;
+        }
+    }
+    if (!finished) {
+        return std::nullopt;
+    }
+    replacement.return_instruction = {registers.mpr[pc >> 13U], pc};
+    replacement.output_registers = registers;
+    replacement.body_master_cycles = cycle;
+    return replacement;
+}
+
 std::optional<RoutineReplacement> replace_core_tii_transfer(
     const RoutineEntry& entry)
 {

@@ -124,6 +124,15 @@ emulated run.
 
 ## The screening horizon
 
+The scene-selection controller at `08:56D3-577E` is no longer retained as one
+enclosing bulk-upload/scheduler transaction. It now has bounded native segments
+at its actual child calls and return addresses, including all three input loops
+and choice transitions. The child bodies and frame waits keep their existing
+owners. This resolves the old transaction-size objection without increasing
+bridge capacity or predicting input across frames. The adjacent bootstrap at
+`08:55A6-56C0` and its countdown remain separate work; see the measured evidence
+in [NATIVE_PORT_WORKFLOW.md](NATIVE_PORT_WORKFLOW.md).
+
 The canonical 3,600-frame route has no further standalone table-rule entry and
 return contract to admit. Its filtered residue — 3,228,057 unregistered
 non-wait cycles in 238 clusters as of the 2026-08-22 re-rank — consists only of

@@ -2043,6 +2043,13 @@ replace_tilemap_upload(
 [[nodiscard]] std::optional<emulation::RoutineReplacement>
 replace_core_tii_transfer(const emulation::RoutineEntry& entry);
 
+// Scene-selection controller, bounded at its actual child calls and resumed
+// at their return addresses. Frame waits and actor passes keep their owners.
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_scene_selection_controller(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram);
+
 // The frame around the collision scanner: the playfield-tile probe at 01:CD74,
 // the ball/table gate at 01:CA84, the sweep setup at 01:CB2A and its tail, the
 // single-slot probe at 01:CBAB and the contact dispatcher at 01:CBCF. One walk
