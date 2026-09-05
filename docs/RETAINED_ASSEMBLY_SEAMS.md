@@ -27,6 +27,25 @@ Moving `01:C6E3` would require a bridge checkpoint that preserves
 the core's four-step event sampling; an ordinary two-boundary transcript is not
 sufficient, and it is not needed to keep porting adjacent gameplay code.
 
+## VDC word-stream loop boundaries
+
+The ordinary word-stream uploader at `00:E365-E39A` does not need a block
+transfer capability. It is now native in 32-word segments at its existing
+`E37E` loop head. The closing branch remains inside each transcript, with its
+original interrupt checkpoint; the final `E39C` RTS remains in the core. Live
+MPR source resolution, Y wrap/source-page carry, and 16-bit counter borrowing
+are preserved rather than inferred from the 64-word natural fixture.
+
+The adjacent address-fill loop `00:E34C` now owns its `E362` back-edge too.
+Its previous auxiliary installation has been replaced by an admitted registry
+row, not left installed alongside it. Whole-route RAM and VDC bus traces
+prove both changes without enlarging the write or checkpoint channels.
+
+Unlike the compound-sampled `BBRn` seams above, these are ordinary BNE
+instructions with a single interrupt-sample point. Lack of a subroutine return
+inside a large transfer was a chunking constraint, not a reason to retain the
+whole loop in assembly.
+
 ## Fixed overlapping `TII` transfers
 
 The 4,095-write boot clear at `08:585A` and the 1,023-write palette-shadow

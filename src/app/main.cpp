@@ -8213,7 +8213,10 @@ parse_logical_address_range(const std::string_view text)
                            && request.all_calls;
                        const bool proven_vram_upload =
                            request.routine.physical_bank == 0x00U
-                           && (request.routine.logical_pc == 0xE3C0U
+                           && (request.routine.logical_pc == 0xE34CU
+                               || request.routine.logical_pc == 0xE365U
+                               || request.routine.logical_pc == 0xE37EU
+                               || request.routine.logical_pc == 0xE3C0U
                                || request.routine.logical_pc == 0xE3D7U
                                || request.routine.logical_pc == 0xE3FCU
                                || request.routine.logical_pc == 0xE403U
@@ -16088,41 +16091,9 @@ using NativeRegistryEntryObserver = std::function<void(
         std::cerr << "Could not install native Devil Shooter release countdown hook.\n";
         return false;
     }
-    // One iteration of the graphics driver's VDC-address setup loop writes
-    // the low/high latch pair then stops in front of its closing BNE.  The
-    // descriptor checkpoints both device writes, while the core retains the
-    // branch and its interrupt horizon.
-    constexpr RoutineKey kVdcAddressSetupInstruction{
-        .physical_bank = 0x00U,
-        .logical_pc = 0xE34CU,
-    };
-    if (std::find(
-            claimed_routines.begin(),
-            claimed_routines.end(),
-            kVdcAddressSetupInstruction)
-            == claimed_routines.end()
-        && !runtime.install_execution_hook({
-            .routine = kVdcAddressSetupInstruction,
-            .mode = HookMode::replace,
-            .replacement_callback = [&deployment, &replacement_rom](
-                const RoutineEntry& entry,
-                const std::span<const std::byte> work_ram) {
-                ++deployment.core_capability_entries;
-                deployment.span.observe(entry.absolute_master_cycle);
-                auto result = replace_native_gameplay_routine(
-                    entry, work_ram, replacement_rom);
-                if (result) {
-                    ++deployment.core_capability_accepted;
-                    ++deployment.core_vdc_address_steps;
-                    deployment.core_capability_master_cycles +=
-                        result->body_master_cycles;
-                }
-                return result;
-            },
-        })) {
-        std::cerr << "Could not install native VDC-address setup hook.\n";
-        return false;
-    }
+    // E34C, including its closing BNE, has graduated from an auxiliary
+    // VDC-address capability to a fully admitted routine above. Do not install
+    // a second hook here; its cycles and calls now belong to the registry row.
     // PLP samples the interrupt mask before it restores P from the stack.
     // Keep both VBlank epilogues in the core so that ordering remains exact.
     constexpr std::array<std::uint16_t, 2U> kVblankPlpInstructions{

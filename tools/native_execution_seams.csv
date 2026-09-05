@@ -3,7 +3,7 @@
 "00","E01F","E030","core","reset-vector startup establishes the register, stack, and memory-page baseline"
 "00","E134","E134","core","VBlank PLP samples the interrupt mask"
 "00","E32C","E34C","core","graphics VDC-address loop and its branch horizon"
-"00","E362","E39C","core","VDC row-transfer loop has no independent return boundary"
+"00","E362","E39C","guarded","native address-fill back-edge and bounded uncompressed VDC word stream; unusual mapping/flags or device source reads fall back, final RTS remains core-owned"
 "00","E957","E979","guarded","palette-fade continuation is one long VBlank transaction with 123180 ordered writes"
 "00","E950","E950","core","overlapping palette-shadow TII transfer"
 "00","ED4D","ED4D","core","cross-bank wrapper JSR retains the core's live stack push and interrupt sample"

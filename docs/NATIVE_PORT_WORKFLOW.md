@@ -70,9 +70,53 @@ existing selection and sorcerer gates. The final Release executable is rebuilt.
 Evidence: `out/scene-bootstrap-controller-v1` and
 `out/coverage-scene-bootstrap-corpus-v1`.
 
-This leaves `00:E362-E39C`, the `08:5A2E` actor-initialization seams and
-`00:ED4F-ED85` among the next high-impact non-host targets. The leading
-`01:C500-C50E` profile row remains cabinet-owned rather than new porting work.
+The next slice removes the `00:E362-E39C` graphics-transfer cluster from the
+high-impact queue. The address-fill loop at `E34C` now owns its closing BNE;
+the uncompressed word uploader at `E365` resumes at its existing `E37E` loop
+head in bounded 32-word segments. Each original instruction keeps its own
+checkpoint and each VDC store keeps its real bus timing. Source reads resolve
+through live MPRs, including ROM mirrors and RAM, while unsupported device
+reads decline without committing a partial transcript. The final RTSs stay
+with the core. No bridge capacity or interrupt/stack machinery was changed.
+
+Admission grows from 667 to 670: two word-transfer entries plus the promotion
+of the already-native `E34C` auxiliary capability into an admitted row. Its
+old auxiliary installation must not remain alongside the registry hook;
+the cabinet smoke test verifies the resulting deployment. The legacy
+`VDC-address` capability counter is consequently zero, with the work now
+credited to the routine row instead of lost from native coverage.
+
+Across all 31 accepted routes, actual non-wait interpreter residue drops
+from 24,009,945 to 22,863,639 master cycles: 1,146,306 removed (4.8%),
+and 25 interpreted addresses eliminated. Every route improves by 36,222 to
+47,994 cycles. All accepted assembly/registry state hashes and all registry
+abandonment counts remain unchanged. Evidence is in
+`out/coverage-vdc-word-transfer-corpus-v2`; the earlier `-v1` directory retains
+the duplicate-hook installation failure caught before the completed sweep.
+
+`dc_rom_vdc_word_transfer` locks the isolated family to the original
+assembly's full 4,270,592 RAM writes, 1,019,098 VDC bus writes, frame states,
+and the uploader's entry/exit register and cycle tuples. It proves all 2,048
+address-fill iterations and both halves of the natural 64-word transfer.
+The ROM-free `dc_vdc_word_transfer_tests` additionally checks 672 transfer
+cases, seven address-fill cases and rejection guards: long multi-segment
+transfers, 16-bit borrowing (including an initial zero count), Y/source-page
+wrap, odd continuation indices, live RAM/ROM bank crossings, preserved flags,
+exact write/sample offsets and fixed channel bounds. Both tests pass in
+Release and Debug. The focused Release set also retains the existing VRAM,
+scene-bootstrap/selection, sorcerer and cabinet deployment checks.
+
+Both executables are rebuilt. The final RAM-mapping guard tightening is
+rechecked on `gameplay`, `crossfire` and `higharc` in
+`out/coverage-vdc-word-transfer-final-v1`, as well as the owning-family tests.
+Assembly/native artifacts and the strict registry comparison are retained in
+`out/vdc-word-transfer-v1`. The strict comparison still has the same
+pre-existing census difference and complete registry stack-write hash as the
+preceding slice; its failure was not weakened or blessed as assembly parity.
+
+The `08:5A2E` actor-initialization seams and `00:ED4F-ED85` controller are now
+the next coherent high-impact non-host targets. The leading `01:C500-C50E`
+profile row remains cabinet-owned rather than new porting work.
 
 The full Release audit also exposed two stale test-wiring/count expectations,
 corrected without changing their behavioral goldens, and one unresolved

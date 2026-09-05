@@ -44,6 +44,15 @@ dc_enable_strict_warnings(dc_title_logo_tests)
 
 add_test(NAME dc_core_tests COMMAND dc_core_tests)
 
+add_executable(dc_vdc_word_transfer_tests
+    vdc_word_transfer_tests.cpp
+    ../src/app/native_replacements_vram.cpp
+    ../src/app/native_replacements_absorb.cpp)
+target_link_libraries(dc_vdc_word_transfer_tests PRIVATE DevilsCrush::Emulation)
+target_compile_features(dc_vdc_word_transfer_tests PRIVATE cxx_std_20)
+dc_enable_strict_warnings(dc_vdc_word_transfer_tests)
+add_test(NAME dc_vdc_word_transfer_tests COMMAND dc_vdc_word_transfer_tests)
+
 if(TARGET devils_crush)
     add_test(
         NAME dc_unsigned_square_root_semantic
@@ -5485,6 +5494,17 @@ if(TARGET devils_crush)
         )
         set_tests_properties(dc_rom_devil_shooter_dispatch_semantic
             PROPERTIES LABELS rom_required)
+
+        add_test(
+            NAME dc_rom_vdc_word_transfer
+            COMMAND "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/vdc-word-transfer-v1"
+                "-P" "${CMAKE_CURRENT_SOURCE_DIR}/verify_vdc_word_transfer.cmake"
+        )
+        set_tests_properties(dc_rom_vdc_word_transfer PROPERTIES LABELS rom_required)
 
         add_test(
             NAME dc_rom_scene_bootstrap_controller

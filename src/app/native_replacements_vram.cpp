@@ -16,13 +16,16 @@ using emulation::RoutineEntry;
 using emulation::RoutineKey;
 using emulation::RoutineReplacement;
 
-// The graphics driver's four port-streaming loops and adjacent work-RAM
-// stream decoder. All five consume MPR-mapped byte streams without reading a
+// The graphics driver's port-streaming loops and adjacent work-RAM
+// stream decoder. They consume MPR-mapped byte streams without reading a
 // device register, so unlike the interrupt dispatcher above they are fully
 // expressible.
 //
 //   00:E34C  write one VDC address word from $31/$32, then advance the
-//            $2B:$2C transfer counter. The core retains the closing BNE.
+//            $2B:$2C transfer counter, including the closing BNE.
+//   00:E365 / 00:E37E  copy an MPR-mapped word stream to the VDC, in bounded
+//            32-word segments at the existing loop head. Preserve Y and the
+//            source high-byte carry across segments; the core retains RTS.
 //   00:E3C0  clear 512 VRAM words from $7800 through the VDC data ports
 //   00:E3FC  clear 1,024 VCE colour entries through $0404/$0405
 //   00:E41F  the generic word-stream decoder: $2D/$2E is the destination VRAM
@@ -115,7 +118,8 @@ constexpr std::size_t kCheckpointBudget = 1980U;
 
 [[nodiscard]] constexpr bool is_owned_entry(const std::uint16_t logical_pc)
 {
-    return logical_pc == 0xE34CU || logical_pc == 0xE3C0U
+    return logical_pc == 0xE34CU || logical_pc == 0xE365U
+        || logical_pc == 0xE37EU || logical_pc == 0xE3C0U
         || logical_pc == 0xE3D7U
         || logical_pc == 0xE3FCU || logical_pc == 0xE403U
         || logical_pc == 0xE41FU || logical_pc == 0xE439U
@@ -123,12 +127,12 @@ constexpr std::size_t kCheckpointBudget = 1980U;
         || logical_pc == 0xFA6AU || logical_pc == 0xFA6EU;
 }
 
-// The four RTS instructions the core executes itself, as everywhere else in
-// the port.
+// Returns retained by this walk. The address-fill case separately hands back
+// E364 after its final word; neither loop absorbs a caller's stack frame.
 [[nodiscard]] constexpr bool is_return_instruction(
     const std::uint16_t logical_pc)
 {
-    return logical_pc == 0xE3E6U || logical_pc == 0xE41EU
+    return logical_pc == 0xE39CU || logical_pc == 0xE3E6U || logical_pc == 0xE41EU
         || logical_pc == 0xE47CU || logical_pc == 0xE532U;
 }
 
@@ -156,7 +160,10 @@ std::optional<RoutineReplacement> replace_vram_upload(
     if (entry.registers.mpr[0] != 0xFFU) {
         return std::nullopt;
     }
-    if ((entry.routine.logical_pc == 0xE4E3U
+    if ((entry.routine.logical_pc == 0xE34CU
+         || entry.routine.logical_pc == 0xE365U
+         || entry.routine.logical_pc == 0xE37EU
+         || entry.routine.logical_pc == 0xE4E3U
          || entry.routine.logical_pc >= 0xFA40U)
         && entry.registers.mpr[1] != 0xF8U) {
         return std::nullopt;
@@ -399,6 +406,7 @@ std::optional<RoutineReplacement> replace_vram_upload(
     };
 
     auto pc = entry.routine.logical_pc;
+    std::size_t transferred_words = 0U;
     for (;;) {
         if (overflow
             || replacement.checkpoints.size() > 2000U
@@ -701,9 +709,8 @@ std::optional<RoutineReplacement> replace_vram_upload(
 
         // ---- 00:E34C  submit one VDC address word and advance its count ---
         //
-        // This tight setup loop leaves its backward BNE in the core.  That
-        // makes each pass resumable at the real branch horizon, while the two
-        // VDC port stores retain their exact write and interrupt timestamps.
+        // Each word remains a transaction, now including its closing branch.
+        // The branch checkpoint retains its real interrupt sampling horizon.
         case 0xE34CU: {
             load_accumulator(read_ram(zp(0x31U)));  // LDA $31
             append_checkpoint(0xE34CU, 0xE34EU, 12U);
@@ -747,10 +754,97 @@ std::optional<RoutineReplacement> replace_vram_upload(
                 registers.accumulator | read_ram(zp(0x2CU))));  // ORA $2C
             append_checkpoint(0xE360U, 0xE362U, 12U);
 
-            // The core samples and executes this branch, then re-enters at
-            // E34C for the next word or takes the caller's RTS.
-            finish(0xE362U);
+            const bool repeat = (registers.status & kZero) == 0U;
+            const auto next = static_cast<std::uint16_t>(
+                repeat ? 0xE34CU : 0xE364U);
+            append_checkpoint(0xE362U, next, repeat ? 12U : 6U);
+            finish(next);
             return replacement;
+        }
+
+        // ---- 00:E365  uncompressed VDC word stream ----------------------
+        case 0xE365U:
+            load_accumulator(0U);  // LDA #$00
+            append_checkpoint(0xE365U, 0xE367U, 6U);
+            store(0xE367U, zp(0x06U), registers.accumulator);
+            append_checkpoint(0xE367U, 0xE369U, 12U);
+            store_port(0xE369U, 0x0000U, registers.accumulator);
+            append_checkpoint(0xE369U, 0xE36CU, 18U, 6U);
+            load_accumulator(read_ram(zp(0x2DU)));
+            append_checkpoint(0xE36CU, 0xE36EU, 12U);
+            store_port(0xE36EU, 0x0002U, registers.accumulator);
+            append_checkpoint(0xE36EU, 0xE371U, 18U, 6U);
+            load_accumulator(read_ram(zp(0x2EU)));
+            append_checkpoint(0xE371U, 0xE373U, 12U);
+            store_port(0xE373U, 0x0003U, registers.accumulator);
+            append_checkpoint(0xE373U, 0xE376U, 18U, 6U);
+            load_accumulator(2U);
+            append_checkpoint(0xE376U, 0xE378U, 6U);
+            store(0xE378U, zp(0x06U), registers.accumulator);
+            append_checkpoint(0xE378U, 0xE37AU, 12U);
+            store_port(0xE37AU, 0x0000U, registers.accumulator);
+            append_checkpoint(0xE37AU, 0xE37DU, 18U, 6U);
+            registers.y = 0U;  // CLY does not update N/Z on HuC6280.
+            append_checkpoint(0xE37DU, 0xE37EU, 6U);
+            pc = 0xE37EU;
+            break;
+
+        case 0xE37EU: {
+            load_accumulator(source_byte());
+            append_checkpoint(0xE37EU, 0xE380U, 21U);
+            store_port(0xE380U, 0x0002U, registers.accumulator);
+            append_checkpoint(0xE380U, 0xE383U, 18U, 6U);
+            load_y(static_cast<std::uint8_t>(registers.y + 1U));
+            append_checkpoint(0xE383U, 0xE384U, 6U);
+            load_accumulator(source_byte());
+            append_checkpoint(0xE384U, 0xE386U, 21U);
+            store_port(0xE386U, 0x0003U, registers.accumulator);
+            append_checkpoint(0xE386U, 0xE389U, 18U, 6U);
+            load_y(static_cast<std::uint8_t>(registers.y + 1U));
+            append_checkpoint(0xE389U, 0xE38AU, 6U);
+            const bool y_nonzero = (registers.status & kZero) == 0U;
+            append_checkpoint(0xE38AU, y_nonzero ? 0xE38EU : 0xE38CU,
+                y_nonzero ? 12U : 6U);
+            if (!y_nonzero) {
+                const auto high = static_cast<std::uint8_t>(read_ram(zp(0x30U)) + 1U);
+                store(0xE38CU, zp(0x30U), high);
+                registers.status = set_nz(registers.status, high);
+                append_checkpoint(0xE38CU, 0xE38EU, 18U);
+            }
+            load_accumulator(read_ram(zp(0x2BU)));
+            append_checkpoint(0xE38EU, 0xE390U, 12U);
+            const bool low_nonzero = (registers.status & kZero) == 0U;
+            append_checkpoint(0xE390U, low_nonzero ? 0xE394U : 0xE392U,
+                low_nonzero ? 12U : 6U);
+            if (!low_nonzero) {
+                const auto high = static_cast<std::uint8_t>(read_ram(zp(0x2CU)) - 1U);
+                store(0xE392U, zp(0x2CU), high);
+                registers.status = set_nz(registers.status, high);
+                append_checkpoint(0xE392U, 0xE394U, 18U);
+            }
+            const auto low = static_cast<std::uint8_t>(read_ram(zp(0x2BU)) - 1U);
+            store(0xE394U, zp(0x2BU), low);
+            registers.status = set_nz(registers.status, low);
+            append_checkpoint(0xE394U, 0xE396U, 18U);
+            load_accumulator(read_ram(zp(0x2BU)));
+            append_checkpoint(0xE396U, 0xE398U, 12U);
+            load_accumulator(static_cast<std::uint8_t>(
+                registers.accumulator | read_ram(zp(0x2CU))));
+            append_checkpoint(0xE398U, 0xE39AU, 12U);
+            const bool repeat = (registers.status & kZero) == 0U;
+            pc = repeat ? 0xE37EU : 0xE39CU;
+            append_checkpoint(0xE39AU, pc, repeat ? 12U : 6U);
+            if (overflow) {
+                return std::nullopt;
+            }
+            // A real back-edge, not an extra instruction/interrupt horizon.
+            // 32 words leave ample room for page carry and counter borrow in
+            // both channels, even when the incoming count is zero (65,536).
+            if (++transferred_words == 32U) {
+                finish(pc);
+                return replacement;
+            }
+            break;
         }
 
         // ---- 00:E3C0  clear 512 VRAM words from $7800 --------------------

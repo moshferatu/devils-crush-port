@@ -1969,7 +1969,8 @@ replace_actor_scheduler_instruction(const emulation::RoutineEntry& entry);
 replace_flipper_owner_instruction(const emulation::RoutineEntry& entry);
 
 // The graphics driver's four port-streaming loops plus the work-RAM byte
-// decoder at 00:E4E3. One walk shared by ten entry points -- each streaming
+// decoder at 00:E4E3 and uncompressed word transfer at E365/E37E. One walk
+// shared by the streaming entry points -- each streaming
 // routine's head and its chunk/record continuation, plus 00:FA40 and the two
 // arms after its hardware-executed BBR0. Every transcript stops at a bounded
 // loop boundary, in front of the BBR0, or in front of an RTS.
