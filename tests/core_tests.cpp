@@ -11228,6 +11228,11 @@ void test_dmd_text_layout()
             == (7 * devils_crush::cabinet::kDmdGlyphAdvance - 3)
                 * default_layout.lines[0].cell_size,
         "a comma uses asymmetric kerning and the score stays centered");
+    check(
+        default_layout.lines[0].origin_y == 54
+            && default_layout.lines[1].origin_y == 174
+            && default_layout.lines[2].origin_y == 174,
+        "the live DMD pulls both text tiers inward for larger outer margins");
 
     // Value growth must not resize either tier. The widest legal values use
     // the same fixed reserves as the initial values.
@@ -11316,6 +11321,13 @@ void test_dmd_text_layout()
             layout.lines[2].cell_size > layout.lines[0].cell_size,
             "the high-score value is larger than its rank label");
     }
+    const auto default_high_score_layout =
+        calculate_dmd_high_score_layout(960, 240, champion);
+    check(
+        default_high_score_layout.lines[0].origin_y == 26
+            && default_high_score_layout.lines[1].origin_y == 96
+            && default_high_score_layout.lines[2].origin_y == 158,
+        "the high-score DMD pulls its outer rows inward around the initials");
     check(
         dmd_high_score_rank(0U) == 0U
             && dmd_high_score_rank(

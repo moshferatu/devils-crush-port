@@ -5,6 +5,12 @@
     Ranks native-port candidates from a whole-ROM instruction cycle profile.
 
 .DESCRIPTION
+    Prefer the registry's `.interpreter.csv` companion when ranking remaining
+    porting work. It records actual interpreted intervals; omit entry and seam
+    filters to retain expensive guarded, core and host boundaries. Whole-ROM
+    profiles also contain accepted native transaction costs and serve a
+    different measurement. The two scopes cannot be merged.
+
     `--instruction-profile` records every executed instruction address and the
     master cycles attributed to it, with no keyed observer set. This script
     turns that flat profile into candidates: it groups contiguous executed
@@ -140,9 +146,20 @@ function Find-ExecutionSeam {
 }
 
 $samplesByAddress = @{}
+$profileScopes = [System.Collections.Generic.HashSet[string]]::new()
 foreach ($path in $ProfilePath) {
+    $profileLines = @(Get-Content -LiteralPath $path)
+    $scope = if ($profileLines -contains "# scope=interpreter-residue") {
+        "interpreter-residue"
+    } else {
+        "whole-ROM"
+    }
+    [void] $profileScopes.Add($scope)
+    if ($profileScopes.Count -gt 1) {
+        throw "Do not merge whole-ROM profiles with interpreter-residue profiles. They measure different work."
+    }
     $rows = @(
-        Get-Content -LiteralPath $path |
+        $profileLines |
             Where-Object { -not $_.StartsWith("#") } |
             ConvertFrom-Csv)
     if ($rows.Count -eq 0) {
@@ -185,6 +202,7 @@ foreach ($path in $ProfilePath) {
 }
 
 $samples = @($samplesByAddress.Values)
+$isInterpreterResidue = $profileScopes.Contains("interpreter-residue")
 
 $total = ($samples | Measure-Object -Property Cycles -Sum).Sum
 $ranked = @(
@@ -205,10 +223,15 @@ if ($excluded.Count -ne 0 -or $ExcludeFrameSyncWait -or $UnregisteredOnly -or $C
         ($total - $addressable), (100.0 * ($total - $addressable) / $total))
 }
 Write-Output ("Addressable cycles : {0:N0}" -f $addressable)
+if ($isInterpreterResidue) {
+    Write-Output "Measurement       : actual interpreter intervals (native transcript bodies excluded)"
+}
 if ($CandidateOnly) {
     Write-Output "View              : unclassified deployed candidates"
 } elseif ($UnregisteredOnly) {
     Write-Output "View              : unregistered deployed residue (entry-only)"
+} elseif ($isInterpreterResidue) {
+    Write-Output "View              : all remaining interpreter seams, including guarded/core/host"
 }
 
 $seamAccounting = @(
@@ -287,6 +310,8 @@ if ($CandidateOnly) {
 } elseif ($UnregisteredOnly) {
     Write-Output ("Unregistered deployed-residue clusters: {0}" -f
         $clusters.Count)
+} elseif ($isInterpreterResidue) {
+    Write-Output ("Remaining interpreter clusters: {0}; registry marks entry ownership, not native coverage." -f $clusters.Count)
 } else {
     $coveredClusters = @($clusters | Where-Object Registry)
     $coveredMeasure = $coveredClusters |

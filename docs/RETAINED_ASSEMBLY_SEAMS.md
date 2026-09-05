@@ -1,11 +1,12 @@
 # Retained Assembly Seams
 
-Some code is left emulated on purpose. These are not gaps in the port and not
-work items — each one is a place where a native replacement would be *less*
-faithful than the emulated instruction, or where the bridge contract cannot
-express the transaction. They were repeatedly re-proposed and re-rejected while
-they lived in the `Blockers` section of `PROGRESS.md`, so they are collected
-here instead.
+These entries record why particular paths currently retain emulated
+instructions: interrupt sampling, caller ownership, transaction capacity, or
+missing verification. They remain porting candidates when measured interpreter
+cost justifies solving those constraints. Use the coverage sweep's
+`registry-interpreter-residue.md` to prioritize them alongside guarded
+controllers, and supply the required boundary or resumption model before
+expanding native ownership.
 
 Before proposing a replacement that touches any address below, read the reason.
 If the reason no longer holds, say why in the slice, and change the entry.

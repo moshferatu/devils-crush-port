@@ -5474,6 +5474,19 @@ if(TARGET devils_crush)
         )
 
         add_test(
+            NAME dc_rom_devil_shooter_dispatch_semantic
+            CONFIGURATIONS Release
+            COMMAND "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/devil-shooter-dispatch-semantic-v1.csv"
+                "-P" "${CMAKE_CURRENT_SOURCE_DIR}/verify_devil_shooter_dispatch_semantic.cmake"
+        )
+        set_tests_properties(dc_rom_devil_shooter_dispatch_semantic
+            PROPERTIES LABELS rom_required)
+
+        add_test(
             NAME dc_rom_devil_shooter_charge_controller
             COMMAND
                 "${CMAKE_COMMAND}"
@@ -7399,6 +7412,40 @@ if(TARGET devils_crush)
         )
         set_tests_properties(
             dc_rom_music_volume_tail_semantic
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_music_noise_note_prefix_semantic
+            CONFIGURATIONS Release
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/music-noise-note-prefix-semantic-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_music_noise_note_prefix_semantic.cmake"
+        )
+        set_tests_properties(
+            dc_rom_music_noise_note_prefix_semantic
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
+            NAME dc_rom_music_transpose_dispatch_semantic
+            CONFIGURATIONS Release
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/music-transpose-dispatch-semantic-v1.csv"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_music_transpose_dispatch_semantic.cmake"
+        )
+        set_tests_properties(
+            dc_rom_music_transpose_dispatch_semantic
             PROPERTIES LABELS rom_required
         )
 

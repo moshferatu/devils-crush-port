@@ -138,7 +138,7 @@ foreach(expected_line IN ITEMS
     "Observe hook 3 entries: 252"
     "Observe hook 4 entries: 32"
     "Observe hook 5 entries: 2169"
-    "Native replacement 02:5159@all entries: 100 of 101"
+    "Native replacement 02:5159@all entries: 101 of 101"
     "Native replacement 02:518D@all entries: 4 of 4"
     "Native replacement 02:5197@all entries: 96 of 96"
     "Native replacement 02:5475@all entries: 107 of 107"

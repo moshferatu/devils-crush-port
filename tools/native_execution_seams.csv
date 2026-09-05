@@ -40,7 +40,7 @@
 "01","CCD2","CCD2","core","collision-mask hit return consumes a live caller frame with carry already set"
 "01","DA06","DA06","core","VDC selected-register data-low read preserves the controller read buffer and interrupt boundary"
 "01","DA0B","DA0B","core","VDC selected-register data-high read preserves the controller read buffer and interrupt boundary"
-"02","5161","5186","guarded","Devil Shooter release-delay native family falls back outside measured guards"
+"02","5161","5186","guarded","Devil Shooter controller covers idle, collision-marked release, held charge and full-charge dispatch; unusual slot/T states retain core fallback"
 "03","76CA","76CA","core","Giant-Face active-wait RTS uses a live caller frame"
 "03","7B69","7B6C","core","fixed scheduler JSR and live-stack RTS retain the core's exact call boundaries"
 "08","585A","585A","core","overlapping boot-clear TII transfer"

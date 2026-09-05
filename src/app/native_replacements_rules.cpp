@@ -14872,6 +14872,10 @@ replace_devil_shooter_release_delay_gate(
     }
 
     dc_devil_shooter_release_delay_gate gate{};
+    if (work_ram.size() < 0x2000U || entry.registers.x != 0x0EU
+        || (entry.registers.status & 0x20U) != 0U) {
+        return std::nullopt;
+    }
     if (!dc_classify_devil_shooter_release_delay_gate(
             reinterpret_cast<const std::uint8_t*>(work_ram.data()),
             work_ram.size(),
@@ -14883,11 +14887,6 @@ replace_devil_shooter_release_delay_gate(
     const bool is_idle = gate.returns_idle != 0U;
     const bool is_held = gate.table_mode == 0U
         && (gate.button_input & 0x01U) != 0U;
-    if (!is_idle && (!is_held || (entry.registers.status & 0x20U) != 0U
-            || work_ram.size() <= 0x0D15U
-            || std::to_integer<std::uint8_t>(work_ram[0x0D15U]) >= 0x27U)) {
-        return std::nullopt;
-    }
 
     const auto set_nz = [](std::uint8_t status, const std::uint8_t value) {
         status = static_cast<std::uint8_t>(status & 0x7DU);
@@ -14936,11 +14935,70 @@ replace_devil_shooter_release_delay_gate(
         after_button_mask.status,
         after_button_mask.accumulator);
 
+    // Complete the previously unmodelled dispatch arms. A released button
+    // with a signed collision marker is still idle when the charge is zero;
+    // otherwise it enters the launch controller at 51DA. Table mode enters
+    // that controller directly, without reading the player or button bytes.
+    if (gate.table_mode != 0U || (!is_idle && !is_held)) {
+        RoutineReplacement replacement{};
+        auto registers = after_table_mode;
+        std::uint32_t cycle = 0U;
+        const auto checkpoint = [&](const std::uint16_t instruction,
+                                    const std::uint16_t next,
+                                    const std::uint32_t cycles) {
+            cycle += cycles;
+            registers.program_counter = next;
+            replacement.checkpoints.push_back({
+                .interrupt_sample_master_cycle_offset = cycle - 3U,
+                .master_cycle_offset = cycle,
+                .instruction = {0x02U, instruction},
+                .registers = registers,
+            });
+        };
+        checkpoint(0x5159U, 0x515CU, 15U);
+        if (gate.table_mode != 0U) {
+            checkpoint(0x515CU, 0x515EU, 6U);
+            checkpoint(0x515EU, 0x51DAU, 12U);
+        } else {
+            checkpoint(0x515CU, 0x5161U, 12U);
+            registers = after_player;
+            checkpoint(0x5161U, 0x5164U, 15U);
+            registers = after_button;
+            checkpoint(0x5164U, 0x5167U, 15U);
+            registers = after_button_mask;
+            checkpoint(0x5167U, 0x5169U, 6U);
+            checkpoint(0x5169U, 0x516BU, 6U);
+            registers.accumulator = gate.collision_state;
+            registers.status = set_nz(registers.status, registers.accumulator);
+            checkpoint(0x516BU, 0x516EU, 15U);
+            checkpoint(0x516EU, 0x5170U, 6U);
+            registers.accumulator =
+                std::to_integer<std::uint8_t>(work_ram[0x0D15U]);
+            registers.status = set_nz(registers.status, registers.accumulator);
+            checkpoint(0x5170U, 0x5173U, 15U);
+            if (registers.accumulator == 0U) {
+                checkpoint(0x5173U, 0x5178U, 12U);
+                replacement.return_instruction = {0x02U, 0x5178U};
+                replacement.output_registers = registers;
+                replacement.body_master_cycles = cycle;
+                absorb_return(replacement, work_ram, entry.registers.stack_pointer,
+                    {0x02U, 0x5178U}, cycle, registers);
+                return replacement;
+            }
+            checkpoint(0x5173U, 0x5175U, 6U);
+            checkpoint(0x5175U, 0x51DAU, 12U);
+        }
+        replacement.return_instruction = {0x02U, 0x51DAU};
+        replacement.output_registers = registers;
+        replacement.body_master_cycles = cycle;
+        return replacement;
+    }
+
     if (!is_idle) {
-        // The held arm has two genuine child boundaries. The first four calls
-        // leave through the original audio thunk and resume at $518D; every
-        // call leaves through the separately observed $52E3 charge helper and
-        // resumes at $5197. Crossing them keeps both original call artifacts.
+        // An empty charge calls the original audio thunk and resumes at 518D.
+        // Below full charge the controller calls 52E3 and resumes at 5197;
+        // full charge dispatches to the 51AF timer using the same caller frame.
+        // Each child retains its original entry, stack writes and return.
         RoutineReplacement replacement{};
         auto checkpoint = after_button_mask;
         std::uint32_t cycle = 0U;
@@ -15038,6 +15096,13 @@ replace_devil_shooter_release_delay_gate(
         checkpoint.status = compare_status(
             checkpoint.status, checkpoint.accumulator, 0x27U);
         append_checkpoint(0x02U, 0x5190U, 0x5192U, 6U);
+        if (charge == 0x27U) {
+            append_checkpoint(0x02U, 0x5192U, 0x51AFU, 12U);
+            replacement.return_instruction = {0x02U, 0x51AFU};
+            replacement.output_registers = checkpoint;
+            replacement.body_master_cycles = cycle;
+            return replacement;
+        }
         append_checkpoint(0x02U, 0x5192U, 0x5194U, 6U);
 
         const auto stack_high = checkpoint.stack_pointer;
@@ -15116,9 +15181,6 @@ replace_devil_shooter_charge_after_audio(
         return std::nullopt;
     }
     const auto charge = std::to_integer<std::uint8_t>(work_ram[0x0D15U]);
-    if (charge >= 0x27U) {
-        return std::nullopt;
-    }
 
     const auto set_nz = [](std::uint8_t status, const std::uint8_t value) {
         status = static_cast<std::uint8_t>(status & 0x7DU);
@@ -15169,6 +15231,14 @@ replace_devil_shooter_charge_after_audio(
     checkpoint.status = compare_status(
         checkpoint.status, checkpoint.accumulator, 0x27U);
     append_checkpoint(0x5190U, 0x5192U, 21U, checkpoint);
+    if (charge == 0x27U) {
+        append_checkpoint(0x5192U, 0x51AFU, 33U, checkpoint);
+        checkpoint.program_counter = 0x51AFU;
+        replacement.return_instruction = {0x02U, 0x51AFU};
+        replacement.output_registers = checkpoint;
+        replacement.body_master_cycles = 33U;
+        return replacement;
+    }
     append_checkpoint(0x5192U, 0x5194U, 27U, checkpoint);
 
     const auto stack_high = checkpoint.stack_pointer;

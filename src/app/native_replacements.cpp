@@ -129,6 +129,18 @@ replace_native_gameplay_routine_impl(
     if (entry.routine == RoutineKey{0x45U, 0x4092U}) {
         return detail::replace_music_voice_state_load(entry, work_ram);
     }
+    if (entry.routine == RoutineKey{
+            .physical_bank = 0x45U,
+            .logical_pc = 0x46E2U,
+        }) {
+        return detail::replace_music_noise_note_setup_prefix(entry, work_ram);
+    }
+    if (entry.routine == RoutineKey{
+            .physical_bank = 0x45U,
+            .logical_pc = 0x4368U,
+        }) {
+        return detail::replace_music_transpose_dispatch(entry);
+    }
     if (entry.routine == RoutineKey{0x03U, 0x73D3U}) {
         return detail::replace_knight_bsr(entry);
     }

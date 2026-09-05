@@ -7,9 +7,11 @@ Runs the deterministic table-route corpus as an assembly/native A/B sweep.
 .DESCRIPTION
 Each selected route is recorded twice: once with the original assembly path
 and once with the full admitted registry. Both runs retain whole-ROM
-instruction profiles, and the deployed profiles are merged into one
-unregistered-residue ranking for the next native port candidate. A committed
-baseline manifest makes either route's state hash a hard regression gate.
+instruction profiles. The registry also records actual interpreted intervals;
+their merged ranking includes all seam classifications and is the primary
+queue for the next port. Entry-only and unclassified views remain secondary
+diagnostics. A committed baseline manifest makes either route's state hash a
+hard regression gate.
 
 The script refuses a non-empty output directory. A coverage run is evidence,
 not a cache: retaining both sides of each comparison makes a later changed
@@ -133,9 +135,14 @@ function Invoke-RouteRecording {
             throw "${Mode} recording for '$($Definition.Name)' omitted $artifact."
         }
     }
+    $interpreterPath = "${profilePath}.interpreter.csv"
+    if ($ReplaceRegistry -and -not (Test-Path -LiteralPath $interpreterPath -PathType Leaf)) {
+        throw "Registry recording omitted its interpreter residue: $interpreterPath"
+    }
     return [pscustomobject] @{
         StatePath = $statePath
         ProfilePath = $profilePath
+        InterpreterPath = $interpreterPath
         StateHash = (Get-FileHash -LiteralPath $statePath -Algorithm SHA256).Hash.ToLowerInvariant()
         ProfileHash = (Get-FileHash -LiteralPath $profilePath -Algorithm SHA256).Hash.ToLowerInvariant()
     }
@@ -196,6 +203,7 @@ foreach ($mode in @("assembly", "registry")) {
 
 $manifest = [System.Collections.Generic.List[object]]::new()
 $registryProfiles = [System.Collections.Generic.List[string]]::new()
+$interpreterProfiles = [System.Collections.Generic.List[string]]::new()
 foreach ($definition in $selectedRoutes) {
     Write-Host ("[{0}/{1}] {2}" -f
         ($manifest.Count + 1), $selectedRoutes.Count, $definition.Name)
@@ -211,6 +219,7 @@ foreach ($definition in $selectedRoutes) {
         RegistryProfileSha256 = $registry.ProfileHash
     }) | Out-Null
     $registryProfiles.Add($registry.ProfilePath) | Out-Null
+    $interpreterProfiles.Add($registry.InterpreterPath) | Out-Null
     if ($baseline.ContainsKey($definition.Name)) {
         $expected = $baseline[$definition.Name]
         $assemblyMatchesBaseline =
@@ -240,6 +249,14 @@ $manifest | Export-Csv -LiteralPath $manifestPath -NoTypeInformation
 $residuePath = Join-Path $root "registry-unregistered-residue.md"
 $candidateResiduePath = Join-Path $root "registry-candidate-residue.md"
 $analyzer = Join-Path $PSScriptRoot "Analyze-InstructionProfile.ps1"
+# Actual interpreter time is the primary porting queue. Classifications are
+# useful context, but must not hide expensive guarded routines or core seams.
+$interpreterResiduePath = Join-Path $root "registry-interpreter-residue.md"
+$interpreterAnalysis = & $analyzer `
+    -ProfilePath $interpreterProfiles.ToArray() `
+    -Top $Top `
+    -ExcludeFrameSyncWait 2>&1
+$interpreterAnalysis | Set-Content -LiteralPath $interpreterResiduePath
 $analysis = & $analyzer `
     -ProfilePath $registryProfiles.ToArray() `
     -Top $Top `
@@ -269,5 +286,6 @@ if ($RequireAssemblyRegistryMatch) {
     Write-Host ("Coverage sweep passed: {0} routes, {1} assembly/registry differences recorded." -f $manifest.Count, $abDivergences)
 }
 Write-Host "Manifest: $manifestPath"
+Write-Host "Primary interpreter residue ranking (all seams): $interpreterResiduePath"
 Write-Host "Merged entry-only residue ranking: $residuePath"
 Write-Host "Merged candidate ranking: $candidateResiduePath"

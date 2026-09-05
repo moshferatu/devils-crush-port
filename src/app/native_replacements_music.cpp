@@ -775,6 +775,100 @@ std::optional<RoutineReplacement> replace_music_voice_state_load(
     return replacement;
 }
 
+std::optional<RoutineReplacement> replace_music_noise_note_setup_prefix(
+    const RoutineEntry& entry,
+    const std::span<const std::byte> work_ram)
+{
+    constexpr RoutineKey kRoutine{
+        .physical_bank = kBank,
+        .logical_pc = 0x46E2U,
+    };
+    constexpr RoutineKey kReturn{
+        .physical_bank = kBank,
+        .logical_pc = 0x46E8U,
+    };
+    constexpr std::uint16_t kVoiceNote = 0x2E46U;
+    if (entry.routine != kRoutine || work_ram.size() < 0x1000U) {
+        return std::nullopt;
+    }
+
+    // `LDA $2E46,X; CLC; BIT #$08` begins the decoder's noise-note path.
+    // The following BEQ selects the note-table continuation, so it remains in
+    // the core along with the decoder's live caller frame. This short leaf is
+    // intentionally atomic: the HuC6280 samples a timer edge before retiring
+    // the indexed LDA, while a generic checkpoint has only a post-retirement
+    // register image. At that rare horizon the runtime retains the three core
+    // instructions; away from it all 27 cycles execute natively.
+    const auto offset = static_cast<std::size_t>(
+        static_cast<std::uint16_t>(kVoiceNote + entry.registers.x)
+        - kWorkRamBase);
+    auto checkpoint = entry.registers;
+    checkpoint.accumulator = std::to_integer<std::uint8_t>(work_ram[offset]);
+    checkpoint.status = set_nz(checkpoint.status, checkpoint.accumulator);
+
+    RoutineReplacement replacement{
+        .return_instruction = kReturn,
+        .output_registers = checkpoint,
+        .body_master_cycles = 27U,
+    };
+    checkpoint.status = static_cast<std::uint8_t>(
+        checkpoint.status & static_cast<std::uint8_t>(~kCarry));
+    auto status = static_cast<std::uint8_t>(
+        checkpoint.status & static_cast<std::uint8_t>(~(kZero | kOverflow | kNegative)));
+    if ((checkpoint.accumulator & 0x08U) == 0U) {
+        status = static_cast<std::uint8_t>(status | kZero);
+    }
+    checkpoint.status = static_cast<std::uint8_t>(
+        status | static_cast<std::uint8_t>(0x08U & (kOverflow | kNegative)));
+    checkpoint.program_counter = kReturn.logical_pc;
+    replacement.output_registers = checkpoint;
+    return replacement;
+}
+
+std::optional<RoutineReplacement> replace_music_transpose_dispatch(
+    const RoutineEntry& entry)
+{
+    constexpr RoutineKey kRoutine{
+        .physical_bank = kBank,
+        .logical_pc = 0x4368U,
+    };
+    constexpr RoutineKey kAbsoluteTranspose{
+        .physical_bank = kBank,
+        .logical_pc = 0x436CU,
+    };
+    constexpr RoutineKey kRelativeTranspose{
+        .physical_bank = kBank,
+        .logical_pc = 0x436FU,
+    };
+    if (entry.routine != kRoutine) {
+        return std::nullopt;
+    }
+
+    // `CMP #$80; BNE $436F`: the command body after either target owns the
+    // sequence pointer and caller frame. Keep this dispatch atomic for the
+    // same reason as the adjacent noise-note prefix: an interrupt sample on
+    // its compare boundary needs the original core instruction state.
+    auto output = entry.registers;
+    const auto difference = static_cast<std::uint8_t>(
+        static_cast<std::uint16_t>(output.accumulator) - 0x80U);
+    output.status = set_nz(output.status, difference);
+    output.status = static_cast<std::uint8_t>(
+        output.status & static_cast<std::uint8_t>(~kCarry));
+    if (output.accumulator >= 0x80U) {
+        output.status = static_cast<std::uint8_t>(output.status | kCarry);
+    }
+
+    const bool relative = (output.status & kZero) == 0U;
+    output.program_counter = relative
+        ? kRelativeTranspose.logical_pc
+        : kAbsoluteTranspose.logical_pc;
+    return RoutineReplacement{
+        .return_instruction = relative ? kRelativeTranspose : kAbsoluteTranspose,
+        .output_registers = output,
+        .body_master_cycles = relative ? 18U : 12U,
+    };
+}
+
 std::optional<RoutineReplacement> replace_shared_actor_rts(
     const RoutineEntry& entry)
 {

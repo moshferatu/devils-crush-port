@@ -9,6 +9,15 @@
 namespace devils_crush::cabinet {
 namespace {
 
+// Pull the outer text rows slightly toward the center. Keeping this separate
+// from the glyph-size budgets adds cabinet-like top and bottom margins without
+// making the bitmap font harder to read.
+[[nodiscard]] constexpr int vertical_content_inset(
+    const int output_height) noexcept
+{
+    return output_height / 24;
+}
+
 [[nodiscard]] std::string format_number(const std::uint64_t value)
 {
     auto text = std::to_string(value);
@@ -160,9 +169,14 @@ DmdTextLayout calculate_dmd_text_layout(
     };
 
     DmdTextLayout layout{};
+    const int content_inset = vertical_content_inset(output_height);
     layout.lines[0] = make_line(
-        content.text[0], score_cell_size, output_width / 2, upper_height / 2);
-    const int status_center_y = upper_height + lower_height / 2;
+        content.text[0],
+        score_cell_size,
+        output_width / 2,
+        upper_height / 2 + content_inset);
+    const int status_center_y =
+        upper_height + lower_height / 2 - content_inset;
     layout.lines[1] = make_line(
         content.text[1],
         status_cell_size,
@@ -205,6 +219,7 @@ DmdTextLayout calculate_dmd_high_score_layout(
     };
     const int row_height = output_height / 3;
     const int width_budget = output_width - output_width / 10;
+    const int content_inset = vertical_content_inset(output_height);
     DmdTextLayout layout{};
     for (std::size_t line = 0; line < kDmdTextCount; ++line) {
         const int reserved_cells =
@@ -222,10 +237,13 @@ DmdTextLayout calculate_dmd_high_score_layout(
         }
         const int width = text_width_cells(content.text[line]) * cell_size;
         const int glyph_height = kDmdGlyphHeight * cell_size;
+        const int outer_row_inset = line == 0U
+            ? content_inset
+            : line == 2U ? -content_inset : 0;
         layout.lines[line] = DmdTextLineLayout{
             .origin_x = (output_width - width) / 2,
             .origin_y = static_cast<int>(line) * row_height
-                + (row_height - glyph_height) / 2,
+                + (row_height - glyph_height) / 2 + outer_row_inset,
             .width = width,
             .cell_size = cell_size,
             .glyph_height = glyph_height,

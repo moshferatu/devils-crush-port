@@ -5,6 +5,31 @@ iteration loop fast enough to port related code as a unit. It applies to
 Milestone 4 native gameplay work; it does not weaken the release or milestone
 acceptance criteria in [PLAN.md](../PLAN.md).
 
+## Choose by remaining execution cost
+
+The primary queue is now `registry-interpreter-residue.md` from
+`Invoke-NativeCoverageSweep.ps1`. Each registry recording with
+`--instruction-profile <path>` also writes `<path>.interpreter.csv`, containing
+only actual interpreted intervals. The sweep merges these files, excludes the
+frame-sync wait, and ranks every remaining seam, including `guarded`, `core`
+and `host` classifications. Those labels explain ownership; they do not remove
+a path from consideration. Check whether host-owned work is already native in
+cabinet play before treating a recording-only omission as a new port.
+
+Use the whole-ROM, unregistered-entry and unclassified-candidate reports as
+secondary diagnostics. They include native transaction costs or exclude
+expensive classified paths and therefore cannot measure the remaining work.
+Prefer completing a hot controller's branches and child handoffs over adding
+low-cost leaves merely to increase the admitted-routine count. Compare actual
+non-wait interpreter cycles before and after on the same routes, alongside
+state, call and ordered-write fidelity checks.
+
+For example, completing `02:5159`'s collision-marked release and full-charge
+dispatch paths reduced higharc's deployed non-wait interpreter residue from
+1,075,794 to 868,071 master cycles (19.3%), with unchanged assembly and registry
+state hashes. All 1,629 directly observed controller calls and 20,975 ordered
+call writes remained byte-identical to assembly. The routine count stayed 620.
+
 ## Validation tiers
 
 ### Per slice

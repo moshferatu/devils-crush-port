@@ -8101,6 +8101,8 @@ parse_logical_address_range(const std::string_view text)
                                || request.routine.logical_pc == 0x4228U
                                || request.routine.logical_pc == 0x4389U
                                || request.routine.logical_pc == 0x4434U
+                               || request.routine.logical_pc == 0x4368U
+                               || request.routine.logical_pc == 0x46E2U
                                || request.routine.logical_pc == 0x457AU
                                || request.routine.logical_pc == 0x4667U
                                || request.routine.logical_pc == 0x469BU
@@ -25511,6 +25513,21 @@ int main(const int argc, char* argv[])
                     runtime->export_instruction_profile(),
                     runtime_info.upstream_revision)) {
                 return EXIT_FAILURE;
+            }
+            // The whole-ROM profile includes time inside accepted native
+            // transcripts. Rank future ports from the actual interpreted
+            // intervals, including guarded and core/host seams, instead.
+            if (!options.instruction_profile_path.empty()
+                && options.replace_registry) {
+                auto residue_path = options.instruction_profile_path;
+                residue_path += ".interpreter.csv";
+                if (!write_instruction_profile(
+                        residue_path,
+                        runtime->export_interpreted_instruction_profile(),
+                        runtime_info.upstream_revision,
+                        "interpreter-residue")) {
+                    return EXIT_FAILURE;
+                }
             }
             if (!options.abandonment_census_path.empty()
                 && !write_abandonment_census(

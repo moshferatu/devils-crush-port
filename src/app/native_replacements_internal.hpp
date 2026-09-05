@@ -1946,6 +1946,19 @@ replace_music_voice_state_load(
     const emulation::RoutineEntry& entry,
     std::span<const std::byte> work_ram);
 
+// The noise-note setup prefix is an interruptible three-instruction leaf in
+// the duration decoder. It resumes at the original branch, retaining both
+// branch selection and the decoder's live caller frame in the core.
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_music_noise_note_setup_prefix(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram);
+
+// The transpose command's immediate compare and dispatch branch have no
+// memory effects and retain the command body in the core at either target.
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_music_transpose_dispatch(const emulation::RoutineEntry& entry);
+
 [[nodiscard]] std::optional<emulation::RoutineReplacement>
 replace_shared_actor_rts(const emulation::RoutineEntry& entry);
 
