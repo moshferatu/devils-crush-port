@@ -28,6 +28,8 @@ using emulation::RoutineReplacement;
 //            source high-byte carry across segments; the core retains RTS.
 //   00:E3C0  clear 512 VRAM words from $7800 through the VDC data ports
 //   00:E3FC  clear 1,024 VCE colour entries through $0404/$0405
+//   00:EF2A  copy one 32-word VDC row, advance both pointers by $40 and
+//            decrement the live row count; re-enter at the real back-edge.
 //   00:E41F  the generic word-stream decoder: $2D/$2E is the destination VRAM
 //            address and $2F/$30 an MPR-mapped source pointer. Command $00
 //            terminates, $01-$7F copies that many literal little-endian words,
@@ -123,7 +125,7 @@ constexpr std::size_t kCheckpointBudget = 1980U;
         || logical_pc == 0xE3D7U
         || logical_pc == 0xE3FCU || logical_pc == 0xE403U
         || logical_pc == 0xE41FU || logical_pc == 0xE439U
-        || logical_pc == 0xE4E3U || logical_pc == 0xFA40U
+        || logical_pc == 0xE4E3U || logical_pc == 0xEF2AU || logical_pc == 0xFA40U
         || logical_pc == 0xFA6AU || logical_pc == 0xFA6EU;
 }
 
@@ -164,6 +166,7 @@ std::optional<RoutineReplacement> replace_vram_upload(
          || entry.routine.logical_pc == 0xE365U
          || entry.routine.logical_pc == 0xE37EU
          || entry.routine.logical_pc == 0xE4E3U
+         || entry.routine.logical_pc == 0xEF2AU
          || entry.routine.logical_pc >= 0xFA40U)
         && entry.registers.mpr[1] != 0xF8U) {
         return std::nullopt;
@@ -406,6 +409,79 @@ std::optional<RoutineReplacement> replace_vram_upload(
     };
 
     auto pc = entry.routine.logical_pc;
+    if (pc == 0xEF2AU) {
+        // One complete row is 74 writes / 283 checkpoints. Re-read mapped
+        // source bytes after staging the register-select shadow writes: RAM
+        // aliases of $06 and the pointers must observe the same live bytes.
+        // No look-ahead into the next row, no simulated device reads or RTS.
+        do {
+            const auto instruction = pc;
+            std::uint32_t cost = 6U;
+            std::uint32_t sample_back = 3U;
+            switch (pc) {
+            case 0xEF2AU: load_accumulator(0U); pc = 0xEF2CU; break;
+            case 0xEF3BU: load_accumulator(2U); pc = 0xEF3DU; break;
+            case 0xEF2CU: case 0xEF3DU:
+                store(pc, zp(0x06U), registers.accumulator);
+                pc = static_cast<std::uint16_t>(pc + 2U); cost = 12U; break;
+            case 0xEF31U: case 0xEF36U: case 0xEF54U: case 0xEF60U: {
+                const auto operand = pc == 0xEF31U || pc == 0xEF60U ? 0x2DU
+                    : pc == 0xEF36U ? 0x2EU : 0x2FU;
+                load_accumulator(read_ram(zp(static_cast<std::uint8_t>(operand))));
+                pc = static_cast<std::uint16_t>(pc + 2U); cost = 12U; break;
+            }
+            case 0xEF2EU: case 0xEF33U: case 0xEF38U:
+            case 0xEF3FU: case 0xEF45U: case 0xEF4BU: {
+                const auto port = pc == 0xEF2EU || pc == 0xEF3FU ? 0U
+                    : pc == 0xEF33U || pc == 0xEF45U ? 2U : 3U;
+                store_port(pc, static_cast<std::uint16_t>(port), registers.accumulator);
+                pc = static_cast<std::uint16_t>(pc + 3U);
+                cost = 18U; sample_back = 6U; break;
+            }
+            case 0xEF42U: registers.y = 0U; pc = 0xEF43U; break; // CLY: no flags
+            case 0xEF43U: case 0xEF49U:
+                load_accumulator(source_byte());
+                pc = static_cast<std::uint16_t>(pc + 2U); cost = 21U; break;
+            case 0xEF48U: case 0xEF4EU:
+                load_y(static_cast<std::uint8_t>(registers.y + 1U));
+                pc = static_cast<std::uint16_t>(pc + 1U); break;
+            case 0xEF4FU: compare_y(0x40U); pc = 0xEF51U; break;
+            case 0xEF51U:
+                pc = registers.y != 0x40U ? 0xEF43U : 0xEF53U;
+                cost = registers.y != 0x40U ? 12U : 6U; break;
+            case 0xEF53U: case 0xEF5FU:
+                registers.status = static_cast<std::uint8_t>(registers.status & ~kCarry);
+                pc = static_cast<std::uint16_t>(pc + 1U); break;
+            case 0xEF56U: case 0xEF62U:
+                add_with_carry(0x40U); pc = static_cast<std::uint16_t>(pc + 2U); break;
+            case 0xEF58U: case 0xEF5DU: case 0xEF64U: case 0xEF69U: {
+                const auto operand = pc == 0xEF58U ? 0x2FU : pc == 0xEF5DU ? 0x30U
+                    : pc == 0xEF64U ? 0x2DU : 0x2EU;
+                store(pc, zp(static_cast<std::uint8_t>(operand)), registers.accumulator);
+                pc = static_cast<std::uint16_t>(pc + 2U); cost = 12U; break;
+            }
+            case 0xEF5AU: case 0xEF66U: // CLA: no flags, preserve low-byte carry
+                registers.accumulator = 0U; pc = static_cast<std::uint16_t>(pc + 1U); break;
+            case 0xEF5BU: case 0xEF67U:
+                add_with_carry(read_ram(zp(pc == 0xEF5BU ? 0x30U : 0x2EU)));
+                pc = static_cast<std::uint16_t>(pc + 2U); cost = 12U; break;
+            case 0xEF6BU:
+                registers.x = static_cast<std::uint8_t>(registers.x - 1U);
+                registers.status = set_nz(registers.status, registers.x);
+                pc = 0xEF6CU; break;
+            case 0xEF6CU:
+                pc = registers.x != 0U ? 0xEF2AU : 0xEF6EU;
+                cost = registers.x != 0U ? 12U : 6U; break;
+            default: return std::nullopt;
+            }
+            if (overflow) { return std::nullopt; }
+            append_checkpoint(instruction, pc, cost, sample_back);
+        } while (pc != 0xEF2AU && pc != 0xEF6EU);
+        replacement.return_instruction = {kBank, pc};
+        replacement.output_registers = registers;
+        replacement.body_master_cycles = cycle;
+        return replacement;
+    }
     std::size_t transferred_words = 0U;
     for (;;) {
         if (overflow

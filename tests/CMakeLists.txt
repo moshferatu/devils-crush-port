@@ -5521,6 +5521,14 @@ if(TARGET devils_crush)
         )
         set_tests_properties(dc_rom_vdc_word_transfer PROPERTIES LABELS rom_required)
 
+        add_test(NAME dc_rom_vdc_row_stream
+            COMMAND "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/vdc-row-stream-$<CONFIG>-v1"
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/verify_vdc_row_stream.cmake")
+        set_tests_properties(dc_rom_vdc_row_stream PROPERTIES LABELS rom_required)
+
         add_test(NAME dc_rom_audio_bank_wrapper
             COMMAND "${CMAKE_COMMAND}"
                 "-DTEST_APP=$<TARGET_FILE:dc_audio_bank_wrapper_tests>"

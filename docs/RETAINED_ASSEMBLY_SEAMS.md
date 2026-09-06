@@ -46,6 +46,17 @@ instructions with a single interrupt-sample point. Lack of a subroutine return
 inside a large transfer was a chunking constraint, not a reason to retain the
 whole loop in assembly.
 
+The strided row uploader at `00:EF2A-EF6C` now uses that same real-loop
+boundary. Each native segment writes 32 words, advances the source by 64
+bytes and the destination by 64 **words**, decrements X (zero means 256
+rows), and includes the closing BNE checkpoint. Only `EF6E` RTS remains
+core-owned. Four nested row arrivals with one enclosing return are no longer
+a reason to retain the body: each row fits 74 writes and 283 checkpoints.
+VDC stores retain their stolen cycle and early interrupt sample; device source
+reads decline the whole row. The 1,800-frame assembly/native replay compares
+every RAM/VDC write and row/return boundary, while direct fixtures cover RAM
+aliases, MPR crossings, carries, count rollover and a complete 256-row stream.
+
 ## Selection actor input and glyph handoffs
 
 The initializer at `08:5A2E` already owns its first glyph and coroutine

@@ -182,7 +182,7 @@ master cycles: 586,080 removed (2.7%), with a reduction on every route and
 counts remain unchanged. All 17 focused Release tests pass; the new wrapper
 regression and core tests also pass in Debug. Both executables are rebuilt.
 The next coherent
-non-host controller in the refreshed queue is the VDC row-stream uploader
+non-host controller selected from that refreshed queue was the VDC row-stream uploader
 `00:EF2A-EF6E` (463,977 cycles); its existing row back-edge is a natural bounded
 transaction boundary. The larger `CBF9`, `CB68` and `FA67` single-instruction
 rows still require their precise core event/return contracts, not an ordinary
@@ -192,6 +192,42 @@ The strict full-registry parity rerun in `out/audio-bank-wrapper-v1` retains
 the pre-existing census mismatch and the same registry stack-write SHA-256
 `6130a0d537c2e73a1bcff723338339ed1cc08bffb045e713a6ac69f5edd55fb1`.
 Passing isolated wrapper parity must not be reported as full-registry parity.
+
+The VDC row-stream uploader `00:EF2A-EF6C` is now native, bringing admission
+to 677 routines. A segment owns one complete 32-word row including both
+pointer advances and the X-count back-edge; `EF6E` RTS remains in the core.
+This resolves the old nested-arrival/enclosing-return objection without
+increasing the bridge's write or checkpoint capacity. Both pointers advance
+by `$40`, but one is a byte source and the other a word-addressed destination.
+The model resolves the source through live MPRs and staged RAM, preserves
+CLA/CLY flags, and declines device reads or unsupported D/T/mapping states.
+
+`dc_vdc_word_transfer_tests` now includes 8,448 row boundary combinations,
+all X values and source low bytes, RAM aliases, ROM/MPR crossings, destination
+carry/wrap, exact write offsets and interrupt samples, plus a complete
+zero-count/256-row stream and negative guards. `dc_rom_vdc_row_stream`
+compares a fresh assembly/native 1,800-frame replay and fixed assembly goldens:
+all four row calls, five row/return observations, 4,270,592 RAM writes and
+1,019,098 VDC writes. The replay evidence is in `out/vdc-row-stream-v1`.
+
+The complete 31-route sweep in `out/coverage-vdc-row-stream-corpus-v1`
+reduces actual non-wait interpreter residue from 20,794,209 to 20,330,883
+master cycles: 463,326 removed (2.2%), exactly 14,946 per route and 35 fewer
+interpreted addresses. All accepted assembly and registry state baselines
+and all abandonment counts remain unchanged. All 19 focused Release tests
+pass; the row boundary tests, assembly/native replay and core tests also pass
+in Debug. Both executables have been rebuilt with the 677-entry registry.
+The separate strict full-registry parity rerun still has the pre-existing
+census mismatch and unchanged stack-write hash `6130a0d5...dd55fb1`; no parity
+assertion or accepted baseline was relaxed.
+
+The refreshed non-host controller queue now starts with the music command
+region `45:4569-45F2` (421,638 cycles), followed by the guarded nudge-input
+region `01:C3CB-C3E0` (388,470). The former already has an inlined command
+model: investigate why those deployed arrivals remain interpreted and prove
+its real dispatch/return boundaries before adding ownership. The larger
+single-instruction return/compound-branch seams remain separate core-contract
+work, and the leading `01:C500-C50E` row is already cabinet-native host work.
 
 The full Release audit also exposed two stale test-wiring/count expectations,
 corrected without changing their behavioral goldens, and one unresolved

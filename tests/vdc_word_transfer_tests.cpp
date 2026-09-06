@@ -158,6 +158,84 @@ void check_transfer(const std::vector<std::byte>& rom, std::uint16_t count,
         completed += words;
     }
 }
+void check_row(const std::vector<std::byte>& rom, std::uint16_t source,
+    std::uint16_t destination, std::uint8_t count, std::uint8_t status)
+{
+    Ram ram{};
+    for (std::size_t i = 0; i < ram.size(); ++i) {
+        ram[i] = static_cast<std::byte>((i * 13U + i / 256U) & 255U);
+    }
+    ram[0x2D] = static_cast<std::byte>(destination & 255U);
+    ram[0x2E] = static_cast<std::byte>(destination >> 8U);
+    ram[0x2F] = static_cast<std::byte>(source & 255U);
+    ram[0x30] = static_cast<std::byte>(source >> 8U);
+    auto entry = entry_at(0xEF2A);
+    entry.registers.x = count;
+    entry.registers.y = 0xFF;
+    entry.registers.status = status;
+    const auto snapshot = ram;
+    const auto result = replace_vram_upload(entry, ram, rom);
+    require(result.has_value(), "row declined");
+    require(ram == snapshot, "row mutated input");
+    require(result->checkpoints.size() == 283U, "row checkpoint count");
+    require(result->work_ram_writes.size() == 74U, "row write count");
+    std::size_t index = 0;
+    const auto write = [&](std::uint16_t pc, std::uint16_t address,
+        std::uint8_t value, std::uint32_t cycle) {
+        const auto& actual = result->work_ram_writes[index++];
+        require(actual.instruction.logical_pc == pc && actual.instruction.physical_bank == 0U
+            && actual.logical_address == address && actual.value == value
+            && actual.master_cycle_offset == cycle, "row ordered write/timestamp");
+        if (address >= 0x2000) { ram[address - 0x2000] = static_cast<std::byte>(value); }
+    };
+    write(0xEF2C, 0x2006, 0, 18);
+    write(0xEF2E, 0, 0, 36);
+    write(0xEF33, 2, static_cast<std::uint8_t>(destination), 66);
+    write(0xEF38, 3, static_cast<std::uint8_t>(destination >> 8U), 96);
+    write(0xEF3D, 0x2006, 2, 114);
+    write(0xEF3F, 0, 2, 132);
+    for (unsigned word = 0; word < 32U; ++word) {
+        write(0xEF45, 2, mapped_byte(entry, ram, rom,
+            static_cast<std::uint16_t>(source + word * 2U)), 177U + word * 108U);
+        write(0xEF4B, 3, mapped_byte(entry, ram, rom,
+            static_cast<std::uint16_t>(source + word * 2U + 1U)), 222U + word * 108U);
+    }
+    const auto next_source = static_cast<std::uint16_t>(source + 64U);
+    const auto next_destination = static_cast<std::uint16_t>(destination + 64U);
+    write(0xEF58, 0x202F, static_cast<std::uint8_t>(next_source), 3624);
+    write(0xEF5D, 0x2030, static_cast<std::uint8_t>(next_source >> 8U), 3654);
+    write(0xEF64, 0x202D, static_cast<std::uint8_t>(next_destination), 3690);
+    write(0xEF69, 0x202E, static_cast<std::uint8_t>(next_destination >> 8U), 3720);
+    const auto remaining = static_cast<std::uint8_t>(count - 1U);
+    const auto& output = result->output_registers;
+    const auto high_sum = unsigned(destination >> 8U) + ((destination & 255U) >= 192U ? 1U : 0U);
+    const auto expected_status = static_cast<std::uint8_t>((status & 0x14U)
+        | (high_sum > 255U ? 1U : 0U)
+        | ((destination >> 8U) == 0x7FU && high_sum == 0x80U ? 0x40U : 0U)
+        | (remaining == 0U ? 2U : 0U) | (remaining & 0x80U));
+    require(output.x == remaining && output.y == 64U
+        && output.accumulator == static_cast<std::uint8_t>(next_destination >> 8U)
+        && output.status == expected_status && output.stack_pointer == entry.registers.stack_pointer
+        && output.mpr == entry.registers.mpr, "row final registers");
+    require(result->body_master_cycles == (remaining == 0U ? 3732U : 3738U), "row total cycles");
+    require(result->return_instruction.logical_pc == (remaining == 0U ? 0xEF6EU : 0xEF2AU),
+        "row back-edge/RTS boundary");
+    auto previous_status = status;
+    std::uint32_t previous_cycle = 0;
+    for (const auto& point : result->checkpoints) {
+        const auto pc = point.instruction.logical_pc;
+        const bool port = pc == 0xEF2E || pc == 0xEF33 || pc == 0xEF38
+            || pc == 0xEF3F || pc == 0xEF45 || pc == 0xEF4B;
+        require(point.master_cycle_offset > previous_cycle
+            && point.interrupt_sample_master_cycle_offset == point.master_cycle_offset - (port ? 6U : 3U),
+            "row interrupt sample");
+        if (pc == 0xEF42 || pc == 0xEF5A || pc == 0xEF66) {
+            require(point.registers.status == previous_status, "row CLA/CLY changed flags");
+        }
+        previous_status = point.registers.status;
+        previous_cycle = point.master_cycle_offset;
+    }
+}
 } // namespace
 
 int main()
@@ -186,6 +264,64 @@ int main()
             }
         }
         Ram ram{};
+        unsigned row_cases = 0;
+        for (unsigned count = 0; count < 256U; ++count) {
+            for (const auto source : {0x2000U, 0x2020U, 0x3FE0U, 0x9FC0U, 0x9FE1U,
+                                     0x9FFFU, 0xBFF0U, 0xDFC0U}) {
+                for (const auto status : {0U, 0xD7U, 0x10U, 0x87U}) {
+                    check_row(rom, static_cast<std::uint16_t>(source),
+                        static_cast<std::uint16_t>(0xFF00U + count),
+                        static_cast<std::uint8_t>(count), static_cast<std::uint8_t>(status));
+                    ++row_cases;
+                }
+            }
+        }
+        // Every source low byte, including carry at C0, independently of X.
+        for (unsigned low = 0; low < 256U; ++low) {
+            check_row(rom, static_cast<std::uint16_t>(0x9F00U + low),
+                static_cast<std::uint16_t>(0x7F00U + low), 1U, 0xD7U);
+            ++row_cases;
+        }
+        for (const auto source : {0xFFF0U, 0xBFE1U}) {
+            ram[0x2F] = static_cast<std::byte>(source & 255U);
+            ram[0x30] = static_cast<std::byte>(source >> 8U);
+            auto entry = entry_at(0xEF2A);
+            entry.registers.mpr[6] = 0xFF;
+            require(!replace_vram_upload(entry, ram, rom), "row device crossing accepted");
+        }
+        for (const auto flag : {0x08U, 0x20U, 0x28U}) {
+            auto entry = entry_at(0xEF2A);
+            entry.registers.status = static_cast<std::uint8_t>(flag);
+            require(!replace_vram_upload(entry, ram, rom), "row unsupported flags");
+        }
+        for (const auto segment : {0U, 1U}) {
+            auto entry = entry_at(0xEF2A);
+            entry.registers.mpr[segment] = 0;
+            require(!replace_vram_upload(entry, ram, rom), "row unsupported mapping");
+        }
+        require(!replace_vram_upload(entry_at(0xEF2A), std::span<const std::byte>(ram).first(8191), rom),
+            "row short RAM");
+        std::printf("VDC row-stream boundary tests passed: %u cases plus guards.\n", row_cases);
+        // X=0 means 256 rows, with a fresh live snapshot at each back-edge.
+        ram.fill(std::byte{0});
+        ram[0x30] = std::byte{0x40};
+        auto row_entry = entry_at(0xEF2A);
+        row_entry.registers.x = 0;
+        for (unsigned row = 0; row < 256U; ++row) {
+            const auto result = replace_vram_upload(row_entry, ram, rom);
+            require(result.has_value(), "256-row stream declined");
+            for (const auto& write : result->work_ram_writes) {
+                if (write.logical_address >= 0x2000U) {
+                    ram[write.logical_address - 0x2000U] = static_cast<std::byte>(write.value);
+                }
+            }
+            require(result->return_instruction.logical_pc == (row == 255U ? 0xEF6EU : 0xEF2AU),
+                "256-row stream stopped early");
+            row_entry.routine = result->return_instruction;
+            row_entry.registers = result->output_registers;
+        }
+        require(ram[0x2D] == std::byte{0} && ram[0x2E] == std::byte{0x40}
+            && ram[0x2F] == std::byte{0} && ram[0x30] == std::byte{0x80}, "256-row pointers");
         for (const auto count : {0U, 1U, 2U, 255U, 256U, 257U, 65535U}) {
             ram[0x2BU] = static_cast<std::byte>(count & 255U);
             ram[0x2CU] = static_cast<std::byte>(count >> 8U);
