@@ -64,6 +64,24 @@ RAM, video memory, pixels, audio, ordered RAM/VDC writes and child boundaries
 against assembly. This replaces missing verification with a reproducible
 controller-level test rather than treating the handoffs as permanent barriers.
 
+## Audio command bank-call boundary
+
+`00:ED58` now owns PHX, all three mapper-shadow saves, the consecutive-bank
+mapping, and the real `JSR E262`. `00:ED75` owns the live-stack restoration of
+MPR4/MPR3/MPR2 and X. The audio driver remains an independent child and `ED85`
+RTS stays core-owned. The earlier description of `ED5E` as an unusual entry
+was misleading: it is an interior PHA; the actual wrapper starts at `ED58`.
+No partially constructed caller frame needs to be guessed.
+
+The existing 3,600-frame bank-wrapper regression now covers both entries,
+without changing its assembly census or ordered stack/mapper-write goldens.
+An additional joypad replay compares every frame's audio, pixels, RAM, video
+memory, ordered RAM/VDC writes and restored register/MPR boundary, with the
+wrapper isolated and composed with the existing bank-call family. Direct
+fixtures cover all 65,536 combinations of stack pointer and command bank,
+including wrapping pushes/pops and bank increments. The `ED4D-ED57` command
+selector prefix remains core-owned; it is not a JSR instruction at `ED4D`.
+
 ## Fixed overlapping `TII` transfers
 
 The 4,095-write boot clear at `08:585A` and the 1,023-write palette-shadow

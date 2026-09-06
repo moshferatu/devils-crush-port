@@ -8194,7 +8194,9 @@ parse_logical_address_range(const std::string_view text)
                                || request.routine.logical_pc == 0xE262U
                                || request.routine.logical_pc == 0xECC6U
                                || request.routine.logical_pc == 0xECE2U
-                               || request.routine.logical_pc == 0xECF2U)
+                               || request.routine.logical_pc == 0xECF2U
+                               || request.routine.logical_pc == 0xED58U
+                               || request.routine.logical_pc == 0xED75U)
                            && request.all_calls;
                        const bool proven_vblank_handler =
                            request.routine.physical_bank == 0x00U

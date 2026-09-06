@@ -1305,6 +1305,10 @@ replace_native_gameplay_routine_impl(
             }) {
         return detail::replace_bank_call_wrappers(entry, work_ram, rom);
     }
+    if (entry.routine == RoutineKey{.physical_bank = 0x00U, .logical_pc = 0xED58U}
+        || entry.routine == RoutineKey{.physical_bank = 0x00U, .logical_pc = 0xED75U}) {
+        return detail::replace_bank_call_wrappers(entry, work_ram, rom);
+    }
     // One shared walk, eleven entry points: the VDC interrupt handler. Each
     // transcript stops in front of the call it makes, the PLP that restores the
     // interrupted status byte, the arm the dispatcher hands off to, or -- for

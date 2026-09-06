@@ -17,7 +17,7 @@ endif()
 # shadows of MPR2-MPR5, and keeping the shadow and the register in step is what
 # makes the idiom re-entrant.
 #
-# Ten entry points share one walk. Five are heads; the rest are the addresses
+# Twelve entry points share one walk. Six are heads; the rest are the addresses
 # each wrapper's call comes back to, because a wrapper exists to call something,
 # and every walk ends by making that call.
 #
@@ -31,9 +31,11 @@ endif()
 #   00:ECC6  the VBlank handler's music call: save MPR2-MPR4, map banks $45-$47
 #   00:ECE2  restore MPR2-MPR4
 #   00:ECF2  point $47/$48 at $4003 and jump through it into bank $45
+#   00:ED58  save X/MPR2-MPR4 and call the audio-command trampoline
+#   00:ED75  restore the caller's live stack frame, leaving ED85 RTS in core
 #
-# All ten are admitted on every call. They carry no game logic, read nothing an
-# interrupt handler leaves changed, and have bodies of 36 to 183 master cycles
+# All twelve are admitted on every call. They carry no game logic, read nothing an
+# interrupt handler leaves changed, and have bodies of 21 to 198 master cycles
 # against a 5,068-cycle timer period, so there is nothing for the horizon valve
 # or the shared-state guard to decline.
 #
@@ -93,6 +95,10 @@ execute_process(
         "00:ECE2@all"
         --replace-hook
         "00:ECF2@all"
+        --replace-hook
+        "00:ED58@all"
+        --replace-hook
+        "00:ED75@all"
         --work-ram-write-range
         "201E-2021"
         --work-ram-write-range
@@ -131,6 +137,8 @@ foreach(expected_line IN ITEMS
     "Native replacement 00:ECC6@all entries: 3599 of 3599"
     "Native replacement 00:ECE2@all entries: 3599 of 3599"
     "Native replacement 00:ECF2@all entries: 3599 of 3599"
+    "Native replacement 00:ED58@all entries: 72 of 72"
+    "Native replacement 00:ED75@all entries: 72 of 72"
     "Work-RAM write trace complete: 6389776 selected writes"
 )
     string(FIND "${recorder_output}" "${expected_line}" line_offset)
@@ -164,9 +172,9 @@ endforeach()
 
 message(
     STATUS
-    "Semantic bank-switching call wrappers run all ten entry points natively "
-    "across 54,772 admitted entries as instruction-boundary transcripts, make "
-    "all 32,329 of the calls the family exists to make, and land on the "
+    "Semantic bank-switching call wrappers run all twelve entry points natively "
+    "across 54,916 admitted entries as instruction-boundary transcripts, make "
+    "all 32,401 of the calls the family exists to make, and land on the "
     "callee, with the MPR shadows, the trampoline vector, the sequencer entry "
     "pointer, every pushed return address, the whole stack page and the state "
     "census identical to assembly."

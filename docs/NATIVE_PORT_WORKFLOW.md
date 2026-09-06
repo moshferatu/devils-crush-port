@@ -154,9 +154,44 @@ The natural 1,800-frame CLI recording also retains its original state and
 all 4,270,592 RAM writes and 1,019,098 VDC writes. Evidence and the rerun of
 the unchanged pre-existing strict registry parity failure are under
 `out/selection-actor-controller-v1`. No crash fix or regression gate was
-reverted. The `00:ED4F-ED85` banked controller remains a coherent high-impact
-non-host target; the leading `01:C500-C50E` profile row is cabinet-owned,
+reverted. That ranking selected the `00:ED4F-ED85` banked controller for the
+next slice; the leading `01:C500-C50E` profile row is cabinet-owned,
 not new porting work.
+
+The audio-command bank wrapper now has native entry and return segments at
+`00:ED58` and `00:ED75`, bringing the admitted registry to 676. The first saves
+X and all three MPR shadows, maps three consecutive banks, and makes the real
+`JSR E262`; the second restores the caller's live stack frame and stops at the
+core-owned `ED85` RTS. The driver body and interrupt/return machinery keep
+their existing owners. This resolves the mapper/partial-stack deferral at the
+actual wrapper boundaries rather than guessing a frame at the interior `ED5E`.
+
+`dc_rom_bank_call_wrappers_semantic` now includes all 72 natural calls at each
+new entry. Its original 3,600-frame assembly census and 6,389,776 ordered
+stack/mapper/vector writes are unchanged. `dc_rom_audio_bank_wrapper` adds
+65,536 stack-pointer/bank combinations and an 800-frame real-joypad A/B replay,
+both isolated and composed with the existing bank wrappers. Every frame's
+pixels, audio, RAM, video memory, ordered RAM/VDC writes and restored MPR/
+register boundary match assembly in Release and Debug. No assembly golden
+was replaced to admit these entries.
+
+The complete 31-route sweep in `out/coverage-audio-bank-wrapper-corpus-v1`
+reduces actual non-wait interpreter residue from 21,380,289 to 20,794,209
+master cycles: 586,080 removed (2.7%), with a reduction on every route and
+27 fewer interpreted addresses. All accepted state hashes and abandonment
+counts remain unchanged. All 17 focused Release tests pass; the new wrapper
+regression and core tests also pass in Debug. Both executables are rebuilt.
+The next coherent
+non-host controller in the refreshed queue is the VDC row-stream uploader
+`00:EF2A-EF6E` (463,977 cycles); its existing row back-edge is a natural bounded
+transaction boundary. The larger `CBF9`, `CB68` and `FA67` single-instruction
+rows still require their precise core event/return contracts, not an ordinary
+bulk transcript.
+
+The strict full-registry parity rerun in `out/audio-bank-wrapper-v1` retains
+the pre-existing census mismatch and the same registry stack-write SHA-256
+`6130a0d537c2e73a1bcff723338339ed1cc08bffb045e713a6ac69f5edd55fb1`.
+Passing isolated wrapper parity must not be reported as full-registry parity.
 
 The full Release audit also exposed two stale test-wiring/count expectations,
 corrected without changing their behavioral goldens, and one unresolved

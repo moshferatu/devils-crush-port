@@ -26,7 +26,7 @@ using emulation::RoutineReplacement;
 // makes the idiom re-entrant: a wrapper that preempts another restores both
 // from its own stack frame.
 //
-// Nine entry points share one walk. Four of them are heads; the rest are the
+// Twelve entry points share one walk. Six of them are heads; the rest are the
 // addresses control comes back to, because a wrapper's whole purpose is to
 // call something, and every walk ends by making that call:
 //
@@ -40,6 +40,8 @@ using emulation::RoutineReplacement;
 //   00:ECC6  save MPR2/MPR3/MPR4, map banks $45-$47, call $ECF2
 //   00:ECE2  restore MPR2/MPR3/MPR4
 //   00:ECF2  point $47/$48 at $4003 and jump through it into bank $45
+//   00:ED58  save X/MPR2-MPR4, map three banks starting at $30, call $E262
+//   00:ED75  restore the saved mapper shadows and X, stop at the core's RTS
 //
 // Those four calls used to be where a walk stopped rather than what it ended
 // on, which left this family's entire reason for existing to the interpreter:
@@ -69,10 +71,10 @@ using emulation::RoutineReplacement;
 // timer driver never touches them. $2A, $2F, $30 and $55 are written from the
 // main thread only.
 //
-// 00:ED5E is the fifth wrapper and is deliberately absent. It is entered with
-// two of its four stack slots already pushed by its caller, so its entry
-// contract is not the routine's own, and it is 23,000 master cycles across 72
-// calls -- 0.4% of this family.
+// 00:ED58 / ED75 own the complete audio-command wrapper, including the saved
+// X and all three mapper shadows. ED5E is an interior PHA, not its entry.
+// The driver remains a real child call; restoration reads the live stack on
+// reentry, and the final ED85 RTS remains in the core.
 constexpr std::uint8_t kBank = 0x00U;
 
 constexpr std::uint8_t kZero = 0x02U;
@@ -112,7 +114,8 @@ constexpr std::uint32_t kCall = 21U;
         || logical_pc == 0xE219U || logical_pc == 0xE241U
         || logical_pc == 0xE255U || logical_pc == 0xE262U
         || logical_pc == 0xECC6U || logical_pc == 0xECE2U
-        || logical_pc == 0xECF2U;
+        || logical_pc == 0xECF2U
+        || logical_pc == 0xED58U || logical_pc == 0xED75U;
 }
 
 // Where each walk stops. Every stop is now a return: the four calls this
@@ -180,6 +183,10 @@ std::optional<RoutineReplacement> replace_bank_call_wrappers(
     // wrappers are written to run under; T in particular would redirect the
     // accumulator loads through zero page.
     if ((entry.registers.status & (kDecimal | kMemory)) != 0U) {
+        return std::nullopt;
+    }
+    if ((entry.routine.logical_pc == 0xED58U || entry.routine.logical_pc == 0xED75U)
+        && (entry.registers.mpr[1] != 0xF8U || entry.registers.mpr[7] != kBank)) {
         return std::nullopt;
     }
 
@@ -408,7 +415,71 @@ std::optional<RoutineReplacement> replace_bank_call_wrappers(
             return replacement;
         }
 
+        if (pc == 0xED85U) {
+            replacement.return_instruction = {kBank, pc};
+            replacement.output_registers = registers;
+            replacement.body_master_cycles = cycle;
+            return replacement;
+        }
+
         switch (pc) {
+        // Audio command wrapper: preserve the full caller frame, then hand
+        // off through the existing trampoline. No driver body is predicted.
+        case 0xED58U:
+            push(pc, registers.x);
+            append_checkpoint(pc, 0xED59U, 9U);
+            pc = 0xED59U;
+            break;
+        case 0xED59U: case 0xED5CU: case 0xED5FU: case 0xED62U: {
+            const auto address = pc == 0xED59U ? 0x1EU : pc == 0xED5CU ? 0x1FU
+                : pc == 0xED5FU ? 0x20U : 0x30U;
+            load_accumulator(read_ram(zp(static_cast<std::uint8_t>(address))));
+            append_checkpoint(pc, static_cast<std::uint16_t>(pc + 2U), 12U);
+            pc = static_cast<std::uint16_t>(pc + 2U);
+            break;
+        }
+        case 0xED5BU: case 0xED5EU: case 0xED61U:
+            push(pc, registers.accumulator);
+            append_checkpoint(pc, static_cast<std::uint16_t>(pc + 1U), 9U);
+            pc = static_cast<std::uint16_t>(pc + 1U);
+            break;
+        case 0xED64U: case 0xED69U: case 0xED6EU:
+        case 0xED76U: case 0xED7BU: case 0xED80U: {
+            const auto address = (pc == 0xED64U || pc == 0xED80U) ? 0x1EU
+                : (pc == 0xED69U || pc == 0xED7BU) ? 0x1FU : 0x20U;
+            store(pc, zp(static_cast<std::uint8_t>(address)), registers.accumulator);
+            append_checkpoint(pc, static_cast<std::uint16_t>(pc + 2U), 12U);
+            pc = static_cast<std::uint16_t>(pc + 2U);
+            break;
+        }
+        case 0xED66U: case 0xED6BU: case 0xED70U:
+        case 0xED78U: case 0xED7DU: case 0xED82U: {
+            const auto mask = (pc == 0xED66U || pc == 0xED82U) ? 0x04U
+                : (pc == 0xED6BU || pc == 0xED7DU) ? 0x08U : 0x10U;
+            transfer_accumulator_to_mpr(static_cast<std::uint8_t>(mask));
+            append_checkpoint(pc, static_cast<std::uint16_t>(pc + 2U), 15U);
+            pc = static_cast<std::uint16_t>(pc + 2U);
+            break;
+        }
+        case 0xED68U: case 0xED6DU:
+            load_accumulator(static_cast<std::uint8_t>(registers.accumulator + 1U));
+            append_checkpoint(pc, static_cast<std::uint16_t>(pc + 1U), 6U);
+            pc = static_cast<std::uint16_t>(pc + 1U);
+            break;
+        case 0xED72U:
+            call(pc, 0xE262U);
+            break;
+        case 0xED75U: case 0xED7AU: case 0xED7FU:
+            load_accumulator(pop());
+            append_checkpoint(pc, static_cast<std::uint16_t>(pc + 1U), 12U);
+            pc = static_cast<std::uint16_t>(pc + 1U);
+            break;
+        case 0xED84U:
+            registers.x = pop();
+            registers.status = set_nz(registers.status, registers.x);
+            append_checkpoint(pc, 0xED85U, 12U);
+            pc = 0xED85U;
+            break;
         // ---- 00:E1FD  the asset resolver's head ---------------------------
         // One instruction, and an entry for the same reason 00:E114 is one:
         // the resolver is a call and nothing else, so the address is worth

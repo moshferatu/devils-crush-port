@@ -60,6 +60,8 @@ DC_ADMITTED_ROUTINE(0x00U, 0xEBA5U, 1121, 1121, "verify_palette_shadow_semantic"
 DC_ADMITTED_ROUTINE(0x00U, 0xECC6U, 3599, 3599, "verify_bank_call_wrappers_semantic")
 DC_ADMITTED_ROUTINE(0x00U, 0xECE2U, 3599, 3599, "verify_absorbed_return_trace +1")
 DC_ADMITTED_ROUTINE(0x00U, 0xECF2U, 3599, 3599, "verify_bank_call_wrappers_semantic")
+DC_ADMITTED_ROUTINE(0x00U, 0xED58U, 72, 72, "verify_audio_bank_wrapper +1")
+DC_ADMITTED_ROUTINE(0x00U, 0xED75U, 72, 72, "verify_audio_bank_wrapper +1")
 DC_ADMITTED_ROUTINE(0x00U, 0xF08EU, 1226, 1226, "verify_motion_step_semantic")
 DC_ADMITTED_ROUTINE(0x00U, 0xF09AU, 506, 506, "verify_motion_step_semantic")
 DC_ADMITTED_ROUTINE(0x00U, 0xF0A4U, 1022, 1022, "verify_motion_step_semantic")
