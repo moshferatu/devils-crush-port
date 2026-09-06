@@ -53,6 +53,13 @@ target_compile_features(dc_vdc_word_transfer_tests PRIVATE cxx_std_20)
 dc_enable_strict_warnings(dc_vdc_word_transfer_tests)
 add_test(NAME dc_vdc_word_transfer_tests COMMAND dc_vdc_word_transfer_tests)
 
+add_executable(dc_selection_actor_controller_tests
+    selection_actor_controller_tests.cpp
+    ../src/app/native_replacements_selection_actor.cpp)
+target_link_libraries(dc_selection_actor_controller_tests PRIVATE DevilsCrush::Emulation DevilsCrush::Core)
+target_compile_features(dc_selection_actor_controller_tests PRIVATE cxx_std_20)
+dc_enable_strict_warnings(dc_selection_actor_controller_tests)
+
 if(TARGET devils_crush)
     add_test(
         NAME dc_unsigned_square_root_semantic
@@ -5505,6 +5512,13 @@ if(TARGET devils_crush)
                 "-P" "${CMAKE_CURRENT_SOURCE_DIR}/verify_vdc_word_transfer.cmake"
         )
         set_tests_properties(dc_rom_vdc_word_transfer PROPERTIES LABELS rom_required)
+
+        add_test(NAME dc_rom_selection_actor_controller
+            COMMAND "${CMAKE_COMMAND}"
+                "-DTEST_APP=$<TARGET_FILE:dc_selection_actor_controller_tests>"
+                "-DROM=${DC_ROM_PATH}"
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/verify_selection_actor_controller.cmake")
+        set_tests_properties(dc_rom_selection_actor_controller PROPERTIES LABELS rom_required)
 
         add_test(
             NAME dc_rom_scene_bootstrap_controller

@@ -1884,6 +1884,12 @@ replace_native_gameplay_routine_impl(
         }) {
         return detail::replace_upper_table_actor_tile_schedule(entry, work_ram);
     }
+    if (entry.routine == RoutineKey{.physical_bank = 0x08U, .logical_pc = 0x5A3EU}
+        || entry.routine == RoutineKey{.physical_bank = 0x08U, .logical_pc = 0x5A6AU}
+        || entry.routine == RoutineKey{.physical_bank = 0x08U, .logical_pc = 0x5A7AU}
+        || entry.routine == RoutineKey{.physical_bank = 0x08U, .logical_pc = 0x5A86U}) {
+        return detail::replace_selection_actor_controller(entry, work_ram);
+    }
     if (entry.routine
         == RoutineKey{
             .physical_bank = 0x08U,

@@ -114,9 +114,49 @@ Assembly/native artifacts and the strict registry comparison are retained in
 pre-existing census difference and complete registry stack-write hash as the
 preceding slice; its failure was not weakened or blessed as assembly parity.
 
-The `08:5A2E` actor-initialization seams and `00:ED4F-ED85` controller are now
-the next coherent high-impact non-host targets. The leading `01:C500-C50E`
-profile row remains cabinet-owned rather than new porting work.
+The following slice completes the selection actor controller adjacent to
+`08:5A2E`: the recurring `5A3E` input callback and old/new glyph entries
+`5A6A`, `5A7A`, and `5A86`. Four real transaction entries, not four isolated
+leaves, cover both input directions, signed decrement wrap, increment wrap,
+glyph-width selection, and the carry-sensitive tile-address calculation.
+Native segments stop at original child calls or the tail JMP into `5B01`.
+The existing initializer, tile writer, coroutine scheduler and core RTS keep
+their ownership. Decimal/T flags and unsupported RAM/code mapping decline
+before any state changes. Admission grows from 670 to 674.
+
+`dc_rom_selection_actor_controller` supplies its own real joypad route, so
+active selection no longer depends on a user's manual playthrough. It runs
+800 frames each in assembly and native configurations, for normal and wide
+glyph layouts. All 499 callback entries, 45 old-glyph entries, 47 new-glyph
+entries and 45 address-builder entries are native in each case. Both wrap
+directions are mandatory coverage. Each frame compares SHA-256 evidence of
+ordered timestamped RAM/VDC writes, child register/MPR/cycle snapshots,
+complete RAM/video memory, pixels and audio; frozen assembly aggregate
+hashes prevent both sides drifting together. The wide case changes layout
+only at a frame seam and exercises row/column carries. No ROM bytes or
+input-memory bytes are patched. An additional 43,008 input/choice/limit/slot
+combinations, all 256 stack positions, and D/T/mapping/short-RAM guards test
+the production transcript directly.
+
+All 15 focused Release regressions pass, including the existing scene,
+initializer, VDC-transfer, sorcerer and cabinet deployment checks. The new
+controller regression and core tests also pass in Debug. Both executables
+are rebuilt with all 674 admitted routines deployed.
+
+Across all 31 accepted routes, non-wait interpreter residue falls from
+22,863,639 to 21,380,289 master cycles: 1,483,350 removed (6.5%). Each route
+loses 47,850 interpreted cycles. All accepted assembly/registry state hashes
+and abandonment counts remain unchanged. The complete evidence and refreshed
+ranking are in `out/coverage-selection-actor-corpus-v1`; preserving these
+per-configuration baselines does not imply full-registry assembly parity.
+
+The natural 1,800-frame CLI recording also retains its original state and
+all 4,270,592 RAM writes and 1,019,098 VDC writes. Evidence and the rerun of
+the unchanged pre-existing strict registry parity failure are under
+`out/selection-actor-controller-v1`. No crash fix or regression gate was
+reverted. The `00:ED4F-ED85` banked controller remains a coherent high-impact
+non-host target; the leading `01:C500-C50E` profile row is cabinet-owned,
+not new porting work.
 
 The full Release audit also exposed two stale test-wiring/count expectations,
 corrected without changing their behavioral goldens, and one unresolved

@@ -46,6 +46,24 @@ instructions with a single interrupt-sample point. Lack of a subroutine return
 inside a large transfer was a chunking constraint, not a reason to retain the
 whole loop in assembly.
 
+## Selection actor input and glyph handoffs
+
+The initializer at `08:5A2E` already owns its first glyph and coroutine
+schedule. Its recurring `5A3E` callback and `5A6A/5A7A/5A86` glyph controller
+are now admitted separately. The callback snapshots the old choice, handles
+both directions and their wrap rules, and stops after the original `5A66`
+JSR. Erasing the old glyph stops after `5A77`'s JSR; drawing the new glyph
+ends at the tail JMP into the existing `5B01` writer. The `5A69` RTS remains
+core-owned. Neither the VDC writer nor the coroutine scheduler is folded into
+these segments, and their interrupted return handling is unchanged.
+
+The earlier neutral-only recording did not exercise a selection change.
+Admission now includes two real-joypad replays, with both wrap directions,
+normal/wide glyph layout and address carries, comparing each frame's complete
+RAM, video memory, pixels, audio, ordered RAM/VDC writes and child boundaries
+against assembly. This replaces missing verification with a reproducible
+controller-level test rather than treating the handoffs as permanent barriers.
+
 ## Fixed overlapping `TII` transfers
 
 The 4,095-write boot clear at `08:585A` and the 1,023-write palette-shadow

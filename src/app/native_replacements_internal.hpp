@@ -2186,6 +2186,12 @@ replace_upper_table_actor_tile_schedule(
     const emulation::RoutineEntry& entry,
     std::span<const std::byte> work_ram);
 
+// Selection input and old/new glyph controller, split at real child calls.
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_selection_actor_controller(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram);
+
 [[nodiscard]] std::optional<emulation::RoutineReplacement>
 replace_upper_table_string_record(
     const emulation::RoutineEntry& entry,

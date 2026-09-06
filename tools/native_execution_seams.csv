@@ -46,7 +46,7 @@
 "08","585A","585A","core","overlapping boot-clear TII transfer"
 "08","559F","559F","core","upper-table bulk-clear TII transfer"
 "08","4000","401B","core","fixed Bank-08 export JMP vectors retain core interrupt sampling"
-"08","5A2E","5AAA","core","upper-table actor initializer composes the glyph writer and coroutine handoff"
+"08","5A2E","5AAA","guarded","native actor initializer plus selection-input and old/new glyph controller; segments stop at real JSR/tile-writer handoffs; final RTS remains core"
 "08","5ABF","5AFF","core","upper-table string record composes glyph writes and re-enters on FE continuation"
 "08","55A6","56C0","guarded","scene bootstrap is native at real child calls and returns; atypical mapping flags or actor slot retain assembly"
 "09","609B","60AB","host","bank-09 actor scan is owned by the cabinet bridge"

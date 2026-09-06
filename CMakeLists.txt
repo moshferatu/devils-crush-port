@@ -287,6 +287,7 @@ if(DC_BUILD_APP)
         src/app/native_replacements_tilemap.cpp
         src/app/native_replacements_vblank.cpp
         src/app/native_replacements_video.cpp
+        src/app/native_replacements_selection_actor.cpp
         src/app/native_replacements_vram.cpp
     )
 
