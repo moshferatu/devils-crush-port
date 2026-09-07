@@ -75,6 +75,21 @@ RAM, video memory, pixels, audio, ordered RAM/VDC writes and child boundaries
 against assembly. This replaces missing verification with a reproducible
 controller-level test rather than treating the handoffs as permanent barriers.
 
+## Selective scene-record loader
+
+`02:40A8` and the real child-return continuation `02:40BD` now own the
+category-1 scan, pointer carry, skipped records, and both original JSRs.
+The actor loader at `40F6` and finalizer at `C08A` remain independent children;
+`40CE` RTS remains core-owned. A missing local return was a decomposition
+constraint, not a reason to retain the entire asset transaction. Each segment
+stops at a child entry, staging the actual wrapping JSR stack writes. A scan
+over 100 records declines atomically, below the existing bridge capacities.
+
+Two unpatched gameplay routes and the seeded drain fixture compare frame
+state, enclosing call/write artifacts and the complete VDC write stream with
+assembly. Direct fixtures cover all pointer low bytes and stack pointers for
+selected, skipped and terminal records, including CLA carry preservation.
+
 ## Audio command bank-call boundary
 
 `00:ED58` now owns PHX, all three mapper-shadow saves, the consecutive-bank

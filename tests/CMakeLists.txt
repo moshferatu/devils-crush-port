@@ -44,6 +44,15 @@ dc_enable_strict_warnings(dc_title_logo_tests)
 
 add_test(NAME dc_core_tests COMMAND dc_core_tests)
 
+add_executable(dc_selective_scene_controller_tests
+    selective_scene_controller_tests.cpp
+    ../src/app/native_replacements_scene_layout.cpp
+    ../src/app/native_replacements_absorb.cpp)
+target_link_libraries(dc_selective_scene_controller_tests PRIVATE DevilsCrush::Emulation DevilsCrush::GameLogic)
+target_compile_features(dc_selective_scene_controller_tests PRIVATE cxx_std_20)
+dc_enable_strict_warnings(dc_selective_scene_controller_tests)
+add_test(NAME dc_selective_scene_controller_tests COMMAND dc_selective_scene_controller_tests)
+
 add_executable(dc_vdc_word_transfer_tests
     vdc_word_transfer_tests.cpp
     ../src/app/native_replacements_vram.cpp
@@ -5337,6 +5346,15 @@ if(TARGET devils_crush)
             dc_rom_scene_layout
             PROPERTIES LABELS rom_required
         )
+
+        add_test(
+            NAME dc_rom_selective_scene_controller
+            COMMAND "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>" "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/selective-controller-$<CONFIG>-v1"
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/verify_selective_scene_controller.cmake"
+        )
+        set_tests_properties(dc_rom_selective_scene_controller PROPERTIES LABELS rom_required)
 
         add_test(
             NAME dc_rom_selective_scene

@@ -1013,6 +1013,12 @@ replace_devil_shooter_charge_entry_controller(
     std::span<const std::byte> work_ram);
 
 [[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_selective_scene_layout(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram,
+    std::span<const std::byte> rom);
+
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
 replace_scene_layout_record_loop(
     const emulation::RoutineEntry& entry,
     std::span<const std::byte> work_ram,

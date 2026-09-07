@@ -311,11 +311,38 @@ executables are rebuilt. Natural and mixed-registry evidence is retained in
 `out/nudge-controller-v1`; the rare-state fixture is reproducible through
 `dc_rom_nudge_controller_rare_states` without another user capture.
 
-The next coherent controller candidate is the selective scene-record loader
-`02:40A8-40CE` (303,900 interpreted cycles). It scans twelve-byte records,
-conditionally calls `40F6`, then calls `01:C08A`; those real child boundaries
-are the next decomposition points to verify. The larger singleton return
-and compound-branch entries still require their specific core contracts.
+The selective scene-record loader `02:40A8-40CE` is now ported at its initial
+entry and actual `40BD` child-return continuation. It scans twelve-byte
+records, skips non-category-1 records, advances the pointer with carry, and
+stages the original JSR stack writes before handing off to `40F6` or `C08A`.
+Neither child is inlined, and the final `40CE` RTS stays in the core. The
+scan cap declines atomically without enlarging either bridge channel.
+
+The baseline-enforcing 31-route sweep in
+`out/coverage-selective-controller-corpus-v1` reduces actual non-wait
+interpreter cycles from 19,013,487 to 18,710,133: 303,354 removed (1.6%),
+with 19 addresses gone. All assembly and registry state hashes and all
+abandonment counts remain unchanged; no baseline was adjusted. The 546
+remaining cycles in this family are its final core-owned RTS. The separate
+pre-existing whole-registry assembly differences are not resolved by this slice.
+
+The admission regression independently compares alternate, twist and the
+existing seeded drain fixture with assembly, including frame state,
+enclosing call/write artifacts and all VDC writes. Each reaches the initial
+entry once and all seven loader returns. Direct tests cover 196,608
+selected/skipped/terminal cases over every pointer low byte and stack pointer,
+plus full-table scanning, 16-bit pointer wrap, live source mapping, CLA flags,
+D/T rejection and overlong-list/device-source fallback. Admission grows from
+677 to 679. Both executables are rebuilt. All 13 focused Release checks pass,
+including the existing scene, sorcerer and upper-table regressions. Debug
+passes the core/direct tests and all three assembly/native replay comparisons
+too; its trace-heavy replay takes approximately 14 minutes.
+
+The next coherent controller candidate is `09:705C-70BB`, the upper-table
+parent animation continuation (277,791 interpreted cycles), with real motion,
+audio and scheduler calls requiring explicit continuation ownership. The larger
+singleton returns and compound branches still require their specific core
+contracts, not instruction-sized replacements.
 
 The full Release audit also exposed two stale test-wiring/count expectations,
 corrected without changing their behavioral goldens, and one unresolved

@@ -92,7 +92,7 @@
 "02","4F40","4F6B","guarded","Giant-Skeleton continuation belongs to its mapped controller and scheduler"
 "02","4F76","4F8D","guarded","Giant-Skeleton continuation belongs to its mapped controller and scheduler"
 "02","4F92","4F92","guarded","Mercy-Star handler is dispatched by C520 and returns through the shared C654 scheduler tail"
-"02","40A8","40CE","guarded","selective scene-layout loader is an asset transaction without a local gameplay return"
+"02","40CE","40CE","core","selective scene loader final RTS remains core-owned after its C08A child; scan and loader-return continuation are native"
 "02","4A6C","4A90","guarded","Four-Star Wall-Pocket initializer interior returns through the shared 4CF1 actor owner"
 "02","511B","5146","guarded","Devil-Shooter hit continuation retains the active collision and scheduler transaction"
 "02","515C","5160","core","interior of the native Devil-Shooter held-input coroutine"

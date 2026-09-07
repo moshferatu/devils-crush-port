@@ -6560,7 +6560,9 @@ parse_logical_address_range(const std::string_view text)
                                        }
                                && request.all_calls;
                        const bool proven_scene_layout_record_loop =
-                           (request.routine
+                           (request.routine == RoutineKey{0x02U, 0x40A8U}
+                               || request.routine == RoutineKey{0x02U, 0x40BDU}
+                               || request.routine
                                     == RoutineKey{
                                         .physical_bank = 0x02U,
                                         .logical_pc = 0x4090U,

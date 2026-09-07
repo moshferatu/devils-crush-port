@@ -110,6 +110,99 @@ void add_with_carry(CpuRegisters& registers, const std::uint8_t operand)
 
 } // namespace
 
+std::optional<RoutineReplacement> replace_selective_scene_layout(
+    const RoutineEntry& entry,
+    const std::span<const std::byte> work_ram,
+    const std::span<const std::byte> rom)
+{
+    constexpr RoutineKey kStart{0x02U, 0x40A8U};
+    constexpr RoutineKey kAdvance{0x02U, 0x40BDU};
+    if ((entry.routine != kStart && entry.routine != kAdvance)
+        || work_ram.size() < 0x2000U || entry.registers.mpr[1] != 0xF8U
+        || (entry.registers.status & (kDecimal | kMemory)) != 0U) {
+        return std::nullopt;
+    }
+    RoutineReplacement result;
+    auto registers = entry.registers;
+    auto low = std::to_integer<std::uint8_t>(work_ram[0x2FU]);
+    auto high = std::to_integer<std::uint8_t>(work_ram[0x30U]);
+    std::uint32_t cycle = 0U;
+    const auto checkpoint = [&](std::uint16_t pc, std::uint16_t next,
+                                std::uint32_t cycles) {
+        cycle += cycles;
+        registers.program_counter = next;
+        result.checkpoints.push_back({
+            .interrupt_sample_master_cycle_offset = cycle - 3U,
+            .master_cycle_offset = cycle,
+            .instruction = {kBank, pc}, .registers = registers});
+    };
+    const auto load = [&](std::uint8_t value) {
+        registers.accumulator = value;
+        registers.status = set_nz(registers.status, value);
+    };
+    const auto store = [&](std::uint16_t pc, std::uint16_t address) {
+        result.work_ram_writes.push_back({
+            .instruction = {kBank, pc}, .logical_address = address,
+            .value = registers.accumulator, .master_cycle_offset = cycle + 12U});
+        checkpoint(pc, static_cast<std::uint16_t>(pc + 2U), 12U);
+    };
+    const auto call = [&](std::uint16_t pc, std::uint16_t target) {
+        // JSR pushes its last operand address before charging its cycles.
+        const auto saved = static_cast<std::uint16_t>(pc + 2U);
+        for (const auto value : {static_cast<std::uint8_t>(saved >> 8U),
+                                static_cast<std::uint8_t>(saved)}) {
+            result.work_ram_writes.push_back({
+                .instruction = {kBank, pc},
+                .logical_address = static_cast<std::uint16_t>(
+                    0x2100U + registers.stack_pointer),
+                .value = value, .master_cycle_offset = cycle});
+            --registers.stack_pointer;
+        }
+        checkpoint(pc, target, 21U);
+        result.return_instruction = {registers.mpr[target >> 13U], target};
+        result.output_registers = registers;
+        result.body_master_cycles = cycle;
+    };
+    bool advance = entry.routine == kAdvance;
+    if (!advance) {
+        load(0xDBU); checkpoint(0x40A8U, 0x40AAU, 6U);
+        low = registers.accumulator; store(0x40AAU, 0x202FU);
+        load(0x45U); checkpoint(0x40ACU, 0x40AEU, 6U);
+        high = registers.accumulator; store(0x40AEU, 0x2030U);
+    }
+    // The real table has 88 records. A corrupt/unbounded list declines
+    // atomically rather than overflowing the bridge's checkpoint channel.
+    for (unsigned scanned = 0; scanned < 100U; ++scanned) {
+        if (advance) {
+            registers.status &= static_cast<std::uint8_t>(~kCarry);
+            checkpoint(0x40BDU, 0x40BEU, 6U);
+            load(low); checkpoint(0x40BEU, 0x40C0U, 12U);
+            add_with_carry(registers, 12U); checkpoint(0x40C0U, 0x40C2U, 6U);
+            low = registers.accumulator; store(0x40C2U, 0x202FU);
+            registers.accumulator = 0U; // CLA preserves flags, including carry.
+            checkpoint(0x40C4U, 0x40C5U, 6U);
+            add_with_carry(registers, high); checkpoint(0x40C5U, 0x40C7U, 12U);
+            high = registers.accumulator; store(0x40C7U, 0x2030U);
+            checkpoint(0x40C9U, 0x40B0U, 12U);
+        }
+        const auto category = read_mapped_rom(registers, rom,
+            static_cast<std::uint16_t>(low | (static_cast<unsigned>(high) << 8U)));
+        if (!category) { return std::nullopt; }
+        load(*category); checkpoint(0x40B0U, 0x40B2U, 21U);
+        compare_accumulator(registers, 0xFFU);
+        checkpoint(0x40B2U, 0x40B4U, 6U);
+        const bool terminal = *category == 0xFFU;
+        checkpoint(0x40B4U, terminal ? 0x40CBU : 0x40B6U, terminal ? 12U : 6U);
+        if (terminal) { call(0x40CBU, 0xC08AU); return result; }
+        compare_accumulator(registers, 1U); checkpoint(0x40B6U, 0x40B8U, 6U);
+        const bool selected = *category == 1U;
+        checkpoint(0x40B8U, selected ? 0x40BAU : 0x40BDU, selected ? 6U : 12U);
+        if (selected) { call(0x40BAU, 0x40F6U); return result; }
+        advance = true;
+    }
+    return std::nullopt;
+}
+
 std::optional<RoutineReplacement> replace_scene_layout_record_loop(
     const RoutineEntry& entry,
     const std::span<const std::byte> work_ram,
