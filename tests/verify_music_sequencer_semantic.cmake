@@ -92,11 +92,13 @@ endif()
 #     restored the caller's mask before control reaches `41F7`, so the top of
 #     an iteration is somewhere the hardware may take an interrupt anyway.
 #     `4142` is now 3,216 of 3,604 and `4143` takes 3,788 more.
-#   - `457A` declines its $82/$92 command, which pops four bytes and jumps to
-#     $40EE, abandoning the routine's own frame; a leaf transcript that has to
-#     stop in front of an RTS cannot express that. It also declines the
-#     handlers this route never reaches, which are left untranscribed rather
-#     than written blind.
+#   - Sequence-end commands ($82/$92, and the $86 publishing variant) now
+#     execute their four stack pops and terminate on the real JMP to $40EE.
+#     The walk no longer needs to mistake this nonlocal exit for an RTS.
+#     This allows 4015 to accept all 3,599 calls, including the 45 calls that
+#     previously rejected their entire prefix. 4228, 457A and 49F9 consequently
+#     have no standalone arrivals here; verify_music_command_exit keeps their
+#     independent entry proof. Unsupported handlers and timer guards remain.
 #
 # Four work-RAM ranges and two bus ranges scope this, and all six artifacts
 # are compared against the artifacts a pure-assembly run of the same route
@@ -184,10 +186,6 @@ execute_process(
         --replace-hook
         "45:4211@all"
         --replace-hook
-        "45:4228@all"
-        --replace-hook
-        "45:457A@all"
-        --replace-hook
         "45:469B@all"
         --replace-hook
         "45:47E0@all"
@@ -207,8 +205,6 @@ execute_process(
         "45:49B6@all"
         --replace-hook
         "45:49E4@all"
-        --replace-hook
-        "45:49F9@all"
         --observe-hook
         "45:4BCC"
         --replace-hook
@@ -255,8 +251,8 @@ if(NOT recorder_result EQUAL 0)
     )
 endif()
 
-# Both columns moved when the driver-state guard stopped comparing a finished
-# transcript against the interrupt horizon and started comparing the cycle of
+# Historical note: both columns moved when the driver-state guard stopped
+# comparing a finished transcript against the interrupt horizon and compared the cycle of
 # the read it is actually about. Admissions rose -- 45:4044 by four, 45:4142 by
 # eighteen -- because a walk that read one of the driver's channel bank bytes
 # early and ran on well past the horizon is no longer refused for something that
@@ -268,36 +264,34 @@ endif()
 # walked back into these heads over, so admitting more of them means arriving at
 # them less often. A denominator that moves on its own would be a route change;
 # these move against numerators that rose, and the census and both traces below
-# are unchanged, which is what says the route did not.
+# are unchanged, which is what says the route did not. The sequence-end handoff
+# further reduces child arrivals below without changing any artifact golden.
 foreach(expected_line IN ITEMS
     "State census recording complete: 3600 frames"
     "Native replacement 45:4000@all entries: 1 of 1"
     "Native replacement 45:4003@all entries: 3582 of 3599"
     "Native replacement 45:4006@all entries: 58 of 66"
     "Native replacement 45:4009@all entries: 3 of 4"
-    "Native replacement 45:4015@all entries: 3554 of 3599"
-    "Native replacement 45:4044@all entries: 1417 of 1535"
-    "Native replacement 45:409C@all entries: 855 of 892"
-    "Native replacement 45:409F@all entries: 12 of 37"
-    "Native replacement 45:40A2@all entries: 4 of 25"
+    "Native replacement 45:4015@all entries: 3599 of 3599"
+    "Native replacement 45:4044@all entries: 1417 of 1436"
+    "Native replacement 45:409C@all entries: 855 of 873"
+    "Native replacement 45:409F@all entries: 12 of 18"
+    "Native replacement 45:40A2@all entries: 4 of 6"
     "Native replacement 45:413B@all entries: 3599 of 3599"
     "Native replacement 45:4142@all entries: 3562 of 3604"
     "Native replacement 45:4143@all entries: 3 of 42"
     "Native replacement 45:4154@all entries: 13 of 13"
     "Native replacement 45:4169@all entries: 11093 of 11093"
-    "Native replacement 45:4211@all entries: 85 of 85"
-    "Native replacement 45:4228@all entries: 12 of 12"
-    "Native replacement 45:457A@all entries: 4 of 51"
+    "Native replacement 45:4211@all entries: 40 of 40"
     "Native replacement 45:469B@all entries: 224 of 224"
     "Native replacement 45:47E0@all entries: 36 of 36"
     "Native replacement 45:485E@all entries: 308 of 308"
-    "Native replacement 45:4883@all entries: 344 of 344"
-    "Native replacement 45:48F6@all entries: 37 of 37"
+    "Native replacement 45:4883@all entries: 325 of 325"
+    "Native replacement 45:48F6@all entries: 18 of 18"
     "Native replacement 45:4936@all entries: 548 of 548"
-    "Native replacement 45:49A2@all entries: 25 of 25"
-    "Native replacement 45:49B6@all entries: 50 of 50"
+    "Native replacement 45:49A2@all entries: 6 of 6"
+    "Native replacement 45:49B6@all entries: 5 of 5"
     "Native replacement 45:49E4@all entries: 289 of 289"
-    "Native replacement 45:49F9@all entries: 19 of 21"
     "Native replacement 45:4BCC@all entries: 66 of 66"
     "Native replacement 45:4B4E@all entries: 5 of 5"
     "Observe hook 1 entries: 548"
@@ -366,7 +360,7 @@ message(
     STATUS
     "Semantic bank-45 music sequencer runs its per-frame tick, command "
     "interpreter, sample/envelope group, portamento stepper and PSG register "
-    "programmer and command descriptor/record loader natively across 36,787 admitted "
+    "programmer and command descriptor/record loader natively across verified "
     "entries as instruction-boundary "
     "transcripts, the tick chunked at its voice loop and the PSG programmer at "
     "its channel loop so each chunk lands "

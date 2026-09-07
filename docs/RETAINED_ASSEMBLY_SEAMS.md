@@ -93,6 +93,26 @@ fixtures cover all 65,536 combinations of stack pointer and command bank,
 including wrapping pushes/pops and bank increments. The `ED4D-ED57` command
 selector prefix remains core-owned; it is not a JSR instruction at `ED4D`.
 
+## Music sequence-end nonlocal exit
+
+The command interpreter's `$82/$92` handlers at `45:4356` no longer force
+the whole enclosing tick back to assembly. The missing behavior was not an
+ordinary return: STZ deactivates the voice, four PLAs discard the dispatch
+and interpreter frames, and JMP transfers to `40EE`. The native walk now
+records each pop and the final jump, then ends there regardless of its
+internal call depth. It does not absorb an RTS, guess a caller return address,
+or continue with an invalid nesting count. The `$86` variant at `4350` also
+publishes the voice's value before taking the same exit.
+
+The existing whole-music regression retains all assembly goldens and now
+accepts all 3,599 tick calls. An independent 3,600-frame replay keeps coverage
+of the child entries now inlined by that tick: all 32,391 `40EE` boundary
+snapshots, 12,647,397 ordered RAM writes, 699,251 PSG/timer writes and frame
+states match assembly. Direct tests cover 196,608 combinations of the three
+commands, all X and stack-pointer values, wrapping/live stack reads, flags,
+write timing and interrupt checkpoints. Unsupported command paths and the
+existing driver-state/SEI interrupt guards remain in place.
+
 ## Fixed overlapping `TII` transfers
 
 The 4,095-write boot clear at `08:585A` and the 1,023-write palette-shadow

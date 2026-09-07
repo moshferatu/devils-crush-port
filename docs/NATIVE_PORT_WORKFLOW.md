@@ -221,13 +221,54 @@ The separate strict full-registry parity rerun still has the pre-existing
 census mismatch and unchanged stack-write hash `6130a0d5...dd55fb1`; no parity
 assertion or accepted baseline was relaxed.
 
-The refreshed non-host controller queue now starts with the music command
-region `45:4569-45F2` (421,638 cycles), followed by the guarded nudge-input
+After the row-stream slice, the non-host controller queue started with the
+music command region `45:4569-45F2` (421,638 cycles), followed by the guarded nudge-input
 region `01:C3CB-C3E0` (388,470). The former already has an inlined command
 model: investigate why those deployed arrivals remain interpreted and prove
 its real dispatch/return boundaries before adding ownership. The larger
 single-instruction return/compound-branch seams remain separate core-contract
 work, and the leading `01:C500-C50E` row is already cabinet-native host work.
+
+The music command investigation found a real whole-parent refusal at
+`45:4356`: the `$82/$92` sequence-end command clears the voice, discards two
+stack frames with four PLAs, and jumps to the tick continuation `40EE`.
+Treating that as an unsupported leaf return lost the entire command/tick
+prefix. The model now executes the exact pops and jump, ends the transcript
+at `40EE`, and lets the existing owner resume with live state. The `$86`
+publishing variant at `4350` shares the exit. No return is fabricated or
+absorbed, no bridge capacity changes, and no new registry entry is necessary.
+
+The full music regression's original census, RAM-write, PSG/timer-write,
+call and call-write goldens remain unchanged; it now accepts all 3,599 tick
+entries. Three child entries disappear from that composed test because their
+callers no longer decline. `dc_rom_music_command_exit` preserves their
+independent admission: 2,276/2,299 command calls, 1,142/1,142 portamento
+calls and 22,647/22,664 voice-commit calls. Its fresh assembly/native replay
+compares 32,391 `40EE` register/timing boundaries, all 12,647,397 RAM writes,
+699,251 PSG/timer writes and the complete frame census to fixed assembly
+goldens. Unsupported commands and existing interrupt guards still decline.
+The 196,608 direct command/stack/voice cases include each stack pointer and
+X value, live caller bytes and wrapping pops, preserved status, exact samples
+and store timing, and explicit absence of an absorbed-return declaration.
+Evidence is retained under `out/music-command-v1`.
+
+Across all 31 routes in `out/coverage-music-command-exit-corpus-v1`, actual
+non-wait interpreter residue drops from 20,330,883 to 19,401,741 master
+cycles: 929,142 removed (4.57%), with 81 fewer interpreted addresses. Every
+route improves by 7,041 to 49,344 cycles; all accepted assembly/registry
+state hashes and all abandonment counts are unchanged. Completing the exit
+recovers both the command prefix and previously rejected tick work, rather
+than merely saving the handler's own 75 cycles. Admission remains 677.
+All 19 focused Release tests pass, including the prior upper-table/sorcerer
+regressions. Debug also passes the full independent assembly/native replay,
+all direct boundary cases and core tests. Both executables are rebuilt.
+The separate strict registry parity rerun retains its known
+census mismatch and identical complete stack-write hash `6130a0d5...dd55fb1`.
+The next non-host controller candidate is the nudge-input gate
+`01:C3CB-C3E0` (388,470 cycles); its current model deliberately declines
+session-bit, tilt-lock and some active/timer transitions. Profile those paths
+before expanding their existing owner. Single-instruction core boundaries
+still need their own event contracts.
 
 The full Release audit also exposed two stale test-wiring/count expectations,
 corrected without changing their behavioral goldens, and one unresolved

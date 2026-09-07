@@ -53,6 +53,15 @@ target_compile_features(dc_vdc_word_transfer_tests PRIVATE cxx_std_20)
 dc_enable_strict_warnings(dc_vdc_word_transfer_tests)
 add_test(NAME dc_vdc_word_transfer_tests COMMAND dc_vdc_word_transfer_tests)
 
+add_executable(dc_music_command_exit_tests
+    music_command_exit_tests.cpp
+    ../src/app/native_replacements_music.cpp
+    ../src/app/native_replacements_absorb.cpp)
+target_link_libraries(dc_music_command_exit_tests PRIVATE DevilsCrush::Emulation)
+target_compile_features(dc_music_command_exit_tests PRIVATE cxx_std_20)
+dc_enable_strict_warnings(dc_music_command_exit_tests)
+add_test(NAME dc_music_command_exit_tests COMMAND dc_music_command_exit_tests)
+
 add_executable(dc_audio_bank_wrapper_tests
     audio_bank_wrapper_tests.cpp
     ../src/app/native_replacements_banking.cpp
@@ -5535,6 +5544,13 @@ if(TARGET devils_crush)
                 "-DROM=${DC_ROM_PATH}"
                 -P "${CMAKE_CURRENT_SOURCE_DIR}/verify_audio_bank_wrapper.cmake")
         set_tests_properties(dc_rom_audio_bank_wrapper PROPERTIES LABELS rom_required)
+
+        add_test(NAME dc_rom_music_command_exit
+            COMMAND "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>" "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/music-command-exit-$<CONFIG>-v1"
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/verify_music_command_exit.cmake")
+        set_tests_properties(dc_rom_music_command_exit PROPERTIES LABELS rom_required)
 
         add_test(NAME dc_rom_selection_actor_controller
             COMMAND "${CMAKE_COMMAND}"

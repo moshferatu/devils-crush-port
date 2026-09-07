@@ -1010,6 +1010,10 @@ std::optional<RoutineReplacement> replace_music_sequencer(
     // JSR/RTS nesting inside the transcript. Zero means the next RTS belongs
     // to the caller and terminates the walk.
     unsigned depth = 0U;
+    // A sequence-end command discards both its dispatch frame and the
+    // command-interpreter frame. End on the real tick continuation instead
+    // of pretending those four stack bytes describe an ordinary return.
+    bool command_exit = false;
     // Whether a timer interrupt could be delivered as the walk stands. It
     // begins as the entry mask and can only open: a walk stops in front of any
     // SEI that would close it (see `closes_interrupt_window`), so nothing
@@ -1416,7 +1420,7 @@ std::optional<RoutineReplacement> replace_music_sequencer(
         // instruction standing there. A tick stop is a handover and stays that
         // way; a return is absorbed if the stack agrees, and only then does the
         // core resume above this bank instead of inside it.
-        if (mask_stop
+        if (command_exit || mask_stop
             || (depth == 0U && (is_return_instruction(pc) || tick_stop))) {
             // The driver-state guard. A read taken while the machine was
             // masked needs nothing: the driver cannot have run between the
@@ -7391,11 +7395,47 @@ std::optional<RoutineReplacement> replace_music_sequencer(
         // ---- 45:430E-45:4559  command handlers ---------------------------
         // The arms of the $42BA dispatch table. Only the ones the census
         // route actually reaches are transcribed; the rest fall through to
-        // `default` and decline, which costs nothing measurable and keeps
-        // untested code out of the transcript. `4356`, the $82/$92 handler,
-        // is deliberately among them: it pops four bytes and jumps to $40EE,
-        // abandoning 457A's frame entirely, which a leaf transcript that has
-        // to stop in front of an RTS cannot express.
+        // `default` and decline rather than execute an unverified handler.
+        // The sequence-end handlers use
+        // an explicit nonlocal handoff after their four real stack pops.
+
+        case 0x4350U:  // LDA $2F0E,X -- publish the ending voice's value
+            load_accumulator(read_ram(indexed_x(0x2F0EU)));
+            append_checkpoint(0x4350U, 0x4353U, 15U);
+            pc = 0x4353U;
+            break;
+
+        case 0x4353U:  // STA $2E00
+            store(0x4353U, 0x2E00U, registers.accumulator);
+            append_checkpoint(0x4353U, 0x4356U, 15U);
+            pc = 0x4356U;
+            break;
+
+        case 0x4356U:  // STZ $2E46,X -- deactivate this voice
+            if (registers.mpr[1] != 0xF8U) {
+                return std::nullopt;
+            }
+            store(0x4356U, indexed_x(0x2E46U), 0U);
+            append_checkpoint(0x4356U, 0x4359U, 15U);
+            pc = 0x4359U;
+            break;
+
+        case 0x4359U:
+        case 0x435AU:
+        case 0x435BU:
+        case 0x435CU: {  // PLA x4, including live caller bytes and SP wrap
+            load_accumulator(pull());
+            const auto next = static_cast<std::uint16_t>(pc + 1U);
+            append_checkpoint(pc, next, 12U);
+            pc = next;
+            break;
+        }
+
+        case 0x435DU:  // JMP $40EE -- no RTS and no predicted caller return
+            append_checkpoint(0x435DU, 0x40EEU, 12U);
+            pc = 0x40EEU;
+            command_exit = true;
+            break;
 
         case 0x430EU:  // TAX -- retarget the sequence cursor
             registers.x = registers.accumulator;

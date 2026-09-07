@@ -127,7 +127,7 @@
 "45","4017","4022","guarded","music tick internal branch is owned by the per-frame sequencer"
 "45","4081","408E","core","music export and internal dispatch preserve core timing and stack sampling"
 "45","4090","4097","core","music export and internal dispatch preserve core timing and stack sampling"
-"45","4356","435D","core","music command-handler continuation is inlined by its owning sequencer"
+"45","4356","435D","guarded","sequence-end voice clear and four live stack pops are native inside the sequencer; final JMP hands off at 40EE without an absorbed return"
 "45","4144","414A","core","interior of the native PSG register programmer"
 "45","46D6","46DC","core","music note-period return is already executed by its owning command transcript"
 "45","479E","47DF","core","music command continuation is inlined by its owning sequencer"
