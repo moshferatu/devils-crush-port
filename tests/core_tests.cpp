@@ -6566,6 +6566,17 @@ void test_native_giant_door_initializer()
 void test_native_nudge_input_gate()
 {
     std::array<std::uint8_t, 0x2000> work_ram{};
+    dc_nudge_input_gate lock{};
+    work_ram[0x0053U] = 2U;
+    check(dc_evaluate_nudge_input_gate(work_ram.data(), work_ram.size(), &lock)
+            && lock.branch == DC_NUDGE_GATE_LOCK_RETURN,
+        "native C3CB identifies session lock");
+    work_ram[0x0053U] = 0U;
+    work_ram[0x0CC7U] = 0x80U;
+    check(dc_evaluate_nudge_input_gate(work_ram.data(), work_ram.size(), &lock)
+            && lock.branch == DC_NUDGE_GATE_LOCK_RETURN,
+        "native C3CB identifies tilt lock");
+    work_ram[0x0CC7U] = 0U;
     work_ram[0x0053U] = 0x08U;
 
     dc_nudge_input_gate gate{};
@@ -6638,6 +6649,16 @@ void test_native_nudge_input_gate()
             && gate.branch == DC_NUDGE_GATE_TIMER_RELOAD_RETURN
             && gate.timer_after == 0U,
         "native C3CB identifies the timer-reload idle return");
+
+    work_ram[0x0019U] = 2U;
+    work_ram[0x0CC5U] = 0xFEU;
+    check(dc_evaluate_nudge_input_gate(work_ram.data(), work_ram.size(), &gate)
+            && gate.branch == DC_NUDGE_GATE_ACTIVE_START,
+        "native C3CB tests the reset counter on timer-reload active start");
+    work_ram[0x0CC4U] = 1U;
+    check(dc_evaluate_nudge_input_gate(work_ram.data(), work_ram.size(), &gate)
+            && gate.branch == DC_NUDGE_GATE_ACTIVE_FINISH,
+        "native C3CB recognizes timer-reload active finish");
 
     check(
         dc_evaluate_nudge_input_gate(

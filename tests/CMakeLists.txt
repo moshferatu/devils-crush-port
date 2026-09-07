@@ -62,6 +62,15 @@ target_compile_features(dc_music_command_exit_tests PRIVATE cxx_std_20)
 dc_enable_strict_warnings(dc_music_command_exit_tests)
 add_test(NAME dc_music_command_exit_tests COMMAND dc_music_command_exit_tests)
 
+add_executable(dc_nudge_controller_tests
+    nudge_controller_tests.cpp
+    ../src/app/native_replacements_controls.cpp
+    ../src/app/native_replacements_absorb.cpp)
+target_link_libraries(dc_nudge_controller_tests PRIVATE DevilsCrush::Emulation DevilsCrush::GameLogic)
+target_compile_features(dc_nudge_controller_tests PRIVATE cxx_std_20)
+dc_enable_strict_warnings(dc_nudge_controller_tests)
+add_test(NAME dc_nudge_controller_tests COMMAND dc_nudge_controller_tests)
+
 add_executable(dc_audio_bank_wrapper_tests
     audio_bank_wrapper_tests.cpp
     ../src/app/native_replacements_banking.cpp
@@ -1303,6 +1312,22 @@ if(TARGET devils_crush)
             dc_rom_nudge_input_gate_semantic
             PROPERTIES LABELS rom_required
         )
+
+        add_test(NAME dc_rom_nudge_controller
+            COMMAND "${CMAKE_COMMAND}" "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/nudge-controller-$<CONFIG>-v1"
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/verify_nudge_controller.cmake")
+        set_tests_properties(dc_rom_nudge_controller PROPERTIES LABELS rom_required)
+        add_test(NAME dc_rom_nudge_controller_rare_states
+            COMMAND dc_nudge_controller_tests "${DC_ROM_PATH}")
+        set_tests_properties(dc_rom_nudge_controller_rare_states PROPERTIES LABELS rom_required)
+        add_test(NAME dc_rom_nudge_registry_parity
+            COMMAND "${CMAKE_COMMAND}" "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/nudge-registry-$<CONFIG>-v1"
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/verify_nudge_registry_parity.cmake")
+        set_tests_properties(dc_rom_nudge_registry_parity PROPERTIES LABELS rom_required CONFIGURATIONS Release)
 
         add_test(
             NAME dc_rom_session_input_gate_semantic

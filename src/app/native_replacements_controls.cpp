@@ -2014,7 +2014,9 @@ replace_active_nudge(
     const auto read = [&work_ram](const std::size_t offset) {
         return std::to_integer<std::uint8_t>(work_ram[offset]);
     };
-    const auto original_counter = read(0x0CC5U);
+    // The timer-expiry path clears the counter before testing active input.
+    const bool timer_reload = gate.timer_after == 0U;
+    const auto original_counter = timer_reload ? 0U : read(0x0CC5U);
     const auto counter_after =
         static_cast<std::uint8_t>(original_counter + 1U);
     const std::uint8_t vector_low =
@@ -2282,9 +2284,11 @@ replace_active_nudge(
             set_nz(checkpoint.status, checkpoint.accumulator);
         append_checkpoint(0xC44AU, 0xC44CU, 201U, checkpoint);
         append_checkpoint(0xC44CU, 0xC44FU, 219U, checkpoint);
+        append_checkpoint(0xC44FU, 0xC450U, 225U, checkpoint);
+        // CLI samples with the old I mask. Publish its clear mask only at
+        // the following JSR boundary, as the core's LastCycle does.
         checkpoint.status =
             static_cast<std::uint8_t>(checkpoint.status & ~0x04U);
-        append_checkpoint(0xC44FU, 0xC450U, 225U, checkpoint);
         checkpoint.stack_pointer = static_cast<std::uint8_t>(
             checkpoint.stack_pointer - 2U);
         append_checkpoint(0xC450U, 0xC457U, 246U, checkpoint);
@@ -2348,9 +2352,9 @@ replace_active_nudge(
             set_nz(checkpoint.status, checkpoint.accumulator);
         append_checkpoint(0xC421U, 0xC423U, 357U, checkpoint);
         append_checkpoint(0xC423U, 0xC426U, 375U, checkpoint);
+        append_checkpoint(0xC426U, 0xC427U, 381U, checkpoint);
         checkpoint.status =
             static_cast<std::uint8_t>(checkpoint.status & ~0x04U);
-        append_checkpoint(0xC426U, 0xC427U, 381U, checkpoint);
         checkpoint.stack_pointer = static_cast<std::uint8_t>(
             checkpoint.stack_pointer - 2U);
         append_checkpoint(0xC427U, 0xC457U, 402U, checkpoint);
@@ -2446,7 +2450,6 @@ replace_active_nudge(
         checkpoint);
 
     checkpoint.x = 0U;
-    checkpoint.status = set_nz(checkpoint.status, checkpoint.x);
     append_checkpoint(
         0xC472U,
         0xC473U,
@@ -2561,6 +2564,58 @@ replace_active_nudge(
         replacement.return_instruction.logical_pc;
     replacement.output_registers = checkpoint;
     replacement.checkpoints.back().registers = checkpoint;
+    for (auto& point : replacement.checkpoints) {
+        const auto pc = point.instruction.logical_pc;
+        if (pc == 0xC416U || pc == 0xC43FU) {
+            point.samples_interrupt_flag_clear = (entry.registers.status & 4U) == 0U;
+        }
+        if (pc == 0xC419U || pc == 0xC41EU || pc == 0xC423U
+            || pc == 0xC442U || pc == 0xC447U || pc == 0xC44CU) {
+            // VDC writes steal a CPU cycle after their interrupt sample.
+            point.interrupt_sample_master_cycle_offset = point.master_cycle_offset - 6U;
+        }
+    }
+    if (timer_reload) {
+        // Replace the taken C3E0 branch with its fall-through reload path.
+        // All later active-body boundaries move by exactly thirty cycles.
+        for (auto& write : replacement.work_ram_writes) {
+            if (write.master_cycle_offset > 96U) {
+                write.master_cycle_offset += 30U;
+            }
+        }
+        replacement.work_ram_writes.insert(
+            replacement.work_ram_writes.begin() + 1,
+            {{ {0x01U, 0xC3E4U}, 0x2CC6U, 0x78U, 123U },
+             { {0x01U, 0xC3E7U}, 0x2CC5U, 0x00U, 138U }});
+        auto branch = std::find_if(replacement.checkpoints.begin(),
+            replacement.checkpoints.end(), [](const auto& point) {
+                return point.instruction.logical_pc == 0xC3E0U;
+            });
+        const auto index = static_cast<std::size_t>(
+            branch - replacement.checkpoints.begin());
+        for (auto point = branch + 1; point != replacement.checkpoints.end(); ++point) {
+            point->master_cycle_offset += 30U;
+            point->interrupt_sample_master_cycle_offset += 30U;
+        }
+        branch->master_cycle_offset = 102U;
+        branch->interrupt_sample_master_cycle_offset = 99U;
+        branch->registers.program_counter = 0xC3E2U;
+        auto reload = *branch;
+        reload.registers.accumulator = 0x78U;
+        reload.registers.status = set_nz(reload.registers.status, 0x78U);
+        const std::array<std::uint16_t, 3> pcs{0xC3E2U, 0xC3E4U, 0xC3E7U};
+        const std::array<std::uint16_t, 3> next{0xC3E4U, 0xC3E7U, 0xC3EAU};
+        const std::array<std::uint32_t, 3> cycles{108U, 123U, 138U};
+        for (std::size_t i = 0; i < pcs.size(); ++i) {
+            reload.instruction.logical_pc = pcs[i];
+            reload.registers.program_counter = next[i];
+            reload.master_cycle_offset = cycles[i];
+            reload.interrupt_sample_master_cycle_offset = cycles[i] - 3U;
+            replacement.checkpoints.insert(
+                replacement.checkpoints.begin() + index + 1U + i, reload);
+        }
+        replacement.body_master_cycles += 30U;
+    }
     return replacement;
 }
 
@@ -2593,6 +2648,49 @@ replace_nudge_input_gate(
             work_ram,
             gate)) {
         return active;
+    }
+    // A rejected active model must not be mistaken for the idle return below.
+    if (gate.branch == DC_NUDGE_GATE_ACTIVE_START
+        || gate.branch == DC_NUDGE_GATE_ACTIVE_FINISH) {
+        return std::nullopt;
+    }
+    if (gate.branch == DC_NUDGE_GATE_LOCK_RETURN) {
+        RoutineReplacement replacement{};
+        auto registers = entry.registers;
+        const auto append = [&](const std::uint16_t pc,
+                                const std::uint16_t next,
+                                const std::uint32_t cycle) {
+            registers.program_counter = next;
+            replacement.checkpoints.push_back({
+                .interrupt_sample_master_cycle_offset = cycle - 3U,
+                .master_cycle_offset = cycle,
+                .instruction = {0x01U, pc},
+                .registers = registers,
+            });
+        };
+        const auto load = [&](const std::uint8_t value) {
+            registers.accumulator = value;
+            registers.status = static_cast<std::uint8_t>(
+                (registers.status & ~0xA2U)
+                | (value == 0U ? 2U : (value & 0x80U)));
+        };
+        load(gate.session_flags);
+        append(0xC3CBU, 0xC3CDU, 12U);
+        load(static_cast<std::uint8_t>(gate.session_flags & 2U));
+        append(0xC3CDU, 0xC3CFU, 18U);
+        std::uint32_t cycles = 30U;
+        if (registers.accumulator != 0U) {
+            append(0xC3CFU, 0xC3DCU, cycles);
+        } else {
+            append(0xC3CFU, 0xC3D1U, 24U);
+            load(gate.tilt_lock);
+            append(0xC3D1U, 0xC3D4U, 39U);
+            cycles = 51U;
+            append(0xC3D4U, 0xC3DCU, cycles);
+        }
+        absorb_return(replacement, work_ram, entry.registers.stack_pointer,
+            {0x01U, 0xC3DCU}, cycles, registers);
+        return replacement;
     }
 
     auto output = entry.registers;

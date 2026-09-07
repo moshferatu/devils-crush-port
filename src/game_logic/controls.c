@@ -272,6 +272,7 @@ int dc_evaluate_nudge_input_gate(
 
     if ((gate->session_flags & 0x02U) != 0U
         || gate->tilt_lock != 0U) {
+        gate->branch = DC_NUDGE_GATE_LOCK_RETURN;
         return 1;
     }
     if (gate->session_mask != 0U) {
@@ -283,7 +284,9 @@ int dc_evaluate_nudge_input_gate(
             && gate->matched_input == 0U) {
             gate->branch = DC_NUDGE_GATE_TIMER_RELOAD_RETURN;
         }
-        return 1;
+        if (gate->branch == DC_NUDGE_GATE_TIMER_RELOAD_RETURN) {
+            return 1;
+        }
     }
     if ((uint8_t)(gate->nudge_phase - 1U) == 0U) {
         if (work_ram[0x1000U] != 0U
@@ -294,7 +297,8 @@ int dc_evaluate_nudge_input_gate(
     }
     if (gate->matched_input != 0U) {
         const uint8_t counter_after =
-            (uint8_t)(work_ram[0x0CC5U] + 1U);
+            gate->timer_after == 0U
+                ? 1U : (uint8_t)(work_ram[0x0CC5U] + 1U);
         if (work_ram[0x0055U] == 0U
             && counter_after < 0x14U
             && work_ram[0x1000U] != 0U

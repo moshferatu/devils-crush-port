@@ -110,7 +110,8 @@ typedef enum dc_nudge_gate_branch {
     DC_NUDGE_GATE_IDLE_RETURN = 2,
     DC_NUDGE_GATE_TIMER_RELOAD_RETURN = 3,
     DC_NUDGE_GATE_ACTIVE_START = 4,
-    DC_NUDGE_GATE_ACTIVE_FINISH = 5
+    DC_NUDGE_GATE_ACTIVE_FINISH = 5,
+    DC_NUDGE_GATE_LOCK_RETURN = 6
 } dc_nudge_gate_branch;
 
 typedef struct dc_nudge_input_gate {
@@ -266,8 +267,8 @@ int dc_schedule_coroutine(
 
 // Native classification of the bounded session, ordinary idle, and
 // timer-reload exits and the ordinary active-nudge start/finish pair at ROM
-// routine 01:C3CB. Tilt and other session paths are reported as
-// DC_NUDGE_GATE_DEFER for assembly fallback.
+// routine 01:C3CB, including session/tilt locks and active timer reloads.
+// Unsupported active states are reported as DC_NUDGE_GATE_DEFER.
 int dc_evaluate_nudge_input_gate(
     const uint8_t* work_ram,
     size_t work_ram_size,

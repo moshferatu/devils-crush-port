@@ -264,11 +264,58 @@ regressions. Debug also passes the full independent assembly/native replay,
 all direct boundary cases and core tests. Both executables are rebuilt.
 The separate strict registry parity rerun retains its known
 census mismatch and identical complete stack-write hash `6130a0d5...dd55fb1`.
-The next non-host controller candidate is the nudge-input gate
-`01:C3CB-C3E0` (388,470 cycles); its current model deliberately declines
-session-bit, tilt-lock and some active/timer transitions. Profile those paths
-before expanding their existing owner. Single-instruction core boundaries
-still need their own event contracts.
+The next selected controller was the nudge-input gate `01:C3CB-C3E0`
+(388,470 cycles). Its session-bit and tilt-lock returns are now native,
+including the live caller return. Timer expiry also reaches the existing
+active start/finish model, using the newly cleared counter rather than the
+entry counter. No new registry entry was needed: admission remains 677.
+
+The new direct tests cover 65,408 combinations of session flags and nonzero
+locks, live/wrapping stacks and flags, plus 512 active timer-reload cases.
+Unpatched nudge, twist and lanes replays compare full frame states, call
+register/timing records, ordered call writes and VDC writes to assembly.
+They accept all 2,654 / 2,654 / 2,653 controller calls respectively. A separate
+1,800-frame controlled replay exercises a reload start, 200 reload finishes
+and 400 tilt-lock calls, requiring native admission for each and comparing
+every frame's RAM/video/audio and every ordered RAM/bus write with the core.
+
+That rare-state replay exposed older active-path errors at interrupt
+boundaries: CLI cleared its sampled I mask too early, and CLX incorrectly
+set N/Z. Both are fixed; SEI's old-mask sample and VDC's stolen-cycle sample
+are explicit too. Rejected active models now remain rejected rather than
+falling through to the idle-return model.
+
+The lanes baseline required a reviewed correction: only frame 1461's RAM
+and frames 1461-1464/1469's audio change; pixels and all later state remain
+unchanged. The new full-registry census is byte-identical to the same
+registry with only C3CB left in assembly. `dc_rom_nudge_registry_parity`
+also proves identical ordered stack and VDC/PSG writes between those two
+modes, and pins the corrected census (`16886029...a0eaea7`). The original
+assembly baseline is unchanged. This is not a relaxation of whole-registry
+parity: the separate strict stack-page test still reports its older census
+mismatch and unchanged stack-write hash `6130a0d5...dd55fb1`.
+
+The final 31-route audit in `out/coverage-nudge-controller-audit-v3` reduces
+actual non-wait interpreter residue from 19,401,741 to 19,013,487 master
+cycles: 388,254 removed (2.0%). Every assembly recording and every registry
+recording matches the reviewed manifest, with only the independently proven
+lanes correction above replacing an old registry baseline. All abandonment
+counts remain unchanged. The initial baseline-enforcing sweep stopped on
+lanes; the final diagnostic sweep was separately checked against all 31 rows
+after that correction, not accepted just because recording succeeded.
+
+All 14 focused Release tests pass, including the prior sorcerer/upper-table
+crash regressions and the mixed-registry lanes comparison. Debug passes the
+direct cases, core tests and controlled assembly/native replay too. Both
+executables are rebuilt. Natural and mixed-registry evidence is retained in
+`out/nudge-controller-v1`; the rare-state fixture is reproducible through
+`dc_rom_nudge_controller_rare_states` without another user capture.
+
+The next coherent controller candidate is the selective scene-record loader
+`02:40A8-40CE` (303,900 interpreted cycles). It scans twelve-byte records,
+conditionally calls `40F6`, then calls `01:C08A`; those real child boundaries
+are the next decomposition points to verify. The larger singleton return
+and compound-branch entries still require their specific core contracts.
 
 The full Release audit also exposed two stale test-wiring/count expectations,
 corrected without changing their behavioral goldens, and one unresolved

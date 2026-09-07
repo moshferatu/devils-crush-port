@@ -1,0 +1,47 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+foreach(required IN ITEMS APP ROM OUTPUT)
+    if(NOT DEFINED ${required})
+        message(FATAL_ERROR "${required} is required")
+    endif()
+endforeach()
+# Unpatched input routes, independently comparing the controller against the
+# core rather than accepting the whole registry's configuration-specific state.
+foreach(route IN ITEMS nudge twist lanes)
+    foreach(mode IN ITEMS assembly native)
+        set(hooks)
+        if(mode STREQUAL "native")
+            set(hooks --replace-hook "01:C3CB@all")
+        endif()
+        set(base "${OUTPUT}.${route}.${mode}")
+        execute_process(COMMAND "${APP}" "--record-gameplay-${route}" "${base}.csv"
+            ${hooks} --observe-hook "01:C3CB"
+            --routine-call-trace "${base}.calls.csv"
+            --bus-write-range 0000-0003 --bus-write-trace "${base}.bus.csv"
+            --rom "${ROM}"
+            RESULT_VARIABLE result OUTPUT_VARIABLE output ERROR_VARIABLE error)
+        if(NOT result EQUAL 0)
+            message(FATAL_ERROR "Nudge controller ${route}/${mode} failed: ${output}${error}")
+        endif()
+        if(mode STREQUAL "native")
+            if(NOT output MATCHES "Native replacement 01:C3CB@all entries: ([0-9]+) of ([0-9]+)")
+                message(FATAL_ERROR "Missing controller entry evidence: ${output}")
+            endif()
+            set(expected_entries 2654)
+            if(route STREQUAL "lanes")
+                set(expected_entries 2653)
+            endif()
+            if(NOT CMAKE_MATCH_1 EQUAL expected_entries OR NOT CMAKE_MATCH_2 EQUAL expected_entries)
+                message(FATAL_ERROR "Controller entry coverage changed: ${output}")
+            endif()
+            message(STATUS "${route} native controller: ${CMAKE_MATCH_1}/${CMAKE_MATCH_2}")
+        endif()
+    endforeach()
+    foreach(suffix IN ITEMS csv calls.csv calls.csv.writes.csv bus.csv)
+        file(SHA256 "${OUTPUT}.${route}.assembly.${suffix}" assembly_hash)
+        file(SHA256 "${OUTPUT}.${route}.native.${suffix}" native_hash)
+        if(NOT assembly_hash STREQUAL native_hash)
+            message(FATAL_ERROR "${route} ${suffix} differs: ${assembly_hash} / ${native_hash}")
+        endif()
+        message(STATUS "${route} ${suffix}: ${assembly_hash}")
+    endforeach()
+endforeach()

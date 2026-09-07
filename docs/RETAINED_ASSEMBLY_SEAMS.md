@@ -113,6 +113,28 @@ commands, all X and stack-pointer values, wrapping/live stack reads, flags,
 write timing and interrupt checkpoints. Unsupported command paths and the
 existing driver-state/SEI interrupt guards remain in place.
 
+## Nudge controller locks and timer reload
+
+`01:C3CB` now owns its session-bit and tilt-lock exits, including the live
+`C3DC` return, and active start/finish paths when the nudge timer expires.
+The reload clears the counter before the active-input test; it is not valid
+to use the entry counter to decide whether to tilt. These branches extend
+the existing controller rather than creating instruction-sized entries.
+
+Controlled assembly/native replay of timer reloads exposed two older active
+path errors: CLI must retain the old interrupt mask until the next checkpoint,
+and CLX preserves flags. Both are corrected. SEI now declares its pre-mask
+sample, and VDC writes retain their stolen-cycle sample offset. Rejected
+active models no longer fall through to an idle return. Unsupported active
+states still defer; this does not change the bridge or prior crash fixes.
+
+The lanes registry baseline changes only at frames 1461-1464 and 1469
+(RAM at 1461, audio at all five). The corrected full registry matches a
+fresh run with only C3CB left in assembly. `dc_rom_nudge_registry_parity`
+repeats that comparison including ordered stack and VDC/PSG writes. This
+is evidence for correcting the old baseline, not proof of full-registry
+assembly parity; the separate pre-existing strict registry failure remains.
+
 ## Fixed overlapping `TII` transfers
 
 The 4,095-write boot clear at `08:585A` and the 1,023-write palette-shadow
