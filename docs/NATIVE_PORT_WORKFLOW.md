@@ -62,11 +62,16 @@ was replaced with the Release hash after a fresh Debug assembly run produced
 that same hash. Both executables are rebuilt. Registry and all 197 seam
 ranges validate; the full suite and 31-route cost corpus were not rerun.
 
-That extra assembly run also exposes an existing `02:5991` countdown trace
-mismatch: 26 calls report a different output accumulator. The live `5975`
-call matches exactly; census, entry trace and both RAM-write artifacts match.
-The countdown call hash already matched the pre-change native baseline, so
-this is separate from the corrected bus read and remains to investigate.
+The extra assembly run exposed a separate `02:5991` countdown trace
+mismatch: native `ORA $3B80,X` set N/Z but failed to update A. The native
+output and the ORA/branch interrupt checkpoints now carry the combined timer
+bytes in A. The hand/RNG call trace matches the original assembly hash
+`9b2e47e80213caec538e613fc90bad2478ea03dafa19693b765db665d6e2b4d9`
+in Release and Debug, correcting 26 output-register rows. A fresh Release
+assembly expiry run also matches the corrected call hash
+`95ccea8fcae9e51e81c4e2424c9703ee2f94895496075373f61fad4dd78a7d9b`.
+All other existing artifact hashes remain unchanged. All nine Release hand
+regressions pass after correcting those two call-trace expectations.
 Artifacts: `out/hand-debug-assembly.csv*`, `out/hand-bus-release-tests.log`,
 `out/hand-bus-debug-tests.log`, and `out/hand-bus-debug-rng-tests.log`.
 The temporary frame-3200 checkpoint instrumentation remains removed.
@@ -97,8 +102,31 @@ and both horizon guards. The registry now contains 703 entries, with 196
 classified seam ranges. The full CTest suite and interactive crash capture
 have not been rerun. Both executables are rebuilt with the new admission.
 
-Continue with the live return at `01:C4C8` and the scheduler calls at
-`01:C5EA-C600`, applying the entry-boundary observer contract proven here.
+The live return at `01:C4C8` now shares the atomic live-stack transcript with
+`08:5976`. It verifies its own code mapping and the F8 stack mapping, preserves
+registers and flags, and declines at either close event horizon. The obsolete
+automatic core-hook entry is removed because the registry now owns this RTS.
+The registry contains 705 entries; C4C8 remains visible as a guarded seam.
+The exhaustive fixture covers 393,216 return-target/status/stack cases across
+both addresses, plus mapping, RAM-size and event-horizon guards.
+
+Release and Debug gameplay admit 712/860 C4C8 returns and match original
+assembly frame fingerprints, call registers/timing, ordered call writes,
+all RAM writes and all bus writes. The Debug comparison takes 284.99 seconds.
+With the full registry, isolated before/after profiles on gameplay, higharc
+and nudge preserve frame fingerprints and abandonment counts (0, 1 and 0).
+Higharc C4C8 interpreter cost falls from 6,075 to 1,245 master cycles; nudge
+falls from 6,075 to 1,476. Total interpreter cost falls by exactly those
+4,830 and 4,599 cycles. Gameplay already absorbs all these returns in its
+parent and is unchanged. Evidence is in `out/run-return-cost/` and
+`out/run-return-cost.log`; this is a three-route comparison, not a rerun of
+the full 31-route corpus. Both Release capture comparisons pass with the
+new return deployed. The final Debug pentagram comparison also passes all
+4,366 frames (276.35 seconds). Both executables are rebuilt; registry
+generation and all 197 seam ranges validate. The full CTest suite was not rerun.
+
+Continue with the scheduler calls at `01:C5EA-C600`, applying the
+entry-boundary observer contract proven here.
 Keep the close-horizon `08:5976` residual visible; the atomic guard is still
 required by this implementation.
 

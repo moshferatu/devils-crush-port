@@ -1,5 +1,21 @@
 # Retained Assembly Seams
 
+## Run-input return: 01:C4C8
+
+The standalone RTS uses the same 21-cycle live-stack transcript as `08:5976`.
+It requires MPR1=F8 and the live code segment to map bank 01. Stack indices
+wrap within their page, the return word increments with 16-bit wrap, and the
+destination bank comes from the current MPRs. Either event horizon at or
+within 21 cycles leaves execution in the core. The registry owns this entry;
+it is no longer installed by the legacy automatic core-return hook list.
+
+The gameplay comparison observes both C4C8 and its C49E parent, including
+frame state, call registers/timing, every RAM write and all bus writes.
+Release and Debug admit 712/860 returns with identical assembly artifacts.
+Full-registry higharc and nudge profiles remove 4,830 and 4,599 interpreted
+master cycles respectively while preserving state and abandonment counts.
+The shared exhaustive fixture covers both return addresses and their guards.
+
 ## Upper-hand timer bus read: 02:5983
 
 The live setup at `02:5975` stops before absolute `ADC $0080`. MPR0 normally

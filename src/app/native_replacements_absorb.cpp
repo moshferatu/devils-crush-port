@@ -17,8 +17,11 @@ std::optional<RoutineReplacement> replace_upper_scheduler_return(
     const std::span<const std::byte> work_ram)
 {
     constexpr RoutineKey kRoutine{.physical_bank = 0x08U, .logical_pc = 0x5976U};
-    if (entry.routine != kRoutine || entry.registers.program_counter != 0x5976U
-        || entry.registers.mpr[1] != 0xF8U || entry.registers.mpr[2] != 0x08U
+    constexpr RoutineKey kRunInputReturn{.physical_bank = 0x01U, .logical_pc = 0xC4C8U};
+    if ((entry.routine != kRoutine && entry.routine != kRunInputReturn)
+        || entry.registers.program_counter != entry.routine.logical_pc
+        || entry.registers.mpr[1] != 0xF8U
+        || entry.registers.mpr[entry.routine.logical_pc >> 13U] != entry.routine.physical_bank
         || work_ram.size() < 0x2000U
         || !absorbed_return_fits_atomically(entry, 0U)) {
         return std::nullopt;
@@ -28,7 +31,7 @@ std::optional<RoutineReplacement> replace_upper_scheduler_return(
     // Keep this single instruction atomic and strictly before both horizons.
     RoutineReplacement replacement{};
     absorb_return(replacement, work_ram, entry.registers.stack_pointer,
-        kRoutine, 0U, entry.registers);
+        entry.routine, 0U, entry.registers);
     return replacement;
 }
 

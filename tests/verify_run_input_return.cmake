@@ -1,0 +1,51 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Full gameplay oracle, including observers rooted at the RTS itself and at
+# the Run-input controller. An offset-zero return must not close a fresh call.
+set(expected_csv "1f6d46ac99798bbac1ecab97702d9e10076b9766796cc64d22d9662efce0b353")
+set(expected_calls.csv "9a2dfa0c1f6620daa26462524a4863d7c396ec712cf2436f2b5615676b178cbd")
+set(expected_calls.csv.writes.csv "85f14ab989807de73021f1d638fac6183f93843f5ce4a3f3b83d4a0f30cf9edb")
+set(expected_writes.csv "da606d14dd48b5b73e86096ba4033c6bf40c67e97ea771e5705760a02bbe3e1c")
+set(expected_bus.csv "e1dcf4b4a41dcf07638356bfddf934265291648adef9022ff4799f716e5e7a46")
+foreach(required IN ITEMS APP ROM OUTPUT)
+    if(NOT DEFINED ${required})
+        message(FATAL_ERROR "${required} is required")
+    endif()
+endforeach()
+foreach(mode IN ITEMS assembly native)
+    set(hooks)
+    if(mode STREQUAL "native")
+        set(hooks --replace-hook "01:C4C8@all")
+    endif()
+    set(base "${OUTPUT}.${mode}")
+    execute_process(COMMAND "${APP}" --record-gameplay "${base}.csv" ${hooks}
+        --observe-hook "01:C4C8" --observe-hook "01:C49E"
+        --routine-call-trace "${base}.calls.csv"
+        --work-ram-write-range 2000-3FFF --work-ram-write-trace "${base}.writes.csv"
+        --bus-write-range 0000-1FFF --bus-write-trace "${base}.bus.csv"
+        --rom "${ROM}" RESULT_VARIABLE result OUTPUT_VARIABLE output ERROR_VARIABLE error)
+    if(NOT result EQUAL 0)
+        message(FATAL_ERROR "Run-input return ${mode}: ${output}${error}")
+    endif()
+    if(mode STREQUAL "native")
+        string(REGEX MATCH "Native replacement 01:C4C8@all entries: [0-9]+ of [0-9]+" admission "${output}")
+        if(NOT admission)
+            message(FATAL_ERROR "Missing Run-input return admission: ${output}")
+        endif()
+        message(STATUS "${admission}")
+        if(NOT admission STREQUAL "Native replacement 01:C4C8@all entries: 712 of 860")
+            message(FATAL_ERROR "Run-input return admission changed: ${admission}")
+        endif()
+    endif()
+endforeach()
+foreach(suffix IN ITEMS csv calls.csv calls.csv.writes.csv writes.csv bus.csv)
+    file(SHA256 "${OUTPUT}.assembly.${suffix}" original)
+    file(SHA256 "${OUTPUT}.native.${suffix}" replacement)
+    if(NOT original STREQUAL replacement)
+        message(FATAL_ERROR "Run-input return ${suffix}: ${original} != ${replacement}")
+    endif()
+    if(NOT original STREQUAL "${expected_${suffix}}")
+        message(FATAL_ERROR "Run-input return ${suffix} assembly baseline changed: ${original}")
+    endif()
+    message(STATUS "${suffix}: ${original}")
+endforeach()
+

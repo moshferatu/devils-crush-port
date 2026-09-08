@@ -8180,7 +8180,8 @@ parse_logical_address_range(const std::string_view text)
                                    }
                            && request.all_calls;
                        const bool proven_upper_scheduler_return =
-                           request.routine == RoutineKey{0x08U, 0x5976U}
+                           (request.routine == RoutineKey{0x08U, 0x5976U}
+                            || request.routine == RoutineKey{0x01U, 0xC4C8U})
                            && request.all_calls;
                        const bool proven_upper_table_actor_tile_schedule =
                            request.routine
@@ -15922,14 +15923,13 @@ using NativeRegistryEntryObserver = std::function<void(
     // 5CD5 is the Side-Worm selector return, while C9DE is the active
     // range-helper's caller-owned return; each deliberately remains a core
     // RTS instruction rather than a synthetic continuation of its caller.
-    constexpr std::array<RoutineKey, 14U> kGameplayHelperRtsInstructions{{
+    constexpr std::array<RoutineKey, 13U> kGameplayHelperRtsInstructions{{
         // Synthetic vector dispatch: execute the live RTS, never absorb it
         // as the completion of the enclosing collision routine.
         {.physical_bank = 0x01U, .logical_pc = 0xCBF9U},
         {.physical_bank = 0x01U, .logical_pc = 0xC9DEU},
         {.physical_bank = 0x01U, .logical_pc = 0xC70AU},
         {.physical_bank = 0x01U, .logical_pc = 0xC3DCU},
-        {.physical_bank = 0x01U, .logical_pc = 0xC4C8U},
         {.physical_bank = 0x02U, .logical_pc = 0x44A3U},
         {.physical_bank = 0x02U, .logical_pc = 0x453BU},
         {.physical_bank = 0x02U, .logical_pc = 0x5CD5U},

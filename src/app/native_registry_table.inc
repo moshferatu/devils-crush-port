@@ -134,6 +134,7 @@ DC_ADMITTED_ROUTINE(0x01U, 0xC185U, 2649, 2649, "verify_main_session_loop_semant
 DC_ADMITTED_ROUTINE(0x01U, 0xC190U, 2649, 2649, "verify_main_session_loop_semantic")
 DC_ADMITTED_ROUTINE(0x01U, 0xC3CBU, 2649, 2649, "verify_nudge_input_gate_semantic")
 DC_ADMITTED_ROUTINE(0x01U, 0xC49EU, 2649, 2649, "verify_session_input_gate_semantic")
+DC_ADMITTED_ROUTINE(0x01U, 0xC4C8U, 712, 860, "verify_run_input_return")
 DC_ADMITTED_ROUTINE(0x01U, 0xC4DEU, 3492, 3492, "verify_actor_scan_preamble_semantic")
 DC_ADMITTED_ROUTINE(0x01U, 0xC510U, 175226, 175226, "verify_actor_scan_semantic")
 DC_ADMITTED_ROUTINE(0x01U, 0xC51EU, 171734, 171734, "verify_actor_loop_linkage_semantic")

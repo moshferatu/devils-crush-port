@@ -25526,6 +25526,8 @@ replace_upper_wall_pocket_hand_countdown(
         after_low_decrement.status,
         after_low_decrement.accumulator);
     auto output = after_low_decrement;
+    // ORA $3B80,X updates A as well as N/Z after storing the low byte.
+    output.accumulator = countdown.remaining_timer;
     output.status = set_nz(output.status, countdown.remaining_timer);
     output.program_counter = 0x59F4U;
 

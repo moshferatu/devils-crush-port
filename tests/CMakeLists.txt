@@ -5479,6 +5479,11 @@ if(TARGET devils_crush)
                 "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/upper-scheduler-return-$<CONFIG>-v1"
                 -P "${CMAKE_CURRENT_SOURCE_DIR}/verify_upper_scheduler_return.cmake")
         set_tests_properties(dc_rom_upper_scheduler_return PROPERTIES LABELS rom_required)
+        add_test(NAME dc_rom_run_input_return
+            COMMAND "${CMAKE_COMMAND}" "-DAPP=$<TARGET_FILE:devils_crush>" "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/run-input-return-$<CONFIG>-v1"
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/verify_run_input_return.cmake")
+        set_tests_properties(dc_rom_run_input_return PROPERTIES LABELS rom_required)
         add_test(NAME dc_rom_upper_parent_animation
             COMMAND "${CMAKE_COMMAND}" "-DAPP=$<TARGET_FILE:devils_crush>" "-DROM=${DC_ROM_PATH}"
                 "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/upper-parent-$<CONFIG>-v1"

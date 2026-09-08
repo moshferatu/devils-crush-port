@@ -20,7 +20,8 @@ replace_native_gameplay_routine_impl(
     const std::span<const std::byte> work_ram,
     const std::span<const std::byte> rom)
 {
-    if (entry.routine == RoutineKey{.physical_bank = 0x08U, .logical_pc = 0x5976U}) {
+    if (entry.routine == RoutineKey{.physical_bank = 0x08U, .logical_pc = 0x5976U}
+        || entry.routine == RoutineKey{.physical_bank = 0x01U, .logical_pc = 0xC4C8U}) {
         return detail::replace_upper_scheduler_return(entry, work_ram);
     }
     if (entry.routine == RoutineKey{.physical_bank = 0x00U, .logical_pc = 0xE271U}) {
@@ -291,7 +292,6 @@ replace_native_gameplay_routine_impl(
         || entry.routine == RoutineKey{0x03U, 0x6314U}
         || entry.routine == RoutineKey{0x03U, 0x7423U}
         || entry.routine == RoutineKey{0x01U, 0xC3DCU}
-        || entry.routine == RoutineKey{0x01U, 0xC4C8U}
         || entry.routine == RoutineKey{0x01U, 0xC70AU}
         || entry.routine == RoutineKey{0x03U, 0x6905U}
         || entry.routine == RoutineKey{0x02U, 0x453BU}) {
