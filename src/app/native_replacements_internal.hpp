@@ -11,7 +11,7 @@
 
 namespace devils_crush::app::detail {
 
-std::optional<emulation::RoutineReplacement> replace_interrupt_chain_jump(
+std::optional<emulation::RoutineReplacement> replace_unconditional_branch(
     const emulation::RoutineEntry& entry);
 
 std::optional<emulation::RoutineReplacement> replace_coroutine_call(

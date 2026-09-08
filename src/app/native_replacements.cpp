@@ -21,8 +21,9 @@ replace_native_gameplay_routine_impl(
     const std::span<const std::byte> rom)
 {
     if (entry.routine == RoutineKey{.physical_bank = 0x00U, .logical_pc = 0xFC03U}
-        || entry.routine == RoutineKey{.physical_bank = 0x00U, .logical_pc = 0xFC89U}) {
-        return detail::replace_interrupt_chain_jump(entry);
+        || entry.routine == RoutineKey{.physical_bank = 0x00U, .logical_pc = 0xFC89U}
+        || entry.routine == RoutineKey{.physical_bank = 0x00U, .logical_pc = 0xE479U}) {
+        return detail::replace_unconditional_branch(entry);
     }
     if (entry.routine == RoutineKey{.physical_bank = 0x01U, .logical_pc = 0xC693U}
         || entry.routine == RoutineKey{.physical_bank = 0x01U, .logical_pc = 0xC696U}
@@ -36,7 +37,8 @@ replace_native_gameplay_routine_impl(
     }
     if (entry.routine == RoutineKey{.physical_bank = 0x08U, .logical_pc = 0x5976U}
         || entry.routine == RoutineKey{.physical_bank = 0x01U, .logical_pc = 0xC4C8U}
-        || entry.routine == RoutineKey{.physical_bank = 0x08U, .logical_pc = 0x5A69U}) {
+        || entry.routine == RoutineKey{.physical_bank = 0x08U, .logical_pc = 0x5A69U}
+        || entry.routine == RoutineKey{.physical_bank = 0x00U, .logical_pc = 0xE47CU}) {
         return detail::replace_upper_scheduler_return(entry, work_ram);
     }
     if (entry.routine == RoutineKey{.physical_bank = 0x00U, .logical_pc = 0xE271U}) {

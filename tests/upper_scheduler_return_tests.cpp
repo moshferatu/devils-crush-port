@@ -10,7 +10,7 @@ int main()
 {
     try {
         std::array<std::byte, 0x2000> ram{};
-        for (const auto pc : {0xFC03U, 0xFC89U}) {
+        for (const auto pc : {0xFC03U, 0xFC89U, 0xE479U}) {
             RoutineEntry entry{};
             entry.routine = {0U, static_cast<std::uint16_t>(pc)};
             auto& r = entry.registers;
@@ -18,7 +18,7 @@ int main()
             r.accumulator = 0xA5U; r.x = 0xFFU; r.y = 0x37U;
             entry.master_cycles_until_user_event = 100U;
             entry.master_cycles_until_timer_interrupt = 100U;
-            const auto jump = [&] { return devils_crush::app::detail::replace_interrupt_chain_jump(entry); };
+            const auto jump = [&] { return devils_crush::app::detail::replace_unconditional_branch(entry); };
             for (unsigned sp = 0U; sp < 256U; ++sp) {
                 for (unsigned status = 0U; status < 256U; ++status) {
                     r.stack_pointer = static_cast<std::uint8_t>(sp);
@@ -27,7 +27,7 @@ int main()
                     require(result.has_value() == ((status & 0x20U) == 0U), "Jump transfer-mode guard changed");
                     if (!result) { continue; }
                     const auto& out = result->output_registers;
-                    require(out.program_counter == (pc == 0xFC03U ? 0xE003U : 0xFC03U)
+                    require(out.program_counter == (pc == 0xE479U ? 0xE438U : pc == 0xFC03U ? 0xE003U : 0xFC03U)
                         && out.stack_pointer == sp && out.status == status
                         && out.accumulator == r.accumulator && out.x == r.x && out.y == r.y
                         && out.mpr == r.mpr && result->return_instruction == RoutineKey{0U, out.program_counter},
@@ -56,7 +56,7 @@ int main()
             r.program_counter = 0xFC04U; entry.routine.logical_pc = r.program_counter;
             require(!jump(), "Unsupported jump key admitted");
         }
-        std::puts("Verified 131,072 interrupt-chain stack/status cases and both horizon guards.");
+        std::puts("Verified 196,608 unconditional-branch stack/status cases and both horizon guards.");
         for (const auto pc : {0xC693U, 0xC696U, 0xC69BU, 0xC6A6U, 0xC6BFU}) {
             RoutineEntry entry{};
             entry.routine = {1U, static_cast<std::uint16_t>(pc)};
@@ -116,7 +116,7 @@ int main()
         }
         std::puts("Verified five scheduler calls across all stack pointers and status values.");
         for (const auto routine : {RoutineKey{0x08U, 0x5976U}, RoutineKey{0x01U, 0xC4C8U},
-                 RoutineKey{0x08U, 0x5A69U}}) {
+                 RoutineKey{0x08U, 0x5A69U}, RoutineKey{0x00U, 0xE47CU}}) {
             RoutineEntry entry{};
             entry.routine = routine;
             auto& r = entry.registers;
@@ -160,10 +160,11 @@ int main()
             require(!replace_upper_scheduler_return(entry, std::span(ram).first(0x1FFF)), "Short RAM admitted");
             r.mpr[1] = 0U;
             require(!replace_upper_scheduler_return(entry, ram), "Foreign stack mapping admitted");
-            r.mpr[1] = 0xF8U; r.mpr[routine.logical_pc >> 13U] = 0U;
+            r.mpr[1] = 0xF8U;
+            r.mpr[routine.logical_pc >> 13U] = static_cast<std::uint8_t>(routine.physical_bank ^ 1U);
             require(!replace_upper_scheduler_return(entry, ram), "Foreign code mapping admitted");
         }
-        std::puts("Verified 589,824 return target/status/stack cases and both horizon guards.");
+        std::puts("Verified 786,432 return target/status/stack cases and both horizon guards.");
         for (unsigned sp : {0U, 254U, 255U}) {
             for (unsigned word = 0U; word < 65536U; ++word) {
                 RoutineEntry entry{};

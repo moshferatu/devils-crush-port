@@ -191,7 +191,31 @@ the full pentagram regression (322.29 seconds) and the exhaustive fixture.
 The capture hash remains unchanged. Both executables are rebuilt; Debug
 evidence is in `out/selection-return-debug-tests.log`.
 
-Interrupt-chain jumps `00:FC03` and `00:FC89` now execute as separate native
+VRAM stream boundaries `00:E479` and `00:E47C` now execute natively. The
+loop BRA shares the 12-cycle unconditional-branch helper; the RTS shares
+the 21-cycle live-stack return helper. Both preserve their strict event
+horizon guards. Fixtures cover 196,608 branch stack/status combinations
+and 786,432 return target/status/stack cases. The new assembly oracle
+observes the decoder caller and return, admits 6,321/6,773 branches and
+20/20 returns, and preserves five pinned frame, call and write artifacts.
+The registry now contains 716 entries.
+
+All 31 paired current-registry routes preserve state and abandonment counts,
+with only the two new entries excluded on the before side. Target interpreter
+cost falls from 162,351 to 14,916 master cycles (90.81% removed); every
+cycle delta stays at those addresses. Non-wait work falls from 14,660,601
+to 14,513,166 (1.01%). Evidence and primary rankings are under
+`out/vram-stream-tail-cost/`, with totals in
+`out/vram-stream-tail-cost-summary.log`. This isolates the increment within
+the current registry; it is not fresh whole-registry assembly parity.
+
+Release and Debug each pass the new oracle, expanded fixture, existing
+interrupt-chain oracle and face/hand captures (five checks each). Logs are
+`out/vram-stream-tail-tests-{Release,Debug}.log`. Original capture files
+and the corrected replay hash are unchanged. Registry generation, all
+198 seam ranges and `git diff --check` pass; the full suite was not rerun.
+
+The preceding interrupt-chain jumps `00:FC03` and `00:FC89` execute as separate native
 12-cycle instructions, preserving registers and stack state with interrupt
 sampling at cycle 9. Both event horizons must exceed 12 cycles. The fixture
 covers 131,072 stack/status combinations plus horizon and mapping guards;

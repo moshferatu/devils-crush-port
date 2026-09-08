@@ -1,5 +1,44 @@
 # Retained Assembly Seams
 
+## VRAM stream loop and return: 00:E479 and 00:E47C
+
+The stream decoder's BRA E438 and final RTS now have standalone native
+entries. E479 shares the unconditional-branch helper with the interrupt-chain
+JMPs: 12 master cycles, interrupt sampling at cycle 9, clear transfer mode
+and a matching live bank-zero code mapping. Both event horizons must exceed
+12 cycles. It hands off at E438 so the next record uses a fresh entry.
+
+E47C uses the shared live-stack return helper. It reads the page-wrapped
+caller frame, preserves registers and flags, and emits the offset-zero
+return observation. Both event horizons must exceed 21 cycles, and the
+live stack and code mappings must match. The fixture now covers 196,608
+branch stack/status combinations and 786,432 return target/status/stack
+cases, including both event horizons and invalid mappings.
+
+The assembly oracle checks the BRA/RTS ROM bytes and observes E41F and E47C.
+It admits 6,321/6,773 branch entries and 20/20 returns, with identical pinned
+frame-state, call, ordered call-write, all-RAM-write and hardware-write
+artifacts. Loop entries are counted through replacement admissions rather
+than opened as subroutine observations. The registry contains 716 entries;
+the seam manifest still contains 198 ranges.
+
+All 31 paired current-registry routes preserve frame-state hashes and
+abandonment counts with only E479 and E47C excluded on the before side.
+Their interpreter cost falls from 162,351 to 14,916 master cycles (147,435
+removed, 90.81%), with every cycle delta confined to those addresses.
+Total non-wait interpreter work falls from 14,660,601 to 14,513,166 (1.01%).
+Evidence is in `out/vram-stream-tail-cost/manifest.csv`, its before/after
+primary rankings and `out/vram-stream-tail-cost-summary.log`. This measures
+the isolated increment within the current registry, not fresh whole-registry
+assembly parity.
+
+Release and Debug each pass the new assembly oracle, expanded fixture,
+existing interrupt-chain oracle and face/hand capture regressions (five
+checks each). See `out/vram-stream-tail-tests-{Release,Debug}.log`. Both face
+replays retain the corrected `a263ebb4...b35a` hash, and the original capture
+files are unchanged. Registry generation, all 198 seam ranges and
+`git diff --check` pass. The full suite was not rerun.
+
 ## Interrupt-chain jumps: 00:FC03 and 00:FC89
 
 Both absolute jumps now execute natively: FC89 hands off to FC03, and FC03

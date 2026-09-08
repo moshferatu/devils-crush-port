@@ -12,22 +12,24 @@ using emulation::RoutineEntry;
 using emulation::RoutineKey;
 using emulation::RoutineReplacement;
 
-std::optional<RoutineReplacement> replace_interrupt_chain_jump(const RoutineEntry& entry)
+std::optional<RoutineReplacement> replace_unconditional_branch(const RoutineEntry& entry)
 {
     constexpr RoutineKey kEpilogue{.physical_bank = 0x00U, .logical_pc = 0xFC03U};
     constexpr RoutineKey kSoundChain{.physical_bank = 0x00U, .logical_pc = 0xFC89U};
-    if ((entry.routine != kEpilogue && entry.routine != kSoundChain)
+    constexpr RoutineKey kStreamLoop{.physical_bank = 0x00U, .logical_pc = 0xE479U};
+    if ((entry.routine != kEpilogue && entry.routine != kSoundChain && entry.routine != kStreamLoop)
         || entry.registers.program_counter != entry.routine.logical_pc
         || entry.registers.mpr[7] != 0x00U || (entry.registers.status & 0x20U) != 0U
         || std::min(entry.master_cycles_until_user_event,
                     entry.master_cycles_until_timer_interrupt) <= 12U) {
         return std::nullopt;
     }
-    // Keep both absolute JMPs separate: the core samples interrupts after
+    // Keep each JMP/BRA separate: the core samples interrupts after
     // nine master cycles, then completes the instruction three cycles later.
     RoutineReplacement result{};
     auto r = entry.registers;
-    r.program_counter = entry.routine == kSoundChain ? 0xFC03U : 0xE003U;
+    r.program_counter = entry.routine == kStreamLoop ? 0xE438U
+        : entry.routine == kSoundChain ? 0xFC03U : 0xE003U;
     result.return_instruction = {0x00U, r.program_counter};
     result.output_registers = r;
     result.body_master_cycles = 12U;
@@ -149,8 +151,9 @@ std::optional<RoutineReplacement> replace_upper_scheduler_return(
     constexpr RoutineKey kRoutine{.physical_bank = 0x08U, .logical_pc = 0x5976U};
     constexpr RoutineKey kRunInputReturn{.physical_bank = 0x01U, .logical_pc = 0xC4C8U};
     constexpr RoutineKey kSelectionReturn{.physical_bank = 0x08U, .logical_pc = 0x5A69U};
+    constexpr RoutineKey kStreamReturn{.physical_bank = 0x00U, .logical_pc = 0xE47CU};
     if ((entry.routine != kRoutine && entry.routine != kRunInputReturn
-            && entry.routine != kSelectionReturn)
+            && entry.routine != kSelectionReturn && entry.routine != kStreamReturn)
         || entry.registers.program_counter != entry.routine.logical_pc
         || entry.registers.mpr[1] != 0xF8U
         || entry.registers.mpr[entry.routine.logical_pc >> 13U] != entry.routine.physical_bank

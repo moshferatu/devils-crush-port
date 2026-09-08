@@ -5499,6 +5499,11 @@ if(TARGET devils_crush)
                 "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/interrupt-chain-$<CONFIG>-v1"
                 -P "${CMAKE_CURRENT_SOURCE_DIR}/verify_interrupt_chain.cmake")
         set_tests_properties(dc_rom_interrupt_chain PROPERTIES LABELS rom_required)
+        add_test(NAME dc_rom_vram_stream_tail
+            COMMAND "${CMAKE_COMMAND}" "-DAPP=$<TARGET_FILE:devils_crush>" "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/vram-stream-tail-$<CONFIG>-v1"
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/verify_vram_stream_tail.cmake")
+        set_tests_properties(dc_rom_vram_stream_tail PROPERTIES LABELS rom_required)
         add_test(NAME dc_rom_selection_return
             COMMAND "${CMAKE_COMMAND}" "-DAPP=$<TARGET_FILE:devils_crush>" "-DROM=${DC_ROM_PATH}"
                 "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/selection-return-$<CONFIG>-v1"
