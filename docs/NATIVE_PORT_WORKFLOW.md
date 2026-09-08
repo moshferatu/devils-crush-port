@@ -191,8 +191,35 @@ the full pentagram regression (322.29 seconds) and the exhaustive fixture.
 The capture hash remains unchanged. Both executables are rebuilt; Debug
 evidence is in `out/selection-return-debug-tests.log`.
 
-Next investigate scheduler call seams `01:C693` and `01:C696`, which retain
-1,197 and 72,084 interpreted cycles in the refreshed corpus. The higher
+Scheduler call seams `01:C693` and `01:C696` now have standalone native JSR
+transcripts. They push the original return words in hardware order at cycle
+zero, wrap the live stack pointer within its page, and hand off to the existing
+`C5EA` and `C5C9` owners after 21 master cycles. Both event horizons must exceed
+21 cycles; code/RAM mappings and transfer mode are guarded. The fixture covers
+every stack pointer and status value for both calls and checks the horizon,
+mapping, PC and RAM-size guards. `dc_rom_coroutine_calls` pins frame state,
+call registers/timing, ordered call writes, every RAM write and all bus writes
+against assembly, with 1/1 and 54/60 admissions. The registry has 709 entries.
+
+All 31 current-registry routes match when excluding only these two calls on
+the before side. State hashes and abandonment counts remain unchanged, with
+no interpreter-cost changes outside the target addresses. Their cost falls
+from 73,281 to 7,908 master cycles (89.21% removed); total non-wait work falls
+from 15,039,492 to 14,974,119 (0.43%). The paired manifest and refreshed primary
+rankings are in `out/coroutine-calls-cost/`; the aggregate is recorded in
+`out/coroutine-calls-cost-summary.log`. This isolates the new calls against
+the current registry, without claiming fresh whole-registry assembly parity.
+
+Release passes five focused checks: the call and delay assembly oracles,
+the exhaustive fixture, and both pentagram regressions. Debug passes the call
+oracle, fixture and both pentagram regressions. Both configurations preserve
+the corrected 4,366-frame capture hash and zero abandonments. The original
+capture files are unchanged. Logs are `out/coroutine-calls-release-tests.log`,
+`out/coroutine-calls-debug-tests.log` and
+`out/coroutine-calls-capture-{Release,Debug}.log`. Registry generation,
+all 198 seam ranges and `git diff --check` pass. The full suite was not rerun.
+
+The higher
 `00:E479-E47C` cluster contains 126,924 branch cycles and only 35,427 return
 cycles; its aggregate should not be mistaken for a single expensive RTS.
 Keep the close-horizon `08:5976` residual visible; the atomic guard is still

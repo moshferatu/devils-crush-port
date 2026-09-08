@@ -5489,6 +5489,11 @@ if(TARGET devils_crush)
                 "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/run-input-return-$<CONFIG>-v1"
                 -P "${CMAKE_CURRENT_SOURCE_DIR}/verify_run_input_return.cmake")
         set_tests_properties(dc_rom_run_input_return PROPERTIES LABELS rom_required)
+        add_test(NAME dc_rom_coroutine_calls
+            COMMAND "${CMAKE_COMMAND}" "-DAPP=$<TARGET_FILE:devils_crush>" "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/coroutine-calls-$<CONFIG>-v1"
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/verify_coroutine_calls.cmake")
+        set_tests_properties(dc_rom_coroutine_calls PROPERTIES LABELS rom_required)
         add_test(NAME dc_rom_selection_return
             COMMAND "${CMAKE_COMMAND}" "-DAPP=$<TARGET_FILE:devils_crush>" "-DROM=${DC_ROM_PATH}"
                 "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/selection-return-$<CONFIG>-v1"

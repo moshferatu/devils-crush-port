@@ -1,5 +1,41 @@
 # Retained Assembly Seams
 
+## Scheduler call frames: 01:C693 and 01:C696
+
+Both standalone JSR instructions now stage the authentic high/low return
+address bytes at the live, page-wrapped stack pointer and hand off to C5EA
+or C5C9. The children keep ownership of coroutine continuation and dispatch.
+The calls preserve registers and flags, require the live RAM/code mappings
+and clear transfer mode, and decline unless both event horizons exceed
+21 master cycles. Stack writes occur at offset zero; the interrupt sample
+is at 18 and the instruction completes at 21. No RTS observer is closed.
+
+The fixture covers both instructions across all 256 stack pointers and all
+256 status values, plus both horizons and mapping/PC/RAM guards. The pinned
+gameplay assembly comparison observes the calls and both children, admitting
+1/1 C693 and 54/60 C696 calls with identical frame, call, ordered call-write,
+all-RAM-write and bus-write artifacts. The six close-horizon calls remain
+visible as guarded interpreter work. The registry contains 709 entries;
+the manifest still has 198 ranges.
+
+The fresh 31-route registry comparison excludes only these two calls on the
+before side. Every state hash and abandonment count matches, and all cycle
+deltas stay at the two call addresses. Their interpreter cost falls from
+73,281 to 7,908 master cycles: 65,373 removed (89.21%). Total non-wait
+interpreter work falls from 15,039,492 to 14,974,119 (0.43%). The paired
+manifest and refreshed primary rankings are in `out/coroutine-calls-cost/`.
+This is an isolated current-registry comparison, not a new whole-registry
+assembly-parity claim.
+
+Release passes the call oracle, delay oracle, exhaustive fixture and both
+pentagram regressions. Debug passes the call oracle, fixture and both
+pentagram regressions. Both 4,366-frame face replays retain SHA-256
+`a263ebb43cf47f94e37011461ffd3c3657a3f94005c5523a746db13869a1b35a`
+and zero abandonments. The original capture inputs, checkpoint and high-score
+file remain unchanged. Logs are `out/coroutine-calls-{release,debug}-tests.log`
+and `out/coroutine-calls-capture-{Release,Debug}.log`. The full CTest suite
+was not rerun.
+
 ## Selection-controller return: 08:5A69
 
 The selection controller still ends its body at the RTS, whose standalone

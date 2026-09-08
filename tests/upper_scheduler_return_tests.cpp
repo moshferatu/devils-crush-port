@@ -10,6 +10,64 @@ int main()
 {
     try {
         std::array<std::byte, 0x2000> ram{};
+        for (const auto pc : {0xC693U, 0xC696U}) {
+            RoutineEntry entry{};
+            entry.routine = {1U, static_cast<std::uint16_t>(pc)};
+            auto& r = entry.registers;
+            r.program_counter = static_cast<std::uint16_t>(pc);
+            r.mpr[1] = 0xF8U; r.mpr[6] = 1U;
+            r.accumulator = 0xA5U; r.x = 0xFFU; r.y = 0x37U;
+            entry.master_cycles_until_user_event = 100U;
+            entry.master_cycles_until_timer_interrupt = 100U;
+            for (unsigned sp = 0U; sp < 256U; ++sp) {
+                for (unsigned status = 0U; status < 256U; ++status) {
+                    r.stack_pointer = static_cast<std::uint8_t>(sp);
+                    r.status = static_cast<std::uint8_t>(status);
+                    const auto result = devils_crush::app::detail::replace_coroutine_call(entry, ram);
+                    require(result.has_value() == ((status & 0x20U) == 0U), "Call transfer-mode guard changed");
+                    if (!result) { continue; }
+                    const auto& out = result->output_registers;
+                    require(out.program_counter == (pc == 0xC693U ? 0xC5EAU : 0xC5C9U)
+                        && out.stack_pointer == static_cast<std::uint8_t>(sp - 2U)
+                        && out.status == status && out.accumulator == r.accumulator
+                        && out.x == r.x && out.y == r.y && out.mpr == r.mpr,
+                        "Call changed registers or destination");
+                    require(result->work_ram_writes.size() == 2U, "Call frame size changed");
+                    const auto& high = result->work_ram_writes[0];
+                    const auto& low = result->work_ram_writes[1];
+                    require(high.logical_address == 0x2100U + sp && high.value == 0xC6U
+                        && low.logical_address == 0x2100U + static_cast<std::uint8_t>(sp - 1U)
+                        && low.value == static_cast<std::uint8_t>(pc + 2U)
+                        && high.master_cycle_offset == 0U && low.master_cycle_offset == 0U
+                        && high.instruction == entry.routine && low.instruction == entry.routine,
+                        "Call frame order, wrap, identity or timing changed");
+                    require(result->body_master_cycles == 21U && result->absorbed_returns.empty()
+                        && result->checkpoints.size() == 1U
+                        && result->checkpoints[0].interrupt_sample_master_cycle_offset == 18U
+                        && result->checkpoints[0].master_cycle_offset == 21U,
+                        "Call checkpoint timing changed");
+                }
+            }
+            r.status = 0U;
+            for (unsigned horizon = 0U; horizon <= 22U; ++horizon) {
+                entry.master_cycles_until_user_event = horizon;
+                require(devils_crush::app::detail::replace_coroutine_call(entry, ram).has_value()
+                    == (horizon > 21U), "Call user horizon guard changed");
+                entry.master_cycles_until_user_event = 100U;
+                entry.master_cycles_until_timer_interrupt = horizon;
+                require(devils_crush::app::detail::replace_coroutine_call(entry, ram).has_value()
+                    == (horizon > 21U), "Call timer horizon guard changed");
+                entry.master_cycles_until_timer_interrupt = 100U;
+            }
+            require(!devils_crush::app::detail::replace_coroutine_call(entry, std::span(ram).first(0x1FFF)), "Short call RAM admitted");
+            r.mpr[1] = 0U;
+            require(!devils_crush::app::detail::replace_coroutine_call(entry, ram), "Foreign call stack admitted");
+            r.mpr[1] = 0xF8U; r.mpr[6] = 0U;
+            require(!devils_crush::app::detail::replace_coroutine_call(entry, ram), "Foreign call code admitted");
+            r.mpr[6] = 1U; ++r.program_counter;
+            require(!devils_crush::app::detail::replace_coroutine_call(entry, ram), "Wrong call PC admitted");
+        }
+        std::puts("Verified both scheduler calls across all stack pointers and status values.");
         for (const auto routine : {RoutineKey{0x08U, 0x5976U}, RoutineKey{0x01U, 0xC4C8U},
                  RoutineKey{0x08U, 0x5A69U}}) {
             RoutineEntry entry{};

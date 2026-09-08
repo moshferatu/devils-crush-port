@@ -12,6 +12,39 @@ using emulation::RoutineEntry;
 using emulation::RoutineKey;
 using emulation::RoutineReplacement;
 
+std::optional<RoutineReplacement> replace_coroutine_call(
+    const RoutineEntry& entry, const std::span<const std::byte> work_ram)
+{
+    constexpr RoutineKey kDelayCall{.physical_bank = 0x01U, .logical_pc = 0xC693U};
+    constexpr RoutineKey kSchedulerCall{.physical_bank = 0x01U, .logical_pc = 0xC696U};
+    if ((entry.routine != kDelayCall && entry.routine != kSchedulerCall)
+        || entry.registers.program_counter != entry.routine.logical_pc
+        || entry.registers.mpr[1] != 0xF8U || entry.registers.mpr[6] != 0x01U
+        || (entry.registers.status & 0x20U) != 0U || work_ram.size() < 0x2000U
+        || !absorbed_return_fits_atomically(entry, 0U)) {
+        return std::nullopt;
+    }
+    // The child consumes the real JSR frame to choose the continuation.
+    // Preserve hardware write order and timing; leave the child as a new entry.
+    RoutineReplacement result{};
+    auto r = entry.registers;
+    const auto saved = static_cast<std::uint16_t>(entry.routine.logical_pc + 2U);
+    for (const auto value : {static_cast<std::uint8_t>(saved >> 8U),
+                            static_cast<std::uint8_t>(saved)}) {
+        result.work_ram_writes.push_back({.instruction = entry.routine,
+            .logical_address = static_cast<std::uint16_t>(0x2100U + r.stack_pointer),
+            .value = value, .master_cycle_offset = 0U});
+        r.stack_pointer = static_cast<std::uint8_t>(r.stack_pointer - 1U);
+    }
+    r.program_counter = entry.routine == kDelayCall ? 0xC5EAU : 0xC5C9U;
+    result.return_instruction = {0x01U, r.program_counter};
+    result.output_registers = r;
+    result.body_master_cycles = 21U;
+    result.checkpoints.push_back({.interrupt_sample_master_cycle_offset = 18U,
+        .master_cycle_offset = 21U, .instruction = entry.routine, .registers = r});
+    return result;
+}
+
 std::optional<RoutineReplacement> replace_coroutine_delay(
     const RoutineEntry& entry, const std::span<const std::byte> work_ram)
 {
