@@ -1,0 +1,57 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+if(NOT DEFINED ROUTES)
+    set(ROUTES gameplay blocked pause)
+endif()
+foreach(route IN LISTS ROUTES)
+    set(patches)
+    if(route STREQUAL "blocked")
+        set(patches --work-ram-patch "1000:2053:02" --work-ram-patch "1001:2053:00")
+    elseif(route STREQUAL "pause")
+        # Use an indexed input byte outside the physical pad poll slots so
+        # the IRQ cannot replace this fixture before the gate reads it.
+        set(patches --work-ram-patch "1000:2053:00"
+            --work-ram-patch "1000:2251:7F" --work-ram-patch "1000:2097:08"
+            --work-ram-patch "1002:2097:00"
+            --work-ram-patch "1003:2251:00")
+    endif()
+    foreach(mode IN ITEMS assembly native)
+        set(hooks)
+        if(mode STREQUAL "native")
+            set(hooks --replace-hook "01:C49E@all")
+        endif()
+        set(base "${OUTPUT}.${route}.${mode}")
+        execute_process(COMMAND "${APP}" --record-gameplay "${base}.csv"
+            ${hooks} ${patches} --observe-hook "01:C49E"
+            --routine-call-trace "${base}.calls.csv"
+            --bus-write-range 0000-1FFF --bus-write-trace "${base}.bus.csv"
+            --rom "${ROM}" RESULT_VARIABLE result OUTPUT_VARIABLE output ERROR_VARIABLE error)
+        if(NOT result EQUAL 0)
+            message(FATAL_ERROR "${route}/${mode}: ${output}${error}")
+        endif()
+        if(mode STREQUAL "native")
+            string(REGEX MATCH "Native replacement 01:C49E@all entries: ([0-9]+) of ([0-9]+)" admission "${output}")
+            if(NOT admission OR CMAKE_MATCH_1 EQUAL 0 OR NOT CMAKE_MATCH_1 EQUAL CMAKE_MATCH_2)
+                message(FATAL_ERROR "Incomplete gate admission: ${output}")
+            endif()
+            message(STATUS "${route}: ${admission}")
+        endif()
+    endforeach()
+    if(route STREQUAL "pause")
+        file(READ "${OUTPUT}.${route}.assembly.calls.csv.writes.csv" writes)
+        if(NOT writes MATCHES ",01,C4AE,")
+            message(FATAL_ERROR "Pause child JSR was not exercised")
+        endif()
+    elseif(route STREQUAL "blocked")
+        file(READ "${OUTPUT}.${route}.assembly.calls.csv" calls)
+        if(NOT calls MATCHES ",01,C4C8,[0-9]+,[0-9]+,30,")
+            message(FATAL_ERROR "Blocked gate was not exercised")
+        endif()
+    endif()
+    foreach(suffix IN ITEMS csv calls.csv calls.csv.writes.csv bus.csv)
+        file(SHA256 "${OUTPUT}.${route}.assembly.${suffix}" original)
+        file(SHA256 "${OUTPUT}.${route}.native.${suffix}" replacement)
+        if(NOT original STREQUAL replacement)
+            message(FATAL_ERROR "Session gate ${route}/${suffix}: ${original} != ${replacement}")
+        endif()
+    endforeach()
+endforeach()

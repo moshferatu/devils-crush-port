@@ -1,0 +1,12 @@
+diff --git a/mednafen/pce/huc6280.cpp b/mednafen/pce/huc6280.cpp
+--- a/mednafen/pce/huc6280.cpp
++++ b/mednafen/pce/huc6280.cpp
+@@ -1322,7 +1322,7 @@ NO_INLINE void HuC6280::RunSub(void)
+ 				valid = valid
+ 					&& replacement.write_count == 0
+ 					&& replacement.checkpoint_count == 0
+-					&& (PC == 0xD4B2 || PC == 0x4210 || PC == 0x7525 || PC == 0x5933 || PC == 0x73FD || PC == 0x76A8 || PC == 0x76CA) && lastop == 0x60;
++					&& (PC == 0xD4B2 || PC == 0x4210 || PC == 0x7525 || PC == 0x5933 || PC == 0x73FD || PC == 0x76A8 || PC == 0x76CA || PC == 0xCBF9) && lastop == 0x60;
+ 			}
+ 			if(dc_beetle_native_vdc_status_read_instruction)
+ 			{

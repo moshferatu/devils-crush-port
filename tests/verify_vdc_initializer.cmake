@@ -1,0 +1,30 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+foreach(mode IN ITEMS assembly native)
+    set(hooks)
+    if(mode STREQUAL "native")
+        set(hooks --replace-hook "00:E271@all")
+    endif()
+    set(base "${OUTPUT}.${mode}")
+    execute_process(COMMAND "${APP}" --record-gameplay "${base}.csv"
+        ${hooks} --observe-hook "00:E271"
+        --routine-call-trace "${base}.calls.csv"
+        --bus-write-range 0000-1FFF --bus-write-trace "${base}.bus.csv"
+        --rom "${ROM}" RESULT_VARIABLE result OUTPUT_VARIABLE output ERROR_VARIABLE error)
+    if(NOT result EQUAL 0)
+        message(FATAL_ERROR "${mode}: ${output}${error}")
+    endif()
+    if(mode STREQUAL "native")
+        string(FIND "${output}" "Native replacement 00:E271@all entries: 3 of 3" admitted)
+        if(admitted LESS 0)
+            message(FATAL_ERROR "Incomplete VDC initialization admission: ${output}")
+        endif()
+        message(STATUS "VDC initializer: 3 of 3 calls admitted")
+    endif()
+endforeach()
+foreach(suffix IN ITEMS csv calls.csv calls.csv.writes.csv bus.csv)
+    file(SHA256 "${OUTPUT}.assembly.${suffix}" original)
+    file(SHA256 "${OUTPUT}.native.${suffix}" replacement)
+    if(NOT original STREQUAL replacement)
+        message(FATAL_ERROR "VDC initializer ${suffix}: ${original} != ${replacement}")
+    endif()
+endforeach()

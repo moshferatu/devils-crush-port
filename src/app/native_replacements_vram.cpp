@@ -120,7 +120,7 @@ constexpr std::size_t kCheckpointBudget = 1980U;
 
 [[nodiscard]] constexpr bool is_owned_entry(const std::uint16_t logical_pc)
 {
-    return logical_pc == 0xE34CU || logical_pc == 0xE365U
+    return logical_pc == 0xE271U || logical_pc == 0xE34CU || logical_pc == 0xE365U
         || logical_pc == 0xE37EU || logical_pc == 0xE3C0U
         || logical_pc == 0xE3D7U
         || logical_pc == 0xE3FCU || logical_pc == 0xE403U
@@ -134,7 +134,7 @@ constexpr std::size_t kCheckpointBudget = 1980U;
 [[nodiscard]] constexpr bool is_return_instruction(
     const std::uint16_t logical_pc)
 {
-    return logical_pc == 0xE39CU || logical_pc == 0xE3E6U || logical_pc == 0xE41EU
+    return logical_pc == 0xE292U || logical_pc == 0xE39CU || logical_pc == 0xE3E6U || logical_pc == 0xE41EU
         || logical_pc == 0xE47CU || logical_pc == 0xE532U;
 }
 
@@ -162,7 +162,8 @@ std::optional<RoutineReplacement> replace_vram_upload(
     if (entry.registers.mpr[0] != 0xFFU) {
         return std::nullopt;
     }
-    if ((entry.routine.logical_pc == 0xE34CU
+    if ((entry.routine.logical_pc == 0xE271U
+         || entry.routine.logical_pc == 0xE34CU
          || entry.routine.logical_pc == 0xE365U
          || entry.routine.logical_pc == 0xE37EU
          || entry.routine.logical_pc == 0xE4E3U
@@ -782,6 +783,50 @@ std::optional<RoutineReplacement> replace_vram_upload(
             append_checkpoint(0xFAA4U, 0xFAA5U, 6U);
             pc = 0xFAA5U;
             break;
+
+        // Twelve setup-register triples, with the original port timing and
+        // an interrupt checkpoint at every instruction. RTS stays in the core.
+        case 0xE271U: {
+            load_accumulator(0x93U);
+            append_checkpoint(0xE271U, 0xE273U, 6U);
+            store(0xE273U, zp(0x2FU), registers.accumulator);
+            append_checkpoint(0xE273U, 0xE275U, 12U);
+            load_accumulator(0xE2U);
+            append_checkpoint(0xE275U, 0xE277U, 6U);
+            store(0xE277U, zp(0x30U), registers.accumulator);
+            append_checkpoint(0xE277U, 0xE279U, 12U);
+            registers.y = 0U; // CLY does not change flags.
+            append_checkpoint(0xE279U, 0xE27AU, 6U);
+            do {
+                load_accumulator(source_byte());
+                append_checkpoint(0xE27AU, 0xE27CU, 21U);
+                load_y(static_cast<std::uint8_t>(registers.y + 1U));
+                append_checkpoint(0xE27CU, 0xE27DU, 6U);
+                store(0xE27DU, zp(0x06U), registers.accumulator);
+                append_checkpoint(0xE27DU, 0xE27FU, 12U);
+                store_port(0xE27FU, 0x0000U, registers.accumulator);
+                append_checkpoint(0xE27FU, 0xE282U, 18U, 6U);
+                load_accumulator(source_byte());
+                append_checkpoint(0xE282U, 0xE284U, 21U);
+                load_y(static_cast<std::uint8_t>(registers.y + 1U));
+                append_checkpoint(0xE284U, 0xE285U, 6U);
+                store_port(0xE285U, 0x0002U, registers.accumulator);
+                append_checkpoint(0xE285U, 0xE288U, 18U, 6U);
+                load_accumulator(source_byte());
+                append_checkpoint(0xE288U, 0xE28AU, 21U);
+                load_y(static_cast<std::uint8_t>(registers.y + 1U));
+                append_checkpoint(0xE28AU, 0xE28BU, 6U);
+                store_port(0xE28BU, 0x0003U, registers.accumulator);
+                append_checkpoint(0xE28BU, 0xE28EU, 18U, 6U);
+                compare_y(0x24U);
+                append_checkpoint(0xE28EU, 0xE290U, 6U);
+                append_checkpoint(0xE290U,
+                    registers.y == 0x24U ? 0xE292U : 0xE27AU,
+                    registers.y == 0x24U ? 6U : 12U);
+            } while (registers.y != 0x24U);
+            pc = 0xE292U;
+            break;
+        }
 
         // ---- 00:E34C  submit one VDC address word and advance its count ---
         //
@@ -2023,8 +2068,10 @@ std::optional<RoutineReplacement> replace_vdc_sprite_attribute_prefix(
     // through DA06, and retains the two early exits to DA3E as core resumes.
     constexpr RoutineKey kRoutine{.physical_bank = 0x01U, .logical_pc = 0xD950U};
     constexpr std::uint8_t kBank1 = 0x01U;
-    if (entry.routine != kRoutine || work_ram.size() < 0x2000U
+    const bool attribute_tail = entry.routine == RoutineKey{1U, 0xDA0EU};
+    if ((entry.routine != kRoutine && !attribute_tail) || work_ram.size() < 0x2000U
         || rom.size() != 0x60000U || entry.registers.mpr[0] != 0xFFU
+        || (attribute_tail && entry.registers.mpr[6] != 1U)
         || entry.registers.mpr[1] != 0xF8U
         || (entry.registers.status & (kDecimal | kMemory)) != 0U) {
         return std::nullopt;
@@ -2202,6 +2249,35 @@ std::optional<RoutineReplacement> replace_vdc_sprite_attribute_prefix(
         replacement.output_registers = registers;
         replacement.body_master_cycles = cycle;
     };
+
+    if (attribute_tail) {
+        // DA06/DA0B have already consumed the live device read buffer.
+        // Keep PLY/RTS at DA3E in the core, including early-exit callers.
+        load(static_cast<std::uint8_t>(registers.accumulator & 0x0FU));
+        checkpoint(0xDA0E, 0xDA10, 6);
+        for (std::uint16_t pc = 0xDA10; pc < 0xDA18; pc += 2U) {
+            asl_ram(pc, zp(0x29)); checkpoint(pc, static_cast<std::uint16_t>(pc + 2U), 18);
+        }
+        load(static_cast<std::uint8_t>(registers.accumulator | read_ram(zp(0x29))));
+        checkpoint(0xDA18, 0xDA1A, 12);
+        store_ram(0xDA1A, zp(0x29), registers.accumulator); checkpoint(0xDA1A, 0xDA1C, 12);
+        load(0); checkpoint(0xDA1C, 0xDA1E, 6);
+        store_ram(0xDA1E, zp(6), 0); checkpoint(0xDA1E, 0xDA20, 12);
+        write(0xDA20, 0, 0); checkpoint(0xDA20, 0xDA23, 18, 6);
+        load(read_ram(zp(0x2D))); checkpoint(0xDA23, 0xDA25, 12);
+        write(0xDA25, 2, registers.accumulator); checkpoint(0xDA25, 0xDA28, 18, 6);
+        load(read_ram(zp(0x2E))); checkpoint(0xDA28, 0xDA2A, 12);
+        write(0xDA2A, 3, registers.accumulator); checkpoint(0xDA2A, 0xDA2D, 18, 6);
+        load(2); checkpoint(0xDA2D, 0xDA2F, 6);
+        store_ram(0xDA2F, zp(6), 2); checkpoint(0xDA2F, 0xDA31, 12);
+        write(0xDA31, 0, 2); checkpoint(0xDA31, 0xDA34, 18, 6);
+        load(read_ram(zp(0x28))); checkpoint(0xDA34, 0xDA36, 12);
+        write(0xDA36, 2, registers.accumulator); checkpoint(0xDA36, 0xDA39, 18, 6);
+        load(read_ram(zp(0x29))); checkpoint(0xDA39, 0xDA3B, 12);
+        write(0xDA3B, 3, registers.accumulator); checkpoint(0xDA3B, 0xDA3E, 18, 6);
+        finish(0xDA3E);
+        return replacement;
+    }
 
     // PHY; copy and scale the caller's sprite coordinates.
     store_ram(0xD950U, static_cast<std::uint16_t>(kStackBase + registers.stack_pointer), registers.y);

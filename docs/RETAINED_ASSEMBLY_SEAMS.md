@@ -1,5 +1,118 @@
 # Retained Assembly Seams
 
+## PSG programmer timer horizon: 45:4142-4148
+
+The programmer preserves its CLX/PHP/TXA/LSR/BCS prefix when the read of
+the timer driver's `$F5,X` byte cannot complete before the supplied timer
+horizon. It hands control back at `$4148`, before reading the snapshot,
+with five checkpoints, 33 master cycles and the PHP write at cycle 15.
+The core performs the live read and can deliver interrupts at the original
+instruction boundaries. The final shared-state guard still rejects composed
+walks whose earlier reads already missed the horizon; no timer guard is relaxed.
+
+The music replay now admits all 3,604 `$4142` entries. Its former 42 standalone
+`$4143` arrivals disappear because the prefix is preserved. The registry and
+seam manifest need no new entries. Unit coverage checks 12,032 horizon/stack
+combinations, including the exact 45/46-cycle read boundary and stack wrap.
+
+## VBlank mode-2 display setup: 00:E09E-E0CD
+
+Mode 2 now programs vertical scroll from `$2D56` and the raster compare from
+the byte-wide `94 - displacement`, then joins the existing control-shadow
+update and palette-call handoff. The complete native transaction is 345 master
+cycles, 27 instruction checkpoints and 14 ordered writes, including the
+palette JSR's two stack bytes at instruction start. Each VDC write retains its
+stolen cycle and earlier interrupt sample. The dispatcher at `E05F` now hands
+mode 2 to this entry instead of declining its entire transaction.
+
+The VDC acknowledge, palette child, PLP and interrupt-return boundaries keep
+their existing owners. Mode 1 and the mode-5 dispatch remain unimplemented in
+this family. The mode-2 body reads RAM only; no live device read is predicted.
+The alley and spiral routes exercise 203 and 187 entries respectively.
+`dc_vblank_mode_two_tests` checks all displacement/status pairs, arithmetic
+overflow and wrapping, stack wrapping, ordered port writes, mapping/buffer
+guards, and the dispatch handoff. The ROM regression compares frame state,
+ordered RAM writes (all RAM in Release, the handler's ranges in Debug), and
+timestamped device writes. An interrupt arm has no ordinary RTS boundary for
+a subroutine-call observer.
+
+## VDC attribute write body: 01:DA0E–DA3B
+
+The attribute merge and six VDC port writes now execute as a native body:
+294 master cycles, 21 instruction checkpoints, and 13 total writes. Four
+ASLs update the live $29 byte and carry before merging the device-read
+accumulator nibble. VDC stores sample interrupts six cycles before completion;
+RAM stores and arithmetic retain their ordinary three-cycle sample offset.
+DA06/DA0B still read the actual device buffer. DA3E PLY and DA3F RTS remain
+core-owned, including callers taking the transaction's early exits.
+
+The isolated gameplay replay admits 2/2 entries with identical frame/state,
+call, RAM-write, and timestamped bus traces. Exhaustive tests cover all 65,536
+accumulator/attribute byte pairs, all status admission values, mapping and
+buffer guards, stack preservation, output flags, and ordered writes.
+
+## Actor initialization and continuation: 01:C655–C6BF
+
+Four native RAM bodies now cover C655–C691, C699, C69E–C6A3, and C6A9–C6BD.
+They initialize slot zero, set the delay argument, toggle an actor attribute,
+and activate the actor after its delay. CLX preserves flags; each store is
+timestamped at instruction completion. Continuations accept all byte-sized
+X values and arbitrary stack depth, with RAM/code mapping and D/T guards.
+The C693/C696/C69B/C6A6/C6BF JSRs remain separate because C5EA and C5C9 own
+live scheduler frames and resumption. No stack operation is synthesized.
+
+The isolated gameplay replay exercises 1/1, 1/1, 48/48, and 1/1 entries,
+respectively, and compares state, call/write traces, and hardware-bus writes.
+ROM-free fixtures check 262,144 slot/value/segment combinations, flags,
+write addresses, checkpoint/write timing, preserved stack/Y, and guards.
+
+The next substantial body to investigate is DA0E–DA3B. Its VDC reads occur
+at DA06/DA0B, before this entry; the residual body itself packs the attribute
+and writes the VDC. Keep the preceding reads and the DA3E PLY/DA3F RTS
+ownership explicit rather than rejecting the entire range as device reads.
+
+## VDC setup loop: 00:E271–E292
+
+E271 now owns the complete twelve-triple setup sequence through E290,
+including its pointer initialization and closing branches. The existing VRAM
+transcript machinery preserves each instruction checkpoint, zero-page writes,
+and ordered device writes. Port stores take 18 master cycles and sample the
+interrupt six cycles before completion; ordinary instructions sample three
+cycles before completion. CLY preserves flags, while INY and CPY update them.
+No device state is predicted and E292 remains a core RTS.
+
+The isolated gameplay replay admits all three calls and compares frame state,
+complete call/RAM-write traces, and hardware-bus writes. ROM-free tests exercise
+all 65,536 status/stack combinations (D/T modes decline), every register triple,
+all checkpoint sample offsets, and invalid mapping/buffer guards.
+
+## Shooter release countdown: 02:51AF–51D5
+
+The native body now includes expiry, arbitrary X/SP, and the full byte-wide
+appearance lookup index. It corrects the dormant continuation's indexed write
+to the ROM's absolute `STA $3980` and emits stores at instruction completion.
+Non-expiry ends at core RTS 51D5; expiry ends before JSR 51D2. The independently
+native 5475/5481 child retains its own stack and resumption ownership.
+The alley replay covers 340 calls including 68 expiry writes to shared $3980,
+with identical state, call/write, and bus artifacts. Direct tests cover 65,536
+timer/state combinations, varying X/SP, byte wrap, flags, and mapping guards.
+The larger 08:5A69 residue entry is only an RTS, not a competing body port.
+
+## Appearance submission callers: 02:5475 / 02:5481
+
+The native appearance submission helper now accepts arbitrary actor slots and
+stack depths with work RAM mapped through MPR1=F8, code through MPR2=02, and
+the child jump table through MPR6=01. Decimal and transfer modes still decline.
+Its PHA/JSR stack writes wrap independently; the continuation reads the live
+saved appearance, computes the 16-bit palette offset, and preserves the
+original C042 and C05D child boundaries. No child return is absorbed.
+
+The implementation is isolated in `native_replacements_appearance.cpp` for
+direct testing: 65,536 appearance/stack combinations cover pointer carry,
+overflow flags, intermediate shift writes, and mapping rejection. The alley
+replay includes 68 calls at SP=F9, beyond the former FB-only prefix guard.
+The following 54A3 controller remains outside this change.
+
 These entries record why particular paths currently retain emulated
 instructions: interrupt sampling, caller ownership, transaction capacity, or
 missing verification. They remain porting candidates when measured interpreter
@@ -10,6 +123,41 @@ expanding native ownership.
 
 Before proposing a replacement that touches any address below, read the reason.
 If the reason no longer holds, say why in the slice, and change the entry.
+
+## Collision vector dispatch `01:CBF9`
+
+The synthetic table-vector RTS is now installed as an exact core capability.
+Patch 0036 admits this opcode to the existing RTS contract; the collision
+transcript still stops before it. The original core performs the live stack
+reads, increments the vector target and samples interrupts. It does not mark
+the enclosing collision call complete or infer a caller return from the stack.
+No stack bytes, register flags or mappings are synthesized by this descriptor.
+
+This is a core-backed seam, not a C++ rewrite of the collision handler and not
+evidence of a speedup: the original core opcode body still executes. Any
+reduction in reported interpreter residue here is a change in admitted core
+coverage. The CLI retains its conservative interrupt-horizon fallback.
+`verify_collision_vector_rts.cmake` compares the vector-dispatch call and write
+traces, full recorded state, and device writes against assembly on gameplay
+and alternate routes. Descriptor tests cover every status/stack-pointer pair.
+
+## Eyeball final-animation controller `02:4F3D-4F69`
+
+The old slot-specific timer-wait fast path remains intact. Its fallback now
+models the complete animation prefix: timer reload, four-frame selection,
+frame wrap (including flag-preserving CLA), dirty marking, and phase borrow.
+Each instruction has its own checkpoint and each RAM write retains its cycle.
+The fixed frame table is read from the verified bank-02 ROM mapping. Unsupported
+mapping or D/T modes still defer. The prefix hands off at `4F6C`; the existing
+countdown owner now also handles zero expiry through `4F81`, clearing the frame
+and marking the actor dirty before yielding at the `4F83` child call. Child calls
+and core RTS handling are unchanged. Both mappings and D/T mode are guarded.
+
+`dc_eyeball_animation_tests` covers 131,328 timer/frame/borrow cases. The
+3600-frame `dc_rom_eyeball_animation` fixture reaches 224/224 native calls and
+compares census, enclosing calls, ordered RAM writes and all device writes
+against assembly. The older final-wait test retains all four artifact hashes
+and its 102-cycle routine-replay check; only admission rises from 122 to 224.
 
 ## Compound-sampled `BBRn` boundaries
 
@@ -75,6 +223,40 @@ RAM, video memory, pixels, audio, ordered RAM/VDC writes and child boundaries
 against assembly. This replaces missing verification with a reproducible
 controller-level test rather than treating the handoffs as permanent barriers.
 
+## Bank-09 parent animation startup
+
+`09:705C-70C0` now uses seven bounded native entries for the descending,
+holding and ascending phases. Calls into `F08E`, `ECFD`, and `590C` remain
+independent; `C5C9` consumes its actual JSR frame and installs the next actor
+continuation. `709E` restores X from the live post-child stack, not from the
+parent's entry snapshot. The already-native `70C1` score-panel scheduler
+handoff and `70C4` frame stepper are unchanged. The three ordinary returns at
+`7071`, `7099`, and `70BB` stay core-owned.
+
+Natural gameplay and alternate routes compare complete frame state, all 92
+enclosing calls and their ordered writes, and the `0000-1FFF` device-write
+stream. A controlled final-counter fixture covers the ascending phase's audio
+handoff, which natural startup does not reach before changing scenes. Direct
+tests exhaust counter pairs and all stack pointers. The ordered-write oracle
+caught an initial PHX timing error: unlike JSR, PHX publishes its write at
+instruction completion. No bridge capacity or scheduler semantics changed.
+
+The sibling `09:7194-71E6` now has five native entry/return boundaries:
+`7194`, `7197`, `71BC`, `71BF`, and `71CD`. Its byte-identical descending and
+ascending phases share the semantic implementation with relocated checkpoint
+identities and JSR return bytes. Its shorter hold phase is explicit: it has
+neither the other parent's audio comparison nor its PHX/child/PLX sequence.
+The final `71E7` scheduler call and existing `71EA` frame stepper are unchanged;
+the three ordinary RTS instructions at `71A9`, `71C4`, and `71E1` stay core-owned.
+
+Natural gameplay and alternate replays each cover 92 enclosing calls. A
+controlled frame-166 timer/frame patch to the actual X=06 actor reaches the
+final audio/scheduler handoff. All three routes compare complete census,
+enclosing call records, ordered RAM writes, and the entire device-write stream.
+The combined direct suite now checks 329,472 cases, including all sibling
+timer/frame pairs and every JSR stack pointer. No ROM, scheduler, bridge,
+or prior sorcerer crash fix was altered.
+
 ## Selective scene-record loader
 
 `02:40A8` and the real child-return continuation `02:40BD` now own the
@@ -108,6 +290,24 @@ fixtures cover all 65,536 combinations of stack pointer and command bank,
 including wrapping pushes/pops and bank increments. The `ED4D-ED57` command
 selector prefix remains core-owned; it is not a JSR instruction at `ED4D`.
 
+## Audio stack wrapper
+
+The separate audio wrapper at `45:4B7B` now owns PHP/PHX/PHY, SEI and
+the real `JSR 4BCC`. Entry `4B82` restores Y and X from the live stack,
+including stack-pointer wrap. The child stays independently owned. PHP
+writes P with B set at cycle 9; the JSR pushes its return bytes at cycle 33,
+before charging its 21 cycles. SEI samples the pre-instruction interrupt mask.
+
+`4B84` PLP and `4B85` RTS remain interpreted. The generic checkpoint format
+cannot describe PLP sampling I set before restoring I clear. The fixed native
+PLP descriptor currently admits only VBlank epilogues; it must not be claimed
+as deployed at this address. An initial generic PLP implementation passed an
+800-frame menu replay but changed gameplay RAM/audio at frame 1064. The
+corrected boundary passes a 1,800-frame menu/input replay plus exact gameplay
+census, enclosing calls, ordered stack writes and full hardware-write stream.
+Direct fixtures cover 16,384 supported stack/status combinations and D/T,
+short-RAM and mapper rejection. No existing port or crash fix is reverted.
+
 ## Music sequence-end nonlocal exit
 
 The command interpreter's `$82/$92` handlers at `45:4356` no longer force
@@ -127,6 +327,23 @@ states match assembly. Direct tests cover 196,608 combinations of the three
 commands, all X and stack-pointer values, wrapping/live stack reads, flags,
 write timing and interrupt checkpoints. Unsupported command paths and the
 existing driver-state/SEI interrupt guards remain in place.
+
+## Session input gate
+
+`01:C49E` now retires its session-bit early exit and active Run-input
+branch, including the `C4AE` JSR into `00:ED37`. The pause audio child and
+subsequent frame-wait loop remain independently owned; the new early exit
+stops at `C4C8`. The existing idle branch is unchanged. New paths require
+the expected RAM/code mappings and clear D/T flags. Each instruction has
+an interrupt checkpoint, and JSR writes the wrapped live stack at its
+instruction-start cycle. No new registry entry is needed.
+
+`dc_session_gate_active_tests` covers the flag/input combinations, indexed
+RAM reads, stack wrapping, cycle/flag preservation and rejected mappings.
+`dc_rom_session_gate_active` compares isolated replacement and assembly
+census, ordered call writes and full device-bus writes on natural gameplay,
+a forced session-bit exit, and a forced pause/resume path. Fixtures assert
+that the new paths actually execute; a quiet idle-only replay is insufficient.
 
 ## Nudge controller locks and timer reload
 

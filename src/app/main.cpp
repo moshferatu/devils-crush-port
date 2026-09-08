@@ -5909,6 +5909,9 @@ parse_logical_address_range(const std::string_view text)
                                        .logical_pc = 0xC3CBU,
                                    }
                            && request.all_calls;
+                       const bool proven_collision_vector_rts =
+                           request.routine == RoutineKey{0x01U, 0xCBF9U}
+                           && request.all_calls;
                        const bool proven_session_input_gate =
                            request.routine
                                    == RoutineKey{
@@ -6017,11 +6020,12 @@ parse_logical_address_range(const std::string_view text)
                                    }
                            && request.all_calls;
                        const bool proven_giant_skeleton_eyeball_final_wait =
-                           request.routine
+                           (request.routine
                                    == RoutineKey{
                                        .physical_bank = 0x02U,
                                        .logical_pc = 0x4F3DU,
                                    }
+                            || request.routine == RoutineKey{0x02U, 0x4F6CU})
                            && request.all_calls;
                        const bool proven_gray_blob_initializer =
                            request.routine
@@ -6559,6 +6563,20 @@ parse_logical_address_range(const std::string_view text)
                                            .logical_pc = 0x5223U,
                                        }
                                && request.all_calls;
+                       const bool proven_upper_parent_animation = request.all_calls
+                           && request.routine.physical_bank == 0x09U
+                           && (request.routine.logical_pc == 0x705CU
+                               || request.routine.logical_pc == 0x705FU
+                               || request.routine.logical_pc == 0x7084U
+                               || request.routine.logical_pc == 0x7087U
+                               || request.routine.logical_pc == 0x7094U
+                               || request.routine.logical_pc == 0x709EU
+                               || request.routine.logical_pc == 0x70A7U
+                               || request.routine.logical_pc == 0x7194U
+                               || request.routine.logical_pc == 0x7197U
+                               || request.routine.logical_pc == 0x71BCU
+                               || request.routine.logical_pc == 0x71BFU
+                               || request.routine.logical_pc == 0x71CDU);
                        const bool proven_scene_layout_record_loop =
                            (request.routine == RoutineKey{0x02U, 0x40A8U}
                                || request.routine == RoutineKey{0x02U, 0x40BDU}
@@ -8186,7 +8204,10 @@ parse_logical_address_range(const std::string_view text)
                                || request.routine.logical_pc == 0x5861U)
                            && request.all_calls;
                        const bool proven_bank_call_wrappers =
-                           request.routine.physical_bank == 0x00U
+                           ((request.routine.physical_bank == 0x45U
+                               && (request.routine.logical_pc == 0x4B7BU
+                                   || request.routine.logical_pc == 0x4B82U))
+                           || (request.routine.physical_bank == 0x00U
                            && (request.routine.logical_pc == 0xE1FDU
                                || request.routine.logical_pc == 0xE200U
                                || request.routine.logical_pc == 0xE20DU
@@ -8198,13 +8219,14 @@ parse_logical_address_range(const std::string_view text)
                                || request.routine.logical_pc == 0xECE2U
                                || request.routine.logical_pc == 0xECF2U
                                || request.routine.logical_pc == 0xED58U
-                               || request.routine.logical_pc == 0xED75U)
+                               || request.routine.logical_pc == 0xED75U)))
                            && request.all_calls;
                        const bool proven_vblank_handler =
                            request.routine.physical_bank == 0x00U
                            && (request.routine.logical_pc == 0xE058U
                                || request.routine.logical_pc == 0xE05FU
                                || request.routine.logical_pc == 0xE0EBU
+                               || request.routine.logical_pc == 0xE09EU
                                || request.routine.logical_pc == 0xE114U
                                || request.routine.logical_pc == 0xE117U
                                || request.routine.logical_pc == 0xE123U
@@ -8217,7 +8239,8 @@ parse_logical_address_range(const std::string_view text)
                            && request.all_calls;
                        const bool proven_vram_upload =
                            request.routine.physical_bank == 0x00U
-                           && (request.routine.logical_pc == 0xE34CU
+                           && (request.routine.logical_pc == 0xE271U
+                               || request.routine.logical_pc == 0xE34CU
                                || request.routine.logical_pc == 0xE365U
                                || request.routine.logical_pc == 0xE37EU
                                || request.routine.logical_pc == 0xEF2AU
@@ -8419,6 +8442,7 @@ parse_logical_address_range(const std::string_view text)
                            && !proven_bank_call_wrappers
                            && !proven_vblank_handler
                            && !proven_vram_upload
+                           && !(request.routine == RoutineKey{0x01U, 0xDA0EU} && request.all_calls)
                            && !proven_resident_pattern_loader
                            && !proven_tilemap_upload
                            && !scene_selection_controller
@@ -8466,6 +8490,7 @@ parse_logical_address_range(const std::string_view text)
                            && !proven_coroutine_scheduler
                            && !proven_nudge_input_gate
                            && !proven_session_input_gate
+                           && !proven_collision_vector_rts
                            && !proven_ball_drain_threshold
                            && !proven_motion_substep_split
                            && !proven_ball_substep_loop
@@ -8543,12 +8568,20 @@ parse_logical_address_range(const std::string_view text)
                            && !proven_devil_shooter_release_delay_gate
                            && !proven_devil_shooter_charge_after_audio
                            && !proven_devil_shooter_charge_tail
+                           && !(request.routine == RoutineKey{0x02U, 0x51AFU}
+                                && request.all_calls)
+                           && !((request.routine == RoutineKey{0x01U, 0xC655U}
+                                 || request.routine == RoutineKey{0x01U, 0xC699U}
+                                 || request.routine == RoutineKey{0x01U, 0xC69EU}
+                                 || request.routine == RoutineKey{0x01U, 0xC6A9U})
+                                && request.all_calls)
                            && !proven_devil_shooter_appearance_submission_prefix
                            && !proven_devil_shooter_appearance_submission_tail
                            && !proven_devil_shooter_post_launch_gate
                            && !proven_devil_shooter_launch_continuation
                            && !proven_devil_shooter_charge_retraction_calls
                            && !proven_devil_shooter_charge_entry_controller
+                           && !proven_upper_parent_animation
                            && !proven_scene_layout_record_loop
                            && !proven_scene_layout_record_loader
                            && !proven_devil_shooter_charge_controller
@@ -15880,7 +15913,10 @@ using NativeRegistryEntryObserver = std::function<void(
     // 5CD5 is the Side-Worm selector return, while C9DE is the active
     // range-helper's caller-owned return; each deliberately remains a core
     // RTS instruction rather than a synthetic continuation of its caller.
-    constexpr std::array<RoutineKey, 13U> kGameplayHelperRtsInstructions{{
+    constexpr std::array<RoutineKey, 14U> kGameplayHelperRtsInstructions{{
+        // Synthetic vector dispatch: execute the live RTS, never absorb it
+        // as the completion of the enclosing collision routine.
+        {.physical_bank = 0x01U, .logical_pc = 0xCBF9U},
         {.physical_bank = 0x01U, .logical_pc = 0xC9DEU},
         {.physical_bank = 0x01U, .logical_pc = 0xC70AU},
         {.physical_bank = 0x01U, .logical_pc = 0xC3DCU},
@@ -16067,39 +16103,8 @@ using NativeRegistryEntryObserver = std::function<void(
             return false;
         }
     }
-    // The Devil Shooter's release timer normally reaches an RTS.  On expiry
-    // it calls the appearance submitter with a different stack depth, so the
-    // countdown transcript keeps that child call explicit.
-    constexpr RoutineKey kDevilShooterReleaseCountdown{
-        .physical_bank = 0x02U,
-        .logical_pc = 0x51AFU,
-    };
-    if (std::find(
-            claimed_routines.begin(), claimed_routines.end(),
-            kDevilShooterReleaseCountdown)
-            == claimed_routines.end()
-        && !runtime.install_execution_hook({
-            .routine = kDevilShooterReleaseCountdown,
-            .mode = HookMode::replace,
-            .replacement_callback = [&deployment, &replacement_rom](
-                const RoutineEntry& entry,
-                const std::span<const std::byte> work_ram) {
-                ++deployment.auxiliary_transcript_entries;
-                ++deployment.auxiliary_devil_shooter_release_countdown_entries;
-                deployment.span.observe(entry.absolute_master_cycle);
-                auto result = replace_native_gameplay_routine(
-                    entry, work_ram, replacement_rom);
-                if (result) {
-                    ++deployment.auxiliary_transcript_accepted;
-                    deployment.auxiliary_transcript_master_cycles +=
-                        result->body_master_cycles;
-                }
-                return result;
-            },
-        })) {
-        std::cerr << "Could not install native Devil Shooter release countdown hook.\n";
-        return false;
-    }
+    // 02:51AF is now registry-admitted, including expiry. Do not install a
+    // second auxiliary hook for the same address.
     // E34C, including its closing BNE, has graduated from an auxiliary
     // VDC-address capability to a fully admitted routine above. Do not install
     // a second hook here; its cycles and calls now belong to the registry row.

@@ -52,6 +52,53 @@ target_link_libraries(dc_selective_scene_controller_tests PRIVATE DevilsCrush::E
 target_compile_features(dc_selective_scene_controller_tests PRIVATE cxx_std_20)
 dc_enable_strict_warnings(dc_selective_scene_controller_tests)
 add_test(NAME dc_selective_scene_controller_tests COMMAND dc_selective_scene_controller_tests)
+add_executable(dc_upper_parent_animation_tests upper_parent_animation_tests.cpp
+    ../src/app/native_replacements_parent_animation.cpp)
+target_link_libraries(dc_upper_parent_animation_tests PRIVATE DevilsCrush::Emulation)
+target_compile_features(dc_upper_parent_animation_tests PRIVATE cxx_std_20)
+dc_enable_strict_warnings(dc_upper_parent_animation_tests)
+add_test(NAME dc_upper_parent_animation_tests COMMAND dc_upper_parent_animation_tests)
+add_executable(dc_eyeball_animation_tests eyeball_animation_tests.cpp
+    ../src/app/native_replacements_eyeball_animation.cpp
+    ../src/app/native_replacements_controls.cpp
+    ../src/app/native_replacements_absorb.cpp)
+target_link_libraries(dc_eyeball_animation_tests PRIVATE DevilsCrush::Emulation DevilsCrush::GameLogic)
+target_compile_features(dc_eyeball_animation_tests PRIVATE cxx_std_20)
+dc_enable_strict_warnings(dc_eyeball_animation_tests)
+add_test(NAME dc_eyeball_animation_tests COMMAND dc_eyeball_animation_tests)
+add_executable(dc_session_gate_active_tests session_gate_active_tests.cpp
+    ../src/app/native_replacements_controls.cpp ../src/app/native_replacements_absorb.cpp)
+target_link_libraries(dc_session_gate_active_tests PRIVATE DevilsCrush::Emulation DevilsCrush::GameLogic)
+target_compile_features(dc_session_gate_active_tests PRIVATE cxx_std_20)
+dc_enable_strict_warnings(dc_session_gate_active_tests)
+add_test(NAME dc_session_gate_active_tests COMMAND dc_session_gate_active_tests)
+add_executable(dc_collision_vector_rts_tests collision_vector_rts_tests.cpp
+    ../src/app/native_replacements_controls.cpp ../src/app/native_replacements_absorb.cpp)
+target_link_libraries(dc_collision_vector_rts_tests PRIVATE DevilsCrush::Emulation DevilsCrush::GameLogic)
+target_compile_features(dc_collision_vector_rts_tests PRIVATE cxx_std_20)
+dc_enable_strict_warnings(dc_collision_vector_rts_tests)
+add_test(NAME dc_collision_vector_rts_tests COMMAND dc_collision_vector_rts_tests)
+add_executable(dc_appearance_submission_tests appearance_submission_tests.cpp
+    ../src/app/native_replacements_appearance.cpp)
+target_link_libraries(dc_appearance_submission_tests PRIVATE DevilsCrush::Emulation DevilsCrush::GameLogic)
+target_compile_features(dc_appearance_submission_tests PRIVATE cxx_std_20)
+dc_enable_strict_warnings(dc_appearance_submission_tests)
+add_test(NAME dc_appearance_submission_tests COMMAND dc_appearance_submission_tests)
+add_executable(dc_actor_initialization_tests actor_initialization_tests.cpp
+    ../src/app/native_replacements_actor_initialization.cpp)
+target_link_libraries(dc_actor_initialization_tests PRIVATE DevilsCrush::Emulation DevilsCrush::GameLogic)
+target_compile_features(dc_actor_initialization_tests PRIVATE cxx_std_20)
+dc_enable_strict_warnings(dc_actor_initialization_tests)
+add_test(NAME dc_actor_initialization_tests COMMAND dc_actor_initialization_tests)
+
+add_executable(dc_vblank_mode_two_tests
+    vblank_mode_two_tests.cpp
+    ../src/app/native_replacements_vblank.cpp
+    ../src/app/native_replacements_absorb.cpp)
+target_link_libraries(dc_vblank_mode_two_tests PRIVATE DevilsCrush::Emulation)
+target_compile_features(dc_vblank_mode_two_tests PRIVATE cxx_std_20)
+dc_enable_strict_warnings(dc_vblank_mode_two_tests)
+add_test(NAME dc_vblank_mode_two_tests COMMAND dc_vblank_mode_two_tests)
 
 add_executable(dc_vdc_word_transfer_tests
     vdc_word_transfer_tests.cpp
@@ -87,6 +134,13 @@ add_executable(dc_audio_bank_wrapper_tests
 target_link_libraries(dc_audio_bank_wrapper_tests PRIVATE DevilsCrush::Emulation DevilsCrush::Core)
 target_compile_features(dc_audio_bank_wrapper_tests PRIVATE cxx_std_20)
 dc_enable_strict_warnings(dc_audio_bank_wrapper_tests)
+
+add_executable(dc_audio_stack_wrapper_tests
+    audio_stack_wrapper_tests.cpp
+    ../src/app/native_replacements_audio_stack.cpp)
+target_link_libraries(dc_audio_stack_wrapper_tests PRIVATE DevilsCrush::Emulation DevilsCrush::Core)
+target_compile_features(dc_audio_stack_wrapper_tests PRIVATE cxx_std_20)
+dc_enable_strict_warnings(dc_audio_stack_wrapper_tests)
 
 add_executable(dc_selection_actor_controller_tests
     selection_actor_controller_tests.cpp
@@ -2467,13 +2521,13 @@ if(TARGET devils_crush)
 
         add_test(
             NAME dc_rom_music_sequencer_semantic
-            CONFIGURATIONS Release
+            CONFIGURATIONS Debug Release
             COMMAND
                 "${CMAKE_COMMAND}"
                 "-DAPP=$<TARGET_FILE:devils_crush>"
                 "-DCONFIG=$<CONFIG>"
                 "-DROM=${DC_ROM_PATH}"
-                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/music-sequencer-semantic-v1.csv"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/music-sequencer-semantic-$<CONFIG>-v1.csv"
                 "-P"
                 "${CMAKE_CURRENT_SOURCE_DIR}/verify_music_sequencer_semantic.cmake"
         )
@@ -5355,6 +5409,67 @@ if(TARGET devils_crush)
                 -P "${CMAKE_CURRENT_SOURCE_DIR}/verify_selective_scene_controller.cmake"
         )
         set_tests_properties(dc_rom_selective_scene_controller PROPERTIES LABELS rom_required)
+        add_test(NAME dc_rom_sibling_parent_animation
+            COMMAND "${CMAKE_COMMAND}" "-DAPP=$<TARGET_FILE:devils_crush>" "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/sibling-parent-$<CONFIG>-v1"
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/verify_sibling_parent_animation.cmake")
+        set_tests_properties(dc_rom_sibling_parent_animation PROPERTIES LABELS rom_required)
+        add_test(NAME dc_rom_eyeball_animation
+            COMMAND "${CMAKE_COMMAND}" "-DAPP=$<TARGET_FILE:devils_crush>" "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/eyeball-animation-$<CONFIG>-v1"
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/verify_eyeball_animation.cmake")
+        set_tests_properties(dc_rom_eyeball_animation PROPERTIES LABELS rom_required)
+        add_test(NAME dc_rom_session_gate_active
+            COMMAND "${CMAKE_COMMAND}" "-DAPP=$<TARGET_FILE:devils_crush>" "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/session-gate-active-$<CONFIG>-v1"
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/verify_session_gate_active.cmake")
+        set_tests_properties(dc_rom_session_gate_active PROPERTIES LABELS rom_required)
+        add_test(NAME dc_rom_collision_vector_rts
+            COMMAND "${CMAKE_COMMAND}" "-DAPP=$<TARGET_FILE:devils_crush>" "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/collision-vector-rts-$<CONFIG>-v1"
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/verify_collision_vector_rts.cmake")
+        set_tests_properties(dc_rom_collision_vector_rts PROPERTIES LABELS rom_required)
+        add_test(NAME dc_rom_release_countdown
+            COMMAND "${CMAKE_COMMAND}" "-DAPP=$<TARGET_FILE:devils_crush>" "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/release-countdown-$<CONFIG>-v1"
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/verify_release_countdown.cmake")
+        add_test(NAME dc_rom_actor_initialization
+            COMMAND "${CMAKE_COMMAND}" "-DAPP=$<TARGET_FILE:devils_crush>" "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/actor-initialization-$<CONFIG>-v1"
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/verify_actor_initialization.cmake")
+        add_test(NAME dc_rom_vblank_mode_two
+            COMMAND "${CMAKE_COMMAND}" "-DAPP=$<TARGET_FILE:devils_crush>" "-DROM=${DC_ROM_PATH}"
+                "-DCONFIG=$<CONFIG>"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/vblank-mode-two-$<CONFIG>-v1"
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/verify_vblank_mode_two.cmake")
+        set_tests_properties(dc_rom_vblank_mode_two PROPERTIES LABELS rom_required)
+        add_test(NAME dc_rom_vdc_attribute_body
+            COMMAND "${CMAKE_COMMAND}" "-DAPP=$<TARGET_FILE:devils_crush>" "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/vdc-attribute-$<CONFIG>-v1"
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/verify_vdc_attribute_body.cmake")
+        set_tests_properties(dc_rom_vdc_attribute_body PROPERTIES LABELS rom_required)
+        set_tests_properties(dc_rom_actor_initialization PROPERTIES LABELS rom_required)
+        set_tests_properties(dc_rom_release_countdown PROPERTIES LABELS rom_required)
+        add_test(NAME dc_rom_appearance_submission
+            COMMAND "${CMAKE_COMMAND}" "-DAPP=$<TARGET_FILE:devils_crush>" "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/appearance-submission-$<CONFIG>-v1"
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/verify_appearance_submission.cmake")
+        set_tests_properties(dc_rom_appearance_submission PROPERTIES LABELS rom_required)
+        add_test(NAME dc_rom_vdc_initializer
+            COMMAND "${CMAKE_COMMAND}" "-DAPP=$<TARGET_FILE:devils_crush>" "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/vdc-initializer-$<CONFIG>-v1"
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/verify_vdc_initializer.cmake")
+        set_tests_properties(dc_rom_vdc_initializer PROPERTIES LABELS rom_required)
+        add_test(NAME dc_rom_upper_parent_animation
+            COMMAND "${CMAKE_COMMAND}" "-DAPP=$<TARGET_FILE:devils_crush>" "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/upper-parent-$<CONFIG>-v1"
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/verify_upper_parent_animation.cmake")
+        set_tests_properties(dc_rom_upper_parent_animation PROPERTIES LABELS rom_required)
+        add_test(NAME dc_rom_upper_parent_animation_terminal
+            COMMAND "${CMAKE_COMMAND}" "-DAPP=$<TARGET_FILE:devils_crush>" "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/upper-parent-terminal-$<CONFIG>-v1"
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/verify_upper_parent_animation_terminal.cmake")
+        set_tests_properties(dc_rom_upper_parent_animation_terminal PROPERTIES LABELS rom_required)
 
         add_test(
             NAME dc_rom_selective_scene
@@ -5587,6 +5702,15 @@ if(TARGET devils_crush)
                 "-DROM=${DC_ROM_PATH}"
                 -P "${CMAKE_CURRENT_SOURCE_DIR}/verify_audio_bank_wrapper.cmake")
         set_tests_properties(dc_rom_audio_bank_wrapper PROPERTIES LABELS rom_required)
+
+        add_test(NAME dc_rom_audio_stack_wrapper
+            COMMAND "${CMAKE_COMMAND}"
+                "-DTEST_APP=$<TARGET_FILE:dc_audio_stack_wrapper_tests>"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/audio-stack-wrapper-$<CONFIG>-v2"
+                "-DROM=${DC_ROM_PATH}"
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/verify_audio_stack_wrapper.cmake")
+        set_tests_properties(dc_rom_audio_stack_wrapper PROPERTIES LABELS rom_required)
 
         add_test(NAME dc_rom_music_command_exit
             COMMAND "${CMAKE_COMMAND}"

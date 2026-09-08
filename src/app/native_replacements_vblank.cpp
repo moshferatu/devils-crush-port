@@ -49,6 +49,8 @@ using emulation::RoutineReplacement;
 //   00:E05F  its tail: stash the status byte at $01, test the VBlank bit and
 //            pick the arm from the raster mode at $54
 //
+//   00:E09E  mode-2 scroll/raster setup from $2D56, joining the shared control
+//            shadow update and palette-call handoff
 //   00:E0EB  VBlank prologue: program VDC registers $08/$07/$05 from the RAM
 //            shadows and clear bit 6 of $02, then stop at the JSR $EB30
 //   00:E117  after the pad read: bump the frame counter at $00 and either take
@@ -126,7 +128,7 @@ constexpr std::uint16_t kStackBase = 0x2100U;
 [[nodiscard]] constexpr bool is_owned_entry(const std::uint16_t logical_pc)
 {
     return logical_pc == 0xE058U || logical_pc == 0xE05FU
-        || logical_pc == 0xE0EBU || logical_pc == 0xE114U
+        || logical_pc == 0xE09EU || logical_pc == 0xE0EBU || logical_pc == 0xE114U
         || logical_pc == 0xE117U || logical_pc == 0xE123U
         || logical_pc == 0xE135U || logical_pc == 0xE136U
         || logical_pc == 0xE179U || logical_pc == 0xE183U
@@ -675,13 +677,8 @@ std::optional<RoutineReplacement> replace_vblank_handler(
             pc = 0xE0EBU;
             break;
 
-        // Modes 0 and 3 are handled here, straight to 00:E0EB and 00:E111.
-        // Mode 1 goes to 00:E0D0 and mode 2 to 00:E09E; anything else falls
-        // through 00:E07E to the mode-5 test and 00:E085. None of those three
-        // addresses is in this walk, so reaching one lands on the default
-        // below and declines the whole transaction. Nothing on the census
-        // route takes them: of the 3,599 VBlank entries, 2,748 are mode 0 and
-        // the remaining 851 are mode 3.
+        // Modes 0, 2 and 3 hand off to their VDC setup or palette upload.
+        // Mode 1 and the mode-5 dispatcher remain outside this walk.
         case 0xE06FU:  // CMP #$01
             compare_accumulator(0x01U);
             append_checkpoint(0xE06FU, 0xE071U, 6U);
@@ -728,6 +725,50 @@ std::optional<RoutineReplacement> replace_vblank_handler(
             append_checkpoint(0xE07BU, 0xE111U, 12U);
             pc = 0xE111U;
             break;
+
+        case 0xE09EU: {
+            // Mode 2 scrolls from the live displacement and places the raster
+            // compare at 94 - displacement. Keep the byte-wide negate and
+            // addition separate: wrapping and ADC overflow are observable.
+            const auto load = [&](std::uint16_t at, std::uint16_t next,
+                                  std::uint8_t value, std::uint32_t cost) {
+                load_accumulator(value);
+                append_checkpoint(at, next, cost);
+            };
+            const auto port = [&](std::uint16_t at, std::uint16_t address,
+                                  std::uint8_t value) {
+                store_port(at, address, value);
+                append_checkpoint(at, static_cast<std::uint16_t>(at + 3U), 18U, 6U);
+            };
+            load(0xE09E, 0xE0A0, 8, 6);
+            port(0xE0A0, 0, registers.accumulator);
+            load(0xE0A3, 0xE0A6, read_ram(0x2D56), 15);
+            port(0xE0A6, 2, registers.accumulator);
+            port(0xE0A9, 3, 0);
+            load(0xE0AC, 0xE0AE, 7, 6);
+            port(0xE0AE, 0, registers.accumulator);
+            port(0xE0B1, 2, 0);
+            load(0xE0B4, 0xE0B6, 1, 6);
+            port(0xE0B6, 3, registers.accumulator);
+            load(0xE0B9, 0xE0BB, 6, 6);
+            port(0xE0BB, 0, registers.accumulator);
+            load(0xE0BE, 0xE0C1, read_ram(0x2D56), 15);
+            load(0xE0C1, 0xE0C3, static_cast<std::uint8_t>(registers.accumulator ^ 0xFFU), 6);
+            load(0xE0C3, 0xE0C4, static_cast<std::uint8_t>(registers.accumulator + 1U), 6);
+            registers.status &= static_cast<std::uint8_t>(~kCarry);
+            append_checkpoint(0xE0C4, 0xE0C5, 6);
+            const auto before = registers.accumulator;
+            const auto sum = static_cast<unsigned>(before) + 0x5EU;
+            registers.status = static_cast<std::uint8_t>((registers.status & ~0x41U)
+                | (sum > 0xFFU ? kCarry : 0U)
+                | ((~(before ^ 0x5EU) & (before ^ sum) & 0x80U) != 0U ? 0x40U : 0U));
+            load(0xE0C5, 0xE0C7, static_cast<std::uint8_t>(sum), 6);
+            port(0xE0C7, 2, registers.accumulator);
+            port(0xE0CA, 3, 0);
+            append_checkpoint(0xE0CD, 0xE103, 12);
+            pc = 0xE103;
+            break;
+        }
 
         // ---- 00:E0EB  VBlank prologue -------------------------------------
         // Registers $08 and $07 are the two scroll pairs and $05 is the

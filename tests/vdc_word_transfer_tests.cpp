@@ -246,6 +246,127 @@ int main()
             rom[i] = static_cast<std::byte>((i * 7U + i / 256U + i / 8192U) & 255U);
         }
         unsigned cases = 0U;
+        for (unsigned a = 0; a < 256; ++a) {
+            for (unsigned attribute = 0; attribute < 256; ++attribute) {
+                Ram input{};
+                input[0x29] = static_cast<std::byte>(attribute);
+                input[0x28] = std::byte{0xAB}; input[0x2D] = std::byte{0xCD}; input[0x2E] = std::byte{0xEF};
+                auto entry = entry_at(0xDA0E);
+                entry.routine.physical_bank = 1;
+                entry.registers.accumulator = static_cast<std::uint8_t>(a);
+                entry.registers.status = static_cast<std::uint8_t>(a & ~0x28U);
+                entry.registers.stack_pointer = static_cast<std::uint8_t>(attribute);
+                const auto result = devils_crush::app::detail::replace_vdc_sprite_attribute_prefix(entry, input, rom);
+                require(result.has_value(), "attribute body declined");
+                const auto value = static_cast<std::uint8_t>((attribute << 4U) | (a & 15U));
+                require(result->body_master_cycles == 294 && result->checkpoints.size() == 21
+                    && result->work_ram_writes.size() == 13, "attribute transcript dimensions");
+                require(result->output_registers.accumulator == value
+                    && result->output_registers.status == static_cast<std::uint8_t>((entry.registers.status & 0x7CU)
+                        | ((attribute >> 4U) & 1U) | (value == 0 ? 2U : value & 0x80U))
+                    && result->output_registers.stack_pointer == attribute
+                    && result->output_registers.x == entry.registers.x
+                    && result->output_registers.y == entry.registers.y
+                    && result->return_instruction.logical_pc == 0xDA3E, "attribute output");
+                constexpr std::array<std::uint16_t, 13> addresses{0x2029,0x2029,0x2029,0x2029,0x2029,0x2006,0,2,3,0x2006,0,2,3};
+                const std::array<std::uint8_t, 13> values{static_cast<std::uint8_t>(attribute << 1U),
+                    static_cast<std::uint8_t>(attribute << 2U),static_cast<std::uint8_t>(attribute << 3U),
+                    static_cast<std::uint8_t>(attribute << 4U),value,0,0,0xCD,0xEF,2,2,0xAB,value};
+                for (std::size_t i = 0; i < addresses.size(); ++i) {
+                    const auto& w = result->work_ram_writes[i];
+                    require(w.logical_address == addresses[i] && w.value == values[i], "attribute write");
+                    const auto cp = std::find_if(result->checkpoints.begin(), result->checkpoints.end(),
+                        [&](const auto& c) { return c.instruction == w.instruction; });
+                    require(cp != result->checkpoints.end() && cp->master_cycle_offset == w.master_cycle_offset
+                        && cp->interrupt_sample_master_cycle_offset == w.master_cycle_offset - (addresses[i] < 4 ? 6U : 3U),
+                        "attribute write timing");
+                }
+            }
+        }
+        std::puts("VDC attribute body: 65536 byte-pair cases passed.");
+        {
+            Ram input{};
+            auto entry = entry_at(0xDA0E);
+            entry.routine.physical_bank = 1;
+            for (unsigned p = 0; p < 256; ++p) {
+                entry.registers.status = static_cast<std::uint8_t>(p);
+                require(devils_crush::app::detail::replace_vdc_sprite_attribute_prefix(entry, input, rom).has_value()
+                    == ((p & 0x28U) == 0), "attribute flag admission");
+            }
+            entry.registers.status = 0;
+            for (const auto segment : {0U,1U,6U}) {
+                auto bad = entry; bad.registers.mpr[segment] = 0;
+                require(!devils_crush::app::detail::replace_vdc_sprite_attribute_prefix(bad, input, rom), "attribute mapping guard");
+            }
+            require(!devils_crush::app::detail::replace_vdc_sprite_attribute_prefix(entry,
+                std::span<const std::byte>(input).first(0x1FFF), rom), "attribute RAM guard");
+            require(!devils_crush::app::detail::replace_vdc_sprite_attribute_prefix(entry, input,
+                std::span<const std::byte>(rom).first(0x5FFFF)), "attribute ROM guard");
+        }
+        // The initializer ignores incoming A/Y but preserves X/SP and all
+        // flags except the final CPY's N/Z/C. Exercise every status and stack
+        // depth, checking all 12 ordered register triples and sample offsets.
+        for (unsigned p = 0U; p < 256U; ++p) {
+            for (unsigned sp = 0U; sp < 256U; ++sp) {
+                Ram setup_ram{};
+                auto entry = entry_at(0xE271U);
+                entry.registers.status = static_cast<std::uint8_t>(p);
+                entry.registers.stack_pointer = static_cast<std::uint8_t>(sp);
+                entry.registers.x = static_cast<std::uint8_t>(p ^ sp);
+                entry.registers.y = static_cast<std::uint8_t>(sp);
+                const auto result = replace_vram_upload(entry, setup_ram, rom);
+                if ((p & 0x28U) != 0U) {
+                    require(!result, "initializer accepted D/T");
+                    continue;
+                }
+                require(result.has_value(), "initializer declined");
+                require(result->body_master_cycles == 2016U
+                    && result->checkpoints.size() == 149U
+                    && result->work_ram_writes.size() == 50U,
+                    "initializer transcript shape");
+                const auto& out = result->output_registers;
+                require(out.program_counter == 0xE292U && out.y == 0x24U
+                    && out.x == entry.registers.x && out.stack_pointer == sp
+                    && out.status == ((p & 0x7CU) | 3U)
+                    && out.accumulator == std::to_integer<std::uint8_t>(rom[0x2B6U]),
+                    "initializer final state");
+                for (unsigned row = 0U; row < 12U; ++row) {
+                    const auto offset = 42U + row * 165U;
+                    const auto index = 2U + row * 4U;
+                    for (unsigned byte = 0U; byte < 4U; ++byte) {
+                        const auto& write = result->work_ram_writes[index + byte];
+                        const std::array<unsigned, 4> addresses{0x2006U, 0U, 2U, 3U};
+                        const std::array<unsigned, 4> times{39U, 57U, 102U, 147U};
+                        require(write.logical_address == addresses[byte]
+                            && write.master_cycle_offset == offset + times[byte]
+                            && write.value == std::to_integer<std::uint8_t>(
+                                rom[0x293U + row * 3U + (byte == 0U ? 0U : byte - 1U)]),
+                            "initializer register triple");
+                    }
+                }
+                for (const auto& cp : result->checkpoints) {
+                    const auto pc = cp.instruction.logical_pc;
+                    const auto back = pc == 0xE27FU || pc == 0xE285U || pc == 0xE28BU ? 6U : 3U;
+                    require(cp.interrupt_sample_master_cycle_offset + back == cp.master_cycle_offset,
+                        "initializer interrupt sample");
+                }
+            }
+        }
+        {
+            Ram ram{};
+            for (const auto segment : {0U, 1U, 7U}) {
+                auto entry = entry_at(0xE271U);
+                entry.registers.mpr[segment] = 0xFFU;
+                if (segment == 0U) { entry.registers.mpr[segment] = 0U; }
+                require(!replace_vram_upload(entry, ram, rom), "initializer bad mapping accepted");
+            }
+            auto entry = entry_at(0xE271U);
+            require(!replace_vram_upload(entry, std::span<const std::byte>(ram).first(0x1FFFU), rom),
+                "initializer short RAM accepted");
+            require(!replace_vram_upload(entry, ram, std::span<const std::byte>(rom).first(0x5FFFFU)),
+                "initializer short ROM accepted");
+            std::printf("VDC initializer tests passed: 65536 status/stack cases plus mapping guards.\n");
+        }
         for (const auto count : {0U, 1U, 2U, 31U, 32U, 33U, 64U, 127U,
                                 128U, 129U, 255U, 256U, 257U, 65535U}) {
             for (const auto source : {0x9FFEU, 0xBFFEU, 0x28F0U}) {

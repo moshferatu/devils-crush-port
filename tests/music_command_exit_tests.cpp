@@ -14,6 +14,48 @@ void require(bool condition, const char* message)
 {
     if (!condition) { throw std::runtime_error(message); }
 }
+void verify_psg_horizon()
+{
+    std::array<std::byte, 0x2000> ram{};
+    for (unsigned horizon = 0; horizon <= 46U; ++horizon) {
+        for (unsigned sp = 0; sp < 256U; ++sp) {
+            RoutineEntry entry{};
+            entry.routine = {0x45U, 0x4142U};
+            entry.registers.program_counter = 0x4142U;
+            entry.registers.mpr = {0xFFU, 0xF8U, 0x45U, 0U, 0U, 0U, 0U, 0U};
+            entry.registers.status = 0xC1U;
+            entry.registers.x = 0xFFU;
+            entry.registers.stack_pointer = static_cast<std::uint8_t>(sp);
+            entry.master_cycles_until_timer_interrupt = horizon;
+            ram[0xF5] = std::byte{1};
+            const auto result = replace_music_sequencer(entry, ram, {});
+            require(result.has_value(), "PSG prefix declined near timer horizon");
+            if (horizon <= 45U) {
+                require(result->return_instruction.logical_pc == 0x4148U
+                    && result->body_master_cycles == 33U
+                    && result->checkpoints.size() == 5U,
+                    "PSG prefix did not stop before shared-state read");
+                require(result->output_registers.accumulator == 0U
+                    && result->output_registers.x == 0U
+                    && result->output_registers.status == 0x42U,
+                    "PSG prefix flags or registers changed");
+                const auto& writes = result->work_ram_writes;
+                require(writes.size() == 1U && writes[0].logical_address == 0x2100U + sp
+                    && writes[0].value == 0xD1U && writes[0].master_cycle_offset == 15U
+                    && result->output_registers.stack_pointer == static_cast<std::uint8_t>(sp - 1U),
+                    "PSG PHP stack write or wrapping changed");
+                for (const auto& c : result->checkpoints) {
+                    require(c.interrupt_sample_master_cycle_offset + 3U == c.master_cycle_offset,
+                        "PSG prefix interrupt sampling changed");
+                }
+            } else {
+                require(result->return_instruction.logical_pc == 0x4153U,
+                    "PSG read with sufficient horizon stopped early");
+            }
+        }
+    }
+    std::puts("Verified 12,032 PSG timer-horizon/stack combinations.");
+}
 void verify()
 {
     std::array<std::byte, 0x2000> ram{};
@@ -126,6 +168,6 @@ void verify()
 }
 int main()
 {
-    try { verify(); return 0; }
+    try { verify_psg_horizon(); verify(); return 0; }
     catch (const std::exception& e) { std::fprintf(stderr, "%s\n", e.what()); return 1; }
 }

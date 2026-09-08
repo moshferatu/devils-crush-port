@@ -83,6 +83,10 @@ replace_giant_skeleton_eyeball_final_wait(
     std::span<const std::byte> work_ram);
 
 [[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_eyeball_animation_prefix(const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram, std::span<const std::byte> rom);
+
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
 replace_gray_blob_initializer(
     const emulation::RoutineEntry& entry,
     std::span<const std::byte> work_ram);
@@ -1661,6 +1665,11 @@ replace_bank9_upper_table_countdown(
     std::span<const std::byte> work_ram);
 
 [[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_upper_parent_animation(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram);
+
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
 replace_bank9_upper_table_parent_decay(
     const emulation::RoutineEntry& entry,
     std::span<const std::byte> work_ram);
@@ -1854,6 +1863,10 @@ replace_bank_call_wrappers(
     const emulation::RoutineEntry& entry,
     std::span<const std::byte> work_ram,
     std::span<const std::byte> rom);
+
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_audio_stack_wrapper(const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram);
 
 // The VDC interrupt handler. One walk shared by eleven entry points: the
 // dispatcher's own two halves, the two arms it dispatches to, the two
@@ -2297,3 +2310,8 @@ replace_collision_mask_lookup_entry(
     std::span<const std::byte> rom);
 
 } // namespace devils_crush::app::detail
+namespace devils_crush::app::detail {
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_actor_initialization(const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram);
+}

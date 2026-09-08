@@ -32,7 +32,7 @@ endif()
 
 foreach(expected_line IN ITEMS
     "State census recording complete: 3600 frames" "Work-RAM patches applied: 1"
-    "Native replacement 02:4F3D@all entries: 122 of 224" "Observe hook 1 entries: 320"
+    "Native replacement 02:4F3D@all entries: 224 of 224" "Observe hook 1 entries: 320"
     "Observe hook 2 entries: 9" "Observe hook 3 entries: 1377" "Observe hook 4 entries: 224"
     "Routine trace complete: 1930 entries"
     "Routine call trace complete: 1930 calls, 1291 writes"
@@ -60,4 +60,4 @@ foreach(artifact IN ITEMS census trace call write)
     endif()
 endforeach()
 
-message(STATUS "Semantic 4F3D covers 122 horizon-safe Giant-Skeleton Eyeball final-animation waits.")
+message(STATUS "Semantic 4F3D covers all 224 final-animation calls; legacy artifact hashes preserved.")

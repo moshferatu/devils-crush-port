@@ -7,6 +7,188 @@ acceptance criteria in [PLAN.md](../PLAN.md).
 
 ## Choose by remaining execution cost
 
+The PSG horizon slice (`out/coverage-psg-horizon-corpus-v1`) preserves the
+`45:4142-4146` prefix when the shared driver-state read at `$4148` would
+miss the timer horizon. The native walk stops before that read and retains
+the existing final guard for earlier reads. Actual non-wait interpreter
+residue falls from 16,173,678 to 16,107,579 master cycles: 66,099 removed
+(0.41%), with five fewer interpreted addresses. All 31 assembly/registry
+state-baseline pairs and abandonment totals remain unchanged. The existing
+whole-registry versus assembly differences remain.
+
+The music-family replay now admits all 3,604 PSG entries; its 42 former
+standalone `$4143` arrivals disappear. Release and Debug match the existing
+assembly hashes for frame state, selected RAM writes, call/stack writes,
+and all 699,251 PSG/timer writes. Both builds pass 12,032 timer-horizon/stack
+cases and the existing 196,608 sequence-end combinations. The music replay
+is now enabled in Debug as well as Release, with separate output paths.
+Both executables are rebuilt; 701 routines and 196 seam ranges remain.
+The full CTest suite and interactive crash capture were not rerun.
+
+Next investigate the guarded sequencer body `45:404F-4070` (93,930 cycles).
+Higher-ranked core return and scheduler costs remain in the primary ranking;
+the remaining PSG shared-state read still belongs to the live core path when
+the timer horizon is too close.
+
+The VBlank mode-2 slice (`out/coverage-vblank-mode-two-corpus-v1`) ports
+`00:E09E-E0CD` and enables the existing dispatch/control-shadow handoffs on
+that mode. Actual non-wait interpreter residue falls from 16,340,988 to
+16,173,678 master cycles: 167,310 removed (1.02%), with 36 fewer interpreted
+addresses. The gain includes the dispatcher and common tail that previously
+declined along with mode 2. All 31 assembly/registry state-baseline pairs and
+abandonment totals are unchanged. The existing whole-registry versus assembly
+differences remain; the isolated replacement has its own parity proof.
+
+The alley and spiral routes admit 203/203 and 187/187 mode-2 entries. Release
+compares complete frame state, all ordered RAM writes and timestamped device
+writes; Debug uses the existing VBlank family's RAM ranges while retaining
+full frame fingerprints and device-write coverage. Both configurations pass
+the two-route replay (163.26 seconds in Release, 772.48 seconds in Debug) and
+65,536 displacement/status cases, including byte wrapping, ADC overflow,
+stack wrapping, instruction checkpoints and mapping/buffer guards. The
+existing Release VBlank regression and five sorcerer regressions also pass.
+The registry now admits 701 routines; all 196 seam ranges validate. The full
+CTest suite and interactive crash capture were not rerun in this slice.
+
+Next investigate the guarded PSG-programmer entry `45:4142-414A` (111,051
+interpreted cycles) and its timer-state horizon before considering another
+admission. Higher-ranked core return and scheduler boundaries remain visible
+in the primary ranking.
+
+The VDC attribute-body slice (`out/coverage-vdc-attribute-corpus-v1`) ports
+`01:DA0E–DA3B` after the two live VDC reads, stopping before PLY/RTS.
+Actual non-wait interpreter residue falls from 16,468,422 to 16,340,988
+master cycles: 127,434 removed (0.77%), with 21 fewer interpreted addresses.
+All 31 state-baseline pairs and abandonment totals match the preceding
+actor-initialization corpus. Existing whole-registry/assembly differences
+remain; this is not a claim of whole-registry parity.
+
+The isolated gameplay test admits 2/2 entries and matches all four hashes
+(state/frame, calls, RAM writes, timestamped bus writes) in Release and Debug.
+Final CTests pass in 11.30 and 136.47 seconds respectively. Both builds also
+pass 65,536 accumulator/attribute combinations, status/mapping/buffer guards,
+and the existing VDC initializer, row, and word-transfer tests. Three Release
+sorcerer regressions pass. The full CTest suite and user crash capture were
+not rerun in this slice. Both executables are rebuilt; the registry now has
+700 admitted routines and the seam manifest has 196 ranges.
+
+Next substantive candidate: the VBlank mode-specific VDC write branch
+`00:E09E–E0CD` (98,280 interpreted cycles), extending the existing VBlank
+family while preserving its interrupt/stack boundaries. Higher-ranked core
+return and scheduler boundaries remain visible in the primary ranking.
+
+The actor-initialization slice (`out/coverage-actor-initialization-corpus-v1`)
+ports four RAM bodies across `01:C655–C6BF`, preserving every C5EA/C5C9 JSR
+as a separately owned scheduler boundary. Actual non-wait interpreter residue
+falls from 16,590,567 to 16,468,422 master cycles: 122,145 removed (0.74%),
+with 39 fewer interpreted addresses. The original range's remaining 134,307
+cycles are scheduler calls, not another unimplemented RAM body. All 31
+assembly/registry state-baseline pairs and abandonment totals are unchanged;
+the existing whole-registry versus assembly differences remain.
+
+Release and Debug isolated gameplay replays admit all four entries (1, 1,
+48, and 1 calls), with identical state, call/write, and bus artifacts. Both
+configurations pass 262,144 slot/value/segment combinations plus status,
+mapping, buffer, CLX flag-preservation and invalid-entry guards. Three Release
+sorcerer regressions pass. Both executables are rebuilt; 699 routines are
+admitted and 195 seam ranges validate. The initial test accidentally used
+the old executable while linking was pending, causing a command-line rejection
+and executable lock; relinking after that process exited resolved it. The
+isolated `out/actor-initialization-release-v2` replay and subsequent CTests
+pass. No changes were reverted.
+
+Next prioritize `01:DA0E–DA3B` (within the 155,280-cycle DA0E–DA3F range):
+the selected-register reads actually precede this entry at DA06/DA0B. The
+remaining body packs an attribute and writes the VDC. Preserve those earlier
+reads and the PLY/RTS boundary while porting the arithmetic/write sequence.
+
+The release-countdown slice (`out/coverage-release-countdown-corpus-v2`) ports
+the full `02:51AF–51CF` body, including expiry, while retaining the 51D2 JSR
+and 51D5 RTS. It fixes the dormant absolute $3980 store and completion-time
+writes, removes X/SP restrictions, and bounds the full byte-wide ROM lookup.
+Actual non-wait interpreter residue falls from 16,673,268 to 16,590,567 master
+cycles (82,701 removed, 0.50%), with 15 fewer interpreted addresses. All 31
+assembly/registry baseline pairs and abandonment totals are unchanged; the
+existing whole-registry/assembly differences remain, not newly claimed parity.
+
+Release and Debug isolated alley replays admit 340/340 calls, including 68
+expiry events, with identical state, call/RAM-write and hardware-bus artifacts.
+Both configurations pass 65,536 timer/state combinations plus the existing
+65,536 appearance/stack cases. Three Release sorcerer regressions also pass.
+Both executables are rebuilt, with 695 admitted routines. The first sweep
+attempt caught a duplicate auxiliary registration before gameplay; the old
+auxiliary hook was removed after graduation into the registry, then the entire
+sweep passed. No changes were reverted. Next investigate the actual actor
+initialization/continuation body in `01:C655–C6BF`, preserving scheduler calls
+as separate boundaries instead of treating the whole range as unportable.
+
+The VDC initializer slice (`out/coverage-vdc-initializer-corpus-v1`) ports the
+complete `00:E271–E290` setup loop, retaining only its E292 caller return in
+the core. Actual non-wait interpreter residue falls from 16,860,756 to
+16,673,268 master cycles: 187,488 removed (1.11%), with 17 fewer interpreted
+addresses. The 1,953 remaining cycles in this routine are the core RTS, not
+a missing loop branch. All 31 assembly/registry state-baseline pairs and
+abandonment totals remain unchanged; the pre-existing 31 whole-registry
+versus assembly differences are not resolved by this change.
+
+Release and Debug isolated replays admit all three calls and match frame
+state, complete call/RAM-write traces, and hardware-bus writes. Both builds
+pass 65,536 status/stack cases plus mapping/buffer guards and the existing
+VDC transfer tests. Three focused Release sorcerer regressions pass, both
+executables are rebuilt, and the registry now admits 694 routines. Next
+prioritize the actual `02:51AF` release-countdown body (150,363 cycles), whose
+disabled expiry continuation needs corrected absolute addressing and store
+timing, rather than the larger but RTS-only `08:5A69` entry.
+
+The appearance submission slice (`out/coverage-appearance-submission-corpus-v1`)
+generalizes the existing `02:5475/5481` native arithmetic and stack handling to
+all mapped callers, rather than admitting another core-only descriptor. The
+former actor/depth guards left 159,222 interpreted cycles in the route corpus.
+Non-wait residue falls from 17,019,978 to 16,860,756 cycles (0.94% overall;
+97.81% of the former 5475–54B6 range), with 26 fewer interpreted addresses.
+All 31 state baselines and abandonment totals are unchanged; the existing
+whole-registry versus assembly differences remain, not newly resolved.
+The alley regression exercises 68 deeper SP=F9 callers among 250 appearances,
+and compares frame state, complete calls/RAM writes, and hardware writes.
+The helper has 65,536 direct appearance/stack cases covering pointer carries,
+overflow flags, intermediate writes, and mapping guards. Release and Debug
+gameplay/alternate/alley replays pass, as do the focused sorcerer regressions;
+both executables are rebuilt. Its following 54A3
+actor controller is still retained. Next prioritize an actual larger body,
+such as the E271 VDC initializer, over isolated core-coverage accounting.
+
+The collision-vector seam (`out/coverage-collision-vector-corpus-v1`) installs
+`01:CBF9` as an exact core RTS capability, preserving its synthetic vector
+stack and leaving the enclosing collision transcript unfinished. All 31 route
+state baselines and abandonment totals remain unchanged. Release and Debug
+gameplay/alternate comparisons match state, enclosing vector-call/write traces
+and device writes. The descriptor preserves all registers in 65,536 status/SP
+combinations. Focused sorcerer regressions pass; both executables are rebuilt.
+
+Reported non-wait residue changes from 17,698,350 to 17,019,978 cycles
+(678,372 cycles) solely because this instruction is now admitted core coverage.
+The original RTS opcode body still executes: this is not a C++ handler port or
+a measured speedup. The registry remains at 693 entries and the 31 existing
+assembly/whole-registry differences remain. Next prefer a controller such as
+`02:5475-54B6` over additional core-only accounting changes.
+
+The session-gate continuation (`out/coverage-session-gate-corpus-v1`) removes
+all 227,004 remaining interpreted cycles at `01:C49E-C4A2` in the 31-route
+corpus. Total non-wait residue falls from 17,925,354 to 17,698,350 cycles
+(1.27%), and executed residue addresses from 3,738 to 3,735. Both sides of
+all route baselines remain unchanged; the 31 pre-existing whole-registry
+assembly differences are not resolved by this slice. The existing 693-entry
+registry is unchanged: this extends a controller's missing branches rather
+than adding leaf entries.
+
+Release natural/forced-blocked/forced-pause replay compares full census,
+call/write and device-bus traces; Debug additionally verifies pause/resume.
+The pause fixture reaches `C4AE` and returns to normal play through frame
+1,800. Direct tests exercise flag/input combinations and every JSR stack
+pointer, including wrap. Idle-gate and sorcerer regressions pass. Release
+and Debug executables are rebuilt. The child audio routine, subsequent wait
+loop and early-exit RTS retain independent ownership.
+
 The primary queue is now `registry-interpreter-residue.md` from
 `Invoke-NativeCoverageSweep.ps1`. Each registry recording with
 `--instruction-profile <path>` also writes `<path>.interpreter.csv`, containing
@@ -29,6 +211,30 @@ dispatch paths reduced higharc's deployed non-wait interpreter residue from
 1,075,794 to 868,071 master cycles (19.3%), with unchanged assembly and registry
 state hashes. All 1,629 directly observed controller calls and 20,975 ordered
 call writes remained byte-identical to assembly. The routine count stayed 620.
+
+The audio stack wrapper (`45:4B7B`, `4B82`) is now a two-entry port with a
+real child-call boundary, not a composed guess at the child's stack. Its
+31-route interpreted range fell from 204,714 to 79,734 cycles (124,980 removed,
+61.1%). `out/coverage-audio-stack-corpus-v2` retains all prior assembly and
+registry state baselines and abandonment counts. Total non-wait interpreter
+residue is 17,925,354 cycles versus 18,053,088 in
+`out/coverage-eyeball-animation-corpus-v1`; the 127,734-cycle total improvement
+also includes 2,754 cycles from the intervening Eyeball expiry arm. Do not
+attribute that entire delta to the audio wrapper. The registry is 693 entries.
+
+An initial generic PLP checkpoint passed the short isolated replay but failed
+the full-registry gameplay baseline at frame 1064; that failed evidence remains
+in `out/coverage-audio-stack-corpus-v1`. The corrected version stops at PLP,
+which samples the old interrupt mask before restoring the saved one. PLP and
+RTS at these addresses are still interpreted, not deployed native-core
+capabilities. Release and Debug tests compare 1,800 frames of pixels, audio,
+RAM, video memory, ordered writes and child/return CPU boundaries, then a
+separate gameplay route's full census, enclosing calls and hardware writes.
+16,384 supported stack/status cases cover wrap and SEI sampling. Ten focused
+Release checks pass, including the three sorcerer crash regressions and bank
+wrapper/music-exit tests. Both executables were rebuilt. This is not a claim
+of whole-registry assembly parity: the corpus's 31 pre-existing A/B differences
+remain unchanged, and the known strict-stack regression was not rerun here.
 
 The next controller slice, `08:56D3-577E`, moves the three scene-selection
 pages out of the interpreter. Its 24 admitted entries are the head and real
@@ -338,11 +544,102 @@ including the existing scene, sorcerer and upper-table regressions. Debug
 passes the core/direct tests and all three assembly/native replay comparisons
 too; its trace-heavy replay takes approximately 14 minutes.
 
-The next coherent controller candidate is `09:705C-70BB`, the upper-table
-parent animation continuation (277,791 interpreted cycles), with real motion,
-audio and scheduler calls requiring explicit continuation ownership. The larger
-singleton returns and compound branches still require their specific core
-contracts, not instruction-sized replacements.
+The bank-09 parent animation startup at `09:705C-70C0` now has seven native
+entries spanning its descending, holding and ascending phases. Each real
+motion/audio child or coroutine handoff ends the segment. The existing
+`70C1` scheduler owner remains unchanged, and the ordinary returns at `7071`,
+`7099` and `70BB` stay core-owned. Admission grows from 679 to 686.
+
+`dc_rom_upper_parent_animation` compares two unpatched routes with assembly:
+all 92 enclosing calls, their ordered writes, complete frame state and every
+`0000-1FFF` device write. `dc_rom_upper_parent_animation_terminal` forces the
+last ascending counter transition in the live actor to reach the otherwise
+unvisited audio exit and its existing scheduler owner. It changes two RAM
+bytes, not ROM code; both executions produce identical artifacts. The direct
+test covers 197,632 counter/comparison/stack cases, including full flag checks,
+wrapped PHX/JSR/PLX stacks, live post-child X restoration and D/T guards.
+
+The baseline-enforcing sweep in `out/coverage-upper-parent-corpus-v2` removes
+219,201 actual interpreted cycles (1.17%): 18,710,133 becomes 18,490,932, and
+37 instruction addresses disappear from the residue. The family's remaining
+58,590 cycles are its three core-owned RTS instructions. All 31 assembly and
+registry baselines and all abandonment counts are unchanged. The pre-existing
+whole-registry assembly differences remain; this is not a claim to have fixed
+those separate differences. No baseline or prior crash fix was changed.
+
+Both executables are rebuilt. All 13 focused Release checks pass, including
+the score-panel, sorcerer and upper-table tile-scheduler regressions. Debug
+passes core/exhaustive tests and both natural-route assembly comparisons
+(approximately eight minutes of traced replay). The controlled terminal
+fixture was verified in Release.
+
+The sibling at `09:7194-71E6` is now also ported through five separately
+replay-proven boundaries, bringing admission to 691 routines. Its descending
+and ascending semantics share explicit address relocation with the first
+parent; its shorter hold phase has a distinct scheduler handoff. The three
+RTS instructions remain core-owned, as does the unchanged final `71E7` call.
+Natural gameplay/alternate replays and a controlled final-counter transition
+compare complete census, enclosing calls/writes and device writes. The combined
+direct controller test covers 329,472 cases. See
+`tests/verify_sibling_parent_animation.cmake` for executable evidence.
+
+The baseline-enforcing `out/coverage-sibling-parent-corpus-v1` sweep passes all
+31 routes with no changed assembly/registry state baselines or abandonment
+counts relative to `coverage-upper-parent-corpus-v2`. Actual non-wait interpreter
+residue falls from 18,490,932 to 18,314,790 cycles: 176,142 removed (0.95%),
+with 29 executed addresses removed. The sibling's remaining 58,590 cycles are
+the three retained RTS instructions. The pre-existing 31 whole-registry
+assembly differences are unchanged, not newly blessed or resolved.
+
+Fourteen focused Release checks pass: the core/direct tests, both parents'
+natural replay tests, the original parent's terminal fixture, score-panel
+poll, host registry, three sorcerer regressions, upper-table actor scheduling,
+and registry/seam/baseline manifests. Both executables were rebuilt. This is
+focused regression coverage, not a new full-suite or strict-stack parity claim.
+Debug core/direct checks and all three sibling replay routes also pass; the
+trace-heavy Debug replay took 594.58 seconds. The final Release and Debug
+executables both contain the 691-entry registry.
+
+The next animation slice extends the existing `02:4F3D` admission through
+`4F69`: timer expiry/reload, frame increment/wrap, ROM frame selection, dirty
+marking and phase borrow. The prior wait fast path remains first; the new
+instruction-checkpointed fallback stops at the existing `4F6C` continuation.
+The `4F3A` child call and downstream return/scheduler owners are unchanged.
+Admission remains 691 routines, with 224/224 calls on the established patched
+Eyeball route instead of 122/224. Direct tests cover 131,328 combinations;
+the new assembly/native replay compares complete state and ordered RAM/device
+writes. The old regression's census, trace, call and write hashes are unchanged.
+
+`out/coverage-eyeball-animation-corpus-v1` passes all 31 baseline-enforced
+routes: actual non-wait interpreter residue falls from 18,314,790 to
+18,053,088 cycles (261,702 removed, 1.43%), with 18 executed addresses removed.
+Assembly and registry state hashes and abandonment counts are unchanged from
+the sibling-parent corpus. The 31 pre-existing whole-registry differences
+remain unchanged; this is not a whole-registry parity claim.
+Twelve focused Release checks pass (core/direct, both Eyeball replays, host
+registry, three sorcerer regressions, upper-table scheduling, and three
+manifest/baseline checks). Debug core/direct and the full Eyeball A/B replay
+also pass; the latter took 334.81 seconds. Both executables are rebuilt with
+the refreshed 691-entry proof metadata. No crash fixes or state baselines
+were reverted. The related `02:4F6C-4F8D` terminal continuation still accounts
+for 175,884 interpreted cycles and is a candidate for the next bounded slice.
+
+The countdown continuation now handles expiry through `4F81`, stopping at
+`4F83` before the child call. Mapping and D/T guards are explicit. Direct
+Release/Debug tests cover 196,864 animation/countdown cases. The updated
+Release Eyeball A/B replay requires full countdown admission and an observed
+expiry; census, enclosing calls, ordered RAM writes and device writes match.
+Sorcerer tick/color/live-controller regressions, host registry, registry and
+seam checks pass. Both executables are rebuilt. No new Debug ROM replay or
+full 31-route sweep was run for this follow-up.
+
+`out/coverage-eyeball-expiry-v1` checks gameplay, alternate and twist against
+the committed baselines, with unchanged state hashes and abandonment counts.
+Only 210 interpreted cycles were removed across these three routes: this
+closes the rare expiry arm, not the bulk of the remaining continuation cost.
+The child calls and post-call scheduling from `4F83` still need separate
+ownership/resumption work; the earlier 175,884-cycle range must not be
+reported as eliminated.
 
 The full Release audit also exposed two stale test-wiring/count expectations,
 corrected without changing their behavioral goldens, and one unresolved

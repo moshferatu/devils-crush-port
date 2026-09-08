@@ -265,11 +265,14 @@ if(DC_BUILD_APP)
         src/app/native_replacements_absorb.cpp
         src/app/native_replacements_actor_scan_preamble.cpp
         src/app/native_replacements_banking.cpp
+        src/app/native_replacements_audio_stack.cpp
         src/app/native_replacements_bonus_stage4_orbit.cpp
         src/app/native_replacements_collision.cpp
         src/app/native_replacements_collision_interpreter.cpp
         src/app/native_replacements_collision_tail.cpp
         src/app/native_replacements_controls.cpp
+        src/app/native_replacements_parent_animation.cpp
+        src/app/native_replacements_eyeball_animation.cpp
         src/app/native_replacements_geometry.cpp
         src/app/native_replacements_jump_table.cpp
         src/app/native_replacements_main_loop.cpp
@@ -279,6 +282,8 @@ if(DC_BUILD_APP)
         src/app/native_replacements_palette_cycle.cpp
         src/app/native_replacements_physics.cpp
         src/app/native_replacements_rules.cpp
+        src/app/native_replacements_appearance.cpp
+        src/app/native_replacements_actor_initialization.cpp
         src/app/native_replacements_score_panel.cpp
         src/app/native_replacements_scene_layout.cpp
         src/app/native_replacements_sorcerer_tick.cpp

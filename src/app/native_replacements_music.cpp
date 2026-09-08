@@ -1420,7 +1420,14 @@ std::optional<RoutineReplacement> replace_music_sequencer(
         // instruction standing there. A tick stop is a handover and stays that
         // way; a return is absorbed if the stack agrees, and only then does the
         // core resume above this bank instead of inside it.
-        if (command_exit || mask_stop
+        // Preserve the PSG prefix when its first shared-state read would
+        // miss the timer horizon. The core executes the read against live
+        // RAM; every preceding instruction still has its normal checkpoint.
+        // Keep the final guard below for any earlier reads in a composed walk.
+        const auto driver_read_stop = pc == 0x4148U
+            && interrupt_window_open
+            && cycle + 12U >= entry.master_cycles_until_timer_interrupt;
+        if (command_exit || mask_stop || driver_read_stop
             || (depth == 0U && (is_return_instruction(pc) || tick_stop))) {
             // The driver-state guard. A read taken while the machine was
             // masked needs nothing: the driver cannot have run between the

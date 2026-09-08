@@ -1,0 +1,72 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+function(check_natural_counts output)
+    foreach(expected IN ITEMS
+        "Native replacement 09:7194@all entries: 36 of 36"
+        "Native replacement 09:7197@all entries: 36 of 36"
+        "Native replacement 09:71BC@all entries: 37 of 37"
+        "Native replacement 09:71BF@all entries: 37 of 37"
+        "Native replacement 09:71CD@all entries: 19 of 19")
+        string(FIND "${output}" "${expected}" offset)
+        if(offset EQUAL -1)
+            message(FATAL_ERROR "Natural admission count changed: ${output}")
+        endif()
+    endforeach()
+endfunction()
+foreach(route IN ITEMS gameplay alternate terminal)
+    set(flag --record-gameplay)
+    if(route STREQUAL "alternate")
+        set(flag --record-gameplay-alternate)
+    endif()
+    set(patches)
+    if(route STREQUAL "terminal")
+        # Real startup actor X=06, already in its ascending phase at frame 166.
+        set(patches --work-ram-patch "166:3A06:01" --work-ram-patch "166:3986:05"
+            --observe-hook "09:71E7")
+    endif()
+    foreach(mode IN ITEMS assembly native)
+        set(hooks)
+        if(mode STREQUAL "native")
+            foreach(pc IN ITEMS 7194 7197 71BC 71BF 71CD)
+                list(APPEND hooks --replace-hook "09:${pc}@all")
+            endforeach()
+        endif()
+        set(base "${OUTPUT}.${route}.${mode}")
+        execute_process(COMMAND "${APP}" ${flag} "${base}.csv" ${hooks}
+            --observe-hook "09:7194" --observe-hook "09:71BC" --observe-hook "09:71CD"
+            ${patches}
+            --routine-call-trace "${base}.calls.csv"
+            --bus-write-range 0000-1FFF --bus-write-trace "${base}.bus.csv"
+            --rom "${ROM}" RESULT_VARIABLE result OUTPUT_VARIABLE output ERROR_VARIABLE error)
+        if(NOT result EQUAL 0)
+            message(FATAL_ERROR "Sibling ${route}/${mode}: ${output}${error}")
+        endif()
+        if(mode STREQUAL "native")
+            if(NOT route STREQUAL "terminal")
+                check_natural_counts("${output}")
+            endif()
+            foreach(pc IN ITEMS 7194 7197 71BC 71BF 71CD)
+                if(NOT output MATCHES "Native replacement 09:${pc}@all entries: ([0-9]+) of ([0-9]+)")
+                    message(FATAL_ERROR "Missing ${pc}: ${output}")
+                endif()
+                if(NOT CMAKE_MATCH_1 EQUAL CMAKE_MATCH_2 OR CMAKE_MATCH_1 EQUAL 0)
+                    message(FATAL_ERROR "Unproven ${pc}: ${output}")
+                endif()
+                message(STATUS "${route} ${pc}: ${CMAKE_MATCH_1}/${CMAKE_MATCH_2}")
+            endforeach()
+        endif()
+        if(route STREQUAL "terminal")
+            string(FIND "${output}" "Observe hook 4 entries: 1" reached)
+            if(reached EQUAL -1)
+                message(FATAL_ERROR "Terminal audio handoff not reached: ${output}")
+            endif()
+        endif()
+    endforeach()
+    foreach(suffix IN ITEMS csv calls.csv calls.csv.writes.csv bus.csv)
+        file(SHA256 "${OUTPUT}.${route}.assembly.${suffix}" original)
+        file(SHA256 "${OUTPUT}.${route}.native.${suffix}" replacement)
+        if(NOT original STREQUAL replacement)
+            message(FATAL_ERROR "Sibling ${route} ${suffix}: ${original} != ${replacement}")
+        endif()
+        message(STATUS "${route} ${suffix}: ${original}")
+    endforeach()
+endforeach()

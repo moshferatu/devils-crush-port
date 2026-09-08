@@ -2907,7 +2907,52 @@ replace_session_input_gate(
             "Native C49E replacement rejected the work-RAM snapshot.");
     }
     if (gate.returns_idle == 0U) {
-        return std::nullopt;
+        // Active/session-blocked paths were previously declined. Retire the
+        // gate up to its real child boundary, never inline the pause audio.
+        if (entry.registers.mpr[1] != 0xF8U
+            || entry.registers.mpr[6] != 0x01U
+            || entry.registers.mpr[7] != 0x00U
+            || (entry.registers.status & 0x28U) != 0U) {
+            return std::nullopt;
+        }
+        RoutineReplacement result{};
+        auto r = entry.registers;
+        std::uint32_t cycle = 0;
+        const auto step = [&](std::uint16_t pc, std::uint16_t next, std::uint32_t cost) {
+            cycle += cost;
+            r.program_counter = next;
+            result.checkpoints.push_back({
+                .interrupt_sample_master_cycle_offset = cycle - 3U,
+                .master_cycle_offset = cycle, .instruction = {1, pc}, .registers = r});
+        };
+        const auto nz = [&](std::uint8_t v) {
+            r.status = static_cast<std::uint8_t>((r.status & ~0x82U)
+                | (v == 0U ? 2U : v & 0x80U));
+        };
+        r.accumulator = gate.session_flags; nz(r.accumulator); step(0xC49E, 0xC4A0, 12);
+        r.accumulator &= 2U; nz(r.accumulator); step(0xC4A0, 0xC4A2, 6);
+        if (r.accumulator != 0U) {
+            step(0xC4A2, 0xC4C8, 12);
+        } else {
+            step(0xC4A2, 0xC4A4, 6);
+            r.y = gate.active_player; nz(r.y); step(0xC4A4, 0xC4A7, 15);
+            r.accumulator = gate.button_input; nz(r.accumulator); step(0xC4A7, 0xC4AA, 15);
+            r.accumulator &= 8U; nz(r.accumulator); step(0xC4AA, 0xC4AC, 6);
+            step(0xC4AC, 0xC4AE, 6);
+            // HuC6280 JSR saves PC+2 at instruction start, with 8-bit SP wrap.
+            for (const auto value : {0xC4U, 0xB0U}) {
+                result.work_ram_writes.push_back({.instruction = {1, 0xC4AE},
+                    .logical_address = static_cast<std::uint16_t>(0x2100U + r.stack_pointer),
+                    .value = static_cast<std::uint8_t>(value), .master_cycle_offset = cycle});
+                --r.stack_pointer;
+            }
+            step(0xC4AE, 0xED37, 21);
+        }
+        result.return_instruction = {static_cast<std::uint8_t>(r.program_counter == 0xED37 ? 0 : 1),
+            r.program_counter};
+        result.output_registers = r;
+        result.body_master_cycles = cycle;
+        return result;
     }
 
     auto output = entry.registers;
@@ -5428,8 +5473,8 @@ replace_bank2_actor_countdown_return(
 {
     // 02:4F6C decrements the caller's accumulator, records it in the
     // X-selected actor counter, ORs the companion counter, and returns while
-    // either is nonzero.  The zero arm falls into a distinct submission path;
-    // do not speculate across that state-changing continuation.
+    // either is nonzero. Expiry clears the frame and marks the actor dirty,
+    // stopping before C0A2 so the child call retains its existing owner.
     constexpr RoutineKey kRoutine{0x02U, 0x4F6CU};
     constexpr std::uint32_t kAccumulatorDecrement = 6U;
     constexpr std::uint32_t kAbsoluteIndexed = 15U;
@@ -5456,10 +5501,7 @@ replace_bank2_actor_countdown_return(
     const auto ram = reinterpret_cast<const std::uint8_t*>(work_ram.data());
     const auto combined = static_cast<std::uint8_t>(
         stored_counter | ram[companion_address - 0x2000U]);
-    // F0 $01 takes the expiry continuation rather than this routine's RTS.
-    // Return no transcript in that case so neither the counter write nor its
-    // interrupt checkpoints are committed ahead of the original path.
-    if (combined == 0U) {
+    if (entry.registers.mpr[1] != 0xF8U || entry.registers.mpr[2] != 2U) {
         return std::nullopt;
     }
 
@@ -5498,9 +5540,29 @@ replace_bank2_actor_countdown_return(
     cycle += kAbsoluteIndexed;
     checkpoint(0x4F70U, 0x4F73U);
 
-    cycle += kBranchNotTaken;
-    checkpoint(0x4F73U, 0x4F75U);
-    replacement.return_instruction = {0x02U, 0x4F75U};
+    cycle += combined == 0U ? 12U : kBranchNotTaken;
+    checkpoint(0x4F73U, combined == 0U ? 0x4F76U : 0x4F75U);
+    if (combined == 0U) {
+        const auto write = [&](std::uint16_t pc, std::uint16_t base, std::uint8_t value) {
+            cycle += kAbsoluteIndexed;
+            replacement.work_ram_writes.push_back({.instruction = {2, pc},
+                .logical_address = static_cast<std::uint16_t>(base + slot),
+                .value = value, .master_cycle_offset = cycle});
+            checkpoint(pc, static_cast<std::uint16_t>(pc + 3U));
+        };
+        write(0x4F76, 0x3980, 0); // STZ preserves flags.
+        registers.accumulator = ram[0x1800U + slot];
+        registers.status = set_nz(registers.status, registers.accumulator);
+        cycle += 15U; checkpoint(0x4F79, 0x4F7C);
+        registers.accumulator |= 0x40U;
+        registers.status = set_nz(registers.status, registers.accumulator);
+        cycle += 6U; checkpoint(0x4F7C, 0x4F7E);
+        write(0x4F7E, 0x3800, registers.accumulator);
+        registers.accumulator = 4U;
+        registers.status = set_nz(registers.status, registers.accumulator);
+        cycle += 6U; checkpoint(0x4F81, 0x4F83);
+    }
+    replacement.return_instruction = {0x02U, registers.program_counter};
     replacement.output_registers = registers;
     replacement.body_master_cycles = cycle;
     return replacement;
@@ -7175,6 +7237,9 @@ std::optional<RoutineReplacement> replace_flipper_owner_rts(
         .physical_bank = 0x03U,
         .logical_pc = 0x76A8U,
     };
+    // CBF9 is a table-vector dispatch, not a caller return. Its two pushed
+    // bytes must be consumed by the core RTS without completing an enclosing
+    // transcript. The same descriptor preserves that distinction.
     // These returns end owners whose caller and target are live stack state,
     // including C969's active range-helper arm. The descriptor deliberately
     // leaves the core's RTS execution intact rather than guessing either.
@@ -7183,7 +7248,8 @@ std::optional<RoutineReplacement> replace_flipper_owner_rts(
         && entry.routine != kSideWormSelectorReturn
         && entry.routine != kRangeHelperReturn
         && entry.routine != kKnightCollisionReturn
-        && entry.routine != kGiantFaceAnimatorReturn) {
+        && entry.routine != kGiantFaceAnimatorReturn
+        && entry.routine != RoutineKey{0x01U, 0xCBF9U}) {
         return std::nullopt;
     }
 

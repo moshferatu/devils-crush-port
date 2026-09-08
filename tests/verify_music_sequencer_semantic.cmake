@@ -6,7 +6,7 @@ foreach(required_variable IN ITEMS APP CONFIG ROM OUTPUT)
     endif()
 endforeach()
 
-if(NOT CONFIG STREQUAL "Release")
+if(NOT CONFIG STREQUAL "Release" AND NOT CONFIG STREQUAL "Debug")
     message(FATAL_ERROR "Unsupported music-sequencer configuration: ${CONFIG}")
 endif()
 
@@ -91,7 +91,10 @@ endif()
 #     rather than an invented one: ROM's own `PLP` at `41F1` has already
 #     restored the caller's mask before control reaches `41F7`, so the top of
 #     an iteration is somewhere the hardware may take an interrupt anyway.
-#     `4142` is now 3,216 of 3,604 and `4143` takes 3,788 more.
+#     The later read-horizon guard admitted 3,562 of 3,604 at `4142`.
+#     Stopping before $4148 when that read cannot beat the horizon now
+#     preserves all 3,604 prefixes. There are no standalone $4143 arrivals
+#     on this route, so its hook is omitted (unused hooks fail the recorder).
 #   - Sequence-end commands ($82/$92, and the $86 publishing variant) now
 #     execute their four stack pops and terminate on the real JMP to $40EE.
 #     The walk no longer needs to mistake this nonlocal exit for an RTS.
@@ -177,8 +180,6 @@ execute_process(
         "45:413B@all"
         --replace-hook
         "45:4142@all"
-        --replace-hook
-        "45:4143@all"
         --replace-hook
         "45:4154@all"
         --replace-hook
@@ -278,8 +279,7 @@ foreach(expected_line IN ITEMS
     "Native replacement 45:409F@all entries: 12 of 18"
     "Native replacement 45:40A2@all entries: 4 of 6"
     "Native replacement 45:413B@all entries: 3599 of 3599"
-    "Native replacement 45:4142@all entries: 3562 of 3604"
-    "Native replacement 45:4143@all entries: 3 of 42"
+    "Native replacement 45:4142@all entries: 3604 of 3604"
     "Native replacement 45:4154@all entries: 13 of 13"
     "Native replacement 45:4169@all entries: 11093 of 11093"
     "Native replacement 45:4211@all entries: 40 of 40"
