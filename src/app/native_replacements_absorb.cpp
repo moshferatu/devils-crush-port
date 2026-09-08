@@ -12,6 +12,38 @@ using emulation::RoutineEntry;
 using emulation::RoutineKey;
 using emulation::RoutineReplacement;
 
+std::optional<RoutineReplacement> replace_music_voice_gate(const RoutineEntry& entry)
+{
+    const bool mask = entry.routine == RoutineKey{0x45U, 0x4095U};
+    if ((!mask && entry.routine != RoutineKey{0x45U, 0x4097U})
+        || entry.registers.program_counter != entry.routine.logical_pc
+        || entry.registers.mpr[2] != 0x45U || (entry.registers.status & 0x20U) != 0U) {
+        return std::nullopt;
+    }
+    const bool taken = !mask && (entry.registers.status & 0x02U) != 0U;
+    const auto cycles = taken ? 12U : 6U;
+    if (std::min(entry.master_cycles_until_user_event,
+                 entry.master_cycles_until_timer_interrupt) <= cycles) {
+        return std::nullopt;
+    }
+    // AND #$01 and BEQ remain separate live instruction boundaries. Transfer
+    // mode and event horizons retain the original core opcode and its sampling.
+    auto r = entry.registers;
+    if (mask) {
+        r.accumulator &= 1U;
+        r.status = static_cast<std::uint8_t>((r.status & ~0x82U)
+            | (r.accumulator == 0U ? 0x02U : 0U));
+    }
+    r.program_counter = mask ? 0x4097U : taken ? 0x409CU : 0x4099U;
+    RoutineReplacement result{};
+    result.return_instruction = {0x45U, r.program_counter};
+    result.output_registers = r;
+    result.body_master_cycles = cycles;
+    result.checkpoints.push_back({.interrupt_sample_master_cycle_offset = cycles - 3U,
+        .master_cycle_offset = cycles, .instruction = entry.routine, .registers = r});
+    return result;
+}
+
 std::optional<RoutineReplacement> replace_bit_branch(
     const RoutineEntry& entry, const std::span<const std::byte> work_ram)
 {

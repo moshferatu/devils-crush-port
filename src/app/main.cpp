@@ -8179,6 +8179,10 @@ parse_logical_address_range(const std::string_view text)
                                        .logical_pc = 0x5B01U,
                                    }
                            && request.all_calls;
+                       const bool proven_music_voice_gate =
+                           (request.routine == RoutineKey{0x45U, 0x4095U}
+                            || request.routine == RoutineKey{0x45U, 0x4097U})
+                           && request.all_calls;
                        const bool proven_interrupt_chain_jump =
                            (request.routine == RoutineKey{0x00U, 0xE003U}
                             || request.routine == RoutineKey{0x00U, 0xFC03U}
@@ -8466,6 +8470,7 @@ parse_logical_address_range(const std::string_view text)
                            && !proven_text_tile_write
                            && !proven_upper_table_actor_tile_schedule
                            && !proven_upper_scheduler_return
+                           && !proven_music_voice_gate
                            && !proven_interrupt_chain_jump
                            && !proven_vram_stream_tail
                            && !proven_bit_branch

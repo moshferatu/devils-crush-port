@@ -11,6 +11,9 @@
 
 namespace devils_crush::app::detail {
 
+std::optional<emulation::RoutineReplacement> replace_music_voice_gate(
+    const emulation::RoutineEntry& entry);
+
 std::optional<emulation::RoutineReplacement> replace_bit_branch(
     const emulation::RoutineEntry& entry, std::span<const std::byte> work_ram);
 

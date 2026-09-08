@@ -10,6 +10,58 @@ int main()
 {
     try {
         std::array<std::byte, 0x2000> ram{};
+        for (const auto pc : {0x4095U, 0x4097U}) {
+            RoutineEntry entry{};
+            entry.routine = {0x45U, static_cast<std::uint16_t>(pc)};
+            auto& r = entry.registers;
+            r.program_counter = static_cast<std::uint16_t>(pc);
+            r.mpr[2] = 0x45U; r.x = 0xFFU; r.y = 0x37U; r.stack_pointer = 0xFEU;
+            entry.master_cycles_until_user_event = 100U;
+            entry.master_cycles_until_timer_interrupt = 100U;
+            const auto gate = [&] { return devils_crush::app::detail::replace_music_voice_gate(entry); };
+            for (unsigned a = 0U; a < 256U; ++a) {
+                for (unsigned status = 0U; status < 256U; ++status) {
+                    r.accumulator = static_cast<std::uint8_t>(a);
+                    r.status = static_cast<std::uint8_t>(status);
+                    const bool mask = pc == 0x4095U;
+                    const bool taken = !mask && (status & 2U) != 0U;
+                    const unsigned cycles = taken ? 12U : 6U;
+                    const auto result = gate();
+                    require(result.has_value() == ((status & 0x20U) == 0U), "Music gate transfer guard changed");
+                    if (!result) { continue; }
+                    const auto& out = result->output_registers;
+                    require(out.accumulator == (mask ? a % 2U : a)
+                        && out.status == (mask ? ((status & 0x7DU) | (a % 2U == 0U ? 2U : 0U)) : status)
+                        && out.program_counter == (mask ? 0x4097U : taken ? 0x409CU : 0x4099U)
+                        && out.x == r.x && out.y == r.y && out.stack_pointer == r.stack_pointer && out.mpr == r.mpr
+                        && result->return_instruction == RoutineKey{0x45U, out.program_counter},
+                        "Music gate output changed");
+                    require(result->body_master_cycles == cycles && result->checkpoints.size() == 1U
+                        && result->checkpoints[0].interrupt_sample_master_cycle_offset == cycles - 3U
+                        && result->checkpoints[0].master_cycle_offset == cycles
+                        && result->checkpoints[0].instruction == entry.routine
+                        && result->checkpoints[0].registers.accumulator == out.accumulator
+                        && result->checkpoints[0].registers.status == out.status
+                        && result->checkpoints[0].registers.program_counter == out.program_counter
+                        && result->work_ram_writes.empty() && result->absorbed_returns.empty(),
+                        "Music gate timing or side effects changed");
+                    for (unsigned horizon = 0U; horizon <= 13U; ++horizon) {
+                        entry.master_cycles_until_user_event = horizon;
+                        require(gate().has_value() == (horizon > cycles), "Music gate user horizon changed");
+                        entry.master_cycles_until_user_event = 100U;
+                        entry.master_cycles_until_timer_interrupt = horizon;
+                        require(gate().has_value() == (horizon > cycles), "Music gate timer horizon changed");
+                        entry.master_cycles_until_timer_interrupt = 100U;
+                    }
+                }
+            }
+            r.status = 0U;
+            r.mpr[2] = 0U; require(!gate(), "Foreign music gate code admitted"); r.mpr[2] = 0x45U;
+            r.program_counter++; require(!gate(), "Wrong music gate PC admitted"); r.program_counter--;
+            entry.routine.logical_pc++; r.program_counter++;
+            require(!gate(), "Unsupported music gate key admitted");
+        }
+        std::puts("Verified 131,072 music gate accumulator/status cases and both event horizons.");
         for (const auto pc : {0xCB68U, 0xFA67U}) {
             const bool collision = pc == 0xCB68U;
             RoutineEntry entry{};

@@ -5,6 +5,45 @@ iteration loop fast enough to port related code as a unit. It applies to
 Milestone 4 native gameplay work; it does not weaken the release or milestone
 acceptance criteria in [PLAN.md](../PLAN.md).
 
+## Music active-voice test: 45:4095 and 45:4097
+
+The highest remaining non-host cluster after the interrupt-vector port was
+the music loop's AND #$01 / BEQ at 45:4095-4097 (174,816 interpreter master
+cycles across 31 routes). Both instructions now run as independent native
+entries. AND updates A and N/Z and resumes at 4097 in six master cycles;
+BEQ uses the live Z flag and resumes at 409C in twelve cycles or 4099 in
+six. Each samples interrupts three cycles before completion. Live PC and
+bank-45 code mapping must match, T must be clear, and both event horizons
+must strictly exceed the instruction cost. Other registers, the stack and
+RAM are preserved. Near-event and transfer-mode cases retain the core opcode.
+
+The shared instruction fixture checks 131,072 accumulator/status cases,
+including both branch arms and both event horizons from 0 through 13,
+plus invalid PC, code mapping and routine key. The dedicated
+verify_music_voice_gate.cmake pins the ROM bytes 2901f003 and admits
+10,625/11,097 AND entries and 10,374/11,097 branches. Its frame-state,
+scheduler-call, ordered caller-write, RAM-write and hardware-write hashes
+match the existing assembly baselines. The registry admits 722 routines;
+the seam manifest validates 201 classified ranges.
+
+All 31 current-registry A/B routes preserve frame-state hashes and
+abandonment counts when only 4095 and 4097 are excluded on the before side.
+Their interpreter cost falls from 174,816 to 6,516 master cycles: 168,300
+removed (96.27%). Every cycle delta is confined to those two entries.
+Non-wait interpreter work falls from 13,265,349 to 13,097,049 (1.27%);
+frame-sync waits are unchanged. This isolates the increment within the
+registry, not fresh whole-registry assembly parity. Evidence is in
+out/music-voice-gate-cost/manifest.csv, its before/after rankings and
+out/music-voice-gate-cost-summary.log.
+
+Release and Debug each pass four targeted checks: the instruction fixture,
+music voice gate assembly oracle, corrupted-face capture and hand-bus
+capture (31.07 and 299.83 seconds respectively). Logs are
+out/music-voice-gate-tests-{Release,Debug}.log. Both face replays retain
+the corrected a263ebb4...b35a hash; the original capture inputs are unchanged.
+Registry/seam validation and git diff --check pass. The full suite was
+not rerun.
+
 ## Choose by remaining execution cost
 
 The `out/corrupted-face` capture exposed a correctness bug in the resident
