@@ -1,5 +1,46 @@
 # Retained Assembly Seams
 
+## Selection-controller return: 08:5A69
+
+The selection controller still ends its body at the RTS, whose standalone
+entry now shares the atomic live-stack implementation with `08:5976` and
+`01:C4C8`. It verifies the live code and stack mappings, preserves registers
+and flags, and runs only when both event horizons exceed 21 master cycles.
+The offset-zero observer contract preserves scopes rooted at the return
+itself and at its `08:5A3E` parent. Close horizons remain explicit fallback.
+
+The gameplay assembly comparison admits 517/550 returns and preserves frame
+fingerprints, call registers/timing, ordered call writes, every RAM write and
+all bus writes. The exhaustive fixture now covers 589,824 return cases across
+the three addresses, plus horizon and mapping guards. The existing selection
+controller regression and both Release pentagram comparisons also pass.
+
+A fresh 31-route registry comparison excludes only this return on the before
+side. State hashes and abandonment counts match on every route. The return
+falls from 358,050 to 21,483 interpreted master cycles (94% removed), reducing
+total non-wait interpreter work by exactly 336,567 cycles (2.19%). The paired
+manifest and refreshed ranking are in `out/selection-return-cost/`. The
+remaining 33 returns per route retain the event-horizon fallback.
+Debug passes the same pinned gameplay assembly comparison, the exhaustive
+fixture and all 4,366 pentagram capture frames with the return deployed.
+
+## Delay scheduler continuation: 01:C5EA-C603
+
+The standalone entry saves the delay, consumes the live JSR frame and installs
+its successor as the actor continuation before jumping through `$202F`.
+Stack indices wrap within page 21 and the continuation increments with 16-bit
+wrap. MPR1 must map F8, MPR6 must map 01, X must remain below 80, and transfer
+mode must be clear. Each instruction has its own interrupt checkpoint. The
+indirect jump does not close an RTS observer; the caller scope remains live.
+
+Release assembly comparisons match all frame, call, RAM-write and bus-write
+artifacts for gameplay (2 calls) and higharc (23 calls). Full-registry profiles
+remove all interpreted C5EA-C603 work on gameplay, higharc and nudge: 294,
+3,258 and 5,439 master cycles. Frame hashes and abandonment counts are unchanged.
+The separate C5E9 return remains classified as a core boundary.
+Debug also passes the pinned gameplay assembly comparison and the full
+4,366-frame pentagram regression with the delay scheduler deployed.
+
 ## Run-input return: 01:C4C8
 
 The standalone RTS uses the same 21-cycle live-stack transcript as `08:5976`.

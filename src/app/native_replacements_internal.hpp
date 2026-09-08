@@ -11,6 +11,9 @@
 
 namespace devils_crush::app::detail {
 
+std::optional<emulation::RoutineReplacement> replace_coroutine_delay(
+    const emulation::RoutineEntry& entry, std::span<const std::byte> work_ram);
+
 std::optional<emulation::RoutineReplacement> replace_upper_scheduler_return(
     const emulation::RoutineEntry& entry,
     std::span<const std::byte> work_ram);

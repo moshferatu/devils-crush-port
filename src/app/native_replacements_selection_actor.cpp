@@ -171,7 +171,7 @@ std::optional<RoutineReplacement> replace_selection_actor_controller(
         case 0x5A63U: load(static_cast<std::uint8_t>(registers.accumulator - 1U), 0x5A64U, 6U); break;
         case 0x5A64U: store(0x205DU, registers.accumulator, 0x5A66U, 12U); break;
         case 0x5A66U: call(0x5A6AU); break;
-        case 0x5A69U: finished = true; break; // Original RTS remains core-owned.
+        case 0x5A69U: finished = true; break; // Standalone live-stack return owns the next entry.
         case 0x5A6AU: load(0x5BU, 0x5A6CU, 6U); break;
         case 0x5A6CU: store(0x2026U, registers.accumulator, 0x5A6EU, 12U); break;
         case 0x5A6EU: load(read(indexed(0x3A80U)), 0x5A71U, 15U); break;

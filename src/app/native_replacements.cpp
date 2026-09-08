@@ -20,8 +20,12 @@ replace_native_gameplay_routine_impl(
     const std::span<const std::byte> work_ram,
     const std::span<const std::byte> rom)
 {
+    if (entry.routine == RoutineKey{.physical_bank = 0x01U, .logical_pc = 0xC5EAU}) {
+        return detail::replace_coroutine_delay(entry, work_ram);
+    }
     if (entry.routine == RoutineKey{.physical_bank = 0x08U, .logical_pc = 0x5976U}
-        || entry.routine == RoutineKey{.physical_bank = 0x01U, .logical_pc = 0xC4C8U}) {
+        || entry.routine == RoutineKey{.physical_bank = 0x01U, .logical_pc = 0xC4C8U}
+        || entry.routine == RoutineKey{.physical_bank = 0x08U, .logical_pc = 0x5A69U}) {
         return detail::replace_upper_scheduler_return(entry, work_ram);
     }
     if (entry.routine == RoutineKey{.physical_bank = 0x00U, .logical_pc = 0xE271U}) {

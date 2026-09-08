@@ -125,8 +125,76 @@ new return deployed. The final Debug pentagram comparison also passes all
 4,366 frames (276.35 seconds). Both executables are rebuilt; registry
 generation and all 197 seam ranges validate. The full CTest suite was not rerun.
 
-Continue with the scheduler calls at `01:C5EA-C600`, applying the
-entry-boundary observer contract proven here.
+The delay scheduler at `01:C5EA-C603` now has a standalone native entry.
+It stores the delay, consumes the live JSR frame, increments the continuation
+with 16-bit carry, installs both actor fields and executes the indirect JMP.
+Every instruction has an interrupt checkpoint. RAM/code mapping, actor-slot
+and transfer-mode guards retain the core fallback; this jump does not report
+an absorbed RTS. The ROM-free fixture covers 196,608 continuation/status/stack
+cases across all 128 RAM actor slots, including stack and address wrapping.
+
+Release compares the original assembly on gameplay (2/2 calls) and higharc
+(23/23): frame fingerprints, call registers/timing, ordered call writes,
+all RAM writes and all bus writes match. The portable gameplay regression
+also pins the exact scheduler ROM bytes. With the full registry, gameplay,
+higharc and nudge remove 294, 3,258 and 5,439 actual interpreted master cycles
+respectively. No interpreted instructions remain in C5EA-C603 on these three
+routes. Total interpreter costs fall by exactly those amounts; state hashes
+and abandonment counts (0, 1, 0) are unchanged. This is 8,991 cycles across
+three routes, not an extrapolation to the older 31-route corpus.
+
+Both Release pentagram comparisons pass all 4,366 frames with the delay
+entry deployed, retaining replay hash
+`a263ebb43cf47f94e37011461ffd3c3657a3f94005c5523a746db13869a1b35a`.
+Release also passes the existing coroutine scheduler regression and exhaustive
+return/delay fixture. Evidence: `out/coroutine-delay-cost/`,
+`out/coroutine-delay-cost.log`, `out/coroutine-delay-release-tests.log`,
+and `out/coroutine-delay-higharc.*`. The registry contains 706 entries and
+the seam manifest has 198 ranges. The full suite and 31-route corpus were
+not rerun.
+
+Debug also passes the pinned scheduler assembly comparison (294.39 seconds)
+and the full pentagram loader comparison (296.24 seconds), with zero capture
+abandonments. Both configurations pass the final exhaustive fixture, including
+the mapping, transfer-mode and short-RAM guards. Both executables are rebuilt.
+Debug evidence is in `out/coroutine-delay-debug-tests.log`.
+
+The selection-controller RTS at `08:5A69` now shares the atomic live-stack
+return implementation. Its parent still stops at the return boundary; the
+standalone entry preserves registers/flags, checks the live stack and code
+mappings, and declines when either event horizon is within 21 master cycles.
+The exhaustive fixture now covers 589,824 return/status/stack cases across
+three addresses, as well as both horizon guards. The gameplay assembly
+comparison admits 517/550 returns and preserves frame fingerprints, both
+parent and return call traces, ordered call writes, every RAM write and all
+bus writes.
+
+The fresh 31-route comparison in `out/selection-return-cost/` deploys the
+current registry on both sides, excluding only `08:5A69` on the before side.
+All state hashes and abandonment counts match. Its interpreter cost falls
+from 358,050 to 21,483 master cycles: 336,567 removed, or 94%. Each route
+removes exactly 10,857 cycles, with no interpreter-cost changes outside the
+return. Total non-wait residue falls from 15,376,059 to 15,039,492 (2.19%).
+This isolates the selection return against the current corrected registry;
+it does not claim fresh whole-registry versus original-assembly parity.
+The paired manifest and before/after primary rankings are retained there;
+`out/selection-return-cost-summary.log` records the aggregate.
+
+Release passes the new pinned assembly comparison, the selection-controller
+regression, both pentagram comparisons and the exhaustive fixture. The capture
+retains its corrected replay hash and zero abandonments. Evidence is in
+`out/selection-return-release-tests.log`. The registry now contains 707 entries;
+all 198 seam ranges validate. The full CTest suite was not rerun.
+
+Debug also passes the selection-return assembly comparison (322.61 seconds),
+the full pentagram regression (322.29 seconds) and the exhaustive fixture.
+The capture hash remains unchanged. Both executables are rebuilt; Debug
+evidence is in `out/selection-return-debug-tests.log`.
+
+Next investigate scheduler call seams `01:C693` and `01:C696`, which retain
+1,197 and 72,084 interpreted cycles in the refreshed corpus. The higher
+`00:E479-E47C` cluster contains 126,924 branch cycles and only 35,427 return
+cycles; its aggregate should not be mistaken for a single expensive RTS.
 Keep the close-horizon `08:5976` residual visible; the atomic guard is still
 required by this implementation.
 
