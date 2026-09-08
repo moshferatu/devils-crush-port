@@ -12,6 +12,26 @@ using emulation::RoutineEntry;
 using emulation::RoutineKey;
 using emulation::RoutineReplacement;
 
+std::optional<RoutineReplacement> replace_upper_scheduler_return(
+    const RoutineEntry& entry,
+    const std::span<const std::byte> work_ram)
+{
+    constexpr RoutineKey kRoutine{.physical_bank = 0x08U, .logical_pc = 0x5976U};
+    if (entry.routine != kRoutine || entry.registers.program_counter != 0x5976U
+        || entry.registers.mpr[1] != 0xF8U || entry.registers.mpr[2] != 0x08U
+        || work_ram.size() < 0x2000U
+        || !absorbed_return_fits_atomically(entry, 0U)) {
+        return std::nullopt;
+    }
+    // Enter on the RTS itself: the scheduler may have installed any caller
+    // frame. Read that live frame without assuming which parent opened it.
+    // Keep this single instruction atomic and strictly before both horizons.
+    RoutineReplacement replacement{};
+    absorb_return(replacement, work_ram, entry.registers.stack_pointer,
+        kRoutine, 0U, entry.registers);
+    return replacement;
+}
+
 bool absorbed_return_fits_atomically(
     const RoutineEntry& entry,
     const std::uint32_t body_master_cycles)

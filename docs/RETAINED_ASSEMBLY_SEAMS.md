@@ -1,5 +1,39 @@
 # Retained Assembly Seams
 
+## Resident pattern loader correction: 00:F768-F782
+
+The native head executes `PHX / ASL A / TAY`, saving X for the existing PLX
+tail and selecting the two-byte descriptor with the shifted accumulator.
+The startup regression had A, X and Y all zero, concealing the former
+PHA/immediate-load misinterpretation. The face request uses A=01, X=36, Y=05:
+using Y directly selected the wrong pattern pack and saving A restored the
+wrong actor slot, disrupting the scheduler after the graphics upload.
+
+ASL and TAY have separate six-cycle checkpoints, and the following indexed
+load takes 15 cycles. The mapper and decoder JSRs push at instruction entry.
+The E1FD mapper and E41F decoder remain separate child boundaries. The
+4,366-frame pentagram replay and the higharc regression compare native work
+against the original loader, including complete frame fingerprints, call
+registers and timing, and ordered call writes. The ROM-free fixture varies
+the selector, flags and stack position independently of the incoming X/Y.
+
+## Shared scheduler return: 08:5976
+
+This return now has a standalone native transcript. It reads the caller's
+current stack bytes through MPR1=F8, wraps each pop within the stack page,
+adds one to the return word and resolves the destination through the live
+MPRs. It consumes 21 master cycles and declines unless both event horizons
+are strictly farther away. Near-horizon returns retain the core path.
+
+The absorbed-return observer must not replay a return at transcript offset
+zero when it is the entry instruction: the ordinary instruction observer
+already processed that boundary before opening any new observation there.
+The gameplay regression observes both this RTS and C5C9 and compares frame
+state, call/stack traces, every RAM write and all bus writes. Release and Debug admit
+575/670 returns. The exhaustive fixture covers 196,608 return-word/status/
+stack combinations plus mapping, buffer and both timing guards. All ten
+Release absorbed-return/coroutine regressions pass after the observer fix.
+
 ## Sequencer gate continuation: 45:404F-4070
 
 The standalone `$404F` entry reuses the sequencer's gate calculation after

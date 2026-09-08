@@ -3079,6 +3079,14 @@ private:
             return;
         }
         for (const auto& absorbed : result.absorbed_returns) {
+            // The instruction observer has already completed older calls on
+            // this entry boundary, before opening any observer rooted at the
+            // RTS itself. Replaying that same boundary would incorrectly
+            // close the newly opened call with a zero-length body.
+            if (absorbed.master_cycle_offset == 0U
+                && absorbed.instruction == routine_entry(state).routine) {
+                continue;
+            }
             // The registers this call will be reported closing on, so they are
             // normalised exactly as an observed boundary's would be. A
             // transcript's own B would otherwise be the one column on which a

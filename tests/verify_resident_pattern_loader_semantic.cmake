@@ -5,11 +5,17 @@ foreach(required_variable IN ITEMS APP CONFIG ROM OUTPUT)
         message(FATAL_ERROR "${required_variable} is required.")
     endif()
 endforeach()
-if(NOT CONFIG STREQUAL "Release")
-    message(FATAL_ERROR "Unsupported resident pattern-loader configuration: ${CONFIG}")
+execute_process(
+    COMMAND "${APP}"
+        --record-gameplay-higharc "${OUTPUT}.assembly"
+        --observe-hook "00:F768"
+        --routine-call-trace "${OUTPUT}.assembly.calls.csv"
+        --rom "${ROM}"
+    RESULT_VARIABLE assembly_result OUTPUT_VARIABLE assembly_output ERROR_VARIABLE assembly_error
+)
+if(NOT assembly_result EQUAL 0)
+    message(FATAL_ERROR "Resident pattern-loader oracle failed: ${assembly_output}${assembly_error}")
 endif()
-
-set(expected_state_sha256 "77568124b24b80006d3077da8fcf0df21706c5627278e4c7bc92f645e56773cf")
 
 execute_process(
     COMMAND "${APP}"
@@ -17,6 +23,8 @@ execute_process(
         --replace-hook "00:F768@all"
         --replace-hook "00:F778@all"
         --replace-hook "00:F781@all"
+        --observe-hook "00:F768"
+        --routine-call-trace "${OUTPUT}.calls.csv"
         --rom "${ROM}"
     RESULT_VARIABLE recorder_result OUTPUT_VARIABLE recorder_output ERROR_VARIABLE recorder_error
 )
@@ -34,8 +42,15 @@ foreach(expected_line IN ITEMS
         message(FATAL_ERROR "Resident pattern-loader output omitted '${expected_line}'.\n${recorder_output}${recorder_error}")
     endif()
 endforeach()
-file(SHA256 "${OUTPUT}" actual_state_sha256)
-if(NOT actual_state_sha256 STREQUAL expected_state_sha256)
-    message(FATAL_ERROR "Resident pattern-loader state changed.\nExpected: ${expected_state_sha256}\nActual:   ${actual_state_sha256}")
+foreach(suffix IN ITEMS "" ".calls.csv" ".calls.csv.writes.csv")
+    file(SHA256 "${OUTPUT}.assembly${suffix}" original)
+    file(SHA256 "${OUTPUT}${suffix}" replacement)
+    if(NOT original STREQUAL replacement)
+        message(FATAL_ERROR "Resident pattern-loader ${suffix}: ${original} != ${replacement}")
+    endif()
+    message(STATUS "Resident pattern-loader ${suffix}: ${original}")
+endforeach()
+file(SHA256 "${OUTPUT}.assembly" state_hash)
+if(NOT state_hash STREQUAL "77568124b24b80006d3077da8fcf0df21706c5627278e4c7bc92f645e56773cf")
+    message(FATAL_ERROR "Resident pattern-loader assembly baseline changed: ${state_hash}")
 endif()
-message(STATUS "Resident pattern-loader preserves the scene-resident VDC upload route.")

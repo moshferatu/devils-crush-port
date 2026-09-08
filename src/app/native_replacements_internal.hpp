@@ -11,6 +11,10 @@
 
 namespace devils_crush::app::detail {
 
+std::optional<emulation::RoutineReplacement> replace_upper_scheduler_return(
+    const emulation::RoutineEntry& entry,
+    std::span<const std::byte> work_ram);
+
 // End a transcript past its own `RTS` rather than in front of it.
 //
 // `at_return` is the state on the return instruction's own boundary -- the

@@ -20,6 +20,9 @@ replace_native_gameplay_routine_impl(
     const std::span<const std::byte> work_ram,
     const std::span<const std::byte> rom)
 {
+    if (entry.routine == RoutineKey{.physical_bank = 0x08U, .logical_pc = 0x5976U}) {
+        return detail::replace_upper_scheduler_return(entry, work_ram);
+    }
     if (entry.routine == RoutineKey{.physical_bank = 0x00U, .logical_pc = 0xE271U}) {
         return detail::replace_vram_upload(entry, work_ram, rom);
     }

@@ -44,6 +44,13 @@ dc_enable_strict_warnings(dc_title_logo_tests)
 
 add_test(NAME dc_core_tests COMMAND dc_core_tests)
 
+add_executable(dc_resident_pattern_loader_tests resident_pattern_loader_tests.cpp
+    ../src/app/native_replacements_vram.cpp ../src/app/native_replacements_absorb.cpp)
+target_link_libraries(dc_resident_pattern_loader_tests PRIVATE DevilsCrush::Emulation)
+target_compile_features(dc_resident_pattern_loader_tests PRIVATE cxx_std_20)
+dc_enable_strict_warnings(dc_resident_pattern_loader_tests)
+add_test(NAME dc_resident_pattern_loader_tests COMMAND dc_resident_pattern_loader_tests)
+
 add_executable(dc_selective_scene_controller_tests
     selective_scene_controller_tests.cpp
     ../src/app/native_replacements_scene_layout.cpp
@@ -117,6 +124,13 @@ target_link_libraries(dc_music_command_exit_tests PRIVATE DevilsCrush::Emulation
 target_compile_features(dc_music_command_exit_tests PRIVATE cxx_std_20)
 dc_enable_strict_warnings(dc_music_command_exit_tests)
 add_test(NAME dc_music_command_exit_tests COMMAND dc_music_command_exit_tests)
+
+add_executable(dc_upper_scheduler_return_tests upper_scheduler_return_tests.cpp
+    ../src/app/native_replacements_absorb.cpp)
+target_link_libraries(dc_upper_scheduler_return_tests PRIVATE DevilsCrush::Emulation)
+target_compile_features(dc_upper_scheduler_return_tests PRIVATE cxx_std_20)
+dc_enable_strict_warnings(dc_upper_scheduler_return_tests)
+add_test(NAME dc_upper_scheduler_return_tests COMMAND dc_upper_scheduler_return_tests)
 
 add_executable(dc_nudge_controller_tests
     nudge_controller_tests.cpp
@@ -5460,6 +5474,11 @@ if(TARGET devils_crush)
                 "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/vdc-initializer-$<CONFIG>-v1"
                 -P "${CMAKE_CURRENT_SOURCE_DIR}/verify_vdc_initializer.cmake")
         set_tests_properties(dc_rom_vdc_initializer PROPERTIES LABELS rom_required)
+        add_test(NAME dc_rom_upper_scheduler_return
+            COMMAND "${CMAKE_COMMAND}" "-DAPP=$<TARGET_FILE:devils_crush>" "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/upper-scheduler-return-$<CONFIG>-v1"
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/verify_upper_scheduler_return.cmake")
+        set_tests_properties(dc_rom_upper_scheduler_return PROPERTIES LABELS rom_required)
         add_test(NAME dc_rom_upper_parent_animation
             COMMAND "${CMAKE_COMMAND}" "-DAPP=$<TARGET_FILE:devils_crush>" "-DROM=${DC_ROM_PATH}"
                 "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/upper-parent-$<CONFIG>-v1"
@@ -7655,13 +7674,12 @@ if(TARGET devils_crush)
 
         add_test(
             NAME dc_rom_resident_pattern_loader_semantic
-            CONFIGURATIONS Release
             COMMAND
                 "${CMAKE_COMMAND}"
                 "-DAPP=$<TARGET_FILE:devils_crush>"
                 "-DCONFIG=$<CONFIG>"
                 "-DROM=${DC_ROM_PATH}"
-                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/resident-pattern-loader-v1.csv"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/resident-pattern-loader-$<CONFIG>-v2.csv"
                 "-P"
                 "${CMAKE_CURRENT_SOURCE_DIR}/verify_resident_pattern_loader_semantic.cmake"
         )
@@ -7669,6 +7687,17 @@ if(TARGET devils_crush)
             dc_rom_resident_pattern_loader_semantic
             PROPERTIES LABELS rom_required
         )
+
+        if(EXISTS "${PROJECT_SOURCE_DIR}/out/corrupted-face/inputs.csv")
+            add_test(NAME dc_rom_corrupted_face_session
+                COMMAND "${CMAKE_COMMAND}"
+                    "-DAPP=$<TARGET_FILE:devils_crush>"
+                    "-DROM=${DC_ROM_PATH}"
+                    "-DCAPTURE=${PROJECT_SOURCE_DIR}/out/corrupted-face"
+                    "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/corrupted-face-$<CONFIG>"
+                    -P "${CMAKE_CURRENT_SOURCE_DIR}/verify_corrupted_face_session.cmake")
+            set_tests_properties(dc_rom_corrupted_face_session PROPERTIES LABELS rom_required)
+        endif()
 
         add_test(
             NAME dc_rom_music_detune_tail_semantic

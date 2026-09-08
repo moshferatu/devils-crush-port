@@ -7,6 +7,71 @@ acceptance criteria in [PLAN.md](../PLAN.md).
 
 ## Choose by remaining execution cost
 
+The `out/corrupted-face` capture exposed a correctness bug in the resident
+pattern loader at `00:F768`. At frame 3235 it enters with A=01, X=36 and Y=05.
+The original `PHX / ASL A / TAY` saves actor 36 and selects descriptor 02;
+the native code had saved A and used incoming Y, selecting the wrong graphics
+and restoring actor 01. This corrupted the face and the actor scheduler.
+The native implementation now reproduces all three instructions, their flags
+and individual interrupt checkpoints. Both loader JSRs also write their stack
+frames at instruction entry, matching the original ordered write traces.
+No admitted routine or earlier return port was removed.
+
+Release and Debug replay all 4,366 captured frames against the original loader with
+the rest of the registry deployed. Frame RAM/video/audio fingerprints,
+call registers/timing and ordered call RAM writes match; all three loader
+entries are admitted 3/3 and there are zero abandonments. The corrected replay
+hash is `9842d199628660ed77dbc2a9e8d777ddcf76e6a927d517a4d709ac873143a0ae`.
+The face remains intact and enemies continue moving in the exported frames.
+`verify_corrupted_face_session.cmake` preserves the capture and compares to
+the original loader rather than asserting the captured, corrupted hashes.
+CTest includes it when the local capture is available. A ROM-free fixture
+checks 65,536 selector/status/stack cases and the face caller restoration.
+The existing higharc regression now compares against actual assembly,
+including call and ordered write traces, and is enabled in both configurations.
+Both capture and higharc replays pass in Release and Debug; the Debug pair
+takes 278.50 seconds. Both builds pass the ROM-free fixture. Four related
+Release regressions (VRAM upload, VDC word transfer, shared scheduler return
+and coroutine scheduler) also pass. Both executables are rebuilt; registry
+generation remains current at 703 entries. The full CTest suite was not rerun.
+
+An independent mismatch was localized to `02:5975` at frame 3003: its timer
+setup models absolute `ADC $0080` as a RAM read, although MPR0 maps the VDC.
+Excluding that routine changes two timer bytes but does not fix the face bug.
+This separate hardware-read issue remains to investigate; the face fix does
+not alter it. The temporary frame-3200 checkpoint instrumentation was removed.
+
+The current priority is the larger return and scheduler boundaries, following
+the user's request to pivot from smaller guarded bodies. The shared scheduler
+RTS at `08:5976` was the largest remaining return (436,170 interpreted cycles).
+It now reads the live caller stack through a standalone 21-cycle native
+transcript, declining at either close event horizon. The leading host row
+`01:C500-C50E` is already cabinet-owned input work; `01:CB68` and `00:FA67`
+are compound branch seams, not returns.
+
+The corpus `out/coverage-scheduler-return-corpus-v1` removes 374,976 actual
+interpreted master cycles (2.34% of the prior non-wait residue), reducing
+16,013,649 to 15,638,673. The return itself falls from 436,170 to 61,194
+cycles, an 85.97% reduction. All 31 assembly/registry state-baseline pairs
+and abandonment counts match the sequencer-gate corpus. Existing whole-
+registry versus assembly differences remain; this is isolated return parity,
+not a new claim of whole-registry parity. The remaining return executions
+are classified as guarded and stay in the primary ranking.
+
+The isolated gameplay replay admits 575/670 returns in Release and Debug and preserves
+full frame state, call/stack traces, all RAM writes and all bus writes. A
+new offset-zero observer guard prevents reporting the already-observed entry
+RTS twice. All ten existing Release absorbed-return/coroutine regressions
+pass. Release and Debug fixtures pass 196,608 return-target/status/stack cases
+and both horizon guards. The registry now contains 703 entries, with 196
+classified seam ranges. The full CTest suite and interactive crash capture
+have not been rerun. Both executables are rebuilt with the new admission.
+
+Continue with the live return at `01:C4C8` and the scheduler calls at
+`01:C5EA-C600`, applying the entry-boundary observer contract proven here.
+Keep the close-horizon `08:5976` residual visible; the atomic guard is still
+required by this implementation.
+
 The standalone sequencer gate slice admits `45:404F`, reusing the existing
 `404F-4070` calculation after an enclosing native call declines. It stops
 at `4072`, `4081` or `408F`, preserving the following sequencer ownership.

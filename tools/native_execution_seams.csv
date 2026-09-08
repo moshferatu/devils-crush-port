@@ -123,7 +123,7 @@
 "08","56D3","577E","guarded","choice-page controller is native at real child-call and return boundaries; unusual mapping or T-flag states retain assembly"
 "08","58EE","5955","guarded","upper-table setup parent exceeds the bounded trace channel"
 "08","5879","58E1","guarded","boot work-RAM clear and VDC setup remain one enclosing initialization transaction"
-"08","5976","5976","core","shared upper-table scheduler RTS uses a live caller frame"
+"08","5976","5976","guarded","shared upper-table scheduler RTS reads the live caller frame natively when its 21 cycles finish before both event horizons"
 "09","7071","7071","core","upper-table parent decay final RTS remains core-owned"
 "09","7099","7099","core","upper-table parent hold final RTS remains core-owned"
 "09","70BB","70BB","core","upper-table parent ascending animation final RTS remains core-owned"

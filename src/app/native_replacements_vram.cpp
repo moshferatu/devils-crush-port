@@ -2878,6 +2878,7 @@ std::optional<RoutineReplacement> replace_resident_pattern_loader(
         const auto pushed = std::uint16_t{0xF780U};
         push(0xF77EU, static_cast<std::uint8_t>(pushed >> 8U));
         push(0xF77EU, static_cast<std::uint8_t>(pushed));
+        commit(cycle);  // JSR writes its return address before advancing time.
         checkpoint(0xF77EU, 0xE41FU, 21U);  // JSR $E41F
         if (unsupported) {
             return std::nullopt;
@@ -2889,20 +2890,23 @@ std::optional<RoutineReplacement> replace_resident_pattern_loader(
         return replacement;
     }
 
-    push(0xF768U, registers.accumulator);  // PHA
+    push(0xF768U, registers.x);  // PHX: F781 restores this actor slot.
     checkpoint(0xF768U, 0xF769U, 9U);
-    registers.accumulator = 0xA8U;
+    // ASL A / TAY selects the two-byte descriptor for the requested pack.
+    // These are separate one-byte instructions, not an immediate load.
+    const auto selector = registers.accumulator;
+    registers.status = static_cast<std::uint8_t>(
+        (registers.status & ~kCarry) | ((selector & 0x80U) != 0U ? kCarry : 0U));
+    registers.accumulator = static_cast<std::uint8_t>(selector << 1U);
     set_nz(registers.accumulator);
-    checkpoint(0xF769U, 0xF76BU, 6U);
+    checkpoint(0xF769U, 0xF76AU, 6U);
+    registers.y = registers.accumulator;
+    set_nz(registers.y);
+    checkpoint(0xF76AU, 0xF76BU, 6U);
     const auto selector_address = static_cast<std::uint16_t>(0xF783U + registers.y);
     registers.accumulator = read_mapped(selector_address);
     set_nz(registers.accumulator);
-    // This first indexed read carries the resident-ROM fetch phase that the
-    // HuC6280 exposes after the preceding immediate selector load.  It is
-    // six master cycles longer than the following table-byte fetch; keeping
-    // that distinction makes the E1FD child entry coincide with the
-    // interpreter's interrupt boundary.
-    checkpoint(0xF76BU, 0xF76EU, 21U);
+    checkpoint(0xF76BU, 0xF76EU, 15U);
     write_ram(0xF76EU, static_cast<std::uint16_t>(kWorkRamBase + 0x2FU), registers.accumulator);
     checkpoint(0xF76EU, 0xF770U, 12U);
     registers.accumulator = read_mapped(static_cast<std::uint16_t>(selector_address + 1U));
@@ -2913,6 +2917,7 @@ std::optional<RoutineReplacement> replace_resident_pattern_loader(
     const auto pushed = std::uint16_t{0xF777U};
     push(0xF775U, static_cast<std::uint8_t>(pushed >> 8U));
     push(0xF775U, static_cast<std::uint8_t>(pushed));
+    commit(cycle);
     checkpoint(0xF775U, 0xE1FDU, 21U);  // JSR $E1FD
     if (unsupported) {
         return std::nullopt;

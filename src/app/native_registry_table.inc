@@ -640,6 +640,7 @@ DC_ADMITTED_ROUTINE(0x08U, 0x584FU, 1, 1, "verify_boot_work_ram_clear_seams_sema
 DC_ADMITTED_ROUTINE(0x08U, 0x5852U, 1, 1, "verify_boot_work_ram_clear_seams_semantic")
 DC_ADMITTED_ROUTINE(0x08U, 0x5861U, 1, 1, "verify_boot_work_ram_clear_seams_semantic")
 DC_ADMITTED_ROUTINE(0x08U, 0x5961U, 670, 670, "verify_setup_screen_palette_stager_semantic")
+DC_ADMITTED_ROUTINE(0x08U, 0x5976U, 575, 670, "verify_upper_scheduler_return")
 DC_ADMITTED_ROUTINE(0x08U, 0x5977U, 177, 177, "verify_setup_screen_palette_stager_semantic")
 DC_ADMITTED_ROUTINE(0x08U, 0x5982U, 177, 177, "verify_absorbed_return_trace +1")
 DC_ADMITTED_ROUTINE(0x08U, 0x5A2EU, 3, 3, "verify_upper_table_actor_tile_schedule_semantic")
