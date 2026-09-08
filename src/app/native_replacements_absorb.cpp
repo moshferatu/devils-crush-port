@@ -12,6 +12,42 @@ using emulation::RoutineEntry;
 using emulation::RoutineKey;
 using emulation::RoutineReplacement;
 
+std::optional<RoutineReplacement> replace_bit_branch(
+    const RoutineEntry& entry, const std::span<const std::byte> work_ram)
+{
+    constexpr RoutineKey kCollision{.physical_bank = 0x01U, .logical_pc = 0xCB68U};
+    constexpr RoutineKey kTileUpload{.physical_bank = 0x00U, .logical_pc = 0xFA67U};
+    if ((entry.routine != kCollision && entry.routine != kTileUpload)
+        || entry.registers.program_counter != entry.routine.logical_pc
+        || entry.registers.mpr[entry.routine.logical_pc >> 13U] != entry.routine.physical_bank
+        || entry.registers.mpr[1] != 0xF8U || work_ram.size() < 0x2000U
+        || (entry.registers.status & 0x20U) != 0U) {
+        return std::nullopt;
+    }
+    const bool collision = entry.routine == kCollision;
+    const auto value = std::to_integer<std::uint8_t>(work_ram[collision ? 0x77U : 0x26U]);
+    const bool taken = collision ? (value & 0x02U) != 0U : (value & 0x01U) == 0U;
+    const std::uint32_t cycles = taken ? 24U : 18U;
+    if (std::min(entry.master_cycles_until_user_event,
+                 entry.master_cycles_until_timer_interrupt) <= cycles) {
+        return std::nullopt;
+    }
+    // LD_ZP samples at 9 and completes at 12; JR then samples at 15/21
+    // and completes at 18/24. With no intervening event, RAM or mask change,
+    // the final sample is equivalent. Do not expose an interruptible boundary
+    // between the two halves of this single opcode. Near events, use the core.
+    RoutineReplacement result{};
+    auto r = entry.registers;
+    r.program_counter = collision ? (taken ? 0xCB93U : 0xCB6BU)
+                                 : (taken ? 0xFA6EU : 0xFA6AU);
+    result.return_instruction = {entry.routine.physical_bank, r.program_counter};
+    result.output_registers = r;
+    result.body_master_cycles = cycles;
+    result.checkpoints.push_back({.interrupt_sample_master_cycle_offset = cycles - 3U,
+        .master_cycle_offset = cycles, .instruction = entry.routine, .registers = r});
+    return result;
+}
+
 std::optional<RoutineReplacement> replace_unconditional_branch(const RoutineEntry& entry)
 {
     constexpr RoutineKey kEpilogue{.physical_bank = 0x00U, .logical_pc = 0xFC03U};

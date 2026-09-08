@@ -20,6 +20,10 @@ replace_native_gameplay_routine_impl(
     const std::span<const std::byte> work_ram,
     const std::span<const std::byte> rom)
 {
+    if (entry.routine == RoutineKey{.physical_bank = 0x01U, .logical_pc = 0xCB68U}
+        || entry.routine == RoutineKey{.physical_bank = 0x00U, .logical_pc = 0xFA67U}) {
+        return detail::replace_bit_branch(entry, work_ram);
+    }
     if (entry.routine == RoutineKey{.physical_bank = 0x00U, .logical_pc = 0xFC03U}
         || entry.routine == RoutineKey{.physical_bank = 0x00U, .logical_pc = 0xFC89U}
         || entry.routine == RoutineKey{.physical_bank = 0x00U, .logical_pc = 0xE479U}) {

@@ -502,9 +502,10 @@ std::optional<RoutineReplacement> replace_vram_upload(
             finish(pc);
             return replacement;
         }
-        // BBR0 is internally two independently sampled core operations and
-        // cannot be represented by one checkpoint without shifting a VDC
-        // event. The core executes it and re-enters at the selected arm. The
+        // BBR0 is internally two independently sampled core operations. Hand
+        // it to a fresh entry, whose native bit-branch helper requires the
+        // entire opcode to finish before either event horizon; otherwise the
+        // core preserves both samples and re-enters at the selected arm. The
         // outer BNE is the natural row boundary and likewise re-enters FA40.
         if (pc == 0xFA67U || pc == 0xFAA5U) {
             finish(pc);

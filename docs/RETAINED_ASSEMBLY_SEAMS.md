@@ -1,5 +1,49 @@
 # Retained Assembly Seams
 
+## Collision and tile-upload bit branches: 01:CB68 and 00:FA67
+
+The two largest non-host interpreter seams now have guarded native entries.
+CB68 is `BBS1 $77, $CB93` (the old manifest incorrectly called it BBS2);
+FA67 is `BBR0 $26, $FA6E`. Both read live work RAM, preserve all registers
+and flags, and hand off at the selected arm. The existing enclosing walks
+still stop before these instructions so each gets a fresh event horizon.
+
+The core performs a zero-page load with an interrupt sample at master
+cycle 9 and completion at 12, followed by the branch sample at 15 or 21
+and completion at 18 or 24. The native entry requires both event horizons
+to exceed the complete opcode cost. With no intervening event, RAM write
+or interrupt-mask change, the final sample produces the same latch. A
+single checkpoint preserves that final sample without exposing an
+interruptible boundary in the middle of an opcode. Near either event,
+the original core executes both samples. Invalid live PCs, code/RAM
+mappings, short RAM and transfer mode also decline.
+
+The expanded fixture covers 131,072 operand/status combinations, both
+event horizons from 0 through 25 for every operand, and invalid inputs.
+The assembly oracle pins both ROM instructions and preserves all five
+frame-state, scheduler-call, ordered call-write, RAM-write and hardware-write
+artifacts. Canonical admissions are 373/404 at CB68 and 741/832 at FA67.
+The registry contains 718 entries; the manifest retains 198 ranges and
+classifies these two addresses as guarded.
+
+All 31 paired current-registry routes preserve frame-state hashes and
+abandonment counts when only CB68 and FA67 are excluded on the before
+side. Target interpreter cost falls from 1,120,458 to 112,980 master
+cycles (1,007,478 removed, 89.92%), with every cycle delta confined to
+these addresses. Non-wait interpreter work falls from 14,513,166 to
+13,505,688 (6.94%). Evidence is in `out/bit-branches-cost/manifest.csv`,
+its before/after primary rankings and `out/bit-branches-cost-summary.log`.
+This isolates the increment within the current registry; it is not fresh
+whole-registry assembly parity. Event-adjacent residual work remains
+visible in the primary ranking.
+
+Release and Debug each pass the bit-branch assembly oracle, expanded
+fixture, preceding VRAM-stream oracle and face/hand capture regressions
+(five checks each). Logs are `out/bit-branches-tests-{Release,Debug}.log`.
+Both face replays retain the corrected `a263ebb4...b35a` hash and all three
+original capture inputs are unchanged. Registry generation, all 198 seam
+ranges and `git diff --check` pass. The full suite was not rerun.
+
 ## VRAM stream loop and return: 00:E479 and 00:E47C
 
 The stream decoder's BRA E438 and final RTS now have standalone native

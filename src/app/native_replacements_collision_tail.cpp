@@ -1191,8 +1191,8 @@ std::optional<RoutineReplacement> replace_collision_tail(
 
         // The hit arm of the broad collision sweep sets its latch at CB63,
         // then enters here. Cross the dispatcher call itself so the native
-        // CBCF walk owns the contact body while CB68's BBS seam remains with
-        // the core, exactly as it does for the assembly route.
+        // CBCF walk owns the contact body while CB68's BBS1 uses a fresh
+        // entry with its own strict event-horizon guard.
         case 0xCB65U:  // JSR $CBCF -- crossed into the contact dispatcher
             call(0xCB65U, 0xCBCFU);
             break;

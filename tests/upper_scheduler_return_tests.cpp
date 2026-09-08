@@ -10,6 +10,63 @@ int main()
 {
     try {
         std::array<std::byte, 0x2000> ram{};
+        for (const auto pc : {0xCB68U, 0xFA67U}) {
+            const bool collision = pc == 0xCB68U;
+            RoutineEntry entry{};
+            entry.routine = {static_cast<std::uint8_t>(collision ? 1U : 0U),
+                             static_cast<std::uint16_t>(pc)};
+            auto& r = entry.registers;
+            r.program_counter = static_cast<std::uint16_t>(pc);
+            r.mpr[1] = 0xF8U; r.mpr[6] = 1U;
+            r.accumulator = 0xA5U; r.x = 0xFFU; r.y = 0x37U; r.stack_pointer = 0xFEU;
+            entry.master_cycles_until_user_event = 100U;
+            entry.master_cycles_until_timer_interrupt = 100U;
+            const auto branch = [&] { return devils_crush::app::detail::replace_bit_branch(entry, ram); };
+            for (unsigned value = 0U; value < 256U; ++value) {
+                ram[collision ? 0x77U : 0x26U] = static_cast<std::byte>(value);
+                const bool taken = collision ? (value & 2U) != 0U : (value & 1U) == 0U;
+                const unsigned cycles = taken ? 24U : 18U;
+                for (unsigned status = 0U; status < 256U; ++status) {
+                    r.status = static_cast<std::uint8_t>(status);
+                    const auto result = branch();
+                    require(result.has_value() == ((status & 0x20U) == 0U), "Bit branch transfer guard changed");
+                    if (!result) { continue; }
+                    const auto& out = result->output_registers;
+                    require(out.program_counter == (collision ? (taken ? 0xCB93U : 0xCB6BU)
+                                                             : (taken ? 0xFA6EU : 0xFA6AU))
+                        && out.accumulator == r.accumulator && out.x == r.x && out.y == r.y
+                        && out.stack_pointer == r.stack_pointer && out.status == status && out.mpr == r.mpr
+                        && result->return_instruction == RoutineKey{entry.routine.physical_bank, out.program_counter},
+                        "Bit branch arm or preserved registers changed");
+                    require(result->body_master_cycles == cycles && result->checkpoints.size() == 1U
+                        && result->checkpoints[0].interrupt_sample_master_cycle_offset == cycles - 3U
+                        && result->checkpoints[0].master_cycle_offset == cycles
+                        && result->checkpoints[0].instruction == entry.routine
+                        && result->checkpoints[0].registers.program_counter == out.program_counter
+                        && result->work_ram_writes.empty() && result->absorbed_returns.empty()
+                        && !result->native_bbr0_instruction && !result->native_bbs2_instruction,
+                        "Bit branch timing, boundaries or side effects changed");
+                }
+                r.status = 0U;
+                for (unsigned horizon = 0U; horizon <= 25U; ++horizon) {
+                    entry.master_cycles_until_user_event = horizon;
+                    require(branch().has_value() == (horizon > cycles), "Bit branch user horizon changed");
+                    entry.master_cycles_until_user_event = 100U;
+                    entry.master_cycles_until_timer_interrupt = horizon;
+                    require(branch().has_value() == (horizon > cycles), "Bit branch timer horizon changed");
+                    entry.master_cycles_until_timer_interrupt = 100U;
+                }
+            }
+            r.mpr[1] = 0U; require(!branch(), "Foreign bit branch RAM mapping admitted"); r.mpr[1] = 0xF8U;
+            r.mpr[pc >> 13U] ^= 1U; require(!branch(), "Foreign bit branch code mapping admitted");
+            r.mpr[pc >> 13U] ^= 1U;
+            r.program_counter++; require(!branch(), "Wrong bit branch PC admitted"); r.program_counter--;
+            require(!devils_crush::app::detail::replace_bit_branch(entry, std::span<const std::byte>(ram).first(0x1FFFU)),
+                    "Short bit branch RAM admitted");
+            entry.routine.logical_pc++; r.program_counter++;
+            require(!branch(), "Unsupported bit branch key admitted");
+        }
+        std::puts("Verified 131,072 bit-branch operand/status cases and both horizons for every operand.");
         for (const auto pc : {0xFC03U, 0xFC89U, 0xE479U}) {
             RoutineEntry entry{};
             entry.routine = {0U, static_cast<std::uint16_t>(pc)};

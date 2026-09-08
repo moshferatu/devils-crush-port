@@ -191,7 +191,33 @@ the full pentagram regression (322.29 seconds) and the exhaustive fixture.
 The capture hash remains unchanged. Both executables are rebuilt; Debug
 evidence is in `out/selection-return-debug-tests.log`.
 
-VRAM stream boundaries `00:E479` and `00:E47C` now execute natively. The
+The largest non-host interpreter seams, collision `01:CB68` and tile-upload
+`00:FA67`, now execute natively when both event horizons exceed the entire
+18/24-cycle bit-branch opcode. The final interrupt sample is equivalent
+while no event or mask change intervenes; near events the core preserves
+the two original samples. CB68 is BBS1, correcting the old BBS2 label.
+The fixture covers 131,072 operand/status combinations, both horizons for
+every operand, and invalid mappings, PCs and RAM. The assembly oracle
+admits 373/404 collision entries and 741/832 tile entries, preserving five
+pinned frame-state, scheduler-call and write artifacts. The registry
+contains 718 entries and the seam manifest retains 198 classified ranges.
+
+All 31 paired current-registry routes preserve frame-state hashes and
+abandonment counts, with every interpreter cycle delta confined to the
+two branches. Their cost falls from 1,120,458 to 112,980 master cycles
+(89.92% removed); total non-wait interpreter work falls from 14,513,166
+to 13,505,688 (6.94%). Evidence and refreshed primary rankings are under
+`out/bit-branches-cost/`, with totals in `out/bit-branches-cost-summary.log`.
+This isolates the increment within the current registry, not fresh
+whole-registry assembly parity.
+
+Release and Debug each pass the bit-branch oracle, expanded fixture,
+preceding VRAM-stream oracle and face/hand captures (five checks each).
+Logs are `out/bit-branches-tests-{Release,Debug}.log`. The corrected face
+replay hash and original capture inputs are unchanged. Registry generation,
+all 198 seam ranges and `git diff --check` pass; the full suite was not rerun.
+
+The preceding VRAM stream boundaries `00:E479` and `00:E47C` execute natively. The
 loop BRA shares the 12-cycle unconditional-branch helper; the RTS shares
 the 21-cycle live-stack return helper. Both preserve their strict event
 horizon guards. Fixtures cover 196,608 branch stack/status combinations

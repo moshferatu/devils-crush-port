@@ -8183,6 +8183,10 @@ parse_logical_address_range(const std::string_view text)
                            (request.routine == RoutineKey{0x00U, 0xFC03U}
                             || request.routine == RoutineKey{0x00U, 0xFC89U})
                            && request.all_calls;
+                       const bool proven_bit_branch =
+                           (request.routine == RoutineKey{0x01U, 0xCB68U}
+                            || request.routine == RoutineKey{0x00U, 0xFA67U})
+                           && request.all_calls;
                        const bool proven_vram_stream_tail =
                            (request.routine == RoutineKey{0x00U, 0xE479U}
                             || request.routine == RoutineKey{0x00U, 0xE47CU})
@@ -8462,6 +8466,7 @@ parse_logical_address_range(const std::string_view text)
                            && !proven_upper_scheduler_return
                            && !proven_interrupt_chain_jump
                            && !proven_vram_stream_tail
+                           && !proven_bit_branch
                            && !proven_upper_table_string_record
                            && !proven_video_update_idle_gate
                            && !proven_boot_work_ram_clear_seams
