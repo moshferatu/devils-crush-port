@@ -10,7 +10,7 @@
 "00","F423","F423","core","compound-sampled tilemap BBR0 instruction"
 "00","F605","F665","guarded","actor-script record loader crosses native resolver and VRAM decoder; zero-record form remains emulated"
 "02","51AF","51CF","guarded","Native release countdown including expiry and shared appearance write; child call remains separate"
-"02","51D2","51D5","core","Release countdown JSR submission boundary and caller RTS"
+"02","51D2","51D5","guarded","Native release submission JSR and live caller RTS; both event horizons must exceed 21 master cycles"
 "09","6FB1","701F","guarded","Upper-table scripted actor initializer leaves the common bank-01 JSR to the core"
 "09","70EE","7157","guarded","Upper-table scripted actor initializer leaves the common bank-01 JSR to the core"
 "09","7025","703C","guarded","Upper-table scripted actor countdown leaves the RTS or common initializer JSR to the core"

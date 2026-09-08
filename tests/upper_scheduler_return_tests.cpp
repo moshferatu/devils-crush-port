@@ -166,12 +166,12 @@ int main()
             require(!jump(), "Unsupported jump key admitted");
         }
         std::puts("Verified 262,144 unconditional-branch stack/status cases and both horizon guards.");
-        for (const auto pc : {0xC693U, 0xC696U, 0xC69BU, 0xC6A6U, 0xC6BFU}) {
+        for (const auto pc : {0xC693U, 0xC696U, 0xC69BU, 0xC6A6U, 0xC6BFU, 0x51D2U}) {
             RoutineEntry entry{};
-            entry.routine = {1U, static_cast<std::uint16_t>(pc)};
+            entry.routine = {static_cast<std::uint8_t>(pc == 0x51D2U ? 2U : 1U), static_cast<std::uint16_t>(pc)};
             auto& r = entry.registers;
             r.program_counter = static_cast<std::uint16_t>(pc);
-            r.mpr[1] = 0xF8U; r.mpr[6] = 1U;
+            r.mpr[1] = 0xF8U; r.mpr[6] = 1U; r.mpr[2] = 2U;
             r.accumulator = 0xA5U; r.x = 0xFFU; r.y = 0x37U;
             entry.master_cycles_until_user_event = 100U;
             entry.master_cycles_until_timer_interrupt = 100U;
@@ -183,15 +183,17 @@ int main()
                     require(result.has_value() == ((status & 0x20U) == 0U), "Call transfer-mode guard changed");
                     if (!result) { continue; }
                     const auto& out = result->output_registers;
-                    require(out.program_counter == ((pc == 0xC693U || pc == 0xC69BU) ? 0xC5EAU : 0xC5C9U)
+                    require(out.program_counter == ((pc == 0xC693U || pc == 0xC69BU) ? 0xC5EAU : pc == 0x51D2U ? 0x5475U : 0xC5C9U)
                         && out.stack_pointer == static_cast<std::uint8_t>(sp - 2U)
                         && out.status == status && out.accumulator == r.accumulator
                         && out.x == r.x && out.y == r.y && out.mpr == r.mpr,
                         "Call changed registers or destination");
+                    require(result->return_instruction == RoutineKey{r.mpr[out.program_counter >> 13U], out.program_counter},
+                        "Call returned the wrong physical destination");
                     require(result->work_ram_writes.size() == 2U, "Call frame size changed");
                     const auto& high = result->work_ram_writes[0];
                     const auto& low = result->work_ram_writes[1];
-                    require(high.logical_address == 0x2100U + sp && high.value == 0xC6U
+                    require(high.logical_address == 0x2100U + sp && high.value == static_cast<std::uint8_t>((pc + 2U) >> 8U)
                         && low.logical_address == 0x2100U + static_cast<std::uint8_t>(sp - 1U)
                         && low.value == static_cast<std::uint8_t>(pc + 2U)
                         && high.master_cycle_offset == 0U && low.master_cycle_offset == 0U
@@ -218,15 +220,15 @@ int main()
             require(!devils_crush::app::detail::replace_coroutine_call(entry, std::span(ram).first(0x1FFF)), "Short call RAM admitted");
             r.mpr[1] = 0U;
             require(!devils_crush::app::detail::replace_coroutine_call(entry, ram), "Foreign call stack admitted");
-            r.mpr[1] = 0xF8U; r.mpr[6] = 0U;
+            r.mpr[1] = 0xF8U; r.mpr[pc >> 13U] = 0U;
             require(!devils_crush::app::detail::replace_coroutine_call(entry, ram), "Foreign call code admitted");
-            r.mpr[6] = 1U; ++r.program_counter;
+            r.mpr[pc >> 13U] = entry.routine.physical_bank; ++r.program_counter;
             require(!devils_crush::app::detail::replace_coroutine_call(entry, ram), "Wrong call PC admitted");
         }
-        std::puts("Verified five scheduler calls across all stack pointers and status values.");
+        std::puts("Verified six scheduler/submission calls across all stack pointers and status values.");
         for (const auto routine : {RoutineKey{0x08U, 0x5976U}, RoutineKey{0x01U, 0xC4C8U},
                  RoutineKey{0x08U, 0x5A69U}, RoutineKey{0x00U, 0xE47CU},
-                 RoutineKey{0x02U, 0x4F75U}}) {
+                 RoutineKey{0x02U, 0x4F75U}, RoutineKey{0x02U, 0x51D5U}}) {
             RoutineEntry entry{};
             entry.routine = routine;
             auto& r = entry.registers;
@@ -278,7 +280,7 @@ int main()
             r.mpr[routine.logical_pc >> 13U] = static_cast<std::uint8_t>(routine.physical_bank ^ 1U);
             require(!replace_upper_scheduler_return(entry, ram), "Foreign code mapping admitted");
         }
-        std::puts("Verified 983,040 return target/status/stack cases and both horizon guards.");
+        std::puts("Verified 1,179,648 return target/status/stack cases and both horizon guards.");
         for (unsigned sp : {0U, 254U, 255U}) {
             for (unsigned word = 0U; word < 65536U; ++word) {
                 RoutineEntry entry{};

@@ -1,5 +1,45 @@
 # Retained Assembly Seams
 
+## Release submission call and return: 02:51D2 and 02:51D5
+
+The release-countdown tail was a 67,662-cycle interpreter cluster across the
+31-route corpus. Its JSR $5475 and caller RTS now use the shared native call
+and return helpers. The JSR writes the real $51D4 caller frame, high byte
+then low byte with page-wrapped SP, and hands off to a separate live entry
+at 02:5475. It samples at master cycle 18 and completes at 21. The RTS reads
+the live stack, wraps the return address, and preserves the return observer
+at offset zero. Both require matching live PC/code mapping, work-RAM stack
+mapping, a full RAM view and both event horizons strictly beyond 21 cycles.
+The call also declines transfer mode. The child remains independently owned;
+no submission body or caller continuation is absorbed.
+
+The shared fixture now covers 393,216 call stack/status combinations and
+1,179,648 return target/status/stack combinations, plus both horizon guards
+and invalid PC, mapping and RAM cases. The alley-route assembly oracle
+verify_release_submission_tail.cmake pins ROM bytes 20755460 and admits
+59/68 calls and 310/340 returns. Frame state, observed countdown/submission
+calls, ordered caller writes, all RAM writes and hardware writes match
+assembly byte-for-byte. The registry admits 724 routines and the seam
+manifest validates 201 classified ranges.
+
+All 31 current-registry A/B routes preserve frame-state hashes and
+abandonment counts when only 51D2 and 51D5 are excluded on the before side.
+Their interpreter cost falls from 67,662 to 5,943 master cycles: 61,719
+removed (91.22%), with every cycle delta confined to those entries.
+Non-wait interpreter work falls from 13,097,049 to 13,035,330 (0.47%);
+frame-sync waits are unchanged. This isolates the increment within the
+registry, not fresh whole-registry assembly parity. Evidence is in
+out/release-submission-cost/manifest.csv, its before/after rankings and
+out/release-submission-cost-summary.log.
+
+Release and Debug each pass five targeted checks: the shared instruction
+fixture, release submission assembly oracle, existing coroutine-call oracle,
+corrupted-face capture and hand-bus capture (94.60 and 694.66 seconds).
+Logs are out/release-submission-tests-{Release,Debug}.log. Both face replays
+retain the corrected a263ebb4...b35a hash and all original capture inputs
+are unchanged. Registry/seam validation and git diff --check pass. The full
+suite was not rerun.
+
 ## Music active-voice test: 45:4095 and 45:4097
 
 The highest remaining non-host cluster after the interrupt-vector port was

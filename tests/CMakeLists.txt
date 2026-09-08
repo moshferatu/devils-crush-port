@@ -5494,6 +5494,11 @@ if(TARGET devils_crush)
                 "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/coroutine-calls-$<CONFIG>-v1"
                 -P "${CMAKE_CURRENT_SOURCE_DIR}/verify_coroutine_calls.cmake")
         set_tests_properties(dc_rom_coroutine_calls PROPERTIES LABELS rom_required)
+        add_test(NAME dc_rom_release_submission_tail
+            COMMAND "${CMAKE_COMMAND}" "-DAPP=$<TARGET_FILE:devils_crush>" "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/release-submission-tail-$<CONFIG>-v1"
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/verify_release_submission_tail.cmake")
+        set_tests_properties(dc_rom_release_submission_tail PROPERTIES LABELS rom_required)
         add_test(NAME dc_rom_music_voice_gate
             COMMAND "${CMAKE_COMMAND}" "-DAPP=$<TARGET_FILE:devils_crush>" "-DROM=${DC_ROM_PATH}"
                 "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/music-voice-gate-$<CONFIG>-v1"

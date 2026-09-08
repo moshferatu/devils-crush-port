@@ -115,11 +115,13 @@ std::optional<RoutineReplacement> replace_coroutine_call(
     constexpr RoutineKey kSecondDelayCall{.physical_bank = 0x01U, .logical_pc = 0xC69BU};
     constexpr RoutineKey kToggleCall{.physical_bank = 0x01U, .logical_pc = 0xC6A6U};
     constexpr RoutineKey kResetCall{.physical_bank = 0x01U, .logical_pc = 0xC6BFU};
+    constexpr RoutineKey kReleaseCall{.physical_bank = 0x02U, .logical_pc = 0x51D2U};
     if ((entry.routine != kDelayCall && entry.routine != kSchedulerCall
             && entry.routine != kSecondDelayCall && entry.routine != kToggleCall
-            && entry.routine != kResetCall)
+            && entry.routine != kResetCall && entry.routine != kReleaseCall)
         || entry.registers.program_counter != entry.routine.logical_pc
-        || entry.registers.mpr[1] != 0xF8U || entry.registers.mpr[6] != 0x01U
+        || entry.registers.mpr[1] != 0xF8U
+        || entry.registers.mpr[entry.routine.logical_pc >> 13U] != entry.routine.physical_bank
         || (entry.registers.status & 0x20U) != 0U || work_ram.size() < 0x2000U
         || !absorbed_return_fits_atomically(entry, 0U)) {
         return std::nullopt;
@@ -137,8 +139,8 @@ std::optional<RoutineReplacement> replace_coroutine_call(
         r.stack_pointer = static_cast<std::uint8_t>(r.stack_pointer - 1U);
     }
     r.program_counter = (entry.routine == kDelayCall || entry.routine == kSecondDelayCall)
-        ? 0xC5EAU : 0xC5C9U;
-    result.return_instruction = {0x01U, r.program_counter};
+        ? 0xC5EAU : entry.routine == kReleaseCall ? 0x5475U : 0xC5C9U;
+    result.return_instruction = {r.mpr[r.program_counter >> 13U], r.program_counter};
     result.output_registers = r;
     result.body_master_cycles = 21U;
     result.checkpoints.push_back({.interrupt_sample_master_cycle_offset = 18U,
@@ -222,9 +224,10 @@ std::optional<RoutineReplacement> replace_upper_scheduler_return(
     constexpr RoutineKey kSelectionReturn{.physical_bank = 0x08U, .logical_pc = 0x5A69U};
     constexpr RoutineKey kStreamReturn{.physical_bank = 0x00U, .logical_pc = 0xE47CU};
     constexpr RoutineKey kCountdownReturn{.physical_bank = 0x02U, .logical_pc = 0x4F75U};
+    constexpr RoutineKey kReleaseReturn{.physical_bank = 0x02U, .logical_pc = 0x51D5U};
     if ((entry.routine != kRoutine && entry.routine != kRunInputReturn
             && entry.routine != kSelectionReturn && entry.routine != kStreamReturn
-            && entry.routine != kCountdownReturn)
+            && entry.routine != kCountdownReturn && entry.routine != kReleaseReturn)
         || entry.registers.program_counter != entry.routine.logical_pc
         || entry.registers.mpr[1] != 0xF8U
         || entry.registers.mpr[entry.routine.logical_pc >> 13U] != entry.routine.physical_bank

@@ -38,7 +38,8 @@ replace_native_gameplay_routine_impl(
         || entry.routine == RoutineKey{.physical_bank = 0x01U, .logical_pc = 0xC696U}
         || entry.routine == RoutineKey{.physical_bank = 0x01U, .logical_pc = 0xC69BU}
         || entry.routine == RoutineKey{.physical_bank = 0x01U, .logical_pc = 0xC6A6U}
-        || entry.routine == RoutineKey{.physical_bank = 0x01U, .logical_pc = 0xC6BFU}) {
+        || entry.routine == RoutineKey{.physical_bank = 0x01U, .logical_pc = 0xC6BFU}
+        || entry.routine == RoutineKey{.physical_bank = 0x02U, .logical_pc = 0x51D2U}) {
         return detail::replace_coroutine_call(entry, work_ram);
     }
     if (entry.routine == RoutineKey{.physical_bank = 0x01U, .logical_pc = 0xC5EAU}) {
@@ -48,7 +49,8 @@ replace_native_gameplay_routine_impl(
         || entry.routine == RoutineKey{.physical_bank = 0x01U, .logical_pc = 0xC4C8U}
         || entry.routine == RoutineKey{.physical_bank = 0x08U, .logical_pc = 0x5A69U}
         || entry.routine == RoutineKey{.physical_bank = 0x00U, .logical_pc = 0xE47CU}
-        || entry.routine == RoutineKey{.physical_bank = 0x02U, .logical_pc = 0x4F75U}) {
+        || entry.routine == RoutineKey{.physical_bank = 0x02U, .logical_pc = 0x4F75U}
+        || entry.routine == RoutineKey{.physical_bank = 0x02U, .logical_pc = 0x51D5U}) {
         return detail::replace_upper_scheduler_return(entry, work_ram);
     }
     if (entry.routine == RoutineKey{.physical_bank = 0x00U, .logical_pc = 0xE271U}) {
