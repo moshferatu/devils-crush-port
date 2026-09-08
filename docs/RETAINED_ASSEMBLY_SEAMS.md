@@ -1,5 +1,41 @@
 # Retained Assembly Seams
 
+## Actor countdown return: 02:4F75
+
+The countdown's RTS now enters the shared native live-stack return helper.
+It reads both caller bytes with stack-page wrapping, adds one with word
+wrapping, and selects the target bank from the live MPRs. Registers and
+status remain intact. Both event horizons must exceed 21 master cycles;
+near events, or with an invalid PC, code/stack mapping or short RAM, the
+original core executes the return. The offset-zero absorbed-return record
+preserves the caller observer without adding an interrupt checkpoint.
+
+The expanded fixture covers 983,040 return target/status/stack cases across
+five entries, plus both event horizons and invalid inputs. The alley-route
+assembly oracle pins the RTS byte and admits 188/223 returns. All five
+frame-state, caller, ordered caller-write, RAM-write and hardware-write
+artifacts match assembly. The ordinary gameplay route does not exercise
+this return. Registry generation admits 719 routines; the seam manifest
+splits this return from its countdown prefix and validates 199 ranges.
+
+All 31 current-registry A/B routes preserve frame-state hashes and
+abandonment counts when only 02:4F75 is excluded on the before side.
+Target interpreter cost falls from 122,982 to 15,063 master cycles
+(107,919 removed, 87.75%). Every cycle delta stays at this RTS. Non-wait
+interpreter work falls from 13,505,688 to 13,397,769 (0.80%); frame-sync
+wait cost is unchanged. Evidence is in `out/countdown-return-cost/manifest.csv`,
+its before/after primary rankings and `out/countdown-return-cost-summary.log`.
+This isolates the increment within the current registry; it is not fresh
+whole-registry assembly parity. Near-event residual work remains visible
+in the primary ranking.
+
+Release and Debug each pass the countdown-return assembly oracle, expanded
+fixture, preceding bit-branch oracle and face/hand capture regressions
+(five checks each). Logs are `out/countdown-return-tests-{Release,Debug}.log`.
+Both face replays retain the corrected `a263ebb4...b35a` hash, and the
+original capture inputs are unchanged. Registry generation, all 199 seam
+ranges and `git diff --check` pass. The full suite was not rerun.
+
 ## Collision and tile-upload bit branches: 01:CB68 and 00:FA67
 
 The two largest non-host interpreter seams now have guarded native entries.

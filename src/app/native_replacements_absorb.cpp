@@ -188,8 +188,10 @@ std::optional<RoutineReplacement> replace_upper_scheduler_return(
     constexpr RoutineKey kRunInputReturn{.physical_bank = 0x01U, .logical_pc = 0xC4C8U};
     constexpr RoutineKey kSelectionReturn{.physical_bank = 0x08U, .logical_pc = 0x5A69U};
     constexpr RoutineKey kStreamReturn{.physical_bank = 0x00U, .logical_pc = 0xE47CU};
+    constexpr RoutineKey kCountdownReturn{.physical_bank = 0x02U, .logical_pc = 0x4F75U};
     if ((entry.routine != kRoutine && entry.routine != kRunInputReturn
-            && entry.routine != kSelectionReturn && entry.routine != kStreamReturn)
+            && entry.routine != kSelectionReturn && entry.routine != kStreamReturn
+            && entry.routine != kCountdownReturn)
         || entry.registers.program_counter != entry.routine.logical_pc
         || entry.registers.mpr[1] != 0xF8U
         || entry.registers.mpr[entry.routine.logical_pc >> 13U] != entry.routine.physical_bank

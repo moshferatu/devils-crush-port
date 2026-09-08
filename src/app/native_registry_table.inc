@@ -372,6 +372,7 @@ DC_ADMITTED_ROUTINE(0x02U, 0x4DD9U, 1988, 1988, "verify_giant_skeleton_eyeball_g
 DC_ADMITTED_ROUTINE(0x02U, 0x4DF7U, 7, 9, "verify_giant_skeleton_eyeball_opening_wait_semantic")
 DC_ADMITTED_ROUTINE(0x02U, 0x4E24U, 1066, 1377, "verify_giant_skeleton_eyeball_steady_idle_semantic")
 DC_ADMITTED_ROUTINE(0x02U, 0x4F3DU, 224, 224, "verify_eyeball_animation +1")
+DC_ADMITTED_ROUTINE(0x02U, 0x4F75U, 188, 223, "verify_countdown_return")
 DC_ADMITTED_ROUTINE(0x02U, 0x4F9FU, 3, 3, "verify_mercy_star_initializer_semantic")
 DC_ADMITTED_ROUTINE(0x02U, 0x4FC1U, 7950, 7950, "verify_mercy_star_gate_semantic")
 DC_ADMITTED_ROUTINE(0x02U, 0x4FC4U, 15108, 15108, "verify_side_gate_deadline_check_semantic")

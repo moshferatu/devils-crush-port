@@ -173,12 +173,14 @@ int main()
         }
         std::puts("Verified five scheduler calls across all stack pointers and status values.");
         for (const auto routine : {RoutineKey{0x08U, 0x5976U}, RoutineKey{0x01U, 0xC4C8U},
-                 RoutineKey{0x08U, 0x5A69U}, RoutineKey{0x00U, 0xE47CU}}) {
+                 RoutineKey{0x08U, 0x5A69U}, RoutineKey{0x00U, 0xE47CU},
+                 RoutineKey{0x02U, 0x4F75U}}) {
             RoutineEntry entry{};
             entry.routine = routine;
             auto& r = entry.registers;
             r.program_counter = routine.logical_pc;
             r.mpr = {0xFFU, 0xF8U, 0x08U, 0x09U, 0x0AU, 0x0BU, 0x01U, 0x00U};
+            r.mpr[routine.logical_pc >> 13U] = routine.physical_bank;
             r.accumulator = 0xA5U; r.x = 0x35U; r.y = 0xE7U;
             entry.master_cycles_until_user_event = 100U;
             entry.master_cycles_until_timer_interrupt = 100U;
@@ -215,13 +217,16 @@ int main()
                 entry.master_cycles_until_user_event = 100U;
             }
             require(!replace_upper_scheduler_return(entry, std::span(ram).first(0x1FFF)), "Short RAM admitted");
+            ++r.program_counter;
+            require(!replace_upper_scheduler_return(entry, ram), "Wrong return PC admitted");
+            r.program_counter = routine.logical_pc;
             r.mpr[1] = 0U;
             require(!replace_upper_scheduler_return(entry, ram), "Foreign stack mapping admitted");
             r.mpr[1] = 0xF8U;
             r.mpr[routine.logical_pc >> 13U] = static_cast<std::uint8_t>(routine.physical_bank ^ 1U);
             require(!replace_upper_scheduler_return(entry, ram), "Foreign code mapping admitted");
         }
-        std::puts("Verified 786,432 return target/status/stack cases and both horizon guards.");
+        std::puts("Verified 983,040 return target/status/stack cases and both horizon guards.");
         for (unsigned sp : {0U, 254U, 255U}) {
             for (unsigned word = 0U; word < 65536U; ++word) {
                 RoutineEntry entry{};

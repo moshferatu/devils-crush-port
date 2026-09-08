@@ -191,7 +191,30 @@ the full pentagram regression (322.29 seconds) and the exhaustive fixture.
 The capture hash remains unchanged. Both executables are rebuilt; Debug
 evidence is in `out/selection-return-debug-tests.log`.
 
-The largest non-host interpreter seams, collision `01:CB68` and tile-upload
+The actor countdown return at `02:4F75` now uses the shared native RTS
+helper with live stack reads, wrapped return targets, caller observations
+and strict 21-cycle event guards. The fixture covers 983,040 return cases
+across five entries, plus horizon, mapping, RAM-size and PC rejection.
+The alley-route assembly oracle admits 188/223 returns and pins matching
+frame, caller and write artifacts. Registry generation now admits 719
+entries, and the manifest validates 199 ranges after separating the
+countdown prefix from its independently guarded RTS.
+
+All 31 paired current-registry routes preserve frame hashes and abandonment
+counts. Countdown-return interpreter cost falls from 122,982 to 15,063
+master cycles (87.75% removed), reducing non-wait interpreter work from
+13,505,688 to 13,397,769 (0.80%). The delta is confined to 02:4F75; this
+comparison isolates the increment within the registry. Evidence is in
+`out/countdown-return-cost/manifest.csv` and its primary rankings.
+
+Release and Debug each pass the countdown-return assembly oracle, expanded
+fixture, preceding bit-branch oracle and face/hand capture regressions
+(five checks each). Logs are `out/countdown-return-tests-{Release,Debug}.log`.
+Both face replays retain the corrected `a263ebb4...b35a` hash, and the
+original capture inputs are unchanged. Registry generation, all 199 seam
+ranges and `git diff --check` pass. The full suite was not rerun.
+
+The preceding increment addressed collision `01:CB68` and tile-upload
 `00:FA67`, now execute natively when both event horizons exceed the entire
 18/24-cycle bit-branch opcode. The final interrupt sample is equivalent
 while no event or mask change intervenes; near events the core preserves
