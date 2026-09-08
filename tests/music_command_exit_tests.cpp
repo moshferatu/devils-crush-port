@@ -56,6 +56,67 @@ void verify_psg_horizon()
     }
     std::puts("Verified 12,032 PSG timer-horizon/stack combinations.");
 }
+void verify_gate()
+{
+    std::array<std::byte, 0x2000> ram{};
+    for (unsigned step = 0; step < 256U; ++step) {
+        for (unsigned accumulator = 0; accumulator < 256U; ++accumulator) {
+            for (unsigned arm = 0; arm < 3U; ++arm) {
+                ram.fill(std::byte{0});
+                const unsigned x = accumulator & 7U;
+                ram[0xEBE + x] = std::byte{0xFF};
+                ram[0xE78 + x] = static_cast<std::byte>(step);
+                ram[0xEDC + x] = static_cast<std::byte>(accumulator);
+                ram[0xEB4 + x] = static_cast<std::byte>(arm == 0U ? 0U : 4U);
+                ram[0xF18 + x] = static_cast<std::byte>(arm == 2U ? 0x80U : 0U);
+                RoutineEntry entry{};
+                entry.routine = {0x45U, 0x404FU};
+                entry.registers.program_counter = 0x404FU;
+                entry.registers.mpr = {0xFFU, 0xF8U, 0x45U, 0U, 0U, 0U, 0U, 0U};
+                entry.registers.accumulator = 0xA5U;
+                entry.registers.x = static_cast<std::uint8_t>(x);
+                entry.registers.status = 0x41U;
+                const auto before = ram;
+                const auto result = replace_music_sequencer(entry, ram, {});
+                require(result.has_value(), "Standalone gate declined");
+                const bool skip = step != 0U && step + accumulator < 256U;
+                const auto target = skip ? 0x408FU : arm == 2U ? 0x4072U : 0x4081U;
+                const unsigned cycles = skip ? 111U
+                    : (step == 0U ? 69U : 105U) + (arm == 0U ? 33U : arm == 1U ? 54U : 48U);
+                require(result->return_instruction.logical_pc == target
+                    && result->body_master_cycles == cycles, "Gate branch or timing changed");
+                require(result->output_registers.y == 0xA5U
+                    && result->output_registers.x == x && ram == before,
+                    "Gate registers or input RAM changed");
+                const auto sum = static_cast<std::uint8_t>(step + accumulator);
+                const unsigned carry = step == 0U ? 1U : (step + accumulator > 255U ? 1U : 0U);
+                const unsigned overflow = step == 0U ? 0x40U
+                    : ((~(step ^ accumulator) & (step ^ sum) & 0x80U) != 0U ? 0x40U : 0U);
+                const unsigned final_a = skip ? sum : arm == 2U ? 0x80U : 0U;
+                require(result->output_registers.accumulator == final_a
+                    && result->output_registers.status == (carry | overflow
+                        | (final_a & 0x80U) | (final_a == 0U ? 2U : 0U)),
+                    "Gate arithmetic flags changed");
+                const auto& writes = result->work_ram_writes;
+                require(writes.size() == (step == 0U ? 1U : 2U)
+                    && writes[0].logical_address == 0x2EBEU + x
+                    && writes[0].value == 0x7FU && writes[0].master_cycle_offset == 42U,
+                    "Gate retrigger write changed");
+                if (step != 0U) {
+                    require(writes[1].logical_address == 0x2EDCU + x
+                        && writes[1].value == static_cast<std::uint8_t>(step + accumulator)
+                        && writes[1].master_cycle_offset == 99U,
+                        "Gate accumulator write changed");
+                }
+                for (const auto& c : result->checkpoints) {
+                    require(c.interrupt_sample_master_cycle_offset + 3U == c.master_cycle_offset,
+                        "Gate interrupt checkpoint changed");
+                }
+            }
+        }
+    }
+    std::puts("Verified 196,608 gate arithmetic/branch combinations.");
+}
 void verify()
 {
     std::array<std::byte, 0x2000> ram{};
@@ -168,6 +229,6 @@ void verify()
 }
 int main()
 {
-    try { verify_psg_horizon(); verify(); return 0; }
+    try { verify_gate(); verify_psg_horizon(); verify(); return 0; }
     catch (const std::exception& e) { std::fprintf(stderr, "%s\n", e.what()); return 1; }
 }

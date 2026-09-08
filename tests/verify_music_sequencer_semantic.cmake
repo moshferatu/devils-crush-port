@@ -1,4 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
+# DC_NATIVE_ADMISSION 45:4143 3 42
+# Retain the separately replay-verified PSG continuation from before the
+# horizon prefix made its standalone arrivals disappear on this family route.
 
 foreach(required_variable IN ITEMS APP CONFIG ROM OUTPUT)
     if(NOT DEFINED ${required_variable} OR "${${required_variable}}" STREQUAL "")
@@ -171,6 +174,8 @@ execute_process(
         --replace-hook
         "45:4044@all"
         --replace-hook
+        "45:404F@all"
+        --replace-hook
         "45:409C@all"
         --replace-hook
         "45:409F@all"
@@ -275,6 +280,7 @@ foreach(expected_line IN ITEMS
     "Native replacement 45:4009@all entries: 3 of 4"
     "Native replacement 45:4015@all entries: 3599 of 3599"
     "Native replacement 45:4044@all entries: 1417 of 1436"
+    "Native replacement 45:404F@all entries: 19 of 19"
     "Native replacement 45:409C@all entries: 855 of 873"
     "Native replacement 45:409F@all entries: 12 of 18"
     "Native replacement 45:40A2@all entries: 4 of 6"

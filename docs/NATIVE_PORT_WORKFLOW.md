@@ -7,6 +7,31 @@ acceptance criteria in [PLAN.md](../PLAN.md).
 
 ## Choose by remaining execution cost
 
+The standalone sequencer gate slice admits `45:404F`, reusing the existing
+`404F-4070` calculation after an enclosing native call declines. It stops
+at `4072`, `4081` or `408F`, preserving the following sequencer ownership.
+The corpus `out/coverage-sequencer-gate-corpus-v1` reduces actual non-wait
+interpreter residue from 16,107,579 to 16,013,649 master cycles: 93,930
+removed (0.58%), with 15 fewer interpreted addresses. All 31 state-baseline
+pairs and abandonment totals match the PSG horizon corpus. Existing
+whole-registry versus assembly differences remain.
+Release and Debug admit 19/19 entries and match the existing assembly hashes
+for frame state, selected RAM writes, call/stack writes and all 699,251 PSG
+and timer writes. Both builds pass 196,608 gate arithmetic/branch cases,
+12,032 PSG horizon/stack cases and 196,608 sequence-end combinations.
+
+Registry regeneration now preserves the mode-2 VBlank evidence through an
+explicit admission marker and a dispatch key in the generator's supported
+form. It also retains the historically verified `$4143` continuation whose
+arrivals disappeared after the PSG horizon slice, and refreshes `$4142`'s
+recorded count. The registry has 702 entries; all 196 seam ranges validate.
+Both executables are rebuilt. The full CTest suite and interactive crash
+capture were not rerun.
+
+Next investigate `00:ECFD-ED07` (91,590 cycles) and its adjacent guarded
+continuation `00:ED18-ED34` (84,462). Higher-ranked core return and scheduler
+costs remain visible in the primary ranking.
+
 The PSG horizon slice (`out/coverage-psg-horizon-corpus-v1`) preserves the
 `45:4142-4146` prefix when the shared driver-state read at `$4148` would
 miss the timer horizon. The native walk stops before that read and retains

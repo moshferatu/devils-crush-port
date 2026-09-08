@@ -193,6 +193,7 @@ constexpr std::uint32_t kChannelIterationMasterCycles = 2304U;
     return logical_pc == 0x4015U
         || logical_pc == 0x402CU
         || logical_pc == 0x4044U
+        || logical_pc == 0x404FU
         || logical_pc == 0x409CU
         // $48F6 returns here when it was reached from an emulated caller.
         // This is the sequencer's normal vibrato/upload continuation, not an
@@ -1427,7 +1428,11 @@ std::optional<RoutineReplacement> replace_music_sequencer(
         const auto driver_read_stop = pc == 0x4148U
             && interrupt_window_open
             && cycle + 12U >= entry.master_cycles_until_timer_interrupt;
-        if (command_exit || mask_stop || driver_read_stop
+        // A standalone gate entry owns only the gate calculation. Its three
+        // successors retain their existing live sequencer ownership.
+        const auto gate_stop = entry.routine.logical_pc == 0x404FU
+            && (pc == 0x4072U || pc == 0x4081U || pc == 0x408FU);
+        if (command_exit || mask_stop || driver_read_stop || gate_stop
             || (depth == 0U && (is_return_instruction(pc) || tick_stop))) {
             // The driver-state guard. A read taken while the machine was
             // masked needs nothing: the driver cannot have run between the

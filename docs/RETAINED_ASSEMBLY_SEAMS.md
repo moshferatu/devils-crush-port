@@ -1,5 +1,16 @@
 # Retained Assembly Seams
 
+## Sequencer gate continuation: 45:404F-4070
+
+The standalone `$404F` entry reuses the sequencer's gate calculation after
+an enclosing walk declines. It preserves TAY, retrigger-bit clearing,
+byte-wide gate accumulation and the mode/release branches, with a checkpoint
+for every instruction. It stops at `$4072`, `$4081` or `$408F`; composed walks
+retain their existing control flow. Release and Debug admit all 19 natural arrivals
+and preserves the music family's assembly hashes. The ROM-free fixture checks
+196,608 gate-step/accumulator/branch combinations, including carry, overflow,
+write timing and all three successors.
+
 ## PSG programmer timer horizon: 45:4142-4148
 
 The programmer preserves its CLX/PHP/TXA/LSR/BCS prefix when the read of

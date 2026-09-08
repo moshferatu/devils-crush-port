@@ -8105,6 +8105,7 @@ parse_logical_address_range(const std::string_view text)
                                || request.routine.logical_pc == 0x4009U
                                || request.routine.logical_pc == 0x4015U
                                || request.routine.logical_pc == 0x4044U
+                               || request.routine.logical_pc == 0x404FU
                                || request.routine.logical_pc == 0x409CU
                                || request.routine.logical_pc == 0x409FU
                                || request.routine.logical_pc == 0x40A2U

@@ -137,7 +137,7 @@
 "09","703D","7040","guarded","upper-table parent decay continuation is scheduler-owned"
 "09","7175","7178","guarded","sibling upper-table parent decay continuation is scheduler-owned"
 "09","7EEB","7F44","guarded","upper-table allocation and one-shot presentation setup defer to scheduler"
-"45","402F","4070","guarded","music tick continuation is owned by the enclosing per-frame sequencer"
+"45","402F","4070","guarded","music tick continuation is owned by the enclosing per-frame sequencer; standalone 404F gate stops at 4072/4081/408F"
 "45","4017","4022","guarded","music tick internal branch is owned by the per-frame sequencer"
 "45","4081","408E","core","music export and internal dispatch preserve core timing and stack sampling"
 "45","4090","4097","core","music export and internal dispatch preserve core timing and stack sampling"

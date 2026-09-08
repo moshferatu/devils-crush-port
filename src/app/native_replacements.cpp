@@ -1021,6 +1021,11 @@ replace_native_gameplay_routine_impl(
         || entry.routine
             == RoutineKey{
                 .physical_bank = 0x45U,
+                .logical_pc = 0x404FU,
+            }
+        || entry.routine
+            == RoutineKey{
+                .physical_bank = 0x45U,
                 .logical_pc = 0x409CU,
             }
         || entry.routine
@@ -1400,7 +1405,10 @@ replace_native_gameplay_routine_impl(
                 .physical_bank = 0x00U,
                 .logical_pc = 0xE195U,
             }
-        || entry.routine == RoutineKey{0x00U, 0xE09EU}) {
+        || entry.routine == RoutineKey{
+            .physical_bank = 0x00U,
+            .logical_pc = 0xE09EU,
+        }) {
         return detail::replace_vblank_handler(entry, work_ram, rom);
     }
 

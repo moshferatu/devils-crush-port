@@ -1,4 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
+# DC_NATIVE_ADMISSION 00:E09E 203 203
+# The route-dependent assertion below proves the alley count and 187 spiral entries.
 # Release retains the complete RAM stream. Debug pins every RAM location this
 # handler can write, as the existing VBlank regression does; full RAM is still
 # checked in each frame fingerprint. This avoids serializing unrelated actor
