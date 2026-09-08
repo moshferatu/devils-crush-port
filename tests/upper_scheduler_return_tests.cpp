@@ -10,7 +10,7 @@ int main()
 {
     try {
         std::array<std::byte, 0x2000> ram{};
-        for (const auto pc : {0xC693U, 0xC696U}) {
+        for (const auto pc : {0xC693U, 0xC696U, 0xC69BU, 0xC6A6U, 0xC6BFU}) {
             RoutineEntry entry{};
             entry.routine = {1U, static_cast<std::uint16_t>(pc)};
             auto& r = entry.registers;
@@ -27,7 +27,7 @@ int main()
                     require(result.has_value() == ((status & 0x20U) == 0U), "Call transfer-mode guard changed");
                     if (!result) { continue; }
                     const auto& out = result->output_registers;
-                    require(out.program_counter == (pc == 0xC693U ? 0xC5EAU : 0xC5C9U)
+                    require(out.program_counter == ((pc == 0xC693U || pc == 0xC69BU) ? 0xC5EAU : 0xC5C9U)
                         && out.stack_pointer == static_cast<std::uint8_t>(sp - 2U)
                         && out.status == status && out.accumulator == r.accumulator
                         && out.x == r.x && out.y == r.y && out.mpr == r.mpr,
@@ -67,7 +67,7 @@ int main()
             r.mpr[6] = 1U; ++r.program_counter;
             require(!devils_crush::app::detail::replace_coroutine_call(entry, ram), "Wrong call PC admitted");
         }
-        std::puts("Verified both scheduler calls across all stack pointers and status values.");
+        std::puts("Verified five scheduler calls across all stack pointers and status values.");
         for (const auto routine : {RoutineKey{0x08U, 0x5976U}, RoutineKey{0x01U, 0xC4C8U},
                  RoutineKey{0x08U, 0x5A69U}}) {
             RoutineEntry entry{};

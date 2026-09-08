@@ -191,6 +191,29 @@ the full pentagram regression (322.29 seconds) and the exhaustive fixture.
 The capture hash remains unchanged. Both executables are rebuilt; Debug
 evidence is in `out/selection-return-debug-tests.log`.
 
+Scheduler continuation calls `01:C69B`, `01:C6A6` and `01:C6BF` extend the
+same native JSR implementation to five calls, preserving its stack order,
+21-cycle completion and strict event-horizon guards. The expanded fixture
+covers 327,680 stack/status combinations; the assembly oracle enables all
+five calls with unchanged frame, call, RAM-write and bus-write hashes. New
+admissions are 1/1, 42/48 and 1/1; the registry now has 712 entries.
+
+All 31 paired current-registry routes preserve state and abandonment counts.
+Excluding just the three new calls on the before side measures 61,026 to
+8,064 interpreter master cycles (52,962 removed, 86.79%), with no changes
+outside those addresses. Non-wait work falls from 14,974,119 to 14,921,157
+(0.35%). Evidence and refreshed primary rankings are under
+`out/scheduler-followup-cost/`; totals are in
+`out/scheduler-followup-cost-summary.log`. This comparison isolates the new
+calls; it does not establish fresh whole-registry assembly parity.
+
+Release and Debug each pass the expanded call oracle, exhaustive fixture
+and both face/hand capture regressions. Logs are
+`out/scheduler-followup-tests-{Release,Debug}.log`. The original capture
+files are unchanged. Registry generation, 198 seam ranges and
+`git diff --check` pass; the full suite was not rerun.
+
+The preceding two-call increment is recorded below for comparison.
 Scheduler call seams `01:C693` and `01:C696` now have standalone native JSR
 transcripts. They push the original return words in hardware order at cycle
 zero, wrap the live stack pointer within its page, and hand off to the existing

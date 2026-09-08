@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-# Compare the two standalone JSR frames and their scheduler callees.
+# Compare five standalone JSR frames and their scheduler callees.
 set(expected_calls.csv "fb0e7861c4525389e78054be11a5b2c92e31dc13cbc1f849936c7d4e8e52b3da")
 set(expected_calls.csv.writes.csv "3217845943d7cdb618f0f5e7766fb6581f2a5975f5ccd8359a60bc6934d94326")
 set(expected_csv "1f6d46ac99798bbac1ecab97702d9e10076b9766796cc64d22d9662efce0b353")
@@ -14,10 +14,18 @@ file(READ "${ROM}" call_bytes OFFSET 9875 LIMIT 6 HEX)
 if(NOT call_bytes STREQUAL "20eac520c9c5")
     message(FATAL_ERROR "Unsupported scheduler call ROM instructions")
 endif()
+file(READ "${ROM}" delay_bytes OFFSET 9883 LIMIT 3 HEX)
+file(READ "${ROM}" toggle_bytes OFFSET 9894 LIMIT 3 HEX)
+file(READ "${ROM}" reset_bytes OFFSET 9919 LIMIT 3 HEX)
+if(NOT delay_bytes STREQUAL "20eac5" OR NOT toggle_bytes STREQUAL "20c9c5"
+    OR NOT reset_bytes STREQUAL "20c9c5")
+    message(FATAL_ERROR "Unsupported scheduler continuation call ROM instructions")
+endif()
 foreach(mode IN ITEMS assembly native)
     set(hooks)
     if(mode STREQUAL "native")
-        set(hooks --replace-hook "01:C693@all" --replace-hook "01:C696@all")
+        set(hooks --replace-hook "01:C693@all" --replace-hook "01:C696@all"
+            --replace-hook "01:C69B@all" --replace-hook "01:C6A6@all" --replace-hook "01:C6BF@all")
     endif()
     set(base "${OUTPUT}.${mode}")
     execute_process(COMMAND "${APP}" --record-gameplay "${base}.csv" ${hooks}
@@ -31,7 +39,10 @@ foreach(mode IN ITEMS assembly native)
     endif()
     if(mode STREQUAL "native")
         foreach(expected IN ITEMS "Native replacement 01:C693@all entries: 1 of 1"
-                                  "Native replacement 01:C696@all entries: 54 of 60")
+                                  "Native replacement 01:C696@all entries: 54 of 60"
+                                  "Native replacement 01:C69B@all entries: 1 of 1"
+                                  "Native replacement 01:C6A6@all entries: 42 of 48"
+                                  "Native replacement 01:C6BF@all entries: 1 of 1")
             string(FIND "${output}" "${expected}" position)
             if(position EQUAL -1)
                 message(FATAL_ERROR "Missing admission ${expected}: ${output}")

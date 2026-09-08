@@ -8185,7 +8185,10 @@ parse_logical_address_range(const std::string_view text)
                             || request.routine == RoutineKey{0x08U, 0x5A69U}
                             || request.routine == RoutineKey{0x01U, 0xC5EAU}
                             || request.routine == RoutineKey{0x01U, 0xC693U}
-                            || request.routine == RoutineKey{0x01U, 0xC696U})
+                            || request.routine == RoutineKey{0x01U, 0xC696U}
+                            || request.routine == RoutineKey{0x01U, 0xC69BU}
+                            || request.routine == RoutineKey{0x01U, 0xC6A6U}
+                            || request.routine == RoutineKey{0x01U, 0xC6BFU})
                            && request.all_calls;
                        const bool proven_upper_table_actor_tile_schedule =
                            request.routine

@@ -1,5 +1,37 @@
 # Retained Assembly Seams
 
+## Scheduler continuation calls: 01:C69B, 01:C6A6 and 01:C6BF
+
+The shared scheduler JSR replacement now also owns these three calls. C69B
+hands off to the delay owner C5EA; C6A6 and C6BF hand off to C5C9. The live
+stack frame, cycle-zero high/low writes, 18-cycle interrupt sample and
+21-cycle completion are unchanged. Both event horizons must exceed 21 cycles;
+the existing mapping, transfer-mode and RAM-size guards remain in force.
+
+The fixture covers all 327,680 stack-pointer/status combinations across the
+five calls, plus both horizon guards and invalid mappings/PC/RAM sizes. The
+assembly oracle checks the three additional ROM instructions and enables all
+five calls together. Its five existing artifact hashes are unchanged, covering
+frame state, scheduler call registers/timing, ordered call writes, all RAM
+writes and hardware writes. The new calls admit 1/1, 42/48 and 1/1 canonical
+entries respectively. The registry now contains 712 entries; the seam manifest
+still contains 198 ranges.
+
+All 31 current-registry routes match with only these three addresses excluded
+on the before side: state hashes and abandonment counts are unchanged, and
+every interpreter-cycle delta is confined to the target calls. Their cost
+falls from 61,026 to 8,064 master cycles (52,962 removed, 86.79%). Total
+non-wait interpreter work falls from 14,974,119 to 14,921,157 (0.35%). See
+`out/scheduler-followup-cost/manifest.csv`, its before/after primary rankings,
+and `out/scheduler-followup-cost-summary.log`. This is an isolated comparison
+against the current registry, not fresh whole-registry assembly parity.
+
+Release and Debug each pass the expanded call oracle, exhaustive fixture,
+face-corruption capture and upper-hand bus capture (four checks each).
+Logs are `out/scheduler-followup-tests-{Release,Debug}.log`; the original
+capture files remain unchanged. Registry generation, all 198 seam ranges
+and `git diff --check` pass. The full test suite was not rerun.
+
 ## Scheduler call frames: 01:C693 and 01:C696
 
 Both standalone JSR instructions now stage the authentic high/low return
