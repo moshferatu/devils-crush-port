@@ -416,6 +416,7 @@ DC_ADMITTED_ROUTINE(0x02U, 0x58C2U, 18152, 18152, "verify_absorbed_return_trace 
 DC_ADMITTED_ROUTINE(0x02U, 0x5955U, 997, 997, "verify_fixed_marker_gate_semantic +1")
 DC_ADMITTED_ROUTINE(0x02U, 0x5972U, 2, 2, "verify_upper_wall_pocket_hands")
 DC_ADMITTED_ROUTINE(0x02U, 0x5975U, 1, 1, "verify_upper_wall_pocket_hand_rng")
+DC_ADMITTED_ROUTINE(0x02U, 0x5986U, 1, 1, "verify_upper_wall_pocket_hand_rng")
 DC_ADMITTED_ROUTINE(0x02U, 0x5991U, 299, 299, "verify_upper_wall_pocket_hand_expiry +4")
 DC_ADMITTED_ROUTINE(0x02U, 0x59A5U, 298, 298, "verify_upper_wall_pocket_hand_guard +3")
 DC_ADMITTED_ROUTINE(0x02U, 0x59C7U, 3, 3, "verify_upper_wall_pocket_hand_close +2")

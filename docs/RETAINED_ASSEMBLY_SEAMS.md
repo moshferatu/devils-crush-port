@@ -1,5 +1,22 @@
 # Retained Assembly Seams
 
+## Upper-hand timer bus read: 02:5983
+
+The live setup at `02:5975` stops before absolute `ADC $0080`. MPR0 normally
+maps FF, so this is a VDC status mirror, including its hardware side effects.
+The core owns that read. Native execution resumes at `02:5986` using the
+live accumulator and flags, writes the timer and invokes the scheduler.
+No RAM snapshot substitutes for the bus value. Both sections preserve the
+existing hand-slot and decimal/transfer-mode guards. RNG return and CLC
+checkpoints use their individual 21- and six-master-cycle timings.
+
+The portable hand/RNG route preserves its existing trace hashes,
+including the interrupt passage. The pentagram capture compares both native
+sections to the original hand setup across all 4,366 frames and both hand
+activations, including frame fingerprints and ordered call write traces.
+The new continuation is admitted separately; the bus instruction stays
+visible as a core seam in the execution-cost ranking.
+
 ## Resident pattern loader correction: 00:F768-F782
 
 The native head executes `PHX / ASL A / TAY`, saving X for the existing PLX

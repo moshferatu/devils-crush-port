@@ -2248,11 +2248,13 @@ int dc_prepare_upper_wall_pocket_hand_initializer(
 // Native classification for the fixed upper Wall-Pocket hand live setup at
 // ROM routine 02:5975. It hides the hand collision surface, masks the RNG
 // high-byte result into the low timer byte, and selects countdown 02:5991.
+// timer_bus_value is the live absolute $0080 read, not zero-page RAM.
 int dc_prepare_upper_wall_pocket_hand_live_setup(
     const uint8_t* work_ram,
     size_t work_ram_size,
     uint8_t slot,
     uint8_t rng_result,
+    uint8_t timer_bus_value,
     dc_upper_wall_pocket_hand_live_setup* setup);
 
 // Native classification for the fixed upper Wall-Pocket hand countdown at

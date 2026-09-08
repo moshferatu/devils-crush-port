@@ -3951,7 +3951,7 @@ replace_native_gameplay_routine_impl(
         == RoutineKey{
             .physical_bank = 0x02U,
             .logical_pc = 0x5975U,
-        }) {
+        } || entry.routine == RoutineKey{.physical_bank = 0x02U, .logical_pc = 0x5986U}) {
         replacement = detail::replace_upper_wall_pocket_hand_live_setup(
             entry,
             work_ram);

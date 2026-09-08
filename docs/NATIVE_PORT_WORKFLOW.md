@@ -35,11 +35,41 @@ Release regressions (VRAM upload, VDC word transfer, shared scheduler return
 and coroutine scheduler) also pass. Both executables are rebuilt; registry
 generation remains current at 703 entries. The full CTest suite was not rerun.
 
-An independent mismatch was localized to `02:5975` at frame 3003: its timer
-setup models absolute `ADC $0080` as a RAM read, although MPR0 maps the VDC.
-Excluding that routine changes two timer bytes but does not fix the face bug.
-This separate hardware-read issue remains to investigate; the face fix does
-not alter it. The temporary frame-3200 checkpoint instrumentation was removed.
+The independent hand-setup mismatch at `02:5975` is now corrected. The native
+prefix stops at `02:5983`, letting the core execute absolute `ADC $0080`
+against the live mapping (normally VDC status). A new native `02:5986`
+continuation consumes the resulting accumulator and flags, writes both timer
+bytes, and composes the existing scheduler. The RNG RTS now takes 21 master
+cycles and CLC takes six; their formerly compensating timing errors are gone.
+The semantic helper accepts an explicit bus value instead of reading RAM
+at offset 0080; its unit case deliberately makes those values differ.
+
+The 4,366-frame capture matches the original hand setup with the rest of the
+registry active: complete RAM/video/audio frame fingerprints, call timing
+and registers, and ordered call RAM writes. Both native sections run 2/2,
+with zero abandonments. The corrected replay hash is
+`a263ebb43cf47f94e37011461ffd3c3657a3f94005c5523a746db13869a1b35a`.
+This supersedes the earlier face-only replay hash because hand timers now
+match the original hardware reads. The portable hand/RNG route retains its
+existing trace/write hashes and admits the new suffix 1/1. The registry
+contains 704 entries; the live read is a new explicit core seam (197 ranges).
+`verify_upper_hand_bus_session.cmake` is included when the capture exists.
+Release passes nine focused checks (core, both session comparisons, hand
+RNG/expiry/opening/close, coroutine scheduler and shared scheduler return).
+Debug passes core, both session comparisons (304.00/308.09 seconds), and the
+hand/RNG regression (139.96 seconds). Its old Debug-only census expectation
+was replaced with the Release hash after a fresh Debug assembly run produced
+that same hash. Both executables are rebuilt. Registry and all 197 seam
+ranges validate; the full suite and 31-route cost corpus were not rerun.
+
+That extra assembly run also exposes an existing `02:5991` countdown trace
+mismatch: 26 calls report a different output accumulator. The live `5975`
+call matches exactly; census, entry trace and both RAM-write artifacts match.
+The countdown call hash already matched the pre-change native baseline, so
+this is separate from the corrected bus read and remains to investigate.
+Artifacts: `out/hand-debug-assembly.csv*`, `out/hand-bus-release-tests.log`,
+`out/hand-bus-debug-tests.log`, and `out/hand-bus-debug-rng-tests.log`.
+The temporary frame-3200 checkpoint instrumentation remains removed.
 
 The current priority is the larger return and scheduler boundaries, following
 the user's request to pivot from smaller guarded bodies. The shared scheduler

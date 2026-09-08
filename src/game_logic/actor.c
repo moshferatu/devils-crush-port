@@ -2835,14 +2835,14 @@ int dc_prepare_upper_wall_pocket_hand_live_setup(
     const size_t work_ram_size,
     const uint8_t slot,
     const uint8_t rng_result,
+    const uint8_t timer_bus_value,
     dc_upper_wall_pocket_hand_live_setup* const setup)
 {
     const size_t collision_flags_offset = 0x1080U + (size_t)slot;
 
     if (work_ram == NULL || setup == NULL
         || (slot != 0x40U && slot != 0x41U)
-        || work_ram_size <= collision_flags_offset
-        || work_ram_size <= 0x0080U) {
+        || work_ram_size <= collision_flags_offset) {
         return 0;
     }
 
@@ -2850,7 +2850,7 @@ int dc_prepare_upper_wall_pocket_hand_live_setup(
     setup->collision_flags = work_ram[collision_flags_offset];
     setup->hidden_collision_flags =
         (uint8_t)(setup->collision_flags | 0x40U);
-    setup->timer_base = work_ram[0x0080U];
+    setup->timer_base = timer_bus_value;
     setup->masked_rng = (uint8_t)(rng_result & 0x3FU);
     setup->timer_low = (uint8_t)(setup->masked_rng + setup->timer_base);
     setup->timer_high = 0x01U;

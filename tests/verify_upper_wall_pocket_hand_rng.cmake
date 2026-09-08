@@ -9,7 +9,7 @@ endforeach()
 if(CONFIG STREQUAL "Debug")
     set(
         expected_census_sha256
-        "fc0c5028d79ae69d7b231f9ccbdd4fbf10caa95a626f7ce541f3c5c585b93145"
+        "652969878cbd668f6eeaf29bcea3d1fb0aed793583b325f1261f0dc25ab81546"
     )
 elseif(CONFIG STREQUAL "Release")
     set(
@@ -54,6 +54,7 @@ execute_process(
         --observe-hook "02:5975"
         --observe-hook "02:5991"
         --replace-hook "02:5975@all"
+        --replace-hook "02:5986@all"
         --replace-hook "02:5991@all"
         --routine-trace "${trace_output}"
         --routine-call-trace "${call_output}"
@@ -86,6 +87,7 @@ foreach(expected_line IN ITEMS
     "Observe hook 1 entries: 1"
     "Observe hook 2 entries: 299"
     "Native replacement 02:5975@all entries: 1 of 1"
+    "Native replacement 02:5986@all entries: 1 of 1"
     "Native replacement 02:5991@all entries: 299 of 299"
     "Routine trace complete: 300 entries"
     "Routine call trace complete: 300 calls, 407 writes"

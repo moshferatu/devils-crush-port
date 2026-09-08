@@ -7022,6 +7022,9 @@ parse_logical_address_range(const std::string_view text)
                                        .logical_pc = 0x5975U,
                                    }
                            && request.all_calls;
+                        const bool proven_upper_wall_pocket_hand_live_suffix =
+                            request.routine == RoutineKey{.physical_bank = 0x02U, .logical_pc = 0x5986U}
+                            && request.all_calls;
                        const bool proven_walled_star_hit_gate =
                            request.routine
                                    == RoutineKey{
@@ -8636,6 +8639,7 @@ parse_logical_address_range(const std::string_view text)
                            && !proven_four_star_wall_pocket_animation
                            && !proven_side_star_bonus_entrance_animation
                            && !proven_upper_wall_pocket_hand_initializer
+                           && !proven_upper_wall_pocket_hand_live_suffix
                            && !proven_upper_wall_pocket_hand_live_setup
                            && !proven_upper_wall_pocket_hand_countdown
                            && !proven_upper_wall_pocket_hand_opening

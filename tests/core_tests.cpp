@@ -4048,10 +4048,10 @@ void test_native_upper_wall_pocket_hand_live_setup()
     dc_upper_wall_pocket_hand_live_setup setup{};
 
     work_ram[0x10C0U] = 0x82U;
-    work_ram[0x0080U] = 0x05U;
+    work_ram[0x0080U] = 0xA5U; // Deliberately differs from the live bus.
     check(
         dc_prepare_upper_wall_pocket_hand_live_setup(
-            work_ram.data(), work_ram.size(), 0x40U, 0x73U, &setup)
+            work_ram.data(), work_ram.size(), 0x40U, 0x73U, 0x05U, &setup)
                 != 0
             && setup.slot == 0x40U
             && setup.collision_flags == 0x82U
@@ -4063,17 +4063,17 @@ void test_native_upper_wall_pocket_hand_live_setup()
         "native 5975 hides a routed hand and derives its delayed timer");
     check(
         dc_prepare_upper_wall_pocket_hand_live_setup(
-            work_ram.data(), work_ram.size(), 0x42U, 0x73U, &setup)
+            work_ram.data(), work_ram.size(), 0x42U, 0x73U, 0x05U, &setup)
                 == 0,
         "native 5975 rejects a non-hand actor slot");
     check(
         dc_prepare_upper_wall_pocket_hand_live_setup(
-            work_ram.data(), 0x10C0U, 0x40U, 0x73U, &setup)
+            work_ram.data(), 0x10C0U, 0x40U, 0x73U, 0x05U, &setup)
                 == 0,
         "native 5975 rejects a truncated collision snapshot");
     check(
         dc_prepare_upper_wall_pocket_hand_live_setup(
-            work_ram.data(), work_ram.size(), 0x40U, 0x73U, nullptr)
+            work_ram.data(), work_ram.size(), 0x40U, 0x73U, 0x05U, nullptr)
                 == 0,
         "native 5975 rejects a null setup output");
 }

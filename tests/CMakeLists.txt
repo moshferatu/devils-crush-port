@@ -6631,7 +6631,7 @@ if(TARGET devils_crush)
                 "-DAPP=$<TARGET_FILE:devils_crush>"
                 "-DCONFIG=$<CONFIG>"
                 "-DROM=${DC_ROM_PATH}"
-                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/upper-wall-pocket-hand-rng-v1.csv"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/upper-wall-pocket-hand-rng-$<CONFIG>-v2.csv"
                 "-P"
                 "${CMAKE_CURRENT_SOURCE_DIR}/verify_upper_wall_pocket_hand_rng.cmake"
         )
@@ -7697,6 +7697,14 @@ if(TARGET devils_crush)
                     "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/corrupted-face-$<CONFIG>"
                     -P "${CMAKE_CURRENT_SOURCE_DIR}/verify_corrupted_face_session.cmake")
             set_tests_properties(dc_rom_corrupted_face_session PROPERTIES LABELS rom_required)
+            add_test(NAME dc_rom_upper_hand_bus_session
+                COMMAND "${CMAKE_COMMAND}"
+                    "-DAPP=$<TARGET_FILE:devils_crush>"
+                    "-DROM=${DC_ROM_PATH}"
+                    "-DCAPTURE=${PROJECT_SOURCE_DIR}/out/corrupted-face"
+                    "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/upper-hand-bus-$<CONFIG>"
+                    -P "${CMAKE_CURRENT_SOURCE_DIR}/verify_upper_hand_bus_session.cmake")
+            set_tests_properties(dc_rom_upper_hand_bus_session PROPERTIES LABELS rom_required)
         endif()
 
         add_test(
