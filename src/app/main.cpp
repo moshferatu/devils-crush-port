@@ -8179,6 +8179,10 @@ parse_logical_address_range(const std::string_view text)
                                        .logical_pc = 0x5B01U,
                                    }
                            && request.all_calls;
+                       const bool proven_interrupt_chain_jump =
+                           (request.routine == RoutineKey{0x00U, 0xFC03U}
+                            || request.routine == RoutineKey{0x00U, 0xFC89U})
+                           && request.all_calls;
                        const bool proven_upper_scheduler_return =
                            (request.routine == RoutineKey{0x08U, 0x5976U}
                             || request.routine == RoutineKey{0x01U, 0xC4C8U}
@@ -8452,6 +8456,7 @@ parse_logical_address_range(const std::string_view text)
                            && !proven_text_tile_write
                            && !proven_upper_table_actor_tile_schedule
                            && !proven_upper_scheduler_return
+                           && !proven_interrupt_chain_jump
                            && !proven_upper_table_string_record
                            && !proven_video_update_idle_gate
                            && !proven_boot_work_ram_clear_seams

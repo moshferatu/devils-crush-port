@@ -11,6 +11,9 @@
 
 namespace devils_crush::app::detail {
 
+std::optional<emulation::RoutineReplacement> replace_interrupt_chain_jump(
+    const emulation::RoutineEntry& entry);
+
 std::optional<emulation::RoutineReplacement> replace_coroutine_call(
     const emulation::RoutineEntry& entry, std::span<const std::byte> work_ram);
 

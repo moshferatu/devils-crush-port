@@ -12,6 +12,30 @@ using emulation::RoutineEntry;
 using emulation::RoutineKey;
 using emulation::RoutineReplacement;
 
+std::optional<RoutineReplacement> replace_interrupt_chain_jump(const RoutineEntry& entry)
+{
+    constexpr RoutineKey kEpilogue{.physical_bank = 0x00U, .logical_pc = 0xFC03U};
+    constexpr RoutineKey kSoundChain{.physical_bank = 0x00U, .logical_pc = 0xFC89U};
+    if ((entry.routine != kEpilogue && entry.routine != kSoundChain)
+        || entry.registers.program_counter != entry.routine.logical_pc
+        || entry.registers.mpr[7] != 0x00U || (entry.registers.status & 0x20U) != 0U
+        || std::min(entry.master_cycles_until_user_event,
+                    entry.master_cycles_until_timer_interrupt) <= 12U) {
+        return std::nullopt;
+    }
+    // Keep both absolute JMPs separate: the core samples interrupts after
+    // nine master cycles, then completes the instruction three cycles later.
+    RoutineReplacement result{};
+    auto r = entry.registers;
+    r.program_counter = entry.routine == kSoundChain ? 0xFC03U : 0xE003U;
+    result.return_instruction = {0x00U, r.program_counter};
+    result.output_registers = r;
+    result.body_master_cycles = 12U;
+    result.checkpoints.push_back({.interrupt_sample_master_cycle_offset = 9U,
+        .master_cycle_offset = 12U, .instruction = entry.routine, .registers = r});
+    return result;
+}
+
 std::optional<RoutineReplacement> replace_coroutine_call(
     const RoutineEntry& entry, const std::span<const std::byte> work_ram)
 {

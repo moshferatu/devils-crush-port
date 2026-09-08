@@ -191,7 +191,29 @@ the full pentagram regression (322.29 seconds) and the exhaustive fixture.
 The capture hash remains unchanged. Both executables are rebuilt; Debug
 evidence is in `out/selection-return-debug-tests.log`.
 
-Scheduler continuation calls `01:C69B`, `01:C6A6` and `01:C6BF` extend the
+Interrupt-chain jumps `00:FC03` and `00:FC89` now execute as separate native
+12-cycle instructions, preserving registers and stack state with interrupt
+sampling at cycle 9. Both event horizons must exceed 12 cycles. The fixture
+covers 131,072 stack/status combinations plus horizon and mapping guards;
+the assembly oracle admits 126/130 and 123/123 entries and preserves all five
+pinned frame, call and write artifacts. The registry now has 714 entries.
+
+All 31 current-registry routes preserve state and abandonment counts with
+only those two entries excluded on the before side. Interpreter cost at the
+jumps falls from 268,068 to 7,512 master cycles (97.20% removed), with no
+cost changes elsewhere. Total non-wait work falls from 14,921,157 to
+14,660,601 (1.75%). Evidence and refreshed primary rankings are under
+`out/interrupt-chain-cost/`, with totals in
+`out/interrupt-chain-cost-summary.log`. This measures the isolated increment
+within the registry, not fresh whole-registry assembly parity.
+
+Release and Debug each pass the new oracle, expanded fixture and face/hand
+capture regressions. See `out/interrupt-chain-tests-{Release,Debug}.log`.
+The original capture files and corrected replay hash are unchanged. Registry
+generation, all 198 seam ranges and `git diff --check` pass; the full suite
+was not rerun.
+
+The preceding scheduler continuation calls `01:C69B`, `01:C6A6` and `01:C6BF` extend the
 same native JSR implementation to five calls, preserving its stack order,
 21-cycle completion and strict event-horizon guards. The expanded fixture
 covers 327,680 stack/status combinations; the assembly oracle enables all

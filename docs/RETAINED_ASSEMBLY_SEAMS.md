@@ -1,5 +1,41 @@
 # Retained Assembly Seams
 
+## Interrupt-chain jumps: 00:FC03 and 00:FC89
+
+Both absolute jumps now execute natively: FC89 hands off to FC03, and FC03
+hands off to E003. Each remains a separate 12-master-cycle instruction with
+an interrupt sample at cycle 9. Registers, flags, mappings and the live stack
+are preserved; no RAM write or absorbed-return notification is emitted.
+The replacement requires the matching live PC, bank-zero MPR7 and clear
+transfer mode, and declines unless both event horizons exceed 12 cycles.
+The old seam descriptions incorrectly called these instructions SEI; the
+ROM oracle checks their actual JMP bytes.
+
+The fixture covers 131,072 stack/status combinations across both entries,
+both event horizons and invalid code mappings/PCs/keys. The canonical
+assembly comparison admits 126/130 FC03 entries and 123/123 FC89 entries.
+Its pinned frame-state, scheduler-call, ordered call-write, all-RAM-write
+and hardware-write artifacts are identical to assembly. The four deferred
+entries remain visible as guarded interpreter work. The registry contains
+714 entries, and the manifest still contains 198 ranges.
+
+All 31 paired current-registry routes preserve frame-state hashes and
+abandonment counts when only these two addresses are excluded on the before
+side. Their interpreter cost falls from 268,068 to 7,512 master cycles
+(260,556 removed, 97.20%); every cycle delta stays at the target addresses.
+Non-wait interpreter work falls from 14,921,157 to 14,660,601 (1.75%).
+Evidence is in `out/interrupt-chain-cost/manifest.csv`, its before/after
+primary rankings and `out/interrupt-chain-cost-summary.log`. This isolates
+the new entries within the current registry; it is not a fresh whole-registry
+comparison against assembly.
+
+Release and Debug each pass the assembly oracle, expanded fixture, face
+capture and upper-hand bus capture (four checks each). Logs are
+`out/interrupt-chain-tests-{Release,Debug}.log`. Both face replays retain
+the corrected `a263ebb4...b35a` hash, and the original capture is unchanged.
+Registry generation, all 198 seam ranges and `git diff --check` pass.
+The full test suite was not rerun.
+
 ## Scheduler continuation calls: 01:C69B, 01:C6A6 and 01:C6BF
 
 The shared scheduler JSR replacement now also owns these three calls. C69B

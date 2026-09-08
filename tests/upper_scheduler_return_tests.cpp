@@ -10,6 +10,53 @@ int main()
 {
     try {
         std::array<std::byte, 0x2000> ram{};
+        for (const auto pc : {0xFC03U, 0xFC89U}) {
+            RoutineEntry entry{};
+            entry.routine = {0U, static_cast<std::uint16_t>(pc)};
+            auto& r = entry.registers;
+            r.program_counter = static_cast<std::uint16_t>(pc);
+            r.accumulator = 0xA5U; r.x = 0xFFU; r.y = 0x37U;
+            entry.master_cycles_until_user_event = 100U;
+            entry.master_cycles_until_timer_interrupt = 100U;
+            const auto jump = [&] { return devils_crush::app::detail::replace_interrupt_chain_jump(entry); };
+            for (unsigned sp = 0U; sp < 256U; ++sp) {
+                for (unsigned status = 0U; status < 256U; ++status) {
+                    r.stack_pointer = static_cast<std::uint8_t>(sp);
+                    r.status = static_cast<std::uint8_t>(status);
+                    const auto result = jump();
+                    require(result.has_value() == ((status & 0x20U) == 0U), "Jump transfer-mode guard changed");
+                    if (!result) { continue; }
+                    const auto& out = result->output_registers;
+                    require(out.program_counter == (pc == 0xFC03U ? 0xE003U : 0xFC03U)
+                        && out.stack_pointer == sp && out.status == status
+                        && out.accumulator == r.accumulator && out.x == r.x && out.y == r.y
+                        && out.mpr == r.mpr && result->return_instruction == RoutineKey{0U, out.program_counter},
+                        "Jump destination or preserved registers changed");
+                    require(result->body_master_cycles == 12U && result->checkpoints.size() == 1U
+                        && result->checkpoints[0].interrupt_sample_master_cycle_offset == 9U
+                        && result->checkpoints[0].master_cycle_offset == 12U
+                        && result->checkpoints[0].instruction == entry.routine
+                        && result->checkpoints[0].registers.program_counter == out.program_counter
+                        && result->work_ram_writes.empty() && result->absorbed_returns.empty(),
+                        "Jump timing or side effects changed");
+                }
+            }
+            r.status = 0U;
+            for (unsigned horizon = 0U; horizon <= 13U; ++horizon) {
+                entry.master_cycles_until_user_event = horizon;
+                require(jump().has_value() == (horizon > 12U), "Jump user horizon guard changed");
+                entry.master_cycles_until_user_event = 100U;
+                entry.master_cycles_until_timer_interrupt = horizon;
+                require(jump().has_value() == (horizon > 12U), "Jump timer horizon guard changed");
+                entry.master_cycles_until_timer_interrupt = 100U;
+            }
+            r.mpr[7] = 1U; require(!jump(), "Foreign jump code mapping admitted");
+            r.mpr[7] = 0U; r.program_counter++;
+            require(!jump(), "Wrong jump PC admitted");
+            r.program_counter = 0xFC04U; entry.routine.logical_pc = r.program_counter;
+            require(!jump(), "Unsupported jump key admitted");
+        }
+        std::puts("Verified 131,072 interrupt-chain stack/status cases and both horizon guards.");
         for (const auto pc : {0xC693U, 0xC696U, 0xC69BU, 0xC6A6U, 0xC6BFU}) {
             RoutineEntry entry{};
             entry.routine = {1U, static_cast<std::uint16_t>(pc)};
