@@ -50,10 +50,11 @@ std::optional<RoutineReplacement> replace_bit_branch(
 
 std::optional<RoutineReplacement> replace_unconditional_branch(const RoutineEntry& entry)
 {
+    constexpr RoutineKey kVector{.physical_bank = 0x00U, .logical_pc = 0xE003U};
     constexpr RoutineKey kEpilogue{.physical_bank = 0x00U, .logical_pc = 0xFC03U};
     constexpr RoutineKey kSoundChain{.physical_bank = 0x00U, .logical_pc = 0xFC89U};
     constexpr RoutineKey kStreamLoop{.physical_bank = 0x00U, .logical_pc = 0xE479U};
-    if ((entry.routine != kEpilogue && entry.routine != kSoundChain && entry.routine != kStreamLoop)
+    if ((entry.routine != kEpilogue && entry.routine != kSoundChain && entry.routine != kStreamLoop && entry.routine != kVector)
         || entry.registers.program_counter != entry.routine.logical_pc
         || entry.registers.mpr[7] != 0x00U || (entry.registers.status & 0x20U) != 0U
         || std::min(entry.master_cycles_until_user_event,
@@ -65,7 +66,7 @@ std::optional<RoutineReplacement> replace_unconditional_branch(const RoutineEntr
     RoutineReplacement result{};
     auto r = entry.registers;
     r.program_counter = entry.routine == kStreamLoop ? 0xE438U
-        : entry.routine == kSoundChain ? 0xFC03U : 0xE003U;
+        : entry.routine == kSoundChain ? 0xFC03U : entry.routine == kVector ? 0xE179U : 0xE003U;
     result.return_instruction = {0x00U, r.program_counter};
     result.output_registers = r;
     result.body_master_cycles = 12U;

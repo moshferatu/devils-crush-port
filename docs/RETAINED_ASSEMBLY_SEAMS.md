@@ -1,5 +1,39 @@
 # Retained Assembly Seams
 
+## Interrupt return vector: 00:E003
+
+The final JMP in the sound interrupt return chain now runs natively and
+hands off at E179. It uses the existing single-instruction jump helper:
+12 master cycles, an interrupt sample at 9, and both event horizons
+strictly greater than 12. The live PC, bank-zero code mapping and clear
+transfer flag are required. Registers, status, stack and RAM are preserved.
+
+The fixture now covers 262,144 stack/status combinations across four
+jump entries, plus both event horizons, invalid PC, key and mapping.
+The expanded interrupt-chain oracle pins the E003 opcode and admits
+129/130 vector jumps alongside FC03 and FC89. Frame-state, scheduler
+caller observations, ordered caller writes, all RAM writes and hardware
+writes retain their existing assembly hashes. The registry admits 720
+routines and the manifest validates 200 classified ranges. The manifest
+also separates the following reset initialization from this return jump.
+
+All 31 current-registry A/B routes preserve frame-state hashes and
+abandonment counts when only E003 is excluded on the before side. Its
+interpreter cost falls from 135,336 to 2,916 master cycles (132,420 removed,
+97.85%). Every cycle delta is confined to E003. Non-wait interpreter work
+falls from 13,397,769 to 13,265,349 (0.99%); frame-sync waits are unchanged.
+This measures the isolated increment within the registry, not fresh
+whole-registry assembly parity. Evidence is in
+`out/interrupt-vector-cost/manifest.csv`, its before/after rankings and
+`out/interrupt-vector-cost-summary.log`.
+
+Release and Debug each pass four targeted checks: the expanded fixture,
+interrupt-chain assembly oracle, corrupted-face capture and hand-bus
+capture. Logs are `out/interrupt-vector-tests-{Release,Debug}.log`.
+Both face replays retain the corrected `a263ebb4...b35a` hash; the original
+capture inputs are unchanged. Registry/seam validation and `git diff --check`
+pass. The full suite was not rerun.
+
 ## Actor countdown return: 02:4F75
 
 The countdown's RTS now enters the shared native live-stack return helper.

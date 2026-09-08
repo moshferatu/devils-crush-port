@@ -67,7 +67,7 @@ int main()
             require(!branch(), "Unsupported bit branch key admitted");
         }
         std::puts("Verified 131,072 bit-branch operand/status cases and both horizons for every operand.");
-        for (const auto pc : {0xFC03U, 0xFC89U, 0xE479U}) {
+        for (const auto pc : {0xFC03U, 0xFC89U, 0xE479U, 0xE003U}) {
             RoutineEntry entry{};
             entry.routine = {0U, static_cast<std::uint16_t>(pc)};
             auto& r = entry.registers;
@@ -84,7 +84,7 @@ int main()
                     require(result.has_value() == ((status & 0x20U) == 0U), "Jump transfer-mode guard changed");
                     if (!result) { continue; }
                     const auto& out = result->output_registers;
-                    require(out.program_counter == (pc == 0xE479U ? 0xE438U : pc == 0xFC03U ? 0xE003U : 0xFC03U)
+                    require(out.program_counter == (pc == 0xE479U ? 0xE438U : pc == 0xE003U ? 0xE179U : pc == 0xFC03U ? 0xE003U : 0xFC03U)
                         && out.stack_pointer == sp && out.status == status
                         && out.accumulator == r.accumulator && out.x == r.x && out.y == r.y
                         && out.mpr == r.mpr && result->return_instruction == RoutineKey{0U, out.program_counter},
@@ -113,7 +113,7 @@ int main()
             r.program_counter = 0xFC04U; entry.routine.logical_pc = r.program_counter;
             require(!jump(), "Unsupported jump key admitted");
         }
-        std::puts("Verified 196,608 unconditional-branch stack/status cases and both horizon guards.");
+        std::puts("Verified 262,144 unconditional-branch stack/status cases and both horizon guards.");
         for (const auto pc : {0xC693U, 0xC696U, 0xC69BU, 0xC6A6U, 0xC6BFU}) {
             RoutineEntry entry{};
             entry.routine = {1U, static_cast<std::uint16_t>(pc)};

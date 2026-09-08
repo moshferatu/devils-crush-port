@@ -191,6 +191,21 @@ the full pentagram regression (322.29 seconds) and the exhaustive fixture.
 The capture hash remains unchanged. Both executables are rebuilt; Debug
 evidence is in `out/selection-return-debug-tests.log`.
 
+The interrupt-chain vector at `00:E003` now uses the guarded native jump
+helper, handing off to E179 after 12 master cycles with its sample at 9.
+Both event horizons must exceed 12; invalid PC, code mapping or transfer
+mode retain assembly. The expanded fixture covers 262,144 stack/status
+cases across four jumps. The interrupt-chain oracle pins the new ROM bytes
+and 129/130 admissions while preserving all five existing assembly traces.
+Registry generation admits 720 routines and the seam manifest verifies
+200 ranges. Across all 31 isolated current-registry A/B routes, E003
+interpreter cost falls 135,336 -> 2,916 master cycles (97.85%); non-wait
+interpreter work falls 13,397,769 -> 13,265,349 (0.99%). Frame-state hashes
+and abandonment counts match, and every delta stays at E003. See
+`out/interrupt-vector-cost/manifest.csv` and its before/after primary
+rankings. This is incremental registry evidence, not whole-registry
+assembly parity.
+
 The actor countdown return at `02:4F75` now uses the shared native RTS
 helper with live stack reads, wrapped return targets, caller observations
 and strict 21-cycle event guards. The fixture covers 983,040 return cases

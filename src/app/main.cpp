@@ -8180,7 +8180,8 @@ parse_logical_address_range(const std::string_view text)
                                    }
                            && request.all_calls;
                        const bool proven_interrupt_chain_jump =
-                           (request.routine == RoutineKey{0x00U, 0xFC03U}
+                           (request.routine == RoutineKey{0x00U, 0xE003U}
+                            || request.routine == RoutineKey{0x00U, 0xFC03U}
                             || request.routine == RoutineKey{0x00U, 0xFC89U})
                            && request.all_calls;
                        const bool proven_bit_branch =

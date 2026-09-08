@@ -7,6 +7,7 @@
 // observed call totals asserted by the named ROM regression; a shortfall means
 // the remaining calls fall back to emulated assembly by design.
 
+DC_ADMITTED_ROUTINE(0x00U, 0xE003U, 129, 130, "verify_interrupt_chain")
 DC_ADMITTED_ROUTINE(0x00U, 0xE058U, 7198, 7198, "verify_vblank_handler_semantic")
 DC_ADMITTED_ROUTINE(0x00U, 0xE05FU, 7198, 7198, "verify_vblank_handler_semantic")
 DC_ADMITTED_ROUTINE(0x00U, 0xE09EU, 203, 203, "verify_vblank_mode_two")
