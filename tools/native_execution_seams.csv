@@ -86,7 +86,7 @@
 "01","C3CB","C3E0","guarded","native nudge controller owns session and tilt-lock returns plus active timer reloads; unsupported active states retain assembly"
 "01","C4A0","C4A2","core","interior of C49E: idle plus checkpointed session-bit exit and active Run-input child handoff; D/T and live mapping guards remain"
 "01","C4C8","C4C8","guarded","Run-input RTS reads the live caller frame natively when its 21 cycles finish before both event horizons"
-"01","C624","C63D","guarded","asset-loader continuation has no independent return contract"
+"01","C624","C63D","guarded","native asset JSR and live attribute reload; first-queue suffix C632-C63D stays core"
 "01","C655","C691","guarded","native actor initialization RAM body; scheduler JSR remains separate"
 "01","C693","C696","guarded","native scheduler JSR frames; both event horizons must exceed 21 master cycles"
 "01","C699","C699","guarded","native actor delay argument"

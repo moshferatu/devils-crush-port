@@ -115,10 +115,12 @@ std::optional<RoutineReplacement> replace_coroutine_call(
     constexpr RoutineKey kSecondDelayCall{.physical_bank = 0x01U, .logical_pc = 0xC69BU};
     constexpr RoutineKey kToggleCall{.physical_bank = 0x01U, .logical_pc = 0xC6A6U};
     constexpr RoutineKey kResetCall{.physical_bank = 0x01U, .logical_pc = 0xC6BFU};
+    constexpr RoutineKey kAssetCall{.physical_bank = 0x01U, .logical_pc = 0xC624U};
     constexpr RoutineKey kReleaseCall{.physical_bank = 0x02U, .logical_pc = 0x51D2U};
     if ((entry.routine != kDelayCall && entry.routine != kSchedulerCall
             && entry.routine != kSecondDelayCall && entry.routine != kToggleCall
-            && entry.routine != kResetCall && entry.routine != kReleaseCall)
+            && entry.routine != kResetCall && entry.routine != kReleaseCall
+            && entry.routine != kAssetCall)
         || entry.registers.program_counter != entry.routine.logical_pc
         || entry.registers.mpr[1] != 0xF8U
         || entry.registers.mpr[entry.routine.logical_pc >> 13U] != entry.routine.physical_bank
@@ -139,12 +141,59 @@ std::optional<RoutineReplacement> replace_coroutine_call(
         r.stack_pointer = static_cast<std::uint8_t>(r.stack_pointer - 1U);
     }
     r.program_counter = (entry.routine == kDelayCall || entry.routine == kSecondDelayCall)
-        ? 0xC5EAU : entry.routine == kReleaseCall ? 0x5475U : 0xC5C9U;
+        ? 0xC5EAU : entry.routine == kReleaseCall ? 0x5475U
+        : entry.routine == kAssetCall ? 0xF605U : 0xC5C9U;
     result.return_instruction = {r.mpr[r.program_counter >> 13U], r.program_counter};
     result.output_registers = r;
     result.body_master_cycles = 21U;
     result.checkpoints.push_back({.interrupt_sample_master_cycle_offset = 18U,
         .master_cycle_offset = 21U, .instruction = entry.routine, .registers = r});
+    return result;
+}
+
+std::optional<RoutineReplacement> replace_actor_queue_reload(
+    const RoutineEntry& entry, const std::span<const std::byte> work_ram)
+{
+    constexpr RoutineKey kRoutine{.physical_bank = 0x01U, .logical_pc = 0xC627U};
+    if (entry.routine != kRoutine || entry.registers.program_counter != 0xC627U
+        || entry.registers.mpr[1] != 0xF8U || entry.registers.mpr[6] != 1U
+        || work_ram.size() < 0x2000U || (entry.registers.status & 0x20U) != 0U) {
+        return std::nullopt;
+    }
+    // The asset loader may change X and actor attributes. Read the live state
+    // after its return; do not repeat C606's classification or LDX $4D.
+    RoutineReplacement result{};
+    auto r = entry.registers;
+    std::uint32_t cycles = 0;
+    const auto step = [&](std::uint16_t pc, std::uint16_t next, std::uint32_t cost) {
+        cycles += cost;
+        r.program_counter = next;
+        result.checkpoints.push_back({.interrupt_sample_master_cycle_offset = cycles - 3U,
+            .master_cycle_offset = cycles, .instruction = {1U, pc}, .registers = r});
+    };
+    const auto bit = [&](std::uint8_t mask) {
+        // HuC6280 immediate BIT updates N/V from its operand as well as Z.
+        r.status = static_cast<std::uint8_t>((r.status & ~0xC2U)
+            | ((r.accumulator & mask) == 0U ? 2U : 0U));
+    };
+    r.accumulator = std::to_integer<std::uint8_t>(work_ram[0x1080U + r.x]);
+    r.status = static_cast<std::uint8_t>((r.status & ~0x82U)
+        | (r.accumulator == 0U ? 2U : r.accumulator & 0x80U));
+    step(0xC627U, 0xC62AU, 15U);
+    bit(0x20U);
+    step(0xC62AU, 0xC62CU, 6U);
+    if ((r.status & 2U) == 0U) {
+        step(0xC62CU, 0xC654U, 12U);
+    } else {
+        step(0xC62CU, 0xC62EU, 6U);
+        bit(0x04U);
+        step(0xC62EU, 0xC630U, 6U);
+        const bool shared_queue = (r.status & 2U) != 0U;
+        step(0xC630U, shared_queue ? 0xC63EU : 0xC632U, shared_queue ? 12U : 6U);
+    }
+    result.return_instruction = {1U, r.program_counter};
+    result.output_registers = r;
+    result.body_master_cycles = cycles;
     return result;
 }
 

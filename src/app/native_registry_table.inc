@@ -170,6 +170,8 @@ DC_ADMITTED_ROUTINE(0x01U, 0xC5C7U, 1, 64, "verify_knight_terminal_release_helpe
 DC_ADMITTED_ROUTINE(0x01U, 0xC5C9U, 2462, 2462, "verify_absorbed_return_trace +1")
 DC_ADMITTED_ROUTINE(0x01U, 0xC5EAU, 2, 2, "verify_coroutine_delay")
 DC_ADMITTED_ROUTINE(0x01U, 0xC606U, 171734, 171734, "verify_actor_queue_semantic")
+DC_ADMITTED_ROUTINE(0x01U, 0xC624U, 4, 4, "verify_actor_queue_reload")
+DC_ADMITTED_ROUTINE(0x01U, 0xC627U, 35353, 35353, "verify_actor_queue_reload")
 DC_ADMITTED_ROUTINE(0x01U, 0xC654U, 171734, 171734, "verify_actor_loop_linkage_semantic")
 DC_ADMITTED_ROUTINE(0x01U, 0xC655U, 1, 1, "verify_actor_initialization")
 DC_ADMITTED_ROUTINE(0x01U, 0xC693U, 1, 1, "verify_coroutine_calls")

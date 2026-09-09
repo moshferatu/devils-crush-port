@@ -40,7 +40,11 @@ replace_native_gameplay_routine_impl(
         || entry.routine == RoutineKey{.physical_bank = 0x00U, .logical_pc = 0xE479U}) {
         return detail::replace_unconditional_branch(entry);
     }
-    if (entry.routine == RoutineKey{.physical_bank = 0x01U, .logical_pc = 0xC693U}
+    if (entry.routine == RoutineKey{.physical_bank = 0x01U, .logical_pc = 0xC627U}) {
+        return detail::replace_actor_queue_reload(entry, work_ram);
+    }
+    if (entry.routine == RoutineKey{.physical_bank = 0x01U, .logical_pc = 0xC624U}
+        || entry.routine == RoutineKey{.physical_bank = 0x01U, .logical_pc = 0xC693U}
         || entry.routine == RoutineKey{.physical_bank = 0x01U, .logical_pc = 0xC696U}
         || entry.routine == RoutineKey{.physical_bank = 0x01U, .logical_pc = 0xC69BU}
         || entry.routine == RoutineKey{.physical_bank = 0x01U, .logical_pc = 0xC6A6U}

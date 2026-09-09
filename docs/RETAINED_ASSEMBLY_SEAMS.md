@@ -1,5 +1,56 @@
 # Retained Assembly Seams
 
+## Actor queue asset call and reload: 01:C624 / C627
+
+This iteration targets C624-C630, the largest remaining primary-ranking
+range at 78,726 interpreter cycles. C624 now performs the original JSR
+F605 with the live stack: it pushes C626 in hardware order, preserves
+registers and mapping, samples interrupts at cycle 18, and completes at 21.
+Both event horizons must exceed 21 cycles. The asset loader remains a
+separate entry with its own execution contract.
+
+C627 independently reads $3080,X from the live return state, tests bits 5
+and 2, and hands off at C654, C632, or C63E. It does not repeat C606's
+classifier or reload X from $4D, since the helper can have changed actor
+state and registers. The three paths cost 33, 39, and 45 cycles; every
+instruction samples interrupts three cycles before completion. HuC6280
+immediate BIT updates N/V/Z; other status bits and unrelated state are
+preserved. Short RAM, foreign
+MPR1/MPR6, mismatched PC, and T mode retain the core path. The first-queue
+suffix C632-C63D and the original C654 RTS are unchanged.
+
+The fixture adds 196,608 live attribute/status/slot cases with $4D deliberately
+different from X. It checks all three decisions, flags, timing, absence of
+writes, and entry guards. C624 joins the shared call fixture across every
+stack pointer/status combination, including wrapped pushes and both event
+horizons. The isolated gameplay oracle pins 14 ROM bytes at offset 9764,
+accepts C624 4/4 and C627 35,353/35,353, and matches the five pinned assembly
+artifacts (state, scheduler calls, call writes, RAM writes, device writes).
+Registry admission is now 750 routines from 801 reachable keys; 204 seam
+ranges remain classified.
+
+Across all 31 routes, target residue falls from 78,726 to 2,418 cycles,
+a reduction of 76,308 (96.93%). Non-wait residue falls from 3,838,305 to
+3,761,997 cycles (1.99%); total interpreter cycles fall from 18,080,821,839
+to 18,080,745,531. Frame-sync waiting stays at 18,076,983,534 cycles and
+executed interpreter addresses fall from 3,516 to 3,511. All route hashes
+and abandonment counts match; every total delta equals its target delta.
+This measures removed interpreter work, not host execution speed.
+
+Five targeted checks pass in both Release (57.63 seconds) and Debug
+(474.22 seconds): the expanded scheduler fixture, new assembly oracle,
+face capture, hand-bus capture, and audio-interrupt regression. Logs:
+`out/actor-queue-reload-tests-Release.log` and
+`out/actor-queue-reload-tests-Debug.log`. Both face replays retain the
+corrected hash; the three original corruption capture files remain unchanged.
+
+Evidence: `out/actor-queue-reload-cost/manifest.csv`,
+`out/actor-queue-reload-cost-summary.log`,
+`out/actor-queue-reload-cost/after-interpreter-residue.md`, and
+`out/actor-queue-reload-registry-check.log`.
+Next priority is palette E994-E9A8 (75,516 cycles), followed by the other
+largest removable ranges in the primary ranking.
+
 ## Actor scan cursor admission: 01:C500
 
 The largest primary-ranking range, C500-C50E, already had a native walker

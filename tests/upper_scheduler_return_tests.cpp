@@ -10,6 +10,62 @@ int main()
 {
     try {
         std::array<std::byte, 0x2000> ram{};
+        for (unsigned attributes = 0; attributes < 256; ++attributes) {
+            for (unsigned status = 0; status < 256; ++status) {
+                for (unsigned slot : {0U, 127U, 255U}) {
+                    RoutineEntry entry{};
+                    entry.routine = {1U, 0xC627U};
+                    auto& r = entry.registers;
+                    r.program_counter = 0xC627U; r.mpr[1] = 0xF8U; r.mpr[6] = 1U;
+                    r.accumulator = 0xA5U; r.x = static_cast<std::uint8_t>(slot);
+                    r.y = 0x37U; r.stack_pointer = 0xFEU; r.status = static_cast<std::uint8_t>(status);
+                    ram[0x4D] = static_cast<std::byte>(slot ^ 0x7FU);
+                    ram[0x1080U + slot] = static_cast<std::byte>(attributes);
+                    const auto before = ram;
+                    const auto result = devils_crush::app::detail::replace_actor_queue_reload(entry, ram);
+                    require(result.has_value() == ((status & 0x20U) == 0), "Queue reload transfer guard");
+                    if (!result) { continue; }
+                    const bool suppressed = (attributes & 0x20U) != 0;
+                    const bool first = (attributes & 4U) != 0;
+                    const auto pc = suppressed ? 0xC654U : first ? 0xC632U : 0xC63EU;
+                    const auto cost = suppressed ? 33U : first ? 39U : 45U;
+                    const auto flags = (status & ~0xC2U) | (!suppressed && !first ? 2U : 0U);
+                    const auto& out = result->output_registers;
+                    require(out.program_counter == pc && out.status == flags && out.accumulator == attributes
+                        && out.x == r.x && out.y == r.y && out.stack_pointer == r.stack_pointer
+                        && out.mpr == r.mpr && ram == before, "Queue reload live state");
+                    require(result->body_master_cycles == cost && result->checkpoints.size() == (suppressed ? 3U : 5U)
+                        && result->work_ram_writes.empty() && result->absorbed_returns.empty(), "Queue reload effects");
+                    constexpr std::array<unsigned, 5> pcs{0xC627, 0xC62A, 0xC62C, 0xC62E, 0xC630};
+                    for (std::size_t i = 0; i < result->checkpoints.size(); ++i) {
+                        const auto& c = result->checkpoints[i];
+                        const auto cycles = i == 0 ? 15U : i == 1 ? 21U : i == 2 ? (suppressed ? 33U : 27U)
+                            : i == 3 ? 33U : cost;
+                        require(c.instruction == RoutineKey{1U, static_cast<std::uint16_t>(pcs[i])}
+                            && c.master_cycle_offset == cycles && c.interrupt_sample_master_cycle_offset == cycles - 3,
+                            "Queue reload instruction timing");
+                    }
+                }
+            }
+        }
+        {
+            RoutineEntry entry{};
+            entry.routine = {1U, 0xC627U};
+            entry.registers.program_counter = 0xC627U;
+            entry.registers.mpr[1] = 0xF8U; entry.registers.mpr[6] = 1U;
+            const auto reload = [&] { return devils_crush::app::detail::replace_actor_queue_reload(entry, ram); };
+            entry.registers.program_counter = 0xC624U;
+            require(!reload(), "Queue live PC guard");
+            entry.registers.program_counter = 0xC627U;
+            entry.registers.mpr[1] = 0;
+            require(!reload(), "Queue RAM mapping guard");
+            entry.registers.mpr[1] = 0xF8U; entry.registers.mpr[6] = 2U;
+            require(!reload(), "Queue code mapping guard");
+            entry.registers.mpr[6] = 1U;
+            require(!devils_crush::app::detail::replace_actor_queue_reload(entry,
+                std::span<const std::byte>(ram).first(0x1FFFU)), "Queue RAM size guard");
+        }
+        std::puts("Verified 196,608 live queue attribute/status/slot cases.");
         for (const auto pc : {0x4095U, 0x4097U}) {
             RoutineEntry entry{};
             entry.routine = {0x45U, static_cast<std::uint16_t>(pc)};
@@ -166,7 +222,7 @@ int main()
             require(!jump(), "Unsupported jump key admitted");
         }
         std::puts("Verified 262,144 unconditional-branch stack/status cases and both horizon guards.");
-        for (const auto pc : {0xC693U, 0xC696U, 0xC69BU, 0xC6A6U, 0xC6BFU, 0x51D2U}) {
+        for (const auto pc : {0xC693U, 0xC696U, 0xC69BU, 0xC6A6U, 0xC6BFU, 0x51D2U, 0xC624U}) {
             RoutineEntry entry{};
             entry.routine = {static_cast<std::uint8_t>(pc == 0x51D2U ? 2U : 1U), static_cast<std::uint16_t>(pc)};
             auto& r = entry.registers;
@@ -183,7 +239,7 @@ int main()
                     require(result.has_value() == ((status & 0x20U) == 0U), "Call transfer-mode guard changed");
                     if (!result) { continue; }
                     const auto& out = result->output_registers;
-                    require(out.program_counter == ((pc == 0xC693U || pc == 0xC69BU) ? 0xC5EAU : pc == 0x51D2U ? 0x5475U : 0xC5C9U)
+                    require(out.program_counter == ((pc == 0xC693U || pc == 0xC69BU) ? 0xC5EAU : pc == 0x51D2U ? 0x5475U : pc == 0xC624U ? 0xF605U : 0xC5C9U)
                         && out.stack_pointer == static_cast<std::uint8_t>(sp - 2U)
                         && out.status == status && out.accumulator == r.accumulator
                         && out.x == r.x && out.y == r.y && out.mpr == r.mpr,
@@ -225,7 +281,7 @@ int main()
             r.mpr[pc >> 13U] = entry.routine.physical_bank; ++r.program_counter;
             require(!devils_crush::app::detail::replace_coroutine_call(entry, ram), "Wrong call PC admitted");
         }
-        std::puts("Verified six scheduler/submission calls across all stack pointers and status values.");
+        std::puts("Verified seven scheduler/submission/asset calls across all stack pointers and status values.");
         for (const auto routine : {RoutineKey{0x08U, 0x5976U}, RoutineKey{0x01U, 0xC4C8U},
                  RoutineKey{0x08U, 0x5A69U}, RoutineKey{0x00U, 0xE47CU},
                  RoutineKey{0x02U, 0x4F75U}, RoutineKey{0x02U, 0x51D5U}, RoutineKey{0x45U, 0x4B85U}, RoutineKey{0x00U, 0xED85U}, RoutineKey{0x02U, 0x4F92U},

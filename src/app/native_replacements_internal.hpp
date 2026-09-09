@@ -26,6 +26,9 @@ std::optional<emulation::RoutineReplacement> replace_unconditional_branch(
 std::optional<emulation::RoutineReplacement> replace_coroutine_call(
     const emulation::RoutineEntry& entry, std::span<const std::byte> work_ram);
 
+std::optional<emulation::RoutineReplacement> replace_actor_queue_reload(
+    const emulation::RoutineEntry& entry, std::span<const std::byte> work_ram);
+
 std::optional<emulation::RoutineReplacement> replace_coroutine_delay(
     const emulation::RoutineEntry& entry, std::span<const std::byte> work_ram);
 
