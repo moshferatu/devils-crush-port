@@ -111,6 +111,73 @@ std::optional<RoutineReplacement> replace_unconditional_branch(const RoutineEntr
     return result;
 }
 
+std::optional<RoutineReplacement> replace_bonus_countdown_instruction(
+    const RoutineEntry& entry, const std::span<const std::byte> work_ram)
+{
+    const auto pc = entry.routine.logical_pc;
+    const bool mercy = entry.routine == RoutineKey{2U, 0x4FC1U};
+    if ((!mercy && (entry.routine.physical_bank != 5U
+            || (pc != 0x7376U && pc != 0x7379U && pc != 0x7387U
+                && pc != 0x738AU && pc != 0x738FU && pc != 0x7390U
+                && pc != 0x7393U && pc != 0x7396U)))
+        || entry.registers.program_counter != pc || work_ram.size() < 0x2000U
+        || entry.registers.mpr[1] != 0xF8U
+        || entry.registers.mpr[pc >> 13U] != entry.routine.physical_bank
+        || (entry.registers.status & 0x20U) != 0U) {
+        return std::nullopt;
+    }
+    // Each live instruction is independently resumable. In particular, the
+    // borrow arm at 738C remains in the core, and DEC A must consume live A
+    // after it, rather than reload the low timer. STA preserves every flag.
+    auto r = entry.registers;
+    RoutineReplacement result{};
+    std::uint32_t cycles = 15U;
+    bool changes_nz = true;
+    r.program_counter = static_cast<std::uint16_t>(pc + 3U);
+    switch (pc) {
+    case 0x7379U:
+    case 0x738AU:
+    case 0x7396U: {
+        const bool taken = pc == 0x7379U ? (r.status & 0x80U) == 0U
+            : pc == 0x738AU ? (r.status & 2U) == 0U : (r.status & 2U) != 0U;
+        r.program_counter = taken ? (pc == 0x7379U ? 0x7387U
+            : pc == 0x738AU ? 0x738FU : 0x7399U)
+            : static_cast<std::uint16_t>(pc + 2U);
+        cycles = taken ? 12U : 6U;
+        changes_nz = false;
+        break;
+    }
+    case 0x738FU:
+        r.accumulator = static_cast<std::uint8_t>(r.accumulator - 1U);
+        r.program_counter = 0x7390U;
+        cycles = 6U;
+        break;
+    case 0x7390U:
+        result.work_ram_writes.push_back({.instruction = entry.routine,
+            .logical_address = static_cast<std::uint16_t>(0x3B00U + r.x),
+            .value = r.accumulator, .master_cycle_offset = 15U});
+        changes_nz = false;
+        break;
+    default: {
+        const auto offset = mercy ? 0x254U : pc == 0x7376U ? 0x1800U + r.x
+            : pc == 0x7387U ? 0x1B00U + r.x : 0x1B80U + r.x;
+        const auto value = std::to_integer<std::uint8_t>(work_ram[offset]);
+        r.accumulator = pc == 0x7393U ? static_cast<std::uint8_t>(r.accumulator | value) : value;
+        break;
+    }
+    }
+    if (changes_nz) {
+        r.status = static_cast<std::uint8_t>((r.status & 0x7DU)
+            | (r.accumulator == 0U ? 2U : r.accumulator & 0x80U));
+    }
+    result.return_instruction = {entry.routine.physical_bank, r.program_counter};
+    result.output_registers = r;
+    result.body_master_cycles = cycles;
+    result.checkpoints.push_back({.interrupt_sample_master_cycle_offset = cycles - 3U,
+        .master_cycle_offset = cycles, .instruction = entry.routine, .registers = r});
+    return result;
+}
+
 std::optional<RoutineReplacement> replace_ranked_gate_instruction(
     const RoutineEntry& entry, const std::span<const std::byte> work_ram)
 {
@@ -393,7 +460,10 @@ std::optional<RoutineReplacement> replace_upper_scheduler_return(
             && entry.routine != RoutineKey{0U, 0xE824U}
             && entry.routine != RoutineKey{0U, 0xE5BBU}
             && entry.routine != RoutineKey{0U, 0xE5EBU}
-            && entry.routine != RoutineKey{0U, 0xE836U})
+            && entry.routine != RoutineKey{0U, 0xE836U}
+            && entry.routine != RoutineKey{5U, 0x7398U}
+            && entry.routine != RoutineKey{2U, 0x4FE1U}
+            && entry.routine != RoutineKey{4U, 0x5197U})
         || entry.registers.program_counter != entry.routine.logical_pc
         || entry.registers.mpr[1] != 0xF8U
         || entry.registers.mpr[entry.routine.logical_pc >> 13U] != entry.routine.physical_bank

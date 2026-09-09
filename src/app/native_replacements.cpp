@@ -20,6 +20,16 @@ replace_native_gameplay_routine_impl(
     const std::span<const std::byte> work_ram,
     const std::span<const std::byte> rom)
 {
+    if (entry.routine == RoutineKey{.physical_bank = 0x05U, .logical_pc = 0x7376U}
+        || entry.routine == RoutineKey{.physical_bank = 0x05U, .logical_pc = 0x7379U}
+        || entry.routine == RoutineKey{.physical_bank = 0x05U, .logical_pc = 0x7387U}
+        || entry.routine == RoutineKey{.physical_bank = 0x05U, .logical_pc = 0x738AU}
+        || entry.routine == RoutineKey{.physical_bank = 0x05U, .logical_pc = 0x738FU}
+        || entry.routine == RoutineKey{.physical_bank = 0x05U, .logical_pc = 0x7390U}
+        || entry.routine == RoutineKey{.physical_bank = 0x05U, .logical_pc = 0x7393U}
+        || entry.routine == RoutineKey{.physical_bank = 0x05U, .logical_pc = 0x7396U}) {
+        return detail::replace_bonus_countdown_instruction(entry, work_ram);
+    }
     if (entry.routine == RoutineKey{.physical_bank = 0x02U, .logical_pc = 0x5CC8U}
         || entry.routine == RoutineKey{.physical_bank = 0x02U, .logical_pc = 0x5CCBU}
         || entry.routine == RoutineKey{.physical_bank = 0x01U, .logical_pc = 0xDA3EU}) {
@@ -103,7 +113,10 @@ replace_native_gameplay_routine_impl(
         || entry.routine == RoutineKey{.physical_bank = 0x00U, .logical_pc = 0xE824U}
         || entry.routine == RoutineKey{.physical_bank = 0x00U, .logical_pc = 0xE5BBU}
         || entry.routine == RoutineKey{.physical_bank = 0x00U, .logical_pc = 0xE5EBU}
-        || entry.routine == RoutineKey{.physical_bank = 0x00U, .logical_pc = 0xE836U}) {
+        || entry.routine == RoutineKey{.physical_bank = 0x00U, .logical_pc = 0xE836U}
+        || entry.routine == RoutineKey{.physical_bank = 0x05U, .logical_pc = 0x7398U}
+        || entry.routine == RoutineKey{.physical_bank = 0x02U, .logical_pc = 0x4FE1U}
+        || entry.routine == RoutineKey{.physical_bank = 0x04U, .logical_pc = 0x5197U}) {
         return detail::replace_upper_scheduler_return(entry, work_ram);
     }
     if (entry.routine == RoutineKey{.physical_bank = 0x00U, .logical_pc = 0xE271U}) {
@@ -3615,6 +3628,9 @@ replace_native_gameplay_routine_impl(
             .logical_pc = 0x4FC1U,
         }) {
         replacement = detail::replace_mercy_star_gate(entry, work_ram);
+        if (!replacement) {
+            replacement = detail::replace_bonus_countdown_instruction(entry, work_ram);
+        }
     } else if (entry.routine
         == RoutineKey{
             .physical_bank = 0x02U,

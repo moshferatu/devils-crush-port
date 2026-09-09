@@ -10,6 +10,9 @@
 #include <span>
 
 namespace devils_crush::app::detail {
+[[nodiscard]] std::optional<emulation::RoutineReplacement> replace_bonus_countdown_instruction(
+    const emulation::RoutineEntry& entry, std::span<const std::byte> work_ram);
+
 [[nodiscard]] std::optional<emulation::RoutineReplacement> replace_ranked_gate_instruction(
     const emulation::RoutineEntry& entry, std::span<const std::byte> work_ram);
 

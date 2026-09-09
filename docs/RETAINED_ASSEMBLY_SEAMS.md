@@ -1,6 +1,103 @@
 # Retained Assembly Seams
 
-## Current priority: Side-Worm and multiply residue ranking (September 9)
+## Current priority: bonus hazard countdown and return ranking (September 9)
+
+This user-supplied ranking supersedes the Side-Worm/multiply ranking below.
+The live recording was not supplied; the measurements here use separate local
+replays, with targeted bonus activation to exercise the ranked code.
+
+| Rank | Address | Master cycles | Intervals | Implementation |
+| --- | --- | ---: | ---: | --- |
+| 1 | 05:7398 | 435,252 | 20,516 | Shared live-stack RTS |
+| 2 | 05:7393 | 311,694 | 20,530 | Live ORA high countdown |
+| 3 | 05:7387 | 311,454 | 20,530 | Live LDA low countdown |
+| 4 | 05:7376 | 311,154 | 20,550 | Live LDA actor activity |
+| 5 | 05:7390 | 311,046 | 20,530 | Live STA low countdown |
+| 6 | 02:4FE1 | 285,570 | 13,458 | Shared live-stack RTS |
+| 7 | 05:7379 | 248,952 | 20,550 | Live BPL activity gate |
+| 8 | 05:738A | 248,298 | 20,530 | Live BNE borrow gate |
+| 9 | 02:4FC1 | 203,910 | 13,458 | Live LDA fallback after full Mercy-Star owner |
+| 10 | 05:7396 | 124,536 | 20,530 | Live BEQ expiry gate |
+| 11 | 05:738F | 124,236 | 20,530 | Live DEC accumulator |
+| 12 | 04:5197 | 117,033 | 5,525 | Shared live-stack RTS |
+
+All twelve ranked sites have native coverage. Nine independent instructions
+share `replace_bonus_countdown_instruction`; three returns extend the existing
+live-stack RTS implementation. The bank-05 hazard gates use live N/Z, loads
+use live RAM and X, DEC consumes live A, STA preserves flags, and ORA combines
+live A with the current high countdown. The unranked high-byte decrement at
+05:738C remains in the core, including on low-byte underflow. Each port resumes
+at the real next instruction so an interrupt can separate any two operations.
+
+LDA/STA/ORA sample at cycle 12 and finish at 15; STA writes at 15. DEC samples
+at 3 and finishes at 6. Branches sample at 3/9 and finish at 6/12. These single
+instructions retain a checkpoint at every event horizon, require T clear,
+exact PC/code mapping and a full mapped RAM snapshot, and permit decimal mode.
+Returns retain the shared strict greater-than-21 event guards and wrapping
+live-stack semantics. The existing full Mercy-Star gate keeps priority.
+
+The ROM-free fixture adds 3,538,944 operand/status cases across all byte values
+and actor indices, with mapping, short-RAM, horizon, write-offset and register
+preservation checks. Shared return coverage rises to forty sites and 7,864,320
+stack/target/status cases. The new two-route assembly oracle pins every ranked
+opcode and compares frame state, scheduler calls and scoped writes, all RAM
+writes, and all device writes. Its bonus-stage-6 route includes a real low-byte
+borrow; the second route forces 150 Mercy-Star table-mode declines while
+retaining 6,255 full gate walks.
+
+Registry membership rises from 775 to 786, reachable keys from 823 to 834, and
+classified seam ranges from 235 to 247. The existing Mercy-Star semantic oracle
+still admits 7,950/7,950 full walks with unchanged hashes.
+
+Paired full-registry replays against the saved pre-change executable remove
+30,072 of 31,794 target cycles on the bonus-stage-6 route (94.6%), leaving
+1,722. The second targeted route removes 5,190 of 5,463 cycles (95.0%), leaving
+273. Combined target residue falls from 37,257 to 1,995 cycles: 35,262 removed
+(94.6%). Both frame hashes are unchanged and both routes have zero abandonments.
+In each route, the total interpreter-cycle delta equals the target-address
+delta. All nine newly ported non-return instructions have zero residue;
+remaining residue is at guarded returns. Detailed results are in
+`out/bonus-countdown-cost/active.csv` and `active-addresses.csv`.
+
+The expanded BS-6 oracle also exercises 04:5197 on 501 calls (449 native),
+besides 179 entries at each bank-05 site (159 native returns). All five
+artifacts match assembly. The second oracle admits all 6,405 Mercy-Star entries,
+137/150 independent returns, and 3/3 bank-04 returns; its five artifacts also
+match assembly. Remaining declined returns retain the strict event guards.
+
+All 31 standard corpus routes preserve frame hashes and abandonment counts.
+They have no residual cycles at these twelve addresses before or after this
+round, so this sweep is compatibility evidence; the targeted bonus replays
+above measure coverage gain. The saved baseline has one abandonment each on
+higharc, radial and sidestep, unchanged after the ports; all other routes have
+zero. The paired corpus report is `out/bonus-countdown-cost/manifest.csv`.
+
+The older Mercy-Star Debug test initially rejected the frame hash because it
+still expected a different Debug-only artifact. An independent assembly-only
+Debug census reproduces the Release/native frame SHA-256
+`9036a9de0c3c9917f47bff8c04c136a4824ec12601fb457d260aa2dfe4443490`,
+call SHA-256 `b10fe937699858b1c55ee67cb579f98eeb7ca55b96e5ba7c2fb404cee7c53b4a`,
+and write SHA-256 `ff4cb68930bc10a4e0f59b05a1e8e733ed6554aaa5b6bb874d77744410a3f91a`.
+The test now uses that common frame expectation. The full gate implementation
+was not changed; its 7,950 calls and 2,173 scoped writes remain identical.
+Evidence: `out/bonus-countdown-mercy-debug-assembly.*`.
+
+Release validation passes all seven selected checks: the shared exhaustive
+fixture, both new bonus oracles, the existing full Mercy-Star oracle, the face
+and hand captures, and host registry. The expanded bank-04 coverage oracle also
+passes (34.59 seconds). Debug passes the six selected checks: shared fixture,
+both new bonus oracles, full Mercy-Star, face and hand. The first Debug batch
+logged the stale Mercy-Star expectation described above; its corrected rerun
+passes in 158.08 seconds. The new Debug oracles pass in 311.74 and 592.06 seconds.
+
+Logs: `out/bonus-countdown-existing-Release.log`,
+`out/bonus-countdown-tests-{Release,Debug}.log`,
+`out/bonus-countdown-expanded-Release.log`, and
+`out/bonus-countdown-mercy-corrected-Debug.log`. Final Release/Debug builds,
+registry generation/check, the 247-range seam verification and whitespace
+checks pass. No prior port was reverted.
+
+## Previous priority: Side-Worm and multiply residue ranking (September 9)
 
 This latest user ranking supersedes the actor ranking below. No accompanying
 input recording or total residue was supplied; local replays measure coverage

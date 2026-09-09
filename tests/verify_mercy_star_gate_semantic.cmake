@@ -6,19 +6,13 @@ foreach(required_variable IN ITEMS APP CONFIG ROM OUTPUT)
     endif()
 endforeach()
 
-if(CONFIG STREQUAL "Debug")
-    set(
-        expected_census_sha256
-        "a95d0c343108b107d7ec1aa3c20915540d91bb08817704776531e5696ea9b5e2"
-    )
-elseif(CONFIG STREQUAL "Release")
-    set(
-        expected_census_sha256
-        "9036a9de0c3c9917f47bff8c04c136a4824ec12601fb457d260aa2dfe4443490"
-    )
-else()
+if(NOT CONFIG STREQUAL "Debug" AND NOT CONFIG STREQUAL "Release")
     message(FATAL_ERROR "Unsupported Mercy-Star gate configuration: ${CONFIG}")
 endif()
+# Assembly-only Debug and both native configurations produce the same frame,
+# call and write artifacts; the former separate Debug frame hash was stale.
+set(expected_census_sha256
+    "9036a9de0c3c9917f47bff8c04c136a4824ec12601fb457d260aa2dfe4443490")
 
 set(
     expected_call_sha256

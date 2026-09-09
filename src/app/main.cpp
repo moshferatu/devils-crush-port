@@ -7776,6 +7776,19 @@ parse_logical_address_range(const std::string_view text)
                                         .logical_pc = 0x42EBU,
                                     }
                             && request.all_calls;
+                        const bool proven_bonus_countdown_seam = request.all_calls && (
+                            request.routine == RoutineKey{0x05U, 0x7376U}
+                            || request.routine == RoutineKey{0x05U, 0x7379U}
+                            || request.routine == RoutineKey{0x05U, 0x7387U}
+                            || request.routine == RoutineKey{0x05U, 0x738AU}
+                            || request.routine == RoutineKey{0x05U, 0x738FU}
+                            || request.routine == RoutineKey{0x05U, 0x7390U}
+                            || request.routine == RoutineKey{0x05U, 0x7393U}
+                            || request.routine == RoutineKey{0x05U, 0x7396U}
+                            || request.routine == RoutineKey{0x05U, 0x7398U}
+                            || request.routine == RoutineKey{0x02U, 0x4FC1U}
+                            || request.routine == RoutineKey{0x02U, 0x4FE1U}
+                            || request.routine == RoutineKey{0x04U, 0x5197U});
                         const bool proven_math_gate_seam = request.all_calls && (
                             request.routine == RoutineKey{0x02U, 0x5CC5U}
                             || request.routine == RoutineKey{0x02U, 0x5CC8U}
@@ -8844,6 +8857,7 @@ parse_logical_address_range(const std::string_view text)
                             && !proven_three_blobs_rng_initialization
                             && !proven_three_blobs_rng_loop_branch
                             && !proven_math_gate_seam
+                            && !proven_bonus_countdown_seam
                             && !proven_ranked_actor_seam
                             && !proven_tower_source_scheduler_call
                             && !proven_collision_table_call

@@ -5540,6 +5540,14 @@ if(TARGET devils_crush)
                 "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/actor-scan-cursors-$<CONFIG>-v1"
                 -P "${CMAKE_CURRENT_SOURCE_DIR}/verify_actor_scan_cursors.cmake")
         set_tests_properties(dc_rom_actor_scan_cursors PROPERTIES LABELS rom_required)
+        foreach(stage IN ITEMS 6 2)
+            add_test(NAME dc_rom_ranked_bonus_countdown_${stage}
+                COMMAND "${CMAKE_COMMAND}" "-DAPP=$<TARGET_FILE:devils_crush>" "-DROM=${DC_ROM_PATH}"
+                    "-DSTAGE=${stage}"
+                    "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/ranked-bonus-countdown-${stage}-$<CONFIG>-v1"
+                    -P "${CMAKE_CURRENT_SOURCE_DIR}/verify_ranked_bonus_countdown.cmake")
+            set_tests_properties(dc_rom_ranked_bonus_countdown_${stage} PROPERTIES LABELS rom_required)
+        endforeach()
         add_test(NAME dc_rom_ranked_math_gates
             COMMAND "${CMAKE_COMMAND}" "-DAPP=$<TARGET_FILE:devils_crush>" "-DROM=${DC_ROM_PATH}"
                 "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/ranked-math-gates-$<CONFIG>-v1"

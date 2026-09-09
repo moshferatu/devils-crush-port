@@ -10,6 +10,87 @@ int main()
 {
     try {
         std::array<std::byte, 0x2000> ram{};
+        for (const auto routine : {RoutineKey{5U, 0x7376U}, RoutineKey{5U, 0x7379U},
+                 RoutineKey{5U, 0x7387U}, RoutineKey{5U, 0x738AU}, RoutineKey{5U, 0x738FU},
+                 RoutineKey{5U, 0x7390U}, RoutineKey{5U, 0x7393U}, RoutineKey{5U, 0x7396U},
+                 RoutineKey{2U, 0x4FC1U}}) {
+            RoutineEntry entry{};
+            entry.routine = routine;
+            auto& r = entry.registers;
+            r.program_counter = routine.logical_pc;
+            r.mpr[1] = 0xF8U; r.mpr[r.program_counter >> 13U] = routine.physical_bank;
+            r.y = 0x5AU; r.stack_pointer = 0xA5U;
+            const auto run = [&] { return devils_crush::app::detail::replace_bonus_countdown_instruction(entry, ram); };
+            for (unsigned index = 0; index < 256U; ++index) {
+                r.x = static_cast<std::uint8_t>(index);
+                const auto operand = static_cast<std::uint8_t>(255U - index);
+                ram.fill(std::byte{0x69});
+                ram[0x1800U + index] = ram[0x1B00U + index] = ram[0x1B80U + index]
+                    = ram[0x254U] = static_cast<std::byte>(operand);
+                for (unsigned input = 0; input < 256U; ++input) {
+                    r.accumulator = static_cast<std::uint8_t>(input);
+                    for (const unsigned status : {0U, 2U, 8U, 0x20U, 0xDFU, 0xFFU}) {
+                        r.status = static_cast<std::uint8_t>(status);
+                        const auto result = run();
+                        require(result.has_value() == ((status & 0x20U) == 0U), "Bonus T guard");
+                        if (!result) { continue; }
+                        auto expected = r;
+                        unsigned cycles = 15U;
+                        bool nz = true;
+                        switch (routine.logical_pc) {
+                        case 0x7379U:
+                            expected.program_counter = (status & 0x80U) ? 0x737BU : 0x7387U;
+                            cycles = (status & 0x80U) ? 6U : 12U; nz = false; break;
+                        case 0x738AU:
+                            expected.program_counter = (status & 2U) ? 0x738CU : 0x738FU;
+                            cycles = (status & 2U) ? 6U : 12U; nz = false; break;
+                        case 0x7396U:
+                            expected.program_counter = (status & 2U) ? 0x7399U : 0x7398U;
+                            cycles = (status & 2U) ? 12U : 6U; nz = false; break;
+                        case 0x738FU:
+                            expected.accumulator = static_cast<std::uint8_t>(input - 1U);
+                            expected.program_counter = 0x7390U; cycles = 6U; break;
+                        case 0x7390U:
+                            expected.program_counter = 0x7393U; nz = false; break;
+                        default:
+                            expected.accumulator = routine.logical_pc == 0x7393U
+                                ? static_cast<std::uint8_t>(input | operand) : operand;
+                            expected.program_counter += 3U; break;
+                        }
+                        if (nz) {
+                            expected.status = static_cast<std::uint8_t>((status & 0x7DU)
+                                | (expected.accumulator == 0U ? 2U : expected.accumulator & 0x80U));
+                        }
+                        require(result->output_registers == expected
+                            && result->return_instruction == RoutineKey{routine.physical_bank, expected.program_counter}, "Bonus live state");
+                        require(result->checkpoints.size() == 1U && result->body_master_cycles == cycles
+                            && result->checkpoints[0].registers == expected
+                            && result->checkpoints[0].instruction == routine
+                            && result->checkpoints[0].interrupt_sample_master_cycle_offset == cycles - 3U
+                            && result->checkpoints[0].master_cycle_offset == cycles
+                            && result->absorbed_returns.empty(), "Bonus instruction checkpoint");
+                        require(result->work_ram_writes.size() == (routine.logical_pc == 0x7390U ? 1U : 0U), "Bonus write count");
+                        if (!result->work_ram_writes.empty()) {
+                            const auto& write = result->work_ram_writes[0];
+                            require(write.instruction == routine && write.logical_address == 0x3B00U + index
+                                && write.value == input && write.master_cycle_offset == 15U, "Bonus live STA timing");
+                        }
+                    }
+                }
+            }
+            r.status = 0;
+            for (unsigned horizon = 0; horizon <= 16; ++horizon) {
+                entry.master_cycles_until_user_event = horizon;
+                entry.master_cycles_until_timer_interrupt = horizon;
+                require(run().has_value(), "Bonus checkpoint horizon");
+            }
+            ++r.program_counter; require(!run(), "Bonus PC guard"); --r.program_counter;
+            r.mpr[1] = 0; require(!run(), "Bonus RAM mapping"); r.mpr[1] = 0xF8U;
+            r.mpr[r.program_counter >> 13U] ^= 1U; require(!run(), "Bonus code mapping");
+            r.mpr[r.program_counter >> 13U] ^= 1U;
+            require(!devils_crush::app::detail::replace_bonus_countdown_instruction(entry, std::span(ram).first(0x1FFF)), "Bonus RAM size");
+        }
+        std::puts("Verified 3,538,944 bonus/Mercy instruction operand/status cases and guards.");
         for (const auto routine : {RoutineKey{2U, 0x5CC5U}, RoutineKey{2U, 0x5CC8U},
                  RoutineKey{2U, 0x5CCBU}, RoutineKey{1U, 0xDA3EU}}) {
             RoutineEntry entry{};
@@ -393,7 +474,7 @@ int main()
         for (const auto routine : {RoutineKey{0x08U, 0x5976U}, RoutineKey{0x01U, 0xC4C8U},
                  RoutineKey{0x08U, 0x5A69U}, RoutineKey{0x00U, 0xE47CU},
                  RoutineKey{0x02U, 0x4F75U}, RoutineKey{0x02U, 0x51D5U}, RoutineKey{0x45U, 0x4B85U}, RoutineKey{0x00U, 0xED85U}, RoutineKey{0x02U, 0x4F92U},
-                 RoutineKey{0x09U, 0x704EU}, RoutineKey{0x09U, 0x7186U}, RoutineKey{0x09U, 0x7099U}, RoutineKey{0x09U, 0x71C4U}, RoutineKey{0x09U, 0x7071U}, RoutineKey{0x09U, 0x71A9U}, RoutineKey{0x03U, 0x7D81U}, RoutineKey{0x03U, 0x7E1FU}, RoutineKey{0x09U, 0x703CU}, RoutineKey{0x09U, 0x7174U}, RoutineKey{0x00U, 0xE8E6U}, RoutineKey{0x01U, 0xDA3FU}, RoutineKey{0x00U, 0xE333U}, RoutineKey{0x01U, 0xC8E1U}, RoutineKey{0x09U, 0x70BBU}, RoutineKey{0x09U, 0x71E1U}, RoutineKey{2U, 0x45A9U}, RoutineKey{2U, 0x4571U}, RoutineKey{2U, 0x59F4U}, RoutineKey{2U, 0x4484U}, RoutineKey{2U, 0x56ABU}, RoutineKey{0U, 0xE60AU}, RoutineKey{3U, 0x61B2U}, RoutineKey{2U, 0x5721U}, RoutineKey{0U, 0xE824U}, RoutineKey{0U, 0xE5BBU}, RoutineKey{0U, 0xE5EBU}, RoutineKey{0U, 0xE836U}}) {
+                 RoutineKey{0x09U, 0x704EU}, RoutineKey{0x09U, 0x7186U}, RoutineKey{0x09U, 0x7099U}, RoutineKey{0x09U, 0x71C4U}, RoutineKey{0x09U, 0x7071U}, RoutineKey{0x09U, 0x71A9U}, RoutineKey{0x03U, 0x7D81U}, RoutineKey{0x03U, 0x7E1FU}, RoutineKey{0x09U, 0x703CU}, RoutineKey{0x09U, 0x7174U}, RoutineKey{0x00U, 0xE8E6U}, RoutineKey{0x01U, 0xDA3FU}, RoutineKey{0x00U, 0xE333U}, RoutineKey{0x01U, 0xC8E1U}, RoutineKey{0x09U, 0x70BBU}, RoutineKey{0x09U, 0x71E1U}, RoutineKey{2U, 0x45A9U}, RoutineKey{2U, 0x4571U}, RoutineKey{2U, 0x59F4U}, RoutineKey{2U, 0x4484U}, RoutineKey{2U, 0x56ABU}, RoutineKey{0U, 0xE60AU}, RoutineKey{3U, 0x61B2U}, RoutineKey{2U, 0x5721U}, RoutineKey{0U, 0xE824U}, RoutineKey{0U, 0xE5BBU}, RoutineKey{0U, 0xE5EBU}, RoutineKey{0U, 0xE836U}, RoutineKey{5U, 0x7398U}, RoutineKey{2U, 0x4FE1U}, RoutineKey{4U, 0x5197U}}) {
             RoutineEntry entry{};
             entry.routine = routine;
             auto& r = entry.registers;
@@ -452,7 +533,7 @@ int main()
             r.mpr[routine.logical_pc >> 13U] = static_cast<std::uint8_t>(routine.physical_bank ^ 1U);
             require(!replace_upper_scheduler_return(entry, ram), "Foreign code mapping admitted");
         }
-        std::puts("Verified 7,274,496 return target/status/stack cases and both horizon guards.");
+        std::puts("Verified 7,864,320 return target/status/stack cases and both horizon guards.");
         for (unsigned sp : {0U, 254U, 255U}) {
             for (unsigned word = 0U; word < 65536U; ++word) {
                 RoutineEntry entry{};
