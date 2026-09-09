@@ -520,6 +520,7 @@ DC_ADMITTED_ROUTINE(0x03U, 0x667BU, 9, 9, "verify_three_blobs_rng_initialization
 DC_ADMITTED_ROUTINE(0x03U, 0x6697U, 69, 69, "verify_three_blobs_rng_initialization_semantic")
 DC_ADMITTED_ROUTINE(0x03U, 0x669AU, 69, 69, "verify_three_blobs_rng_initialization_semantic")
 DC_ADMITTED_ROUTINE(0x03U, 0x66A3U, 1089, 1107, "verify_three_blobs_first_movement_prefix_semantic")
+DC_ADMITTED_ROUTINE(0x03U, 0x66A6U, 1107, 1107, "verify_three_blobs_timer_branch")
 DC_ADMITTED_ROUTINE(0x03U, 0x66B5U, 1107, 1107, "verify_three_blobs_first_movement_continuation_semantic")
 DC_ADMITTED_ROUTINE(0x03U, 0x66BFU, 60, 60, "verify_three_blobs_movement_call_seams_semantic")
 DC_ADMITTED_ROUTINE(0x03U, 0x66D3U, 720, 720, "verify_three_blobs_movement_call_seams_semantic")

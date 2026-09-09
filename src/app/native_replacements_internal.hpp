@@ -282,6 +282,9 @@ replace_three_blobs_controller(
     std::span<const std::byte> work_ram);
 
 [[nodiscard]] std::optional<emulation::RoutineReplacement>
+replace_three_blobs_timer_branch(const emulation::RoutineEntry& entry);
+
+[[nodiscard]] std::optional<emulation::RoutineReplacement>
 replace_three_blobs_first_movement_prefix(
     const emulation::RoutineEntry& entry,
     std::span<const std::byte> work_ram);

@@ -294,6 +294,9 @@ replace_native_gameplay_routine_impl(
             || entry.routine.logical_pc == 0x76A6U)) {
         return detail::replace_giant_face_wait_dispatch_instruction(entry);
     }
+    if (entry.routine == RoutineKey{0x03U, 0x66A6U}) {
+        return detail::replace_three_blobs_timer_branch(entry);
+    }
     if (entry.routine == RoutineKey{0x03U, 0x66A3U}) {
         // The full prefix has an exact native transcript when there is enough
         // time before the next timer interrupt.  At its short-horizon edge,

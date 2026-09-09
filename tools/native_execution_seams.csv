@@ -118,7 +118,7 @@
 "02","5F4D","5F5C","core","interior of the native Tower-Insect source countdown"
 "03","6021","6051","guarded","post-collision scheduler continuation does not have a local return contract"
 "03","6005","6013","guarded","Tower-Insect fixed-controller continuation is owned by its scheduler parent"
-"03","66A6","66B2","core","interior of the native Three-Blobs steady controller"
+"03","66A8","66B2","core","interior of the native Three-Blobs steady controller"
 "03","7B4B","7B68","core","fixed-scheduler submissions and shared RTS retain live stack ownership"
 "03","7D72","7E20","guarded","fixed-actor continuations retain guarded scheduling; 03:7D81 and 03:7E1F use native live-stack RTS when both event horizons exceed 21 master cycles"
 "03","7C34","7C40","guarded","fixed-actor collision continuation returns through an existing owner"
@@ -205,3 +205,4 @@
 "01","C8E1","C8E1","guarded","Actor-flag RTS after scheduler yield reads the live stack with strict 21-cycle event horizons"
 "03","68BF","68DD","guarded","native Gray-Blob appearance expiry and movement selection; T mode and mapping guards preserve core fallback"
 "03","6905","6905","guarded","Gray-Blob live RTS absorbed by 68BF; post-movement entries retain core return"
+"03","66A6","66A7","guarded","Three-Blobs timer BNE resumes from live flags after the core DEC fallback with one interrupt sample"

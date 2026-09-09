@@ -7777,11 +7777,9 @@ parse_logical_address_range(const std::string_view text)
                                     }
                             && request.all_calls;
                         const bool proven_three_blobs_first_movement_prefix =
-                            request.routine
-                                    == RoutineKey{
-                                        .physical_bank = 0x03U,
-                                        .logical_pc = 0x66A3U,
-                                    }
+                            request.routine.physical_bank == 0x03U
+                            && (request.routine.logical_pc == 0x66A3U
+                                || request.routine.logical_pc == 0x66A6U)
                             && request.all_calls;
                         const bool proven_three_blobs_rng_initialization =
                             request.routine.physical_bank == 0x03U

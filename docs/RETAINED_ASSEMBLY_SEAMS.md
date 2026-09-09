@@ -1,8 +1,76 @@
 # Retained Assembly Seams
 
+## Current priority: latest cabinet report (September 9)
+
+The latest user-supplied report supersedes the earlier Gray-Blob / side-worm
+priority below. Baseline: 196,506 non-wait interpreter master cycles across
+14,984 intervals and 2,321 addresses; 750 of 751 admitted routines deployed,
+with C500 claimed by the host and zero transcript abandonments.
+
+Use this address ranking for the next round, grouping related instructions
+when implementing and measuring a path:
+
+| Rank | Address | Master cycles | Intervals |
+| --- | --- | ---: | ---: |
+| 1 | 03:66A6 | 5,874 | 519 |
+| 2 | 45:49E3 | 4,410 | 731 |
+| 3 | 03:7E7E | 4,035 | 191 |
+| 4 | 03:66A3 | 3,342 | 102 |
+| 5 | 03:7E76 | 2,904 | 192 |
+| 6 | 03:7E6A | 2,880 | 192 |
+| 7 | 03:7E73 | 2,880 | 192 |
+| 8 | 02:5009 | 2,772 | 180 |
+| 9 | 02:5004 | 2,700 | 180 |
+| 10 | 45:4B85 | 2,493 | 57 |
+| 11 | 00:FA67 | 2,430 | 111 |
+| 12 | 03:7E79 | 2,322 | 192 |
+
+Start with 03:66A6 and its 03:66A3 prefix (9,216 reported cycles combined).
+The existing first-movement helper has a 300-cycle timer-horizon guard tied
+to a known twist-route device timing discrepancy. Audit instruction timing
+and continuation coverage before changing that guard. Then inspect 45:49E3
+and the related 03:7E6A-7E7E path (15,021 listed cycles combined).
+
+The replay corpus remains compatibility evidence; it does not override this
+priority. This report has no accompanying input recording, so replay savings
+must be labeled by route. Do not infer a before/after improvement by comparing
+this session's total with the earlier, different cabinet session.
+
+## Three-Blobs timer branch: 03:66A6
+
+This round implements the first address in the latest cabinet ranking. The
+existing 66A3 prefix uses a core DEC fallback within its 300-cycle timer
+horizon; execution then reaches BNE at 66A6. The new independent branch
+reads the live zero flag, takes 12 master cycles to reach 66B5 when nonzero,
+or 6 to reach 66A8 on expiry, and samples interrupts three cycles before
+completion. It preserves all other registers, flags, mapping, and RAM.
+Live PC and code-bank guards plus a clear-T guard retain core fallback.
+Decimal mode is valid. The longer prefix and its timing guard are unchanged.
+
+The status/horizon fixture covers 77,312 cases. The pinned-ROM census oracle
+accepts all 1,107 branch calls and compares frame, full RAM-write, and full
+bus-write artifacts against assembly and fixed hashes. Registry admission
+rises to 752 routines (802 dispatch-reachable); the execution-seam manifest
+has 207 non-overlapping ranges.
+
+Registry before/after comparisons preserve all 31 route hashes and abandonment
+counts. At 66A6, residue falls from **14,928 to 0 master cycles** across the
+corpus, including **1,374 to 0** on the timing-sensitive twist route. Each
+route's total interpreter-cycle delta equals its 66A6 delta. These are corpus
+measurements, not a replay of the user's cabinet session. Release passes all
+7 checks in 120.22 seconds, including the new oracle, existing prefix oracle,
+host deployment, both corruption captures, and audio-interrupt regression.
+Debug passes all 5 checks in 847.76 seconds: the fixture, new full-trace
+oracle, both corruption captures, and audio-interrupt regression.
+
+Evidence: `out/three-blobs-branch-cost/`,
+`out/three-blobs-branch-tests-{Release,Debug}.log`, and
+`tests/verify_three_blobs_timer_branch.cmake`. This change targets 66A6;
+remaining interpreter residue at 66A3 is not counted as removed.
+
 ## Gray-Blob live update: 03:68BF (cabinet ranking)
 
-The user's September 9 cabinet report is now the primary porting priority.
+The earlier September 9 cabinet report drove this completed iteration.
 Its leading addresses are 03:68BF (17,577 cycles), 03:68D9 (17,505), and
 03:68D1 (12,603). The synthetic 31-route aggregate is retained for
 compatibility checks, not used to override this live-play ranking.
@@ -50,7 +118,7 @@ exercises this target materially: 34,875 to 1,728 cycles (33,147 removed).
 This coverage gap is why the cabinet report takes precedence over the corpus
 aggregate when choosing the next port.
 
-The next target from the supplied ranking is the side-worm waiting update at
+The previous ranking proposed the side-worm waiting update next at
 02:5CC5 / 5CC8 / 5CCB (48,288 reported cycles combined). The remaining supplied
 leaders are 02:56AB (12,534), 00:E60A (11,388), 02:59F4 (11,370), and
 00:E5EB / E5EC / E836 (10,056 each). Measured improvement
