@@ -111,6 +111,52 @@ std::optional<RoutineReplacement> replace_unconditional_branch(const RoutineEntr
     return result;
 }
 
+std::optional<RoutineReplacement> replace_ranked_gate_instruction(
+    const RoutineEntry& entry, const std::span<const std::byte> work_ram)
+{
+    const auto pc = entry.routine.logical_pc;
+    const bool pull = entry.routine == RoutineKey{1U, 0xDA3EU};
+    if ((!pull && (entry.routine.physical_bank != 2U
+            || (pc != 0x5CC5U && pc != 0x5CC8U && pc != 0x5CCBU)))
+        || entry.registers.program_counter != pc || work_ram.size() < 0x2000U
+        || entry.registers.mpr[1] != 0xF8U
+        || entry.registers.mpr[pc >> 13U] != entry.routine.physical_bank
+        || (entry.registers.status & 0x20U) != 0U) {
+        return std::nullopt;
+    }
+    // Read each gate operand at its own entry. OR uses live A and BNE live Z,
+    // including when an interrupt split the earlier walk. PLY consumes the
+    // live wrapping stack; the following RTS remains a separate entry.
+    auto r = entry.registers;
+    std::uint32_t cycles = 15U;
+    if (pull) {
+        r.stack_pointer = static_cast<std::uint8_t>(r.stack_pointer + 1U);
+        r.y = std::to_integer<std::uint8_t>(work_ram[0x100U + r.stack_pointer]);
+        cycles = 12U;
+        r.program_counter = 0xDA3FU;
+    } else if (pc == 0x5CCBU) {
+        const bool taken = (r.status & 2U) == 0U;
+        cycles = taken ? 12U : 6U;
+        r.program_counter = taken ? 0x5CD5U : 0x5CCDU;
+    } else {
+        const auto value = std::to_integer<std::uint8_t>(work_ram[pc == 0x5CC5U ? 0xD00U : 0xD01U]);
+        r.accumulator = pc == 0x5CC5U ? value : static_cast<std::uint8_t>(r.accumulator | value);
+        r.program_counter = static_cast<std::uint16_t>(pc + 3U);
+    }
+    if (pc != 0x5CCBU) {
+        const auto value = pull ? r.y : r.accumulator;
+        r.status = static_cast<std::uint8_t>((r.status & 0x7DU)
+            | (value == 0U ? 2U : value & 0x80U));
+    }
+    RoutineReplacement result{};
+    result.return_instruction = {entry.routine.physical_bank, r.program_counter};
+    result.output_registers = r;
+    result.body_master_cycles = cycles;
+    result.checkpoints.push_back({.interrupt_sample_master_cycle_offset = cycles - 3U,
+        .master_cycle_offset = cycles, .instruction = entry.routine, .registers = r});
+    return result;
+}
+
 std::optional<RoutineReplacement> replace_little_skull_gate_load(
     const RoutineEntry& entry, const std::span<const std::byte> work_ram)
 {
@@ -158,7 +204,11 @@ std::optional<RoutineReplacement> replace_coroutine_call(
             && entry.routine != kSecondDelayCall && entry.routine != kToggleCall
             && entry.routine != kResetCall && entry.routine != kReleaseCall
             && entry.routine != kAssetCall && entry.routine != kSourceCall
-            && entry.routine != kPendingCall)
+            && entry.routine != kPendingCall
+            && entry.routine != RoutineKey{0U, 0xE5AFU}
+            && entry.routine != RoutineKey{0U, 0xE5ECU}
+            && entry.routine != RoutineKey{0U, 0xE5F1U}
+            && entry.routine != RoutineKey{0U, 0xE5F8U})
         || entry.registers.program_counter != entry.routine.logical_pc
         || entry.registers.mpr[1] != 0xF8U
         || entry.registers.mpr[entry.routine.logical_pc >> 13U] != entry.routine.physical_bank
@@ -181,7 +231,11 @@ std::optional<RoutineReplacement> replace_coroutine_call(
     r.program_counter = (entry.routine == kDelayCall || entry.routine == kSecondDelayCall)
         ? 0xC5EAU : entry.routine == kReleaseCall ? 0x5475U
         : entry.routine == kAssetCall ? 0xF605U : entry.routine == kSourceCall ? 0xC018U
-        : entry.routine == kPendingCall ? 0x570AU : 0xC5C9U;
+        : entry.routine == kPendingCall ? 0x570AU
+        : entry.routine.logical_pc == 0xE5AFU ? 0xE5BCU
+        : entry.routine.logical_pc == 0xE5ECU ? 0xE813U
+        : entry.routine.logical_pc == 0xE5F1U ? 0xE825U
+        : entry.routine.logical_pc == 0xE5F8U ? 0xE59FU : 0xC5C9U;
     result.return_instruction = {r.mpr[r.program_counter >> 13U], r.program_counter};
     result.output_registers = r;
     result.body_master_cycles = 21U;
@@ -335,7 +389,11 @@ std::optional<RoutineReplacement> replace_upper_scheduler_return(
             && entry.routine != RoutineKey{0x02U, 0x56ABU}
             && entry.routine != RoutineKey{0x00U, 0xE60AU}
             && entry.routine != RoutineKey{0x03U, 0x61B2U}
-            && entry.routine != RoutineKey{0x02U, 0x5721U})
+            && entry.routine != RoutineKey{0x02U, 0x5721U}
+            && entry.routine != RoutineKey{0U, 0xE824U}
+            && entry.routine != RoutineKey{0U, 0xE5BBU}
+            && entry.routine != RoutineKey{0U, 0xE5EBU}
+            && entry.routine != RoutineKey{0U, 0xE836U})
         || entry.registers.program_counter != entry.routine.logical_pc
         || entry.registers.mpr[1] != 0xF8U
         || entry.registers.mpr[entry.routine.logical_pc >> 13U] != entry.routine.physical_bank

@@ -2253,7 +2253,7 @@ std::optional<RoutineReplacement> replace_vdc_sprite_attribute_prefix(
 
     if (attribute_tail) {
         // DA06/DA0B have already consumed the live device read buffer.
-        // Keep PLY at DA3E in the core; DA3F admits an independent live-stack RTS.
+        // Resume at the independent live-stack PLY; DA3F then owns its RTS.
         load(static_cast<std::uint8_t>(registers.accumulator & 0x0FU));
         checkpoint(0xDA0E, 0xDA10, 6);
         for (std::uint16_t pc = 0xDA10; pc < 0xDA18; pc += 2U) {

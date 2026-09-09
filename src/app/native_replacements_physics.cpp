@@ -5593,8 +5593,10 @@ replace_unsigned_word_multiply_partial(
     append_checkpoint(0xE5BCU, 0xE5BEU, cycle, checkpoint);
 
     const auto run_half =
-        [&]() {
-            const bool first_half = checkpoint.program_counter == 0xE5BEU;
+        [&](const bool first_half) {
+            // append_checkpoint stores a copy; the local register PC does not
+            // track those resumes. Select each half explicitly so both write
+            // attribution and interrupt resume PCs follow the ROM sequence.
             const auto low_shift_pc = static_cast<std::uint16_t>(
                 first_half ? 0xE5BEU : 0xE5D3U);
             const auto high_shift_pc = static_cast<std::uint16_t>(
@@ -5707,8 +5709,8 @@ replace_unsigned_word_multiply_partial(
         };
 
     for (std::size_t outer = 0U; outer < 4U; ++outer) {
-        run_half();
-        run_half();
+        run_half(true);
+        run_half(false);
         cycle += 6U;
         checkpoint.x = static_cast<std::uint8_t>(checkpoint.x - 1U);
         checkpoint.status = set_nz(checkpoint.status, checkpoint.x);

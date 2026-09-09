@@ -7776,6 +7776,19 @@ parse_logical_address_range(const std::string_view text)
                                         .logical_pc = 0x42EBU,
                                     }
                             && request.all_calls;
+                        const bool proven_math_gate_seam = request.all_calls && (
+                            request.routine == RoutineKey{0x02U, 0x5CC5U}
+                            || request.routine == RoutineKey{0x02U, 0x5CC8U}
+                            || request.routine == RoutineKey{0x02U, 0x5CCBU}
+                            || request.routine == RoutineKey{0x01U, 0xDA3EU}
+                            || request.routine == RoutineKey{0x00U, 0xE5AFU}
+                            || request.routine == RoutineKey{0x00U, 0xE5ECU}
+                            || request.routine == RoutineKey{0x00U, 0xE5F1U}
+                            || request.routine == RoutineKey{0x00U, 0xE5F8U}
+                            || request.routine == RoutineKey{0x00U, 0xE824U}
+                            || request.routine == RoutineKey{0x00U, 0xE5BBU}
+                            || request.routine == RoutineKey{0x00U, 0xE5EBU}
+                            || request.routine == RoutineKey{0x00U, 0xE836U});
                         const bool proven_ranked_actor_seam = request.all_calls && (
                             request.routine == RoutineKey{0x02U, 0x45A9U}
                             || request.routine == RoutineKey{0x02U, 0x4571U}
@@ -8830,6 +8843,7 @@ parse_logical_address_range(const std::string_view text)
                             && !proven_dragon_egg_controller_initializer
                             && !proven_three_blobs_rng_initialization
                             && !proven_three_blobs_rng_loop_branch
+                            && !proven_math_gate_seam
                             && !proven_ranked_actor_seam
                             && !proven_tower_source_scheduler_call
                             && !proven_collision_table_call
@@ -24189,6 +24203,14 @@ int run_unsigned_word_multiply_partial_semantic_fixture()
                     return EXIT_FAILURE;
                 }
 
+                for (std::size_t index = 0; index + 1U < replacement->checkpoints.size(); ++index) {
+                    const auto& current = replacement->checkpoints[index];
+                    const auto& next = replacement->checkpoints[index + 1U];
+                    if (current.registers.program_counter != next.instruction.logical_pc) {
+                        std::cerr << "Unsigned-word-multiply checkpoint skipped a ROM instruction.\n";
+                        return EXIT_FAILURE;
+                    }
+                }
                 std::uint16_t expected = accumulator;
                 std::uint8_t shifting_multiplier = multiplier;
                 std::uint8_t add_count = 0U;

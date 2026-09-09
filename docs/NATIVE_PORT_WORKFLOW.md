@@ -5,7 +5,93 @@ iteration loop fast enough to port related code as a unit. It applies to
 Milestone 4 native gameplay work; it does not weaken the release or milestone
 acceptance criteria in [PLAN.md](../PLAN.md).
 
-## Current priority: combined actor residue ranking (September 9)
+## Current priority: Side-Worm and multiply residue ranking (September 9)
+
+This latest user ranking supersedes the actor ranking below. No accompanying
+input recording or total residue was supplied; local replays measure coverage
+and compatibility separately from that live session.
+
+| Rank | Address | Master cycles | Intervals | Shared implementation |
+| --- | --- | ---: | ---: | --- |
+| 1 | 02:5CC8 | 51,780 | 3,412 | Live ORA session latch |
+| 2 | 02:5CC5 | 51,564 | 3,412 | Live LDA session latch fallback |
+| 3 | 00:E5AF | 48,702 | 2,286 | JSR E5BC |
+| 4 | 00:E824 | 48,582 | 2,286 | Live-stack RTS |
+| 5 | 00:E5BB | 48,534 | 2,286 | Live-stack RTS |
+| 6 | 00:E5EC | 48,414 | 2,286 | JSR E813 fallback |
+| 7 | 00:E5F1 | 48,414 | 2,286 | JSR E825 |
+| 8 | 00:E5F8 | 48,414 | 2,286 | JSR E59F |
+| 9 | 00:E5EB | 48,366 | 2,286 | Live-stack RTS |
+| 10 | 00:E836 | 48,366 | 2,286 | Live-stack RTS |
+| 11 | 02:5CCB | 41,352 | 3,412 | Live BNE session gate |
+| 12 | 01:DA3E | 31,728 | 2,630 | Live-stack PLY |
+
+All twelve sites are covered. The larger 5CC5 waiting-parent and E5EC signed
+multiply walks retain priority; their declines use independent LDA/JSR
+fallbacks. Four calls share the existing wrapping-stack JSR implementation:
+high then low saved-PC bytes at offset zero, sample at 18, completion at 21,
+and destination bank from the live MPR. Four returns share the existing atomic
+RTS and return-observer declaration. Both calls and returns require both event
+horizons strictly beyond 21 master cycles.
+
+The Side-Worm gate reads $2D00 and $2D01 separately, preserving the live A for
+ORA and live Z for BNE. LDA/ORA sample at 12 and finish at 15; BNE samples at
+3/9 and finishes at 6/12. PLY reads the live wrapping stack, changes only Y,
+N/Z and SP, samples at 9 and finishes at 12. These single instructions keep
+their checkpoints at every event horizon. New gate/PLY and call paths require
+T clear, mapped code/stack RAM and a complete RAM snapshot; decimal is allowed.
+
+The combined twist oracle also exposed an existing E5BC transcript bug. Its
+first multiply half selected second-half instruction and resume PCs from a
+stale local PC: appending a checkpoint only updated a copy. Each half is now
+selected explicitly. The multiply fixture verifies that every checkpoint
+resumes at the next recorded instruction, across all 4,096 operand cases.
+Arithmetic, write values and cycle offsets are unchanged.
+
+The shared fixture covers 1,572,864 gate/stack operand/status cases, thirteen
+JSR sites across all stack/status values, and 7,274,496 return cases, plus
+mapping, RAM-size and event-horizon guards. The existing waiting-parent oracle
+retains 1,760/1,760 full walks and its pinned hashes. Registry membership rises
+from 765 to 775, reachable keys from 813 to 823, and classified ranges from
+223 to 235.
+
+
+The combined `verify_ranked_math_gates.cmake` oracle uses the natural 3,600-frame
+`twist` route. All five artifacts match assembly: frame state, 2,088 scheduler
+calls with 870,896 writes, all 12,470,985 RAM writes and all 3,265,435 device
+writes. It pins the ROM bytes at every ranked site. LDA, ORA and BNE each
+admit 686/686 entries; PLY admits 455/455. E5EC admits 313/344 entries with
+its full owner retained; the other math calls/returns admit 253-265 of 292,
+with strict event-horizon fallbacks.
+
+Release validation passed the combined oracle, shared exhaustive fixture,
+face and hand captures, audio wrapper, host registry and existing Side-Worm
+waiting-parent oracle (7/7, 128.82 seconds). Both multiply semantic fixtures
+also pass in Release and Debug (2/2 each).
+
+Paired registry measurements against the saved pre-change executable reduce
+`twist` residue at these twelve addresses from 84,024 to 5,982 master cycles:
+78,042 removed (92.9%). Its frame hash is unchanged and both runs have zero
+abandonments. All three gate instructions and PLY have zero remaining
+interpreted intervals; the eight math call/return sites retain horizon
+fallbacks. The total interpreter-cycle reduction equals the target-address
+reduction. Per-address results are in `out/math-gates-cost/twist-addresses.csv`.
+
+All 31 paired corpus routes preserve frame hashes and abandonment counts.
+Their combined target residue falls from 88,794 to 6,024 master cycles:
+82,770 removed (93.2%). Each route's total interpreter-cycle delta equals
+its target-address delta. This saved baseline has one abandonment each on
+`higharc`, `radial` and `sidestep`, unchanged after the ports; all other routes
+have zero. Results are in `out/math-gates-cost/manifest.csv`.
+
+Debug validation passed the shared fixture, combined oracle, face and hand
+captures, and audio wrapper (5/5, 773.99 seconds). Including the two multiply
+fixtures, this round passes 9 Release and 7 Debug checks. Logs are
+`out/math-gates-tests-{Release,Debug}.log` and
+`out/math-gates-multiply-tests-{Release,Debug}.log`. Registry generation/check
+and the 235-range seam manifest validation also pass.
+
+## Previous priority: combined actor residue ranking (September 9)
 
 The latest user-supplied ranking supersedes the collision-call ranking below.
 Port related instructions together. The input recording and total residue were
