@@ -222,9 +222,9 @@ int main()
             require(!jump(), "Unsupported jump key admitted");
         }
         std::puts("Verified 262,144 unconditional-branch stack/status cases and both horizon guards.");
-        for (const auto pc : {0xC693U, 0xC696U, 0xC69BU, 0xC6A6U, 0xC6BFU, 0x51D2U, 0xC624U}) {
+        for (const auto pc : {0xC693U, 0xC696U, 0xC69BU, 0xC6A6U, 0xC6BFU, 0x51D2U, 0xC624U, 0x5F73U}) {
             RoutineEntry entry{};
-            entry.routine = {static_cast<std::uint8_t>(pc == 0x51D2U ? 2U : 1U), static_cast<std::uint16_t>(pc)};
+            entry.routine = {static_cast<std::uint8_t>((pc == 0x51D2U || pc == 0x5F73U) ? 2U : 1U), static_cast<std::uint16_t>(pc)};
             auto& r = entry.registers;
             r.program_counter = static_cast<std::uint16_t>(pc);
             r.mpr[1] = 0xF8U; r.mpr[6] = 1U; r.mpr[2] = 2U;
@@ -239,7 +239,7 @@ int main()
                     require(result.has_value() == ((status & 0x20U) == 0U), "Call transfer-mode guard changed");
                     if (!result) { continue; }
                     const auto& out = result->output_registers;
-                    require(out.program_counter == ((pc == 0xC693U || pc == 0xC69BU) ? 0xC5EAU : pc == 0x51D2U ? 0x5475U : pc == 0xC624U ? 0xF605U : 0xC5C9U)
+                    require(out.program_counter == ((pc == 0xC693U || pc == 0xC69BU) ? 0xC5EAU : pc == 0x51D2U ? 0x5475U : pc == 0xC624U ? 0xF605U : pc == 0x5F73U ? 0xC018U : 0xC5C9U)
                         && out.stack_pointer == static_cast<std::uint8_t>(sp - 2U)
                         && out.status == status && out.accumulator == r.accumulator
                         && out.x == r.x && out.y == r.y && out.mpr == r.mpr,
@@ -281,7 +281,7 @@ int main()
             r.mpr[pc >> 13U] = entry.routine.physical_bank; ++r.program_counter;
             require(!devils_crush::app::detail::replace_coroutine_call(entry, ram), "Wrong call PC admitted");
         }
-        std::puts("Verified seven scheduler/submission/asset calls across all stack pointers and status values.");
+        std::puts("Verified eight scheduler/submission/asset calls across all stack pointers and status values.");
         for (const auto routine : {RoutineKey{0x08U, 0x5976U}, RoutineKey{0x01U, 0xC4C8U},
                  RoutineKey{0x08U, 0x5A69U}, RoutineKey{0x00U, 0xE47CU},
                  RoutineKey{0x02U, 0x4F75U}, RoutineKey{0x02U, 0x51D5U}, RoutineKey{0x45U, 0x4B85U}, RoutineKey{0x00U, 0xED85U}, RoutineKey{0x02U, 0x4F92U},

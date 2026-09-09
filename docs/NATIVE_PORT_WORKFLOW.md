@@ -5,9 +5,119 @@ iteration loop fast enough to port related code as a unit. It applies to
 Milestone 4 native gameplay work; it does not weaken the release or milestone
 acceptance criteria in [PLAN.md](../PLAN.md).
 
-## Current priority: latest cabinet report (September 9)
+## Current priority: collision-call cabinet ranking (September 9)
 
-The latest user-supplied report supersedes the earlier Gray-Blob / side-worm
+The latest user-supplied address ranking supersedes all earlier priority lists.
+Use the replay corpus for compatibility and target measurements, not to
+replace this ranking. No total residue or input recording accompanied it.
+
+| Rank | Address | Master cycles | Intervals |
+| --- | --- | ---: | ---: |
+| 1 | 02:4421 | 6,957 | 329 |
+| 2 | 02:441E | 4,983 | 329 |
+| 3 | 02:5F73 | 4,080 | 192 |
+| 4 | 00:FA67 | 3,024 | 141 |
+| 5 | 03:7C34 | 2,208 | 104 |
+| 6 | 00:E438 | 1,962 | 327 |
+| 7 | 45:49E3 | 1,776 | 296 |
+| 8 | 45:4B85 | 1,683 | 39 |
+| 9 | 45:485D | 1,122 | 187 |
+| 10 | 03:66A3 | 1,110 | 38 |
+| 11 | 00:EB1A | 1,104 | 92 |
+| 12 | 03:66AA | 927 | 57 |
+
+The preceding round targeted the related collision-selector load at 441E and JSR at
+4421 (11,940 reported master cycles combined). The following target is
+02:5F73, subject to any newer user-supplied ranking.
+
+## Tower-Insect source scheduler call: 02:5F73
+
+This round follows the latest ranking's next address, 02:5F73 (4,080 reported
+master cycles / 192 intervals). The previously unadmitted family helper
+restricted this JSR to actor slot 2C and fixed the destination bank to 01.
+It now delegates to the tested shared call implementation: preserve A/X/Y/P,
+push return address 5F75 in hardware order through the wrapping live stack,
+and reach C018 in the bank mapped by MPR6. Stack writes precede the cycle
+charge; interrupt sampling is at 18 master cycles and completion at 21.
+Live PC, code/RAM mapping, full RAM, clear T, and strict event-horizon guards
+preserve fallback. Decimal mode is valid and the opcode needs no actor-slot
+restriction. The other child-spawner continuations retain their own guards.
+
+The shared fixture now exercises eight call sites, adding all 65,536
+stack-pointer/status combinations for 5F73 and both event-horizon checks.
+The higharc oracle pins JSR C018 and observes both 5F73 and scheduler C5C9.
+Assembly and native frames, call registers/timing, and all 818,325 ordered
+writes match across 1,635 observed calls. It accepts 163 of 192 source calls;
+the other 29 retain event-horizon fallback.
+
+Registry admission rises to 755 routines with 803 reachable keys. The seam
+manifest has 211 non-overlapping ranges. Evidence is recorded under
+`out/source-call-cost/`, `out/source-call-tests-{Release,Debug}.log`, and
+`tests/verify_tower_source_scheduler_call.cmake`.
+
+All 31 registry before/after route hashes and abandonment counts match.
+Only higharc exercises 5F73: target residue falls from **4,080 to 657 master
+cycles**, removing **3,423 cycles (83.9%)**; 29 guarded call intervals remain.
+Each route's total interpreter-cycle delta equals its target delta. Higharc
+has one pre-existing abandonment in both modes, also present before this
+round; unchanged counts must not be described as zero abandonments. These
+are replay measurements, not a claim to have replayed the cabinet session.
+Release passes all 7 checks in 58.21 seconds, including the new oracle, shared
+fixture, previous collision-call oracle, host deployment, both corruption
+captures, and audio-interrupt regression.
+
+Debug passes all 6 checks in 603.38 seconds: the shared fixture, new source
+call and previous collision-call oracles, both corruption captures, and
+audio-interrupt regression.
+
+The next address in the user's ranking is 00:FA67. The current round does not
+claim to remove the other supplied residues or replay the cabinet recording.
+
+## Collision selector and table call: 02:441E / 4421
+
+The native selector load reads $3C80,X using live X, updates A/N/Z, and
+hands off at 4421 after 15 master cycles. The previously unadmitted JSR
+helper now has live-PC, code/RAM-mapping, RAM-size, and clear-T guards.
+It pushes return address 4423 high-byte first through the wrapping live
+stack, then reaches 6966 in the bank selected by MPR3 after 21 cycles.
+Both stack writes occur before the instruction's cycle charge, matching
+the core; the old helper incorrectly timestamped them at cycle 15.
+The JSR retains core fallback when either event horizon is at most 21.
+Each instruction has its own interrupt checkpoint; the callee remains an
+independent registry entry. Decimal mode is valid for both instructions.
+
+The fixture covers 262,144 selector/status/slot combinations and 65,536
+stack/status combinations, plus mapping and event-horizon guards. The weave
+oracle pins the six ROM bytes and compares frames, call registers/timing,
+and 21,092 ordered writes across 658 calls with assembly. It accepts all
+329 selector loads and 285 of 329 JSRs; event horizons retain the remaining
+44 calls in the core. The smaller state census also matches all three
+artifacts, with 5/5 loads and 4/5 calls accepted.
+
+Both addresses are admitted to the normal registry: 754 routines, 803
+reachable keys. The seam manifest has 209 non-overlapping ranges. Release
+passes all 6 checks in 59.17 seconds, including the fixture, ROM oracle,
+host deployment, both corruption captures, and audio-interrupt regression.
+
+Registry comparisons preserve all 31 route hashes and abandonment counts.
+Target residue falls from **32,040 to 2,313 master cycles** across the corpus,
+removing **29,727 cycles (92.8%)**. The affected routes are sweep
+(19,884 to 1,245), weave (12,084 to 1,068), and alley (72 to 0). The selector
+load has no remaining interpreter intervals; the residual call intervals
+retain event-horizon fallback. Every route's total interpreter-cycle delta
+equals its target delta. These are replay measurements, not an extrapolated
+reduction of the user's unprovided cabinet recording.
+
+Debug passes all 5 checks in 557.51 seconds: the fixture, collision-call
+oracle, both corruption captures, and audio-interrupt regression.
+
+Evidence: `out/collision-call-cost/`,
+`out/collision-call-tests-{Release,Debug}.log`, and
+`tests/verify_collision_table_call.cmake`.
+
+## Previous priority: Three-Blobs cabinet report (September 9)
+
+That report superseded the earlier Gray-Blob / side-worm
 priority below. Baseline: 196,506 non-wait interpreter master cycles across
 14,984 intervals and 2,321 addresses; 750 of 751 admitted routines deployed,
 with C500 claimed by the host and zero transcript abandonments.

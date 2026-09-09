@@ -7776,6 +7776,14 @@ parse_logical_address_range(const std::string_view text)
                                         .logical_pc = 0x42EBU,
                                     }
                             && request.all_calls;
+                        const bool proven_tower_source_scheduler_call =
+                            request.routine == RoutineKey{0x02U, 0x5F73U}
+                            && request.all_calls;
+                        const bool proven_collision_table_call =
+                            request.routine.physical_bank == 0x02U
+                            && (request.routine.logical_pc == 0x441EU
+                                || request.routine.logical_pc == 0x4421U)
+                            && request.all_calls;
                         const bool proven_three_blobs_first_movement_prefix =
                             request.routine.physical_bank == 0x03U
                             && (request.routine.logical_pc == 0x66A3U
@@ -8809,6 +8817,8 @@ parse_logical_address_range(const std::string_view text)
                             && !proven_dragon_egg_controller_initializer
                             && !proven_three_blobs_rng_initialization
                             && !proven_three_blobs_rng_loop_branch
+                            && !proven_tower_source_scheduler_call
+                            && !proven_collision_table_call
                             && !proven_three_blobs_first_movement_prefix
                             && !proven_three_blobs_first_movement_continuation
                             && !proven_three_blobs_y_expiry_negation_prefix

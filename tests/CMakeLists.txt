@@ -1,3 +1,9 @@
+add_executable(dc_collision_call_tests collision_call_tests.cpp
+    ../src/app/native_replacements_collision_call.cpp)
+target_link_libraries(dc_collision_call_tests PRIVATE DevilsCrush::Emulation)
+target_compile_features(dc_collision_call_tests PRIVATE cxx_std_20)
+dc_enable_strict_warnings(dc_collision_call_tests)
+add_test(NAME dc_collision_call_tests COMMAND dc_collision_call_tests)
 add_executable(dc_three_blobs_branch_tests three_blobs_branch_tests.cpp
     ../src/app/native_replacements_three_blobs_branch.cpp)
 target_link_libraries(dc_three_blobs_branch_tests PRIVATE DevilsCrush::Emulation)
@@ -5534,6 +5540,16 @@ if(TARGET devils_crush)
                 "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/actor-scan-cursors-$<CONFIG>-v1"
                 -P "${CMAKE_CURRENT_SOURCE_DIR}/verify_actor_scan_cursors.cmake")
         set_tests_properties(dc_rom_actor_scan_cursors PROPERTIES LABELS rom_required)
+        add_test(NAME dc_rom_tower_source_scheduler_call
+            COMMAND "${CMAKE_COMMAND}" "-DAPP=$<TARGET_FILE:devils_crush>" "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/tower-source-scheduler-call-$<CONFIG>-v1"
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/verify_tower_source_scheduler_call.cmake")
+        set_tests_properties(dc_rom_tower_source_scheduler_call PROPERTIES LABELS rom_required)
+        add_test(NAME dc_rom_collision_table_call
+            COMMAND "${CMAKE_COMMAND}" "-DAPP=$<TARGET_FILE:devils_crush>" "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/collision-table-call-$<CONFIG>-v1"
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/verify_collision_table_call.cmake")
+        set_tests_properties(dc_rom_collision_table_call PROPERTIES LABELS rom_required)
         add_test(NAME dc_rom_three_blobs_timer_branch
             COMMAND "${CMAKE_COMMAND}" "-DAPP=$<TARGET_FILE:devils_crush>" "-DROM=${DC_ROM_PATH}"
                 "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/three-blobs-timer-branch-$<CONFIG>-v1"

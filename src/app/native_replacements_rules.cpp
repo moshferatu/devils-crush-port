@@ -10242,6 +10242,9 @@ replace_tower_insect_child_spawner_seam(
     const std::span<const std::byte> work_ram)
 {
     constexpr RoutineKey kSourceSchedulerCall{0x02U, 0x5F73U};
+    if (entry.routine == kSourceSchedulerCall) {
+        return replace_coroutine_call(entry, work_ram);
+    }
     constexpr RoutineKey kAllocationCall{0x02U, 0x5F78U};
     constexpr RoutineKey kAllocatorSuccess{0x02U, 0x5F7BU};
     constexpr RoutineKey kChildInitializer{0x02U, 0x5F7EU};
@@ -10301,32 +10304,6 @@ replace_tower_insect_child_spawner_seam(
     };
 
     auto checkpoint = entry.registers;
-    if (entry.routine == kSourceSchedulerCall) {
-        // The fixed source's group-clear path yields through the ordinary
-        // coroutine scheduler.  This JSR owns only its precise return frame;
-        // C018/C5C9 remains the existing scheduler transaction, which
-        // consumes that frame and installs the next source dispatch.
-        if (entry.registers.x != 0x2CU) {
-            return std::nullopt;
-        }
-        const auto stack_high = checkpoint.stack_pointer;
-        const auto stack_low = static_cast<std::uint8_t>(stack_high - 1U);
-        append_write(0x5F73U,
-                     static_cast<std::uint16_t>(0x2100U + stack_high),
-                     0x5FU, 0U);
-        append_write(0x5F73U,
-                     static_cast<std::uint16_t>(0x2100U + stack_low),
-                     0x75U, 0U);
-        checkpoint.stack_pointer = static_cast<std::uint8_t>(
-            checkpoint.stack_pointer - 2U);
-        append_checkpoint(0x5F73U, 0xC018U, 21U, checkpoint);
-        checkpoint.program_counter = 0xC018U;
-        replacement.return_instruction = {0x01U, 0xC018U};
-        replacement.output_registers = checkpoint;
-        replacement.body_master_cycles = 21U;
-        return replacement;
-    }
-
     if (entry.routine == kAllocationCall) {
         // JSR $C024. The jump-table row and generic allocator remain their
         // own admitted transactions and resume at the carry branch below.
@@ -22661,57 +22638,6 @@ replace_shared_four_tick_timer_tail(
     });
     replacement.body_master_cycles = 111U;
     append_checkpoint(replacement, 0x4CEEU, 0x4CF1U, 111U, after_compare);
-    return replacement;
-}
-
-[[nodiscard]] std::optional<RoutineReplacement>
-replace_shared_collision_table_call(
-    const RoutineEntry& entry,
-    const std::span<const std::byte> work_ram)
-{
-    // `JSR $6966` is the common upper-table collision-table call.  The
-    // callee already owns the whole table walk and absorbs this return, so
-    // this seam owns only the caller's exact JSR frame.
-    constexpr RoutineKey kRoutine{.physical_bank = 0x02U, .logical_pc = 0x4421U};
-    constexpr std::uint16_t kCollisionTableEntry = 0x6966U;
-    if (entry.routine != kRoutine || work_ram.size() < 0x0200U) {
-        return std::nullopt;
-    }
-
-    auto output = entry.registers;
-    const auto stack_high = output.stack_pointer;
-    const auto stack_low = static_cast<std::uint8_t>(stack_high - 1U);
-    output.stack_pointer = static_cast<std::uint8_t>(output.stack_pointer - 2U);
-    output.program_counter = kCollisionTableEntry;
-
-    RoutineReplacement replacement{
-        .return_instruction = {
-            .physical_bank = output.mpr[kCollisionTableEntry >> 13U],
-            .logical_pc = kCollisionTableEntry,
-        },
-        .output_registers = output,
-        .body_master_cycles = 21U,
-        .work_ram_writes = {
-            {
-                .instruction = kRoutine,
-                .logical_address = static_cast<std::uint16_t>(0x2100U + stack_high),
-                .value = 0x44U,
-                .master_cycle_offset = 15U,
-            },
-            {
-                .instruction = kRoutine,
-                .logical_address = static_cast<std::uint16_t>(0x2100U + stack_low),
-                .value = 0x23U,
-                .master_cycle_offset = 15U,
-            },
-        },
-    };
-    replacement.checkpoints.push_back({
-        .interrupt_sample_master_cycle_offset = 18U,
-        .master_cycle_offset = 21U,
-        .instruction = kRoutine,
-        .registers = output,
-    });
     return replacement;
 }
 

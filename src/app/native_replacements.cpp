@@ -153,7 +153,8 @@ replace_native_gameplay_routine_impl(
     if (entry.routine == RoutineKey{0x02U, 0x452EU}) {
         return detail::replace_upper_table_actor_idle_gate(entry, work_ram);
     }
-    if (entry.routine == RoutineKey{0x02U, 0x4421U}) {
+    if (entry.routine == RoutineKey{.physical_bank = 0x02U, .logical_pc = 0x441EU}
+        || entry.routine == RoutineKey{0x02U, 0x4421U}) {
         return detail::replace_shared_collision_table_call(entry, work_ram);
     }
     if (entry.routine == RoutineKey{0x03U, 0x68BFU}) {

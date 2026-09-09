@@ -117,10 +117,11 @@ std::optional<RoutineReplacement> replace_coroutine_call(
     constexpr RoutineKey kResetCall{.physical_bank = 0x01U, .logical_pc = 0xC6BFU};
     constexpr RoutineKey kAssetCall{.physical_bank = 0x01U, .logical_pc = 0xC624U};
     constexpr RoutineKey kReleaseCall{.physical_bank = 0x02U, .logical_pc = 0x51D2U};
+    constexpr RoutineKey kSourceCall{.physical_bank = 0x02U, .logical_pc = 0x5F73U};
     if ((entry.routine != kDelayCall && entry.routine != kSchedulerCall
             && entry.routine != kSecondDelayCall && entry.routine != kToggleCall
             && entry.routine != kResetCall && entry.routine != kReleaseCall
-            && entry.routine != kAssetCall)
+            && entry.routine != kAssetCall && entry.routine != kSourceCall)
         || entry.registers.program_counter != entry.routine.logical_pc
         || entry.registers.mpr[1] != 0xF8U
         || entry.registers.mpr[entry.routine.logical_pc >> 13U] != entry.routine.physical_bank
@@ -142,7 +143,7 @@ std::optional<RoutineReplacement> replace_coroutine_call(
     }
     r.program_counter = (entry.routine == kDelayCall || entry.routine == kSecondDelayCall)
         ? 0xC5EAU : entry.routine == kReleaseCall ? 0x5475U
-        : entry.routine == kAssetCall ? 0xF605U : 0xC5C9U;
+        : entry.routine == kAssetCall ? 0xF605U : entry.routine == kSourceCall ? 0xC018U : 0xC5C9U;
     result.return_instruction = {r.mpr[r.program_counter >> 13U], r.program_counter};
     result.output_registers = r;
     result.body_master_cycles = 21U;
