@@ -5101,7 +5101,8 @@ replace_bank9_upper_table_countdown(
 {
     // 09:7025 follows the original F08E motion call in the first upper-table
     // scripted actor. It decrements two indexed timers. Most passes end at
-    // the script's RTS; on rollover it refreshes the delay/count field and
+    // the independently admitted live-stack RTS; on rollover it refreshes
+    // the delay/count field and
     // stops immediately before the common 01:C5C9 initializer JSR.
     constexpr std::uint8_t kBank = 0x09U;
     constexpr std::uint32_t kAbsoluteIndexedRmw = 21U;
@@ -5260,8 +5261,8 @@ replace_bank9_upper_table_parent_decay(
 {
     // 09:7043 and 09:717B are sibling parent actors' short decay gates after
     // F08E. Their branches converge on the enclosing script's RTS, so the
-    // core keeps that return frame while this replacement owns only the four
-    // local instructions.
+    // return is admitted independently while this replacement owns only the
+    // four local instructions.
     constexpr std::uint8_t kBank = 0x09U;
     struct DecayScript {
         std::uint16_t entry_pc;

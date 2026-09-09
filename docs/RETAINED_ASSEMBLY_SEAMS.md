@@ -1,5 +1,610 @@
 # Retained Assembly Seams
 
+## Actor scan cursor admission: 01:C500
+
+The largest primary-ranking range, C500-C50E, already had a native walker
+used by the cabinet flipper hook but lacked ordinary registry admission.
+Admitting C500 removes all 8,664,411 measured interpreter cycles in that
+range. Across 31 routes, non-wait residue falls from 12,502,716 to 3,838,305
+cycles (69.30%); total interpreter cycles fall from 18,089,486,250 to
+18,080,821,839. Frame-sync waiting remains 18,076,983,534 cycles. Executed
+interpreter addresses fall from 3,523 to 3,516. Every route state hash and
+abandonment count matches, and each total cycle delta equals its cursor
+delta. These are interpreter-residue measurements, not host speedup claims.
+
+The existing seven-instruction suffix resets $2056, $2CBA, $2CBC, and
+$204D, sets $2CBB to $7F, and resumes at C510 after 81 master cycles.
+Each instruction retains its interrupt sample three cycles before completion.
+The walker now also checks the live PC and MPR1/MPR6 mappings. D/T modes
+and short RAM continue to defer to the core. C4DE still stops at C500 after
+writing the enable mask, preserving the cabinet input boundary.
+
+Live cabinet play, captured-session replay, and the launch flipper probe
+explicitly claim C500 before registry installation when they restore input.
+The host callback restores flipper input and then invokes the same cursor
+walker. Initial regression runs caught a duplicate-hook collision; the
+explicit claims resolve it. The host smoke test now requires the named
+C500 claim, so ordinary admission cannot silently occupy the cabinet key.
+
+The cursor fixture checks 65,536 register/status cases, output flags,
+checkpoint/write timing, and PC/mapping/RAM guards. The isolated gameplay
+oracle pins the 16 ROM bytes at offset 9472, accepts 1,703/1,703 entries,
+and matches all five pinned assembly artifacts: state, scheduler calls,
+call writes, RAM writes, and device writes. The registry contains 748
+admitted routines and 799 reachable keys. The seam manifest retains 204
+ranges and classifies the cursor body as guarded while naming host ownership.
+
+Validation passes: seven Release checks (67.15 seconds) and six Debug checks
+(494.69 seconds), covering the cursor fixture/oracle, host registry, face
+capture, hand-bus capture, and audio-interrupt regression; Release also
+checks the original C4DE preamble. The launch probe passes all four camera
+and input configurations. A final Debug host check verifies the explicit
+C500 claim. Logs: `out/actor-scan-cursors-tests-Release-final.log`,
+`out/actor-scan-cursors-tests-Debug.log`,
+`out/actor-scan-cursors-launch-probe.log`, and
+`out/actor-scan-cursors-host-Debug-final.log`. Both face replays retain the
+corrected hash; the three original capture files remain unchanged.
+
+Evidence: `out/actor-scan-cursors-cost/manifest.csv`,
+`out/actor-scan-cursors-cost-summary.log`,
+`out/actor-scan-cursors-cost/after-interpreter-residue.md`, and
+`out/actor-scan-cursors-registry-check.log`.
+The next primary-ranking targets are scheduler C624-C630 (78,726 cycles)
+and palette E994-E9A8 (75,516 cycles). Continue prioritizing expected
+removable cycles from the complete ranking.
+
+## Audio filter and command setup: 00:ECFD / ED18 / ED23 / ED2C
+
+This iteration targets the two largest non-host residue clusters together:
+ECFD-ED07 (91,590 cycles) and ED18-ED34 (84,462 cycles). The filter stores
+A in $2A, rejects command FF, and tests the live $2CC7 tilt latch. With a
+nonzero latch it accepts only commands 31, 27, and 47. Its rejected paths
+hand off at the original ED03/ED17 RTS boundaries. ED18, ED23, and ED2C
+set the wrapper selector to 06, 00, or 09, set bank $45 in $30, and JMP
+ED58. The existing ED58 wrapper retains live stack and mapper ownership.
+
+Every transcribed instruction has its own interrupt checkpoint, sampled
+three master cycles before completion. RAM writes carry the original
+instruction and completion offset. Short RAM, foreign MPR1/MPR7, mismatched
+PC/bank, and T mode defer to the interpreter. No caller frame is synthesized
+and no mapper change is moved across the ED58 handoff.
+
+The new fixture checks 196,608 command/status/filter cases, all three setup
+entries across all status values, flags, timing, writes, and mapping guards.
+The isolated gameplay oracle pins the 58 ROM bytes at offset 3325 and all
+five existing gameplay artifacts (state, scheduler calls, call writes, RAM
+writes, and device writes). Admission is 26/26 ECFD, 26/26 ED18, 1/1 ED23,
+and 4/4 ED2C. The registry now contains 747 admitted routines and 799
+reachable keys; the seam manifest contains 204 classified ranges.
+
+The 31-route incremental registry comparison removes all 176,052 interpreter
+cycles at the targeted paths. Non-wait residue falls from 12,678,768 to
+12,502,716 cycles (1.39%); executed addresses fall from 3,542 to 3,523.
+All state hashes and abandonment counts match, and every total cycle delta
+equals its target delta. The 18,076,983,534 frame-wait cycles are unchanged.
+Evidence: `out/audio-command-setup-cost/manifest.csv`, the before/after
+interpreter-residue reports alongside it, and
+`out/audio-command-setup-cost-summary.log`. This is a registry comparison;
+the isolated oracle separately supplies the pinned assembly comparison.
+
+Release and Debug each pass all five targeted checks: the new exhaustive
+fixture and assembly/native oracle, the audio-wrapper interrupt regression,
+the corrupted-face session, and the upper-hand bus session. Logs are
+`out/audio-command-setup-tests-{Release,Debug}.log` (61.96 and 491.41 seconds).
+Both face replays retain SHA-256
+`a263ebb43cf47f94e37011461ffd3c3657a3f94005c5523a746db13869a1b35a`;
+the original capture inputs, state, and hiscore hashes are unchanged.
+Both builds, registry generation/check, seam validation, and diff checks pass.
+The full suite was not run.
+
+Prioritize expected removable cycles in the primary ranking on the next
+iteration. Audit the 8,664,411-cycle C500-C50E host range first: its cursor
+suffix already has a native walker and the cabinet host installs it after
+restoring flipper input, but it has no ordinary registry admission evidence.
+The host label alone is not proof that this cost is unavoidable. Preserve
+the input boundary when evaluating admission. The next non-host clusters
+are scheduler C624-C630 (78,726 cycles) and palette E994-E9A8 (75,516);
+investigate those before another small independent RTS.
+
+## Actor-flag return: 01:C8E1
+
+The actor-flag check after the C5C9 scheduler yield now admits its final RTS
+independently. The oracle pins JSR C5C9 / LDA $3C80,X / AND #01 / BEQ +1 /
+RTS as `20c9c5bd803c2901f00160` at ROM offset 10455. The predecessors do
+not change the interrupt mask, so the existing atomic return transcript applies.
+The return reads the live stack, wraps both stack indices and the saved
+address, resolves its destination through live MPRs, preserves A/X/Y/P,
+and reports an absorbed return at cycle zero without RAM writes.
+Both event horizons must exceed 21 master cycles. Unsupported code/stack
+mappings and short RAM views defer to the core.
+
+The shared fixture covers 25 returns and 4,915,200 target/status/stack cases,
+plus both horizons and mapping/RAM guards. `dc_rom_actor_flag_return`
+compares five pinned alley artifacts, including countdown call observations,
+RAM writes, and device writes; its isolated replay admits 101/118 returns.
+The standard gameplay route does not enter this return. The registry contains
+743 admitted routines and 795 dispatch-reachable keys; the seam manifest
+contains 204 classified ranges.
+
+Across all 31 scheduler-return routes, enabling this additional registry entry
+reduces its interpreter cost from 10,104 to 1,641 master cycles: 8,463 cycles
+removed (83.76%). Alley, lanes, stagger, and twist remove 2,121, 2,079, 2,121,
+and 2,142 cycles respectively; the other routes have no target delta.
+Non-wait interpreter cost falls from 12,687,231 to 12,678,768 cycles (0.07%).
+Every frame hash and registry abandonment count matches, frame-wait cycles
+remain 18,076,983,534, and the total interpreter delta equals the target delta.
+This is an incremental registry comparison; the isolated oracle supplies
+the pinned assembly comparison. Evidence is in
+`out/actor-flag-return-cost/manifest.csv` and
+`out/actor-flag-return-cost/{before,after}-interpreter-residue.md`.
+
+Release and Debug each pass all five targeted checks: the shared return
+fixture, actor-flag oracle, audio-wrapper regression, corrupted-face session,
+and upper-hand bus session. Logs are
+`out/actor-flag-tests-{Release,Debug}.log` (94.75 and 751.40 seconds).
+Both face replays retain SHA-256
+`a263ebb43cf47f94e37011461ffd3c3657a3f94005c5523a746db13869a1b35a`;
+the original capture inputs, state, and hiscore hashes are unchanged.
+Both builds, registry generation/check, seam validation, and diff checks pass.
+The full suite was not run.
+
+## Frame-delay return: 00:E333
+
+The frame-delay loop now admits its final RTS independently. The oracle
+pins JSR E321 / DEC $2C / BNE E32C / RTS as `2021e3c62cd0f960` at ROM
+offset 812. The loop still executes in the core; DEC and BNE do not change
+the interrupt mask, so the existing atomic return transcript applies.
+The return reads the live stack, wraps both stack indices and the saved
+address, resolves its destination through live MPRs, preserves A/X/Y/P,
+and reports an absorbed return at cycle zero without RAM writes.
+Both event horizons must exceed 21 master cycles. Unsupported code/stack
+mappings and short RAM views defer to the core.
+
+The shared fixture covers 24 returns and 4,718,592 target/status/stack cases,
+plus both horizons and mapping/RAM guards. `dc_rom_frame_delay_return`
+compares five pinned gameplay artifacts, including scheduler call observations,
+RAM writes, and device writes; its isolated replay admits 21/21 returns.
+The registry contains 742 admitted routines and 794 dispatch-reachable keys.
+The former E32C-E34C core range is split around the guarded return, yielding
+203 classified ranges.
+
+Across all 31 scheduler-return routes, enabling only this additional registry
+entry reduces its interpreter cost from 13,671 to zero master cycles (100%),
+or 441 per route. Non-wait interpreter cost falls from 12,700,902 to
+12,687,231 cycles (0.11%). Every frame hash and registry abandonment count
+matches, frame-wait cycles remain 18,076,983,534, and the total interpreter
+delta equals the target delta. This is an incremental registry comparison;
+the isolated oracle supplies the pinned assembly comparison. Evidence is in
+`out/frame-delay-return-cost/manifest.csv` and
+`out/frame-delay-return-cost/{before,after}-interpreter-residue.md`.
+
+Release and Debug each pass all five targeted checks: the shared return
+fixture, frame-delay oracle, audio-wrapper regression, corrupted-face
+session, and upper-hand bus session. Logs are
+`out/frame-delay-tests-{Release,Debug}.log` (60.01 and 505.10 seconds).
+Both face replays retain SHA-256
+`a263ebb43cf47f94e37011461ffd3c3657a3f94005c5523a746db13869a1b35a`;
+the original capture inputs, state, and hiscore hashes are unchanged.
+Both builds, registry generation/check, seam validation, and diff checks pass.
+The full suite was not run.
+
+## Parent ascending returns: 09:70BB and 09:71E1
+
+Both ascending animation phases now admit their final RTS independently of
+parent-body execution. The oracle pins the shared CMP #06 / BEQ +1 / RTS
+sequence (`c906f00160`) at ROM offsets 78007 and 78301. Neither predecessor
+changes the interrupt mask. The return reads the live stack, wraps its stack
+indices and saved address, resolves the destination through live MPRs, preserves
+A/X/Y/P, and reports the absorbed return at cycle zero without RAM writes.
+Both event horizons must exceed 21 master cycles; unsupported code or stack
+mappings and short RAM views defer to the core.
+
+The shared fixture covers 23 returns and 4,521,984 target/status/stack cases,
+plus both horizons and mapping/RAM guards. `dc_rom_parent_ascending_returns`
+compares five pinned gameplay artifacts, including scheduler call observations,
+RAM writes, and device writes. Its isolated replay admits 22/23 and 15/19
+returns respectively. The registry contains 741 admitted routines and 793
+dispatch-reachable keys; the seam manifest retains 201 classified ranges.
+
+Across all 31 scheduler-return routes, enabling these two entries in the
+current registry reduces their interpreter cost from 27,342 to 3,255 cycles:
+24,087 cycles removed (88.10%), or 777 per route. Non-wait
+interpreter cycles fall from 12,724,989 to 12,700,902 (0.19%). Frame hashes,
+registry abandonment counts, and frame-wait cycles match on every route; the
+total interpreter delta equals the target delta. This measures the incremental
+registry change; the isolated oracle supplies the pinned assembly comparison.
+Evidence is in `out/parent-ascending-cost/manifest.csv` and
+`out/parent-ascending-cost/{before,after}-interpreter-residue.md`.
+
+Release and Debug each pass all five targeted checks: the shared return
+fixture, ascending-return oracle, audio-wrapper regression, corrupted-face
+session, and upper-hand bus session. Logs are
+`out/parent-ascending-tests-{Release,Debug}.log`; builds, registry generation,
+and seam validation also pass. Both face replays retain SHA-256
+`a263ebb43cf47f94e37011461ffd3c3657a3f94005c5523a746db13869a1b35a`,
+and the original capture inputs, state, and hiscore hashes are unchanged.
+The full suite was not run.
+
+## Attribute transaction return: 01:DA3F
+
+The attribute update now admits its final RTS independently after the core
+restores Y with PLY at DA3E, including early-exit callers. The oracle pins
+PLY / RTS as `7a60` at ROM offset 14910. The return reads the live stack,
+wraps both stack indices and the saved return address, resolves its target
+through live MPRs, preserves A/X/Y/P, and reports an absorbed return at
+cycle zero without RAM writes. Both event horizons must exceed 21 master
+cycles; unsupported mappings and short RAM views defer. PLY does not
+restore I, so the existing atomic return transcript applies.
+
+The shared fixture covers 21 returns and 4,128,768 target/status/stack
+cases, plus both event horizons and mapping/RAM guards.
+`dc_rom_attribute_return` compares five pinned gameplay artifacts,
+including scheduler call observations, RAM writes, and device writes.
+Its isolated replay admits 2/2 returns. The registry contains 739 admitted
+routines and 791 dispatch-reachable keys; the seam manifest retains 201 ranges.
+
+Across all 31 registry routes, excluding only 01:DA3F for the before run,
+target interpreter cost falls from 17,718 to 2,640 master cycles (85.10%),
+removing 15,078 cycles. Every frame-trace hash and registry abandonment count
+matches, and each total cycle delta equals the target delta. Non-wait
+interpreter work falls from 12,740,067 to 12,724,989 cycles (0.12%);
+frame-sync waiting remains 18,076,983,534 cycles. This measures the registry
+increment, not fresh parity between the entire registry and assembly.
+Evidence: `out/attribute-return-cost/manifest.csv`, the before/after residue
+reports, and `out/attribute-return-cost-summary.log`.
+
+Release and Debug each pass all five targeted checks: the shared return
+fixture, attribute return oracle, audio interrupt regression, corrupted-face
+session, and upper-hand bus session. Total times are 61.80 s Release /
+513.72 s Debug. Logs: `out/attribute-return-tests-{Release,Debug}.log`.
+Both face replays retain SHA-256
+`a263ebb43cf47f94e37011461ffd3c3657a3f94005c5523a746db13869a1b35a`,
+and the three original capture inputs retain their checksums.
+Registry generation/check and the seam check pass. The full suite was not run.
+
+## Mapped RNG return: 00:E8E6
+
+The shared RNG helper now admits its final RTS independently, reading the
+live caller frame without assuming which actor requested a random number.
+The oracle pins LDA $222B / RTS as `ad2b2260` at ROM offset 2275. The return
+preserves A/X/Y/P and MPRs, wraps the stack indices and saved return address,
+resolves the destination through live MPRs, and reports an absorbed return
+at offset zero without RAM writes. Both event horizons must exceed 21 master
+cycles; unsupported mappings and short RAM views defer. The preceding LDA
+does not restore I, so this return uses the existing atomic transcript.
+
+The shared fixture covers 20 returns and 3,932,160 target/status/stack cases,
+plus both event horizons and mapping/RAM guards. `dc_rom_rng_return` compares
+all five pinned alley artifacts, including countdown call observations.
+The ordinary gameplay route does not enter this helper; alley independently
+admits 46/53 returns. The registry contains 738 admitted routines and 790
+dispatch-reachable keys; the seam manifest retains 201 ranges.
+
+Across all 31 registry routes, excluding only 00:E8E6 for the before run,
+target interpreter cost falls from 19,122 to 2,679 master cycles (85.99%),
+removing 16,443 cycles. Every frame-trace hash and registry abandonment count
+matches, and each total cycle delta equals the target delta. Non-wait
+interpreter work falls from 12,756,510 to 12,740,067 cycles (0.13%);
+frame-sync waiting remains 18,076,983,534 cycles. This measures the registry
+increment, not fresh parity between the entire registry and assembly.
+Evidence: `out/rng-return-cost/manifest.csv`, the before/after residue reports,
+and `out/rng-return-cost-summary.log`.
+
+Release and Debug each pass all five targeted checks: the shared return
+fixture, RNG oracle, audio interrupt regression, corrupted-face session,
+and upper-hand bus session. Total times are 96.09 s Release / 751.59 s Debug.
+Logs: `out/rng-return-tests-{Release,Debug}.log`. Both face replays retain
+SHA-256 `a263ebb43cf47f94e37011461ffd3c3657a3f94005c5523a746db13869a1b35a`,
+and the three original capture inputs retain their checksums. Final Release
+and Debug builds, registry generation/check, and the seam check pass.
+The full suite was not run.
+
+## Scripted actor countdown returns: 09:703C and 09:7174
+
+The upper-table scripted actor countdowns now hand off to independently
+admitted native live-stack RTSs. The final CMP #$06 / BEQ / RTS sequence is
+pinned as `c906f00160` at ROM offsets 77880 and 78192. Both returns preserve
+A/X/Y/P and MPRs, wrap stack indices and the saved return address, resolve
+the destination through live MPRs, and report the absorbed return at offset
+zero without RAM writes. Both event horizons must exceed 21 master cycles;
+unsupported mappings and short RAM views defer. The preceding comparison
+and branch do not restore I, so these returns use the atomic transcript.
+
+The shared fixture covers 19 returns and 3,735,552 target/status/stack cases,
+plus timer/user horizon and mapping/RAM guards. The new
+`dc_rom_script_countdown_returns` oracle compares all five pinned gameplay
+artifacts, including scheduler call observations. Independent admissions are
+30/30 at each return. The registry contains 737 admitted routines and 789
+dispatch-reachable keys; the seam manifest retains 201 ranges.
+
+Across all 31 registry routes, excluding only these two hooks for the before
+run, target interpreter cost falls from 39,060 to zero master cycles (100%),
+removing 1,260 cycles per route. Every frame-trace hash and registry abandonment
+count matches, and each total cycle delta equals the target delta. Non-wait
+interpreter work falls from 12,795,570 to 12,756,510 cycles (0.31%);
+frame-sync waiting remains 18,076,983,534 cycles. This measures the registry
+increment, not fresh parity between the entire registry and assembly.
+Evidence: `out/script-countdown-cost/manifest.csv`, the before/after residue
+reports, and `out/script-countdown-cost-summary.log`.
+
+
+Release and Debug each pass all five targeted checks: the shared return
+fixture, scripted countdown oracle, audio interrupt regression, corrupted-face
+session, and upper-hand bus session. Total times are 63.72 s Release / 531.89 s
+Debug. Logs: `out/script-countdown-tests-{Release,Debug}.log`.
+Both face replays retain SHA-256
+`a263ebb43cf47f94e37011461ffd3c3657a3f94005c5523a746db13869a1b35a`,
+and the three original capture inputs retain their checksums. Final Release
+and Debug builds, registry generation/check, and the seam check pass.
+The full suite was not run.
+
+
+## Small-Soldier delayed-spawn returns: 03:7D81 and 03:7E1F
+
+The two delayed-spawn paths now use the shared live-stack RTS independently
+of their existing waiting-path owners. Both returns follow DEC $3B00,X / BEQ,
+pinned as `de003bf00160` at ROM offsets 32124 and 32282. The return preserves
+A/X/Y/P and MPRs, wraps stack indices and the saved address, resolves the
+destination through live MPRs, and reports the absorbed return at offset zero
+without RAM writes. Both event horizons must exceed 21 master cycles;
+unsupported mappings and short RAM views defer. The preceding branches do
+not restore I, so these returns use the atomic transcript.
+
+The shared fixture covers 17 returns and 3,342,336 target/status/stack cases,
+plus strict timer/user horizons and mapping/RAM guards. The new
+`dc_rom_small_soldier_returns` oracle compares all five pinned gameplay
+artifacts, including scheduler call observations. Independent admissions are
+163/192 at 03:7D81 and 166/192 at 03:7E1F. The registry contains 735 admitted
+routines and 787 dispatch-reachable keys; the seam manifest retains 201 ranges.
+
+Across all 31 registry routes, excluding only these two hooks for the before
+run, target interpreter cost falls from 45,243 to 16,326 master cycles:
+28,917 removed (63.91%). Every frame-trace hash and registry abandonment count
+matches, and each total cycle delta equals the target delta. Non-wait
+interpreter work falls from 12,824,487 to 12,795,570 cycles (0.23%);
+frame-sync waiting remains 18,076,983,534 cycles. This measures the registry
+increment, not fresh parity between the entire registry and assembly.
+Evidence: `out/small-soldier-cost/manifest.csv`, the before/after residue
+reports, and `out/small-soldier-cost-summary.log`.
+
+
+Release and Debug each pass the shared return fixture and all four targeted
+replay checks: Small-Soldier returns, audio interrupt regression, corrupted-face
+session, and upper-hand bus session. Replay checks take 62.12 s Release /
+486.50 s Debug. Logs: `out/small-soldier-tests-Release.log`,
+`out/small-soldier-tests-Debug.log`, and `out/small-soldier-fixture-{Release,Debug}.log`.
+Both face replays retain SHA-256
+`a263ebb43cf47f94e37011461ffd3c3657a3f94005c5523a746db13869a1b35a`,
+and the three original capture inputs retain their checksums. Registry and seam
+checks pass. The full suite was not run.
+
+
+## Parent descending returns: 09:7071 and 09:71A9
+
+The two parent descending paths now use the shared live-stack RTS at 7071 and
+71A9. Both follow DEC $3980,X / BEQ, pinned as `de8039f00160` at ROM offsets
+77932 and 78244. The return preserves A/X/Y/P and MPRs, wraps stack indices
+and the saved address, resolves the destination through live MPRs, and reports
+the absorbed return at offset zero without RAM writes. Both event horizons
+must exceed 21 master cycles; unsupported mappings and short RAM views defer.
+The preceding branch does not restore I, so the transcript remains atomic.
+
+The shared fixture now covers 15 returns and 2,949,120 target/status/stack
+cases, plus strict timer/user horizons and mapping/RAM guards. The new
+`dc_rom_parent_descending_returns` oracle compares all five pinned gameplay
+artifacts, including scheduler call observations. Independent admissions are
+35/35 at 09:7071 and 26/35 at 09:71A9. The registry contains 733 admitted
+routines and 785 dispatch-reachable keys; the seam manifest retains 201 ranges.
+
+Across all 31 registry routes, excluding only these two hooks for the before
+run, target interpreter cost falls from 45,570 to 5,859 master cycles:
+39,711 removed (87.14%), or 1,281 per route. Every frame-trace hash and registry
+abandonment count matches, and each total cycle delta equals the target delta.
+Non-wait interpreter work falls from 12,864,198 to 12,824,487 cycles (0.31%);
+frame-sync waiting remains 18,076,983,534 cycles. This measures the registry
+increment, not fresh parity between the entire registry and assembly.
+Evidence: `out/parent-descending-cost/manifest.csv`, the before/after residue
+reports, and `out/parent-descending-cost-summary.log`.
+
+Release and Debug each pass all five targeted checks: the shared return fixture,
+parent descending oracle, audio interrupt regression, corrupted-face replay,
+and upper-hand bus replay (62.10 s Release / 527.44 s Debug). Logs:
+`out/parent-descending-tests-Release.log` and `out/parent-descending-tests-Debug.log`.
+Both face replays retain SHA-256
+`a263ebb43cf47f94e37011461ffd3c3657a3f94005c5523a746db13869a1b35a`,
+and the three original capture inputs retain their checksums. Registry and seam
+checks pass. The full suite was not run.
+
+## Parent holding returns: 09:7099 and 09:71C4
+
+The two parent holding paths now use the shared live-stack RTS at 7099 and
+71C4. Both follow DEC $3B00,X / BEQ, pinned as `de003bf00160` at ROM offsets
+77972 and 78271. The return preserves A/X/Y/P and MPRs, wraps stack indices
+and the saved address, resolves the destination through live MPRs, and reports
+the absorbed return at offset zero without RAM writes. Both event horizons
+must exceed 21 master cycles; unsupported mappings and short RAM views defer.
+The preceding branch does not restore I, so the transcript remains atomic.
+
+The shared fixture now exercises thirteen returns across 2,555,904
+return target/status/stack cases, plus horizon and mapping guards. The standalone
+gameplay oracle admits 29/32 entries at 7099 and 29/36 at 71C4 and compares
+frame state, scheduler calls, caller writes, RAM writes and hardware writes to
+the pinned assembly baseline. Registry generation admits 731 routines, with
+201 classified seam ranges.
+
+Across all 31 routes, isolated full-registry A/B runs excluding these returns
+reduce their interpreter cost from 44,268 to 6,510 cycles (85.29%). Non-wait
+interpreter work falls from 12,901,956 to 12,864,198 cycles (0.29%). Every route
+retains identical frame hashes and abandonment summaries, and its total cycle
+reduction equals the target reduction. Frame-sync waiting stays at
+18,076,983,534 cycles. This measures the registry increment, not fresh parity
+between the entire registry and assembly. Evidence:
+`out/parent-holding-cost/manifest.csv`, the before/after residue reports, and
+`out/parent-holding-cost-summary.log`.
+
+Release and Debug each pass all five targeted checks: the shared return fixture,
+parent holding oracle, audio interrupt regression, corrupted-face replay and
+upper-hand bus replay (62.37 s Release / 498.74 s Debug). Logs:
+`out/parent-holding-tests-Release.log` and `out/parent-holding-tests-Debug.log`.
+Both face replays retain SHA-256
+`a263ebb43cf47f94e37011461ffd3c3657a3f94005c5523a746db13869a1b35a`,
+and the three original capture inputs retain their checksums. Registry and seam
+checks pass. The full suite was not run.
+
+## Parent decay returns: 09:704E and 09:7186
+
+Both sibling upper-table parent actors now return natively after their existing
+7043/717B decay gates. The shared RTS reads the live F8 stack, wraps stack
+indices and the saved address, and resolves the destination through the live
+mapper. It preserves A/X/Y/P and mapper registers, writes no RAM, and reports
+the absorbed return at offset zero. Both event horizons must be strictly beyond
+21 cycles; unsupported code/stack mappings and short RAM views retain core
+execution. The preceding BEQ does not restore the interrupt mask, so these
+returns use the atomic transcript without the audio PLP/RTS checkpoint.
+
+The shared fixture covers eleven returns and 2,162,688 target/status/stack
+cases, plus both horizon guards and invalid mapping/RAM cases. The new
+parent-decay oracle pins both identical DEC/LDA/ORA/BEQ/RTS sequences
+(de003bbd00341d8034f00160), admits 48/48 standalone entries for each return,
+and compares frame state, scheduler calls, ordered caller writes, RAM writes
+and hardware writes against the pinned gameplay assembly baseline. Registry
+generation admits 729 routines; the seam manifest retains 201 classified ranges.
+
+Across all 31 routes, isolated full-registry A/B runs excluding these two
+returns reduce their interpreter cost from 62,496 to zero (100%). Non-wait
+interpreter work falls from 12,964,452 to 12,901,956 cycles (0.48%). Every route
+retains identical frame hashes and abandonment summaries, and its total cycle
+reduction equals the target reduction. Frame-sync waiting remains
+18,076,983,534 cycles. This is incremental registry evidence, not a fresh
+whole-registry assembly comparison. Evidence: `out/parent-decay-cost/manifest.csv`,
+the before/after residue reports, and `out/parent-decay-cost-summary.log`.
+
+Release and Debug both pass the shared return fixture, parent-decay parity
+oracle, audio wrapper interrupt regression, corrupted-face replay and upper-hand
+bus replay. The initial oracle run rejected an incorrectly calculated ROM file
+offset; correcting the test offsets produced passing dedicated reruns (38.97 s
+Release / 340.76 s Debug). The other four checks passed in their original runs.
+Logs: `out/parent-decay-tests-Release.log`, `out/parent-decay-tests-Debug.log`,
+`out/parent-decay-oracle-Release.log` and `out/parent-decay-oracle-Debug.log`.
+Both face replays retain SHA-256
+`a263ebb43cf47f94e37011461ffd3c3657a3f94005c5523a746db13869a1b35a`;
+the three original capture inputs retain their checksums. Registry generation,
+seam verification and `git diff --check` pass. The full suite was not run.
+
+## Mercy-Star return: 02:4F92
+
+The Mercy-Star handler now returns natively at 4F92 after the 4F89 load,
+4F8B mask and 4F8D branch. The shared RTS transcript consumes the live F8
+stack frame, wraps both stack indices and the saved address, and resolves
+the destination through the live mapper. It preserves A/X/Y/P and mapper
+registers, performs no RAM writes, and retains the return observation at
+offset zero. Both event horizons must be strictly beyond its 21 cycles;
+unsupported code/stack mappings or a short RAM view retain core execution.
+The preceding branch does not restore the interrupt mask, so this return
+uses the existing atomic path; the audio PLP/RTS checkpoint remains specific
+to 45:4B85.
+
+The shared fixture covers nine returns and 1,769,472 target/status/stack
+cases, including address wrap, live mapper resolution and both horizon
+guards. The alley oracle pins the preceding instructions and RTS bytes
+(a5532902d0034cc84d60), admits 63/63 standalone entries, and compares frame
+state, countdown call observations, ordered caller writes, RAM writes and
+hardware writes against the pinned assembly baseline. The registry now
+admits 727 routines with 201 classified seam ranges.
+
+Across all 31 replay routes, isolated full-registry A/B runs excluding only
+02:4F92 before the change reduce this return from 34,224 to 3,858 interpreter
+cycles: 30,366 removed (88.73%). Non-wait interpreter work falls from
+12,994,818 to 12,964,452 cycles (0.23%). Every route retains identical frame
+hashes and abandonment summaries, and its total cycle reduction equals the
+target reduction. Frame-sync waiting remains 18,076,983,534 cycles. This is
+incremental registry evidence, not a fresh whole-registry assembly comparison.
+Evidence: `out/mercy-star-cost/manifest.csv`, the before/after residue reports,
+and `out/mercy-star-cost-summary.log`.
+
+Release and Debug each pass all five targeted checks: the shared return
+fixture, Mercy-Star parity oracle, audio wrapper interrupt regression,
+corrupted-face replay and upper-hand bus replay (94.45 s / 707.97 s).
+Logs: `out/mercy-star-tests-Release.log` and
+`out/mercy-star-tests-Debug.log`. Both face replays retain SHA-256
+`a263ebb43cf47f94e37011461ffd3c3657a3f94005c5523a746db13869a1b35a`;
+the three original capture inputs retain their checksums. Registry generation,
+seam verification and `git diff --check` pass. The full suite was not run.
+
+## Audio mapper return: 00:ED85
+
+The three-bank audio wrapper now returns natively at ED85 after its existing
+ED75 continuation restores the caller's mapper shadows and X. The independent
+RTS reads the live F8 stack, wraps both stack indices and the saved address,
+and resolves the destination through the restored live mapper. Its 21-cycle
+transcript preserves A/X/Y/P and the caller's return observation at offset
+zero. Both event horizons must be strictly beyond the instruction; unsupported
+code/stack mappings or a short RAM view decline to the interpreter.
+
+The shared fixture now covers eight return entries and 1,572,864
+return target/status/stack cases. The mapper-return oracle pins the PLX/RTS
+ROM bytes fa60 and admission at 28/32 standalone gameplay entries. Frame
+state, scheduler calls, ordered caller writes, RAM writes and hardware writes
+must match the pinned assembly baseline. The registry admits 726 routines
+and the seam manifest retains 201 classified ranges.
+
+All 31 registry A/B routes preserve frame-state hashes and abandonment
+counts with only ED85 excluded on the before side. Its interpreter cost
+falls from 37,608 to 5,814 master cycles, removing 31,794 (84.54%). Each
+route's delta is confined to ED85; non-wait interpreter work falls from
+13,026,612 to 12,994,818 (0.24%). Frame-sync waits are unchanged. This is
+an incremental registry comparison, not fresh whole-registry assembly parity.
+Evidence is in out/audio-mapper-cost/manifest.csv, its before/after rankings
+and out/audio-mapper-cost-summary.log.
+
+Release and Debug each pass five targeted checks: the shared fixture, mapper
+return oracle, prior audio return/IRQ oracle, face capture and hand-bus
+capture. Total times are 59.30 and 489.16 seconds; logs are
+out/audio-mapper-tests-{Release,Debug}.log. Both face replays retain the
+corrected a263ebb4...b35a hash, and the original capture inputs are unchanged.
+Registry/seam validation and git diff --check pass. The full suite was not run.
+
+## Audio wrapper return: 45:4B85
+
+The audio wrapper now independently admits its final RTS through the shared
+live-stack return helper. PLP at 45:4B84 remains interpreted so its old-mask
+interrupt sampling completes before the return sees the restored status.
+The RTS requires matching live PC and code mapping, the F8 work-RAM stack,
+a full RAM view, and both event horizons strictly beyond 21 master cycles.
+It preserves registers and status, wraps both stack reads and the return
+address, and retains the caller's return observation at offset zero.
+An explicit checkpoint samples interrupts at cycle 18 and completes at 21.
+This is required after PLP clears I with an already-pending IRQ; without
+that sample, the old-mask latch survives for an extra opcode. The pinned
+stagger registry regression covers the resulting frame-2277 RAM mismatch.
+
+The shared fixture covers 1,376,256 return target/status/stack cases across
+seven entries, including wraparound and both horizon guards. The new
+verify_audio_wrapper_return.cmake oracle pins ROM bytes 2860 and admission
+at 8/26 standalone gameplay returns. Frame state, scheduler call traces,
+ordered caller writes, all RAM writes and hardware writes must match the
+pinned assembly baseline. The registry now admits 725 routines; the seam
+manifest retains 201 classified ranges.
+
+All 31 current-registry A/B routes preserve frame-state hashes and
+abandonment counts when only 45:4B85 is excluded on the before side.
+Return interpreter cost falls from 60,558 to 51,840 master cycles:
+8,718 removed (14.40%), with each delta confined to that address.
+Non-wait interpreter work falls from 13,035,330 to 13,026,612 (0.067%);
+frame-sync waits are unchanged. PLP remains interpreted, and most RTS
+cost remains behind the event guards. This measures the increment within
+the registry, not fresh whole-registry assembly parity. Evidence is in
+out/audio-wrapper-cost/manifest.csv, its before/after rankings and
+out/audio-wrapper-cost-summary.log.
+
+Release and Debug each pass four targeted checks: the shared return fixture,
+the audio return oracle (including the stagger regression), corrupted-face
+capture and hand-bus capture, in 60.60 and 471.89 seconds respectively.
+Logs are out/audio-wrapper-tests-{Release,Debug}.log. Both face replays
+retain the corrected a263ebb4...b35a hash; the original capture inputs are
+unchanged. Registry/seam validation and git diff --check pass. The full
+suite was not run.
+
 ## Release submission call and return: 02:51D2 and 02:51D5
 
 The release-countdown tail was a 67,662-cycle interpreter cluster across the
@@ -498,8 +1103,8 @@ The attribute merge and six VDC port writes now execute as a native body:
 ASLs update the live $29 byte and carry before merging the device-read
 accumulator nibble. VDC stores sample interrupts six cycles before completion;
 RAM stores and arithmetic retain their ordinary three-cycle sample offset.
-DA06/DA0B still read the actual device buffer. DA3E PLY and DA3F RTS remain
-core-owned, including callers taking the transaction's early exits.
+DA06/DA0B still read the actual device buffer. DA3E PLY remains core-owned;
+DA3F now admits an independent guarded RTS, including early-exit callers.
 
 The isolated gameplay replay admits 2/2 entries with identical frame/state,
 call, RAM-write, and timestamped bus traces. Exhaustive tests cover all 65,536
@@ -686,7 +1291,7 @@ independent; `C5C9` consumes its actual JSR frame and installs the next actor
 continuation. `709E` restores X from the live post-child stack, not from the
 parent's entry snapshot. The already-native `70C1` score-panel scheduler
 handoff and `70C4` frame stepper are unchanged. The three ordinary returns at
-`7071`, `7099`, and `70BB` stay core-owned.
+`7071`, `7099`, and `70BB` now admit independent guarded live-stack returns.
 
 Natural gameplay and alternate routes compare complete frame state, all 92
 enclosing calls and their ordered writes, and the `0000-1FFF` device-write
@@ -702,7 +1307,7 @@ ascending phases share the semantic implementation with relocated checkpoint
 identities and JSR return bytes. Its shorter hold phase is explicit: it has
 neither the other parent's audio comparison nor its PHX/child/PLX sequence.
 The final `71E7` scheduler call and existing `71EA` frame stepper are unchanged;
-the three ordinary RTS instructions at `71A9`, `71C4`, and `71E1` stay core-owned.
+the three ordinary RTS instructions at `71A9`, `71C4`, and `71E1` now admit independent guarded live-stack returns.
 
 Natural gameplay and alternate replays each cover 92 enclosing calls. A
 controlled frame-166 timer/frame patch to the actual X=06 actor reaches the

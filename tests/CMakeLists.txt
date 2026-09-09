@@ -125,6 +125,19 @@ target_compile_features(dc_music_command_exit_tests PRIVATE cxx_std_20)
 dc_enable_strict_warnings(dc_music_command_exit_tests)
 add_test(NAME dc_music_command_exit_tests COMMAND dc_music_command_exit_tests)
 
+add_executable(dc_actor_scan_cursors_tests actor_scan_cursors_tests.cpp
+    ../src/app/native_replacements_actor_scan_preamble.cpp)
+target_link_libraries(dc_actor_scan_cursors_tests PRIVATE DevilsCrush::Emulation)
+target_compile_features(dc_actor_scan_cursors_tests PRIVATE cxx_std_20)
+dc_enable_strict_warnings(dc_actor_scan_cursors_tests)
+add_test(NAME dc_actor_scan_cursors_tests COMMAND dc_actor_scan_cursors_tests)
+add_executable(dc_audio_command_setup_tests audio_command_setup_tests.cpp
+    ../src/app/native_replacements_banking.cpp ../src/app/native_replacements_absorb.cpp)
+target_link_libraries(dc_audio_command_setup_tests PRIVATE DevilsCrush::Emulation)
+target_compile_features(dc_audio_command_setup_tests PRIVATE cxx_std_20)
+dc_enable_strict_warnings(dc_audio_command_setup_tests)
+add_test(NAME dc_audio_command_setup_tests COMMAND dc_audio_command_setup_tests)
+
 add_executable(dc_upper_scheduler_return_tests upper_scheduler_return_tests.cpp
     ../src/app/native_replacements_absorb.cpp)
 target_link_libraries(dc_upper_scheduler_return_tests PRIVATE DevilsCrush::Emulation)
@@ -5499,6 +5512,81 @@ if(TARGET devils_crush)
                 "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/release-submission-tail-$<CONFIG>-v1"
                 -P "${CMAKE_CURRENT_SOURCE_DIR}/verify_release_submission_tail.cmake")
         set_tests_properties(dc_rom_release_submission_tail PROPERTIES LABELS rom_required)
+        add_test(NAME dc_rom_audio_command_setup
+            COMMAND "${CMAKE_COMMAND}" "-DAPP=$<TARGET_FILE:devils_crush>" "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/audio-command-setup-$<CONFIG>-v1"
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/verify_audio_command_setup.cmake")
+        set_tests_properties(dc_rom_audio_command_setup PROPERTIES LABELS rom_required)
+        add_test(NAME dc_rom_actor_scan_cursors
+            COMMAND "${CMAKE_COMMAND}" "-DAPP=$<TARGET_FILE:devils_crush>" "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/actor-scan-cursors-$<CONFIG>-v1"
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/verify_actor_scan_cursors.cmake")
+        set_tests_properties(dc_rom_actor_scan_cursors PROPERTIES LABELS rom_required)
+        add_test(NAME dc_rom_actor_flag_return
+            COMMAND "${CMAKE_COMMAND}" "-DAPP=$<TARGET_FILE:devils_crush>" "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/actor-flag-return-$<CONFIG>-v1"
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/verify_actor_flag_return.cmake")
+        set_tests_properties(dc_rom_actor_flag_return PROPERTIES LABELS rom_required)
+        add_test(NAME dc_rom_frame_delay_return
+            COMMAND "${CMAKE_COMMAND}" "-DAPP=$<TARGET_FILE:devils_crush>" "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/frame-delay-return-$<CONFIG>-v1"
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/verify_frame_delay_return.cmake")
+        set_tests_properties(dc_rom_frame_delay_return PROPERTIES LABELS rom_required)
+        add_test(NAME dc_rom_attribute_return
+            COMMAND "${CMAKE_COMMAND}" "-DAPP=$<TARGET_FILE:devils_crush>" "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/attribute-return-$<CONFIG>-v1"
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/verify_attribute_return.cmake")
+        set_tests_properties(dc_rom_attribute_return PROPERTIES LABELS rom_required)
+        add_test(NAME dc_rom_rng_return
+            COMMAND "${CMAKE_COMMAND}" "-DAPP=$<TARGET_FILE:devils_crush>" "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/rng-return-returns-$<CONFIG>-v1"
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/verify_rng_return.cmake")
+        set_tests_properties(dc_rom_rng_return PROPERTIES LABELS rom_required)
+        add_test(NAME dc_rom_script_countdown_returns
+            COMMAND "${CMAKE_COMMAND}" "-DAPP=$<TARGET_FILE:devils_crush>" "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/script-countdown-returns-$<CONFIG>-v1"
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/verify_script_countdown_returns.cmake")
+        set_tests_properties(dc_rom_script_countdown_returns PROPERTIES LABELS rom_required)
+        add_test(NAME dc_rom_small_soldier_returns
+            COMMAND "${CMAKE_COMMAND}" "-DAPP=$<TARGET_FILE:devils_crush>" "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/small-soldier-returns-$<CONFIG>-v1"
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/verify_small_soldier_returns.cmake")
+        set_tests_properties(dc_rom_small_soldier_returns PROPERTIES LABELS rom_required)
+        add_test(NAME dc_rom_parent_ascending_returns
+            COMMAND "${CMAKE_COMMAND}" "-DAPP=$<TARGET_FILE:devils_crush>" "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/parent-ascending-returns-$<CONFIG>-v1"
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/verify_parent_ascending_returns.cmake")
+        set_tests_properties(dc_rom_parent_ascending_returns PROPERTIES LABELS rom_required)
+        add_test(NAME dc_rom_parent_descending_returns
+            COMMAND "${CMAKE_COMMAND}" "-DAPP=$<TARGET_FILE:devils_crush>" "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/parent-descending-returns-$<CONFIG>-v1"
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/verify_parent_descending_returns.cmake")
+        set_tests_properties(dc_rom_parent_descending_returns PROPERTIES LABELS rom_required)
+        add_test(NAME dc_rom_parent_holding_returns
+            COMMAND "${CMAKE_COMMAND}" "-DAPP=$<TARGET_FILE:devils_crush>" "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/parent-holding-returns-$<CONFIG>-v1"
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/verify_parent_holding_returns.cmake")
+        set_tests_properties(dc_rom_parent_holding_returns PROPERTIES LABELS rom_required)
+        add_test(NAME dc_rom_parent_decay_returns
+            COMMAND "${CMAKE_COMMAND}" "-DAPP=$<TARGET_FILE:devils_crush>" "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/parent-decay-returns-$<CONFIG>-v1"
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/verify_parent_decay_returns.cmake")
+        set_tests_properties(dc_rom_parent_decay_returns PROPERTIES LABELS rom_required)
+        add_test(NAME dc_rom_mercy_star_return
+            COMMAND "${CMAKE_COMMAND}" "-DAPP=$<TARGET_FILE:devils_crush>" "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/mercy-star-return-$<CONFIG>-v1"
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/verify_mercy_star_return.cmake")
+        set_tests_properties(dc_rom_mercy_star_return PROPERTIES LABELS rom_required)
+        add_test(NAME dc_rom_audio_mapper_return
+            COMMAND "${CMAKE_COMMAND}" "-DAPP=$<TARGET_FILE:devils_crush>" "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/audio-mapper-return-$<CONFIG>-v1"
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/verify_audio_mapper_return.cmake")
+        set_tests_properties(dc_rom_audio_mapper_return PROPERTIES LABELS rom_required)
+        add_test(NAME dc_rom_audio_wrapper_return
+            COMMAND "${CMAKE_COMMAND}" "-DAPP=$<TARGET_FILE:devils_crush>" "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/audio-wrapper-return-$<CONFIG>-v1"
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/verify_audio_wrapper_return.cmake")
+        set_tests_properties(dc_rom_audio_wrapper_return PROPERTIES LABELS rom_required)
         add_test(NAME dc_rom_music_voice_gate
             COMMAND "${CMAKE_COMMAND}" "-DAPP=$<TARGET_FILE:devils_crush>" "-DROM=${DC_ROM_PATH}"
                 "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/music-voice-gate-$<CONFIG>-v1"

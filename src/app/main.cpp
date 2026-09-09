@@ -7985,11 +7985,9 @@ parse_logical_address_range(const std::string_view text)
                                    }
                            && request.all_calls;
                        const bool proven_actor_scan_preamble =
-                           request.routine
-                                   == RoutineKey{
-                                       .physical_bank = 0x01U,
-                                       .logical_pc = 0xC4DEU,
-                                   }
+                           request.routine.physical_bank == 0x01U
+                           && (request.routine.logical_pc == 0xC4DEU
+                               || request.routine.logical_pc == 0xC500U)
                            && request.all_calls;
                        const bool proven_main_session_loop =
                            request.routine.physical_bank == 0x01U
@@ -8201,6 +8199,28 @@ parse_logical_address_range(const std::string_view text)
                             || request.routine == RoutineKey{0x02U, 0x4F75U}
                             || request.routine == RoutineKey{0x02U, 0x51D2U}
                             || request.routine == RoutineKey{0x02U, 0x51D5U}
+                            || request.routine == RoutineKey{0x45U, 0x4B85U}
+                            || request.routine == RoutineKey{0x00U, 0xED85U}
+                            || request.routine == RoutineKey{0x02U, 0x4F92U}
+                            || request.routine == RoutineKey{0x09U, 0x704EU}
+                            || request.routine == RoutineKey{0x09U, 0x7186U}
+                            || request.routine == RoutineKey{0x09U, 0x7099U}
+                            || request.routine == RoutineKey{0x09U, 0x71C4U}
+                            || request.routine == RoutineKey{0x09U, 0x7071U}
+                            || request.routine == RoutineKey{0x09U, 0x71A9U}
+                            || request.routine == RoutineKey{0x03U, 0x7D81U}
+                            || request.routine == RoutineKey{0x03U, 0x7E1FU}
+                            || request.routine == RoutineKey{0x09U, 0x703CU}
+                            || request.routine == RoutineKey{0x09U, 0x7174U}
+                            || request.routine == RoutineKey{0x00U, 0xE8E6U}
+                            || request.routine == RoutineKey{0x01U, 0xC8E1U}
+                            || request.routine == RoutineKey{0x00U, 0xECFDU}
+                            || request.routine == RoutineKey{0x00U, 0xED18U}
+                            || request.routine == RoutineKey{0x00U, 0xED23U}
+                            || request.routine == RoutineKey{0x00U, 0xED2CU}
+                            || request.routine == RoutineKey{0x00U, 0xE333U}
+                            || request.routine == RoutineKey{0x01U, 0xDA3FU}
+                            || request.routine == RoutineKey{0x09U, 0x70BBU} || request.routine == RoutineKey{0x09U, 0x71E1U}
                             || request.routine == RoutineKey{0x01U, 0xC4C8U}
                             || request.routine == RoutineKey{0x08U, 0x5A69U}
                             || request.routine == RoutineKey{0x01U, 0xC5EAU}
@@ -20190,7 +20210,7 @@ int run_windows_host(
         host_ok = false;
     }
     NativeRegistryDeployment registry_deployment;
-    constexpr std::array<RoutineKey, 0U> kHostClaimedRoutines{};
+    constexpr std::array<RoutineKey, 1U> kHostClaimedRoutines{kShooterGateInstruction};
     if (native_registry != nullptr) {
         if (!replacement_rom
             || !install_native_registry(
@@ -20241,7 +20261,8 @@ int run_windows_host(
             // worth having to read.
             for (const auto& claimed : kHostClaimedRoutines) {
                 std::cout << "Registry claim: "
-                          << format_routine_key(claimed) << " claimed.\n";
+                          << format_routine_key(claimed)
+                          << " claimed by cabinet flipper input handoff.\n";
             }
         }
     }
@@ -23080,7 +23101,10 @@ struct LaunchFlipperPass {
     // prefix explicitly returns at the instruction hook, so the probe checks
     // the same native/input hand-off the interactive host ships.
     NativeRegistryDeployment registry_deployment;
-    const std::vector<RoutineKey> claimed_routines{};
+    std::vector<RoutineKey> claimed_routines;
+    if (restore_input) {
+        claimed_routines.push_back(kShooterGateInstruction);
+    }
     if (native_registry != nullptr
         && !install_native_registry(
             runtime,
@@ -25315,6 +25339,9 @@ int main(const int argc, char* argv[])
                     claimed_routines.size() + options.replace_hooks.size());
                 for (const auto& request : options.replace_hooks) {
                     claimed_routines.push_back(request.routine);
+                }
+                if (recording_plan.restore_interactive_flipper_host) {
+                    claimed_routines.push_back(kShooterGateInstruction);
                 }
                 if (!install_native_registry(
                         *runtime,

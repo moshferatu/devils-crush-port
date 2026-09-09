@@ -227,7 +227,19 @@ std::optional<RoutineReplacement> replace_upper_scheduler_return(
     constexpr RoutineKey kReleaseReturn{.physical_bank = 0x02U, .logical_pc = 0x51D5U};
     if ((entry.routine != kRoutine && entry.routine != kRunInputReturn
             && entry.routine != kSelectionReturn && entry.routine != kStreamReturn
-            && entry.routine != kCountdownReturn && entry.routine != kReleaseReturn)
+            && entry.routine != kCountdownReturn && entry.routine != kReleaseReturn
+            && entry.routine != RoutineKey{0x45U, 0x4B85U} && entry.routine != RoutineKey{0x00U, 0xED85U}
+            && entry.routine != RoutineKey{0x02U, 0x4F92U}
+            && entry.routine != RoutineKey{0x09U, 0x704EU} && entry.routine != RoutineKey{0x09U, 0x7186U}
+            && entry.routine != RoutineKey{0x09U, 0x7099U} && entry.routine != RoutineKey{0x09U, 0x71C4U}
+            && entry.routine != RoutineKey{0x09U, 0x7071U} && entry.routine != RoutineKey{0x09U, 0x71A9U}
+            && entry.routine != RoutineKey{0x03U, 0x7D81U} && entry.routine != RoutineKey{0x03U, 0x7E1FU}
+            && entry.routine != RoutineKey{0x09U, 0x703CU} && entry.routine != RoutineKey{0x09U, 0x7174U}
+            && entry.routine != RoutineKey{0x00U, 0xE8E6U}
+            && entry.routine != RoutineKey{0x01U, 0xC8E1U}
+            && entry.routine != RoutineKey{0x00U, 0xE333U}
+            && entry.routine != RoutineKey{0x01U, 0xDA3FU}
+            && entry.routine != RoutineKey{0x09U, 0x70BBU} && entry.routine != RoutineKey{0x09U, 0x71E1U})
         || entry.registers.program_counter != entry.routine.logical_pc
         || entry.registers.mpr[1] != 0xF8U
         || entry.registers.mpr[entry.routine.logical_pc >> 13U] != entry.routine.physical_bank
@@ -241,6 +253,14 @@ std::optional<RoutineReplacement> replace_upper_scheduler_return(
     RoutineReplacement replacement{};
     absorb_return(replacement, work_ram, entry.registers.stack_pointer,
         entry.routine, 0U, entry.registers);
+    if (entry.routine == RoutineKey{0x45U, 0x4B85U}) {
+        // PLP may just have cleared I while an IRQ was already pending.
+        // Sample again at RTS LastCycle; an atomic transcript without a
+        // checkpoint would preserve PLP's old-mask latch for one extra opcode.
+        replacement.checkpoints.push_back({.interrupt_sample_master_cycle_offset = 18U,
+            .master_cycle_offset = 21U, .instruction = entry.routine,
+            .registers = replacement.output_registers});
+    }
     return replacement;
 }
 

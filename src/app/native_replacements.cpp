@@ -20,6 +20,12 @@ replace_native_gameplay_routine_impl(
     const std::span<const std::byte> work_ram,
     const std::span<const std::byte> rom)
 {
+    if (entry.routine == RoutineKey{.physical_bank = 0x00U, .logical_pc = 0xECFDU}
+        || entry.routine == RoutineKey{.physical_bank = 0x00U, .logical_pc = 0xED18U}
+        || entry.routine == RoutineKey{.physical_bank = 0x00U, .logical_pc = 0xED23U}
+        || entry.routine == RoutineKey{.physical_bank = 0x00U, .logical_pc = 0xED2CU}) {
+        return detail::replace_audio_command_setup(entry, work_ram);
+    }
     if (entry.routine == RoutineKey{.physical_bank = 0x01U, .logical_pc = 0xCB68U}
         || entry.routine == RoutineKey{.physical_bank = 0x00U, .logical_pc = 0xFA67U}) {
         return detail::replace_bit_branch(entry, work_ram);
@@ -50,7 +56,26 @@ replace_native_gameplay_routine_impl(
         || entry.routine == RoutineKey{.physical_bank = 0x08U, .logical_pc = 0x5A69U}
         || entry.routine == RoutineKey{.physical_bank = 0x00U, .logical_pc = 0xE47CU}
         || entry.routine == RoutineKey{.physical_bank = 0x02U, .logical_pc = 0x4F75U}
-        || entry.routine == RoutineKey{.physical_bank = 0x02U, .logical_pc = 0x51D5U}) {
+        || entry.routine == RoutineKey{.physical_bank = 0x02U, .logical_pc = 0x51D5U}
+        || entry.routine == RoutineKey{.physical_bank = 0x45U, .logical_pc = 0x4B85U}
+        || entry.routine == RoutineKey{.physical_bank = 0x00U, .logical_pc = 0xED85U}
+        || entry.routine == RoutineKey{.physical_bank = 0x02U, .logical_pc = 0x4F92U}
+        || entry.routine == RoutineKey{.physical_bank = 0x09U, .logical_pc = 0x704EU}
+        || entry.routine == RoutineKey{.physical_bank = 0x09U, .logical_pc = 0x7186U}
+        || entry.routine == RoutineKey{.physical_bank = 0x09U, .logical_pc = 0x7099U}
+        || entry.routine == RoutineKey{.physical_bank = 0x09U, .logical_pc = 0x71C4U}
+        || entry.routine == RoutineKey{.physical_bank = 0x09U, .logical_pc = 0x7071U}
+        || entry.routine == RoutineKey{.physical_bank = 0x09U, .logical_pc = 0x71A9U}
+        || entry.routine == RoutineKey{.physical_bank = 0x03U, .logical_pc = 0x7D81U}
+        || entry.routine == RoutineKey{.physical_bank = 0x03U, .logical_pc = 0x7E1FU}
+        || entry.routine == RoutineKey{.physical_bank = 0x09U, .logical_pc = 0x703CU}
+        || entry.routine == RoutineKey{.physical_bank = 0x09U, .logical_pc = 0x7174U}
+        || entry.routine == RoutineKey{.physical_bank = 0x00U, .logical_pc = 0xE8E6U}
+        || entry.routine == RoutineKey{.physical_bank = 0x01U, .logical_pc = 0xC8E1U}
+        || entry.routine == RoutineKey{.physical_bank = 0x00U, .logical_pc = 0xE333U}
+        || entry.routine == RoutineKey{.physical_bank = 0x01U, .logical_pc = 0xDA3FU}
+        || entry.routine == RoutineKey{.physical_bank = 0x09U, .logical_pc = 0x70BBU}
+        || entry.routine == RoutineKey{.physical_bank = 0x09U, .logical_pc = 0x71E1U}) {
         return detail::replace_upper_scheduler_return(entry, work_ram);
     }
     if (entry.routine == RoutineKey{.physical_bank = 0x00U, .logical_pc = 0xE271U}) {

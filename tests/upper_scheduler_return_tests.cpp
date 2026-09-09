@@ -228,7 +228,8 @@ int main()
         std::puts("Verified six scheduler/submission calls across all stack pointers and status values.");
         for (const auto routine : {RoutineKey{0x08U, 0x5976U}, RoutineKey{0x01U, 0xC4C8U},
                  RoutineKey{0x08U, 0x5A69U}, RoutineKey{0x00U, 0xE47CU},
-                 RoutineKey{0x02U, 0x4F75U}, RoutineKey{0x02U, 0x51D5U}}) {
+                 RoutineKey{0x02U, 0x4F75U}, RoutineKey{0x02U, 0x51D5U}, RoutineKey{0x45U, 0x4B85U}, RoutineKey{0x00U, 0xED85U}, RoutineKey{0x02U, 0x4F92U},
+                 RoutineKey{0x09U, 0x704EU}, RoutineKey{0x09U, 0x7186U}, RoutineKey{0x09U, 0x7099U}, RoutineKey{0x09U, 0x71C4U}, RoutineKey{0x09U, 0x7071U}, RoutineKey{0x09U, 0x71A9U}, RoutineKey{0x03U, 0x7D81U}, RoutineKey{0x03U, 0x7E1FU}, RoutineKey{0x09U, 0x703CU}, RoutineKey{0x09U, 0x7174U}, RoutineKey{0x00U, 0xE8E6U}, RoutineKey{0x01U, 0xDA3FU}, RoutineKey{0x00U, 0xE333U}, RoutineKey{0x01U, 0xC8E1U}, RoutineKey{0x09U, 0x70BBU}, RoutineKey{0x09U, 0x71E1U}}) {
             RoutineEntry entry{};
             entry.routine = routine;
             auto& r = entry.registers;
@@ -252,9 +253,16 @@ int main()
                         && result->return_instruction == RoutineKey{r.mpr[pc >> 13U], pc}, "Live stack target or mapper changed");
                     require(out.status == r.status && out.accumulator == r.accumulator
                         && out.x == r.x && out.y == r.y && out.mpr == r.mpr, "RTS clobbered registers");
-                    require(result->body_master_cycles == 21U && result->checkpoints.empty()
+                    require(result->body_master_cycles == 21U && result->checkpoints.size() == (routine.physical_bank == 0x45U ? 1U : 0U)
                         && result->work_ram_writes.empty() && !result->native_rts_instruction,
                         "Return was not a read-only atomic transcript");
+                    if (routine.physical_bank == 0x45U) {
+                        const auto& sample = result->checkpoints.front();
+                        require(sample.interrupt_sample_master_cycle_offset == 18U
+                            && sample.master_cycle_offset == 21U && sample.instruction == routine
+                            && sample.registers == out && !sample.samples_interrupt_flag_clear,
+                            "Audio RTS lost its restored-status interrupt sample");
+                    }
                     require(result->absorbed_returns.size() == 1U
                         && result->absorbed_returns[0].instruction == entry.routine
                         && result->absorbed_returns[0].master_cycle_offset == 0U
@@ -280,7 +288,7 @@ int main()
             r.mpr[routine.logical_pc >> 13U] = static_cast<std::uint8_t>(routine.physical_bank ^ 1U);
             require(!replace_upper_scheduler_return(entry, ram), "Foreign code mapping admitted");
         }
-        std::puts("Verified 1,179,648 return target/status/stack cases and both horizon guards.");
+        std::puts("Verified 4,915,200 return target/status/stack cases and both horizon guards.");
         for (unsigned sp : {0U, 254U, 255U}) {
             for (unsigned word = 0U; word < 65536U; ++word) {
                 RoutineEntry entry{};

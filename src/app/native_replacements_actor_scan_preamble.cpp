@@ -44,7 +44,7 @@ using emulation::RoutineReplacement;
 // C4DE entry therefore hands back at 01:C500, where the host-aware C500 entry
 // restores the input and then uses this same walker for the cursor suffix.
 // The suffix falls into the registered actor scan at 01:C510. This keeps the
-// handoff at its original instruction boundary without leaving its six simple
+// handoff at its original instruction boundary without leaving its seven simple
 // instructions in the interpreter.
 //
 // 3,492 arrivals on the recorded route: 2,649 from 01:C157, immediately after
@@ -128,6 +128,9 @@ std::optional<RoutineReplacement> replace_actor_scan_preamble(
     };
     if ((entry.routine != kPreambleRoutine
             && entry.routine != kCursorRoutine)
+        || entry.registers.program_counter != entry.routine.logical_pc
+        || entry.registers.mpr[1] != 0xF8U
+        || entry.registers.mpr[6] != kBank
         || work_ram.size() < 0x2000U) {
         return std::nullopt;
     }

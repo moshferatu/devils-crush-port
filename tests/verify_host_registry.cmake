@@ -65,9 +65,9 @@ if(NOT deployed_count EQUAL expected_deployed)
 endif()
 
 # Each claim has to say what took the key and why, so that a claim can be read
-# back rather than merely counted. `01:C4DE` is the actor scan's preamble; the
-# cabinet's shooter input gate hooks `01:C500` inside it, and a ported range
-# never presents its interior instructions to the interpreter.
+# back rather than merely counted. The cabinet claims 01:C500 so its flipper
+# restore runs before the shared native cursor suffix; the ordinary registry
+# must not occupy this key first.
 if(claimed_count GREATER 0)
     string(FIND "${deployed_output}" "Registry claim: " claim_offset)
     if(claim_offset EQUAL -1)
@@ -87,6 +87,7 @@ endif()
 # `0020` looks for `dc_beetle_active_replacement_abandoned_hook` in the core
 # source and fails the build if a patched tree does not have it.
 foreach(expected_line IN ITEMS
+    "Registry claim: 01:C500 claimed by cabinet flipper input handoff."
     "Registry hold-backs: "
     "Registry deployment: "
     "Registry cycles: "

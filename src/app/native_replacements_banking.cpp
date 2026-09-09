@@ -74,7 +74,7 @@ using emulation::RoutineReplacement;
 // 00:ED58 / ED75 own the complete audio-command wrapper, including the saved
 // X and all three mapper shadows. ED5E is an interior PHA, not its entry.
 // The driver remains a real child call; restoration reads the live stack on
-// reentry, and the final ED85 RTS remains in the core.
+// reentry; ED85 independently returns through the live restored caller frame.
 constexpr std::uint8_t kBank = 0x00U;
 
 constexpr std::uint8_t kZero = 0x02U;
@@ -994,6 +994,90 @@ std::optional<RoutineReplacement> replace_bank_call_wrappers(
             return replacement;
         }
     }
+}
+
+// Keep the filter separate from the mapper wrapper: command setup changes
+// only RAM and A/P; ED58 owns the live stack and all mapper changes.
+std::optional<RoutineReplacement> replace_audio_command_setup(
+    const RoutineEntry& entry, const std::span<const std::byte> work_ram)
+{
+    const auto pc = entry.routine.logical_pc;
+    if (entry.routine.physical_bank != 0U
+        || (pc != 0xECFDU && pc != 0xED18U && pc != 0xED23U && pc != 0xED2CU)
+        || entry.registers.program_counter != pc
+        || entry.registers.mpr[1] != 0xF8U || entry.registers.mpr[7] != 0U
+        || work_ram.size() < 0x2000U || (entry.registers.status & kMemory) != 0U) {
+        return std::nullopt;
+    }
+    auto r = entry.registers;
+    RoutineReplacement result{};
+    std::uint32_t cycle = 0U;
+    const auto step = [&](std::uint16_t from, std::uint16_t to, std::uint32_t cost) {
+        cycle += cost;
+        r.program_counter = to;
+        result.checkpoints.push_back({.interrupt_sample_master_cycle_offset = cycle - 3U,
+            .master_cycle_offset = cycle, .instruction = {0U, from}, .registers = r});
+    };
+    const auto load = [&](std::uint8_t value) {
+        r.accumulator = value; r.status = set_nz(r.status, value);
+    };
+    const auto compare = [&](std::uint8_t value) {
+        r.status = static_cast<std::uint8_t>(set_nz(r.status,
+            static_cast<std::uint8_t>(r.accumulator - value)) & ~0x01U);
+        if (r.accumulator >= value) { r.status |= 0x01U; }
+    };
+    const auto write = [&](std::uint16_t from, std::uint16_t to,
+                           std::uint16_t address, std::uint8_t value) {
+        result.work_ram_writes.push_back({.instruction = {0U, from},
+            .logical_address = address, .value = value, .master_cycle_offset = cycle + 12U});
+        step(from, to, 12U);
+    };
+    const auto finish = [&]() -> std::optional<RoutineReplacement> {
+        result.return_instruction = {0U, r.program_counter};
+        result.output_registers = r;
+        result.body_master_cycles = cycle;
+        return result;
+    };
+    if (pc == 0xECFDU) {
+        const auto command = r.accumulator;
+        write(0xECFDU, 0xECFFU, 0x202AU, command);
+        compare(0xFFU); step(0xECFFU, 0xED01U, 6U);
+        if (command == 0xFFU) {
+            step(0xED01U, 0xED03U, 6U); return finish();
+        }
+        step(0xED01U, 0xED04U, 12U);
+        load(std::to_integer<std::uint8_t>(work_ram[0xCC7U]));
+        step(0xED04U, 0xED07U, 15U);
+        if (r.accumulator == 0U) {
+            step(0xED07U, 0xED18U, 12U); return finish();
+        }
+        step(0xED07U, 0xED09U, 6U);
+        load(command); step(0xED09U, 0xED0BU, 12U);
+        for (const auto value : {0x31U, 0x27U, 0x47U}) {
+            const auto from = r.program_counter;
+            compare(static_cast<std::uint8_t>(value));
+            step(from, static_cast<std::uint16_t>(from + 2U), 6U);
+            const auto branch = r.program_counter;
+            const bool accepted = command == value;
+            step(branch, accepted ? 0xED18U : static_cast<std::uint16_t>(branch + 2U),
+                accepted ? 12U : 6U);
+            if (accepted) { return finish(); }
+        }
+        return finish(); // ED17 RTS remains a real return boundary.
+    }
+    if (pc == 0xED23U) {
+        write(0xED23U, 0xED25U, 0x202FU, 0U); // STZ does not change flags.
+    } else {
+        load(static_cast<std::uint8_t>(pc == 0xED18U ? 6U : 9U));
+        step(pc, static_cast<std::uint16_t>(pc + 2U), 6U);
+        write(r.program_counter, static_cast<std::uint16_t>(pc + 4U), 0x202FU, r.accumulator);
+    }
+    const auto bank_load = r.program_counter;
+    load(0x45U); step(bank_load, static_cast<std::uint16_t>(bank_load + 2U), 6U);
+    const auto bank_store = r.program_counter;
+    write(bank_store, static_cast<std::uint16_t>(bank_store + 2U), 0x2030U, r.accumulator);
+    step(r.program_counter, 0xED58U, 12U);
+    return finish();
 }
 
 } // namespace devils_crush::app::detail

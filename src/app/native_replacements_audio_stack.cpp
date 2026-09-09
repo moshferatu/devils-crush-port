@@ -48,9 +48,10 @@ std::optional<RoutineReplacement> replace_audio_stack_wrapper(
         r.y = pop(); nz(r.y); step(0x4B82, 0x4B83, 12);
         r.x = pop(); nz(r.x); step(0x4B83, 0x4B84, 12);
         // PLP samples the old interrupt mask before restoring P. Generic
-        // checkpoints cannot describe set-to-clear sampling. Leave PLP and
-        // RTS in the interpreter; the fixed native PLP capability currently
+        // checkpoints cannot describe set-to-clear sampling. Leave PLP in
+        // the interpreter; the fixed native PLP capability currently
         // admits only the VBlank epilogues, not this audio address.
+        // RTS at $4B85 is independently admitted using the restored live P.
     }
     result.return_instruction = {0x45, r.program_counter};
     result.output_registers = r; result.body_master_cycles = cycle;
