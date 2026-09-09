@@ -203,3 +203,5 @@
 "00","F4DF","F4EE","core","camera sweep prefix is executed by the native tilemap movement transaction before F4F2"
 "02","5983","5983","core","absolute ADC $0080 reads the live mapped bus (normally VDC status); native hand setup resumes at 5986"
 "01","C8E1","C8E1","guarded","Actor-flag RTS after scheduler yield reads the live stack with strict 21-cycle event horizons"
+"03","68BF","68DD","guarded","native Gray-Blob appearance expiry and movement selection; T mode and mapping guards preserve core fallback"
+"03","6905","6905","guarded","Gray-Blob live RTS absorbed by 68BF; post-movement entries retain core return"

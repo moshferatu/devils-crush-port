@@ -542,6 +542,7 @@ DC_ADMITTED_ROUTINE(0x03U, 0x67CFU, 15, 15, "verify_three_blobs_collision_gate_s
 DC_ADMITTED_ROUTINE(0x03U, 0x67E5U, 1965, 1965, "verify_three_blobs_shared_return_semantic")
 DC_ADMITTED_ROUTINE(0x03U, 0x6876U, 7, 7, "verify_gray_blob_initializer_semantic")
 DC_ADMITTED_ROUTINE(0x03U, 0x68A1U, 7, 7, "verify_gray_blob_first_live_prefix_semantic")
+DC_ADMITTED_ROUTINE(0x03U, 0x68BFU, 492, 492, "verify_gray_blob_update")
 DC_ADMITTED_ROUTINE(0x03U, 0x694AU, 198, 198, "verify_three_blobs_collision_marker_semantic")
 DC_ADMITTED_ROUTINE(0x03U, 0x6966U, 54149, 54149, "verify_absorbed_return_trace +1")
 DC_ADMITTED_ROUTINE(0x03U, 0x734EU, 1, 1, "verify_knight_initializers_semantic")

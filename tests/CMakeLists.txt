@@ -1,3 +1,9 @@
+add_executable(dc_gray_blob_update_tests gray_blob_update_tests.cpp
+    ../src/app/native_replacements_gray_blob.cpp ../src/app/native_replacements_absorb.cpp)
+target_link_libraries(dc_gray_blob_update_tests PRIVATE DevilsCrush::Emulation DevilsCrush::GameLogic)
+target_compile_features(dc_gray_blob_update_tests PRIVATE cxx_std_20)
+dc_enable_strict_warnings(dc_gray_blob_update_tests)
+add_test(NAME dc_gray_blob_update_tests COMMAND dc_gray_blob_update_tests)
 add_executable(
     dc_core_tests
     core_tests.cpp
@@ -5522,6 +5528,11 @@ if(TARGET devils_crush)
                 "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/actor-scan-cursors-$<CONFIG>-v1"
                 -P "${CMAKE_CURRENT_SOURCE_DIR}/verify_actor_scan_cursors.cmake")
         set_tests_properties(dc_rom_actor_scan_cursors PROPERTIES LABELS rom_required)
+        add_test(NAME dc_rom_gray_blob_update
+            COMMAND "${CMAKE_COMMAND}" "-DAPP=$<TARGET_FILE:devils_crush>" "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/gray-blob-update-$<CONFIG>-v1"
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/verify_gray_blob_update.cmake")
+        set_tests_properties(dc_rom_gray_blob_update PROPERTIES LABELS rom_required)
         add_test(NAME dc_rom_actor_queue_reload
             COMMAND "${CMAKE_COMMAND}" "-DAPP=$<TARGET_FILE:devils_crush>" "-DROM=${DC_ROM_PATH}"
                 "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/actor-queue-reload-$<CONFIG>-v1"

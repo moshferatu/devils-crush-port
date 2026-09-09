@@ -5,6 +5,63 @@ iteration loop fast enough to port related code as a unit. It applies to
 Milestone 4 native gameplay work; it does not weaken the release or milestone
 acceptance criteria in [PLAN.md](../PLAN.md).
 
+## Gray-Blob live update: 03:68BF (cabinet ranking)
+
+The user's September 9 cabinet report is now the primary porting priority.
+Its leading addresses are 03:68BF (17,577 cycles), 03:68D9 (17,505), and
+03:68D1 (12,603). The synthetic 31-route aggregate is retained for
+compatibility checks, not used to override this live-play ranking.
+
+The old Gray-Blob helper required three non-expiring timers, then incorrectly
+modeled a phase decrement at 6905 and an RTS at 690D. The verified ROM instead
+has RTS at 6905; the phase countdown begins at 68FD on a separate path after
+movement. The new update follows the actual ROM, performs appearance expiry
+(reload 4 and toggle sprite bit 0), loads live collision state, and decrements
+the movement timer. It returns through the live stack at 6905 or hands off at
+68DE for movement expiry / 6906 for collision response. It never decrements the
+phase timer on the steady path. All instructions retain their interrupt
+samples, cycle costs, register flags, and ordered RAM writes. Entry guards
+require live PC, RAM/code mapping, full RAM, and clear T; decimal mode is valid.
+
+03:68BF is now admitted through the normal registry, replacing its auxiliary
+hook. This also makes `--registry-exclude 03:68BF` a real before/after control.
+The legacy Gray-blob-wait entry counter remains available in the report.
+
+Validation and measurement:
+
+- Exhaustive fixture: 1,048,576 timer/status/collision/slot combinations,
+  including timer wrap, appearance expiry, collision selection, stack wrap,
+  mapping guards, and the actual 6905 return. The phase timer is deliberately
+  set to 1, which the old classifier rejected.
+- ROM oracle: the established Gray-Blob activation route (gameplay with
+  `--work-ram-patch 1300:2CC0:80`) accepts all 492 calls. All frame, full RAM-write,
+  and bus-write hashes match assembly. The opcode bytes and RTS are pinned.
+- Registry comparison on that activation route: 68BF-6905 interpreter residue
+  falls from **52,911 to 690 cycles**, removing **52,221 cycles (98.70%)**.
+  Non-wait residue falls from 8,120,112 to 8,067,891, with identical frame hashes
+  and zero abandonments. The remaining 690 cycles belong to movement-expiry
+  and post-movement code beyond the ported prefix. The three leading Gray-Blob
+  addresses have zero residual interpreter intervals in the after profile.
+- Release: 6/6 checks pass in 54.46 seconds, including the fixture, ROM
+  oracle, host deployment, corrupted-face capture, hand-bus capture, and
+  audio-interrupt regression. Debug: the fixture, oracle, both corruption
+  captures, and audio-interrupt regression pass 5/5 in 475.80 seconds.
+- Evidence: `out/gray-blob-update-cost/activated.{before,after}.*`,
+  `out/gray-blob-tests-Release.log`, `out/gray-blob-tests-Debug.log`, and
+  `out/gray-blob-cost-{0,1,2}.log`.
+
+All 31 compatibility-route hashes and abandonment counts match. Only `twist`
+exercises this target materially: 34,875 to 1,728 cycles (33,147 removed).
+This coverage gap is why the cabinet report takes precedence over the corpus
+aggregate when choosing the next port.
+
+The next target from the supplied ranking is the side-worm waiting update at
+02:5CC5 / 5CC8 / 5CCB (48,288 reported cycles combined). The remaining supplied
+leaders are 02:56AB (12,534), 00:E60A (11,388), 02:59F4 (11,370), and
+00:E5EB / E5EC / E836 (10,056 each). Measured improvement
+above is for the activation replay, not an extrapolated reduction of the
+user's unprovided input recording.
+
 ## Actor queue asset call and reload: 01:C624 / C627
 
 This iteration targets C624-C630, the largest remaining primary-ranking

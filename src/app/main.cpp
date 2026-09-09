@@ -8226,6 +8226,7 @@ parse_logical_address_range(const std::string_view text)
                             || request.routine == RoutineKey{0x01U, 0xC5EAU}
                             || request.routine == RoutineKey{0x01U, 0xC624U}
                             || request.routine == RoutineKey{0x01U, 0xC627U}
+                            || request.routine == RoutineKey{0x03U, 0x68BFU}
                             || request.routine == RoutineKey{0x01U, 0xC693U}
                             || request.routine == RoutineKey{0x01U, 0xC696U}
                             || request.routine == RoutineKey{0x01U, 0xC69BU}
@@ -15688,6 +15689,9 @@ using NativeRegistryEntryObserver = std::function<void(
                                 .logical_pc = 0x66A3U,
                             };
                         ++row.entries;
+                        if (entry.routine == RoutineKey{0x03U, 0x68BFU}) {
+                            ++deployment.core_gray_blob_live_wait_entries;
+                        }
                         if (three_blobs_timer_decrement) {
                             ++deployment.core_capability_entries;
                         }
@@ -16892,38 +16896,6 @@ using NativeRegistryEntryObserver = std::function<void(
             },
         })) {
         std::cerr << "Could not install native bonus-hazard timer hook.\n";
-        return false;
-    }
-    // 03:68BF's common live Gray-Blob arm advances a non-expiring movement
-    // timer then reaches the existing core-owned RTS. Collision, animation,
-    // and expiry arms retain their original interpreter boundaries.
-    constexpr RoutineKey kGrayBlobLiveWait{
-        .physical_bank = 0x03U,
-        .logical_pc = 0x68BFU,
-    };
-    if (std::find(
-            claimed_routines.begin(), claimed_routines.end(), kGrayBlobLiveWait)
-        == claimed_routines.end()
-        && !runtime.install_execution_hook({
-            .routine = kGrayBlobLiveWait,
-            .mode = HookMode::replace,
-            .replacement_callback = [&deployment, &replacement_rom](
-                const RoutineEntry& entry,
-                const std::span<const std::byte> work_ram) {
-                ++deployment.core_capability_entries;
-                ++deployment.core_gray_blob_live_wait_entries;
-                deployment.span.observe(entry.absolute_master_cycle);
-                auto result = replace_native_gameplay_routine(
-                    entry, work_ram, replacement_rom);
-                if (result) {
-                    ++deployment.core_capability_accepted;
-                    deployment.core_capability_master_cycles +=
-                        result->body_master_cycles;
-                }
-                return result;
-            },
-        })) {
-        std::cerr << "Could not install native Gray-Blob live-wait hook.\n";
         return false;
     }
     // 01:DE9C emits a bounded pair of VDC words per row. It remains an

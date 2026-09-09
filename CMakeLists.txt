@@ -282,6 +282,7 @@ if(DC_BUILD_APP)
         src/app/native_replacements_palette_cycle.cpp
         src/app/native_replacements_physics.cpp
         src/app/native_replacements_rules.cpp
+        src/app/native_replacements_gray_blob.cpp
         src/app/native_replacements_appearance.cpp
         src/app/native_replacements_actor_initialization.cpp
         src/app/native_replacements_score_panel.cpp
