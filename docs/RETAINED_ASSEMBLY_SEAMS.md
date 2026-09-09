@@ -21,9 +21,44 @@ replace this ranking. No total residue or input recording accompanied it.
 | 11 | 00:EB1A | 1,104 | 92 |
 | 12 | 03:66AA | 927 | 57 |
 
-The preceding round targeted the related collision-selector load at 441E and JSR at
-4421 (11,940 reported master cycles combined). The following target is
-02:5F73, subject to any newer user-supplied ranking.
+The first three ranked addresses were handled in preceding rounds. This round
+reduces the guarded residue at 00:FA67; the next target is 03:7C34, subject
+to any newer user-supplied ranking.
+
+## Tile-upload branch event horizon: 00:FA67
+
+The fourth address in the latest ranking is already native away from events.
+Its guard now requires both event horizons to exceed 12 master cycles rather
+than the entire 18/24-cycle BBR0. The zero-page phase advances to 9, samples,
+and completes at 12. When no event occurs in that phase, the next core
+advance and the native checkpoint both reach the final sample at 15/21,
+then complete at 18/24. The final sample replaces the earlier interrupt
+latch before interrupt dispatch. No intermediate service boundary is added.
+Events at or before 12 still require the core's original advance sequence.
+PC, code/RAM mappings, RAM size, T flag, and collision BBS1 guards remain.
+
+The existing exhaustive bit-branch fixture checks both event horizons for
+every operand. The canonical oracle now admits 766/832 tile branches
+(previously 741/832), while collision admission remains 373/404. Registry
+membership remains 755 routines / 803 reachable keys, with 211 seam ranges.
+
+The canonical route's tile residue falls from 1,908 cycles / 91 intervals to
+1,368 / 66: 540 cycles removed (28.3%). All 31 paired registry routes remove
+540 cycles each, reducing the corpus total at this address from 59,148 to
+42,408 cycles (16,740 removed). Every frame hash and abandonment count is
+unchanged; higharc retains its one pre-existing abandonment. Total interpreter
+cycle deltas equal the tile-address deltas on every route. The comparison uses
+the previous binary with its original guard, not exclusion of the whole port.
+This measures the corpus; it does not replay the user's 141-interval session.
+Evidence: `out/tile-horizon-cost/manifest.csv` and the paired profiles/logs.
+
+Release passes all six selected checks (63.50 seconds); Debug passes all five
+(601.64 seconds). Both include the exhaustive shared fixture, pinned bit-branch
+assembly oracle with frame/call/RAM/hardware-write parity, face and hand
+captures, and audio-wrapper interrupt regression; Release also checks the
+host registry. Logs are `out/tile-horizon-tests-{Release,Debug}.log`.
+Registry generation, the 211-range seam check, and `git diff --check` pass.
+The complete test suite was not rerun.
 
 ## Tower-Insect source scheduler call: 02:5F73
 
@@ -1507,19 +1542,15 @@ and its 102-cycle routine-replay check; only admission rises from 122 to 224.
 
 ## Compound-sampled `BBRn` boundaries
 
-`00:F423`, `00:FA67`, `01:C6E3`, and `01:C756` are HuC6280 `BBRn` instructions
-whose zero-page read and relative branch are sampled together. Collapsing the
-pair into one native checkpoint shifts VDC event handling.
+The zero-page and relative-branch phases of these HuC6280 instructions each
+sample interrupts, but the CPU cannot service an interrupt between them.
+A transcript must preserve device-event timing without inventing that boundary.
 
-The core therefore executes each of these instructions itself and re-enters
-native code on both proven arms — for `00:FA67`, all 832 instances, resuming at
-`FA6A` or `FA6E`. The outer `00:FAA5` branch is retained as the row-transaction
-boundary for the same reason.
-
-This is a deliberate hardware-timing seam, not missing semantic coverage.
-Moving `01:C6E3` would require a bridge checkpoint that preserves
-the core's four-step event sampling; an ordinary two-boundary transcript is not
-sufficient, and it is not needed to keep porting adjacent gameplay code.
+At `00:FA67`, the guarded native BBR0 now accepts events after the 12-cycle
+zero-page phase. Earlier events retain the core instruction; canonical
+coverage is 766/832. See the current tile-upload horizon evidence above.
+The existing core paths at `00:F423`, `01:C6E3`, and `01:C756`, and the
+outer `00:FAA5` row boundary, retain their own constraints.
 
 ## VDC word-stream loop boundaries
 

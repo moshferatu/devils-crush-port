@@ -25,7 +25,7 @@
 "02","4F6C","4F74","guarded","Native countdown and expiry prefix; only unsupported mapping or D/T modes defer"
 "02","4F75","4F75","guarded","Native live-stack countdown RTS; both event horizons must exceed 21 master cycles"
 "03","6001","6003","guarded","Carry-clear actor idle branch hands off at the existing 6054 handler"
-"00","FA67","FA67","guarded","native tile-upload BBR0 requires both event horizons beyond the full 18/24-cycle opcode; compound sampling stays in core near events"
+"00","FA67","FA67","guarded","native tile-upload BBR0 requires both event horizons beyond the 12-cycle zero-page phase; final branch sample handles later events; earlier events stay in core"
 "01","C0FE","C100","core","boot clear setup and overlapping TII instruction"
 "01","D4A4","D4A4","core","flipper-owner input JSR retains the core's live stack push and interrupt sample"
 "01","D4A7","D4B2","core","flipper-owner input-gate instructions and live-stack return are native-core boundaries"

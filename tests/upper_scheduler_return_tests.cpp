@@ -156,12 +156,13 @@ int main()
                         "Bit branch timing, boundaries or side effects changed");
                 }
                 r.status = 0U;
+                const unsigned event_limit = collision ? cycles : 12U;
                 for (unsigned horizon = 0U; horizon <= 25U; ++horizon) {
                     entry.master_cycles_until_user_event = horizon;
-                    require(branch().has_value() == (horizon > cycles), "Bit branch user horizon changed");
+                    require(branch().has_value() == (horizon > event_limit), "Bit branch user horizon changed");
                     entry.master_cycles_until_user_event = 100U;
                     entry.master_cycles_until_timer_interrupt = horizon;
-                    require(branch().has_value() == (horizon > cycles), "Bit branch timer horizon changed");
+                    require(branch().has_value() == (horizon > event_limit), "Bit branch timer horizon changed");
                     entry.master_cycles_until_timer_interrupt = 100U;
                 }
             }

@@ -60,14 +60,18 @@ std::optional<RoutineReplacement> replace_bit_branch(
     const auto value = std::to_integer<std::uint8_t>(work_ram[collision ? 0x77U : 0x26U]);
     const bool taken = collision ? (value & 0x02U) != 0U : (value & 0x01U) == 0U;
     const std::uint32_t cycles = taken ? 24U : 18U;
+    const std::uint32_t horizon = collision ? cycles : 12U;
     if (std::min(entry.master_cycles_until_user_event,
-                 entry.master_cycles_until_timer_interrupt) <= cycles) {
+                 entry.master_cycles_until_timer_interrupt) <= horizon) {
         return std::nullopt;
     }
     // LD_ZP samples at 9 and completes at 12; JR then samples at 15/21
-    // and completes at 18/24. With no intervening event, RAM or mask change,
-    // the final sample is equivalent. Do not expose an interruptible boundary
-    // between the two halves of this single opcode. Near events, use the core.
+    // and completes at 18/24. The tile branch needs an event-free LD_ZP,
+    // not an event-free whole opcode: after cycle 12 the next core advance
+    // ends at the final sample, exactly where this checkpoint advances.
+    // That sample replaces the first latch before any interrupt can run.
+    // Keep the collision branch's existing guard, and never expose a service
+    // boundary between the two halves of this single opcode.
     RoutineReplacement result{};
     auto r = entry.registers;
     r.program_counter = collision ? (taken ? 0xCB93U : 0xCB6BU)

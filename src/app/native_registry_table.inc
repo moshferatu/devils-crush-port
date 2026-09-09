@@ -109,7 +109,7 @@ DC_ADMITTED_ROUTINE(0x00U, 0xF768U, 1, 1, "verify_resident_pattern_loader_semant
 DC_ADMITTED_ROUTINE(0x00U, 0xF778U, 1, 1, "verify_resident_pattern_loader_semantic")
 DC_ADMITTED_ROUTINE(0x00U, 0xF781U, 1, 1, "verify_resident_pattern_loader_semantic")
 DC_ADMITTED_ROUTINE(0x00U, 0xFA40U, 26, 26, "verify_vram_upload_semantic")
-DC_ADMITTED_ROUTINE(0x00U, 0xFA67U, 741, 832, "verify_bit_branches")
+DC_ADMITTED_ROUTINE(0x00U, 0xFA67U, 766, 832, "verify_bit_branches")
 DC_ADMITTED_ROUTINE(0x00U, 0xFA6AU, 416, 416, "verify_vram_upload_semantic")
 DC_ADMITTED_ROUTINE(0x00U, 0xFA6EU, 416, 416, "verify_vram_upload_semantic")
 DC_ADMITTED_ROUTINE(0x00U, 0xFC00U, 254990, 254990, "verify_sound_timer_driver_semantic")

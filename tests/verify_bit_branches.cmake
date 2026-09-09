@@ -32,7 +32,7 @@ foreach(mode IN ITEMS assembly native)
     endif()
     if(mode STREQUAL "native")
         foreach(expected IN ITEMS "Native replacement 01:CB68@all entries: 373 of 404"
-                                  "Native replacement 00:FA67@all entries: 741 of 832")
+                                  "Native replacement 00:FA67@all entries: 766 of 832")
             string(FIND "${output}" "${expected}" position)
             if(position EQUAL -1)
                 message(FATAL_ERROR "Missing admission ${expected}: ${output}")
