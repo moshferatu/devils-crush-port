@@ -111,6 +111,37 @@ std::optional<RoutineReplacement> replace_unconditional_branch(const RoutineEntr
     return result;
 }
 
+std::optional<RoutineReplacement> replace_little_skull_gate_load(
+    const RoutineEntry& entry, const std::span<const std::byte> work_ram)
+{
+    const auto pc = entry.routine.logical_pc;
+    if (entry.routine.physical_bank != 2U
+        || (pc != 0x45A4U && pc != 0x4567U && pc != 0x456AU)
+        || entry.registers.program_counter != pc
+        || entry.registers.mpr[1] != 0xF8U || entry.registers.mpr[2] != 2U
+        || (entry.registers.status & 0x20U) != 0U || work_ram.size() < 0x2000U) {
+        return std::nullopt;
+    }
+    // Keep these loads independent: LDY changes the index for the following
+    // LDA, and the gray-release gate must read the live shared latch. Neither
+    // load assumes an actor slot, a caller frame, or a previously observed value.
+    auto r = entry.registers;
+    const auto offset = pc == 0x45A4U ? 0x0CFAU
+        : pc == 0x4567U ? 0x1E00U + r.x : 0x0CF8U + r.y;
+    const auto value = std::to_integer<std::uint8_t>(work_ram[offset]);
+    if (pc == 0x4567U) { r.y = value; } else { r.accumulator = value; }
+    r.status = static_cast<std::uint8_t>((r.status & 0x7DU)
+        | (value == 0U ? 2U : value & 0x80U));
+    r.program_counter = static_cast<std::uint16_t>(pc + 3U);
+    RoutineReplacement result{};
+    result.return_instruction = {2U, r.program_counter};
+    result.output_registers = r;
+    result.body_master_cycles = 15U;
+    result.checkpoints.push_back({.interrupt_sample_master_cycle_offset = 12U,
+        .master_cycle_offset = 15U, .instruction = entry.routine, .registers = r});
+    return result;
+}
+
 std::optional<RoutineReplacement> replace_coroutine_call(
     const RoutineEntry& entry, const std::span<const std::byte> work_ram)
 {
@@ -122,10 +153,12 @@ std::optional<RoutineReplacement> replace_coroutine_call(
     constexpr RoutineKey kAssetCall{.physical_bank = 0x01U, .logical_pc = 0xC624U};
     constexpr RoutineKey kReleaseCall{.physical_bank = 0x02U, .logical_pc = 0x51D2U};
     constexpr RoutineKey kSourceCall{.physical_bank = 0x02U, .logical_pc = 0x5F73U};
+    constexpr RoutineKey kPendingCall{.physical_bank = 0x02U, .logical_pc = 0x5674U};
     if ((entry.routine != kDelayCall && entry.routine != kSchedulerCall
             && entry.routine != kSecondDelayCall && entry.routine != kToggleCall
             && entry.routine != kResetCall && entry.routine != kReleaseCall
-            && entry.routine != kAssetCall && entry.routine != kSourceCall)
+            && entry.routine != kAssetCall && entry.routine != kSourceCall
+            && entry.routine != kPendingCall)
         || entry.registers.program_counter != entry.routine.logical_pc
         || entry.registers.mpr[1] != 0xF8U
         || entry.registers.mpr[entry.routine.logical_pc >> 13U] != entry.routine.physical_bank
@@ -147,7 +180,8 @@ std::optional<RoutineReplacement> replace_coroutine_call(
     }
     r.program_counter = (entry.routine == kDelayCall || entry.routine == kSecondDelayCall)
         ? 0xC5EAU : entry.routine == kReleaseCall ? 0x5475U
-        : entry.routine == kAssetCall ? 0xF605U : entry.routine == kSourceCall ? 0xC018U : 0xC5C9U;
+        : entry.routine == kAssetCall ? 0xF605U : entry.routine == kSourceCall ? 0xC018U
+        : entry.routine == kPendingCall ? 0x570AU : 0xC5C9U;
     result.return_instruction = {r.mpr[r.program_counter >> 13U], r.program_counter};
     result.output_registers = r;
     result.body_master_cycles = 21U;
@@ -293,7 +327,15 @@ std::optional<RoutineReplacement> replace_upper_scheduler_return(
             && entry.routine != RoutineKey{0x01U, 0xC8E1U}
             && entry.routine != RoutineKey{0x00U, 0xE333U}
             && entry.routine != RoutineKey{0x01U, 0xDA3FU}
-            && entry.routine != RoutineKey{0x09U, 0x70BBU} && entry.routine != RoutineKey{0x09U, 0x71E1U})
+            && entry.routine != RoutineKey{0x09U, 0x70BBU} && entry.routine != RoutineKey{0x09U, 0x71E1U}
+            && entry.routine != RoutineKey{0x02U, 0x45A9U}
+            && entry.routine != RoutineKey{0x02U, 0x4571U}
+            && entry.routine != RoutineKey{0x02U, 0x59F4U}
+            && entry.routine != RoutineKey{0x02U, 0x4484U}
+            && entry.routine != RoutineKey{0x02U, 0x56ABU}
+            && entry.routine != RoutineKey{0x00U, 0xE60AU}
+            && entry.routine != RoutineKey{0x03U, 0x61B2U}
+            && entry.routine != RoutineKey{0x02U, 0x5721U})
         || entry.registers.program_counter != entry.routine.logical_pc
         || entry.registers.mpr[1] != 0xF8U
         || entry.registers.mpr[entry.routine.logical_pc >> 13U] != entry.routine.physical_bank

@@ -10,6 +10,8 @@
 #include <span>
 
 namespace devils_crush::app::detail {
+[[nodiscard]] std::optional<emulation::RoutineReplacement> replace_little_skull_gate_load(
+    const emulation::RoutineEntry& entry, std::span<const std::byte> work_ram);
 
 std::optional<emulation::RoutineReplacement> replace_audio_command_setup(
     const emulation::RoutineEntry& entry, std::span<const std::byte> work_ram);

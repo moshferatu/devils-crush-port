@@ -5540,6 +5540,11 @@ if(TARGET devils_crush)
                 "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/actor-scan-cursors-$<CONFIG>-v1"
                 -P "${CMAKE_CURRENT_SOURCE_DIR}/verify_actor_scan_cursors.cmake")
         set_tests_properties(dc_rom_actor_scan_cursors PROPERTIES LABELS rom_required)
+        add_test(NAME dc_rom_ranked_actor_seams
+            COMMAND "${CMAKE_COMMAND}" "-DAPP=$<TARGET_FILE:devils_crush>" "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/ranked-actor-seams-$<CONFIG>-v1"
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/verify_ranked_actor_seams.cmake")
+        set_tests_properties(dc_rom_ranked_actor_seams PROPERTIES LABELS rom_required)
         add_test(NAME dc_rom_tower_source_scheduler_call
             COMMAND "${CMAKE_COMMAND}" "-DAPP=$<TARGET_FILE:devils_crush>" "-DROM=${DC_ROM_PATH}"
                 "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/tower-source-scheduler-call-$<CONFIG>-v1"

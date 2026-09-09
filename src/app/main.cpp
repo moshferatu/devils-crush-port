@@ -7776,6 +7776,19 @@ parse_logical_address_range(const std::string_view text)
                                         .logical_pc = 0x42EBU,
                                     }
                             && request.all_calls;
+                        const bool proven_ranked_actor_seam = request.all_calls && (
+                            request.routine == RoutineKey{0x02U, 0x45A9U}
+                            || request.routine == RoutineKey{0x02U, 0x4571U}
+                            || request.routine == RoutineKey{0x02U, 0x45A4U}
+                            || request.routine == RoutineKey{0x02U, 0x59F4U}
+                            || request.routine == RoutineKey{0x02U, 0x4484U}
+                            || request.routine == RoutineKey{0x02U, 0x56ABU}
+                            || request.routine == RoutineKey{0x00U, 0xE60AU}
+                            || request.routine == RoutineKey{0x03U, 0x61B2U}
+                            || request.routine == RoutineKey{0x02U, 0x4567U}
+                            || request.routine == RoutineKey{0x02U, 0x456AU}
+                            || request.routine == RoutineKey{0x02U, 0x5674U}
+                            || request.routine == RoutineKey{0x02U, 0x5721U});
                         const bool proven_tower_source_scheduler_call =
                             request.routine == RoutineKey{0x02U, 0x5F73U}
                             && request.all_calls;
@@ -8817,6 +8830,7 @@ parse_logical_address_range(const std::string_view text)
                             && !proven_dragon_egg_controller_initializer
                             && !proven_three_blobs_rng_initialization
                             && !proven_three_blobs_rng_loop_branch
+                            && !proven_ranked_actor_seam
                             && !proven_tower_source_scheduler_call
                             && !proven_collision_table_call
                             && !proven_three_blobs_first_movement_prefix

@@ -5,9 +5,84 @@ iteration loop fast enough to port related code as a unit. It applies to
 Milestone 4 native gameplay work; it does not weaken the release or milestone
 acceptance criteria in [PLAN.md](../PLAN.md).
 
-## Current priority: collision-call cabinet ranking (September 9)
+## Current priority: combined actor residue ranking (September 9)
 
-The latest user-supplied address ranking supersedes all earlier priority lists.
+The latest user-supplied ranking supersedes the collision-call ranking below.
+Port related instructions together. The input recording and total residue were
+not supplied; corpus measurements are separate from the user's live session.
+
+| Rank | Address | Master cycles | Intervals | Shared implementation |
+| --- | --- | ---: | ---: | --- |
+| 1 | 02:45A9 | 50,808 | 2,400 | Live-stack RTS |
+| 2 | 02:4571 | 38,901 | 1,841 | Live-stack RTS |
+| 3 | 02:45A4 | 36,576 | 2,400 | Live latch LDA fallback |
+| 4 | 02:59F4 | 35,001 | 1,653 | Live-stack RTS |
+| 5 | 02:4484 | 29,988 | 1,420 | Live-stack RTS |
+| 6 | 02:56AB | 29,685 | 1,401 | Live-stack RTS |
+| 7 | 00:E60A | 29,532 | 1,396 | Live-stack RTS |
+| 8 | 03:61B2 | 28,119 | 1,331 | Live-stack RTS |
+| 9 | 02:4567 | 28,053 | 1,843 | Live indexed LDY |
+| 10 | 02:456A | 27,789 | 1,843 | Live indexed LDA |
+| 11 | 02:5674 | 25,992 | 1,224 | Live-stack JSR fallback |
+| 12 | 02:5721 | 25,848 | 1,224 | Live-stack RTS |
+
+All twelve addresses are covered in this round. Eight returns share the existing
+atomic RTS implementation, including live wrapping stack reads, destination MPR
+resolution, return-observer declarations, and strict event horizons beyond 21
+master cycles. The three loads preserve live indices and update only their target
+register and N/Z; each samples at cycle 12 and completes at 15. The JSR pushes
+5676 high byte then low byte at offset zero, samples at 18 and ends at 21. Loads
+and JSR reject T mode and require mapped code and RAM; decimal mode is supported.
+
+The existing full 45A4 gray-release and 5674 rotation walks retain priority.
+Their declined states now use the independent load/call without repeating a
+cached actor classification. The Big-Star semantic oracle retains its pinned
+hashes and 199 full walks, adding 219 JSR fallbacks (418/490 entries overall).
+Registry membership increases from 755 to 765, reachable keys from 803 to 813,
+and classified seam ranges from 211 to 223.
+
+The shared fixture now checks 6,488,064 return target/status/stack cases, nine
+JSR sites across all stack pointers and status bytes, and 1,179,648 skull load
+index/value/status cases, plus mapping, RAM-size and event-horizon guards.
+`verify_ranked_actor_seams.cmake` activates actors in a controlled census to
+exercise all twelve sites. Its complete frame-state, 12,922,900 RAM-write and
+3,245,139 bus-write transcripts match assembly. This is a controlled scenario,
+not a replay of the user's latest session.
+
+The controlled scenario also preserves the saved pre-change scheduler-call
+hashes. These differ from assembly because the pre-existing full 5674 atomic
+walk hides its internal 5721 return from the C5C9 observer. The new test pins
+the assembly and native observer baselines separately; it does not claim
+assembly-equivalent scheduler traces. Machine and write traces match exactly.
+
+Paired registry measurements against the saved pre-change Release executable
+reduce the twelve-address total in the controlled scenario from 58,488 to
+7,215 master cycles: 51,273 removed (87.7%). The frame hash and abandonment
+count are unchanged; this scenario has one pre-existing abandonment. Total
+interpreter-cycle reduction equals the sum of reductions at the twelve sites.
+The three loads have no remaining interpreted intervals on this route; return
+and call residue remains where the strict event horizons require the core.
+Artifacts are in `out/ranked-actors-active-cost/`, including `addresses.csv`.
+
+All 31 paired corpus routes preserve frame hashes and abandonment counts;
+`higharc` retains one pre-existing abandonment. Only `twist` reaches these
+sites in that corpus: 24,615 to 4,476 cycles across 02:56AB, 00:E60A, 02:5721
+and 02:5674, removing 20,139 cycles (81.8%). Other corpus routes have zero
+residue at these twelve addresses both before and after. Each route's total
+interpreter-cycle delta equals its target-address delta. Results are recorded
+in `out/ranked-actors-cost/manifest.csv`.
+
+Release validation passed 8/8 tests, including the combined actor oracle,
+exhaustive fixture, face and hand captures, audio wrapper, host registry,
+and existing Big-Star and gray-release semantic oracles. Debug passed 5/5:
+the fixture, combined actor oracle, face and hand captures, and audio wrapper.
+Logs are `out/ranked-actors-tests-Release.log` (150.42 seconds) and
+`out/ranked-actors-tests-Debug.log` (802.90 seconds). Registry generation
+and the 223-range seam manifest checks also pass.
+
+## Previous priority: collision-call cabinet ranking (September 9)
+
+This earlier user-supplied ranking is retained as iteration history.
 Use the replay corpus for compatibility and target measurements, not to
 replace this ranking. No total residue or input recording accompanied it.
 

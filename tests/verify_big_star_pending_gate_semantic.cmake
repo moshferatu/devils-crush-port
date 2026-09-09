@@ -42,7 +42,7 @@ endif()
 foreach(expected_line IN ITEMS
     "State census recording complete: 3600 frames"
     "Work-RAM patches applied: 2"
-    "Native replacement 02:5674@all entries: 199 of 490"
+    "Native replacement 02:5674@all entries: 418 of 490"
     "Native replacement 02:570A@all entries: 280 of 291"
     "Native replacement 02:5722@all entries: 1 of 1"
     "Observe hook 1 entries: 490"
@@ -74,4 +74,4 @@ foreach(artifact IN ITEMS census call write)
     endif()
 endforeach()
 
-message(STATUS "Semantic 5674 Big-Star rotation wait covers 199 event-horizon-safe active-window calls; 570A covers 290 no-pending calls and its observed pending-left child 5722 is native.")
+message(STATUS "Semantic 5674 preserves 199 full rotation walks and adds 219 independent JSR fallbacks; 570A admits 280 of 291 child entries and its observed pending-left child 5722 is native.")
