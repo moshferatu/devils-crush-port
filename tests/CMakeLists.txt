@@ -5545,6 +5545,14 @@ if(TARGET devils_crush)
                 "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/ranked-calls-$<CONFIG>-v1"
                 -P "${CMAKE_CURRENT_SOURCE_DIR}/verify_ranked_calls.cmake")
         set_tests_properties(dc_rom_ranked_calls PROPERTIES LABELS rom_required)
+        foreach(alley RANGE 0 1)
+            add_test(NAME dc_rom_ranked_operands_${alley}
+                COMMAND "${CMAKE_COMMAND}" "-DAPP=$<TARGET_FILE:devils_crush>" "-DROM=${DC_ROM_PATH}"
+                    "-DALLEY=${alley}"
+                    "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/ranked-operands-${alley}-$<CONFIG>-v1"
+                    -P "${CMAKE_CURRENT_SOURCE_DIR}/verify_ranked_operands.cmake")
+            set_tests_properties(dc_rom_ranked_operands_${alley} PROPERTIES LABELS rom_required)
+        endforeach()
         foreach(phase RANGE 0 1)
             add_test(NAME dc_rom_actor_gate_phase_${phase}
                 COMMAND "${CMAKE_COMMAND}" "-DAPP=$<TARGET_FILE:devils_crush>" "-DROM=${DC_ROM_PATH}"

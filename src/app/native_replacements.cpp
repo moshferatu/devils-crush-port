@@ -20,6 +20,21 @@ replace_native_gameplay_routine_impl(
     const std::span<const std::byte> work_ram,
     const std::span<const std::byte> rom)
 {
+    if (entry.routine == RoutineKey{.physical_bank = 0x02U, .logical_pc = 0x4D2DU}
+        || entry.routine == RoutineKey{.physical_bank = 0x01U, .logical_pc = 0xC8DAU}
+        || entry.routine == RoutineKey{.physical_bank = 0x01U, .logical_pc = 0xDA09U}
+        || entry.routine == RoutineKey{.physical_bank = 0x03U, .logical_pc = 0x61A6U}
+        || entry.routine == RoutineKey{.physical_bank = 0x00U, .logical_pc = 0xE5A4U}
+        || entry.routine == RoutineKey{.physical_bank = 0x00U, .logical_pc = 0xE5A6U}
+        || entry.routine == RoutineKey{.physical_bank = 0x00U, .logical_pc = 0xE5ABU}
+        || entry.routine == RoutineKey{.physical_bank = 0x00U, .logical_pc = 0xE5F4U}
+        || entry.routine == RoutineKey{.physical_bank = 0x00U, .logical_pc = 0xE5F6U}
+        || entry.routine == RoutineKey{.physical_bank = 0x00U, .logical_pc = 0xE5FDU}) {
+        return detail::replace_ranked_operand_instruction(entry, work_ram);
+    }
+    if (entry.routine == RoutineKey{.physical_bank = 0x02U, .logical_pc = 0x4D53U}) {
+        return detail::replace_coroutine_call(entry, work_ram);
+    }
     if (entry.routine == RoutineKey{.physical_bank = 0x02U, .logical_pc = 0x5004U}
         || entry.routine == RoutineKey{.physical_bank = 0x02U, .logical_pc = 0x5007U}
         || entry.routine == RoutineKey{.physical_bank = 0x02U, .logical_pc = 0x5009U}
@@ -2784,7 +2799,10 @@ replace_native_gameplay_routine_impl(
             .physical_bank = 0x03U,
             .logical_pc = 0x61A3U,
         }) {
-        return detail::replace_undead_head_waiting_parent(entry, work_ram);
+        if (auto waiting = detail::replace_undead_head_waiting_parent(entry, work_ram)) {
+            return waiting;
+        }
+        return detail::replace_ranked_operand_instruction(entry, work_ram);
     }
     if (entry.routine
         == RoutineKey{

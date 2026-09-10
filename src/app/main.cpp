@@ -7799,7 +7799,18 @@ parse_logical_address_range(const std::string_view text)
                             || request.routine == RoutineKey{3U, 0x7AE5U}
                             || request.routine == RoutineKey{3U, 0x7AE8U}
                             || request.routine == RoutineKey{3U, 0x7AEDU}
-                            || request.routine == RoutineKey{3U, 0x7957U});
+                            || request.routine == RoutineKey{3U, 0x7957U}
+                            || request.routine == RoutineKey{2U, 0x4D53U}
+                            || request.routine == RoutineKey{2U, 0x4D2DU}
+                            || request.routine == RoutineKey{1U, 0xC8DAU}
+                            || request.routine == RoutineKey{1U, 0xDA09U}
+                            || request.routine == RoutineKey{3U, 0x61A6U}
+                            || request.routine == RoutineKey{0U, 0xE5A4U}
+                            || request.routine == RoutineKey{0U, 0xE5A6U}
+                            || request.routine == RoutineKey{0U, 0xE5ABU}
+                            || request.routine == RoutineKey{0U, 0xE5F4U}
+                            || request.routine == RoutineKey{0U, 0xE5F6U}
+                            || request.routine == RoutineKey{0U, 0xE5FDU});
                         const bool proven_math_transfer_seam = request.all_calls && (request.routine == RoutineKey{1U, 0xC9C3U}
                             || request.routine == RoutineKey{1U, 0xC9D3U}
                             || request.routine == RoutineKey{0U, 0xE8A3U}

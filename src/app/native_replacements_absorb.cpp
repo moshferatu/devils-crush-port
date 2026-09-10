@@ -13,6 +13,55 @@ using emulation::RoutineEntry;
 using emulation::RoutineKey;
 using emulation::RoutineReplacement;
 
+std::optional<RoutineReplacement> replace_ranked_operand_instruction(
+    const RoutineEntry& entry, const std::span<const std::byte> work_ram)
+{
+    const auto pc = entry.routine.logical_pc;
+    const auto bank = entry.routine.physical_bank;
+    const bool math = bank == 0U && (pc == 0xE5A4U || pc == 0xE5A6U
+        || pc == 0xE5ABU || pc == 0xE5F4U || pc == 0xE5F6U || pc == 0xE5FDU);
+    const bool actor = (bank == 2U && pc == 0x4D2DU)
+        || (bank == 1U && (pc == 0xC8DAU || pc == 0xDA09U))
+        || (bank == 3U && (pc == 0x61A3U || pc == 0x61A6U));
+    if ((!math && !actor) || entry.registers.program_counter != pc
+        || entry.registers.mpr[pc >> 13U] != bank
+        || entry.registers.mpr[1] != 0xF8U || work_ram.size() < 0x2000U
+        || (entry.registers.status & 0x20U) != 0U) {
+        return std::nullopt;
+    }
+    auto r = entry.registers;
+    RoutineReplacement result{};
+    std::uint32_t cycles = math || pc == 0xDA09U ? 12U : 15U;
+    r.program_counter = static_cast<std::uint16_t>(pc + (cycles == 12U ? 2U : 3U));
+    if (pc == 0xE5A6U || pc == 0xE5FDU) {
+        // These seams consume the live flags, including after a child return.
+        const bool taken = pc == 0xE5A6U ? (r.status & 2U) != 0U : (r.status & 0x80U) == 0U;
+        if (taken) { r.program_counter = pc == 0xE5A6U ? 0xE5ABU : 0xE60AU; }
+        else { cycles = 6U; }
+    } else {
+        const std::uint16_t address = pc == 0x4D2DU ? 0x3E00U + r.x
+            : pc == 0xC8DAU ? 0x3C80U + r.x : pc == 0x61A3U ? 0x2D00U
+            : pc == 0x61A6U ? 0x2D01U : pc == 0xDA09U ? 0x2028U
+            : pc == 0xE5A4U ? 0x2030U : pc == 0xE5ABU ? 0x202FU : 0x2046U;
+        if (pc == 0xDA09U || pc == 0xE5F6U) {
+            result.work_ram_writes.push_back({.instruction = entry.routine,
+                .logical_address = address, .value = r.accumulator, .master_cycle_offset = cycles});
+        } else {
+            const auto value = std::to_integer<std::uint8_t>(work_ram[address - 0x2000U]);
+            r.accumulator = pc == 0x61A6U ? static_cast<std::uint8_t>(r.accumulator | value)
+                : pc == 0xE5F4U ? static_cast<std::uint8_t>(r.accumulator ^ value) : value;
+            r.status = static_cast<std::uint8_t>((r.status & 0x7DU)
+                | (r.accumulator == 0U ? 2U : r.accumulator & 0x80U));
+        }
+    }
+    result.return_instruction = {r.mpr[r.program_counter >> 13U], r.program_counter};
+    result.output_registers = r;
+    result.body_master_cycles = cycles;
+    result.checkpoints.push_back({.interrupt_sample_master_cycle_offset = cycles - 3U,
+        .master_cycle_offset = cycles, .instruction = entry.routine, .registers = r});
+    return result;
+}
+
 std::optional<RoutineReplacement> replace_actor_gate_phase_instruction(
     const RoutineEntry& entry, const std::span<const std::byte> work_ram)
 {
@@ -613,7 +662,8 @@ std::optional<RoutineReplacement> replace_coroutine_call(
     constexpr RoutineKey kSourceCall{.physical_bank = 0x02U, .logical_pc = 0x5F73U};
     constexpr RoutineKey kPendingCall{.physical_bank = 0x02U, .logical_pc = 0x5674U};
     const bool actor_call = entry.routine == RoutineKey{3U, 0x657CU}
-        || entry.routine == RoutineKey{3U, 0x7957U};
+        || entry.routine == RoutineKey{3U, 0x7957U}
+        || entry.routine == RoutineKey{2U, 0x4D53U};
     const bool parent_call = entry.routine == RoutineKey{9U, 0x7040U}
         || entry.routine == RoutineKey{9U, 0x7178U}
         || entry.routine == RoutineKey{9U, 0x7022U}

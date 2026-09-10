@@ -5,7 +5,99 @@ iteration loop fast enough to port related code as a unit. It applies to
 Milestone 4 native gameplay work; it does not weaken the release or milestone
 acceptance criteria in [PLAN.md](../PLAN.md).
 
-## Current priority: Mercy-Star gate and bumper phase (September 10)
+## Current priority: actor and math operands (September 10)
+
+The latest cabinet ranking contains 67,200 reported master cycles. This batch
+covers all twelve sites with eleven new admissions and a live-instruction
+fallback for the existing Undead-Head waiting-parent entry. The supplied
+ranking determines scope; measurements below use local replays.
+
+| Rank | Address | Reported cycles | Native treatment |
+| --- | --- | ---: | --- |
+| 1 | 02:4D53 | 8,112 | Sampled JSR C018, live stack |
+| 2 | 01:C8DA | 7,164 | LDA 3C80,X, live actor attribute |
+| 3 | 01:DA09 | 6,492 | STA zero-page 28, live VDC-read result |
+| 4 | 02:4D2D | 5,832 | LDA 3E00,X, live continuation slot |
+| 5 | 03:61A3 | 5,244 | LDA 2D00 fallback after the existing waiting-parent classifier |
+| 6 | 03:61A6 | 5,244 | ORA 2D01 using live A |
+| 7 | 00:E5A4 | 4,872 | LDA zero-page 30 |
+| 8 | 00:E5AB | 4,872 | LDA zero-page 2F |
+| 9 | 00:E5A6 | 4,848 | BEQ E5AB using live Z |
+| 10 | 00:E5F4 | 4,848 | EOR zero-page 46 using live A |
+| 11 | 00:E5F6 | 4,848 | STA zero-page 46 using live A |
+| 12 | 00:E5FD | 4,824 | BPL E60A using live N |
+
+`replace_ranked_operand_instruction` groups the eleven loads, stores, logic
+operations and branches. Absolute and indexed reads sample at 12 and retire
+at 15; zero-page operations sample at 9 and retire/write at 12. Branches take
+6 or 12 cycles and sample three cycles before retirement. Loads, ORA and EOR
+change only A/N/Z, while stores and branches preserve flags. All indexed
+slots and both event horizons are admitted with exact PC/code MPR, full mapped
+work RAM and T-clear guards; D remains supported. DA06 and DA0B VDC reads keep
+their existing core owner, and DA09 stores the live result between them.
+
+The full 61A3 waiting-parent transcript retains priority and its original
+63-cycle behavior. Its new fallback executes only LDA 2D00 when classification
+fails; 61A6 consumes independently supplied A instead of reconstructing the
+preceding load. The 4D53 call uses the shared sampled C018 implementation:
+push 4D55 high then low at offset zero, wrapping SP, sample at 18 and retire
+at 21. Shared call fixture coverage rises from 24 to 25 keys.
+
+`tests/ranked_operand_fixture.hpp` checks 7,208,960 operand/index/status cases,
+including every independent A/operand pair for ORA and EOR, both branch paths,
+T/D behavior, unchanged registers and flags, write and sample timing, both
+horizons, mappings and short RAM. The existing call fixture checks every SP/P.
+
+`tests/verify_ranked_operands.cmake` pins the original ROM bytes and compares
+assembly against just the selected native hooks, independently executing both
+modes. Each replay checks five hashes: frames, scheduler calls, scoped scheduler
+writes, all work-RAM writes and device writes. Expected hashes are unchanged
+from the earlier independent assembly captures and are pinned in the test.
+
+* The natural alley replay accepts 96/96 entries at 4D2D and 4D53, 119/119 at
+  C8DA, 41/41 at DA09 and 1/1 at E5A4/E5A6/E5AB. It checks 2067 scheduler calls,
+  946512 scoped writes, 11834535 RAM writes and 3225616 device writes.
+* The last-ball Mercy-Star activation reaches the other eleven targets:
+  1/1 at 4D53, 32/32 at C8DA, 1512/1512 at DA09, 1197/1197 at both 61A3 and
+  61A6, and 2642/2642 at each of the six math sites. All 1197 parent entries
+  use the new fallback. It checks 3450 scheduler calls, 988112 scoped writes,
+  13078813 RAM writes and 3298254 device writes. The same last-ball and score
+  patches are applied to both modes; no continuation, code or stack is patched.
+
+The registry grows from 852 to 863 admitted routines, with 911 reachable keys,
+194 routines proven on a patched route and 325 classified seam ranges.
+
+Full-registry before/after measurements remove every ranked cycle across the
+31 standard routes and the controlled last-ball activation:
+
+| Replay set | Ranked cycles before | After | Frame / abandonment parity |
+| --- | ---: | ---: | --- |
+| 31 standard routes | 47,664 | 0 | Identical for every route |
+| Last-ball Mercy-Star activation | 213,042 | 0 | Identical frame hash; zero abandonments |
+| Combined | 260,706 | 0 | Preserved throughout |
+
+Every standard route improves. Twist removes 29,169 cycles, alley 5,841,
+lanes 5,373 and stagger 5,361; the remaining 27 routes remove 1,920 together.
+Higharc, radial and sidestep retain their one pre-existing abandonment each;
+the other 28 routes and the activation retain zero. In every replay the total
+interpreter-cycle reduction equals the ranked-cycle reduction exactly.
+
+The activation retains full-registry frame SHA-256
+`a8e622738d260fc576bd80166b078ec907e9d08dcc92102d13ee3853aabf6f48`.
+Before/after profiles and frame recordings are under `out/ranked-operands-cost`,
+with `manifest.csv`, `activation.csv` and `addresses.csv` providing the route
+and per-address results. These replay measurements are separate from the
+67,200-cycle cabinet report; the user's recording was not supplied.
+
+Final validation: all seven selected Release checks passed, including both
+new five-trace assembly oracles, the shared fixture, the unchanged 770-entry
+Undead-Head waiting-parent oracle, host registry and original face/hand capture
+regressions. All three selected Debug checks passed: the shared fixture and
+both new assembly oracles. Registry generation/check and the 325-range seam
+check passed. No timing or trace hashes were relaxed, and no changes were
+reverted.
+
+## Previous round: Mercy-Star gate and bumper phase (September 10)
 
 The newest cabinet ranking contains 115,011 reported master cycles. This
 round covers all twelve sites, grouping six Mercy-Star gate instructions,

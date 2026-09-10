@@ -12,6 +12,7 @@ void require(bool ok, const char* message) { if (!ok) { throw std::runtime_error
 #include "math_transfer_fixture.hpp"
 #include "ranked_control_fixture.hpp"
 #include "actor_gate_phase_fixture.hpp"
+#include "ranked_operand_fixture.hpp"
 int main()
 {
     try {
@@ -21,6 +22,7 @@ int main()
         verify_math_transfer_instructions();
         verify_ranked_control_instructions();
         verify_actor_gate_phase_instructions();
+        verify_ranked_operand_instructions();
         std::array<std::byte, 0x2000> ram{};
         for (const auto routine : {RoutineKey{5U, 0x7376U}, RoutineKey{5U, 0x7379U},
                  RoutineKey{5U, 0x7387U}, RoutineKey{5U, 0x738AU}, RoutineKey{5U, 0x738FU},
@@ -423,9 +425,9 @@ int main()
             require(!jump(), "Unsupported jump key admitted");
         }
         std::puts("Verified 262,144 unconditional-branch stack/status cases and both horizon guards.");
-        for (const auto pc : {0xC693U, 0xC696U, 0xC69BU, 0xC6A6U, 0xC6BFU, 0x51D2U, 0xC624U, 0x5F73U, 0x5674U, 0xE5AFU, 0xE5ECU, 0xE5F1U, 0xE5F8U, 0x7C34U, 0x7643U, 0xC9C3U, 0xC9D3U, 0xE32CU, 0x7957U, 0x657CU, 0x7040U, 0x7178U, 0x7022U, 0x715AU}) {
+        for (const auto pc : {0xC693U, 0xC696U, 0xC69BU, 0xC6A6U, 0xC6BFU, 0x51D2U, 0xC624U, 0x5F73U, 0x5674U, 0xE5AFU, 0xE5ECU, 0xE5F1U, 0xE5F8U, 0x7C34U, 0x7643U, 0xC9C3U, 0xC9D3U, 0xE32CU, 0x4D53U, 0x7957U, 0x657CU, 0x7040U, 0x7178U, 0x7022U, 0x715AU}) {
             RoutineEntry entry{};
-            entry.routine = {static_cast<std::uint8_t>((pc == 0x7040U || pc == 0x7178U || pc == 0x7022U || pc == 0x715AU) ? 9U : (pc == 0x7C34U || pc == 0x7643U || (pc == 0x657CU || pc == 0x7957U)) ? 3U : pc >= 0xE000U ? 0U : (pc == 0x51D2U || pc == 0x5F73U || pc == 0x5674U) ? 2U : 1U), static_cast<std::uint16_t>(pc)};
+            entry.routine = {static_cast<std::uint8_t>((pc == 0x7040U || pc == 0x7178U || pc == 0x7022U || pc == 0x715AU) ? 9U : (pc == 0x7C34U || pc == 0x7643U || (pc == 0x657CU || pc == 0x7957U)) ? 3U : pc >= 0xE000U ? 0U : (pc == 0x4D53U || pc == 0x51D2U || pc == 0x5F73U || pc == 0x5674U) ? 2U : 1U), static_cast<std::uint16_t>(pc)};
             auto& r = entry.registers;
             r.program_counter = static_cast<std::uint16_t>(pc);
             r.mpr[1] = 0xF8U; r.mpr[6] = 1U; r.mpr[2] = 2U; r.mpr[3] = 3U; r.mpr[pc >> 13U] = entry.routine.physical_bank;
@@ -440,7 +442,7 @@ int main()
                     require(result.has_value() == ((status & 0x20U) == 0U), "Call transfer-mode guard changed");
                     if (!result) { continue; }
                     const auto& out = result->output_registers;
-                    require(out.program_counter == ((pc == 0x7040U || pc == 0x7178U || pc == 0x7022U || pc == 0x715AU) ? 0xF08EU : (pc == 0xC693U || pc == 0xC69BU) ? 0xC5EAU : pc == 0x51D2U ? 0x5475U : pc == 0xC624U ? 0xF605U : (pc == 0x5F73U || (pc == 0x7C34U || pc == 0x7643U || (pc == 0x657CU || pc == 0x7957U))) ? 0xC018U : pc == 0x5674U ? 0x570AU : pc == 0xE32CU ? 0xE321U : pc == 0xC9C3U ? 0xE5ECU : pc == 0xC9D3U ? 0xE85DU : pc == 0xE5AFU ? 0xE5BCU : pc == 0xE5ECU ? 0xE813U : pc == 0xE5F1U ? 0xE825U : pc == 0xE5F8U ? 0xE59FU : 0xC5C9U)
+                    require(out.program_counter == ((pc == 0x7040U || pc == 0x7178U || pc == 0x7022U || pc == 0x715AU) ? 0xF08EU : (pc == 0xC693U || pc == 0xC69BU) ? 0xC5EAU : pc == 0x51D2U ? 0x5475U : pc == 0xC624U ? 0xF605U : (pc == 0x4D53U || pc == 0x5F73U || (pc == 0x7C34U || pc == 0x7643U || (pc == 0x657CU || pc == 0x7957U))) ? 0xC018U : pc == 0x5674U ? 0x570AU : pc == 0xE32CU ? 0xE321U : pc == 0xC9C3U ? 0xE5ECU : pc == 0xC9D3U ? 0xE85DU : pc == 0xE5AFU ? 0xE5BCU : pc == 0xE5ECU ? 0xE813U : pc == 0xE5F1U ? 0xE825U : pc == 0xE5F8U ? 0xE59FU : 0xC5C9U)
                         && out.stack_pointer == static_cast<std::uint8_t>(sp - 2U)
                         && out.status == status && out.accumulator == r.accumulator
                         && out.x == r.x && out.y == r.y && out.mpr == r.mpr,
@@ -467,11 +469,11 @@ int main()
             for (unsigned horizon = 0U; horizon <= 22U; ++horizon) {
                 entry.master_cycles_until_user_event = horizon;
                 require(devils_crush::app::detail::replace_coroutine_call(entry, ram).has_value()
-                    == (pc == 0x5F73U || (pc == 0x657CU || pc == 0x7957U) || pc == 0x7040U || pc == 0x7178U || pc == 0x7022U || pc == 0x715AU || horizon > 21U), "Call user horizon guard changed");
+                    == (pc == 0x4D53U || pc == 0x5F73U || (pc == 0x657CU || pc == 0x7957U) || pc == 0x7040U || pc == 0x7178U || pc == 0x7022U || pc == 0x715AU || horizon > 21U), "Call user horizon guard changed");
                 entry.master_cycles_until_user_event = 100U;
                 entry.master_cycles_until_timer_interrupt = horizon;
                 require(devils_crush::app::detail::replace_coroutine_call(entry, ram).has_value()
-                    == (pc == 0x5F73U || (pc == 0x657CU || pc == 0x7957U) || pc == 0x7040U || pc == 0x7178U || pc == 0x7022U || pc == 0x715AU || horizon > 21U), "Call timer horizon guard changed");
+                    == (pc == 0x4D53U || pc == 0x5F73U || (pc == 0x657CU || pc == 0x7957U) || pc == 0x7040U || pc == 0x7178U || pc == 0x7022U || pc == 0x715AU || horizon > 21U), "Call timer horizon guard changed");
                 entry.master_cycles_until_timer_interrupt = 100U;
             }
             require(!devils_crush::app::detail::replace_coroutine_call(entry, std::span(ram).first(0x1FFF)), "Short call RAM admitted");
@@ -482,7 +484,7 @@ int main()
             r.mpr[pc >> 13U] = entry.routine.physical_bank; ++r.program_counter;
             require(!devils_crush::app::detail::replace_coroutine_call(entry, ram), "Wrong call PC admitted");
         }
-        std::puts("Verified twenty-four scheduler/submission/asset/math calls across all stack pointers and status values.");
+        std::puts("Verified twenty-five scheduler/submission/asset/math calls across all stack pointers and status values.");
         for (const auto routine : {RoutineKey{0x08U, 0x5976U}, RoutineKey{0x01U, 0xC4C8U},
                  RoutineKey{0x08U, 0x5A69U}, RoutineKey{0x00U, 0xE47CU},
                  RoutineKey{0x02U, 0x4F75U}, RoutineKey{0x02U, 0x51D5U}, RoutineKey{0x45U, 0x4B85U}, RoutineKey{0x00U, 0xED85U}, RoutineKey{0x02U, 0x4F92U},
