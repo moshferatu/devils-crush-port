@@ -5,7 +5,111 @@ iteration loop fast enough to port related code as a unit. It applies to
 Milestone 4 native gameplay work; it does not weaken the release or milestone
 acceptance criteria in [PLAN.md](../PLAN.md).
 
-## Current priority: actor calls, delayed spawn and event horizons (September 9)
+## Current priority: Mercy-Star gate and bumper phase (September 10)
+
+The newest cabinet ranking contains 115,011 reported master cycles. This
+round covers all twelve sites, grouping six Mercy-Star gate instructions,
+four bumper phase instructions and two calls. Measurements below use local
+replays; the user's ranked recording was not supplied.
+
+| Rank | Address | Reported cycles | Native treatment |
+| --- | --- | ---: | --- |
+| 1 | 02:5009 | 19,776 | LDA 2D4E, live ball-state field |
+| 2 | 02:5004 | 19,656 | LDA 3800,X, live actor activity |
+| 3 | 02:5013 | 15,720 | JMP 4CDA |
+| 4 | 02:500E | 15,648 | BNE using live Z |
+| 5 | 02:5007 | 7,920 | BMI using live N |
+| 6 | 02:500C | 7,896 | CMP immediate 2 using live A |
+| 7 | 03:7AE5 | 6,891 | INC 3980,X, wrapping phase byte |
+| 8 | 03:7AE2 | 4,953 | STA 3A00,X using live A |
+| 9 | 03:7AE8 | 4,929 | LDA 3980,X, live animation phase |
+| 10 | 03:7957 | 4,080 | Shared sampled JSR C018 |
+| 11 | 02:4421 | 4,032 | Existing JSR 6966 now accepts both event horizons |
+| 12 | 03:7AED | 3,510 | BCC using live carry |
+
+`replace_actor_gate_phase_instruction` implements the ten related gate and
+phase instructions. Loads and stores sample at 12 and retire/write at 15;
+INC samples at 18 and writes at 21. Immediate CMP samples at 3 and retires
+at 6, changes only N/Z/C, preserves A and remains binary with D set. Branches
+consume live flags, take 6 or 12 cycles, and sample three cycles before
+retirement. JMP samples at 9 and retires at 12. Every indexed instruction
+covers all X values. Exact PC, live code MPR, mapped full work RAM and T-clear
+guards remain; D is admitted. The surrounding actor bodies retain their
+existing owners, including the bumper's phase comparison and reset.
+
+The 7957 call shares the sampled C018 path. Both it and collision call 4421
+push PC+2, high byte then low byte, at offset zero with wrapping SP. The core
+charges its eighteen-cycle batch after those writes, then samples and retires
+at 21, so their checkpoints cover both event horizons. The other seventeen
+strict shared-call keys retain their guards. Shared JSR fixture coverage rises
+from 23 to 24 keys. The existing collision replay now accepts 329/329 calls
+instead of 285/329 and retains its original frame, call and scoped-write hashes.
+
+`tests/verify_actor_gate_phase.cmake` pins original ROM bytes and independently
+runs assembly and the new native batches, with five hashes per replay:
+
+* Mercy-Star activation sets the last-ball count and clears the selected
+  player's score at frame 1200. The original game activates the actors; no
+  continuation or stack is patched. Counts are 3475/3475 at 5004 and 5007,
+  3474/3474 at 5009, 500C and 500E, and 3472/3472 at 5013. Its traces cover
+  3450 scheduler calls, 988112 scoped writes, 13078813 RAM writes and 3298254
+  device writes.
+* The existing bumper activation at frame 3341 exercises 298/298 entries at
+  each phase instruction and 192/192 at 7957. Its traces cover 2893 scheduler
+  calls, 895886 scoped writes, 12704178 RAM writes and 3146298 device writes.
+
+| Trace | Mercy-Star assembly SHA-256 | Bumper assembly SHA-256 |
+| --- | --- | --- |
+| Frame | `84e479a4b12b999fd10d0467189463eb44a2c019a779375f1d7cdaf49c1f0e4f` | `8607824e0a9464690ce8b2322a009c812dda78f0282c2bf2459a1fc849a24345` |
+| Scheduler calls | `4d87f2c6819bad56b42b6f9274b981287bd3adcfe9238f4cd5a1dca8f7470b2c` | `dd11c814f4c219f6a9d2cc6cbad3ac1936487befcf059cc4cc9e9528c8583c48` |
+| Scheduler writes | `32718424252acb018c78f5c11e5b2ff23df588bbae48b60379ff44da642ba8bb` | `fcfc13a973dcbfb3c60c5655029bb5f082df153d813e4cea4444f9900131fda4` |
+| RAM writes | `df7ad9d5689b13a2a40eeefc9b7863e425de69a019f46021496de397fdfe02e0` | `89703a7b6cc4bbd5243f1d9ddec2cff0bee3fbf37d5c4412a372cb1d816b00d7` |
+| Device writes | `fed75f9d3bd27fe9cee7cfa929387fa9c51aa538a37f6ec502772f4704014d94` | `dd212e440e8b189384865da6a2498ed5609d10ddbcace7b71475c5da479ed9f0` |
+
+The new fixture covers 6,553,600 combinations, including independent A/RAM,
+byte wrap, all X values, flags, both horizons, mappings and short RAM. Shared
+JSR tests cover every SP/P, and the collision fixture retains its selector,
+stack and mapping checks while admitting the formerly declined horizons.
+The registry grows from 841 to 852 admitted routines, with 900 reachable
+dispatch keys and 313 classified seam ranges.
+
+
+Full-registry before/after measurements eliminate all ranked residue in both
+activation replays:
+
+| Replay | Ranked cycles before | After | Frame / abandonment parity |
+| --- | ---: | ---: | --- |
+| Last-ball Mercy Stars | 231,483 | 0 | Identical frame hash; zero abandonments |
+| Bumper activation | 22,587 | 0 | Identical frame hash; zero abandonments |
+
+The bumper total includes 21 cycles at collision call 4421; its five newly
+admitted sites account for the other 22,566. In both replays the total
+interpreter-cycle reduction equals the ranked-cycle reduction exactly.
+
+All 31 standard routes retain identical frame hashes and abandonment counts.
+They do not exercise the eleven new sites, so their compatibility results do
+not replace the activation measurements or the user's priority ranking.
+Only 4421 contributes ranked residue there: sweep falls from 1,245 to zero
+and weave from 1,068 to zero, for 2,313 cycles removed. The other 29 routes
+already had zero ranked residue. Higharc, sidestep and radial retain one
+pre-existing abandonment each; the other 28 remain at zero.
+
+Evidence: `out/ranked-bumper-cost/{activation,manifest,addresses}.csv` and
+per-route frame/profile/log files; oracle hashes and accepted counts are
+pinned in `tests/verify_actor_gate_phase.cmake` and
+`tests/verify_collision_table_call.cmake`.
+
+
+Validation complete: eight Release checks and five Debug checks pass. Both
+new activation oracles match all five assembly hashes in both configurations;
+the collision replay retains its original three hashes in both. Release also
+passes the corrupted-face capture, upper-hand bus capture and host registry
+check. Both configurations pass the shared return/call and collision fixtures.
+Registry generation/check, the 313-range seam check and `git diff --check`
+pass. Logs: `out/ranked-bumper-tests-{Release,Debug}.log`,
+`out/ranked-bumper-registry-check.log` and `out/ranked-bumper-seams.log`.
+
+## Previous round: actor calls, delayed spawn and event horizons (September 9)
 
 The latest user ranking supersedes the frame-delay ranking below. Its twelve
 sites account for 8,403 reported master cycles. This round batches eight sites;

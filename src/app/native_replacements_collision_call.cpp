@@ -30,11 +30,8 @@ replace_shared_collision_table_call(
         r.program_counter = 0x4421U;
     } else {
         // The core pushes both JSR bytes before charging instruction cycles.
-        // Keep this stack transaction atomic near timer and device events.
-        if (std::min(entry.master_cycles_until_user_event,
-                     entry.master_cycles_until_timer_interrupt) <= cycles) {
-            return std::nullopt;
-        }
+        // Both writes precede ADDCYC(6); the checkpoint below samples at 18
+        // and retires at 21, including an event within that batch.
         for (const auto value : {std::uint8_t{0x44U}, std::uint8_t{0x23U}}) {
             result.work_ram_writes.push_back({
                 .instruction = kRoutine,

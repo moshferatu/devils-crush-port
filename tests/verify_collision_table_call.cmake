@@ -26,7 +26,7 @@ foreach(mode IN ITEMS assembly native)
     endif()
     if(mode STREQUAL "native")
         foreach(expected IN ITEMS "Native replacement 02:441E@all entries: 329 of 329"
-                                  "Native replacement 02:4421@all entries: 285 of 329"
+                                  "Native replacement 02:4421@all entries: 329 of 329"
                                   "Routine call trace complete: 658 calls, 21092 writes")
             string(FIND "${output}" "${expected}" position)
             if(position EQUAL -1)

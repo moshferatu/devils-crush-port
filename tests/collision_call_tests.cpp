@@ -58,10 +58,10 @@ int main()
         r.status = 0;
         for (unsigned horizon = 0; horizon < 24; ++horizon) {
             entry.master_cycles_until_timer_interrupt = horizon;
-            require(replace_shared_collision_table_call(entry, ram).has_value() == (horizon > 21));
+            require(replace_shared_collision_table_call(entry, ram).has_value());
             entry.master_cycles_until_timer_interrupt = 1000U;
             entry.master_cycles_until_user_event = horizon;
-            require(replace_shared_collision_table_call(entry, ram).has_value() == (horizon > 21));
+            require(replace_shared_collision_table_call(entry, ram).has_value());
             entry.master_cycles_until_user_event = 1000U;
         }
         for (const auto pc : {std::uint16_t{0x441EU}, std::uint16_t{0x4421U}}) {

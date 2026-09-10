@@ -13,6 +13,80 @@ using emulation::RoutineEntry;
 using emulation::RoutineKey;
 using emulation::RoutineReplacement;
 
+std::optional<RoutineReplacement> replace_actor_gate_phase_instruction(
+    const RoutineEntry& entry, const std::span<const std::byte> work_ram)
+{
+    const auto pc = entry.routine.logical_pc;
+    const bool gate = entry.routine.physical_bank == 2U
+        && (pc == 0x5004U || pc == 0x5007U || pc == 0x5009U
+            || pc == 0x500CU || pc == 0x500EU || pc == 0x5013U);
+    const bool phase = entry.routine.physical_bank == 3U
+        && (pc == 0x7AE2U || pc == 0x7AE5U || pc == 0x7AE8U || pc == 0x7AEDU);
+    if ((!gate && !phase) || entry.registers.program_counter != pc
+        || entry.registers.mpr[pc >> 13U] != entry.routine.physical_bank
+        || entry.registers.mpr[1] != 0xF8U || work_ram.size() < 0x2000U
+        || (entry.registers.status & 0x20U) != 0U) {
+        return std::nullopt;
+    }
+    auto r = entry.registers;
+    RoutineReplacement result{};
+    std::uint32_t cycles = 15U;
+    r.program_counter = static_cast<std::uint16_t>(pc + 3U);
+    const auto nz = [&](std::uint8_t value) {
+        r.status = static_cast<std::uint8_t>((r.status & 0x7DU)
+            | (value == 0U ? 2U : value & 0x80U));
+    };
+    switch (pc) {
+    case 0x5004U:
+    case 0x5009U:
+    case 0x7AE8U:
+        r.accumulator = std::to_integer<std::uint8_t>(work_ram[
+            pc == 0x5004U ? 0x1800U + r.x : pc == 0x5009U ? 0x0D4EU : 0x1980U + r.x]);
+        nz(r.accumulator);
+        break;
+    case 0x500CU: {
+        // CMP #2 is binary even when D is set; preserve A, V and the other flags.
+        const auto difference = static_cast<std::uint8_t>(r.accumulator - 2U);
+        nz(difference);
+        r.status = static_cast<std::uint8_t>((r.status & 0xFEU) | (r.accumulator >= 2U ? 1U : 0U));
+        cycles = 6U; r.program_counter = 0x500EU;
+        break;
+    }
+    case 0x5007U:
+    case 0x500EU:
+    case 0x7AEDU: {
+        // Consume the live flags, including an independently entered branch.
+        const bool taken = pc == 0x5007U ? (r.status & 0x80U) != 0U
+            : pc == 0x500EU ? (r.status & 2U) == 0U : (r.status & 1U) == 0U;
+        r.program_counter = taken ? static_cast<std::uint16_t>(
+            pc == 0x5007U ? 0x5016U : pc == 0x500EU ? 0x5013U : 0x7AF2U)
+            : static_cast<std::uint16_t>(pc + 2U);
+        cycles = taken ? 12U : 6U;
+        break;
+    }
+    case 0x5013U:
+        r.program_counter = 0x4CDAU; cycles = 12U;
+        break;
+    case 0x7AE2U:
+    case 0x7AE5U: {
+        const bool increment = pc == 0x7AE5U;
+        const auto address = static_cast<std::uint16_t>((increment ? 0x3980U : 0x3A00U) + r.x);
+        const auto value = increment ? static_cast<std::uint8_t>(
+            std::to_integer<std::uint8_t>(work_ram[address - 0x2000U]) + 1U) : r.accumulator;
+        if (increment) { cycles = 21U; nz(value); }
+        result.work_ram_writes.push_back({.instruction = entry.routine,
+            .logical_address = address, .value = value, .master_cycle_offset = cycles});
+        break;
+    }
+    }
+    result.return_instruction = {r.mpr[r.program_counter >> 13U], r.program_counter};
+    result.output_registers = r;
+    result.body_master_cycles = cycles;
+    result.checkpoints.push_back({.interrupt_sample_master_cycle_offset = cycles - 3U,
+        .master_cycle_offset = cycles, .instruction = entry.routine, .registers = r});
+    return result;
+}
+
 std::optional<RoutineReplacement> replace_ranked_control_instruction(
     const RoutineEntry& entry, const std::span<const std::byte> work_ram)
 {
@@ -538,7 +612,8 @@ std::optional<RoutineReplacement> replace_coroutine_call(
     constexpr RoutineKey kReleaseCall{.physical_bank = 0x02U, .logical_pc = 0x51D2U};
     constexpr RoutineKey kSourceCall{.physical_bank = 0x02U, .logical_pc = 0x5F73U};
     constexpr RoutineKey kPendingCall{.physical_bank = 0x02U, .logical_pc = 0x5674U};
-    const bool actor_call = entry.routine == RoutineKey{3U, 0x657CU};
+    const bool actor_call = entry.routine == RoutineKey{3U, 0x657CU}
+        || entry.routine == RoutineKey{3U, 0x7957U};
     const bool parent_call = entry.routine == RoutineKey{9U, 0x7040U}
         || entry.routine == RoutineKey{9U, 0x7178U}
         || entry.routine == RoutineKey{9U, 0x7022U}
