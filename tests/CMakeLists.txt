@@ -5540,6 +5540,29 @@ if(TARGET devils_crush)
                 "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/actor-scan-cursors-$<CONFIG>-v1"
                 -P "${CMAKE_CURRENT_SOURCE_DIR}/verify_actor_scan_cursors.cmake")
         set_tests_properties(dc_rom_actor_scan_cursors PROPERTIES LABELS rom_required)
+        add_test(NAME dc_rom_math_transfer
+            COMMAND "${CMAKE_COMMAND}" "-DAPP=$<TARGET_FILE:devils_crush>" "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/math-transfer-$<CONFIG>-v1"
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/verify_math_transfer.cmake")
+        set_tests_properties(dc_rom_math_transfer PROPERTIES LABELS rom_required)
+        add_test(NAME dc_rom_ranked_timers
+            COMMAND "${CMAKE_COMMAND}" "-DAPP=$<TARGET_FILE:devils_crush>" "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/ranked-timers-$<CONFIG>-v1"
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/verify_ranked_timers.cmake")
+        set_tests_properties(dc_rom_ranked_timers PROPERTIES LABELS rom_required)
+        add_test(NAME dc_rom_eyeball_countdown
+            COMMAND "${CMAKE_COMMAND}" "-DAPP=$<TARGET_FILE:devils_crush>" "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/eyeball-countdown-$<CONFIG>-v1"
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/verify_eyeball_countdown.cmake")
+        set_tests_properties(dc_rom_eyeball_countdown PROPERTIES LABELS rom_required)
+        foreach(face IN ITEMS 0 1)
+            add_test(NAME dc_rom_bumper_sprite_${face}
+                COMMAND "${CMAKE_COMMAND}" "-DAPP=$<TARGET_FILE:devils_crush>" "-DROM=${DC_ROM_PATH}"
+                    "-DFACE=${face}"
+                    "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/bumper-sprite-${face}-$<CONFIG>-v1"
+                    -P "${CMAKE_CURRENT_SOURCE_DIR}/verify_bumper_sprite.cmake")
+            set_tests_properties(dc_rom_bumper_sprite_${face} PROPERTIES LABELS rom_required)
+        endforeach()
         foreach(stage IN ITEMS 6 2)
             add_test(NAME dc_rom_ranked_bonus_countdown_${stage}
                 COMMAND "${CMAKE_COMMAND}" "-DAPP=$<TARGET_FILE:devils_crush>" "-DROM=${DC_ROM_PATH}"

@@ -31,7 +31,7 @@ endif()
 
 foreach(expected_line IN ITEMS
     "State census recording complete: 3600 frames" "Work-RAM patches applied: 1"
-    "Native replacement 03:76C5@all entries: 639 of 872"
+    "Native replacement 03:76C5@all entries: 872 of 872"
     "Observe hook 1 entries: 1" "Observe hook 2 entries: 872"
     "Routine trace complete: 873 entries"
     "Routine call trace complete: 873 calls, 9587 writes"
@@ -59,4 +59,4 @@ foreach(artifact IN ITEMS census trace call write)
     endif()
 endforeach()
 
-message(STATUS "Semantic 76C5 covers 639 horizon-safe active Giant-Face animator waits.")
+message(STATUS "Semantic 76C5 preserves 639 full waits and covers the remaining 233 entries with a live decrement fallback.")

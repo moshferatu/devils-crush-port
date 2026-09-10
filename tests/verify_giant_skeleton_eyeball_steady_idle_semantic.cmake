@@ -31,7 +31,7 @@ endif()
 
 foreach(expected_line IN ITEMS
     "State census recording complete: 3600 frames" "Work-RAM patches applied: 1"
-    "Native replacement 02:4E24@all entries: 1066 of 1377" "Observe hook 1 entries: 320"
+    "Native replacement 02:4E24@all entries: 1377 of 1377" "Observe hook 1 entries: 320"
     "Observe hook 2 entries: 9" "Observe hook 3 entries: 1377"
     "Routine trace complete: 1706 entries"
     "Routine call trace complete: 1706 calls, 439 writes"
@@ -59,4 +59,4 @@ foreach(artifact IN ITEMS census trace call write)
     endif()
 endforeach()
 
-message(STATUS "Semantic 4E24 covers 1,066 conservative-horizon-safe Giant-Skeleton Eyeball idle returns.")
+message(STATUS "Semantic 4E24 covers 1,066 complete Eyeball idle walks and 311 live load fallbacks.")

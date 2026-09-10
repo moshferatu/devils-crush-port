@@ -13,7 +13,7 @@ replace_three_blobs_timer_branch(const emulation::RoutineEntry& entry)
         return std::nullopt;
     }
 
-    // Resume after the core DEC fallback using its live flags. Do not reread
+    // Resume after the independent DEC fallback using its live flags. Do not reread
     // the timer or broaden the longer prefix's timer-horizon guard.
     const bool taken = (entry.registers.status & 0x02U) == 0U;
     const std::uint32_t cycles = taken ? 12U : 6U;

@@ -1,6 +1,358 @@
 # Retained Assembly Seams
 
-## Current priority: bonus hazard countdown and return ranking (September 9)
+## Current priority: collision math calls and multiply transfers (September 9)
+
+This user ranking supersedes the actor-timer ranking below. The live recording
+was not supplied; reductions are measured on local replays.
+
+| Rank | Address | Master cycles | Intervals | Implementation |
+| --- | --- | ---: | ---: | --- |
+| 1 | 01:C9C3 | 16,854 | 790 | Shared live-stack JSR to E5EC |
+| 2 | 01:C9D3 | 16,734 | 790 | Shared live-stack JSR to E85D |
+| 3 | 00:E8A3 | 16,710 | 790 | Shared live-stack RTS |
+| 4 | 00:E5AD | 16,248 | 1,332 | STA $30 using live A |
+| 5 | 00:E5B8 | 16,224 | 1,332 | STA $2F using live A |
+| 6 | 00:E5B2 | 16,200 | 1,332 | LDA $43 |
+| 7 | 00:E5B4 | 16,200 | 1,332 | STA $30 using live A |
+| 8 | 00:E5EF | 16,200 | 1,332 | STA $46 using live A |
+| 9 | 00:E5B6 | 16,176 | 1,332 | LDA $42 |
+| 10 | 00:E5FB | 16,152 | 1,332 | LDA $46 |
+| 11 | 00:E5A0 | 16,128 | 1,332 | Flag-preserving STZ $42 |
+| 12 | 00:E5A2 | 16,128 | 1,332 | Flag-preserving STZ $43 |
+
+The nine zero-page operations share `replace_math_transfer_instruction`.
+Each resumes independently, samples interrupts at 9 master cycles and
+retires at 12, with stores at 12. LDA updates N/Z; STA and STZ preserve all
+flags. Stores use live A after the intervening child calls. Exact PC,
+MPR7=00, MPR1=F8, full work RAM and clear T are required. Decimal mode,
+all register values and all event horizons are supported.
+
+The two calls push C9C5/C9D5 high then low at cycle zero, sample at 18 and
+complete at 21. The return consumes the live wrapping stack and resolves
+the destination through the live MPRs. These three boundaries retain strict
+>21-cycle guards on both event horizons. Existing full math walks retain
+their dispatch priority; no core patch or arithmetic algorithm changed.
+
+`math_transfer_fixture.hpp` covers 589,824 value/status combinations,
+including flag preservation, live stores, mapping, T and horizon guards.
+The shared call fixture now covers seventeen keys over every stack pointer
+and status value; the shared return fixture covers 9,043,968 cases across
+46 keys. Release and Debug fixtures pass.
+
+`verify_math_transfer.cmake` uses the natural 3,600-frame twist route with
+all twelve hooks, without RAM patches. It pins the ROM bytes, every hook's
+coverage, and all five assembly hashes: frame CSV, scheduler calls, scoped
+scheduler writes, full work-RAM writes and device writes. The nine transfers
+each enter 344/344 times; C9C3 is 152/172, C9D3 150/172 and E8A3 152/172.
+The trace contains 2,088 scheduler calls, 870,896 scoped writes, 12,470,985
+RAM writes and 3,265,435 device writes.
+
+The generated registry grows from 817 to 829 admitted routines and 865 to
+877 dispatch-reachable keys, with 3,864,141 of 3,920,602 proven calls (98.6%).
+The seam manifest has 288 non-overlapping ranges. Both registry and seam
+checks pass.
+
+Release validation passes: the five-trace assembly/native oracle (97.49 s),
+the host registry, and both face/hand capture regressions. Debug validation
+also passes: the five-trace oracle (697.16 s), face capture (323.65 s), hand
+capture (315.78 s), and the shared fixtures. All five assembly/native artifacts
+match exactly in both configurations.
+
+Full-registry twist measurement, using the saved pre-change Release binary
+and the current registry on the same natural route, reduces ranked residue
+from 42,852 to 1,350 master cycles (41,502 removed, 96.8%). Nine transfer
+sites reach zero; C9C3 retains 468 cycles, C9D3 462 and E8A3 420 at guarded
+boundaries. Total interpreter residue falls by exactly the ranked delta.
+Both runs retain frame SHA-256
+`ca4a0762f74bc1b44cf5487a5c658cb0db5fae09cebbe61422632c88e6d7c8a3`
+and zero abandonments. This before/after registry comparison is separate
+from the five-artifact assembly oracle above.
+
+Across the 31-route compatibility corpus, ranked residue totals
+43,020 -> 1,350 cycles (41,670 removed, 96.9%). Twist contributes 41,502
+cycles; spiral and alley each contribute 84 and reach zero. The other 28
+routes have no residue at these sites before or after. Every frame hash and
+abandonment count is unchanged, and every route's total interpreter delta
+equals its ranked delta. The pre-existing single abandonments on higharc,
+radial and sidestep are unchanged; the other 28 routes have zero. The corpus
+is compatibility evidence, not a replacement for the user's priority list.
+
+Evidence: `out/math-transfer-cost/manifest.csv`, `twist-addresses.csv`,
+per-route before/after profiles and logs; `out/math-transfer-fixture-*.log`,
+`out/math-transfer-tests-*.log`, `out/math-transfer-registry-check.log` and
+`out/math-transfer-seams.log`.
+
+
+## Previous priority: actor timers, music SEI and stream CLY (September 9)
+
+The latest user ranking supersedes the Eyeball/countdown ranking below. The
+live recording was not supplied; all measured reductions below are from local
+replays, not estimates of the user's route.
+
+| Rank | Address | Master cycles | Intervals | Implementation |
+| --- | --- | ---: | ---: | --- |
+| 1 | 03:7E7E | 4,083 | 191 | Shared live-stack RTS |
+| 2 | 03:66A3 | 3,150 | 110 | Full Three-Blobs prefix, then sampled DEC fallback |
+| 3 | 03:7643 | 3,096 | 144 | Shared live-stack JSR to C018 |
+| 4 | 03:7E6A | 2,952 | 192 | Indexed low-countdown LDA |
+| 5 | 45:485D | 2,940 | 490 | SEI sampling the old I mask |
+| 6 | 03:7E76 | 2,928 | 192 | High-countdown ORA using live A |
+| 7 | 03:7E73 | 2,880 | 192 | Low-countdown STA using live A |
+| 8 | 02:567F | 2,655 | 123 | Big-Star timer DEC |
+| 9 | 03:66AA | 2,577 | 159 | Three-Blobs timer STA using live A |
+| 10 | 03:66B2 | 2,577 | 159 | Three-Blobs toggle STA using live A |
+| 11 | 00:E438 | 2,514 | 415 | Flag-preserving CLY |
+| 12 | 03:66AD | 2,457 | 159 | Indexed Three-Blobs toggle LDA |
+
+Eight actor instructions and CLY share `replace_ranked_timer_instruction`.
+Exact PC, mapped code and clear T are required; actor RAM operations also
+require full work RAM and MPR1=F8. Decimal mode, all X values and all event
+horizons are supported. LDA/ORA/STA sample at 12 and complete at 15 master
+cycles, with stores at 15; DEC samples at 18 and writes at 21. CLY samples at
+3, completes at 6, and preserves every status flag. Countdown stores and ORA
+consume live A after the intervening core borrow/decrement instructions.
+
+The existing full Three-Blobs prefix at 66A3 retains priority and its
+300-cycle timer guard. Declined prefixes now execute the single DEC through
+a native checkpoint rather than the core capability. The old Release oracle
+retains its frame, call, write and routine-replay hashes while coverage rises
+from 1,089/1,107 to 1,107/1,107. The full prefix itself is unchanged.
+
+SEI at 485D shares the 49E3 implementation: sample the old I mask at cycle 3,
+retire with I set at 6, and preserve the old-mask sample through the existing
+`samples_interrupt_flag_clear` checkpoint field. No core patch changed.
+JSR at 7643 pushes 7645 high then low at cycle zero, samples at 18, and
+completes at 21 to the live mapping of C018. RTS at 7E7E uses the live wrapping
+stack and destination mapping. Both retain strict >21-cycle event guards.
+
+`verify_ranked_timers.cmake` activates the Big-Star controller and two fixed
+scheduler slots in a 3,600-frame assembly/native census. The 256-tick actor
+counter includes a real low-byte borrow and expiry. All twelve hooks enter:
+7E7E 386/446, 66A3 1,301/1,301, 7643 62/73, 7E6A/7E73/7E76 each 448/448,
+485D 324/324, 567F 787/787, 66AA/66AD/66B2 each 43/43, and E438 19,040/19,040.
+All five assembly/native artifacts match in both Release and Debug:
+
+| Artifact | SHA-256 |
+| --- | --- |
+| Frame census | `1b96bbd4ed757318f0825a338f2d54155f165361e389d29f155dde63f5233a2e` |
+| Scheduler calls | `e2d03614156b764e743fd50bd6ffa573f1fc9008b029c1e36ac8739592fceb06` |
+| Scheduler writes | `4609f780f8e248b4e8d55fc7ea4be9ae1f731872f5dc095041b4c4fb71956d46` |
+| Work-RAM writes | `790683ae44c0edee30fbc6c266a7a7c1425c1533121127be919ffd81ee186bfb` |
+| Device writes | `e1c4253c527b577f124f2c4d1fa58fdf6caf6c4e3e3f49fb93d8c49e0c1d5e47` |
+
+The oracle compares 3,074 scheduler calls, 1,398,843 scoped writes,
+12,778,378 full work-RAM writes and 4,240,033 device writes.
+The shared fixture verifies 4,128,768 timer/CLY cases, 65,536 independent
+countdown OR operand pairs, both SEI addresses across all statuses and short
+horizons, fifteen JSR keys, and 8,847,360 cases across 45 RTS keys.
+
+The targeted full-registry comparison in `out/ranked-timers-cost/active.csv`
+reduces ranked residue from **75,171 to 2,661 master cycles (96.5%)**.
+Every opcode site reaches zero; only guarded JSR/RTS residue remains. Both
+runs preserve frame hash
+`ba83a3bc15b9f62227800a33c289d692e4a41476fddfdcfceaceb9db558e8eae`
+and zero abandonments; the total interpreter-cycle reduction equals the
+ranked reduction. This measures before/after compatibility, not assembly
+parity for the full registry. The saved pre-change binary fails at frame
+1,482 on the artificially forced actor's later animation; that baseline log
+is retained as `active-expiry.before.log`. The measurement therefore adds
+`1400:3BC6:FF` identically to both runs to extend its countdown. The separate
+assembly oracle above retains the real expiry without that extension.
+
+The generated registry grows from 806 to **817 admitted routines** and from
+854 to 865 dispatch-reachable keys. The seam inventory passes with 276
+nonoverlapping ranges. The 31 full-registry compatibility routes in
+`out/ranked-timers-cost/manifest.csv` reduce ranked residue from **153,195 to
+510 cycles (99.7%)**, with every frame hash and abandonment count unchanged.
+All total interpreter deltas equal their ranked deltas. Remaining residue is
+only the guarded 03:7643 call on nine routes; 22 routes reach zero. The saved
+baseline's one abandonment each on higharc, radial and sidestep is unchanged;
+the other 28 routes retain zero. The corpus validates compatibility and does
+not replace the user's live ranking as the porting priority.
+
+Release passes the shared instruction fixture, the new five-artifact oracle,
+the existing Three-Blobs prefix oracle, the host registry, and both original
+face/hand captures. Debug passes the shared fixture, the new five-artifact oracle
+(811.75 seconds), and both face/hand captures. Registry and seam checks and
+`git diff --check` pass.
+
+
+## Previous priority: Eyeball, countdown and music interrupt ranking (September 9)
+
+This user-supplied ranking supersedes the bumper/sprite ranking below. The
+live recording was not supplied; the measurements use separate local replays.
+
+| Rank | Address | Master cycles | Intervals | Implementation |
+| --- | --- | ---: | ---: | --- |
+| 1 | 02:4E32 | 28,176 | 1,328 | Shared live-stack RTS |
+| 2 | 03:7C34 | 6,816 | 320 | Shared live JSR to C018 |
+| 3 | 02:432C | 5,427 | 255 | Shared live-stack RTS |
+| 4 | 02:4E24 | 5,103 | 329 | Full Eyeball idle walk, then indexed LDA fallback |
+| 5 | 45:4B85 | 4,926 | 110 | Existing sampled RTS now crosses event horizons |
+| 6 | 45:49E3 | 4,686 | 773 | SEI with distinct sampled and retired I masks |
+| 7 | 02:4E29 | 4,188 | 329 | Live zero-page session flag LDA |
+| 8 | 02:4E2D | 4,158 | 329 | BEQ using live Z |
+| 9 | 03:7DE0 | 4,059 | 191 | Shared live-stack RTS |
+| 10 | 02:4324 | 3,888 | 256 | Countdown STA using live A |
+| 11 | 02:431B | 3,840 | 256 | Countdown indexed LDA |
+| 12 | 02:4327 | 3,840 | 256 | Countdown indexed ORA using live A |
+
+All twelve sites have native coverage. Six live actor instructions share
+`replace_eyeball_countdown_instruction`: exact PC, mapped code/RAM, complete
+RAM and clear T are required; decimal mode and every X are supported. Each
+instruction samples three cycles before retirement and accepts all horizons.
+Indexed LDA/STA/ORA take 15 cycles (STA writes at 15); zero-page LDA takes 12;
+BEQ takes 6 or 12. The existing full 4E24 idle walk retains priority. Its old
+oracle now admits 1,377/1,377 entries: 1,066 full walks and 311 load fallbacks,
+with every original state, routine, call and write hash unchanged.
+
+The three actor RTS entries share the existing strict >21-cycle guards and
+live wrapping stack/mapper handling. JSR at 7C34 pushes 7C36 high then low at
+cycle zero, samples at 18, and retires at 21 to the live mapping of C018.
+The audio RTS at 4B85 already had a checkpoint for the status restored by PLP;
+that checkpoint now permits all event horizons. SEI at 49E3 samples the old
+I mask at 3, then retires with I set at 6 using
+`samples_interrupt_flag_clear`. A pending interrupt therefore sees the old
+sample while stacking the retired status. The full music walks retain their
+existing boundary before an unmasked SEI.
+
+`eyeball_countdown_fixture.hpp` exercises 2,752,512 actor operand/accumulator/
+status cases and 2,048 SEI status/horizon cases. The shared fixture now covers
+fourteen JSR keys and 44 RTS keys (8,650,752 return target/status/stack cases).
+Both Release and Debug fixtures pass.
+
+`verify_eyeball_countdown.cmake` pins all twelve ROM opcodes and activates the
+Eyeball plus two fixed scheduler countdowns. It covers the low-byte borrow,
+expiry and subsequent animation. All five isolated assembly/native artifacts
+match: frame state, scheduler calls, scoped writes, full RAM writes and device
+writes. The route observes 1,817 scheduler calls, 946,403 scoped writes,
+11,941,811 RAM writes and 3,410,099 device writes. Admission counts are
+235/262 at 4E32, 13/16 at 7C34, 224/255 at 432C, 263/263 at 4E24,
+84/84 at 4B85, 2,594/2,594 at 49E3, 53/53 at both 4E29 and 4E2D,
+332/382 at 7DE0 and 256/256 at each countdown load/store/ORA.
+
+The full-registry targeted measurement holds the two artificially installed
+actors in their countdowns by extending their high timers before expiry. This
+avoids a forced later animation state that the saved pre-change full registry
+cannot execute (it stops at frame 1414 without those extensions). The isolated
+assembly oracle separately covers expiry without extending the timers.
+Targeted residue falls from **199,572 to 10,746 master cycles**, removing
+**188,826 (94.6%)**. All six actor instructions and both music sites reach zero;
+the remaining cost is the guarded JSR/RTS entries. Before/after frame hashes
+match, both runs have zero abandonments, and the total interpreter reduction
+equals the reduction at the twelve targets. These full-registry hashes are
+compared with the saved full-registry baseline, not with assembly.
+
+Evidence: `out/eyeball-countdown-cost/active.csv`, `active-addresses.csv`,
+the per-route profiles and the Release/Debug test logs. Registry generation
+admits **806 routines out of 854 reachable keys**, with 3,838,307 of 3,894,653
+proven calls (98.6%). The seam manifest verifies **269 non-overlapping ranges**.
+Release checks pass for the new oracle, original Eyeball idle oracle, audio
+wrapper return (including the pending-interrupt stagger route), host registry
+and original face/hand captures. The 31 standard compatibility routes preserve
+every before/after frame hash and abandonment count. Ranked residue falls from
+**138,114 to 3,138 cycles (97.7%)**, with only guarded 03:7C34 calls remaining.
+The total interpreter delta equals the target delta on every route. Higharc,
+radial and sidestep each retain their one pre-existing abandonment; the other
+28 routes retain zero. Debug checks also pass for the new five-artifact
+assembly oracle, audio return/stagger regression and original face/hand
+captures. Including the shared fixtures, seven selected Release checks and
+five selected Debug checks pass. The new oracle takes 97.50 seconds in Release
+and 798.83 seconds in Debug; full RAM/device trace export accounts for the
+longer Debug run. Registry/seam checks and the final whitespace check pass.
+
+## Previous priority: bumper, face timer and sprite overflow ranking (September 9)
+
+This user-supplied ranking supersedes the bonus countdown ranking below. The
+live recording was not supplied; the measurements here use separate local
+replays, with targeted bumper, face and sprite-overflow activation.
+
+| Rank | Address | Master cycles | Intervals | Implementation |
+| --- | --- | ---: | ---: | --- |
+| 1 | 03:7ADB | 21,393 | 1,005 | Live indexed bumper timer DEC |
+| 2 | 03:7A7F | 15,267 | 1,005 | Live indexed bumper activity LDA |
+| 3 | 03:7A71 | 15,195 | 1,005 | Live indexed bumper collision input LDA |
+| 4 | 03:76C5 | 15,078 | 694 | Live indexed DEC fallback after full face wait |
+| 5 | 08:40F6 | 12,858 | 602 | Live mapped indirect sprite pointer-high LDA |
+| 6 | 08:40F1 | 12,834 | 602 | Live mapped indirect sprite pointer-low LDA |
+| 7 | 08:40FB | 12,786 | 602 | Live mapped indirect sprite entry-count LDA |
+| 8 | 08:4106 | 12,738 | 602 | Shared live-stack sprite overflow RTS |
+| 9 | 03:7A82 | 12,192 | 1,005 | Live N activity BPL |
+| 10 | 03:7A77 | 12,180 | 1,005 | Live carry collision BCC |
+| 11 | 03:7ADE | 10,692 | 1,005 | Live Z timer BNE |
+| 12 | 08:40DF | 9,246 | 602 | Live indexed descriptor LDY fallback after full emitter |
+
+All twelve ranked sites have native coverage. Eleven instructions share
+`replace_bumper_sprite_instruction`; the overflow return extends the shared
+RTS implementation. The existing full face wait and sprite emitter retain
+priority. Their instruction fallbacks read live registers and RAM, without
+assuming a fixed actor slot, reconstructing an earlier result, or skipping
+the following branch. The sprite loads resolve the current zero-page pointer
+and Y through the live MPR mapping, including 16-bit address wrapping and the
+supported ROM's bank mirrors. Device, backup-RAM and unmapped reads decline.
+
+Indexed loads sample at cycle 12 and finish at 15. Indexed DEC samples at 18
+and writes at 21; indirect indexed LDA samples at 18 and finishes at 21.
+Branches sample at 3/9 and finish at 6/12. Each instruction retains a checkpoint
+at all event horizons and requires exact PC/code mapping, mapped full work RAM
+and T clear; decimal mode is permitted. The overflow RTS retains the existing
+strict greater-than-21 event guards and live wrapping stack behavior.
+
+The ROM-free fixture checks 3,670,016 indexed operand/status combinations and
+1,179,648 indirect pointer/mapping cases, including every 16-bit pointer,
+address wrapping, RAM aliases, ROM mirrors and device rejection. It checks
+register preservation, live branch flags, decrement writes and interrupt
+sampling. The shared return fixture now covers 41 sites and 8,060,928
+target/status/stack cases. Both Release and Debug fixtures pass.
+
+The new two-route oracle pins all twelve opcodes and compares five complete
+artifacts against assembly: frame state, scheduler calls, scoped call writes,
+all RAM writes and all device writes. The bumper route uses the existing
+terminal activation at frame 3341 and reserves 63 SAT entries for four frames
+to exercise cursor-overflow exits. Each bumper instruction enters 1,202 times;
+each indirect load enters 128 times, with 111/128 native overflow returns.
+The emitter admits 75,757/75,757 calls, retaining its full path for 75,629 and
+using the descriptor-load fallback for 128. The face route admits 872/872
+entries, preserving 639 full waits and adding 233 decrement fallbacks. The
+older face wait oracle retains all its state, call, write and replay hashes;
+only its admission count changes. The existing full emitter and bumper
+terminal regressions also pass unchanged.
+
+Registry membership rises from 786 to 796, reachable keys from 834 to 844,
+and classified seam ranges from 247 to 259.
+
+Paired full-registry replays against the saved pre-change executable reduce
+target cycles on the bumper/overflow route from 116,166 to 357, removing
+115,809 (99.7%). The face route removes all 5,037 target cycles. Combined,
+121,203 target cycles fall to 357: 120,846 removed (99.7%). The remaining
+cycles are exclusively at guarded 08:4106 returns; every new non-return
+instruction has zero residue when exercised. Both frame hashes are unchanged,
+both routes have zero abandonments, and each route's total interpreter-cycle
+delta equals its target-address delta. These are before/after full-registry
+comparisons; the isolated assembly oracle is separate evidence.
+
+Detailed measurements: `out/bumper-sprite-cost/active.csv` and
+`out/bumper-sprite-cost/active-addresses.csv`. Release passes the shared fixture,
+both new oracles, existing face wait, full emitter, bumper terminal, host
+registry, and the original face and hand captures. The new oracles pass in
+99.95 and 100.68 seconds. Logs: `out/bumper-sprite-tests-Release.log`,
+`out/bumper-sprite-face-hand-Release.log`, and
+`out/bumper-sprite-fixture-Debug.log`.
+
+
+The 31-route full-registry corpus preserves every frame hash and abandonment
+count. Target residue falls from 8,022 to zero across alley (1,578), lanes
+(3,342), stagger (1,836) and twist (1,266); the other 27 routes have zero target
+residue before and after. All gains are at 03:76C5. The saved baseline has one
+abandonment each on higharc, radial and sidestep, unchanged after these ports;
+the other routes have none. Report: `out/bumper-sprite-cost/manifest.csv`.
+The original face and hand captures also pass Debug in 283.54 and 284.38 seconds.
+Both new Debug oracles pass all five assembly/native artifact comparisons:
+bumper/overflow in 813.10 seconds and face timer in 764.18 seconds. The four
+Debug ROM checks pass together in 1,047.75 seconds; with the shared fixture,
+all five selected Debug checks pass. Final log: `out/bumper-sprite-tests-Debug.log`.
+
+## Previous priority: bonus hazard countdown and return ranking (September 9)
 
 This user-supplied ranking supersedes the Side-Worm/multiply ranking below.
 The live recording was not supplied; the measurements here use separate local

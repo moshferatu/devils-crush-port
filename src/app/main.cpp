@@ -7776,6 +7776,56 @@ parse_logical_address_range(const std::string_view text)
                                         .logical_pc = 0x42EBU,
                                     }
                             && request.all_calls;
+                        const bool proven_math_transfer_seam = request.all_calls && (request.routine == RoutineKey{1U, 0xC9C3U}
+                            || request.routine == RoutineKey{1U, 0xC9D3U}
+                            || request.routine == RoutineKey{0U, 0xE8A3U}
+                            || request.routine == RoutineKey{0U, 0xE5ADU}
+                            || request.routine == RoutineKey{0U, 0xE5B8U}
+                            || request.routine == RoutineKey{0U, 0xE5B2U}
+                            || request.routine == RoutineKey{0U, 0xE5B4U}
+                            || request.routine == RoutineKey{0U, 0xE5EFU}
+                            || request.routine == RoutineKey{0U, 0xE5B6U}
+                            || request.routine == RoutineKey{0U, 0xE5FBU}
+                            || request.routine == RoutineKey{0U, 0xE5A0U}
+                            || request.routine == RoutineKey{0U, 0xE5A2U});
+                        const bool proven_ranked_timer_seam = request.all_calls && (request.routine == RoutineKey{3U, 0x7E7EU}
+                            || request.routine == RoutineKey{3U, 0x66A3U}
+                            || request.routine == RoutineKey{3U, 0x7643U}
+                            || request.routine == RoutineKey{3U, 0x7E6AU}
+                            || request.routine == RoutineKey{0x45U, 0x485DU}
+                            || request.routine == RoutineKey{3U, 0x7E76U}
+                            || request.routine == RoutineKey{3U, 0x7E73U}
+                            || request.routine == RoutineKey{2U, 0x567FU}
+                            || request.routine == RoutineKey{3U, 0x66AAU}
+                            || request.routine == RoutineKey{3U, 0x66B2U}
+                            || request.routine == RoutineKey{0U, 0xE438U}
+                            || request.routine == RoutineKey{3U, 0x66ADU});
+                        const bool proven_eyeball_countdown_seam = request.all_calls && (
+                            request.routine == RoutineKey{2U, 0x4E32U}
+                            || request.routine == RoutineKey{3U, 0x7C34U}
+                            || request.routine == RoutineKey{2U, 0x432CU}
+                            || request.routine == RoutineKey{2U, 0x4E24U}
+                            || request.routine == RoutineKey{0x45U, 0x4B85U}
+                            || request.routine == RoutineKey{0x45U, 0x49E3U}
+                            || request.routine == RoutineKey{2U, 0x4E29U}
+                            || request.routine == RoutineKey{2U, 0x4E2DU}
+                            || request.routine == RoutineKey{3U, 0x7DE0U}
+                            || request.routine == RoutineKey{2U, 0x4324U}
+                            || request.routine == RoutineKey{2U, 0x431BU}
+                            || request.routine == RoutineKey{2U, 0x4327U});
+                        const bool proven_bumper_sprite_seam = request.all_calls && (
+                            request.routine == RoutineKey{0x03U, 0x7A71U}
+                            || request.routine == RoutineKey{0x03U, 0x7A77U}
+                            || request.routine == RoutineKey{0x03U, 0x7A7FU}
+                            || request.routine == RoutineKey{0x03U, 0x7A82U}
+                            || request.routine == RoutineKey{0x03U, 0x7ADBU}
+                            || request.routine == RoutineKey{0x03U, 0x7ADEU}
+                            || request.routine == RoutineKey{0x03U, 0x76C5U}
+                            || request.routine == RoutineKey{0x08U, 0x40DFU}
+                            || request.routine == RoutineKey{0x08U, 0x40F1U}
+                            || request.routine == RoutineKey{0x08U, 0x40F6U}
+                            || request.routine == RoutineKey{0x08U, 0x40FBU}
+                            || request.routine == RoutineKey{0x08U, 0x4106U});
                         const bool proven_bonus_countdown_seam = request.all_calls && (
                             request.routine == RoutineKey{0x05U, 0x7376U}
                             || request.routine == RoutineKey{0x05U, 0x7379U}
@@ -8857,6 +8907,10 @@ parse_logical_address_range(const std::string_view text)
                             && !proven_three_blobs_rng_initialization
                             && !proven_three_blobs_rng_loop_branch
                             && !proven_math_gate_seam
+                            && !proven_math_transfer_seam
+                            && !proven_ranked_timer_seam
+                            && !proven_eyeball_countdown_seam
+                            && !proven_bumper_sprite_seam
                             && !proven_bonus_countdown_seam
                             && !proven_ranked_actor_seam
                             && !proven_tower_source_scheduler_call

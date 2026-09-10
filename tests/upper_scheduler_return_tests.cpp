@@ -6,9 +6,17 @@
 using namespace devils_crush::emulation;
 using devils_crush::app::detail::replace_upper_scheduler_return;
 void require(bool ok, const char* message) { if (!ok) { throw std::runtime_error(message); } }
+#include "bumper_sprite_fixture.hpp"
+#include "eyeball_countdown_fixture.hpp"
+#include "ranked_timer_fixture.hpp"
+#include "math_transfer_fixture.hpp"
 int main()
 {
     try {
+        verify_bumper_sprite_instructions();
+        verify_eyeball_countdown_instructions();
+        verify_ranked_timer_instructions();
+        verify_math_transfer_instructions();
         std::array<std::byte, 0x2000> ram{};
         for (const auto routine : {RoutineKey{5U, 0x7376U}, RoutineKey{5U, 0x7379U},
                  RoutineKey{5U, 0x7387U}, RoutineKey{5U, 0x738AU}, RoutineKey{5U, 0x738FU},
@@ -157,7 +165,7 @@ int main()
             entry.routine = {2U, static_cast<std::uint16_t>(pc)};
             auto& r = entry.registers;
             r.program_counter = static_cast<std::uint16_t>(pc);
-            r.mpr[1] = 0xF8U; r.mpr[2] = 2U;
+            r.mpr[1] = 0xF8U; r.mpr[2] = 2U; r.mpr[3] = 3U;
             r.accumulator = 0xA5U; r.stack_pointer = 0xFFU;
             const auto load = [&] { return devils_crush::app::detail::replace_little_skull_gate_load(entry, ram); };
             for (unsigned index = 0; index < 256; ++index) {
@@ -194,7 +202,7 @@ int main()
             }
             ++r.program_counter; require(!load(), "Skull PC guard"); --r.program_counter;
             r.mpr[1] = 0; require(!load(), "Skull RAM mapping guard"); r.mpr[1] = 0xF8U;
-            r.mpr[2] = 0; require(!load(), "Skull code mapping guard"); r.mpr[2] = 2U;
+            r.mpr[2] = 0; require(!load(), "Skull code mapping guard"); r.mpr[2] = 2U; r.mpr[3] = 3U;
             require(!devils_crush::app::detail::replace_little_skull_gate_load(entry, std::span(ram).first(0x1FFF)), "Skull RAM size guard");
         }
         std::puts("Verified 1,179,648 skull load index/value/status cases and mapping guards.");
@@ -411,12 +419,12 @@ int main()
             require(!jump(), "Unsupported jump key admitted");
         }
         std::puts("Verified 262,144 unconditional-branch stack/status cases and both horizon guards.");
-        for (const auto pc : {0xC693U, 0xC696U, 0xC69BU, 0xC6A6U, 0xC6BFU, 0x51D2U, 0xC624U, 0x5F73U, 0x5674U, 0xE5AFU, 0xE5ECU, 0xE5F1U, 0xE5F8U}) {
+        for (const auto pc : {0xC693U, 0xC696U, 0xC69BU, 0xC6A6U, 0xC6BFU, 0x51D2U, 0xC624U, 0x5F73U, 0x5674U, 0xE5AFU, 0xE5ECU, 0xE5F1U, 0xE5F8U, 0x7C34U, 0x7643U, 0xC9C3U, 0xC9D3U}) {
             RoutineEntry entry{};
-            entry.routine = {static_cast<std::uint8_t>(pc >= 0xE000U ? 0U : (pc == 0x51D2U || pc == 0x5F73U || pc == 0x5674U) ? 2U : 1U), static_cast<std::uint16_t>(pc)};
+            entry.routine = {static_cast<std::uint8_t>((pc == 0x7C34U || pc == 0x7643U) ? 3U : pc >= 0xE000U ? 0U : (pc == 0x51D2U || pc == 0x5F73U || pc == 0x5674U) ? 2U : 1U), static_cast<std::uint16_t>(pc)};
             auto& r = entry.registers;
             r.program_counter = static_cast<std::uint16_t>(pc);
-            r.mpr[1] = 0xF8U; r.mpr[6] = 1U; r.mpr[2] = 2U;
+            r.mpr[1] = 0xF8U; r.mpr[6] = 1U; r.mpr[2] = 2U; r.mpr[3] = 3U;
             r.accumulator = 0xA5U; r.x = 0xFFU; r.y = 0x37U;
             entry.master_cycles_until_user_event = 100U;
             entry.master_cycles_until_timer_interrupt = 100U;
@@ -428,7 +436,7 @@ int main()
                     require(result.has_value() == ((status & 0x20U) == 0U), "Call transfer-mode guard changed");
                     if (!result) { continue; }
                     const auto& out = result->output_registers;
-                    require(out.program_counter == ((pc == 0xC693U || pc == 0xC69BU) ? 0xC5EAU : pc == 0x51D2U ? 0x5475U : pc == 0xC624U ? 0xF605U : pc == 0x5F73U ? 0xC018U : pc == 0x5674U ? 0x570AU : pc == 0xE5AFU ? 0xE5BCU : pc == 0xE5ECU ? 0xE813U : pc == 0xE5F1U ? 0xE825U : pc == 0xE5F8U ? 0xE59FU : 0xC5C9U)
+                    require(out.program_counter == ((pc == 0xC693U || pc == 0xC69BU) ? 0xC5EAU : pc == 0x51D2U ? 0x5475U : pc == 0xC624U ? 0xF605U : (pc == 0x5F73U || (pc == 0x7C34U || pc == 0x7643U)) ? 0xC018U : pc == 0x5674U ? 0x570AU : pc == 0xC9C3U ? 0xE5ECU : pc == 0xC9D3U ? 0xE85DU : pc == 0xE5AFU ? 0xE5BCU : pc == 0xE5ECU ? 0xE813U : pc == 0xE5F1U ? 0xE825U : pc == 0xE5F8U ? 0xE59FU : 0xC5C9U)
                         && out.stack_pointer == static_cast<std::uint8_t>(sp - 2U)
                         && out.status == status && out.accumulator == r.accumulator
                         && out.x == r.x && out.y == r.y && out.mpr == r.mpr,
@@ -470,11 +478,11 @@ int main()
             r.mpr[pc >> 13U] = entry.routine.physical_bank; ++r.program_counter;
             require(!devils_crush::app::detail::replace_coroutine_call(entry, ram), "Wrong call PC admitted");
         }
-        std::puts("Verified thirteen scheduler/submission/asset/math calls across all stack pointers and status values.");
+        std::puts("Verified seventeen scheduler/submission/asset/math calls across all stack pointers and status values.");
         for (const auto routine : {RoutineKey{0x08U, 0x5976U}, RoutineKey{0x01U, 0xC4C8U},
                  RoutineKey{0x08U, 0x5A69U}, RoutineKey{0x00U, 0xE47CU},
                  RoutineKey{0x02U, 0x4F75U}, RoutineKey{0x02U, 0x51D5U}, RoutineKey{0x45U, 0x4B85U}, RoutineKey{0x00U, 0xED85U}, RoutineKey{0x02U, 0x4F92U},
-                 RoutineKey{0x09U, 0x704EU}, RoutineKey{0x09U, 0x7186U}, RoutineKey{0x09U, 0x7099U}, RoutineKey{0x09U, 0x71C4U}, RoutineKey{0x09U, 0x7071U}, RoutineKey{0x09U, 0x71A9U}, RoutineKey{0x03U, 0x7D81U}, RoutineKey{0x03U, 0x7E1FU}, RoutineKey{0x09U, 0x703CU}, RoutineKey{0x09U, 0x7174U}, RoutineKey{0x00U, 0xE8E6U}, RoutineKey{0x01U, 0xDA3FU}, RoutineKey{0x00U, 0xE333U}, RoutineKey{0x01U, 0xC8E1U}, RoutineKey{0x09U, 0x70BBU}, RoutineKey{0x09U, 0x71E1U}, RoutineKey{2U, 0x45A9U}, RoutineKey{2U, 0x4571U}, RoutineKey{2U, 0x59F4U}, RoutineKey{2U, 0x4484U}, RoutineKey{2U, 0x56ABU}, RoutineKey{0U, 0xE60AU}, RoutineKey{3U, 0x61B2U}, RoutineKey{2U, 0x5721U}, RoutineKey{0U, 0xE824U}, RoutineKey{0U, 0xE5BBU}, RoutineKey{0U, 0xE5EBU}, RoutineKey{0U, 0xE836U}, RoutineKey{5U, 0x7398U}, RoutineKey{2U, 0x4FE1U}, RoutineKey{4U, 0x5197U}}) {
+                 RoutineKey{0x09U, 0x704EU}, RoutineKey{0x09U, 0x7186U}, RoutineKey{0x09U, 0x7099U}, RoutineKey{0x09U, 0x71C4U}, RoutineKey{0x09U, 0x7071U}, RoutineKey{0x09U, 0x71A9U}, RoutineKey{0x03U, 0x7D81U}, RoutineKey{0x03U, 0x7E1FU}, RoutineKey{0x09U, 0x703CU}, RoutineKey{0x09U, 0x7174U}, RoutineKey{0x00U, 0xE8E6U}, RoutineKey{0x01U, 0xDA3FU}, RoutineKey{0x00U, 0xE333U}, RoutineKey{0x01U, 0xC8E1U}, RoutineKey{0x09U, 0x70BBU}, RoutineKey{0x09U, 0x71E1U}, RoutineKey{2U, 0x45A9U}, RoutineKey{2U, 0x4571U}, RoutineKey{2U, 0x59F4U}, RoutineKey{2U, 0x4484U}, RoutineKey{2U, 0x56ABU}, RoutineKey{0U, 0xE60AU}, RoutineKey{3U, 0x61B2U}, RoutineKey{2U, 0x5721U}, RoutineKey{0U, 0xE824U}, RoutineKey{0U, 0xE5BBU}, RoutineKey{0U, 0xE5EBU}, RoutineKey{0U, 0xE836U}, RoutineKey{5U, 0x7398U}, RoutineKey{2U, 0x4FE1U}, RoutineKey{4U, 0x5197U}, RoutineKey{8U, 0x4106U}, RoutineKey{2U, 0x4E32U}, RoutineKey{2U, 0x432CU}, RoutineKey{3U, 0x7DE0U}, RoutineKey{3U, 0x7E7EU}, RoutineKey{0U, 0xE8A3U}}) {
             RoutineEntry entry{};
             entry.routine = routine;
             auto& r = entry.registers;
@@ -517,10 +525,10 @@ int main()
             }
             for (unsigned horizon = 0; horizon <= 22U; ++horizon) {
                 entry.master_cycles_until_timer_interrupt = horizon;
-                require(replace_upper_scheduler_return(entry, ram).has_value() == (horizon > 21U), "Timer horizon guard changed");
+                require(replace_upper_scheduler_return(entry, ram).has_value() == (routine.physical_bank == 0x45U || horizon > 21U), "Timer horizon guard changed");
                 entry.master_cycles_until_timer_interrupt = 100U;
                 entry.master_cycles_until_user_event = horizon;
-                require(replace_upper_scheduler_return(entry, ram).has_value() == (horizon > 21U), "User horizon guard changed");
+                require(replace_upper_scheduler_return(entry, ram).has_value() == (routine.physical_bank == 0x45U || horizon > 21U), "User horizon guard changed");
                 entry.master_cycles_until_user_event = 100U;
             }
             require(!replace_upper_scheduler_return(entry, std::span(ram).first(0x1FFF)), "Short RAM admitted");
@@ -533,7 +541,7 @@ int main()
             r.mpr[routine.logical_pc >> 13U] = static_cast<std::uint8_t>(routine.physical_bank ^ 1U);
             require(!replace_upper_scheduler_return(entry, ram), "Foreign code mapping admitted");
         }
-        std::puts("Verified 7,864,320 return target/status/stack cases and both horizon guards.");
+        std::puts("Verified 9,043,968 return target/status/stack cases and both horizon guards.");
         for (unsigned sp : {0U, 254U, 255U}) {
             for (unsigned word = 0U; word < 65536U; ++word) {
                 RoutineEntry entry{};

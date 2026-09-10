@@ -12,6 +12,99 @@ using emulation::RoutineEntry;
 using emulation::RoutineKey;
 using emulation::RoutineReplacement;
 
+std::optional<RoutineReplacement> replace_math_transfer_instruction(
+    const RoutineEntry& entry, const std::span<const std::byte> work_ram)
+{
+    const auto pc = entry.routine.logical_pc;
+    if (entry.routine.physical_bank != 0U
+        || (pc != 0xE5A0U && pc != 0xE5A2U && pc != 0xE5ADU
+            && pc != 0xE5B2U && pc != 0xE5B4U && pc != 0xE5B6U
+            && pc != 0xE5B8U && pc != 0xE5EFU && pc != 0xE5FBU)
+        || entry.registers.program_counter != pc || entry.registers.mpr[7] != 0U
+        || entry.registers.mpr[1] != 0xF8U || work_ram.size() < 0x2000U
+        || (entry.registers.status & 0x20U) != 0U) {
+        return std::nullopt;
+    }
+    // Resume independently after each child call. Stores must consume live A,
+    // and STZ preserves every flag; only LDA replaces N/Z.
+    const bool zero = pc == 0xE5A0U || pc == 0xE5A2U;
+    const bool load = pc == 0xE5B2U || pc == 0xE5B6U || pc == 0xE5FBU;
+    const std::uint16_t address = pc == 0xE5A0U || pc == 0xE5B6U ? 0x2042U
+        : pc == 0xE5A2U || pc == 0xE5B2U ? 0x2043U
+        : pc == 0xE5EFU || pc == 0xE5FBU ? 0x2046U
+        : pc == 0xE5B8U ? 0x202FU : 0x2030U;
+    auto r = entry.registers;
+    RoutineReplacement result{};
+    if (load) {
+        r.accumulator = std::to_integer<std::uint8_t>(work_ram[address - 0x2000U]);
+        r.status = static_cast<std::uint8_t>((r.status & 0x7DU)
+            | (r.accumulator == 0U ? 2U : r.accumulator & 0x80U));
+    } else {
+        result.work_ram_writes.push_back({.instruction = entry.routine,
+            .logical_address = address, .value = zero ? std::uint8_t{0U} : r.accumulator,
+            .master_cycle_offset = 12U});
+    }
+    r.program_counter = static_cast<std::uint16_t>(pc + 2U);
+    result.return_instruction = {0U, r.program_counter};
+    result.output_registers = r;
+    result.body_master_cycles = 12U;
+    result.checkpoints.push_back({.interrupt_sample_master_cycle_offset = 9U,
+        .master_cycle_offset = 12U, .instruction = entry.routine, .registers = r});
+    return result;
+}
+
+std::optional<RoutineReplacement> replace_ranked_timer_instruction(
+    const RoutineEntry& entry, const std::span<const std::byte> work_ram)
+{
+    const auto pc = entry.routine.logical_pc;
+    const bool clear_y = entry.routine == RoutineKey{0U, 0xE438U};
+    const bool decrement = entry.routine == RoutineKey{2U, 0x567FU}
+        || entry.routine == RoutineKey{3U, 0x66A3U};
+    const bool actor = entry.routine.physical_bank == 3U
+        && (pc == 0x7E6AU || pc == 0x7E73U || pc == 0x7E76U
+            || pc == 0x66AAU || pc == 0x66ADU || pc == 0x66B2U);
+    if ((!clear_y && !decrement && !actor)
+        || entry.registers.program_counter != pc
+        || entry.registers.mpr[pc >> 13U] != entry.routine.physical_bank
+        || (entry.registers.status & 0x20U) != 0U
+        || (!clear_y && (entry.registers.mpr[1] != 0xF8U || work_ram.size() < 0x2000U))) {
+        return std::nullopt;
+    }
+    auto r = entry.registers;
+    RoutineReplacement result{};
+    const std::uint32_t cycles = clear_y ? 6U : decrement ? 21U : 15U;
+    r.program_counter = static_cast<std::uint16_t>(pc + (clear_y ? 1U : 3U));
+    if (clear_y) {
+        r.y = 0U; // HuC6280 CLY preserves N and Z.
+    } else {
+        const auto address = static_cast<std::uint16_t>(r.x + (decrement || pc == 0x66AAU
+            ? 0x3A00U : pc == 0x66ADU || pc == 0x66B2U ? 0x3980U
+            : pc == 0x7E76U ? 0x3B80U : 0x3B00U));
+        const bool store = pc == 0x66AAU || pc == 0x66B2U || pc == 0x7E73U;
+        auto value = r.accumulator;
+        if (!store) {
+            value = std::to_integer<std::uint8_t>(work_ram[address - 0x2000U]);
+            if (decrement) { value = static_cast<std::uint8_t>(value - 1U); }
+            else {
+                r.accumulator = pc == 0x7E76U ? static_cast<std::uint8_t>(r.accumulator | value) : value;
+                value = r.accumulator;
+            }
+            r.status = static_cast<std::uint8_t>((r.status & 0x7DU)
+                | (value == 0U ? 2U : value & 0x80U));
+        }
+        if (store || decrement) {
+            result.work_ram_writes.push_back({.instruction = entry.routine,
+                .logical_address = address, .value = value, .master_cycle_offset = cycles});
+        }
+    }
+    result.return_instruction = {entry.routine.physical_bank, r.program_counter};
+    result.output_registers = r;
+    result.body_master_cycles = cycles;
+    result.checkpoints.push_back({.interrupt_sample_master_cycle_offset = cycles - 3U,
+        .master_cycle_offset = cycles, .instruction = entry.routine, .registers = r});
+    return result;
+}
+
 std::optional<RoutineReplacement> replace_music_voice_gate(const RoutineEntry& entry)
 {
     const bool mask = entry.routine == RoutineKey{0x45U, 0x4095U};
@@ -108,6 +201,143 @@ std::optional<RoutineReplacement> replace_unconditional_branch(const RoutineEntr
     result.body_master_cycles = 12U;
     result.checkpoints.push_back({.interrupt_sample_master_cycle_offset = 9U,
         .master_cycle_offset = 12U, .instruction = entry.routine, .registers = r});
+    return result;
+}
+
+std::optional<RoutineReplacement> replace_eyeball_countdown_instruction(
+    const RoutineEntry& entry, const std::span<const std::byte> work_ram)
+{
+    const auto pc = entry.routine.logical_pc;
+    if (entry.routine.physical_bank != 2U
+        || (pc != 0x4E24U && pc != 0x4E29U && pc != 0x4E2DU
+            && pc != 0x431BU && pc != 0x4324U && pc != 0x4327U)
+        || entry.registers.program_counter != pc || entry.registers.mpr[2] != 2U
+        || entry.registers.mpr[1] != 0xF8U || work_ram.size() < 0x2000U
+        || (entry.registers.status & 0x20U) != 0U) {
+        return std::nullopt;
+    }
+    auto r = entry.registers;
+    RoutineReplacement result{};
+    std::uint32_t cycles = 15U;
+    r.program_counter = static_cast<std::uint16_t>(pc + 3U);
+    if (pc == 0x4E2DU) {
+        const bool taken = (r.status & 2U) != 0U;
+        r.program_counter = taken ? 0x4E32U : 0x4E2FU;
+        cycles = taken ? 12U : 6U;
+    } else if (pc == 0x4324U) {
+        result.work_ram_writes.push_back({.instruction = entry.routine,
+            .logical_address = static_cast<std::uint16_t>(0x3B00U + r.x),
+            .value = r.accumulator, .master_cycle_offset = 15U});
+    } else {
+        const auto offset = pc == 0x4E29U ? 0x53U : pc == 0x4E24U ? 0x1800U + r.x
+            : pc == 0x431BU ? 0x1B00U + r.x : 0x1B80U + r.x;
+        const auto value = std::to_integer<std::uint8_t>(work_ram[offset]);
+        r.accumulator = pc == 0x4327U ? static_cast<std::uint8_t>(r.accumulator | value) : value;
+        r.status = static_cast<std::uint8_t>((r.status & 0x7DU)
+            | (r.accumulator == 0U ? 2U : r.accumulator & 0x80U));
+        if (pc == 0x4E29U) { cycles = 12U; r.program_counter = 0x4E2BU; }
+    }
+    result.return_instruction = {2U, r.program_counter};
+    result.output_registers = r;
+    result.body_master_cycles = cycles;
+    result.checkpoints.push_back({.interrupt_sample_master_cycle_offset = cycles - 3U,
+        .master_cycle_offset = cycles, .instruction = entry.routine, .registers = r});
+    return result;
+}
+
+std::optional<RoutineReplacement> replace_music_commit_sei(const RoutineEntry& entry)
+{
+    constexpr RoutineKey kRoutine{.physical_bank = 0x45U, .logical_pc = 0x49E3U};
+    if ((entry.routine != kRoutine && entry.routine != RoutineKey{0x45U, 0x485DU})
+        || entry.registers.program_counter != entry.routine.logical_pc
+        || entry.registers.mpr[2] != 0x45U || (entry.registers.status & 0x20U) != 0U) {
+        return std::nullopt;
+    }
+    auto r = entry.registers;
+    r.status |= 4U;
+    r.program_counter = static_cast<std::uint16_t>(entry.routine.logical_pc + 1U);
+    RoutineReplacement result{};
+    result.return_instruction = {0x45U, r.program_counter};
+    result.output_registers = r;
+    result.body_master_cycles = 6U;
+    // SEI samples the old I mask, then retires with I set. A pending IRQ
+    // must still see the pre-SEI sample while stacking the retired status.
+    result.checkpoints.push_back({.interrupt_sample_master_cycle_offset = 3U,
+        .master_cycle_offset = 6U, .instruction = entry.routine, .registers = r,
+        .samples_interrupt_flag_clear = (entry.registers.status & 4U) == 0U});
+    return result;
+}
+
+std::optional<RoutineReplacement> replace_bumper_sprite_instruction(
+    const RoutineEntry& entry, const std::span<const std::byte> work_ram,
+    const std::span<const std::byte> rom)
+{
+    const auto pc = entry.routine.logical_pc;
+    const bool bumper = entry.routine.physical_bank == 3U
+        && (pc == 0x7A71U || pc == 0x7A77U || pc == 0x7A7FU
+            || pc == 0x7A82U || pc == 0x7ADBU || pc == 0x7ADEU || pc == 0x76C5U);
+    const bool sprite = entry.routine.physical_bank == 8U
+        && (pc == 0x40DFU || pc == 0x40F1U || pc == 0x40F6U || pc == 0x40FBU);
+    if ((!bumper && !sprite) || entry.registers.program_counter != pc
+        || entry.registers.mpr[pc >> 13U] != entry.routine.physical_bank
+        || entry.registers.mpr[1] != 0xF8U || work_ram.size() < 0x2000U
+        || (entry.registers.status & 0x20U) != 0U) {
+        return std::nullopt;
+    }
+    auto r = entry.registers;
+    RoutineReplacement result{};
+    std::uint32_t cycles = 15U;
+    r.program_counter = static_cast<std::uint16_t>(pc + 3U);
+    const auto byte_at = [&](std::size_t offset) {
+        return std::to_integer<std::uint8_t>(work_ram[offset]);
+    };
+    const auto nz = [&](std::uint8_t value) {
+        r.status = static_cast<std::uint8_t>((r.status & 0x7DU)
+            | (value == 0U ? 2U : value & 0x80U));
+    };
+    if (pc == 0x7A77U || pc == 0x7A82U || pc == 0x7ADEU) {
+        const bool taken = pc == 0x7A77U ? (r.status & 1U) == 0U
+            : pc == 0x7A82U ? (r.status & 0x80U) == 0U : (r.status & 2U) == 0U;
+        r.program_counter = taken ? (pc == 0x7A77U ? 0x7A7CU
+            : pc == 0x7A82U ? 0x7A8EU : 0x7AF2U)
+            : static_cast<std::uint16_t>(pc + 2U);
+        cycles = taken ? 12U : 6U;
+    } else if (pc == 0x7ADBU || pc == 0x76C5U) {
+        const auto value = static_cast<std::uint8_t>(byte_at(0x1A00U + r.x) - 1U);
+        nz(value);
+        cycles = 21U;
+        result.work_ram_writes.push_back({.instruction = entry.routine,
+            .logical_address = static_cast<std::uint16_t>(0x3A00U + r.x),
+            .value = value, .master_cycle_offset = cycles});
+    } else if (pc == 0x7A71U || pc == 0x7A7FU || pc == 0x40DFU) {
+        const auto value = byte_at((pc == 0x7A71U ? 0x1700U
+            : pc == 0x7A7FU ? 0x1800U : 0x1900U) + r.x);
+        if (pc == 0x40DFU) { r.y = value; } else { r.accumulator = value; }
+        nz(value);
+    } else {
+        // Resolve the live zero-page pointer and Y, including 16-bit wrapping.
+        // Only mapped ROM and RAM are side-effect-free reads; leave hardware,
+        // backup RAM and unmapped pages to the core.
+        const auto zp = pc == 0x40FBU ? 0x2FU : 0x2DU;
+        const auto address = static_cast<std::uint16_t>(
+            byte_at(zp) + (byte_at(zp + 1U) << 8U) + r.y);
+        const auto bank = r.mpr[address >> 13U];
+        if (bank == 0xF8U) {
+            r.accumulator = byte_at(address & 0x1FFFU);
+        } else {
+            if (bank >= 0x80U || rom.size() != 0x60000U) { return std::nullopt; }
+            const auto mapped = bank < 0x40U ? bank & 0x1FU : (bank & 0x0FU) + 0x20U;
+            r.accumulator = std::to_integer<std::uint8_t>(rom[mapped * 0x2000U + (address & 0x1FFFU)]);
+        }
+        nz(r.accumulator);
+        cycles = 21U;
+        r.program_counter = static_cast<std::uint16_t>(pc + 2U);
+    }
+    result.return_instruction = {entry.routine.physical_bank, r.program_counter};
+    result.output_registers = r;
+    result.body_master_cycles = cycles;
+    result.checkpoints.push_back({.interrupt_sample_master_cycle_offset = cycles - 3U,
+        .master_cycle_offset = cycles, .instruction = entry.routine, .registers = r});
     return result;
 }
 
@@ -271,7 +501,10 @@ std::optional<RoutineReplacement> replace_coroutine_call(
             && entry.routine != kSecondDelayCall && entry.routine != kToggleCall
             && entry.routine != kResetCall && entry.routine != kReleaseCall
             && entry.routine != kAssetCall && entry.routine != kSourceCall
-            && entry.routine != kPendingCall
+            && entry.routine != kPendingCall && entry.routine != RoutineKey{3U, 0x7C34U}
+            && entry.routine != RoutineKey{3U, 0x7643U}
+            && entry.routine != RoutineKey{1U, 0xC9C3U}
+            && entry.routine != RoutineKey{1U, 0xC9D3U}
             && entry.routine != RoutineKey{0U, 0xE5AFU}
             && entry.routine != RoutineKey{0U, 0xE5ECU}
             && entry.routine != RoutineKey{0U, 0xE5F1U}
@@ -299,6 +532,9 @@ std::optional<RoutineReplacement> replace_coroutine_call(
         ? 0xC5EAU : entry.routine == kReleaseCall ? 0x5475U
         : entry.routine == kAssetCall ? 0xF605U : entry.routine == kSourceCall ? 0xC018U
         : entry.routine == kPendingCall ? 0x570AU
+        : (entry.routine == RoutineKey{3U, 0x7C34U} || entry.routine == RoutineKey{3U, 0x7643U}) ? 0xC018U
+        : entry.routine.logical_pc == 0xC9C3U ? 0xE5ECU
+        : entry.routine.logical_pc == 0xC9D3U ? 0xE85DU
         : entry.routine.logical_pc == 0xE5AFU ? 0xE5BCU
         : entry.routine.logical_pc == 0xE5ECU ? 0xE813U
         : entry.routine.logical_pc == 0xE5F1U ? 0xE825U
@@ -463,17 +699,25 @@ std::optional<RoutineReplacement> replace_upper_scheduler_return(
             && entry.routine != RoutineKey{0U, 0xE836U}
             && entry.routine != RoutineKey{5U, 0x7398U}
             && entry.routine != RoutineKey{2U, 0x4FE1U}
-            && entry.routine != RoutineKey{4U, 0x5197U})
+            && entry.routine != RoutineKey{4U, 0x5197U}
+            && entry.routine != RoutineKey{8U, 0x4106U}
+            && entry.routine != RoutineKey{2U, 0x4E32U}
+            && entry.routine != RoutineKey{2U, 0x432CU}
+            && entry.routine != RoutineKey{3U, 0x7DE0U}
+            && entry.routine != RoutineKey{3U, 0x7E7EU}
+            && entry.routine != RoutineKey{0U, 0xE8A3U})
         || entry.registers.program_counter != entry.routine.logical_pc
         || entry.registers.mpr[1] != 0xF8U
         || entry.registers.mpr[entry.routine.logical_pc >> 13U] != entry.routine.physical_bank
         || work_ram.size() < 0x2000U
-        || !absorbed_return_fits_atomically(entry, 0U)) {
+        || (entry.routine != RoutineKey{0x45U, 0x4B85U}
+            && !absorbed_return_fits_atomically(entry, 0U))) {
         return std::nullopt;
     }
     // Enter on the RTS itself: the scheduler may have installed any caller
     // frame. Read that live frame without assuming which parent opened it.
-    // Keep this single instruction atomic and strictly before both horizons.
+    // Ordinary returns stay atomic and strictly before both horizons. The
+    // post-PLP audio return has its own LastCycle checkpoint and can cross them.
     RoutineReplacement replacement{};
     absorb_return(replacement, work_ram, entry.registers.stack_pointer,
         entry.routine, 0U, entry.registers);

@@ -10,6 +10,19 @@
 #include <span>
 
 namespace devils_crush::app::detail {
+[[nodiscard]] std::optional<emulation::RoutineReplacement> replace_math_transfer_instruction(
+    const emulation::RoutineEntry& entry, std::span<const std::byte> work_ram);
+[[nodiscard]] std::optional<emulation::RoutineReplacement> replace_ranked_timer_instruction(
+    const emulation::RoutineEntry& entry, std::span<const std::byte> work_ram);
+[[nodiscard]] std::optional<emulation::RoutineReplacement> replace_eyeball_countdown_instruction(
+    const emulation::RoutineEntry& entry, std::span<const std::byte> work_ram);
+[[nodiscard]] std::optional<emulation::RoutineReplacement> replace_music_commit_sei(
+    const emulation::RoutineEntry& entry);
+
+[[nodiscard]] std::optional<emulation::RoutineReplacement> replace_bumper_sprite_instruction(
+    const emulation::RoutineEntry& entry, std::span<const std::byte> work_ram,
+    std::span<const std::byte> rom);
+
 [[nodiscard]] std::optional<emulation::RoutineReplacement> replace_bonus_countdown_instruction(
     const emulation::RoutineEntry& entry, std::span<const std::byte> work_ram);
 
@@ -2347,6 +2360,10 @@ replace_collision_mask_lookup_entry(
 
 } // namespace devils_crush::app::detail
 namespace devils_crush::app::detail {
+[[nodiscard]] std::optional<emulation::RoutineReplacement> replace_math_transfer_instruction(
+    const emulation::RoutineEntry& entry, std::span<const std::byte> work_ram);
+[[nodiscard]] std::optional<emulation::RoutineReplacement> replace_ranked_timer_instruction(
+    const emulation::RoutineEntry& entry, std::span<const std::byte> work_ram);
 [[nodiscard]] std::optional<emulation::RoutineReplacement>
 replace_actor_initialization(const emulation::RoutineEntry& entry,
     std::span<const std::byte> work_ram);

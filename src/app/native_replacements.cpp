@@ -20,6 +20,65 @@ replace_native_gameplay_routine_impl(
     const std::span<const std::byte> work_ram,
     const std::span<const std::byte> rom)
 {
+    if (entry.routine == RoutineKey{.physical_bank = 0x00U, .logical_pc = 0xE5ADU}
+        || entry.routine == RoutineKey{.physical_bank = 0x00U, .logical_pc = 0xE5B8U}
+        || entry.routine == RoutineKey{.physical_bank = 0x00U, .logical_pc = 0xE5B2U}
+        || entry.routine == RoutineKey{.physical_bank = 0x00U, .logical_pc = 0xE5B4U}
+        || entry.routine == RoutineKey{.physical_bank = 0x00U, .logical_pc = 0xE5EFU}
+        || entry.routine == RoutineKey{.physical_bank = 0x00U, .logical_pc = 0xE5B6U}
+        || entry.routine == RoutineKey{.physical_bank = 0x00U, .logical_pc = 0xE5FBU}
+        || entry.routine == RoutineKey{.physical_bank = 0x00U, .logical_pc = 0xE5A0U}
+        || entry.routine == RoutineKey{.physical_bank = 0x00U, .logical_pc = 0xE5A2U}) {
+        return detail::replace_math_transfer_instruction(entry, work_ram);
+    }
+    if (entry.routine == RoutineKey{.physical_bank = 0x03U, .logical_pc = 0x7E6AU}
+        || entry.routine == RoutineKey{.physical_bank = 0x03U, .logical_pc = 0x7E73U}
+        || entry.routine == RoutineKey{.physical_bank = 0x03U, .logical_pc = 0x7E76U}
+        || entry.routine == RoutineKey{.physical_bank = 0x03U, .logical_pc = 0x66AAU}
+        || entry.routine == RoutineKey{.physical_bank = 0x03U, .logical_pc = 0x66ADU}
+        || entry.routine == RoutineKey{.physical_bank = 0x03U, .logical_pc = 0x66B2U}
+        || entry.routine == RoutineKey{.physical_bank = 0x02U, .logical_pc = 0x567FU}
+        || entry.routine == RoutineKey{.physical_bank = 0x00U, .logical_pc = 0xE438U}) {
+        return detail::replace_ranked_timer_instruction(entry, work_ram);
+    }
+    if (entry.routine == RoutineKey{.physical_bank = 0x02U, .logical_pc = 0x4E29U}
+        || entry.routine == RoutineKey{.physical_bank = 0x02U, .logical_pc = 0x4E2DU}
+        || entry.routine == RoutineKey{.physical_bank = 0x02U, .logical_pc = 0x431BU}
+        || entry.routine == RoutineKey{.physical_bank = 0x02U, .logical_pc = 0x4324U}
+        || entry.routine == RoutineKey{.physical_bank = 0x02U, .logical_pc = 0x4327U}) {
+        return detail::replace_eyeball_countdown_instruction(entry, work_ram);
+    }
+    if (entry.routine == RoutineKey{.physical_bank = 0x45U, .logical_pc = 0x49E3U}
+        || entry.routine == RoutineKey{.physical_bank = 0x45U, .logical_pc = 0x485DU}) {
+        return detail::replace_music_commit_sei(entry);
+    }
+    if (entry.routine == RoutineKey{.physical_bank = 0x03U, .logical_pc = 0x7C34U}
+        || entry.routine == RoutineKey{.physical_bank = 0x03U, .logical_pc = 0x7643U}
+        || entry.routine == RoutineKey{.physical_bank = 0x01U, .logical_pc = 0xC9C3U}
+        || entry.routine == RoutineKey{.physical_bank = 0x01U, .logical_pc = 0xC9D3U}) {
+        return detail::replace_coroutine_call(entry, work_ram);
+    }
+    if (entry.routine == RoutineKey{.physical_bank = 0x02U, .logical_pc = 0x4E32U}
+        || entry.routine == RoutineKey{.physical_bank = 0x02U, .logical_pc = 0x432CU}
+        || entry.routine == RoutineKey{.physical_bank = 0x03U, .logical_pc = 0x7DE0U}
+        || entry.routine == RoutineKey{.physical_bank = 0x03U, .logical_pc = 0x7E7EU}
+        || entry.routine == RoutineKey{.physical_bank = 0x00U, .logical_pc = 0xE8A3U}) {
+        return detail::replace_upper_scheduler_return(entry, work_ram);
+    }
+    if (entry.routine == RoutineKey{.physical_bank = 0x03U, .logical_pc = 0x7A71U}
+        || entry.routine == RoutineKey{.physical_bank = 0x03U, .logical_pc = 0x7A77U}
+        || entry.routine == RoutineKey{.physical_bank = 0x03U, .logical_pc = 0x7A7FU}
+        || entry.routine == RoutineKey{.physical_bank = 0x03U, .logical_pc = 0x7A82U}
+        || entry.routine == RoutineKey{.physical_bank = 0x03U, .logical_pc = 0x7ADBU}
+        || entry.routine == RoutineKey{.physical_bank = 0x03U, .logical_pc = 0x7ADEU}
+        || entry.routine == RoutineKey{.physical_bank = 0x08U, .logical_pc = 0x40F1U}
+        || entry.routine == RoutineKey{.physical_bank = 0x08U, .logical_pc = 0x40F6U}
+        || entry.routine == RoutineKey{.physical_bank = 0x08U, .logical_pc = 0x40FBU}) {
+        return detail::replace_bumper_sprite_instruction(entry, work_ram, rom);
+    }
+    if (entry.routine == RoutineKey{.physical_bank = 0x08U, .logical_pc = 0x4106U}) {
+        return detail::replace_upper_scheduler_return(entry, work_ram);
+    }
     if (entry.routine == RoutineKey{.physical_bank = 0x05U, .logical_pc = 0x7376U}
         || entry.routine == RoutineKey{.physical_bank = 0x05U, .logical_pc = 0x7379U}
         || entry.routine == RoutineKey{.physical_bank = 0x05U, .logical_pc = 0x7387U}
@@ -336,16 +395,14 @@ replace_native_gameplay_routine_impl(
         return detail::replace_three_blobs_timer_branch(entry);
     }
     if (entry.routine == RoutineKey{0x03U, 0x66A3U}) {
-        // The full prefix has an exact native transcript when there is enough
-        // time before the next timer interrupt.  At its short-horizon edge,
-        // retain only the DEC in the core so the interrupt is observed at the
-        // original instruction boundary.
-        constexpr std::uint32_t kTimerHorizonSafeCycles = 300U;
-        if (entry.master_cycles_until_timer_interrupt
-            <= kTimerHorizonSafeCycles) {
-            return detail::replace_three_blobs_timer_decrement_instruction(entry);
+        // Preserve the proven full prefix and its timer guard. Any declined
+        // prefix resumes with a single DEC and the core's interrupt sample.
+        if (entry.master_cycles_until_timer_interrupt > 300U) {
+            if (auto full = detail::replace_three_blobs_first_movement_prefix(entry, work_ram)) {
+                return full;
+            }
         }
-        return detail::replace_three_blobs_first_movement_prefix(entry, work_ram);
+        return detail::replace_ranked_timer_instruction(entry, work_ram);
     }
     if (entry.routine
             == RoutineKey{
@@ -2011,7 +2068,8 @@ replace_native_gameplay_routine_impl(
             .physical_bank = 0x08U,
             .logical_pc = 0x40DFU,
         }) {
-        return detail::replace_sprite_emit_run(entry, work_ram, rom);
+        if (auto full = detail::replace_sprite_emit_run(entry, work_ram, rom)) { return full; }
+        return detail::replace_bumper_sprite_instruction(entry, work_ram, rom);
     }
     if (entry.routine
         == RoutineKey{
@@ -2793,9 +2851,10 @@ replace_native_gameplay_routine_impl(
             .physical_bank = 0x02U,
             .logical_pc = 0x4E24U,
         }) {
-        return detail::replace_giant_skeleton_eyeball_steady_idle(
-            entry,
-            work_ram);
+        if (auto idle = detail::replace_giant_skeleton_eyeball_steady_idle(entry, work_ram)) {
+            return idle;
+        }
+        return detail::replace_eyeball_countdown_instruction(entry, work_ram);
     }
     if (entry.routine
         == RoutineKey{
@@ -2812,7 +2871,8 @@ replace_native_gameplay_routine_impl(
             .physical_bank = 0x03U,
             .logical_pc = 0x76C5U,
         }) {
-        return detail::replace_giant_face_animator_active_wait(entry, work_ram);
+        if (auto full = detail::replace_giant_face_animator_active_wait(entry, work_ram)) { return full; }
+        return detail::replace_bumper_sprite_instruction(entry, work_ram, rom);
     }
     if (entry.routine
         == RoutineKey{
