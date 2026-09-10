@@ -20,6 +20,34 @@ replace_native_gameplay_routine_impl(
     const std::span<const std::byte> work_ram,
     const std::span<const std::byte> rom)
 {
+    if (entry.routine == RoutineKey{.physical_bank = 0x02U, .logical_pc = 0x4D40U}
+        || entry.routine == RoutineKey{.physical_bank = 0x03U, .logical_pc = 0x788EU}
+        || entry.routine == RoutineKey{.physical_bank = 0x03U, .logical_pc = 0x76C8U}
+        || entry.routine == RoutineKey{.physical_bank = 0x03U, .logical_pc = 0x76D3U}
+        || entry.routine == RoutineKey{.physical_bank = 0x03U, .logical_pc = 0x76CDU}
+        || entry.routine == RoutineKey{.physical_bank = 0x03U, .logical_pc = 0x76D6U}
+        || entry.routine == RoutineKey{.physical_bank = 0x03U, .logical_pc = 0x76ECU}
+        || entry.routine == RoutineKey{.physical_bank = 0x01U, .logical_pc = 0xC8DDU}
+        || entry.routine == RoutineKey{.physical_bank = 0x03U, .logical_pc = 0x7DCCU}
+        || entry.routine == RoutineKey{.physical_bank = 0x01U, .logical_pc = 0xC8DFU}
+        || entry.routine == RoutineKey{.physical_bank = 0x03U, .logical_pc = 0x7DD5U}
+        || entry.routine == RoutineKey{.physical_bank = 0x03U, .logical_pc = 0x7DD8U}) {
+        return detail::replace_ranked_animation_instruction(entry, work_ram);
+    }
+    if (entry.routine == RoutineKey{.physical_bank = 0x00U, .logical_pc = 0xE5BAU}
+        || entry.routine == RoutineKey{.physical_bank = 0x00U, .logical_pc = 0xE59FU}
+        || entry.routine == RoutineKey{.physical_bank = 0x02U, .logical_pc = 0x4D34U}
+        || entry.routine == RoutineKey{.physical_bank = 0x02U, .logical_pc = 0x5677U}
+        || entry.routine == RoutineKey{.physical_bank = 0x03U, .logical_pc = 0x76EFU}
+        || entry.routine == RoutineKey{.physical_bank = 0x02U, .logical_pc = 0x4D3BU}
+        || entry.routine == RoutineKey{.physical_bank = 0x03U, .logical_pc = 0x76D0U}
+        || entry.routine == RoutineKey{.physical_bank = 0x02U, .logical_pc = 0x567AU}
+        || entry.routine == RoutineKey{.physical_bank = 0x01U, .logical_pc = 0xC9C1U}
+        || entry.routine == RoutineKey{.physical_bank = 0x01U, .logical_pc = 0xC9BDU}
+        || entry.routine == RoutineKey{.physical_bank = 0x01U, .logical_pc = 0xC9CFU}
+        || entry.routine == RoutineKey{.physical_bank = 0x03U, .logical_pc = 0x76E9U}) {
+        return detail::replace_ranked_state_instruction(entry, work_ram);
+    }
     if (entry.routine == RoutineKey{.physical_bank = 0x02U, .logical_pc = 0x4D2DU}
         || entry.routine == RoutineKey{.physical_bank = 0x01U, .logical_pc = 0xC8DAU}
         || entry.routine == RoutineKey{.physical_bank = 0x01U, .logical_pc = 0xDA09U}

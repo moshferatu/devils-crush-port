@@ -10,6 +10,10 @@
 #include <span>
 
 namespace devils_crush::app::detail {
+std::optional<emulation::RoutineReplacement> replace_ranked_animation_instruction(
+    const emulation::RoutineEntry& entry, std::span<const std::byte> work_ram);
+std::optional<emulation::RoutineReplacement> replace_ranked_state_instruction(
+    const emulation::RoutineEntry& entry, std::span<const std::byte> work_ram);
 std::optional<emulation::RoutineReplacement> replace_ranked_operand_instruction(
     const emulation::RoutineEntry& entry, std::span<const std::byte> work_ram);
 std::optional<emulation::RoutineReplacement> replace_actor_gate_phase_instruction(

@@ -5545,6 +5545,18 @@ if(TARGET devils_crush)
                 "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/ranked-calls-$<CONFIG>-v1"
                 -P "${CMAKE_CURRENT_SOURCE_DIR}/verify_ranked_calls.cmake")
         set_tests_properties(dc_rom_ranked_calls PROPERTIES LABELS rom_required)
+        foreach(animation RANGE 0 1)
+            add_test(NAME dc_rom_ranked_animation_${animation}
+                COMMAND "${CMAKE_COMMAND}" "-DAPP=$<TARGET_FILE:devils_crush>" "-DROM=${DC_ROM_PATH}"
+                    "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/ranked-animation-${animation}-$<CONFIG>-v1"
+                    -P "${CMAKE_CURRENT_SOURCE_DIR}/verify_ranked_animation_${animation}.cmake")
+            set_tests_properties(dc_rom_ranked_animation_${animation} PROPERTIES LABELS rom_required)
+        endforeach()
+        add_test(NAME dc_rom_ranked_state
+            COMMAND "${CMAKE_COMMAND}" "-DAPP=$<TARGET_FILE:devils_crush>" "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/ranked-state-$<CONFIG>-v1"
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/verify_ranked_state.cmake")
+        set_tests_properties(dc_rom_ranked_state PROPERTIES LABELS rom_required)
         foreach(alley RANGE 0 1)
             add_test(NAME dc_rom_ranked_operands_${alley}
                 COMMAND "${CMAKE_COMMAND}" "-DAPP=$<TARGET_FILE:devils_crush>" "-DROM=${DC_ROM_PATH}"

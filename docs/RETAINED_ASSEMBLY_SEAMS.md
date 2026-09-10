@@ -1,6 +1,172 @@
 # Retained Assembly Seams
 
-## Current priority: actor and math operands (September 10)
+## Current priority: animation branches and soldier countdowns (September 10)
+
+The supplied ranking reports 38,706 master cycles across twelve sites. This
+batch admits all twelve. The cabinet ranking determines scope; the local
+measurements below use separate routes and do not claim to reproduce that
+capture.
+
+| Rank | Address | Reported cycles | Native treatment |
+| --- | --- | ---: | --- |
+| 1 | 02:4D40 | 4,392 | BNE 4D53, live Z |
+| 2 | 03:788E | 4,128 | Sampled JSR C018, live target mapping |
+| 3 | 03:76C8 | 3,654 | BEQ 76CB, live Z |
+| 4 | 03:76D3 | 3,003 | LDA 3A80,X, live animation state |
+| 5 | 03:76CD | 2,979 | STA 3A00,X, live A |
+| 6 | 03:76D6 | 2,979 | CMP 3E80,X, live A and N/Z/C |
+| 7 | 03:76EC | 2,955 | LDA 3A80,X after the child call |
+| 8 | 01:C8DD | 2,952 | AND immediate 01, live A |
+| 9 | 03:7DCC | 2,952 | LDA 3B00,X, countdown low byte |
+| 10 | 01:C8DF | 2,928 | BEQ C8E2, live Z |
+| 11 | 03:7DD5 | 2,904 | STA 3B00,X, live decremented A |
+| 12 | 03:7DD8 | 2,880 | ORA 3B80,X, live A and countdown high byte |
+
+`replace_ranked_animation_instruction` groups these independent instruction
+continuations. Indexed loads, stores, CMP and ORA sample at 12 and retire or
+write at 15 master cycles. CMP remains binary with D set and preserves A/V.
+AND samples at 3 and retires at 6. Branches consume the live Z flag, sampling
+at 3/9 and retiring at 6/12 when not taken/taken. JSR pushes 7890 high then low
+at offset zero with eight-bit SP wrap, samples at 18 and retires at 21; its
+return key uses the live destination MPR. Every site requires exact PC and
+code mapping, full work RAM with MPR1=F8, and T clear. D, all actor indices
+and both event horizons are admitted.
+
+`tests/ranked_animation_fixture.hpp` checks 9,437,184 cases: all CMP/ORA
+A/operand pairs, flags including decimal mode, both branch paths, all actor
+indices and wrapping stacks, unchanged registers, write order/address/value/
+timing, checkpoint timing, live destination mapping, both event horizons,
+short RAM, wrong mappings and PC, and T refusal. Existing fixtures remain
+enabled.
+
+`tests/verify_ranked_animation_0.cmake` uses the natural 3600-frame twist
+route without patches. The nine hooks accept 96, 48, 236, 30, 30, 30, 30,
+119 and 119 entries in ranking order, skipping the three soldier sites.
+`tests/verify_ranked_animation_1.cmake` reuses the established thirteen-patch
+Eyeball/countdown assembly route for the three soldier instructions, each
+384/384. Both tests pin the ROM bytes and all five original assembly hashes:
+frames, scheduler calls, scoped scheduler writes, RAM writes and device
+writes. They also pin hook counts and trace write counts. The initial
+soldier expectation of 192 was corrected to the actual 384 without changing
+any assembly hash.
+
+The registry grows **875 -> 887** admitted routines, with **935** reachable
+dispatch keys and **3,915,957 / 3,972,146** proven calls (98.6%). The seam
+manifest has **351** nonoverlapping ranges; the broad soldier continuation
+range is split around the three newly classified instructions.
+
+Full-registry measurements compare the saved pre-batch Release executable
+against the current registry. Across all 31 standard gameplay routes,
+ranked residue falls **28,182 -> 0** master cycles. Stagger removes 6,978,
+twist 5,946, alley 6,324 and lanes 8,934; the other 27 routes have no target
+residue and serve as compatibility checks. Every route preserves its frame
+hash and abandonment count. Higharc, radial and sidestep retain their one
+pre-existing abandonment; the other 28 remain at zero.
+
+A separate source-release census clears `2D16` at frame 1200, allowing the
+existing soldier source to advance through its normal entry and setup. It
+reaches all twelve ranked sites and removes **23,658 -> 0** cycles, including
+2,904 at each soldier countdown instruction. Its complete frame hash is
+`5B3726F2E23FCF511F0DCCAA2EAD3B872565C8EEF1633EA1DE8E1114EA591301`
+before and after, with zero abandonments. The combined measured reduction is
+**51,840 -> 0**. Each full-route interpreter cycle delta equals the target
+delta exactly. The unpatched state census also preserves its frame hash and
+zero abandonments, with no residue at these sites.
+
+The old synthetic countdown setup remains useful for selective native versus
+assembly trace parity. With the entire *pre-batch* registry installed, that
+setup instead fails on frame 1414 (also with only its injected countdown
+slot); it is not counted as a completed full-registry measurement. The normal
+source-release route above supplies that evidence without injecting a
+scheduler continuation. Diagnostics are retained under
+`out/ranked-animation-cost/`.
+
+The measurements are recorded in `out/ranked-animation-cost/manifest.csv`,
+`addresses.csv` and `source-release.csv`. The saved baseline is
+`out/build/windows-vs2022/Release/devils-crush-before-ranked-animation.exe`.
+
+Validation is complete: Release passes the exhaustive fixture, both new
+assembly oracles, the corrupted-face and upper-hand captures, and host
+registry regression. Debug passes the exhaustive fixture and both new
+assembly oracles, including all five pinned hashes for each route. The final
+Release and Debug builds, registry-generation check, seam check and
+`git diff --check` pass. Logs are `out/ranked-animation-*`; the Debug
+oracle pair completes in 826 seconds. No old hashes, interrupt guards or
+face/hand fixes were relaxed.
+
+## Previous round: math stack and actor state (September 10)
+
+The latest cabinet ranking reports 54,183 master cycles across twelve sites.
+This batch adds all twelve to the native registry. The supplied ranking sets
+scope; local replay measurements below are separate from that cabinet capture.
+
+| Rank | Address | Reported cycles | Native treatment |
+| --- | --- | ---: | --- |
+| 1 | 00:E5BA | 6,648 | PLX, wrapping stack and live X/N/Z |
+| 2 | 00:E59F | 4,980 | PHX, live X and wrapping stack |
+| 3 | 02:4D34 | 4,368 | LDA 3E80,X, live continuation attribute |
+| 4 | 02:5677 | 4,362 | LDA 2D00, live parent state |
+| 5 | 03:76EF | 4,353 | Sampled JSR 5955, live target mapping |
+| 6 | 02:4D3B | 4,344 | LDA 3D80,X, live actor attribute |
+| 7 | 03:76D0 | 4,329 | INC 3A80,X, wrapping state byte |
+| 8 | 02:567A | 4,314 | ORA 2D01, live A |
+| 9 | 03:76E9 | 4,305 | Sampled JSR C042, live target mapping |
+| 10 | 01:C9C1 | 4,092 | STA zero-page 2E, live A |
+| 11 | 01:C9BD | 4,044 | LDA zero-page 38 |
+| 12 | 01:C9CF | 4,044 | Binary ADC zero-page 2C, live A and carry |
+
+`replace_ranked_state_instruction` groups these independent continuations.
+PHX samples at 6 and writes at 9; PLX samples at 9 and retires at 12. Both
+wrap the eight-bit stack pointer. Absolute/indexed loads and ORA sample at 12
+and retire at 15. INC samples at 18 and writes at 21, updating only N/Z.
+The calls push PC+2 high then low at offset zero, sample at 18 and retire at
+21; their return keys use the live destination MPR. Zero-page load/store/ADC
+sample at 9 and retire or write at 12. ADC updates N/Z/C/V using binary
+arithmetic; decimal mode remains in the core because it has an additional
+LastCycle sample. Other instructions admit D. Every site requires T clear,
+exact PC/code mapping and a complete work-RAM page mapped through MPR1=F8.
+All actor indices, stack pointers and both event horizons are supported.
+
+`tests/ranked_state_fixture.hpp` checks 9,437,184 cases, including every
+A/operand pair for ORA and binary ADC with both carries and overflow states,
+all byte increments, stack wrap, flags, untouched registers, mapping guards,
+short RAM, write timing and both interrupt horizons. Decimal ADC is checked
+for safe refusal.
+
+`tests/verify_ranked_state.cmake` uses the natural 3600-frame twist route with
+no state patches. It pins the ROM bytes and all five original assembly hashes:
+frames, scheduler calls, scoped scheduler writes, all RAM writes and device
+writes. Assembly and selected native hooks are executed independently. Every
+entry is accepted: 344/344 at each math stack instruction, 96/96 at each
+indexed actor load, 363/363 at each parent-state load/OR, 30/30 at each state
+increment/call and 172/172 at each zero-page math instruction. The replay
+checks 2088 scheduler calls, 870896 scoped writes, 12470985 RAM writes and
+3265435 device writes. These hashes are unchanged from the earlier natural
+twist assembly captures.
+
+The registry grows from 863 to 875 admitted routines, with 923 reachable keys,
+194 routines proven on a patched route and 337 classified seam ranges.
+
+Full-registry before/after profiling across 31 standard routes removes all
+42,213 ranked master cycles: twist 24,126, lanes 7,212, stagger 5,676, alley
+5,178 and spiral 21. The other 26 routes contain no residue at these sites
+and serve as compatibility checks. All twelve addresses have zero remaining
+residue across the corpus. Every frame hash and abandonment count is unchanged;
+higharc, radial and sidestep retain their one pre-existing abandonment each,
+and the other 28 routes retain zero. The total interpreter-cycle reduction
+matches the ranked reduction exactly on every route.
+
+The route manifest and per-address measurements are in
+`out/ranked-state-cost/manifest.csv` and `addresses.csv`; the before executable
+is `out/build/windows-vs2022/Release/devils-crush-before-ranked-state.exe`.
+
+Release validation passes the exhaustive fixture, ranked-state assembly oracle,
+corrupted-face capture, upper-hand bus capture and host-registry regression.
+Debug passes the exhaustive fixture and ranked-state assembly oracle. Both
+configurations preserve all five pinned assembly hashes. Registry regeneration,
+337-range seam verification and `git diff --check` pass.
+
+## Previous round: actor and math operands (September 10)
 
 The latest cabinet ranking contains 67,200 reported master cycles. This batch
 covers all twelve sites with eleven new admissions and a live-instruction

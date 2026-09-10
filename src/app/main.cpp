@@ -7800,6 +7800,30 @@ parse_logical_address_range(const std::string_view text)
                             || request.routine == RoutineKey{3U, 0x7AE8U}
                             || request.routine == RoutineKey{3U, 0x7AEDU}
                             || request.routine == RoutineKey{3U, 0x7957U}
+                            || request.routine == RoutineKey{0x02U, 0x4D40U}
+                            || request.routine == RoutineKey{0x03U, 0x788EU}
+                            || request.routine == RoutineKey{0x03U, 0x76C8U}
+                            || request.routine == RoutineKey{0x03U, 0x76D3U}
+                            || request.routine == RoutineKey{0x03U, 0x76CDU}
+                            || request.routine == RoutineKey{0x03U, 0x76D6U}
+                            || request.routine == RoutineKey{0x03U, 0x76ECU}
+                            || request.routine == RoutineKey{0x01U, 0xC8DDU}
+                            || request.routine == RoutineKey{0x03U, 0x7DCCU}
+                            || request.routine == RoutineKey{0x01U, 0xC8DFU}
+                            || request.routine == RoutineKey{0x03U, 0x7DD5U}
+                            || request.routine == RoutineKey{0x03U, 0x7DD8U}
+                            || request.routine == RoutineKey{0x00U, 0xE5BAU}
+                            || request.routine == RoutineKey{0x00U, 0xE59FU}
+                            || request.routine == RoutineKey{0x02U, 0x4D34U}
+                            || request.routine == RoutineKey{0x02U, 0x5677U}
+                            || request.routine == RoutineKey{0x03U, 0x76EFU}
+                            || request.routine == RoutineKey{0x02U, 0x4D3BU}
+                            || request.routine == RoutineKey{0x03U, 0x76D0U}
+                            || request.routine == RoutineKey{0x02U, 0x567AU}
+                            || request.routine == RoutineKey{0x01U, 0xC9C1U}
+                            || request.routine == RoutineKey{0x01U, 0xC9BDU}
+                            || request.routine == RoutineKey{0x01U, 0xC9CFU}
+                            || request.routine == RoutineKey{0x03U, 0x76E9U}
                             || request.routine == RoutineKey{2U, 0x4D53U}
                             || request.routine == RoutineKey{2U, 0x4D2DU}
                             || request.routine == RoutineKey{1U, 0xC8DAU}
