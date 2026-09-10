@@ -5552,6 +5552,11 @@ if(TARGET devils_crush)
                     -P "${CMAKE_CURRENT_SOURCE_DIR}/verify_ranked_animation_${animation}.cmake")
             set_tests_properties(dc_rom_ranked_animation_${animation} PROPERTIES LABELS rom_required)
         endforeach()
+        add_test(NAME dc_rom_ranked_coordinate
+            COMMAND "${CMAKE_COMMAND}" "-DAPP=$<TARGET_FILE:devils_crush>" "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/ranked-coordinate-$<CONFIG>-v1"
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/verify_ranked_coordinate.cmake")
+        set_tests_properties(dc_rom_ranked_coordinate PROPERTIES LABELS rom_required)
         add_test(NAME dc_rom_ranked_state
             COMMAND "${CMAKE_COMMAND}" "-DAPP=$<TARGET_FILE:devils_crush>" "-DROM=${DC_ROM_PATH}"
                 "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/ranked-state-$<CONFIG>-v1"

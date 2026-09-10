@@ -15,6 +15,7 @@ void require(bool ok, const char* message) { if (!ok) { throw std::runtime_error
 #include "ranked_operand_fixture.hpp"
 #include "ranked_state_fixture.hpp"
 #include "ranked_animation_fixture.hpp"
+#include "ranked_coordinate_fixture.hpp"
 int main()
 {
     try {
@@ -27,6 +28,7 @@ int main()
         verify_ranked_operand_instructions();
         verify_ranked_state_instructions();
         verify_ranked_animation_instructions();
+        verify_ranked_coordinate_instructions();
         std::array<std::byte, 0x2000> ram{};
         for (const auto routine : {RoutineKey{5U, 0x7376U}, RoutineKey{5U, 0x7379U},
                  RoutineKey{5U, 0x7387U}, RoutineKey{5U, 0x738AU}, RoutineKey{5U, 0x738FU},

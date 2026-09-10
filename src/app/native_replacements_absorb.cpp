@@ -13,6 +13,59 @@ using emulation::RoutineEntry;
 using emulation::RoutineKey;
 using emulation::RoutineReplacement;
 
+std::optional<RoutineReplacement> replace_ranked_coordinate_instruction(
+    const RoutineEntry& entry, const std::span<const std::byte> work_ram)
+{
+    const auto pc = entry.routine.logical_pc;
+    if (entry.routine.physical_bank != 1U || entry.registers.program_counter != pc
+        || entry.registers.mpr[6] != 1U || entry.registers.mpr[1] != 0xF8U
+        || work_ram.size() < 0x2000U || (entry.registers.status & 0x20U) != 0U) {
+        return std::nullopt;
+    }
+    std::uint16_t address{};
+    bool store = false;
+    switch (pc) {
+    case 0xC9B3U: address = 0x2030U; store = false; break;
+    case 0xC9CBU: address = 0x202FU; store = true; break;
+    case 0xC9D1U: address = 0x2030U; store = true; break;
+    case 0xC9AFU: address = 0x202FU; store = false; break;
+    case 0xC9C7U: address = 0x202FU; store = false; break;
+    case 0xC9C9U: address = 0x202BU; store = false; break;
+    case 0xC9CDU: address = 0x2030U; store = false; break;
+    case 0xC9B1U: address = 0x202BU; store = true; break;
+    case 0xC9B5U: address = 0x202CU; store = true; break;
+    case 0xC9B9U: address = 0x202FU; store = true; break;
+    case 0xC9B7U: address = 0x2037U; store = false; break;
+    case 0xC9BFU: address = 0x2030U; store = true; break;
+    default: return std::nullopt;
+    }
+    // Decimal ADC has an extra LastCycle; preserve that core path.
+    if (pc == 0xC9C9U && (entry.registers.status & 8U) != 0U) { return std::nullopt; }
+    auto r = entry.registers;
+    RoutineReplacement result{};
+    if (store) {
+        result.work_ram_writes.push_back({.instruction = entry.routine,
+            .logical_address = address, .value = r.accumulator, .master_cycle_offset = 12U});
+    } else {
+        const auto value = std::to_integer<std::uint8_t>(work_ram[address - 0x2000U]);
+        if (pc == 0xC9C9U) {
+            const auto sum = r.accumulator + value + (r.status & 1U);
+            const auto overflow = (~(r.accumulator ^ value) & (r.accumulator ^ sum) & 0x80U) >> 1U;
+            r.status = static_cast<std::uint8_t>((r.status & 0xBEU) | overflow | (sum >> 8U));
+            r.accumulator = static_cast<std::uint8_t>(sum);
+        } else { r.accumulator = value; }
+        r.status = static_cast<std::uint8_t>((r.status & 0x7DU)
+            | (r.accumulator == 0U ? 2U : r.accumulator & 0x80U));
+    }
+    r.program_counter = static_cast<std::uint16_t>(pc + 2U);
+    result.return_instruction = {r.mpr[r.program_counter >> 13U], r.program_counter};
+    result.output_registers = r;
+    result.body_master_cycles = 12U;
+    result.checkpoints.push_back({.interrupt_sample_master_cycle_offset = 9U,
+        .master_cycle_offset = 12U, .instruction = entry.routine, .registers = r});
+    return result;
+}
+
 std::optional<RoutineReplacement> replace_ranked_animation_instruction(
     const RoutineEntry& entry, const std::span<const std::byte> work_ram)
 {

@@ -1,6 +1,66 @@
 # Retained Assembly Seams
 
-## Current priority: animation branches and soldier countdowns (September 10)
+## Current priority: coordinate math operands (September 10)
+
+The latest cabinet ranking reports **329,712 master cycles** across twelve
+instructions in bank 01's coordinate calculation. This batch admits all twelve:
+
+| Rank | Address | Reported cycles | Native instruction |
+| --- | --- | ---: | --- |
+| 1 | 01:C9B3 | 27,612 | LDA zero-page 30 |
+| 2 | 01:C9CB | 27,516 | STA zero-page 2F |
+| 3 | 01:C9D1 | 27,516 | STA zero-page 30 |
+| 4 | 01:C9AF | 27,492 | LDA zero-page 2F |
+| 5 | 01:C9C7 | 27,468 | LDA zero-page 2F |
+| 6 | 01:C9C9 | 27,468 | ADC zero-page 2B |
+| 7 | 01:C9CD | 27,468 | LDA zero-page 30 |
+| 8 | 01:C9B1 | 27,444 | STA zero-page 2B |
+| 9 | 01:C9B5 | 27,444 | STA zero-page 2C |
+| 10 | 01:C9B9 | 27,444 | STA zero-page 2F |
+| 11 | 01:C9B7 | 27,420 | LDA zero-page 37 |
+| 12 | 01:C9BF | 27,420 | STA zero-page 30 |
+
+`replace_ranked_coordinate_instruction` groups five loads, six stores and
+one binary addition. Every instruction consumes the live registers and RAM,
+samples interrupts at 9 master cycles, and retires at 12; stores write at 12.
+Loads update N/Z, stores preserve flags, and ADC consumes live A/carry and
+updates N/Z/C/V. Exact PC, bank mapping, MPR1=F8, full work RAM and T clear
+are required. Both event horizons and all X/Y/SP values are admitted. Decimal
+loads/stores are supported; decimal ADC retains the core's extra LastCycle,
+consistent with the adjacent previously ported C9CF addition.
+
+`tests/ranked_coordinate_fixture.hpp` checks 9,437,184 cases, including all
+A/operand pairs and both carries with an independent signed-overflow oracle,
+flag preservation, unchanged registers, write address/value/timing, checkpoint
+sampling, event horizons, mapping/PC guards, short RAM, and T/decimal refusal.
+`tests/verify_ranked_coordinate.cmake` uses the natural 3600-frame twist
+route without RAM patches. Each hook must accept 172/172 entries. The test
+pins ROM bytes and all five existing original assembly hashes: frame state,
+scheduler calls, scoped scheduler writes, RAM writes and device writes.
+
+Registry admissions grow **887 -> 899**, with **947** reachable dispatch keys
+and **3,918,021 / 3,974,210** proven calls (98.6%). The seam manifest has
+**363** nonoverlapping ranges.
+
+Full-registry before/after measurements on all 31 standard gameplay routes
+remove **25,080 -> 0 master cycles** at the twelve ranked addresses. All
+25,080 were on the natural twist route, which reaches every new site; the
+other 30 routes provide compatibility coverage. Every frame-state hash and
+abandonment count matches the pre-batch executable, and each route's total
+interpreter-cycle reduction equals its ranked-site reduction exactly.
+Higharc, radial and sidestep retain their single pre-existing abandonment;
+the other 28 routes have none. These local measurements are separate from
+the supplied cabinet report and do not claim to reproduce its 329,712 cycles.
+Artifacts are in `out/ranked-coordinate-cost/manifest.csv` and
+`addresses.csv`, with per-route before/after traces, profiles and logs.
+
+Release validation passes the new fixture and five-trace assembly oracle,
+host registry, corrupted-face capture and upper-hand bus regression (5/5).
+Debug also passes the fixture and all five original assembly trace hashes (2/2).
+Both configurations build successfully, the generated registry is current,
+the 363-range seam verifier passes, and the code diff has no whitespace errors.
+
+## Previous round: animation branches and soldier countdowns (September 10)
 
 The supplied ranking reports 38,706 master cycles across twelve sites. This
 batch admits all twelve. The cabinet ranking determines scope; the local
