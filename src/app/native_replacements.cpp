@@ -25,7 +25,12 @@ replace_native_gameplay_routine_impl(
         || entry.routine == RoutineKey{.physical_bank = 0x45U, .logical_pc = 0x4B36U}) {
         return detail::replace_ranked_control_instruction(entry, work_ram);
     }
-    if (entry.routine == RoutineKey{.physical_bank = 0x00U, .logical_pc = 0xE32CU}) {
+    if (entry.routine == RoutineKey{.physical_bank = 0x00U, .logical_pc = 0xE32CU}
+        || entry.routine == RoutineKey{.physical_bank = 0x03U, .logical_pc = 0x657CU}
+        || entry.routine == RoutineKey{.physical_bank = 0x09U, .logical_pc = 0x7040U}
+        || entry.routine == RoutineKey{.physical_bank = 0x09U, .logical_pc = 0x7178U}
+        || entry.routine == RoutineKey{.physical_bank = 0x09U, .logical_pc = 0x7022U}
+        || entry.routine == RoutineKey{.physical_bank = 0x09U, .logical_pc = 0x715AU}) {
         return detail::replace_coroutine_call(entry, work_ram);
     }
     if (entry.routine == RoutineKey{.physical_bank = 0x01U, .logical_pc = 0xD62DU}

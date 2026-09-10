@@ -1,6 +1,112 @@
 # Retained Assembly Seams
 
-## Current priority: frame delay, palette and return boundaries (September 9)
+## Current priority: actor calls, delayed spawn and event horizons (September 9)
+
+The latest user ranking supersedes the frame-delay ranking below. Its twelve
+sites account for 8,403 reported master cycles. This round batches eight sites;
+the user's live recording was not supplied, so measured reductions use local
+replays rather than an estimate of that session.
+
+| Rank | Address | Reported cycles | Treatment |
+| --- | --- | ---: | --- |
+| 1 | 03:657C | 1,008 | Shared native JSR C018 with precise interrupt sampling |
+| 2 | 09:7F44 | 840 | Retain low-speed device TIN and block suspension |
+| 3 | 01:C107 | 807 | Retain TII's suspension across the imminent event |
+| 4 | 00:FA67 | 678 | Retain the native BBR0 helper's initial 12-cycle guard |
+| 5 | 09:7040 | 672 | Shared native JSR F08E |
+| 6 | 09:7178 | 672 | Sibling native JSR F08E |
+| 7 | 09:7022 | 651 | Shared native JSR F08E |
+| 8 | 09:715A | 651 | Sibling native JSR F08E |
+| 9 | 45:4B84 | 636 | Retain PLP's sample of the old interrupt mask |
+| 10 | 03:7E0D | 615 | Independent DEC 3A00,X fallback after the full gate |
+| 11 | 01:C4C8 | 597 | Add the RTS LastCycle checkpoint across both horizons |
+| 12 | 02:5F73 | 576 | Admit the existing JSR checkpoint across both horizons |
+
+The five new calls and existing 5F73 call share `replace_coroutine_call`.
+Each pushes the high and low bytes of PC+2 at cycle zero, wrapping within
+the stack page, then samples at 18 and retires at 21. This matches the core's
+single ADDCYC(6)/LastCycle sequence even when an event falls inside that
+batch. The calls reject T, permit D, validate the live code mapping and RAM
+stack mapping, and resolve the child's bank from its live MPR. The other
+seventeen shared call keys keep their existing strict horizon guards.
+
+C4C8 uses the same 18/21 checkpoint as the already-verified audio return.
+The live stack target, original return-observer boundary and wrapping SP
+remain intact. Other ordinary RTS keys retain their existing guards; the
+post-PLP 4B85 path is unchanged. The dedicated Run-input replay still matches
+all five assembly hashes, including observers rooted at C4C8 and C49E;
+accepted entries increase from 712/860 to 860/860. The higharc source-call
+oracle preserves all three existing frame/call/write hashes and improves
+5F73 from 163/192 to 192/192.
+
+7E0D reuses the independently sampled DEC implementation already used at
+7D6F. It changes only N/Z and writes at cycle 21 after sampling at 18. The
+full waiting gate retains priority and its previous timing. The Small-Soldier
+census now accepts 193/193 entries instead of 161/193, preserving its existing
+trace hashes and full-gate checks.
+
+`tests/verify_ranked_calls.cmake` independently executes the original assembly
+and seven-site native batch on the natural alley route. No RAM patches are
+needed. Entries are 48/48 at 657C, 49/49 at each parent-decay call, 31/31 at
+each parent-initializer call, 193/193 at 7E0D and 2451/2451 at C4C8. It pins
+ROM bytes and all five trace hashes:
+
+| Trace | SHA-256 |
+| --- | --- |
+| Frame | `ba06e5a2111b9caae6837109ba2943a093cba1d47ad57af6561c2aa721b4a15a` |
+| Scheduler calls | `6a5d08540e1a3ce6cebb531d1545745d9e50074d3539f3f183f9ed154e4d081c` |
+| Scheduler writes | `84c3b0cc57131e72a35a88a08a757959dd03ec2bbee7205cf321909d16eece5a` |
+| RAM writes | `2215f17872d845ed21a8a0551ddf0b273bc52382bd6905529c7fca417bb754f3` |
+| Device writes | `d98d2bcac0655667f0d7cb7c93eb297396a436c78f19afc3b0465fb8f5c1e9a9` |
+
+The oracle covers 2,067 scheduler calls, 946,512 scoped writes, 11,834,535
+RAM writes and 3,225,616 device writes. Fixtures cover 23 shared JSR keys
+across every SP and P, 9,633,792 live-stack return cases, and 2,293,760
+independent control cases, including both horizons, mappings and short RAM.
+
+The four unchanged sites retain the constraints documented in the preceding
+round: 7F44 needs low-speed repeated port writes and resumable block state;
+C107's 807-cycle TII reaches an event after only 177 cycles; FA67 has two
+interrupt samples inside one opcode; and PLP must sample the old I mask
+while publishing its restored status. A composed PLP/RTS implementation is
+still a candidate, but has not been admitted or counted as progress here.
+
+Registry admission grows from 836 to 841 (889 dispatch-reachable keys),
+with 3,870,284 of 3,926,517 proven calls, 172 patched-route admissions and
+136 partial-coverage routes. The seam manifest classifies 302 disjoint ranges.
+
+The full-registry 31-route comparison removes **164,811 master cycles** from
+this ranking: **277,452 to 112,641 (59.4%)**. Every route preserves its frame
+hash and abandonment count, and each total interpreter delta equals its
+ranked-site delta. All eight changed sites reach zero residue in this corpus;
+the four unchanged sites account for all remaining 112,641 cycles. Per-route
+savings range from 4,035 to 6,552 cycles. Higharc, radial and sidestep keep
+one pre-existing abandonment each; the other 28 routes keep zero.
+
+| Changed address | Before cycles | After cycles |
+| --- | ---: | ---: |
+| 03:657C | 4,056 | 0 |
+| 09:7040 | 31,899 | 0 |
+| 09:7178 | 31,899 | 0 |
+| 09:7022 | 20,181 | 0 |
+| 09:715A | 20,181 | 0 |
+| 03:7E0D | 21,639 | 0 |
+| 01:C4C8 | 34,299 | 0 |
+| 02:5F73 | 657 | 0 |
+
+Measurement artifacts are in `out/ranked-calls-cost/{manifest,addresses}.csv`,
+with the clean pre-round binary saved as `devils-crush-before-ranked-calls.exe`.
+The corpus is compatibility and measurement evidence, not a substitute for
+prioritizing the newest user report.
+
+Validation is complete in Release and Debug: both timing fixtures, the new
+five-trace alley oracle, the tower-call oracle, and the face/hand captures
+pass. Release additionally passes the dedicated Run-input five-trace oracle,
+the existing Small-Soldier source oracle and the host-registry check.
+Registry regeneration and the 302-range seam check also pass. Logs are in
+`out/ranked-calls-*.log`.
+
+## Previous round: frame delay, palette and return boundaries (September 9)
 
 The newest user ranking supersedes the multiply-transfer ranking below. It
 contains 10,638 master cycles across twelve sites. The live recording was not

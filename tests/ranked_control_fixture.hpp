@@ -7,7 +7,8 @@ void verify_ranked_control_instructions()
     struct Case { RoutineKey key; unsigned base, cycles, length; };
     const Case cases[] = {
         {{0U, 0xEB1AU}, 0U, 12U, 3U}, {{0U, 0xE32FU}, 0x202CU, 18U, 2U},
-        {{3U, 0x7D6FU}, 0x3A00U, 21U, 3U}, {{0x45U, 0x4B36U}, 0x2E45U, 15U, 3U}
+        {{3U, 0x7D6FU}, 0x3A00U, 21U, 3U}, {{0x45U, 0x4B36U}, 0x2E45U, 15U, 3U},
+        {{3U, 0x7E0DU}, 0x3A00U, 21U, 3U}
     };
     for (const auto& test : cases) {
         RoutineEntry entry{};
@@ -62,5 +63,5 @@ void verify_ranked_control_instructions()
         r.mpr[r.program_counter >> 13U] ^= 1U; ++r.program_counter;
         require(!replace_ranked_control_instruction(entry, ram), "Control PC");
     }
-    std::puts("Verified 1,835,008 control cases, mappings and both horizons.");
+    std::puts("Verified 2,293,760 control cases, mappings and both horizons.");
 }

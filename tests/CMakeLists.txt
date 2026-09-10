@@ -5540,6 +5540,11 @@ if(TARGET devils_crush)
                 "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/actor-scan-cursors-$<CONFIG>-v1"
                 -P "${CMAKE_CURRENT_SOURCE_DIR}/verify_actor_scan_cursors.cmake")
         set_tests_properties(dc_rom_actor_scan_cursors PROPERTIES LABELS rom_required)
+        add_test(NAME dc_rom_ranked_calls
+            COMMAND "${CMAKE_COMMAND}" "-DAPP=$<TARGET_FILE:devils_crush>" "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/ranked-calls-$<CONFIG>-v1"
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/verify_ranked_calls.cmake")
+        set_tests_properties(dc_rom_ranked_calls PROPERTIES LABELS rom_required)
         add_test(NAME dc_rom_ranked_control
             COMMAND "${CMAKE_COMMAND}" "-DAPP=$<TARGET_FILE:devils_crush>" "-DROM=${DC_ROM_PATH}"
                 "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/ranked-control-$<CONFIG>-v1"

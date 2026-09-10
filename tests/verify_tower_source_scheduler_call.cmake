@@ -25,7 +25,7 @@ foreach(mode IN ITEMS assembly native)
         message(FATAL_ERROR "Tower source scheduler call ${mode}: ${output}${error}")
     endif()
     if(mode STREQUAL "native")
-        foreach(expected IN ITEMS "Native replacement 02:5F73@all entries: 163 of 192"
+        foreach(expected IN ITEMS "Native replacement 02:5F73@all entries: 192 of 192"
                                   "Routine call trace complete: 1635 calls, 818325 writes")
             string(FIND "${output}" "${expected}" position)
             if(position EQUAL -1)

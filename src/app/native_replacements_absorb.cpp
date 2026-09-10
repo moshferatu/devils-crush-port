@@ -18,7 +18,8 @@ std::optional<RoutineReplacement> replace_ranked_control_instruction(
 {
     const bool jump = entry.routine == RoutineKey{0U, 0xEB1AU};
     const bool counter = entry.routine == RoutineKey{0U, 0xE32FU};
-    const bool actor = entry.routine == RoutineKey{3U, 0x7D6FU};
+    const bool actor = entry.routine == RoutineKey{3U, 0x7D6FU}
+        || entry.routine == RoutineKey{3U, 0x7E0DU};
     const bool clear = entry.routine == RoutineKey{0x45U, 0x4B36U};
     const auto pc = entry.routine.logical_pc;
     if ((!jump && !counter && !actor && !clear)
@@ -537,6 +538,12 @@ std::optional<RoutineReplacement> replace_coroutine_call(
     constexpr RoutineKey kReleaseCall{.physical_bank = 0x02U, .logical_pc = 0x51D2U};
     constexpr RoutineKey kSourceCall{.physical_bank = 0x02U, .logical_pc = 0x5F73U};
     constexpr RoutineKey kPendingCall{.physical_bank = 0x02U, .logical_pc = 0x5674U};
+    const bool actor_call = entry.routine == RoutineKey{3U, 0x657CU};
+    const bool parent_call = entry.routine == RoutineKey{9U, 0x7040U}
+        || entry.routine == RoutineKey{9U, 0x7178U}
+        || entry.routine == RoutineKey{9U, 0x7022U}
+        || entry.routine == RoutineKey{9U, 0x715AU};
+    const bool sampled_call = actor_call || parent_call || entry.routine == kSourceCall;
     if ((entry.routine != kDelayCall && entry.routine != kSchedulerCall
             && entry.routine != kSecondDelayCall && entry.routine != kToggleCall
             && entry.routine != kResetCall && entry.routine != kReleaseCall
@@ -549,16 +556,19 @@ std::optional<RoutineReplacement> replace_coroutine_call(
             && entry.routine != RoutineKey{0U, 0xE5ECU}
             && entry.routine != RoutineKey{0U, 0xE5F1U}
             && entry.routine != RoutineKey{0U, 0xE5F8U}
-            && entry.routine != RoutineKey{0U, 0xE32CU})
+            && entry.routine != RoutineKey{0U, 0xE32CU} && !actor_call && !parent_call)
         || entry.registers.program_counter != entry.routine.logical_pc
         || entry.registers.mpr[1] != 0xF8U
         || entry.registers.mpr[entry.routine.logical_pc >> 13U] != entry.routine.physical_bank
         || (entry.registers.status & 0x20U) != 0U || work_ram.size() < 0x2000U
-        || !absorbed_return_fits_atomically(entry, 0U)) {
+        || (!sampled_call && !absorbed_return_fits_atomically(entry, 0U))) {
         return std::nullopt;
     }
     // The child consumes the real JSR frame to choose the continuation.
     // Preserve hardware write order and timing; leave the child as a new entry.
+    // These ranked calls advance exactly like JSR: both pushes precede the
+    // eighteen-cycle batch, followed by LastCycle and its three-cycle tail.
+    // Their checkpoint therefore also handles an event inside that batch.
     RoutineReplacement result{};
     auto r = entry.registers;
     const auto saved = static_cast<std::uint16_t>(entry.routine.logical_pc + 2U);
@@ -572,6 +582,7 @@ std::optional<RoutineReplacement> replace_coroutine_call(
     r.program_counter = (entry.routine == kDelayCall || entry.routine == kSecondDelayCall)
         ? 0xC5EAU : entry.routine == kReleaseCall ? 0x5475U
         : entry.routine == kAssetCall ? 0xF605U : entry.routine == kSourceCall ? 0xC018U
+        : actor_call ? 0xC018U : parent_call ? 0xF08EU
         : entry.routine == kPendingCall ? 0x570AU
         : (entry.routine == RoutineKey{3U, 0x7C34U} || entry.routine == RoutineKey{3U, 0x7643U}) ? 0xC018U
         : entry.routine.logical_pc == 0xE32CU ? 0xE321U
@@ -755,18 +766,18 @@ std::optional<RoutineReplacement> replace_upper_scheduler_return(
         || entry.registers.mpr[1] != 0xF8U
         || entry.registers.mpr[entry.routine.logical_pc >> 13U] != entry.routine.physical_bank
         || work_ram.size() < 0x2000U
-        || (entry.routine != RoutineKey{0x45U, 0x4B85U}
+        || (entry.routine != RoutineKey{0x45U, 0x4B85U} && entry.routine != kRunInputReturn
             && !absorbed_return_fits_atomically(entry, 0U))) {
         return std::nullopt;
     }
     // Enter on the RTS itself: the scheduler may have installed any caller
     // frame. Read that live frame without assuming which parent opened it.
-    // Ordinary returns stay atomic and strictly before both horizons. The
-    // post-PLP audio return has its own LastCycle checkpoint and can cross them.
+    // Most returns stay atomic. The audio and Run-input returns use an exact
+    // LastCycle checkpoint to preserve interrupt sampling across either horizon.
     RoutineReplacement replacement{};
     absorb_return(replacement, work_ram, entry.registers.stack_pointer,
         entry.routine, 0U, entry.registers);
-    if (entry.routine == RoutineKey{0x45U, 0x4B85U}) {
+    if (entry.routine == RoutineKey{0x45U, 0x4B85U} || entry.routine == kRunInputReturn) {
         // PLP may just have cleared I while an IRQ was already pending.
         // Sample again at RTS LastCycle; an atomic transcript without a
         // checkpoint would preserve PLP's old-mask latch for one extra opcode.
