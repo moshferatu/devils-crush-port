@@ -5,12 +5,52 @@
 #include <algorithm>
 #include <cstdint>
 
+
 namespace devils_crush::app::detail {
 
 using emulation::CpuRegisters;
 using emulation::RoutineEntry;
 using emulation::RoutineKey;
 using emulation::RoutineReplacement;
+
+std::optional<RoutineReplacement> replace_ranked_control_instruction(
+    const RoutineEntry& entry, const std::span<const std::byte> work_ram)
+{
+    const bool jump = entry.routine == RoutineKey{0U, 0xEB1AU};
+    const bool counter = entry.routine == RoutineKey{0U, 0xE32FU};
+    const bool actor = entry.routine == RoutineKey{3U, 0x7D6FU};
+    const bool clear = entry.routine == RoutineKey{0x45U, 0x4B36U};
+    const auto pc = entry.routine.logical_pc;
+    if ((!jump && !counter && !actor && !clear)
+        || entry.registers.program_counter != pc
+        || entry.registers.mpr[pc >> 13U] != entry.routine.physical_bank
+        || (entry.registers.status & 0x20U) != 0U
+        || (!jump && (entry.registers.mpr[1] != 0xF8U || work_ram.size() < 0x2000U))) {
+        return std::nullopt;
+    }
+    auto r = entry.registers;
+    RoutineReplacement result{};
+    const std::uint32_t cycles = jump ? 12U : counter ? 18U : actor ? 21U : 15U;
+    if (!jump) {
+        const auto address = static_cast<std::uint16_t>(counter ? 0x202CU
+            : (actor ? 0x3A00U : 0x2E45U) + r.x);
+        const auto value = clear ? std::uint8_t{0U} : static_cast<std::uint8_t>(
+            std::to_integer<std::uint8_t>(work_ram[address - 0x2000U]) - 1U);
+        if (!clear) {
+            r.status = static_cast<std::uint8_t>((r.status & 0x7DU)
+                | (value == 0U ? 2U : value & 0x80U));
+        }
+        result.work_ram_writes.push_back({.instruction = entry.routine,
+            .logical_address = address, .value = value, .master_cycle_offset = cycles});
+    }
+    r.program_counter = jump ? 0xEAB0U : static_cast<std::uint16_t>(pc + (counter ? 2U : 3U));
+    result.return_instruction = {r.mpr[r.program_counter >> 13U], r.program_counter};
+    result.output_registers = r;
+    result.body_master_cycles = cycles;
+    result.checkpoints.push_back({.interrupt_sample_master_cycle_offset = cycles - 3U,
+        .master_cycle_offset = cycles, .instruction = entry.routine, .registers = r});
+    return result;
+}
 
 std::optional<RoutineReplacement> replace_math_transfer_instruction(
     const RoutineEntry& entry, const std::span<const std::byte> work_ram)
@@ -508,7 +548,8 @@ std::optional<RoutineReplacement> replace_coroutine_call(
             && entry.routine != RoutineKey{0U, 0xE5AFU}
             && entry.routine != RoutineKey{0U, 0xE5ECU}
             && entry.routine != RoutineKey{0U, 0xE5F1U}
-            && entry.routine != RoutineKey{0U, 0xE5F8U})
+            && entry.routine != RoutineKey{0U, 0xE5F8U}
+            && entry.routine != RoutineKey{0U, 0xE32CU})
         || entry.registers.program_counter != entry.routine.logical_pc
         || entry.registers.mpr[1] != 0xF8U
         || entry.registers.mpr[entry.routine.logical_pc >> 13U] != entry.routine.physical_bank
@@ -533,6 +574,7 @@ std::optional<RoutineReplacement> replace_coroutine_call(
         : entry.routine == kAssetCall ? 0xF605U : entry.routine == kSourceCall ? 0xC018U
         : entry.routine == kPendingCall ? 0x570AU
         : (entry.routine == RoutineKey{3U, 0x7C34U} || entry.routine == RoutineKey{3U, 0x7643U}) ? 0xC018U
+        : entry.routine.logical_pc == 0xE32CU ? 0xE321U
         : entry.routine.logical_pc == 0xC9C3U ? 0xE5ECU
         : entry.routine.logical_pc == 0xC9D3U ? 0xE85DU
         : entry.routine.logical_pc == 0xE5AFU ? 0xE5BCU
@@ -705,7 +747,10 @@ std::optional<RoutineReplacement> replace_upper_scheduler_return(
             && entry.routine != RoutineKey{2U, 0x432CU}
             && entry.routine != RoutineKey{3U, 0x7DE0U}
             && entry.routine != RoutineKey{3U, 0x7E7EU}
-            && entry.routine != RoutineKey{0U, 0xE8A3U})
+            && entry.routine != RoutineKey{0U, 0xE8A3U}
+            && entry.routine != RoutineKey{1U, 0xD62DU}
+            && entry.routine != RoutineKey{1U, 0xD68DU}
+            && entry.routine != RoutineKey{0U, 0xF55BU})
         || entry.registers.program_counter != entry.routine.logical_pc
         || entry.registers.mpr[1] != 0xF8U
         || entry.registers.mpr[entry.routine.logical_pc >> 13U] != entry.routine.physical_bank

@@ -1,6 +1,117 @@
 # Retained Assembly Seams
 
-## Current priority: collision math calls and multiply transfers (September 9)
+## Current priority: frame delay, palette and return boundaries (September 9)
+
+The newest user ranking supersedes the multiply-transfer ranking below. It
+contains 10,638 master cycles across twelve sites. The live recording was not
+supplied; the measurements below use local replays.
+
+| Rank | Address | Reported cycles | Treatment |
+| --- | --- | ---: | --- |
+| 1 | 00:FA67 | 1,440 | Existing native BBR0; retain its strict 12-cycle initial-phase guard |
+| 2 | 00:EB1A | 1,104 | Native JMP EAB0 at the palette chunk boundary |
+| 3 | 00:E32C | 924 | Shared native JSR E321 |
+| 4 | 01:D62D | 861 | Shared native RTS |
+| 5 | 01:D68D | 840 | Shared native RTS |
+| 6 | 09:7F44 | 840 | Retain low-speed TIN to device port 1807 |
+| 7 | 01:C107 | 807 | Retain TII FAF4 to 2200, length 42 |
+| 8 | 00:E32F | 792 | Native DEC zero-page 2C |
+| 9 | 45:4B84 | 768 | Retain PLP's old interrupt-mask sample |
+| 10 | 00:F55B | 756 | Shared native RTS |
+| 11 | 03:7D6F | 756 | Independent DEC 3A00,X fallback after the existing full gate |
+| 12 | 45:4B36 | 750 | Native STZ 2E45,X |
+
+The four ordinary instructions share `replace_ranked_control_instruction`.
+JMP samples at 9 and retires at 12; zero-page DEC samples at 15 and writes
+at 18; indexed DEC samples at 18 and writes at 21; indexed STZ samples at
+12 and writes at 15. DEC changes only N/Z; JMP and STZ preserve flags.
+All accept every X and both short horizons, allow D, reject T, and validate
+the exact PC and live code mapping. RAM operations additionally require the
+full RAM snapshot and MPR1=F8. The existing full Small-Soldier gate retains
+priority: the census has 155 full entries plus 38 independent DEC entries,
+including expiry and entries too close to an event for the full walk.
+
+E32C joins the shared JSR helper: push E3 then 2E at cycle zero with wrapping
+SP, sample at 18, retire at 21, and enter E321 using the live destination
+mapping. The three new RTS keys use the existing live-stack return helper.
+JSR and ordinary RTS still require both horizons strictly beyond 21 cycles.
+The special post-PLP return at 45:4B85 is unchanged.
+
+Four ranked sites need a different timing mechanism before further porting:
+
+- FA67's initial LD_ZP phase has an intermediate interrupt sample. Removing
+  the remaining 12-cycle guard would change the core's event/latch ordering.
+- 09:7F44 is TIN 7F58,1807,0003 immediately after CSL. Its two entries cost
+  420 cycles each at low speed. A device block-transfer model must preserve
+  that speed, repeated port writes, stack effects and block suspension.
+- C107's single local entry has P=03 and only 177 cycles to the next event,
+  while its 42-byte TII costs 807 cycles. A whole-block atomic implementation
+  cannot enter there. It needs the core's block-move suspension semantics;
+  an unentered prototype was removed before admission.
+- 45:4B84 restores P after sampling the old interrupt mask. A standalone
+  checkpoint cannot describe the set-to-clear mask transition. The current
+  SEI exception describes the opposite transition and is insufficient.
+  Composing PLP with its following RTS is a separate candidate for carrying
+  the deferred mask into the next checkpoint; it needs its own proof of
+  interrupt timing and return-observer behavior.
+
+`ranked_control_fixture.hpp` checks 1,835,008 operand/index/status cases,
+both horizons, mappings, retirement, flags and ordered writes. Shared fixtures
+now cover eighteen JSR sites and 49 RTS sites (9,633,792 return cases).
+
+`dc_rom_ranked_control` pins the eight ROM instructions and compares five
+artifacts from a natural 3,600-frame census with assembly. Native entry
+counts are EB1A 3,840/3,840; E32C 44/44; D62D 52/62; D68D 32/36;
+E32F 44/44; F55B 35/40; 7D6F 193/193; and 4B36 50/50. It preserves
+2,596 scheduler calls, 876,882 scoped writes, 12,647,397 RAM writes and
+3,149,357 device writes. All five hashes match assembly in Release and Debug.
+The existing Small-Soldier source test passes with only its acceptance count
+updated from 155 to 193; its full 33-cycle gate replay and pinned artifacts
+are unchanged.
+
+Registry admission is 836 of 884 reachable keys (up from 829 of 877), with
+3,868,276 of 3,924,718 proven calls, 172 patched-route proofs and 139 partial
+routes. The execution-seam manifest has 295 nonoverlapping ranges.
+
+The complete 31-route full-registry corpus reduces the twelve ranked sites
+from **261,354 to 114,795 cycles**, removing **146,559 cycles (56.1%)**.
+Every route improves, with identical before/after frame hashes and
+abandonment counts. Higharc, radial and sidestep retain their pre-existing
+one abandonment each; the other 28 routes retain zero. On every route,
+the total interpreter-cycle reduction equals the ranked-site reduction.
+
+| Address | Before | After |
+| --- | ---: | ---: |
+| 00:FA67 | 42,408 | 42,408 |
+| 00:EB1A | 34,224 | 0 |
+| 00:E32C | 28,644 | 651 |
+| 01:D62D | 2,562 | 294 |
+| 01:D68D | 1,596 | 84 |
+| 09:7F44 | 26,040 | 26,040 |
+| 01:C107 | 25,017 | 25,017 |
+| 00:E32F | 24,552 | 0 |
+| 45:4B84 | 19,176 | 19,176 |
+| 00:F55B | 7,467 | 1,125 |
+| 03:7D6F | 26,418 | 0 |
+| 45:4B36 | 23,250 | 0 |
+
+The eight changed sites themselves fall from 148,713 to 2,154 cycles (98.6%);
+all their remaining residue is in the strict JSR/RTS horizon guards. The
+four unchanged sites account for 112,641 cycles. The before binary is
+`devils-crush-before-ranked-control.exe`; per-route profiles, hashes and
+abandonment counts are in `out/ranked-control-cost/manifest.csv`, with totals
+in `addresses.csv`. These local reductions are not a measurement of the
+user's unprovided live recording.
+
+Release and Debug instruction fixtures pass. All five Release ROM checks
+pass: the new assembly oracle, host registry, original face capture, hand
+capture, and existing Small-Soldier source semantics. The three Debug replay
+checks also pass: the new assembly oracle and both original face/hand captures.
+Registry generation/check, seam validation and
+`git diff --check` pass.
+
+
+## Previous priority: collision math calls and multiply transfers (September 9)
 
 This user ranking supersedes the actor-timer ranking below. The live recording
 was not supplied; reductions are measured on local replays.

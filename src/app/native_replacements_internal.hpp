@@ -10,6 +10,10 @@
 #include <span>
 
 namespace devils_crush::app::detail {
+std::optional<emulation::RoutineReplacement> replace_ranked_control_instruction(
+    const emulation::RoutineEntry& entry, std::span<const std::byte> work_ram);
+
+
 [[nodiscard]] std::optional<emulation::RoutineReplacement> replace_math_transfer_instruction(
     const emulation::RoutineEntry& entry, std::span<const std::byte> work_ram);
 [[nodiscard]] std::optional<emulation::RoutineReplacement> replace_ranked_timer_instruction(
@@ -2360,6 +2364,10 @@ replace_collision_mask_lookup_entry(
 
 } // namespace devils_crush::app::detail
 namespace devils_crush::app::detail {
+std::optional<emulation::RoutineReplacement> replace_ranked_control_instruction(
+    const emulation::RoutineEntry& entry, std::span<const std::byte> work_ram);
+
+
 [[nodiscard]] std::optional<emulation::RoutineReplacement> replace_math_transfer_instruction(
     const emulation::RoutineEntry& entry, std::span<const std::byte> work_ram);
 [[nodiscard]] std::optional<emulation::RoutineReplacement> replace_ranked_timer_instruction(

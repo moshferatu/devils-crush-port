@@ -7776,6 +7776,14 @@ parse_logical_address_range(const std::string_view text)
                                         .logical_pc = 0x42EBU,
                                     }
                             && request.all_calls;
+                        const bool proven_ranked_control_seam = request.all_calls && (request.routine == RoutineKey{0U, 0xEB1AU}
+                            || request.routine == RoutineKey{0U, 0xE32CU}
+                            || request.routine == RoutineKey{1U, 0xD62DU}
+                            || request.routine == RoutineKey{1U, 0xD68DU}
+                            || request.routine == RoutineKey{0U, 0xE32FU}
+                            || request.routine == RoutineKey{0U, 0xF55BU}
+                            || request.routine == RoutineKey{3U, 0x7D6FU}
+                            || request.routine == RoutineKey{0x45U, 0x4B36U});
                         const bool proven_math_transfer_seam = request.all_calls && (request.routine == RoutineKey{1U, 0xC9C3U}
                             || request.routine == RoutineKey{1U, 0xC9D3U}
                             || request.routine == RoutineKey{0U, 0xE8A3U}
@@ -8908,6 +8916,7 @@ parse_logical_address_range(const std::string_view text)
                             && !proven_three_blobs_rng_loop_branch
                             && !proven_math_gate_seam
                             && !proven_math_transfer_seam
+                            && !proven_ranked_control_seam
                             && !proven_ranked_timer_seam
                             && !proven_eyeball_countdown_seam
                             && !proven_bumper_sprite_seam

@@ -145,7 +145,7 @@ foreach(expected_line IN ITEMS
     "State census recording complete: 3600 frames"
     "Native replacement 03:7D4D@all entries: 1 of 1"
     "Native replacement 03:7DE9@all entries: 1 of 1"
-    "Native replacement 03:7D6F@all entries: 155 of 193"
+    "Native replacement 03:7D6F@all entries: 193 of 193"
     "Native replacement 03:7E0D@all entries: 161 of 193"
     "Native replacement 03:7E87@all entries: 10 of 10"
     "Native replacement 03:7E8A@all entries: 10 of 10"

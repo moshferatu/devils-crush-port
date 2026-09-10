@@ -20,6 +20,19 @@ replace_native_gameplay_routine_impl(
     const std::span<const std::byte> work_ram,
     const std::span<const std::byte> rom)
 {
+    if (entry.routine == RoutineKey{.physical_bank = 0x00U, .logical_pc = 0xEB1AU}
+        || entry.routine == RoutineKey{.physical_bank = 0x00U, .logical_pc = 0xE32FU}
+        || entry.routine == RoutineKey{.physical_bank = 0x45U, .logical_pc = 0x4B36U}) {
+        return detail::replace_ranked_control_instruction(entry, work_ram);
+    }
+    if (entry.routine == RoutineKey{.physical_bank = 0x00U, .logical_pc = 0xE32CU}) {
+        return detail::replace_coroutine_call(entry, work_ram);
+    }
+    if (entry.routine == RoutineKey{.physical_bank = 0x01U, .logical_pc = 0xD62DU}
+        || entry.routine == RoutineKey{.physical_bank = 0x01U, .logical_pc = 0xD68DU}
+        || entry.routine == RoutineKey{.physical_bank = 0x00U, .logical_pc = 0xF55BU}) {
+        return detail::replace_upper_scheduler_return(entry, work_ram);
+    }
     if (entry.routine == RoutineKey{.physical_bank = 0x00U, .logical_pc = 0xE5ADU}
         || entry.routine == RoutineKey{.physical_bank = 0x00U, .logical_pc = 0xE5B8U}
         || entry.routine == RoutineKey{.physical_bank = 0x00U, .logical_pc = 0xE5B2U}
@@ -2636,9 +2649,10 @@ replace_native_gameplay_routine_impl(
                 .physical_bank = 0x03U,
                 .logical_pc = 0x7E0DU,
             }) {
-        return detail::replace_small_soldier_delayed_spawn_gates(
-            entry,
-            work_ram);
+        if (auto full = detail::replace_small_soldier_delayed_spawn_gates(entry, work_ram)) {
+            return full;
+        }
+        return detail::replace_ranked_control_instruction(entry, work_ram);
     }
     if (entry.routine
             == RoutineKey{
