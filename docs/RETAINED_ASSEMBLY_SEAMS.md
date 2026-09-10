@@ -1,6 +1,82 @@
 # Retained Assembly Seams
 
-## Current priority: coordinate math operands (September 10)
+## Current priority: actor conditions and sprite-attribute calls (September 10)
+
+The latest cabinet ranking reports **101,610 master cycles** across twelve sites.
+This batch ports all twelve, grouped into actor conditions, coordinate state,
+and sprite-attribute calls and returns.
+
+| Rank | Address | Reported cycles | Native instruction |
+| --- | --- | ---: | --- |
+| 1 | 02:5A05 | 13,410 | JSR C018, upper-hand wait |
+| 2 | 03:61A9 | 11,784 | BNE 61B2, undead-head parent condition |
+| 3 | 01:C9BB | 9,636 | STA zero-page 2D, coordinate state |
+| 4 | 02:5A00 | 9,558 | LDA 2D33, upper-hand scene latch |
+| 5 | 02:4D32 | 9,288 | BNE 4D53, actor condition |
+| 6 | 02:56A5 | 7,668 | LDA zero-page CB, Big-Star state |
+| 7 | 02:56A9 | 7,596 | STA zero-page CB, Big-Star state |
+| 8 | 02:5682 | 6,798 | BNE 56A5, Big-Star timer condition |
+| 9 | 01:D902 | 6,474 | JSR D950, sprite-attribute processing |
+| 10 | 01:D915 | 6,474 | RTS, sprite-attribute caller |
+| 11 | 01:D92F | 6,474 | RTS, sprite-attribute caller |
+| 12 | 01:D907 | 6,450 | JSR D950, sprite-attribute processing |
+
+Each replacement checks its exact PC, physical bank, live code mapping, full
+8 KiB work RAM, MPR1=F8 and a clear T flag. Decimal mode remains accepted because
+none of these instructions performs decimal arithmetic. All live register and
+stack values are accepted, including stack and return-PC wraparound, at both
+event horizons. Branches consume the incoming Z flag; stores consume live A.
+Loads change NZ; branches, stores, calls and returns preserve all flags.
+
+Interrupt samples occur three master cycles before retirement: branches retire
+at 6/12 cycles, zero-page loads/stores at 12, the absolute load at 15, and calls
+and returns at 21. Stores write at 12; JSR pushes the operand address at cycle
+zero, matching the pinned core. Both RTS sites explicitly sample at 18 and
+retire at 21. Continuation banks come from the live MPRs.
+
+The new fixture checks **786,432 cases** across every status byte and stack slot,
+plus **131,072 saved returns** covering every return address for both RTS sites.
+It checks flags, live operands, ordered writes, stack wrap, mapping guards,
+interrupt samples and both horizons.
+
+The natural twist replay covers nine sites: C9BB 172/172, 4D32 96/96,
+56A5/56A9/5682 363/363 each, and D902/D915/D92F/D907 90/90 each.
+The remaining sites need the upper hand and undead-head parent activated:
+the established scheduler gate and hand opening-expiry patches yield
+5A05 and 5A00 232/232 each, and 61A9 247/247. No actor PC is injected.
+Both replays pin all five assembly hashes: frame state, scheduler calls,
+scoped scheduler writes, all work-RAM writes and device writes. The activation
+reference was recorded with the saved pre-batch executable.
+
+Registry admissions increase **899 -> 911**, dispatch-reachable keys **947 -> 959**,
+and classified seams **363 -> 375**. Proven calls are **3,920,449 of 3,976,638**
+(98.6%); 200 admissions have patched-route evidence and 135 routes remain partial.
+Existing enclosing transcripts keep their guards and dispatch priority.
+
+Full-registry measurements cover all **31** standard routes plus the controlled
+activation route. Ranked residue falls **19,962 -> 0** in the standard corpus:
+twist 18,186, stagger 600, lanes 600 and alley 576 cycles; the other 27 routes
+already had zero residue at these sites. The activation route removes another
+**8,412 -> 0**, giving **28,374 -> 0** locally. These measurements are separate
+from the user's 101,610-cycle cabinet ranking.
+
+Every route preserves its frame hash and abandonment count. Higharc, radial
+and sidestep retain one pre-existing abandonment each; the other 28 standard
+routes and activation retain zero. The total interpreter-cycle reduction is
+exactly the reduction at the ranked addresses on every route. The enclosing
+61A3 transcript already absorbs 61A9 in these full-registry runs, so that
+site's new independent entry is proven by the selective replay and exhaustive
+branch fixture, rather than credited with a local residue reduction.
+Evidence is in `out/ranked-conditions-cost/manifest.csv`, `activation.csv`
+and `addresses.csv`; the activation frame hash is
+`205CDFD0CDF3E3009E4AA6F99A63B0B3BA12228902F0D28241177759FB18C08C`.
+
+Release validation passed: the exhaustive fixture, both five-hash assembly
+replays, host-registry integration, corrupted-face replay and upper-hand bus
+replay. Registry generation/check and all 375 classified seams pass. Debug's
+exhaustive fixture and both five-hash assembly replays also passed.
+
+## Previous round: coordinate math operands (September 10)
 
 The latest cabinet ranking reports **329,712 master cycles** across twelve
 instructions in bank 01's coordinate calculation. This batch admits all twelve:

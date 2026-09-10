@@ -13,6 +13,61 @@ using emulation::RoutineEntry;
 using emulation::RoutineKey;
 using emulation::RoutineReplacement;
 
+std::optional<RoutineReplacement> replace_ranked_condition_instruction(
+    const RoutineEntry& entry, const std::span<const std::byte> work_ram)
+{
+    const auto pc = entry.routine.logical_pc;
+    const auto bank = entry.routine.physical_bank;
+    const bool valid = (bank == 2U && (pc == 0x5A05U || pc == 0x5A00U || pc == 0x4D32U
+            || pc == 0x56A5U || pc == 0x56A9U || pc == 0x5682U))
+        || (bank == 3U && pc == 0x61A9U)
+        || (bank == 1U && (pc == 0xC9BBU || pc == 0xD902U || pc == 0xD915U
+            || pc == 0xD92FU || pc == 0xD907U));
+    if (!valid || entry.registers.program_counter != pc
+        || entry.registers.mpr[pc >> 13U] != bank || entry.registers.mpr[1] != 0xF8U
+        || work_ram.size() < 0x2000U || (entry.registers.status & 0x20U) != 0U) {
+        return std::nullopt;
+    }
+    auto r = entry.registers;
+    RoutineReplacement result{};
+    std::uint32_t cycles = 12U;
+    r.program_counter = static_cast<std::uint16_t>(pc + 2U);
+    const auto write = [&](std::uint16_t address, std::uint8_t value, std::uint32_t at) {
+        result.work_ram_writes.push_back({.instruction = entry.routine,
+            .logical_address = address, .value = value, .master_cycle_offset = at});
+    };
+    if (pc == 0x61A9U || pc == 0x4D32U || pc == 0x5682U) {
+        const bool taken = (r.status & 2U) == 0U;
+        if (taken) { r.program_counter += pc == 0x61A9U ? 7U : pc == 0x4D32U ? 31U : 33U; }
+        cycles = taken ? 12U : 6U;
+    } else if (pc == 0x5A05U || pc == 0xD902U || pc == 0xD907U) {
+        // JSR pushes the operand address before advancing the core clock.
+        const auto saved = static_cast<std::uint16_t>(pc + 2U);
+        write(static_cast<std::uint16_t>(0x2100U + r.stack_pointer--), static_cast<std::uint8_t>(saved >> 8U), 0U);
+        write(static_cast<std::uint16_t>(0x2100U + r.stack_pointer--), static_cast<std::uint8_t>(saved), 0U);
+        r.program_counter = pc == 0x5A05U ? 0xC018U : 0xD950U;
+        cycles = 21U;
+    } else if (pc == 0xD915U || pc == 0xD92FU) {
+        const auto low = std::to_integer<std::uint8_t>(work_ram[0x100U + ++r.stack_pointer]);
+        const auto high = std::to_integer<std::uint8_t>(work_ram[0x100U + ++r.stack_pointer]);
+        r.program_counter = static_cast<std::uint16_t>((high * 256U + low + 1U) & 0xFFFFU);
+        cycles = 21U;
+    } else if (pc == 0xC9BBU || pc == 0x56A9U) {
+        write(pc == 0xC9BBU ? 0x202DU : 0x20CBU, r.accumulator, 12U);
+    } else {
+        r.accumulator = std::to_integer<std::uint8_t>(work_ram[pc == 0x5A00U ? 0xD33U : 0xCBU]);
+        r.status = static_cast<std::uint8_t>((r.status & 0x7DU)
+            | (r.accumulator == 0U ? 2U : r.accumulator & 0x80U));
+        if (pc == 0x5A00U) { cycles = 15U; ++r.program_counter; }
+    }
+    result.return_instruction = {r.mpr[r.program_counter >> 13U], r.program_counter};
+    result.output_registers = r;
+    result.body_master_cycles = cycles;
+    result.checkpoints.push_back({.interrupt_sample_master_cycle_offset = cycles - 3U,
+        .master_cycle_offset = cycles, .instruction = entry.routine, .registers = r});
+    return result;
+}
+
 std::optional<RoutineReplacement> replace_ranked_coordinate_instruction(
     const RoutineEntry& entry, const std::span<const std::byte> work_ram)
 {
