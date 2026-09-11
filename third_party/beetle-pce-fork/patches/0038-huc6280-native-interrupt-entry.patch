@@ -1,0 +1,29 @@
+diff --git a/mednafen/pce/huc6280.cpp b/mednafen/pce/huc6280.cpp
+index 215438d..b3314c4 100644
+--- a/mednafen/pce/huc6280.cpp
++++ b/mednafen/pce/huc6280.cpp
+@@ -1,3 +1,4 @@
++#include <devils_crush/cpu/huc6280_interrupt_entry.hpp>
+ /* Mednafen - Multi-system Emulator
+  *
+  * This program is free software; you can redistribute it and/or modify
+@@ -997,6 +998,19 @@ NO_INLINE void HuC6280::RunSub(void)
+ 			{
+ 				const uint32 tmpa = DcInterruptVector(dc_decision);
+ 
++				if(dc_beetle_active_boundary_model != NULL)
++				{
++					dc_beetle_execution_owner = DC_EXEC_TRANSLATED;
++					++dc_beetle_execution_counters.native_interrupt_entries;
++					devils_crush::cpu::enter_huc6280_interrupt(
++						PC, S, P, tmpa,
++						[this]() { ADDCYC(1); },
++						[this](uint32 address) { return RdMem(address); },
++						[this](uint32 address, uint8 value) { WrMem(address, value); },
++						[this]() { REDOPIMCACHE(); },
++						[this]() { DcSampleInterrupt(); });
++					continue;
++				}
+ 				dc_beetle_execution_owner = DC_EXEC_INTERRUPT;
+ 				++dc_beetle_execution_counters.interrupt_entries;
+ 				// Total: 8 cycles(7 ADDCYC(1), 1 LASTCYCLE)

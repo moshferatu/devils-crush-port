@@ -16,7 +16,7 @@ Every divided clock advance is assigned exactly once to one of these owners:
 
 | Owner | Meaning |
 | --- | --- |
-| translated | Actual advances while applying a validated transcript or checkpoint |
+| translated | Actual advances in native IRQ entry or a validated transcript/checkpoint |
 | retained | Original opcode path following a recognized, validated core-capability offer |
 | fallback | Original opcode path without an installed translation or validated capability |
 | interrupt | Original core IRQ-entry sequence, including its final sample |
@@ -25,7 +25,7 @@ Every divided clock advance is assigned exactly once to one of these owners:
 | other | Clock movement without one of the above owners; reported explicitly |
 
 Device ownership temporarily overrides its caller and restores that caller on
-return. Interrupt time is separate from suspended transcript time. Accounting
+return. Original IRQ entry is separate from translated time; native IRQ entry is translated CPU work. Accounting
 occurs before scheduler callbacks, after determining the divided clock advance,
 so nested steals cannot be included in both an instruction and device total.
 Both the native scheduler and original scheduler implement this observation.
@@ -46,6 +46,8 @@ Retained opcodes, fallback opcodes, IRQ entry and unidentified movement remain
 in that denominator. Device time is excluded regardless of which implementation
 requested it. This measures native CPU execution ownership; it does not measure
 host wall-clock speed or completeness of unvisited ROM paths.
+
+Native IRQ entry is counted separately as `Native interrupt entries`; the original path remains `Core interrupt entries`. Both reset with the measurement window. See [native IRQ entry](NATIVE_INTERRUPT_ENTRY.md) for the measured coverage increase to **99.6894%**.
 
 ## Counts and profiles
 
@@ -79,7 +81,7 @@ registry totals rather than also in the core-capability totals. Its legacy
 Three-blobs diagnostic count remains available. An accepted transcript can be
 interrupted or abandoned: only its executed portions enter the primary ledger.
 
-## First measured result
+## Accounting baseline before native IRQ entry
 
 The existing 3,600-frame alley route gives:
 
@@ -147,9 +149,7 @@ residue and equality between native and original scheduler accounting.
 
 The existing host-registry, face/hand captures and ranked-VDC five-trace oracle
 remain compatibility gates. Validation artifacts and the 31-route measurement
-are under `out/execution-accounting`. The next porting priority is the now
-measured IRQ-entry sequence, followed by shared retained/fallback instruction
-families, rather than twelve-address residue batches.
+are under `out/execution-accounting`. [Native IRQ entry](NATIVE_INTERRUPT_ENTRY.md) has since removed the measured IRQ cost; shared retained/fallback instruction families are next.
 
 Completed validation: Release **7/7** tests passed (80.06 seconds), including
 the three new/extended accounting tests, host registry, both captured

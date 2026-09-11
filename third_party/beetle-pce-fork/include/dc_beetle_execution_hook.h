@@ -39,6 +39,7 @@ typedef struct dc_beetle_execution_accounting {
     uint64_t retained_offers;
     uint64_t rejected_offers;
     uint64_t interrupt_entries;
+    uint64_t native_interrupt_entries;
 } dc_beetle_execution_accounting;
 extern dc_beetle_execution_accounting dc_beetle_execution_counters;
 extern unsigned dc_beetle_execution_owner;

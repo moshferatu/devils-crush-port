@@ -570,6 +570,7 @@ struct ExecutionAccounting {
     std::uint64_t retained_offers = 0;
     std::uint64_t rejected_offers = 0;
     std::uint64_t interrupt_entries = 0;
+    std::uint64_t native_interrupt_entries = 0;
 };
 
 class PceRuntime {

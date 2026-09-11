@@ -799,5 +799,10 @@ this repository.
     - Moves interpreter-profile native classification to the actual core validation point, so retained-capability opcode execution is visible again. Changes no instruction, stack write, device effect or interrupt sample.
     - See [execution accounting](../../docs/EXECUTION_ACCOUNTING.md) for measurement definitions and verification.
 
+38. `patches/0038-huc6280-native-interrupt-entry.patch`
+    - Routes all maskable IRQ entries through the native CPU sequence when the native boundary is installed. The adapter supplies live registers, bus access, clock advances, mask publication and sampling; the native routine owns entry ordering, stack arithmetic and flag updates.
+    - Keeps original entry available with `--emulated-boundary`. Native and core entry counts are separate, and native entry advances are translated ownership with device stalls still counted exclusively.
+    - See [native IRQ entry](../../docs/NATIVE_INTERRUPT_ENTRY.md) for timing, full-corpus measurements and regression evidence.
+
 All local files and patches are GPL-3.0-or-later. Upstream per-file notices
 and licenses remain authoritative for upstream sources.

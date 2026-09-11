@@ -5,9 +5,9 @@ iteration loop fast enough to port related code as a unit. It applies to
 Milestone 4 native gameplay work; it does not weaken the release or milestone
 acceptance criteria in [PLAN.md](../PLAN.md).
 
-## Current priority: measured IRQ entry and shared core mechanisms
+## Current priority: shared retained and fallback instructions
 
-[Exclusive execution accounting](EXECUTION_ACCOUNTING.md) now replaces accepted-body estimates as the primary progress metric. It exposes retained opcodes, IRQ entry and device stalls separately, fixes duplicate registry credits, and reports any accounting imbalance. The [initial audit](NATIVE_COVERAGE_AUDIT.md) records why the ranking changed. Use the measured IRQ-entry cost and full retained/fallback instruction families for the next porting round.
+[Native IRQ entry](NATIVE_INTERRUPT_ENTRY.md) is complete: all 7,945,547 entries in the 31-route corpus use the native sequence, removing 74.8312% of the measured remaining non-native CPU time. Weighted native coverage is now 99.6894%, with unchanged frames, abandonment counts and exact accounting. The next round should target shared retained/fallback instruction families using [exclusive execution accounting](EXECUTION_ACCOUNTING.md). The [initial audit](NATIVE_COVERAGE_AUDIT.md) records why twelve-site rankings were superseded.
 
 ## Previous round: bank-09 VDC loop, actor input and palette countdown (September 11)
 

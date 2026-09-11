@@ -17858,7 +17858,8 @@ void print_execution_accounting(const devils_crush::emulation::PceRuntime& runti
               << "Core replacement outcomes: translated=" << counters->translated_installs
               << "; retained=" << counters->retained_offers
               << "; rejected=" << counters->rejected_offers << '\n'
-              << "Core interrupt entries: " << counters->interrupt_entries << '\n';
+              << "Core interrupt entries: " << counters->interrupt_entries << '\n'
+              << "Native interrupt entries: " << counters->native_interrupt_entries << '\n';
 }
 
 void print_native_cycle_share(

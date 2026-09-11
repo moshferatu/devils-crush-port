@@ -1,8 +1,8 @@
 # Retained Assembly Seams
 
-## Current priority: measured IRQ entry and shared retained instructions
+## Current priority: shared retained and fallback instructions
 
-[Execution accounting](EXECUTION_ACCOUNTING.md) now measures actual clock ownership and restores retained-capability opcodes to residue. Prioritize the remaining IRQ-entry sequence and shared retained/fallback instruction families using that ledger. The historical [coverage audit](NATIVE_COVERAGE_AUDIT.md) explains the change; the completed batches below remain regression evidence.
+[Native IRQ entry](NATIVE_INTERRUPT_ENTRY.md) is complete: all 7,945,547 entries in the 31-route corpus use the native sequence, removing 74.8312% of the measured remaining non-native CPU time. Weighted native coverage is now 99.6894%, with unchanged frames, abandonment counts and exact accounting. The next round should target shared retained/fallback instruction families using [exclusive execution accounting](EXECUTION_ACCOUNTING.md). The [initial audit](NATIVE_COVERAGE_AUDIT.md) records why twelve-site rankings were superseded.
 
 ## Previous round: bank-09 VDC loop, actor input and palette countdown (September 11)
 

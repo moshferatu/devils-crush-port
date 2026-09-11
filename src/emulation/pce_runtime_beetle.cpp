@@ -826,6 +826,7 @@ public:
         result.retained_offers = counters.retained_offers;
         result.rejected_offers = counters.rejected_offers;
         result.interrupt_entries = counters.interrupt_entries;
+        result.native_interrupt_entries = counters.native_interrupt_entries;
         return result;
     }
 
