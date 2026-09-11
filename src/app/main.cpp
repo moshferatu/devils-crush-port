@@ -17869,6 +17869,8 @@ void print_execution_accounting(const devils_crush::emulation::PceRuntime& runti
               << "; CPU cycles=" << counters->native_block_cycles << '\n';
     std::cout << "Native bit branches: instructions=" << counters->native_bit_branches
               << "; CPU cycles=" << counters->native_bit_branch_cycles << '\n';
+    std::cout << "Native control flow: instructions=" << counters->native_control_flows
+              << "; CPU cycles=" << counters->native_control_flow_cycles << '\n';
 }
 
 void print_native_cycle_share(

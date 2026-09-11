@@ -7,7 +7,7 @@ acceptance criteria in [PLAN.md](../PLAN.md).
 
 ## Current priority: shared retained and fallback instructions
 
-[Native bit-test branches](NATIVE_BIT_BRANCHES.md) now cover all sixteen BBR/BBS variants through one shared engine. Across 31 routes, they remove 13,184,280 CPU cycles (33.4059% of the remaining non-native time), increasing weighted coverage from 99.8089% to 99.8727%. Frames, stalls, IRQ counts and abandonments are unchanged. This follows [native block transfers](NATIVE_BLOCK_MOVES.md) and [native IRQ entry](NATIVE_INTERRUPT_ENTRY.md). The next priority is shared call/return/jump paths, measured with [exclusive execution accounting](EXECUTION_ACCOUNTING.md). The [initial audit](NATIVE_COVERAGE_AUDIT.md) records why twelve-site rankings were superseded.
+[Native control flow](NATIVE_CONTROL_FLOW.md) now covers JSR, BSR, RTS and all three JMP modes through one shared engine. Across 31 routes, it removes 15,804,648 CPU cycles (60.1335% of the remaining non-native time), increasing weighted coverage from 99.8727% to 99.9493%. Frames, stalls, idle time, IRQ counts and abandonments are unchanged. This follows [native bit-test branches](NATIVE_BIT_BRANCHES.md), [block transfers](NATIVE_BLOCK_MOVES.md) and [IRQ entry](NATIVE_INTERRUPT_ENTRY.md). The next priority is absolute loads and interrupt-mask/status instructions, measured with [exclusive execution accounting](EXECUTION_ACCOUNTING.md). The [initial audit](NATIVE_COVERAGE_AUDIT.md) records why twelve-site rankings were superseded.
 
 ## Previous round: bank-09 VDC loop, actor input and palette countdown (September 11)
 

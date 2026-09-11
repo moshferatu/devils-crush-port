@@ -45,6 +45,8 @@ typedef struct dc_beetle_execution_accounting {
     uint64_t native_block_cycles; // Exclusive CPU time, including resumed work
     uint64_t native_bit_branches;
     uint64_t native_bit_branch_cycles; // Exclusive CPU time
+    uint64_t native_control_flows;
+    uint64_t native_control_flow_cycles; // Exclusive CPU time
 } dc_beetle_execution_accounting;
 extern dc_beetle_execution_accounting dc_beetle_execution_counters;
 extern unsigned dc_beetle_execution_owner;

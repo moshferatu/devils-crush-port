@@ -814,5 +814,10 @@ this repository.
     - Preserves the original engine with `--emulated-boundary`, and reports native branch starts and exclusive CPU cycles separately from original dispatches and transcript installations.
     - See [native bit branches](../../docs/NATIVE_BIT_BRANCHES.md) for measured coverage and differential/gameplay verification.
 
+41. `patches/0041-huc6280-native-control-flow.patch`
+    - Executes JSR, BSR, RTS and all three JMP modes through the shared native CPU engine with live stack/operand bus ordering, target calculation and interrupt timing.
+    - Preserves original execution with `--emulated-boundary` and idle ownership at the excluded frame wait. Reports native starts and exclusive CPU cycles separately from original dispatches.
+    - See [native control flow](../../docs/NATIVE_CONTROL_FLOW.md) for coverage and differential/gameplay verification.
+
 All local files and patches are GPL-3.0-or-later. Upstream per-file notices
 and licenses remain authoritative for upstream sources.

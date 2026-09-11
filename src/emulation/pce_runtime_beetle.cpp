@@ -833,6 +833,8 @@ public:
         result.native_block_cycles = counters.native_block_cycles;
         result.native_bit_branches = counters.native_bit_branches;
         result.native_bit_branch_cycles = counters.native_bit_branch_cycles;
+        result.native_control_flows = counters.native_control_flows;
+        result.native_control_flow_cycles = counters.native_control_flow_cycles;
         return result;
     }
 
