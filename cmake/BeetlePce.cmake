@@ -78,6 +78,7 @@ function(dc_provide_beetle_pce)
         "${beetle_fork_root}/patches/0040-huc6280-native-bit-branches.patch"
         "${beetle_fork_root}/patches/0041-huc6280-native-control-flow.patch"
         "${beetle_fork_root}/patches/0042-huc6280-native-load-status.patch"
+        "${beetle_fork_root}/patches/0043-huc6280-native-branches.patch"
     )
 
     find_package(Git REQUIRED)
@@ -587,6 +588,9 @@ function(dc_provide_beetle_pce)
                     "PC == 0x66A3 && lastop == 0xDE"
                     beetle_patch_marker_two
                 )
+            elseif(beetle_patch_name MATCHES "^0043-")
+                string(FIND "${beetle_cpu_source}" "run_huc6280_branch" beetle_patch_marker_one)
+                string(FIND "${beetle_cpu_source}" "native_branch_cycles" beetle_patch_marker_two)
             elseif(beetle_patch_name MATCHES "^0042-")
                 string(FIND "${beetle_cpu_source}" "run_huc6280_load_status" beetle_patch_marker_one)
                 string(FIND "${beetle_cpu_source}" "native_load_status_cycles" beetle_patch_marker_two)

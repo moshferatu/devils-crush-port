@@ -824,5 +824,10 @@ this repository.
     - Keeps the original opcode oracle with `--emulated-boundary`, preserves idle ownership and reports native starts and exclusive CPU cycles.
     - See [native load/status](../../docs/NATIVE_LOAD_STATUS.md) for coverage and differential/gameplay verification.
 
+43. `patches/0043-huc6280-native-branches.patch`
+    - Executes all eight conditional branches through a shared native engine with exact taken/untaken operand access, wide target arithmetic, clock batches and interrupt sampling.
+    - Preserves the original opcode oracle and idle ownership; reports actual starts and exclusive CPU cycles.
+    - See [native conditional branches](../../docs/NATIVE_BRANCHES.md) for measurement and differential/gameplay verification.
+
 All local files and patches are GPL-3.0-or-later. Upstream per-file notices
 and licenses remain authoritative for upstream sources.
