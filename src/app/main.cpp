@@ -17859,7 +17859,14 @@ void print_execution_accounting(const devils_crush::emulation::PceRuntime& runti
               << "; retained=" << counters->retained_offers
               << "; rejected=" << counters->rejected_offers << '\n'
               << "Core interrupt entries: " << counters->interrupt_entries << '\n'
-              << "Native interrupt entries: " << counters->native_interrupt_entries << '\n';
+              << "Native interrupt entries: " << counters->native_interrupt_entries << '\n'
+              << "Native block moves: TIA=" << counters->native_block_moves[0]
+              << "; TAI=" << counters->native_block_moves[1]
+              << "; TDD=" << counters->native_block_moves[2]
+              << "; TII=" << counters->native_block_moves[3]
+              << "; TIN=" << counters->native_block_moves[4]
+              << "; resumes=" << counters->native_block_resumes
+              << "; CPU cycles=" << counters->native_block_cycles << '\n';
 }
 
 void print_native_cycle_share(

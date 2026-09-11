@@ -1,0 +1,77 @@
+diff --git a/mednafen/pce/huc6280.cpp b/mednafen/pce/huc6280.cpp
+index b3314c4..d850ab4 100644
+--- a/mednafen/pce/huc6280.cpp
++++ b/mednafen/pce/huc6280.cpp
+@@ -1,4 +1,5 @@
+ #include <devils_crush/cpu/huc6280_interrupt_entry.hpp>
++#include <devils_crush/cpu/huc6280_block_move.hpp>
+ /* Mednafen - Multi-system Emulator
+  *
+  * This program is free software; you can redistribute it and/or modify
+@@ -939,6 +940,42 @@ NO_INLINE void HuC6280::RunSub(void)
+ 	// jump over an initialization.
+ 	DcInterruptDecision dc_decision;
+ 
++	// The native engine operates on the existing serialized transfer registers.
++	// Its only core dependencies are bus, clock, sampler and scheduler yield.
++	const auto dc_run_native_block_move = [this](uint8 opcode) -> bool
++	{
++		static_assert(IBM_TIA == 1 && IBM_TAI == 2 && IBM_TDD == 3
++			&& IBM_TII == 4 && IBM_TIN == 5, "Block-move savestate ABI");
++		dc_beetle_execution_owner = DC_EXEC_TRANSLATED;
++		dc_beetle_execution_block_owner = DC_EXEC_TRANSLATED;
++		if(opcode)
++			++dc_beetle_execution_counters.native_block_moves[
++				devils_crush::cpu::huc6280_block_mode(opcode) - 1];
++		else
++			++dc_beetle_execution_counters.native_block_resumes;
++		const uint64 before = dc_beetle_execution_counters.cycles[DC_EXEC_TRANSLATED];
++		const bool complete = devils_crush::cpu::run_huc6280_block_move(
++			opcode, PC, A, X, Y, S, P, in_block_move,
++			bmt_src, bmt_dest, bmt_length, bmt_alternate,
++			[this](unsigned cycles) { ADDCYC(cycles); },
++			[this](uint32 address) { return RdOp(address); },
++			[this](uint32 address) { return RdMem(address); },
++			[this](uint32 address, uint8 value) { WrMem(address, value); },
++			[this]() { return DcSched().run_flag != 0; },
++			[this]() { DcSampleInterrupt(); });
++		dc_beetle_execution_counters.native_block_cycles +=
++			dc_beetle_execution_counters.cycles[DC_EXEC_TRANSLATED] - before;
++		if(!complete) TimerSync();
++		return complete;
++	};
++	if(in_block_move && dc_beetle_active_boundary_model != NULL)
++	{
++		if(!dc_run_native_block_move(0) || DcSched().run_flag <= 0) return;
++	}
++	// A live boundary-model handoff can resume a native-started transfer in
++	// the original engine without loading a state. Its new work is fallback.
++	if(in_block_move && dc_beetle_execution_block_owner == DC_EXEC_TRANSLATED)
++		dc_beetle_execution_block_owner = DC_EXEC_FALLBACK;
+ 	dc_beetle_execution_owner = in_block_move
+ 		? dc_beetle_execution_block_owner : DC_EXEC_OTHER;
+ 	if(in_block_move)
+@@ -1658,6 +1695,23 @@ NO_INLINE void HuC6280::RunSub(void)
+ 			}
+ 		}
+ 
++		if(dc_beetle_active_boundary_model != NULL
++			&& devils_crush::cpu::huc6280_block_mode(lastop))
++		{
++			if(dc_beetle_active_translated_hook != NULL)
++			{
++				const dc_beetle_cpu_state state = {
++					(uint16)PC, MPR[(PC >> 13) & 7], lastop, A, X, Y, S, P,
++					{MPR[0], MPR[1], MPR[2], MPR[3], MPR[4], MPR[5], MPR[6], MPR[7]},
++					DcSched().timestamp, PCE_TimestampBase + DcSched().timestamp,
++					(uint32)DcSched().next_user_event, GetMasterCyclesUntilTimerInterrupt()
++				};
++				dc_beetle_active_translated_hook(&state,
++					dc_beetle_active_translated_hook_user_data);
++			}
++			if(!dc_run_native_block_move(lastop)) return;
++			continue;
++		}
+ 		dc_beetle_execution_block_owner = dc_beetle_execution_owner;
+ 		++dc_beetle_execution_counters.opcode_dispatches[dc_beetle_execution_owner];
+ 		PC++;

@@ -1,9 +1,9 @@
 # Execution accounting
 
 The primary coverage report now measures actual core clock advances. It replaces
-accepted replacement-body estimates as the progress metric. Retained core
-capabilities remain visible as original opcode execution, even when the host
-offered and credited them as native.
+accepted replacement-body estimates as the progress metric. Capabilities still
+executed by the original core remain visible as original opcode execution, even
+when the host offered and credited them as native.
 
 ## The measurement window
 
@@ -16,7 +16,7 @@ Every divided clock advance is assigned exactly once to one of these owners:
 
 | Owner | Meaning |
 | --- | --- |
-| translated | Actual advances in native IRQ entry or a validated transcript/checkpoint |
+| translated | Actual advances in native IRQ entry, native block transfers or a validated transcript/checkpoint |
 | retained | Original opcode path following a recognized, validated core-capability offer |
 | fallback | Original opcode path without an installed translation or validated capability |
 | interrupt | Original core IRQ-entry sequence, including its final sample |
@@ -47,7 +47,12 @@ in that denominator. Device time is excluded regardless of which implementation
 requested it. This measures native CPU execution ownership; it does not measure
 host wall-clock speed or completeness of unvisited ROM paths.
 
-Native IRQ entry is counted separately as `Native interrupt entries`; the original path remains `Core interrupt entries`. Both reset with the measurement window. See [native IRQ entry](NATIVE_INTERRUPT_ENTRY.md) for the measured coverage increase to **99.6894%**.
+Native IRQ entry is counted separately as `Native interrupt entries`; the original path remains `Core interrupt entries`. Both reset with the measurement window. [Native IRQ entry](NATIVE_INTERRUPT_ENTRY.md) raised corpus coverage to 99.6894%; [native block transfers](NATIVE_BLOCK_MOVES.md) now raise it to **99.8089%**.
+
+`Native block moves` reports starts by mode, resumes and exclusive CPU cycles.
+Those cycles are already included in `translated`; do not add them to the ledger
+again. Native transfer starts do not count as original opcode dispatches or
+transcript installations.
 
 ## Counts and profiles
 
@@ -56,17 +61,21 @@ separately for retained, fallback and idle instructions. A resumed block move
 continues its original dispatch rather than adding another. Its clock advances
 retain the current block's owner across normal run slices. After state restore,
 an already-running core block has no capability offer in the new measurement
-window and is conservatively classified as fallback.
+window and is conservatively classified as fallback. A native transfer resume
+is translated work regardless of which engine started the saved transfer.
 
 `Core replacement outcomes` separates real transcript installations, recognized
 retained-capability offers and handled offers that the core rejects. A helper
 returning no offer is not a rejected core transaction; neither is an address
-with no replacement hook. The legacy host horizon count remains only that
+with no replacement hook. A recognized capability offer may subsequently run
+through a shared native engine; its actual clock owner determines coverage.
+The legacy host horizon count remains only that
 particular host-side decline check, not a census of all decline reasons.
 
 Accepted-body credits no longer determine interpreter-profile membership. The
 core notifies the profiler only after it validates a real translated
-transaction. Retained or rejected offers leave the interval in residue.
+transaction or selects a shared native instruction engine. Offers that still
+execute in the original core leave the interval in residue.
 Intervals still include elapsed time until the next observed entry and may
 contain IRQs, device waits or transcript continuations. Use the exclusive ledger
 for cycle shares and these profiles for address attribution; do not sum the two.

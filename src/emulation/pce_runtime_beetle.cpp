@@ -827,6 +827,10 @@ public:
         result.rejected_offers = counters.rejected_offers;
         result.interrupt_entries = counters.interrupt_entries;
         result.native_interrupt_entries = counters.native_interrupt_entries;
+        std::copy(std::begin(counters.native_block_moves), std::end(counters.native_block_moves),
+                  result.native_block_moves.begin());
+        result.native_block_resumes = counters.native_block_resumes;
+        result.native_block_cycles = counters.native_block_cycles;
         return result;
     }
 
@@ -2859,8 +2863,6 @@ private:
                 return hook.mode == HookMode::replace;
             });
         if (has_replacement) {
-            dc_beetle_active_translated_hook = &translated_hook_callback;
-            dc_beetle_active_translated_hook_user_data = this;
             dc_beetle_set_replacement_hook(
                 &replacement_hook_callback,
                 this);
@@ -2869,10 +2871,11 @@ private:
                 this);
         } else {
             dc_beetle_clear_replacement_hook();
-            dc_beetle_active_translated_hook = nullptr;
-            dc_beetle_active_translated_hook_user_data = nullptr;
             dc_beetle_clear_replacement_abandoned_hook();
         }
+        dc_beetle_active_translated_hook = instruction_profile_ || has_replacement
+            ? &translated_hook_callback : nullptr;
+        dc_beetle_active_translated_hook_user_data = this;
 
         if (routine_call_observers_.empty()
             && !work_ram_write_observer_

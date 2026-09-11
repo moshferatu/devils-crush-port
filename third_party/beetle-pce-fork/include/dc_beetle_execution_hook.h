@@ -40,13 +40,16 @@ typedef struct dc_beetle_execution_accounting {
     uint64_t rejected_offers;
     uint64_t interrupt_entries;
     uint64_t native_interrupt_entries;
+    uint64_t native_block_moves[5]; // TIA, TAI, TDD, TII, TIN starts
+    uint64_t native_block_resumes;
+    uint64_t native_block_cycles; // Exclusive CPU time, including resumed work
 } dc_beetle_execution_accounting;
 extern dc_beetle_execution_accounting dc_beetle_execution_counters;
 extern unsigned dc_beetle_execution_owner;
 extern unsigned dc_beetle_execution_block_owner;
 void dc_beetle_reset_execution_accounting(void);
 void dc_beetle_get_execution_accounting(dc_beetle_execution_accounting* out);
-// Called only after the core has accepted a real translated transaction.
+// Called only when a translated transaction or native instruction actually runs.
 typedef void (*dc_beetle_translated_hook)(const dc_beetle_cpu_state*, void*);
 extern dc_beetle_translated_hook dc_beetle_active_translated_hook;
 extern void* dc_beetle_active_translated_hook_user_data;

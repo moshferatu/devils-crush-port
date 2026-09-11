@@ -7,7 +7,7 @@ acceptance criteria in [PLAN.md](../PLAN.md).
 
 ## Current priority: shared retained and fallback instructions
 
-[Native IRQ entry](NATIVE_INTERRUPT_ENTRY.md) is complete: all 7,945,547 entries in the 31-route corpus use the native sequence, removing 74.8312% of the measured remaining non-native CPU time. Weighted native coverage is now 99.6894%, with unchanged frames, abandonment counts and exact accounting. The next round should target shared retained/fallback instruction families using [exclusive execution accounting](EXECUTION_ACCOUNTING.md). The [initial audit](NATIVE_COVERAGE_AUDIT.md) records why twelve-site rankings were superseded.
+[Native block transfers](NATIVE_BLOCK_MOVES.md) now cover all five modes through one shared engine. Across 31 routes, they remove 24,670,854 CPU cycles (38.4654% of the remaining non-native time), increasing weighted coverage from 99.6894% to 99.8089%. Frames, device stalls, IRQ counts and abandonments are unchanged. This follows the completed [native IRQ entry](NATIVE_INTERRUPT_ENTRY.md). The next priority is shared bit-test branches, then call/return/jump paths, measured with [exclusive execution accounting](EXECUTION_ACCOUNTING.md). The [initial audit](NATIVE_COVERAGE_AUDIT.md) records why twelve-site rankings were superseded.
 
 ## Previous round: bank-09 VDC loop, actor input and palette countdown (September 11)
 

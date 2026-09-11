@@ -804,5 +804,10 @@ this repository.
     - Keeps original entry available with `--emulated-boundary`. Native and core entry counts are separate, and native entry advances are translated ownership with device stalls still counted exclusively.
     - See [native IRQ entry](../../docs/NATIVE_INTERRUPT_ENTRY.md) for timing, full-corpus measurements and regression evidence.
 
+39. `patches/0039-huc6280-native-block-moves.patch`
+    - Executes TIA, TAI, TDD, TII and TIN through the native CPU transfer engine when the native boundary is installed. The adapter supplies live bus, clock and sampling operations; the native engine owns transfer addressing, length, stack ordering and suspension.
+    - Preserves the existing transfer savestate ABI and supports saved-state and live handoffs between engines. Original transfers remain available with `--emulated-boundary`.
+    - Reports native starts, resumes and exclusive transfer CPU cycles, and removes actual native transfers from interpreter residue. See [native block transfers](../../docs/NATIVE_BLOCK_MOVES.md) for measured coverage and regression evidence.
+
 All local files and patches are GPL-3.0-or-later. Upstream per-file notices
 and licenses remain authoritative for upstream sources.

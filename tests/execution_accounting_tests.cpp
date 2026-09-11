@@ -2,6 +2,8 @@
 #include "devils_crush/emulation/pce_runtime.hpp"
 
 #include <cstdio>
+#include <algorithm>
+#include <string_view>
 #include <stdexcept>
 
 using namespace devils_crush::emulation;
@@ -64,6 +66,15 @@ void exercise(const char* rom, bool native_scheduler, bool native_entry = false)
             "Restored native entry count differs");
     require(replay.interrupt_entries == after.interrupt_entries - before.interrupt_entries,
             "Restored core entry count differs");
+    require(replay.native_block_cycles == after.native_block_cycles - before.native_block_cycles,
+            "Restored native transfer cycles differ");
+    require(replay.native_block_resumes == after.native_block_resumes - before.native_block_resumes,
+            "Restored native transfer resume count differs");
+    for (std::size_t mode = 0; mode < replay.native_block_moves.size(); ++mode) {
+        require(replay.native_block_moves[mode]
+                    == after.native_block_moves[mode] - before.native_block_moves[mode],
+                "Restored native transfer start count differs");
+    }
     require(runtime->export_work_ram() == expected_ram, "State restore changed replay RAM");
     require(replay.elapsed_master_cycles == after.elapsed_master_cycles - before.elapsed_master_cycles,
             "Restored measurement window differs");
@@ -79,6 +90,126 @@ void exercise(const char* rom, bool native_scheduler, bool native_entry = false)
     frames(*runtime, 4);
     require(read(*runtime).elapsed_master_cycles != 0, "Reset ledger did not advance");
 }
+
+void set_cpu_field(SaveState& state, std::string_view name,
+                   std::uint32_t value, unsigned expected_size)
+{
+    // Pinned Mednafen tagged state format: 32-byte chunk name, LE size,
+    // then byte-length name / LE size / data records. Only this test seed is
+    // edited; the suspended states below come from real engine execution.
+    std::array<std::byte, 32> tag{};
+    tag[0] = std::byte{'C'}; tag[1] = std::byte{'P'}; tag[2] = std::byte{'U'};
+    auto& bytes = state.core_state;
+    auto found = std::search(bytes.begin(), bytes.end(), tag.begin(), tag.end());
+    require(found != bytes.end(), "CPU state chunk missing");
+    auto offset = static_cast<std::size_t>(found - bytes.begin()) + tag.size();
+    const auto word = [&](std::size_t at) {
+        require(at + 4 <= bytes.size(), "Truncated state size");
+        std::uint32_t result = 0;
+        for (unsigned i = 0; i < 4; ++i) {
+            result |= std::to_integer<std::uint32_t>(bytes[at + i]) << (i * 8);
+        }
+        return result;
+    };
+    const auto end = offset + 4 + word(offset);
+    require(end <= bytes.size(), "Truncated CPU chunk");
+    offset += 4;
+    while (offset < end) {
+        const auto length = std::to_integer<unsigned>(bytes[offset++]);
+        require(offset + length + 4 <= end, "Truncated state name");
+        const std::string_view field(reinterpret_cast<const char*>(bytes.data() + offset), length);
+        offset += length;
+        const auto size = word(offset);
+        offset += 4;
+        require(offset + size <= end, "Truncated state field");
+        if (field == name) {
+            require(size == expected_size, "CPU state field size changed");
+            for (unsigned i = 0; i < size; ++i) {
+                bytes[offset + i] = static_cast<std::byte>((value >> (i * 8)) & 255);
+            }
+            return;
+        }
+        offset += size;
+    }
+    throw std::runtime_error("CPU state field missing");
+}
+
+void suspended_transfers(const char* rom)
+{
+    auto runtime = create_pce_runtime();
+    require(runtime->load_rom(rom).loaded, "ROM load failed");
+    require(runtime->set_native_irq(true) && runtime->set_native_scheduler(true)
+                && runtime->set_native_boundary(true), "Native models unavailable");
+    runtime->reset();
+    frames(*runtime, 1);
+    auto ram_seed = runtime->export_work_ram();
+    // TIN $4000,$3FFE,$0000 (65,536 bytes), then JMP $2207. Slow CPU
+    // speed forces suspension across multiple frames. IRQs remain masked.
+    const std::array<std::uint8_t, 10> program{0xd3, 0x00, 0x40, 0xfe, 0x3f, 0, 0,
+                                               0x4c, 0x07, 0x22};
+    for (std::size_t i = 0; i < program.size(); ++i) {
+        ram_seed[0x200 + i] = static_cast<std::byte>(program[i]);
+    }
+    require(runtime->import_work_ram(ram_seed), "Transfer program import failed");
+    auto seed = runtime->serialize();
+    set_cpu_field(seed, "PC", 0x2200, 2);
+    set_cpu_field(seed, "P", 0x04, 1);
+    set_cpu_field(seed, "IFlagSample", 0x04, 4);
+    set_cpu_field(seed, "speed", 0, 1);
+    require(runtime->deserialize(seed), "Transfer seed restore failed");
+    frames(*runtime, 1); // Leave the long transfer suspended.
+    auto previous = read(*runtime);
+    require(runtime->set_native_boundary(false), "Live core handoff failed");
+    frames(*runtime, 1);
+    auto current = read(*runtime);
+    require(current.cycles[ExecutionAccounting::translated]
+                == previous.cycles[ExecutionAccounting::translated],
+            "Live core resume inherited native ownership");
+    require(current.cycles[ExecutionAccounting::fallback]
+                > previous.cycles[ExecutionAccounting::fallback],
+            "Live core transfer resume did not execute");
+    previous = current;
+    require(runtime->set_native_boundary(true), "Live native handoff failed");
+    frames(*runtime, 1);
+    current = read(*runtime);
+    require(current.native_block_resumes > previous.native_block_resumes
+                && current.native_block_cycles > previous.native_block_cycles,
+            "Live native transfer resume did not execute");
+    require(runtime->deserialize(seed), "Transfer seed restart failed");
+    unsigned checked = 0;
+    for (unsigned frame = 0; frame < 16; ++frame) {
+        const auto saved = runtime->serialize();
+        const auto before = read(*runtime);
+        const auto native_frame = runtime->run_frame({});
+        const auto after = read(*runtime);
+        // A resumed transfer at frame entry proves that the saved CPU was
+        // suspended after a byte write, not merely between instructions.
+        if (after.native_block_resumes == before.native_block_resumes) { continue; }
+        const auto ram = runtime->export_work_ram();
+        const std::vector<std::uint32_t> pixels(native_frame.framebuffer.pixels.begin(),
+                                                 native_frame.framebuffer.pixels.end());
+        require(runtime->set_native_boundary(false) && runtime->deserialize(saved),
+                "Core suspended-state restore failed");
+        const auto core_frame = runtime->run_frame({});
+        require(std::equal(pixels.begin(), pixels.end(), core_frame.framebuffer.pixels.begin(),
+                           core_frame.framebuffer.pixels.end()), "Resumed transfer changed pixels");
+        require(runtime->export_work_ram() == ram, "Resumed transfer changed RAM");
+        const auto core = read(*runtime);
+        require(core.elapsed_master_cycles == after.elapsed_master_cycles - before.elapsed_master_cycles,
+                "Resumed transfer changed frame timing");
+        require(core.cycles[ExecutionAccounting::device]
+                    == after.cycles[ExecutionAccounting::device] - before.cycles[ExecutionAccounting::device],
+                "Resumed transfer changed device stalls");
+        require(core.native_block_cycles == 0, "Original transfer resume was bypassed");
+        // The next native frame resumes a state saved by the original engine.
+        const auto continuation = runtime->serialize();
+        require(runtime->set_native_boundary(true) && runtime->deserialize(continuation),
+                "Native continuation restore failed");
+        ++checked;
+    }
+    require(checked != 0, "No frame-spanning block transfer was tested");
+    std::printf("%u suspended transfer states replay through both engines.\n", checked);
+}
 }
 
 int main(int argc, char** argv)
@@ -88,6 +219,7 @@ int main(int argc, char** argv)
         exercise(argv[1], false);
         exercise(argv[1], true);
         exercise(argv[1], true, true);
+        suspended_transfers(argv[1]);
         std::puts("Core/native scheduler ledgers reconcile across reset and state restore.");
         return 0;
     } catch (const std::exception& error) {

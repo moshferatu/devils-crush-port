@@ -571,6 +571,9 @@ struct ExecutionAccounting {
     std::uint64_t rejected_offers = 0;
     std::uint64_t interrupt_entries = 0;
     std::uint64_t native_interrupt_entries = 0;
+    std::array<std::uint64_t, 5> native_block_moves{}; // TIA, TAI, TDD, TII, TIN
+    std::uint64_t native_block_resumes = 0;
+    std::uint64_t native_block_cycles = 0;
 };
 
 class PceRuntime {
