@@ -5557,6 +5557,18 @@ if(TARGET devils_crush)
                 "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/ranked-conditions-activation-$<CONFIG>-v1"
                 -P "${CMAKE_CURRENT_SOURCE_DIR}/verify_ranked_conditions_activation.cmake")
         set_tests_properties(dc_rom_ranked_conditions_activation PROPERTIES LABELS rom_required)
+        add_executable(dc_execution_accounting_tests execution_accounting_tests.cpp)
+        target_link_libraries(dc_execution_accounting_tests PRIVATE DevilsCrush::Emulation)
+        target_compile_features(dc_execution_accounting_tests PRIVATE cxx_std_20)
+        dc_enable_strict_warnings(dc_execution_accounting_tests)
+        add_test(NAME dc_execution_accounting_state
+            COMMAND dc_execution_accounting_tests "${DC_ROM_PATH}")
+        set_tests_properties(dc_execution_accounting_state PROPERTIES LABELS rom_required)
+        add_test(NAME dc_rom_execution_accounting
+            COMMAND "${CMAKE_COMMAND}" "-DAPP=$<TARGET_FILE:devils_crush>" "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/execution-accounting-$<CONFIG>-v1"
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/verify_execution_accounting.cmake")
+        set_tests_properties(dc_rom_execution_accounting PROPERTIES LABELS rom_required)
         add_test(NAME dc_rom_ranked_vdc
             COMMAND "${CMAKE_COMMAND}" "-DAPP=$<TARGET_FILE:devils_crush>" "-DROM=${DC_ROM_PATH}"
                 "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/ranked-vdc-$<CONFIG>-v1"

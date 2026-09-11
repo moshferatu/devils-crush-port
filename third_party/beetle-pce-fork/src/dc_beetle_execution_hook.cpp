@@ -7,6 +7,28 @@
 
 extern VCE* vce;
 
+dc_beetle_execution_accounting dc_beetle_execution_counters = {};
+unsigned dc_beetle_execution_owner = DC_EXEC_OTHER;
+unsigned dc_beetle_execution_block_owner = DC_EXEC_FALLBACK;
+dc_beetle_translated_hook dc_beetle_active_translated_hook = nullptr;
+void* dc_beetle_active_translated_hook_user_data = nullptr;
+
+void dc_beetle_reset_execution_accounting(void)
+{
+    dc_beetle_execution_counters = {};
+    dc_beetle_execution_counters.start_master_cycle =
+        PCE_TimestampBase + dc_beetle_active_scheduler_registers->timestamp;
+    dc_beetle_execution_owner = DC_EXEC_OTHER;
+    dc_beetle_execution_block_owner = DC_EXEC_FALLBACK;
+}
+
+void dc_beetle_get_execution_accounting(dc_beetle_execution_accounting* out)
+{
+    *out = dc_beetle_execution_counters;
+    out->elapsed_master_cycles = PCE_TimestampBase
+        + dc_beetle_active_scheduler_registers->timestamp - out->start_master_cycle;
+}
+
 dc_beetle_instruction_hook dc_beetle_active_instruction_hook = nullptr;
 void* dc_beetle_active_instruction_hook_user_data = nullptr;
 dc_beetle_memory_write_hook dc_beetle_active_memory_write_hook = nullptr;

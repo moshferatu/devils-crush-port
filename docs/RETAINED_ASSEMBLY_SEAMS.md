@@ -1,6 +1,10 @@
 # Retained Assembly Seams
 
-## Current priority: bank-09 VDC loop, actor input and palette countdown (September 11)
+## Current priority: measured IRQ entry and shared retained instructions
+
+[Execution accounting](EXECUTION_ACCOUNTING.md) now measures actual clock ownership and restores retained-capability opcodes to residue. Prioritize the remaining IRQ-entry sequence and shared retained/fallback instruction families using that ledger. The historical [coverage audit](NATIVE_COVERAGE_AUDIT.md) explains the change; the completed batches below remain regression evidence.
+
+## Previous round: bank-09 VDC loop, actor input and palette countdown (September 11)
 
 The latest cabinet ranking totals **43,662 master cycles** across twelve sites.
 This batch ports all twelve, grouped into the VDC transfer loop, actor input and

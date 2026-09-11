@@ -15901,9 +15901,6 @@ using NativeRegistryEntryObserver = std::function<void(
                         if (entry.routine == RoutineKey{0x03U, 0x68BFU}) {
                             ++deployment.core_gray_blob_live_wait_entries;
                         }
-                        if (three_blobs_timer_decrement) {
-                            ++deployment.core_capability_entries;
-                        }
                         deployment.span.observe(entry.absolute_master_cycle);
                         if (entry_observer) {
                             entry_observer(entry, work_ram);
@@ -15929,10 +15926,7 @@ using NativeRegistryEntryObserver = std::function<void(
                             row.native_master_cycles +=
                                 result->body_master_cycles;
                             if (three_blobs_timer_decrement) {
-                                ++deployment.core_capability_accepted;
                                 ++deployment.core_three_blobs_timer_decrement_instructions;
-                                deployment.core_capability_master_cycles +=
-                                    result->body_master_cycles;
                             }
                         }
                         return result;
@@ -17829,20 +17823,44 @@ using NativeRegistryEntryObserver = std::function<void(
     return true;
 }
 
-// The share, against the denominator that can actually move.
-//
-// Measuring native cycles against the whole route measures them against a
-// denominator that is nearly half frame-sync wait, and no amount of porting
-// can move that part: the game is waiting for the raster, and there is no
-// work in the waiting to port. So the route's own figure is stuck near half
-// however much is ported, which makes it useless as a progress signal even
-// though it is perfectly true.
-//
-// Both are printed. The first is what the machine did; the second is what the
-// machine did while it had something to do, and it is the one to watch. The
-// wait is measured rather than assumed -- every turn of the loop, skipped or
-// executed, priced at the rate the processor was running -- so it is only
-// available when the fast-forward is installed to count it.
+// Actual clock ownership is independent of accepted-body registry estimates.
+void print_execution_accounting(const devils_crush::emulation::PceRuntime& runtime)
+{
+    using Accounting = devils_crush::emulation::ExecutionAccounting;
+    const auto counters = runtime.execution_accounting();
+    if (!counters) { return; }
+    std::uint64_t accounted = 0;
+    for (const auto cycles : counters->cycles) { accounted += cycles; }
+    const auto error = static_cast<std::int64_t>(counters->elapsed_master_cycles)
+                     - static_cast<std::int64_t>(accounted);
+    std::cout << "Execution cycles: elapsed=" << counters->elapsed_master_cycles
+              << "; accounted=" << accounted << "; unaccounted=" << error << '\n';
+    constexpr std::array<const char*, Accounting::owner_count> names{
+        "translated", "retained", "fallback", "interrupt", "idle", "device", "other"};
+    std::cout << "Execution ownership:";
+    for (std::size_t i = 0; i < names.size(); ++i) {
+        std::cout << (i == 0 ? " " : "; ") << names[i] << '=' << counters->cycles[i];
+    }
+    std::cout << '\n';
+    const auto working = counters->elapsed_master_cycles
+        - counters->cycles[Accounting::idle] - counters->cycles[Accounting::device];
+    std::cout << "Native execution outside wait/stalls: "
+              << counters->cycles[Accounting::translated] << " of " << working;
+    if (working != 0) {
+        std::cout << " (" << std::fixed << std::setprecision(4)
+                  << 100.0 * static_cast<double>(counters->cycles[Accounting::translated])
+                     / static_cast<double>(working) << "%)" << std::defaultfloat;
+    }
+    std::cout << '\n'
+              << "Original opcode dispatches: retained=" << counters->opcode_dispatches[Accounting::retained]
+              << "; fallback=" << counters->opcode_dispatches[Accounting::fallback]
+              << "; idle=" << counters->opcode_dispatches[Accounting::idle] << '\n'
+              << "Core replacement outcomes: translated=" << counters->translated_installs
+              << "; retained=" << counters->retained_offers
+              << "; rejected=" << counters->rejected_offers << '\n'
+              << "Core interrupt entries: " << counters->interrupt_entries << '\n';
+}
+
 void print_native_cycle_share(
     const std::uint64_t native_cycles,
     const std::uint64_t elapsed,
@@ -17855,6 +17873,8 @@ void print_native_cycle_share(
             : 100.0 * static_cast<double>(part) / static_cast<double>(whole);
     };
 
+    print_execution_accounting(runtime);
+    std::cout << "Registry cycle estimates below count accepted bodies, not executed ownership.\n";
     std::cout << "Registry cycles: " << native_cycles << " native of "
               << elapsed << " elapsed master cycles";
     if (elapsed != 0U) {
@@ -17898,7 +17918,7 @@ void print_native_cycle_share(
     // a count of decisions, not of interpreted work.
     const auto boundary = runtime.native_boundary_coverage();
     if (boundary) {
-        std::cout << "Instructions interpreted: " << boundary->instructions
+        std::cout << "Instruction-boundary decisions: " << boundary->instructions
                   << '\n';
     }
 }

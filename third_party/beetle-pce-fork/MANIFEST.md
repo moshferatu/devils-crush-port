@@ -794,5 +794,10 @@ this repository.
       interrupt-boundary decisions is unchanged at 66,291,003, so the machine
       judged its interrupts at the same points either way.
 
+37. `patches/0037-huc6280-execution-accounting.patch`
+    - Observes exclusive divided clock ownership, actual opcode dispatches, IRQ entry, transcript installation and retained/rejected core offers. Nested device steals restore their caller ownership. Counters are diagnostic and never serialized.
+    - Moves interpreter-profile native classification to the actual core validation point, so retained-capability opcode execution is visible again. Changes no instruction, stack write, device effect or interrupt sample.
+    - See [execution accounting](../../docs/EXECUTION_ACCOUNTING.md) for measurement definitions and verification.
+
 All local files and patches are GPL-3.0-or-later. Upstream per-file notices
 and licenses remain authoritative for upstream sources.

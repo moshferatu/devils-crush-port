@@ -1,0 +1,143 @@
+diff --git a/mednafen/pce/huc6280.cpp b/mednafen/pce/huc6280.cpp
+index 3c3093d..215438d 100644
+--- a/mednafen/pce/huc6280.cpp
++++ b/mednafen/pce/huc6280.cpp
+@@ -43,16 +43,19 @@ void INLINE HuC6280::LastCycle(void)
+ 
+ void HuC6280::StealCycle(void)
+ {
++	DcExecutionOwnerScope accounting_scope(DC_EXEC_DEVICE);
+ 	ADDCYC(1);
+ }
+ 
+ void HuC6280::StealCycles(const int count)
+ {
++	DcExecutionOwnerScope accounting_scope(DC_EXEC_DEVICE);
+ 	ADDCYC(count);
+ }
+ 
+ void HuC6280::StealMasterCycles(const int count)
+ {
++	DcExecutionOwnerScope accounting_scope(DC_EXEC_DEVICE);
+ 	ADDCYC_MASTER(count);
+ }
+ 
+@@ -827,6 +830,7 @@ void HuC6280::AdvanceReplacementTo(
+ 
+ void HuC6280::ApplyReplacementCheckpoint(void)
+ {
++	DcExecutionOwnerScope accounting_scope(DC_EXEC_TRANSLATED);
+ 	if(!ReplacementActive
+ 		|| ReplacementCheckpointIndex >= ReplacementCheckpointCount)
+ 	{
+@@ -934,6 +938,8 @@ NO_INLINE void HuC6280::RunSub(void)
+ 	// jump over an initialization.
+ 	DcInterruptDecision dc_decision;
+ 
++	dc_beetle_execution_owner = in_block_move
++		? dc_beetle_execution_block_owner : DC_EXEC_OTHER;
+ 	if(in_block_move)
+ 	{
+ 		switch(in_block_move)
+@@ -954,6 +960,7 @@ NO_INLINE void HuC6280::RunSub(void)
+ 		// nothing else; everything below is the acting on it, which stays
+ 		// here because it is the processor's stack, the processor's flags
+ 		// and the processor's memory map.
++		dc_beetle_execution_owner = DC_EXEC_OTHER;
+ 		dc_decision = DcSelectInterrupt();
+ 
+ 		if(MDFN_UNLIKELY(dc_decision != DC_INTERRUPT_INSTRUCTION))
+@@ -990,6 +997,8 @@ NO_INLINE void HuC6280::RunSub(void)
+ 			{
+ 				const uint32 tmpa = DcInterruptVector(dc_decision);
+ 
++				dc_beetle_execution_owner = DC_EXEC_INTERRUPT;
++				++dc_beetle_execution_counters.interrupt_entries;
+ 				// Total: 8 cycles(7 ADDCYC(1), 1 LASTCYCLE)
+ 
+ 				ADDCYC(1);	// Cycle 1
+@@ -1075,6 +1084,9 @@ NO_INLINE void HuC6280::RunSub(void)
+ 		PC &= 0xFFFF;     // Our cpu core can only handle PC going about 8192 bytes over, so make sure it never gets that far...
+ 		HookInstructionPC = (uint16)PC;
+ 		HookInstructionPhysicalBank = MPR[(PC >> 13) & 0x7];
++		dc_beetle_execution_owner = (HookInstructionPhysicalBank == 0
++			&& (uint16)PC >= 0xE321 && (uint16)PC <= 0xE32B)
++			? DC_EXEC_IDLE : DC_EXEC_FALLBACK;
+ 
+ 		// Devil's Crush downstream capability, and the only entry on this
+ 		// boundary that takes no work away from the emulator. It exists for
+@@ -1517,7 +1529,11 @@ NO_INLINE void HuC6280::RunSub(void)
+ 				|| dc_beetle_native_flipper_owner_instruction
+ 				|| dc_beetle_native_actor_scheduler_instruction
+ 				|| dc_beetle_native_tii_transfer) && valid)
++			{
++				dc_beetle_execution_owner = DC_EXEC_RETAINED;
++				++dc_beetle_execution_counters.retained_offers;
+ 				valid = false;
++			}
+ 			for(uint32 i = 0; valid && i < replacement.write_count; i++)
+ 			{
+ 				const dc_beetle_replacement_write& write =
+@@ -1561,8 +1577,16 @@ NO_INLINE void HuC6280::RunSub(void)
+ 				&& replacement.checkpoint_count > 0
+ 				&& !PushReplacementFrame())
+ 				valid = false;
++			if(replacement.handled && !valid
++				&& dc_beetle_execution_owner != DC_EXEC_RETAINED)
++				++dc_beetle_execution_counters.rejected_offers;
+ 			if(valid)
+ 			{
++				dc_beetle_execution_owner = DC_EXEC_TRANSLATED;
++				++dc_beetle_execution_counters.translated_installs;
++				if(dc_beetle_active_translated_hook != NULL)
++					dc_beetle_active_translated_hook(&replacement_state,
++						dc_beetle_active_translated_hook_user_data);
+ 				if(replacement.checkpoint_count > 0)
+ 				{
+ 					ReplacementActive = true;
+@@ -1620,6 +1644,8 @@ NO_INLINE void HuC6280::RunSub(void)
+ 			}
+ 		}
+ 
++		dc_beetle_execution_block_owner = dc_beetle_execution_owner;
++		++dc_beetle_execution_counters.opcode_dispatches[dc_beetle_execution_owner];
+ 		PC++;
+ 
+ 		switch(lastop)
+diff --git a/mednafen/pce/huc6280.h b/mednafen/pce/huc6280.h
+index f4e7a65..822c27b 100644
+--- a/mednafen/pce/huc6280.h
++++ b/mednafen/pce/huc6280.h
+@@ -564,6 +564,9 @@ private:
+ 	{
+ 		if(MDFN_UNLIKELY(dc_beetle_active_scheduler_model != NULL))
+ 		{
++			dc_beetle_execution_counters.cycles[dc_beetle_execution_owner] +=
++				(DcSched().timestamp_fraction + ((x * 3) << DcSched().speed_shift))
++				/ DcSched().overclock_rate;
+ 			dc_beetle_active_scheduler_model->advance(dc_beetle_active_scheduler_model->user_data, x);
+ 			return;
+ 		}
+@@ -571,6 +574,7 @@ private:
+ 		int master = (x * 3) << DcSched().speed_shift;
+ 
+ 		Overclock(master);
++		dc_beetle_execution_counters.cycles[dc_beetle_execution_owner] += master;
+ 
+ 		DcSched().timestamp += master;
+ 		DcSched().next_event -= master;
+@@ -584,11 +588,14 @@ private:
+ 	{
+ 		if(MDFN_UNLIKELY(dc_beetle_active_scheduler_model != NULL))
+ 		{
++			dc_beetle_execution_counters.cycles[dc_beetle_execution_owner] +=
++				(DcSched().timestamp_fraction + master) / DcSched().overclock_rate;
+ 			dc_beetle_active_scheduler_model->advance_master(dc_beetle_active_scheduler_model->user_data, master);
+ 			return;
+ 		}
+ 
+ 		Overclock(master);
++		dc_beetle_execution_counters.cycles[dc_beetle_execution_owner] += master;
+ 
+ 		DcSched().timestamp += master;
+ 		DcSched().next_event -= master;

@@ -72,6 +72,7 @@ function(dc_provide_beetle_pce)
         "${beetle_fork_root}/patches/0034-huc6280-three-blobs-timer-decrement.patch"
         "${beetle_fork_root}/patches/0035-huc6280-vdc-data-read.patch"
         "${beetle_fork_root}/patches/0036-huc6280-collision-vector-rts.patch"
+        "${beetle_fork_root}/patches/0037-huc6280-execution-accounting.patch"
     )
 
     find_package(Git REQUIRED)
@@ -581,6 +582,9 @@ function(dc_provide_beetle_pce)
                     "PC == 0x66A3 && lastop == 0xDE"
                     beetle_patch_marker_two
                 )
+            elseif(beetle_patch_name MATCHES "^0037-")
+                string(FIND "${beetle_cpu_source}" "dc_beetle_execution_counters.interrupt_entries" beetle_patch_marker_one)
+                string(FIND "${beetle_cpu_header}" "dc_beetle_execution_counters.cycles" beetle_patch_marker_two)
             elseif(beetle_patch_name MATCHES "^0036-")
                 string(FIND "${beetle_cpu_source}" "PC == 0xCBF9" beetle_patch_marker_one)
                 string(FIND "${beetle_cpu_source}" "native_rts_instruction" beetle_patch_marker_two)

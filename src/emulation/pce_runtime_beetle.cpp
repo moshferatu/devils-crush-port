@@ -456,6 +456,7 @@ public:
         }
 
         loaded_ = true;
+        dc_beetle_reset_execution_accounting();
         retro_set_controller_port_device(0, RETRO_DEVICE_JOYPAD);
         retro_set_controller_port_device(1, RETRO_DEVICE_JOYPAD);
         retro_get_system_av_info(&av_info_);
@@ -478,6 +479,7 @@ public:
         assert_owner_thread();
         if (loaded_) {
             retro_reset();
+            dc_beetle_reset_execution_accounting();
             frame_number_ = 0;
             clear_active_routine_calls();
         }
@@ -803,6 +805,28 @@ public:
     {
         assert_owner_thread();
         return static_cast<bool>(work_ram_write_observer_);
+    }
+
+    [[nodiscard]] std::optional<ExecutionAccounting>
+    execution_accounting() const override
+    {
+        assert_owner_thread();
+        if (!loaded_) { return std::nullopt; }
+        dc_beetle_execution_accounting counters{};
+        dc_beetle_get_execution_accounting(&counters);
+        ExecutionAccounting result{};
+        static_assert(static_cast<unsigned>(ExecutionAccounting::owner_count)
+                      == DC_EXEC_OWNER_COUNT);
+        result.start_master_cycle = counters.start_master_cycle;
+        result.elapsed_master_cycles = counters.elapsed_master_cycles;
+        std::copy_n(counters.cycles, result.cycles.size(), result.cycles.begin());
+        std::copy_n(counters.opcode_dispatches, result.opcode_dispatches.size(),
+                    result.opcode_dispatches.begin());
+        result.translated_installs = counters.translated_installs;
+        result.retained_offers = counters.retained_offers;
+        result.rejected_offers = counters.rejected_offers;
+        result.interrupt_entries = counters.interrupt_entries;
+        return result;
     }
 
     [[nodiscard]] bool set_instruction_profiling(
@@ -1439,6 +1463,7 @@ public:
         }
 
         frame_number_ = state.frame_number;
+        dc_beetle_reset_execution_accounting();
         framebuffer_pixels_.clear();
         audio_samples_.clear();
         framebuffer_width_ = 0;
@@ -2833,6 +2858,8 @@ private:
                 return hook.mode == HookMode::replace;
             });
         if (has_replacement) {
+            dc_beetle_active_translated_hook = &translated_hook_callback;
+            dc_beetle_active_translated_hook_user_data = this;
             dc_beetle_set_replacement_hook(
                 &replacement_hook_callback,
                 this);
@@ -2841,6 +2868,8 @@ private:
                 this);
         } else {
             dc_beetle_clear_replacement_hook();
+            dc_beetle_active_translated_hook = nullptr;
+            dc_beetle_active_translated_hook_user_data = nullptr;
             dc_beetle_clear_replacement_abandoned_hook();
         }
 
@@ -3322,6 +3351,17 @@ private:
         }
     }
 
+    static void translated_hook_callback(
+        const dc_beetle_cpu_state* const state, void* const user_data) noexcept
+    {
+        auto* const runtime = static_cast<BeetlePceRuntime*>(user_data);
+        if (runtime->instruction_profile_) {
+            runtime->instruction_profile_->mark_previous_native(
+                state->physical_bank, state->logical_pc,
+                state->absolute_master_cycle);
+        }
+    }
+
     static void replacement_hook_callback(
         const dc_beetle_cpu_state* const state,
         dc_beetle_replacement_result* const core_result,
@@ -3770,18 +3810,15 @@ private:
             }
             core_result->checkpoints =
                 runtime->replacement_checkpoints_.data();
-            if (runtime->instruction_profile_) {
-                runtime->instruction_profile_->mark_previous_native(
-                    state->physical_bank,
-                    state->logical_pc,
-                    state->absolute_master_cycle);
-            }
+
             core_result->handled = 1U;
         } catch (...) {
             runtime->callback_failed_ = true;
             dc_beetle_clear_instruction_hook();
             dc_beetle_clear_memory_write_hook();
             dc_beetle_clear_replacement_hook();
+            dc_beetle_active_translated_hook = nullptr;
+            dc_beetle_active_translated_hook_user_data = nullptr;
             dc_beetle_clear_replacement_abandoned_hook();
         }
     }

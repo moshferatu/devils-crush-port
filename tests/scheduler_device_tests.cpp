@@ -48,6 +48,7 @@
 // directly.
 
 #include "dc_beetle_reference_scheduler.h"
+#include "dc_beetle_execution_hook.h"
 #include "devils_crush/cpu/huc6280_irq.hpp"
 #include "devils_crush/cpu/huc6280_scheduler.hpp"
 
@@ -281,16 +282,58 @@ void power(Pair& pair)
     compare(pair, "power");
 }
 
+// Clock accounting must charge the divided movement once, exclusively to the
+// device, even when a steal occurs inside a translated or interrupt scope.
+void check_accounting(Pair& pair, const dc_beetle_execution_accounting& before,
+                      const std::uint32_t timestamp)
+{
+    dc_beetle_reference_scheduler_observation after{};
+    dc_beetle_reference_scheduler_observe(pair.ref, &after);
+    for (unsigned owner = 0; owner < DC_EXEC_OWNER_COUNT; ++owner) {
+        const auto delta = dc_beetle_execution_counters.cycles[owner] - before.cycles[owner];
+        const auto expected = owner == DC_EXEC_DEVICE ? after.timestamp - timestamp : 0U;
+        check(delta == expected, "exclusive divided clock accounting");
+    }
+}
+
 void advance(Pair& pair, const std::int32_t cycles)
 {
+    const auto before = dc_beetle_execution_counters;
+    dc_beetle_reference_scheduler_observation observation{};
+    dc_beetle_reference_scheduler_observe(pair.ref, &observation);
+    const auto previous_owner = dc_beetle_execution_owner;
+    {
+        DcExecutionOwnerScope translated(DC_EXEC_TRANSLATED);
+        {
+            DcExecutionOwnerScope interrupted(DC_EXEC_INTERRUPT);
     dc_beetle_reference_scheduler_advance(pair.ref, cycles);
+            check(dc_beetle_execution_owner == DC_EXEC_INTERRUPT, "steal restores interrupt owner");
+        }
+        check(dc_beetle_execution_owner == DC_EXEC_TRANSLATED, "interrupt scope restores translated owner");
+    }
+    check(dc_beetle_execution_owner == previous_owner, "outer scope restores owner");
+    check_accounting(pair, before, observation.timestamp);
     pair.native.advance(cycles);
     compare(pair, "advance");
 }
 
 void advance_master(Pair& pair, const std::int32_t master_clocks)
 {
+    const auto before = dc_beetle_execution_counters;
+    dc_beetle_reference_scheduler_observation observation{};
+    dc_beetle_reference_scheduler_observe(pair.ref, &observation);
+    const auto previous_owner = dc_beetle_execution_owner;
+    {
+        DcExecutionOwnerScope translated(DC_EXEC_TRANSLATED);
+        {
+            DcExecutionOwnerScope interrupted(DC_EXEC_INTERRUPT);
     dc_beetle_reference_scheduler_advance_master(pair.ref, master_clocks);
+            check(dc_beetle_execution_owner == DC_EXEC_INTERRUPT, "steal restores interrupt owner");
+        }
+        check(dc_beetle_execution_owner == DC_EXEC_TRANSLATED, "interrupt scope restores translated owner");
+    }
+    check(dc_beetle_execution_owner == previous_owner, "outer scope restores owner");
+    check_accounting(pair, before, observation.timestamp);
     pair.native.advance_master(master_clocks);
     compare(pair, "advance master");
 }

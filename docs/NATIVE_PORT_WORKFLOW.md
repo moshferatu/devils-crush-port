@@ -5,7 +5,11 @@ iteration loop fast enough to port related code as a unit. It applies to
 Milestone 4 native gameplay work; it does not weaken the release or milestone
 acceptance criteria in [PLAN.md](../PLAN.md).
 
-## Current priority: bank-09 VDC loop, actor input and palette countdown (September 11)
+## Current priority: measured IRQ entry and shared core mechanisms
+
+[Exclusive execution accounting](EXECUTION_ACCOUNTING.md) now replaces accepted-body estimates as the primary progress metric. It exposes retained opcodes, IRQ entry and device stalls separately, fixes duplicate registry credits, and reports any accounting imbalance. The [initial audit](NATIVE_COVERAGE_AUDIT.md) records why the ranking changed. Use the measured IRQ-entry cost and full retained/fallback instruction families for the next porting round.
+
+## Previous round: bank-09 VDC loop, actor input and palette countdown (September 11)
 
 The latest cabinet ranking totals **43,662 master cycles** across twelve sites.
 This batch ports all twelve, grouped into the VDC transfer loop, actor input and

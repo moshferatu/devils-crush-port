@@ -558,9 +558,28 @@ struct AbandonmentSite {
     [[nodiscard]] bool operator==(const AbandonmentSite&) const = default;
 };
 
+struct ExecutionAccounting {
+    enum Owner : std::size_t {
+        translated, retained, fallback, interrupt, idle, device, other, owner_count
+    };
+    std::uint64_t start_master_cycle = 0;
+    std::uint64_t elapsed_master_cycles = 0;
+    std::array<std::uint64_t, owner_count> cycles{};
+    std::array<std::uint64_t, owner_count> opcode_dispatches{};
+    std::uint64_t translated_installs = 0;
+    std::uint64_t retained_offers = 0;
+    std::uint64_t rejected_offers = 0;
+    std::uint64_t interrupt_entries = 0;
+};
+
 class PceRuntime {
 public:
     virtual ~PceRuntime() = default;
+
+    // Exclusive clock owners since load/reset/restore, including executed
+    // portions of interrupted or abandoned transcripts, never whole offers.
+    [[nodiscard]] virtual std::optional<ExecutionAccounting>
+    execution_accounting() const { return std::nullopt; }
 
     // A real runtime is thread-confined. Create, call, and destroy it on the
     // same owning thread; libretro callbacks execute synchronously there.

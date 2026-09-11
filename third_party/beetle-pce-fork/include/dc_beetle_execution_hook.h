@@ -25,6 +25,31 @@ typedef struct dc_beetle_cpu_state {
     uint32_t master_cycles_until_timer_interrupt;
 } dc_beetle_cpu_state;
 
+// Exclusive clock ownership, recorded where the core actually advances time.
+enum dc_beetle_execution_owner {
+    DC_EXEC_TRANSLATED, DC_EXEC_RETAINED, DC_EXEC_FALLBACK, DC_EXEC_INTERRUPT,
+    DC_EXEC_IDLE, DC_EXEC_DEVICE, DC_EXEC_OTHER, DC_EXEC_OWNER_COUNT
+};
+typedef struct dc_beetle_execution_accounting {
+    uint64_t start_master_cycle;
+    uint64_t elapsed_master_cycles;
+    uint64_t cycles[DC_EXEC_OWNER_COUNT];
+    uint64_t opcode_dispatches[DC_EXEC_OWNER_COUNT];
+    uint64_t translated_installs;
+    uint64_t retained_offers;
+    uint64_t rejected_offers;
+    uint64_t interrupt_entries;
+} dc_beetle_execution_accounting;
+extern dc_beetle_execution_accounting dc_beetle_execution_counters;
+extern unsigned dc_beetle_execution_owner;
+extern unsigned dc_beetle_execution_block_owner;
+void dc_beetle_reset_execution_accounting(void);
+void dc_beetle_get_execution_accounting(dc_beetle_execution_accounting* out);
+// Called only after the core has accepted a real translated transaction.
+typedef void (*dc_beetle_translated_hook)(const dc_beetle_cpu_state*, void*);
+extern dc_beetle_translated_hook dc_beetle_active_translated_hook;
+extern void* dc_beetle_active_translated_hook_user_data;
+
 typedef struct dc_beetle_memory_write {
     uint16_t logical_address;
     uint8_t physical_bank;
@@ -1226,4 +1251,14 @@ int dc_beetle_copy_video_snapshot(dc_beetle_video_snapshot* snapshot);
 
 #ifdef __cplusplus
 } // extern "C"
+
+// Scope restoration prevents nested device steals from being charged to the
+// instruction or interrupt that requested them. No emulator state is changed.
+class DcExecutionOwnerScope {
+    unsigned previous_;
+public:
+    explicit DcExecutionOwnerScope(unsigned owner)
+        : previous_(dc_beetle_execution_owner) { dc_beetle_execution_owner = owner; }
+    ~DcExecutionOwnerScope() { dc_beetle_execution_owner = previous_; }
+};
 #endif
