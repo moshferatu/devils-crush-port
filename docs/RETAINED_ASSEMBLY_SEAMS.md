@@ -1,6 +1,89 @@
 # Retained Assembly Seams
 
-## Current priority: bumper phases, Three-Blobs constants, music load and RNG return (September 10)
+## Current priority: bank-09 VDC loop, actor input and palette countdown (September 11)
+
+The latest cabinet ranking totals **43,662 master cycles** across twelve sites.
+This batch ports all twelve, grouped into the VDC transfer loop, actor input and
+palette countdown, and the bank-02 actor compare. Reported cycles establish
+priority; the before/after corpus below measures the actual reduction.
+
+| Site | Native operation | Sample / retirement (master cycles) |
+| --- | --- | --- |
+| `09:62E0`, `09:62E6` | LDA through the live `$2F/$30` pointer plus Y | 18 / 21 |
+| `09:62E2`, `09:62E8` | STA to VDC low/high data ports | 12 / 18 nominal |
+| `09:62EE` | BNE to `62E0`, consuming live Z | 9 / 12 taken; 3 / 6 otherwise |
+| `09:60BA` | DEC palette countdown `$2D55` | 18 / 21 |
+| `09:60BF` | RTS using the live stack | 18 / 21 |
+| `09:608D`, `09:6090` | STZ actor input state `$2CBA/$2CBC` | 12 / 15 |
+| `09:6095` | STA live A to actor input state `$2CBB` | 12 / 15 |
+| `09:6099` | STX live X to scan slot `$204D` | 9 / 12 |
+| `02:4D30` | CMP immediate `$78`, preserving A and V | 3 / 6 |
+
+The VDC stores include the hardware bus's extra CPU cycle. Their interrupt sample
+remains at cycle 12; the core applies any further VRAM-busy stall at the actual
+write and reconciles it at the checkpoint. Indirect loads wrap at 16 bits and
+resolve the live MPR to RAM or the supported ROM's mirrors. Device, backup RAM,
+and unmapped source pages decline. VDC stores require MPR0=`FF`.
+
+Every entry requires its exact bank/PC and live code mapping, MPR1=`F8`, full
+8-KiB work RAM, and T clear. Decimal mode remains supported, including binary
+CMP. All X, Y, A and stack values are permitted, and the explicit LastCycle
+checkpoint handles either interrupt horizon. RTS wraps both stack and return
+address. RAM stores preserve flags; DEC updates only NZ.
+
+`replace_ranked_vdc_instruction` supplies twelve new admissions:
+**920 -> 932**, with **980** dispatch-reachable keys, **209** patched-route
+admissions and **134** partial routes. Proven calls are **3,935,081 of 3,991,263
+(98.6%)**. All twelve new admissions have a natural, unpatched alley oracle.
+The execution-seam manifest has **399** nonoverlapping classified ranges.
+
+`tests/ranked_vdc_fixture.hpp` checks **786,432** status/operand cases and
+**262,144** indirect mapping cases: every status value, both branch outcomes,
+countdown wrap, live A/X stores, stack wrap, all Y values, all 256 source banks,
+page and 16-bit pointer wrap, ROM mirrors, unsafe mappings, and both horizons
+from 0 through 22. Assertions cover every output register, write, sample and
+retirement offset. The mapping fixture reads aliases of the pointer itself as
+live RAM, rather than assuming source data cannot alias zero page.
+
+`tests/verify_ranked_vdc.cmake` pins the original ROM bytes and all five existing
+alley assembly hashes: frame census, scheduler calls, scoped call writes, full
+RAM writes and device writes. Its replacement run requires complete acceptance:
+256 entries at each of the five VDC-loop sites; 201 each at `60BA`, `608D`, `6090`,
+`6095`, `6099`; 150 at `60BF`; and 96 at `4D30`. The independent assembly oracle
+contains **2,067 calls**, **946,512 scoped writes**, **11,834,535 RAM writes** and
+**3,225,616 device writes**. Configuration-specific output paths prevent Release
+and Debug replays from overwriting one another.
+
+Across the **31 standard routes**, targeted interpreter residue falls from
+**85,116 to 0 master cycles**, a **100% reduction at these twelve sites**. The
+full interpreter-cycle delta equals the targeted delta on every route; every
+before/after frame census hash and abandonment count matches. The three existing
+single abandonments (higharc, radial and sidestep) remain unchanged; the other
+28 routes have none. This local saving is distinct from the cabinet report's
+43,662-cycle ranking.
+
+| Route | Target cycles before | After | Removed |
+| --- | ---: | ---: | ---: |
+| alley | 42,732 | 0 | 42,732 |
+| spiral | 40,632 | 0 | 40,632 |
+| stagger | 600 | 0 | 600 |
+| lanes | 576 | 0 | 576 |
+| twist | 576 | 0 | 576 |
+| Other 26 routes | 0 | 0 | 0 |
+| **Total** | **85,116** | **0** | **85,116** |
+
+Artifacts: `out/ranked-vdc-cost/manifest.csv` contains all 31 route results;
+`addresses.csv` contains the twelve per-address totals. The directory retains
+both executables' frame/profile/log outputs. The saved baseline is
+`out/build/windows-vs2022/Release/devils-crush-before-ranked-vdc.exe` (920
+admissions). No activation patch was needed.
+
+Release validation: fixture, five-hash assembly/native oracle, host registry,
+original corrupted-face capture, and upper-hand bus regression all passed
+(5/5). Debug fixture and five-hash assembly/native oracle both passed (2/2).
+Registry generation/check and all 399 execution seams passed.
+
+## Previous round: bumper phases, Three-Blobs constants, music load and RNG return (September 10)
 
 The latest cabinet ranking reports **17,316 master cycles** across twelve sites.
 This batch changes ten sites accounting for **14,076 reported cycles (81.3%)**:

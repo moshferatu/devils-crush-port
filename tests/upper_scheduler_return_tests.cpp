@@ -18,6 +18,7 @@ void require(bool ok, const char* message) { if (!ok) { throw std::runtime_error
 #include "ranked_coordinate_fixture.hpp"
 #include "ranked_conditions_fixture.hpp"
 #include "ranked_phase_fixture.hpp"
+#include "ranked_vdc_fixture.hpp"
 int main()
 {
     try {
@@ -33,6 +34,7 @@ int main()
         verify_ranked_coordinate_instructions();
         verify_ranked_condition_instructions();
         verify_ranked_phase_instructions();
+        verify_ranked_vdc_instructions();
         std::array<std::byte, 0x2000> ram{};
         for (const auto routine : {RoutineKey{5U, 0x7376U}, RoutineKey{5U, 0x7379U},
                  RoutineKey{5U, 0x7387U}, RoutineKey{5U, 0x738AU}, RoutineKey{5U, 0x738FU},

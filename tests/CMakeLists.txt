@@ -5557,6 +5557,11 @@ if(TARGET devils_crush)
                 "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/ranked-conditions-activation-$<CONFIG>-v1"
                 -P "${CMAKE_CURRENT_SOURCE_DIR}/verify_ranked_conditions_activation.cmake")
         set_tests_properties(dc_rom_ranked_conditions_activation PROPERTIES LABELS rom_required)
+        add_test(NAME dc_rom_ranked_vdc
+            COMMAND "${CMAKE_COMMAND}" "-DAPP=$<TARGET_FILE:devils_crush>" "-DROM=${DC_ROM_PATH}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/ranked-vdc-$<CONFIG>-v1"
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/verify_ranked_vdc.cmake")
+        set_tests_properties(dc_rom_ranked_vdc PROPERTIES LABELS rom_required)
         add_test(NAME dc_rom_ranked_phase
             COMMAND "${CMAKE_COMMAND}" "-DAPP=$<TARGET_FILE:devils_crush>" "-DROM=${DC_ROM_PATH}"
                 "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/ranked-phase-$<CONFIG>-v1"

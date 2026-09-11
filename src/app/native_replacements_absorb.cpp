@@ -13,6 +13,81 @@ using emulation::RoutineEntry;
 using emulation::RoutineKey;
 using emulation::RoutineReplacement;
 
+std::optional<RoutineReplacement> replace_ranked_vdc_instruction(
+    const RoutineEntry& entry, const std::span<const std::byte> work_ram,
+    const std::span<const std::byte> rom)
+{
+    const auto pc = entry.routine.logical_pc;
+    const auto bank = entry.routine.physical_bank;
+    const bool valid = (bank == 9U && (pc == 0x62E0U || pc == 0x62E6U
+        || pc == 0x62E8U || pc == 0x62E2U || pc == 0x60BAU || pc == 0x62EEU
+        || pc == 0x60BFU || pc == 0x608DU || pc == 0x6090U || pc == 0x6095U || pc == 0x6099U))
+        || (bank == 2U && pc == 0x4D30U);
+    if (!valid || entry.registers.program_counter != pc
+        || entry.registers.mpr[pc >> 13U] != bank || entry.registers.mpr[1] != 0xF8U
+        || work_ram.size() < 0x2000U || (entry.registers.status & 0x20U) != 0U) {
+        return std::nullopt;
+    }
+    auto r = entry.registers;
+    RoutineReplacement result{};
+    std::uint32_t cycles = 15U, sample = 12U;
+    r.program_counter = static_cast<std::uint16_t>(pc + 3U);
+    const auto read = [&](unsigned offset) { return std::to_integer<std::uint8_t>(work_ram[offset]); };
+    const auto nz = [&](std::uint8_t value) {
+        r.status = static_cast<std::uint8_t>((r.status & 0x7DU) | (value == 0U ? 2U : value & 0x80U));
+    };
+    const auto write = [&](std::uint16_t address, std::uint8_t value) {
+        result.work_ram_writes.push_back({.instruction = entry.routine,
+            .logical_address = address, .value = value, .master_cycle_offset = cycles});
+    };
+    if (pc == 0x62E0U || pc == 0x62E6U) {
+        const auto address = static_cast<std::uint16_t>(read(0x2FU) + (read(0x30U) << 8U) + r.y);
+        const auto mapped_bank = r.mpr[address >> 13U];
+        if (mapped_bank == 0xF8U) { r.accumulator = read(address & 0x1FFFU); }
+        else {
+            // Mirror the supported 384-KiB ROM; device and backup reads stay in the core.
+            if (mapped_bank >= 0x80U || rom.size() != 0x60000U) { return std::nullopt; }
+            const auto mapped = mapped_bank < 0x40U ? mapped_bank & 0x1FU : (mapped_bank & 0x0FU) + 0x20U;
+            r.accumulator = std::to_integer<std::uint8_t>(rom[mapped * 0x2000U + (address & 0x1FFFU)]);
+        }
+        nz(r.accumulator); cycles = 21U; sample = 18U; --r.program_counter;
+    } else if (pc == 0x62E2U || pc == 0x62E8U) {
+        if (r.mpr[0] != 0xFFU) { return std::nullopt; }
+        // The VDC adds one CPU cycle and may stall further. The core reconciles
+        // the live bus wait; LastCycle still samples at twelve master cycles.
+        cycles = 18U;
+        write(pc == 0x62E2U ? 2U : 3U, r.accumulator);
+    } else if (pc == 0x60BAU) {
+        const auto value = static_cast<std::uint8_t>(read(0xD55U) - 1U);
+        cycles = 21U; sample = 18U; nz(value); write(0x2D55U, value);
+    } else if (pc == 0x62EEU) {
+        const bool taken = (r.status & 2U) == 0U;
+        r.program_counter = taken ? 0x62E0U : 0x62F0U;
+        cycles = taken ? 12U : 6U; sample = cycles - 3U;
+    } else if (pc == 0x60BFU) {
+        const auto low = read(0x100U + ++r.stack_pointer);
+        const auto high = read(0x100U + ++r.stack_pointer);
+        r.program_counter = static_cast<std::uint16_t>(low + (high << 8U) + 1U);
+        cycles = 21U; sample = 18U;
+    } else if (pc == 0x4D30U) {
+        const auto difference = static_cast<std::uint8_t>(r.accumulator - 0x78U);
+        r.status = static_cast<std::uint8_t>((r.status & 0x7CU)
+            | (r.accumulator >= 0x78U ? 1U : 0U) | (difference == 0U ? 2U : difference & 0x80U));
+        cycles = 6U; sample = 3U; --r.program_counter;
+    } else if (pc == 0x6099U) {
+        cycles = 12U; sample = 9U; --r.program_counter; write(0x204DU, r.x);
+    } else {
+        write(pc == 0x608DU ? 0x2CBAU : pc == 0x6090U ? 0x2CBCU : 0x2CBBU,
+            pc == 0x6095U ? r.accumulator : 0U);
+    }
+    result.return_instruction = {r.mpr[r.program_counter >> 13U], r.program_counter};
+    result.output_registers = r;
+    result.body_master_cycles = cycles;
+    result.checkpoints.push_back({.interrupt_sample_master_cycle_offset = sample,
+        .master_cycle_offset = cycles, .instruction = entry.routine, .registers = r});
+    return result;
+}
+
 std::optional<RoutineReplacement> replace_ranked_phase_instruction(
     const RoutineEntry& entry, const std::span<const std::byte> work_ram)
 {

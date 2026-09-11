@@ -7776,7 +7776,19 @@ parse_logical_address_range(const std::string_view text)
                                         .logical_pc = 0x42EBU,
                                     }
                             && request.all_calls;
-                        const bool proven_ranked_control_seam = request.all_calls && (request.routine == RoutineKey{0x03U, 0x7AE0U}
+                        const bool proven_ranked_control_seam = request.all_calls && (request.routine == RoutineKey{0x09U, 0x62E0U}
+                            || request.routine == RoutineKey{0x09U, 0x62E6U}
+                            || request.routine == RoutineKey{0x09U, 0x62E8U}
+                            || request.routine == RoutineKey{0x09U, 0x62E2U}
+                            || request.routine == RoutineKey{0x09U, 0x60BAU}
+                            || request.routine == RoutineKey{0x09U, 0x62EEU}
+                            || request.routine == RoutineKey{0x09U, 0x60BFU}
+                            || request.routine == RoutineKey{0x09U, 0x608DU}
+                            || request.routine == RoutineKey{0x09U, 0x6090U}
+                            || request.routine == RoutineKey{0x09U, 0x6095U}
+                            || request.routine == RoutineKey{0x09U, 0x6099U}
+                            || request.routine == RoutineKey{0x02U, 0x4D30U}
+                            || request.routine == RoutineKey{0x03U, 0x7AE0U}
                             || request.routine == RoutineKey{0x03U, 0x7AEBU}
                             || request.routine == RoutineKey{0x03U, 0x7AEFU}
                             || request.routine == RoutineKey{0x45U, 0x4148U}
