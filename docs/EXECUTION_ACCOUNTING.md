@@ -16,7 +16,7 @@ Every divided clock advance is assigned exactly once to one of these owners:
 
 | Owner | Meaning |
 | --- | --- |
-| translated | Actual advances in native IRQ entry, native block transfers, native bit-test branches, native control flow, native absolute loads/status instructions, native conditional branches or a validated transcript/checkpoint |
+| translated | Actual advances in native IRQ entry, native block transfers, native bit-test branches, native control flow, native absolute loads/status instructions, native conditional branches, native stores or a validated transcript/checkpoint |
 | retained | Original opcode path following a recognized, validated core-capability offer |
 | fallback | Original opcode path without an installed translation or validated capability |
 | interrupt | Original core IRQ-entry sequence, including its final sample |
@@ -71,6 +71,10 @@ corpus coverage to **99.9902%**; see [native load/status](NATIVE_LOAD_STATUS.md)
 conditional branch opcodes. These cycles are already included in `translated`.
 Weighted corpus coverage reaches **99.9921%**; see
 [native conditional branches](NATIVE_BRANCHES.md).
+
+`Native stores` reports actual starts and exclusive CPU cycles for all 18
+STA, STX, STY and STZ opcodes. These cycles are already included in `translated`.
+Weighted corpus coverage reaches **99.9952%**; see [native stores](NATIVE_STORES.md).
 
 ## Counts and profiles
 

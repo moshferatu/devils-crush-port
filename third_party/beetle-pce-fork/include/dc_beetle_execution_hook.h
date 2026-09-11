@@ -51,6 +51,8 @@ typedef struct dc_beetle_execution_accounting {
     uint64_t native_load_status_cycles; // Exclusive CPU time
     uint64_t native_branches;
     uint64_t native_branch_cycles; // Exclusive CPU time
+    uint64_t native_stores;
+    uint64_t native_store_cycles; // Exclusive CPU time
 } dc_beetle_execution_accounting;
 extern dc_beetle_execution_accounting dc_beetle_execution_counters;
 extern unsigned dc_beetle_execution_owner;

@@ -829,5 +829,10 @@ this repository.
     - Preserves the original opcode oracle and idle ownership; reports actual starts and exclusive CPU cycles.
     - See [native conditional branches](../../docs/NATIVE_BRANCHES.md) for measurement and differential/gameplay verification.
 
+44. `patches/0044-huc6280-native-stores.patch`
+    - Executes all 18 STA, STX, STY and STZ opcodes through the shared native engine with live addressing, write timing and interrupt sampling.
+    - Preserves zero-page wrapping, wide absolute indexing, device stalls, idle ownership and the original opcode oracle; reports actual starts and exclusive CPU cycles.
+    - See [native stores](../../docs/NATIVE_STORES.md) for measurement and differential/gameplay verification.
+
 All local files and patches are GPL-3.0-or-later. Upstream per-file notices
 and licenses remain authoritative for upstream sources.

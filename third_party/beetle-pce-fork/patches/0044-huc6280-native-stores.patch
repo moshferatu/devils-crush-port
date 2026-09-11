@@ -1,0 +1,42 @@
+diff --git a/mednafen/pce/huc6280.cpp b/mednafen/pce/huc6280.cpp
+index 1a30a56..9d1329e 100644
+--- a/mednafen/pce/huc6280.cpp
++++ b/mednafen/pce/huc6280.cpp
+@@ -4,6 +4,7 @@
+ #include <devils_crush/cpu/huc6280_control_flow.hpp>
+ #include <devils_crush/cpu/huc6280_load_status.hpp>
+ #include <devils_crush/cpu/huc6280_branch.hpp>
++#include <devils_crush/cpu/huc6280_store.hpp>
+ /* Mednafen - Multi-system Emulator
+  *
+  * This program is free software; you can redistribute it and/or modify
+@@ -1700,7 +1701,7 @@ NO_INLINE void HuC6280::RunSub(void)
+ 		}
+ 
+ 		if(dc_beetle_active_boundary_model != NULL
+-			&& (devils_crush::cpu::huc6280_block_mode(lastop) || devils_crush::cpu::is_huc6280_bit_branch(lastop) || (dc_beetle_execution_owner != DC_EXEC_IDLE && (devils_crush::cpu::is_huc6280_control_flow(lastop) || devils_crush::cpu::is_huc6280_load_status(lastop) || devils_crush::cpu::is_huc6280_branch(lastop)))))
++			&& (devils_crush::cpu::huc6280_block_mode(lastop) || devils_crush::cpu::is_huc6280_bit_branch(lastop) || (dc_beetle_execution_owner != DC_EXEC_IDLE && (devils_crush::cpu::is_huc6280_control_flow(lastop) || devils_crush::cpu::is_huc6280_load_status(lastop) || devils_crush::cpu::is_huc6280_branch(lastop) || devils_crush::cpu::is_huc6280_store(lastop)))))
+ 		{
+ 			if(dc_beetle_active_translated_hook != NULL)
+ 			{
+@@ -1766,6 +1767,20 @@ NO_INLINE void HuC6280::RunSub(void)
+                 dc_beetle_execution_counters.native_branch_cycles +=
+                     dc_beetle_execution_counters.cycles[DC_EXEC_TRANSLATED] - before;
+             }
++            else if(devils_crush::cpu::is_huc6280_store(lastop))
++            {
++                dc_beetle_execution_owner = DC_EXEC_TRANSLATED;
++                const uint64 before = dc_beetle_execution_counters.cycles[DC_EXEC_TRANSLATED];
++                ++dc_beetle_execution_counters.native_stores;
++                devils_crush::cpu::run_huc6280_store(lastop, PC, P, A, X, Y,
++                    [&](unsigned n) { ADDCYC(n); },
++                    [&](uint32 address) { return RdOp(address); },
++                    [&](uint32 address) { return RdMem(address); },
++                    [&](uint32 address, uint8 value) { WrMem(address, value); },
++                    [&]() { DcSampleInterrupt(); });
++                dc_beetle_execution_counters.native_store_cycles +=
++                    dc_beetle_execution_counters.cycles[DC_EXEC_TRANSLATED] - before;
++            }
+             else if(!dc_run_native_block_move(lastop)) return;
+ 			continue;
+ 		}

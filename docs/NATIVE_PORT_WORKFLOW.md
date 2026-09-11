@@ -7,7 +7,7 @@ acceptance criteria in [PLAN.md](../PLAN.md).
 
 ## Current priority: shared retained and fallback instructions
 
-[Native conditional branches](NATIVE_BRANCHES.md) remove 389,418 CPU cycles (19.1749% of remaining non-native time) across 31 routes, increasing weighted coverage from 99.9902% to 99.9921%. Frames, stalls, idle time, IRQ counts and abandonments are unchanged. This follows [native absolute LDA, PLP and SEI](NATIVE_LOAD_STATUS.md), [control flow](NATIVE_CONTROL_FLOW.md), [bit-test branches](NATIVE_BIT_BRANCHES.md), [block transfers](NATIVE_BLOCK_MOVES.md) and [IRQ entry](NATIVE_INTERRUPT_ENTRY.md). Shared stores are the next priority, measured with [exclusive execution accounting](EXECUTION_ACCOUNTING.md). The [initial audit](NATIVE_COVERAGE_AUDIT.md) records why twelve-site rankings were superseded.
+[Native stores](NATIVE_STORES.md) remove 649,431 CPU cycles (39.5643% of remaining non-native time) across 31 routes, increasing weighted coverage from 99.9921% to 99.9952%. Frames, stalls, idle time, IRQ counts and abandonments are unchanged. This follows [conditional branches](NATIVE_BRANCHES.md), [absolute LDA, PLP and SEI](NATIVE_LOAD_STATUS.md), [control flow](NATIVE_CONTROL_FLOW.md), [bit-test branches](NATIVE_BIT_BRANCHES.md), [block transfers](NATIVE_BLOCK_MOVES.md) and [IRQ entry](NATIVE_INTERRUPT_ENTRY.md). Remaining load modes are the next priority, followed by logical operations, measured with [exclusive execution accounting](EXECUTION_ACCOUNTING.md). The [initial audit](NATIVE_COVERAGE_AUDIT.md) records why twelve-site rankings were superseded.
 
 ## Previous round: bank-09 VDC loop, actor input and palette countdown (September 11)
 
