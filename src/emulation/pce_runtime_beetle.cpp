@@ -843,6 +843,8 @@ public:
         result.native_store_cycles = counters.native_store_cycles;
         result.native_loads = counters.native_loads;
         result.native_load_cycles = counters.native_load_cycles;
+        result.native_logical_instructions = counters.native_logical_instructions;
+        result.native_logical_cycles = counters.native_logical_cycles;
         return result;
     }
 

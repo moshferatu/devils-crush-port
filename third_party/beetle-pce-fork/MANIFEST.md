@@ -839,5 +839,10 @@ this repository.
     - Preserves operand and pointer ordering, address wrapping, final-cycle interrupt sampling, NZ/T flags, device stalls and idle ownership.
     - Reports actual starts and exclusive CPU cycles, with the original opcode oracle retained. See [native loads](../../docs/NATIVE_LOADS.md).
 
+46. `patches/0046-huc6280-native-logical.patch`
+    - Executes all 27 AND, ORA and EOR opcodes through the shared native engine, including transfer-mode RAM read/modify/write and accumulator restoration.
+    - Preserves operand ordering, both interrupt samples, NZ/T flags, wide addresses, device stalls, idle ownership and the original opcode oracle.
+    - Reports actual starts and exclusive CPU cycles. See [native logical operations](../../docs/NATIVE_LOGICAL.md).
+
 All local files and patches are GPL-3.0-or-later. Upstream per-file notices
 and licenses remain authoritative for upstream sources.

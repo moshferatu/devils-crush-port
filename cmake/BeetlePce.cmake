@@ -81,6 +81,7 @@ function(dc_provide_beetle_pce)
         "${beetle_fork_root}/patches/0043-huc6280-native-branches.patch"
         "${beetle_fork_root}/patches/0044-huc6280-native-stores.patch"
         "${beetle_fork_root}/patches/0045-huc6280-native-loads.patch"
+        "${beetle_fork_root}/patches/0046-huc6280-native-logical.patch"
     )
 
     find_package(Git REQUIRED)
@@ -590,6 +591,9 @@ function(dc_provide_beetle_pce)
                     "PC == 0x66A3 && lastop == 0xDE"
                     beetle_patch_marker_two
                 )
+            elseif(beetle_patch_name MATCHES "^0046-")
+                string(FIND "${beetle_cpu_source}" "run_huc6280_logical" beetle_patch_marker_one)
+                string(FIND "${beetle_cpu_source}" "native_logical_cycles" beetle_patch_marker_two)
             elseif(beetle_patch_name MATCHES "^0045-")
                 string(FIND "${beetle_cpu_source}" "run_huc6280_load" beetle_patch_marker_one)
                 string(FIND "${beetle_cpu_source}" "native_load_cycles" beetle_patch_marker_two)
