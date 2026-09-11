@@ -809,5 +809,10 @@ this repository.
     - Preserves the existing transfer savestate ABI and supports saved-state and live handoffs between engines. Original transfers remain available with `--emulated-boundary`.
     - Reports native starts, resumes and exclusive transfer CPU cycles, and removes actual native transfers from interpreter residue. See [native block transfers](../../docs/NATIVE_BLOCK_MOVES.md) for measured coverage and regression evidence.
 
+40. `patches/0040-huc6280-native-bit-branches.patch`
+    - Executes all sixteen BBR/BBS variants through the shared native CPU engine with live mapped operands, both interrupt samples and original clock batching.
+    - Preserves the original engine with `--emulated-boundary`, and reports native branch starts and exclusive CPU cycles separately from original dispatches and transcript installations.
+    - See [native bit branches](../../docs/NATIVE_BIT_BRANCHES.md) for measured coverage and differential/gameplay verification.
+
 All local files and patches are GPL-3.0-or-later. Upstream per-file notices
 and licenses remain authoritative for upstream sources.

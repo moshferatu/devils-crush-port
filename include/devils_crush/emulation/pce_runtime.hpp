@@ -574,6 +574,8 @@ struct ExecutionAccounting {
     std::array<std::uint64_t, 5> native_block_moves{}; // TIA, TAI, TDD, TII, TIN
     std::uint64_t native_block_resumes = 0;
     std::uint64_t native_block_cycles = 0;
+    std::uint64_t native_bit_branches = 0;
+    std::uint64_t native_bit_branch_cycles = 0;
 };
 
 class PceRuntime {

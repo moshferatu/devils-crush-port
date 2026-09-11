@@ -2,7 +2,7 @@
 
 ## Current priority: shared retained and fallback instructions
 
-[Native block transfers](NATIVE_BLOCK_MOVES.md) now cover all five modes through one shared engine. Across 31 routes, they remove 24,670,854 CPU cycles (38.4654% of the remaining non-native time), increasing weighted coverage from 99.6894% to 99.8089%. Frames, device stalls, IRQ counts and abandonments are unchanged. This follows the completed [native IRQ entry](NATIVE_INTERRUPT_ENTRY.md). The next priority is shared bit-test branches, then call/return/jump paths, measured with [exclusive execution accounting](EXECUTION_ACCOUNTING.md). The [initial audit](NATIVE_COVERAGE_AUDIT.md) records why twelve-site rankings were superseded.
+[Native bit-test branches](NATIVE_BIT_BRANCHES.md) now cover all sixteen BBR/BBS variants through one shared engine. Across 31 routes, they remove 13,184,280 CPU cycles (33.4059% of the remaining non-native time), increasing weighted coverage from 99.8089% to 99.8727%. Frames, stalls, IRQ counts and abandonments are unchanged. This follows [native block transfers](NATIVE_BLOCK_MOVES.md) and [native IRQ entry](NATIVE_INTERRUPT_ENTRY.md). The next priority is shared call/return/jump paths, measured with [exclusive execution accounting](EXECUTION_ACCOUNTING.md). The [initial audit](NATIVE_COVERAGE_AUDIT.md) records why twelve-site rankings were superseded.
 
 ## Previous round: bank-09 VDC loop, actor input and palette countdown (September 11)
 

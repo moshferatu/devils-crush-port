@@ -75,6 +75,7 @@ function(dc_provide_beetle_pce)
         "${beetle_fork_root}/patches/0037-huc6280-execution-accounting.patch"
         "${beetle_fork_root}/patches/0038-huc6280-native-interrupt-entry.patch"
         "${beetle_fork_root}/patches/0039-huc6280-native-block-moves.patch"
+        "${beetle_fork_root}/patches/0040-huc6280-native-bit-branches.patch"
     )
 
     find_package(Git REQUIRED)
@@ -584,6 +585,9 @@ function(dc_provide_beetle_pce)
                     "PC == 0x66A3 && lastop == 0xDE"
                     beetle_patch_marker_two
                 )
+            elseif(beetle_patch_name MATCHES "^0040-")
+                string(FIND "${beetle_cpu_source}" "run_huc6280_bit_branch" beetle_patch_marker_one)
+                string(FIND "${beetle_cpu_source}" "native_bit_branch_cycles" beetle_patch_marker_two)
             elseif(beetle_patch_name MATCHES "^0039-")
                 string(FIND "${beetle_cpu_source}" "run_huc6280_block_move" beetle_patch_marker_one)
                 string(FIND "${beetle_cpu_source}" "native_block_cycles" beetle_patch_marker_two)

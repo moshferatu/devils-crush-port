@@ -831,6 +831,8 @@ public:
                   result.native_block_moves.begin());
         result.native_block_resumes = counters.native_block_resumes;
         result.native_block_cycles = counters.native_block_cycles;
+        result.native_bit_branches = counters.native_bit_branches;
+        result.native_bit_branch_cycles = counters.native_bit_branch_cycles;
         return result;
     }
 

@@ -1,0 +1,42 @@
+diff --git a/mednafen/pce/huc6280.cpp b/mednafen/pce/huc6280.cpp
+index d850ab4..7440ff1 100644
+--- a/mednafen/pce/huc6280.cpp
++++ b/mednafen/pce/huc6280.cpp
+@@ -1,5 +1,6 @@
+ #include <devils_crush/cpu/huc6280_interrupt_entry.hpp>
+ #include <devils_crush/cpu/huc6280_block_move.hpp>
++#include <devils_crush/cpu/huc6280_bit_branch.hpp>
+ /* Mednafen - Multi-system Emulator
+  *
+  * This program is free software; you can redistribute it and/or modify
+@@ -1696,7 +1697,7 @@ NO_INLINE void HuC6280::RunSub(void)
+ 		}
+ 
+ 		if(dc_beetle_active_boundary_model != NULL
+-			&& devils_crush::cpu::huc6280_block_mode(lastop))
++			&& (devils_crush::cpu::huc6280_block_mode(lastop) || devils_crush::cpu::is_huc6280_bit_branch(lastop)))
+ 		{
+ 			if(dc_beetle_active_translated_hook != NULL)
+ 			{
+@@ -1709,7 +1710,20 @@ NO_INLINE void HuC6280::RunSub(void)
+ 				dc_beetle_active_translated_hook(&state,
+ 					dc_beetle_active_translated_hook_user_data);
+ 			}
+-			if(!dc_run_native_block_move(lastop)) return;
++			if(devils_crush::cpu::is_huc6280_bit_branch(lastop))
++            {
++                dc_beetle_execution_owner = DC_EXEC_TRANSLATED;
++                const uint64 before = dc_beetle_execution_counters.cycles[DC_EXEC_TRANSLATED];
++                ++dc_beetle_execution_counters.native_bit_branches;
++                devils_crush::cpu::run_huc6280_bit_branch(lastop, PC, P,
++                    [&](unsigned n) { ADDCYC(n); },
++                    [&](uint32 address) { return RdOp(address); },
++                    [&](uint32 address) { return RdMem(address); },
++                    [&]() { DcSampleInterrupt(); });
++                dc_beetle_execution_counters.native_bit_branch_cycles +=
++                    dc_beetle_execution_counters.cycles[DC_EXEC_TRANSLATED] - before;
++            }
++            else if(!dc_run_native_block_move(lastop)) return;
+ 			continue;
+ 		}
+ 		dc_beetle_execution_block_owner = dc_beetle_execution_owner;

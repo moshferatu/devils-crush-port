@@ -16,7 +16,7 @@ Every divided clock advance is assigned exactly once to one of these owners:
 
 | Owner | Meaning |
 | --- | --- |
-| translated | Actual advances in native IRQ entry, native block transfers or a validated transcript/checkpoint |
+| translated | Actual advances in native IRQ entry, native block transfers, native bit-test branches or a validated transcript/checkpoint |
 | retained | Original opcode path following a recognized, validated core-capability offer |
 | fallback | Original opcode path without an installed translation or validated capability |
 | interrupt | Original core IRQ-entry sequence, including its final sample |
@@ -53,6 +53,10 @@ Native IRQ entry is counted separately as `Native interrupt entries`; the origin
 Those cycles are already included in `translated`; do not add them to the ledger
 again. Native transfer starts do not count as original opcode dispatches or
 transcript installations.
+
+`Native bit branches` likewise reports actual shared-engine starts and exclusive
+CPU cycles, already included in `translated`. It raises weighted corpus coverage
+to **99.8727%**; see [native bit branches](NATIVE_BIT_BRANCHES.md).
 
 ## Counts and profiles
 
