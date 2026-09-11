@@ -1,0 +1,42 @@
+diff --git a/mednafen/pce/huc6280.cpp b/mednafen/pce/huc6280.cpp
+index fdbbcae..276ce97 100644
+--- a/mednafen/pce/huc6280.cpp
++++ b/mednafen/pce/huc6280.cpp
+@@ -2,6 +2,7 @@
+ #include <devils_crush/cpu/huc6280_block_move.hpp>
+ #include <devils_crush/cpu/huc6280_bit_branch.hpp>
+ #include <devils_crush/cpu/huc6280_control_flow.hpp>
++#include <devils_crush/cpu/huc6280_load_status.hpp>
+ /* Mednafen - Multi-system Emulator
+  *
+  * This program is free software; you can redistribute it and/or modify
+@@ -1698,7 +1699,7 @@ NO_INLINE void HuC6280::RunSub(void)
+ 		}
+ 
+ 		if(dc_beetle_active_boundary_model != NULL
+-			&& (devils_crush::cpu::huc6280_block_mode(lastop) || devils_crush::cpu::is_huc6280_bit_branch(lastop) || (dc_beetle_execution_owner != DC_EXEC_IDLE && devils_crush::cpu::is_huc6280_control_flow(lastop))))
++			&& (devils_crush::cpu::huc6280_block_mode(lastop) || devils_crush::cpu::is_huc6280_bit_branch(lastop) || (dc_beetle_execution_owner != DC_EXEC_IDLE && (devils_crush::cpu::is_huc6280_control_flow(lastop) || devils_crush::cpu::is_huc6280_load_status(lastop)))))
+ 		{
+ 			if(dc_beetle_active_translated_hook != NULL)
+ 			{
+@@ -1738,6 +1739,20 @@ NO_INLINE void HuC6280::RunSub(void)
+                 dc_beetle_execution_counters.native_control_flow_cycles +=
+                     dc_beetle_execution_counters.cycles[DC_EXEC_TRANSLATED] - before;
+             }
++            else if(devils_crush::cpu::is_huc6280_load_status(lastop))
++            {
++                dc_beetle_execution_owner = DC_EXEC_TRANSLATED;
++                const uint64 before = dc_beetle_execution_counters.cycles[DC_EXEC_TRANSLATED];
++                ++dc_beetle_execution_counters.native_load_status_instructions;
++                devils_crush::cpu::run_huc6280_load_status(lastop, PC, P, S, A,
++                    [&](unsigned n) { ADDCYC(n); },
++                    [&](uint32 address) { return RdOp(address); },
++                    [&](uint32 address) { return RdMem(address); },
++                    [&]() { DcSampleInterrupt(); },
++                    [&]() { REDOPIMCACHE(); });
++                dc_beetle_execution_counters.native_load_status_cycles +=
++                    dc_beetle_execution_counters.cycles[DC_EXEC_TRANSLATED] - before;
++            }
+             else if(!dc_run_native_block_move(lastop)) return;
+ 			continue;
+ 		}

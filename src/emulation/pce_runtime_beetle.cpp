@@ -835,6 +835,8 @@ public:
         result.native_bit_branch_cycles = counters.native_bit_branch_cycles;
         result.native_control_flows = counters.native_control_flows;
         result.native_control_flow_cycles = counters.native_control_flow_cycles;
+        result.native_load_status_instructions = counters.native_load_status_instructions;
+        result.native_load_status_cycles = counters.native_load_status_cycles;
         return result;
     }
 

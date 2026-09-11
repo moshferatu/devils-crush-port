@@ -16,7 +16,7 @@ Every divided clock advance is assigned exactly once to one of these owners:
 
 | Owner | Meaning |
 | --- | --- |
-| translated | Actual advances in native IRQ entry, native block transfers, native bit-test branches, native control flow or a validated transcript/checkpoint |
+| translated | Actual advances in native IRQ entry, native block transfers, native bit-test branches, native control flow, native absolute loads/status instructions or a validated transcript/checkpoint |
 | retained | Original opcode path following a recognized, validated core-capability offer |
 | fallback | Original opcode path without an installed translation or validated capability |
 | interrupt | Original core IRQ-entry sequence, including its final sample |
@@ -62,6 +62,10 @@ to **99.8727%**; see [native bit branches](NATIVE_BIT_BRANCHES.md).
 CPU cycles, already included in `translated`. Frame-wait returns retain idle
 ownership so the denominator remains comparable. It raises weighted corpus
 coverage to **99.9493%**; see [native control flow](NATIVE_CONTROL_FLOW.md).
+
+`Native load/status` reports shared absolute LDA, PLP and SEI starts and
+exclusive CPU cycles, already included in `translated`. It raises weighted
+corpus coverage to **99.9902%**; see [native load/status](NATIVE_LOAD_STATUS.md).
 
 ## Counts and profiles
 

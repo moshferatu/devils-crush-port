@@ -2,7 +2,7 @@
 
 ## Current priority: shared retained and fallback instructions
 
-[Native control flow](NATIVE_CONTROL_FLOW.md) now covers JSR, BSR, RTS and all three JMP modes through one shared engine. Across 31 routes, it removes 15,804,648 CPU cycles (60.1335% of the remaining non-native time), increasing weighted coverage from 99.8727% to 99.9493%. Frames, stalls, idle time, IRQ counts and abandonments are unchanged. This follows [native bit-test branches](NATIVE_BIT_BRANCHES.md), [block transfers](NATIVE_BLOCK_MOVES.md) and [IRQ entry](NATIVE_INTERRUPT_ENTRY.md). The next priority is absolute loads and interrupt-mask/status instructions, measured with [exclusive execution accounting](EXECUTION_ACCOUNTING.md). The [initial audit](NATIVE_COVERAGE_AUDIT.md) records why twelve-site rankings were superseded.
+[Native absolute LDA, PLP and SEI](NATIVE_LOAD_STATUS.md) remove 8,447,097 CPU cycles (80.6177% of the remaining non-native time) across 31 routes, increasing weighted coverage from 99.9493% to 99.9902%. Frames, stalls, idle time, IRQ counts and abandonments are unchanged. This follows [native control flow](NATIVE_CONTROL_FLOW.md), [bit-test branches](NATIVE_BIT_BRANCHES.md), [block transfers](NATIVE_BLOCK_MOVES.md) and [IRQ entry](NATIVE_INTERRUPT_ENTRY.md). Shared conditional branches and stores are the next priority, measured with [exclusive execution accounting](EXECUTION_ACCOUNTING.md). The [initial audit](NATIVE_COVERAGE_AUDIT.md) records why twelve-site rankings were superseded.
 
 ## Previous round: bank-09 VDC loop, actor input and palette countdown (September 11)
 

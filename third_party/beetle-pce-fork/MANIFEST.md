@@ -819,5 +819,10 @@ this repository.
     - Preserves original execution with `--emulated-boundary` and idle ownership at the excluded frame wait. Reports native starts and exclusive CPU cycles separately from original dispatches.
     - See [native control flow](../../docs/NATIVE_CONTROL_FLOW.md) for coverage and differential/gameplay verification.
 
+42. `patches/0042-huc6280-native-load-status.patch`
+    - Executes absolute LDA, PLP and SEI through a shared native engine with live bus timing, old-mask interrupt sampling and exact restored-status handling.
+    - Keeps the original opcode oracle with `--emulated-boundary`, preserves idle ownership and reports native starts and exclusive CPU cycles.
+    - See [native load/status](../../docs/NATIVE_LOAD_STATUS.md) for coverage and differential/gameplay verification.
+
 All local files and patches are GPL-3.0-or-later. Upstream per-file notices
 and licenses remain authoritative for upstream sources.
