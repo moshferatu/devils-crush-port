@@ -834,5 +834,10 @@ this repository.
     - Preserves zero-page wrapping, wide absolute indexing, device stalls, idle ownership and the original opcode oracle; reports actual starts and exclusive CPU cycles.
     - See [native stores](../../docs/NATIVE_STORES.md) for measurement and differential/gameplay verification.
 
+45. `patches/0045-huc6280-native-loads.patch`
+    - Executes the remaining 18 LDA, LDX and LDY opcodes through the shared native engine; absolute LDA remains in patch 0042.
+    - Preserves operand and pointer ordering, address wrapping, final-cycle interrupt sampling, NZ/T flags, device stalls and idle ownership.
+    - Reports actual starts and exclusive CPU cycles, with the original opcode oracle retained. See [native loads](../../docs/NATIVE_LOADS.md).
+
 All local files and patches are GPL-3.0-or-later. Upstream per-file notices
 and licenses remain authoritative for upstream sources.

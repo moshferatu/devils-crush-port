@@ -841,6 +841,8 @@ public:
         result.native_branch_cycles = counters.native_branch_cycles;
         result.native_stores = counters.native_stores;
         result.native_store_cycles = counters.native_store_cycles;
+        result.native_loads = counters.native_loads;
+        result.native_load_cycles = counters.native_load_cycles;
         return result;
     }
 
