@@ -13,6 +13,65 @@ using emulation::RoutineEntry;
 using emulation::RoutineKey;
 using emulation::RoutineReplacement;
 
+std::optional<RoutineReplacement> replace_ranked_phase_instruction(
+    const RoutineEntry& entry, const std::span<const std::byte> work_ram)
+{
+    const auto pc = entry.routine.logical_pc;
+    const auto bank = entry.routine.physical_bank;
+    const bool valid = (bank == 3U && (pc == 0x7AE0U || pc == 0x7AEBU || pc == 0x7AEFU
+            || pc == 0x66A8U || pc == 0x66B0U || pc == 0x7ACAU || pc == 0x7AD5U))
+        || (bank == 0x45U && pc == 0x4148U) || (bank == 1U && pc == 0xD7B3U);
+    if (!valid || entry.registers.program_counter != pc
+        || entry.registers.mpr[pc >> 13U] != bank || entry.registers.mpr[1] != 0xF8U
+        || work_ram.size() < 0x2000U || (entry.registers.status & 0x20U) != 0U) {
+        return std::nullopt;
+    }
+    auto r = entry.registers;
+    RoutineReplacement result{};
+    std::uint32_t cycles = 6U;
+    r.program_counter = static_cast<std::uint16_t>(pc + 2U);
+    const auto nz = [&] {
+        r.status = static_cast<std::uint8_t>((r.status & 0x7DU)
+            | (r.accumulator == 0U ? 2U : r.accumulator & 0x80U));
+    };
+    if (pc == 0x7ACAU || pc == 0x7AD5U || pc == 0xD7B3U) {
+        // JSR writes its operand address before advancing the core clock.
+        const auto saved = static_cast<std::uint16_t>(pc + 2U);
+        for (unsigned byte = 0; byte < 2; ++byte) {
+            result.work_ram_writes.push_back({.instruction = entry.routine,
+                .logical_address = static_cast<std::uint16_t>(0x2100U + r.stack_pointer--),
+                .value = static_cast<std::uint8_t>(byte == 0 ? saved >> 8U : saved),
+                .master_cycle_offset = 0U});
+        }
+        r.program_counter = pc == 0xD7B3U ? 0xD950U : 0xC018U;
+        cycles = 21U;
+    } else if (pc == 0x7AEFU) {
+        result.work_ram_writes.push_back({.instruction = entry.routine,
+            .logical_address = static_cast<std::uint16_t>(0x3980U + r.x),
+            .value = 0U, .master_cycle_offset = 15U});
+        ++r.program_counter; cycles = 15U;
+    } else if (pc == 0x7AEBU) {
+        // CMP remains binary with D set, and preserves A and V.
+        const auto difference = static_cast<std::uint8_t>(r.accumulator - 4U);
+        r.status = static_cast<std::uint8_t>((r.status & 0x7CU)
+            | (r.accumulator >= 4U ? 1U : 0U)
+            | (difference == 0U ? 2U : difference & 0x80U));
+    } else {
+        if (pc == 0x4148U) {
+            r.accumulator = std::to_integer<std::uint8_t>(work_ram[(0xF5U + r.x) & 0xFFU]);
+            cycles = 12U;
+        } else if (pc == 0x66B0U) { r.accumulator ^= 1U; }
+        else { r.accumulator = 4U; }
+        nz();
+    }
+    result.return_instruction = {r.mpr[r.program_counter >> 13U], r.program_counter};
+    result.output_registers = r;
+    result.body_master_cycles = cycles;
+    result.checkpoints.push_back({.interrupt_sample_master_cycle_offset = cycles - 3U,
+        .master_cycle_offset = cycles, .instruction = entry.routine, .registers = r});
+    return result;
+}
+
 std::optional<RoutineReplacement> replace_ranked_condition_instruction(
     const RoutineEntry& entry, const std::span<const std::byte> work_ram)
 {
@@ -1140,17 +1199,19 @@ std::optional<RoutineReplacement> replace_upper_scheduler_return(
         || entry.registers.mpr[entry.routine.logical_pc >> 13U] != entry.routine.physical_bank
         || work_ram.size() < 0x2000U
         || (entry.routine != RoutineKey{0x45U, 0x4B85U} && entry.routine != kRunInputReturn
+            && entry.routine != RoutineKey{0U, 0xE8E6U}
             && !absorbed_return_fits_atomically(entry, 0U))) {
         return std::nullopt;
     }
     // Enter on the RTS itself: the scheduler may have installed any caller
     // frame. Read that live frame without assuming which parent opened it.
-    // Most returns stay atomic. The audio and Run-input returns use an exact
+    // Most returns stay atomic. The audio, Run-input and RNG returns use an exact
     // LastCycle checkpoint to preserve interrupt sampling across either horizon.
     RoutineReplacement replacement{};
     absorb_return(replacement, work_ram, entry.registers.stack_pointer,
         entry.routine, 0U, entry.registers);
-    if (entry.routine == RoutineKey{0x45U, 0x4B85U} || entry.routine == kRunInputReturn) {
+    if (entry.routine == RoutineKey{0x45U, 0x4B85U} || entry.routine == kRunInputReturn
+        || entry.routine == RoutineKey{0U, 0xE8E6U}) {
         // PLP may just have cleared I while an IRQ was already pending.
         // Sample again at RTS LastCycle; an atomic transcript without a
         // checkpoint would preserve PLP's old-mask latch for one extra opcode.

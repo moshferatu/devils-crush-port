@@ -20,6 +20,17 @@ replace_native_gameplay_routine_impl(
     const std::span<const std::byte> work_ram,
     const std::span<const std::byte> rom)
 {
+    if (entry.routine == RoutineKey{.physical_bank = 0x03U, .logical_pc = 0x7AE0U}
+        || entry.routine == RoutineKey{.physical_bank = 0x03U, .logical_pc = 0x7AEBU}
+        || entry.routine == RoutineKey{.physical_bank = 0x03U, .logical_pc = 0x7AEFU}
+        || entry.routine == RoutineKey{.physical_bank = 0x45U, .logical_pc = 0x4148U}
+        || entry.routine == RoutineKey{.physical_bank = 0x01U, .logical_pc = 0xD7B3U}
+        || entry.routine == RoutineKey{.physical_bank = 0x03U, .logical_pc = 0x66A8U}
+        || entry.routine == RoutineKey{.physical_bank = 0x03U, .logical_pc = 0x66B0U}
+        || entry.routine == RoutineKey{.physical_bank = 0x03U, .logical_pc = 0x7ACAU}
+        || entry.routine == RoutineKey{.physical_bank = 0x03U, .logical_pc = 0x7AD5U}) {
+        return detail::replace_ranked_phase_instruction(entry, work_ram);
+    }
     if (entry.routine == RoutineKey{.physical_bank = 0x02U, .logical_pc = 0x5A05U}
         || entry.routine == RoutineKey{.physical_bank = 0x03U, .logical_pc = 0x61A9U}
         || entry.routine == RoutineKey{.physical_bank = 0x01U, .logical_pc = 0xC9BBU}

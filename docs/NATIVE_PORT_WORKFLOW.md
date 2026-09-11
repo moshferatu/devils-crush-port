@@ -5,7 +5,110 @@ iteration loop fast enough to port related code as a unit. It applies to
 Milestone 4 native gameplay work; it does not weaken the release or milestone
 acceptance criteria in [PLAN.md](../PLAN.md).
 
-## Current priority: actor conditions and sprite-attribute calls (September 10)
+## Current priority: bumper phases, Three-Blobs constants, music load and RNG return (September 10)
+
+The latest cabinet ranking reports **17,316 master cycles** across twelve sites.
+This batch changes ten sites accounting for **14,076 reported cycles (81.3%)**:
+nine new independent native entries and interrupt sampling for the existing RNG
+return. Reported cycle totals are prioritization evidence, not a measured saving.
+
+| Rank | Address | Reported cycles | Treatment |
+| --- | --- | ---: | --- |
+| 1 | 03:7AE0 | 2,430 | LDA immediate 04, bumper timer reload |
+| 2 | 03:7AEB | 2,430 | CMP immediate 04, bumper phase comparison |
+| 3 | 00:FA67 | 2,196 | Existing BBR0 timing guard retained |
+| 4 | 03:7AEF | 1,500 | STZ 3980,X, bumper phase reset |
+| 5 | 00:E8E6 | 1,170 | Live-stack RNG RTS now samples at 18 and retires at 21 |
+| 6 | 45:4148 | 1,140 | LDA zero-page F5,X, music channel bank |
+| 7 | 01:D7B3 | 1,134 | JSR D950, sprite-attribute processing |
+| 8 | 03:66A8 | 1,128 | LDA immediate 04, Three-Blobs timer reload |
+| 9 | 03:66B0 | 1,128 | EOR immediate 01, Three-Blobs phase toggle |
+| 10 | 45:4B84 | 1,044 | PLP remains in the core |
+| 11 | 03:7ACA | 1,008 | JSR C018, bumper wait |
+| 12 | 03:7AD5 | 1,008 | JSR C018, bumper wait |
+
+The new phase helper validates the exact bank/PC and live code mapping, MPR1=F8,
+all 8 KiB of RAM and T clear. It supports all X, A and stack-pointer values, D
+set or clear, and either interrupt horizon. Immediate loads/EOR/CMP sample at
+3 and retire at 6 master cycles; CMP is binary even with D set and preserves
+A and V. The music load wraps F5+X within zero page and samples at 9 before
+retiring at 12. STZ samples at 12 and writes zero at 15 without changing flags.
+JSR pushes PC+2 high then low at cycle 0, wraps within the stack page, samples at
+18 and retires at 21 with the target's live MPR mapping. Existing enclosing
+actor and music transcripts retain their priority.
+
+The RNG return retains its live stack and register semantics and now uses the
+same explicit LastCycle sampling as the music and Run-input returns. It accepts
+both interrupt horizons instead of requiring more than 21 available cycles.
+The other shared returns keep their existing policies.
+
+Two separate timing constraints remain. FA67 contains a zero-page load and a
+branch within one opcode, with two interrupt samples and separate core clock
+advances. Its first 12 cycles still require an event-free interval; deleting
+that guard would change event ordering. At 4B84, PLP samples the old interrupt
+mask before restoring P. The generic checkpoint's override only expresses
+old-I-clear sampling, so a standalone PLP that restores I from set to clear
+cannot use that interface faithfully. Neither retained site was reverted or
+counted as newly covered.
+
+The ROM-free phase fixture checks **589,824 cases** across all status bytes,
+accumulator/index values, zero-page and stack wrapping, mapped returns, writes
+and both horizons. The shared RTS fixture additionally checks the RNG return's
+new checkpoint across all status and stack values and both horizons.
+
+`verify_ranked_phase.cmake` uses the established 3,600-frame bumper activation
+(`3341:3E95:08`) and pins all five pre-existing assembly hashes: frame state,
+scheduler calls, scoped call writes, all work-RAM writes and device-bus writes.
+All ten changed sites are reached: 7AE0/7AEB 298 each, 7AEF 72, 4148 10,812,
+D7B3 24, 66A8/66B0 267 each, 7ACA/7AD5 16 each and E8E6 77. The independent
+RNG oracle retains its five original hashes and improves admission from
+46/53 to 53/53. The activation observes 2,893 scheduler calls, 895,886 scoped
+writes, 12,704,178 RAM writes and 3,146,298 device writes.
+
+Registry admissions increase **911 -> 920**, reachable keys **959 -> 968**,
+patched-route admissions **200 -> 209**, and partial routes **135 -> 134**.
+Proven calls are **3,932,550 / 3,988,732 (98.6%)**; the 48 reachable keys without
+an all-call proof are unchanged. The seam manifest has **387** non-overlapping
+ranges after splitting the existing Three-Blobs, music and sprite-controller
+classifications around the new entries.
+
+Full-registry comparisons use the saved pre-batch 911-entry executable and the
+new 920-entry executable. Across all **31 standard routes**, ranked residue
+falls **98,922 -> 61,584 cycles**, saving **37,338**. The established bumper
+activation adds **9,645 -> 2,280 cycles**, saving **7,365**. Combined, the twelve
+ranked sites fall **108,567 -> 63,864 cycles (41.2%)**. The ten changed sites
+alone fall **44,703 -> 0**; all remaining ranked cycles are at the two unchanged
+timing-sensitive sites.
+
+| Address | Local before | Local after |
+| --- | ---: | ---: |
+| 03:7AE0 | 1,812 | 0 |
+| 03:7AEB | 1,812 | 0 |
+| 00:FA67 | 43,776 | 43,776 |
+| 03:7AEF | 1,104 | 0 |
+| 00:E8E6 | 2,868 | 0 |
+| 45:4148 | 27,660 | 0 |
+| 01:D7B3 | 4,119 | 0 |
+| 03:66A8 | 2,280 | 0 |
+| 03:66B0 | 2,376 | 0 |
+| 45:4B84 | 20,088 | 20,088 |
+| 03:7ACA | 336 | 0 |
+| 03:7AD5 | 336 | 0 |
+
+Every before/after frame hash and abandonment count matches, and every route's
+total interpreter-cycle decrease equals its ranked-site decrease. Higharc,
+radial and sidestep retain one pre-existing abandonment each; the other 28
+standard routes and activation have zero. The activation's full-registry frame
+SHA-256 remains
+`BC7D702277B52ABC15B10D189A0CF22044BE9260864AF85EDC7D5CCBA2311039`.
+Measurements are in `out/ranked-phase-cost/manifest.csv`, `activation.csv` and
+`addresses.csv`; these local replay totals are distinct from the cabinet report.
+
+Release validation passes: the phase and RNG five-trace oracles, exhaustive
+timing fixture, host registry and captured face/hand regressions. The Debug timing fixture and both Debug five-trace oracles also pass. Registry
+generation/check and all 387 classified execution seams pass.
+
+## Previous round: actor conditions and sprite-attribute calls (September 10)
 
 The latest cabinet ranking reports **101,610 master cycles** across twelve sites.
 This batch ports all twelve, grouped into actor conditions, coordinate state,

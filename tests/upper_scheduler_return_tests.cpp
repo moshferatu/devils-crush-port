@@ -17,6 +17,7 @@ void require(bool ok, const char* message) { if (!ok) { throw std::runtime_error
 #include "ranked_animation_fixture.hpp"
 #include "ranked_coordinate_fixture.hpp"
 #include "ranked_conditions_fixture.hpp"
+#include "ranked_phase_fixture.hpp"
 int main()
 {
     try {
@@ -31,6 +32,7 @@ int main()
         verify_ranked_animation_instructions();
         verify_ranked_coordinate_instructions();
         verify_ranked_condition_instructions();
+        verify_ranked_phase_instructions();
         std::array<std::byte, 0x2000> ram{};
         for (const auto routine : {RoutineKey{5U, 0x7376U}, RoutineKey{5U, 0x7379U},
                  RoutineKey{5U, 0x7387U}, RoutineKey{5U, 0x738AU}, RoutineKey{5U, 0x738FU},
@@ -520,10 +522,10 @@ int main()
                         && result->return_instruction == RoutineKey{r.mpr[pc >> 13U], pc}, "Live stack target or mapper changed");
                     require(out.status == r.status && out.accumulator == r.accumulator
                         && out.x == r.x && out.y == r.y && out.mpr == r.mpr, "RTS clobbered registers");
-                    require(result->body_master_cycles == 21U && result->checkpoints.size() == ((routine.physical_bank == 0x45U || routine == RoutineKey{1U, 0xC4C8U}) ? 1U : 0U)
+                    require(result->body_master_cycles == 21U && result->checkpoints.size() == ((routine.physical_bank == 0x45U || routine == RoutineKey{1U, 0xC4C8U} || routine == RoutineKey{0U, 0xE8E6U}) ? 1U : 0U)
                         && result->work_ram_writes.empty() && !result->native_rts_instruction,
                         "Return was not a read-only atomic transcript");
-                    if ((routine.physical_bank == 0x45U || routine == RoutineKey{1U, 0xC4C8U})) {
+                    if ((routine.physical_bank == 0x45U || routine == RoutineKey{1U, 0xC4C8U} || routine == RoutineKey{0U, 0xE8E6U})) {
                         const auto& sample = result->checkpoints.front();
                         require(sample.interrupt_sample_master_cycle_offset == 18U
                             && sample.master_cycle_offset == 21U && sample.instruction == routine
@@ -539,10 +541,10 @@ int main()
             }
             for (unsigned horizon = 0; horizon <= 22U; ++horizon) {
                 entry.master_cycles_until_timer_interrupt = horizon;
-                require(replace_upper_scheduler_return(entry, ram).has_value() == ((routine.physical_bank == 0x45U || routine == RoutineKey{1U, 0xC4C8U}) || horizon > 21U), "Timer horizon guard changed");
+                require(replace_upper_scheduler_return(entry, ram).has_value() == ((routine.physical_bank == 0x45U || routine == RoutineKey{1U, 0xC4C8U} || routine == RoutineKey{0U, 0xE8E6U}) || horizon > 21U), "Timer horizon guard changed");
                 entry.master_cycles_until_timer_interrupt = 100U;
                 entry.master_cycles_until_user_event = horizon;
-                require(replace_upper_scheduler_return(entry, ram).has_value() == ((routine.physical_bank == 0x45U || routine == RoutineKey{1U, 0xC4C8U}) || horizon > 21U), "User horizon guard changed");
+                require(replace_upper_scheduler_return(entry, ram).has_value() == ((routine.physical_bank == 0x45U || routine == RoutineKey{1U, 0xC4C8U} || routine == RoutineKey{0U, 0xE8E6U}) || horizon > 21U), "User horizon guard changed");
                 entry.master_cycles_until_user_event = 100U;
             }
             require(!replace_upper_scheduler_return(entry, std::span(ram).first(0x1FFF)), "Short RAM admitted");
