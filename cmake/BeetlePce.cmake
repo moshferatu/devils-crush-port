@@ -84,6 +84,7 @@ function(dc_provide_beetle_pce)
         "${beetle_fork_root}/patches/0046-huc6280-native-logical.patch"
         "${beetle_fork_root}/patches/0047-huc6280-native-rmw.patch"
         "${beetle_fork_root}/patches/0048-huc6280-native-compare.patch"
+        "${beetle_fork_root}/patches/0049-huc6280-native-stack-branch.patch"
     )
 
     find_package(Git REQUIRED)
@@ -593,6 +594,9 @@ function(dc_provide_beetle_pce)
                     "PC == 0x66A3 && lastop == 0xDE"
                     beetle_patch_marker_two
                 )
+            elseif(beetle_patch_name MATCHES "^0049-")
+                string(FIND "${beetle_cpu_source}" "run_huc6280_stack_branch" beetle_patch_marker_one)
+                string(FIND "${beetle_cpu_source}" "native_stack_branch_cycles" beetle_patch_marker_two)
             elseif(beetle_patch_name MATCHES "^0048-")
                 string(FIND "${beetle_cpu_source}" "run_huc6280_compare" beetle_patch_marker_one)
                 string(FIND "${beetle_cpu_source}" "native_compare_cycles" beetle_patch_marker_two)

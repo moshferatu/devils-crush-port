@@ -854,5 +854,10 @@ this repository.
     - Preserves live operand reads, wide indexing, pointer wrapping, interrupt samples and flag timing.
     - Reports actual starts and exclusive CPU cycles, preserves idle ownership and retains the original opcode oracle. See [native comparisons](../../docs/NATIVE_COMPARISONS.md).
 
+49. `patches/0049-huc6280-native-stack-branch.patch`
+    - Executes the seven remaining push/pop instructions and BRA through a shared native engine; PLP remains in its existing status engine.
+    - Preserves stack wrapping, live bus access, interrupt samples, PHP status timing and wide branch arithmetic.
+    - Reports actual starts and exclusive CPU cycles while preserving idle ownership and the original opcode oracle. See [native stack operations and BRA](../../docs/NATIVE_STACK_BRANCH.md).
+
 All local files and patches are GPL-3.0-or-later. Upstream per-file notices
 and licenses remain authoritative for upstream sources.

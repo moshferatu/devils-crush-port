@@ -2,7 +2,7 @@
 
 ## Current priority: shared retained and fallback instructions
 
-[Native comparisons](NATIVE_COMPARISONS.md) remove 51,051 CPU cycles (26.5770% of remaining non-native time) across 31 routes, increasing weighted coverage from 99.9991% to 99.9993%. All 15 CMP, CPX and CPY forms now have shared native implementations. Retained opcode execution is zero throughout the corpus; 141,036 fallback CPU cycles remain. Frames, stalls, idle time, IRQ counts and abandonments are unchanged. This follows [increments, decrements, shifts and rotates](NATIVE_RMW.md) and the earlier shared engines. Stack operations and BRA are next, measured with [exclusive execution accounting](EXECUTION_ACCOUNTING.md). The [initial audit](NATIVE_COVERAGE_AUDIT.md) records why twelve-site rankings were superseded.
+[Native stack operations and BRA](NATIVE_STACK_BRANCH.md) remove 69,576 CPU cycles (49.3321% of remaining non-native time) across 31 routes, increasing weighted coverage from 99.9993% to 99.9997%. All push/pop instructions and BRA now have shared native implementations. Retained opcode execution remains zero throughout the corpus; 71,460 fallback CPU cycles remain. Frames, stalls, idle time, IRQ counts and abandonments are unchanged. This follows [comparisons](NATIVE_COMPARISONS.md) and the earlier shared engines. Mapping, register transfers and flags are next, followed by arithmetic, measured with [exclusive execution accounting](EXECUTION_ACCOUNTING.md). The [initial audit](NATIVE_COVERAGE_AUDIT.md) records why twelve-site rankings were superseded.
 
 ## Previous round: bank-09 VDC loop, actor input and palette countdown (September 11)
 

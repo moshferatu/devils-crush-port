@@ -17885,6 +17885,8 @@ void print_execution_accounting(const devils_crush::emulation::PceRuntime& runti
               << "; CPU cycles=" << counters->native_rmw_cycles << '\n';
     std::cout << "Native compare operations: instructions=" << counters->native_compare_instructions
               << "; CPU cycles=" << counters->native_compare_cycles << '\n';
+    std::cout << "Native stack/branch operations: instructions=" << counters->native_stack_branch_instructions
+              << "; CPU cycles=" << counters->native_stack_branch_cycles << '\n';
 }
 
 void print_native_cycle_share(

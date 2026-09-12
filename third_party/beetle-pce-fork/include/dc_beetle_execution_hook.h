@@ -61,6 +61,8 @@ typedef struct dc_beetle_execution_accounting {
     uint64_t native_rmw_cycles; // Exclusive CPU time
     uint64_t native_compare_instructions;
     uint64_t native_compare_cycles; // Exclusive CPU time
+    uint64_t native_stack_branch_instructions;
+    uint64_t native_stack_branch_cycles; // Exclusive CPU time
 } dc_beetle_execution_accounting;
 extern dc_beetle_execution_accounting dc_beetle_execution_counters;
 extern unsigned dc_beetle_execution_owner;

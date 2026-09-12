@@ -98,6 +98,10 @@ void exercise(const char* rom, bool native_scheduler, bool native_entry = false)
             "Restored native compare operations count differs");
     require(replay.native_compare_cycles == after.native_compare_cycles - before.native_compare_cycles,
             "Restored native compare operations cycles differ");
+    require(replay.native_stack_branch_instructions == after.native_stack_branch_instructions - before.native_stack_branch_instructions,
+            "Restored native stack/branch operations count differs");
+    require(replay.native_stack_branch_cycles == after.native_stack_branch_cycles - before.native_stack_branch_cycles,
+            "Restored native stack/branch operations cycles differ");
     require(replay.native_bit_branches == after.native_bit_branches - before.native_bit_branches,
             "Restored native bit-branch count differs");
     require(replay.native_bit_branch_cycles == after.native_bit_branch_cycles - before.native_bit_branch_cycles,

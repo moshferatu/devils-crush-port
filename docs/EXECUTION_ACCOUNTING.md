@@ -16,7 +16,7 @@ Every divided clock advance is assigned exactly once to one of these owners:
 
 | Owner | Meaning |
 | --- | --- |
-| translated | Actual advances in native IRQ entry, native block transfers, native bit-test branches, native control flow, native absolute loads/status instructions, native conditional branches, native stores, native loads, native logical operations, native read/modify/write operations, native comparisons or a validated transcript/checkpoint |
+| translated | Actual advances in native IRQ entry, native block transfers, native bit-test branches, native control flow, native absolute loads/status instructions, native conditional branches, native stores, native loads, native logical operations, native read/modify/write operations, native comparisons, native stack operations/BRA or a validated transcript/checkpoint |
 | retained | Original opcode path following a recognized, validated core-capability offer |
 | fallback | Original opcode path without an installed translation or validated capability |
 | interrupt | Original core IRQ-entry sequence, including its final sample |
@@ -94,7 +94,14 @@ see [native read/modify/write operations](NATIVE_RMW.md).
 `Native compare operations` reports actual starts and exclusive CPU cycles for
 all 15 CMP, CPX and CPY opcodes, already included in `translated`. Device stalls
 remain separate; the original opcode engine remains available as the oracle.
-Weighted corpus coverage reaches **99.9993%**, with no retained opcode cycles on these routes. See [native comparisons](NATIVE_COMPARISONS.md).
+See [native comparisons](NATIVE_COMPARISONS.md).
+
+`Native stack/branch operations` reports actual starts and exclusive CPU cycles
+for PHA, PHP, PHX, PHY, PLA, PLX, PLY and BRA, already included in `translated`.
+PLP remains in the earlier status engine. Device stalls remain separate and the
+original opcode engine remains the oracle. Weighted corpus coverage reaches
+**99.9997%**, with no retained opcode cycles on these routes.
+See [native stack operations and BRA](NATIVE_STACK_BRANCH.md).
 
 ## Counts and profiles
 
