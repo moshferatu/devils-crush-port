@@ -859,5 +859,9 @@ this repository.
     - Preserves stack wrapping, live bus access, interrupt samples, PHP status timing and wide branch arithmetic.
     - Reports actual starts and exclusive CPU cycles while preserving idle ownership and the original opcode oracle. See [native stack operations and BRA](../../docs/NATIVE_STACK_BRANCH.md).
 
+50. `patches/0050-huc6280-native-register.patch`
+    - Executes 22 mapping, register-transfer, swap, clear, flag and NOP opcodes through a shared native engine.
+    - Preserves live mapping-cache updates, the MPR[8] mirror, intermediate register/flag timing and CLI interrupt-mask publication.
+    - Reports actual starts and exclusive CPU cycles while preserving idle ownership and the original opcode oracle. See [native register and mapping operations](../../docs/NATIVE_REGISTERS.md).
 All local files and patches are GPL-3.0-or-later. Upstream per-file notices
 and licenses remain authoritative for upstream sources.

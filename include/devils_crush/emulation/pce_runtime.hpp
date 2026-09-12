@@ -594,6 +594,8 @@ struct ExecutionAccounting {
     std::uint64_t native_compare_cycles = 0;
     std::uint64_t native_stack_branch_instructions = 0;
     std::uint64_t native_stack_branch_cycles = 0;
+    std::uint64_t native_register_instructions = 0;
+    std::uint64_t native_register_cycles = 0;
 };
 
 class PceRuntime {

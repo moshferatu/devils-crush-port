@@ -851,6 +851,8 @@ public:
         result.native_compare_cycles = counters.native_compare_cycles;
         result.native_stack_branch_instructions = counters.native_stack_branch_instructions;
         result.native_stack_branch_cycles = counters.native_stack_branch_cycles;
+        result.native_register_instructions = counters.native_register_instructions;
+        result.native_register_cycles = counters.native_register_cycles;
         return result;
     }
 
