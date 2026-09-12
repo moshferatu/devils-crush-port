@@ -77,7 +77,7 @@ set(stack_write_count "${CMAKE_MATCH_1}")
 # with the ones it reached, so its own summary is read back too.
 string(
     REGEX MATCH
-    "Registry calls: ([0-9]+) native of ([0-9]+) entered"
+    "Registry calls: ([0-9]+) accepted of ([0-9]+) entered"
     registry_calls_line
     "${registry_output}"
 )

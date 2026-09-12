@@ -534,6 +534,7 @@ struct CommandLine {
     // sixth seam and the first that is a rule rather than a device.
     bool emulated_boundary = false;
     bool report_boundary_coverage = false;
+    bool execution_details = false;
     bool emulated_idle = false;
     bool report_idle_coverage = false;
     bool emulated_pad = false;
@@ -5115,6 +5116,8 @@ parse_logical_address_range(const std::string_view text)
             options.report_scheduler_coverage = true;
         } else if (argument == "--emulated-boundary") {
             options.emulated_boundary = true;
+        } else if (argument == "--execution-details") {
+            options.execution_details = true;
         } else if (argument == "--report-boundary-coverage") {
             options.report_boundary_coverage = true;
         } else if (argument == "--emulated-idle") {
@@ -9379,12 +9382,12 @@ void print_usage()
         << "Devil's Crush PC port - Milestone 4\n\n"
         << "Usage:\n"
         << "  devils-crush [--rom <path>]\n"
-           "      [--bonus-stage <1-6>] [--emulate-only]\n"
+           "      [--bonus-stage <1-6>] [--emulate-only] [--execution-details]\n"
            "      [--capture-session <directory>]\n"
            "      [--native-cycle-census <census.csv>]\n"
         << "  devils-crush --replay-session <inputs.csv> [--rom <path>]\n"
         << "  devils-crush --cabinet [--rom <path>]\n"
-           "      [--bonus-stage <1-6>] [--emulate-only]\n"
+           "      [--bonus-stage <1-6>] [--emulate-only] [--execution-details]\n"
            "      [--capture-session <directory>]\n"
            "      [--native-cycle-census <census.csv>]\n"
         << "  devils-crush --validate-rom [path]\n"
@@ -9728,6 +9731,7 @@ void print_usage()
            "  it. The decision the processor makes between two\n"
            "  instructions is a sixth, and is a rule rather than a device;\n"
            "  --emulated-boundary hands it back, and\n"
+           "  --execution-details expands the cabinet exit report.\n"
            "  --report-boundary-coverage prints what the route asked of\n"
            "  it. The frame-sync spin at 00:E323 is advanced through rather\n"
            "  than executed, which is a capability rather than a\n"
@@ -17824,7 +17828,8 @@ using NativeRegistryEntryObserver = std::function<void(
 }
 
 // Actual clock ownership is independent of accepted-body registry estimates.
-void print_execution_accounting(const devils_crush::emulation::PceRuntime& runtime)
+void print_execution_accounting(const devils_crush::emulation::PceRuntime& runtime,
+                                const bool detailed = true)
 {
     using Accounting = devils_crush::emulation::ExecutionAccounting;
     const auto counters = runtime.execution_accounting();
@@ -17833,15 +17838,17 @@ void print_execution_accounting(const devils_crush::emulation::PceRuntime& runti
     for (const auto cycles : counters->cycles) { accounted += cycles; }
     const auto error = static_cast<std::int64_t>(counters->elapsed_master_cycles)
                      - static_cast<std::int64_t>(accounted);
-    std::cout << "Execution cycles: elapsed=" << counters->elapsed_master_cycles
-              << "; accounted=" << accounted << "; unaccounted=" << error << '\n';
-    constexpr std::array<const char*, Accounting::owner_count> names{
-        "translated", "retained", "fallback", "interrupt", "idle", "device", "other"};
-    std::cout << "Execution ownership:";
-    for (std::size_t i = 0; i < names.size(); ++i) {
-        std::cout << (i == 0 ? " " : "; ") << names[i] << '=' << counters->cycles[i];
+    if (detailed) {
+        std::cout << "Execution cycles: elapsed=" << counters->elapsed_master_cycles
+                  << "; accounted=" << accounted << "; unaccounted=" << error << '\n';
+        constexpr std::array<const char*, Accounting::owner_count> names{
+            "translated", "retained", "fallback", "interrupt", "idle", "device", "other"};
+        std::cout << "Execution ownership:";
+        for (std::size_t i = 0; i < names.size(); ++i) {
+            std::cout << (i == 0 ? " " : "; ") << names[i] << '=' << counters->cycles[i];
+        }
+        std::cout << '\n';
     }
-    std::cout << '\n';
     const auto working = counters->elapsed_master_cycles
         - counters->cycles[Accounting::idle] - counters->cycles[Accounting::device];
     std::cout << "Native execution outside wait/stalls: "
@@ -17850,6 +17857,23 @@ void print_execution_accounting(const devils_crush::emulation::PceRuntime& runti
         std::cout << " (" << std::fixed << std::setprecision(4)
                   << 100.0 * static_cast<double>(counters->cycles[Accounting::translated])
                      / static_cast<double>(working) << "%)" << std::defaultfloat;
+    }
+    if (!detailed) {
+        std::cout << '\n'
+                  << "Wait cycles: " << counters->cycles[Accounting::idle]
+                  << "; device stall cycles: " << counters->cycles[Accounting::device] << '\n'
+                  << "Execution accounting: " << counters->elapsed_master_cycles
+                  << " elapsed; " << error << " unaccounted\n";
+        for (const auto owner : {Accounting::retained, Accounting::fallback,
+                                 Accounting::interrupt, Accounting::other}) {
+            if (counters->cycles[owner] != 0U) {
+                constexpr std::array<const char*, Accounting::owner_count> labels{
+                    "translated", "retained", "fallback", "interrupt", "idle", "device", "other"};
+                std::cout << "Non-native execution: " << labels[owner] << '='
+                          << counters->cycles[owner] << " master cycles\n";
+            }
+        }
+        return;
     }
     std::cout << '\n'
               << "Original opcode dispatches: retained=" << counters->opcode_dispatches[Accounting::retained]
@@ -18019,6 +18043,7 @@ void print_interpreted_residue_summary(
               << actionable_cycles << " master cycles across "
               << actionable.size() << " address(es)\n";
 
+    if (actionable.empty()) { return; }
     constexpr std::size_t kTopResidueAddresses = 12U;
     std::cout << "Interpreter residue, top "
               << std::min(kTopResidueAddresses, actionable.size())
@@ -18038,7 +18063,9 @@ void print_interpreted_residue_summary(
 void print_native_registry_summary(
     const NativeRegistryDeployment& deployment,
     const ReplacementNesting nesting,
-    const devils_crush::emulation::PceRuntime& runtime)
+    const devils_crush::emulation::PceRuntime& runtime,
+    const bool detailed = true,
+    const bool cabinet_flipper_hook = false)
 {
     const auto deployed = static_cast<std::size_t>(std::count_if(
         deployment.rows.begin(),
@@ -18058,6 +18085,37 @@ void print_native_registry_summary(
         total_declined += row.declined_at_horizon;
         native_cycles += row.native_master_cycles;
     }
+    if (!detailed) {
+        const auto host_count = cabinet_flipper_hook ? 1U : 0U;
+        std::cout << "Registry: " << deployed << " routines installed directly";
+        if (cabinet_flipper_hook) {
+            std::cout << "; 1 via native cabinet flipper input hook (01:C500)";
+        }
+        std::cout << "; " << kWithheldRoutines.size() << " withheld";
+        const auto unavailable = deployment.rows.size() - deployed - host_count;
+        if (unavailable > kWithheldRoutines.size()) {
+            std::cout << "; " << unavailable - kWithheldRoutines.size()
+                      << " otherwise excluded";
+        }
+        std::cout << "\nRegistry routines entered: " << entered_routines << '\n';
+        print_execution_accounting(runtime, false);
+        const auto profile = runtime.export_interpreted_instruction_profile();
+        const auto remaining = std::count_if(profile.begin(), profile.end(),
+            [](const auto& entry) {
+                return !is_frame_sync_wait_instruction(entry.instruction);
+            });
+        if (remaining == 0) {
+            std::cout << "Interpreter residue outside frame-sync wait: none\n";
+        } else {
+            std::cout << "Interpreter residue outside frame-sync wait: "
+                      << remaining << " address(es); use --execution-details for ranking\n";
+        }
+        if (nesting.overflowed != 0U) {
+            std::cout << "Registry depth refusals: " << nesting.overflowed << '\n';
+        }
+        std::cout << "Registry abandonments: " << nesting.abandoned << '\n';
+        return;
+    }
     total_entries += deployment.core_capability_entries;
     total_accepted += deployment.core_capability_accepted;
     native_cycles += deployment.core_capability_master_cycles;
@@ -18066,8 +18124,8 @@ void print_native_registry_summary(
     native_cycles += deployment.auxiliary_transcript_master_cycles;
     const auto elapsed = deployment.span.elapsed();
     if (kWithheldRoutines.empty()) {
-        std::cout << "Registry hold-backs: none; every admitted routine is "
-                     "deployed.\n";
+        std::cout << "Registry hold-backs: none; no routines withheld from "
+                     "deployment.\n";
     } else {
         std::cout << "Registry hold-backs: ";
         for (std::size_t index = 0U; index < kWithheldRoutines.size();
@@ -18082,7 +18140,7 @@ void print_native_registry_summary(
     std::cout << "Registry deployment: " << deployed << " of "
               << deployment.rows.size() << " admitted routines installed, "
               << entered_routines << " entered\n"
-              << "Registry calls: " << total_accepted << " native of "
+              << "Registry calls: " << total_accepted << " accepted of "
               << total_entries << " entered (" << total_declined
               << " declined at an interrupt horizon)\n";
     if (deployment.core_capability_entries != 0U) {
@@ -20477,7 +20535,7 @@ int run_windows_host(
                     : NativeRegistryEntryObserver{})) {
             running = false;
             host_ok = false;
-        } else {
+        } else if (native_registry->execution_details) {
             const auto deployed =
                 static_cast<std::size_t>(std::count_if(
                     registry_deployment.rows.begin(),
@@ -21357,7 +21415,9 @@ int run_windows_host(
         print_native_registry_summary(
             registry_deployment,
             runtime.replacement_nesting(),
-            runtime);
+            runtime,
+            native_registry->execution_details,
+            true);
         if (!native_registry->native_cycle_census_path.empty()
             && !write_native_cycle_census(
                 native_registry->native_cycle_census_path,

@@ -13,8 +13,39 @@ endforeach()
 # Cycle share over a whole route is measured by the recording regressions.
 # The dummy SDL drivers come from the test's ENVIRONMENT property.
 
+# Normal play must show actual ownership without legacy coverage percentages.
 execute_process(
     COMMAND "${APP}" --cabinet-smoke-test --rom "${ROM}"
+    RESULT_VARIABLE compact_result OUTPUT_VARIABLE compact_output
+    ERROR_VARIABLE compact_error
+)
+if(NOT compact_result EQUAL 0)
+    message(FATAL_ERROR "Compact host report failed: ${compact_error}")
+endif()
+foreach(expected IN ITEMS
+    "via native cabinet flipper input hook (01:C500)"
+    "Registry routines entered:"
+    "Native execution outside wait/stalls:"
+    "Wait cycles:"
+    "Execution accounting:"
+    "Interpreter residue outside frame-sync wait:"
+    "Registry abandonments:")
+    string(FIND "${compact_output}" "${expected}" found)
+    if(found EQUAL -1)
+        message(FATAL_ERROR "Compact report omitted ${expected}: ${compact_output}")
+    endif()
+endforeach()
+foreach(hidden IN ITEMS "Registry cycles:" "Registry cycles outside"
+    "Registry core capabilities:" "Registry auxiliary transcripts:"
+    "Core replacement outcomes:" "Interpreter residue, top 0"
+    "Native registry:")
+    string(FIND "${compact_output}" "${hidden}" found)
+    if(NOT found EQUAL -1)
+        message(FATAL_ERROR "Compact report leaked ${hidden}: ${compact_output}")
+    endif()
+endforeach()
+execute_process(
+    COMMAND "${APP}" --cabinet-smoke-test --execution-details --rom "${ROM}"
     RESULT_VARIABLE deployed_result
     OUTPUT_VARIABLE deployed_output
     ERROR_VARIABLE deployed_error
@@ -108,7 +139,7 @@ endforeach()
 # original if every handler declined, so this run must accept native calls.
 string(
     REGEX MATCH
-    "Registry calls: ([0-9]+) native of ([0-9]+) entered"
+    "Registry calls: ([0-9]+) accepted of ([0-9]+) entered"
     calls_line
     "${deployed_output}"
 )

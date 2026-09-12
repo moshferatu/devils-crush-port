@@ -5,6 +5,25 @@ accepted replacement-body estimates as the progress metric. Capabilities still
 executed by the original core remain visible as original opcode execution, even
 when the host offered and credited them as native.
 
+## Normal gameplay report
+
+Interactive play prints a compact exit summary: directly installed registry
+routines, the native cabinet flipper input hook at 01:C500, withheld or otherwise
+excluded entries, routines entered, actual native coverage, wait/device cycles,
+accounting balance, remaining interpreter addresses outside the wait, and
+abandonments. Nonzero retained, fallback, original interrupt, other cycles and
+nesting depth refusals remain visible.
+
+The flipper hook restores input during the shooter session and then calls the
+native replacement; it is explicitly counted as native host integration.
+
+Use --execution-details to expand the interactive report with registry call
+and instruction-family counters, profiling rankings, nesting and legacy
+accepted-body estimates. Headless recording/replay diagnostics retain their
+detailed output for accounting tools. Legacy registry percentages are estimates
+of accepted bodies, not native execution coverage, and are absent from normal
+gameplay output. The execution ledger is the authoritative wait measurement.
+
 ## The measurement window
 
 The ledger starts immediately after ROM load, reset or successful state restore.
