@@ -5,9 +5,9 @@ iteration loop fast enough to port related code as a unit. It applies to
 Milestone 4 native gameplay work; it does not weaken the release or milestone
 acceptance criteria in [PLAN.md](../PLAN.md).
 
-## Current priority: shared retained and fallback instructions
+## Current priority: broaden validation beyond the zero-residue corpus
 
-[Native arithmetic and CPU-speed operations](NATIVE_ARITHMETIC.md) remove 23,883 CPU cycles (92.2373% of remaining non-native time) across 31 routes, increasing weighted coverage from 99.9999% to 99.9999903%. All 18 ADC/SBC forms and both speed-change opcodes now have shared native implementations. Retained opcode execution remains zero; 2,010 fallback CPU cycles remain. Frames, stalls, idle time, IRQ counts and abandonments are unchanged. This follows [mapping, register and flag operations](NATIVE_REGISTERS.md) and the earlier shared engines. TST, BIT and SMB lead the remaining residue, measured with [exclusive execution accounting](EXECUTION_ACCOUNTING.md). Rounded CLI percentages can read 100% despite these remaining cycles. The [initial audit](NATIVE_COVERAGE_AUDIT.md) records why twelve-site rankings were superseded.
+[Native bit operations](NATIVE_BIT_OPERATIONS.md) move the final 2,010 fallback CPU cycles over 102 starts across 31 routes, increasing weighted coverage from 99.9999903% to exactly 100% outside wait/device time. All 29 BIT, TST, RMB/SMB and TRB/TSB opcodes have a shared native implementation. Retained, fallback, original IRQ and unaccounted CPU cycles are zero on every route; frames, stalls, idle time, IRQ counts and abandonments are unchanged. This follows [arithmetic and CPU-speed operations](NATIVE_ARITHMETIC.md). The next priority is broader cabinet captures and rare-path validation: these results establish complete measured ownership for the corpus, not every possible gameplay path. Use [exclusive execution accounting](EXECUTION_ACCOUNTING.md) to rank newly observed fallback. The [initial audit](NATIVE_COVERAGE_AUDIT.md) records why twelve-site rankings were superseded.
 
 ## Previous round: bank-09 VDC loop, actor input and palette countdown (September 11)
 

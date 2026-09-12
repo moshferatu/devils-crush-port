@@ -855,6 +855,8 @@ public:
         result.native_register_cycles = counters.native_register_cycles;
         result.native_arithmetic_instructions = counters.native_arithmetic_instructions;
         result.native_arithmetic_cycles = counters.native_arithmetic_cycles;
+        result.native_bit_operations_instructions = counters.native_bit_operations_instructions;
+        result.native_bit_operations_cycles = counters.native_bit_operations_cycles;
         return result;
     }
 

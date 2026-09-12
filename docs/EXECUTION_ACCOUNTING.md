@@ -16,7 +16,7 @@ Every divided clock advance is assigned exactly once to one of these owners:
 
 | Owner | Meaning |
 | --- | --- |
-| translated | Actual advances in native IRQ entry, native block transfers, native bit-test branches, native control flow, native absolute loads/status instructions, native conditional branches, native stores, native loads, native logical operations, native read/modify/write operations, native comparisons, native stack operations/BRA, native mapping/register/flag operations, native arithmetic/speed operations or a validated transcript/checkpoint |
+| translated | Actual advances in native IRQ entry, native block transfers, native bit-test branches, native control flow, native absolute loads/status instructions, native conditional branches, native stores, native loads, native logical operations, native read/modify/write operations, native comparisons, native stack operations/BRA, native mapping/register/flag operations, native arithmetic/speed operations, native bit test/update operations or a validated transcript/checkpoint |
 | retained | Original opcode path following a recognized, validated core-capability offer |
 | fallback | Original opcode path without an installed translation or validated capability |
 | interrupt | Original core IRQ-entry sequence, including its final sample |
@@ -110,12 +110,21 @@ retained execution and 25,893 fallback CPU cycles remaining; see
 [native register and mapping operations](NATIVE_REGISTERS.md).
 
 `Native arithmetic/speed operations` reports actual shared ADC/SBC and CSL/CSH
-starts and exclusive CPU cycles already included in `translated`. It raises
+starts and exclusive CPU cycles already included in `translated`. That batch raised
 weighted corpus coverage to **99.9999903%**, with zero retained execution and
 2,010 fallback CPU cycles remaining; see [native arithmetic](NATIVE_ARITHMETIC.md).
 The CLI percentage rounds to four decimals and can display 100% while the
 ownership ledger still contains fallback cycles. Use those exact cycle counts
 to assess completion.
+
+`Native bit test/update operations` reports actual BIT/TST, RMB/SMB and TRB/TSB
+starts and exclusive CPU cycles included in `translated`. This batch moves the
+final 2,010 fallback cycles over 102 starts across the 31-route corpus. Its
+exact ledger now reports 20,647,774,800 translated cycles and zero retained,
+fallback, original IRQ or unaccounted cycles: **100% outside wait/device time**.
+All frames, elapsed time, stalls and earlier counters remain unchanged. This
+establishes complete measured ownership for these routes; broader gameplay
+coverage still needs validation. See [native bit operations](NATIVE_BIT_OPERATIONS.md).
 
 ## Counts and profiles
 

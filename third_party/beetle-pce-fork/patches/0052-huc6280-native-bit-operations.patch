@@ -1,0 +1,42 @@
+diff --git a/mednafen/pce/huc6280.cpp b/mednafen/pce/huc6280.cpp
+index 26c93f8..1cc746f 100644
+--- a/mednafen/pce/huc6280.cpp
++++ b/mednafen/pce/huc6280.cpp
+@@ -11,6 +11,7 @@
+ #include <devils_crush/cpu/huc6280_stack_branch.hpp>
+ #include <devils_crush/cpu/huc6280_register.hpp>
+ #include <devils_crush/cpu/huc6280_arithmetic.hpp>
++#include <devils_crush/cpu/huc6280_bit_operations.hpp>
+ #include <devils_crush/cpu/huc6280_store.hpp>
+ /* Mednafen - Multi-system Emulator
+  *
+@@ -1708,7 +1709,7 @@ NO_INLINE void HuC6280::RunSub(void)
+ 		}
+ 
+ 		if(dc_beetle_active_boundary_model != NULL
+-			&& (devils_crush::cpu::huc6280_block_mode(lastop) || devils_crush::cpu::is_huc6280_bit_branch(lastop) || (dc_beetle_execution_owner != DC_EXEC_IDLE && (devils_crush::cpu::is_huc6280_control_flow(lastop) || devils_crush::cpu::is_huc6280_load_status(lastop) || devils_crush::cpu::is_huc6280_branch(lastop) || devils_crush::cpu::is_huc6280_load(lastop) || devils_crush::cpu::is_huc6280_logical(lastop) || devils_crush::cpu::is_huc6280_compare(lastop) || devils_crush::cpu::is_huc6280_stack_branch(lastop) || devils_crush::cpu::is_huc6280_register(lastop) || devils_crush::cpu::is_huc6280_arithmetic(lastop) || devils_crush::cpu::is_huc6280_rmw(lastop) || devils_crush::cpu::is_huc6280_store(lastop)))))
++			&& (devils_crush::cpu::huc6280_block_mode(lastop) || devils_crush::cpu::is_huc6280_bit_branch(lastop) || (dc_beetle_execution_owner != DC_EXEC_IDLE && (devils_crush::cpu::is_huc6280_control_flow(lastop) || devils_crush::cpu::is_huc6280_load_status(lastop) || devils_crush::cpu::is_huc6280_branch(lastop) || devils_crush::cpu::is_huc6280_load(lastop) || devils_crush::cpu::is_huc6280_logical(lastop) || devils_crush::cpu::is_huc6280_compare(lastop) || devils_crush::cpu::is_huc6280_stack_branch(lastop) || devils_crush::cpu::is_huc6280_register(lastop) || devils_crush::cpu::is_huc6280_arithmetic(lastop) || devils_crush::cpu::is_huc6280_bit_operations(lastop) || devils_crush::cpu::is_huc6280_rmw(lastop) || devils_crush::cpu::is_huc6280_store(lastop)))))
+ 		{
+ 			if(dc_beetle_active_translated_hook != NULL)
+ 			{
+@@ -1886,6 +1887,20 @@ NO_INLINE void HuC6280::RunSub(void)
+                 dc_beetle_execution_counters.native_arithmetic_cycles +=
+                     dc_beetle_execution_counters.cycles[DC_EXEC_TRANSLATED] - before;
+             }
++            else if(devils_crush::cpu::is_huc6280_bit_operations(lastop))
++            {
++                dc_beetle_execution_owner = DC_EXEC_TRANSLATED;
++                const uint64 before = dc_beetle_execution_counters.cycles[DC_EXEC_TRANSLATED];
++                ++dc_beetle_execution_counters.native_bit_operations_instructions;
++                devils_crush::cpu::run_huc6280_bit_operations(lastop, PC, P, A, X,
++                    [&](unsigned n) { ADDCYC(n); },
++                    [&](uint32 address) { return RdOp(address); },
++                    [&](uint32 address) { return RdMem(address); },
++                    [&](uint32 address, uint8 value) { WrMem(address, value); },
++                    [&]() { DcSampleInterrupt(); });
++                dc_beetle_execution_counters.native_bit_operations_cycles +=
++                    dc_beetle_execution_counters.cycles[DC_EXEC_TRANSLATED] - before;
++            }
+             else if(!dc_run_native_block_move(lastop)) return;
+ 			continue;
+ 		}

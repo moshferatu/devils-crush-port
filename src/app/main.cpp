@@ -17891,6 +17891,8 @@ void print_execution_accounting(const devils_crush::emulation::PceRuntime& runti
               << "; CPU cycles=" << counters->native_register_cycles << '\n';
     std::cout << "Native arithmetic/speed operations: instructions=" << counters->native_arithmetic_instructions
               << "; CPU cycles=" << counters->native_arithmetic_cycles << '\n';
+    std::cout << "Native bit test/update operations: instructions=" << counters->native_bit_operations_instructions
+              << "; CPU cycles=" << counters->native_bit_operations_cycles << '\n';
 }
 
 void print_native_cycle_share(

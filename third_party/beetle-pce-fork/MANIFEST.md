@@ -868,5 +868,10 @@ this repository.
     - Preserves decimal and transfer-mode arithmetic, intermediate interrupt samples, live bus access and speed changes before the final cycle.
     - Reports actual starts and exclusive CPU cycles while preserving idle ownership and the original opcode oracle. See [native arithmetic and CPU-speed operations](../../docs/NATIVE_ARITHMETIC.md).
 
+52. `patches/0052-huc6280-native-bit-operations.patch`
+    - Executes all 29 BIT, TST, RMB/SMB and TRB/TSB opcodes through a shared native engine.
+    - Preserves operand-read and flag timing, extra TST/RMB/SMB cycles, interrupt samples and live writes.
+    - Reports actual starts and exclusive CPU cycles while preserving idle ownership and the original opcode oracle. See [native bit operations](../../docs/NATIVE_BIT_OPERATIONS.md).
+
 All local files and patches are GPL-3.0-or-later. Upstream per-file notices
 and licenses remain authoritative for upstream sources.

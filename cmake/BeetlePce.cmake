@@ -87,6 +87,7 @@ function(dc_provide_beetle_pce)
         "${beetle_fork_root}/patches/0049-huc6280-native-stack-branch.patch"
         "${beetle_fork_root}/patches/0050-huc6280-native-register.patch"
         "${beetle_fork_root}/patches/0051-huc6280-native-arithmetic.patch"
+        "${beetle_fork_root}/patches/0052-huc6280-native-bit-operations.patch"
     )
 
     find_package(Git REQUIRED)
@@ -596,6 +597,9 @@ function(dc_provide_beetle_pce)
                     "PC == 0x66A3 && lastop == 0xDE"
                     beetle_patch_marker_two
                 )
+            elseif(beetle_patch_name MATCHES "^0052-")
+                string(FIND "${beetle_cpu_source}" "run_huc6280_bit_operations" beetle_patch_marker_one)
+                string(FIND "${beetle_cpu_source}" "native_bit_operations_cycles" beetle_patch_marker_two)
             elseif(beetle_patch_name MATCHES "^0051-")
                 string(FIND "${beetle_cpu_source}" "run_huc6280_arithmetic" beetle_patch_marker_one)
                 string(FIND "${beetle_cpu_source}" "native_arithmetic_cycles" beetle_patch_marker_two)

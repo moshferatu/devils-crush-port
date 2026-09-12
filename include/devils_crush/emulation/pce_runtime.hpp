@@ -598,6 +598,8 @@ struct ExecutionAccounting {
     std::uint64_t native_register_cycles = 0;
     std::uint64_t native_arithmetic_instructions = 0;
     std::uint64_t native_arithmetic_cycles = 0;
+    std::uint64_t native_bit_operations_instructions = 0;
+    std::uint64_t native_bit_operations_cycles = 0;
 };
 
 class PceRuntime {
