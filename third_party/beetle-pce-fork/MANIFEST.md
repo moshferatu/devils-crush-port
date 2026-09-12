@@ -849,5 +849,10 @@ this repository.
     - Preserves live read/write timing, flag and register visibility at interrupt samples, address wrapping, device stalls and idle ownership.
     - Reports actual starts and exclusive CPU cycles; retains the original opcode oracle. See [native read/modify/write operations](../../docs/NATIVE_RMW.md).
 
+48. `patches/0048-huc6280-native-compare.patch`
+    - Executes all 15 CMP, CPX and CPY addressing forms through the shared native engine.
+    - Preserves live operand reads, wide indexing, pointer wrapping, interrupt samples and flag timing.
+    - Reports actual starts and exclusive CPU cycles, preserves idle ownership and retains the original opcode oracle. See [native comparisons](../../docs/NATIVE_COMPARISONS.md).
+
 All local files and patches are GPL-3.0-or-later. Upstream per-file notices
 and licenses remain authoritative for upstream sources.

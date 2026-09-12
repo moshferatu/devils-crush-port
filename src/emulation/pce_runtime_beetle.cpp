@@ -847,6 +847,8 @@ public:
         result.native_rmw_instructions = counters.native_rmw_instructions;
         result.native_logical_cycles = counters.native_logical_cycles;
         result.native_rmw_cycles = counters.native_rmw_cycles;
+        result.native_compare_instructions = counters.native_compare_instructions;
+        result.native_compare_cycles = counters.native_compare_cycles;
         return result;
     }
 
