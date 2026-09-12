@@ -863,5 +863,10 @@ this repository.
     - Executes 22 mapping, register-transfer, swap, clear, flag and NOP opcodes through a shared native engine.
     - Preserves live mapping-cache updates, the MPR[8] mirror, intermediate register/flag timing and CLI interrupt-mask publication.
     - Reports actual starts and exclusive CPU cycles while preserving idle ownership and the original opcode oracle. See [native register and mapping operations](../../docs/NATIVE_REGISTERS.md).
+51. `patches/0051-huc6280-native-arithmetic.patch`
+    - Executes all 18 ADC/SBC forms and CSL/CSH through a shared native engine.
+    - Preserves decimal and transfer-mode arithmetic, intermediate interrupt samples, live bus access and speed changes before the final cycle.
+    - Reports actual starts and exclusive CPU cycles while preserving idle ownership and the original opcode oracle. See [native arithmetic and CPU-speed operations](../../docs/NATIVE_ARITHMETIC.md).
+
 All local files and patches are GPL-3.0-or-later. Upstream per-file notices
 and licenses remain authoritative for upstream sources.

@@ -2,7 +2,7 @@
 
 ## Current priority: shared retained and fallback instructions
 
-[Native mapping, register and flag operations](NATIVE_REGISTERS.md) remove 45,567 CPU cycles (63.7657% of remaining non-native time) across 31 routes, increasing weighted coverage from 99.9997% to 99.9999%. Twenty-two opcodes now have shared native implementations. Retained opcode execution remains zero throughout the corpus; 25,893 fallback CPU cycles remain. Frames, stalls, idle time, IRQ counts and abandonments are unchanged. This follows [stack operations and BRA](NATIVE_STACK_BRANCH.md) and the earlier shared engines. Arithmetic and CPU-speed changes lead the remaining residue, measured with [exclusive execution accounting](EXECUTION_ACCOUNTING.md). The [initial audit](NATIVE_COVERAGE_AUDIT.md) records why twelve-site rankings were superseded.
+[Native arithmetic and CPU-speed operations](NATIVE_ARITHMETIC.md) remove 23,883 CPU cycles (92.2373% of remaining non-native time) across 31 routes, increasing weighted coverage from 99.9999% to 99.9999903%. All 18 ADC/SBC forms and both speed-change opcodes now have shared native implementations. Retained opcode execution remains zero; 2,010 fallback CPU cycles remain. Frames, stalls, idle time, IRQ counts and abandonments are unchanged. This follows [mapping, register and flag operations](NATIVE_REGISTERS.md) and the earlier shared engines. TST, BIT and SMB lead the remaining residue, measured with [exclusive execution accounting](EXECUTION_ACCOUNTING.md). Rounded CLI percentages can read 100% despite these remaining cycles. The [initial audit](NATIVE_COVERAGE_AUDIT.md) records why twelve-site rankings were superseded.
 
 ## Previous round: bank-09 VDC loop, actor input and palette countdown (September 11)
 

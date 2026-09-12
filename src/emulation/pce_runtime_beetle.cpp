@@ -853,6 +853,8 @@ public:
         result.native_stack_branch_cycles = counters.native_stack_branch_cycles;
         result.native_register_instructions = counters.native_register_instructions;
         result.native_register_cycles = counters.native_register_cycles;
+        result.native_arithmetic_instructions = counters.native_arithmetic_instructions;
+        result.native_arithmetic_cycles = counters.native_arithmetic_cycles;
         return result;
     }
 

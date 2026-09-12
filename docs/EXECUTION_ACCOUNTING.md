@@ -16,7 +16,7 @@ Every divided clock advance is assigned exactly once to one of these owners:
 
 | Owner | Meaning |
 | --- | --- |
-| translated | Actual advances in native IRQ entry, native block transfers, native bit-test branches, native control flow, native absolute loads/status instructions, native conditional branches, native stores, native loads, native logical operations, native read/modify/write operations, native comparisons, native stack operations/BRA, native mapping/register/flag operations or a validated transcript/checkpoint |
+| translated | Actual advances in native IRQ entry, native block transfers, native bit-test branches, native control flow, native absolute loads/status instructions, native conditional branches, native stores, native loads, native logical operations, native read/modify/write operations, native comparisons, native stack operations/BRA, native mapping/register/flag operations, native arithmetic/speed operations or a validated transcript/checkpoint |
 | retained | Original opcode path following a recognized, validated core-capability offer |
 | fallback | Original opcode path without an installed translation or validated capability |
 | interrupt | Original core IRQ-entry sequence, including its final sample |
@@ -108,6 +108,14 @@ swap, clear, flag and NOP starts and exclusive CPU cycles already included in
 `translated`. It raises weighted corpus coverage to **99.9999%**, with zero
 retained execution and 25,893 fallback CPU cycles remaining; see
 [native register and mapping operations](NATIVE_REGISTERS.md).
+
+`Native arithmetic/speed operations` reports actual shared ADC/SBC and CSL/CSH
+starts and exclusive CPU cycles already included in `translated`. It raises
+weighted corpus coverage to **99.9999903%**, with zero retained execution and
+2,010 fallback CPU cycles remaining; see [native arithmetic](NATIVE_ARITHMETIC.md).
+The CLI percentage rounds to four decimals and can display 100% while the
+ownership ledger still contains fallback cycles. Use those exact cycle counts
+to assess completion.
 
 ## Counts and profiles
 
