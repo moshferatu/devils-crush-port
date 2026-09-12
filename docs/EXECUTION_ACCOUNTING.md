@@ -16,7 +16,7 @@ Every divided clock advance is assigned exactly once to one of these owners:
 
 | Owner | Meaning |
 | --- | --- |
-| translated | Actual advances in native IRQ entry, native block transfers, native bit-test branches, native control flow, native absolute loads/status instructions, native conditional branches, native stores, native loads, native logical operations or a validated transcript/checkpoint |
+| translated | Actual advances in native IRQ entry, native block transfers, native bit-test branches, native control flow, native absolute loads/status instructions, native conditional branches, native stores, native loads, native logical operations, native read/modify/write operations or a validated transcript/checkpoint |
 | retained | Original opcode path following a recognized, validated core-capability offer |
 | fallback | Original opcode path without an installed translation or validated capability |
 | interrupt | Original core IRQ-entry sequence, including its final sample |
@@ -85,6 +85,11 @@ Both contribute to `translated`. Weighted corpus coverage reaches
 all 27 AND, ORA and EOR opcodes, including transfer mode. These cycles are
 already included in `translated`. Weighted corpus coverage reaches
 **99.9983%**; see [native logical operations](NATIVE_LOGICAL.md).
+
+`Native rmw operations` reports actual starts and exclusive CPU cycles for
+all 34 increment/decrement, shift and rotate opcodes, already included in
+`translated`. Weighted corpus coverage reaches **99.9991%** after this batch;
+see [native read/modify/write operations](NATIVE_RMW.md).
 
 ## Counts and profiles
 

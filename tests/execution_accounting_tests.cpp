@@ -90,6 +90,10 @@ void exercise(const char* rom, bool native_scheduler, bool native_entry = false)
             "Restored native logical operations count differs");
     require(replay.native_logical_cycles == after.native_logical_cycles - before.native_logical_cycles,
             "Restored native logical operations cycles differ");
+    require(replay.native_rmw_instructions == after.native_rmw_instructions - before.native_rmw_instructions,
+            "Restored native rmw operations count differs");
+    require(replay.native_rmw_cycles == after.native_rmw_cycles - before.native_rmw_cycles,
+            "Restored native rmw operations cycles differ");
     require(replay.native_bit_branches == after.native_bit_branches - before.native_bit_branches,
             "Restored native bit-branch count differs");
     require(replay.native_bit_branch_cycles == after.native_bit_branch_cycles - before.native_bit_branch_cycles,

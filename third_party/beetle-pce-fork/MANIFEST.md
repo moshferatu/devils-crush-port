@@ -844,5 +844,10 @@ this repository.
     - Preserves operand ordering, both interrupt samples, NZ/T flags, wide addresses, device stalls, idle ownership and the original opcode oracle.
     - Reports actual starts and exclusive CPU cycles. See [native logical operations](../../docs/NATIVE_LOGICAL.md).
 
+47. `patches/0047-huc6280-native-rmw.patch`
+    - Executes all 34 INC, DEC, ASL, LSR, ROL, ROR and index increment/decrement opcodes through the shared native engine.
+    - Preserves live read/write timing, flag and register visibility at interrupt samples, address wrapping, device stalls and idle ownership.
+    - Reports actual starts and exclusive CPU cycles; retains the original opcode oracle. See [native read/modify/write operations](../../docs/NATIVE_RMW.md).
+
 All local files and patches are GPL-3.0-or-later. Upstream per-file notices
 and licenses remain authoritative for upstream sources.

@@ -844,7 +844,9 @@ public:
         result.native_loads = counters.native_loads;
         result.native_load_cycles = counters.native_load_cycles;
         result.native_logical_instructions = counters.native_logical_instructions;
+        result.native_rmw_instructions = counters.native_rmw_instructions;
         result.native_logical_cycles = counters.native_logical_cycles;
+        result.native_rmw_cycles = counters.native_rmw_cycles;
         return result;
     }
 

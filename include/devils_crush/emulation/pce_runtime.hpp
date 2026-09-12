@@ -588,6 +588,8 @@ struct ExecutionAccounting {
     std::uint64_t native_load_cycles = 0;
     std::uint64_t native_logical_instructions = 0;
     std::uint64_t native_logical_cycles = 0;
+    std::uint64_t native_rmw_instructions = 0;
+    std::uint64_t native_rmw_cycles = 0;
 };
 
 class PceRuntime {
