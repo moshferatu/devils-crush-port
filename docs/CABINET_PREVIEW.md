@@ -10,7 +10,7 @@ windows:
 1. A resizable portrait playfield. This is the required host window and owns
    input, fullscreen toggling, and the fixed sharp-scaling pipeline.
 2. A resizable, non-focusable DMD. It draws a large score above a smaller
-   current-ball and bonus row in monitor-resolution bitmap text.
+   current-ball and bonus row, using the original game digits.
 3. A resizable, non-focusable backglass. It displays the native animated
    Devil's Crush logo with aspect-preserving sharp containment. A persisted
    PNG, JPEG, or WebP remains available only as a nonfatal fallback.
@@ -85,7 +85,8 @@ The table is decoded only after:
 - session bit `$53.4` does not request a bonus stage; and
 - the cartridge's screen selector at `$2054` reads 0, the table.
 
-Menus and bonus stages therefore fall back to the emulated framebuffer. The
+Menus and bonus stages use the emulated framebuffer. Award and tally screens
+are presented on the DMD while the playfield retains its preceding image. The
 stitched table remains visible after the final ball reaches zero, throughout
 the game-over presentation, and gives way only when the screen selector moves
 back to a menu. Bonus stages preserve their corrected 4:3 aspect, match the
@@ -765,59 +766,55 @@ scaler with the PCE's pixel aspect preserved.
 
 ## DMD state
 
-At startup the DMD cycles through all five persisted high scores, advancing
-every three seconds. Each page shows the player's initials and visible score;
-the first is labeled `Grand Champion`, followed by `High Score #1` through
-`High Score #4`. The rank label is yellow, the initials are white, and the
-score flashes between two orange shades once per second. Scores use comma
-thousands separators. Pressing Run arms the handoff, and the live score-centric
-view takes over when the cartridge starts the player's session. This keeps an
-untouched attract-mode demo from dismissing the carousel.
+The DMD follows the cartridge's presentation state, using the original 16-by-16
+score digits for scores, awards, ball numbers, and high scores. Digit tile
+selections come from `09:7390`, their graphics from asset `0C:8006` (uploaded
+at VRAM `$2800`), and their shaded red and green palettes from `11:A1D9`.
+The dim segments are part of the original artwork. Labels and initials use
+the resident 8-by-8 cartridge font decoded from `11:A9C0`.
 
-`cabinet::decode_cabinet_state()` selects the score slot through `$2251` and
-reads the three-byte little-endian score arrays at `$2205`, `$220C`, and
-`$2213`. Stored units are multiplied by 100, preserving the verified original
-display rule and the maximum visible score of 999,999,900.
+`cabinet::DmdPanel` composes a fixed 320-by-112 image. The existing sharp
+scaler fits it inside the DMD window without stretching its pixels. Fixed digit
+sizes remain stable as values grow, including the maximum 999,999,900-point
+score. Numbers use the original digit artwork without comma separators.
+The live page shows SCORE above a large value, with smaller BONUS and BALL
+fields beneath it.
 
-The same state view reads the base bonus from `$2D50`. The cartridge stores
-that value in hundreds, initializes it to one, and caps it at 99, so the DMD
-shows the original 100-to-9,900 bonus value. `$2D52` counts down from three
-and includes the ball currently in play. The native DMD inverts that standard
-session countdown to report current ball 1, 2, then 3; zero remains zero when
-no session is active, and counts above three saturate at ball one.
+At the title, during demos, and on the high-score screen, the DMD cycles
+through the five persisted high scores every three seconds. Pages show
+Grand Champion or High Score #1 through #4, initials, and the new digits.
+The carousel resumes when the game returns to those screens after a session.
 
-The current DMD omits the P1/P2 discriminator until the two-player session
-field is dynamically mapped. All three values remain live during emulated
-framebuffer and bonus-stage presentation because they are read independently
-from work RAM.
+The presentation reads scores from `$2205/$220C/$2213`, selected by `$2251`,
+and multiplies stored units by 100. Base bonus `$2D50` is also in hundreds.
+The standard three-ball countdown at `$2D52` becomes BALL 1, 2, then 3.
 
-### Text layout
+Award scenes replace the regular DMD page for the original sequence's duration:
 
-The host renders the comma-formatted score value without a label, then
-`Ball <value>` and comma-formatted `Bonus <value>` together on the row below.
-Those live labels and values, as
-well as the startup high-score pages, use the cartridge's own 8-by-8
-alphanumeric font: cabinet startup decodes the same
-ROM stream that table setup uploads from `11:A9C0` to VRAM `$7900`. The game
-stores upper-case forms, so the mixed-case host labels intentionally render
-with those original capitals. Matching host-defined hash and comma glyphs
-supply the punctuation that the original font does not contain. Commas use a
-slightly narrower advance than the full-width alphanumeric cells so thousands
-groups remain visually connected, plus one dot of left-side kerning to balance
-the punctuation within those groups.
-There is no host-font dependency and there are no borders, rails, inactive
-segments, or other decoration.
+- SPECIAL POINTS uses `$2053.2` and the million-point multiplier at `$20CA`.
+  The skill-shot capture selects this page on frames 524–818, exactly matching
+  the original award interval. EXTRA BALL follows `$2053.7`.
+- Screen selector `$2054=2` identifies the end-of-ball tally or match screen.
+  `$2D71` distinguishes match; otherwise the DMD shows the remaining bonus
+  `$2D69–$2D6B` and the base-bonus, target-count, and multiplier calculation.
+- Bonus-stage results begin at `04:456C`, observed through a read-only entry
+  hook. The session's bit 1 is also present during stage entry and is not a
+  safe result gate. The DMD shows YOU GET / BONUS POINTS, PERFECT / SPECIAL
+  POINTS, or SORRY / YOU LOST YOUR BONUS POINTS. It follows the remaining
+  award at `$2DB7–$2DB9` and keeps a successful result successful when the
+  counter reaches zero.
 
-`cabinet::calculate_dmd_text_layout()` gives the score the upper two thirds
-of the output and centers it at the largest stable size allowed by the
-verified nine-digit maximum plus its separators. The lower third is split
-horizontally between Ball and Bonus, which share one substantially smaller
-size. Fixed width reserves prevent value growth from resizing either tier.
-The layout remains bounded by both axes and keeps every bitmap cell square on
-wide, fullscreen,
-and portrait outputs. `test_dmd_text_layout` covers the exact labels, maximum
-values, common monitor shapes, size hierarchy, shared lower row, stable type
-sizes, high-score labels and cycling, and degenerate outputs.
+During tallies, match, and bonus-stage results, the playfield retains its last
+complete table or bonus-room image instead of switching to the original
+result viewport. Normal rendering resumes after the sequence. If the DMD is
+closed or unavailable, the original result viewport remains the fallback so
+awards are still visible. The observer changes no game state or award timing.
+
+`dc_rom_dmd_panel` checks all ten digits, distinct score/award palettes,
+maximum-value margins, scene transitions, and successful/failed bonus payouts.
+Its real-ROM fixtures cover scored, perfect, and lost results, and compare
+all 3,600 RAM snapshots with and without the result observer. Optional review
+artifacts can be generated with `dc_dmd_panel_tests <rom> <output-directory>`.
 
 ## One rendered layer, measured against the emulator
 

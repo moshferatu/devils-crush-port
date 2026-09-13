@@ -26,6 +26,7 @@ inline constexpr int kDmdCommaAdvance = 6;
 }
 
 using DmdGlyph = std::array<std::uint8_t, kDmdGlyphHeight>;
+using DmdScoreDigit = std::array<std::uint32_t, 16U * 16U>;
 
 // The cartridge's resident 8-by-8 alphanumeric font. The source is the same
 // compressed stream that table setup uploads to VRAM $7900; decoding it from
@@ -40,10 +41,15 @@ public:
     // the host also supplies the punctuation needed by its score and rank
     // labels.
     [[nodiscard]] std::optional<DmdGlyph> glyph(char character) const noexcept;
+    // Original 16x16 score artwork, including its dim segments and shading.
+    [[nodiscard]] const DmdScoreDigit& score_digit(
+        unsigned digit, bool special_points = false) const;
 
 private:
     static constexpr std::size_t kGlyphCount = 36U;
     std::array<DmdGlyph, kGlyphCount> glyphs_{};
+    std::array<DmdScoreDigit, 10U> score_digits_{};
+    std::array<DmdScoreDigit, 10U> special_digits_{};
 };
 
 } // namespace devils_crush::cabinet

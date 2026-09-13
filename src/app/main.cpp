@@ -6,6 +6,7 @@
 #include "devils_crush/cabinet/cabinet_state.hpp"
 #include "devils_crush/cabinet/display_config.hpp"
 #include "devils_crush/cabinet/dmd_layout.hpp"
+#include "devils_crush/cabinet/dmd_panel.hpp"
 #include "devils_crush/core/atomic_file.hpp"
 #include "devils_crush/core/high_score_table.hpp"
 #include "devils_crush/core/rom_image.hpp"
@@ -10837,163 +10838,15 @@ void set_assignment_titles(
         || report_sdl_error("Rendering the black backglass failed");
 }
 
-[[nodiscard]] bool draw_dmd_character(
-    SDL_Renderer* renderer,
-    const devils_crush::cabinet::DmdFont& font,
-    const char character,
-    const int x,
-    const int y,
-    const int cell_size)
-{
-    const auto glyph = font.glyph(character);
-    if (!glyph) {
-        return false;
-    }
-    for (std::size_t row = 0; row < glyph->size(); ++row) {
-        for (int column = 0;
-             column < devils_crush::cabinet::kDmdGlyphWidth;
-             ++column) {
-            const auto mask = static_cast<std::uint8_t>(
-                1U << (devils_crush::cabinet::kDmdGlyphWidth - 1 - column));
-            if (((*glyph)[row] & mask) == 0U) {
-                continue;
-            }
-            const SDL_FRect pixel{
-                static_cast<float>(x + column * cell_size),
-                static_cast<float>(
-                    y + static_cast<int>(row) * cell_size),
-                static_cast<float>(cell_size),
-                static_cast<float>(cell_size),
-            };
-            if (!SDL_RenderFillRect(renderer, &pixel)) {
-                return report_sdl_error("Rendering DMD text failed");
-            }
-        }
-    }
-    return true;
-}
-
-[[nodiscard]] bool present_dmd_content(
+[[nodiscard]] bool present_dmd_panel(
     AuxiliaryWindow& output,
-    const devils_crush::cabinet::DmdFont& font,
-    const devils_crush::cabinet::DmdTextContent& content,
-    const devils_crush::cabinet::DmdTextLayout& layout)
+    const devils_crush::render::ArgbImage& image,
+    SourceTexture& source,
+    StageTexture& stage)
 {
-    if (output.renderer == nullptr) {
-        return true;
-    }
-    int output_width = 0;
-    int output_height = 0;
-    if (!SDL_GetRenderOutputSize(
-            output.renderer,
-            &output_width,
-            &output_height)) {
-        return report_sdl_error("SDL_GetRenderOutputSize (DMD) failed");
-    }
-    if (output_width <= 0 || output_height <= 0) {
-        return true;
-    }
-    if (!SDL_SetRenderDrawColor(output.renderer, 0, 0, 0, 255)
-        || !SDL_RenderClear(output.renderer)) {
-        return report_sdl_error("Clearing the DMD failed");
-    }
-
-    if (!layout.valid()) {
-        return SDL_RenderPresent(output.renderer)
-            || report_sdl_error("SDL_RenderPresent (DMD) failed");
-    }
-
-    for (std::size_t line = 0; line < content.text.size(); ++line) {
-        const auto color = content.colors[line];
-        if (!SDL_SetRenderDrawColor(
-                output.renderer,
-                color.red,
-                color.green,
-                color.blue,
-                255U)) {
-            return report_sdl_error("Setting the DMD text color failed");
-        }
-        int character_x = layout.lines[line].origin_x;
-        for (std::size_t index = 0;
-             index < content.text[line].size();
-             ++index) {
-            if (!draw_dmd_character(
-                    output.renderer,
-                    font,
-                    content.text[line][index],
-                    character_x,
-                    layout.lines[line].origin_y,
-                    layout.lines[line].cell_size)) {
-                return false;
-            }
-            character_x +=
-                devils_crush::cabinet::dmd_character_advance_cells(
-                    content.text[line][index],
-                    index + 1U < content.text[line].size()
-                        ? content.text[line][index + 1U]
-                        : '\0')
-                * layout.lines[line].cell_size;
-        }
-    }
-    if (!SDL_RenderPresent(output.renderer)) {
-        return report_sdl_error("SDL_RenderPresent (DMD) failed");
-    }
-    return true;
+    return upload_image(output.renderer, image, source)
+        && present_frame(output.renderer, source, stage, 20U, 7U, {0U, 0U, 0U});
 }
-
-[[nodiscard]] bool present_dmd(
-    AuxiliaryWindow& output,
-    const devils_crush::cabinet::DmdFont& font,
-    const std::uint64_t displayed_score,
-    const std::uint32_t bonus_points,
-    const std::uint8_t current_ball)
-{
-    int output_width = 0;
-    int output_height = 0;
-    if (!SDL_GetRenderOutputSize(
-            output.renderer,
-            &output_width,
-            &output_height)) {
-        return report_sdl_error("SDL_GetRenderOutputSize (DMD) failed");
-    }
-    const auto content = devils_crush::cabinet::make_dmd_text_content(
-        displayed_score,
-        bonus_points,
-        current_ball);
-    return present_dmd_content(
-        output,
-        font,
-        content,
-        devils_crush::cabinet::calculate_dmd_text_layout(
-            output_width, output_height, content));
-}
-
-[[nodiscard]] bool present_dmd_high_score(
-    AuxiliaryWindow& output,
-    const devils_crush::cabinet::DmdFont& font,
-    const devils_crush::core::HighScoreTable& table,
-    const std::size_t rank,
-    const std::uint64_t elapsed_milliseconds)
-{
-    int output_width = 0;
-    int output_height = 0;
-    if (!SDL_GetRenderOutputSize(
-            output.renderer,
-            &output_width,
-            &output_height)) {
-        return report_sdl_error("SDL_GetRenderOutputSize (DMD) failed");
-    }
-    const auto content =
-        devils_crush::cabinet::make_dmd_high_score_content(
-            table, rank, elapsed_milliseconds);
-    return present_dmd_content(
-        output,
-        font,
-        content,
-        devils_crush::cabinet::calculate_dmd_high_score_layout(
-            output_width, output_height, content));
-}
-
 // Tracks which actor slots the camera never claims. A slot whose anchor never
 // enters the viewport is never observed, so the retained layer seeds it once
 // from ROM and never refreshes it against its live phase — the shape of an
@@ -20468,9 +20321,23 @@ int run_windows_host(
         persistent_actor_sprites;
     devils_crush::render::TablePaletteCache table_palette_cache;
     SeededActorTracker seeded_actors;
-    std::uint64_t dmd_score = 0U;
-    std::uint32_t dmd_bonus_points = 0U;
-    std::uint8_t dmd_current_ball = 0U;
+    devils_crush::cabinet::DmdPanel dmd_panel;
+    SourceTexture dmd_source;
+    StageTexture dmd_stage;
+    // This routine is a cross-frame presentation controller, outside the
+    // replacement registry. Observing entry leaves all CPU execution intact.
+    // The session's result bit alone is also set during bonus-stage setup.
+    if (cabinet_mode && dmd.renderer != nullptr
+        && !runtime.install_execution_hook({
+            .routine = {.physical_bank = 0x04U, .logical_pc = 0x456CU},
+            .mode = HookMode::observe,
+            .callback = [&dmd_panel](const RoutineEntry&) {
+                dmd_panel.begin_bonus_result();
+            },
+        })) {
+        std::cerr << "Could not observe bonus results; disabling DMD.\n";
+        destroy_auxiliary_window(dmd);
+    }
     std::uint64_t backglass_logo_frame = 0U;
     bool assignment_active = false;
     auto assignment_role = AssignmentRole::playfield;
@@ -20504,8 +20371,6 @@ int run_windows_host(
         std::chrono::duration<double>(1.0 / kEmulationFramesPerSecond));
     auto next_frame_time = Clock::now();
     const auto dmd_high_score_epoch = Clock::now();
-    bool dmd_game_started = bonus_stage != 0U;
-    bool dmd_game_requested = dmd_game_started;
 
     bool running = true;
     bool host_ok = true;
@@ -20917,6 +20782,8 @@ int run_windows_host(
                         dmd.window,
                         host_displays,
                         cabinet_config.dmd);
+                    destroy_stage(dmd_stage);
+                    destroy_source(dmd_source);
                     destroy_auxiliary_window(dmd);
                 } else if (
                     backglass.window != nullptr
@@ -21133,10 +21000,6 @@ int run_windows_host(
                 ball_in_launcher,
                 cabinet_config.input.flippers,
                 rod_engaged && !rod.released);
-            constexpr auto kRunButton =
-                static_cast<std::uint16_t>(Button::run);
-            dmd_game_requested = dmd_game_requested
-                || ((input.player_one | input.player_two) & kRunButton) != 0U;
             if (capture_session) {
                 captured_inputs.push_back({
                     .input = input,
@@ -21182,12 +21045,7 @@ int run_windows_host(
                     devils_crush::cabinet::decode_cabinet_state(
                         work_ram);
                 if (cabinet_state) {
-                    dmd_score = cabinet_state->displayed_score;
-                    dmd_bonus_points = cabinet_state->bonus_points;
-                    dmd_current_ball = cabinet_state->current_ball;
-                    dmd_game_started = dmd_game_started
-                        || (dmd_game_requested
-                            && cabinet_state->balls_in_session != 0U);
+                    dmd_panel.observe(work_ram);
                 }
                 if (backglass_logo
                     && backglass.renderer != nullptr) {
@@ -21208,60 +21066,64 @@ int run_windows_host(
                     }
                 }
 
-                bonus_view = cabinet_state && cabinet_state->bonus_stage;
-                table_view = false;
-                bool source_uploaded = false;
-                const bool overlay_stats_due =
-                    overlay_stats
-                    && frame.frame_number % 60U == 0U;
-                if (cabinet_state
-                    && cabinet_state->playfield
-                        == devils_crush::cabinet::PlayfieldView::
-                            table_background) {
-                    const auto video = runtime.export_video_memory();
-                    const auto table =
-                        video
-                        ? decode_cabinet_table(
-                              *cabinet_rom,
-                              work_ram,
-                              *video,
-                              persistent_actor_sprites,
-                              table_palette_cache,
-                              layers,
-                              overlay_stats_due,
-                              overlay_stats ? &seeded_actors : nullptr)
-                        : std::nullopt;
-                    if (table && playfield_dump_remaining > 0) {
-                        --playfield_dump_remaining;
-                        std::ostringstream name;
-                        name << "playfield-" << std::setw(6)
-                             << std::setfill('0') << frame.frame_number
-                             << ".bmp";
-                        const auto dump_path =
-                            std::filesystem::current_path() / name.str();
-                        if (save_playfield_png(table->image, dump_path)) {
-                            std::cout << "Captured " << dump_path.string()
-                                      << '\n';
+                const bool hold_playfield = dmd.renderer != nullptr && dmd_font
+                    && dmd_panel.holds_playfield() && source.texture != nullptr;
+                if (!hold_playfield) {
+                    bonus_view = cabinet_state && cabinet_state->bonus_stage;
+                    table_view = false;
+                    bool source_uploaded = false;
+                    const bool overlay_stats_due =
+                        overlay_stats
+                        && frame.frame_number % 60U == 0U;
+                    if (cabinet_state
+                        && cabinet_state->playfield
+                            == devils_crush::cabinet::PlayfieldView::
+                                table_background) {
+                        const auto video = runtime.export_video_memory();
+                        const auto table =
+                            video
+                            ? decode_cabinet_table(
+                                  *cabinet_rom,
+                                  work_ram,
+                                  *video,
+                                  persistent_actor_sprites,
+                                  table_palette_cache,
+                                  layers,
+                                  overlay_stats_due,
+                                  overlay_stats ? &seeded_actors : nullptr)
+                            : std::nullopt;
+                        if (table && playfield_dump_remaining > 0) {
+                            --playfield_dump_remaining;
+                            std::ostringstream name;
+                            name << "playfield-" << std::setw(6)
+                                 << std::setfill('0') << frame.frame_number
+                                 << ".bmp";
+                            const auto dump_path =
+                                std::filesystem::current_path() / name.str();
+                            if (save_playfield_png(table->image, dump_path)) {
+                                std::cout << "Captured " << dump_path.string()
+                                          << '\n';
+                            }
+                        }
+                        if (table) {
+                            host_ok =
+                                upload_image(
+                                    renderer,
+                                    table->image,
+                                    source);
+                            source_uploaded = host_ok;
+                            table_view = host_ok;
                         }
                     }
-                    if (table) {
-                        host_ok =
-                            upload_image(
-                                renderer,
-                                table->image,
-                                source);
-                        source_uploaded = host_ok;
-                        table_view = host_ok;
+                    if (host_ok && !source_uploaded) {
+                        persistent_actor_sprites.reset();
+                        table_palette_cache.reset();
+                        host_ok = upload_framebuffer(
+                            renderer,
+                            frame.framebuffer,
+                            source);
                     }
-                }
-                if (host_ok && !source_uploaded) {
-                    persistent_actor_sprites.reset();
-                    table_palette_cache.reset();
-                    host_ok = upload_framebuffer(
-                        renderer,
-                        frame.framebuffer,
-                        source);
-                }
+                } // Retain the playfield during DMD-owned result screens.
                 // The stitched table and the emulated framebuffer behave
                 // very differently — the framebuffer scrolls with the camera
                 // and hardware-clips its sprites — so say which one is on
@@ -21328,29 +21190,18 @@ int run_windows_host(
             std::chrono::duration_cast<std::chrono::milliseconds>(
                 Clock::now() - dmd_high_score_epoch)
                 .count();
-        const auto dmd_high_score_page =
-            devils_crush::cabinet::dmd_high_score_rank(
-                static_cast<std::uint64_t>(dmd_high_score_elapsed));
         if (running && dmd.renderer != nullptr && dmd_font
             && !(assignment_active
                     ? present_assignment(
-                        dmd.renderer,
-                        AssignmentRole::dmd,
+                        dmd.renderer, AssignmentRole::dmd,
                         assignment_role == AssignmentRole::dmd)
-                    : !dmd_game_started && high_scores.table_seen
-                        ? present_dmd_high_score(
-                            dmd,
-                            *dmd_font,
-                            high_scores.last,
-                            dmd_high_score_page,
-                            static_cast<std::uint64_t>(
-                                dmd_high_score_elapsed))
-                        : present_dmd(
-                            dmd,
-                            *dmd_font,
-                            dmd_score,
-                            dmd_bonus_points,
-                            dmd_current_ball))) {
+                    : present_dmd_panel(dmd,
+                        dmd_panel.compose(*dmd_font,
+                            high_scores.table_seen ? &high_scores.last : nullptr,
+                            static_cast<std::uint64_t>(dmd_high_score_elapsed)),
+                        dmd_source, dmd_stage))) {
+            destroy_stage(dmd_stage);
+            destroy_source(dmd_source);
             std::cerr << "Cabinet DMD renderer lost; disabling DMD.\n";
             destroy_auxiliary_window(dmd);
         }
@@ -21429,6 +21280,8 @@ int run_windows_host(
     }
     close_plunger(plunger);
     save_current_cabinet_config();
+    destroy_stage(dmd_stage);
+    destroy_source(dmd_source);
     destroy_auxiliary_window(dmd);
     destroy_auxiliary_window(backglass);
     SDL_DestroyRenderer(renderer);

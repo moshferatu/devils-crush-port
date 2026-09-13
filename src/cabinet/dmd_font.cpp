@@ -81,7 +81,55 @@ std::optional<DmdFont> DmdFont::decode(
             return std::nullopt;
         }
     }
+    // 09:73BC uploads asset 0C:8006 to VRAM $2800. 09:7390
+    // selects the four background tiles composing each HUD digit.
+    mpr[4] = 0x0CU;
+    mpr[5] = 0x0DU;
+    const auto hud = render::decode_pce_vram_stream(
+        rom_bytes, mpr, 0x8006U, 0x1000U);
+    constexpr std::size_t digit_map = 0x09U * 8192U + 0x1390U;
+    // Table palette asset 10:0030 -> 11:A1D9, background palette F.
+    constexpr std::size_t palette = 0x221D9U + 0xF0U * 2U;
+    if (!hud || hud->size() != 0x1000U
+        || rom_bytes.size() < palette + 32U) {
+        return std::nullopt;
+    }
+    for (unsigned digit = 0; digit < 10U; ++digit) {
+        for (unsigned y = 0; y < 16U; ++y) {
+            for (unsigned x = 0; x < 16U; ++x) {
+                const auto tile = std::to_integer<unsigned>(rom_bytes[
+                    digit_map + digit * 4U + (y / 8U) * 2U + x / 8U]);
+                if (tile < 0x80U || tile > 0xFFU) {
+                    return std::nullopt;
+                }
+                const auto offset = (tile - 0x80U) * 16U + y % 8U;
+                const auto a = (*hud)[offset];
+                const auto b = (*hud)[offset + 8U];
+                const auto bit = 7U - x % 8U;
+                const auto index = ((a >> bit) & 1U)
+                    | (((a >> (bit + 8U)) & 1U) << 1U)
+                    | (((b >> bit) & 1U) << 2U)
+                    | (((b >> (bit + 8U)) & 1U) << 3U);
+                const auto color_offset = palette + index * 2U;
+                const auto raw = std::to_integer<unsigned>(rom_bytes[color_offset])
+                    | (std::to_integer<unsigned>(rom_bytes[color_offset + 1U]) << 8U);
+                font.score_digits_[digit][y * 16U + x] = index == 0U ? 0U
+                    : render::decode_pce_color(static_cast<std::uint16_t>(raw));
+                const auto special_offset = color_offset - 32U;
+                const auto special_raw = std::to_integer<unsigned>(rom_bytes[special_offset])
+                    | (std::to_integer<unsigned>(rom_bytes[special_offset + 1U]) << 8U);
+                font.special_digits_[digit][y * 16U + x] = index == 0U ? 0U
+                    : render::decode_pce_color(static_cast<std::uint16_t>(special_raw));
+            }
+        }
+    }
     return font;
+}
+
+const DmdScoreDigit& DmdFont::score_digit(
+    const unsigned digit, const bool special_points) const
+{
+    return special_points ? special_digits_.at(digit) : score_digits_.at(digit);
 }
 
 std::optional<DmdGlyph> DmdFont::glyph(const char character) const noexcept

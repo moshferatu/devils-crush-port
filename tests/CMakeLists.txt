@@ -62,6 +62,11 @@ dc_enable_strict_warnings(dc_title_logo_tests)
 
 add_test(NAME dc_core_tests COMMAND dc_core_tests)
 
+add_executable(dc_dmd_panel_tests dmd_panel_tests.cpp)
+target_link_libraries(dc_dmd_panel_tests PRIVATE DevilsCrush::Core DevilsCrush::Emulation)
+target_compile_features(dc_dmd_panel_tests PRIVATE cxx_std_20)
+dc_enable_strict_warnings(dc_dmd_panel_tests)
+
 add_executable(dc_resident_pattern_loader_tests resident_pattern_loader_tests.cpp
     ../src/app/native_replacements_vram.cpp ../src/app/native_replacements_absorb.cpp)
 target_link_libraries(dc_resident_pattern_loader_tests PRIVATE DevilsCrush::Emulation)
@@ -818,6 +823,11 @@ if(TARGET devils_crush)
             PROPERTIES LABELS rom_required
         )
 
+        add_test(
+            NAME dc_rom_dmd_panel
+            COMMAND dc_dmd_panel_tests "${DC_ROM_PATH}"
+        )
+        set_tests_properties(dc_rom_dmd_panel PROPERTIES LABELS rom_required)
         add_test(
             NAME dc_rom_title_logo
             COMMAND dc_title_logo_tests "${DC_ROM_PATH}"
