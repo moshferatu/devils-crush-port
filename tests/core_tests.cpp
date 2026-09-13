@@ -8193,18 +8193,28 @@ void test_cabinet_state()
         "actor-state decode rejects incomplete work RAM");
 
     check(
-        should_disable_actor_camera_cull(0x04U, 0x02U)
-            && should_disable_actor_camera_cull(0x29U, 0x02U),
+        should_disable_actor_camera_cull(0x04U, 0x02U, 254U, 208U)
+            && should_disable_actor_camera_cull(0x29U, 0x02U, 254U, 208U),
         "flippers and spiders always bypass the cabinet camera cull");
     check(
-        !should_disable_actor_camera_cull(0x58U, 0x02U)
-            && should_disable_actor_camera_cull(0x58U, 0x82U)
-            && should_disable_actor_camera_cull(0x5AU, 0x82U),
+        !should_disable_actor_camera_cull(0x58U, 0x02U, 254U, 208U)
+            && should_disable_actor_camera_cull(0x58U, 0x82U, 254U, 208U)
+            && should_disable_actor_camera_cull(0x5AU, 0x82U, 254U, 208U),
         "the Three Blobs bypass the cull only after camera activation");
     check(
-        !should_disable_actor_camera_cull(0x58U, 0x80U)
-            && !should_disable_actor_camera_cull(0x57U, 0x82U)
-            && !should_disable_actor_camera_cull(0x5BU, 0x82U),
+        !should_disable_actor_camera_cull(0x58U, 0x86U, 254U, 480U),
+        "orb initialization's active flag must not latch off-camera motion");
+    check(
+        should_disable_actor_camera_cull(0x58U, 0x86U, 254U, 302U)
+            && !should_disable_actor_camera_cull(0x58U, 0x86U, 254U, 303U)
+            && should_disable_actor_camera_cull(0x58U, 0x86U, 254U, 15U)
+            && !should_disable_actor_camera_cull(0x58U, 0x86U, 254U, 14U)
+            && should_disable_actor_camera_cull(0x58U, 0x86U, 0U, 0U),
+        "orb activation uses the ROM's inclusive lower and exclusive upper camera bounds");
+    check(
+        !should_disable_actor_camera_cull(0x58U, 0x80U, 254U, 208U)
+            && !should_disable_actor_camera_cull(0x57U, 0x82U, 254U, 208U)
+            && !should_disable_actor_camera_cull(0x5BU, 0x82U, 254U, 208U),
         "the cabinet cull policy leaves uncullable and unrelated actors alone");
 }
 

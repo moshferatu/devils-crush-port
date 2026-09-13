@@ -19687,8 +19687,10 @@ int run_smoke_test(PceRuntime& runtime)
 // by the button through `01:D466` and consults nothing else, and the spiders
 // were the other family the whole-table view exposed as frozen. The Three
 // Blobs at `$58-$5A` also need to keep floating when the ball leaves their
-// region, but only after the original camera has activated them once. This
-// preserves their start-of-session setup while making that activation a latch:
+// region, but only after the original camera has activated them once. Check
+// their actual Y against the camera too: initialization sets bit 7 even for
+// off-camera slots, and latching that flag starts the orbs in the shooter.
+// This preserves their start-of-session setup while making activation a latch:
 // clearing bit 1 persists after the camera sweep later clears bit 7. The
 // dynamic pool at `$62-$7E` and every other fixed mechanism keep their cull.
 void keep_fixed_actors_simulating(
@@ -19699,6 +19701,13 @@ void keep_fixed_actors_simulating(
         return;
     }
     bool changed = false;
+    const auto read_word = [&](const std::size_t low,
+                               const std::size_t high) {
+        return static_cast<std::uint16_t>(
+            std::to_integer<std::uint8_t>(work_ram[low])
+            | (std::to_integer<std::uint8_t>(work_ram[high]) << 8U));
+    };
+    const auto camera_y = read_word(0x00A9U, 0x00AAU);
     for (std::size_t slot = devils_crush::cabinet::kFirstFlipperControlSlot;
          slot <= devils_crush::cabinet::kLastThreeBlobSlot;
          ++slot) {
@@ -19706,7 +19715,9 @@ void keep_fixed_actors_simulating(
         const auto flags = std::to_integer<std::uint8_t>(work_ram[offset]);
         if (!devils_crush::cabinet::should_disable_actor_camera_cull(
                 slot,
-                flags)) {
+                flags,
+                read_word(0x1300U + slot, 0x1380U + slot),
+                camera_y)) {
             continue;
         }
         work_ram[offset] = static_cast<std::byte>(flags & 0xFDU);

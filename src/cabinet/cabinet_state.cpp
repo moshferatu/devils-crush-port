@@ -123,7 +123,9 @@ std::optional<CabinetState> decode_cabinet_state(
 
 bool should_disable_actor_camera_cull(
     const std::size_t slot,
-    const std::uint8_t flags) noexcept
+    const std::uint8_t flags,
+    const std::uint16_t actor_y,
+    const std::uint16_t camera_y) noexcept
 {
     if ((flags & kActorCameraCullFlag) == 0U) {
         return false;
@@ -134,9 +136,17 @@ bool should_disable_actor_camera_cull(
         && slot <= kLastFlipperControlSlot;
     const bool spider =
         slot >= kFirstSpiderSlot && slot <= kLastSpiderSlot;
+    // 00:F4FC admits Y in [camera - 48, camera + 240). Use the same
+    // wrapping 16-bit differences as its two signed subtraction tests.
+    const auto lower_delta = static_cast<std::uint16_t>(
+        actor_y - static_cast<std::uint16_t>(camera_y - 48U));
+    const auto upper_delta = static_cast<std::uint16_t>(
+        actor_y - static_cast<std::uint16_t>(camera_y + 240U));
+    const bool inside_camera = (lower_delta & 0x8000U) == 0U
+        && (upper_delta & 0x8000U) != 0U;
     const bool activated_three_blob =
         slot >= kFirstThreeBlobSlot && slot <= kLastThreeBlobSlot
-        && (flags & kActorCameraActiveFlag) != 0U;
+        && (flags & kActorCameraActiveFlag) != 0U && inside_camera;
     return flipper || spider || activated_three_blob;
 }
 

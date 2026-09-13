@@ -82,10 +82,13 @@ struct TableActorState {
 
 // Selects the fixed actors whose original camera cull cabinet mode may
 // disable. The Three Blobs are admitted only after the camera has activated
-// them once, preserving their original start-of-session initialization.
+// them once. Confirm the actor is inside the original camera interval because
+// initialization can set the active flag before the first camera sweep.
 [[nodiscard]] bool should_disable_actor_camera_cull(
     std::size_t slot,
-    std::uint8_t flags) noexcept;
+    std::uint8_t flags,
+    std::uint16_t actor_y,
+    std::uint16_t camera_y) noexcept;
 
 // Decodes the mapped parallel actor arrays at logical $3000-$3FFF. This is
 // observation only: the original assembly remains the sole owner of actor

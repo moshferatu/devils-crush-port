@@ -942,10 +942,31 @@ them and the on-camera logic put them right. The flippers are safe because
 `01:D466` is driven entirely by the button and consults nothing else, and the
 spiders were the other family the whole-table view exposed as frozen.
 The three color-changing Blobs at slots `$58-$5A` use a camera-latched policy:
-they retain the original cull until bit 7 proves the camera has activated their
-region once, then cabinet mode clears bit 1 so their floating animation keeps
+they retain the original cull until bit 7 is set and their Y lies within the
+original camera interval (`camera - 48 <= Y < camera + 240`). Initialization
+can set bit 7 for an off-camera orb, so the flag alone is insufficient. Once
+both checks confirm activation, cabinet mode clears bit 1 so their floating animation keeps
 running after the ball leaves. This avoids the incorrect start-of-session
 state caused by unculling them before their first activation.
+
+The `out/skill-shot` capture exposed an initialization race in the old
+flag-only check. Frame 93 ended with `$30D8=$86`, orb Y=254, and camera
+Y=480. The host cleared the cull on frame 94 even though the orb was outside
+the camera, letting it move while the ball was still in the shooter. With
+the position check, the orbs retain their original positions until genuine
+camera activation at frame 465; the host latches that activation on frame
+466. All three orb positions and the ball position match a registry-disabled,
+original-instruction-boundary replay throughout the corrected 1,202-frame
+capture. Their animation still advances after the camera leaves.
+
+The same capture's special-points interruption is original game behavior:
+`$2053.2` stays set during frames 524–818 (295 frames, about 4.9 seconds),
+with or without the native registry or cabinet camera policy. `01:C1B0`
+branches through `01:C223` into `01:DDDD`, which runs the award presentation
+and counting sequence with explicit frame waits instead of the normal actor
+loop. This verifies the emulated pause; the input capture contains no host
+frame-duration measurements and cannot rule out additional rendering stalls.
+
 `--cabinet-seed-check` measures the blast radius: the named-slot policy leaves
 each latched family under the original cull until its first camera activation,
 where the wholesale lift moved several hundred pixels before the game had put
