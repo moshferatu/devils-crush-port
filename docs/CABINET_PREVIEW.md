@@ -88,8 +88,9 @@ The table is decoded only after:
 Menus and bonus stages therefore fall back to the emulated framebuffer. The
 stitched table remains visible after the final ball reaches zero, throughout
 the game-over presentation, and gives way only when the screen selector moves
-back to a menu. This also gives bonus stages the required full playfield
-window without a second simulation. The last of those three conditions is
+back to a menu. Bonus stages preserve their corrected 4:3 aspect, match the
+stitched table's fitted width, and align with the bottom of the playfield
+window. The layout is recalculated when the window is resized. The last of those three conditions is
 the one that took a defect to find; see
 [Screens raised over a live session](#screens-raised-over-a-live-session).
 

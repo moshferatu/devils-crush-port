@@ -10222,7 +10222,8 @@ void destroy_stage(StageTexture& stage)
     const std::uint32_t aspect_numerator,
     const std::uint32_t aspect_denominator,
     const std::array<std::uint8_t, 3> clear_color = {8U, 8U, 12U},
-    const float margin_fraction = 0.0F)
+    const float margin_fraction = 0.0F,
+    const bool bottom_table_width = false)
 {
     int output_width = 0;
     int output_height = 0;
@@ -10268,6 +10269,17 @@ void destroy_stage(StageTexture& stage)
         source.height,
         aspect_numerator,
         aspect_denominator);
+    if (bottom_table_width) {
+        const auto table_layout = devils_crush::render::calculate_scale_layout(
+            output_width, output_height, source.width, source.height,
+            devils_crush::cabinet::kTableAspectNumerator,
+            devils_crush::cabinet::kTableAspectDenominator);
+        layout = devils_crush::render::calculate_scale_layout(
+            table_layout.destination.width, output_height,
+            source.width, source.height, aspect_numerator, aspect_denominator);
+        layout.destination.x = (output_width - layout.destination.width) / 2;
+        layout.destination.y = output_height - layout.destination.height;
+    }
     if (!layout.valid() || !ensure_stage(renderer, layout, stage)) {
         return false;
     }
@@ -20437,6 +20449,7 @@ int run_windows_host(
                "use its static fallback.\n";
     }
     bool table_view = false;
+    bool bonus_view = false;
     bool reported_table_view = false;
     devils_crush::render::PersistentActorSpriteCache
         persistent_actor_sprites;
@@ -21182,6 +21195,7 @@ int run_windows_host(
                     }
                 }
 
+                bonus_view = cabinet_state && cabinet_state->bonus_stage;
                 table_view = false;
                 bool source_uploaded = false;
                 const bool overlay_stats_due =
@@ -21292,7 +21306,9 @@ int run_windows_host(
                     stage,
                     aspect_numerator,
                     aspect_denominator,
-                    cabinet_mode ? kPureBlack : kDesktopFrameColor);
+                    cabinet_mode ? kPureBlack : kDesktopFrameColor,
+                    0.0F,
+                    cabinet_mode && bonus_view && !table_view);
             }
         }
         const auto dmd_high_score_elapsed =
