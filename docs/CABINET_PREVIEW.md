@@ -305,7 +305,10 @@ therefore cannot launch and also avoid accepting unless the host looks at
 where the ball is.
 
 `input.launch` names keys that send button I, and only button I, while `$53`
-bit 3 marks the Devil Shooter session. That bit marks the shooter session and
+bit 3 marks the Devil Shooter session and $2254 is zero (live gameplay).
+The attract demo sets $2254 to one and also runs the shooter, so its launch
+flag must not suppress Return: Run dismisses the demo through 01:C2AF-C2B5.
+That bit marks the shooter session and
 nothing else, which `--cabinet-nudge-probe` established while tracing the
 nudge gate. Suppressing the key's ordinary pad input is the point rather than
 a side effect: a launch button that also sent Run would pause the game at the

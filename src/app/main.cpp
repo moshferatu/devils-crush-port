@@ -19728,7 +19728,7 @@ void keep_fixed_actors_simulating(
 // The masks are written by the piece initializers at `01:D335`/`01:D376`
 // rather than each frame, but reapplying costs one compare per piece and
 // survives a re-init at any point, so it is done every frame.
-// Returns whether the ball is in the Devil Shooter, which the caller needs
+// Returns whether a live-game ball is in the Devil Shooter, which the caller needs
 // for the launch keys and which is free here because this already holds the
 // work-RAM image.
 [[nodiscard]] bool apply_flipper_inputs(
@@ -19750,10 +19750,12 @@ void keep_fixed_actors_simulating(
     if (work_ram.size() < 0x2000U) {
         return false;
     }
+    // $2254 selects the real game (0) or attract demo (1). Both run the
+    // shooter, but the demo's C2AF input gate needs Run to return to title.
     const bool ball_in_launcher =
-        (std::to_integer<std::uint8_t>(work_ram[kSessionFlags])
-         & kShooterSession)
-        != 0U;
+        std::to_integer<std::uint8_t>(work_ram[0x0254U]) == 0U
+        && (std::to_integer<std::uint8_t>(work_ram[kSessionFlags])
+            & kShooterSession) != 0U;
     if (left_mask == 0U && right_mask == 0U) {
         return ball_in_launcher;
     }
