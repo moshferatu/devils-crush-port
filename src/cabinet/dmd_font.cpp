@@ -95,7 +95,10 @@ std::optional<DmdFont> DmdFont::decode(
         return std::nullopt;
     }
     for (unsigned digit = 0; digit < 10U; ++digit) {
-        for (unsigned y = 0; y < 16U; ++y) {
+        // Rows 13-14 belong to the HUD's horizontal rule, not the digit.
+        // Leave the bottom rows transparent in both palettes while keeping
+        // the 16x16 cell size so all DMD layouts retain their spacing.
+        for (unsigned y = 0; y < 13U; ++y) {
             for (unsigned x = 0; x < 16U; ++x) {
                 const auto tile = std::to_integer<unsigned>(rom_bytes[
                     digit_map + digit * 4U + (y / 8U) * 2U + x / 8U]);
