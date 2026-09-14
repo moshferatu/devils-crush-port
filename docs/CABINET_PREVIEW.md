@@ -506,14 +506,19 @@ to paste into `cabinet.ini`.
 
 #### Letting go is a speed
 
-A spring-loaded rod let go from a full draw is home in two to four frames at
-60Hz; a player easing it forward to fine-tune a shot moves it a few percent
-per frame. Those are the same journey and different intentions, so the release
-test is the one-frame fall. Drop by `release` percent of the travel in a
-single frame and the rod has been let go, at the draw it held the frame
-before — which is the shot the player asked for, not wherever the spring
-happened to be caught. Ease it forward and nothing fires; the charge simply
-follows the rod back down, which is what easing it forward asks for.
+A spring-loaded rod can return between samples. Release detection considers
+one or two consecutive descending samples: a total drop of `release` percent
+fires using the position at the start of that short descent. For example,
+60% -> 45% -> 20% now launches from 60%, rather than the already-returning 45%.
+The history is bounded to two samples; slow adjustments do not accumulate into
+a release or retain a maximum pull from earlier in the stroke.
+
+Calibration preserves 1/256-percent travel. The host rounds that pull to the
+nearest quarter pixel, matching the positions reached by holding Enter, and
+places the shooter and seated ball at that position. The 39-pixel travel has
+156 quarter-pixel steps; the minimum launchable charge remains one pixel.
+Whole-pixel charge and the original launch-velocity calculation remain the
+ROM's rules. Analog input no longer selects positions between keyboard steps.
 
 Reaching rest fires too, and has to. A rod eased all the way home by hand
 never falls fast enough to trip the first test, and without the second the
@@ -528,15 +533,15 @@ nothing — from launching the ball on its own.
 #### Four draws, four shots
 
 `--cabinet-plunger-check` drives the same model the host drives from a
-scripted rod, four times, and reads back what the cartridge computed:
+scripted rod at four strengths, and reads back what the cartridge computed:
 
 ```text
 scripted plunger, one pass per draw:
   draw   $2D15   $3580   fired at   escaped   ride
-   25%       9   $FC         1097        no      9
-   50%      19   $FA         1097       yes      9
-   75%      29   $F7         1097       yes      9
-  100%      39   $F5         1097       yes      9
+   25%       9   $FC         1100        no      9
+   50%      19   $FA         1101       yes      9
+   75%      29   $F7         1098       yes      9
+  100%      39   $F5         1098       yes      9
   4 distinct launch velocities, and the ball rode the rod in every one.
 ```
 
@@ -560,6 +565,12 @@ than a shortfall: four pixels a frame will not climb the shooter lane, so the
 ball rolls back and the shooter resets to charge again — which is what a short
 press of button I does on the original. `dc_rom_plunger_check` pins all eight
 numbers, including that one.
+
+The check also compares a direct 60% release with returns sampled through
+55%, 45%, and 40%. All must produce the same charge and launch velocity,
+and the shooter and ball must receive matching fractional positions on the
+release frame. Captures include `plunger_draw_units` alongside the rounded
+percentage for diagnosing physical plunger sessions.
 
 ### Nudge
 

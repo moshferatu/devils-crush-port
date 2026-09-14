@@ -8295,6 +8295,26 @@ void test_plunger()
     using devils_crush::input::Plunger;
     using devils_crush::input::PlungerCalibration;
 
+    // Every launchable keyboard-charge tick must be selectable with the rod.
+    // Sweep the calibrated range to catch missing steps and off-grid values.
+    {
+        std::array<bool, 157> reached{};
+        std::uint16_t previous = 0;
+        for (std::uint32_t units = 0; units <= 25600U; ++units) {
+            const devils_crush::input::PlungerSample sample{
+                .draw_units = static_cast<std::uint16_t>(units)};
+            const auto position = sample.shooter_position();
+            check(position >= previous && position % 64U == 0U
+                      && position >= 256U && position <= 9984U,
+                  "analog positions follow the keyboard quarter-pixel grid");
+            reached[position / 64U] = true;
+            previous = position;
+        }
+        for (std::size_t step = 4; step <= 156; ++step) {
+            check(reached[step], "every launchable keyboard step is reachable");
+        }
+    }
+
     // An axis that reads its draw directly, so the readings below are the
     // percentages they produce and nothing has to be worked backwards.
     constexpr PlungerCalibration kDirect{
@@ -8303,6 +8323,46 @@ void test_plunger()
         .deadzone = 0,
         .release = 25,
     };
+
+    // The same release sampled at different points in the spring's travel
+    // must retain the chosen pull, including an initially sub-threshold fall.
+    for (const auto middle : {60, 55, 45, 40}) {
+        Plunger plunger;
+        plunger.configure(kDirect);
+        static_cast<void>(plunger.update(0));
+        static_cast<void>(plunger.update(60));
+        const auto first = plunger.update(middle);
+        const auto shot = first.released ? first : plunger.update(20);
+        check(shot.released && shot.draw == 60,
+              "spring sampling phase preserves the sixty-percent pull");
+    }
+    {
+        Plunger plunger;
+        plunger.configure(kDirect);
+        static_cast<void>(plunger.update(0));
+        static_cast<void>(plunger.update(80));
+        for (const auto value : {70, 60, 50, 40}) {
+            check(!plunger.update(value).released,
+                  "slow forward adjustment does not accumulate into a release");
+        }
+        static_cast<void>(plunger.update(40));
+        static_cast<void>(plunger.update(30));
+        const auto shot = plunger.update(0);
+        check(shot.released && shot.draw == 40,
+              "release after easing uses the adjusted pull, not the old peak");
+    }
+    {
+        Plunger plunger;
+        plunger.configure({.rest = 0, .drawn = 25600, .deadzone = 0});
+        static_cast<void>(plunger.update(0));
+        const auto a = plunger.update(12800);
+        const auto b = plunger.update(12864);
+        check(a.draw == b.draw && b.draw_units - a.draw_units == 64,
+              "sub-percent sensor travel survives calibration");
+        const auto shot = plunger.update(0);
+        check(shot.released && shot.draw_units == 12864,
+              "release preserves fractional pull precision");
+    }
 
     // A rod found already back is not somebody pulling it. This is what keeps
     // a controller that is not the plunger -- one whose axis happens to sit at

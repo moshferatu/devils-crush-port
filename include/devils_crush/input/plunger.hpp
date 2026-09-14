@@ -37,8 +37,8 @@ namespace devils_crush::input {
 // full draw is back at rest in two to four frames at 60Hz, while a player
 // easing the rod forward to fine-tune a shot moves it a few percent per frame.
 // Those are the same journey and different intentions, so the release test is
-// the per-frame drop: fall by `release` or more of the travel in one frame and
-// the plunger has been let go, at the draw it held the frame before. Ease it
+// a short descent: fall by `release` or more over one or two consecutive
+// descending samples and release at the start of that descent. Ease it
 // forward and nothing fires -- the draw simply follows the rod down, and the
 // shot gets weaker, which is what easing it forward asks for.
 struct PlungerCalibration {
@@ -63,10 +63,9 @@ struct PlungerCalibration {
     // percent drawn would hold button I forever and never let the ball go.
     std::uint8_t deadzone = 8;
 
-    // The one-frame fall, in percent of travel, that counts as the rod being
-    // let go. 25 sits between the two motions it has to tell apart: a spring
-    // return covers the whole travel in three or four frames, and a hand
-    // easing the rod forward covers a few percent in each.
+    // The fall over one or two descending samples, in percent of calibrated
+    // travel, that counts as release. Slow adjustments below this threshold
+    // continue to follow the rod; reaching rest also releases.
     std::uint8_t release = 25;
 
     [[nodiscard]] bool operator==(const PlungerCalibration&) const = default;
@@ -74,8 +73,8 @@ struct PlungerCalibration {
 
 // What the host should do with the shooter this frame.
 //
-// `draw` is the distance to put the shooter piece at, in percent of its own
-// travel; the host scales it to the cartridge's `$00`-`$27` and writes it. On
+// `draw` is the display percentage; `draw_units` retains the fine position
+// used to place the shooter across its 39-pixel travel. On
 // the frame `released` is set it carries the draw the rod held *before* the
 // spring took it, which is the shot the player actually asked for.
 struct PlungerSample {
@@ -90,6 +89,22 @@ struct PlungerSample {
     // it is what charges the shooter and letting it go is what fires, so the
     // release frame is exactly the frame it has to be up.
     bool released = false;
+
+    // Calibrated travel in 1/256 percent units (0..25600). Kept separately
+    // from the display percentage so fine adjustments survive normalization.
+    std::uint16_t draw_units = 0;
+
+    // The same 156 quarter-pixel positions traversed by holding button I.
+    // Round to the nearest step rather than introducing extra positions
+    // between the cartridge's keyboard-charge ticks. A nonzero whole-pixel
+    // charge is required for the ROM to accept a release.
+    [[nodiscard]] constexpr std::uint16_t shooter_position() const noexcept
+    {
+        const auto steps = (static_cast<std::uint32_t>(draw_units) * 156U
+                            + 12800U) / 25600U;
+        return static_cast<std::uint16_t>(
+            (steps < 4U ? 4U : steps > 156U ? 156U : steps) * 64U);
+    }
 
     [[nodiscard]] bool operator==(const PlungerSample&) const = default;
 };
@@ -167,11 +182,13 @@ public:
     }
 
 private:
-    [[nodiscard]] std::uint8_t resolve_draw(
+    [[nodiscard]] std::uint16_t resolve_draw(
         std::int32_t raw) const noexcept;
 
     PlungerCalibration calibration_{};
     std::uint8_t draw_ = 0;
+    std::uint16_t draw_units_ = 0;
+    std::uint16_t preceding_units_ = 0;
     bool drawn_ = false;
     bool armed_ = false;
 };

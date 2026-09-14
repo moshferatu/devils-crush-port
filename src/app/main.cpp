@@ -15112,7 +15112,10 @@ read_interactive_session_replay(const std::filesystem::path& path)
     const bool includes_plunger = header
         == "frame,player_one,player_two,plunger_draw,plunger_drawn,"
            "plunger_released,plunger_engaged";
-    const bool includes_work_ram_hash = header
+    const bool includes_precise_plunger = header
+        == "frame,player_one,player_two,plunger_draw,plunger_drawn,"
+           "plunger_released,plunger_engaged,work_ram_sha256,plunger_draw_units";
+    const bool includes_work_ram_hash = includes_precise_plunger || header
         == "frame,player_one,player_two,plunger_draw,plunger_drawn,"
            "plunger_released,plunger_engaged,work_ram_sha256";
     if (header != kPadHeader && !includes_plunger
@@ -15182,7 +15185,8 @@ read_interactive_session_replay(const std::filesystem::path& path)
     while (std::getline(input, line)) {
         const auto fields = fields_for(line);
         if (fields.size()
-            != (includes_work_ram_hash ? 8U : includes_plunger ? 7U : 3U)) {
+            != (includes_precise_plunger ? 9U
+                : includes_work_ram_hash ? 8U : includes_plunger ? 7U : 3U)) {
             std::cerr << "Interactive input row has the wrong column count: "
                       << path.string() << '\n';
             return std::nullopt;
@@ -15269,7 +15273,7 @@ read_interactive_session_replay(const std::filesystem::path& path)
            << "# host_mode=" << (cabinet_mode ? "cabinet" : "desktop")
            << '\n'
            << "frame,player_one,player_two,plunger_draw,plunger_drawn,"
-              "plunger_released,plunger_engaged,work_ram_sha256\n";
+              "plunger_released,plunger_engaged,work_ram_sha256,plunger_draw_units\n";
     for (std::size_t index = 0U; index < inputs.size(); ++index) {
         const auto& captured = inputs[index];
         if (captured.work_ram_sha256.empty()) {
@@ -15282,7 +15286,8 @@ read_interactive_session_replay(const std::filesystem::path& path)
                << (captured.plunger.drawn ? 1 : 0) << ','
                << (captured.plunger.released ? 1 : 0) << ','
                << (captured.plunger_engaged ? 1 : 0) << ','
-               << captured.work_ram_sha256 << '\n';
+               << captured.work_ram_sha256 << ','
+               << captured.plunger.draw_units << '\n';
     }
     output.close();
     if (!output) {
@@ -19742,7 +19747,7 @@ constexpr int kBallRideSlack = 16;
 // them failing means this is not the shooter and nothing is written.
 [[nodiscard]] bool apply_plunger_draw(
     devils_crush::emulation::PceRuntime& runtime,
-    const std::uint8_t draw)
+    const devils_crush::input::PlungerSample& sample)
 {
     constexpr std::size_t kSessionFlags = 0x0053U;
     constexpr std::uint8_t kShooterSession = 0x08U;
@@ -19799,9 +19804,9 @@ constexpr int kBallRideSlack = 16;
     // says there is nothing to launch -- `02:5173 LDA $2D15 : BEQ $5178`
     // returns without firing -- so writing it would leave the ball sitting in
     // a shooter that the player has already let go of.
-    const auto charge = static_cast<std::uint8_t>(std::max<std::uint32_t>(
-        1U,
-        (static_cast<std::uint32_t>(draw) * kFullCharge) / 100U));
+    const auto position = sample.shooter_position();
+    const auto charge = static_cast<std::uint8_t>(position >> 8U);
+    const auto fraction = static_cast<std::uint8_t>(position & 0xFFU);
     const auto sum = static_cast<std::uint16_t>(rest_low + charge);
     const auto low = static_cast<std::uint8_t>(sum & 0xFFU);
     const auto high = static_cast<std::uint8_t>(
@@ -19826,18 +19831,20 @@ constexpr int kBallRideSlack = 16;
         std::abs(ball_y - (shooter_was - kBallRidesAbove))
         <= kBallRideSlack;
 
-    if (byte_at(kYFractionBase + shooter) == 0U
+    if (byte_at(kYFractionBase + shooter) == fraction
         && byte_at(kYLowBase + shooter) == low
         && byte_at(kYHighBase + shooter) == high
         && byte_at(kChargeCounter) == charge
-        && (!carries_ball || ball_y == seated)) {
+        && (!carries_ball || (ball_y == seated
+                             && byte_at(kYFractionBase) == fraction))) {
         return true;
     }
-    work_ram[kYFractionBase + shooter] = std::byte{0};
+    work_ram[kYFractionBase + shooter] = static_cast<std::byte>(fraction);
     work_ram[kYLowBase + shooter] = static_cast<std::byte>(low);
     work_ram[kYHighBase + shooter] = static_cast<std::byte>(high);
     work_ram[kChargeCounter] = static_cast<std::byte>(charge);
     if (carries_ball) {
+        work_ram[kYFractionBase] = static_cast<std::byte>(fraction);
         work_ram[kYLowBase] = static_cast<std::byte>(seated & 0xFF);
         work_ram[kYHighBase] =
             static_cast<std::byte>((seated >> 8) & 0xFF);
@@ -21011,7 +21018,7 @@ int run_windows_host(
             // it writes when the Devil Shooter is holding the ball and
             // dispatching to its charge script, and refuses otherwise.
             const bool rod_engaged = ball_in_launcher && rod.drawn
-                && apply_plunger_draw(runtime, rod.draw);
+                && apply_plunger_draw(runtime, rod);
             const auto input = read_input(
                 gamepad,
                 key_bindings,
@@ -23040,7 +23047,8 @@ struct PlungerCheckPass {
 [[nodiscard]] int run_plunger_check_pass(
     devils_crush::emulation::PceRuntime& runtime,
     const std::uint8_t draw,
-    PlungerCheckPass& pass)
+    PlungerCheckPass& pass,
+    const int release_middle = -1)
 {
     constexpr std::size_t kSessionFlags = 0x0053U;
     constexpr std::uint8_t kShooterSession = 0x08U;
@@ -23067,6 +23075,7 @@ struct PlungerCheckPass {
     int released_at = 0;
     bool session = false;
     bool letting_go = false;
+    bool sampled_middle = false;
     for (int frame_number = 1; frame_number <= kFrames; ++frame_number) {
         const auto work_ram = runtime.export_work_ram();
         if (work_ram.size() < 0x2000U) {
@@ -23119,10 +23128,13 @@ struct PlungerCheckPass {
             raw = elapsed < kRampFrames
                 ? (static_cast<std::int32_t>(draw) * elapsed) / kRampFrames
                 : draw;
+        } else if (letting_go && release_middle >= 0 && !sampled_middle) {
+            raw = release_middle;
+            sampled_middle = true;
         }
         const auto sample = rod.update(raw);
         const bool engaged = session && sample.drawn
-            && apply_plunger_draw(runtime, sample.draw);
+            && apply_plunger_draw(runtime, sample);
         if (engaged) {
             ++pass.driven;
         }
@@ -23147,13 +23159,29 @@ struct PlungerCheckPass {
                     shooter = slot;
                 }
             }
-            const auto whole_y = [&work_ram](const std::size_t slot) {
+            // Observe the position actually supplied on the release frame.
+            // The previous frame can straddle a whole-pixel boundary while
+            // the ROM advances the fractional shooter coordinate.
+            const auto placed = runtime.export_work_ram();
+            const auto whole_y = [&placed](const std::size_t slot) {
                 return static_cast<int>(
-                    std::to_integer<std::uint8_t>(work_ram[0x1300U + slot])
-                    | (std::to_integer<std::uint8_t>(work_ram[0x1380U + slot])
+                    std::to_integer<std::uint8_t>(placed[0x1300U + slot])
+                    | (std::to_integer<std::uint8_t>(placed[0x1380U + slot])
                        << 8U));
             };
             pass.ride = whole_y(shooter) - whole_y(0);
+            // This route uses 25/50/75/100 and 60 percent pulls: the first
+            // four are exact quarter steps; 60 percent rounds to 23.5 pixels.
+            const auto expected_fraction = static_cast<std::uint8_t>(
+                draw == 25U ? 192U : draw == 75U ? 64U
+                : draw == 100U ? 0U : 128U);
+            if (!engaged
+                || std::to_integer<std::uint8_t>(placed[0x1280U + shooter])
+                    != expected_fraction
+                || placed[0x1280U] != placed[0x1280U + shooter]) {
+                std::cerr << "Fractional plunger position did not reach the shooter and ball.\n";
+                return EXIT_FAILURE;
+            }
         }
         InputFrame input;
         if (frame_number < kScriptUntil) {
@@ -23228,6 +23256,21 @@ struct PlungerCheckPass {
     std::cout << "  " << velocities.size()
               << " distinct launch velocities, and the ball rode the rod in "
                  "every one.\n";
+    PlungerCheckPass direct;
+    if (run_plunger_check_pass(runtime, 60U, direct) != EXIT_SUCCESS) {
+        return EXIT_FAILURE;
+    }
+    for (const int middle : {55, 45, 40}) {
+        PlungerCheckPass phased;
+        if (run_plunger_check_pass(runtime, 60U, phased, middle) != EXIT_SUCCESS
+            || phased.charge != direct.charge
+            || phased.velocity != direct.velocity
+            || phased.ride != direct.ride) {
+            std::cerr << "A sampled spring return weakened the sixty-percent launch.\n";
+            return EXIT_FAILURE;
+        }
+    }
+    std::cout << "  Fractional positions preserved; three sampled spring returns match the direct launch.\n";
     return EXIT_SUCCESS;
 }
 
