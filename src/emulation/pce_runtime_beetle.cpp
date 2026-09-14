@@ -467,6 +467,7 @@ public:
         framebuffer_height_ = 0;
         frame_number_ = 0;
         callback_failed_ = false;
+        refresh_core_observation_hooks();
 
         return {
             .loaded = true,
@@ -2905,7 +2906,7 @@ private:
 
         if (routine_call_observers_.empty()
             && !work_ram_write_observer_
-            && !bus_write_observer_) {
+            && !bus_write_observer_ && !music_voice_overlay_) {
             dc_beetle_clear_memory_write_hook();
         } else {
             dc_beetle_set_memory_write_hook(
@@ -3901,7 +3902,8 @@ private:
         if (runtime == nullptr || write == nullptr
             || (runtime->routine_call_observers_.empty()
                 && !runtime->work_ram_write_observer_
-                && !runtime->bus_write_observer_)) {
+                && !runtime->bus_write_observer_
+                && !runtime->music_voice_overlay_)) {
             return;
         }
 
@@ -3924,6 +3926,17 @@ private:
                 });
             }
             if (write->physical_bank != 0xF8U) {
+                return;
+            }
+            if (runtime->music_voice_overlay_
+                && write->instruction_physical_bank == 0x45U) {
+                runtime->music_voice_overlay_->observe_sequencer_write(
+                    write->instruction_physical_bank,
+                    write->instruction_logical_pc, write->value,
+                    {runtime->work_ram_data(), kPceWorkRamSize}, write->logical_address);
+            }
+            if (runtime->routine_call_observers_.empty()
+                && !runtime->work_ram_write_observer_ && !runtime->bus_write_observer_) {
                 return;
             }
             // When each byte of the stack page was last written. An absorbed

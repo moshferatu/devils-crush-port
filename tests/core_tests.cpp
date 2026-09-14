@@ -226,6 +226,17 @@ void test_music_voice_overlay()
     store(0x2FAEU + 2U, 0xFFU);
     store(0x2E37U, 0x1FU);
 
+    const auto sequenced = [&](std::uint8_t slot, std::uint8_t volume) {
+        store(0x2E34U, slot);
+        overlay.observe_sequencer_write(0x45U, 0x48B0U, volume, ram);
+        if (slot == 6U) overlay.observe_sequencer_write(
+            0x45U, 0x4A92U, volume, ram, 0x2E24U);
+        overlay.observe_sequencer_write(0x45U, 0x40B1U, 0x04U, ram);
+    };
+    overlay.observe_sequencer_write(0x45U, 0x49B6U, 0U, ram);
+    sequenced(6U, 31U);
+    sequenced(2U, 31U);
+
     overlay.observe_primary_write(0, 0x01U, 0xFFU, ram);
     overlay.observe_primary_write(0, 0x00U, 0x00U, ram);
     overlay.observe_primary_write(0, 0x02U, 0x40U, ram);
@@ -245,11 +256,67 @@ void test_music_voice_overlay()
     store(0x2E46U + 6U, 0x00U);
     store(0x2F22U + 6U, 0x00U);
     store(0x2F2CU + 6U, 0x00U);
+    overlay.observe_sequencer_write(0x45U, 0x4A25U, 0U, ram, 0x2E24U);
     overlay.observe_primary_write(20000, 0x00U, 0x00U, ram);
     overlay.observe_primary_write(20000, 0x02U, 0x40U, ram);
     check(
         overlay.displaced_channel_mask() == 0x00U,
         "music overlay mutes itself when the physical music voice returns");
+
+    // An exclusive announcement sequences slot 9 and stops the walk. Old
+    // music and effect records deliberately remain populated in work RAM.
+    store(0x2E46U + 6U, 1U);
+    store(0x2F22U + 6U, 0x40U);
+    overlay.observe_sequencer_write(0x45U, 0x49B6U, 0U, ram);
+    sequenced(9U, 31U);
+    overlay.observe_primary_write(20000, 0x00U, 0U, ram);
+    overlay.observe_primary_write(20000, 0x07U, 0U, ram);
+    check(overlay.displaced_channel_mask() == 0U,
+        "exclusive sequencer pass does not resurrect stale music/effects");
+
+    // A different voice's final scratch volume must not change the displaced
+    // voice's audio. Compare independently powered devices sample for sample.
+    const auto render = [&](std::uint8_t scratch, std::uint8_t volume,
+                            bool fade) {
+        std::vector<std::int32_t> samples(kBufferPositions);
+        std::vector<std::int32_t> right_samples(kBufferPositions);
+        devils_crush::audio::MusicVoiceOverlay subject(waveform);
+        subject.configure(samples.data(), right_samples.data(),
+            devils_crush::audio::PcePsg::Revision::HuC6280A);
+        subject.power(0);
+        store(0x2E37U, scratch);
+        store(0x2EB4U + 2U, fade ? 8U : 0U);
+        store(0x2E44U, 25U);
+        subject.observe_sequencer_write(0x45U, 0x49B6U, 0U, ram);
+        for (auto slot : {6U, 2U}) {
+            store(0x2E34U, static_cast<std::uint8_t>(slot));
+            subject.observe_sequencer_write(0x45U, 0x48A5U, volume, ram);
+            if (slot == 6U) subject.observe_sequencer_write(
+                0x45U, 0x4A92U, 31U, ram, 0x2E24U);
+            subject.observe_sequencer_write(0x45U, 0x40B1U, 4U, ram);
+        }
+        subject.observe_primary_write(0, 1U, 0xFFU, ram);
+        subject.observe_primary_write(0, 0U, 0U, ram);
+        subject.observe_primary_write(0, 2U, 0U, ram);
+        subject.update(20000);
+        return samples;
+    };
+    const auto quiet = render(31U, 15U, false);
+    check(quiet == render(1U, 15U, false),
+        "other voices' scratch volumes do not modulate displaced music");
+    check(quiet != render(31U, 31U, false),
+        "displaced music follows its own envelope volume");
+    check(quiet == render(31U, 21U, true),
+        "displaced music follows the original fade attenuation");
+
+    overlay.observe_sequencer_write(0x45U, 0x49B6U, 0U, ram);
+    sequenced(6U, 0U);
+    sequenced(2U, 31U);
+    overlay.observe_sequencer_write(0x45U, 0x4A92U, 31U, ram, 0x2E24U);
+    overlay.observe_primary_write(20000, 0U, 0U, ram);
+    overlay.observe_primary_write(20000, 2U, 0U, ram);
+    check(overlay.displaced_channel_mask() == 0U,
+        "silent effect cannot double the music that won the physical channel");
 }
 
 void test_native_cached_position_restore()

@@ -104,6 +104,7 @@ add_library(
     src/cabinet/dmd_font.cpp
     src/cabinet/dmd_layout.cpp
     src/cabinet/dmd_panel.cpp
+    src/cabinet/music_transition.cpp
     src/core/atomic_file.cpp
     src/core/backup_ram.cpp
     src/core/high_score_table.cpp

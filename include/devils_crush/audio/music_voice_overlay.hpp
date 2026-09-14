@@ -14,11 +14,12 @@ namespace devils_crush::audio {
 
 // A second, host-owned PSG containing only the six persistent music voices.
 //
-// Devil's Crush sequences nine logical voices but owns six physical PSG
-// channels. Slots 6-8 are effects and are committed first; when one claims a
-// channel, the corresponding music slot keeps advancing but its commit is
-// skipped. This model reconstructs the music-only commit from slots 0-5 and
-// makes just those displaced channels audible. The physical PSG remains
+// Devil's Crush owns six physical PSG channels. Slots 6-8 are effects and
+// slot 9 is an exclusive sequencer voice; they are committed first. When one
+// claims a channel, the corresponding music slot keeps advancing but its commit is
+// skipped. Executed stores identify each slot's envelope and the actual
+// winning hardware latch. This model reconstructs the music-only commit from
+// slots 0-5 and makes just those displaced channels audible. The physical PSG remains
 // untouched and continues to play every effect exactly as the game asks.
 class MusicVoiceOverlay {
 public:
@@ -45,6 +46,12 @@ public:
         std::uint8_t value,
         std::span<const std::byte> work_ram) noexcept;
 
+    // Observe executed sequencer stores, including stores inside native
+    // transcripts. Envelope volume is scratch RAM, not a per-slot latch.
+    void observe_sequencer_write(
+        std::uint8_t bank, std::uint16_t pc, std::uint8_t value,
+        std::span<const std::byte> work_ram, std::uint16_t address = 0U) noexcept;
+
     // Silences and invalidates the derived device after a reset or savestate
     // load. The next sequencer pass rebuilds it from live work RAM.
     void invalidate(std::int32_t timestamp) noexcept;
@@ -69,8 +76,6 @@ private:
     [[nodiscard]] std::uint8_t read(
         std::span<const std::byte> work_ram,
         std::uint16_t logical_address) const noexcept;
-    [[nodiscard]] std::uint8_t effect_channel_mask(
-        std::span<const std::byte> work_ram) const noexcept;
     [[nodiscard]] std::array<Voice, PcePsg::kChannelCount> music_voices(
         std::span<const std::byte> work_ram) const noexcept;
     void synchronize(
@@ -84,6 +89,9 @@ private:
     PcePsg psg_{nullptr, nullptr, PcePsg::Revision::HuC6280};
     std::vector<std::byte> waveform_table_;
     std::array<int, PcePsg::kChannelCount> loaded_waveforms_{};
+    std::array<bool, 10> sequenced_slots_{};
+    std::array<std::uint8_t, 10> voice_volumes_{};
+    std::uint8_t effect_channel_mask_ = 0;
     bool pending_sequencer_select_ = false;
     std::uint8_t displaced_channel_mask_ = 0;
 };

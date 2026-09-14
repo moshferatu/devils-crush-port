@@ -816,6 +816,29 @@ Its real-ROM fixtures cover scored, perfect, and lost results, and compare
 all 3,600 RAM snapshots with and without the result observer. Optional review
 artifacts can be generated with `dc_dmd_panel_tests <rom> <output-directory>`.
 
+## Music overlay and bonus transitions
+
+The experimental music overlay observes executed sequencer stores, including
+stores inside native transcripts. It records each voice's envelope and fade
+volume before the shared `$2E37` scratch byte is reused. Channel ownership
+comes from the actual `$2E22-$2E27` latch writes: a silent effect can leave its
+channel available to music, so treating it as occupied would double that
+music in the overlay. Only slots visited during the current sequencer pass
+can supply overlay voices. This prevents exclusive announcements from
+resurrecting stale notes left in lower-priority slot records.
+
+Perfect bonus results also expose an original double restart. Table return
+resumes music through `01:C201`, then the star controller calls `03:7CF6`
+120 frames later to resume it again. The cabinet observes completed table
+return at `01:C204` and suppresses that second audio call only when table
+return already resumed music for the pending star. Ordinary star resumes
+and returns without a perfect result retain their normal behavior.
+
+`dc_rom_music_overlay` compares original PSG writes and every RAM snapshot
+with the overlay enabled and disabled, exercises the bonus-6 and game-over
+music commands, and checks that the perfect-result transition starts table
+music once while preserving score, ball position, and gameplay flags.
+
 ## One rendered layer, measured against the emulator
 
 The cabinet used to compose two sprite layers: actors reconstructed from work

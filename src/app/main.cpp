@@ -7,6 +7,7 @@
 #include "devils_crush/cabinet/display_config.hpp"
 #include "devils_crush/cabinet/dmd_layout.hpp"
 #include "devils_crush/cabinet/dmd_panel.hpp"
+#include "devils_crush/cabinet/music_transition.hpp"
 #include "devils_crush/core/atomic_file.hpp"
 #include "devils_crush/core/high_score_table.hpp"
 #include "devils_crush/core/rom_image.hpp"
@@ -20710,6 +20711,23 @@ int run_windows_host(
         && !install_shooter_flipper_gate(
             runtime, cabinet_config.input.flippers)) {
         std::cerr << "Could not free the flippers during the launch.\n";
+        running = false;
+        host_ok = false;
+    }
+    devils_crush::cabinet::MusicTransition music_transition;
+    if (host_ok && (!runtime.install_execution_hook({
+            .routine = {1U, 0xC204U}, .mode = HookMode::observe,
+            .callback = [&runtime, &music_transition](const RoutineEntry&) {
+                music_transition.table_return(runtime.export_work_ram());
+            },
+        }) || !runtime.install_execution_hook({
+            .routine = {3U, 0x7CF6U}, .mode = HookMode::replace,
+            .replacement_callback = [&music_transition](const RoutineEntry& entry,
+                const std::span<const std::byte> ram) {
+                return music_transition.finish_star(entry, ram);
+            },
+        }))) {
+        std::cerr << "Could not install the bonus music transition.\n";
         running = false;
         host_ok = false;
     }

@@ -8,7 +8,6 @@ namespace {
 constexpr std::uint16_t kWorkRamBase = 0x2000U;
 constexpr std::uint8_t kMusicSlotCount = 6U;
 constexpr std::uint8_t kEffectSlotFirst = 6U;
-constexpr std::uint8_t kLogicalSlotCount = 9U;
 constexpr std::uint8_t kSequencerInProgress = 0x04U;
 
 [[nodiscard]] constexpr bool valid_channel(const std::uint8_t channel)
@@ -40,7 +39,47 @@ void MusicVoiceOverlay::power(const std::int32_t timestamp) noexcept
     loaded_waveforms_.fill(-1);
     pending_sequencer_select_ = false;
     displaced_channel_mask_ = 0U;
+    sequenced_slots_.fill(false);
+    voice_volumes_.fill(0U);
+    effect_channel_mask_ = 0U;
     psg_.set_output_channel_mask(timestamp, 0U);
+}
+
+void MusicVoiceOverlay::observe_sequencer_write(
+    const std::uint8_t bank, const std::uint16_t pc,
+    const std::uint8_t value,
+    const std::span<const std::byte> work_ram, const std::uint16_t address) noexcept
+{
+    if (bank != 0x45U) return;
+    if (pc == 0x49B6U) {
+        // The physical latch clear also starts a fresh music-only pass.
+        // In particular, exclusive slot 9 can stop the walk before music.
+        sequenced_slots_.fill(false);
+        effect_channel_mask_ = 0U;
+    } else if (pc == 0x48A5U || pc == 0x48B0U) {
+        const auto slot = read(work_ram, 0x2E34U);
+        if (slot < voice_volumes_.size()) {
+            const auto fade = read(work_ram, 0x2E44U);
+            voice_volumes_[slot] =
+                (read(work_ram, 0x2EB4U + slot) & 0x08U) != 0U
+                ? static_cast<std::uint8_t>(value + fade < 31U
+                    ? 0U : value + fade - 31U)
+                : value;
+        }
+    } else if (pc == 0x40B1U) {
+        const auto slot = read(work_ram, 0x2E34U);
+        if (slot < sequenced_slots_.size()) sequenced_slots_[slot] = true;
+    } else if ((pc == 0x4A92U || pc == 0x49EFU || pc == 0x4A25U)
+        && address >= 0x2E22U && address < 0x2E28U) {
+        // Use the actual winning latch, including zero-volume rests and
+        // auxiliary channels. A silent effect does not own a channel: the
+        // cartridge allows a later music voice to claim it in the same pass.
+        const auto bit = static_cast<std::uint8_t>(1U << (address - 0x2E22U));
+        effect_channel_mask_ = static_cast<std::uint8_t>(effect_channel_mask_ & ~bit);
+        if (value != 0U && read(work_ram, 0x2E34U) >= kEffectSlotFirst) {
+            effect_channel_mask_ = static_cast<std::uint8_t>(effect_channel_mask_ | bit);
+        }
+    }
 }
 
 void MusicVoiceOverlay::update(const std::int32_t timestamp) noexcept
@@ -73,68 +112,6 @@ std::uint8_t MusicVoiceOverlay::read(
         : 0U;
 }
 
-std::uint8_t MusicVoiceOverlay::effect_channel_mask(
-    const std::span<const std::byte> work_ram) const noexcept
-{
-    std::array<bool, PcePsg::kChannelCount> occupied{};
-    std::uint8_t result = 0U;
-
-    const auto claim = [&occupied, &result](const std::uint8_t channel) {
-        if (!valid_channel(channel) || occupied[channel]) {
-            return false;
-        }
-        occupied[channel] = true;
-        result = static_cast<std::uint8_t>(result | (1U << channel));
-        return true;
-    };
-
-    // The cartridge walks slots 8 down to 6. This is the ownership part of
-    // 45:49F9: an earlier effect wins, state $02 may additionally route noise
-    // to its alternate channel, and a zero-period voice claims nothing.
-    for (int slot = kLogicalSlotCount - 1;
-         slot >= kEffectSlotFirst;
-         --slot) {
-        const auto index = static_cast<std::uint8_t>(slot);
-        const auto primary = read(work_ram, 0x2E82U + index);
-        if (!valid_channel(primary) || occupied[primary]) {
-            continue;
-        }
-
-        const auto state = read(work_ram, 0x2E46U + index);
-        if ((read(work_ram, 0x2EBEU + index) & 0x02U) != 0U) {
-            // The DDA commit only takes even PSG channels whose active timer
-            // stream belongs to this logical slot.
-            if ((primary & 1U) == 0U
-                && read(work_ram, 0x20F5U + primary) != 0U
-                && read(work_ram, 0x2E05U + primary)
-                    == read(work_ram, 0x2F0EU + index)) {
-                static_cast<void>(claim(primary));
-            }
-            continue;
-        }
-
-        if ((read(work_ram, 0x2F22U + index)
-             | read(work_ram, 0x2F2CU + index)) == 0U) {
-            continue;
-        }
-
-        const auto special = static_cast<std::uint8_t>(state & 0x0AU);
-        if (special != 0U) {
-            if (special != 0x02U || primary >= 4U) {
-                static_cast<void>(claim(primary));
-                continue;
-            }
-            const auto alternate = read(work_ram, 0x2EAAU + index);
-            static_cast<void>(claim(alternate));
-        }
-        if ((state & 0x01U) != 0U) {
-            static_cast<void>(claim(primary));
-        }
-    }
-
-    return result;
-}
-
 std::array<MusicVoiceOverlay::Voice, PcePsg::kChannelCount>
 MusicVoiceOverlay::music_voices(
     const std::span<const std::byte> work_ram) const noexcept
@@ -153,7 +130,7 @@ MusicVoiceOverlay::music_voices(
         voice.active = true;
         voice.period_low = read(work_ram, 0x2F22U + slot);
         voice.period_high = read(work_ram, 0x2F2CU + slot);
-        voice.volume = read(work_ram, 0x2E37U);
+        voice.volume = voice_volumes_[slot];
         voice.balance = read(work_ram, 0x2FAEU + slot);
         if (noise_only) {
             voice.leave_waveform = true;
@@ -171,6 +148,7 @@ MusicVoiceOverlay::music_voices(
 
     for (int slot = kMusicSlotCount - 1; slot >= 0; --slot) {
         const auto index = static_cast<std::uint8_t>(slot);
+        if (!sequenced_slots_[index] || voice_volumes_[index] == 0U) continue;
         const auto primary = read(work_ram, 0x2E82U + index);
         if (!valid_channel(primary) || occupied[primary]
             || (read(work_ram, 0x2EBEU + index) & 0x02U) != 0U
@@ -251,7 +229,7 @@ void MusicVoiceOverlay::synchronize(
     // Remove the old contribution at this exact edge, change the derived
     // register file silently, then expose only the newly displaced voices.
     psg_.set_output_channel_mask(timestamp, 0U);
-    displaced_channel_mask_ = effect_channel_mask(work_ram);
+    displaced_channel_mask_ = effect_channel_mask_;
     auto voices = music_voices(work_ram);
     // Where no effect displaced the physical channel, use 45:49F9's actual
     // latch result as a parity oracle. Keeping the silent shadow in lockstep
