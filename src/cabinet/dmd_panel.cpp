@@ -125,7 +125,7 @@ render::ArgbImage DmdPanel::compose(const DmdFont& font,
         label(image, font, core::high_score_name_at(*high_scores, rank), 160, 28);
         number(image, font, static_cast<std::uint64_t>(
             core::high_score_at(*high_scores, rank)) * 100U, 160, 46, 2);
-        label(image, font, demo_ ? "DEMO   PRESS START" : "PRESS START", 160, 94);
+        label(image, font, demo_ ? "DEMO   PUSH RUN BUTTON" : "PUSH RUN BUTTON", 160, 94);
         return image;
     }
     if (scene_ == DmdScene::score) {
