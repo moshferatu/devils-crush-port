@@ -91,7 +91,9 @@ stitched table remains visible after the final ball reaches zero, throughout
 the game-over presentation, and gives way only when the screen selector moves
 back to a menu. Bonus stages preserve their corrected 4:3 aspect, match the
 stitched table's fitted width, and align with the bottom of the playfield
-window. The layout is recalculated when the window is resized. The last of those three conditions is
+window. Title and Best Five/high-score screens also align with the bottom,
+using their existing fitted width and aspect ratio. The layout is recalculated
+when the window is resized. The last of those three conditions is
 the one that took a defect to find; see
 [Screens raised over a live session](#screens-raised-over-a-live-session).
 
