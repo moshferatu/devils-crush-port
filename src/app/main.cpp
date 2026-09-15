@@ -10225,8 +10225,7 @@ void destroy_stage(StageTexture& stage)
     const std::uint32_t aspect_denominator,
     const std::array<std::uint8_t, 3> clear_color = {8U, 8U, 12U},
     const float margin_fraction = 0.0F,
-    const bool bottom_table_width = false,
-    const bool bottom_aligned = false)
+    const bool bottom_table_width = false)
 {
     int output_width = 0;
     int output_height = 0;
@@ -10282,9 +10281,6 @@ void destroy_stage(StageTexture& stage)
             source.width, source.height, aspect_numerator, aspect_denominator);
         layout.destination.x = (output_width - layout.destination.width) / 2;
         layout.destination.y = output_height - layout.destination.height;
-    } else if (bottom_aligned) {
-        layout.destination.y = (inset_fits ? inset_height : output_height)
-            - layout.destination.height;
     }
     if (!layout.valid() || !ensure_stage(renderer, layout, stage)) {
         return false;
@@ -20328,7 +20324,6 @@ int run_windows_host(
     }
     bool table_view = false;
     bool bonus_view = false;
-    bool title_or_high_scores_view = false;
     bool reported_table_view = false;
     devils_crush::render::PersistentActorSpriteCache
         persistent_actor_sprites;
@@ -21100,9 +21095,6 @@ int run_windows_host(
                     && dmd_panel.holds_playfield() && source.texture != nullptr;
                 if (!hold_playfield) {
                     bonus_view = cabinet_state && cabinet_state->bonus_stage;
-                    title_or_high_scores_view = cabinet_state
-                        && (cabinet_state->screen_selector == 3U
-                            || cabinet_state->screen_selector == 4U);
                     table_view = false;
                     bool source_uploaded = false;
                     const bool overlay_stats_due =
@@ -21216,8 +21208,7 @@ int run_windows_host(
                     aspect_denominator,
                     cabinet_mode ? kPureBlack : kDesktopFrameColor,
                     0.0F,
-                    cabinet_mode && bonus_view && !table_view,
-                    cabinet_mode && title_or_high_scores_view && !table_view);
+                    cabinet_mode && bonus_view && !table_view);
             }
         }
         const auto dmd_high_score_elapsed =
