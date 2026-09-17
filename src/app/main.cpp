@@ -19544,7 +19544,12 @@ int run_smoke_test(PceRuntime& runtime)
 //
 // The flipper pieces are safe because their state machine is driven entirely
 // by the button through `01:D466` and consults nothing else, and the spiders
-// were the other family the whole-table view exposed as frozen. The Three
+// were the other family the whole-table view exposed as frozen. The upper
+// Big Star ($4B) and Sorcerers ($16-$1E, including their controller) also
+// run from the start so the upper playfield animates before a camera visit.
+// The seven upper-left Gray Blobs ($50-$56) also keep moving off camera.
+// Their original rotation, deployment, and regeneration logic still runs.
+// The middle-table Three
 // Blobs at `$58-$5A` also need to keep floating when the ball leaves their
 // region, but only after the original camera has activated them once. Check
 // their actual Y against the camera too: initialization sets bit 7 even for

@@ -8263,6 +8263,23 @@ void test_cabinet_state()
         should_disable_actor_camera_cull(0x04U, 0x02U, 254U, 208U)
             && should_disable_actor_camera_cull(0x29U, 0x02U, 254U, 208U),
         "flippers and spiders always bypass the cabinet camera cull");
+    for (const auto slot : {0x16U, 0x17U, 0x18U, 0x19U, 0x1AU,
+                            0x1BU, 0x1CU, 0x1DU, 0x1EU, 0x4BU}) {
+        check(should_disable_actor_camera_cull(slot, 0x02U, 126U, 480U)
+                  && should_disable_actor_camera_cull(slot, 0x82U, 126U, 0U)
+                  && !should_disable_actor_camera_cull(slot, 0x80U, 126U, 480U),
+              "upper star and orb group run before and after a camera visit");
+    }
+    for (const auto slot : {0x50U, 0x51U, 0x52U, 0x53U, 0x54U, 0x55U, 0x56U}) {
+        check(should_disable_actor_camera_cull(slot, 0x02U, 30U, 480U)
+                  && should_disable_actor_camera_cull(slot, 0x82U, 30U, 0U)
+                  && !should_disable_actor_camera_cull(slot, 0x80U, 30U, 480U),
+              "upper-left gray orbs animate before and after a camera visit");
+    }
+    for (const auto slot : {0x15U, 0x1FU, 0x4AU, 0x4CU, 0x4FU, 0x57U}) {
+        check(!should_disable_actor_camera_cull(slot, 0x82U, 126U, 480U),
+              "upper animation policy preserves neighboring actor culls");
+    }
     check(
         !should_disable_actor_camera_cull(0x58U, 0x02U, 254U, 208U)
             && should_disable_actor_camera_cull(0x58U, 0x82U, 254U, 208U)

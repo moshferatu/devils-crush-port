@@ -121,6 +121,13 @@ type-`$82`/appearance-`$39` Tower insects; any slot reuse by an impact or
 other effect family invalidates the old visual. This remains
 observation-only; no second actor simulation is advanced.
 
+Cabinet mode lifts the original camera pause for the upper Big Star (`$4B`)
+and the eight orbiting Sorcerers with their controller (`$16-$1E`), plus the
+seven gray orbs in the upper-left chute (`$50-$56`). Their normal rotation,
+staggered deployment, orbit, and gray-orb movement logic runs from the start
+of the session, even with the ball still in the shooter. The middle-table
+Three Blobs (`$58-$5A`) retain their first-camera-visit activation requirement.
+
 The retained layer is drawn before the copied live SAT. Actors whose anchors
 are observed in the current camera are omitted from the retained draw, making
 the SAT authoritative without punching a 208-line hole through other

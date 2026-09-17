@@ -136,6 +136,12 @@ bool should_disable_actor_camera_cull(
         && slot <= kLastFlipperControlSlot;
     const bool spider =
         slot >= kFirstSpiderSlot && slot <= kLastSpiderSlot;
+    // Include the hidden group controller so the eight upper orbs can
+    // deploy and regenerate without waiting for the scrolling viewport.
+    const bool sorcerer =
+        slot >= kSorcererControllerSlot && slot <= kLastSorcererSlot;
+    const bool gray_blob =
+        slot >= kFirstGrayBlobSlot && slot <= kLastGrayBlobSlot;
     // 00:F4FC admits Y in [camera - 48, camera + 240). Use the same
     // wrapping 16-bit differences as its two signed subtraction tests.
     const auto lower_delta = static_cast<std::uint16_t>(
@@ -147,7 +153,8 @@ bool should_disable_actor_camera_cull(
     const bool activated_three_blob =
         slot >= kFirstThreeBlobSlot && slot <= kLastThreeBlobSlot
         && (flags & kActorCameraActiveFlag) != 0U && inside_camera;
-    return flipper || spider || activated_three_blob;
+    return flipper || spider || sorcerer || gray_blob || slot == kBigStarSlot
+        || activated_three_blob;
 }
 
 std::optional<std::array<TableActorState, kActorSlotCount>>

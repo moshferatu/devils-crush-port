@@ -21,6 +21,11 @@ inline constexpr std::size_t kActorSlotCount = 0x7FU;
 inline constexpr std::size_t kBallActorSlot = 0x00U;
 inline constexpr std::size_t kFirstFlipperControlSlot = 0x04U;
 inline constexpr std::size_t kLastFlipperControlSlot = 0x09U;
+inline constexpr std::size_t kSorcererControllerSlot = 0x16U;
+inline constexpr std::size_t kLastSorcererSlot = 0x1EU;
+inline constexpr std::size_t kBigStarSlot = 0x4BU;
+inline constexpr std::size_t kFirstGrayBlobSlot = 0x50U;
+inline constexpr std::size_t kLastGrayBlobSlot = 0x56U;
 inline constexpr std::size_t kFirstSpiderSlot = 0x26U;
 inline constexpr std::size_t kLastSpiderSlot = 0x29U;
 inline constexpr std::size_t kFirstThreeBlobSlot = 0x58U;
@@ -81,7 +86,9 @@ struct TableActorState {
     std::span<const std::byte> work_ram) noexcept;
 
 // Selects the fixed actors whose original camera cull cabinet mode may
-// disable. The Three Blobs are admitted only after the camera has activated
+// disable. The Big Star, Sorcerers, and upper-chute Gray Blobs run even
+// before the first camera visit.
+// The middle-table Three Blobs are admitted only after the camera has activated
 // them once. Confirm the actor is inside the original camera interval because
 // initialization can set the active flag before the first camera sweep.
 [[nodiscard]] bool should_disable_actor_camera_cull(
