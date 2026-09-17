@@ -9427,6 +9427,36 @@ void test_pce_sprite_overlay()
     set_sprite(0U, 20, 20, 1U, 0x0081U);
     vram[64U] = 0x8000U;
     std::vector<std::byte> work_ram(8192U);
+    {
+        // Learn a ball from the SAT, then retain it below the camera just
+        // as the stitched renderer does during the drain coroutine.
+        auto ball_ram = work_ram;
+        ball_ram[0x1000U] = std::byte{0x82};
+        ball_ram[0x1080U] = std::byte{0x80};
+        ball_ram[0x1180U] = std::byte{20};
+        ball_ram[0x1300U] = std::byte{20};
+        devils_crush::render::PersistentActorSpriteCache ball_cache;
+        const auto draw_ball = [&](const int y, const unsigned stage) {
+            ball_ram[0x1300U] = static_cast<std::byte>(y & 0xFF);
+            ball_ram[0x1380U] = static_cast<std::byte>(y >> 8);
+            ball_ram[0x55U] = static_cast<std::byte>(stage);
+            ArgbImage image{64, 768,
+                std::vector<std::uint32_t>(64U * 768U, 0xFF101010U)};
+            const auto stats = ball_cache.update_and_composite(
+                image, PceSpriteSnapshot{vram, sat, palette}, ball_ram,
+                0, 0, 0, 64);
+            return stats ? stats->opaque_pixel_writes : 0U;
+        };
+        check(draw_ball(20, 0) == 1U, "drain fixture learns the visible ball");
+        check(draw_ball(719, 0) == 1U, "ball remains visible before the drain threshold");
+        ball_ram[0x53U] = std::byte{0x08};
+        check(draw_ball(720, 0) == 1U, "shooter flight is not mistaken for a registered drain");
+        ball_ram[0x53U] = std::byte{0x02};
+        check(draw_ball(720, 0) == 0U, "drained ball is omitted from the stitched playfield");
+        check(draw_ball(724, 0) == 0U, "ball stays hidden after crossing the drain threshold");
+        check(draw_ball(720, 1) == 1U, "main-table drain cutoff does not apply to bonus stages");
+        check(draw_ball(700, 0) == 1U, "ball reappears when reset for the next launch");
+    }
     constexpr std::size_t actor_slot = 0x17U;
     work_ram[0x1000U + actor_slot] = std::byte{0x82};
     work_ram[0x1080U + actor_slot] = std::byte{0x80};

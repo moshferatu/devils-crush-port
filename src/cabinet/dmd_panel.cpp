@@ -121,8 +121,8 @@ render::ArgbImage DmdPanel::compose(const DmdFont& font,
     if (attract() && high_scores) {
         const auto rank = dmd_high_score_rank(elapsed);
         label(image, font, rank == 0U ? "GRAND CHAMPION"
-            : "HIGH SCORE #" + std::to_string(rank), 160, 6, 0xFFFCE024U);
-        label(image, font, core::high_score_name_at(*high_scores, rank), 160, 28);
+            : "HIGH SCORE #" + std::to_string(rank), 160, 6);
+        label(image, font, core::high_score_name_at(*high_scores, rank), 160, 28, 0xFFFCE024U);
         number(image, font, static_cast<std::uint64_t>(
             core::high_score_at(*high_scores, rank)) * 100U, 160, 46, 2);
         if (demo_) label(image, font, "DEMO", 160, 80);

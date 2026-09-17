@@ -1706,6 +1706,18 @@ PersistentActorSpriteCache::update_and_composite(
          ++slot) {
         const auto& actor = (*actors)[slot];
         const auto& visual = actor_visuals_[slot];
+        // 01:DD6E registers a main-table drain at Y >= $02D0. The
+        // end-of-ball coroutine leaves the ball there while it waits, so
+        // the top of its sprite can still peek over the playfield edge.
+        // Suppress only its presentation; the next launch restores it as
+        // soon as its position returns above the drain. Bonus stages use
+        // their own boundaries and must not inherit this table cutoff.
+        if (slot == devils_crush::cabinet::kBallActorSlot
+            && byte_value(work_ram[0x0055U]) == 0U
+            && (byte_value(work_ram[0x0053U]) & 0x02U) != 0U
+            && actor.world_y >= 0x02D0) {
+            continue;
+        }
         if (!actor.occupied() || !visual.learned
             || visual.type != actor.type
             || visual.appearance != actor.appearance
