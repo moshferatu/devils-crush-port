@@ -91,7 +91,11 @@ stitched table remains visible after the final ball reaches zero, throughout
 the game-over presentation, and gives way only when the screen selector moves
 back to a menu. Bonus stages preserve their corrected 4:3 aspect, match the
 stitched table's fitted width, and align with the bottom of the playfield
-window. The layout is recalculated when the window is resized. The last of those three conditions is
+window. On bonus entry, the last stitched image stays visible through the
+outgoing flash/fade and loading interval. The viewport changes only when
+`$2054` selects the bonus screen, preserving its normal fade-in without
+briefly showing the departing table at bonus size. This also works without
+a DMD window. The layout is recalculated when the window is resized. The last of those three conditions is
 the one that took a defect to find; see
 [Screens raised over a live session](#screens-raised-over-a-live-session).
 

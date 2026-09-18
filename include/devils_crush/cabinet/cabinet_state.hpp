@@ -54,6 +54,14 @@ struct CabinetState {
     // reconstructed; everything else has to come from the emulator, because
     // the other screens repurpose the pattern VRAM the reconstruction reads.
     std::uint8_t screen_selector = 0;
+
+    // The request precedes the bonus screen by the outgoing flash/fade and
+    // scene load. Keep the last stitched image until the screen changes;
+    // neither the outgoing viewport nor repurposed VRAM belongs on it.
+    [[nodiscard]] bool bonus_entry_pending() const noexcept
+    {
+        return bonus_stage && screen_selector == 0U;
+    }
 };
 
 struct TableActorState {

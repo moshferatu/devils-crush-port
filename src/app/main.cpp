@@ -21096,8 +21096,11 @@ int run_windows_host(
                     }
                 }
 
-                const bool hold_playfield = dmd.renderer != nullptr && dmd_font
-                    && dmd_panel.holds_playfield() && source.texture != nullptr;
+                const bool hold_bonus_entry = table_view && cabinet_state
+                    && cabinet_state->bonus_entry_pending();
+                const bool hold_playfield = source.texture != nullptr
+                    && (hold_bonus_entry || (dmd.renderer != nullptr && dmd_font
+                        && dmd_panel.holds_playfield()));
                 if (!hold_playfield) {
                     bonus_view = cabinet_state && cabinet_state->bonus_stage;
                     table_view = false;
@@ -21153,7 +21156,7 @@ int run_windows_host(
                             frame.framebuffer,
                             source);
                     }
-                } // Retain the playfield during DMD-owned result screens.
+                } // Retain it during bonus entry and DMD-owned result screens.
                 // The stitched table and the emulated framebuffer behave
                 // very differently — the framebuffer scrolls with the camera
                 // and hardware-clips its sprites — so say which one is on

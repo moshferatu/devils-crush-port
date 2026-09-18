@@ -8176,8 +8176,21 @@ void test_cabinet_state()
         bonus
             && bonus->playfield
                 == PlayfieldView::emulated_framebuffer
-            && bonus->bonus_stage,
-        "bonus session restores the emulated playfield");
+            && bonus->bonus_stage && bonus->bonus_entry_pending(),
+        "bonus request retains the preceding table until the screen is ready");
+    work_ram[0x0054U] = std::byte{1};
+    const auto bonus_ready = decode_cabinet_state(work_ram);
+    check(bonus_ready && bonus_ready->bonus_stage
+              && !bonus_ready->bonus_entry_pending()
+              && bonus_ready->playfield == PlayfieldView::emulated_framebuffer,
+          "loaded bonus screen releases the retained table for its fade-in");
+    work_ram[0x0054U] = std::byte{2};
+    check(!decode_cabinet_state(work_ram)->bonus_entry_pending(),
+          "bonus result screens do not count as pending entry");
+    work_ram[0x0053U] = std::byte{0};
+    work_ram[0x0054U] = std::byte{0};
+    check(!decode_cabinet_state(work_ram)->bonus_entry_pending(),
+          "normal table play resumes after the bonus request clears");
 
     // The High Scores screen leaves the ball count and the table attributes
     // exactly as a live session left them and changes only `$2054`, so that
