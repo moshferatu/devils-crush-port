@@ -554,6 +554,7 @@ struct CommandLine {
     bool cabinet_flipper_trace = false;
     bool cabinet_drain_probe = false;
     bool cabinet_nudge_probe = false;
+    double nudge_multiplier = 1.0;
     bool cabinet_launch_check = false;
     bool cabinet_launch_flipper_probe = false;
     bool cabinet_plunger_probe = false;
@@ -5182,6 +5183,15 @@ parse_logical_address_range(const std::string_view text)
             options.cabinet_drain_probe = true;
         } else if (argument == "--cabinet-nudge-probe") {
             options.cabinet_nudge_probe = true;
+        } else if (argument == "--nudge-multiplier") {
+            const auto value = index + 1 < argc
+                ? devils_crush::input::parse_nudge_multiplier(argv[++index])
+                : std::nullopt;
+            if (!value) {
+                options.error = "--nudge-multiplier requires a number from 0 to 16.";
+                return options;
+            }
+            options.nudge_multiplier = *value;
         } else if (argument == "--cabinet-launch-check") {
             options.cabinet_launch_check = true;
         } else if (argument == "--cabinet-launch-flipper-probe") {
@@ -5477,7 +5487,7 @@ parse_logical_address_range(const std::string_view text)
             "--cabinet is available only for the interactive host or a "
             "captured-session replay.";
     } else if (!options.capture_session_directory.empty()
-               && (!host_selected || options.cabinet_smoke_test)) {
+               && !host_selected) {
         options.error =
             "--capture-session requires the interactive host.";
     } else if (options.bonus_stage != 0U && !host_selected) {
@@ -9688,6 +9698,9 @@ void print_usage()
            "  cartridge computes the shot from it exactly as it always did.\n"
            "  Holding a button instead would take two and a half seconds to\n"
            "  reach full power and would ignore how far the rod was pulled.\n\n"
+        << "Nudge strength: --nudge-multiplier <factor>\n"
+           "  Scale the original nudge impulse (0-16, default 1; e.g. 2.5).\n"
+           "  Applies to keyboard, gamepad and PinOne nudges.\n\n"
         << "Saved data (all under portable-data/):\n"
         << "  devils-crush.sav      The cartridge's backup RAM, holding the\n"
            "                        five numbered save slots the game writes\n"
@@ -11605,6 +11618,53 @@ struct PlungerDevice {
     };
     return fold(name).find(fold(needle)) != std::string::npos;
 }
+
+struct NudgeDevice {
+    SDL_Joystick* joystick = nullptr;
+    devils_crush::input::NudgeBinding binding;
+    devils_crush::input::Nudge model;
+
+    void close()
+    {
+        if (joystick != nullptr) SDL_CloseJoystick(joystick);
+        joystick = nullptr;
+        model.rearm();
+    }
+
+    void refresh()
+    {
+        if (joystick != nullptr && SDL_JoystickConnected(joystick)) return;
+        close();
+        if (!binding.enabled) return;
+        int count = 0;
+        auto* ids = SDL_GetJoysticks(&count);
+        for (int i = 0; i < count; ++i) {
+            const char* name = SDL_GetJoystickNameForID(ids[i]);
+            if (!name_contains(name, binding.device)) continue;
+            auto* candidate = SDL_OpenJoystick(ids[i]);
+            if (candidate == nullptr) continue;
+            if (SDL_GetNumJoystickAxes(candidate) <= std::max(binding.axis_x, binding.axis_y)) {
+                SDL_CloseJoystick(candidate);
+                continue;
+            }
+            joystick = candidate;
+            std::cout << "Cabinet nudge: " << name << ", axes " << binding.axis_x
+                      << '/' << binding.axis_y << ", threshold " << binding.threshold << "%\n";
+            break;
+        }
+        SDL_free(ids);
+    }
+
+    bool read(bool active)
+    {
+        if (!active || joystick == nullptr || !SDL_JoystickConnected(joystick)) {
+            model.rearm();
+            return false;
+        }
+        return model.read(binding, SDL_GetJoystickAxis(joystick, binding.axis_x),
+                          SDL_GetJoystickAxis(joystick, binding.axis_y), SDL_GetTicks(), true);
+    }
+};
 
 // A controller is the plunger if its name matches and it actually has the axis
 // the binding names. The second half matters more than it looks: a cabinet has
@@ -15036,6 +15096,7 @@ struct InteractiveSessionReplay {
     std::filesystem::path initial_state_path;
     std::filesystem::path initial_high_score_path;
     bool cabinet_host = false;
+    double nudge_multiplier = 1.0;
 };
 
 [[nodiscard]] std::optional<InteractiveSessionReplay>
@@ -15062,11 +15123,12 @@ read_interactive_session_replay(const std::filesystem::path& path)
     }
     constexpr std::string_view rom_prefix = "# rom_sha256=";
     constexpr std::string_view count_prefix = "# frame_count=";
+    const bool has_nudge_multiplier = format == "# format=devils-crush-interactive-input-v4";
     const bool has_work_ram_hashes =
         format == "# format=devils-crush-interactive-input-v2"
-        || format == "# format=devils-crush-interactive-input-v3";
+        || format == "# format=devils-crush-interactive-input-v3" || has_nudge_multiplier;
     const bool has_host_mode =
-        format == "# format=devils-crush-interactive-input-v3";
+        format == "# format=devils-crush-interactive-input-v3" || has_nudge_multiplier;
     if ((format != "# format=devils-crush-interactive-input-v1"
          && !has_work_ram_hashes)
         || !rom_line.starts_with(rom_prefix)
@@ -15094,6 +15156,18 @@ read_interactive_session_replay(const std::filesystem::path& path)
         }
     }
 
+    double nudge_multiplier = 1.0;
+    if (has_nudge_multiplier) {
+        constexpr std::string_view prefix = "# nudge_multiplier=";
+        const auto value = header.starts_with(prefix)
+            ? devils_crush::input::parse_nudge_multiplier(std::string_view(header).substr(prefix.size()))
+            : std::nullopt;
+        if (!value || !std::getline(input, header)) {
+            std::cerr << "Interactive input nudge multiplier is invalid.\n";
+            return std::nullopt;
+        }
+        nudge_multiplier = *value;
+    }
     std::uint64_t declared_count = 0U;
     const auto [count_end, count_error] = std::from_chars(
         count_line.data() + count_prefix.size(),
@@ -15160,6 +15234,7 @@ read_interactive_session_replay(const std::filesystem::path& path)
 
     InteractiveSessionReplay replay;
     replay.cabinet_host = cabinet_host;
+    replay.nudge_multiplier = nudge_multiplier;
     replay.initial_state_path = path.parent_path() / "initial.state";
     std::error_code state_error;
     if (!std::filesystem::is_regular_file(replay.initial_state_path,
@@ -15244,7 +15319,8 @@ read_interactive_session_replay(const std::filesystem::path& path)
     const std::filesystem::path& directory,
     const std::span<const InteractiveCaptureFrame> inputs,
     const std::string_view core_revision,
-    const bool cabinet_mode)
+    const bool cabinet_mode,
+    const double nudge_multiplier)
 {
     std::error_code error;
     std::filesystem::create_directories(directory, error);
@@ -15266,13 +15342,17 @@ read_interactive_session_replay(const std::filesystem::path& path)
         return false;
     }
 
-    output << "# format=devils-crush-interactive-input-v3\n"
+    output << "# format=devils-crush-interactive-input-v"
+           << (nudge_multiplier == 1.0 ? 3 : 4) << '\n'
            << "# rom_sha256=" << devils_crush::rom::kSupportedSha256 << '\n'
            << "# core_revision=" << core_revision << '\n'
            << "# frame_count=" << inputs.size() << '\n'
            << "# host_mode=" << (cabinet_mode ? "cabinet" : "desktop")
-           << '\n'
-           << "frame,player_one,player_two,plunger_draw,plunger_drawn,"
+           << '\n';
+    if (nudge_multiplier != 1.0) {
+        output << "# nudge_multiplier=" << std::setprecision(17) << nudge_multiplier << '\n';
+    }
+    output << "frame,player_one,player_two,plunger_draw,plunger_drawn,"
               "plunger_released,plunger_engaged,work_ram_sha256,plunger_draw_units\n";
     for (std::size_t index = 0U; index < inputs.size(); ++index) {
         const auto& captured = inputs[index];
@@ -15762,7 +15842,8 @@ using NativeRegistryEntryObserver = std::function<void(
                 .routine = deployment.rows[index].routine,
                 .mode = HookMode::replace,
                 .replacement_callback =
-                    [&deployment, &replacement_rom, entry_observer, index](
+                    [&deployment, &replacement_rom, entry_observer, index,
+                     nudge_multiplier = options.nudge_multiplier](
                         const RoutineEntry& entry,
                         const std::span<const std::byte> work_ram) {
                         auto& row = deployment.rows[index];
@@ -15784,6 +15865,17 @@ using NativeRegistryEntryObserver = std::function<void(
                             entry,
                             work_ram,
                             replacement_rom);
+                        // An active C3CB body absorbs the C484 boundary. Let
+                        // instruction-level execution reach the force hook
+                        // when customized; idle nudge bodies remain batched.
+                        if (nudge_multiplier != 1.0 && result
+                            && entry.routine == RoutineKey{0x01U, 0xC3CBU}
+                            && std::ranges::any_of(result->work_ram_writes,
+                                [](const auto& write) {
+                                    return write.logical_address == 0x3500U;
+                                })) {
+                            result.reset();
+                        }
                         // The same interrupt-horizon valve the proven @all
                         // routes use: an atomic body may not span a user or
                         // video event or a serviceable timer interrupt.
@@ -19971,6 +20063,36 @@ void restore_flipper_input(
     });
 }
 
+[[nodiscard]] bool install_nudge_multiplier(PceRuntime& runtime, const double factor)
+{
+    if (factor == 1.0) return true;
+    // C484 is the return AFTER the cartridge has applied its halved signed
+    // impulse. Changing the completed motion word leaves the original input,
+    // tilt, cooldown and vector-decay rules intact. No CPU register changes,
+    // nor edits to the vector that subsequent nudge phases will decay.
+    return runtime.install_execution_hook({
+        .routine = {.physical_bank = 0x01U, .logical_pc = 0xC484U},
+        .mode = HookMode::observe,
+        .callback = [&runtime, factor](const RoutineEntry&) {
+            auto ram = runtime.export_work_ram();
+            if (!devils_crush::input::nudge_play_active(ram)
+                || ram[0x1000] == std::byte{0}
+                || (std::to_integer<unsigned>(ram[0x1C80]) & 1U) != 0) return;
+            const auto word = [&ram](std::size_t lo, std::size_t hi) {
+                return static_cast<std::uint16_t>(std::to_integer<unsigned>(ram[lo])
+                    | (std::to_integer<unsigned>(ram[hi]) << 8U));
+            };
+            const auto motion = devils_crush::input::scale_nudge_motion(
+                word(0x1500, 0x1580), word(0x2F, 0x30), factor);
+            ram[0x1500] = static_cast<std::byte>(motion & 0xFFU);
+            ram[0x1580] = static_cast<std::byte>(motion >> 8U);
+            if (!runtime.import_work_ram(ram)) {
+                throw std::runtime_error("Could not apply nudge multiplier.");
+            }
+        },
+    });
+}
+
 // Keeps the high-score table across runs without the player saving it.
 //
 // The cartridge only ever commits the table to backup RAM as part of the
@@ -20158,7 +20280,8 @@ int run_windows_host(
     const CabinetLayers layers = CabinetLayers::all,
     const bool overlay_stats = false,
     const std::filesystem::path& capture_session_directory = {},
-    const bool native_gameplay_bootstrap_shadow = false)
+    const bool native_gameplay_bootstrap_shadow = false,
+    const double nudge_multiplier = 1.0)
 {
     // Joystick as well as gamepad: the plunger is an anonymous HID axis that
     // SDL's gamepad database has no mapping for, so it is only visible through
@@ -20304,6 +20427,10 @@ int run_windows_host(
     PlungerDevice plunger;
     plunger.model.configure(cabinet_config.input.plunger.calibration);
     open_plunger(plunger, cabinet_config.input.plunger);
+    NudgeDevice nudge;
+    nudge.binding = cabinet_config.input.nudge;
+    nudge.binding.enabled = nudge.binding.enabled && cabinet_mode;
+    nudge.refresh();
     SourceTexture source;
     StageTexture stage;
     SourceTexture backglass_logo_source;
@@ -20798,6 +20925,9 @@ int run_windows_host(
         claim_startup_focus(window, focus_claim);
         SDL_Event event;
         while (SDL_PollEvent(&event)) {
+            if (event.type == SDL_EVENT_WINDOW_FOCUS_LOST) {
+                nudge.model.rearm();
+            }
             if (event.type == SDL_EVENT_QUIT) {
                 running = false;
             } else if (event.type == SDL_EVENT_WINDOW_CLOSE_REQUESTED) {
@@ -20936,6 +21066,7 @@ int run_windows_host(
                     std::cerr << "Quick-state restore is disabled during "
                                  "interactive capture.\n";
                 } else if (load_quick_state(runtime, kQuickStatePath)) {
+                    nudge.model.rearm();
                     if (audio.stream != nullptr
                         && !SDL_ClearAudioStream(audio.stream)) {
                         report_sdl_error("SDL_ClearAudioStream failed");
@@ -20971,6 +21102,7 @@ int run_windows_host(
                     event.jdevice,
                     plunger,
                     cabinet_config.input.plunger);
+                nudge.refresh();
             } else if (
                 event.type == SDL_EVENT_AUDIO_DEVICE_REMOVED
                 || event.type == SDL_EVENT_AUDIO_DEVICE_FORMAT_CHANGED) {
@@ -20999,6 +21131,11 @@ int run_windows_host(
             }
         }
 
+        const auto* focused_window = SDL_GetKeyboardFocus();
+        const bool nudge_focused = focused_window != nullptr
+            && (focused_window == window || focused_window == dmd.window
+                || focused_window == backglass.window);
+        if (!nudge_focused || assignment_active) nudge.model.rearm();
         auto now = Clock::now();
         int catch_up_frames = 0;
         constexpr int kMaximumCatchUpFrames = 4;
@@ -21024,12 +21161,16 @@ int run_windows_host(
             // dispatching to its charge script, and refuses otherwise.
             const bool rod_engaged = ball_in_launcher && rod.drawn
                 && apply_plunger_draw(runtime, rod);
-            const auto input = read_input(
+            auto input = read_input(
                 gamepad,
                 key_bindings,
                 ball_in_launcher,
                 cabinet_config.input.flippers,
                 rod_engaged && !rod.released);
+            if (cabinet_mode && nudge.read(nudge_focused
+                    && devils_crush::input::nudge_play_active(runtime.export_work_ram()))) {
+                input.player_one |= static_cast<std::uint16_t>(Button::two);
+            }
             if (capture_session) {
                 captured_inputs.push_back({
                     .input = input,
@@ -21312,6 +21453,7 @@ int run_windows_host(
         SDL_CloseGamepad(gamepad);
     }
     close_plunger(plunger);
+    nudge.close();
     save_current_cabinet_config();
     destroy_stage(dmd_stage);
     destroy_source(dmd_source);
@@ -21348,7 +21490,8 @@ int run_windows_host(
                 capture_session_directory,
                 captured_inputs,
                 core_revision,
-                cabinet_mode)
+                cabinet_mode,
+                nudge_multiplier)
             || (!captured_inputs.empty()
                 && !write_instruction_profile(
                     capture_session_directory / "instruction-profile.csv",
@@ -24878,7 +25021,7 @@ int run_side_gate_deadline_check_semantic_fixture()
 
 int main(const int argc, char* argv[])
 {
-    const auto options = parse_command_line(argc, argv);
+    auto options = parse_command_line(argc, argv);
     if (!options.error.empty()) {
         std::cerr << options.error << "\n\n";
         print_usage();
@@ -25043,6 +25186,22 @@ int main(const int argc, char* argv[])
             return EXIT_FAILURE;
         }
         std::cout << load_result.message << '\n';
+
+        const double nudge_multiplier = session_replay
+            ? session_replay->nudge_multiplier : options.nudge_multiplier;
+        if (session_replay && options.nudge_multiplier != 1.0
+            && options.nudge_multiplier != nudge_multiplier) {
+            std::cerr << "Nudge multiplier differs from the captured session.\n";
+            return EXIT_FAILURE;
+        }
+        options.nudge_multiplier = nudge_multiplier;
+        if (!install_nudge_multiplier(*runtime, nudge_multiplier)) {
+            std::cerr << "Could not install nudge multiplier.\n";
+            return EXIT_FAILURE;
+        }
+        if (nudge_multiplier != 1.0) {
+            std::cout << "Nudge force multiplier: " << nudge_multiplier << "x\n";
+        }
 
         const auto replacement_rom =
             options.replace_hooks.empty() && !options.replace_registry
@@ -25990,7 +26149,10 @@ int main(const int argc, char* argv[])
                     : kSmokeTestFrames,
                 host_registry,
                 options.cabinet_layers,
-                options.cabinet_overlay_stats);
+                options.cabinet_overlay_stats,
+                options.capture_session_directory,
+                options.native_gameplay_bootstrap_shadow,
+                options.nudge_multiplier);
         }
 
         (void)load_backup_ram(*runtime, kBackupRamPath);
@@ -26004,7 +26166,8 @@ int main(const int argc, char* argv[])
             options.cabinet_layers,
             options.cabinet_overlay_stats,
             options.capture_session_directory,
-            options.native_gameplay_bootstrap_shadow);
+            options.native_gameplay_bootstrap_shadow,
+            options.nudge_multiplier);
         const bool save_succeeded =
             save_backup_ram(*runtime, kBackupRamPath);
         return host_result == EXIT_SUCCESS && save_succeeded

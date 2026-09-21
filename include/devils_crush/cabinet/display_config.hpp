@@ -13,6 +13,7 @@
 #include <vector>
 
 #include "devils_crush/input/plunger.hpp"
+#include "devils_crush/input/nudge.hpp"
 
 namespace devils_crush::cabinet {
 
@@ -160,6 +161,7 @@ struct InputBindings {
     // charge the cartridge launches on is the distance the player pulled
     // rather than the time they waited. See `devils_crush::input::Plunger`.
     input::PlungerBinding plunger;
+    input::NudgeBinding nudge;
 
     [[nodiscard]] const std::vector<std::string>& operator[](
         const PadButton button) const noexcept

@@ -244,6 +244,15 @@ void append_bindings(std::string& output, const InputBindings& input)
     // somebody moves the rod, and the point of the probe is that its output
     // can be typed straight back in here.
     const auto& plunger = input.plunger;
+    const auto& nudge = input.nudge;
+    output += "input.nudge.device=" + escape_value(nudge.device);
+    output += "\ninput.nudge.enabled=" + std::to_string(nudge.enabled);
+    output += "\ninput.nudge.axis_x=" + std::to_string(nudge.axis_x);
+    output += "\ninput.nudge.axis_y=" + std::to_string(nudge.axis_y);
+    output += "\ninput.nudge.threshold=" + std::to_string(nudge.threshold);
+    output += "\ninput.nudge.release=" + std::to_string(nudge.release);
+    output += "\ninput.nudge.cooldown_ms=" + std::to_string(nudge.cooldown_ms);
+    output += '\n';
     output += "input.plunger.device=";
     output += escape_value(plunger.device);
     output += "\ninput.plunger.axis=";
@@ -390,6 +399,27 @@ void append_bindings(std::string& output, const InputBindings& input)
         }
         input.launch_keys = std::move(*parsed);
     }
+
+    for (const auto& [key, value] : fields) {
+        if (!key.starts_with("input.nudge.")) continue;
+        if (key == "input.nudge.device") {
+            auto name = unescape_value(trim(value));
+            if (!name) return false;
+            input.nudge.device = std::move(*name);
+            continue;
+        }
+        int number = 0;
+        if (!parse_integer(trim(value), number)) return false;
+        if (key == "input.nudge.enabled" && (number == 0 || number == 1))
+            input.nudge.enabled = number != 0;
+        else if (key == "input.nudge.axis_x") input.nudge.axis_x = number;
+        else if (key == "input.nudge.axis_y") input.nudge.axis_y = number;
+        else if (key == "input.nudge.threshold") input.nudge.threshold = number;
+        else if (key == "input.nudge.release") input.nudge.release = number;
+        else if (key == "input.nudge.cooldown_ms") input.nudge.cooldown_ms = number;
+        else return false;
+    }
+    if (!input.nudge.valid()) return false;
 
     const auto device = fields.find("input.plunger.device");
     if (device != fields.end()) {

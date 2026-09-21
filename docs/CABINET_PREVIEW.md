@@ -378,6 +378,34 @@ the gate-open counts confirm the rewrite:
 dispatch phases and still move, so nothing was disabled — the left flipper was
 narrowed and the right one moved from button I to a direction.
 
+### PinOne accelerometer nudging
+
+Cabinet mode automatically opens a joystick whose name contains `PinOne`
+(case-insensitive) and turns X/Y accelerometer motion into the original button-II
+nudge. This uses the same settings and debounce as Alien Crush:
+
+```ini
+input.nudge.enabled=1
+input.nudge.device=PinOne
+input.nudge.axis_x=0
+input.nudge.axis_y=1
+input.nudge.threshold=20
+input.nudge.release=8
+input.nudge.cooldown_ms=250
+```
+
+These settings are saved in `portable-data/cabinet.ini`. Threshold and release
+are percentages of signed joystick full scale; lower `threshold` for a lighter
+bump. Either axis, in either direction, produces a 50 ms button pulse. Before
+another pulse, both axes must settle below `release` for 100 ms and the cooldown
+must expire. A held tilt cannot continuously retrigger. Z remains the plunger.
+
+Nudging requires a focused cabinet window and live table or bonus play; demos,
+menus, results and drained balls ignore physical motion. The original game handles
+button II during pause as usual. Focus loss, display assignment, reconnect and
+quick-state restore require settling again. Captures record the resulting button
+input, so replay does not need the device. Desktop mode does not open it.
+
 ### The plunger
 
 A cabinet has a real plunger on it, and a launch key is not one. What a
@@ -584,6 +612,18 @@ release frame. Captures include `plunger_draw_units` alongside the rounded
 percentage for diagnosing physical plunger sessions.
 
 ### Nudge
+
+Use `--nudge-multiplier 2.5` to multiply the original nudge force by 2.5.
+The default is `1` (unchanged cartridge behavior); values from `0` to `16`
+are accepted, including fractions. `0` removes the impulse. This affects
+keyboard, gamepad and PinOne nudges in live play, in both desktop and cabinet
+mode. It changes force, not the accelerometer trigger threshold, pulse timing,
+or the game's shooter/tilt restrictions. Amplified motion saturates at the
+signed 16-bit limit instead of reversing through overflow. It adds no screen shake.
+
+For example: `devils-crush --cabinet --nudge-multiplier 3`.
+The factor lasts for that run and is recorded in captures so replay restores it
+automatically. Older captures retain their original 1x force.
 
 Nudging works and is faithful to the cartridge; it is simply very small.
 `--cabinet-nudge-probe` measures it by running the state-census route twice

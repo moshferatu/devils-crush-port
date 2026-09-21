@@ -8320,6 +8320,60 @@ void test_cabinet_state()
 // readings -- which is also the only way to test a spring return, since the
 // interesting frames are the two or three it takes and nobody can produce
 // those by hand.
+void test_nudge()
+{
+    using namespace devils_crush::input;
+    check(parse_nudge_multiplier("2.5") == 2.5, "fractional nudge force accepted");
+    check(parse_nudge_multiplier("0") == 0 && parse_nudge_multiplier("16") == 16,
+          "nudge multiplier boundaries accepted");
+    for (const auto* text : {"", "-1", "17", "nan", "inf", "2x", "1e999"}) {
+        check(!parse_nudge_multiplier(text), "invalid nudge multiplier rejected");
+    }
+    check(scale_nudge_motion(900, 100, 1) == 900, "default preserves original motion");
+    check(scale_nudge_motion(900, 100, 2.5) == 1050, "scale impulse, not whole velocity");
+    check(scale_nudge_motion(700, 0xFF9C, 2.5) == 550, "negative impulse amplified");
+    check(scale_nudge_motion(700, 0xFF9C, 0) == 800, "zero cancels original impulse");
+    check(scale_nudge_motion(32760, 100, 16) == 32767, "positive motion saturates");
+    check(scale_nudge_motion(0x8008, 0xFF9C, 16) == 0x8000, "negative motion saturates");
+    check(scale_nudge_motion(0x8008, 100, 0) == 32676, "recover wrapped original addition");
+    const NudgeBinding binding;
+    Nudge nudge;
+    check(!nudge.read(binding, 20000, 0, 0, true), "nudge starts disarmed");
+    check(!nudge.read(binding, 0, 0, 10, true), "nudge waits for quiet");
+    check(!nudge.read(binding, 0, 0, 110, true), "quiet arms without pulsing");
+    check(!nudge.read(binding, 6500, 0, 120, true), "motion below threshold ignored");
+    check(nudge.read(binding, -7000, 0, 130, true), "negative X triggers nudge");
+    check(nudge.read(binding, -7000, 0, 179, true), "pulse lasts fifty milliseconds");
+    check(!nudge.read(binding, -7000, 0, 180, true), "held acceleration does not repeat");
+    check(!nudge.read(binding, 0, 0, 200, true), "pulse ended at rest");
+    check(!nudge.read(binding, 0, 0, 300, true), "cooldown prevents early rearm");
+    check(!nudge.read(binding, 0, 32767, 310, true), "rebound cannot retrigger");
+    check(!nudge.read(binding, 0, 0, 380, true), "settle again after rebound");
+    check(!nudge.read(binding, 0, 0, 480, true), "settled after cooldown");
+    check(nudge.read(binding, 0, -32768, 490, true), "negative Y full scale triggers safely");
+    check(!nudge.read(binding, 0, 0, 491, false), "inactive cancels pulse");
+    check(!nudge.read(binding, 32767, 0, 1000, true), "reactivation must settle first");
+    std::array<std::byte, 8192> ram{};
+    ram[0xD52] = std::byte{3};
+    check(nudge_play_active(ram), "live table allows nudge");
+    ram[0x54] = std::byte{1};
+    check(nudge_play_active(ram), "live bonus allows nudge");
+    ram[0x254] = std::byte{1};
+    check(!nudge_play_active(ram), "demo ignores physical nudge");
+    ram[0x254] = std::byte{0};
+    for (unsigned screen = 2; screen <= 4; ++screen) {
+        ram[0x54] = static_cast<std::byte>(screen);
+        check(!nudge_play_active(ram), "results and menus ignore physical nudge");
+    }
+    ram[0x54] = std::byte{0};
+    ram[0x53] = std::byte{2};
+    check(!nudge_play_active(ram), "drained ball ignores physical nudge");
+    ram[0x53] = std::byte{0};
+    ram[0xD52] = std::byte{0};
+    check(!nudge_play_active(ram), "game over ignores physical nudge");
+    check(!nudge_play_active({}), "missing RAM ignores physical nudge");
+}
+
 void test_plunger()
 {
     using devils_crush::input::Plunger;
@@ -8912,6 +8966,30 @@ void test_cabinet_display_config()
         check(
             no_launch_decoded && no_launch_decoded->input.launch_keys.empty(),
             "an empty launch list disables the shooter override");
+
+        check(defaults.nudge == devils_crush::input::NudgeBinding{},
+              "legacy settings receive the Alien Crush PinOne nudge defaults");
+        const auto nudging = decode_display_config(to_bytes(legacy +
+            "input.nudge.device=Custom Board\ninput.nudge.enabled=0\n"
+            "input.nudge.axis_x=3\ninput.nudge.axis_y=4\n"
+            "input.nudge.threshold=30\ninput.nudge.release=10\n"
+            "input.nudge.cooldown_ms=400\n"));
+        check(nudging && !nudging->input.nudge.enabled
+            && nudging->input.nudge.device == "Custom Board"
+            && nudging->input.nudge.axis_x == 3 && nudging->input.nudge.axis_y == 4
+            && nudging->input.nudge.threshold == 30 && nudging->input.nudge.release == 10
+            && nudging->input.nudge.cooldown_ms == 400,
+            "custom nudge settings decode");
+        if (nudging) {
+            const auto roundtrip = decode_display_config(encode_display_config(*nudging));
+            check(roundtrip && roundtrip->input.nudge == nudging->input.nudge,
+                  "nudge settings survive configuration save");
+        }
+        for (const auto* invalid : {"axis_x=1", "axis_y=-1", "threshold=0",
+                 "release=20", "cooldown_ms=99", "enabled=2", "device=", "typo=1"}) {
+            check(!decode_display_config(to_bytes(legacy + "input.nudge." + invalid + "\n")),
+                  "invalid nudge setting rejected");
+        }
 
         // The plunger's four numbers are what `--cabinet-plunger-probe`
         // prints, so they have to survive being typed straight back in.
@@ -21613,6 +21691,7 @@ int main()
     test_scaler_edges();
     test_cabinet_state();
     test_plunger();
+    test_nudge();
     test_cabinet_display_config();
     test_pce_background_decode();
     test_background_stitch_and_crop();
