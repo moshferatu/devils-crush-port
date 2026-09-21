@@ -22851,6 +22851,8 @@ enum class ViewProbeRoute {
         std::optional<devils_crush::cabinet::PlayfieldView> last_view;
         std::vector<std::string> timeline;
         int render_frames = 0;
+        devils_crush::cabinet::DmdPanel probe_dmd;
+        int unexpected_live_dmd_frames = 0;
         int bad_frames = 0;
         int bad_span_start = 0;
         int last_bad_frame = 0;
@@ -22888,6 +22890,11 @@ enum class ViewProbeRoute {
                 continue;
             }
             render_frames += rendered ? 1 : 0;
+            probe_dmd.observe(work_ram);
+            if (spec.route == ViewProbeRoute::attract && !probe_dmd.attract()) {
+                ++unexpected_live_dmd_frames;
+                reproduced = true;
+            }
             const bool as_table = state->playfield
                 == devils_crush::cabinet::PlayfieldView::table_background;
             if (!last_view || *last_view != state->playfield) {
@@ -23036,6 +23043,12 @@ enum class ViewProbeRoute {
         }
         close_span();
         runtime.clear_execution_hooks();
+
+        if (spec.route == ViewProbeRoute::attract) {
+            std::cout << "DMD attract loop: " << unexpected_live_dmd_frames
+                      << " unexpected live-game frames across " << spec.frames
+                      << " frames\n";
+        }
 
         for (const auto& line : timeline) {
             std::cout << line << '\n';

@@ -9,6 +9,7 @@
 #include "devils_crush/cabinet/cabinet_state.hpp"
 #include "devils_crush/cabinet/display_config.hpp"
 #include "devils_crush/cabinet/dmd_layout.hpp"
+#include "devils_crush/cabinet/dmd_panel.hpp"
 #include "devils_crush/core/rom_image.hpp"
 #include "devils_crush/core/save_state.hpp"
 #include "devils_crush/emulation/pce_runtime.hpp"
@@ -11460,6 +11461,52 @@ void test_text_tile_write()
         "video update gate preserves both active renderer paths");
 }
 
+void test_dmd_attract_transition()
+{
+    using devils_crush::cabinet::DmdPanel;
+    using devils_crush::cabinet::DmdScene;
+    DmdPanel panel;
+    std::array<std::byte, 8192> ram{};
+    panel.observe(ram);
+    check(panel.attract(), "boot RAM clear stays in DMD attract mode");
+    ram[0x54] = std::byte{3};
+    panel.observe(ram);
+    ram[0x254] = std::byte{1};
+    ram[0x54] = std::byte{0};
+    ram[0xD52] = std::byte{1};
+    panel.observe(ram);
+    check(panel.attract(), "demo ball does not start a live DMD session");
+    ram[0x54] = std::byte{4};
+    panel.observe(ram);
+    // Recorded attract frames 5553-5558 clear all three discriminators.
+    ram.fill(std::byte{0});
+    for (int frame = 0; frame < 6; ++frame) {
+        panel.observe(ram);
+        check(panel.attract(), "Best Five to title clear cannot flash game over");
+    }
+    ram[0x54] = std::byte{3};
+    panel.observe(ram);
+    check(panel.attract(), "title continues the same attract presentation");
+    ram[0x54] = std::byte{0};
+    ram[0xD52] = std::byte{3};
+    panel.observe(ram);
+    check(!panel.attract(), "live session leaves attract presentation");
+    ram[0x54] = std::byte{2};
+    ram[0xD52] = std::byte{0};
+    panel.observe(ram);
+    check(!panel.attract() && panel.scene() == DmdScene::bonus_tally,
+          "last live ball still shows its bonus tally");
+    ram[0x54] = std::byte{0};
+    panel.observe(ram);
+    check(!panel.attract() && panel.scene() == DmdScene::score,
+          "real game over remains visible after a live session");
+    ram[0x54] = std::byte{4};
+    panel.observe(ram);
+    ram.fill(std::byte{0});
+    panel.observe(ram);
+    check(panel.attract(), "live game high scores also return cleanly to title");
+}
+
 void test_dmd_text_layout()
 {
     using devils_crush::cabinet::calculate_dmd_text_layout;
@@ -21726,6 +21773,7 @@ int main()
     test_sprite_emit_run();
     test_text_tile_write();
     test_dmd_text_layout();
+    test_dmd_attract_transition();
     test_table_palette_cache();
     test_native_registry();
     test_native_game_state_view();

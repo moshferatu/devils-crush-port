@@ -28,6 +28,9 @@ public:
 private:
     CabinetState state_{};
     DmdScene scene_ = DmdScene::score;
+    // The attract loop clears RAM briefly between Best Five and title.
+    // Only a live session may leave attract presentation, not that clear.
+    bool attract_ = true;
     bool demo_ = false;
     bool result_won_ = false;
     bool result_active_ = false;

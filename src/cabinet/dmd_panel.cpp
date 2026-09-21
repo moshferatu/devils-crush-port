@@ -78,6 +78,11 @@ void DmdPanel::observe(const std::span<const std::byte> ram)
             | (byte(offset + 1U) << 8U) | (byte(offset + 2U) << 16U)) * 100U;
     };
     demo_ = byte(0x254U) != 0U;
+    if (state_.screen_selector == 3U || state_.screen_selector == 4U || demo_) {
+        attract_ = true;
+    } else if (state_.screen_selector <= 1U && state_.balls_in_session != 0U) {
+        attract_ = false;
+    }
     const auto flags = byte(0x53U);
     if (!state_.bonus_stage) result_active_ = false;
     scene_ = DmdScene::score;
@@ -110,7 +115,7 @@ bool DmdPanel::holds_playfield() const noexcept
 
 bool DmdPanel::attract() const noexcept
 {
-    return state_.screen_selector == 3U || state_.screen_selector == 4U || demo_;
+    return attract_;
 }
 
 render::ArgbImage DmdPanel::compose(const DmdFont& font,
@@ -118,13 +123,15 @@ render::ArgbImage DmdPanel::compose(const DmdFont& font,
 {
     render::ArgbImage image{width, height,
         std::vector<std::uint32_t>(width * height, 0xFF000000U)};
-    if (attract() && high_scores) {
-        const auto rank = dmd_high_score_rank(elapsed);
-        label(image, font, rank == 0U ? "GRAND CHAMPION"
-            : "HIGH SCORE #" + std::to_string(rank), 160, 6);
-        label(image, font, core::high_score_name_at(*high_scores, rank), 160, 28, 0xFFFCE024U);
-        number(image, font, static_cast<std::uint64_t>(
-            core::high_score_at(*high_scores, rank)) * 100U, 160, 46, 2);
+    if (attract()) {
+        if (high_scores) {
+            const auto rank = dmd_high_score_rank(elapsed);
+            label(image, font, rank == 0U ? "GRAND CHAMPION"
+                : "HIGH SCORE #" + std::to_string(rank), 160, 6);
+            label(image, font, core::high_score_name_at(*high_scores, rank), 160, 28, 0xFFFCE024U);
+            number(image, font, static_cast<std::uint64_t>(
+                core::high_score_at(*high_scores, rank)) * 100U, 160, 46, 2);
+        }
         if (demo_) label(image, font, "DEMO", 160, 80);
         label(image, font, "PUSH RUN BUTTON", 160, 94);
         return image;

@@ -846,6 +846,11 @@ At the title, during demos, and on the high-score screen, the DMD cycles
 through the five persisted high scores every three seconds. Pages show
 Grand Champion or High Score #1 through #4, initials, and the new digits.
 The carousel resumes when the game returns to those screens after a session.
+Attract presentation persists through the cartridge's six-frame RAM clear
+between Best Five and the title. Only a non-demo table or bonus session with
+balls remaining switches the DMD to live play. This prevents a false GAME OVER
+flash during the attract loop while preserving real game-over presentation
+after a live session. The carousel clock continues across these transitions.
 
 The presentation reads scores from `$2205/$220C/$2213`, selected by `$2251`,
 and multiplies stored units by 100. Base bonus `$2D50` is also in hundreds.
