@@ -21,8 +21,18 @@ inline constexpr std::size_t kActorSlotCount = 0x7FU;
 inline constexpr std::size_t kBallActorSlot = 0x00U;
 inline constexpr std::size_t kFirstFlipperControlSlot = 0x04U;
 inline constexpr std::size_t kLastFlipperControlSlot = 0x09U;
+inline constexpr std::size_t kFirstMiddleStarSlot = 0x10U;
+inline constexpr std::size_t kLastMiddleStarSlot = 0x12U;
+inline constexpr std::size_t kFirstHelmetOpeningSlot = 0x2AU;
+inline constexpr std::size_t kLastHelmetOpeningSlot = 0x2BU;
 inline constexpr std::size_t kSorcererControllerSlot = 0x16U;
 inline constexpr std::size_t kLastSorcererSlot = 0x1EU;
+inline constexpr std::size_t kFirstLowerWallPocketSlot = 0x3EU;
+inline constexpr std::size_t kLastLowerWallPocketSlot = 0x3FU;
+inline constexpr std::size_t kFirstUpperWallPocketSlot = 0x42U;
+inline constexpr std::size_t kLastUpperWallPocketSlot = 0x43U;
+inline constexpr std::size_t kLittleSkullControllerSlot = 0x44U;
+inline constexpr std::size_t kLastLittleSkullSlot = 0x4AU;
 inline constexpr std::size_t kBigStarSlot = 0x4BU;
 inline constexpr std::size_t kFirstGrayBlobSlot = 0x50U;
 inline constexpr std::size_t kLastGrayBlobSlot = 0x56U;
@@ -94,7 +104,9 @@ struct TableActorState {
     std::span<const std::byte> work_ram) noexcept;
 
 // Selects the fixed actors whose original camera cull cabinet mode may
-// disable. The Big Star, Sorcerers, and upper-chute Gray Blobs run even
+// disable. The middle-table stars and helmet openings, wall pockets,
+// Little Skulls and their controllers, Big Star,
+// Sorcerers, and upper-chute Gray Blobs run even
 // before the first camera visit.
 // The middle-table Three Blobs are admitted only after the camera has activated
 // them once. Confirm the actor is inside the original camera interval because

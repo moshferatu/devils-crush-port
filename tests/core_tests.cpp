@@ -8289,7 +8289,23 @@ void test_cabinet_state()
                   && !should_disable_actor_camera_cull(slot, 0x80U, 30U, 480U),
               "upper-left gray orbs animate before and after a camera visit");
     }
-    for (const auto slot : {0x15U, 0x1FU, 0x4AU, 0x4CU, 0x4FU, 0x57U}) {
+    for (const auto slot : {0x3EU, 0x3FU, 0x42U, 0x43U, 0x44U, 0x45U,
+                            0x46U, 0x47U, 0x48U, 0x49U, 0x4AU}) {
+        check(should_disable_actor_camera_cull(slot, 0x02U, 62U, 480U)
+                  && should_disable_actor_camera_cull(slot, 0x82U, 62U, 0U)
+                  && !should_disable_actor_camera_cull(slot, 0x80U, 62U, 480U),
+              "upper pockets and skull controllers run before the ball arrives");
+    }
+    for (const auto slot : {0x10U, 0x11U, 0x12U, 0x2AU, 0x2BU}) {
+        check(should_disable_actor_camera_cull(slot, 0x02U, 292U, 480U)
+                  && should_disable_actor_camera_cull(slot, 0x02U, 292U, 0U)
+                  && should_disable_actor_camera_cull(slot, 0x82U, 292U, 208U)
+                  && !should_disable_actor_camera_cull(slot, 0x80U, 292U, 480U),
+              "middle portals rotate with the ball below, above, or alongside them");
+    }
+    for (const auto slot : {0x0FU, 0x13U, 0x15U, 0x1FU, 0x2CU,
+                            0x3DU, 0x40U, 0x41U,
+                            0x4CU, 0x4FU, 0x57U}) {
         check(!should_disable_actor_camera_cull(slot, 0x82U, 126U, 480U),
               "upper animation policy preserves neighboring actor culls");
     }

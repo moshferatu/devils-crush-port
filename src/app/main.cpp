@@ -19641,6 +19641,11 @@ int run_smoke_test(PceRuntime& runtime)
 // run from the start so the upper playfield animates before a camera visit.
 // The seven upper-left Gray Blobs ($50-$56) also keep moving off camera.
 // Their original rotation, deployment, and regeneration logic still runs.
+// The four Wall Pockets ($3E/$3F/$42/$43) and Little Skulls with their
+// controllers ($44-$4A) likewise rotate, spawn, and regenerate before the
+// ball reaches the upper table.
+// The middle-table Side/Walled Star portals ($10-$12) and Giant-Face
+// helmet openings ($2A/$2B) also keep their original idle rotation running.
 // The middle-table Three
 // Blobs at `$58-$5A` also need to keep floating when the ball leaves their
 // region, but only after the original camera has activated them once. Check
@@ -23941,6 +23946,8 @@ void report_nudge_effect(
         std::size_t off_camera_wanted_changes = 0;
         std::size_t on_camera_wanted_changes = 0;
         std::size_t off_camera_missed_changes = 0;
+        int first_off_camera_art_frame = 0;
+        int first_on_camera_frame = 0;
         std::uint32_t last_wanted = 0;
         std::uint32_t last_art = 0;
         bool have_wanted = false;
@@ -23995,6 +24002,13 @@ void report_nudge_effect(
             const bool on_camera = frame_stats.actor_on_camera[slot] != 0U;
             const auto phase = frame_stats.actor_phase[slot];
             const auto art = frame_stats.actor_visual_hash[slot];
+            if (on_camera && record.first_on_camera_frame == 0) {
+                record.first_on_camera_frame = frame_number;
+            }
+            if (!on_camera && art != 0U
+                && record.first_off_camera_art_frame == 0) {
+                record.first_off_camera_art_frame = frame_number;
+            }
             // Split the ROM's own activity by camera. If a slot's descriptors
             // change constantly on camera and not at all off it, the game
             // logic stopped simulating it -- the renderer is then faithfully
@@ -24089,6 +24103,20 @@ void report_nudge_effect(
     std::cout << "\n" << frozen
               << " slots draw fewer distinct looks off camera than the ROM "
                  "asked for\n";
+    // Static skull targets do not appear in the animation-change ranking.
+    // Report their first rendered appearance as well as the table portals.
+    for (const auto slot : {0x10U, 0x11U, 0x12U, 0x2AU, 0x2BU,
+                            0x3EU, 0x3FU, 0x42U, 0x43U,
+                            0x46U, 0x47U, 0x49U, 0x4AU}) {
+        const auto& record = slots[slot];
+        std::cout << std::format(
+            "Portal/skull slot {:02X}: first off-camera artwork frame {}; "
+            "first camera visit {}\n",
+            slot, record.first_off_camera_art_frame,
+            record.first_on_camera_frame == 0
+                ? std::string("never")
+                : std::to_string(record.first_on_camera_frame));
+    }
     return EXIT_SUCCESS;
 }
 

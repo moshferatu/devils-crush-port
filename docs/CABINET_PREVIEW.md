@@ -1006,7 +1006,29 @@ opt-in to the cull. Those two sites are the only reads of bit 1 anywhere in the
 cartridge; every other `$3080` access in all 384 KB touches bits 5, 6, or 7.
 
 The cabinet therefore clears bit 1 before each frame -- but only for the
-flipper pieces at `$04-$09` and the Front and Side Spiders at `$26-$29`.
+flipper pieces at `$04-$09`, the Front and Side Spiders at `$26-$29`, and
+the selected upper-table families below.
+
+The upper-table Wall Pockets (the four rotating portals at `$3E/$3F/$42/$43`)
+and Little Skulls (`$44-$4A`, including their hidden and pair controllers)
+run before the first camera visit. This lets the portals rotate and the skull
+targets spawn while the ball is still on the lower table. Their original
+animation, collision, regeneration, and Big-Star selection logic remains in
+control. The Big Star (`$4B`), Sorcerers (`$16-$1E`), and upper-left Gray
+Blobs (`$50-$56`) also run from the start.
+
+The middle-table Side Stars and Walled-Star access portal (`$10-$12`),
+plus the two Giant-Face helmet openings (`$2A/$2B`), likewise keep their
+four-tick idle rotation running before and after a camera visit. The wall
+and Giant-Face controllers retain their existing behavior; portal contacts
+still drive the original entry, transformation, scoring, and ball-return logic.
+
+The cabinet freeze census reports first off-camera artwork and first camera
+visit for the pockets and skull targets, including static targets omitted
+from its animation ranking (artwork frame 0 means none observed). On the
+2,100-frame census route, both uppermost pockets and all four skulls render
+at frame 873 without a camera visit; the uppermost pockets continue animating
+with no missed artwork changes.
 
 Bit 1 rather than bit 7 because bit 7 is also the gate on `08:4036`, the
 original SAT presentation path: leaving it alone keeps the emulator queueing

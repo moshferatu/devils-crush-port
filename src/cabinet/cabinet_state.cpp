@@ -142,6 +142,15 @@ bool should_disable_actor_camera_cull(
         slot >= kSorcererControllerSlot && slot <= kLastSorcererSlot;
     const bool gray_blob =
         slot >= kFirstGrayBlobSlot && slot <= kLastGrayBlobSlot;
+    const bool wall_pocket =
+        (slot >= kFirstLowerWallPocketSlot && slot <= kLastLowerWallPocketSlot)
+        || (slot >= kFirstUpperWallPocketSlot && slot <= kLastUpperWallPocketSlot);
+    const bool middle_portal =
+        (slot >= kFirstMiddleStarSlot && slot <= kLastMiddleStarSlot)
+        || (slot >= kFirstHelmetOpeningSlot && slot <= kLastHelmetOpeningSlot);
+    // The pair controllers must run too: they own spawning and regeneration.
+    const bool little_skull =
+        slot >= kLittleSkullControllerSlot && slot <= kLastLittleSkullSlot;
     // 00:F4FC admits Y in [camera - 48, camera + 240). Use the same
     // wrapping 16-bit differences as its two signed subtraction tests.
     const auto lower_delta = static_cast<std::uint16_t>(
@@ -154,7 +163,7 @@ bool should_disable_actor_camera_cull(
         slot >= kFirstThreeBlobSlot && slot <= kLastThreeBlobSlot
         && (flags & kActorCameraActiveFlag) != 0U && inside_camera;
     return flipper || spider || sorcerer || gray_blob || slot == kBigStarSlot
-        || activated_three_blob;
+        || wall_pocket || middle_portal || little_skull || activated_three_blob;
 }
 
 std::optional<std::array<TableActorState, kActorSlotCount>>
