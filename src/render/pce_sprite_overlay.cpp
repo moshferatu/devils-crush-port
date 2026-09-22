@@ -1782,11 +1782,19 @@ PersistentActorSpriteCache::update_and_composite(
             const bool small_soldier = sprite.actor_slot
                     >= devils_crush::cabinet::kFirstDynamicActorSlot
                 && actor.type == 0x82U && actor.appearance == 0x1AU;
+            // The middle-table orbs overlap the upper flippers. Their
+            // fixed actor slots must not put them behind those flippers.
+            const bool middle_orb = sprite.actor_slot
+                    >= devils_crush::cabinet::kFirstThreeBlobSlot
+                && sprite.actor_slot
+                    <= devils_crush::cabinet::kLastThreeBlobSlot;
             return std::tuple{
-                small_soldier
+                middle_orb
+                    ? devils_crush::cabinet::kFirstFlipperControlSlot
+                    : small_soldier
                     ? devils_crush::cabinet::kFirstMiddleStarSlot
                     : sprite.actor_slot,
-                !small_soldier,
+                !(small_soldier || middle_orb),
                 sprite.actor_slot,
                 sprite.sat_index,
             };

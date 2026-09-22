@@ -1091,6 +1091,8 @@ In the stitched cabinet view, skeletal Small Soldiers draw in front of the
 middle portals as they spawn, with the ball and flippers still above them.
 This presentation order applies with smoothing on or off; it does not change
 actor state, collisions, or the base emulated viewport.
+The middle-table Three Blobs (`$58-$5A`) draw above the flippers, with the
+ball above them, using the same ordering in both presentation modes.
 
 The cabinet freeze census reports first off-camera artwork and first camera
 visit for the pockets and skull targets, including static targets omitted
