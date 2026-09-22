@@ -29,6 +29,8 @@ without an interactive desktop.
 On displays above 63 Hz, the playfield automatically draws intermediate
 pictures at the display refresh rate. F6 toggles smoothing for the
 current run. VSync must be available; 60 Hz displays keep the original pictures.
+The refresh-rate check reads SDL's cached desktop mode, avoiding a fullscreen
+mode enumeration that can delay the first playfield picture on Windows.
 After five seconds, and after each F6 toggle, a short sample reports
 completed presents per second, game frames per second, extra interpolated
 presents between game frames, and the longest presentation gap. An "active"

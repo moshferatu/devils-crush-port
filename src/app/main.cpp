@@ -21214,7 +21214,12 @@ int run_windows_host(
         }
 
         const auto* focused_window = SDL_GetKeyboardFocus();
-        const auto* refresh_mode = SDL_GetCurrentDisplayMode(SDL_GetDisplayForWindow(window));
+        // These are desktop windows (including borderless cabinet placement).
+        // GetCurrentDisplayMode lazily enumerates every fullscreen mode before
+        // returning, delaying the first present on some Windows drivers. The
+        // cached desktop mode supplies the refresh rate without that scan and
+        // still follows display changes processed by SDL_PollEvent above.
+        const auto* refresh_mode = SDL_GetDesktopDisplayMode(SDL_GetDisplayForWindow(window));
         const bool smooth_table = smoothing_enabled && vsync_enabled
             && layers == CabinetLayers::all && !assignment_active
             && refresh_mode != nullptr
