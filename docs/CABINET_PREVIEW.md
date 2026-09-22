@@ -4,7 +4,10 @@ Last updated: 2026-08-16
 
 ## Current vertical slice
 
-Launch the preview with `--cabinet`. It creates three independent SDL
+Cabinet mode is the default when launching the game. Use `--no-cabinet`
+for the base single-window view; `--cabinet` remains an explicit enable flag.
+Music voice overlay also defaults to on during play; disable it with
+`--no-music-voice-overlay`. Cabinet mode creates three independent SDL
 windows:
 
 1. A resizable portrait playfield. This is the required host window and owns

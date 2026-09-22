@@ -26,14 +26,20 @@ ROM files and locally derived assets are ignored by `git` and are not distribute
 On a desktop, in a window:
 
 ```powershell
+devils-crush.exe --no-cabinet --rom "D:\path\to\Devil's Crush.pce"
+```
+
+On a virtual pinball cabinet, across three screens (the default):
+
+```powershell
 devils-crush.exe --rom "D:\path\to\Devil's Crush.pce"
 ```
 
-On a virtual pinball cabinet, across three screens:
-
-```powershell
-devils-crush.exe --cabinet --rom "D:\path\to\Devil's Crush.pce"
-```
+Music voice overlay is also enabled by default during play. Add
+`--no-music-voice-overlay` to disable it. The existing `--cabinet` and
+`--music-voice-overlay` flags still explicitly enable their features.
+Diagnostic recordings retain their reference defaults; `--emulated-psg`
+also disables the default overlay because it requires the native PSG.
 
 To start a session directly in one of the six bonus stages, add
 `--bonus-stage` with a stage number from 1 through 6. This works in both

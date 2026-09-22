@@ -4536,6 +4536,8 @@ parse_logical_address_range(const std::string_view text)
 [[nodiscard]] CommandLine parse_command_line(const int argc, char* argv[])
 {
     CommandLine options;
+    std::optional<bool> cabinet_override;
+    std::optional<bool> music_overlay_override;
 
     for (int index = 1; index < argc; ++index) {
         const std::string_view argument = argv[index];
@@ -4564,6 +4566,10 @@ parse_logical_address_range(const std::string_view text)
             options.cabinet_presentation_check = true;
         } else if (argument == "--cabinet") {
             options.cabinet = true;
+            cabinet_override = true;
+        } else if (argument == "--no-cabinet") {
+            options.cabinet = false;
+            cabinet_override = false;
         } else if (argument == "--bonus-stage") {
             if (index + 1 >= argc) {
                 options.error = "--bonus-stage requires a stage from 1 to 6.";
@@ -5105,6 +5111,10 @@ parse_logical_address_range(const std::string_view text)
         } else if (argument == "--music-voice-overlay"
                    || argument == "--native-music-overlay") {
             options.music_voice_overlay = true;
+            music_overlay_override = true;
+        } else if (argument == "--no-music-voice-overlay") {
+            options.music_voice_overlay = false;
+            music_overlay_override = false;
         } else if (argument == "--report-psg-coverage") {
             options.report_psg_coverage = true;
         } else if (argument == "--emulated-vdc") {
@@ -5413,6 +5423,12 @@ parse_logical_address_range(const std::string_view text)
     // the admitted-routine registry unless told to emulate the original.
     const bool host_selected = !options.validate_only
         && (operation_count == 0 || options.cabinet_smoke_test);
+    // Default enhancements belong to normal play. Keep diagnostic recordings
+    // and reference-device comparisons reproducible unless explicitly enabled.
+    options.cabinet = cabinet_override.value_or(
+        host_selected && !options.cabinet_smoke_test);
+    options.music_voice_overlay = music_overlay_override.value_or(
+        host_selected && !options.emulated_psg);
     // The drain and nudge probes deploy the registry too, so they can be
     // bisected with --registry-slice and --registry-exclude like the host can,
     // and so they measure the configuration people actually play.
@@ -9407,6 +9423,7 @@ void print_usage()
         << "Devil's Crush PC port - Milestone 4\n\n"
         << "Usage:\n"
         << "  devils-crush [--rom <path>]\n"
+           "      [--no-cabinet] [--no-music-voice-overlay]\n"
            "      [--bonus-stage <1-6>] [--emulate-only] [--execution-details]\n"
            "      [--capture-session <directory>]\n"
            "      [--native-cycle-census <census.csv>]\n"
@@ -9744,9 +9761,15 @@ void print_usage()
            "  --emulated-psg hands it back to the emulator, which is what a\n"
            "  difference in the audio hash is measured against, and\n"
            "  --report-psg-coverage prints which of its paths a recorded\n"
-           "  route exercised. --music-voice-overlay experimentally keeps\n"
+           "  route exercised. Music voice overlay is enabled by default\n"
+           "  during play; --no-music-voice-overlay disables it. It keeps\n"
            "  music voices sounding on a second native PSG while effects\n"
-           "  occupy their original hardware channels. The video display\n"
+           "  occupy their original hardware channels. --emulated-psg also\n"
+           "  disables the default overlay. Diagnostic operations opt in\n"
+           "  with --music-voice-overlay. Cabinet mode is the play default;\n"
+           "  --no-cabinet selects the single-window view. --cabinet and\n"
+           "  --music-voice-overlay remain explicit enable flags.\n"
+           "  The video display\n"
            "  controller is a native device model on the same terms;\n"
            "  --emulated-vdc hands the chip\n"
            "  back, and --report-vdc-coverage prints what the route asked\n"
