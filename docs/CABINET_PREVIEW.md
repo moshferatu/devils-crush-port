@@ -4,6 +4,14 @@ Last updated: 2026-08-16
 
 ## Current vertical slice
 
+Press R in the main window to rotate the playfield clockwise by 90 degrees;
+Shift+R rotates counterclockwise. The entire presentation rotates, including
+smoothed sprites, title screens, and bonus stages anchored at the table's foot.
+The DMD and backglass keep their orientation. Cabinet sessions save this as
+`playfield.artwork_rotation` in `portable-data/cabinet.ini` on normal exit;
+older configurations default to zero. This is separate from the saved monitor
+orientation. R also works for the base single-window view during the session.
+
 Cabinet mode is the default when launching the game. Use `--no-cabinet`
 for the base single-window view; `--cabinet` remains an explicit enable flag.
 Music voice overlay also defaults to on during play; disable it with

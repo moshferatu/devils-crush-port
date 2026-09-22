@@ -8648,6 +8648,19 @@ void test_cabinet_display_config()
         },
     };
     const auto encoded = encode_display_config(source);
+    for (const int angle : {0, 90, 180, 270}) {
+        auto rotated = source;
+        rotated.playfield_rotation_degrees = angle;
+        const auto restored = decode_display_config(encode_display_config(rotated));
+        check(restored && *restored == rotated,
+            "cabinet artwork rotation round trips independently of monitor orientation");
+    }
+    for (const int angle : {-90, 45, 360}) {
+        auto rotated = source;
+        rotated.playfield_rotation_degrees = angle;
+        check(encode_display_config(rotated).empty(),
+            "cabinet artwork rotation rejects invalid angles");
+    }
     const auto decoded = decode_display_config(encoded);
     check(
         decoded && *decoded == source,

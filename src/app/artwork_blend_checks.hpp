@@ -1,5 +1,44 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Included by main.cpp alongside the renderer diagnostic entry points.
+[[nodiscard]] bool check_playfield_rotation()
+{
+    auto* surface = SDL_CreateSurface(120, 80, SDL_PIXELFORMAT_ARGB8888);
+    auto* renderer = surface ? SDL_CreateSoftwareRenderer(surface) : nullptr;
+    if (!renderer) { SDL_DestroySurface(surface); return false; }
+    SourceTexture source{SDL_CreateTexture(renderer, SDL_PIXELFORMAT_ARGB8888,
+        SDL_TEXTUREACCESS_STATIC, 2, 2), 2, 2};
+    StageTexture stage;
+    const std::array<std::uint32_t, 4> colors{
+        0xFFFF0000U, 0xFF00FF00U, 0xFF0000FFU, 0xFFFFFFFFU};
+    bool ok = source.texture && configure_texture(source.texture, SDL_SCALEMODE_NEAREST)
+        && SDL_UpdateTexture(source.texture, nullptr, colors.data(), 8);
+    const auto pixel = [&](int x, int y) {
+        return reinterpret_cast<const std::uint32_t*>(
+            static_cast<const std::byte*>(surface->pixels) + y * surface->pitch)[x];
+    };
+    for (const int angle : {0, 90, 180, 270}) {
+        ok = ok && present_frame(renderer, source, stage, 1, 1, {0, 0, 0},
+            0, false, nullptr, 1, nullptr, angle);
+        const std::size_t top_left = angle == 0 ? 0 : angle == 90 ? 2
+            : angle == 180 ? 3 : 1;
+        ok = ok && pixel(50, 30) == colors[top_left];
+        // A bottom-aligned viewport must move to the rotated table's foot.
+        ok = ok && present_frame(renderer, source, stage, 1, 1, {0, 0, 0},
+            0, true, nullptr, 1, nullptr, angle);
+        const int foot_x = angle == 90 ? 3 : angle == 270 ? 116 : 60;
+        const int foot_y = angle == 0 ? 76 : angle == 180 ? 3 : 40;
+        ok = ok && pixel(foot_x, foot_y) != 0xFF000000U;
+        ok = ok && pixel(119 - foot_x, 79 - foot_y) == 0xFF000000U;
+    }
+    destroy_stage(stage);
+    destroy_source(source);
+    SDL_DestroyRenderer(renderer);
+    SDL_DestroySurface(surface);
+    if (ok) std::cout << "Playfield rotation: four orientations and table-foot alignment passed.\n";
+    else std::cerr << "Playfield rotation check failed.\n";
+    return ok;
+}
+
 [[nodiscard]] bool check_artwork_blending(SDL_Renderer* renderer)
 {
     auto* saved_target = SDL_GetRenderTarget(renderer);

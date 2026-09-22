@@ -628,7 +628,10 @@ InputBindings default_input_bindings()
 
 std::vector<std::byte> encode_display_config(const DisplayConfig& config)
 {
-    if (config.format_version != kDisplayConfigVersion) {
+    if (config.format_version != kDisplayConfigVersion
+        || config.playfield_rotation_degrees < 0
+        || config.playfield_rotation_degrees > 270
+        || config.playfield_rotation_degrees % 90 != 0) {
         return {};
     }
     std::string text = "version=";
@@ -638,6 +641,8 @@ std::vector<std::byte> encode_display_config(const DisplayConfig& config)
     append_placement(text, "dmd", config.dmd);
     append_placement(text, "backglass", config.backglass);
     append_bindings(text, config.input);
+    text += "playfield.artwork_rotation="
+        + std::to_string(config.playfield_rotation_degrees) + '\n';
 
     std::vector<std::byte> bytes(text.size());
     std::transform(
@@ -710,6 +715,14 @@ std::optional<DisplayConfig> decode_display_config(
 
     const auto version = fields.find("version");
     DisplayConfig config;
+    if (const auto rotation = fields.find("playfield.artwork_rotation");
+        rotation != fields.end()
+        && (!parse_integer(rotation->second, config.playfield_rotation_degrees)
+            || config.playfield_rotation_degrees < 0
+            || config.playfield_rotation_degrees > 270
+            || config.playfield_rotation_degrees % 90 != 0)) {
+        return std::nullopt;
+    }
     if (version == fields.end()
         || !parse_integer(version->second, config.format_version)
         || config.format_version != kDisplayConfigVersion

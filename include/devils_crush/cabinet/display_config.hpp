@@ -226,6 +226,8 @@ struct DisplayConfig {
     WindowPlacement dmd;
     WindowPlacement backglass;
     InputBindings input = default_input_bindings();
+    // Artwork rotation, separate from the monitor orientation in placements.
+    int playfield_rotation_degrees = 0;
 
     [[nodiscard]] bool operator==(const DisplayConfig&) const = default;
 };

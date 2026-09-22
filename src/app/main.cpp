@@ -10283,7 +10283,8 @@ void destroy_stage(StageTexture& stage)
     const bool bottom_table_width = false,
     TableMotionPresenter* motion = nullptr,
     const float motion_alpha = 1.0F,
-    const FrameArtworkPresenter* artwork = nullptr)
+    const FrameArtworkPresenter* artwork = nullptr,
+    const int rotation_degrees = 0)
 {
     int output_width = 0;
     int output_height = 0;
@@ -10293,6 +10294,11 @@ void destroy_stage(StageTexture& stage)
     if (output_width <= 0 || output_height <= 0) {
         SDL_Delay(16);
         return true;
+    }
+    const int physical_width = output_width;
+    const int physical_height = output_height;
+    if (rotation_degrees == 90 || rotation_degrees == 270) {
+        std::swap(output_width, output_height);
     }
 
     if (!SDL_SetRenderDrawColor(
@@ -10383,13 +10389,24 @@ void destroy_stage(StageTexture& stage)
         return report_sdl_error("SDL_RenderClear failed");
     }
 
-    const SDL_FRect destination{
+    SDL_FRect destination{
         static_cast<float>(layout.destination.x),
         static_cast<float>(layout.destination.y),
         static_cast<float>(layout.destination.width),
         static_cast<float>(layout.destination.height),
     };
-    if (!SDL_RenderTexture(renderer, stage.texture, nullptr, &destination)) {
+    // Rotate the destination center about the entire logical playfield, so
+    // bottom-aligned screens stay at the table's foot in every orientation.
+    const float dx = destination.x + destination.w / 2 - output_width / 2.0F;
+    const float dy = destination.y + destination.h / 2 - output_height / 2.0F;
+    const float rotated_x = rotation_degrees == 90 ? -dy
+        : rotation_degrees == 180 ? -dx : rotation_degrees == 270 ? dy : dx;
+    const float rotated_y = rotation_degrees == 90 ? dx
+        : rotation_degrees == 180 ? -dy : rotation_degrees == 270 ? -dx : dy;
+    destination.x = physical_width / 2.0F + rotated_x - destination.w / 2;
+    destination.y = physical_height / 2.0F + rotated_y - destination.h / 2;
+    if (!SDL_RenderTextureRotated(renderer, stage.texture, nullptr, &destination,
+            rotation_degrees, nullptr, SDL_FLIP_NONE)) {
         return report_sdl_error("SDL_RenderTexture (sharp resolve) failed");
     }
     if (!SDL_RenderPresent(renderer)) {
@@ -21013,6 +21030,13 @@ int run_windows_host(
         SDL_Event event;
         while (SDL_PollEvent(&event)) {
             if (event.type == SDL_EVENT_KEY_DOWN && !event.key.repeat
+                && event.key.windowID == SDL_GetWindowID(window)
+                && event.key.scancode == SDL_SCANCODE_R) {
+                auto& rotation = cabinet_config.playfield_rotation_degrees;
+                rotation = (rotation + ((event.key.mod & SDL_KMOD_SHIFT) ? 270 : 90)) % 360;
+                std::cout << "Playfield rotation: " << rotation << " degrees\n";
+            }
+            if (event.type == SDL_EVENT_KEY_DOWN && !event.key.repeat
                 && event.key.key == SDLK_F6) {
                 presentation_sample.report(smoothing_enabled);
                 presentation_sample = {};
@@ -21521,7 +21545,8 @@ int run_windows_host(
                     0.0F,
                     cabinet_mode && bonus_view && !table_view,
                     interpolate ? &table_motion : nullptr, motion_alpha,
-                    blend_frame ? &frame_artwork : nullptr);
+                    blend_frame ? &frame_artwork : nullptr,
+                    cabinet_config.playfield_rotation_degrees);
                 if (host_ok && (table_view || blend_frame)) {
                     presentation_sample.observe(emulated_frames,
                         (interpolate || blend_frame) && motion_alpha < 1.0F, Clock::now());
@@ -22976,7 +23001,7 @@ enum class ViewProbeRoute {
     int moving = 0;
     int moving_ball_frames = 0;
     int interpolated_ball_frames = 0;
-    bool ok = check_artwork_blending(renderer);
+    bool ok = check_playfield_rotation() && check_artwork_blending(renderer);
     for (int tick = 1; tick <= 2100 && ok; ++tick) {
         keep_fixed_actors_simulating(runtime);
         static_cast<void>(runtime.run_frame(state_census_input_for_frame(tick)));
